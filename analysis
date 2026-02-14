@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Wrapper script for the audio metadata analysis tool
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BINARY="$SCRIPT_DIR/scripts/analysis/target/release/analysis"
+
+# Check if binary exists
+if [ ! -f "$BINARY" ]; then
+    echo "Error: Binary not found at $BINARY"
+    echo "Please build the project first:"
+    echo "  cd scripts/analysis && cargo build --release"
+    exit 1
+fi
+
+# Pass all arguments to the binary
+exec "$BINARY" "$@"
