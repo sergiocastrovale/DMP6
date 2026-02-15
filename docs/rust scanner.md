@@ -39,6 +39,9 @@ analysis [OPTIONS] <SCAN_PATH>
 | `--unc-prefix <PREFIX>` | *(empty)* | UNC prefix for Windows links (e.g. `\\\\minibrain\\test`). When set, Windows links use this prefix instead of converting `/mnt/c/` to `C:\`. |
 | `--output-dir <DIR>` | `../../reports` | Output directory for the HTML report. Can be relative (to the binary location) or absolute. |
 | `--limit <N>` | `0` | Limit scan to the first N audio files. `0` = no limit (scan everything). Useful for testing on large libraries. |
+| `--from <PREFIX>` | *(empty)* | Filter: only scan folders starting from this prefix (case insensitive). Supports multi-character prefixes. |
+| `--to <PREFIX>` | *(empty)* | Filter: only scan folders up to and including this prefix (case insensitive). Use with `--from` to scan a specific range. |
+| `--only <PREFIX>` | *(empty)* | Filter: only scan folders starting with this prefix (case insensitive). Takes precedence over `--from`/`--to`. |
 | `-h, --help` | | Print help |
 
 ### Examples
@@ -58,6 +61,24 @@ cd scripts/analysis
 # Scan with a file limit for testing
 ./analysis /mnt/c/__DMP --limit 500
 
+# Scan only folders starting with A, B, or C
+./analysis /mnt/c/__DMP --from="a" --to="c"
+
+# Scan only folders starting with "The"
+./analysis /mnt/c/__DMP --from="the" --to="the"
+
+# Scan folders from "Ta" to "Th" (e.g., Talking Heads, The Beatles, etc.)
+./analysis /mnt/c/__DMP --from="ta" --to="th"
+
+# Scan only folders starting with "T-" (e.g., T-Pain, T-Rex)
+./analysis /mnt/c/__DMP --only="t-"
+
+# Scan only folders starting with "Pink" (Pink Floyd, etc.)
+./analysis /mnt/c/__DMP --only="pink"
+
+# Scan from M onwards
+./analysis /mnt/c/__DMP --from="m"
+
 # Scan an SMB mount with UNC prefix for Windows links
 ./analysis /mnt/minibrain/test --unc-prefix "\\\\minibrain\\test"
 
@@ -71,7 +92,14 @@ The scanner runs in 3 phases:
 
 ### Phase 1 — Walk directory tree
 
-Uses `walkdir` to recursively collect all audio files (by extension) and count folders. If `--limit` is set, stops collecting after N files. Follows symlinks.
+Uses `walkdir` to recursively collect all audio files (by extension) and count folders. 
+
+**Optional filters:**
+- `--only <PREFIX>`: Filters files where the artist folder name **starts with** the prefix (case insensitive). For example, `--only="t-"` only scans folders starting with "t-" like "T-Pain". Takes precedence over `--from`/`--to`.
+- `--from <PREFIX>` / `--to <PREFIX>`: Filters files based on lexicographic string comparison of the artist folder name (case insensitive). Supports multi-character prefixes. For example, `--from="ta" --to="th"` scans folders from "Talking Heads" through "The Beatles" but not "Ti" or beyond.
+- `--limit`: Stops collecting after N files.
+
+Follows symlinks.
 
 ### Phase 2 — Parallel metadata scan
 
@@ -92,25 +120,11 @@ Filters results to only files with at least one issue, then writes a self-contai
 | **Critical** | Missing `Artist`, `Title`, `Year`, Invalid year (0, 9999, negative, non-numeric), Blank fields (tag key exists but value is empty/whitespace for Artist, Title, Year, Genre) |
 | **API** | Missing `MusicBrainz Artist Id` / `MUSICBRAINZ_ARTISTID`, `MusicBrainz Release Track Id` / `MUSICBRAINZ_TRACKID`, `MusicBrainz Album Id` / `MUSICBRAINZ_ALBUMID`, `ACOUSTIC_ID` / `Acoustic ID`, `SONGKONG_ID` |
 | **Secondary** | Missing `GENRE`, `BPM`, `URL_BANDCAMP_ARTIST_SITE` / `WWW BANDCAMP_ARTIST`, `URL_DISCOGS_ARTIST_SITE` / `WWW DISCOGS_ARTIST`, `URL_DISCOGS_RELEASE_SITE` / `WWW DISCOGS_RELEASE`, `WWW WIKIPEDIA_ARTIST`, any `MOOD_*` tag, embedded album art |
+| **Fields** | Lists all unique metadata field names discovered across all scanned files (sorted alphabetically). Includes subtabs to filter by source: **All**, **MusicBrainz**, **Discogs**, **AcoustID**, **Wikipedia**, **SongKong**, and **Other**. Useful for finding duplicates, typos, and non-standard field names. |
 
 For fields with multiple possible tag names (e.g., `URL_DISCOGS_ARTIST_SITE` or `WWW DISCOGS_ARTIST`), the field is only flagged as missing if **none** of the variants exist.
 
 For MOOD fields, any tag starting with `MOOD_` counts (e.g., `MOOD_HAPPY`, `MOOD_AGGRESSIVE`). Flagged if zero `MOOD_*` tags exist.
-
-## HTML report features
-
-* **Dark theme** with Inter/system font stack
-* **Summary stats**: directory, audio file count, folder count, total size, scan time, files OK, files with issues, unreadable files
-* **3 tabs**: Critical, API, Secondary — each with a badge showing the count
-* **Folder toggle**: "Show only folders" switch (enabled by default) that groups results by artist/folder instead of showing every individual file. When enabled:
-  - The File column shows the count (e.g., "11 files") instead of individual paths
-  - Status columns (✓/✗) are aggregated: shows ✗ if *any* file in the folder has that issue
-  - Toggle persists across tabs
-* **Per-tab search**: real-time text filter input
-* **Sortable columns**: click any header to sort ascending/descending
-* **Folder column**: Shows the first folder after the root (e.g., "Radiohead" from `/mnt/c/__DMP/Radiohead/...`)
-* **File column**: Shows the last 3 path components (e.g., `Albums/2007 - In Rainbows/01 - 15 Step.mp3`)
-* **Status icons**: green checkmark for OK, red cross for missing/bad, orange text for invalid values
 
 ## Dependencies (Cargo.toml)
 
@@ -126,7 +140,29 @@ For MOOD fields, any tag starting with `MOOD_` counts (e.g., `MOOD_HAPPY`, `MOOD
 
 Release profile: `opt-level = 3`, `lto = "thin"`, `codegen-units = 1` for maximum speed.
 
-## WSL2 Setup Instructions
+## Report Features
+
+The generated HTML report includes:
+
+- **Dark theme** optimized for readability
+- **Summary stats** showing:
+  - File type breakdown (FLAC, MP3, M4A, etc.) with counts
+  - Files OK, Files with Issues, Unreadable Files
+  - Total size and scan time displayed in header
+- **Tabbed interface** (Critical, API, Secondary, Fields)
+- **Sortable columns** (click headers to sort)
+- **Search filtering** (per-tab filter boxes)
+- **Folder view toggle** (groups files by artist folder, shows counts and aggregated status)
+- **Field subtabs** (in Fields tab: All, MusicBrainz, Discogs, AcoustID, Wikipedia, SongKong, iTunes-specific, Other)
+  - Automatically groups fields by detecting lowercase substrings in field names
+  - iTunes-specific: Fields starting with `----:COM.APPLE.ITUNES:`
+  - `MOOD_*` fields are always placed in "Other" (excluded from AcoustID despite containing "acoustic")
+  - Badge counts show number of fields in each category
+  - When filtering/searching, automatically switches to "All" subtab
+- **File links** (clickable paths that open in Windows Explorer via `file://` protocol)
+- **Self-contained** (no external dependencies, all CSS/JS inline)
+
+## Setup Instructions
 
 ### Install Rust (one-time)
 
@@ -147,11 +183,3 @@ cargo build --release
 ```
 
 The binary is at `scripts/analysis/target/release/analysis`.
-
-### Mount an SMB share in WSL2 (if needed)
-
-```bash
-sudo mkdir -p /mnt/minibrain/test
-sudo mount -t cifs //minibrain/test /mnt/minibrain/test \
-  -o username=YOUR_USER,password=YOUR_PASS,uid=$(id -u),gid=$(id -g)
-```

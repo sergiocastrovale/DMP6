@@ -3,6 +3,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BINARY="$SCRIPT_DIR/scripts/analysis/target/release/analysis"
+REPORTS_DIR="$SCRIPT_DIR/reports"
 
 # Check if binary exists
 if [ ! -f "$BINARY" ]; then
@@ -12,5 +13,21 @@ if [ ! -f "$BINARY" ]; then
     exit 1
 fi
 
-# Pass all arguments to the binary
-exec "$BINARY" "$@"
+# Create reports directory if it doesn't exist
+mkdir -p "$REPORTS_DIR"
+
+# Check if user specified --output-dir
+has_output_dir=false
+for arg in "$@"; do
+    if [[ "$arg" == --output-dir* ]]; then
+        has_output_dir=true
+        break
+    fi
+done
+
+# Pass all arguments to the binary, adding --output-dir if not specified
+if [ "$has_output_dir" = false ]; then
+    exec "$BINARY" "$@" --output-dir "$REPORTS_DIR"
+else
+    exec "$BINARY" "$@"
+fi

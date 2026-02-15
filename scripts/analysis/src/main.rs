@@ -36,6 +36,18 @@ struct Args {
     /// Limit scan to the first N audio files (0 = no limit)
     #[arg(long, default_value = "0")]
     limit: usize,
+
+    /// Filter: only scan folders starting from this prefix (case insensitive)
+    #[arg(long, default_value = "")]
+    from: String,
+
+    /// Filter: only scan folders up to this prefix (case insensitive, inclusive of prefix)
+    #[arg(long, default_value = "")]
+    to: String,
+
+    /// Filter: only scan folders starting with this prefix (case insensitive)
+    #[arg(long, default_value = "")]
+    only: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +198,7 @@ fn collect_tags(tagged_file: &lofty::file::TaggedFile) -> HashMap<String, String
 // Scan a single file
 // ---------------------------------------------------------------------------
 
-fn scan_file(path: &Path) -> Option<FileIssue> {
+fn scan_file(path: &Path) -> Option<(FileIssue, Vec<String>)> {
     let meta = fs::metadata(path).ok()?;
     let file_size = meta.len();
 
@@ -263,7 +275,8 @@ fn scan_file(path: &Path) -> Option<FileIssue> {
         }
     });
 
-    Some(FileIssue {
+    let tag_keys: Vec<String> = tags.keys().cloned().collect();
+    Some((FileIssue {
         path: path.to_path_buf(),
         file_size,
         missing_artist,
@@ -287,7 +300,7 @@ fn scan_file(path: &Path) -> Option<FileIssue> {
         blank_title,
         blank_year,
         blank_genre,
-    })
+    }, tag_keys))
 }
 
 // ---------------------------------------------------------------------------
@@ -367,9 +380,11 @@ fn generate_html_report(
     scan_root: &str,
     unc_prefix: &str,
     total_files: u64,
-    total_dirs: u64,
+    _total_dirs: u64,
     total_size: u64,
     error_count: u64,
+    tag_keys: &[String],
+    file_type_counts: &std::collections::HashMap<String, u64>,
     elapsed: std::time::Duration,
     output_path: &Path,
 ) -> std::io::Result<()> {
@@ -425,18 +440,35 @@ h1 {{
     margin-bottom: 8px;
     color: var(--text);
 }}
-.subtitle {{ color: var(--text-dim); margin-bottom: 24px; font-size: 13px; }}
-.stats-grid {{
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
+.subtitle {{ 
+    color: var(--text-dim); 
+    margin-bottom: 12px; 
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}}
+.subtitle .meta {{ 
+    color: var(--text-dim); 
+    font-size: 13px; 
+}}
+.stats-container {{
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
     margin-bottom: 24px;
+}}
+.stats-group {{
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
 }}
 .stat-card {{
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px;
+    min-width: 140px;
 }}
 .stat-card .label {{ color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }}
 .stat-card .value {{ font-size: 22px; font-weight: 700; margin-top: 4px; }}
@@ -444,6 +476,29 @@ h1 {{
 .stat-card .value.fail {{ color: var(--red); }}
 .stat-card .value.warn {{ color: var(--orange); }}
 .stat-card .value.info {{ color: var(--blue); }}
+.tab-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}}
+.tab-controls {{
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}}
+.tab-controls label {{
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+}}
+.tab-controls input[type="checkbox"] {{
+    margin-right: 6px;
+    cursor: pointer;
+}}
 .tabs {{
     display: flex;
     gap: 0;
@@ -472,6 +527,51 @@ h1 {{
     margin-left: 6px;
 }}
 .tab.active .badge {{
+    background: var(--accent-dim);
+    color: #fff;
+}}
+.subtabs-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    margin-bottom: 12px;
+}}
+.subtabs {{
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}}
+.subtab {{
+    padding: 6px 12px;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: all 0.15s;
+    user-select: none;
+}}
+.subtab:hover {{ 
+    color: var(--text); 
+    border-color: var(--accent-dim);
+}}
+.subtab.active {{
+    color: var(--accent);
+    background: var(--surface2);
+    border-color: var(--accent);
+}}
+.subtab .subbadge {{
+    background: var(--surface2);
+    color: var(--text-dim);
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-size: 10px;
+    margin-left: 4px;
+}}
+.subtab.active .subbadge {{
     background: var(--accent-dim);
     color: #fff;
 }}
@@ -527,8 +627,6 @@ a:hover {{ text-decoration: underline; }}
 .search-box {{
     display: flex;
     justify-content: flex-end;
-    margin-top: 12px;
-    margin-bottom: -8px;
 }}
 .search-box input {{
     background: var(--surface);
@@ -552,45 +650,60 @@ a:hover {{ text-decoration: underline; }}
 <body>
 <div class="container">
 <h1>Audio Metadata Analysis</h1>
-<p class="subtitle">Generated {timestamp} &middot; Scanned <code>{scan_root}</code></p>
+<p class="subtitle">
+<span>Scanned <code>{scan_root}</code></span>
+<span class="meta">{total_size} &middot; {elapsed}</span>
+</p>
 
-<div class="stats-grid">
-<div class="stat-card"><div class="label">Directory</div><div class="value info">{scan_root_short}</div></div>
-<div class="stat-card"><div class="label">Audio Files</div><div class="value info">{total_files}</div></div>
-<div class="stat-card"><div class="label">Folders</div><div class="value info">{total_dirs}</div></div>
-<div class="stat-card"><div class="label">Total Size</div><div class="value info">{total_size}</div></div>
-<div class="stat-card"><div class="label">Scan Time</div><div class="value info">{elapsed}</div></div>
+<div class="stats-container">
+<div class="stats-group">
+{file_type_stats}
+</div>
+<div class="stats-group">
 <div class="stat-card"><div class="label">Files OK</div><div class="value ok">{ok_count}</div></div>
 <div class="stat-card"><div class="label">Files with Issues</div><div class="value fail">{fail_count}</div></div>
 <div class="stat-card"><div class="label">Unreadable Files</div><div class="value warn">{error_count}</div></div>
 </div>
+</div>
 
-<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
+<div class="tab-header">
 <div class="tabs">
 <div class="tab active" onclick="switchTab('critical')">Critical<span class="badge">{critical_count}</span></div>
 <div class="tab" onclick="switchTab('api')">API<span class="badge">{api_count}</span></div>
 <div class="tab" onclick="switchTab('secondary')">Secondary<span class="badge">{secondary_count}</span></div>
+<div class="tab" onclick="switchTab('fields')">Fields<span class="badge">{fields_count}</span></div>
 </div>
-<div style="padding: 0 20px; display: flex; align-items: center; gap: 8px;">
-<label style="font-size: 13px; color: var(--text-dim); cursor: pointer; user-select: none;">
-<input type="checkbox" id="folderViewToggle" checked onchange="toggleFolderView()" style="margin-right: 6px; cursor: pointer;">
+<div class="tab-controls">
+<label>
+<input type="checkbox" id="folderViewToggle" checked onchange="toggleFolderView()">
 Show only folders
 </label>
 </div>
 </div>
 "#,
-        timestamp = encode_text(&Local::now().format("%Y-%m-%d %H:%M:%S").to_string()),
         scan_root = encode_text(scan_root),
-        scan_root_short = encode_text(scan_root),
-        total_files = total_files,
-        total_dirs = total_dirs,
         total_size = human_size(total_size),
         elapsed = format!("{:.2}s", elapsed.as_secs_f64()),
+        file_type_stats = {
+            let mut stats = String::new();
+            let mut sorted_types: Vec<_> = file_type_counts.iter().collect();
+            sorted_types.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count descending
+            for (ext, count) in sorted_types {
+                stats.push_str(&format!(
+                    r#"<div class="stat-card"><div class="label">{}</div><div class="value info">{}</div></div>
+"#,
+                    encode_text(ext),
+                    count
+                ));
+            }
+            stats
+        },
         ok_count = ok_count,
         fail_count = fail_count,
         critical_count = critical.len(),
         api_count = api.len(),
         secondary_count = secondary.len(),
+        fields_count = tag_keys.len(),
         error_count = error_count,
     )?;
 
@@ -684,6 +797,85 @@ Show only folders
         },
     )?;
 
+    // --- Fields tab ---
+    // Group fields by category
+    let mut wikipedia: Vec<&String> = Vec::new();
+    let mut discogs: Vec<&String> = Vec::new();
+    let mut musicbrainz: Vec<&String> = Vec::new();
+    let mut acoustid: Vec<&String> = Vec::new();
+    let mut songkong: Vec<&String> = Vec::new();
+    let mut itunes: Vec<&String> = Vec::new();
+    let mut other: Vec<&String> = Vec::new();
+    
+    for key in tag_keys {
+        let lower = key.to_lowercase();
+        // Check iTunes-specific first
+        if key.starts_with("----:COM.APPLE.ITUNES:") {
+            itunes.push(key);
+        // Skip MOOD_ fields for specific subtabs (they go to "other")
+        } else if lower.contains("mood_") {
+            other.push(key);
+        } else if lower.contains("wikipedia") {
+            wikipedia.push(key);
+        } else if lower.contains("discogs") {
+            discogs.push(key);
+        } else if lower.contains("musicbrainz") {
+            musicbrainz.push(key);
+        } else if lower.contains("acoustid") || lower.contains("acoustic") {
+            acoustid.push(key);
+        } else if lower.contains("songkong") {
+            songkong.push(key);
+        } else {
+            other.push(key);
+        }
+    }
+    
+    write!(f, r#"<div id="tab-fields" class="tab-content">
+<div class="subtabs-header">
+<div class="subtabs">
+<div class="subtab active" onclick="switchFieldSubtab('all')">All<span class="subbadge">{}</span></div>
+<div class="subtab" onclick="switchFieldSubtab('musicbrainz')">MusicBrainz<span class="subbadge">{}</span></div>
+<div class="subtab" onclick="switchFieldSubtab('discogs')">Discogs<span class="subbadge">{}</span></div>
+<div class="subtab" onclick="switchFieldSubtab('acoustid')">AcoustID<span class="subbadge">{}</span></div>
+<div class="subtab" onclick="switchFieldSubtab('wikipedia')">Wikipedia<span class="subbadge">{}</span></div>
+<div class="subtab" onclick="switchFieldSubtab('songkong')">SongKong<span class="subbadge">{}</span></div>
+<div class="subtab" onclick="switchFieldSubtab('itunes')">iTunes-specific<span class="subbadge">{}</span></div>
+<div class="subtab" onclick="switchFieldSubtab('other')">Other<span class="subbadge">{}</span></div>
+</div>
+<div class="search-box"><input type="text" placeholder="Filter fields…" oninput="filterFieldsTable(this)"></div>
+</div>
+<div class="table-wrap"><table>
+<thead><tr><th data-sort="0">Field Name</th></tr></thead>
+<tbody>
+"#, tag_keys.len(), musicbrainz.len(), discogs.len(), acoustid.len(), wikipedia.len(), songkong.len(), itunes.len(), other.len())?;
+    
+    for key in tag_keys {
+        let lower = key.to_lowercase();
+        // Check iTunes-specific first
+        let category = if key.starts_with("----:COM.APPLE.ITUNES:") {
+            "itunes"
+        // Skip MOOD_ fields for specific subtabs (they go to "other")
+        } else if lower.contains("mood_") {
+            "other"
+        } else if lower.contains("wikipedia") {
+            "wikipedia"
+        } else if lower.contains("discogs") {
+            "discogs"
+        } else if lower.contains("musicbrainz") {
+            "musicbrainz"
+        } else if lower.contains("acoustid") || lower.contains("acoustic") {
+            "acoustid"
+        } else if lower.contains("songkong") {
+            "songkong"
+        } else {
+            "other"
+        };
+        
+        write!(f, "<tr data-field-category=\"{}\"><td>{}</td></tr>\n", category, encode_text(key))?;
+    }
+    
+    write!(f, "</tbody></table></div></div>\n")?;
+
     // --- JS ---
     write!(
         f,
@@ -712,6 +904,34 @@ function filterTable(input, tabId) {{
         const text = row.textContent.toLowerCase();
         row.style.display = text.includes(filter) ? '' : 'none';
     }});
+}}
+function switchFieldSubtab(category) {{
+    document.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
+    document.querySelector('[onclick="switchFieldSubtab(\'' + category + '\')"]').classList.add('active');
+    
+    const rows = document.querySelectorAll('#tab-fields tbody tr');
+    rows.forEach(row => {{
+        if (category === 'all') {{
+            row.style.display = '';
+        }} else {{
+            const rowCategory = row.getAttribute('data-field-category');
+            row.style.display = rowCategory === category ? '' : 'none';
+        }}
+    }});
+}}
+function filterFieldsTable(input) {{
+    const filter = input.value.toLowerCase();
+    const rows = document.querySelectorAll('#tab-fields tbody tr');
+    rows.forEach(row => {{
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(filter) ? '' : 'none';
+    }});
+    
+    // If filtering, show all categories
+    if (filter.length > 0) {{
+        document.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
+        document.querySelector('[onclick="switchFieldSubtab(\'all\')"]').classList.add('active');
+    }}
 }}
 function toggleFolderView() {{
     const checked = document.getElementById('folderViewToggle').checked;
@@ -903,6 +1123,13 @@ fn main() {
     if args.limit > 0 {
         println!("Limit     : {} files", args.limit);
     }
+    if !args.only.is_empty() {
+        println!("Filter    : only folders matching '{}'", args.only);
+    } else if !args.from.is_empty() || !args.to.is_empty() {
+        let from_str = if args.from.is_empty() { "A".to_string() } else { args.from.to_uppercase() };
+        let to_str = if args.to.is_empty() { "Z".to_string() } else { args.to.to_uppercase() };
+        println!("Filter    : {} to {}", from_str, to_str);
+    }
     println!("CPU cores : {}", num_cpus::get());
     println!();
 
@@ -914,7 +1141,12 @@ fn main() {
     let total_dirs = AtomicU64::new(0);
 
     let limit = args.limit;
-    let walker = WalkDir::new(&scan_root)
+    let from_filter = args.from.to_lowercase();
+    let to_filter = args.to.to_lowercase();
+    let only_filter = args.only.to_lowercase();
+    let scan_root_clone = scan_root.clone();
+    
+    let paths: Vec<PathBuf> = WalkDir::new(&scan_root)
         .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -923,6 +1155,33 @@ fn main() {
                 total_dirs.fetch_add(1, Ordering::Relaxed);
                 return false;
             }
+            
+            // Apply filters based on artist folder
+            let folder = get_artist_folder(e.path(), &scan_root_clone);
+            let folder_lower = folder.to_lowercase();
+            
+            // --only filter: starts with match (takes precedence)
+            if !only_filter.is_empty() {
+                if !folder_lower.starts_with(&only_filter) {
+                    return false;
+                }
+            }
+            // --from/--to filter: string range (lexicographic comparison)
+            else if !from_filter.is_empty() || !to_filter.is_empty() {
+                if !from_filter.is_empty() && folder_lower < from_filter {
+                    return false;
+                }
+                if !to_filter.is_empty() {
+                    // For --to, we want to include everything that starts with the prefix
+                    // e.g., --to="c" should include "a", "b", "c", "ca", "cb", etc. but not "d"
+                    // So we check if folder > to_filter + 'z' (or next prefix)
+                    let to_upper = format!("{}\u{10FFFF}", to_filter); // Max unicode to include all starting with prefix
+                    if folder_lower > to_upper {
+                        return false;
+                    }
+                }
+            }
+            
             if let Some(ext) = e.path().extension() {
                 let ext_lower = ext.to_string_lossy().to_lowercase();
                 extensions.contains(&ext_lower.as_str())
@@ -930,13 +1189,9 @@ fn main() {
                 false
             }
         })
-        .map(|e| e.into_path());
-
-    let paths: Vec<PathBuf> = if limit > 0 {
-        walker.take(limit).collect()
-    } else {
-        walker.collect()
-    };
+        .map(|e| e.into_path())
+        .take(if limit > 0 { limit } else { usize::MAX })
+        .collect();
 
     let total_files = paths.len() as u64;
     let total_dirs = total_dirs.load(Ordering::Relaxed);
@@ -948,11 +1203,20 @@ fn main() {
     let total_size = AtomicU64::new(0);
     let error_count = AtomicU64::new(0);
     let last_folder = Mutex::new(String::new());
+    let all_tag_keys = Mutex::new(std::collections::HashSet::new());
+    let file_type_counts = Mutex::new(std::collections::HashMap::new());
 
     let results: Vec<FileIssue> = paths
         .par_iter()
         .filter_map(|p| {
             let n = scanned.fetch_add(1, Ordering::Relaxed) + 1;
+            
+            // Track file type
+            if let Some(ext) = p.extension() {
+                let ext_upper = ext.to_string_lossy().to_uppercase();
+                let mut counts = file_type_counts.lock().unwrap();
+                *counts.entry(ext_upper.to_string()).or_insert(0) += 1;
+            }
             
             // Show progress every 100 files or when folder changes
             if n % 100 == 0 || n == 1 {
@@ -969,8 +1233,13 @@ fn main() {
             }
             
             match scan_file(p) {
-                Some(issue) => {
+                Some((issue, tag_keys)) => {
                     total_size.fetch_add(issue.file_size, Ordering::Relaxed);
+                    // Collect all tag keys
+                    let mut keys = all_tag_keys.lock().unwrap();
+                    for key in tag_keys {
+                        keys.insert(key);
+                    }
                     Some(issue)
                 }
                 None => {
@@ -983,7 +1252,12 @@ fn main() {
 
     let total_size = total_size.load(Ordering::Relaxed);
     let error_count = error_count.load(Ordering::Relaxed);
+    let mut tag_keys: Vec<String> = all_tag_keys.lock().unwrap().iter().cloned().collect();
+    tag_keys.sort();
+    let file_type_counts = file_type_counts.lock().unwrap().clone();
+    
     println!("  Scanned {} files ({} errors)", results.len(), error_count);
+    println!("  Found {} unique metadata fields", tag_keys.len());
 
     // --- Phase 3: Filter to only files with issues ---
     println!("[3/3] Filtering results...");
@@ -1018,6 +1292,8 @@ fn main() {
         total_dirs,
         total_size,
         error_count,
+        &tag_keys,
+        &file_type_counts,
         elapsed,
         &output_path,
     ) {
