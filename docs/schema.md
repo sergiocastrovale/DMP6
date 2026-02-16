@@ -430,8 +430,7 @@ enum TrackArtistRole {
 After modifying `web/prisma/schema.prisma`, apply changes:
 
 ```bash
-cd web
-pnpm prisma db push
+cd web && pnpm prisma db push
 ```
 
 For production, use migrations:
