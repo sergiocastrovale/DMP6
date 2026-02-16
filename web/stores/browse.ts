@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import type { ArtistListItem } from '~/types/artist'
 
 export const useBrowseStore = defineStore('browse', () => {
+  const { $fetch } = useNuxtApp()
+  
   const artists = ref<ArtistListItem[]>([])
   const total = ref(0)
   const page = ref(1)

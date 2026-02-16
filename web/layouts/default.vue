@@ -20,9 +20,13 @@ const player = usePlayerStore()
       </header>
 
       <!-- Page content -->
+      <!-- Mobile: 56px nav + (80px player if visible). Desktop: 0 nav + (80px player if visible) -->
       <main
         class="px-4 py-6 lg:px-6"
-        :class="{ 'pb-36': player.isVisible, 'pb-20 lg:pb-6': !player.isVisible }"
+        :class="{
+          'pb-40 lg:pb-24': player.isVisible,
+          'pb-20 lg:pb-6': !player.isVisible,
+        }"
       >
         <slot />
       </main>

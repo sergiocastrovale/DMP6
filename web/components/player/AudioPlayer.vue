@@ -1,11 +1,25 @@
 <script setup lang="ts">
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-vue-next'
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  VolumeX,
+  Shuffle,
+  Heart,
+  ListMusic,
+} from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 
 const player = usePlayerStore()
+const isFavorite = ref(false)
+const showPlaylistMenu = ref(false)
+const playlists = ref<any[]>([])
 
 function formatTime(seconds: number): string {
-  if (!seconds || !isFinite(seconds)) return '0:00'
+  if (!seconds || !isFinite(seconds))
+    return '0:00'
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
@@ -19,9 +33,117 @@ function handleProgressClick(e: MouseEvent) {
 }
 
 function handleVolumeChange(e: Event) {
-  const value = parseFloat((e.target as HTMLInputElement).value)
+  const value = Number.parseFloat((e.target as HTMLInputElement).value)
   player.setVolume(value)
 }
+
+function getShuffleIcon() {
+  return Shuffle
+}
+
+function getShuffleLabel() {
+  const labels = {
+    off: 'Shuffle: Off',
+    release: 'Shuffle: Release',
+    artist: 'Shuffle: Artist',
+    catalogue: 'Shuffle: Catalogue',
+  }
+  return labels[player.shuffleMode]
+}
+
+async function toggleFavorite() {
+  if (!player.currentTrack)
+    return
+
+  try {
+    if (isFavorite.value) {
+      await $fetch(`/api/favorites/tracks/${player.currentTrack.id}`, { method: 'DELETE' })
+      isFavorite.value = false
+    }
+    else {
+      await $fetch(`/api/favorites/tracks/${player.currentTrack.id}`, { method: 'POST' })
+      isFavorite.value = true
+    }
+  }
+  catch (error) {
+    console.error('Failed to toggle favorite:', error)
+  }
+}
+
+async function checkFavorite() {
+  if (!player.currentTrack)
+    return
+
+  try {
+    const favorites = await $fetch<any>('/api/favorites')
+    isFavorite.value = favorites.tracks.some((fav: any) => fav.track.id === player.currentTrack?.id)
+  }
+  catch (error) {
+    console.error('Failed to check favorite:', error)
+  }
+}
+
+async function loadPlaylists() {
+  try {
+    playlists.value = await $fetch<any[]>('/api/playlists')
+  }
+  catch (error) {
+    console.error('Failed to load playlists:', error)
+  }
+}
+
+async function addToPlaylist(playlistSlug: string) {
+  if (!player.currentTrack)
+    return
+
+  try {
+    await $fetch(`/api/playlists/${playlistSlug}/tracks`, {
+      method: 'POST',
+      body: { trackId: player.currentTrack.id },
+    })
+    showPlaylistMenu.value = false
+  }
+  catch (error) {
+    console.error('Failed to add to playlist:', error)
+    alert('Failed to add track to playlist')
+  }
+}
+
+async function createNewPlaylist() {
+  const name = prompt('Enter playlist name:')
+  if (!name?.trim()) return
+
+  const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+  if (!slug) {
+    alert('Invalid playlist name')
+    return
+  }
+
+  try {
+    const playlist = await $fetch<any>('/api/playlists', {
+      method: 'POST',
+      body: { name, slug },
+    })
+    await addToPlaylist(playlist.slug)
+    await loadPlaylists()
+  }
+  catch (error) {
+    console.error('Failed to create playlist:', error)
+    alert('Failed to create playlist')
+  }
+}
+
+watch(() => player.currentTrack?.id, () => {
+  if (player.currentTrack) {
+    checkFavorite()
+  }
+})
+
+onMounted(() => {
+  if (player.currentTrack) {
+    checkFavorite()
+  }
+})
 </script>
 
 <template>
@@ -35,7 +157,7 @@ function handleVolumeChange(e: Event) {
         class="size-12 shrink-0 rounded bg-zinc-800 bg-cover bg-center"
         :style="player.currentTrack?.releaseImage ? { backgroundImage: `url(${player.currentTrack.releaseImage})` } : {}"
       />
-      <div class="min-w-0">
+      <div class="min-w-0 flex-1">
         <p class="truncate text-sm font-medium text-zinc-50">
           {{ player.currentTrack?.title || 'No track' }}
         </p>
@@ -43,14 +165,33 @@ function handleVolumeChange(e: Event) {
           {{ player.currentTrack?.artist || '' }}
         </p>
       </div>
+      <!-- Favorite button -->
+      <button
+        class="hidden lg:block text-zinc-400 hover:text-amber-500 transition-colors"
+        :class="{ 'text-amber-500': isFavorite }"
+        @click="toggleFavorite"
+      >
+        <Heart :size="18" :fill="isFavorite ? 'currentColor' : 'none'" />
+      </button>
     </div>
 
     <!-- Controls + progress (center) -->
     <div class="flex flex-1 flex-col items-center gap-1">
       <div class="flex items-center gap-4">
+        <!-- Shuffle button -->
+        <button
+          class="text-zinc-400 hover:text-zinc-50 transition-colors"
+          :class="{ 'text-amber-500': player.shuffleMode !== 'off' }"
+          :title="getShuffleLabel()"
+          @click="player.cycleShuffleMode()"
+        >
+          <Shuffle :size="18" />
+        </button>
+
         <button class="text-zinc-400 hover:text-zinc-50 transition-colors" @click="player.previous()">
           <SkipBack :size="18" />
         </button>
+
         <button
           class="flex size-8 items-center justify-center rounded-full bg-zinc-50 text-zinc-950 hover:scale-105 transition-transform"
           @click="player.togglePlay()"
@@ -58,9 +199,48 @@ function handleVolumeChange(e: Event) {
           <Pause v-if="player.isPlaying" :size="16" />
           <Play v-else :size="16" class="ml-0.5" />
         </button>
+
         <button class="text-zinc-400 hover:text-zinc-50 transition-colors" @click="player.next()">
           <SkipForward :size="18" />
         </button>
+
+        <!-- Add to playlist button -->
+        <div class="relative">
+          <button
+            class="text-zinc-400 hover:text-zinc-50 transition-colors"
+            @click="showPlaylistMenu = !showPlaylistMenu; loadPlaylists()"
+          >
+            <ListMusic :size="18" />
+          </button>
+
+          <!-- Playlist menu -->
+          <div
+            v-if="showPlaylistMenu"
+            class="absolute bottom-full left-0 mb-2 w-48 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
+          >
+            <div class="max-h-64 overflow-y-auto p-2">
+              <button
+                class="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-sm font-medium text-amber-500 hover:bg-zinc-700 transition-colors mb-2"
+                @click="createNewPlaylist"
+              >
+                + Create new playlist
+              </button>
+              <div v-if="playlists.length > 0" class="border-t border-zinc-800 pt-2">
+                <button
+                  v-for="playlist in playlists"
+                  :key="playlist.id"
+                  class="w-full rounded px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
+                  @click="addToPlaylist(playlist.slug)"
+                >
+                  {{ playlist.name }}
+                </button>
+              </div>
+              <div v-if="playlists.length === 0" class="px-3 py-2 text-sm text-zinc-500">
+                No playlists yet
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="flex w-full max-w-lg items-center gap-2 text-xs text-zinc-400">
         <span class="w-10 text-right tabular-nums">{{ formatTime(player.currentTime) }}</span>
