@@ -1,4 +1,4 @@
-# Sync Scripts - Setup & Reference
+# Scripts
 
 ## Prerequisites
 
@@ -37,25 +37,48 @@ SQL
 psql -U dmp6 -d dmp6 -h localhost -c "SELECT 1;"
 ```
 
-If you get a password prompt, enter `dmp6`. If authentication fails, edit `pg_hba.conf`:
-
-```bash
-sudo nano /etc/postgresql/*/main/pg_hba.conf
-```
-
-Find the line `local all all peer` and change it to `local all all md5`. Then restart:
-
-```bash
-sudo service postgresql restart
-```
-
 ## Environment Configuration
 
-Both scripts read configuration from `web/.env`:
+All scripts read configuration from `web/.env`:
 
 ```env
-MUSIC_DIR=/mnt/i/mp3/mainstream
+# Music Directory
+MUSIC_DIR=/path/to/your/music/library
+
+# PostgreSQL Database Connection
 DATABASE_URL=postgresql://dmp6:dmp6@localhost:5432/dmp6
+
+# Image Storage Configuration
+# Options: local, s3, or both
+IMAGE_STORAGE=local
+
+# S3 Configuration (required if IMAGE_STORAGE is s3 or both)
+S3_BUCKET=
+S3_REGION=us-east-1
+S3_ACCESS_KEY_ID=AKIA
+S3_SECRET_ACCESS_KEY=
+S3_ENDPOINT=
+
+# Public URL for accessing S3 images
+S3_PUBLIC_URL=
+
+# Remote server settings (for deployment, if applicable)
+SERVER_HOST=
+SERVER_USER=
+DEPLOY_PATH=/var/www/dmp
+
+# Prevent Playlists, Favorites and Settings from being available online (optional)
+# MANAGED=false
+
+# Soulseek / slsk-batchdl settings (optional)
+SLSK_USERNAME=
+SLSK_PASSWORD=
+SLSK_PATH=/path/to/sldl
+SLSK_DOWNLOAD_DIR=/path/to/downloads
+SLSK_ALLOWED_FORMATS=flac,mp3
+SLSK_MIN_BITRATE=320
+SLSK_NAME_FORMAT="{artist}/{year} - {album}/{track}. {title}"
+SLSK_SEARCH_TIMEOUT=15
 ```
 
 ## Database Schema
@@ -63,28 +86,22 @@ DATABASE_URL=postgresql://dmp6:dmp6@localhost:5432/dmp6
 The Prisma schema at `web/prisma/schema.prisma` is the source of truth. Install dependencies and push the schema:
 
 ```bash
-cd web
-pnpm install
-pnpm prisma db push
+cd web && pnpm install && pnpm prisma db push && cd ..
 ```
 
 This creates all tables and relations automatically. Run this whenever the schema changes.
 
-## Building
-
-Both scripts auto-build on first run. To build manually:
-
-```bash
-# Indexer
-cd scripts/index && cargo build --release
-
-# Sync
-cd scripts/sync && cargo build --release
-```
-
 ## Indexer (`./index`)
 
 Scans audio files, extracts metadata, and populates the database.
+
+## Build
+
+Scripts auto-build on first run. To build manually:
+
+```bash
+cd scripts/index && cargo build --release
+```
 
 ### Usage
 
@@ -114,20 +131,6 @@ Scans audio files, extracts metadata, and populates the database.
 ./index --threads 4 --limit 1000
 ```
 
-### CLI Arguments
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `MUSIC_DIR` (positional) | from `.env` | Override music directory |
-| `--overwrite` | false | Delete matching data, re-index from scratch |
-| `--from PREFIX` | | Folders starting from prefix (case insensitive) |
-| `--to PREFIX` | | Folders up to prefix (case insensitive) |
-| `--only PREFIX` | | Only folders starting with prefix |
-| `--resume` | false | Continue from last checkpoint |
-| `--skip-images` | false | Skip cover art extraction |
-| `--threads N` | all cores | Number of parallel workers |
-| `--limit N` | 0 (no limit) | Limit to first N files |
-
 ### How it works
 
 1. **Walk** the music directory for audio files (mp3, flac, aac, opus, m4a, ogg)
@@ -155,7 +158,13 @@ The indexer saves progress to the `IndexCheckpoint` table every 100 files. Use `
 
 Fetches MusicBrainz data, matches releases, downloads artist images.
 
-**Note**: Sync processes ALL artists found during indexing, regardless of which folder filters were used during indexing.
+## Build
+
+Scripts auto-build on first run. To build manually:
+
+```bash
+cd scripts/sync && cargo build --release
+```
 
 ### Usage
 
@@ -165,6 +174,19 @@ Fetches MusicBrainz data, matches releases, downloads artist images.
 
 # Re-sync all artists
 ./sync --overwrite
+
+# Sync specific artist
+./sync --only="Radiohead"
+
+# Sync range of artists
+./sync --from="A" --to="M"
+
+# Sync with limit
+./sync --limit=10
+
+# Combined filters
+./sync --only="Radio" --overwrite
+./sync --from="A" --to="D" --limit=100
 ```
 
 ### CLI Arguments
@@ -172,6 +194,10 @@ Fetches MusicBrainz data, matches releases, downloads artist images.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--overwrite` | false | Re-sync all artists (including already synced ones) |
+| `--only PREFIX` | | Only sync artists starting with prefix (case insensitive) |
+| `--from PREFIX` | | Sync artists starting from prefix (case insensitive) |
+| `--to PREFIX` | | Sync artists up to prefix (case insensitive) |
+| `--limit N` | 0 (no limit) | Limit to first N artists |
 
 ### How it works
 
@@ -229,8 +255,149 @@ cd web && pnpm install && pnpm prisma db push
 # 5. Sync new/updated artists (auto-detects who needs syncing)
 ./sync
 
-# 6. Start over from scratch (DANGER: deletes all data)
+# 6. Clean up orphaned images (optional)
+./clean
+
+# 7. Start over from scratch (DANGER: deletes all data)
 ./nuke
+```
+
+## Nuke Script (`./nuke`)
+
+Completely deletes all database tables and image files. **Destructive operation** - use with caution!
+
+### Usage
+
+```bash
+./nuke
+```
+
+### What it does
+
+1. **Truncates all database tables** (in correct dependency order):
+   - `PlaylistTrack`
+   - `Playlist`
+   - `TrackArtist`
+   - `FavoriteTrack`
+   - `FavoriteRelease`
+   - `LocalReleaseTrack`
+   - `LocalRelease`
+   - `MusicBrainzReleaseTrack`
+   - `MusicBrainzRelease`
+   - `ArtistUrl`
+   - `Artist`
+   - `Genre`
+   - `ReleaseType`
+   - `IndexCheckpoint`
+   - `S3DeletionQueue`
+   - `Statistics`
+
+2. **Deletes local image files**:
+   - `web/public/img/releases/*.jpg`
+   - `web/public/img/artists/*.jpg`
+
+3. **Deletes S3 images** (if `IMAGE_STORAGE=s3` or `IMAGE_STORAGE=both`):
+   - All objects in `releases/` prefix
+   - All objects in `artists/` prefix
+
+### CLI Output
+
+The nuke script provides real-time progress with colored output:
+- **Blue**: Operation start
+- **Green**: Successful deletions
+- **Yellow**: Warnings (e.g., no images found)
+- **Red**: Errors
+- **Cyan**: Summary statistics
+
+### Error Handling
+
+- Errors are logged to `errors.log` with `[NUKE]` prefix
+- Non-fatal: continues with next operation even if one fails
+- Provides detailed error messages (e.g., S3 connection failures, DB errors)
+
+## Clean Script (`./clean`)
+
+Processes the `S3DeletionQueue` to remove orphaned images from S3 and local storage.
+
+### Usage
+
+```bash
+# Normal mode - delete queued images
+./clean
+
+# Dry run - show what would be deleted without actually deleting
+./clean --dry-run
+```
+
+### What it does
+
+1. **Fetches pending deletions** from `S3DeletionQueue` table
+2. **For each queued item**:
+   - Deletes from S3 (if `IMAGE_STORAGE=s3` or `IMAGE_STORAGE=both`)
+   - Deletes from local storage (if `IMAGE_STORAGE=local` or `IMAGE_STORAGE=both`)
+   - Removes item from queue on success
+3. **Provides summary** of deleted/failed counts
+
+### How items get queued
+
+Images are automatically queued for deletion via database triggers:
+
+**Artist deletion trigger:**
+```sql
+CREATE TRIGGER trigger_queue_artist_image_deletion
+BEFORE DELETE ON "Artist"
+FOR EACH ROW
+EXECUTE FUNCTION queue_artist_image_deletion();
+```
+
+**Release deletion trigger:**
+```sql
+CREATE TRIGGER trigger_queue_release_image_deletion
+BEFORE DELETE ON "LocalRelease"
+FOR EACH ROW
+EXECUTE FUNCTION queue_release_image_deletion();
+```
+
+These triggers fire when:
+- Individual artists/releases are deleted
+- The `./nuke` script truncates tables (bulk deletion)
+- Foreign key cascades delete related records
+
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Show what would be deleted without actually deleting |
+
+### CLI Output
+
+The clean script provides real-time progress:
+- **Blue**: Processing start
+- **Green**: Successful deletions
+- **Yellow**: Warnings (e.g., file not found)
+- **Red**: Errors
+- **Cyan**: Summary statistics
+
+### Error Handling
+
+- Errors are logged to `errors.log` with `[CLEAN]` prefix
+- Non-fatal: continues with next item even if one fails
+- Failed deletions remain in queue for retry on next run
+
+### Automation
+
+For production, run the clean script periodically via cron:
+
+```bash
+# Add to crontab (run every 6 hours)
+0 */6 * * * cd /path/to/DMPv6 && ./clean >> logs/clean.log 2>&1
+```
+
+Or run manually after bulk operations:
+
+```bash
+./nuke  # Deletes everything
+./clean # Cleans up S3/local orphans
 ```
 
 ## Troubleshooting

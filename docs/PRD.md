@@ -43,23 +43,7 @@ Build the sync script and make it bullet proof.
 
 * Making sure the DB is correctly built for a subset of artists
 
-## Phase 2: Beets integration
-
-* Bundle the config and write docs about all necessary steps
-
-* Create a Node script that will trigger beets for new things on the catalogue (?)
-
-* Make sure we can re-sync properly and automatically
-
-## Phase 3: Slsk integration
-
-* Bundle the config and write docs about all necessary steps
-
-* Use V5 script that will trigger slsk and download things (no web UI for now)
-
-* See if Beets gets invoked automatically upon download
-
-## Phase 4: Web core
+## Phase 2: Web core
 
 * Home page (recent releases, similar to Spotify)
 
@@ -72,6 +56,22 @@ Build the sync script and make it bullet proof.
 3. Varied ways of exploring the catalogue and discovering music (fully random, per genre, per decade, per mood/intensity)
 
 * Timeline (refurbish old timeline, we can make it much better later)
+
+## Phase 3: Slsk integration
+
+* Bundle the config and write docs about all necessary steps
+
+* Use V5 script that will trigger slsk and download things (no web UI for now)
+
+* See if Beets gets invoked automatically upon download
+
+## Phase 4: Beets integration
+
+* Bundle the config and write docs about all necessary steps
+
+* Create a Node script that will trigger beets for new things on the catalogue (?)
+
+* Make sure we can re-sync properly and automatically
 
 ## Phase 5: other web features
 
