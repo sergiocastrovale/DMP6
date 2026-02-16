@@ -1,15 +1,42 @@
 {
   "name": "dmp-v6",
   "version": "0.1.0",
+  "type": "module",
   "private": true,
   "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
     "db:push": "prisma db push",
-    "db:generate": "prisma generate"
-  },
-  "devDependencies": {
-    "prisma": "^6.1.0"
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^6.1.0"
+    "@prisma/client": "^6.1.0",
+    "@vueuse/core": "^13.0.0",
+    "date-fns": "^4.1.0",
+    "lucide-vue-next": "^0.475.0",
+    "nuxt": "^4.3.1",
+    "pinia": "^3.0.0",
+    "vue": "^3.5.28",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@pinia/nuxt": "^0.11.3",
+    "@tailwindcss/vite": "^4.0.0",
+    "pinia-plugin-persistedstate": "^4.0.0",
+    "prisma": "^6.1.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ]
   }
 }
