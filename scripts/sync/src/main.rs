@@ -1,3 +1,6 @@
+use aws_config::BehaviorVersion;
+use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::Client as S3Client;
 use chrono::Utc;
 use clap::Parser;
 use colored::*;
@@ -10,7 +13,7 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
@@ -831,11 +834,18 @@ async fn download_artist_image(
     artist: &MbArtistDetail,
     artist_slug: &str,
     img_dir: &PathBuf,
+    s3_client: &Option<S3Client>,
+    config: &SyncConfig,
+    pool: &PgPool,
+    artist_id: &str,
 ) -> Option<String> {
     let out_path = img_dir.join(format!("{}.jpg", artist_slug));
     if out_path.exists() {
         return Some(format!("/img/artists/{}.jpg", artist_slug));
     }
+
+    let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
+    let use_local = config.image_storage == "local" || config.image_storage == "both";
 
     // Try Wikipedia image first (from MB relations)
     if let Some(ref relations) = artist.relations {
@@ -844,6 +854,43 @@ async fn download_artist_image(
                 if let Some(ref url) = rel.url {
                     if let Some(img_url) = get_wikipedia_image(client, &url.resource).await {
                         if download_and_resize(client, &img_url, &out_path).await {
+                            // Upload to S3 if needed
+                            if use_s3 {
+                                if let (Some(ref s3), Some(ref bucket), Some(ref public_url)) = 
+                                    (s3_client, &config.s3_bucket, &config.s3_public_url) {
+                                    let s3_key = format!("artists/{}.jpg", artist_slug);
+                                    if upload_to_s3(s3, bucket, &s3_key, &out_path).await.is_ok() {
+                                        let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
+                                        sqlx::query(
+                                            r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                        )
+                                        .bind(&image_url)
+                                        .bind(artist_id)
+                                        .execute(pool)
+                                        .await
+                                        .ok();
+                                    }
+                                }
+                            }
+
+                            // Set local path if needed
+                            if use_local {
+                                let local_path = format!("/img/artists/{}.jpg", artist_slug);
+                                sqlx::query(
+                                    r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                )
+                                .bind(&local_path)
+                                .bind(artist_id)
+                                .execute(pool)
+                                .await
+                                .ok();
+                            }
+
+                            // Delete local file if only using S3
+                            if !use_local && use_s3 && out_path.exists() {
+                                fs::remove_file(&out_path).ok();
+                            }
+
                             return Some(format!("/img/artists/{}.jpg", artist_slug));
                         }
                     }
@@ -855,6 +902,43 @@ async fn download_artist_image(
     // Try Fanart.tv
     if let Some(img_url) = get_fanart_image(client, &artist.id).await {
         if download_and_resize(client, &img_url, &out_path).await {
+            // Upload to S3 if needed
+            if use_s3 {
+                if let (Some(ref s3), Some(ref bucket), Some(ref public_url)) = 
+                    (s3_client, &config.s3_bucket, &config.s3_public_url) {
+                    let s3_key = format!("artists/{}.jpg", artist_slug);
+                    if upload_to_s3(s3, bucket, &s3_key, &out_path).await.is_ok() {
+                        let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
+                        sqlx::query(
+                            r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                        )
+                        .bind(&image_url)
+                        .bind(artist_id)
+                        .execute(pool)
+                        .await
+                        .ok();
+                    }
+                }
+            }
+
+            // Set local path if needed
+            if use_local {
+                let local_path = format!("/img/artists/{}.jpg", artist_slug);
+                sqlx::query(
+                    r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                )
+                .bind(&local_path)
+                .bind(artist_id)
+                .execute(pool)
+                .await
+                .ok();
+            }
+
+            // Delete local file if only using S3
+            if !use_local && use_s3 && out_path.exists() {
+                fs::remove_file(&out_path).ok();
+            }
+
             return Some(format!("/img/artists/{}.jpg", artist_slug));
         }
     }
@@ -1010,7 +1094,18 @@ async fn download_and_resize(client: &Client, url: &str, out_path: &PathBuf) -> 
 // Config
 // ---------------------------------------------------------------------------
 
-fn load_database_url() -> String {
+struct SyncConfig {
+    database_url: String,
+    image_storage: String,
+    s3_bucket: Option<String>,
+    s3_region: Option<String>,
+    s3_access_key: Option<String>,
+    s3_secret_key: Option<String>,
+    s3_endpoint: Option<String>,
+    s3_public_url: Option<String>,
+}
+
+fn load_config() -> SyncConfig {
     let env_paths = [
         PathBuf::from("web/.env"),
         PathBuf::from("../../web/.env"),
@@ -1024,7 +1119,82 @@ fn load_database_url() -> String {
         }
     }
 
-    std::env::var("DATABASE_URL").expect("DATABASE_URL not set in web/.env")
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set in web/.env");
+    let image_storage = std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
+    let s3_bucket = std::env::var("S3_BUCKET").ok();
+    let s3_region = std::env::var("S3_REGION").ok();
+    let s3_access_key = std::env::var("S3_ACCESS_KEY_ID").ok();
+    let s3_secret_key = std::env::var("S3_SECRET_ACCESS_KEY").ok();
+    let s3_endpoint = std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty());
+    let s3_public_url = std::env::var("S3_PUBLIC_URL").ok();
+
+    SyncConfig {
+        database_url,
+        image_storage,
+        s3_bucket,
+        s3_region,
+        s3_access_key,
+        s3_secret_key,
+        s3_endpoint,
+        s3_public_url,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// S3 Upload
+// ---------------------------------------------------------------------------
+
+async fn create_s3_client(config: &SyncConfig) -> Option<S3Client> {
+    if config.s3_bucket.is_none() || config.s3_region.is_none() {
+        return None;
+    }
+    
+    let mut aws_config = aws_config::defaults(BehaviorVersion::latest());
+    
+    if let Some(ref region) = config.s3_region {
+        aws_config = aws_config.region(aws_sdk_s3::config::Region::new(region.clone()));
+    }
+    
+    if let (Some(ref key), Some(ref secret)) = (&config.s3_access_key, &config.s3_secret_key) {
+        aws_config = aws_config.credentials_provider(
+            aws_sdk_s3::config::Credentials::new(
+                key,
+                secret,
+                None,
+                None,
+                "dmp-sync"
+            )
+        );
+    }
+    
+    let aws_config = aws_config.load().await;
+    let mut s3_config = aws_sdk_s3::config::Builder::from(&aws_config);
+    
+    if let Some(ref endpoint) = config.s3_endpoint {
+        s3_config = s3_config.endpoint_url(endpoint);
+    }
+    
+    Some(S3Client::from_conf(s3_config.build()))
+}
+
+async fn upload_to_s3(
+    client: &S3Client,
+    bucket: &str,
+    key: &str,
+    file_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let body = ByteStream::from_path(file_path).await?;
+    
+    client
+        .put_object()
+        .bucket(bucket)
+        .key(key)
+        .body(body)
+        .content_type("image/jpeg")
+        .send()
+        .await?;
+    
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1051,10 +1221,13 @@ async fn main() {
             .expect("Cannot open errors.log"),
     );
 
-    let database_url = load_database_url();
+    let config = load_config();
+    println!("Image storage: {}", config.image_storage);
+    println!();
+
     let pool = PgPoolOptions::new()
         .max_connections(10)
-        .connect(&database_url)
+        .connect(&config.database_url)
         .await
         .expect("Failed to connect to database. Is PostgreSQL running?");
 
@@ -1062,6 +1235,14 @@ async fn main() {
         .timeout(Duration::from_secs(30))
         .build()
         .expect("Failed to create HTTP client");
+
+    // Initialize S3 client if needed
+    let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
+    let s3_client = if use_s3 {
+        create_s3_client(&config).await
+    } else {
+        None
+    };
 
     let mut limiter = RateLimiter::new();
     let start = Instant::now();
@@ -1228,16 +1409,8 @@ async fn main() {
                 print!("  {} Downloading artist image... ", "→".bright_black());
                 std::io::Write::flush(&mut std::io::stdout()).ok();
                 let img_result =
-                    download_artist_image(&client, &detail, artist_slug, &artist_img_dir).await;
-                if let Some(img_path) = img_result {
-                    sqlx::query(
-                        r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                    )
-                    .bind(&img_path)
-                    .bind(artist_id)
-                    .execute(&pool)
-                    .await
-                    .ok();
+                    download_artist_image(&client, &detail, artist_slug, &artist_img_dir, &s3_client, &config, &pool, artist_id).await;
+                if img_result.is_some() {
                     println!("{}", "✓".green());
                 } else {
                     println!("{} (not found)", "✗".yellow());

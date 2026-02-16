@@ -159,6 +159,7 @@ model LocalRelease {
   forcedComplete  Boolean             @default(false)
   folderPath      String?             @db.Text
   image           String?
+  imageUrl        String?             @db.Text
   totalPlayCount  Int                 @default(0)
   totalDuration   Int?                @default(0)
   totalFileSize   BigInt              @default(0)
@@ -343,4 +344,16 @@ model IndexCheckpoint {
   filterOnly      String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// S3DeletionQueue (for cleanup of deleted images)
+// ---------------------------------------------------------------------------
+
+model S3DeletionQueue {
+  id         String   @id @default(cuid())
+  objectKey  String
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }

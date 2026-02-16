@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Build in release mode if binary doesn't exist or source is newer
+if [ ! -f "scripts/clean/target/release/dmp-clean" ] || [ "scripts/clean/src/main.rs" -nt "scripts/clean/target/release/dmp-clean" ]; then
+    echo "Building clean script..."
+    cd scripts/clean
+    cargo build --release --quiet
+    cd ../..
+fi
+
+# Run the compiled binary
+./scripts/clean/target/release/dmp-clean "$@"

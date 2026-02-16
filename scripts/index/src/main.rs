@@ -1,3 +1,6 @@
+use aws_config::BehaviorVersion;
+use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::Client as S3Client;
 use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
 use lofty::config::ParseOptions;
@@ -96,6 +99,13 @@ struct TrackMeta {
 struct Config {
     music_dir: String,
     database_url: String,
+    image_storage: String,
+    s3_bucket: Option<String>,
+    s3_region: Option<String>,
+    s3_access_key: Option<String>,
+    s3_secret_key: Option<String>,
+    s3_endpoint: Option<String>,
+    s3_public_url: Option<String>,
 }
 
 fn load_config(music_dir_override: &Option<String>) -> Config {
@@ -120,10 +130,25 @@ fn load_config(music_dir_override: &Option<String>) -> Config {
 
     let database_url =
         std::env::var("DATABASE_URL").expect("DATABASE_URL not set in web/.env");
+    
+    let image_storage = std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
+    let s3_bucket = std::env::var("S3_BUCKET").ok();
+    let s3_region = std::env::var("S3_REGION").ok();
+    let s3_access_key = std::env::var("S3_ACCESS_KEY_ID").ok();
+    let s3_secret_key = std::env::var("S3_SECRET_ACCESS_KEY").ok();
+    let s3_endpoint = std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty());
+    let s3_public_url = std::env::var("S3_PUBLIC_URL").ok();
 
     Config {
         music_dir,
         database_url,
+        image_storage,
+        s3_bucket,
+        s3_region,
+        s3_access_key,
+        s3_secret_key,
+        s3_endpoint,
+        s3_public_url,
     }
 }
 
@@ -354,6 +379,63 @@ fn extract_cover_art(path: &Path, output_path: &Path) -> bool {
         }
     }
     false
+}
+
+// ---------------------------------------------------------------------------
+// S3 Upload
+// ---------------------------------------------------------------------------
+
+async fn create_s3_client(config: &Config) -> Option<S3Client> {
+    if config.s3_bucket.is_none() || config.s3_region.is_none() {
+        return None;
+    }
+    
+    let mut aws_config = aws_config::defaults(BehaviorVersion::latest());
+    
+    if let Some(ref region) = config.s3_region {
+        aws_config = aws_config.region(aws_sdk_s3::config::Region::new(region.clone()));
+    }
+    
+    if let (Some(ref key), Some(ref secret)) = (&config.s3_access_key, &config.s3_secret_key) {
+        aws_config = aws_config.credentials_provider(
+            aws_sdk_s3::config::Credentials::new(
+                key,
+                secret,
+                None,
+                None,
+                "dmp-static"
+            )
+        );
+    }
+    
+    let aws_config = aws_config.load().await;
+    let mut s3_config = aws_sdk_s3::config::Builder::from(&aws_config);
+    
+    if let Some(ref endpoint) = config.s3_endpoint {
+        s3_config = s3_config.endpoint_url(endpoint);
+    }
+    
+    Some(S3Client::from_conf(s3_config.build()))
+}
+
+async fn upload_to_s3(
+    client: &S3Client,
+    bucket: &str,
+    key: &str,
+    file_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let body = ByteStream::from_path(file_path).await?;
+    
+    client
+        .put_object()
+        .bucket(bucket)
+        .key(key)
+        .body(body)
+        .content_type("image/jpeg")
+        .send()
+        .await?;
+    
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -787,6 +869,7 @@ async fn main() {
     println!("DMP Indexer");
     println!("===========");
     println!("Music dir : {}", music_dir);
+    println!("Image storage: {}", config.image_storage);
     if !args.only.is_empty() {
         println!("Filter    : only '{}'", args.only);
     } else if !args.from.is_empty() || !args.to.is_empty() {
@@ -1080,7 +1163,15 @@ async fn main() {
         // Ensure local release exists
         let folder_path = Path::new(&track.file_path)
             .parent()
-            .map(|p| p.to_string_lossy().to_string());
+            .and_then(|p| {
+                // Make path relative to music_dir
+                let abs_path = p.to_string_lossy().to_string();
+                if abs_path.starts_with(&music_dir) {
+                    Some(abs_path.trim_start_matches(&music_dir).trim_start_matches('/').to_string())
+                } else {
+                    Some(abs_path)
+                }
+            });
         let release_id = match ensure_local_release(
             &pool,
             &artist_id,
@@ -1178,6 +1269,16 @@ async fn main() {
         let art_map = releases_needing_art.lock().unwrap();
         if !art_map.is_empty() {
             println!("[3b] Extracting cover art...");
+            
+            // Initialize S3 client if needed
+            let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
+            let use_local = config.image_storage == "local" || config.image_storage == "both";
+            let s3_client = if use_s3 {
+                create_s3_client(&config).await
+            } else {
+                None
+            };
+            
             let mut saved = 0u32;
             let mut existing = 0u32;
             let img_base = PathBuf::from("web/public/img/releases");
@@ -1195,16 +1296,51 @@ async fn main() {
                     continue;
                 }
                 if extract_cover_art(source_path, &out_path) {
-                    // Update release image path in DB
-                    let relative = format!("/img/releases/{}.jpg", release_id);
-                    sqlx::query(
-                        r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                    )
-                    .bind(&relative)
-                    .bind(release_id)
-                    .execute(&pool)
-                    .await
-                    .ok();
+                    // S3 upload
+                    if use_s3 {
+                        if let (Some(ref client), Some(ref bucket), Some(ref public_url)) = 
+                            (&s3_client, &config.s3_bucket, &config.s3_public_url) {
+                            let s3_key = format!("releases/{}.jpg", release_id);
+                            match upload_to_s3(client, bucket, &s3_key, &out_path).await {
+                                Ok(_) => {
+                                    let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
+                                    sqlx::query(
+                                        r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                    )
+                                    .bind(&image_url)
+                                    .bind(release_id)
+                                    .execute(&pool)
+                                    .await
+                                    .ok();
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to upload {} to S3: {:?}", release_id, e);
+                                    if let Ok(mut f) = error_log.lock() {
+                                        writeln!(f, "[INDEXER] S3 upload failed for release {}: {:?}", release_id, e).ok();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Local storage
+                    if use_local {
+                        let relative = format!("/img/releases/{}.jpg", release_id);
+                        sqlx::query(
+                            r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                        )
+                        .bind(&relative)
+                        .bind(release_id)
+                        .execute(&pool)
+                        .await
+                        .ok();
+                    }
+                    
+                    // Delete local file if only using S3
+                    if !use_local && use_s3 && out_path.exists() {
+                        fs::remove_file(&out_path).ok();
+                    }
+                    
                     saved += 1;
                 }
             }

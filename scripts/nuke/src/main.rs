@@ -1,3 +1,5 @@
+use aws_config::BehaviorVersion;
+use aws_sdk_s3::Client as S3Client;
 use clap::Parser;
 use dotenvy;
 use sqlx::postgres::PgPoolOptions;
@@ -11,6 +13,95 @@ struct Args {
     /// Skip confirmation prompt
     #[arg(long)]
     yes: bool,
+}
+
+async fn create_s3_client() -> Option<S3Client> {
+    let s3_bucket = std::env::var("S3_BUCKET").ok();
+    let s3_region = std::env::var("S3_REGION").ok();
+    
+    if s3_bucket.is_none() || s3_region.is_none() {
+        return None;
+    }
+    
+    let mut aws_config = aws_config::defaults(BehaviorVersion::latest());
+    
+    if let Some(ref region) = s3_region {
+        aws_config = aws_config.region(aws_sdk_s3::config::Region::new(region.clone()));
+    }
+    
+    if let (Some(key), Some(secret)) = (
+        std::env::var("S3_ACCESS_KEY_ID").ok(),
+        std::env::var("S3_SECRET_ACCESS_KEY").ok()
+    ) {
+        aws_config = aws_config.credentials_provider(
+            aws_sdk_s3::config::Credentials::new(
+                key,
+                secret,
+                None,
+                None,
+                "dmp-nuke"
+            )
+        );
+    }
+    
+    let aws_config = aws_config.load().await;
+    let mut s3_config = aws_sdk_s3::config::Builder::from(&aws_config);
+    
+    if let Some(endpoint) = std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty()) {
+        s3_config = s3_config.endpoint_url(endpoint);
+    }
+    
+    Some(S3Client::from_conf(s3_config.build()))
+}
+
+async fn delete_s3_images(client: &S3Client, bucket: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    let mut deleted_count = 0;
+    
+    // Delete all objects in releases/ folder
+    let list_releases = client
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix("releases/")
+        .send()
+        .await?;
+    
+    if let Some(objects) = list_releases.contents {
+        for obj in objects {
+            if let Some(key) = obj.key {
+                client
+                    .delete_object()
+                    .bucket(bucket)
+                    .key(&key)
+                    .send()
+                    .await?;
+                deleted_count += 1;
+            }
+        }
+    }
+    
+    // Delete all objects in artists/ folder
+    let list_artists = client
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix("artists/")
+        .send()
+        .await?;
+    
+    if let Some(objects) = list_artists.contents {
+        for obj in objects {
+            if let Some(key) = obj.key {
+                client
+                    .delete_object()
+                    .bucket(bucket)
+                    .key(&key)
+                    .send()
+                    .await?;
+                deleted_count += 1;
+            }
+        }
+    }
+    
+    Ok(deleted_count)
 }
 
 #[tokio::main]
@@ -98,6 +189,7 @@ async fn main() {
         "Settings",
         "Statistics",
         "IndexCheckpoint",
+        "S3DeletionQueue",
     ];
 
     for table in &tables {
@@ -152,9 +244,9 @@ async fn main() {
     println!();
     println!("✓ Database nuked successfully!");
     
-    // Delete image files
+    // Delete image files (local)
     println!();
-    println!("Deleting image files...");
+    println!("Deleting local image files...");
     
     let image_dirs = vec![
         PathBuf::from("web/public/img/releases"),
@@ -165,7 +257,7 @@ async fn main() {
         PathBuf::from("/home/kp/web/DMPv6/web/public/img/artists"),
     ];
     
-    let mut deleted_count = 0;
+    let mut local_deleted_count = 0;
     
     for dir in &image_dirs {
         if !dir.exists() {
@@ -177,14 +269,40 @@ async fn main() {
                 let path = entry.path();
                 if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("jpg") {
                     if fs::remove_file(&path).is_ok() {
-                        deleted_count += 1;
+                        local_deleted_count += 1;
                     }
                 }
             }
         }
     }
     
-    println!("  ✓ Deleted {} image file(s)", deleted_count);
+    println!("  ✓ Deleted {} local image file(s)", local_deleted_count);
+    
+    // Delete image files from S3 (if configured)
+    let image_storage = std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
+    let use_s3 = image_storage == "s3" || image_storage == "both";
+    
+    if use_s3 {
+        println!();
+        println!("Deleting S3 image files...");
+        
+        if let Some(s3_client) = create_s3_client().await {
+            if let Some(bucket) = std::env::var("S3_BUCKET").ok() {
+                match delete_s3_images(&s3_client, &bucket).await {
+                    Ok(count) => {
+                        println!("  ✓ Deleted {} S3 image file(s)", count);
+                    }
+                    Err(e) => {
+                        eprintln!("  ✗ Error deleting S3 images: {}", e);
+                    }
+                }
+            } else {
+                println!("  ⚠ S3_BUCKET not configured, skipping S3 deletion");
+            }
+        } else {
+            println!("  ⚠ S3 not configured, skipping S3 deletion");
+        }
+    }
     
     println!();
     println!("Next steps:");
