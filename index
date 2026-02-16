@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BINARY="$SCRIPT_DIR/scripts/index/target/release/dmp-index"
+
+if [ ! -f "$BINARY" ]; then
+    echo "Binary not found. Building..."
+    cd "$SCRIPT_DIR/scripts/index" && cargo build --release
+    cd "$SCRIPT_DIR"
+fi
+
+exec "$BINARY" "$@"

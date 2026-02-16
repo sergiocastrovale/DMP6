@@ -6,13 +6,13 @@ DMP is a web app which combines Spotify, Plex and Lidarr, along with other archi
 
 In short, this app serves 4 purposes:
 
-1. Cataloguing: process a very large local music collection (≈2 million MP3, FLAC and opus files), extract metadata, store it in a database, and reconcile it against the musicbrainz catalogues from MusicBrainz (MB)
+1. Cataloguing: process a very large local music collection (≈2 million MP3, ACC, m4a, FLAC and opus files), extract metadata, store it in a database, and reconcile it against the catalogues from MusicBrainz (MB)
 
 2. Listening & discovery: have similar features to Spotify, with additional discovery and exploration features
 
 3. Expanding the library: use a CLI Soulseek interface to download missing releases, then use the Beets CLI to tidy up metadata
 
-4. Autonomous catalogue syncing: automatically update the catalogue as new releases are added in
+4. Autonomous syncing: automatically update the catalogue as new releases are downloaded to the observed destination folder
 
 The system should:
 
@@ -27,66 +27,13 @@ Additionally, the system should:
 - Store external links for artists from MB (official site, social media, etc.)
 - Fetch the cover image for artists from Wikipedia
 
-
-## Stack
-
-* Node.js
-
-* Vue 3 + Pinia
-
-* Prisma ORM
-
-* Postgresql
-
-* Tailwind
-
-Other libraries:
-
-* Lucide icons
-
-* `music-metadata`
-
-* `musicbrainz-api`
-
-## Catalogues
-
-### Local catalogue
-
-The local audio files' metadata is the source of truth at all times.
-
-We won't modify or care about the status of this metadata: Beets (an external tool not related to our implementation) will be handling it.
-
-This metadata will be saved to the DB in two ways:
-
-- The title, artist, year and MusicBrainz ID will be stored as regular DB fields in LocalRelease and LocalReleaseTrack
-
-- A JSON field (`metadata`) will hold an object with ALL of the text metadata, except for title, artist, year and MusicBrainz ID which we already saved in other fields 
-
-### musicbrainz catalogue
-
-A script, executable via `pnpm sync` will fetch the full artist's catalogue from MusicBrainz. Here's what it should do:
-
-1. Go through each LocalReleaseTrack. If MB ID is not found, skip it. Otherwise...
-
-2. Search for the LocalRelease in MB. Add or update the Release with the musicbrainz info about it
-
-3. Add a new ReleaseTrack and connect it to LocalReleaseTrack via IDs in the DB
-
-4. Get the Artist links from MB and add them to ArtistUrl
-
-5. Get the tags/genres and add them to Genre
-
-6. Download the artist image, store it locally, add the original url in Artist.imageUrl and add the local path to Arist.image.
-
-After this point, we have a local collection fully linked with the "official" catalogues.
+We will NOT attempt to "guess" any information based on folder structure, file names or any other filesystem info. Any catalogue information MUST come from either the metadata of the local files or the MusicBrainz API.
 
 ## Goals
 
-This is a very big project, so I want you to ONLY focus on Phase 1 for now. 
-
 ## Phase 1: Database and Catalogue
 
-Build all scripts and make them bullet proof.
+Build the sync script and make it bullet proof.
 
 * Syncing process
 
