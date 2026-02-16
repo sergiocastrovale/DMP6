@@ -30,8 +30,8 @@ const { data: artist, pending, error } = useFetch(() => `/api/artists/${slug.val
 
     <!-- Content -->
     <div v-else-if="artist" class="flex flex-col gap-8">
-      <ArtistArtistHeader :artist="artist as any" />
-      <ArtistArtistReleases :releases="(artist as any).releases" />
+      <ArtistHeader :artist="artist as any" />
+      <ArtistReleases :releases="(artist as any).releases" />
     </div>
   </div>
 </template>

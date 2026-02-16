@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Home, Library, Clock, ListMusic, Heart } from 'lucide-vue-next'
+import { usePlayerStore } from '~/stores/player'
 
 const route = useRoute()
+const player = usePlayerStore()
 
 const items = [
   { to: '/', label: 'Home', icon: Home },
@@ -18,7 +20,10 @@ function isActive(path: string) {
 </script>
 
 <template>
-  <nav class="fixed bottom-0 left-0 z-50 flex w-full border-t border-zinc-800 bg-zinc-950 lg:hidden">
+  <nav
+    class="fixed left-0 z-40 flex w-full border-t border-zinc-800 bg-zinc-950 lg:hidden transition-all"
+    :class="player.isVisible ? 'bottom-20' : 'bottom-0'"
+  >
     <NuxtLink
       v-for="item in items"
       :key="item.to"

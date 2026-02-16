@@ -1,102 +1,30 @@
-<script setup lang="ts">
-import { LucideListMusic, LucidePlus, LucideMusic } from 'lucide-vue-next'
-import type { PlaylistSummary } from '~/types/playlist'
-
-const loading = ref(true)
-const playlists = ref<PlaylistSummary[]>([])
-const showCreateDialog = ref(false)
-const newPlaylistName = ref('')
-const newPlaylistDescription = ref('')
-const creating = ref(false)
-
-const { resolve } = useImageUrl()
-
-async function loadPlaylists() {
-  loading.value = true
-  try {
-    const data = await $fetch<PlaylistSummary[]>('/api/playlists')
-    playlists.value = data
-  }
-  catch (error) {
-    console.error('Failed to load playlists:', error)
-  }
-  finally {
-    loading.value = false
-  }
-}
-
-function coverImageUrl(cover: { image: string | null; imageUrl: string | null }) {
-  return resolve(cover.image, cover.imageUrl, 'releases')
-}
-
-async function createPlaylist() {
-  if (!newPlaylistName.value.trim() || creating.value)
-    return
-
-  creating.value = true
-  try {
-    await $fetch('/api/playlists', {
-      method: 'POST',
-      body: {
-        name: newPlaylistName.value.trim(),
-        description: newPlaylistDescription.value.trim() || undefined,
-      },
-    })
-
-    // Reset form
-    newPlaylistName.value = ''
-    newPlaylistDescription.value = ''
-    showCreateDialog.value = false
-
-    // Reload playlists
-    await loadPlaylists()
-  }
-  catch (error) {
-    console.error('Failed to create playlist:', error)
-    alert('Failed to create playlist')
-  }
-  finally {
-    creating.value = false
-  }
-}
-
-onMounted(() => {
-  loadPlaylists()
-})
-</script>
-
 <template>
-  <div class="flex flex-col gap-6">
-    <!-- Header -->
+  <div class="flex flex-col gap-8">
+    <!-- Section header -->
     <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-zinc-50">
-          <LucideListMusic class="inline size-6 -mt-1 text-amber-500" />
-          Playlists
-        </h1>
-        <p class="mt-1 text-sm text-zinc-500">
-          Your custom playlists
-        </p>
-      </div>
-      <button
-        class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-600 transition-colors"
-        @click="showCreateDialog = true"
-      >
-        <LucidePlus class="inline size-4 -mt-0.5" />
-        New Playlist
-      </button>
-    </div>
-
-    <!-- Loading state -->
-    <div v-if="loading" class="flex items-center justify-center py-20">
-      <div class="text-zinc-500">
-        Loading...
+      <h2 class="text-xl font-semibold text-zinc-50">
+        Your Playlists
+      </h2>
+      <div class="flex items-center gap-2">
+        <button
+          class="rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-medium text-zinc-950 hover:bg-amber-600 transition-colors"
+          @click="showCreateDialog = true"
+        >
+          <LucidePlus class="inline size-4 -mt-0.5" />
+          New Playlist
+        </button>
+        <NuxtLink
+          to="/playlists"
+          class="text-sm text-amber-500 hover:text-amber-600 transition-colors"
+        >
+          View all
+        </NuxtLink>
       </div>
     </div>
 
-    <!-- Playlists grid -->
+    <!-- Playlist grid -->
     <div
-      v-else-if="playlists.length > 0"
+      v-if="playlists.length > 0"
       class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
     >
       <NuxtLink
@@ -124,6 +52,7 @@ onMounted(() => {
                 v-if="coverImageUrl(cover)"
                 :src="coverImageUrl(cover)!"
                 :alt="`Cover ${idx + 1}`"
+                loading="lazy"
                 class="h-full w-full object-cover transition-transform group-hover:scale-105"
               >
               <div
@@ -155,7 +84,10 @@ onMounted(() => {
     </div>
 
     <!-- Empty state -->
-    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-zinc-500">
+    <div
+      v-else
+      class="flex flex-col items-center justify-center py-12 text-center text-zinc-500"
+    >
       <LucideListMusic class="mb-3 size-12 opacity-50" />
       <p>No playlists yet</p>
       <button
@@ -219,3 +151,58 @@ onMounted(() => {
     </Teleport>
   </div>
 </template>
+
+<script setup lang="ts">
+import { LucidePlus, LucideMusic, LucideListMusic } from 'lucide-vue-next'
+import type { PlaylistSummary } from '~/types/playlist'
+
+interface Props {
+  playlists: PlaylistSummary[]
+}
+
+const props = defineProps<Props>()
+const emit = defineEmits<{
+  refresh: []
+}>()
+
+const { resolve } = useImageUrl()
+const showCreateDialog = ref(false)
+const newPlaylistName = ref('')
+const newPlaylistDescription = ref('')
+const creating = ref(false)
+
+function coverImageUrl(cover: { image: string | null; imageUrl: string | null }) {
+  return resolve(cover.image, cover.imageUrl, 'releases')
+}
+
+async function createPlaylist() {
+  if (!newPlaylistName.value.trim() || creating.value)
+    return
+
+  creating.value = true
+  try {
+    await $fetch('/api/playlists', {
+      method: 'POST',
+      body: {
+        name: newPlaylistName.value.trim(),
+        description: newPlaylistDescription.value.trim() || undefined,
+      },
+    })
+
+    // Reset form
+    newPlaylistName.value = ''
+    newPlaylistDescription.value = ''
+    showCreateDialog.value = false
+
+    // Refresh parent data
+    emit('refresh')
+  }
+  catch (error) {
+    console.error('Failed to create playlist:', error)
+    alert('Failed to create playlist')
+  }
+  finally {
+    creating.value = false
+  }
+}
+</script>

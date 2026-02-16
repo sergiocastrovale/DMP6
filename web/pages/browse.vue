@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { Search, SlidersHorizontal } from 'lucide-vue-next'
+import { Search } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
 
 const store = useBrowseStore()
-const showAdvanced = ref(false)
 const searchInput = ref('')
 
 let searchTimeout: ReturnType<typeof setTimeout>
@@ -45,14 +44,12 @@ onMounted(() => {
       </div>
       <BrowseFilterSort :active="store.sortBy" @select="store.setSortBy" />
       <BrowseFilterGenre :active="store.genreFilter" @select="store.setGenreFilter" />
-      <button
-        class="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-50"
-        :class="{ 'border-amber-500 text-amber-400': showAdvanced }"
-        @click="showAdvanced = !showAdvanced"
-      >
-        <SlidersHorizontal :size="12" />
-        Filters
-      </button>
+      <BrowseFilterScore
+        :min-score="store.minScore"
+        :max-score="store.maxScore"
+        @update:min-score="store.setMinScore"
+        @update:max-score="store.setMaxScore"
+      />
     </div>
 
     <!-- Letter filter -->

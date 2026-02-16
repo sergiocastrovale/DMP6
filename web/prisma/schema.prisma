@@ -241,6 +241,7 @@ model TrackArtist {
 model Playlist {
   id          String          @id @default(cuid())
   name        String
+  slug        String          @unique
   description String?         @db.Text
   image       String?
   createdAt   DateTime        @default(now())

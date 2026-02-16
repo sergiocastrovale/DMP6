@@ -3,6 +3,8 @@ import { useDebounceFn } from '@vueuse/core'
 import type { PlayerTrack, ShuffleMode, PersistedPlayerState } from '~/types/player'
 
 export const usePlayerStore = defineStore('player', () => {
+  const { $fetch } = useNuxtApp()
+  
   const currentTrack = ref<PlayerTrack | null>(null)
   const queue = ref<PlayerTrack[]>([])
   const originalQueue = ref<PlayerTrack[]>([])
@@ -37,7 +39,7 @@ export const usePlayerStore = defineStore('player', () => {
     return audio!
   }
 
-  async function playTrack(track: PlayerTrack) {
+  async function playTrack(track: PlayerTrack, newQueue?: PlayerTrack[]) {
     const a = getAudio()
     if (currentTrack.value?.id) {
       history.value.push(currentTrack.value.id)
@@ -45,6 +47,13 @@ export const usePlayerStore = defineStore('player', () => {
     }
     currentTrack.value = track
     isVisible.value = true
+
+    // Set queue if provided
+    if (newQueue) {
+      setQueue(newQueue, track)
+      return // setQueue will handle playback
+    }
+
     a.src = `/api/audio/${track.id}`
     a.load()
     try {
@@ -137,15 +146,37 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  function cycleShuffleMode() {
+  async function cycleShuffleMode() {
     const modes: ShuffleMode[] = ['off', 'release', 'artist', 'catalogue']
     const idx = modes.indexOf(shuffleMode.value)
-    shuffleMode.value = modes[(idx + 1) % modes.length]
+    const newMode = modes[(idx + 1) % modes.length]
+    shuffleMode.value = newMode
 
-    if (shuffleMode.value === 'off') {
+    // Fetch appropriate tracks for the new mode
+    if (newMode === 'release' && currentTrack.value?.releaseId) {
+      try {
+        const tracks = await $fetch<PlayerTrack[]>(`/api/releases/${currentTrack.value.releaseId}/tracks`)
+        originalQueue.value = tracks
+        queue.value = shuffleArray([...tracks])
+      }
+      catch (error) {
+        console.error('Failed to load release tracks:', error)
+      }
+    }
+    else if (newMode === 'artist' && currentTrack.value?.artistSlug) {
+      try {
+        const tracks = await $fetch<PlayerTrack[]>(`/api/artists/${currentTrack.value.artistSlug}/tracks`)
+        originalQueue.value = tracks
+        queue.value = shuffleArray([...tracks])
+      }
+      catch (error) {
+        console.error('Failed to load artist tracks:', error)
+      }
+    }
+    else if (newMode === 'off') {
       queue.value = [...originalQueue.value]
     }
-    else if (shuffleMode.value !== 'catalogue') {
+    else if (newMode !== 'catalogue') {
       queue.value = shuffleArray([...originalQueue.value])
     }
   }
@@ -174,6 +205,13 @@ export const usePlayerStore = defineStore('player', () => {
           if (track) {
             currentTrack.value = track
             isVisible.value = true
+            // Restore position but don't auto-play
+            if (state.currentTime && state.currentTime > 0) {
+              const a = getAudio()
+              a.src = `/api/audio/${track.id}`
+              a.load()
+              a.currentTime = state.currentTime
+            }
           }
         }
       }

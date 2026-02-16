@@ -1,21 +1,24 @@
-export interface PlaylistSummary {
+export interface FavoriteRelease {
   id: string
-  name: string
-  slug: string
-  description: string | null
   createdAt: Date
-  updatedAt: Date
-  trackCount: number
-  coverImages: Array<{
+  release: {
+    id: string
+    title: string
+    releaseType: string | null
+    year: number | null
     image: string | null
     imageUrl: string | null
-  }>
+    artist: {
+      id: string
+      name: string
+      slug: string
+    } | null
+  }
 }
 
-export interface PlaylistTrack {
+export interface FavoriteTrack {
   id: string
-  position: number
-  addedAt: Date
+  createdAt: Date
   track: {
     id: string
     title: string
@@ -36,12 +39,7 @@ export interface PlaylistTrack {
   }
 }
 
-export interface PlaylistDetail {
-  id: string
-  name: string
-  slug: string
-  description: string | null
-  createdAt: Date
-  updatedAt: Date
-  tracks: PlaylistTrack[]
+export interface FavoritesResponse {
+  releases: FavoriteRelease[]
+  tracks: FavoriteTrack[]
 }
