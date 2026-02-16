@@ -8,6 +8,10 @@ const recentlyPlayed = ref<SearchRelease[]>([])
 const playlists = ref<PlaylistSummary[]>([])
 const favoriteReleases = ref<SearchRelease[]>([])
 
+const hasRecentlyPlayed = computed(() => recentlyPlayed.value.length)
+const hasPlaylists = computed(() => playlists.value.length)
+const hasFavoriteReleases = computed(() => favoriteReleases.value.length)
+
 async function loadData() {
   loading.value = true
 
@@ -46,16 +50,6 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-12">
-    <div>
-      <h1 class="text-2xl font-bold text-zinc-50">
-        Home
-      </h1>
-      <p class="mt-1 text-sm text-zinc-500">
-        Welcome back to your music library
-      </p>
-    </div>
-
-    <!-- Loading skeleton -->
     <div v-if="loading" class="flex flex-col gap-12">
       <div v-for="i in 3" :key="i">
         <div class="mb-4 h-6 w-40 animate-pulse rounded bg-zinc-800" />
@@ -65,35 +59,27 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Content -->
     <div v-else class="flex flex-col gap-12">
-      <!-- Latest additions -->
       <HomeReleaseGrid
         title="Latest Additions"
         :releases="latestReleases"
         view-more-link="/browse"
-        empty-message="No releases indexed yet"
       />
-
-      <!-- Recently played -->
       <HomeReleaseGrid
+        v-if="hasRecentlyPlayed"
         title="Recently Played"
         :releases="recentlyPlayed"
-        empty-message="No plays recorded yet"
       />
-
-      <!-- Playlists -->
-      <HomePlaylistGrid
+      <HomePlaylistGrid 
+        v-if="hasPlaylists"
         :playlists="playlists"
         @refresh="refreshData"
       />
-
-      <!-- Favorite releases -->
       <HomeReleaseGrid
+        v-if="hasFavoriteReleases"
         title="Favorite Releases"
         :releases="favoriteReleases"
         view-more-link="/favorites"
-        empty-message="No favorite releases yet"
       />
     </div>
   </div>

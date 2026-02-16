@@ -1,6 +1,5 @@
 <template>
   <div class="flex flex-col gap-8">
-    <!-- Section header -->
     <div class="flex items-center justify-between">
       <h2 class="text-xl font-semibold text-zinc-50">
         {{ title }}
@@ -13,8 +12,6 @@
         View all
       </NuxtLink>
     </div>
-
-    <!-- Release grid -->
     <div
       v-if="releases.length > 0"
       class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
@@ -24,7 +21,6 @@
         :key="release.id"
         class="group flex flex-col gap-2"
       >
-        <!-- Cover art with play button -->
         <div class="relative aspect-square overflow-hidden rounded-lg bg-zinc-800">
           <img
             v-if="imageUrl(release)"
@@ -39,8 +35,6 @@
           >
             <LucideMusic class="size-12" />
           </div>
-
-          <!-- Play button overlay -->
           <button
             class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
             @click="playRelease(release.id)"
@@ -50,8 +44,6 @@
             </div>
           </button>
         </div>
-
-        <!-- Release info -->
         <div class="flex flex-col gap-0.5">
           <NuxtLink
             v-if="release.artist"
@@ -78,16 +70,7 @@
         </div>
       </div>
     </div>
-
-    <!-- Empty state -->
-    <div
-      v-else
-      class="flex flex-col items-center justify-center py-12 text-center text-zinc-500"
-    >
-      <LucideDisc class="mb-3 size-12 opacity-50" />
-      <p>{{ emptyMessage }}</p>
-    </div>
-  </div>
+  </div>  
 </template>
 
 <script setup lang="ts">
@@ -98,12 +81,10 @@ interface Props {
   title: string
   releases: SearchRelease[]
   viewMoreLink?: string
-  emptyMessage?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   viewMoreLink: undefined,
-  emptyMessage: 'No releases found',
 })
 
 const { releaseImage } = useImageUrl()
@@ -116,6 +97,7 @@ function imageUrl(release: SearchRelease) {
 async function playRelease(releaseId: string) {
   try {
     const response = await $fetch<any>(`/api/releases/${releaseId}/tracks`)
+
     if (response?.tracks?.length > 0) {
       const playerTracks = response.tracks.map((t: any) => ({
         id: t.id,
