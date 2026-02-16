@@ -28,6 +28,22 @@ struct Args {
     /// Re-sync all artists (including already synced ones)
     #[arg(long)]
     overwrite: bool,
+
+    /// Only sync artists starting with this prefix (case insensitive)
+    #[arg(long)]
+    only: Option<String>,
+
+    /// Sync artists starting from this prefix (case insensitive)
+    #[arg(long)]
+    from: Option<String>,
+
+    /// Sync artists up to and including this prefix (case insensitive)
+    #[arg(long)]
+    to: Option<String>,
+
+    /// Limit to first N artists
+    #[arg(long, default_value = "0")]
+    limit: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -1251,29 +1267,41 @@ async fn main() {
     let artist_img_dir = PathBuf::from("/home/kp/web/DMPv6/web/public/img/artists");
     fs::create_dir_all(&artist_img_dir).ok();
 
-    // Fetch artists that need syncing (NO filtering - sync whatever was indexed)
-    let artists: Vec<(String, String, String, Option<String>)> = if args.overwrite {
-        sqlx::query_as(
-            r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" ORDER BY slug"#,
-        )
-        .fetch_all(&pool)
-        .await
-        .expect("Failed to fetch artists")
+    // Build artist query with filters
+    let mut base_query = if args.overwrite {
+        r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" WHERE 1=1"#.to_string()
     } else {
-        // Sync artists without MB ID, or those that haven't been synced in 30+ days
-        sqlx::query_as(
-            r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" 
-               WHERE "musicbrainzId" IS NULL 
-                  OR "lastSyncedAt" IS NULL 
-                  OR "lastSyncedAt" < NOW() - INTERVAL '30 days'
-               ORDER BY slug"#,
-        )
-        .fetch_all(&pool)
-        .await
-        .expect("Failed to fetch artists")
+        r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" 
+           WHERE ("musicbrainzId" IS NULL 
+              OR "lastSyncedAt" IS NULL 
+              OR "lastSyncedAt" < NOW() - INTERVAL '30 days')"#.to_string()
     };
 
-    // Filter out only "Various Artists" (no other filtering)
+    // Apply filters
+    if let Some(ref prefix) = args.only {
+        let pattern = format!("{}%", prefix.to_lowercase());
+        base_query.push_str(&format!(" AND LOWER(slug) LIKE '{}'", pattern));
+    } else {
+        if let Some(ref from) = args.from {
+            base_query.push_str(&format!(" AND LOWER(slug) >= '{}'", from.to_lowercase()));
+        }
+        if let Some(ref to) = args.to {
+            base_query.push_str(&format!(" AND LOWER(slug) <= '{}'", to.to_lowercase()));
+        }
+    }
+
+    base_query.push_str(" ORDER BY slug");
+
+    if args.limit > 0 {
+        base_query.push_str(&format!(" LIMIT {}", args.limit));
+    }
+
+    let artists: Vec<(String, String, String, Option<String>)> = sqlx::query_as(&base_query)
+        .fetch_all(&pool)
+        .await
+        .expect("Failed to fetch artists");
+
+    // Filter out "Various Artists" (compilation marker)
     let filtered_artists: Vec<_> = artists
         .into_iter()
         .filter(|(_, name, slug, _)| {
