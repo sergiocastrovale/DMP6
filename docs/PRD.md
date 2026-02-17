@@ -95,7 +95,15 @@ Take inspiration from SongKong and build all sorts of advanced reporting about
 
 5. Missing connection with MB, Discogs, Bandcamp
 
-## Phase 6: Dataviz?
+## Phase 6: Party mode
+
+Open "parties" in which you can share an URL and people can join and listen to your music.
+
+Highly complex - we don't have the songs in the online version. Maybe there's some CLI tool
+we can leverage on the background?
+
+
+## Phase 7: Dataviz?
 
 An area for exploration with visually mindblowing experiences.
 

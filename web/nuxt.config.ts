@@ -7,9 +7,8 @@ export default defineNuxtConfig({
   modules: [
     '@pinia/nuxt',
   ],
-
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [tailwindcss() as any],
   },
 
   css: ['~/assets/css/main.css'],

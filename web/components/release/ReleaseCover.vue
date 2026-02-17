@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Play } from 'lucide-vue-next'
+import Initial from '~/components/artist/Initial.vue'
 
 const props = defineProps<{
   image: string | null
@@ -32,7 +33,7 @@ const sizeClass = computed(() => {
       loading="lazy"
     />
     <div v-else class="flex size-full items-center justify-center text-lg font-bold text-zinc-600">
-      {{ title.charAt(0).toUpperCase() }}
+      <Initial :name="title" />
     </div>
     <button
       class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"

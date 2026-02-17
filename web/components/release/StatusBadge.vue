@@ -18,12 +18,7 @@ const config: Record<ReleaseStatus, { label: string; classes: string }> = {
 
 const cfg = computed(() => config[props.status] || config.UNKNOWN)
 
-const label = computed(() => {
-  if (props.status === 'INCOMPLETE' && props.trackCount && props.localTrackCount !== undefined) {
-    return `${props.localTrackCount}/${props.trackCount}`
-  }
-  return cfg.value.label
-})
+const label = computed(() => cfg.value.label)
 </script>
 
 <template>

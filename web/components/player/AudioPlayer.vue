@@ -37,11 +37,17 @@ function handleVolumeChange(e: Event) {
   player.setVolume(value)
 }
 
-function getShuffleIcon() {
-  return Shuffle
+function getShuffleLabel() {
+  const labels = {
+    off: 'Shuffle: Off',
+    release: 'Release',
+    artist: 'Artist',
+    catalogue: 'Catalogue',
+  }
+  return labels[player.shuffleMode]
 }
 
-function getShuffleLabel() {
+function getShuffleTooltip() {
   const labels = {
     off: 'Shuffle: Off',
     release: 'Shuffle: Release',
@@ -93,8 +99,9 @@ async function loadPlaylists() {
 }
 
 async function addToPlaylist(playlistSlug: string) {
-  if (!player.currentTrack)
+  if (!player.currentTrack) {
     return
+  }
 
   try {
     await $fetch(`/api/playlists/${playlistSlug}/tracks`, {
@@ -111,7 +118,9 @@ async function addToPlaylist(playlistSlug: string) {
 
 async function createNewPlaylist() {
   const name = prompt('Enter playlist name:')
-  if (!name?.trim()) return
+  if (!name?.trim()) {
+    return
+  }
 
   const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
   if (!slug) {
@@ -151,7 +160,6 @@ onMounted(() => {
     v-if="player.isVisible"
     class="fixed bottom-0 left-0 z-50 flex h-20 w-full items-center border-t border-zinc-800 bg-zinc-950 px-4 lg:bottom-0"
   >
-    <!-- Track info (left) -->
     <div class="flex w-1/4 min-w-0 items-center gap-3">
       <div
         class="size-12 shrink-0 rounded bg-zinc-800 bg-cover bg-center"
@@ -165,7 +173,6 @@ onMounted(() => {
           {{ player.currentTrack?.artist || '' }}
         </p>
       </div>
-      <!-- Favorite button -->
       <button
         class="hidden lg:block text-zinc-400 hover:text-amber-500 transition-colors"
         :class="{ 'text-amber-500': isFavorite }"
@@ -175,18 +182,24 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Controls + progress (center) -->
     <div class="flex flex-1 flex-col items-center gap-1">
       <div class="flex items-center gap-4">
-        <!-- Shuffle button -->
-        <button
-          class="text-zinc-400 hover:text-zinc-50 transition-colors"
-          :class="{ 'text-amber-500': player.shuffleMode !== 'off' }"
-          :title="getShuffleLabel()"
-          @click="player.cycleShuffleMode()"
-        >
-          <Shuffle :size="18" />
-        </button>
+        <div class="relative flex flex-col items-center">
+          <span
+            v-if="player.shuffleMode !== 'off'"
+            class="absolute -top-4 whitespace-nowrap rounded bg-amber-500 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-zinc-950"
+          >
+            {{ getShuffleLabel() }}
+          </span>
+          <button
+            class="text-zinc-400 hover:text-zinc-50 transition-colors"
+            :class="{ 'text-amber-500': player.shuffleMode !== 'off' }"
+            :title="getShuffleTooltip()"
+            @click="player.cycleShuffleMode()"
+          >
+            <Shuffle :size="18" />
+          </button>
+        </div>
 
         <button class="text-zinc-400 hover:text-zinc-50 transition-colors" @click="player.previous()">
           <SkipBack :size="18" />
@@ -204,7 +217,6 @@ onMounted(() => {
           <SkipForward :size="18" />
         </button>
 
-        <!-- Add to playlist button -->
         <div class="relative">
           <button
             class="text-zinc-400 hover:text-zinc-50 transition-colors"
@@ -213,7 +225,6 @@ onMounted(() => {
             <ListMusic :size="18" />
           </button>
 
-          <!-- Playlist menu -->
           <div
             v-if="showPlaylistMenu"
             class="absolute bottom-full left-0 mb-2 w-48 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
@@ -257,7 +268,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Volume (right) -->
     <div class="flex w-1/4 items-center justify-end gap-2">
       <button class="text-zinc-400 hover:text-zinc-50 transition-colors" @click="player.toggleMute()">
         <VolumeX v-if="player.isMuted || player.volume === 0" :size="18" />

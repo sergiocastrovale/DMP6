@@ -1,3 +1,5 @@
+import type { UnifiedRelease } from './release'
+
 export interface Artist {
   id: string
   name: string
