@@ -1,9 +1,7 @@
 import { defineStore } from 'pinia'
 import type { ArtistListItem } from '~/types/artist'
 
-export const useBrowseStore = defineStore('browse', () => {
-  const { $fetch } = useNuxtApp()
-  
+export const useBrowseStore = defineStore('browse', () => {  
   const artists = ref<ArtistListItem[]>([])
   const total = ref(0)
   const page = ref(1)
@@ -21,8 +19,12 @@ export const useBrowseStore = defineStore('browse', () => {
   const maxScore = ref<number | null>(null)
 
   async function fetchArtists(append = false) {
-    if (append) loadingMore.value = true
-    else loading.value = true
+    if (append) {
+      loadingMore.value = true
+    }
+    else {
+      loading.value = true
+    }
 
     try {
       const params: Record<string, string | number> = {
@@ -94,6 +96,16 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
+  function setMinScore(min: number | null) {
+    minScore.value = min
+    fetchArtists()
+  }
+
+  function setMaxScore(max: number | null) {
+    maxScore.value = max
+    fetchArtists()
+  }
+
   return {
     artists,
     total,
@@ -114,5 +126,7 @@ export const useBrowseStore = defineStore('browse', () => {
     setSortBy,
     setSearch,
     setScoreRange,
+    setMinScore,
+    setMaxScore,
   }
 })

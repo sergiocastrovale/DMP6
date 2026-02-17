@@ -2,9 +2,7 @@ import { defineStore } from 'pinia'
 import { useDebounceFn } from '@vueuse/core'
 import type { PlayerTrack, ShuffleMode, PersistedPlayerState } from '~/types/player'
 
-export const usePlayerStore = defineStore('player', () => {
-  const { $fetch } = useNuxtApp()
-  
+export const usePlayerStore = defineStore('player', () => { 
   const currentTrack = ref<PlayerTrack | null>(null)
   const queue = ref<PlayerTrack[]>([])
   const originalQueue = ref<PlayerTrack[]>([])

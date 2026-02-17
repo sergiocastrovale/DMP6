@@ -35,9 +35,11 @@ function formatPlaytime(seconds: number): string {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return 'Never'
-  const d = new Date(iso)
-  return d.toLocaleDateString('en-GB', {
+  if (!iso) {
+    return 'Never'
+  }
+
+  return new Date(iso).toLocaleDateString('pt-PT', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

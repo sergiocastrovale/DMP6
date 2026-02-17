@@ -1987,22 +1987,6 @@ async function createNewPlaylist() {
 - Error: `Component is already mounted, please use $fetch instead`
 
 **Root Causes**:
-
-1. **Stores Not Importing $fetch**:
-   ```typescript
-   // WRONG:
-   export const usePlayerStore = defineStore('player', () => {
-     // $fetch used but not imported
-     await $fetch('/api/tracks/random')
-   })
-   
-   // CORRECT:
-   export const usePlayerStore = defineStore('player', () => {
-     const { $fetch } = useNuxtApp()
-     await $fetch('/api/tracks/random')
-   })
-   ```
-
 2. **Components Using useFetch for Imperative Calls**:
    ```typescript
    // WRONG (useFetch is for SSR data loading):
