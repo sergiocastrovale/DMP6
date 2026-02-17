@@ -232,6 +232,10 @@ export const usePlayerStore = defineStore('player', () => {
     watch([currentTrack, volume, isMuted, shuffleMode, queue], saveState, { deep: true })
   }
 
+  function getAudioElement(): HTMLAudioElement | null {
+    return audio
+  }
+
   return {
     currentTrack,
     queue,
@@ -253,5 +257,6 @@ export const usePlayerStore = defineStore('player', () => {
     next,
     previous,
     cycleShuffleMode,
+    getAudioElement,
   }
 })

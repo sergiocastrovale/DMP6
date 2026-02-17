@@ -2,6 +2,11 @@
 import { LucideListMusic, LucidePlus, LucideMusic } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 
+const { isStreamMode } = useStreamMode()
+if (isStreamMode.value) {
+  navigateTo('/')
+}
+
 const loading = ref(true)
 const playlists = ref<PlaylistSummary[]>([])
 const showCreateDialog = ref(false)

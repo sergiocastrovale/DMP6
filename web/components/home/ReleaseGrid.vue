@@ -36,6 +36,7 @@
             <LucideMusic class="size-12" />
           </div>
           <button
+            v-if="!isStreamMode"
             class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
             @click="playRelease(release.id)"
           >
@@ -89,6 +90,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const { releaseImage } = useImageUrl()
 const playerStore = usePlayerStore()
+const { isStreamMode } = useStreamMode()
 
 function imageUrl(release: SearchRelease) {
   return releaseImage(release)

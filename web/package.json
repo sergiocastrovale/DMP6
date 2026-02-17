@@ -10,13 +10,19 @@
     "postinstall": "nuxt prepare",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "deploy:app": "tsx scripts/deploy.ts app",
+    "deploy:db": "tsx scripts/deploy.ts db",
+    "deploy:nginx": "tsx scripts/deploy.ts nginx",
+    "deploy:uncache": "tsx scripts/deploy.ts uncache"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
     "@vueuse/core": "^13.0.0",
     "date-fns": "^4.1.0",
     "lucide-vue-next": "^0.475.0",
+    "mediasoup": "^3.19.17",
+    "mediasoup-client": "^3.18.7",
     "nuxt": "^4.3.1",
     "pinia": "^3.0.0",
     "vue": "^3.5.28",
@@ -36,6 +42,7 @@
       "@prisma/client",
       "@prisma/engines",
       "esbuild",
+      "mediasoup",
       "prisma"
     ]
   }

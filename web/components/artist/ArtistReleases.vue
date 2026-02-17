@@ -12,6 +12,7 @@ const props = defineProps<{
 }>()
 
 const player = usePlayerStore()
+const { isStreamMode } = useStreamMode()
 
 const searchQuery = ref('')
 const statusFilter = ref<string | null>(null)
@@ -282,7 +283,7 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
                 <Disc3 :size="20" />
               </div>
               <button
-                v-if="release.localReleaseId || release.localTrackCount > 0"
+                v-if="!isStreamMode && (release.localReleaseId || release.localTrackCount > 0)"
                 class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover/cover:opacity-100"
                 @click.stop="playRelease(release)"
               >
