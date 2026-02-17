@@ -86,7 +86,6 @@ struct TrackMeta {
     bitrate: Option<i32>,
     sample_rate: Option<i32>,
     position: Option<String>,
-    musicbrainz_id: Option<String>,
     content_hash: String,
     metadata_json: JsonValue,
     has_picture: bool,
@@ -156,7 +155,7 @@ fn load_config(music_dir_override: &Option<String>) -> Config {
 // Metadata extraction
 // ---------------------------------------------------------------------------
 
-fn extract_metadata(path: &Path) -> Option<TrackMeta> {
+fn extract_metadata(path: &Path, music_dir: &str) -> Option<TrackMeta> {
     let meta = fs::metadata(path).ok()?;
     let file_size = meta.len() as i64;
     let mtime = meta
@@ -182,7 +181,6 @@ fn extract_metadata(path: &Path) -> Option<TrackMeta> {
     let mut track_number: Option<i32> = None;
     let mut disc_number: Option<i32> = None;
     let mut position: Option<String> = None;
-    let mut musicbrainz_id: Option<String> = None;
     let mut all_tags: HashMap<String, String> = HashMap::new();
     let mut has_picture = false;
 
@@ -237,14 +235,6 @@ fn extract_metadata(path: &Path) -> Option<TrackMeta> {
                 if position.is_none() && key_upper == "POSITION" {
                     position = Some(val.clone());
                 }
-                if musicbrainz_id.is_none()
-                    && (key_upper.contains("MUSICBRAINZ")
-                        && (key_upper.contains("TRACKID")
-                            || key_upper.contains("TRACK ID")
-                            || key_upper.contains("RELEASE TRACK ID")))
-                {
-                    musicbrainz_id = Some(val.clone());
-                }
 
                 all_tags.insert(key, val.clone());
             }
@@ -288,8 +278,16 @@ fn extract_metadata(path: &Path) -> Option<TrackMeta> {
     }
     let metadata_json = JsonValue::Object(meta_map);
 
+    // Store relative path from music_dir
+    let path_str = path.to_string_lossy();
+    let relative_path = path_str
+        .strip_prefix(music_dir)
+        .unwrap_or(&path_str)
+        .trim_start_matches('/')
+        .to_string();
+
     Some(TrackMeta {
-        file_path: path.to_string_lossy().to_string(),
+        file_path: relative_path,
         file_size,
         mtime,
         title,
@@ -304,7 +302,6 @@ fn extract_metadata(path: &Path) -> Option<TrackMeta> {
         bitrate,
         sample_rate,
         position,
-        musicbrainz_id,
         content_hash,
         metadata_json,
         has_picture,
@@ -1030,7 +1027,7 @@ async fn main() {
                 }
             }
 
-            match extract_metadata(p) {
+            match extract_metadata(p, &music_dir_clone) {
                 Some(meta) => {
                     // Skip if no artist (critical field)
                     if meta.artist.is_none() || meta.artist.as_deref() == Some("") {
@@ -1348,6 +1345,99 @@ async fn main() {
                 "  Saved {} covers, {} already exist",
                 saved, existing
             );
+            println!();
+        }
+        
+        let missing_releases: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT DISTINCT ON (lr.id) lr.id, lrt."filePath"
+               FROM "LocalRelease" lr
+               JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
+               WHERE (lr.image IS NULL OR lr.image = '')
+                 AND (lr."imageUrl" IS NULL OR lr."imageUrl" = '')
+               ORDER BY lr.id, lrt."trackNumber" NULLS LAST, lrt."filePath""#
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default();
+        
+        if !missing_releases.is_empty() {
+            println!("Found {} releases with missing images, updating...", missing_releases.len());
+            
+            let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
+            let use_local = config.image_storage == "local" || config.image_storage == "both";
+            let s3_client = if use_s3 {
+                create_s3_client(&config).await
+            } else {
+                None
+            };
+            
+            let img_base = PathBuf::from("web/public/img/releases");
+            let img_dir = if img_base.exists() || img_base.parent().map(|p| p.exists()).unwrap_or(false) {
+                img_base
+            } else {
+                PathBuf::from("/home/kp/web/DMPv6/web/public/img/releases")
+            };
+            
+            let mut extracted = 0u32;
+            let mut failed = 0u32;
+            
+            for (release_id, file_path) in missing_releases {
+                let full_path = PathBuf::from(&music_dir).join(&file_path);
+                let out_path = img_dir.join(format!("{}.jpg", release_id));
+                
+                if extract_cover_art(&full_path, &out_path) {
+                    // S3 upload
+                    if use_s3 {
+                        if let (Some(ref client), Some(ref bucket), Some(ref public_url)) = 
+                            (&s3_client, &config.s3_bucket, &config.s3_public_url) {
+                            let s3_key = format!("releases/{}.jpg", release_id);
+                            match upload_to_s3(client, bucket, &s3_key, &out_path).await {
+                                Ok(_) => {
+                                    let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
+                                    sqlx::query(
+                                        r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                    )
+                                    .bind(&image_url)
+                                    .bind(&release_id)
+                                    .execute(&pool)
+                                    .await
+                                    .ok();
+                                }
+                                Err(e) => {
+                                    eprintln!("  Failed to upload {} to S3: {:?}", release_id, e);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Local storage
+                    if use_local {
+                        let relative = format!("/img/releases/{}.jpg", release_id);
+                        sqlx::query(
+                            r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                        )
+                        .bind(&relative)
+                        .bind(&release_id)
+                        .execute(&pool)
+                        .await
+                        .ok();
+                    }
+                    
+                    // Delete local file if only using S3
+                    if !use_local && use_s3 && out_path.exists() {
+                        fs::remove_file(&out_path).ok();
+                    }
+                    
+                    extracted += 1;
+                } else {
+                    failed += 1;
+                }
+            }
+            
+            println!("  Extracted {} missing covers, {} failed", extracted, failed);
+            println!();
+        } else {
+            println!("  All releases have images");
             println!();
         }
     }
