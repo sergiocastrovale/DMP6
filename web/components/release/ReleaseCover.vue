@@ -2,6 +2,8 @@
 import { Play } from 'lucide-vue-next'
 import Initial from '~/components/artist/Initial.vue'
 
+const { isStreamMode } = useStreamMode()
+
 const props = defineProps<{
   image: string | null
   imageUrl: string | null
@@ -36,6 +38,7 @@ const sizeClass = computed(() => {
       <Initial :name="title" />
     </div>
     <button
+      v-if="!isStreamMode"
       class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
       @click="emit('play')"
     >

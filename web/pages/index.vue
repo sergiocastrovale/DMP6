@@ -2,6 +2,8 @@
 import type { SearchRelease } from '~/types/search'
 import type { PlaylistSummary } from '~/types/playlist'
 
+const { isStreamMode } = useStreamMode()
+
 const loading = ref(true)
 const latestReleases = ref<SearchRelease[]>([])
 const recentlyPlayed = ref<SearchRelease[]>([])
@@ -9,26 +11,34 @@ const playlists = ref<PlaylistSummary[]>([])
 const favoriteReleases = ref<SearchRelease[]>([])
 
 const hasRecentlyPlayed = computed(() => recentlyPlayed.value.length)
-const hasPlaylists = computed(() => playlists.value.length)
-const hasFavoriteReleases = computed(() => favoriteReleases.value.length)
+const hasPlaylists = computed(() => !isStreamMode.value && playlists.value.length)
+const hasFavoriteReleases = computed(() => !isStreamMode.value && favoriteReleases.value.length)
 
 async function loadData() {
   loading.value = true
 
   try {
-    const [latestData, recentData, playlistsData, favoritesData] = await Promise.all([
+    const fetches: Promise<any>[] = [
       $fetch<any[]>('/api/releases/latest?limit=12'),
       $fetch<any[]>('/api/releases/last-played?limit=12'),
-      $fetch<PlaylistSummary[]>('/api/playlists'),
-      $fetch<any>('/api/favorites'),
-    ])
+    ]
 
-    latestReleases.value = latestData
-    recentlyPlayed.value = recentData
-    playlists.value = playlistsData.slice(0, 12) // Max 12 for home page
-    favoriteReleases.value = favoritesData.releases
-      .slice(0, 12)
-      .map((fav: any) => fav.release)
+    if (!isStreamMode.value) {
+      fetches.push($fetch<PlaylistSummary[]>('/api/playlists'))
+      fetches.push($fetch<any>('/api/favorites'))
+    }
+
+    const results = await Promise.all(fetches)
+
+    latestReleases.value = results[0]
+    recentlyPlayed.value = results[1]
+
+    if (!isStreamMode.value) {
+      playlists.value = (results[2] || []).slice(0, 12)
+      favoriteReleases.value = (results[3]?.releases || [])
+        .slice(0, 12)
+        .map((fav: any) => fav.release)
+    }
   }
   catch (error) {
     console.error('Failed to load home page data:', error)

@@ -43,7 +43,8 @@
         v-for="release in results.releases"
         :key="release.id"
         class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800 transition-colors text-left"
-        @click="playRelease(release.id)"
+        :disabled="isStreamMode"
+        @click="!isStreamMode && playRelease(release.id)"
       >
         <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-zinc-800">
           <img
@@ -77,7 +78,8 @@
         v-for="track in results.tracks"
         :key="track.id"
         class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800 transition-colors text-left"
-        @click="playTrack(track)"
+        :disabled="isStreamMode"
+        @click="!isStreamMode && playTrack(track)"
       >
         <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-zinc-800">
           <img
@@ -122,6 +124,7 @@ const emit = defineEmits<{
 
 const { artistImage, releaseImage } = useImageUrl()
 const playerStore = usePlayerStore()
+const { isStreamMode } = useStreamMode()
 
 const hasResults = computed(() => {
   if (!props.results)

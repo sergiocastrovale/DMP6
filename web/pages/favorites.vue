@@ -2,6 +2,11 @@
 import { LucideHeart, LucideDisc, LucideMusic } from 'lucide-vue-next'
 import type { FavoritesResponse } from '~/types/favorites'
 
+const { isStreamMode } = useStreamMode()
+if (isStreamMode.value) {
+  navigateTo('/')
+}
+
 const loading = ref(true)
 const favorites = ref<FavoritesResponse | null>(null)
 const activeTab = ref<'releases' | 'tracks'>('releases')

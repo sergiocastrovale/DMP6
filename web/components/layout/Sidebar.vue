@@ -11,14 +11,19 @@ import {
 } from 'lucide-vue-next'
 
 const collapsed = ref(false)
+const { isStreamMode } = useStreamMode()
 
-const navItems = [
+const allNavItems = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/browse', label: 'Browse', icon: Library },
   { to: '/timeline', label: 'Timeline', icon: Clock },
-  { to: '/playlists', label: 'Playlists', icon: ListMusic },
-  { to: '/favorites', label: 'Favorites', icon: Heart },
+  { to: '/playlists', label: 'Playlists', icon: ListMusic, hostOnly: true },
+  { to: '/favorites', label: 'Favorites', icon: Heart, hostOnly: true },
 ]
+
+const navItems = computed(() =>
+  isStreamMode.value ? allNavItems.filter(i => !i.hostOnly) : allNavItems,
+)
 
 const route = useRoute()
 
