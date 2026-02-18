@@ -75,6 +75,10 @@ Build the sync script and make it bullet proof.
 
 ## Phase 5: other web features
 
+* Audioscrobbler / last.fm integration
+
+* Fuzzy genre playlists (auto-generates playlist with several similar genres - UI could have a slider in which we'd raise and lower genres pills visually)
+
 * Statistics
 
 * Playlists

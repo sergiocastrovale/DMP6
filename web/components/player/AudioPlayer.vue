@@ -21,9 +21,11 @@ const showPlaylistMenu = ref(false)
 const playlists = ref<any[]>([])
 
 const listener = isStreamMode.value ? usePartyListener() : null
+const partyHost = !isStreamMode.value ? usePartyHost() : null
 const listenerCount = ref(0)
 const isPartyEnabled = computed(() => config.public.partyEnabled)
 const isHost = computed(() => config.public.partyRole === 'host')
+const isPartyActive = computed(() => partyHost?.isActive.value || false)
 
 // In stream mode, auto-connect to the stream and poll for listener count
 if (import.meta.client && isStreamMode.value && listener) {
@@ -371,7 +373,12 @@ onMounted(() => {
         <NuxtLink
           v-if="isPartyEnabled && isHost"
           to="/party"
-          class="text-zinc-400 hover:text-zinc-50 transition-colors"
+          :class="[
+            'transition-colors',
+            isPartyActive 
+              ? 'text-amber-500 hover:text-amber-400' 
+              : 'text-zinc-400 hover:text-zinc-50'
+          ]"
           title="Music Party"
         >
           <Radio :size="18" />

@@ -83,17 +83,22 @@ export async function createPartySession(): Promise<PartySession> {
 }
 
 export async function createWebRtcTransport(router: mediasoupTypes.Router): Promise<mediasoupTypes.WebRtcTransport> {
-  const config = useRuntimeConfig()
+  // Read directly from process.env to get runtime values (not build-time)
+  const announcedIp = process.env.MEDIASOUP_ANNOUNCED_IP
+  const rtcMinPort = Number(process.env.RTC_MIN_PORT) || 10000
+  const rtcMaxPort = Number(process.env.RTC_MAX_PORT) || 10100
+
+  console.log(`[party] Creating WebRTC transport with announcedIp: ${announcedIp || 'none'}, ports: ${rtcMinPort}-${rtcMaxPort}`)
 
   const transport = await router.createWebRtcTransport({
     listenInfos: [
       {
         protocol: 'udp',
         ip: '0.0.0.0',
-        announcedAddress: config.mediasoupAnnouncedIp || undefined,
+        announcedAddress: announcedIp || undefined,
         portRange: {
-          min: Number(config.rtcMinPort) || 10000,
-          max: Number(config.rtcMaxPort) || 10100,
+          min: rtcMinPort,
+          max: rtcMaxPort,
         },
       },
     ],

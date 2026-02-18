@@ -224,30 +224,54 @@ pnpm dev
 
 ### Server Setup (DigitalOcean)
 
-**1. Environment Variables** (`web/.env`)
+**1. Local Environment Variables** (`web/.env`)
+
+Configure your local `.env` file with deployment settings:
 
 ```bash
-# Enable party mode
+# Server connection (for deployment)
+SERVER_HOST=your-server-ip
+SERVER_USER=root
+DEPLOY_PATH=/var/www/dmp
+SSH_KEY_PATH=~/.ssh/your_key
+
+# Party Mode (local host configuration)
 PARTY_ENABLED=true
+PARTY_ROLE=host
+PARTY_URL=https://your-domain.com
 
-# Set role as listener (receives audio from host and serves to listeners)
-PARTY_ROLE=listener
-
-# Server's own URL (optional, can be left empty)
-PARTY_URL=
-
-# mediasoup configuration (required for listener role)
-MEDIASOUP_ANNOUNCED_IP=<your-server-public-ip>
+# mediasoup WebRTC Configuration (for server)
 RTC_MIN_PORT=10000
 RTC_MAX_PORT=10100
-
-# Optional: Secret for session authentication (future use)
-PARTY_SECRET=
 
 # All other existing vars (DATABASE_URL, S3 config, etc.)
 ```
 
-**2. Firewall Configuration**
+**2. Automated Deployment**
+
+The deployment script automatically:
+- Builds the app with `PARTY_ROLE=listener` override
+- Creates the server's `.env` file with listener configuration
+- Sets `MEDIASOUP_ANNOUNCED_IP` to your server's IP automatically
+- Copies the mediasoup worker binary
+- Restarts PM2
+
+```bash
+cd web
+pnpm deploy:app
+```
+
+The server's `.env` will be automatically created with:
+```bash
+PARTY_ENABLED=true
+PARTY_ROLE=listener  # Forced for production
+PARTY_URL=
+MEDIASOUP_ANNOUNCED_IP=<your-server-ip>  # Auto-set from SERVER_HOST
+RTC_MIN_PORT=10000
+RTC_MAX_PORT=10100
+```
+
+**3. Firewall Configuration**
 
 Open UDP ports for WebRTC media:
 
@@ -256,32 +280,54 @@ Open UDP ports for WebRTC media:
 sudo ufw allow 10000:10100/udp
 ```
 
-**3. System Dependencies**
-
-mediasoup requires native build tools (already installed during `pnpm install`):
-
-```bash
-# If needed:
-sudo apt update
-sudo apt install -y python3 make g++
-```
-
-**4. Build and Deploy**
-
-```bash
-cd web
-pnpm install  # Builds mediasoup native worker
-pnpm build
-pm2 start ecosystem.config.js --env production
-```
-
-**5. Verify**
+**4. Verify Deployment**
 
 Check that mediasoup worker starts:
 
 ```bash
-pm2 logs
+ssh your-server 'pm2 logs dmp --lines 50'
 # Should see: [mediasoup] Worker started [pid:XXXXX, ports:10000-10100]
+```
+
+Check the website is in listener mode:
+
+```bash
+curl -I https://your-domain.com
+# Should return HTTP 200
+```
+
+**5. Manual Setup (Alternative)**
+
+If you prefer manual setup instead of automated deployment:
+
+```bash
+# On server
+cd /var/www/dmp
+
+# Create .env file manually
+cat > .env << 'EOF'
+DATABASE_URL=postgresql://user:pass@localhost:5432/dbname
+IMAGE_STORAGE=s3
+S3_BUCKET=your-bucket
+# ... other vars ...
+
+PARTY_ENABLED=true
+PARTY_ROLE=listener
+PARTY_URL=
+MEDIASOUP_ANNOUNCED_IP=your-server-ip
+RTC_MIN_PORT=10000
+RTC_MAX_PORT=10100
+EOF
+
+# Install dependencies (includes mediasoup native build)
+pnpm install
+
+# Build application
+pnpm build
+
+# Start with PM2
+pm2 start ecosystem.config.cjs
+pm2 save
 ```
 
 ### Listener Access
