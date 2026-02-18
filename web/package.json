@@ -14,12 +14,15 @@
     "deploy:app": "tsx scripts/deploy.ts app",
     "deploy:db": "tsx scripts/deploy.ts db",
     "deploy:nginx": "tsx scripts/deploy.ts nginx",
-    "deploy:uncache": "tsx scripts/deploy.ts uncache"
+    "deploy:uncache": "tsx scripts/deploy.ts uncache",
+    "backup": "tsx scripts/backup.ts",
+    "restore": "tsx scripts/restore.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
     "@vueuse/core": "^13.0.0",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
     "lucide-vue-next": "^0.475.0",
     "mediasoup": "^3.19.17",
     "mediasoup-client": "^3.18.7",
@@ -31,9 +34,12 @@
   "devDependencies": {
     "@pinia/nuxt": "^0.11.3",
     "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.10.5",
+    "minimist": "^1.2.8",
     "pinia-plugin-persistedstate": "^4.0.0",
     "prisma": "^6.1.0",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.0"
   },
   "pnpm": {
