@@ -7,7 +7,6 @@ import {
   Volume2,
   VolumeX,
   Shuffle,
-  Heart,
   ListMusic,
   Radio,
 } from 'lucide-vue-next'
@@ -16,7 +15,6 @@ import { usePlayerStore } from '~/stores/player'
 const player = usePlayerStore()
 const config = useRuntimeConfig()
 const { isStreamMode } = useStreamMode()
-const isFavorite = ref(false)
 const showPlaylistMenu = ref(false)
 const playlists = ref<any[]>([])
 
@@ -156,38 +154,6 @@ function getShuffleTooltip() {
   return labels[player.shuffleMode]
 }
 
-async function toggleFavorite() {
-  if (!player.currentTrack)
-    return
-
-  try {
-    if (isFavorite.value) {
-      await $fetch(`/api/favorites/tracks/${player.currentTrack.id}`, { method: 'DELETE' })
-      isFavorite.value = false
-    }
-    else {
-      await $fetch(`/api/favorites/tracks/${player.currentTrack.id}`, { method: 'POST' })
-      isFavorite.value = true
-    }
-  }
-  catch (error) {
-    console.error('Failed to toggle favorite:', error)
-  }
-}
-
-async function checkFavorite() {
-  if (!player.currentTrack)
-    return
-
-  try {
-    const favorites = await $fetch<any>('/api/favorites')
-    isFavorite.value = favorites.tracks.some((fav: any) => fav.track.id === player.currentTrack?.id)
-  }
-  catch (error) {
-    console.error('Failed to check favorite:', error)
-  }
-}
-
 async function loadPlaylists() {
   try {
     playlists.value = await $fetch<any[]>('/api/playlists')
@@ -240,18 +206,6 @@ async function createNewPlaylist() {
     alert('Failed to create playlist')
   }
 }
-
-watch(() => player.currentTrack?.id, () => {
-  if (player.currentTrack && !isStreamMode.value) {
-    checkFavorite()
-  }
-})
-
-onMounted(() => {
-  if (player.currentTrack && !isStreamMode.value) {
-    checkFavorite()
-  }
-})
 </script>
 
 <template>
@@ -266,22 +220,15 @@ onMounted(() => {
         :style="displayTrack?.coverPath ? { backgroundImage: `url(${displayTrack.coverPath})` } : {}"
       />
       <div class="min-w-0 flex-1">
-        <p class="truncate text-sm font-medium text-zinc-50">
-          {{ displayTrack?.title || 'No track' }}
-        </p>
-        <p class="truncate text-xs text-zinc-400">
+        <div class="truncate text-sm font-medium text-zinc-50">
+          <div>{{ displayTrack?.title || 'No track' }}</div>
+          <ToggleFavorite />
+        </div>
+        <div class="truncate text-xs text-zinc-400">
           {{ displayTrack?.artist || '' }}
-        </p>
+        </div>
       </div>
-      <!-- Favorite (host only) -->
-      <button
-        v-if="!isStreamMode"
-        class="hidden lg:block text-zinc-400 hover:text-amber-500 transition-colors"
-        :class="{ 'text-amber-500': isFavorite }"
-        @click="toggleFavorite"
-      >
-        <Heart :size="18" :fill="isFavorite ? 'currentColor' : 'none'" />
-      </button>
+
       <!-- Stream indicator for listeners -->
       <div
         v-if="isStreamMode && listener?.isConnected.value"

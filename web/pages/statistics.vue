@@ -61,9 +61,9 @@ onMounted(() => {
         <LucideBarChart3 class="inline size-6 -mt-1 text-amber-500" />
         Statistics
       </h1>
-      <p class="mt-1 text-sm text-zinc-500">
-        Overview of your music library
-      </p>
+      <div v-if="!loading && stats" class="mt-1 text-sm text-zinc-500">
+        Last scanned: {{ formatDate(stats.lastScanEndedAt) }}
+      </div>
     </div>
 
     <!-- Loading -->
@@ -73,7 +73,6 @@ onMounted(() => {
 
     <!-- Stats grid -->
     <div v-else-if="stats" class="flex flex-col gap-8">
-      <!-- General -->
       <section>
         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-500">
           Library
@@ -140,7 +139,6 @@ onMounted(() => {
         </div>
       </section>
 
-      <!-- Cover Art -->
       <section>
         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-500">
           Cover Art
@@ -149,40 +147,15 @@ onMounted(() => {
           <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
             <LucideImage class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.artistsWithCoverArt) }}</p>
-            <p class="text-xs text-zinc-500">Artists with Art</p>
+            <p class="text-xs text-zinc-500">Artists with photo</p>
           </div>
           <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
             <LucideImage class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.releasesWithCoverArt) }}</p>
-            <p class="text-xs text-zinc-500">Releases with Art</p>
+            <p class="text-xs text-zinc-500">Releases with cover art</p>
           </div>
         </div>
       </section>
-
-      <!-- Last Scan -->
-      <section>
-        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-500">
-          Last Scan
-        </h2>
-        <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-          <div class="flex flex-col gap-2 text-sm">
-            <div class="flex justify-between">
-              <span class="text-zinc-400">Started</span>
-              <span class="text-zinc-50">{{ formatDate(stats.lastScanStartedAt) }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-zinc-400">Ended</span>
-              <span class="text-zinc-50">{{ formatDate(stats.lastScanEndedAt) }}</span>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <!-- No stats -->
-    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-zinc-500">
-      <LucideBarChart3 class="mb-3 size-12 opacity-50" />
-      <p>No statistics available</p>
     </div>
   </div>
 </template>

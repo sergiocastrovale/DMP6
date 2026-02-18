@@ -36,7 +36,6 @@ analysis [OPTIONS] <SCAN_PATH>
 
 | Flag | Default | Description |
 |---|---|---|
-| `--unc-prefix <PREFIX>` | *(empty)* | UNC prefix for Windows links (e.g. `\\\\minibrain\\test`). When set, Windows links use this prefix instead of converting `/mnt/c/` to `C:\`. |
 | `--output-dir <DIR>` | `../../reports` | Output directory for the HTML report. Can be relative (to the binary location) or absolute. |
 | `--limit <N>` | `0` | Limit scan to the first N audio files. `0` = no limit (scan everything). Useful for testing on large libraries. |
 | `--from <PREFIX>` | *(empty)* | Filter: only scan folders starting from this prefix (case insensitive). Supports multi-character prefixes. |
