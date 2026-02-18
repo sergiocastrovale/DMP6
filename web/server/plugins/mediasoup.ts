@@ -2,17 +2,19 @@ import * as mediasoup from 'mediasoup'
 import { setPartyWorker } from '../utils/party'
 
 export default defineNitroPlugin(async () => {
-  const config = useRuntimeConfig()
+  // Read directly from process.env (loaded by dotenv in ecosystem.config.cjs)
+  const partyEnabled = process.env.PARTY_ENABLED === 'true'
+  const partyRole = process.env.PARTY_ROLE
   
   // Only initialize mediasoup if party mode is enabled and role is listener
-  if (!config.public.partyEnabled || config.public.partyRole !== 'listener') {
+  if (!partyEnabled || partyRole !== 'listener') {
     return
   }
 
-  console.log('[mediasoup] Initializing mediasoup for party mode!')
+  console.log('[mediasoup] Initializing mediasoup for party mode...')
 
-  const rtcMinPort = Number(config.rtcMinPort) || 10000
-  const rtcMaxPort = Number(config.rtcMaxPort) || 10100
+  const rtcMinPort = Number(process.env.RTC_MIN_PORT) || 10000
+  const rtcMaxPort = Number(process.env.RTC_MAX_PORT) || 10100
 
   try {
     const worker = await mediasoup.createWorker({
