@@ -42,12 +42,33 @@ export default defineNuxtConfig({
   app: {
     head: {
       title: 'DMP',
-      meta: [
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      ],
       htmlAttrs: {
-        class: 'dark',
+        lang: 'en',
       },
+      meta: [
+        { charset: 'utf-8' },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+        { name: 'robots', content: 'noindex, nofollow' },
+        { name: 'googlebot', content: 'noindex, nofollow' },
+        { name: 'description', content: 'Personal music library management system combining features from Spotify, Plex, and Lidarr. Browse your collection, discover new music, and track your listening habits.' },
+        { name: 'author', content: 'DMP' },
+        { name: 'keywords', content: 'music library, music player, music management, music collection, digital music, music catalog, music organization, music streaming' },
+        { property: 'og:title', content: 'DMP' },
+        { property: 'og:description', content: 'Personal music library management system with smart catalog matching, 3D artist exploration, timeline views, and comprehensive analytics.' },
+        { property: 'og:type', content: 'website' },
+        { property: 'og:url', content: 'https://discodomeuprimo.online' },
+        { property: 'og:site_name', content: 'DMP' },
+        { name: 'twitter:card', content: 'summary' },
+        { name: 'twitter:title', content: 'DMP' },
+        { name: 'twitter:description', content: 'Personal music library management system with smart catalog matching and music discovery.' },
+        { name: 'theme-color', content: '#000000' },
+      ],
+      link: [
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
+        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
+        { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' },
+        { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
+      ],
     },
   },
 })
