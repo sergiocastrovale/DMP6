@@ -4,53 +4,87 @@
 
 ### Local `.env`
 
-```env
-MUSIC_DIR=/mnt/i/mp3/mainstream
-DATABASE_URL=mysql://dmp4:dmp4@localhost:3306/dmp4
-MANAGED=false
+Your local `.env` file should include deployment configuration:
 
-# Deployment configuration (read by deploy and db:update scripts)
-SERVER_HOST=
-SERVER_USER=
+```env
+# Music directory (local only)
+MUSIC_DIR=/path/to/your/music
+
+# Database (local development)
+DATABASE_URL=postgresql://user:pass@localhost:5432/dmp6
+
+# Image Storage (S3)
+IMAGE_STORAGE=s3
+S3_BUCKET=your-bucket
+S3_REGION=your-region
+S3_ACCESS_KEY_ID=your-key
+S3_SECRET_ACCESS_KEY=your-secret
+S3_PUBLIC_URL=https://your-bucket.s3.region.amazonaws.com
+
+# Deployment Configuration
+SERVER_HOST=your-server-ip
+SERVER_USER=root
 DEPLOY_PATH=/var/www/dmp
+SSH_KEY_PATH=~/.ssh/your_key
+
+# Server Setup (for initial provisioning)
+DEPLOY_DOMAIN=your-domain.com
+DEPLOY_DB_NAME=dmp6
+DEPLOY_DB_USER=dmp6
+DEPLOY_DB_PASSWORD=secure-password
+
+# Party Mode (Host Configuration)
+PARTY_ENABLED=true
+PARTY_ROLE=host  # Local is host, production is listener
+PARTY_URL=https://your-domain.com
+
+# mediasoup WebRTC (for production server)
+RTC_MIN_PORT=10000
+RTC_MAX_PORT=10100
 ```
 
-**Important:** `MANAGED` must be set to `false` in your local `.env` when building for production. Nuxt reads environment variables at **build time**, so the value during `pnpm build` determines what gets deployed.
+### Server `.env` (Auto-Generated)
 
-### Server `.env` at `/var/www/dmp/.env` (example credentials)
+The server's `.env` file at `/var/www/dmp/.env` is **automatically created** by `pnpm deploy:app`. It will contain:
 
 ```env
-DATABASE_URL=mysql://dmp4:dmp4@localhost:3306/dmp4
-NODE_ENV=production
-NUXT_HOST=0.0.0.0
-NUXT_PORT=3000
-MUSIC_DIR=/var/www/dmp/music
-MANAGED=false
+# Database
+DATABASE_URL=postgresql://user:pass@localhost:5432/dmp6
+
+# Image Storage
+IMAGE_STORAGE=s3
+S3_BUCKET=your-bucket
+S3_REGION=your-region
+S3_ACCESS_KEY_ID=your-key
+S3_SECRET_ACCESS_KEY=your-secret
+S3_PUBLIC_URL=https://your-bucket.s3.region.amazonaws.com
+
+# Party Mode (Listener) - Auto-configured for production
+PARTY_ENABLED=true
+PARTY_ROLE=listener  # Forced by deploy script
+PARTY_URL=
+MEDIASOUP_ANNOUNCED_IP=your-server-ip  # Auto-set from SERVER_HOST
+RTC_MIN_PORT=10000
+RTC_MAX_PORT=10100
 ```
 
-### `MANAGED` Flag
-
-The `MANAGED` environment variable controls whether management features are available:
-
-- **`MANAGED=true`** (local development): Full access to:
-  - Playlists (create, edit, delete)
-  - Favorites (add, remove)
-  - Settings (sources, downloader configuration)
-
-- **`MANAGED=false`** (production server): Read-only mode:
-  - All management features hidden from UI
-  - Management routes blocked by middleware
-  - Management API endpoints return 403 Forbidden
-  - Users can only browse and play music
-
-Environment variables are loaded from `.env` using `dotenv` in `ecosystem.config.cjs`.
+**Key Points:**
+- `PARTY_ROLE` is **always set to `listener`** on the server (regardless of your local setting)
+- `MEDIASOUP_ANNOUNCED_IP` is **automatically set** to your `SERVER_HOST` value
+- All other variables are copied from your local `.env`
 
 ### Applying Environment Variable Changes
 
-After updating `.env`, don't forget to restart the pm2 app:
+If you manually edit the server's `.env` file, restart PM2:
 
 ```bash
-ssh [your server] "cd /path/to/project && pm2 restart [app name in pm2] --update-env"
+ssh your-server "cd /var/www/dmp && pm2 restart dmp --update-env"
+```
+
+Or simply redeploy:
+
+```bash
+pnpm deploy:app  # Will recreate .env with latest local values
 ```
 
 ## GitLab CI/CD Pipeline
@@ -61,6 +95,8 @@ The pipeline is configured in `.gitlab-ci.yml` with a single production stage th
 
 ## Deployment
 
+### Deploy Application
+
 To deploy from your local machine:
 
 ```bash
@@ -69,15 +105,23 @@ pnpm deploy:app
 
 This command:
 1. Tests SSH connection
-2. Builds the Nuxt app locally (with 8GB heap allocation)
+2. **Builds the Nuxt app locally with `PARTY_ROLE=listener` override** (for production listener mode)
 3. Syncs `.output/` directory to the server
 4. Syncs `public/` directory to the server
-5. Syncs `ecosystem.config.cjs` to the server
-6. Restarts PM2 on the server
+5. Syncs `ecosystem.config.cjs` and `package.json` to the server
+6. **Auto-creates server `.env` file** with listener configuration:
+   - Forces `PARTY_ROLE=listener` for production
+   - Sets `MEDIASOUP_ANNOUNCED_IP` to your server's IP automatically
+   - Copies all other env vars from your local `.env`
+7. Installs production dependencies on server
+8. Copies mediasoup worker binary (required for Party Mode)
+9. Restarts PM2 on the server
+
+**Important:** The build is done locally with `PARTY_ROLE=listener` so the production site runs in listener mode (read-only UI for remote listeners), while your local development environment remains as `host`.
 
 ### Deploy Nginx Configuration
 
-To deploy or update the Nginx configuration with caching:
+To deploy or update the Nginx configuration:
 
 ```bash
 pnpm deploy:nginx
@@ -89,6 +133,64 @@ This command:
 3. Enables the site
 4. Creates the cache directory
 5. Tests and reloads Nginx
+
+### Deploy Database
+
+To restore the database from a local backup:
+
+```bash
+pnpm deploy:db
+```
+
+This command:
+1. Finds the latest local dump file in `dump/`
+2. Uploads it to the server
+3. Drops and recreates the database
+4. Restores the data using `psql`
+5. Cleans up old dumps on the server
+
+### Clear Nginx Cache
+
+To clear the Nginx cache without redeploying:
+
+```bash
+pnpm deploy:uncache
+```
+
+This command:
+1. Removes all cached files from `/var/cache/nginx/dmp/`
+2. Reloads Nginx
+
+### Backup Database
+
+To create a local backup of the production database:
+
+```bash
+pnpm backup
+```
+
+This command:
+1. Connects to the production database via SSH
+2. Creates a compressed dump using `pg_dump`
+3. Downloads it to `dump/` directory locally
+4. Names it with timestamp: `dmp6_YYYY-MM-DD_HH-MM-SS.sql.gz`
+
+### Restore Database Locally
+
+To restore a backup to your local database:
+
+```bash
+pnpm restore [filename]
+```
+
+Examples:
+```bash
+# Restore latest backup
+pnpm restore
+
+# Restore specific backup
+pnpm restore dmp6_2026-02-18_14-30-00.sql.gz
+```
 
 ### SSL/HTTPS Certificate
 

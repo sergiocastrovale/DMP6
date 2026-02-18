@@ -1,5 +1,17 @@
 # Music Party Mode - WebRTC Live Streaming
 
+## TO DO 
+
+✅ First phase implemented
+
+* Make it session based (e.g. discodomeuprimo.online would accept a session ID before ALL routes like /283nf91nd10/browse)
+
+* /party-debug should become the main page for listers (e.g. /party when PARTY_ROLE=listener). Clicking on the "Live" icon in the player should lead there
+
+* Improve player UI
+
+* Fix play/pause bug (it's not autoplaying)
+
 ## Overview
 
 Music Party Mode enables real-time audio streaming from a host's local DMP instance to remote listeners via WebRTC. The host plays music from their local library, and listeners can tune in through their browsers to hear the same audio stream with synchronized metadata (track info, play/pause state, playback position).

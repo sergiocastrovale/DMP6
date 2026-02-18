@@ -46,7 +46,7 @@ The script automatically creates `/var/www/dmp/.env` on the server with:
 PARTY_ENABLED=true
 PARTY_ROLE=listener
 PARTY_URL=
-MEDIASOUP_ANNOUNCED_IP=144.126.198.218  # Auto-set from SERVER_HOST
+MEDIASOUP_ANNOUNCED_IP=LIVE_IP  # Auto-set from SERVER_HOST
 RTC_MIN_PORT=10000
 RTC_MAX_PORT=10100
 ```
