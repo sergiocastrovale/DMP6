@@ -25,6 +25,7 @@ serde_json = "1"
 num_cpus = "1.16"
 aws-sdk-s3 = "1"
 aws-config = "1"
+colored = "2"
 
 [profile.release]
 opt-level = 3
