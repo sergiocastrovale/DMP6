@@ -3,6 +3,7 @@ use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client as S3Client;
 use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
+use colored::*;
 use lofty::config::ParseOptions;
 use lofty::prelude::*;
 use lofty::probe::Probe;
@@ -98,6 +99,7 @@ struct TrackMeta {
 struct Config {
     music_dir: String,
     database_url: String,
+    project_root: String,
     image_storage: String,
     s3_bucket: Option<String>,
     s3_region: Option<String>,
@@ -112,13 +114,24 @@ fn load_config(music_dir_override: &Option<String>) -> Config {
     let env_paths = [
         PathBuf::from("web/.env"),
         PathBuf::from("../../web/.env"),
-        PathBuf::from("/home/kp/web/DMPv6/web/.env"),
     ];
 
+    let mut env_loaded = false;
     for p in &env_paths {
         if p.exists() {
             dotenvy::from_path(p).ok();
+            env_loaded = true;
             break;
+        }
+    }
+
+    // If no relative .env found, try PROJECT_ROOT from environment
+    if !env_loaded {
+        if let Ok(project_root) = std::env::var("PROJECT_ROOT") {
+            let env_path = PathBuf::from(&project_root).join("web/.env");
+            if env_path.exists() {
+                dotenvy::from_path(env_path).ok();
+            }
         }
     }
 
@@ -129,6 +142,24 @@ fn load_config(music_dir_override: &Option<String>) -> Config {
 
     let database_url =
         std::env::var("DATABASE_URL").expect("DATABASE_URL not set in web/.env");
+    
+    let project_root = std::env::var("PROJECT_ROOT")
+        .unwrap_or_else(|_| {
+            // Try to detect project root from current directory
+            std::env::current_dir()
+                .ok()
+                .and_then(|d| {
+                    // If we're in scripts/index, go up two levels
+                    if d.ends_with("scripts/index") {
+                        d.parent().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string())
+                    } else if d.ends_with("scripts") {
+                        d.parent().map(|p| p.to_string_lossy().to_string())
+                    } else {
+                        Some(d.to_string_lossy().to_string())
+                    }
+                })
+                .unwrap_or_else(|| ".".to_string())
+        });
     
     let image_storage = std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
     let s3_bucket = std::env::var("S3_BUCKET").ok();
@@ -141,6 +172,7 @@ fn load_config(music_dir_override: &Option<String>) -> Config {
     Config {
         music_dir,
         database_url,
+        project_root,
         image_storage,
         s3_bucket,
         s3_region,
@@ -863,12 +895,12 @@ async fn main() {
 
     let thread_count = rayon::current_num_threads();
 
-    println!("DMP Indexer");
-    println!("===========");
-    println!("Music dir : {}", music_dir);
-    println!("Image storage: {}", config.image_storage);
+    println!("{}", "DMP Indexer".bright_cyan().bold());
+    println!("{}", "===========".bright_black());
+    println!("Music dir     : {}", music_dir.bright_white());
+    println!("Image storage : {}", config.image_storage.bright_white());
     if !args.only.is_empty() {
-        println!("Filter    : only '{}'", args.only);
+        println!("Filter        : only '{}'", args.only.bright_white());
     } else if !args.from.is_empty() || !args.to.is_empty() {
         let from_str = if args.from.is_empty() {
             "A".to_string()
@@ -880,21 +912,21 @@ async fn main() {
         } else {
             args.to.to_uppercase()
         };
-        println!("Filter    : {} to {}", from_str, to_str);
+        println!("Filter        : {} to {}", from_str.bright_white(), to_str.bright_white());
     }
     if args.limit > 0 {
-        println!("Limit     : {} files", args.limit);
+        println!("Limit         : {} files", args.limit.to_string().bright_white());
     }
     if args.resume {
-        println!("Mode      : resume from checkpoint");
+        println!("Mode          : {}", "resume from checkpoint".yellow());
     }
     if args.overwrite {
-        println!("Mode      : overwrite (nuke + re-index)");
+        println!("Mode          : {}", "overwrite (nuke + re-index)".red());
     }
     if args.skip_images {
-        println!("Images    : skipped");
+        println!("Images        : {}", "skipped".yellow());
     }
-    println!("Threads   : {}", thread_count);
+    println!("Threads       : {}", thread_count.to_string().bright_white());
     println!();
 
     // Connect to database
@@ -911,11 +943,11 @@ async fn main() {
 
     // --- Overwrite: nuke matching data first ---
     if args.overwrite {
-        println!("[0] Nuking matching data...");
+        println!("{} Nuking matching data...", "[0]".red().bold());
         match nuke_artists(&pool, &from_filter, &to_filter, &only_filter).await {
-            Ok(count) => println!("  Deleted {} artists and all related data", count),
+            Ok(count) => println!("  {} Deleted {} artists and all related data", "✓".green(), count.to_string().bright_white()),
             Err(e) => {
-                eprintln!("  Error during nuke: {}", e);
+                eprintln!("  {} Error during nuke: {}", "✗".red(), format!("{}", e).red());
                 std::process::exit(1);
             }
         }
@@ -927,11 +959,15 @@ async fn main() {
     let resume_folder = if args.resume {
         match load_checkpoint(&pool).await {
             Ok(Some((folder, count))) => {
-                println!("Resuming from folder '{}' ({} files already processed)", folder, count);
+                println!("{} Resuming from folder '{}' ({} files already processed)", 
+                    "→".yellow(), 
+                    folder.bright_white(), 
+                    count.to_string().bright_white()
+                );
                 Some(folder)
             }
             _ => {
-                println!("No checkpoint found, starting from scratch");
+                println!("{} No checkpoint found, starting from scratch", "→".yellow());
                 None
             }
         }
@@ -941,10 +977,11 @@ async fn main() {
     };
 
     // --- Phase 1: Walk directory tree ---
-    println!("[1/4] Walking directory tree...");
+    println!("{} Walking directory tree...", "[1/4]".bright_blue().bold());
     let extensions = ["mp3", "m4a", "opus", "aac", "ogg", "flac"];
     let total_dirs = AtomicU64::new(0);
     let music_dir_clone = music_dir.clone();
+    let last_walk_folder: Mutex<String> = Mutex::new(String::new());
 
     let paths: Vec<PathBuf> = WalkDir::new(&music_dir)
         .follow_links(true)
@@ -953,7 +990,22 @@ async fn main() {
         .filter_map(|e| e.ok())
         .filter(|e| {
             if e.file_type().is_dir() {
-                total_dirs.fetch_add(1, Ordering::Relaxed);
+                let dir_count = total_dirs.fetch_add(1, Ordering::Relaxed) + 1;
+                
+                // Show progress every 100 directories
+                if dir_count % 100 == 0 {
+                    let folder = get_artist_folder(e.path(), &music_dir_clone);
+                    let mut last = last_walk_folder.lock().unwrap();
+                    if *last != folder {
+                        eprint!(
+                            "\r  {} {} ({} dirs)",
+                            "→".bright_black(),
+                            format!("Scanning: {:<40}", folder).bright_cyan(),
+                            dir_count
+                        );
+                        *last = folder;
+                    }
+                }
                 return false;
             }
 
@@ -982,9 +1034,12 @@ async fn main() {
 
     let total_files = paths.len() as u64;
     let total_dirs = total_dirs.load(Ordering::Relaxed);
+    eprintln!(); // Clear progress line
     println!(
-        "  Found {} audio files in {} folders",
-        total_files, total_dirs
+        "  {} Found {} audio files in {} folders",
+        "✓".green(),
+        total_files.to_string().bright_white(),
+        total_dirs.to_string().bright_white()
     );
     println!();
 
@@ -994,7 +1049,7 @@ async fn main() {
     }
 
     // --- Phase 2: Extract metadata in parallel ---
-    println!("[2/4] Scanning metadata...");
+    println!("{} Scanning metadata...", "[2/4]".bright_blue().bold());
     let scanned = AtomicU64::new(0);
     let errors = AtomicU64::new(0);
     let last_folder: Mutex<String> = Mutex::new(String::new());
@@ -1017,9 +1072,10 @@ async fn main() {
                 let mut last = last_folder.lock().unwrap();
                 if *last != folder || n % 500 == 0 {
                     eprint!(
-                        "\r  {:<40} {:>8} / {}  ({:.1}%)",
-                        folder,
-                        n,
+                        "\r  {} {} {} / {}  ({:.1}%)",
+                        "→".bright_black(),
+                        format!("Scanning: {:<40}", folder).bright_cyan(),
+                        format!("{:>8}", n).white(),
                         total_files,
                         (n as f64 / total_files as f64) * 100.0
                     );
@@ -1051,15 +1107,25 @@ async fn main() {
         .collect();
 
     eprintln!(); // Clear progress line
-    println!(
-        "  Extracted {} tracks ({} errors)",
-        extracted.len(),
-        errors.load(Ordering::Relaxed)
-    );
+    let error_count = errors.load(Ordering::Relaxed);
+    if error_count > 0 {
+        println!(
+            "  {} Extracted {} tracks ({} errors)",
+            "✓".green(),
+            extracted.len().to_string().bright_white(),
+            error_count.to_string().yellow()
+        );
+    } else {
+        println!(
+            "  {} Extracted {} tracks",
+            "✓".green(),
+            extracted.len().to_string().bright_white()
+        );
+    }
     println!();
 
     // --- Phase 3: Write to database ---
-    println!("[3/4] Writing to database...");
+    println!("{} Writing to database...", "[3/4]".bright_blue().bold());
     let new_count = AtomicU64::new(0);
     let updated_count = AtomicU64::new(0);
     let skipped_count = AtomicU64::new(0);
@@ -1081,9 +1147,10 @@ async fn main() {
             let mut last = last_db_folder.lock().unwrap();
             if *last != folder || n % 200 == 0 {
                 eprint!(
-                    "\r  {:<40} {:>8} / {}  ({:.1}%)",
-                    folder,
-                    n,
+                    "\r  {} {} {} / {}  ({:.1}%)",
+                    "→".bright_black(),
+                    format!("Writing: {:<40}", folder).bright_cyan(),
+                    format!("{:>8}", n).white(),
                     total_extracted,
                     (n as f64 / total_extracted as f64) * 100.0
                 );
@@ -1232,12 +1299,8 @@ async fn main() {
         // Track cover art candidates (first track per release with a picture)
         // Only if the file doesn't already exist
         if track.has_picture && !args.skip_images {
-            let img_base = PathBuf::from("web/public/img/releases");
-            let img_dir = if img_base.exists() || img_base.parent().map(|p| p.exists()).unwrap_or(false) {
-                img_base
-            } else {
-                PathBuf::from("/home/kp/web/DMPv6/web/public/img/releases")
-            };
+            let img_dir = PathBuf::from(&config.project_root)
+                .join("web/public/img/releases");
             let out_path = img_dir.join(format!("{}.jpg", release_id));
             
             // Only add if cover doesn't exist yet
@@ -1256,8 +1319,12 @@ async fn main() {
     let skipped_total = skipped_count.load(Ordering::Relaxed);
     let db_error_total = db_errors.load(Ordering::Relaxed);
     println!(
-        "  New: {} | Updated: {} | Skipped: {} | Errors: {}",
-        new_total, updated_total, skipped_total, db_error_total
+        "  {} New: {} | Updated: {} | Skipped: {} | Errors: {}",
+        "✓".green(),
+        new_total.to_string().bright_green(),
+        updated_total.to_string().bright_yellow(),
+        skipped_total.to_string().bright_black(),
+        if db_error_total > 0 { db_error_total.to_string().red() } else { db_error_total.to_string().bright_black() }
     );
     println!();
 
@@ -1265,7 +1332,8 @@ async fn main() {
     if !args.skip_images {
         let art_map = releases_needing_art.lock().unwrap();
         if !art_map.is_empty() {
-            println!("[3b] Extracting cover art...");
+            println!("{} Extracting cover art...", "[3b]".bright_blue().bold());
+            println!("  {} Processing {} releases", "→".bright_black(), art_map.len());
             
             // Initialize S3 client if needed
             let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
@@ -1278,13 +1346,8 @@ async fn main() {
             
             let mut saved = 0u32;
             let mut existing = 0u32;
-            let img_base = PathBuf::from("web/public/img/releases");
-            // Try alternate paths
-            let img_dir = if img_base.exists() || img_base.parent().map(|p| p.exists()).unwrap_or(false) {
-                img_base
-            } else {
-                PathBuf::from("/home/kp/web/DMPv6/web/public/img/releases")
-            };
+            let img_dir = PathBuf::from(&config.project_root)
+                .join("web/public/img/releases");
 
             for (release_id, source_path) in art_map.iter() {
                 let out_path = img_dir.join(format!("{}.jpg", release_id));
@@ -1342,8 +1405,10 @@ async fn main() {
                 }
             }
             println!(
-                "  Saved {} covers, {} already exist",
-                saved, existing
+                "  {} Saved {} covers, {} already exist",
+                "✓".green(),
+                saved.to_string().bright_white(),
+                existing.to_string().bright_black()
             );
             println!();
         }
@@ -1361,7 +1426,7 @@ async fn main() {
         .unwrap_or_default();
         
         if !missing_releases.is_empty() {
-            println!("Found {} releases with missing images, updating...", missing_releases.len());
+            println!("  {} Found {} releases with missing images", "→".bright_black(), missing_releases.len());
             
             let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
             let use_local = config.image_storage == "local" || config.image_storage == "both";
@@ -1371,12 +1436,8 @@ async fn main() {
                 None
             };
             
-            let img_base = PathBuf::from("web/public/img/releases");
-            let img_dir = if img_base.exists() || img_base.parent().map(|p| p.exists()).unwrap_or(false) {
-                img_base
-            } else {
-                PathBuf::from("/home/kp/web/DMPv6/web/public/img/releases")
-            };
+            let img_dir = PathBuf::from(&config.project_root)
+                .join("web/public/img/releases");
             
             let mut extracted = 0u32;
             let mut failed = 0u32;
@@ -1434,38 +1495,50 @@ async fn main() {
                 }
             }
             
-            println!("  Extracted {} missing covers, {} failed", extracted, failed);
+            println!(
+                "  {} Extracted {} missing covers, {} failed",
+                "✓".green(),
+                extracted.to_string().bright_white(),
+                if failed > 0 { failed.to_string().yellow() } else { failed.to_string().bright_black() }
+            );
             println!();
         } else {
-            println!("  All releases have images");
+            println!("  {} All releases have images", "✓".green());
             println!();
         }
     }
 
     // --- Phase 4: Post-processing ---
-    println!("[4/4] Post-processing...");
+    println!("{} Post-processing...", "[4/4]".bright_blue().bold());
     let releases_updated = update_release_totals(&pool).await.unwrap_or(0);
     let artists_updated = update_artist_totals(&pool).await.unwrap_or(0);
     println!(
-        "  Updated {} releases, {} artists",
-        releases_updated, artists_updated
+        "  {} Updated {} releases, {} artists",
+        "✓".green(),
+        releases_updated.to_string().bright_white(),
+        artists_updated.to_string().bright_white()
     );
 
     // Update statistics
     match update_statistics(&pool).await {
-        Ok(_) => println!("  Updated statistics"),
-        Err(e) => eprintln!("  ⚠ Failed to update statistics: {}", e),
+        Ok(_) => println!("  {} Updated statistics", "✓".green()),
+        Err(e) => eprintln!("  {} Failed to update statistics: {}", "✗".red(), e),
     }
 
     // Clear checkpoint on success
     clear_checkpoint(&pool).await.ok();
-    println!("  Checkpoint cleared");
+    println!("  {} Checkpoint cleared", "✓".green());
 
     let elapsed = start.elapsed();
     println!();
-    println!("Done in {:.1}s", elapsed.as_secs_f64());
-    println!("  New tracks : {}", new_total);
-    println!("  Updated    : {}", updated_total);
-    println!("  Skipped    : {}", skipped_total);
-    println!("  Errors     : {}", errors.load(Ordering::Relaxed) + db_error_total);
+    println!("{}", "═".repeat(60).bright_black());
+    println!();
+    println!("{} {:.1}s", "Completed in:".white().bold(), elapsed.as_secs_f64());
+    println!("  {} {}", "New tracks:".green(), new_total);
+    println!("  {} {}", "Updated:".yellow(), updated_total);
+    println!("  {} {}", "Skipped:".bright_black(), skipped_total);
+    let total_errors = errors.load(Ordering::Relaxed) + db_error_total;
+    if total_errors > 0 {
+        println!("  {} {}", "Errors:".red(), total_errors);
+    }
 }
