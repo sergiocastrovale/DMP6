@@ -116,13 +116,24 @@ async fn main() {
     let env_paths = [
         PathBuf::from("web/.env"),
         PathBuf::from("../../web/.env"),
-        PathBuf::from("/home/kp/web/DMPv6/web/.env"),
     ];
 
+    let mut env_loaded = false;
     for p in &env_paths {
         if p.exists() {
             dotenvy::from_path(p).ok();
+            env_loaded = true;
             break;
+        }
+    }
+
+    // If no relative .env found, try PROJECT_ROOT from environment
+    if !env_loaded {
+        if let Ok(project_root) = std::env::var("PROJECT_ROOT") {
+            let env_path = PathBuf::from(&project_root).join("web/.env");
+            if env_path.exists() {
+                dotenvy::from_path(env_path).ok();
+            }
         }
     }
 
@@ -248,13 +259,27 @@ async fn main() {
     println!();
     println!("Deleting local image files...");
     
+    let project_root = std::env::var("PROJECT_ROOT")
+        .unwrap_or_else(|_| {
+            // Try to detect project root from current directory
+            std::env::current_dir()
+                .ok()
+                .and_then(|d| {
+                    // If we're in scripts/nuke, go up two levels
+                    if d.ends_with("scripts/nuke") {
+                        d.parent().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string())
+                    } else if d.ends_with("scripts") {
+                        d.parent().map(|p| p.to_string_lossy().to_string())
+                    } else {
+                        Some(d.to_string_lossy().to_string())
+                    }
+                })
+                .unwrap_or_else(|| ".".to_string())
+        });
+    
     let image_dirs = vec![
-        PathBuf::from("web/public/img/releases"),
-        PathBuf::from("../../web/public/img/releases"),
-        PathBuf::from("/home/kp/web/DMPv6/web/public/img/releases"),
-        PathBuf::from("web/public/img/artists"),
-        PathBuf::from("../../web/public/img/artists"),
-        PathBuf::from("/home/kp/web/DMPv6/web/public/img/artists"),
+        PathBuf::from(&project_root).join("web/public/img/releases"),
+        PathBuf::from(&project_root).join("web/public/img/artists"),
     ];
     
     let mut local_deleted_count = 0;

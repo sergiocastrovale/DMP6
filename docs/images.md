@@ -231,4 +231,3 @@ Summary:
 ```
 
 **Note**: The nuke script handles bulk deletion immediately. The clean script is for processing individual deletions that happen through the web app or API.
-
