@@ -1,22 +1,29 @@
-# Setting up DMPv6
+# Dev guide
 
-## Tech Stack
+This document is the single source of truth for the DMP v6 web application.
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Database | PostgreSQL 16+ | Data storage |
-| Schema | Prisma ORM | Type-safe DB access |
-| Scripts | Rust | High-performance CLI tools |
-| Metadata | `lofty` crate | Audio tag parsing |
-| API | MusicBrainz | Canonical music data |
-| Images | S3 + Local | Cover art storage |
-| Analysis | Rust + HTML | Metadata reporting |
+## Stack
 
-## Prerequisites
-
-- **Rust** (stable toolchain): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- **PostgreSQL 16+**
 - **Node.js 20+** and **pnpm** (for Prisma): `npm install -g pnpm`
+- **Framework**: Nuxt 4.x (latest) + Vue 3 + TypeScript
+- **Styling**: Tailwind CSS v4 only (absolutely no custom CSS)
+- **Icons**: Lucide (`lucide-vue-next`)
+- **State**: Pinia with localStorage persistence (`pinia-plugin-persistedstate`)
+- **Database**: Prisma + PostgreSQL 16+ (schema at `web/prisma/schema.prisma`)
+- **Audio**: HTML5 Audio API, streamed from `MUSIC_DIR` (server and files on same machine)
+- **Images**: Configurable via `IMAGE_STORAGE` env. Prefer S3 `imageUrl` when available, fall back to local `image` field
+- **Utilities**: `@vueuse/core`, `date-fns`
+- **Rust** (stable toolchain): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+
+## Coding Standards
+
+- All TypeScript definitions live in `web/types/`
+- API consolidated with centralized patterns in `server/api/`
+- Zero CSS - Tailwind utility classes only
+- Icons from Lucide only
+- Keep database queries performant - use Prisma `select` to limit fields, proper indexes
+- No scripts-related code, no downloader code, no CLI invocation code
+
 
 ## PostgreSQL Setup (WSL2 / Ubuntu)
 
@@ -112,4 +119,3 @@ tail -f errors.log
 # Force re-sync
 ./sync --overwrite
 ```
-

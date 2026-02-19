@@ -28,6 +28,7 @@ struct Args {
 
 struct CleanConfig {
     database_url: String,
+    project_root: String,
     image_storage: String,
     s3_bucket: Option<String>,
     s3_region: Option<String>,
@@ -40,17 +41,47 @@ fn load_config() -> CleanConfig {
     let env_paths = [
         PathBuf::from("web/.env"),
         PathBuf::from("../../web/.env"),
-        PathBuf::from("/home/kp/web/DMPv6/web/.env"),
     ];
 
+    let mut env_loaded = false;
     for p in &env_paths {
         if p.exists() {
             dotenvy::from_path(p).ok();
+            env_loaded = true;
             break;
         }
     }
 
+    // If no relative .env found, try PROJECT_ROOT from environment
+    if !env_loaded {
+        if let Ok(project_root) = std::env::var("PROJECT_ROOT") {
+            let env_path = PathBuf::from(&project_root).join("web/.env");
+            if env_path.exists() {
+                dotenvy::from_path(env_path).ok();
+            }
+        }
+    }
+
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set in web/.env");
+    
+    let project_root = std::env::var("PROJECT_ROOT")
+        .unwrap_or_else(|_| {
+            // Try to detect project root from current directory
+            std::env::current_dir()
+                .ok()
+                .and_then(|d| {
+                    // If we're in scripts/clean, go up two levels
+                    if d.ends_with("scripts/clean") {
+                        d.parent().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string())
+                    } else if d.ends_with("scripts") {
+                        d.parent().map(|p| p.to_string_lossy().to_string())
+                    } else {
+                        Some(d.to_string_lossy().to_string())
+                    }
+                })
+                .unwrap_or_else(|| ".".to_string())
+        });
+    
     let image_storage = std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
     let s3_bucket = std::env::var("S3_BUCKET").ok();
     let s3_region = std::env::var("S3_REGION").ok();
@@ -60,6 +91,7 @@ fn load_config() -> CleanConfig {
 
     CleanConfig {
         database_url,
+        project_root,
         image_storage,
         s3_bucket,
         s3_region,
@@ -125,28 +157,19 @@ async fn delete_from_s3(
     Ok(())
 }
 
-fn delete_from_local(object_key: &str) -> Result<(), std::io::Error> {
-    // Convert S3 key to local path
-    let local_paths = vec![
-        PathBuf::from(format!("web/public/img/{}", object_key)),
-        PathBuf::from(format!("../../web/public/img/{}", object_key)),
-        PathBuf::from(format!("/home/kp/web/DMPv6/web/public/img/{}", object_key)),
-    ];
+fn delete_from_local(object_key: &str, config: &CleanConfig) -> Result<(), std::io::Error> {
+    // Convert S3 key to local path using project_root
+    let path = PathBuf::from(&config.project_root)
+        .join("web/public/img")
+        .join(object_key);
 
-    let mut deleted = false;
-    for path in local_paths {
-        if path.exists() {
-            fs::remove_file(&path)?;
-            deleted = true;
-        }
-    }
-
-    if deleted {
+    if path.exists() {
+        fs::remove_file(&path)?;
         Ok(())
     } else {
         Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            "File not found in any expected location",
+            format!("File not found: {}", path.display()),
         ))
     }
 }
@@ -288,7 +311,7 @@ async fn main() {
 
         // Delete from local storage
         if use_local {
-            match delete_from_local(&object_key) {
+            match delete_from_local(&object_key, &config) {
                 Ok(_) => {
                     local_success = true;
                     local_deleted += 1;

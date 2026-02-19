@@ -983,37 +983,58 @@ async fn main() {
     let music_dir_clone = music_dir.clone();
     let last_walk_folder: Mutex<String> = Mutex::new(String::new());
 
+    let from_filter_clone = from_filter.clone();
+    let to_filter_clone = to_filter.clone();
+    let only_filter_clone = only_filter.clone();
+    
     let paths: Vec<PathBuf> = WalkDir::new(&music_dir)
         .follow_links(true)
         .sort_by_file_name()
         .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            if e.file_type().is_dir() {
-                let dir_count = total_dirs.fetch_add(1, Ordering::Relaxed) + 1;
+        .filter_entry(|e| {
+            // For the root directory, always enter
+            if e.depth() == 0 {
+                return true;
+            }
+            
+            // For artist folders (depth 1), check if they match the filter
+            if e.depth() == 1 && e.file_type().is_dir() {
+                let folder = e.file_name().to_string_lossy().to_string();
+                let matches = matches_filter(&folder, &from_filter_clone, &to_filter_clone, &only_filter_clone);
                 
-                // Show progress every 100 directories
-                if dir_count % 100 == 0 {
-                    let folder = get_artist_folder(e.path(), &music_dir_clone);
-                    let mut last = last_walk_folder.lock().unwrap();
-                    if *last != folder {
-                        eprint!(
-                            "\r  {} {} ({} dirs)",
-                            "→".bright_black(),
-                            format!("Scanning: {:<40}", folder).bright_cyan(),
-                            dir_count
-                        );
-                        *last = folder;
+                // Show progress for matching folders
+                if matches {
+                    let dir_count = total_dirs.fetch_add(1, Ordering::Relaxed) + 1;
+                    if dir_count % 10 == 0 || dir_count == 1 {
+                        let mut last = last_walk_folder.lock().unwrap();
+                        if *last != folder {
+                            eprint!(
+                                "\r  {} {} ({} folders)",
+                                "→".bright_black(),
+                                format!("Scanning: {:<40}", folder).bright_cyan(),
+                                dir_count
+                            );
+                            *last = folder.clone();
+                        }
                     }
                 }
+                
+                // Skip this entire directory tree if it doesn't match
+                return matches;
+            }
+            
+            // For deeper levels, always enter (we already filtered at artist level)
+            true
+        })
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            // Skip directories in the final collection
+            if e.file_type().is_dir() {
                 return false;
             }
 
             let folder = get_artist_folder(e.path(), &music_dir_clone);
-            if !matches_filter(&folder, &from_filter, &to_filter, &only_filter) {
-                return false;
-            }
-
+            
             // Resume: skip folders already processed
             if let Some(ref resume_f) = resume_folder {
                 if folder.to_lowercase() <= resume_f.to_lowercase() {
@@ -1021,6 +1042,7 @@ async fn main() {
                 }
             }
 
+            // Check file extension
             if let Some(ext) = e.path().extension() {
                 let ext_lower = ext.to_string_lossy().to_lowercase();
                 extensions.contains(&ext_lower.as_str())

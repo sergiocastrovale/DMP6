@@ -1,4 +1,4 @@
-# Metadata Analysis Tool
+# Scripts: analysis
 
 A Rust CLI tool that scans millions of audio files for metadata issues and generates a dark-themed HTML report with tabbed views, search filtering, sortable columns, and dual WSL/Windows clickable links.
 
