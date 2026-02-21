@@ -5,10 +5,10 @@ use aws_sdk_s3::Client as S3Client;
 async fn main() {
     dotenvy::from_path("../../web/.env").ok();
 
-    let bucket = std::env::var("S3_BUCKET").expect("S3_BUCKET not set");
-    let region = std::env::var("S3_REGION").expect("S3_REGION not set");
-    let access_key = std::env::var("S3_ACCESS_KEY_ID").expect("S3_ACCESS_KEY_ID not set");
-    let secret_key = std::env::var("S3_SECRET_ACCESS_KEY").expect("S3_SECRET_ACCESS_KEY not set");
+    let bucket = std::env::var("S3_IMAGE_BUCKET").expect("S3_IMAGE_BUCKET not set");
+    let region = std::env::var("AWS_REGION").expect("AWS_REGION not set");
+    let access_key = std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID not set");
+    let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY not set");
 
     println!("Testing S3 connection...");
     println!("Bucket: {}", bucket);

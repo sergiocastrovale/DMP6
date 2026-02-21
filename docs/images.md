@@ -92,10 +92,10 @@ Add these variables to your `web/.env` file:
 IMAGE_STORAGE=s3  # or "local" or "both"
 
 # S3 Configuration
-S3_BUCKET=dmp-music-images
-S3_REGION=us-east-1
-S3_ACCESS_KEY_ID=YOUR_ACCESS_KEY_HERE
-S3_SECRET_ACCESS_KEY=YOUR_SECRET_KEY_HERE
+S3_IMAGE_BUCKET=dmp-music-images
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=YOUR_ACCESS_KEY_HERE
+AWS_SECRET_ACCESS_KEY=YOUR_SECRET_KEY_HERE
 S3_ENDPOINT=  # Leave empty for AWS S3, or set for S3-compatible services
 S3_PUBLIC_URL=https://dmp-music-images.s3.us-east-1.amazonaws.com
 ```

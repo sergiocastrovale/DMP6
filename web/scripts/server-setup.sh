@@ -144,7 +144,7 @@ echo ""
 echo -e "${GREEN}Step 9: Create Server .env File${NC}"
 
 # Check if we have environment variables passed from local .env
-if [ -n "$IMAGE_STORAGE" ] && [ -n "$S3_BUCKET" ]; then
+if [ -n "$IMAGE_STORAGE" ] && [ -n "$S3_IMAGE_BUCKET" ]; then
   echo "Using configuration from local environment..."
   cat > $DEPLOY_PATH/.env << EOF
 # Database
@@ -152,10 +152,10 @@ DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}
 
 # Image Storage
 IMAGE_STORAGE=${IMAGE_STORAGE}
-S3_BUCKET=${S3_BUCKET}
-S3_REGION=${S3_REGION}
-S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
-S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+S3_IMAGE_BUCKET=${S3_IMAGE_BUCKET}
+AWS_REGION=${AWS_REGION}
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
 S3_ENDPOINT=${S3_ENDPOINT}
 S3_PUBLIC_URL=${S3_PUBLIC_URL}
 
@@ -176,10 +176,10 @@ DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}
 
 # Image Storage (CONFIGURE THIS)
 IMAGE_STORAGE=s3
-S3_BUCKET=
-S3_REGION=
-S3_ACCESS_KEY_ID=
-S3_SECRET_ACCESS_KEY=
+S3_IMAGE_BUCKET=
+AWS_REGION=
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
 S3_ENDPOINT=
 S3_PUBLIC_URL=
 

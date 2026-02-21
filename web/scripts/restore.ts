@@ -1,13 +1,16 @@
 #!/usr/bin/env tsx
 
 import { exec } from 'node:child_process'
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, stat, writeFile } from 'node:fs/promises'
+import { createWriteStream } from 'node:fs'
 import * as path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { promisify } from 'node:util'
+import { pipeline } from 'node:stream/promises'
 import readline from 'node:readline'
 import dotenv from 'dotenv'
 import minimist from 'minimist'
+import { S3Client, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
 
 dotenv.config()
 
@@ -34,6 +37,90 @@ function parseDatabaseUrl(url: string): DatabaseConfig {
   } catch (error) {
     throw new Error(`Invalid DATABASE_URL format: ${error}`)
   }
+}
+
+function getS3Client(): S3Client | null {
+  const region = process.env.S3_REGION || process.env.AWS_REGION
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY
+  const endpoint = process.env.S3_ENDPOINT
+
+  if (!region || !accessKeyId || !secretAccessKey) {
+    return null
+  }
+
+  const config: any = {
+    region,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  }
+
+  // Only set custom endpoint if explicitly provided (for non-AWS S3)
+  if (endpoint && endpoint.trim()) {
+    config.endpoint = endpoint
+    config.forcePathStyle = true
+  }
+
+  return new S3Client(config)
+}
+
+async function listS3Backups(): Promise<Array<{ key: string; lastModified: Date; size: number }>> {
+  const s3Client = getS3Client()
+  if (!s3Client) {
+    throw new Error('S3 credentials not configured')
+  }
+
+  const bucket = process.env.S3_BACKUPS_BUCKET || 'backups'
+  
+  const listCommand = new ListObjectsV2Command({
+    Bucket: bucket,
+  })
+  
+  const response = await s3Client.send(listCommand)
+  
+  if (!response.Contents || response.Contents.length === 0) {
+    return []
+  }
+  
+  return response.Contents
+    .filter(obj => obj.Key && obj.Key.endsWith('.sql.gz'))
+    .map(obj => ({
+      key: obj.Key!,
+      lastModified: obj.LastModified || new Date(0),
+      size: obj.Size || 0,
+    }))
+    .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime())
+}
+
+async function downloadFromS3(key: string, destPath: string): Promise<void> {
+  const s3Client = getS3Client()
+  if (!s3Client) {
+    throw new Error('S3 credentials not configured')
+  }
+
+  const bucket = process.env.S3_BACKUPS_BUCKET || 'backups'
+  
+  console.log(`⏳ Downloading from S3: s3://${bucket}/${key}`)
+  
+  const getCommand = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  })
+  
+  const response = await s3Client.send(getCommand)
+  
+  if (!response.Body) {
+    throw new Error('No data received from S3')
+  }
+  
+  const writeStream = createWriteStream(destPath)
+  
+  // @ts-ignore - Body is a stream
+  await pipeline(response.Body, writeStream)
+  
+  console.log('✅ Downloaded from S3')
 }
 
 async function listBackups(dumpsDir: string): Promise<void> {
@@ -189,23 +276,82 @@ async function performRestore(backupPath: string): Promise<void> {
   }
 }
 
-async function restoreBackup(): Promise<void> {
+async function restoreBackup(fromTimestamp?: string): Promise<void> {
   const dumpsDir = path.join(process.cwd(), 'dump')
+  const backupStorage = process.env.BACKUP_STORAGE || 'local'
+  let backupPath: string | null = null
+  let backupFilename: string | null = null
 
-  await listBackups(dumpsDir)
-
-  const mostRecent = await findMostRecentBackup(dumpsDir)
-
-  if (!mostRecent) {
-    console.error('\n❌ No backup files found in dump/ directory')
-    console.log('💡 Create a backup first using: pnpm run backup')
-    return
+  // Determine source based on BACKUP_STORAGE
+  if (backupStorage === 's3' || (backupStorage === 'both' && !fromTimestamp)) {
+    console.log('☁️  Fetching backups from S3...')
+    const s3Backups = await listS3Backups()
+    
+    if (s3Backups.length === 0) {
+      console.error('\n❌ No backup files found in S3')
+      console.log('💡 Create a backup first using: pnpm run backup')
+      return
+    }
+    
+    console.log('📋 Available S3 backups:')
+    s3Backups.forEach((backup, index) => {
+      const indicator = index === 0 ? '👆 ' : '   '
+      const sizeMB = (backup.size / 1024 / 1024).toFixed(1)
+      console.log(`${indicator}${backup.key} (${sizeMB} MB) - ${backup.lastModified.toLocaleString()}`)
+    })
+    
+    // Select backup based on timestamp or latest
+    let selectedBackup: typeof s3Backups[0] | undefined
+    
+    if (fromTimestamp) {
+      selectedBackup = s3Backups.find(b => b.key.includes(fromTimestamp))
+      if (!selectedBackup) {
+        console.error(`\n❌ No backup found matching timestamp: ${fromTimestamp}`)
+        return
+      }
+    } else {
+      selectedBackup = s3Backups[0]
+    }
+    
+    console.log(`\n🎯 Using backup: ${selectedBackup.key}`)
+    
+    // Download to temporary location
+    backupFilename = selectedBackup.key
+    backupPath = path.join(dumpsDir, backupFilename)
+    await downloadFromS3(selectedBackup.key, backupPath)
+  } else {
+    // Use local backup
+    console.log('📁 Using local backups...')
+    await listBackups(dumpsDir)
+    
+    if (fromTimestamp) {
+      const files = await readdir(dumpsDir)
+      const matchingFile = files.find(f => f.includes(fromTimestamp) && f.endsWith('.sql.gz'))
+      
+      if (!matchingFile) {
+        console.error(`\n❌ No backup found matching timestamp: ${fromTimestamp}`)
+        return
+      }
+      
+      backupFilename = matchingFile
+      backupPath = path.join(dumpsDir, matchingFile)
+    } else {
+      const mostRecent = await findMostRecentBackup(dumpsDir)
+      
+      if (!mostRecent) {
+        console.error('\n❌ No backup files found in dump/ directory')
+        console.log('💡 Create a backup first using: pnpm run backup')
+        return
+      }
+      
+      backupFilename = mostRecent
+      backupPath = path.join(dumpsDir, mostRecent)
+    }
+    
+    console.log(`\n🎯 Using most recent backup: ${backupFilename}`)
   }
 
-  const backupPath = path.join(dumpsDir, mostRecent)
-  console.log(`\n🎯 Using most recent backup: ${mostRecent}`)
-
-  const confirmed = await confirmRestore(mostRecent)
+  const confirmed = await confirmRestore(backupFilename)
 
   if (!confirmed) {
     console.log('👋 Restore cancelled')
@@ -218,6 +364,7 @@ async function restoreBackup(): Promise<void> {
 async function main() {
   const args = minimist(process.argv.slice(2), {
     boolean: ['help'],
+    string: ['from'],
     alias: { h: 'help' },
   })
 
@@ -225,13 +372,22 @@ async function main() {
     console.log(`
 Database Restore Tool
 
-Restores your PostgreSQL database from the most recent backup.
+Restores your PostgreSQL database from a backup.
 
 Usage:
-  tsx scripts/restore.ts
+  tsx scripts/restore.ts [--from=TIMESTAMP]
+
+Options:
+  --from=YYYY-MM-DD-HH-MM-SS    Restore from specific backup timestamp
+
+Storage:
+  Controlled by BACKUP_STORAGE environment variable:
+    - 'local' (default): Read from dump/ directory
+    - 's3': Read from S3 bucket
+    - 'both': Read from S3 (prefer remote for production)
 
 Input:
-  Automatically selects the most recent .sql.gz file from dump/
+  Automatically selects the most recent backup unless --from is specified
 
 Requirements:
   - psql command (PostgreSQL client tools)
@@ -243,7 +399,7 @@ Requirements:
     return
   }
 
-  await restoreBackup()
+  await restoreBackup(args.from)
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

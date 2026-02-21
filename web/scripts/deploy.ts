@@ -67,10 +67,10 @@ function createServerEnv() {
   // Get required env vars from local .env
   const DATABASE_URL = process.env.DATABASE_URL || ''
   const IMAGE_STORAGE = process.env.IMAGE_STORAGE || 'local'
-  const S3_BUCKET = process.env.S3_BUCKET || ''
-  const S3_REGION = process.env.S3_REGION || ''
-  const S3_ACCESS_KEY_ID = process.env.S3_ACCESS_KEY_ID || ''
-  const S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_ACCESS_KEY || ''
+  const S3_IMAGE_BUCKET = process.env.S3_IMAGE_BUCKET || ''
+  const AWS_REGION = process.env.AWS_REGION || ''
+  const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || ''
+  const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || ''
   const S3_PUBLIC_URL = process.env.S3_PUBLIC_URL || ''
   
   // Party Mode - force listener role for production
@@ -85,10 +85,10 @@ DATABASE_URL=${DATABASE_URL}
 
 # Image Storage
 IMAGE_STORAGE=${IMAGE_STORAGE}
-S3_BUCKET=${S3_BUCKET}
-S3_REGION=${S3_REGION}
-S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
-S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+S3_IMAGE_BUCKET=${S3_IMAGE_BUCKET}
+AWS_REGION=${AWS_REGION}
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
 S3_PUBLIC_URL=${S3_PUBLIC_URL}
 
 # Party Mode (Listener) - Auto-configured for production
@@ -112,27 +112,61 @@ const mode = process.argv[2]
 if (mode === 'db') {
   console.log(`Restoring database on ${SERVER_USER}@${SERVER_HOST}`)
 
-  console.log('\nFinding latest local dump...')
-  const latestLocalDump = execSync('ls -t dump/*.sql.gz 2>/dev/null | head -1', { encoding: 'utf-8' }).trim()
+  const backupStorage = process.env.BACKUP_STORAGE || 'local'
+  
+  console.log(`📦 Backup storage mode: ${backupStorage}`)
 
-  if (!latestLocalDump) {
-    console.error('❌ No local dump files found in dump/ directory')
-    console.log('\nRun "pnpm backup" first to create a backup')
-    process.exit(1)
+  let dumpFileName: string
+  let needsUpload = false
+
+  if (backupStorage === 's3' || backupStorage === 'both') {
+    // Use S3 backup - download on server
+    console.log('\n☁️  Using S3 backup (will be downloaded on server)...')
+    
+    // We'll let the server fetch from S3 directly
+    needsUpload = false
+    dumpFileName = 'latest' // Placeholder - server will fetch latest
+  } else {
+    // Use local backup - upload to server
+    console.log('\nFinding latest local dump...')
+    const latestLocalDump = execSync('ls -t dump/*.sql.gz 2>/dev/null | head -1', { encoding: 'utf-8' }).trim()
+
+    if (!latestLocalDump) {
+      console.error('❌ No local dump files found in dump/ directory')
+      console.log('\nRun "pnpm backup" first to create a backup')
+      process.exit(1)
+    }
+
+    console.log(`✅ Found local backup: ${latestLocalDump}`)
+    dumpFileName = latestLocalDump.split('/').pop()!
+    needsUpload = true
   }
 
-  console.log(`✅ Found local backup: ${latestLocalDump}`)
+  if (needsUpload) {
+    console.log('\nCleaning up old dumps on server...')
+    execSync(sshCmd(`rm -rf ${DEPLOY_PATH}/dump/*.sql.gz`), { stdio: 'inherit' })
 
-  console.log('\nCleaning up old dumps on server...')
-  execSync(sshCmd(`rm -rf ${DEPLOY_PATH}/dump/*.sql.gz`), { stdio: 'inherit' })
-
-  console.log('\nSyncing latest dump to server...')
-  execSync(rsyncCmd(latestLocalDump, `${DEPLOY_PATH}/dump/`), { stdio: 'inherit' })
-
-  const dumpFileName = latestLocalDump.split('/').pop()
+    console.log('\nSyncing latest dump to server...')
+    execSync(rsyncCmd(`dump/${dumpFileName}`, `${DEPLOY_PATH}/dump/`), { stdio: 'inherit' })
+  }
 
   console.log('\nRestoring database...')
-  const restoreDbCmd = `cd ${DEPLOY_PATH} && source .env && DB_USER=$(echo $DATABASE_URL | sed -n "s|.*://\\([^:]*\\):.*|\\1|p") && DB_PASS=$(echo $DATABASE_URL | sed -n "s|.*://[^:]*:\\([^@]*\\)@.*|\\1|p") && DB_HOST=$(echo $DATABASE_URL | sed -n "s|.*@\\([^:/]*\\).*|\\1|p") && DB_NAME=$(echo $DATABASE_URL | sed -n "s|.*/\\([^?]*\\).*|\\1|p") && cd dump && echo "Dropping and recreating database..." && PGPASSWORD=$DB_PASS psql -h $DB_HOST -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" && PGPASSWORD=$DB_PASS psql -h $DB_HOST -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;" && echo "Decompressing and restoring from ${dumpFileName}..." && gunzip -c "${dumpFileName}" | PGPASSWORD=$DB_PASS psql -h $DB_HOST -U $DB_USER -d $DB_NAME && echo "Database restored successfully!"`
+  
+  let restoreDbCmd: string
+  
+  if (backupStorage === 's3' || backupStorage === 'both') {
+    // Server will download from S3 and restore
+    const s3Bucket = process.env.S3_BACKUPS_BUCKET || 'backups'
+    const s3Region = process.env.AWS_REGION || ''
+    const s3AccessKey = process.env.AWS_ACCESS_KEY_ID || ''
+    const s3SecretKey = process.env.AWS_SECRET_ACCESS_KEY || ''
+    const s3Endpoint = process.env.S3_ENDPOINT || ''
+    
+    restoreDbCmd = `cd ${DEPLOY_PATH} && source .env && DB_USER=$(echo $DATABASE_URL | sed -n "s|.*://\\([^:]*\\):.*|\\1|p") && DB_PASS=$(echo $DATABASE_URL | sed -n "s|.*://[^:]*:\\([^@]*\\)@.*|\\1|p") && DB_HOST=$(echo $DATABASE_URL | sed -n "s|.*@\\([^:/]*\\).*|\\1|p") && DB_NAME=$(echo $DATABASE_URL | sed -n "s|.*/\\([^?]*\\).*|\\1|p") && cd dump && echo "Fetching latest backup from S3..." && aws s3 cp s3://${s3Bucket}/\\$(aws s3 ls s3://${s3Bucket}/ | grep '\\.sql\\.gz$' | sort -r | head -1 | awk '{print \\$4}') latest-s3.sql.gz --region ${s3Region} && echo "Dropping and recreating database..." && PGPASSWORD=$DB_PASS psql -h $DB_HOST -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" && PGPASSWORD=$DB_PASS psql -h $DB_HOST -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;" && echo "Decompressing and restoring from S3 backup..." && gunzip -c latest-s3.sql.gz | PGPASSWORD=$DB_PASS psql -h $DB_HOST -U $DB_USER -d $DB_NAME && rm latest-s3.sql.gz && echo "Database restored successfully from S3!"`
+  } else {
+    // Use uploaded local backup
+    restoreDbCmd = `cd ${DEPLOY_PATH} && source .env && DB_USER=$(echo $DATABASE_URL | sed -n "s|.*://\\([^:]*\\):.*|\\1|p") && DB_PASS=$(echo $DATABASE_URL | sed -n "s|.*://[^:]*:\\([^@]*\\)@.*|\\1|p") && DB_HOST=$(echo $DATABASE_URL | sed -n "s|.*@\\([^:/]*\\).*|\\1|p") && DB_NAME=$(echo $DATABASE_URL | sed -n "s|.*/\\([^?]*\\).*|\\1|p") && cd dump && echo "Dropping and recreating database..." && PGPASSWORD=$DB_PASS psql -h $DB_HOST -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" && PGPASSWORD=$DB_PASS psql -h $DB_HOST -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;" && echo "Decompressing and restoring from ${dumpFileName}..." && gunzip -c "${dumpFileName}" | PGPASSWORD=$DB_PASS psql -h $DB_HOST -U $DB_USER -d $DB_NAME && echo "Database restored successfully!"`
+  }
 
   execSync(sshCmd(restoreDbCmd), { stdio: 'inherit' })
 
@@ -207,8 +241,12 @@ else {
   console.error('❌ Invalid mode. Use "app", "db", "nginx", or "uncache"')
   console.log('\nUsage:')
   console.log('  pnpm deploy:app     - Deploy application')
-  console.log('  pnpm deploy:db      - Restore database')
+  console.log('  pnpm deploy:db      - Restore database (uses BACKUP_STORAGE setting)')
   console.log('  pnpm deploy:nginx   - Deploy Nginx configuration')
   console.log('  pnpm deploy:uncache - Clear Nginx cache only')
+  console.log('\nBackup Storage:')
+  console.log('  BACKUP_STORAGE=local - Upload local backup to server')
+  console.log('  BACKUP_STORAGE=s3    - Server fetches from S3')
+  console.log('  BACKUP_STORAGE=both  - Server fetches from S3')
   process.exit(1)
 }

@@ -20,10 +20,10 @@ PROJECT_ROOT=/absolute/path/to/DMPv6
 IMAGE_STORAGE=local
 
 # S3 configuration (if using S3)
-S3_BUCKET=your-bucket-name
-S3_REGION=us-east-1
-S3_ACCESS_KEY_ID=AKIA...
-S3_SECRET_ACCESS_KEY=...
+S3_IMAGE_BUCKET=your-bucket-name
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=...
 S3_ENDPOINT=
 S3_PUBLIC_URL=https://your-bucket.s3.region.amazonaws.com
 ```

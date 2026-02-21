@@ -16,22 +16,22 @@ struct Args {
 }
 
 async fn create_s3_client() -> Option<S3Client> {
-    let s3_bucket = std::env::var("S3_BUCKET").ok();
-    let s3_region = std::env::var("S3_REGION").ok();
+    let S3_IMAGE_BUCKET = std::env::var("S3_IMAGE_BUCKET").ok();
+    let AWS_REGION = std::env::var("AWS_REGION").ok();
     
-    if s3_bucket.is_none() || s3_region.is_none() {
+    if S3_IMAGE_BUCKET.is_none() || AWS_REGION.is_none() {
         return None;
     }
     
     let mut aws_config = aws_config::defaults(BehaviorVersion::latest());
     
-    if let Some(ref region) = s3_region {
+    if let Some(ref region) = AWS_REGION {
         aws_config = aws_config.region(aws_sdk_s3::config::Region::new(region.clone()));
     }
     
     if let (Some(key), Some(secret)) = (
-        std::env::var("S3_ACCESS_KEY_ID").ok(),
-        std::env::var("S3_SECRET_ACCESS_KEY").ok()
+        std::env::var("AWS_ACCESS_KEY_ID").ok(),
+        std::env::var("AWS_SECRET_ACCESS_KEY").ok()
     ) {
         aws_config = aws_config.credentials_provider(
             aws_sdk_s3::config::Credentials::new(
@@ -312,7 +312,7 @@ async fn main() {
         println!("Deleting S3 image files...");
         
         if let Some(s3_client) = create_s3_client().await {
-            if let Some(bucket) = std::env::var("S3_BUCKET").ok() {
+            if let Some(bucket) = std::env::var("S3_IMAGE_BUCKET").ok() {
                 match delete_s3_images(&s3_client, &bucket).await {
                     Ok(count) => {
                         println!("  ✓ Deleted {} S3 image file(s)", count);
@@ -322,7 +322,7 @@ async fn main() {
                     }
                 }
             } else {
-                println!("  ⚠ S3_BUCKET not configured, skipping S3 deletion");
+                println!("  ⚠ S3_IMAGE_BUCKET not configured, skipping S3 deletion");
             }
         } else {
             println!("  ⚠ S3 not configured, skipping S3 deletion");

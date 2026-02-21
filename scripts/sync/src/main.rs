@@ -873,7 +873,7 @@ async fn download_artist_image(
                             // Upload to S3 if needed
                             if use_s3 {
                                 if let (Some(ref s3), Some(ref bucket), Some(ref public_url)) = 
-                                    (s3_client, &config.s3_bucket, &config.s3_public_url) {
+                                    (s3_client, &config.S3_IMAGE_BUCKET, &config.s3_public_url) {
                                     let s3_key = format!("artists/{}.jpg", artist_slug);
                                     if upload_to_s3(s3, bucket, &s3_key, &out_path).await.is_ok() {
                                         let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
@@ -921,7 +921,7 @@ async fn download_artist_image(
             // Upload to S3 if needed
             if use_s3 {
                 if let (Some(ref s3), Some(ref bucket), Some(ref public_url)) = 
-                    (s3_client, &config.s3_bucket, &config.s3_public_url) {
+                    (s3_client, &config.S3_IMAGE_BUCKET, &config.s3_public_url) {
                     let s3_key = format!("artists/{}.jpg", artist_slug);
                     if upload_to_s3(s3, bucket, &s3_key, &out_path).await.is_ok() {
                         let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
@@ -1114,8 +1114,8 @@ struct SyncConfig {
     database_url: String,
     project_root: String,
     image_storage: String,
-    s3_bucket: Option<String>,
-    s3_region: Option<String>,
+    S3_IMAGE_BUCKET: Option<String>,
+    AWS_REGION: Option<String>,
     s3_access_key: Option<String>,
     s3_secret_key: Option<String>,
     s3_endpoint: Option<String>,
@@ -1168,10 +1168,10 @@ fn load_config() -> SyncConfig {
         });
     
     let image_storage = std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
-    let s3_bucket = std::env::var("S3_BUCKET").ok();
-    let s3_region = std::env::var("S3_REGION").ok();
-    let s3_access_key = std::env::var("S3_ACCESS_KEY_ID").ok();
-    let s3_secret_key = std::env::var("S3_SECRET_ACCESS_KEY").ok();
+    let S3_IMAGE_BUCKET = std::env::var("S3_IMAGE_BUCKET").ok();
+    let AWS_REGION = std::env::var("AWS_REGION").ok();
+    let s3_access_key = std::env::var("AWS_ACCESS_KEY_ID").ok();
+    let s3_secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok();
     let s3_endpoint = std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty());
     let s3_public_url = std::env::var("S3_PUBLIC_URL").ok();
 
@@ -1179,8 +1179,8 @@ fn load_config() -> SyncConfig {
         database_url,
         project_root,
         image_storage,
-        s3_bucket,
-        s3_region,
+        S3_IMAGE_BUCKET,
+        AWS_REGION,
         s3_access_key,
         s3_secret_key,
         s3_endpoint,
@@ -1193,13 +1193,13 @@ fn load_config() -> SyncConfig {
 // ---------------------------------------------------------------------------
 
 async fn create_s3_client(config: &SyncConfig) -> Option<S3Client> {
-    if config.s3_bucket.is_none() || config.s3_region.is_none() {
+    if config.S3_IMAGE_BUCKET.is_none() || config.AWS_REGION.is_none() {
         return None;
     }
     
     let mut aws_config = aws_config::defaults(BehaviorVersion::latest());
     
-    if let Some(ref region) = config.s3_region {
+    if let Some(ref region) = config.AWS_REGION {
         aws_config = aws_config.region(aws_sdk_s3::config::Region::new(region.clone()));
     }
     
