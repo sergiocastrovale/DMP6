@@ -5,12 +5,11 @@ use lofty::config::ParseOptions;
 use lofty::prelude::*;
 use lofty::probe::Probe;
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
 use std::time::Instant;
 use walkdir::WalkDir;
 
@@ -48,11 +47,71 @@ struct Args {
     /// Filter: only scan folders starting with this prefix (case insensitive)
     #[arg(long, default_value = "")]
     only: String,
+
+    /// Move each file with issues into a __QUARANTINE subfolder of the scan root, preserving the relative path
+    #[arg(long)]
+    quarantine: bool,
+
+    /// Dry run of --quarantine: print what would be moved without touching the filesystem
+    #[arg(long)]
+    quarantine_dry: bool,
+
+    /// Move all files from __QUARANTINE back to their original locations (reverses --quarantine)
+    #[arg(long)]
+    end_quarantine: bool,
+
+    /// Skip report generation entirely
+    #[arg(long)]
+    no_report: bool,
+
+    /// Only generate critical.html + index.html
+    #[arg(long)]
+    only_critical: bool,
+
+    /// Only generate mb.html + index.html
+    #[arg(long)]
+    only_mb: bool,
+
+    /// Only generate discogs.html + index.html
+    #[arg(long)]
+    only_discogs: bool,
+
+    /// Only generate issues.html + index.html
+    #[arg(long)]
+    only_issues: bool,
+
+    /// Only generate ids.html + index.html
+    #[arg(long)]
+    only_ids: bool,
+
+    /// Only generate other.html + index.html
+    #[arg(long)]
+    only_other: bool,
 }
 
 // ---------------------------------------------------------------------------
 // Data structures
 // ---------------------------------------------------------------------------
+
+/// Which pages to generate in the report.
+/// Note: issues.html + index.html are always generated.
+struct PageFlags {
+    critical: bool,
+    mb: bool,
+    discogs: bool,
+    ids: bool,
+    other: bool,
+}
+
+/// Badge counts for the navigation bar.
+struct NavCounts {
+    issues: usize,
+    critical: usize,
+    mb: usize,
+    discogs: usize,
+    ids: usize,
+    other: usize,
+}
 
 #[derive(Debug, Clone)]
 struct FileIssue {
@@ -63,19 +122,21 @@ struct FileIssue {
     missing_artist: bool,
     missing_title: bool,
     missing_year: bool,
-    // API
+    // MusicBrainz
     missing_mb_artist_id: bool,
     missing_mb_track_id: bool,
     missing_mb_album_id: bool,
+    // IDs
     missing_acoustic_id: bool,
     missing_songkong_id: bool,
-    // Secondary
-    missing_genre: bool,
-    missing_bpm: bool,
     missing_bandcamp: bool,
+    missing_wikipedia_artist: bool,
+    // Discogs
     missing_discogs_artist: bool,
     missing_discogs_release: bool,
-    missing_wikipedia_artist: bool,
+    // Other
+    missing_genre: bool,
+    missing_bpm: bool,
     missing_mood: bool,
     missing_album_art: bool,
     // Inconsistencies
@@ -88,34 +149,41 @@ struct FileIssue {
 
 impl FileIssue {
     fn has_critical(&self) -> bool {
-        self.missing_artist 
-            || self.missing_title 
+        self.missing_artist
+            || self.missing_title
             || self.missing_year
             || self.invalid_year.is_some()
             || self.blank_artist
             || self.blank_title
             || self.blank_year
-            || self.blank_genre
     }
-    fn has_api(&self) -> bool {
+    fn has_mb(&self) -> bool {
         self.missing_mb_artist_id
             || self.missing_mb_track_id
             || self.missing_mb_album_id
-            || self.missing_acoustic_id
-            || self.missing_songkong_id
     }
-    fn has_secondary(&self) -> bool {
+    fn has_discogs(&self) -> bool {
+        self.missing_discogs_artist || self.missing_discogs_release
+    }
+    fn has_ids(&self) -> bool {
+        self.missing_acoustic_id
+            || self.missing_songkong_id
+            || self.missing_bandcamp
+            || self.missing_wikipedia_artist
+    }
+    fn has_other(&self) -> bool {
         self.missing_genre
             || self.missing_bpm
-            || self.missing_bandcamp
-            || self.missing_discogs_artist
-            || self.missing_discogs_release
-            || self.missing_wikipedia_artist
             || self.missing_mood
             || self.missing_album_art
+            || self.blank_genre
     }
     fn has_any_issue(&self) -> bool {
-        self.has_critical() || self.has_api() || self.has_secondary()
+        self.has_critical()
+            || self.has_mb()
+            || self.has_discogs()
+            || self.has_ids()
+            || self.has_other()
     }
 }
 
@@ -183,7 +251,11 @@ fn collect_tags(tagged_file: &lofty::file::TaggedFile) -> HashMap<String, String
         for item in tag.items() {
             let key = match item.key() {
                 lofty::tag::ItemKey::Unknown(s) => s.to_uppercase(),
-                other => format!("{:?}", other).to_uppercase(),
+                other => {
+                    let mut k = format!("{:?}", other);
+                    k.make_ascii_uppercase();
+                    k
+                }
             };
             if let lofty::tag::ItemValue::Text(val) = item.value() {
                 map.entry(key).or_insert_with(|| val.clone());
@@ -198,14 +270,14 @@ fn collect_tags(tagged_file: &lofty::file::TaggedFile) -> HashMap<String, String
 // Scan a single file
 // ---------------------------------------------------------------------------
 
-fn scan_file(path: &Path) -> Option<(FileIssue, Vec<String>)> {
-    let meta = fs::metadata(path).ok()?;
+fn scan_file(path: &Path) -> Result<(FileIssue, Vec<String>), String> {
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
     let file_size = meta.len();
 
     let parse_opts = ParseOptions::new().read_properties(false);
-    let tagged_file = match Probe::open(path).ok()?.options(parse_opts).read() {
+    let tagged_file = match Probe::open(path).map_err(|e| e.to_string())?.options(parse_opts).read() {
         Ok(f) => f,
-        Err(_) => return None,
+        Err(e) => return Err(e.to_string()),
     };
 
     let has_art = tagged_file
@@ -220,7 +292,7 @@ fn scan_file(path: &Path) -> Option<(FileIssue, Vec<String>)> {
     let missing_title = !has_tag(&tags, &["TITLE"]);
     let missing_year = !has_tag(&tags, &["YEAR"]);
 
-    // --- API ---
+    // --- MusicBrainz ---
     let missing_mb_artist_id = !has_tag(
         &tags,
         &["MUSICBRAINZ ARTIST ID", "MUSICBRAINZ_ARTISTID", "MUSICBRAINZARTISTID"],
@@ -238,19 +310,23 @@ fn scan_file(path: &Path) -> Option<(FileIssue, Vec<String>)> {
         &tags,
         &["MUSICBRAINZ ALBUM ID", "MUSICBRAINZ_ALBUMID", "MUSICBRAINZALBUMID"],
     );
+
+    // --- IDs ---
     let missing_acoustic_id = !has_tag(&tags, &["ACOUSTIC_ID", "ACOUSTIC ID", "ACOUSTID_ID", "ACOUSTID ID"]);
     let missing_songkong_id = !has_tag(&tags, &["SONGKONG_ID", "SONGKONGID"]);
-
-    // --- Secondary ---
-    let missing_genre = !has_tag(&tags, &["GENRE"]);
-    let missing_bpm = !has_tag(&tags, &["BPM"]);
     let missing_bandcamp =
         !has_tag(&tags, &["URL_BANDCAMP_ARTIST_SITE", "WWW BANDCAMP_ARTIST"]);
+    let missing_wikipedia_artist = !has_tag(&tags, &["WWW WIKIPEDIA_ARTIST"]);
+
+    // --- Discogs ---
     let missing_discogs_artist =
         !has_tag(&tags, &["URL_DISCOGS_ARTIST_SITE", "WWW DISCOGS_ARTIST"]);
     let missing_discogs_release =
         !has_tag(&tags, &["URL_DISCOGS_RELEASE_SITE", "WWW DISCOGS_RELEASE"]);
-    let missing_wikipedia_artist = !has_tag(&tags, &["WWW WIKIPEDIA_ARTIST"]);
+
+    // --- Other ---
+    let missing_genre = !has_tag(&tags, &["GENRE"]);
+    let missing_bpm = !has_tag(&tags, &["BPM"]);
     let missing_mood = !has_tag_prefix(&tags, "MOOD_");
     let missing_album_art = !has_art;
 
@@ -276,7 +352,7 @@ fn scan_file(path: &Path) -> Option<(FileIssue, Vec<String>)> {
     });
 
     let tag_keys: Vec<String> = tags.keys().cloned().collect();
-    Some((FileIssue {
+    Ok((FileIssue {
         path: path.to_path_buf(),
         file_size,
         missing_artist,
@@ -287,12 +363,12 @@ fn scan_file(path: &Path) -> Option<(FileIssue, Vec<String>)> {
         missing_mb_album_id,
         missing_acoustic_id,
         missing_songkong_id,
-        missing_genre,
-        missing_bpm,
         missing_bandcamp,
         missing_discogs_artist,
         missing_discogs_release,
         missing_wikipedia_artist,
+        missing_genre,
+        missing_bpm,
         missing_mood,
         missing_album_art,
         invalid_year,
@@ -302,6 +378,7 @@ fn scan_file(path: &Path) -> Option<(FileIssue, Vec<String>)> {
         blank_genre,
     }, tag_keys))
 }
+
 
 // ---------------------------------------------------------------------------
 // Path formatting helpers
@@ -314,7 +391,7 @@ fn get_artist_folder(path: &Path, scan_root: &str) -> String {
         .strip_prefix(scan_root)
         .unwrap_or(&path_str)
         .trim_start_matches('/');
-    
+
     relative
         .split('/')
         .next()
@@ -322,22 +399,14 @@ fn get_artist_folder(path: &Path, scan_root: &str) -> String {
         .to_string()
 }
 
-/// Format a path showing the last 3 components: "Albums/2014 - Album Name/track.mp3"
-fn format_file_path(path: &Path) -> String {
-    let components: Vec<_> = path.components().collect();
-    
-    if components.len() <= 3 {
-        // If 3 or fewer components, show them all
-        path.to_string_lossy().to_string()
-    } else {
-        // Show last 3 components
-        let last3: Vec<_> = components.iter().rev().take(3).rev().collect();
-        last3
-            .iter()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/")
-    }
+/// Get the path relative to the scan root (e.g., "Radiohead/OK Computer/01 Airbag.flac")
+fn relative_path(path: &Path, scan_root: &str) -> String {
+    let path_str = path.to_string_lossy();
+    path_str
+        .strip_prefix(scan_root)
+        .unwrap_or(&path_str)
+        .trim_start_matches('/')
+        .to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -364,53 +433,10 @@ fn human_size(bytes: u64) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// HTML report
+// Report: shared CSS
 // ---------------------------------------------------------------------------
 
-fn icon(missing: bool) -> &'static str {
-    if missing {
-        "<span class=\"miss\">&cross;</span>"
-    } else {
-        "<span class=\"ok\">&check;</span>"
-    }
-}
-
-fn generate_html_report(
-    issues: &[FileIssue],
-    scan_root: &str,
-    unc_prefix: &str,
-    total_files: u64,
-    _total_dirs: u64,
-    total_size: u64,
-    error_count: u64,
-    tag_keys: &[String],
-    file_type_counts: &std::collections::HashMap<String, u64>,
-    elapsed: std::time::Duration,
-    output_path: &Path,
-) -> std::io::Result<()> {
-    let readable_files = total_files.saturating_sub(error_count);
-    let fail_count = issues.len() as u64;
-    let ok_count = readable_files.saturating_sub(fail_count);
-
-    let critical: Vec<&FileIssue> = issues.iter().filter(|i| i.has_critical()).collect();
-    let api: Vec<&FileIssue> = issues.iter().filter(|i| i.has_api()).collect();
-    let secondary: Vec<&FileIssue> = issues.iter().filter(|i| i.has_secondary()).collect();
-
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let mut f = fs::File::create(output_path)?;
-
-    // --- HTML head ---
-    write!(f, r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Audio Metadata Analysis</title>
-<style>
-:root {{
+const CSS: &str = r#":root {
     --bg: #0f1117;
     --surface: #1a1d27;
     --surface2: #242836;
@@ -423,172 +449,118 @@ fn generate_html_report(
     --green: #57ab5a;
     --orange: #daaa3f;
     --blue: #539bf5;
-}}
-* {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
     background: var(--bg);
     color: var(--text);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     font-size: 14px;
     line-height: 1.5;
     padding: 24px;
-}}
-.container {{ max-width: 100%; margin: 0 auto; }}
-h1 {{
+}
+.container { max-width: 100%; margin: 0 auto; }
+h1 {
     font-size: 24px;
     font-weight: 700;
     margin-bottom: 8px;
     color: var(--text);
-}}
-.subtitle {{ 
-    color: var(--text-dim); 
-    margin-bottom: 12px; 
+}
+.subtitle {
+    color: var(--text-dim);
+    margin-bottom: 12px;
     font-size: 14px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-}}
-.subtitle .meta {{ 
-    color: var(--text-dim); 
-    font-size: 13px; 
-}}
-.stats-container {{
+}
+.subtitle .meta {
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+/* Navigation */
+.nav-bar {
     display: flex;
-    justify-content: space-between;
-    gap: 24px;
+    border-bottom: 2px solid var(--border);
     margin-bottom: 24px;
-}}
-.stats-group {{
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-}}
-.stat-card {{
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
-    min-width: 140px;
-}}
-.stat-card .label {{ color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }}
-.stat-card .value {{ font-size: 22px; font-weight: 700; margin-top: 4px; }}
-.stat-card .value.ok {{ color: var(--green); }}
-.stat-card .value.fail {{ color: var(--red); }}
-.stat-card .value.warn {{ color: var(--orange); }}
-.stat-card .value.info {{ color: var(--blue); }}
-.tab-header {{
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    border-bottom: 1px solid var(--border);
-}}
-.tab-controls {{
-    padding: 0 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}}
-.tab-controls label {{
-    font-size: 13px;
-    color: var(--text-dim);
-    cursor: pointer;
-    user-select: none;
-}}
-.tab-controls input[type="checkbox"] {{
-    margin-right: 6px;
-    cursor: pointer;
-}}
-.tabs {{
-    display: flex;
     gap: 0;
-}}
-.tab {{
+}
+.nav-tab {
     padding: 10px 20px;
-    cursor: pointer;
     color: var(--text-dim);
     font-size: 13px;
-    font-weight: 500;
-    border-bottom: 2px solid transparent;
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
     transition: all 0.15s;
-    user-select: none;
-}}
-.tab:hover {{ color: var(--text); }}
-.tab.active {{
+}
+.nav-tab:hover { color: var(--text); }
+.nav-tab.active {
     color: var(--accent);
     border-bottom-color: var(--accent);
-}}
-.tab .badge {{
+}
+.nav-tab .badge {
     background: var(--surface2);
     color: var(--text-dim);
     padding: 1px 7px;
     border-radius: 10px;
     font-size: 11px;
     margin-left: 6px;
-}}
-.tab.active .badge {{
+}
+.nav-tab.active .badge {
     background: var(--accent-dim);
     color: #fff;
-}}
-.subtabs-header {{
+}
+
+/* Stats cards */
+.stats-container {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-top: 12px;
-    margin-bottom: 12px;
-}}
-.subtabs {{
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-}}
-.subtab {{
-    padding: 6px 12px;
-    cursor: pointer;
-    color: var(--text-dim);
-    font-size: 12px;
-    font-weight: 500;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+.stats-group { display: flex; gap: 12px; flex-wrap: wrap; }
+.stat-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    transition: all 0.15s;
-    user-select: none;
-}}
-.subtab:hover {{ 
-    color: var(--text); 
-    border-color: var(--accent-dim);
-}}
-.subtab.active {{
-    color: var(--accent);
-    background: var(--surface2);
-    border-color: var(--accent);
-}}
-.subtab .subbadge {{
-    background: var(--surface2);
-    color: var(--text-dim);
-    padding: 1px 5px;
     border-radius: 8px;
-    font-size: 10px;
-    margin-left: 4px;
-}}
-.subtab.active .subbadge {{
-    background: var(--accent-dim);
-    color: #fff;
-}}
-.tab-content {{ display: none; }}
-.tab-content.active {{ display: block; }}
-.table-wrap {{
+    padding: 16px;
+    min-width: 140px;
+}
+.stat-card .label {
+    color: var(--text-dim);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.stat-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+.stat-card .value.ok { color: var(--green); }
+.stat-card .value.fail { color: var(--red); }
+.stat-card .value.warn { color: var(--orange); }
+.stat-card .value.info { color: var(--blue); }
+
+/* Tables */
+.search-box { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.search-box input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 6px 12px;
+    font-size: 13px;
+    width: 260px;
+    outline: none;
+}
+.search-box input:focus { border-color: var(--accent); }
+.table-wrap {
     overflow-x: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
-    margin-top: 16px;
-}}
-table {{
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-}}
-th {{
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
     background: var(--surface);
     color: var(--text-dim);
     font-weight: 600;
@@ -602,507 +574,859 @@ th {{
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
     cursor: pointer;
-}}
-th:hover {{ color: var(--text); }}
-td {{
+}
+th:hover { color: var(--text); }
+td {
     padding: 8px 12px;
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
-}}
-tr:hover td {{ background: var(--surface); }}
-a {{ color: var(--accent); text-decoration: none; }}
-a:hover {{ text-decoration: underline; }}
-.miss {{ color: var(--red); font-weight: 700; font-size: 15px; }}
-.ok {{ color: var(--green); font-size: 15px; }}
-.warn-text {{ color: var(--orange); font-size: 12px; }}
-.links {{ display: flex; gap: 8px; }}
-.links a {{
-    padding: 2px 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 11px;
-    color: var(--text-dim);
-}}
-.links a:hover {{ color: var(--accent); border-color: var(--accent); }}
-.search-box {{
-    display: flex;
-    justify-content: flex-end;
-}}
-.search-box input {{
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    padding: 6px 12px;
-    font-size: 13px;
-    width: 260px;
-    outline: none;
-}}
-.search-box input:focus {{ border-color: var(--accent); }}
-.empty-state {{
+}
+td:first-child {
+    max-width: 600px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+td:not(:first-child) {
+    text-align: center;
+    min-width: 90px;
+}
+th:not(:first-child) {
+    text-align: center;
+}
+tr:hover td { background: var(--surface); }
+
+/* Icons */
+.miss { color: var(--red); font-weight: 700; font-size: 15px; }
+.warn { color: var(--orange); font-weight: 700; font-size: 15px; }
+.unknown { color: var(--orange); font-weight: 700; font-size: 15px; }
+.ok { color: var(--green); font-size: 15px; }
+.empty-state {
     text-align: center;
     padding: 48px;
     color: var(--text-dim);
     font-size: 15px;
-}}
-</style>
-</head>
-<body>
-<div class="container">
-<h1>Audio Metadata Analysis</h1>
-<p class="subtitle">
-<span>Scanned <code>{scan_root}</code></span>
-<span class="meta">{total_size} &middot; {elapsed}</span>
-</p>
+}
 
-<div class="stats-container">
-<div class="stats-group">
-{file_type_stats}
-</div>
-<div class="stats-group">
-<div class="stat-card"><div class="label">Files OK</div><div class="value ok">{ok_count}</div></div>
-<div class="stat-card"><div class="label">Files with Issues</div><div class="value fail">{fail_count}</div></div>
-<div class="stat-card"><div class="label">Unreadable Files</div><div class="value warn">{error_count}</div></div>
-</div>
-</div>
+/* Category breakdown on index */
+.breakdown { margin-top: 24px; }
+.breakdown h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text);
+}
+.breakdown td { padding: 8px 16px; }
+.breakdown a { color: var(--accent); text-decoration: none; }
+.breakdown a:hover { text-decoration: underline; }
 
-<div class="tab-header">
-<div class="tabs">
-<div class="tab active" onclick="switchTab('critical')">Critical<span class="badge">{critical_count}</span></div>
-<div class="tab" onclick="switchTab('api')">API<span class="badge">{api_count}</span></div>
-<div class="tab" onclick="switchTab('secondary')">Secondary<span class="badge">{secondary_count}</span></div>
-<div class="tab" onclick="switchTab('fields')">Fields<span class="badge">{fields_count}</span></div>
-</div>
-<div class="tab-controls">
-<label>
-<input type="checkbox" id="folderViewToggle" checked onchange="toggleFolderView()">
-Show only folders
-</label>
-</div>
-</div>
-"#,
-        scan_root = encode_text(scan_root),
-        total_size = human_size(total_size),
-        elapsed = format!("{:.2}s", elapsed.as_secs_f64()),
-        file_type_stats = {
-            let mut stats = String::new();
-            let mut sorted_types: Vec<_> = file_type_counts.iter().collect();
-            sorted_types.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count descending
-            for (ext, count) in sorted_types {
-                stats.push_str(&format!(
-                    r#"<div class="stat-card"><div class="label">{}</div><div class="value info">{}</div></div>
-"#,
-                    encode_text(ext),
-                    count
-                ));
-            }
-            stats
-        },
-        ok_count = ok_count,
-        fail_count = fail_count,
-        critical_count = critical.len(),
-        api_count = api.len(),
-        secondary_count = secondary.len(),
-        fields_count = tag_keys.len(),
-        error_count = error_count,
-    )?;
+/* Subtab bar (data pages) */
+.subtab-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.subtab {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-dim);
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+}
+.subtab:hover { color: var(--text); border-color: var(--accent-dim); }
+.subtab.active { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+.subtab-count {
+    background: rgba(0,0,0,0.25);
+    border-radius: 10px;
+    padding: 1px 6px;
+    font-size: 11px;
+}
+.panel.hidden { display: none; }
+.artist-list { display: flex; flex-direction: column; gap: 6px; }
+.artist-group {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.artist-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface);
+    cursor: pointer;
+    user-select: none;
+}
+.artist-header:hover { background: var(--surface2); }
+.artist-name { font-weight: 600; color: var(--text); flex: 1; font-size: 13px; }
+.file-count { color: var(--text-dim); font-size: 12px; }
+.arrow { color: var(--text-dim); font-size: 11px; display: inline-block; transition: transform 0.15s; }
+.artist-group.collapsed .arrow { transform: rotate(-90deg); }
+.file-list { list-style: none; border-top: 1px solid var(--border); }
+.artist-group.collapsed .file-list { display: none; }
+.file-item {
+    padding: 6px 14px 6px 36px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.file-item:last-child { border-bottom: none; }
+.file-item:hover { background: var(--surface); color: var(--text); }
+.annot { color: var(--orange); font-size: 11px; margin-left: 8px; }
+.empty-panel { text-align: center; padding: 48px; color: var(--text-dim); font-size: 15px; }
+"#;
 
-    // --- Critical tab ---
-    write_tab_table(
-        &mut f,
-        "critical",
-        true,
-        &["Folder", "File", "Artist", "Title", "Year", "Invalid Year", "Blank Artist", "Blank Title", "Blank Year", "Blank Genre"],
-        &critical,
-        scan_root,
-        unc_prefix,
-        |issue| {
-            let yr = if let Some(ref v) = issue.invalid_year {
-                format!("<span class=\"warn-text\">{}</span>", encode_text(v))
-            } else {
-                icon(false).to_string()
-            };
-            vec![
-                icon(issue.missing_artist).to_string(),
-                icon(issue.missing_title).to_string(),
-                icon(issue.missing_year).to_string(),
-                yr,
-                icon(issue.blank_artist).to_string(),
-                icon(issue.blank_title).to_string(),
-                icon(issue.blank_year).to_string(),
-                icon(issue.blank_genre).to_string(),
-            ]
-        },
-    )?;
+// ---------------------------------------------------------------------------
+// Report: shared JS
+// ---------------------------------------------------------------------------
 
-    // --- API tab ---
-    write_tab_table(
-        &mut f,
-        "api",
-        false,
-        &[
-            "Folder",
-            "File",
-            "MB Artist",
-            "MB Track",
-            "MB Album",
-            "Acoustic ID",
-            "SongKong",
-        ],
-        &api,
-        scan_root,
-        unc_prefix,
-        |issue| {
-            vec![
-                icon(issue.missing_mb_artist_id).to_string(),
-                icon(issue.missing_mb_track_id).to_string(),
-                icon(issue.missing_mb_album_id).to_string(),
-                icon(issue.missing_acoustic_id).to_string(),
-                icon(issue.missing_songkong_id).to_string(),
-            ]
-        },
-    )?;
-
-    // --- Secondary tab ---
-    write_tab_table(
-        &mut f,
-        "secondary",
-        false,
-        &[
-            "Folder",
-            "File",
-            "Genre",
-            "BPM",
-            "Bandcamp",
-            "Discogs Art.",
-            "Discogs Rel.",
-            "Wikipedia",
-            "Mood",
-            "Album Art",
-        ],
-        &secondary,
-        scan_root,
-        unc_prefix,
-        |issue| {
-            vec![
-                icon(issue.missing_genre).to_string(),
-                icon(issue.missing_bpm).to_string(),
-                icon(issue.missing_bandcamp).to_string(),
-                icon(issue.missing_discogs_artist).to_string(),
-                icon(issue.missing_discogs_release).to_string(),
-                icon(issue.missing_wikipedia_artist).to_string(),
-                icon(issue.missing_mood).to_string(),
-                icon(issue.missing_album_art).to_string(),
-            ]
-        },
-    )?;
-
-    // --- Fields tab ---
-    // Group fields by category
-    let mut wikipedia: Vec<&String> = Vec::new();
-    let mut discogs: Vec<&String> = Vec::new();
-    let mut musicbrainz: Vec<&String> = Vec::new();
-    let mut acoustid: Vec<&String> = Vec::new();
-    let mut songkong: Vec<&String> = Vec::new();
-    let mut itunes: Vec<&String> = Vec::new();
-    let mut other: Vec<&String> = Vec::new();
-    
-    for key in tag_keys {
-        let lower = key.to_lowercase();
-        // Check iTunes-specific first
-        if key.starts_with("----:COM.APPLE.ITUNES:") {
-            itunes.push(key);
-        // Skip MOOD_ fields for specific subtabs (they go to "other")
-        } else if lower.contains("mood_") {
-            other.push(key);
-        } else if lower.contains("wikipedia") {
-            wikipedia.push(key);
-        } else if lower.contains("discogs") {
-            discogs.push(key);
-        } else if lower.contains("musicbrainz") {
-            musicbrainz.push(key);
-        } else if lower.contains("acoustid") || lower.contains("acoustic") {
-            acoustid.push(key);
-        } else if lower.contains("songkong") {
-            songkong.push(key);
-        } else {
-            other.push(key);
+const JS: &str = r#"/* issues.html: flat table search */
+function filterTable(input) {
+    var filter = input.value.toLowerCase();
+    var rows = document.querySelectorAll('table tbody tr');
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (row.querySelector('.empty-state')) continue;
+        row.style.display = row.textContent.toLowerCase().indexOf(filter) !== -1 ? '' : 'none';
+    }
+}
+/* data pages: subtab switching */
+function switchSubtab(btn) {
+    var tabs = btn.parentNode.querySelectorAll('.subtab');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    btn.classList.add('active');
+    var panels = document.querySelectorAll('.panel');
+    var target = btn.dataset.panel;
+    for (var i = 0; i < panels.length; i++) {
+        panels[i].classList.toggle('hidden', panels[i].id !== target);
+    }
+}
+/* data pages: collapse/expand artist group */
+function toggleArtist(header) {
+    header.parentNode.classList.toggle('collapsed');
+}
+/* data pages: filter within active panel */
+function filterGroups(input) {
+    var filter = input.value.toLowerCase().trim();
+    var panel = document.querySelector('.panel:not(.hidden)');
+    if (!panel) return;
+    var groups = panel.querySelectorAll('.artist-group');
+    for (var i = 0; i < groups.length; i++) {
+        var group = groups[i];
+        var nameEl = group.querySelector('.artist-name');
+        var artistMatch = filter === '' || (nameEl && nameEl.textContent.toLowerCase().indexOf(filter) !== -1);
+        var items = group.querySelectorAll('.file-item');
+        var visible = 0;
+        for (var j = 0; j < items.length; j++) {
+            var show = filter === '' || artistMatch || items[j].textContent.toLowerCase().indexOf(filter) !== -1;
+            items[j].style.display = show ? '' : 'none';
+            if (show) visible++;
         }
+        group.style.display = (filter === '' || visible > 0) ? '' : 'none';
+        if (filter !== '' && visible > 0) group.classList.remove('collapsed');
     }
-    
-    write!(f, r#"<div id="tab-fields" class="tab-content">
-<div class="subtabs-header">
-<div class="subtabs">
-<div class="subtab active" onclick="switchFieldSubtab('all')">All<span class="subbadge">{}</span></div>
-<div class="subtab" onclick="switchFieldSubtab('musicbrainz')">MusicBrainz<span class="subbadge">{}</span></div>
-<div class="subtab" onclick="switchFieldSubtab('discogs')">Discogs<span class="subbadge">{}</span></div>
-<div class="subtab" onclick="switchFieldSubtab('acoustid')">AcoustID<span class="subbadge">{}</span></div>
-<div class="subtab" onclick="switchFieldSubtab('wikipedia')">Wikipedia<span class="subbadge">{}</span></div>
-<div class="subtab" onclick="switchFieldSubtab('songkong')">SongKong<span class="subbadge">{}</span></div>
-<div class="subtab" onclick="switchFieldSubtab('itunes')">iTunes-specific<span class="subbadge">{}</span></div>
-<div class="subtab" onclick="switchFieldSubtab('other')">Other<span class="subbadge">{}</span></div>
-</div>
-<div class="search-box"><input type="text" placeholder="Filter fields…" oninput="filterFieldsTable(this)"></div>
-</div>
-<div class="table-wrap"><table>
-<thead><tr><th data-sort="0">Field Name</th></tr></thead>
-<tbody>
-"#, tag_keys.len(), musicbrainz.len(), discogs.len(), acoustid.len(), wikipedia.len(), songkong.len(), itunes.len(), other.len())?;
-    
-    for key in tag_keys {
-        let lower = key.to_lowercase();
-        // Check iTunes-specific first
-        let category = if key.starts_with("----:COM.APPLE.ITUNES:") {
-            "itunes"
-        // Skip MOOD_ fields for specific subtabs (they go to "other")
-        } else if lower.contains("mood_") {
-            "other"
-        } else if lower.contains("wikipedia") {
-            "wikipedia"
-        } else if lower.contains("discogs") {
-            "discogs"
-        } else if lower.contains("musicbrainz") {
-            "musicbrainz"
-        } else if lower.contains("acoustid") || lower.contains("acoustic") {
-            "acoustid"
-        } else if lower.contains("songkong") {
-            "songkong"
-        } else {
-            "other"
-        };
-        
-        write!(f, "<tr data-field-category=\"{}\"><td>{}</td></tr>\n", category, encode_text(key))?;
+}
+/* issues.html: sortable columns */
+document.addEventListener('DOMContentLoaded', function() {
+    var headers = document.querySelectorAll('th[data-sort]');
+    for (var h = 0; h < headers.length; h++) {
+        (function(th) {
+            th.addEventListener('click', function() {
+                var table = th.closest('table');
+                var tbody = table.querySelector('tbody');
+                var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+                var idx = parseInt(th.dataset.sort);
+                var asc = th.dataset.dir !== 'asc';
+                th.dataset.dir = asc ? 'asc' : 'desc';
+                var allTh = th.closest('thead').querySelectorAll('th');
+                for (var i = 0; i < allTh.length; i++) {
+                    if (allTh[i] !== th) delete allTh[i].dataset.dir;
+                }
+                rows.sort(function(a, b) {
+                    var av = (a.cells[idx] && a.cells[idx].textContent.trim()) || '';
+                    var bv = (b.cells[idx] && b.cells[idx].textContent.trim()) || '';
+                    return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+                });
+                for (var i = 0; i < rows.length; i++) tbody.appendChild(rows[i]);
+            });
+        })(headers[h]);
     }
-    
-    write!(f, "</tbody></table></div></div>\n")?;
+});
+"#;
 
-    // --- JS ---
-    write!(
-        f,
-        r#"
-<script>
-function switchTab(name) {{
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.querySelector('[onclick="switchTab(\'' + name + '\')"]').classList.add('active');
-    document.getElementById('tab-' + name).classList.add('active');
-}}
-function filterTable(input, tabId) {{
-    const filter = input.value.toLowerCase();
-    
-    // If user starts typing, disable folder view
-    if (filter.length > 0) {{
-        const toggle = document.getElementById('folderViewToggle');
-        if (toggle && toggle.checked) {{
-            toggle.checked = false;
-            toggleFolderView();
-        }}
-    }}
-    
-    const rows = document.querySelectorAll('#tab-' + tabId + ' tbody tr');
-    rows.forEach(row => {{
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(filter) ? '' : 'none';
-    }});
-}}
-function switchFieldSubtab(category) {{
-    document.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
-    document.querySelector('[onclick="switchFieldSubtab(\'' + category + '\')"]').classList.add('active');
-    
-    const rows = document.querySelectorAll('#tab-fields tbody tr');
-    rows.forEach(row => {{
-        if (category === 'all') {{
-            row.style.display = '';
-        }} else {{
-            const rowCategory = row.getAttribute('data-field-category');
-            row.style.display = rowCategory === category ? '' : 'none';
-        }}
-    }});
-}}
-function filterFieldsTable(input) {{
-    const filter = input.value.toLowerCase();
-    const rows = document.querySelectorAll('#tab-fields tbody tr');
-    rows.forEach(row => {{
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(filter) ? '' : 'none';
-    }});
-    
-    // If filtering, show all categories
-    if (filter.length > 0) {{
-        document.querySelectorAll('.subtab').forEach(t => t.classList.remove('active'));
-        document.querySelector('[onclick="switchFieldSubtab(\'all\')"]').classList.add('active');
-    }}
-}}
-function toggleFolderView() {{
-    const checked = document.getElementById('folderViewToggle').checked;
-    document.querySelectorAll('.tab-content').forEach(tabContent => {{
-        const rows = Array.from(tabContent.querySelectorAll('tbody tr'));
-        if (checked) {{
-            // Group files by folder and aggregate status
-            const folderGroups = new Map();
-            
-            // Group rows by folder
-            rows.forEach(row => {{
-                const folder = row.getAttribute('data-folder');
-                if (!folder) return;
-                
-                if (!folderGroups.has(folder)) {{
-                    folderGroups.set(folder, []);
-                }}
-                folderGroups.get(folder).push(row);
-            }});
-            
-            // Process each folder group
-            folderGroups.forEach((groupRows, folder) => {{
-                const firstRow = groupRows[0];
-                const count = groupRows.length;
-                
-                // Store original content for first row cells
-                for (let i = 0; i < firstRow.cells.length; i++) {{
-                    const cell = firstRow.cells[i];
-                    if (!cell.getAttribute('data-original')) {{
-                        cell.setAttribute('data-original', cell.innerHTML);
-                    }}
-                }}
-                
-                // Update file count in File column (index 1)
-                if (firstRow.cells[1]) {{
-                    firstRow.cells[1].textContent = count + ' file' + (count !== 1 ? 's' : '');
-                }}
-                
-                // Aggregate status columns (starting from index 2, after Folder and File)
-                for (let colIdx = 2; colIdx < firstRow.cells.length; colIdx++) {{
-                    // Check if ANY file in this folder has an issue (miss/cross)
-                    let hasIssue = false;
-                    groupRows.forEach(row => {{
-                        if (row.cells[colIdx]) {{
-                            const html = row.cells[colIdx].innerHTML;
-                            if (html.includes('miss') || html.includes('&cross;') || html.includes('warn-text')) {{
-                                hasIssue = true;
-                            }}
-                        }}
-                    }});
-                    
-                    // Set aggregated status
-                    if (firstRow.cells[colIdx]) {{
-                        if (hasIssue) {{
-                            firstRow.cells[colIdx].innerHTML = '<span class="miss">&cross;</span>';
-                        }} else {{
-                            firstRow.cells[colIdx].innerHTML = '<span class="ok">&check;</span>';
-                        }}
-                    }}
-                }}
-                
-                // Show first row, hide others
-                firstRow.style.display = '';
-                for (let i = 1; i < groupRows.length; i++) {{
-                    groupRows[i].style.display = 'none';
-                }}
-            }});
-        }} else {{
-            // Restore all rows with original content
-            rows.forEach(row => {{
-                row.style.display = '';
-                for (let i = 0; i < row.cells.length; i++) {{
-                    const cell = row.cells[i];
-                    if (cell.getAttribute('data-original')) {{
-                        cell.innerHTML = cell.getAttribute('data-original');
-                    }}
-                }}
-            }});
-        }}
-    }});
-}}
-// Sorting
-document.querySelectorAll('th[data-sort]').forEach(th => {{
-    th.addEventListener('click', () => {{
-        const table = th.closest('table');
-        const tbody = table.querySelector('tbody');
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-        const idx = parseInt(th.dataset.sort);
-        const asc = th.dataset.dir !== 'asc';
-        th.dataset.dir = asc ? 'asc' : 'desc';
-        rows.sort((a, b) => {{
-            const av = a.cells[idx]?.textContent.trim() || '';
-            const bv = b.cells[idx]?.textContent.trim() || '';
-            return asc ? av.localeCompare(bv) : bv.localeCompare(av);
-        }});
-        rows.forEach(r => tbody.appendChild(r));
-    }});
-}});
-// Initialize folder view on page load
-window.addEventListener('DOMContentLoaded', () => {{
-    toggleFolderView();
-}});
-</script>
-</div>
-</body>
-</html>"#
+// ---------------------------------------------------------------------------
+// Report: artist-grouped data helpers
+// ---------------------------------------------------------------------------
+
+/// BTreeMap<artist_folder -> Vec<(relative_path, optional_annotation)>>
+type ArtistGroups = BTreeMap<String, Vec<(String, Option<String>)>>;
+
+/// Build an artist-grouped list of files that satisfy `predicate`.
+/// Files within each group are sorted by relative path.
+fn build_groups(
+    issues: &[FileIssue],
+    scan_root: &str,
+    predicate: impl Fn(&FileIssue) -> bool,
+    annotate: impl Fn(&FileIssue) -> Option<String>,
+) -> ArtistGroups {
+    let mut groups: ArtistGroups = BTreeMap::new();
+    for issue in issues {
+        if !predicate(issue) { continue; }
+        let artist = get_artist_folder(&issue.path, scan_root);
+        let rel    = relative_path(&issue.path, scan_root);
+        let ann    = annotate(issue);
+        groups.entry(artist).or_default().push((rel, ann));
+    }
+    for files in groups.values_mut() {
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+    groups
+}
+
+fn group_total(groups: &ArtistGroups) -> usize {
+    groups.values().map(|v| v.len()).sum()
+}
+
+/// Write the subtab bar. `tabs` = &[(panel_id, label, count), …].
+/// The first tab is active by default.
+fn write_subtab_bar<W: Write>(
+    f: &mut W,
+    tabs: &[(&str, &str, usize)],
+) -> std::io::Result<()> {
+    write!(f, "<div class=\"subtab-bar\">\n")?;
+    for (i, &(id, label, count)) in tabs.iter().enumerate() {
+        let active = if i == 0 { " active" } else { "" };
+        write!(
+            f,
+            "<button class=\"subtab{}\" onclick=\"switchSubtab(this)\" data-panel=\"panel-{}\">{}<span class=\"subtab-count\">{}</span></button>\n",
+            active, id, encode_text(label), count
+        )?;
+    }
+    write!(f, "</div>\n")?;
+    Ok(())
+}
+
+/// Write a single collapsible-artist-grouped panel.
+/// `active` controls whether the panel is visible on load.
+fn write_field_panel<W: Write>(
+    f: &mut W,
+    panel_id: &str,
+    groups: &ArtistGroups,
+    active: bool,
+) -> std::io::Result<()> {
+    let hidden = if active { "" } else { " hidden" };
+    write!(f, "<div class=\"panel{}\" id=\"panel-{}\">\n", hidden, panel_id)?;
+    if groups.is_empty() {
+        write!(f, "<div class=\"empty-panel\">No issues found</div>\n")?;
+    } else {
+        write!(f, "<div class=\"artist-list\">\n")?;
+        for (artist, files) in groups {
+            write!(
+                f,
+                "<div class=\"artist-group\">\n\
+                 <div class=\"artist-header\" onclick=\"toggleArtist(this)\">\
+                 <span class=\"arrow\">&#9660;</span>\
+                 <span class=\"artist-name\">{}</span>\
+                 <span class=\"file-count\">{} file{}</span>\
+                 </div>\n\
+                 <ul class=\"file-list\">\n",
+                encode_text(artist),
+                files.len(),
+                if files.len() == 1 { "" } else { "s" }
+            )?;
+            for (path, ann) in files {
+                let ann_html = ann.as_ref()
+                    .map(|a| format!(" <span class=\"annot\">{}</span>", encode_text(a)))
+                    .unwrap_or_default();
+                write!(f, "<li class=\"file-item\">{}{}</li>\n", encode_text(path), ann_html)?;
+            }
+            write!(f, "</ul>\n</div>\n")?;
+        }
+        write!(f, "</div>\n")?;
+    }
+    write!(f, "</div>\n")?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: navigation bar
+// ---------------------------------------------------------------------------
+
+fn write_nav<W: Write>(
+    f: &mut W,
+    active: &str,
+    counts: &NavCounts,
+    pages: &PageFlags,
+    from_index: bool,
+) -> std::io::Result<()> {
+    let entries: &[(&str, &str, &str, Option<usize>, bool)] = &[
+        ("overview", "Overview", "index.html", None, true),
+        ("issues", "Issues", "issues.html", Some(counts.issues), true),
+        ("critical", "Critical", "critical.html", Some(counts.critical), pages.critical),
+        ("mb", "MusicBrainz", "mb.html", Some(counts.mb), pages.mb),
+        ("discogs", "Discogs", "discogs.html", Some(counts.discogs), pages.discogs),
+        ("ids", "IDs", "ids.html", Some(counts.ids), pages.ids),
+        ("other", "Other", "other.html", Some(counts.other), pages.other),
+    ];
+
+    write!(f, "<nav class=\"nav-bar\">\n")?;
+    for &(id, label, filename, ref count, show) in entries {
+        if !show { continue; }
+        let href = if filename == "index.html" {
+            if from_index { "index.html".to_string() } else { "../index.html".to_string() }
+        } else if from_index {
+            format!("pages/{}", filename)
+        } else {
+            filename.to_string()
+        };
+        let active_class = if id == active { " active" } else { "" };
+        let badge = match count {
+            Some(n) => format!("<span class=\"badge\">{}</span>", n),
+            None => String::new(),
+        };
+        write!(f, "<a href=\"{}\" class=\"nav-tab{}\">{}{}</a>\n", href, active_class, label, badge)?;
+    }
+    write!(f, "</nav>\n")?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: page shell (start / end)
+// ---------------------------------------------------------------------------
+
+fn write_page_start<W: Write>(
+    f: &mut W,
+    title: &str,
+    from_index: bool,
+) -> std::io::Result<()> {
+    let css_path = if from_index { "css/styles.css" } else { "../css/styles.css" };
+    write!(f, "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
+        <meta charset=\"UTF-8\">\n\
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n\
+        <title>{} &mdash; Audio Metadata Analysis</title>\n\
+        <link rel=\"stylesheet\" href=\"{}\">\n\
+        </head>\n<body>\n<div class=\"container\">\n\
+        <h1>Audio Metadata Analysis</h1>\n",
+        encode_text(title), css_path
     )?;
+    Ok(())
+}
+
+fn write_page_end<W: Write>(f: &mut W, from_index: bool) -> std::io::Result<()> {
+    let js_path = if from_index { "js/report.js" } else { "../js/report.js" };
+    write!(f, "<script src=\"{}\"></script>\n</div>\n</body>\n</html>\n", js_path)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: index.html
+// ---------------------------------------------------------------------------
+
+fn write_index(
+    report_dir: &Path,
+    scan_root: &str,
+    total_files: u64,
+    total_size: u64,
+    error_count: u64,
+    file_type_counts: &HashMap<String, u64>,
+    elapsed: std::time::Duration,
+    issues_len: usize,
+    counts: &NavCounts,
+    pages: &PageFlags,
+) -> std::io::Result<()> {
+    let path = report_dir.join("index.html");
+    let mut f = BufWriter::new(fs::File::create(&path)?);
+
+    write_page_start(&mut f, "Overview", true)?;
+
+    // Subtitle
+    write!(f, "<p class=\"subtitle\">\
+        <span>Scanned <code>{}</code></span>\
+        <span class=\"meta\">{} &middot; {:.2}s</span>\
+        </p>\n",
+        encode_text(scan_root),
+        human_size(total_size),
+        elapsed.as_secs_f64(),
+    )?;
+
+    write_nav(&mut f, "overview", counts, pages, true)?;
+
+    // Stats cards
+    let readable = total_files.saturating_sub(error_count);
+    let ok_count = readable.saturating_sub(issues_len as u64);
+
+    write!(f, "<div class=\"stats-container\">\n<div class=\"stats-group\">\n")?;
+
+    // File type stats
+    let mut sorted_types: Vec<_> = file_type_counts.iter().collect();
+    sorted_types.sort_by(|a, b| b.1.cmp(a.1));
+    for (ext, count) in &sorted_types {
+        write!(f, "<div class=\"stat-card\"><div class=\"label\">{}</div><div class=\"value info\">{}</div></div>\n",
+            encode_text(ext), count)?;
+    }
+
+    write!(f, "</div>\n<div class=\"stats-group\">\n")?;
+    write!(f, "<div class=\"stat-card\"><div class=\"label\">Files OK</div><div class=\"value ok\">{}</div></div>\n", ok_count)?;
+    write!(f, "<div class=\"stat-card\"><div class=\"label\">Files with Issues</div><div class=\"value fail\">{}</div></div>\n", issues_len)?;
+    write!(f, "<div class=\"stat-card\"><div class=\"label\">Unreadable Files</div><div class=\"value warn\">{}</div></div>\n", error_count)?;
+    write!(f, "</div>\n</div>\n")?;
+
+    // Category breakdown
+    write!(f, "<div class=\"breakdown\">\n<h2>Breakdown by Category</h2>\n\
+        <div class=\"table-wrap\"><table>\n\
+        <thead><tr><th>Category</th><th>Issues</th><th></th></tr></thead>\n<tbody>\n")?;
+
+    let breakdown: &[(&str, &str, usize, bool)] = &[
+        ("Issues", "pages/issues.html", counts.issues, true),
+        ("Critical", "pages/critical.html", counts.critical, pages.critical),
+        ("MusicBrainz", "pages/mb.html", counts.mb, pages.mb),
+        ("Discogs", "pages/discogs.html", counts.discogs, pages.discogs),
+        ("IDs", "pages/ids.html", counts.ids, pages.ids),
+        ("Other", "pages/other.html", counts.other, pages.other),
+    ];
+    for &(label, href, count, show) in breakdown {
+        if !show { continue; }
+        write!(f, "<tr><td>{}</td><td>{}</td><td><a href=\"{}\">View &rarr;</a></td></tr>\n",
+            label, count, href)?;
+    }
+
+    write!(f, "</tbody>\n</table></div>\n</div>\n")?;
+    write_page_end(&mut f, true)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: issues.html
+// ---------------------------------------------------------------------------
+
+fn write_issues_page(
+    report_dir: &Path,
+    scan_root: &str,
+    all_paths: &[PathBuf],
+    parent_audio_count: &HashMap<PathBuf, usize>,
+    unreadable: &[(PathBuf, String)],
+    counts: &NavCounts,
+    pages: &PageFlags,
+) -> std::io::Result<()> {
+    let path = report_dir.join("pages/issues.html");
+    let mut f = BufWriter::new(fs::File::create(&path)?);
+
+    write_page_start(&mut f, "Issues", false)?;
+    write_nav(&mut f, "issues", counts, pages, false)?;
+
+    write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterTable(this)\"></div>\n")?;
+    write!(f, "<div class=\"table-wrap\"><table>\n\
+        <thead><tr><th data-sort=\"0\">Path</th><th data-sort=\"1\">Problem</th></tr></thead>\n<tbody>\n")?;
+
+    // Lone files (only one audio file in parent directory)
+    let mut lone_files: Vec<&PathBuf> = all_paths.iter()
+        .filter(|p| {
+            p.parent()
+                .and_then(|par| parent_audio_count.get(par))
+                .copied()
+                .unwrap_or(0) == 1
+        })
+        .collect();
+    lone_files.sort();
+
+    for p in &lone_files {
+        let rel = relative_path(p, scan_root);
+        write!(f, "<tr><td title=\"{}\">{}</td><td>Only one file</td></tr>\n",
+            encode_text(&p.to_string_lossy()), encode_text(&rel))?;
+    }
+
+    // Unreadable files
+    let mut sorted_unreadable: Vec<&(PathBuf, String)> = unreadable.iter().collect();
+    sorted_unreadable.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (p, err) in &sorted_unreadable {
+        let rel = relative_path(p, scan_root);
+        write!(f, "<tr><td title=\"{}\">{}</td><td>{}</td></tr>\n",
+            encode_text(&p.to_string_lossy()),
+            encode_text(&rel),
+            encode_text(err))?;
+    }
+
+    if lone_files.is_empty() && sorted_unreadable.is_empty() {
+        write!(f, "<tr><td colspan=\"2\" class=\"empty-state\">No issues found</td></tr>\n")?;
+    }
+
+    write!(f, "</tbody>\n</table></div>\n")?;
+    write_page_end(&mut f, false)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: critical.html
+// ---------------------------------------------------------------------------
+
+fn write_critical_page(
+    report_dir: &Path,
+    scan_root: &str,
+    issues: &[FileIssue],
+    counts: &NavCounts,
+    pages: &PageFlags,
+) -> std::io::Result<()> {
+    let path = report_dir.join("pages/critical.html");
+    let mut f = BufWriter::new(fs::File::create(&path)?);
+
+    write_page_start(&mut f, "Critical", false)?;
+    write_nav(&mut f, "critical", counts, pages, false)?;
+
+    // Build per-field groups
+    let artist_groups = build_groups(
+        issues, scan_root,
+        |i| i.missing_artist || i.blank_artist,
+        |i| if i.blank_artist { Some("(blank)".into()) } else { None },
+    );
+    let title_groups = build_groups(
+        issues, scan_root,
+        |i| i.missing_title || i.blank_title,
+        |i| if i.blank_title { Some("(blank)".into()) } else { None },
+    );
+    let year_groups = build_groups(
+        issues, scan_root,
+        |i| i.missing_year || i.blank_year || i.invalid_year.is_some(),
+        |i| {
+            if i.blank_year { Some("(blank)".into()) }
+            else if let Some(v) = &i.invalid_year { Some(format!("({})", v)) }
+            else { None }
+        },
+    );
+
+    let tabs: &[(&str, &str, usize)] = &[
+        ("artist", "Artist",  group_total(&artist_groups)),
+        ("title",  "Title",   group_total(&title_groups)),
+        ("year",   "Year",    group_total(&year_groups)),
+    ];
+
+    write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+    write_subtab_bar(&mut f, tabs)?;
+    write_field_panel(&mut f, "artist", &artist_groups, true)?;
+    write_field_panel(&mut f, "title",  &title_groups,  false)?;
+    write_field_panel(&mut f, "year",   &year_groups,   false)?;
+
+    write_page_end(&mut f, false)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: mb.html
+// ---------------------------------------------------------------------------
+
+fn write_mb_page(
+    report_dir: &Path,
+    scan_root: &str,
+    issues: &[FileIssue],
+    counts: &NavCounts,
+    pages: &PageFlags,
+) -> std::io::Result<()> {
+    let path = report_dir.join("pages/mb.html");
+    let mut f = BufWriter::new(fs::File::create(&path)?);
+
+    write_page_start(&mut f, "MusicBrainz", false)?;
+    write_nav(&mut f, "mb", counts, pages, false)?;
+
+    let artist_groups = build_groups(issues, scan_root, |i| i.missing_mb_artist_id, |_| None);
+    let track_groups  = build_groups(issues, scan_root, |i| i.missing_mb_track_id,  |_| None);
+    let album_groups  = build_groups(issues, scan_root, |i| i.missing_mb_album_id,  |_| None);
+
+    let tabs: &[(&str, &str, usize)] = &[
+        ("mb-artist", "MB Artist", group_total(&artist_groups)),
+        ("mb-track",  "MB Track",  group_total(&track_groups)),
+        ("mb-album",  "MB Album",  group_total(&album_groups)),
+    ];
+
+    write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+    write_subtab_bar(&mut f, tabs)?;
+    write_field_panel(&mut f, "mb-artist", &artist_groups, true)?;
+    write_field_panel(&mut f, "mb-track",  &track_groups,  false)?;
+    write_field_panel(&mut f, "mb-album",  &album_groups,  false)?;
+
+    write_page_end(&mut f, false)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: discogs.html
+// ---------------------------------------------------------------------------
+
+fn write_discogs_page(
+    report_dir: &Path,
+    scan_root: &str,
+    issues: &[FileIssue],
+    counts: &NavCounts,
+    pages: &PageFlags,
+) -> std::io::Result<()> {
+    let path = report_dir.join("pages/discogs.html");
+    let mut f = BufWriter::new(fs::File::create(&path)?);
+
+    write_page_start(&mut f, "Discogs", false)?;
+    write_nav(&mut f, "discogs", counts, pages, false)?;
+
+    let artist_groups  = build_groups(issues, scan_root, |i| i.missing_discogs_artist,  |_| None);
+    let release_groups = build_groups(issues, scan_root, |i| i.missing_discogs_release, |_| None);
+
+    let tabs: &[(&str, &str, usize)] = &[
+        ("dg-artist",  "Discogs Artist",  group_total(&artist_groups)),
+        ("dg-release", "Discogs Release", group_total(&release_groups)),
+    ];
+
+    write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+    write_subtab_bar(&mut f, tabs)?;
+    write_field_panel(&mut f, "dg-artist",  &artist_groups,  true)?;
+    write_field_panel(&mut f, "dg-release", &release_groups, false)?;
+
+    write_page_end(&mut f, false)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: ids.html
+// ---------------------------------------------------------------------------
+
+fn write_ids_page(
+    report_dir: &Path,
+    scan_root: &str,
+    issues: &[FileIssue],
+    counts: &NavCounts,
+    pages: &PageFlags,
+) -> std::io::Result<()> {
+    let path = report_dir.join("pages/ids.html");
+    let mut f = BufWriter::new(fs::File::create(&path)?);
+
+    write_page_start(&mut f, "IDs", false)?;
+    write_nav(&mut f, "ids", counts, pages, false)?;
+
+    let acoustic_groups  = build_groups(issues, scan_root, |i| i.missing_acoustic_id,       |_| None);
+    let songkong_groups  = build_groups(issues, scan_root, |i| i.missing_songkong_id,        |_| None);
+    let bandcamp_groups  = build_groups(issues, scan_root, |i| i.missing_bandcamp,           |_| None);
+    let wiki_groups      = build_groups(issues, scan_root, |i| i.missing_wikipedia_artist,   |_| None);
+
+    let tabs: &[(&str, &str, usize)] = &[
+        ("acoustic",  "Acoustic ID", group_total(&acoustic_groups)),
+        ("songkong",  "SongKong",    group_total(&songkong_groups)),
+        ("bandcamp",  "Bandcamp",    group_total(&bandcamp_groups)),
+        ("wikipedia", "Wikipedia",   group_total(&wiki_groups)),
+    ];
+
+    write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+    write_subtab_bar(&mut f, tabs)?;
+    write_field_panel(&mut f, "acoustic",  &acoustic_groups, true)?;
+    write_field_panel(&mut f, "songkong",  &songkong_groups, false)?;
+    write_field_panel(&mut f, "bandcamp",  &bandcamp_groups, false)?;
+    write_field_panel(&mut f, "wikipedia", &wiki_groups,     false)?;
+
+    write_page_end(&mut f, false)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: other.html
+// ---------------------------------------------------------------------------
+
+fn write_other_page(
+    report_dir: &Path,
+    scan_root: &str,
+    issues: &[FileIssue],
+    counts: &NavCounts,
+    pages: &PageFlags,
+) -> std::io::Result<()> {
+    let path = report_dir.join("pages/other.html");
+    let mut f = BufWriter::new(fs::File::create(&path)?);
+
+    write_page_start(&mut f, "Other", false)?;
+    write_nav(&mut f, "other", counts, pages, false)?;
+
+    let genre_groups = build_groups(
+        issues, scan_root,
+        |i| i.missing_genre || i.blank_genre,
+        |i| if i.blank_genre { Some("(blank)".into()) } else { None },
+    );
+    let bpm_groups   = build_groups(issues, scan_root, |i| i.missing_bpm,       |_| None);
+    let mood_groups  = build_groups(issues, scan_root, |i| i.missing_mood,       |_| None);
+    let art_groups   = build_groups(issues, scan_root, |i| i.missing_album_art,  |_| None);
+
+    let tabs: &[(&str, &str, usize)] = &[
+        ("genre",     "Genre",     group_total(&genre_groups)),
+        ("bpm",       "BPM",       group_total(&bpm_groups)),
+        ("mood",      "Mood",      group_total(&mood_groups)),
+        ("album-art", "Album Art", group_total(&art_groups)),
+    ];
+
+    write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+    write_subtab_bar(&mut f, tabs)?;
+    write_field_panel(&mut f, "genre",     &genre_groups, true)?;
+    write_field_panel(&mut f, "bpm",       &bpm_groups,   false)?;
+    write_field_panel(&mut f, "mood",      &mood_groups,  false)?;
+    write_field_panel(&mut f, "album-art", &art_groups,   false)?;
+
+    write_page_end(&mut f, false)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Report: orchestrator
+// ---------------------------------------------------------------------------
+
+fn generate_report(
+    issues: &[FileIssue],
+    all_paths: &[PathBuf],
+    parent_audio_count: &HashMap<PathBuf, usize>,
+    unreadable: &[(PathBuf, String)],
+    scan_root: &str,
+    total_files: u64,
+    total_size: u64,
+    error_count: u64,
+    file_type_counts: &HashMap<String, u64>,
+    elapsed: std::time::Duration,
+    report_dir: &Path,
+    pages: &PageFlags,
+) -> std::io::Result<()> {
+    // Create directory structure
+    fs::create_dir_all(report_dir.join("css"))?;
+    fs::create_dir_all(report_dir.join("js"))?;
+    fs::create_dir_all(report_dir.join("pages"))?;
+
+    // Compute lone files count for nav badge
+    let lone_count = all_paths.iter()
+        .filter(|p| {
+            p.parent()
+                .and_then(|par| parent_audio_count.get(par))
+                .copied()
+                .unwrap_or(0) == 1
+        })
+        .count();
+
+    let counts = NavCounts {
+        issues: lone_count + unreadable.len(),
+        critical: issues.iter().filter(|i| i.has_critical()).count(),
+        mb: issues.iter().filter(|i| i.has_mb()).count(),
+        discogs: issues.iter().filter(|i| i.has_discogs()).count(),
+        ids: issues.iter().filter(|i| i.has_ids()).count(),
+        other: issues.iter().filter(|i| i.has_other()).count(),
+    };
+
+    // Write shared assets
+    fs::write(report_dir.join("css/styles.css"), CSS)?;
+    fs::write(report_dir.join("js/report.js"), JS)?;
+
+    // Write index (always)
+    write_index(
+        report_dir, scan_root, total_files, total_size, error_count,
+        file_type_counts, elapsed, issues.len(), &counts, pages,
+    )?;
+
+    // Write selected pages
+    // Issues page is always generated (lone files + unreadable files are always relevant)
+    write_issues_page(report_dir, scan_root, all_paths, parent_audio_count, unreadable, &counts, pages)?;
+    if pages.critical {
+        write_critical_page(report_dir, scan_root, issues, &counts, pages)?;
+    }
+    if pages.mb {
+        write_mb_page(report_dir, scan_root, issues, &counts, pages)?;
+    }
+    if pages.discogs {
+        write_discogs_page(report_dir, scan_root, issues, &counts, pages)?;
+    }
+    if pages.ids {
+        write_ids_page(report_dir, scan_root, issues, &counts, pages)?;
+    }
+    if pages.other {
+        write_other_page(report_dir, scan_root, issues, &counts, pages)?;
+    }
 
     Ok(())
 }
 
-fn write_tab_table<F>(
-    f: &mut fs::File,
-    tab_id: &str,
-    is_active: bool,
-    headers: &[&str],
-    issues: &[&FileIssue],
-    scan_root: &str,
-    _unc_prefix: &str,
-    cell_fn: F,
-) -> std::io::Result<()>
-where
-    F: Fn(&FileIssue) -> Vec<String>,
-{
-    let active_class = if is_active { " active" } else { "" };
-    write!(
-        f,
-        r#"<div id="tab-{tab_id}" class="tab-content{active_class}">
-<div class="search-box"><input type="text" placeholder="Filter files…" oninput="filterTable(this,'{tab_id}')"></div>
-<div class="table-wrap"><table>
-<thead><tr>"#,
-    )?;
+// ---------------------------------------------------------------------------
+// Quarantine helpers
+// ---------------------------------------------------------------------------
 
-    for (i, h) in headers.iter().enumerate() {
-        write!(f, "<th data-sort=\"{}\">{}</th>", i, h)?;
+fn restore_dir(staging_dir: &Path, scan_root: &str, moved: &mut u32, failed: &mut u32) {
+    if !staging_dir.exists() {
+        return;
     }
-    write!(f, "</tr></thead>\n<tbody>\n")?;
 
-    if issues.is_empty() {
-        write!(
-            f,
-            "<tr><td colspan=\"{}\" class=\"empty-state\">No issues found in this category</td></tr>\n",
-            headers.len()
-        )?;
-    } else {
-        for issue in issues {
-            let artist_folder = get_artist_folder(&issue.path, scan_root);
-            let file_path = format_file_path(&issue.path);
+    println!("Moving files from {} back to original locations...", staging_dir.display());
 
-            write!(f, "<tr data-folder=\"{}\">", encode_text(&artist_folder))?;
-            write!(
-                f,
-                "<td title=\"{}\">{}</td>",
-                encode_text(&issue.path.to_string_lossy()),
-                encode_text(&artist_folder)
-            )?;
-            write!(
-                f,
-                "<td title=\"{}\">{}</td>",
-                encode_text(&issue.path.to_string_lossy()),
-                encode_text(&file_path)
-            )?;
-            for cell in cell_fn(issue) {
-                write!(f, "<td>{}</td>", cell)?;
+    for entry in WalkDir::new(staging_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let src = entry.path();
+        let rel = match src.strip_prefix(staging_dir) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let dst = PathBuf::from(scan_root).join(rel);
+
+        if let Some(dst_parent) = dst.parent() {
+            if let Err(e) = fs::create_dir_all(dst_parent) {
+                eprintln!("  FAILED to create {}: {}", dst_parent.display(), e);
+                *failed += 1;
+                continue;
             }
-            write!(f, "</tr>\n")?;
+        }
+
+        match fs::rename(src, &dst) {
+            Ok(_) => {
+                println!("  Restored: {} -> {}", src.display(), dst.display());
+                *moved += 1;
+            }
+            Err(e) => {
+                eprintln!("  FAILED to move {}: {}", src.display(), e);
+                *failed += 1;
+            }
         }
     }
 
-    write!(f, "</tbody></table></div></div>\n")?;
-    Ok(())
+    remove_empty_dirs(staging_dir);
+    let _ = fs::remove_dir(staging_dir);
+}
+
+fn end_quarantine(scan_root: &str) {
+    let quarantine_dir    = PathBuf::from(scan_root).join("__QUARANTINE");
+    let needs_review_dir  = PathBuf::from(scan_root).join("__NEEDS_REVIEW");
+    let unreadable_dir    = PathBuf::from(scan_root).join("__UNREADABLE");
+
+    if !quarantine_dir.exists() && !needs_review_dir.exists() && !unreadable_dir.exists() {
+        println!("Nothing to do: __QUARANTINE, __NEEDS_REVIEW, and __UNREADABLE do not exist.");
+        return;
+    }
+
+    let mut moved = 0u32;
+    let mut failed = 0u32;
+
+    restore_dir(&quarantine_dir,   scan_root, &mut moved, &mut failed);
+    restore_dir(&needs_review_dir, scan_root, &mut moved, &mut failed);
+    restore_dir(&unreadable_dir,   scan_root, &mut moved, &mut failed);
+
+    println!("Done. Restored: {}, Failed: {}", moved, failed);
+}
+
+/// Recursively remove empty directories (deepest first).
+fn remove_empty_dirs(dir: &Path) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                remove_empty_dirs(&path);
+                let _ = fs::remove_dir(&path); // silently fails if not empty
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1112,16 +1436,36 @@ where
 fn main() {
     let args = Args::parse();
     let scan_root = args.scan_path.trim_end_matches('/').to_string();
-    let unc_prefix = args.unc_prefix.clone();
+
+    if args.end_quarantine {
+        end_quarantine(&scan_root);
+        return;
+    }
 
     println!("Audio Metadata Scanner");
     println!("======================");
     println!("Scan root : {}", scan_root);
-    if !unc_prefix.is_empty() {
-        println!("UNC prefix: {}", unc_prefix);
+    if !args.unc_prefix.is_empty() {
+        println!("UNC prefix: {}", args.unc_prefix);
     }
     if args.limit > 0 {
         println!("Limit     : {} files", args.limit);
+    }
+    // Print active --only-* modes
+    {
+        let mut modes = Vec::new();
+        if args.only_critical { modes.push("critical"); }
+        if args.only_mb       { modes.push("mb"); }
+        if args.only_discogs  { modes.push("discogs"); }
+        if args.only_issues   { modes.push("issues"); }
+        if args.only_ids      { modes.push("ids"); }
+        if args.only_other    { modes.push("other"); }
+        if !modes.is_empty() {
+            println!("Pages     : {}", modes.join(", "));
+        }
+    }
+    if args.no_report {
+        println!("Report    : disabled");
     }
     if !args.only.is_empty() {
         println!("Filter    : only folders matching '{}'", args.only);
@@ -1145,7 +1489,7 @@ fn main() {
     let to_filter = args.to.to_lowercase();
     let only_filter = args.only.to_lowercase();
     let scan_root_clone = scan_root.clone();
-    
+
     let paths: Vec<PathBuf> = WalkDir::new(&scan_root)
         .follow_links(true)
         .into_iter()
@@ -1155,11 +1499,11 @@ fn main() {
                 total_dirs.fetch_add(1, Ordering::Relaxed);
                 return false;
             }
-            
+
             // Apply filters based on artist folder
             let folder = get_artist_folder(e.path(), &scan_root_clone);
             let folder_lower = folder.to_lowercase();
-            
+
             // --only filter: starts with match (takes precedence)
             if !only_filter.is_empty() {
                 if !folder_lower.starts_with(&only_filter) {
@@ -1172,16 +1516,13 @@ fn main() {
                     return false;
                 }
                 if !to_filter.is_empty() {
-                    // For --to, we want to include everything that starts with the prefix
-                    // e.g., --to="c" should include "a", "b", "c", "ca", "cb", etc. but not "d"
-                    // So we check if folder > to_filter + 'z' (or next prefix)
-                    let to_upper = format!("{}\u{10FFFF}", to_filter); // Max unicode to include all starting with prefix
+                    let to_upper = format!("{}\u{10FFFF}", to_filter);
                     if folder_lower > to_upper {
                         return false;
                     }
                 }
             }
-            
+
             if let Some(ext) = e.path().extension() {
                 let ext_lower = ext.to_string_lossy().to_lowercase();
                 extensions.contains(&ext_lower.as_str())
@@ -1197,70 +1538,76 @@ fn main() {
     let total_dirs = total_dirs.load(Ordering::Relaxed);
     println!("  Found {} audio files in {} folders", total_files, total_dirs);
 
+    // --- Always build parent_audio_count (needed for issues.html and quarantine) ---
+    let mut parent_audio_count: HashMap<PathBuf, usize> = HashMap::new();
+    for p in &paths {
+        if let Some(parent) = p.parent() {
+            *parent_audio_count.entry(parent.to_path_buf()).or_insert(0) += 1;
+        }
+    }
+
     // --- Phase 2: Parallel scan ---
     println!("[2/4] Scanning metadata ({} threads)...", rayon::current_num_threads());
     let scanned = AtomicU64::new(0);
-    let total_size = AtomicU64::new(0);
-    let error_count = AtomicU64::new(0);
-    let last_folder = Mutex::new(String::new());
-    let all_tag_keys = Mutex::new(std::collections::HashSet::new());
-    let file_type_counts = Mutex::new(std::collections::HashMap::new());
 
-    let results: Vec<FileIssue> = paths
+    // Lock-free accumulation via rayon fold/reduce.
+    // Each thread builds its own local (issues, tag_keys, file_type_counts, total_size, error_count, unreadable_paths)
+    // and they are merged at the end — no Mutex contention in the hot path.
+    type ScanAcc = (Vec<FileIssue>, HashSet<String>, HashMap<String, u64>, u64, u64, Vec<(PathBuf, String)>);
+
+    let (results, _all_tag_keys, file_type_counts, total_size, error_count, unreadable_paths): ScanAcc = paths
         .par_iter()
-        .filter_map(|p| {
-            let n = scanned.fetch_add(1, Ordering::Relaxed) + 1;
-            
-            // Track file type
-            if let Some(ext) = p.extension() {
-                let ext_upper = ext.to_string_lossy().to_uppercase();
-                let mut counts = file_type_counts.lock().unwrap();
-                *counts.entry(ext_upper.to_string()).or_insert(0) += 1;
-            }
-            
-            // Show progress every 100 files or when folder changes
-            if n % 100 == 0 || n == 1 {
-                if let Some(_parent) = p.parent() {
-                    let folder = get_artist_folder(p, &scan_root);
-                    let mut last = last_folder.lock().unwrap();
-                    if *last != folder {
-                        eprintln!("  ... scanning: {} ({}/{})", folder, n, total_files);
-                        *last = folder;
-                    } else if n % 1000 == 0 {
-                        eprintln!("  ... scanned {}/{}", n, total_files);
-                    }
-                }
-            }
-            
-            match scan_file(p) {
-                Some((issue, tag_keys)) => {
-                    total_size.fetch_add(issue.file_size, Ordering::Relaxed);
-                    // Collect all tag keys
-                    let mut keys = all_tag_keys.lock().unwrap();
-                    for key in tag_keys {
-                        keys.insert(key);
-                    }
-                    Some(issue)
-                }
-                None => {
-                    error_count.fetch_add(1, Ordering::Relaxed);
-                    None
-                }
-            }
-        })
-        .collect();
+        .fold(
+            || (Vec::<FileIssue>::new(), HashSet::<String>::new(), HashMap::<String, u64>::new(), 0u64, 0u64, Vec::<(PathBuf, String)>::new()),
+            |mut acc, p| {
+                let n = scanned.fetch_add(1, Ordering::Relaxed) + 1;
 
-    let total_size = total_size.load(Ordering::Relaxed);
-    let error_count = error_count.load(Ordering::Relaxed);
-    let mut tag_keys: Vec<String> = all_tag_keys.lock().unwrap().iter().cloned().collect();
-    tag_keys.sort();
-    let file_type_counts = file_type_counts.lock().unwrap().clone();
-    
+                // Progress: print every 10 000 files
+                if n % 10_000 == 0 || n == total_files {
+                    eprintln!("  ... scanned {}/{}", n, total_files);
+                }
+
+                // Track extension counts (thread-local, no lock needed)
+                if let Some(ext) = p.extension() {
+                    let mut ext_str = ext.to_string_lossy().into_owned();
+                    ext_str.make_ascii_uppercase();
+                    *acc.2.entry(ext_str).or_insert(0) += 1;
+                }
+
+                match scan_file(p) {
+                    Ok((issue, tag_keys)) => {
+                        acc.3 += issue.file_size;
+                        acc.1.extend(tag_keys);
+                        acc.0.push(issue);
+                    }
+                    Err(err) => {
+                        acc.4 += 1;
+                        acc.5.push((p.clone(), err.clone()));
+                        eprintln!("  UNREADABLE: {} — {}", p.display(), err);
+                    }
+                }
+                acc
+            },
+        )
+        .reduce(
+            || (Vec::new(), HashSet::new(), HashMap::new(), 0, 0, Vec::new()),
+            |mut a, b| {
+                a.0.extend(b.0);
+                a.1.extend(b.1);
+                for (k, v) in b.2 {
+                    *a.2.entry(k).or_insert(0) += v;
+                }
+                a.3 += b.3;
+                a.4 += b.4;
+                a.5.extend(b.5);
+                a
+            },
+        );
+
     println!("  Scanned {} files ({} errors)", results.len(), error_count);
-    println!("  Found {} unique metadata fields", tag_keys.len());
 
     // --- Phase 3: Filter to only files with issues ---
-    println!("[3/3] Filtering results...");
+    println!("[3/4] Filtering results...");
     let issues: Vec<FileIssue> = results
         .into_iter()
         .filter(|i| i.has_any_issue())
@@ -1268,46 +1615,154 @@ fn main() {
 
     println!("  {} files with at least one issue", issues.len());
 
-    // --- Phase 4: Generate report ---
-    println!("[3/3] Generating HTML report...");
+    // --- Phase 4: Move files to __QUARANTINE / __NEEDS_REVIEW / __UNREADABLE (if requested) ---
+    if args.quarantine || args.quarantine_dry {
+        let quarantine_dir    = PathBuf::from(&scan_root).join("__QUARANTINE");
+        let needs_review_dir  = PathBuf::from(&scan_root).join("__NEEDS_REVIEW");
+        let unreadable_dir    = PathBuf::from(&scan_root).join("__UNREADABLE");
+        let scan_root_path    = PathBuf::from(&scan_root);
+        let dry = args.quarantine_dry;
 
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    let output_dir = if args.output_dir.starts_with('/') {
-        PathBuf::from(&args.output_dir)
-    } else {
-        // Relative to the binary's current working directory
-        std::env::current_dir()
-            .unwrap_or_default()
-            .join(&args.output_dir)
-    };
-    let output_path = output_dir.join(format!("metadata_analysis_{}.html", timestamp));
+        // Split issue files: lone files go to __NEEDS_REVIEW, rest to __QUARANTINE.
+        let mut sorted_files: Vec<&PathBuf> = issues.iter().map(|i| &i.path).collect();
+        sorted_files.sort();
 
-    let elapsed = start.elapsed();
-
-    match generate_html_report(
-        &issues,
-        &scan_root,
-        &unc_prefix,
-        total_files,
-        total_dirs,
-        total_size,
-        error_count,
-        &tag_keys,
-        &file_type_counts,
-        elapsed,
-        &output_path,
-    ) {
-        Ok(_) => {
-            println!();
-            println!("Report written to: {}", output_path.display());
-            println!("Total time: {:.2}s", elapsed.as_secs_f64());
-            let readable = total_files.saturating_sub(error_count);
-            let ok = readable.saturating_sub(issues.len() as u64);
-            println!("Files OK: {} | Issues: {} | Unreadable: {}", ok, issues.len(), error_count);
+        let mut to_quarantine:   Vec<&PathBuf> = Vec::new();
+        let mut to_needs_review: Vec<&PathBuf> = Vec::new();
+        for src in &sorted_files {
+            let count = src.parent()
+                .and_then(|p| parent_audio_count.get(p))
+                .copied()
+                .unwrap_or(1);
+            if count == 1 {
+                to_needs_review.push(src);
+            } else {
+                to_quarantine.push(src);
+            }
         }
-        Err(e) => {
-            eprintln!("Failed to write report: {}", e);
-            std::process::exit(1);
+
+        // Helper closure: move a batch of files to a staging dir (or print dry-run lines).
+        let move_batch = |batch: &[&PathBuf], staging_dir: &PathBuf, label: &str, dry: bool| {
+            if batch.is_empty() { return; }
+            println!();
+            if dry {
+                println!("[DRY RUN] Would move {} file(s) to {}:", batch.len(), staging_dir.display());
+                for src in batch {
+                    let rel = src.strip_prefix(&scan_root_path).unwrap_or(src);
+                    let dst = staging_dir.join(rel);
+                    println!("  {} -> {}", src.display(), dst.display());
+                }
+            } else {
+                println!("[Move] Moving {} file(s) to {}...", batch.len(), label);
+                for src in batch {
+                    let rel = src.strip_prefix(&scan_root_path).unwrap_or(src);
+                    let dst = staging_dir.join(rel);
+                    if let Some(dst_parent) = dst.parent() {
+                        if let Err(e) = fs::create_dir_all(dst_parent) {
+                            eprintln!("  FAILED to create {}: {}", dst_parent.display(), e);
+                            continue;
+                        }
+                    }
+                    match fs::rename(src, &dst) {
+                        Ok(_) => println!("  Moved: {} -> {}", src.display(), dst.display()),
+                        Err(e) => eprintln!("  FAILED to move {}: {}", src.display(), e),
+                    }
+                }
+            }
+        };
+
+        move_batch(&to_quarantine,   &quarantine_dir,   "__QUARANTINE",   dry);
+        move_batch(&to_needs_review, &needs_review_dir, "__NEEDS_REVIEW", dry);
+
+        // -- unreadable files -> __UNREADABLE --
+        if !unreadable_paths.is_empty() {
+            let mut sorted_unreadable: Vec<&(PathBuf, String)> = unreadable_paths.iter().collect();
+            sorted_unreadable.sort_by(|a, b| a.0.cmp(&b.0));
+
+            println!();
+            if dry {
+                println!("[DRY RUN] Would move {} unreadable file(s) to {}:", sorted_unreadable.len(), unreadable_dir.display());
+                for (src, _) in &sorted_unreadable {
+                    let rel = src.strip_prefix(&scan_root_path).unwrap_or(src);
+                    let dst = unreadable_dir.join(rel);
+                    println!("  {} -> {}", src.display(), dst.display());
+                }
+            } else {
+                println!("[Move] Moving {} unreadable file(s) to __UNREADABLE...", sorted_unreadable.len());
+                for (src, _) in &sorted_unreadable {
+                    let rel = src.strip_prefix(&scan_root_path).unwrap_or(src);
+                    let dst = unreadable_dir.join(rel);
+                    if let Some(dst_parent) = dst.parent() {
+                        if let Err(e) = fs::create_dir_all(dst_parent) {
+                            eprintln!("  FAILED to create {}: {}", dst_parent.display(), e);
+                            continue;
+                        }
+                    }
+                    match fs::rename(src, &dst) {
+                        Ok(_) => println!("  Moved: {} -> {}", src.display(), dst.display()),
+                        Err(e) => eprintln!("  FAILED to move {}: {}", src.display(), e),
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Phase 5: Generate report ---
+    if args.no_report {
+        println!("\n[5/5] Report generation skipped (--no-report)");
+    } else {
+        println!("[5/5] Generating HTML report...");
+
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let output_dir = if args.output_dir.starts_with('/') {
+            PathBuf::from(&args.output_dir)
+        } else {
+            std::env::current_dir()
+                .unwrap_or_default()
+                .join(&args.output_dir)
+        };
+        let report_dir = output_dir.join(format!("analysis_{}", timestamp));
+
+        // Determine which pages to generate
+        let any_only_flag = args.only_critical || args.only_mb || args.only_discogs
+            || args.only_issues || args.only_ids || args.only_other;
+
+        let pages = PageFlags {
+            critical: !any_only_flag || args.only_critical,
+            mb:       !any_only_flag || args.only_mb,
+            discogs:  !any_only_flag || args.only_discogs,
+            ids:      !any_only_flag || args.only_ids,
+            other:    !any_only_flag || args.only_other,
+        };
+
+        let elapsed = start.elapsed();
+
+        match generate_report(
+            &issues,
+            &paths,
+            &parent_audio_count,
+            &unreadable_paths,
+            &scan_root,
+            total_files,
+            total_size,
+            error_count,
+            &file_type_counts,
+            elapsed,
+            &report_dir,
+            &pages,
+        ) {
+            Ok(_) => {
+                println!();
+                println!("Report written to: {}", report_dir.display());
+                println!("Total time: {:.2}s", elapsed.as_secs_f64());
+                let readable = total_files.saturating_sub(error_count);
+                let ok = readable.saturating_sub(issues.len() as u64);
+                println!("Files OK: {} | Issues: {} | Unreadable: {}", ok, issues.len(), error_count);
+            }
+            Err(e) => {
+                eprintln!("Failed to write report: {}", e);
+                std::process::exit(1);
+            }
         }
     }
 }
