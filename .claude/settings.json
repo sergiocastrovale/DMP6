@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//tmp/**)",
+      "Bash(./analysis /mnt/c/__DMP --limit 500 --output-dir /tmp)"
+    ]
+  }
+}

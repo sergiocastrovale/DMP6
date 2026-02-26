@@ -26,6 +26,7 @@ for arg in "$@"; do
 done
 
 # Pass all arguments to the binary, adding --output-dir if not specified
+# Output is now a timestamped subdirectory: reports/analysis_YYYYMMDD_HHMMSS/
 if [ "$has_output_dir" = false ]; then
     exec "$BINARY" "$@" --output-dir "$REPORTS_DIR"
 else
