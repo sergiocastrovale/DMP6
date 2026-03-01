@@ -188,6 +188,14 @@ fn load_config(music_dir_override: &Option<String>) -> Config {
 // Metadata extraction
 // ---------------------------------------------------------------------------
 
+/// Strip characters that PostgreSQL JSON rejects: null bytes and C0/C1 control characters.
+/// serde_json serialises \0 as \u0000 which Postgres refuses in jsonb columns.
+fn sanitize_tag(s: &str) -> String {
+    s.chars()
+        .filter(|&c| c != '\0' && !('\x01'..='\x1F').contains(&c) && !('\u{007F}'..='\u{009F}').contains(&c))
+        .collect()
+}
+
 fn extract_metadata(path: &Path, music_dir: &str) -> Option<TrackMeta> {
     let meta = fs::metadata(path).ok()?;
     let file_size = meta.len() as i64;
@@ -243,7 +251,8 @@ fn extract_metadata(path: &Path, music_dir: &str) -> Option<TrackMeta> {
                 lofty::tag::ItemKey::Unknown(s) => s.to_string(),
                 other => format!("{:?}", other),
             };
-            if let lofty::tag::ItemValue::Text(val) = item.value() {
+            if let lofty::tag::ItemValue::Text(raw_val) = item.value() {
+                let val = sanitize_tag(raw_val);
                 let key_upper = key.to_uppercase();
 
                 // Extract specific fields from raw items
@@ -774,45 +783,6 @@ async fn ensure_track_artist(
     .bind(artist_id)
     .bind(role)
     .bind(now)
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
-#[allow(dead_code)]
-async fn check_existing_track(
-    pool: &PgPool,
-    file_path: &str,
-) -> Result<Option<(i64, NaiveDateTime, String)>, sqlx::Error> {
-    let row: Option<(i64, Option<NaiveDateTime>, Option<String>)> = sqlx::query_as(
-        r#"SELECT "fileSize", mtime, "contentHash" FROM "LocalReleaseTrack" WHERE "filePath" = $1"#,
-    )
-    .bind(file_path)
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(row.map(|(size, mtime, hash)| {
-        (
-            size,
-            mtime.unwrap_or_else(|| Utc::now().naive_utc()),
-            hash.unwrap_or_default(),
-        )
-    }))
-}
-
-#[allow(dead_code)]
-async fn update_mtime_only(
-    pool: &PgPool,
-    file_path: &str,
-    mtime: NaiveDateTime,
-) -> Result<(), sqlx::Error> {
-    let now = Utc::now().naive_utc();
-    sqlx::query(
-        r#"UPDATE "LocalReleaseTrack" SET mtime = $1, "updatedAt" = $2 WHERE "filePath" = $3"#,
-    )
-    .bind(mtime)
-    .bind(now)
-    .bind(file_path)
     .execute(pool)
     .await?;
     Ok(())

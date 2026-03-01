@@ -49,7 +49,7 @@ cd scripts/sync && cargo build --release
 For each artist that needs syncing (no `musicbrainzId`, or `lastSyncedAt` older than 30 days, or `--overwrite` flag):
 
 1. **Compound name detection**: If the artist name contains multi-artist delimiters (`/`, `;`, `,`, `feat.`, `ft.`), it is skipped with a warning. These are leftover compound names that should be resolved by re-indexing with the updated indexer (which splits them into individual artists). Artists that already have a `musicbrainzId` are not affected by this check.
-2. **Search** MusicBrainz for the artist (by name or existing MB ID)
+2. **Search** MusicBrainz for the artist (by name or existing MB ID) — see [Artist Matching](#artist-matching) below
    - **Note**: "Various Artists" is automatically skipped (compilation marker, not a real artist)
 3. **Fetch** complete discography (release groups)
 4. **Filter** releases: skip Singles, Bootlegs, Demos, Interviews, Broadcasts
@@ -65,6 +65,29 @@ For each artist that needs syncing (no `musicbrainzId`, or `lastSyncedAt` older 
    - `UNKNOWN` - Has MB ID but not found online
 9. **Calculate** `averageMatchScore` per artist
 10. Set `musicbrainzId` and `lastSyncedAt`
+
+### Artist Matching
+
+MusicBrainz is queried using a quoted phrase (`artist:"Name"`) and a score + similarity check. A result is accepted only if the MB score is ≥ 90 **and** the names are similar enough.
+
+**Similarity check**: both names are normalised (lowercased, leading "the " stripped, punctuation removed), then compared using word-level Jaccard similarity (≥ 50% word overlap). Single-token names require an exact match to prevent e.g. "3" matching "Alabama 3".
+
+When the stored artist name doesn't match, three fallback strategies are tried in order:
+
+1. **`artist` tag** — look up the raw `artist` field from a sample track. If it differs from the stored name, try it as a search term.
+2. **Split `albumArtist`** — split the raw `albumArtist` tag by each separator below (in order), try every resulting piece:
+
+   | Separator | Example |
+   |-----------|---------|
+   | `, ` | `Real Recognize Rio, 21 Lil Harold` → tries `Real Recognize Rio`, then `21 Lil Harold` |
+   | ` & ` | `070 Shake & Christine and the Queens` → tries `070 Shake` |
+   | ` vs ` | `Band A vs Band B` → tries `Band A` |
+   | ` vs. ` | `…and Oceans vs. Bloodthorn` → tries `…and Oceans` |
+   | ` feat ` | `Artist feat Other` → tries `Artist` |
+   | ` feat. ` | `Artist feat. Other` → tries `Artist` |
+   | ` – ` | `Hävok Ünit – andOceans – The Sin:Decay` → tries `Hävok Ünit` |
+
+   The first piece that matches on MB wins. Real compound bands (e.g. "Kool & The Gang") succeed in step 1 and never reach the split logic.
 
 ### Rate Limiting
 

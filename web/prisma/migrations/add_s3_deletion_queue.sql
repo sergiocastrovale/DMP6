@@ -15,8 +15,8 @@ BEGIN
   -- Only queue if imageUrl is set (indicates S3 storage was used)
   IF OLD."imageUrl" IS NOT NULL AND OLD."imageUrl" != '' THEN
     -- Extract the S3 key from the URL (everything after the last /)
-    INSERT INTO "S3DeletionQueue" ("objectKey")
-    VALUES ('artists/' || OLD.slug || '.jpg')
+    INSERT INTO "S3DeletionQueue" (id, "objectKey")
+    VALUES (gen_random_uuid()::text, 'artists/' || OLD.slug || '.jpg')
     ON CONFLICT DO NOTHING;
   END IF;
   RETURN OLD;
@@ -30,8 +30,8 @@ BEGIN
   -- Only queue if imageUrl is set (indicates S3 storage was used)
   IF OLD."imageUrl" IS NOT NULL AND OLD."imageUrl" != '' THEN
     -- Extract the release ID from the image field
-    INSERT INTO "S3DeletionQueue" ("objectKey")
-    VALUES ('releases/' || OLD.id || '.jpg')
+    INSERT INTO "S3DeletionQueue" (id, "objectKey")
+    VALUES (gen_random_uuid()::text, 'releases/' || OLD.id || '.jpg')
     ON CONFLICT DO NOTHING;
   END IF;
   RETURN OLD;
