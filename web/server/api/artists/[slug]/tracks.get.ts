@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
 
   const tracks = await prisma.localReleaseTrack.findMany({
     where: {
-      localRelease: { artistId: artist.id },
+      trackArtists: { some: { artistId: artist.id } },
     },
     select: {
       id: true,

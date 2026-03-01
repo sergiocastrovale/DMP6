@@ -83,10 +83,10 @@ fn load_config() -> CleanConfig {
         });
     
     let image_storage = std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
-    let s3_bucket = std::env::var("S3_BUCKET").ok();
-    let s3_region = std::env::var("S3_REGION").ok();
-    let s3_access_key = std::env::var("S3_ACCESS_KEY_ID").ok();
-    let s3_secret_key = std::env::var("S3_SECRET_ACCESS_KEY").ok();
+    let s3_bucket = std::env::var("S3_IMAGE_BUCKET").ok();
+    let s3_region = std::env::var("AWS_REGION").ok();
+    let s3_access_key = std::env::var("AWS_ACCESS_KEY_ID").ok();
+    let s3_secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok();
     let s3_endpoint = std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty());
 
     CleanConfig {

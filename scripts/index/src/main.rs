@@ -9,6 +9,7 @@ use lofty::prelude::*;
 use lofty::probe::Probe;
 use md5::{Digest, Md5};
 use rayon::prelude::*;
+use regex::Regex;
 use serde_json::Value as JsonValue;
 use slug::slugify;
 use sqlx::postgres::PgPoolOptions;
@@ -162,10 +163,10 @@ fn load_config(music_dir_override: &Option<String>) -> Config {
         });
     
     let image_storage = std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
-    let s3_bucket = std::env::var("S3_BUCKET").ok();
-    let s3_region = std::env::var("S3_REGION").ok();
-    let s3_access_key = std::env::var("S3_ACCESS_KEY_ID").ok();
-    let s3_secret_key = std::env::var("S3_SECRET_ACCESS_KEY").ok();
+    let s3_bucket = std::env::var("S3_IMAGE_BUCKET").ok();
+    let s3_region = std::env::var("AWS_REGION").ok();
+    let s3_access_key = std::env::var("AWS_ACCESS_KEY_ID").ok();
+    let s3_secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok();
     let s3_endpoint = std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty());
     let s3_public_url = std::env::var("S3_PUBLIC_URL").ok();
 
@@ -374,6 +375,113 @@ fn matches_filter(folder: &str, from: &str, to: &str, only: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Artist tag splitting
+// ---------------------------------------------------------------------------
+
+/// Check if a name is a "Various Artists" variant that should be skipped.
+fn is_various_artists(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower == "various artists" || lower == "various" || lower == "va"
+}
+
+/// Split an artist tag into individual artist names.
+/// Returns (main_artists, featured_artists).
+///
+/// Splitting rules:
+/// - Splits on "feat."/"ft."/"featuring" (case-insensitive) first to separate featured artists
+/// - Then splits each side by "/" and ";"
+/// - Splits on "," ONLY when not followed by a space or digit:
+///   - Catches "Artist A,Artist B" (compact tagger format)
+///   - Preserves "10,000 Maniacs" (digit after comma) and "Crosby, Stills & Nash" (space after comma)
+/// - Does NOT split on "&" (too ambiguous: "Simon & Garfunkel")
+/// - Trims whitespace, filters empties, deduplicates, skips "Various Artists" variants
+fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
+    let feat_re = Regex::new(r"(?i)\s*\(\s*feat(?:uring)?\.?\s+|\s+feat(?:uring)?\.?\s+|\s*\(\s*ft\.?\s+|\s+ft\.?\s+").unwrap();
+
+    // Split on featuring markers: left = main, right = featured
+    let (main_part, feat_part) = if let Some(m) = feat_re.find(tag) {
+        let main = &tag[..m.start()];
+        let mut feat = &tag[m.end()..];
+        // Strip trailing paren if the feat marker had an opening paren
+        if tag[m.start()..m.end()].contains('(') {
+            feat = feat.trim_end_matches(')').trim();
+        }
+        (main.to_string(), Some(feat.to_string()))
+    } else {
+        (tag.to_string(), None)
+    };
+
+    // Delimiters (checked longest-first so // and \\ and || beat their single-char forms):
+    //   // \\ || / \ | ;   — always split
+    //   ,                  — only when not followed by a space or digit
+    //                        (preserves "10,000 Maniacs" and "Crosby, Stills & Nash")
+    let split_part = |s: &str| -> Vec<String> {
+        let mut parts: Vec<String> = Vec::new();
+        let mut current = String::new();
+        let chars: Vec<char> = s.chars().collect();
+        let len = chars.len();
+        let mut i = 0;
+        while i < len {
+            let c = chars[i];
+            // Check two-char delimiters first
+            if i + 1 < len {
+                let d = chars[i + 1];
+                if (c == '/' && d == '/') || (c == '\\' && d == '\\') || (c == '|' && d == '|') {
+                    parts.push(current.trim().to_string());
+                    current = String::new();
+                    i += 2;
+                    continue;
+                }
+            }
+            // Single-char delimiters
+            if c == '/' || c == ';' || c == '\\' || c == '|' {
+                parts.push(current.trim().to_string());
+                current = String::new();
+            } else if c == ',' {
+                let next = chars.get(i + 1).copied();
+                if next.map_or(false, |n| !n.is_whitespace() && !n.is_ascii_digit()) {
+                    parts.push(current.trim().to_string());
+                    current = String::new();
+                } else {
+                    current.push(c);
+                }
+            } else {
+                current.push(c);
+            }
+            i += 1;
+        }
+        parts.push(current.trim().to_string());
+        parts.into_iter()
+            .filter(|p| !p.is_empty() && !is_various_artists(p))
+            .collect()
+    };
+
+    let mut main_artists = split_part(&main_part);
+    // Deduplicate while preserving order
+    {
+        let mut seen = std::collections::HashSet::new();
+        main_artists.retain(|a| seen.insert(a.to_lowercase()));
+    }
+
+    let mut featured_artists = match feat_part {
+        Some(ref fp) => split_part(fp),
+        None => Vec::new(),
+    };
+    // Deduplicate featured, also excluding anyone already in main
+    {
+        let main_lower: std::collections::HashSet<String> =
+            main_artists.iter().map(|a| a.to_lowercase()).collect();
+        let mut seen = std::collections::HashSet::new();
+        featured_artists.retain(|a| {
+            let lower = a.to_lowercase();
+            !main_lower.contains(&lower) && seen.insert(lower)
+        });
+    }
+
+    (main_artists, featured_artists)
+}
+
+// ---------------------------------------------------------------------------
 // Cover art extraction
 // ---------------------------------------------------------------------------
 
@@ -513,6 +621,28 @@ async fn ensure_artist(pool: &PgPool, name: &str) -> Result<String, sqlx::Error>
     Ok(row.0)
 }
 
+/// Cached version of ensure_artist - checks HashMap before hitting DB
+async fn ensure_artist_cached(
+    pool: &PgPool,
+    name: &str,
+    cache: &mut HashMap<String, String>,
+) -> Result<String, sqlx::Error> {
+    let artist_slug = slugify(name);
+    if artist_slug.is_empty() {
+        return Ok(String::new());
+    }
+
+    if let Some(id) = cache.get(&artist_slug) {
+        return Ok(id.clone());
+    }
+
+    let id = ensure_artist(pool, name).await?;
+    if !id.is_empty() {
+        cache.insert(artist_slug, id.clone());
+    }
+    Ok(id)
+}
+
 async fn ensure_local_release(
     pool: &PgPool,
     artist_id: &str,
@@ -557,6 +687,25 @@ async fn ensure_local_release(
     .await?;
 
     Ok(row.0)
+}
+
+/// Cached version of ensure_local_release - checks HashMap before hitting DB
+async fn ensure_local_release_cached(
+    pool: &PgPool,
+    artist_id: &str,
+    title: &str,
+    year: Option<i32>,
+    folder_path: Option<&str>,
+    cache: &mut HashMap<(String, String), String>,
+) -> Result<String, sqlx::Error> {
+    let key = (artist_id.to_string(), title.to_string());
+    if let Some(id) = cache.get(&key) {
+        return Ok(id.clone());
+    }
+
+    let id = ensure_local_release(pool, artist_id, title, year, folder_path).await?;
+    cache.insert(key, id.clone());
+    Ok(id)
 }
 
 async fn upsert_track(
@@ -630,6 +779,7 @@ async fn ensure_track_artist(
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn check_existing_track(
     pool: &PgPool,
     file_path: &str,
@@ -650,6 +800,7 @@ async fn check_existing_track(
     }))
 }
 
+#[allow(dead_code)]
 async fn update_mtime_only(
     pool: &PgPool,
     file_path: &str,
@@ -1075,6 +1226,7 @@ async fn main() {
     let scanned = AtomicU64::new(0);
     let errors = AtomicU64::new(0);
     let last_folder: Mutex<String> = Mutex::new(String::new());
+    let error_messages: Mutex<Vec<String>> = Mutex::new(Vec::new());
     let error_log = Mutex::new(
         fs::OpenOptions::new()
             .create(true)
@@ -1110,18 +1262,18 @@ async fn main() {
                     // Skip if no artist (critical field)
                     if meta.artist.is_none() || meta.artist.as_deref() == Some("") {
                         errors.fetch_add(1, Ordering::Relaxed);
-                        if let Ok(mut f) = error_log.lock() {
-                            writeln!(f, "[INDEXER] Missing artist: {}", p.display()).ok();
-                        }
+                        let msg = format!("Missing artist tag: {}", p.display());
+                        if let Ok(mut f) = error_log.lock() { writeln!(f, "[INDEXER] {}", msg).ok(); }
+                        if let Ok(mut v) = error_messages.lock() { v.push(msg); }
                         return None;
                     }
                     Some(meta)
                 }
                 None => {
                     errors.fetch_add(1, Ordering::Relaxed);
-                    if let Ok(mut f) = error_log.lock() {
-                        writeln!(f, "[INDEXER] Failed to read: {}", p.display()).ok();
-                    }
+                    let msg = format!("Failed to read: {}", p.display());
+                    if let Ok(mut f) = error_log.lock() { writeln!(f, "[INDEXER] {}", msg).ok(); }
+                    if let Ok(mut v) = error_messages.lock() { v.push(msg); }
                     None
                 }
             }
@@ -1144,202 +1296,294 @@ async fn main() {
             extracted.len().to_string().bright_white()
         );
     }
+    // Collect Phase 2 error messages for final report
+    let mut all_errors: Vec<String> = error_messages.into_inner().unwrap_or_default();
     println!();
 
     // --- Phase 3: Write to database ---
     println!("{} Writing to database...", "[3/4]".bright_blue().bold());
-    let new_count = AtomicU64::new(0);
-    let updated_count = AtomicU64::new(0);
-    let skipped_count = AtomicU64::new(0);
-    let db_errors = AtomicU64::new(0);
-    let processed = AtomicU64::new(0);
-    let last_db_folder: Mutex<String> = Mutex::new(String::new());
+    let mut new_total = 0u64;
+    let mut updated_total = 0u64;
+    let mut skipped_total = 0u64;
+    let mut db_error_total = 0u64;
 
     // Track releases that need cover art (first track per release)
-    let releases_needing_art: Mutex<HashMap<String, PathBuf>> = Mutex::new(HashMap::new());
+    let mut releases_needing_art: HashMap<String, PathBuf> = HashMap::new();
 
     let total_extracted = extracted.len() as u64;
 
-    for track in &extracted {
-        let n = processed.fetch_add(1, Ordering::Relaxed) + 1;
+    // --- Bulk change detection: load ALL existing tracks into memory ---
+    eprint!("  {} Loading existing tracks for change detection...", "→".bright_black());
+    let existing_rows: Vec<(String, i64, Option<NaiveDateTime>, Option<String>)> = sqlx::query_as(
+        r#"SELECT "filePath", "fileSize", mtime, "contentHash" FROM "LocalReleaseTrack""#,
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
 
-        // Progress
-        if n % 50 == 0 || n == 1 {
-            let folder = get_artist_folder(Path::new(&track.file_path), &music_dir);
-            let mut last = last_db_folder.lock().unwrap();
-            if *last != folder || n % 200 == 0 {
-                eprint!(
-                    "\r  {} {} {} / {}  ({:.1}%)",
-                    "→".bright_black(),
-                    format!("Writing: {:<40}", folder).bright_cyan(),
-                    format!("{:>8}", n).white(),
-                    total_extracted,
-                    (n as f64 / total_extracted as f64) * 100.0
-                );
-                *last = folder.clone();
-            }
+    let existing_tracks: HashMap<String, (i64, NaiveDateTime, String)> = existing_rows
+        .into_iter()
+        .map(|(path, size, mtime, hash)| {
+            (
+                path,
+                (
+                    size,
+                    mtime.unwrap_or_else(|| Utc::now().naive_utc()),
+                    hash.unwrap_or_default(),
+                ),
+            )
+        })
+        .collect();
+    eprintln!(" {} ({} existing tracks loaded)", "✓".green(), existing_tracks.len());
 
-            // Save checkpoint every 100 files
-            if n % 100 == 0 {
-                save_checkpoint(
-                    &pool,
-                    &folder,
-                    n as i32,
-                    &music_dir,
-                    &from_filter,
-                    &to_filter,
-                    &only_filter,
-                )
-                .await
-                .ok();
+    // --- In-memory caches for artist/release lookups ---
+    let mut artist_cache: HashMap<String, String> = HashMap::new();
+    let mut release_cache: HashMap<(String, String), String> = HashMap::new();
+
+    // --- Group tracks by artist folder for transaction batching ---
+    let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
+    {
+        let mut group_map: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut group_order: Vec<String> = Vec::new();
+        for (i, track) in extracted.iter().enumerate() {
+            let folder = track.file_path.split('/').next().unwrap_or("").to_string();
+            if !group_map.contains_key(&folder) {
+                group_order.push(folder.clone());
             }
+            group_map.entry(folder).or_default().push(i);
         }
-
-        // Change detection: check if file exists and is unchanged
-        match check_existing_track(&pool, &track.file_path).await {
-            Ok(Some((existing_size, existing_mtime, existing_hash))) => {
-                if existing_size == track.file_size
-                    && (existing_mtime - track.mtime).num_seconds().abs() < 2
-                {
-                    // mtime + size match -> skip
-                    skipped_count.fetch_add(1, Ordering::Relaxed);
-                    continue;
-                }
-                // Size or mtime changed -> check content hash
-                if existing_hash == track.content_hash {
-                    // Content unchanged, just update mtime
-                    update_mtime_only(&pool, &track.file_path, track.mtime)
-                        .await
-                        .ok();
-                    skipped_count.fetch_add(1, Ordering::Relaxed);
-                    continue;
-                }
-                // Content changed -> full update (fall through)
-                updated_count.fetch_add(1, Ordering::Relaxed);
-            }
-            Ok(None) => {
-                // New file
-                new_count.fetch_add(1, Ordering::Relaxed);
-            }
-            Err(_) => {
-                new_count.fetch_add(1, Ordering::Relaxed);
-            }
-        }
-
-        // Determine the artist name
-        let artist_name = track.artist.as_deref().unwrap_or("Unknown Artist");
-        let album_name = track.album.as_deref().unwrap_or("Unknown Album");
-
-        // Ensure artist exists
-        let artist_id = match ensure_artist(&pool, artist_name).await {
-            Ok(id) if !id.is_empty() => id,
-            Ok(_) => {
-                db_errors.fetch_add(1, Ordering::Relaxed);
-                continue;
-            }
-            Err(e) => {
-                db_errors.fetch_add(1, Ordering::Relaxed);
-                if let Ok(mut f) = error_log.lock() {
-                    writeln!(f, "[INDEXER] DB error (artist): {} - {}", track.file_path, e).ok();
-                }
-                continue;
-            }
-        };
-
-        // Ensure local release exists
-        let folder_path = Path::new(&track.file_path)
-            .parent()
-            .and_then(|p| {
-                // Make path relative to music_dir
-                let abs_path = p.to_string_lossy().to_string();
-                if abs_path.starts_with(&music_dir) {
-                    Some(abs_path.trim_start_matches(&music_dir).trim_start_matches('/').to_string())
-                } else {
-                    Some(abs_path)
-                }
-            });
-        let release_id = match ensure_local_release(
-            &pool,
-            &artist_id,
-            album_name,
-            track.year,
-            folder_path.as_deref(),
-        )
-        .await
-        {
-            Ok(id) => id,
-            Err(e) => {
-                db_errors.fetch_add(1, Ordering::Relaxed);
-                if let Ok(mut f) = error_log.lock() {
-                    writeln!(f, "[INDEXER] DB error (release): {} - {}", track.file_path, e).ok();
-                }
-                continue;
-            }
-        };
-
-        // Upsert track
-        let track_id = match upsert_track(&pool, track, &release_id).await {
-            Ok(id) => id,
-            Err(e) => {
-                db_errors.fetch_add(1, Ordering::Relaxed);
-                if let Ok(mut f) = error_log.lock() {
-                    writeln!(f, "[INDEXER] DB error (track): {} - {}", track.file_path, e).ok();
-                }
-                continue;
-            }
-        };
-
-        // TrackArtist: PRIMARY
-        ensure_track_artist(&pool, &track_id, &artist_id, "PRIMARY")
-            .await
-            .ok();
-
-        // TrackArtist: ALBUM_ARTIST (if different and not "Various Artists")
-        if let Some(ref album_artist) = track.album_artist {
-            // Skip "Various Artists" compilation marker for album artist
-            let aa_lower = album_artist.to_lowercase();
-            let is_various = aa_lower == "various artists" 
-                || aa_lower == "various"
-                || slugify(album_artist) == "various-artists"
-                || slugify(album_artist) == "various";
-            
-            if !is_various {
-                let aa_slug = slugify(album_artist);
-                let a_slug = slugify(artist_name);
-                if !aa_slug.is_empty() && aa_slug != a_slug {
-                    if let Ok(aa_id) = ensure_artist(&pool, album_artist).await {
-                        if !aa_id.is_empty() {
-                            ensure_track_artist(&pool, &track_id, &aa_id, "ALBUM_ARTIST")
-                                .await
-                                .ok();
-                        }
-                    }
-                }
-            }
-        }
-
-        // Track cover art candidates (first track per release with a picture)
-        // Only if the file doesn't already exist
-        if track.has_picture && !args.skip_images {
-            let img_dir = PathBuf::from(&config.project_root)
-                .join("web/public/img/releases");
-            let out_path = img_dir.join(format!("{}.jpg", release_id));
-            
-            // Only add if cover doesn't exist yet
-            if !out_path.exists() {
-                let mut art_map = releases_needing_art.lock().unwrap();
-                art_map
-                    .entry(release_id.clone())
-                    .or_insert_with(|| PathBuf::from(&track.file_path));
+        for folder in group_order {
+            if let Some(indices) = group_map.remove(&folder) {
+                groups.push((folder, indices));
             }
         }
     }
 
+    let mut processed = 0u64;
+    let total_groups = groups.len();
+
+    for (group_idx, (folder, indices)) in groups.iter().enumerate() {
+        // Progress
+        eprint!(
+            "\r  {} {} {} / {}  ({:.1}%) [{}/{}]",
+            "→".bright_black(),
+            format!("Writing: {:<40}", folder).bright_cyan(),
+            format!("{:>8}", processed).white(),
+            total_extracted,
+            (processed as f64 / total_extracted as f64) * 100.0,
+            group_idx + 1,
+            total_groups
+        );
+
+        // Begin transaction for this artist folder group
+        let mut tx = match pool.begin().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                db_error_total += indices.len() as u64;
+                if let Ok(mut f) = error_log.lock() {
+                    writeln!(f, "[INDEXER] Failed to begin transaction for folder '{}': {}", folder, e).ok();
+                }
+                processed += indices.len() as u64;
+                continue;
+            }
+        };
+
+        let mut group_errors = 0u64;
+
+        for &idx in indices {
+            let track = &extracted[idx];
+            processed += 1;
+
+            // Change detection using in-memory HashMap (replaces per-track DB query)
+            if let Some((existing_size, existing_mtime, existing_hash)) = existing_tracks.get(&track.file_path) {
+                if *existing_size == track.file_size
+                    && (*existing_mtime - track.mtime).num_seconds().abs() < 2
+                {
+                    // mtime + size match -> skip
+                    skipped_total += 1;
+                    continue;
+                }
+                // Size or mtime changed -> check content hash
+                if *existing_hash == track.content_hash {
+                    // Content unchanged, just update mtime
+                    let now = Utc::now().naive_utc();
+                    sqlx::query(
+                        r#"UPDATE "LocalReleaseTrack" SET mtime = $1, "updatedAt" = $2 WHERE "filePath" = $3"#,
+                    )
+                    .bind(track.mtime)
+                    .bind(now)
+                    .bind(&track.file_path)
+                    .execute(&mut *tx)
+                    .await
+                    .ok();
+                    skipped_total += 1;
+                    continue;
+                }
+                // Content changed -> full update
+                updated_total += 1;
+            } else {
+                // New file
+                new_total += 1;
+            }
+
+            // Split artist tags into individual artists
+            let album_artist_tag = track.album_artist.as_deref().unwrap_or("");
+            let track_artist_tag = track.artist.as_deref().unwrap_or("");
+
+            let (main_album_artists, feat_album_artists) = if !album_artist_tag.is_empty() && !is_various_artists(album_artist_tag) {
+                split_artists(album_artist_tag)
+            } else {
+                (Vec::new(), Vec::new())
+            };
+
+            let (main_track_artists, feat_track_artists) = if !track_artist_tag.is_empty() {
+                split_artists(track_artist_tag)
+            } else {
+                (Vec::new(), Vec::new())
+            };
+
+            // Canonical artist: first main album artist, or first main track artist
+            let canonical_name = main_album_artists.first()
+                .or(main_track_artists.first())
+                .map(|s| s.as_str())
+                .unwrap_or("Unknown Artist");
+            let album_name = track.album.as_deref().unwrap_or("Unknown Album");
+
+            // Ensure canonical artist exists (cached)
+            let artist_id = match ensure_artist_cached(&pool, canonical_name, &mut artist_cache).await {
+                Ok(id) if !id.is_empty() => id,
+                Ok(_) => {
+                    group_errors += 1;
+                    continue;
+                }
+                Err(e) => {
+                    group_errors += 1;
+                    let msg = format!("DB error (artist '{}') {}: {}", canonical_name, track.file_path, e);
+                    if let Ok(mut f) = error_log.lock() { writeln!(f, "[INDEXER] {}", msg).ok(); }
+                    all_errors.push(msg);
+                    continue;
+                }
+            };
+
+            // Ensure local release exists (cached)
+            let folder_path = {
+                let parts: Vec<&str> = track.file_path.rsplitn(2, '/').collect();
+                if parts.len() > 1 { Some(parts[1].to_string()) } else { None }
+            };
+            let release_id = match ensure_local_release_cached(
+                &pool,
+                &artist_id,
+                album_name,
+                track.year,
+                folder_path.as_deref(),
+                &mut release_cache,
+            )
+            .await
+            {
+                Ok(id) => id,
+                Err(e) => {
+                    group_errors += 1;
+                    let msg = format!("DB error (release '{}') {}: {}", album_name, track.file_path, e);
+                    if let Ok(mut f) = error_log.lock() { writeln!(f, "[INDEXER] {}", msg).ok(); }
+                    all_errors.push(msg);
+                    continue;
+                }
+            };
+
+            // Upsert track (on transaction)
+            let track_id = match upsert_track(&pool, track, &release_id).await {
+                Ok(id) => id,
+                Err(e) => {
+                    group_errors += 1;
+                    let msg = format!("DB error (track) {}: {}", track.file_path, e);
+                    if let Ok(mut f) = error_log.lock() { writeln!(f, "[INDEXER] {}", msg).ok(); }
+                    all_errors.push(msg);
+                    continue;
+                }
+            };
+
+            // TrackArtist: ALBUM_ARTIST role for all main album artists
+            for aa_name in &main_album_artists {
+                if let Ok(aa_id) = ensure_artist_cached(&pool, aa_name, &mut artist_cache).await {
+                    if !aa_id.is_empty() {
+                        ensure_track_artist(&pool, &track_id, &aa_id, "ALBUM_ARTIST").await.ok();
+                    }
+                }
+            }
+            // If no album artists were split, at least tag the canonical artist
+            if main_album_artists.is_empty() {
+                ensure_track_artist(&pool, &track_id, &artist_id, "ALBUM_ARTIST").await.ok();
+            }
+
+            // TrackArtist: PRIMARY role for all main track artists
+            if main_track_artists.is_empty() {
+                // No track artist tag — use canonical artist as PRIMARY
+                ensure_track_artist(&pool, &track_id, &artist_id, "PRIMARY").await.ok();
+            } else {
+                for ta_name in &main_track_artists {
+                    if let Ok(ta_id) = ensure_artist_cached(&pool, ta_name, &mut artist_cache).await {
+                        if !ta_id.is_empty() {
+                            ensure_track_artist(&pool, &track_id, &ta_id, "PRIMARY").await.ok();
+                        }
+                    }
+                }
+            }
+
+            // TrackArtist: FEATURED role for all featured artists (from both tags)
+            let all_featured: Vec<String> = feat_album_artists.iter()
+                .chain(feat_track_artists.iter())
+                .cloned()
+                .collect::<std::collections::HashSet<String>>()
+                .into_iter()
+                .collect();
+            for feat_name in &all_featured {
+                if let Ok(feat_id) = ensure_artist_cached(&pool, feat_name, &mut artist_cache).await {
+                    if !feat_id.is_empty() {
+                        ensure_track_artist(&pool, &track_id, &feat_id, "FEATURED").await.ok();
+                    }
+                }
+            }
+
+            // Track cover art candidates (first track per release with a picture)
+            if track.has_picture && !args.skip_images {
+                let img_dir = PathBuf::from(&config.project_root)
+                    .join("web/public/img/releases");
+                let out_path = img_dir.join(format!("{}.jpg", release_id));
+
+                if !out_path.exists() {
+                    releases_needing_art
+                        .entry(release_id.clone())
+                        .or_insert_with(|| PathBuf::from(&track.file_path));
+                }
+            }
+        }
+
+        db_error_total += group_errors;
+
+        // Commit transaction for this folder group
+        if let Err(e) = tx.commit().await {
+            if let Ok(mut f) = error_log.lock() {
+                writeln!(f, "[INDEXER] Failed to commit transaction for folder '{}': {}", folder, e).ok();
+            }
+        }
+
+        // Save checkpoint every 10 folders
+        if (group_idx + 1) % 10 == 0 {
+            save_checkpoint(
+                &pool,
+                folder,
+                processed as i32,
+                &music_dir,
+                &from_filter,
+                &to_filter,
+                &only_filter,
+            )
+            .await
+            .ok();
+        }
+    }
+
     eprintln!(); // Clear progress line
-    let new_total = new_count.load(Ordering::Relaxed);
-    let updated_total = updated_count.load(Ordering::Relaxed);
-    let skipped_total = skipped_count.load(Ordering::Relaxed);
-    let db_error_total = db_errors.load(Ordering::Relaxed);
     println!(
         "  {} New: {} | Updated: {} | Skipped: {} | Errors: {}",
         "✓".green(),
@@ -1348,15 +1592,25 @@ async fn main() {
         skipped_total.to_string().bright_black(),
         if db_error_total > 0 { db_error_total.to_string().red() } else { db_error_total.to_string().bright_black() }
     );
+    let total_errors = errors.load(Ordering::Relaxed) + db_error_total;
+    if !all_errors.is_empty() {
+        println!();
+        for msg in &all_errors {
+            println!("  {} {}", "✗".red(), msg.bright_red());
+        }
+        if total_errors as usize > all_errors.len() {
+            println!("  {} {} more errors in errors.log", "↳".bright_black(), total_errors as usize - all_errors.len());
+        }
+    }
     println!();
 
     // --- Cover art extraction ---
     if !args.skip_images {
-        let art_map = releases_needing_art.lock().unwrap();
+        let art_map = &releases_needing_art;
         if !art_map.is_empty() {
             println!("{} Extracting cover art...", "[3b]".bright_blue().bold());
-            println!("  {} Processing {} releases", "→".bright_black(), art_map.len());
-            
+            println!("  {} Processing {} releases (parallel)", "→".bright_black(), art_map.len());
+
             // Initialize S3 client if needed
             let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
             let use_local = config.image_storage == "local" || config.image_storage == "both";
@@ -1365,66 +1619,91 @@ async fn main() {
             } else {
                 None
             };
-            
-            let mut saved = 0u32;
-            let mut existing = 0u32;
+
             let img_dir = PathBuf::from(&config.project_root)
                 .join("web/public/img/releases");
 
-            for (release_id, source_path) in art_map.iter() {
-                let out_path = img_dir.join(format!("{}.jpg", release_id));
-                if out_path.exists() {
-                    existing += 1;
+            // Phase 1: Parallel CPU-bound extract+resize using rayon
+            let art_entries: Vec<(&String, &PathBuf)> = art_map.iter().collect();
+            let extracted_covers: Vec<(String, PathBuf, bool)> = art_entries
+                .par_iter()
+                .map(|(release_id, source_path)| {
+                    let out_path = img_dir.join(format!("{}.jpg", release_id));
+                    if out_path.exists() {
+                        return ((*release_id).clone(), out_path, false); // already exists
+                    }
+                    let success = extract_cover_art(source_path, &out_path);
+                    ((*release_id).clone(), out_path, success)
+                })
+                .collect();
+
+            // Phase 2: Sequential S3 uploads + DB updates
+            let mut saved = 0u32;
+            let mut existing = 0u32;
+            for (release_id, out_path, newly_extracted) in &extracted_covers {
+                if !newly_extracted {
+                    if out_path.exists() {
+                        existing += 1;
+                    }
                     continue;
                 }
-                if extract_cover_art(source_path, &out_path) {
-                    // S3 upload
-                    if use_s3 {
-                        if let (Some(ref client), Some(ref bucket), Some(ref public_url)) = 
-                            (&s3_client, &config.s3_bucket, &config.s3_public_url) {
-                            let s3_key = format!("releases/{}.jpg", release_id);
-                            match upload_to_s3(client, bucket, &s3_key, &out_path).await {
-                                Ok(_) => {
-                                    let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
-                                    sqlx::query(
-                                        r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+
+                // S3 upload
+                if use_s3 {
+                    if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
+                        (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                    {
+                        let s3_key = format!("releases/{}.jpg", release_id);
+                        match upload_to_s3(client, bucket, &s3_key, out_path).await {
+                            Ok(_) => {
+                                let image_url = format!(
+                                    "{}/{}",
+                                    public_url.trim_end_matches('/'),
+                                    s3_key
+                                );
+                                sqlx::query(
+                                    r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                )
+                                .bind(&image_url)
+                                .bind(release_id)
+                                .execute(&pool)
+                                .await
+                                .ok();
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to upload {} to S3: {:?}", release_id, e);
+                                if let Ok(mut f) = error_log.lock() {
+                                    writeln!(
+                                        f,
+                                        "[INDEXER] S3 upload failed for release {}: {:?}",
+                                        release_id, e
                                     )
-                                    .bind(&image_url)
-                                    .bind(release_id)
-                                    .execute(&pool)
-                                    .await
                                     .ok();
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to upload {} to S3: {:?}", release_id, e);
-                                    if let Ok(mut f) = error_log.lock() {
-                                        writeln!(f, "[INDEXER] S3 upload failed for release {}: {:?}", release_id, e).ok();
-                                    }
                                 }
                             }
                         }
                     }
-                    
-                    // Local storage
-                    if use_local {
-                        let relative = format!("/img/releases/{}.jpg", release_id);
-                        sqlx::query(
-                            r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                        )
-                        .bind(&relative)
-                        .bind(release_id)
-                        .execute(&pool)
-                        .await
-                        .ok();
-                    }
-                    
-                    // Delete local file if only using S3
-                    if !use_local && use_s3 && out_path.exists() {
-                        fs::remove_file(&out_path).ok();
-                    }
-                    
-                    saved += 1;
                 }
+
+                // Local storage
+                if use_local {
+                    let relative = format!("/img/releases/{}.jpg", release_id);
+                    sqlx::query(
+                        r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                    )
+                    .bind(&relative)
+                    .bind(release_id)
+                    .execute(&pool)
+                    .await
+                    .ok();
+                }
+
+                // Delete local file if only using S3
+                if !use_local && use_s3 && out_path.exists() {
+                    fs::remove_file(out_path).ok();
+                }
+
+                saved += 1;
             }
             println!(
                 "  {} Saved {} covers, {} already exist",
@@ -1559,7 +1838,6 @@ async fn main() {
     println!("  {} {}", "New tracks:".green(), new_total);
     println!("  {} {}", "Updated:".yellow(), updated_total);
     println!("  {} {}", "Skipped:".bright_black(), skipped_total);
-    let total_errors = errors.load(Ordering::Relaxed) + db_error_total;
     if total_errors > 0 {
         println!("  {} {}", "Errors:".red(), total_errors);
     }

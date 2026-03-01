@@ -11,6 +11,7 @@ use serde_json::Value as JsonValue;
 use slug::slugify;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -44,6 +45,14 @@ struct Args {
     /// Limit to first N artists
     #[arg(long, default_value = "0")]
     limit: usize,
+
+    /// Continue from last checkpoint
+    #[arg(long)]
+    resume: bool,
+
+    /// Show skipped releases (singles, bootlegs, etc.) in output
+    #[arg(long)]
+    verbose: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -195,9 +204,9 @@ impl RateLimiter {
     }
 
     fn on_success(&mut self) {
-        // Gradually reduce delay on success (but never below min)
+        // Reduce delay by 15% on success (recovery from 10s→1s in ~14 requests vs ~46)
         if self.delay_ms > self.min_delay {
-            self.delay_ms = (self.delay_ms * 95 / 100).max(self.min_delay);
+            self.delay_ms = (self.delay_ms * 85 / 100).max(self.min_delay);
         }
     }
 
@@ -277,22 +286,53 @@ async fn mb_get(
     Err("Max retries exceeded".to_string())
 }
 
+/// Normalize an artist name for similarity comparison:
+/// lowercase, strip leading "the ", collapse punctuation/whitespace.
+fn normalize_name(name: &str) -> String {
+    let s = name.to_lowercase();
+    let s = s.strip_prefix("the ").unwrap_or(&s);
+    s.chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Check whether a MB result name is similar enough to the query name.
+/// Uses word-level Jaccard similarity — must share ≥ 50% of words.
+fn names_are_similar(query: &str, result: &str) -> bool {
+    let q_norm = normalize_name(query);
+    let r_norm = normalize_name(result);
+    let q_set: std::collections::HashSet<&str> = q_norm.split_whitespace().collect();
+    let r_set: std::collections::HashSet<&str> = r_norm.split_whitespace().collect();
+    let intersection = q_set.intersection(&r_set).count();
+    let union = q_set.union(&r_set).count();
+    if union == 0 {
+        return true;
+    }
+    (intersection as f64 / union as f64) >= 0.5
+}
+
 async fn mb_search_artist(
     client: &Client,
     name: &str,
     limiter: &mut RateLimiter,
 ) -> Result<Option<MbArtistMatch>, String> {
-    let encoded = urlencoding::encode(name);
-    let url = format!("{}/artist/?query=artist:{}&limit=5&fmt=json", MB_BASE, encoded);
+    // Quote the name so Lucene treats it as a phrase, not individual terms.
+    // e.g. artist:"12 Stones" instead of artist:12 Stones
+    let phrase = format!("\"{}\"", name);
+    let quoted = urlencoding::encode(&phrase);
+    let url = format!("{}/artist/?query=artist:{}&limit=5&fmt=json", MB_BASE, quoted);
     let body = mb_get(client, &url, limiter).await?;
     let result: MbArtistSearchResult =
         serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
 
-    // Return best match with score >= 90
+    // Return best match with score >= 90 AND name similarity check
     Ok(result
         .artists
         .into_iter()
-        .find(|a| a.score.unwrap_or(0) >= 90))
+        .find(|a| a.score.unwrap_or(0) >= 90 && names_are_similar(name, &a.name)))
 }
 
 async fn mb_get_artist_detail(
@@ -487,6 +527,35 @@ async fn ensure_genre(pool: &PgPool, name: &str) -> Result<String, sqlx::Error> 
     Ok(row.0)
 }
 
+/// Cached version of ensure_release_type
+async fn ensure_release_type_cached(
+    pool: &PgPool,
+    name: &str,
+    cache: &mut HashMap<String, String>,
+) -> Result<String, sqlx::Error> {
+    let type_slug = slugify(name);
+    if let Some(id) = cache.get(&type_slug) {
+        return Ok(id.clone());
+    }
+    let id = ensure_release_type(pool, name).await?;
+    cache.insert(type_slug, id.clone());
+    Ok(id)
+}
+
+/// Cached version of ensure_genre
+async fn ensure_genre_cached(
+    pool: &PgPool,
+    name: &str,
+    cache: &mut HashMap<String, String>,
+) -> Result<String, sqlx::Error> {
+    if let Some(id) = cache.get(name) {
+        return Ok(id.clone());
+    }
+    let id = ensure_genre(pool, name).await?;
+    cache.insert(name.to_string(), id.clone());
+    Ok(id)
+}
+
 async fn upsert_artist_url(
     pool: &PgPool,
     artist_id: &str,
@@ -519,7 +588,7 @@ async fn upsert_mb_release(
     mb_id: &str,
 ) -> Result<String, sqlx::Error> {
     let existing: Option<(String,)> = sqlx::query_as(
-        r#"SELECT id FROM "musicbrainz_releases" WHERE "artistId" = $1 AND title = $2"#,
+        r#"SELECT id FROM "MusicBrainzRelease" WHERE "artistId" = $1 AND title = $2"#,
     )
     .bind(artist_id)
     .bind(title)
@@ -529,7 +598,7 @@ async fn upsert_mb_release(
     if let Some((id,)) = existing {
         let now = Utc::now().naive_utc();
         sqlx::query(
-            r#"UPDATE "musicbrainz_releases" SET
+            r#"UPDATE "MusicBrainzRelease" SET
                  "typeId" = $1, year = $2, "musicbrainzId" = $3, "updatedAt" = $4
                WHERE id = $5"#,
         )
@@ -546,7 +615,7 @@ async fn upsert_mb_release(
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
     sqlx::query(
-        r#"INSERT INTO "musicbrainz_releases"
+        r#"INSERT INTO "MusicBrainzRelease"
            (id, title, "artistId", "typeId", year, "musicbrainzId", status, "createdAt", "updatedAt")
            VALUES ($1, $2, $3, $4, $5, $6, 'UNKNOWN', $7, $7)
            ON CONFLICT ("artistId", title) DO UPDATE SET
@@ -565,6 +634,7 @@ async fn upsert_mb_release(
     .map(|row| row.get::<String, _>("id"))
 }
 
+#[allow(dead_code)]
 async fn upsert_mb_track(
     pool: &PgPool,
     release_id: &str,
@@ -577,7 +647,7 @@ async fn upsert_mb_track(
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
     sqlx::query(
-        r#"INSERT INTO "musicbrainz_release_tracks"
+        r#"INSERT INTO "MusicBrainzReleaseTrack"
            (id, title, position, "discNumber", "durationMs", "musicbrainzId", "releaseId", "createdAt", "updatedAt")
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
            ON CONFLICT DO NOTHING
@@ -596,12 +666,65 @@ async fn upsert_mb_track(
     .map(|row| row.map(|r| r.get::<String, _>("id")).unwrap_or(id))
 }
 
+/// Batch insert MB tracks using UNNEST arrays (replaces individual upsert_mb_track calls)
+async fn batch_insert_mb_tracks(
+    pool: &PgPool,
+    release_id: &str,
+    tracks: &[MbTrack],
+    disc_number: i32,
+) -> Result<(), sqlx::Error> {
+    if tracks.is_empty() {
+        return Ok(());
+    }
+
+    let mut ids: Vec<String> = Vec::with_capacity(tracks.len());
+    let mut titles: Vec<String> = Vec::with_capacity(tracks.len());
+    let mut positions: Vec<Option<i32>> = Vec::with_capacity(tracks.len());
+    let mut disc_numbers: Vec<Option<i32>> = Vec::with_capacity(tracks.len());
+    let mut durations: Vec<Option<i32>> = Vec::with_capacity(tracks.len());
+    let mut mb_ids: Vec<String> = Vec::with_capacity(tracks.len());
+    let mut release_ids: Vec<String> = Vec::with_capacity(tracks.len());
+    let now = chrono::Utc::now().naive_utc();
+    let mut timestamps: Vec<chrono::NaiveDateTime> = Vec::with_capacity(tracks.len());
+
+    for track in tracks {
+        ids.push(cuid2::create_id());
+        titles.push(track.title.clone());
+        positions.push(track.position.map(|p| p as i32));
+        disc_numbers.push(Some(disc_number));
+        durations.push(track.length.map(|l| l as i32));
+        mb_ids.push(track.id.clone());
+        release_ids.push(release_id.to_string());
+        timestamps.push(now);
+    }
+
+    sqlx::query(
+        r#"INSERT INTO "MusicBrainzReleaseTrack"
+           (id, title, position, "discNumber", "durationMs", "musicbrainzId", "releaseId", "createdAt", "updatedAt")
+           SELECT * FROM UNNEST($1::text[], $2::text[], $3::int[], $4::int[], $5::int[], $6::text[], $7::text[], $8::timestamp[], $9::timestamp[])
+           ON CONFLICT DO NOTHING"#,
+    )
+    .bind(&ids)
+    .bind(&titles)
+    .bind(&positions)
+    .bind(&disc_numbers)
+    .bind(&durations)
+    .bind(&mb_ids)
+    .bind(&release_ids)
+    .bind(&timestamps)
+    .bind(&timestamps)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 async fn delete_mb_tracks_for_release(
     pool: &PgPool,
     release_id: &str,
 ) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
-        r#"DELETE FROM "musicbrainz_release_tracks" WHERE "releaseId" = $1"#,
+        r#"DELETE FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
     )
     .bind(release_id)
     .execute(pool)
@@ -657,7 +780,7 @@ async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
     
     // Count MB releases
     let mb_releases: (i64,) = sqlx::query_as(
-        r#"SELECT COUNT(*)::bigint FROM "musicbrainz_releases""#
+        r#"SELECT COUNT(*)::bigint FROM "MusicBrainzRelease""#
     )
     .fetch_one(pool)
     .await?;
@@ -792,17 +915,17 @@ async fn check_release_status(
     .fetch_all(pool)
     .await?;
 
-    let local_titles: Vec<String> = local_tracks
+    let local_titles: HashSet<String> = local_tracks
         .iter()
         .map(|(t,)| normalize_title(t))
         .collect();
 
-    let mb_titles: Vec<String> = mb_tracks
+    let mb_titles: HashSet<String> = mb_tracks
         .iter()
         .map(|(t, _)| normalize_title(t))
         .collect();
 
-    // Find missing and extra
+    // Find missing and extra (using HashSet O(1) lookups instead of Vec O(n))
     let missing: Vec<String> = mb_tracks
         .iter()
         .filter(|(t, _)| !local_titles.contains(&normalize_title(t)))
@@ -839,6 +962,47 @@ async fn check_release_status(
     } else {
         Ok((MatchStatus::Unknown, None, None, 0.0))
     }
+}
+
+// ---------------------------------------------------------------------------
+// Sync checkpoint
+// ---------------------------------------------------------------------------
+
+async fn save_sync_checkpoint(
+    pool: &PgPool,
+    last_artist_slug: &str,
+    artists_processed: i32,
+) -> Result<(), sqlx::Error> {
+    let now = chrono::Utc::now().naive_utc();
+    sqlx::query(
+        r#"INSERT INTO "SyncCheckpoint" (id, "lastArtistSlug", "artistsProcessed", "createdAt", "updatedAt")
+           VALUES ('main', $1, $2, $3, $3)
+           ON CONFLICT (id) DO UPDATE SET
+             "lastArtistSlug" = $1, "artistsProcessed" = $2, "updatedAt" = $3"#,
+    )
+    .bind(last_artist_slug)
+    .bind(artists_processed)
+    .bind(now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn load_sync_checkpoint(pool: &PgPool) -> Result<Option<(String, i32)>, sqlx::Error> {
+    let row: Option<(Option<String>, i32)> = sqlx::query_as(
+        r#"SELECT "lastArtistSlug", "artistsProcessed" FROM "SyncCheckpoint" WHERE id = 'main'"#,
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|(slug, count)| (slug.unwrap_or_default(), count)))
+}
+
+async fn clear_sync_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(r#"DELETE FROM "SyncCheckpoint" WHERE id = 'main'"#)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1258,6 +1422,9 @@ async fn main() {
     if args.overwrite {
         println!("Mode      : overwrite (re-sync all artists)");
     }
+    if args.resume {
+        println!("Mode      : resume from checkpoint");
+    }
     println!();
 
     // Initialize error log
@@ -1300,39 +1467,81 @@ async fn main() {
         .join("web/public/img/artists");
     fs::create_dir_all(&artist_img_dir).ok();
 
-    // Build artist query with filters
-    let mut base_query = if args.overwrite {
-        r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" WHERE 1=1"#.to_string()
-    } else {
-        r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" 
-           WHERE ("musicbrainzId" IS NULL 
-              OR "lastSyncedAt" IS NULL 
-              OR "lastSyncedAt" < NOW() - INTERVAL '30 days')"#.to_string()
+    // Build artist query with parameterized filters
+    let artists: Vec<(String, String, String, Option<String>)> = {
+        let base_condition = if args.overwrite {
+            "1=1".to_string()
+        } else {
+            r#""musicbrainzId" IS NULL
+               OR "lastSyncedAt" IS NULL
+               OR "lastSyncedAt" < NOW() - INTERVAL '30 days'"#.to_string()
+        };
+
+        if let Some(ref prefix) = args.only {
+            let pattern = format!("{}%", prefix.to_lowercase());
+            let query = format!(
+                r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" WHERE ({}) AND LOWER(slug) LIKE $1 ORDER BY slug{}"#,
+                base_condition,
+                if args.limit > 0 { format!(" LIMIT {}", args.limit) } else { String::new() }
+            );
+            sqlx::query_as(&query)
+                .bind(&pattern)
+                .fetch_all(&pool)
+                .await
+                .expect("Failed to fetch artists")
+        } else if args.from.is_some() || args.to.is_some() {
+            match (&args.from, &args.to) {
+                (Some(from), Some(to)) => {
+                    let query = format!(
+                        r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" WHERE ({}) AND LOWER(slug) >= $1 AND LOWER(slug) <= $2 ORDER BY slug{}"#,
+                        base_condition,
+                        if args.limit > 0 { format!(" LIMIT {}", args.limit) } else { String::new() }
+                    );
+                    sqlx::query_as(&query)
+                        .bind(&from.to_lowercase())
+                        .bind(&to.to_lowercase())
+                        .fetch_all(&pool)
+                        .await
+                        .expect("Failed to fetch artists")
+                }
+                (Some(from), None) => {
+                    let query = format!(
+                        r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" WHERE ({}) AND LOWER(slug) >= $1 ORDER BY slug{}"#,
+                        base_condition,
+                        if args.limit > 0 { format!(" LIMIT {}", args.limit) } else { String::new() }
+                    );
+                    sqlx::query_as(&query)
+                        .bind(&from.to_lowercase())
+                        .fetch_all(&pool)
+                        .await
+                        .expect("Failed to fetch artists")
+                }
+                (None, Some(to)) => {
+                    let query = format!(
+                        r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" WHERE ({}) AND LOWER(slug) <= $1 ORDER BY slug{}"#,
+                        base_condition,
+                        if args.limit > 0 { format!(" LIMIT {}", args.limit) } else { String::new() }
+                    );
+                    sqlx::query_as(&query)
+                        .bind(&to.to_lowercase())
+                        .fetch_all(&pool)
+                        .await
+                        .expect("Failed to fetch artists")
+                }
+                (None, None) => unreachable!(),
+            }
+        } else {
+            let query = format!(
+                r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" WHERE ({}) ORDER BY slug{}"#,
+                base_condition,
+                if args.limit > 0 { format!(" LIMIT {}", args.limit) } else { String::new() }
+            );
+            sqlx::query_as(&query)
+                .fetch_all(&pool)
+                .await
+                .expect("Failed to fetch artists")
+        }
     };
-
-    // Apply filters
-    if let Some(ref prefix) = args.only {
-        let pattern = format!("{}%", prefix.to_lowercase());
-        base_query.push_str(&format!(" AND LOWER(slug) LIKE '{}'", pattern));
-    } else {
-        if let Some(ref from) = args.from {
-            base_query.push_str(&format!(" AND LOWER(slug) >= '{}'", from.to_lowercase()));
-        }
-        if let Some(ref to) = args.to {
-            base_query.push_str(&format!(" AND LOWER(slug) <= '{}'", to.to_lowercase()));
-        }
-    }
-
-    base_query.push_str(" ORDER BY slug");
-
-    if args.limit > 0 {
-        base_query.push_str(&format!(" LIMIT {}", args.limit));
-    }
-
-    let artists: Vec<(String, String, String, Option<String>)> = sqlx::query_as(&base_query)
-        .fetch_all(&pool)
-        .await
-        .expect("Failed to fetch artists");
 
     // Filter out "Various Artists" (compilation marker)
     let filtered_artists: Vec<_> = artists
@@ -1347,6 +1556,36 @@ async fn main() {
         })
         .collect();
 
+    // --- Resume: load checkpoint and skip already-processed artists ---
+    let resume_slug = if args.resume {
+        match load_sync_checkpoint(&pool).await {
+            Ok(Some((slug, count))) => {
+                println!(
+                    "Resuming from artist '{}' ({} artists already processed)",
+                    slug, count
+                );
+                Some(slug)
+            }
+            _ => {
+                println!("No checkpoint found, starting from scratch");
+                None
+            }
+        }
+    } else {
+        clear_sync_checkpoint(&pool).await.ok();
+        None
+    };
+
+    // Skip artists already processed when resuming
+    let filtered_artists: Vec<_> = if let Some(ref resume_from) = resume_slug {
+        filtered_artists
+            .into_iter()
+            .filter(|(_, _, slug, _)| slug.as_str() > resume_from.as_str())
+            .collect()
+    } else {
+        filtered_artists
+    };
+
     println!(
         "Artists to sync: {}",
         filtered_artists.len()
@@ -1359,18 +1598,50 @@ async fn main() {
     let mut synced = 0u32;
     let mut failed = 0u32;
     let mut partial = 0u32; // Artists synced but with some release failures
+    let mut skipped_compound = 0u32;
+    let mut synced_mb_ids: HashSet<String> = HashSet::new();
     let total = filtered_artists.len() as u32;
-    
+
     // Track failed artists with reasons for final report
     let mut failed_artists: Vec<(String, String)> = Vec::new();
 
+    // In-memory caches for genre and release type lookups
+    let mut genre_cache: HashMap<String, String> = HashMap::new();
+    let mut release_type_cache: HashMap<String, String> = HashMap::new();
+
     for (idx, (artist_id, artist_name, artist_slug, existing_mb_id)) in filtered_artists.iter().enumerate() {
         let progress_num = idx + 1;
-        println!("\n{} {} {}", 
+        println!("\n{} {} {}",
             format!("[{}/{}]", progress_num, total).bright_blue().bold(),
             "Syncing:".white(),
             artist_name.bright_cyan().bold()
         );
+
+        // Skip compound artist names (created from unsplit multi-artist tags)
+        // These should be re-indexed with the updated indexer to split into individual artists
+        if existing_mb_id.is_none() {
+            // For commas: only flag when not followed by space or digit (same rule as the indexer splitter)
+            // This avoids flagging "10,000 Maniacs" or "Crosby, Stills & Nash"
+            let has_bare_comma = {
+                let bytes = artist_name.as_bytes();
+                bytes.windows(2).any(|w| w[0] == b',' && w[1] != b' ' && !w[1].is_ascii_digit())
+            };
+            let has_separator = artist_name.contains('/')
+                || artist_name.contains(';')
+                || artist_name.contains('\\')
+                || artist_name.contains('|')
+                || has_bare_comma;
+            let lower = artist_name.to_lowercase();
+            let has_feat = lower.contains(" feat.") || lower.contains(" feat ")
+                || lower.contains(" ft.") || lower.contains(" ft ")
+                || lower.contains("(feat") || lower.contains("(ft")
+                || lower.contains(" featuring ");
+            if has_separator || has_feat {
+                println!("  {} Skipping compound artist name (re-index to split into individual artists)", "↷".yellow());
+                skipped_compound += 1;
+                continue;
+            }
+        }
 
         // 1. Find artist on MusicBrainz
         println!("  {} Searching MusicBrainz...", "→".bright_black());
@@ -1421,6 +1692,21 @@ async fn main() {
             }
         };
 
+        // Skip if this MB ID was already fully synced earlier in this run
+        if synced_mb_ids.contains(&mb_id) {
+            println!("  {} Already synced as a different name this run — linking and skipping", "↷".yellow());
+            sqlx::query(
+                r#"UPDATE "Artist" SET "musicbrainzId" = $1, "lastSyncedAt" = NOW(), "updatedAt" = NOW() WHERE id = $2"#,
+            )
+            .bind(&mb_id)
+            .bind(artist_id)
+            .execute(&pool)
+            .await
+            .ok();
+            synced += 1;
+            continue;
+        }
+
         // 2. Get artist detail (URLs, genres, tags)
         println!("  {} Fetching artist details...", "→".bright_black());
         match mb_get_artist_detail(&client, &mb_id, &mut limiter).await {
@@ -1439,12 +1725,12 @@ async fn main() {
                     }
                 }
 
-                // Genres from MB
+                // Genres from MB (cached)
                 let mut genre_count = 0;
                 if let Some(ref genres) = detail.genres {
                     for g in genres {
                         if g.count.unwrap_or(0) > 0 {
-                            if let Ok(genre_id) = ensure_genre(&pool, &g.name).await {
+                            if let Ok(genre_id) = ensure_genre_cached(&pool, &g.name, &mut genre_cache).await {
                                 link_artist_genre(&pool, artist_id, &genre_id).await.ok();
                                 genre_count += 1;
                             }
@@ -1452,11 +1738,11 @@ async fn main() {
                     }
                 }
 
-                // Tags as genres (fallback)
+                // Tags as genres (fallback, cached)
                 if let Some(ref tags) = detail.tags {
                     for t in tags {
                         if t.count.unwrap_or(0) > 0 {
-                            if let Ok(genre_id) = ensure_genre(&pool, &t.name).await {
+                            if let Ok(genre_id) = ensure_genre_cached(&pool, &t.name, &mut genre_cache).await {
                                 link_artist_genre(&pool, artist_id, &genre_id).await.ok();
                                 genre_count += 1;
                             }
@@ -1504,26 +1790,38 @@ async fn main() {
         let mut release_failures = 0u32;
         let mut skipped_singles = 0u32;
         let mut processed_releases = 0u32;
+        let total_to_process = release_groups.iter().filter(|rg| should_skip_release(rg).is_none()).count();
 
         for rg in &release_groups {
             if let Some(skip_reason) = should_skip_release(rg) {
-                println!("    {} {} ({}) - Skipping ({})", 
-                    "↷".bright_black(),
-                    rg.title.bright_black(), 
-                    rg.primary_type.as_deref().unwrap_or("Album").bright_black(),
-                    skip_reason.yellow()
-                );
+                if args.verbose {
+                    println!("    {} {} ({}) - Skipping ({})",
+                        "↷".bright_black(),
+                        rg.title.bright_black(),
+                        rg.primary_type.as_deref().unwrap_or("Album").bright_black(),
+                        skip_reason.yellow()
+                    );
+                }
                 skipped_singles += 1;
                 continue;
             }
 
             processed_releases += 1;
-            print!("    {} {} ({})... ", 
-                "→".bright_black(),
-                rg.title.bright_white(), 
-                rg.primary_type.as_deref().unwrap_or("Album").bright_black()
-            );
-            std::io::Write::flush(&mut std::io::stdout()).ok();
+            if args.verbose {
+                print!("    {} {} ({})... ",
+                    "→".bright_black(),
+                    rg.title.bright_white(),
+                    rg.primary_type.as_deref().unwrap_or("Album").bright_black()
+                );
+                std::io::Write::flush(&mut std::io::stdout()).ok();
+            } else {
+                eprint!("\r  {} Syncing {}/{} releases...{}",
+                    "→".bright_black(),
+                    processed_releases,
+                    total_to_process,
+                    " ".repeat(20)
+                );
+            }
 
             let release_type = rg.primary_type.as_deref().unwrap_or("Album");
             let year = rg
@@ -1532,7 +1830,7 @@ async fn main() {
                 .and_then(|d| d.split('-').next())
                 .and_then(|y| y.parse::<i32>().ok());
 
-            let type_id = match ensure_release_type(&pool, release_type).await {
+            let type_id = match ensure_release_type_cached(&pool, release_type, &mut release_type_cache).await {
                 Ok(id) => id,
                 Err(_) => continue,
             };
@@ -1559,23 +1857,27 @@ async fn main() {
             let release_tracks =
                 match mb_get_release_tracks(&client, &rg.id, &mut limiter).await {
                     Ok(rt) => {
-                        println!("{}", "✓".green());
+                        if args.verbose { println!("{}", "✓".green()); }
                         rt
                     }
                     Err(e) => {
                         // mb_get already retried 10 times with exponential backoff
                         // If we still failed, log it and move on
-                        println!("{} {}", "✗".red(), e.yellow());
+                        if args.verbose {
+                            println!("{} {}", "✗".red(), e.yellow());
+                        }
                         release_failures += 1;
-                        
+
                         if let Ok(mut f) = error_log.lock() {
                             writeln!(f, "[SYNC] Failed to fetch tracks for release '{}' by '{}': {}", rg.title, artist_name, e).ok();
                         }
-                        
+
                         // If the error suggests we should stop entirely, break
                         if e.contains("still unavailable after") {
-                            println!("    {} Stopping sync for '{}' due to persistent rate limiting", 
-                                "⚠".yellow(), artist_name.yellow());
+                            if args.verbose {
+                                println!("    {} Stopping sync for '{}' due to persistent rate limiting",
+                                    "⚠".yellow(), artist_name.yellow());
+                            }
                             failed_artists.push((artist_name.clone(), "Persistent rate limiting".to_string()));
                             break;
                         }
@@ -1585,30 +1887,18 @@ async fn main() {
 
             // Use the first (most canonical) release's tracks
             if let Some((_, tracks)) = release_tracks.first() {
-                // Delete existing tracks for this MB release, then insert fresh
+                // Delete existing tracks for this MB release, then batch insert fresh
                 delete_mb_tracks_for_release(&pool, &mb_release_id).await.ok();
 
-                let mut mb_track_pairs: Vec<(String, Option<i32>)> = Vec::new();
                 let disc_num = 1i32;
 
-                for track in tracks {
-                    let pos = track.position.map(|p| p as i32);
-                    let dur_ms = track.length.map(|l| l as i32);
+                // Batch insert all tracks at once (single query instead of N individual inserts)
+                batch_insert_mb_tracks(&pool, &mb_release_id, tracks, disc_num).await.ok();
 
-                    upsert_mb_track(
-                        &pool,
-                        &mb_release_id,
-                        &track.title,
-                        pos,
-                        Some(disc_num),
-                        dur_ms,
-                        &track.id,
-                    )
-                    .await
-                    .ok();
-
-                    mb_track_pairs.push((track.title.clone(), pos));
-                }
+                let mb_track_pairs: Vec<(String, Option<i32>)> = tracks
+                    .iter()
+                    .map(|track| (track.title.clone(), track.position.map(|p| p as i32)))
+                    .collect();
 
                 // Status check
                 let (status, _missing, _extra, score) = match check_release_status(
@@ -1627,7 +1917,7 @@ async fn main() {
                 // Update MB release status (just the status, not the track arrays)
                 let now = Utc::now().naive_utc();
                 sqlx::query(
-                    r#"UPDATE "musicbrainz_releases" SET
+                    r#"UPDATE "MusicBrainzRelease" SET
                          status = $1::"ReleaseStatus",
                          "updatedAt" = $2
                        WHERE id = $3"#,
@@ -1656,8 +1946,13 @@ async fn main() {
             }
         }
 
+        // Clear the progress line in non-verbose mode
+        if !args.verbose && total_to_process > 0 {
+            eprint!("\r{}\r", " ".repeat(60));
+        }
+
         // Summary for this artist
-        println!("  {} Processed {} releases ({} skipped, {} failed)", 
+        println!("  {} Processed {} releases ({} skipped, {} failed)",
             "→".bright_black(),
             processed_releases, 
             skipped_singles,
@@ -1714,9 +2009,11 @@ async fn main() {
         // Track if this was a partial success
         if release_failures > 0 && all_processed {
             partial += 1;
+            synced_mb_ids.insert(mb_id.clone());
             println!("  {} Partially synced ({} releases had issues)", "⚠".yellow(), release_failures);
         } else if all_processed {
             synced += 1;
+            synced_mb_ids.insert(mb_id.clone());
             if processed_releases == 0 && skipped_singles > 0 {
                 println!("  {} Synced (all releases were Singles/filtered types)", "✓".green().bold());
             } else {
@@ -1725,7 +2022,15 @@ async fn main() {
         } else {
             println!("  {} Failed to sync", "✗".red().bold());
         }
+
+        // Save checkpoint every 10 artists
+        if (idx + 1) % 10 == 0 {
+            save_sync_checkpoint(&pool, artist_slug, (idx + 1) as i32).await.ok();
+        }
     }
+
+    // Clear checkpoint on successful completion
+    clear_sync_checkpoint(&pool).await.ok();
 
     // Update statistics
     update_statistics(&pool).await.ok();
@@ -1738,6 +2043,9 @@ async fn main() {
     println!("  {} {}", "Synced:".green(), synced);
     if partial > 0 {
         println!("  {} {} (some releases had issues)", "Partial:".yellow(), partial);
+    }
+    if skipped_compound > 0 {
+        println!("  {} {} (compound artist names — re-index to split)", "Skipped:".yellow(), skipped_compound);
     }
     if failed > 0 {
         println!("  {} {}", "Failed:".red(), failed);

@@ -1141,6 +1141,7 @@ dependencies = [
  "md-5",
  "num_cpus",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "slug",
