@@ -12,12 +12,12 @@ use std::path::PathBuf;
 struct Args {
     /// Skip confirmation prompt
     #[arg(long)]
-    yes: bool,
+    y: bool,
 }
 
 async fn create_s3_client() -> Option<S3Client> {
-    let s3_bucket = std::env::var("S3_BUCKET").ok();
-    let s3_region = std::env::var("S3_REGION").ok();
+    let s3_bucket = std::env::var("S3_IMAGE_BUCKET").ok();
+    let s3_region = std::env::var("AWS_REGION").ok();
     
     if s3_bucket.is_none() || s3_region.is_none() {
         return None;
@@ -30,8 +30,8 @@ async fn create_s3_client() -> Option<S3Client> {
     }
     
     if let (Some(key), Some(secret)) = (
-        std::env::var("S3_ACCESS_KEY_ID").ok(),
-        std::env::var("S3_SECRET_ACCESS_KEY").ok()
+        std::env::var("AWS_ACCESS_KEY_ID").ok(),
+        std::env::var("AWS_SECRET_ACCESS_KEY").ok()
     ) {
         aws_config = aws_config.credentials_provider(
             aws_sdk_s3::config::Credentials::new(
@@ -145,18 +145,18 @@ async fn main() {
         }
     };
 
-    println!("⚠️  WARNING: This will DELETE ALL DATA from the database!");
+    println!("⚠️️  WARNING: This will DELETE ALL DATA from the database!");
     println!("Database: {}", database_url);
     println!();
 
-    if !args.yes {
-        print!("Are you sure you want to continue? Type 'yes' to confirm: ");
+    if !args.y {
+        print!("Are you sure you want to continue? Type 'y' to confirm: ");
         io::stdout().flush().unwrap();
 
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
 
-        if input.trim() != "yes" {
+        if input.trim() != "y" {
             println!("Aborted.");
             std::process::exit(0);
         }
@@ -188,8 +188,8 @@ async fn main() {
         "TrackArtist",
         "LocalReleaseTrack",
         "LocalRelease",
-        "musicbrainz_release_tracks",
-        "musicbrainz_releases",
+        "MusicBrainzReleaseTrack",
+        "MusicBrainzRelease",
         "ArtistUrl",
         "_ArtistGenres",
         "_ReleaseGenres",
@@ -200,6 +200,7 @@ async fn main() {
         "Settings",
         "Statistics",
         "IndexCheckpoint",
+        "SyncCheckpoint",
         "S3DeletionQueue",
     ];
 
@@ -208,16 +209,12 @@ async fn main() {
             .execute(&pool)
             .await
         {
-            Ok(_) => println!("  ✓ Truncated {}", table),
+            Ok(_) => println!("  ✅ Truncated {}", table),
             Err(e) => {
                 eprintln!("  ✗ Error truncating {}: {}", table, e);
             }
         }
     }
-
-    // Verify all tables are empty
-    println!();
-    println!("Verifying...");
 
     let result: Result<Vec<(String, i64)>, sqlx::Error> = sqlx::query_as(
         r#"
@@ -238,10 +235,8 @@ async fn main() {
 
     match result {
         Ok(rows) => {
-            if rows.is_empty() {
-                println!("  ✓ All tables are empty");
-            } else {
-                println!("  ⚠ Some tables still have data:");
+            if !rows.is_empty() {
+                println!("⚠️ Some tables still have data:");
                 for (table, count) in rows {
                     println!("    - {}: {} rows", table, count);
                 }
@@ -251,9 +246,6 @@ async fn main() {
             eprintln!("  ✗ Error verifying: {}", e);
         }
     }
-
-    println!();
-    println!("✓ Database nuked successfully!");
     
     // Delete image files (local)
     println!();
@@ -301,7 +293,7 @@ async fn main() {
         }
     }
     
-    println!("  ✓ Deleted {} local image file(s)", local_deleted_count);
+    println!("  ✅ Deleted {} local image file(s)", local_deleted_count);
     
     // Delete image files from S3 (if configured)
     let image_storage = std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
@@ -312,25 +304,23 @@ async fn main() {
         println!("Deleting S3 image files...");
         
         if let Some(s3_client) = create_s3_client().await {
-            if let Some(bucket) = std::env::var("S3_BUCKET").ok() {
+            if let Some(bucket) = std::env::var("S3_IMAGE_BUCKET").ok() {
                 match delete_s3_images(&s3_client, &bucket).await {
                     Ok(count) => {
-                        println!("  ✓ Deleted {} S3 image file(s)", count);
+                        println!("  ✅ Deleted {} S3 image file(s)", count);
                     }
                     Err(e) => {
                         eprintln!("  ✗ Error deleting S3 images: {}", e);
                     }
                 }
             } else {
-                println!("  ⚠ S3_BUCKET not configured, skipping S3 deletion");
+                println!("  ⚠️ S3_BUCKET not configured, skipping S3 deletion");
             }
         } else {
-            println!("  ⚠ S3 not configured, skipping S3 deletion");
+            println!("  ⚠️ S3 not configured, skipping S3 deletion");
         }
     }
     
     println!();
-    println!("Next steps:");
-    println!("  1. Run: ./index [MUSIC_DIR]");
-    println!("  2. Run: ./sync");
+    println!("✅ Database nuked successfully!");
 }

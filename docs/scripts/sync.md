@@ -42,35 +42,37 @@ cd scripts/sync && cargo build --release
 | `--from PREFIX` | | Sync artists starting from prefix (case insensitive) |
 | `--to PREFIX` | | Sync artists up to prefix (case insensitive) |
 | `--limit N` | 0 (no limit) | Limit to first N artists |
+| `--verbose` | false | Show skipped releases (singles, bootlegs, etc.) in output |
 
 ### How it works
 
 For each artist that needs syncing (no `musicbrainzId`, or `lastSyncedAt` older than 30 days, or `--overwrite` flag):
 
-1. **Search** MusicBrainz for the artist (by name or existing MB ID)
+1. **Compound name detection**: If the artist name contains multi-artist delimiters (`/`, `;`, `,`, `feat.`, `ft.`), it is skipped with a warning. These are leftover compound names that should be resolved by re-indexing with the updated indexer (which splits them into individual artists). Artists that already have a `musicbrainzId` are not affected by this check.
+2. **Search** MusicBrainz for the artist (by name or existing MB ID)
    - **Note**: "Various Artists" is automatically skipped (compilation marker, not a real artist)
-2. **Fetch** complete discography (release groups)
-3. **Filter** releases: skip Singles, Bootlegs, Demos, Interviews, Broadcasts
-4. **Create** MusicBrainzRelease and MusicBrainzReleaseTrack records
-5. **Store** genres/tags and artist URLs
-6. **Download** artist image (Wikipedia/Wikidata first, then Fanart.tv; 200x200 JPEG)
-7. **Status check** per release:
+3. **Fetch** complete discography (release groups)
+4. **Filter** releases: skip Singles, Bootlegs, Demos, Interviews, Broadcasts
+5. **Create** MusicBrainzRelease and MusicBrainzReleaseTrack records
+6. **Store** genres/tags and artist URLs
+7. **Download** artist image (Wikipedia/Wikidata first, then Fanart.tv; 200x200 JPEG)
+8. **Status check** per release:
    - `COMPLETE` - All MB tracks found locally
    - `INCOMPLETE` - Some tracks missing locally
    - `EXTRA_TRACKS` - More local tracks than MB
    - `MISSING` - MB release not in local catalogue
    - `UNSYNCABLE` - No MB ID on local release
    - `UNKNOWN` - Has MB ID but not found online
-8. **Calculate** `averageMatchScore` per artist
-9. Set `musicbrainzId` and `lastSyncedAt`
+9. **Calculate** `averageMatchScore` per artist
+10. Set `musicbrainzId` and `lastSyncedAt`
 
 ### Rate Limiting
 
 Adaptive strategy to respect MusicBrainz API limits:
-- Starts at 100ms between requests
-- Backs off to 1.5s on 503/429 responses
-- Gradually reduces delay on success
-- Retries up to 3 times per request
+- Starts at 1s between requests
+- Doubles delay on 503/429 responses (up to 10s base)
+- Reduces delay by 15% on success (back down to 1s minimum)
+- Retries up to 10 times per request with exponential backoff (up to 60s per retry)
 
 ### Error Logging
 
