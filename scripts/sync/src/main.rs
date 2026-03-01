@@ -301,11 +301,26 @@ fn normalize_name(name: &str) -> String {
 
 /// Check whether a MB result name is similar enough to the query name.
 /// Uses word-level Jaccard similarity — must share ≥ 50% of words.
+/// Single-token names require an exact match to avoid e.g. "3" matching "Alabama 3".
 fn names_are_similar(query: &str, result: &str) -> bool {
     let q_norm = normalize_name(query);
     let r_norm = normalize_name(result);
-    let q_set: std::collections::HashSet<&str> = q_norm.split_whitespace().collect();
-    let r_set: std::collections::HashSet<&str> = r_norm.split_whitespace().collect();
+
+    // Exact match always passes
+    if q_norm == r_norm {
+        return true;
+    }
+
+    let q_words: Vec<&str> = q_norm.split_whitespace().collect();
+    let r_words: Vec<&str> = r_norm.split_whitespace().collect();
+
+    // Single-token names must match exactly — Jaccard would allow "3" ≅ "Alabama 3"
+    if q_words.len() == 1 || r_words.len() == 1 {
+        return false;
+    }
+
+    let q_set: std::collections::HashSet<&str> = q_words.iter().copied().collect();
+    let r_set: std::collections::HashSet<&str> = r_words.iter().copied().collect();
     let intersection = q_set.intersection(&r_set).count();
     let union = q_set.union(&r_set).count();
     if union == 0 {
@@ -333,6 +348,85 @@ async fn mb_search_artist(
         .artists
         .into_iter()
         .find(|a| a.score.unwrap_or(0) >= 90 && names_are_similar(name, &a.name)))
+}
+
+/// Try to find a MusicBrainz match using progressive fallback strategies:
+/// 1. Try the artist name as stored in the DB
+/// 2. Try the raw `artist` tag from a sample track (if different)
+/// 3. Try splitting the raw `albumArtist` tag by common separators and matching each piece
+async fn find_mb_match_with_fallback(
+    client: &Client,
+    pool: &PgPool,
+    artist_id: &str,
+    artist_name: &str,
+    limiter: &mut RateLimiter,
+) -> Result<Option<MbArtistMatch>, String> {
+    // Step 1: try the stored name directly
+    if let Some(m) = mb_search_artist(client, artist_name, limiter).await? {
+        println!("    {} Found: {} ({})", "✓".green(), m.name.bright_white(), m.id.bright_black());
+        return Ok(Some(m));
+    }
+
+    // Fetch raw albumArtist / artist tags from a sample track for this artist
+    // No albumArtist IS NOT NULL filter — a track may only have an `artist` tag
+    let raw: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        r#"SELECT lrt."albumArtist", lrt.artist
+           FROM "LocalReleaseTrack" lrt
+           JOIN "LocalRelease" lr ON lrt."localReleaseId" = lr.id
+           WHERE lr."artistId" = $1
+           LIMIT 1"#,
+    )
+    .bind(artist_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // If no tracks exist, raw is None — steps 2 and 3 degrade gracefully using artist_name
+    let (raw_album_artist, raw_artist) = raw.unwrap_or((None, None));
+
+    // Step 2: try raw `artist` tag if different from the stored name
+    if let Some(ref a) = raw_artist {
+        let a = a.trim();
+        if !a.is_empty() && !a.eq_ignore_ascii_case(artist_name) {
+            if let Some(m) = mb_search_artist(client, a, limiter).await? {
+                println!(
+                    "    {} Found via 'artist' tag: {} ({})",
+                    "✓".green(), m.name.bright_white(), m.id.bright_black()
+                );
+                return Ok(Some(m));
+            }
+        }
+    }
+
+    // Step 3: split albumArtist by separators in order, try each piece
+    // Only split if the full name wasn't found — this handles compound artists that don't exist on MB as a single entity
+    let album_artist = raw_album_artist.as_deref().unwrap_or(artist_name);
+    const SEPARATORS: &[&str] = &[", ", " & ", " vs ", " vs. ", " feat ", " feat. ", " – "];
+    for sep in SEPARATORS {
+        let parts: Vec<&str> = album_artist
+            .split(sep)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        for part in &parts {
+            if part.eq_ignore_ascii_case(artist_name) {
+                continue; // already tried in step 1
+            }
+            if let Some(m) = mb_search_artist(client, part, limiter).await? {
+                println!(
+                    "    {} Found via split on '{}': {} ({})",
+                    "✓".green(), sep.trim(), m.name.bright_white(), m.id.bright_black()
+                );
+                return Ok(Some(m));
+            }
+        }
+    }
+
+    println!("    {} No match found", "✗".red());
+    Ok(None)
 }
 
 async fn mb_get_artist_detail(
@@ -634,39 +728,7 @@ async fn upsert_mb_release(
     .map(|row| row.get::<String, _>("id"))
 }
 
-#[allow(dead_code)]
-async fn upsert_mb_track(
-    pool: &PgPool,
-    release_id: &str,
-    title: &str,
-    position: Option<i32>,
-    disc_number: Option<i32>,
-    duration_ms: Option<i32>,
-    mb_id: &str,
-) -> Result<String, sqlx::Error> {
-    let id = cuid2::create_id();
-    let now = Utc::now().naive_utc();
-    sqlx::query(
-        r#"INSERT INTO "MusicBrainzReleaseTrack"
-           (id, title, position, "discNumber", "durationMs", "musicbrainzId", "releaseId", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
-           ON CONFLICT DO NOTHING
-           RETURNING id"#,
-    )
-    .bind(&id)
-    .bind(title)
-    .bind(position)
-    .bind(disc_number)
-    .bind(duration_ms)
-    .bind(mb_id)
-    .bind(release_id)
-    .bind(now)
-    .fetch_optional(pool)
-    .await
-    .map(|row| row.map(|r| r.get::<String, _>("id")).unwrap_or(id))
-}
-
-/// Batch insert MB tracks using UNNEST arrays (replaces individual upsert_mb_track calls)
+/// Batch insert MB tracks using UNNEST arrays
 async fn batch_insert_mb_tracks(
     pool: &PgPool,
     release_id: &str,
@@ -749,24 +811,6 @@ async fn link_artist_genre(
     Ok(())
 }
 
-#[allow(dead_code)]
-async fn link_release_genre(
-    pool: &PgPool,
-    release_id: &str,
-    genre_id: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        r#"INSERT INTO "_ReleaseGenres" ("A", "B")
-           VALUES ($1, $2)
-           ON CONFLICT DO NOTHING"#,
-    )
-    .bind(release_id)
-    .bind(genre_id)
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
 async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
     use chrono::Utc;
     let now = Utc::now().naive_utc();
@@ -833,12 +877,12 @@ async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
 enum MatchStatus {
     Complete,
     Incomplete,
     ExtraTracks,
     Missing,
+    #[allow(dead_code)]
     Unsyncable,
     Unknown,
 }
@@ -855,13 +899,6 @@ impl MatchStatus {
         }
     }
 
-    #[allow(dead_code)]
-    fn score(&self) -> f64 {
-        match self {
-            Self::Complete | Self::ExtraTracks => 1.0,
-            _ => 0.0,
-        }
-    }
 }
 
 fn normalize_title(title: &str) -> String {
@@ -1020,110 +1057,79 @@ async fn download_artist_image(
     artist_id: &str,
 ) -> Option<String> {
     let out_path = img_dir.join(format!("{}.jpg", artist_slug));
-    if out_path.exists() {
-        return Some(format!("/img/artists/{}.jpg", artist_slug));
-    }
-
     let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
     let use_local = config.image_storage == "local" || config.image_storage == "both";
 
-    // Try Wikipedia image first (from MB relations)
-    if let Some(ref relations) = artist.relations {
-        for rel in relations {
-            if rel.relation_type == "wikipedia" || rel.relation_type == "wikidata" {
-                if let Some(ref url) = rel.url {
-                    if let Some(img_url) = get_wikipedia_image(client, &url.resource).await {
-                        if download_and_resize(client, &img_url, &out_path).await {
-                            // Upload to S3 if needed
-                            if use_s3 {
-                                if let (Some(ref s3), Some(ref bucket), Some(ref public_url)) = 
-                                    (s3_client, &config.s3_bucket, &config.s3_public_url) {
-                                    let s3_key = format!("artists/{}.jpg", artist_slug);
-                                    if upload_to_s3(s3, bucket, &s3_key, &out_path).await.is_ok() {
-                                        let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
-                                        sqlx::query(
-                                            r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                                        )
-                                        .bind(&image_url)
-                                        .bind(artist_id)
-                                        .execute(pool)
-                                        .await
-                                        .ok();
-                                    }
-                                }
-                            }
-
-                            // Set local path if needed
-                            if use_local {
-                                let local_path = format!("/img/artists/{}.jpg", artist_slug);
-                                sqlx::query(
-                                    r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                                )
-                                .bind(&local_path)
-                                .bind(artist_id)
-                                .execute(pool)
-                                .await
-                                .ok();
-                            }
-
-                            // Delete local file if only using S3
-                            if !use_local && use_s3 && out_path.exists() {
-                                fs::remove_file(&out_path).ok();
-                            }
-
-                            return Some(format!("/img/artists/{}.jpg", artist_slug));
+    // Try to obtain a source image URL: Wikipedia first, then Fanart.tv
+    let img_url = {
+        let mut found = None;
+        if let Some(ref relations) = artist.relations {
+            for rel in relations {
+                if rel.relation_type == "wikipedia" || rel.relation_type == "wikidata" {
+                    if let Some(ref url) = rel.url {
+                        if let Some(u) = get_wikipedia_image(client, &url.resource).await {
+                            found = Some(u);
+                            break;
                         }
                     }
                 }
             }
         }
+        if found.is_none() {
+            found = get_fanart_image(client, &artist.id).await;
+        }
+        found
+    }?;
+
+    // Download and resize to local temp file
+    if !download_and_resize(client, &img_url, &out_path).await {
+        return None;
     }
 
-    // Try Fanart.tv
-    if let Some(img_url) = get_fanart_image(client, &artist.id).await {
-        if download_and_resize(client, &img_url, &out_path).await {
-            // Upload to S3 if needed
-            if use_s3 {
-                if let (Some(ref s3), Some(ref bucket), Some(ref public_url)) = 
-                    (s3_client, &config.s3_bucket, &config.s3_public_url) {
-                    let s3_key = format!("artists/{}.jpg", artist_slug);
-                    if upload_to_s3(s3, bucket, &s3_key, &out_path).await.is_ok() {
-                        let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
-                        sqlx::query(
-                            r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                        )
-                        .bind(&image_url)
-                        .bind(artist_id)
-                        .execute(pool)
-                        .await
-                        .ok();
-                    }
-                }
-            }
+    // Track whether at least one storage path wrote to the DB
+    let mut stored = false;
 
-            // Set local path if needed
-            if use_local {
-                let local_path = format!("/img/artists/{}.jpg", artist_slug);
+    if use_s3 {
+        if let (Some(ref s3), Some(ref bucket), Some(ref public_url)) =
+            (s3_client, &config.s3_bucket, &config.s3_public_url)
+        {
+            let s3_key = format!("artists/{}.jpg", artist_slug);
+            if upload_to_s3(s3, bucket, &s3_key, &out_path).await.is_ok() {
+                let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
                 sqlx::query(
-                    r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                    r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
                 )
-                .bind(&local_path)
+                .bind(&image_url)
                 .bind(artist_id)
                 .execute(pool)
                 .await
                 .ok();
+                stored = true;
             }
-
-            // Delete local file if only using S3
-            if !use_local && use_s3 && out_path.exists() {
-                fs::remove_file(&out_path).ok();
-            }
-
-            return Some(format!("/img/artists/{}.jpg", artist_slug));
         }
     }
 
-    None
+    if use_local {
+        let local_filename = format!("{}.jpg", artist_slug);
+        sqlx::query(r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#)
+            .bind(&local_filename)
+            .bind(artist_id)
+            .execute(pool)
+            .await
+            .ok();
+        stored = true;
+    }
+
+    // Remove temp file when only using S3
+    if !use_local && use_s3 {
+        fs::remove_file(&out_path).ok();
+    }
+
+    if stored {
+        Some(format!("/img/artists/{}.jpg", artist_slug))
+    } else {
+        None
+    }
 }
 
 async fn get_wikipedia_image(client: &Client, wiki_url: &str) -> Option<String> {
@@ -1649,9 +1655,8 @@ async fn main() {
             println!("    {} Using existing MB ID: {}", "✓".green(), mid.bright_black());
             mid.clone()
         } else {
-            match mb_search_artist(&client, artist_name, &mut limiter).await {
+            match find_mb_match_with_fallback(&client, &pool, artist_id, artist_name, &mut limiter).await {
                 Ok(Some(m)) => {
-                    println!("    {} Found: {} ({})", "✓".green(), m.name.bright_white(), m.id.bright_black());
                     // Save MB ID
                     sqlx::query(
                         r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW() WHERE id = $2"#,
@@ -1664,7 +1669,6 @@ async fn main() {
                     m.id
                 }
                 Ok(None) => {
-                    println!("    {} No match found", "✗".red());
                     failed_artists.push((artist_name.clone(), "No MusicBrainz match".to_string()));
                     if let Ok(mut f) = error_log.lock() {
                         writeln!(f, "[SYNC] No MusicBrainz match for artist: {}", artist_name).ok();
