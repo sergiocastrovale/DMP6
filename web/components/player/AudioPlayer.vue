@@ -7,6 +7,7 @@ import {
   Volume2,
   VolumeX,
   Shuffle,
+  Compass,
   ListMusic,
   Radio,
 } from 'lucide-vue-next'
@@ -135,21 +136,23 @@ function handleToggleMute() {
 }
 
 function getShuffleLabel() {
-  const labels = {
+  const labels: Record<string, string> = {
     off: 'Shuffle: Off',
     release: 'Release',
     artist: 'Artist',
     catalogue: 'Catalogue',
+    explorer: 'Explorer',
   }
   return labels[player.shuffleMode]
 }
 
 function getShuffleTooltip() {
-  const labels = {
+  const labels: Record<string, string> = {
     off: 'Shuffle: Off',
     release: 'Shuffle: Release',
     artist: 'Shuffle: Artist',
     catalogue: 'Shuffle: Catalogue',
+    explorer: 'Explorer mode — click to turn off',
   }
   return labels[player.shuffleMode]
 }
@@ -246,17 +249,19 @@ async function createNewPlaylist() {
         <div v-if="!isStreamMode" class="relative flex flex-col items-center">
           <span
             v-if="player.shuffleMode !== 'off'"
-            class="absolute -top-4 whitespace-nowrap rounded bg-amber-500 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-zinc-950"
+            class="absolute -top-4 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-zinc-950"
+            :class="player.shuffleMode === 'explorer' ? 'bg-amber-400' : 'bg-amber-500'"
           >
             {{ getShuffleLabel() }}
           </span>
           <button
-            class="text-zinc-400 hover:text-zinc-50 transition-colors"
-            :class="{ 'text-amber-500': player.shuffleMode !== 'off' }"
+            class="transition-colors"
+            :class="player.shuffleMode !== 'off' ? 'text-amber-500 hover:text-amber-400' : 'text-zinc-400 hover:text-zinc-50'"
             :title="getShuffleTooltip()"
             @click="player.cycleShuffleMode()"
           >
-            <Shuffle :size="18" />
+            <Compass v-if="player.shuffleMode === 'explorer'" :size="18" />
+            <Shuffle v-else :size="18" />
           </button>
         </div>
 
