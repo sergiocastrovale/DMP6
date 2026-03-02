@@ -1605,7 +1605,8 @@ async fn main() {
     let mut failed = 0u32;
     let mut partial = 0u32; // Artists synced but with some release failures
     let mut skipped_compound = 0u32;
-    let mut synced_mb_ids: HashSet<String> = HashSet::new();
+    // Maps mb_id → primary artist DB id, so compound artists can link releases
+    let mut synced_mb_ids: HashMap<String, String> = HashMap::new();
     let total = filtered_artists.len() as u32;
 
     // Track failed artists with reasons for final report
@@ -1696,17 +1697,68 @@ async fn main() {
             }
         };
 
-        // Skip if this MB ID was already fully synced earlier in this run
-        if synced_mb_ids.contains(&mb_id) {
-            println!("  {} Already synced as a different name this run — linking and skipping", "↷".yellow());
+        // Skip if this MB ID was already fully synced earlier in this run,
+        // but still link any local releases under this (compound) artist name.
+        if let Some(primary_artist_id) = synced_mb_ids.get(&mb_id).cloned() {
+            println!("  {} Already synced as a different name this run — linking releases and skipping", "↷".yellow());
             sqlx::query(
                 r#"UPDATE "Artist" SET "musicbrainzId" = $1, "lastSyncedAt" = NOW(), "updatedAt" = NOW() WHERE id = $2"#,
             )
             .bind(&mb_id)
-            .bind(artist_id)
+            .bind(&artist_id)
             .execute(&pool)
             .await
             .ok();
+
+            // Link local releases under this artist to the already-stored MB releases.
+            // Query all MB releases that were stored under the primary artist.
+            let mb_releases: Vec<(String, String)> = sqlx::query_as(
+                r#"SELECT id, title FROM "MusicBrainzRelease" WHERE "artistId" = $1"#,
+            )
+            .bind(&primary_artist_id)
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default();
+
+            let mut linked = 0u32;
+            for (mb_release_id, mb_release_title) in &mb_releases {
+                let mb_tracks: Vec<(String, Option<i32>)> = sqlx::query_as(
+                    r#"SELECT title, position FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
+                )
+                .bind(mb_release_id)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+
+                if let Ok((status, _, _, _)) = check_release_status(
+                    &pool,
+                    &artist_id,
+                    mb_release_id,
+                    mb_release_title,
+                    &mb_tracks,
+                )
+                .await
+                {
+                    if status != MatchStatus::Missing {
+                        linked += 1;
+                        sqlx::query(
+                            r#"UPDATE "LocalRelease" SET
+                                 "matchStatus" = $1::"ReleaseStatus",
+                                 "updatedAt" = NOW()
+                               WHERE "releaseId" = $2"#,
+                        )
+                        .bind(status.as_str())
+                        .bind(mb_release_id)
+                        .execute(&pool)
+                        .await
+                        .ok();
+                    }
+                }
+            }
+
+            if linked > 0 {
+                println!("  {} Linked {} local release(s)", "→".bright_black(), linked);
+            }
             synced += 1;
             continue;
         }
@@ -2013,11 +2065,11 @@ async fn main() {
         // Track if this was a partial success
         if release_failures > 0 && all_processed {
             partial += 1;
-            synced_mb_ids.insert(mb_id.clone());
+            synced_mb_ids.insert(mb_id.clone(), artist_id.clone());
             println!("  {} Partially synced ({} releases had issues)", "⚠".yellow(), release_failures);
         } else if all_processed {
             synced += 1;
-            synced_mb_ids.insert(mb_id.clone());
+            synced_mb_ids.insert(mb_id.clone(), artist_id.clone());
             if processed_releases == 0 && skipped_singles > 0 {
                 println!("  {} Synced (all releases were Singles/filtered types)", "✓".green().bold());
             } else {
