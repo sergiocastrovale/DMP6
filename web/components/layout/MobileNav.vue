@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Home, Library, Clock, ListMusic, Heart } from 'lucide-vue-next'
+import { Home, Library, Compass, Clock, ListMusic, Heart } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 
 const route = useRoute()
@@ -9,6 +9,7 @@ const { isStreamMode } = useStreamMode()
 const allItems = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/browse', label: 'Browse', icon: Library },
+  { to: '/explore', label: 'Explore', icon: Compass },
   { to: '/timeline', label: 'Timeline', icon: Clock },
   { to: '/playlists', label: 'Playlists', icon: ListMusic, hostOnly: true },
   { to: '/favorites', label: 'Favorites', icon: Heart, hostOnly: true },

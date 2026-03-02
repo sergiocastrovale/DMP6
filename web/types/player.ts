@@ -10,7 +10,14 @@ export interface PlayerTrack {
   localReleaseId: string | null
 }
 
-export type ShuffleMode = 'off' | 'release' | 'artist' | 'catalogue'
+export type ShuffleMode = 'off' | 'release' | 'artist' | 'catalogue' | 'explorer'
+
+export interface ExploreParams {
+  energy: number
+  era: number
+  familiarity: number
+  sound: number
+}
 
 export interface PlayerState {
   currentTrack: PlayerTrack | null
@@ -34,4 +41,5 @@ export interface PersistedPlayerState {
   shuffleMode: ShuffleMode
   queue: PlayerTrack[]
   originalQueue: PlayerTrack[]
+  explorerParams: ExploreParams | null
 }

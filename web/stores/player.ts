@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useDebounceFn } from '@vueuse/core'
-import type { PlayerTrack, ShuffleMode, PersistedPlayerState } from '~/types/player'
+import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState } from '~/types/player'
 
 export const usePlayerStore = defineStore('player', () => { 
   const currentTrack = ref<PlayerTrack | null>(null)
@@ -14,6 +14,9 @@ export const usePlayerStore = defineStore('player', () => {
   const isVisible = ref(false)
   const shuffleMode = ref<ShuffleMode>('off')
   const history = ref<string[]>([])
+  const explorerParams = ref<ExploreParams | null>(null)
+  // Track IDs played during the current explorer session — used for deduplication
+  const explorerHistory = ref<string[]>([])
 
   let audio: HTMLAudioElement | null = null
 
@@ -109,6 +112,26 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function next() {
+    if (shuffleMode.value === 'explorer') {
+      if (!explorerParams.value) return
+      try {
+        const track = await $fetch<PlayerTrack>('/api/tracks/explore', {
+          method: 'POST',
+          body: {
+            ...explorerParams.value,
+            excludeIds: explorerHistory.value,
+          },
+        })
+        if (track) {
+          explorerHistory.value.push(track.id)
+          if (explorerHistory.value.length > 50) explorerHistory.value.shift()
+          playTrack(track)
+        }
+      }
+      catch { /* ignore */ }
+      return
+    }
+
     if (shuffleMode.value === 'catalogue') {
       try {
         const track = await $fetch<PlayerTrack>('/api/tracks/random')
@@ -118,13 +141,22 @@ export const usePlayerStore = defineStore('player', () => {
       return
     }
 
-    if (queue.value.length === 0) return
+    // No queue — fall back to a random track
+    if (queue.value.length === 0) {
+      try {
+        const track = await $fetch<PlayerTrack>('/api/tracks/random')
+        if (track) playTrack(track)
+      }
+      catch { /* ignore */ }
+      return
+    }
+
     const idx = queue.value.findIndex(t => t.id === currentTrack.value?.id)
     const nextIdx = idx + 1
     if (nextIdx < queue.value.length) {
       playTrack(queue.value[nextIdx])
     }
-    else if (queue.value.length > 0) {
+    else {
       playTrack(queue.value[0])
     }
   }
@@ -145,6 +177,14 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function cycleShuffleMode() {
+    // Explorer mode is toggled off directly — not part of the normal cycle
+    if (shuffleMode.value === 'explorer') {
+      shuffleMode.value = 'off'
+      explorerParams.value = null
+      explorerHistory.value = []
+      return
+    }
+
     const modes: ShuffleMode[] = ['off', 'release', 'artist', 'catalogue']
     const idx = modes.indexOf(shuffleMode.value)
     const newMode = modes[(idx + 1) % modes.length]
@@ -179,6 +219,14 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  // Called only from the Explore page. Sets explorer mode with the given params
+  // and seeds explorerHistory so the next auto-play won't repeat this track.
+  function activateExplorer(params: ExploreParams, firstTrackId: string) {
+    explorerParams.value = params
+    explorerHistory.value = [firstTrackId]
+    shuffleMode.value = 'explorer'
+  }
+
   function shuffleArray<T>(arr: T[]): T[] {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
@@ -195,7 +243,9 @@ export const usePlayerStore = defineStore('player', () => {
         const state: PersistedPlayerState = JSON.parse(saved)
         volume.value = state.volume ?? 0.75
         isMuted.value = state.isMuted ?? false
-        shuffleMode.value = state.shuffleMode ?? 'off'
+        // Explorer mode can only be activated from the Explore page, never restored
+        shuffleMode.value = state.shuffleMode === 'explorer' ? 'off' : (state.shuffleMode ?? 'off')
+        explorerParams.value = state.explorerParams ?? null
         queue.value = state.queue ?? []
         originalQueue.value = state.originalQueue ?? []
         if (state.trackId && state.queue?.length) {
@@ -225,11 +275,12 @@ export const usePlayerStore = defineStore('player', () => {
         shuffleMode: shuffleMode.value,
         queue: queue.value,
         originalQueue: originalQueue.value,
+        explorerParams: explorerParams.value,
       }
       localStorage.setItem('dmp-player', JSON.stringify(state))
     }, 500)
 
-    watch([currentTrack, volume, isMuted, shuffleMode, queue], saveState, { deep: true })
+    watch([currentTrack, volume, isMuted, shuffleMode, queue, explorerParams], saveState, { deep: true })
   }
 
   function getAudioElement(): HTMLAudioElement | null {
@@ -248,6 +299,8 @@ export const usePlayerStore = defineStore('player', () => {
     isVisible,
     shuffleMode,
     history,
+    explorerParams,
+    explorerHistory,
     playTrack,
     togglePlay,
     seek,
@@ -257,6 +310,7 @@ export const usePlayerStore = defineStore('player', () => {
     next,
     previous,
     cycleShuffleMode,
+    activateExplorer,
     getAudioElement,
   }
 })

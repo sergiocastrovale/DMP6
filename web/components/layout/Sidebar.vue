@@ -2,6 +2,7 @@
 import {
   Home,
   Library,
+  Compass,
   Clock,
   ListMusic,
   Heart,
@@ -16,6 +17,7 @@ const { isStreamMode } = useStreamMode()
 const allNavItems = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/browse', label: 'Browse', icon: Library },
+  { to: '/explore', label: 'Explore', icon: Compass },
   { to: '/timeline', label: 'Timeline', icon: Clock },
   { to: '/playlists', label: 'Playlists', icon: ListMusic, hostOnly: true },
   { to: '/favorites', label: 'Favorites', icon: Heart, hostOnly: true },
