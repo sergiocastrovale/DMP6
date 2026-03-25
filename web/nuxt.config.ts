@@ -24,6 +24,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     musicDir: process.env.MUSIC_DIR || '',
+    imageDir: process.env.IMAGE_DIR || './public/img',
     imageStorage: process.env.IMAGE_STORAGE || 'local',
     s3PublicUrl: process.env.S3_PUBLIC_URL || '',
     mediasoupAnnouncedIp: process.env.MEDIASOUP_ANNOUNCED_IP || '127.0.0.1',
