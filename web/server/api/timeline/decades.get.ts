@@ -1,6 +1,8 @@
 import { prisma } from '~/server/utils/prisma'
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  setResponseHeader(event, 'Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
+
   // Get all distinct decades from local releases that have years
   const releases = await prisma.localRelease.findMany({
     where: {

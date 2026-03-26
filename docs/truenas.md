@@ -550,7 +550,7 @@ On the client, pre-fetch the next batch when the queue drops below 3 tracks. Thi
 
 This turns 500-row-fetch-per-song into 500-row-fetch-per-session.
 
-#### HTTP Response Caching Headers
+#### HTTP Response Caching Headers ✅
 
 **Problem**: No API endpoints set `Cache-Control` headers. Every page load triggers fresh DB queries, even for data that changes rarely (stats, genres, timeline).
 
