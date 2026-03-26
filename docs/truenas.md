@@ -396,36 +396,18 @@ max_connections = 50
 
 #### ✅ Redis API Cache
 
-Add Redis to `docker-compose.yml` for server-side API response caching:
+Redis runs as a sidecar container (`dmp-redis`) and caches responses for stats, genres, artists, timeline, and release endpoints — reducing repeated Prisma queries to sub-millisecond cache reads.
 
-```yaml
-services:
-  redis:
-    image: redis:7-alpine
-    container_name: dmp-redis
-    restart: unless-stopped
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
-    volumes:
-      - ${DMP_DATA}/redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+**NAS setup required before first deploy:**
+
+```bash
+ssh nas
+mkdir -p /mnt/SSD/web/dmp/redis
 ```
 
-Target cache TTLs:
+The web container connects via `REDIS_URL=redis://dmp-redis:6379` (already set in `docker-compose.yml`). If Redis is unreachable the app silently falls through to the database — it is never a hard dependency.
 
-| Route | TTL | Reason |
-|-------|-----|--------|
-| `/api/stats` | 5 min | Aggregate counts, rarely change |
-| `/api/genres/*` | 5 min | Genre list is stable |
-| `/api/artists/basic` | 5 min | Browse list, updated on index/sync |
-| `/api/artists/proximity-data` | 5 min | 3D view data, heavy query |
-| `/api/timeline/*` | 5 min | Decade groupings, stable |
-| `/api/releases/latest` | 2 min | Recently added |
-| `/api/releases/last-played` | 2 min | Recently played |
-| `/api/artists/[slug]` | 10 min | Artist detail, heavy with all releases |
+See [docs/redis.md](redis.md) for full details on what is cached, TTLs, and invalidation logic.
 
 #### ZFS Tuning for Music Streaming
 
