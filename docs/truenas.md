@@ -364,7 +364,7 @@ At 12k+ artists, 150k+ releases, and 2.5M+ tracks, several optimizations become 
 
 ### NAS Infrastructure
 
-#### PostgreSQL Tuning
+#### ✅ PostgreSQL Tuning
 
 Apply to the TrueNAS PostgreSQL app configuration. Values for 32GB RAM:
 
@@ -409,7 +409,7 @@ The web container connects via `REDIS_URL=redis://dmp-redis:6379` (already set i
 
 See [docs/redis.md](redis.md) for full details on what is cached, TTLs, and invalidation logic.
 
-#### ZFS Tuning for Music Streaming
+#### ✅ ZFS Tuning for Music Streaming
 
 Music files are large sequential reads. Tune the ZFS dataset holding your library:
 
