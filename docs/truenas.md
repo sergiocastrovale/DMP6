@@ -358,43 +358,50 @@ No SSL needed — Tailscale traffic is already encrypted end-to-end.
 
 ---
 
-## Phase 2: Performance Optimizations
+## Performance Optimizations
 
-At 12k+ artists, 150k+ releases, and 2.5M+ tracks, several optimizations become important. Split into infrastructure (NAS) and application (dev project) changes.
+### PostgreSQL Tuning
 
-### NAS Infrastructure
+The TrueNAS PostgreSQL app runs as container `ix-postgres-postgres-1`. Settings are applied via `ALTER SYSTEM SET` (writes to `postgresql.auto.conf` inside the container's data directory, so they survive container recreation) and require a full restart to take effect.
 
-#### ✅ PostgreSQL Tuning
+```bash
+ssh nas
 
-Apply to the TrueNAS PostgreSQL app configuration. Values for 32GB RAM:
+# Apply all settings — each ALTER SYSTEM must be its own statement
+for setting in \
+  "shared_buffers = '8GB'" \
+  "effective_cache_size = '24GB'" \
+  "work_mem = '256MB'" \
+  "maintenance_work_mem = '2GB'" \
+  "wal_buffers = '64MB'" \
+  "checkpoint_completion_target = 0.9" \
+  "min_wal_size = '1GB'" \
+  "max_wal_size = '4GB'" \
+  "random_page_cost = 1.1" \
+  "effective_io_concurrency = 200" \
+  "max_worker_processes = 8" \
+  "max_parallel_workers = 8" \
+  "max_parallel_workers_per_gather = 4" \
+  "max_connections = 50"
+do
+  docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -c "ALTER SYSTEM SET $setting;"
+done
 
+# Restart is required — shared_buffers and max_connections need it
+docker restart ix-postgres-postgres-1
+
+# Verify
+docker exec ix-postgres-postgres-1 psql -U dmp -d dmp \
+  -c 'SHOW shared_buffers; SHOW work_mem; SHOW max_connections; SHOW effective_cache_size;'
 ```
-# Memory
-shared_buffers = 8GB              # 25% of 32GB
-effective_cache_size = 24GB       # 75% of 32GB
-work_mem = 256MB                  # Personal app = few concurrent queries, go big
-maintenance_work_mem = 2GB        # Faster VACUUM/index builds
 
-# Write performance
-wal_buffers = 64MB
-checkpoint_completion_target = 0.9
-min_wal_size = 1GB
-max_wal_size = 4GB
+Values sized for 32GB RAM. If you ever rebuild the PostgreSQL app from scratch in TrueNAS UI, `postgresql.auto.conf` lives inside the app's persistent volume — check it survived with:
 
-# Query planner
-random_page_cost = 1.1            # SSD/NVMe storage
-effective_io_concurrency = 200    # SSD/NVMe
-
-# Parallelism
-max_worker_processes = 8
-max_parallel_workers = 8
-max_parallel_workers_per_gather = 4
-
-# Connections — personal app, keep low to preserve work_mem budget
-max_connections = 50
+```bash
+docker exec ix-postgres-postgres-1 cat /var/lib/postgresql/data/postgresql.auto.conf
 ```
 
-#### ✅ Redis API Cache
+### Redis API Cache
 
 Redis runs as a sidecar container (`dmp-redis`) and caches responses for stats, genres, artists, timeline, and release endpoints — reducing repeated Prisma queries to sub-millisecond cache reads.
 
@@ -409,27 +416,34 @@ The web container connects via `REDIS_URL=redis://dmp-redis:6379` (already set i
 
 See [docs/redis.md](redis.md) for full details on what is cached, TTLs, and invalidation logic.
 
-#### ✅ ZFS Tuning for Music Streaming
+### ZFS Tuning for Music Streaming
 
-Music files are large sequential reads. Tune the ZFS dataset holding your library:
+Music files are large sequential reads. The music library lives on the `dmp/music` dataset. Apply these properties from the NAS shell:
 
 ```bash
-# Larger recordsize for sequential streaming (default is 128K)
-zfs set recordsize=1M mnt/dmp/music
+ssh nas
 
-# Prioritize metadata caching over file data in ARC (files are too large to cache)
-zfs set primarycache=metadata mnt/dmp/music
+# Larger recordsize for sequential streaming (default is 128K)
+sudo zfs set recordsize=1M dmp/music
+
+# Stop large audio files from evicting useful metadata out of the ARC
+sudo zfs set primarycache=metadata dmp/music
 
 # Disable access time updates — saves a write on every file read
-zfs set atime=off mnt/dmp/music
+sudo zfs set atime=off dmp/music
+
+# Verify
+zfs get recordsize,primarycache,atime dmp/music
 ```
 
-The SSD pool holding PostgreSQL data benefits from the opposite — keep the default `recordsize=128K` and `primarycache=all`.
+Expected output:
+```
+NAME       PROPERTY      VALUE     SOURCE
+dmp/music  recordsize    1M        local
+dmp/music  primarycache  metadata  local
+dmp/music  atime         off       local
+```
 
-#### Image CDN / Caching
+These properties are persistent across reboots and TrueNAS upgrades — no need to reapply unless the dataset is recreated.
 
-For serving 12k+ artist images and 150k+ release covers efficiently:
-
-1. **S3 offload** (current): `IMAGE_STORAGE=s3` serves images from S3 — zero NAS I/O for images
-2. **Browser cache**: The image middleware already sets `Cache-Control: public, max-age=31536000, immutable` (1 year)
-3. **CloudFront** (optional): Put a CDN in front of the S3 bucket for global edge caching
+The `SSD` pool holding PostgreSQL data should keep the defaults (`recordsize=128K`, `primarycache=all`) — random I/O benefits from smaller records and full ARC caching.
