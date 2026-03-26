@@ -394,7 +394,7 @@ max_parallel_workers_per_gather = 4
 max_connections = 50
 ```
 
-#### Redis API Cache
+#### ✅ Redis API Cache
 
 Add Redis to `docker-compose.yml` for server-side API response caching:
 

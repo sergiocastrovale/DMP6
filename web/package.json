@@ -19,6 +19,7 @@
     "@vueuse/core": "^13.0.0",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
+    "ioredis": "^5.10.1",
     "lucide-vue-next": "^0.475.0",
     "mediasoup": "^3.19.17",
     "mediasoup-client": "^3.18.7",

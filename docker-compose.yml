@@ -1,8 +1,24 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: dmp-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ${DMP_DATA}/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   web:
     image: dmp-web:latest
     container_name: dmp-web
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     ports:
       - "${DMP_PORT:-3000}:3000"
     volumes:
@@ -11,6 +27,7 @@ services:
       - ${DMP_DATA}/dump:/app/data/dump
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://dmp-redis:6379
       - MUSIC_DIR=/music
       - IMAGE_STORAGE=${IMAGE_STORAGE:-local}
       - IMAGE_DIR=/app/data/img

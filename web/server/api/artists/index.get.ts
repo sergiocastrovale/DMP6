@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { cachedResponse } from '~/server/utils/cache'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'public, max-age=120, stale-while-revalidate=60')
@@ -13,66 +14,70 @@ export default defineEventHandler(async (event) => {
   const minScore = query.minScore ? Number(query.minScore) : null
   const maxScore = query.maxScore ? Number(query.maxScore) : null
 
-  const where: Record<string, unknown> = {}
+  const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genre ?? ''}:s=${sort}:q=${search ?? ''}:min=${minScore ?? ''}:max=${maxScore ?? ''}`
 
-  if (letter) {
-    where.slug = { startsWith: letter }
-  }
+  return cachedResponse(cacheKey, 120, async () => {
+    const where: Record<string, unknown> = {}
 
-  if (search) {
-    where.name = { contains: search, mode: 'insensitive' }
-  }
+    if (letter) {
+      where.slug = { startsWith: letter }
+    }
 
-  if (genre) {
-    where.genres = { some: { name: genre } }
-  }
+    if (search) {
+      where.name = { contains: search, mode: 'insensitive' }
+    }
 
-  if (minScore !== null || maxScore !== null) {
-    where.averageMatchScore = {}
-    if (minScore !== null) (where.averageMatchScore as Record<string, number>).gte = minScore / 100
-    if (maxScore !== null) (where.averageMatchScore as Record<string, number>).lte = maxScore / 100
-  }
+    if (genre) {
+      where.genres = { some: { name: genre } }
+    }
 
-  const orderBy: Record<string, string> = {}
-  switch (sort) {
-    case 'playCount':
-      orderBy.totalPlayCount = 'desc'
-      break
-    case 'score':
-      orderBy.averageMatchScore = 'desc'
-      break
-    case 'recent':
-      orderBy.createdAt = 'desc'
-      break
-    default:
-      orderBy.slug = 'asc'
-  }
+    if (minScore !== null || maxScore !== null) {
+      where.averageMatchScore = {}
+      if (minScore !== null) (where.averageMatchScore as Record<string, number>).gte = minScore / 100
+      if (maxScore !== null) (where.averageMatchScore as Record<string, number>).lte = maxScore / 100
+    }
 
-  const [items, total] = await Promise.all([
-    prisma.artist.findMany({
-      where,
-      orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        image: true,
-        imageUrl: true,
-        averageMatchScore: true,
-        totalPlayCount: true,
-        totalTracks: true,
-      },
-    }),
-    prisma.artist.count({ where }),
-  ])
+    const orderBy: Record<string, string> = {}
+    switch (sort) {
+      case 'playCount':
+        orderBy.totalPlayCount = 'desc'
+        break
+      case 'score':
+        orderBy.averageMatchScore = 'desc'
+        break
+      case 'recent':
+        orderBy.createdAt = 'desc'
+        break
+      default:
+        orderBy.slug = 'asc'
+    }
 
-  return {
-    items,
-    total,
-    page,
-    pageSize,
-    hasMore: page * pageSize < total,
-  }
+    const [items, total] = await Promise.all([
+      prisma.artist.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          image: true,
+          imageUrl: true,
+          averageMatchScore: true,
+          totalPlayCount: true,
+          totalTracks: true,
+        },
+      }),
+      prisma.artist.count({ where }),
+    ])
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      hasMore: page * pageSize < total,
+    }
+  })
 })

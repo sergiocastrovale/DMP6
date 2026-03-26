@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { invalidateCache } from '~/server/utils/cache'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
@@ -20,6 +21,7 @@ export default defineEventHandler(async (event) => {
         select: {
           id: true,
           artistId: true,
+          artist: { select: { slug: true } },
         },
       },
     },
@@ -36,10 +38,16 @@ export default defineEventHandler(async (event) => {
       }),
       prisma.artist.update({
         where: { id: track.localRelease.artistId },
-        data: {
-          totalPlayCount: { increment: 1 },
-        },
+        data: { totalPlayCount: { increment: 1 } },
       }),
+    ])
+
+    // Invalidate caches affected by play counts / lastPlayedAt
+    const slug = track.localRelease.artist?.slug
+    await Promise.all([
+      invalidateCache('releases:last-played:*'),
+      invalidateCache('stats'),
+      slug ? invalidateCache(`artist:${slug}`) : Promise.resolve(),
     ])
   }
 

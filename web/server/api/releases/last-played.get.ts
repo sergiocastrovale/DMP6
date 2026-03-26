@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { cachedResponse } from '~/server/utils/cache'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'public, max-age=30, stale-while-revalidate=15')
@@ -6,50 +7,38 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const limit = Math.min(Number(query.limit) || 50, 100)
 
-  const releases = await prisma.localRelease.findMany({
-    where: {
-      lastPlayedAt: { not: null },
-    },
-    take: limit,
-    orderBy: { lastPlayedAt: 'desc' },
-    include: {
-      artist: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
+  return cachedResponse(`releases:last-played:${limit}`, 60, async () => {
+    const releases = await prisma.localRelease.findMany({
+      where: { lastPlayedAt: { not: null } },
+      take: limit,
+      orderBy: { lastPlayedAt: 'desc' },
+      include: {
+        artist: {
+          select: { id: true, name: true, slug: true },
         },
-      },
-      release: {
-        select: {
-          id: true,
-          title: true,
-          type: {
-            select: {
-              name: true,
-            },
+        release: {
+          select: {
+            id: true,
+            title: true,
+            type: { select: { name: true } },
           },
         },
       },
-    },
-  })
+    })
 
-  return releases.map(release => ({
-    id: release.id,
-    title: release.title || release.release?.title || 'Unknown Release',
-    releaseType: release.release?.type?.name || null,
-    year: release.year,
-    image: release.image,
-    imageUrl: release.imageUrl,
-    lastPlayedAt: release.lastPlayedAt,
-    playCount: release.totalPlayCount,
-    artist: release.artist
-      ? {
-          id: release.artist.id,
-          name: release.artist.name,
-          slug: release.artist.slug,
-        }
-      : null,
-    musicBrainzId: release.release?.id || null,
-  }))
+    return releases.map(release => ({
+      id: release.id,
+      title: release.title || release.release?.title || 'Unknown Release',
+      releaseType: release.release?.type?.name || null,
+      year: release.year,
+      image: release.image,
+      imageUrl: release.imageUrl,
+      lastPlayedAt: release.lastPlayedAt,
+      playCount: release.totalPlayCount,
+      artist: release.artist
+        ? { id: release.artist.id, name: release.artist.name, slug: release.artist.slug }
+        : null,
+      musicBrainzId: release.release?.id || null,
+    }))
+  })
 })
