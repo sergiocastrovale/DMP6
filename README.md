@@ -14,7 +14,7 @@ DMP is a web app which combines Spotify, Plex and Lidarr, along with other archi
 ## Setup
 
 * [Local setup](docs/setup_local.md)
-* [Live setup](docs/setup_live.md)
+* [TrueNAS deployment](docs/truenas.md)
 
 ## Development
 

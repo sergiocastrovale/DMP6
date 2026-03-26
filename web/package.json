@@ -11,10 +11,6 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "deploy:app": "tsx scripts/deploy.ts app",
-    "deploy:db": "tsx scripts/deploy.ts db",
-    "deploy:nginx": "tsx scripts/deploy.ts nginx",
-    "deploy:uncache": "tsx scripts/deploy.ts uncache",
     "backup": "tsx scripts/backup.ts",
     "restore": "tsx scripts/restore.ts"
   },

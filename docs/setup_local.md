@@ -13,7 +13,7 @@ This command:
 3. Downloads it to `dump/` directory locally
 4. Names it with timestamp: `dmp6_YYYY-MM-DD_HH-MM-SS.sql.gz`
 
-This is particularly useful whenever you want to send the latest catalogue changes to the live server via `pnpm deploy:db`.
+This is particularly useful for keeping a local copy of the production database.
 
 ### Restore Database Locally
 

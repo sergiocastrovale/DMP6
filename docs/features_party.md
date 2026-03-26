@@ -10,7 +10,7 @@
 - 🎧 **Low latency** audio streaming (<1 second delay)
 - 📱 **Browser-only** - listeners need no installation
 - 🔄 **Synchronized metadata** - track info, play/pause, and position synced to all listeners
-- 👥 **Scalable** - supports 50+ concurrent listeners on a single VPS
+- 👥 **Scalable** - supports 50+ concurrent listeners
 - 🔒 **Read-only mode** - listeners can browse your catalog but can't control playback
 
 ### How It Works (Simple)
@@ -51,7 +51,7 @@
 
 #### Joining a Party
 
-1. Open the invite URL (e.g., `https://discodomeuprimo.online`)
+1. Open the invite URL (e.g., `http://192.168.1.241:3000`)
 2. If a session is active, you'll automatically connect
 3. See a **"Live"** indicator in the player
 4. Hear the audio streaming from the host
@@ -92,7 +92,7 @@
            ▼
 ┌─────────────────────┐
 │  Production Server  │  Relays audio to listeners
-│  (DigitalOcean)     │  
+│  (NAS / Remote)     │
 │                     │  
 │  Nuxt/Nitro         │  Web server
 │  mediasoup (SFU)    │  WebRTC media router
@@ -424,11 +424,7 @@ watch(() => player.isPlaying, async (playing) => {
 
 - Node.js 18+ and pnpm
 - PostgreSQL database
-- DigitalOcean VPS (or similar) with:
-  - Ubuntu 22.04 LTS
-  - 2 CPU cores, 2GB RAM
-  - Public IP address
-  - Domain name with SSL certificate
+- A server (NAS or remote) with a reachable IP for listener mode
 
 ### Local Setup (Host)
 
@@ -473,131 +469,6 @@ pnpm dev
    - `[party-host] Creating new producer`
    - `[party-host] Producer created successfully`
 
-### Production Setup (Server)
-
-#### 1. Configure Local Environment
-
-Add deployment settings to your local `web/.env`:
-
-```bash
-# Server connection
-SERVER_HOST=your-server-ip
-SERVER_USER=root
-DEPLOY_PATH=/var/www/dmp
-SSH_KEY_PATH=~/.ssh/your_key
-
-# Deployment database
-DEPLOY_DB_NAME=dmp
-DEPLOY_DB_USER=dmp_user
-DEPLOY_DB_PASSWORD=secure_password
-DEPLOY_DOMAIN=your-domain.com
-
-# Party Mode (local host config)
-PARTY_ENABLED=true
-PARTY_ROLE=host
-PARTY_URL=https://your-domain.com
-
-# WebRTC ports (for server)
-RTC_MIN_PORT=10000
-RTC_MAX_PORT=10100
-```
-
-#### 2. Run Server Setup (First Time Only)
-
-```bash
-cd web/scripts
-./run-server-setup.sh
-```
-
-This script:
-- ✅ Installs Node.js, PostgreSQL, PM2, Nginx, Certbot
-- ✅ Configures firewall (SSH, HTTP, HTTPS, WebRTC ports)
-- ✅ Sets up SSL certificate with Let's Encrypt
-- ✅ Creates database and user
-- ✅ Configures Nginx with WebSocket support
-
-#### 3. Deploy Application
-
-```bash
-cd web
-pnpm deploy:app
-```
-
-This command:
-1. ✅ Builds with `PARTY_ROLE=listener` override (read-only UI)
-2. ✅ Syncs built files to server
-3. ✅ Auto-creates server `.env` with listener configuration
-4. ✅ Sets `MEDIASOUP_ANNOUNCED_IP` to server's public IP
-5. ✅ Installs dependencies (including mediasoup native build)
-6. ✅ Copies mediasoup worker binary to `.output` directory
-7. ✅ Restarts PM2
-
-#### 4. Verify Deployment
-
-Check mediasoup worker started:
-
-```bash
-ssh your-server 'pm2 logs dmp --lines 50 | grep mediasoup'
-# Should see: [mediasoup] Worker started [pid:XXXXX, ports:10000-10100]
-```
-
-Check website is in listener mode:
-
-```bash
-curl https://your-domain.com/party-status
-# Should show PARTY_ROLE=listener
-```
-
-### Deployment Details
-
-#### Why Build Locally with Listener Override?
-
-**Problem:** Nuxt's `runtimeConfig.public` values are baked into the client JavaScript at build time. If we build with `PARTY_ROLE=host`, the production site will show host UI (play buttons, favorites, etc.).
-
-**Solution:** The deploy script temporarily overrides `PARTY_ROLE=listener` during the build:
-
-```typescript
-// In deploy.ts
-const buildEnv = { ...process.env, PARTY_ROLE: 'listener' }
-execSync('pnpm build', { stdio: 'inherit', env: buildEnv })
-```
-
-This ensures the production client JavaScript contains listener mode configuration.
-
-#### Server .env Auto-Generation
-
-The deploy script automatically creates `/var/www/dmp/.env` with:
-
-```bash
-# Party Mode (Listener) - Auto-configured for production
-PARTY_ENABLED=true
-PARTY_ROLE=listener
-PARTY_URL=
-MEDIASOUP_ANNOUNCED_IP=<your-server-ip>  # Auto-set from SERVER_HOST
-RTC_MIN_PORT=10000
-RTC_MAX_PORT=10100
-
-# Database (copied from local .env)
-DATABASE_URL=postgresql://...
-
-# Image storage (copied from local .env)
-IMAGE_STORAGE=s3
-S3_BUCKET=...
-# etc.
-```
-
-#### mediasoup Worker Binary
-
-mediasoup includes a native C++ worker binary that must be copied to the `.output` directory:
-
-```bash
-# After pnpm install on server
-cp node_modules/mediasoup/worker/out/Release/mediasoup-worker \
-   .output/server/node_modules/mediasoup/worker/out/Release/
-```
-
-The deploy script handles this automatically.
-
 ### Testing
 
 #### Local Host Testing
@@ -637,18 +508,16 @@ The deploy script handles this automatically.
 
 #### Listener Testing
 
-**Option 1: Live Server**
-
-1. Deploy to production `cd web && pnpm deploy:app`
+1. Deploy to NAS via `web/scripts/deploy-docker.sh`
 2. Start local dev server with `pnpm dev`
 3. Locally: Go to `/party`, start session, play track
-4. On phone or another device:
-  - Open https://your-domain.com
+4. On phone or another device on your LAN:
+  - Open `http://192.168.1.241:3000`
   - Should auto-connect and stream audio
 
-**Option 2: Debug Page**
+**Debug Page**
 
-1. Open https://your-domain.com/party-debug
+1. Open `http://<server-ip>:3000/party-debug`
 2. Should show:
    - Connection: Connected (green dot)
    - Current track info

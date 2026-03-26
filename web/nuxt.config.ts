@@ -57,7 +57,6 @@ export default defineNuxtConfig({
         { property: 'og:title', content: 'DMP' },
         { property: 'og:description', content: 'Personal music library management system with smart catalog matching, 3D artist exploration, timeline views, and comprehensive analytics.' },
         { property: 'og:type', content: 'website' },
-        { property: 'og:url', content: 'https://discodomeuprimo.online' },
         { property: 'og:site_name', content: 'DMP' },
         { name: 'twitter:card', content: 'summary' },
         { name: 'twitter:title', content: 'DMP' },
