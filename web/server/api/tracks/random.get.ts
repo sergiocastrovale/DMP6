@@ -1,41 +1,58 @@
 import { prisma } from '~/server/utils/prisma'
 
+interface RawTrack {
+  id: string
+  title: string | null
+  artist: string | null
+  album: string | null
+  duration: number | null
+  localReleaseId: string | null
+}
+
 export default defineEventHandler(async () => {
-  const count = await prisma.localReleaseTrack.count()
-  if (count === 0) return null
+  // TABLESAMPLE BERNOULLI: O(1) random selection regardless of table size
+  let rows = await prisma.$queryRaw<RawTrack[]>`
+    SELECT id, title, artist, album, duration, "localReleaseId"
+    FROM "LocalReleaseTrack"
+    TABLESAMPLE BERNOULLI(0.01)
+    LIMIT 1
+  `
 
-  const skip = Math.floor(Math.random() * count)
+  // Fallback to larger sample if empty (rare with 2.5M rows)
+  if (rows.length === 0) {
+    rows = await prisma.$queryRaw<RawTrack[]>`
+      SELECT id, title, artist, album, duration, "localReleaseId"
+      FROM "LocalReleaseTrack"
+      TABLESAMPLE BERNOULLI(1)
+      LIMIT 1
+    `
+  }
 
-  const track = await prisma.localReleaseTrack.findFirst({
-    skip,
-    select: {
-      id: true,
-      title: true,
-      artist: true,
-      album: true,
-      duration: true,
-      localReleaseId: true,
-      localRelease: {
+  if (rows.length === 0) return null
+
+  const raw = rows[0]
+
+  // Fetch release image data — single PK lookup, instant
+  const release = raw.localReleaseId
+    ? await prisma.localRelease.findUnique({
+        where: { id: raw.localReleaseId },
         select: {
           image: true,
           imageUrl: true,
           artist: { select: { slug: true } },
         },
-      },
-    },
-  })
-
-  if (!track) return null
+      })
+    : null
 
   return {
-    id: track.id,
-    title: track.title || 'Unknown',
-    artist: track.artist || 'Unknown',
-    album: track.album || 'Unknown',
-    duration: track.duration || 0,
-    artistSlug: track.localRelease?.artist?.slug || null,
-    releaseImage: track.localRelease?.image || null,
-    releaseImageUrl: track.localRelease?.imageUrl || null,
-    localReleaseId: track.localReleaseId,
+    id: raw.id,
+    title: raw.title || 'Unknown',
+    artist: raw.artist || 'Unknown',
+    album: raw.album || 'Unknown',
+    duration: raw.duration || 0,
+    artistSlug: release?.artist?.slug || null,
+    releaseImage: release?.image || null,
+    releaseImageUrl: release?.imageUrl || null,
+    localReleaseId: raw.localReleaseId,
   }
 })

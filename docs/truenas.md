@@ -500,7 +500,7 @@ CREATE INDEX idx_local_release_track_title_trgm ON "LocalReleaseTrack" USING GIN
 
 These indexes support Prisma's `contains` + `mode: 'insensitive'` queries with no code changes — PostgreSQL automatically uses the GIN index for case-insensitive `LIKE` patterns.
 
-#### Random Track Selection (Catalogue Shuffle)
+#### Random Track Selection (Catalogue Shuffle) ✅
 
 **Problem**: `/api/tracks/random` uses `COUNT + skip(random offset)`. At 2.5M tracks, `COUNT(*)` alone is ~200ms, plus the `OFFSET` scan. Every song transition in catalogue shuffle triggers this.
 
