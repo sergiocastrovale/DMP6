@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, Search, LayoutList, LayoutGrid, HelpCircle, Disc3 } from 'lucide-vue-next'
+import { Play, Search, LayoutList, LayoutGrid, HelpCircle, Disc3, Loader2 } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/components/TrackList.vue'
@@ -7,12 +7,22 @@ import { usePlayerStore } from '~/stores/player'
 import { statuses } from '~/helpers/constants'
 
 const props = defineProps<{
-  releases: UnifiedRelease[]
   slug: string
 }>()
 
+const route = useRoute()
+const router = useRouter()
 const player = usePlayerStore()
 const { isStreamMode } = useStreamMode()
+
+// All loaded releases (accumulated across pages)
+const releases = ref<UnifiedRelease[]>([])
+const loading = ref(true)
+const loadingMore = ref(false)
+const currentPage = ref(1)
+const hasMore = ref(false)
+const totalReleases = ref(0)
+const PAGE_SIZE = 20
 
 const searchQuery = ref('')
 const statusFilter = ref<string | null>(null)
@@ -23,9 +33,70 @@ const allTracks = ref<Track[]>([])
 const allTracksLoading = ref(false)
 const allTracksLoaded = ref(false)
 
+// Infinite scroll sentinel
+const sentinel = ref<HTMLElement>()
+let observer: IntersectionObserver | null = null
+
+async function fetchPage(page: number): Promise<boolean> {
+  const data = await $fetch<{
+    releases: UnifiedRelease[]
+    total: number
+    page: number
+    hasMore: boolean
+  }>(`/api/artists/${props.slug}/releases`, {
+    query: { page, pageSize: PAGE_SIZE },
+  })
+  releases.value.push(...data.releases)
+  totalReleases.value = data.total
+  hasMore.value = data.hasMore
+  currentPage.value = page
+  return data.hasMore
+}
+
+// Initial load: restore page from query param
+onMounted(async () => {
+  const targetPage = Math.max(1, Number(route.query.releasePage) || 1)
+  try {
+    for (let p = 1; p <= targetPage; p++) {
+      const more = await fetchPage(p)
+      if (!more) break
+    }
+  }
+  catch { /* ignore */ }
+  finally {
+    loading.value = false
+  }
+
+  // Set up infinite scroll observer
+  nextTick(() => {
+    observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && hasMore.value && !loadingMore.value) {
+        loadMore()
+      }
+    }, { rootMargin: '400px' })
+    if (sentinel.value) observer.observe(sentinel.value)
+  })
+})
+
+onUnmounted(() => observer?.disconnect())
+
+async function loadMore() {
+  if (!hasMore.value || loadingMore.value) return
+  loadingMore.value = true
+  try {
+    const nextPage = currentPage.value + 1
+    await fetchPage(nextPage)
+    router.replace({ query: { ...route.query, releasePage: String(nextPage) } })
+  }
+  catch { /* ignore */ }
+  finally {
+    loadingMore.value = false
+  }
+}
+
 const filteredByStatus = computed(() => {
-  if (!statusFilter.value) return props.releases
-  return props.releases.filter(r => r.status === statusFilter.value)
+  if (!statusFilter.value) return releases.value
+  return releases.value.filter(r => r.status === statusFilter.value)
 })
 
 const types = computed(() => {
@@ -56,7 +127,7 @@ const filteredReleases = computed(() => {
 
 const releaseMap = computed(() => {
   const map: Record<string, { title: string; status: ReleaseStatus; image: string | null; imageUrl: string | null }> = {}
-  for (const r of props.releases) {
+  for (const r of releases.value) {
     if (r.localReleaseId) {
       map[r.localReleaseId] = { title: r.title, status: r.status, image: r.image, imageUrl: r.imageUrl }
     }
@@ -69,7 +140,7 @@ const filteredAllTracks = computed(() => {
 
   if (statusFilter.value) {
     const matchingReleaseIds = new Set(
-      props.releases
+      releases.value
         .filter(r => r.status === statusFilter.value && r.localReleaseId)
         .map(r => r.localReleaseId),
     )
@@ -178,158 +249,170 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex flex-wrap items-center gap-3">
-      <div class="relative flex-1 sm:max-w-xs">
-        <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-        <input
-          type="text"
-          placeholder="Search tracks..."
-          class="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 pl-8 pr-3 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
-          @input="handleSearch(($event.target as HTMLInputElement).value)"
-        />
-      </div>
-
-      <Dropdown
-        v-model="statusFilter"
-        :options="statuses"
-        placeholder="Status"
-      />
-
-      <div class="flex-1" />
-
-      <div class="flex items-center rounded-lg border border-zinc-700 bg-zinc-900">
-        <button
-          class="rounded-l-lg px-2.5 py-1.5 transition-colors"
-          :class="viewMode === 'catalogue' ? 'bg-zinc-700 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50'"
-          title="Catalogue view"
-          @click="viewMode = 'catalogue'"
-        >
-          <LayoutGrid :size="16" />
-        </button>
-        <button
-          class="rounded-r-lg px-2.5 py-1.5 transition-colors"
-          :class="viewMode === 'list' ? 'bg-zinc-700 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50'"
-          title="List view"
-          @click="switchToListView()"
-        >
-          <LayoutList :size="16" />
-        </button>
-      </div>
+    <div v-if="loading" class="flex items-center justify-center py-12">
+      <Loader2 :size="24" class="animate-spin text-zinc-500" />
     </div>
 
-    <template v-if="viewMode === 'catalogue'">
-      <div v-if="types.length > 1" class="flex flex-wrap gap-1 border-b border-zinc-800 pb-2">
-        <button
-          v-for="type in types"
-          :key="type.slug"
-          class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-          :class="
-            activeTab === type.slug
-              ? 'bg-zinc-800 text-amber-500'
-              : 'text-zinc-400 hover:text-zinc-50'
-          "
-          @click="activeTab = type.slug"
-        >
-          {{ type.name }}
-          <span class="ml-1 text-xs text-zinc-500">{{ type.count }}</span>
-        </button>
-      </div>
-
-      <div class="flex items-center gap-4 px-3 text-xs text-zinc-500">
-        <div class="w-10 shrink-0" />
-        <div class="min-w-0 flex-1" />
-        <div class="relative flex items-center gap-1 shrink-0">
-          <span>Status</span>
-          <button class="text-zinc-500 hover:text-zinc-300 transition-colors" @click="showStatusHelp = !showStatusHelp">
-            <HelpCircle :size="12" />
-          </button>
-          <div
-            v-if="showStatusHelp"
-            class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl"
-          >
-            <p class="mb-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Release Statuses</p>
-            <div class="flex flex-col gap-2">
-              <div v-for="s in statuses" :key="s.value" class="flex flex-col gap-1">
-                <span :class="s.classes" class="inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
-                  {{ s.label }}
-                </span>
-                <p class="text-xs text-zinc-400">{{ s.description }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div v-if="showStatusHelp" class="fixed inset-0 z-10" @click="showStatusHelp = false" />
-
-      <div class="flex flex-col gap-1">
-        <div
-          v-for="release in filteredReleases"
-          :key="release.id"
-          class="rounded-lg border border-zinc-800 bg-zinc-900/50 transition-colors hover:border-zinc-700"
-        >
-          <div
-            class="flex cursor-pointer items-center gap-4 p-3"
-            @click="toggleExpand(release.id)"
-          >
-            <div class="group/cover relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
-              <img
-                v-if="release.image || release.imageUrl"
-                :src="release.imageUrl || release.image!"
-                :alt="release.title"
-                class="size-full object-cover"
-                loading="lazy"
-              />
-              <div v-else class="flex size-full items-center justify-center text-zinc-600">
-                <Disc3 :size="20" />
-              </div>
-              <button
-                v-if="!isStreamMode && (release.localReleaseId || release.localTrackCount > 0)"
-                class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover/cover:opacity-100"
-                @click.stop="playRelease(release)"
-              >
-                <Play :size="14" class="text-zinc-50" />
-              </button>
-            </div>
-
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-medium text-zinc-50">{{ release.title }}</p>
-              <div class="flex items-center gap-3 text-xs text-zinc-400">
-                <span v-if="release.year">{{ release.year }}</span>
-                <span v-if="release.trackCount">{{ release.trackCount }} tracks</span>
-                <span v-if="release.localTrackCount && release.trackCount !== release.localTrackCount">
-                  {{ release.localTrackCount }} local
-                </span>
-              </div>
-            </div>
-
-            <ReleaseStatusBadge :status="release.status" />
-          </div>
-
-          <div v-if="expandedRelease === release.id && (release.localReleaseId || release.localTrackCount > 0)" class="border-t border-zinc-800 px-3 pb-3">
-            <ReleaseTracksTable :release-id="release.localReleaseId || release.id" :columns="releaseTrackColumns" />
-          </div>
-        </div>
-      </div>
-
-      <div v-if="filteredReleases.length === 0" class="py-8 text-center text-sm text-zinc-500">
-        No releases in this category
-      </div>
-    </template>
-
     <template v-else>
-      <div v-if="allTracksLoading" class="py-8 text-center text-sm text-zinc-500">
-        Loading all tracks...
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="relative flex-1 sm:max-w-xs">
+          <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search tracks..."
+            class="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 pl-8 pr-3 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
+            @input="handleSearch(($event.target as HTMLInputElement).value)"
+          />
+        </div>
+
+        <Dropdown
+          v-model="statusFilter"
+          :options="statuses"
+          placeholder="Status"
+        />
+
+        <div class="flex-1" />
+
+        <div class="flex items-center rounded-lg border border-zinc-700 bg-zinc-900">
+          <button
+            class="rounded-l-lg px-2.5 py-1.5 transition-colors"
+            :class="viewMode === 'catalogue' ? 'bg-zinc-700 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50'"
+            title="Catalogue view"
+            @click="viewMode = 'catalogue'"
+          >
+            <LayoutGrid :size="16" />
+          </button>
+          <button
+            class="rounded-r-lg px-2.5 py-1.5 transition-colors"
+            :class="viewMode === 'list' ? 'bg-zinc-700 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50'"
+            title="List view"
+            @click="switchToListView()"
+          >
+            <LayoutList :size="16" />
+          </button>
+        </div>
       </div>
-      <div v-else-if="filteredAllTracks.length === 0" class="py-8 text-center text-sm text-zinc-500">
-        No tracks found
-      </div>
-      <TrackList
-        v-else
-        :tracks="filteredAllTracks"
-        :columns="listViewColumns"
-        :release-map="releaseMap"
-        :build-player-tracks="buildPlayerTracks"
-      />
+
+      <template v-if="viewMode === 'catalogue'">
+        <div v-if="types.length > 1" class="flex flex-wrap gap-1 border-b border-zinc-800 pb-2">
+          <button
+            v-for="type in types"
+            :key="type.slug"
+            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+            :class="
+              activeTab === type.slug
+                ? 'bg-zinc-800 text-amber-500'
+                : 'text-zinc-400 hover:text-zinc-50'
+            "
+            @click="activeTab = type.slug"
+          >
+            {{ type.name }}
+            <span class="ml-1 text-xs text-zinc-500">{{ type.count }}</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-4 px-3 text-xs text-zinc-500">
+          <div class="w-10 shrink-0" />
+          <div class="min-w-0 flex-1" />
+          <div class="relative flex items-center gap-1 shrink-0">
+            <span>Status</span>
+            <button class="text-zinc-500 hover:text-zinc-300 transition-colors" @click="showStatusHelp = !showStatusHelp">
+              <HelpCircle :size="12" />
+            </button>
+            <div
+              v-if="showStatusHelp"
+              class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl"
+            >
+              <p class="mb-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Release Statuses</p>
+              <div class="flex flex-col gap-2">
+                <div v-for="s in statuses" :key="s.value" class="flex flex-col gap-1">
+                  <span :class="s.classes" class="inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
+                    {{ s.label }}
+                  </span>
+                  <p class="text-xs text-zinc-400">{{ s.description }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="showStatusHelp" class="fixed inset-0 z-10" @click="showStatusHelp = false" />
+
+        <div class="flex flex-col gap-1">
+          <div
+            v-for="release in filteredReleases"
+            :key="release.id"
+            class="rounded-lg border border-zinc-800 bg-zinc-900/50 transition-colors hover:border-zinc-700"
+          >
+            <div
+              class="flex cursor-pointer items-center gap-4 p-3"
+              @click="toggleExpand(release.id)"
+            >
+              <div class="group/cover relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
+                <img
+                  v-if="release.image || release.imageUrl"
+                  :src="release.imageUrl || release.image!"
+                  :alt="release.title"
+                  class="size-full object-cover"
+                  loading="lazy"
+                />
+                <div v-else class="flex size-full items-center justify-center text-zinc-600">
+                  <Disc3 :size="20" />
+                </div>
+                <button
+                  v-if="!isStreamMode && (release.localReleaseId || release.localTrackCount > 0)"
+                  class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover/cover:opacity-100"
+                  @click.stop="playRelease(release)"
+                >
+                  <Play :size="14" class="text-zinc-50" />
+                </button>
+              </div>
+
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-medium text-zinc-50">{{ release.title }}</p>
+                <div class="flex items-center gap-3 text-xs text-zinc-400">
+                  <span v-if="release.year">{{ release.year }}</span>
+                  <span v-if="release.trackCount">{{ release.trackCount }} tracks</span>
+                  <span v-if="release.localTrackCount && release.trackCount !== release.localTrackCount">
+                    {{ release.localTrackCount }} local
+                  </span>
+                </div>
+              </div>
+
+              <ReleaseStatusBadge :status="release.status" />
+            </div>
+
+            <div v-if="expandedRelease === release.id && (release.localReleaseId || release.localTrackCount > 0)" class="border-t border-zinc-800 px-3 pb-3">
+              <ReleaseTracksTable :release-id="release.localReleaseId || release.id" :columns="releaseTrackColumns" />
+            </div>
+          </div>
+        </div>
+
+        <div v-if="filteredReleases.length === 0 && !hasMore" class="py-8 text-center text-sm text-zinc-500">
+          No releases in this category
+        </div>
+
+        <!-- Infinite scroll sentinel -->
+        <div ref="sentinel" class="h-1" />
+        <div v-if="loadingMore" class="flex justify-center py-4">
+          <Loader2 :size="20" class="animate-spin text-zinc-500" />
+        </div>
+      </template>
+
+      <template v-else>
+        <div v-if="allTracksLoading" class="py-8 text-center text-sm text-zinc-500">
+          Loading all tracks...
+        </div>
+        <div v-else-if="filteredAllTracks.length === 0" class="py-8 text-center text-sm text-zinc-500">
+          No tracks found
+        </div>
+        <TrackList
+          v-else
+          :tracks="filteredAllTracks"
+          :columns="listViewColumns"
+          :release-map="releaseMap"
+          :build-player-tracks="buildPlayerTracks"
+        />
+      </template>
     </template>
   </div>
 </template>

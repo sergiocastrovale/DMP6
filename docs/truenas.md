@@ -640,7 +640,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY dmp_timeline;
 
 Query these views instead of running aggregations in real-time. Goes from seconds to <1ms.
 
-#### Artist Detail Page: Paginate Releases
+#### Artist Detail Page: Paginate Releases ✅
 
 **Problem**: `/api/artists/[slug]` loads ALL releases + tracks for an artist with no limit. Artists with 100+ releases return massive payloads and trigger expensive JOINs.
 
