@@ -290,6 +290,8 @@ export const usePlayerStore = defineStore('player', () => {
       catch { /* ignore corrupt state */ }
     }
 
+    const QUEUE_PERSIST_CAP = 200
+
     const saveState = useDebounceFn(() => {
       const state: PersistedPlayerState = {
         trackId: currentTrack.value?.id ?? null,
@@ -297,8 +299,8 @@ export const usePlayerStore = defineStore('player', () => {
         volume: volume.value,
         isMuted: isMuted.value,
         shuffleMode: shuffleMode.value,
-        queue: queue.value,
-        originalQueue: originalQueue.value,
+        queue: queue.value.slice(-QUEUE_PERSIST_CAP),
+        originalQueue: originalQueue.value.slice(-QUEUE_PERSIST_CAP),
         explorerParams: explorerParams.value,
       }
       localStorage.setItem('dmp-player', JSON.stringify(state))

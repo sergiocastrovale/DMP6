@@ -662,7 +662,7 @@ const releases = await prisma.localRelease.findMany({
 
 **Solution**: Add `limit` and `offset` query params, default `limit=50`.
 
-#### Queue Persistence: Limit Stored Tracks
+#### ✅ Queue Persistence: Limit Stored Tracks
 
 **Problem**: `localStorage` stores the entire queue. With catalogue shuffle, the queue grows unbounded as tracks play. At some point this degrades `JSON.parse` on page load.
 
