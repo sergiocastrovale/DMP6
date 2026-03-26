@@ -360,58 +360,13 @@ No SSL needed — Tailscale traffic is already encrypted end-to-end.
 
 ## Phase 2: Performance Optimizations
 
-At 12k+ artists, 150k+ releases, and 2.5M+ tracks, several optimizations become important.
+At 12k+ artists, 150k+ releases, and 2.5M+ tracks, several optimizations become important. Split into infrastructure (NAS) and application (dev project) changes.
 
-### Redis API Cache
+### NAS Infrastructure
 
-Add Redis to `docker-compose.yml` for caching API responses — replaces the Nginx proxy cache from the VPS deployment.
+#### PostgreSQL Tuning
 
-```yaml
-services:
-  redis:
-    image: redis:7-alpine
-    postgres: dmp-redis
-    restart: unless-stopped
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
-    volumes:
-      - ${DMP_DATA}/redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-```
-
-Then configure Nitro storage in `nuxt.config.ts`:
-
-```ts
-nitro: {
-  storage: {
-    cache: {
-      driver: 'redis',
-      host: process.env.REDIS_HOST || 'localhost',
-      port: 6379,
-    },
-  },
-}
-```
-
-**Target cache TTLs** (matching the current Nginx cache config):
-
-| Route | TTL | Reason |
-|-------|-----|--------|
-| `/api/stats` | 5 min | Aggregate counts, rarely change |
-| `/api/genres/*` | 5 min | Genre list is stable |
-| `/api/artists/basic` | 5 min | Browse list, updated on index/sync |
-| `/api/artists/proximity-data` | 5 min | 3D view data, heavy query |
-| `/api/timeline/*` | 5 min | Decade groupings, stable |
-| `/api/releases/latest` | 2 min | Recently added |
-| `/api/releases/last-played` | 2 min | Recently played |
-| `/api/artists/[slug]` | 10 min | Artist detail, heavy with all releases |
-
-### PostgreSQL Tuning
-
-These settings should be applied to the TrueNAS PostgreSQL app configuration. Recommended values for a NAS with 16-32GB RAM:
+Apply to the TrueNAS PostgreSQL app configuration. Values for 32GB RAM:
 
 ```
 # Memory
@@ -427,8 +382,8 @@ min_wal_size = 1GB
 max_wal_size = 4GB
 
 # Query planner
-random_page_cost = 1.1
-effective_io_concurrency = 200
+random_page_cost = 1.1            # SSD/NVMe storage
+effective_io_concurrency = 200    # SSD/NVMe
 
 # Parallelism
 max_worker_processes = 8
@@ -439,21 +394,89 @@ max_parallel_workers_per_gather = 4
 max_connections = 50
 ```
 
-### Missing Database Indexes
+#### Redis API Cache
 
-Add these to `web/prisma/schema.prisma` for queries that become slow at scale:
+Add Redis to `docker-compose.yml` for server-side API response caching:
+
+```yaml
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: dmp-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ${DMP_DATA}/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+```
+
+Target cache TTLs:
+
+| Route | TTL | Reason |
+|-------|-----|--------|
+| `/api/stats` | 5 min | Aggregate counts, rarely change |
+| `/api/genres/*` | 5 min | Genre list is stable |
+| `/api/artists/basic` | 5 min | Browse list, updated on index/sync |
+| `/api/artists/proximity-data` | 5 min | 3D view data, heavy query |
+| `/api/timeline/*` | 5 min | Decade groupings, stable |
+| `/api/releases/latest` | 2 min | Recently added |
+| `/api/releases/last-played` | 2 min | Recently played |
+| `/api/artists/[slug]` | 10 min | Artist detail, heavy with all releases |
+
+#### ZFS Tuning for Music Streaming
+
+Music files are large sequential reads. Tune the ZFS dataset holding your library:
+
+```bash
+# Larger recordsize for sequential streaming (default is 128K)
+zfs set recordsize=1M mnt/dmp/music
+
+# Prioritize metadata caching over file data in ARC (files are too large to cache)
+zfs set primarycache=metadata mnt/dmp/music
+
+# Disable access time updates — saves a write on every file read
+zfs set atime=off mnt/dmp/music
+```
+
+The SSD pool holding PostgreSQL data benefits from the opposite — keep the default `recordsize=128K` and `primarycache=all`.
+
+#### Image CDN / Caching
+
+For serving 12k+ artist images and 150k+ release covers efficiently:
+
+1. **S3 offload** (current): `IMAGE_STORAGE=s3` serves images from S3 — zero NAS I/O for images
+2. **Browser cache**: The image middleware already sets `Cache-Control: public, max-age=31536000, immutable` (1 year)
+3. **CloudFront** (optional): Put a CDN in front of the S3 bucket for global edge caching
+
+---
+
+### Dev Project
+
+#### Database Indexes ✅
+
+Add to `web/prisma/schema.prisma` for queries that become slow at scale:
 
 ```prisma
-// Artist sorting — used by browse page sort options
-@@index([totalPlayCount])
-@@index([averageMatchScore])
+// === Artist model ===
+@@index([totalPlayCount])       // Browse sort by play count
+@@index([averageMatchScore])    // Browse sort by match score
+@@index([createdAt])            // Browse sort by recently added
 
-// Track year — used by explore pre-filter and timeline
-// Add to LocalReleaseTrack model:
-@@index([year])
+// === LocalRelease model ===
+@@index([year])                 // Timeline decade grouping
+@@index([createdAt])            // Latest releases endpoint
+@@index([lastPlayedAt])         // Last-played releases endpoint
 
-// Composite for explore era+genre pre-filter
-@@index([year, genre])
+// === LocalReleaseTrack model ===
+@@index([year])                 // Explore era pre-filter, timeline
+@@index([year, genre])          // Explore composite era+genre filter
+@@index([playCount])            // Explore familiarity scoring
+@@index([lastPlayedAt])         // Last-played track queries
+@@index([genre])                // Genre filtering
 ```
 
 Then apply:
@@ -462,12 +485,11 @@ Then apply:
 cd web && pnpm db:push
 ```
 
-### Full-Text Search with pg_trgm
+#### Full-Text Search with pg_trgm ✅
 
 The search endpoint uses `LIKE '%query%'` which causes full table scans at 2.5M tracks. Enable trigram indexes:
 
 ```sql
--- Connect to your TrueNAS PostgreSQL
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- GIN indexes for fast substring search
@@ -476,24 +498,172 @@ CREATE INDEX idx_local_release_title_trgm ON "LocalRelease" USING GIN (title gin
 CREATE INDEX idx_local_release_track_title_trgm ON "LocalReleaseTrack" USING GIN (title gin_trgm_ops);
 ```
 
-These indexes support Prisma's `contains` + `mode: 'insensitive'` queries with no code changes.
+These indexes support Prisma's `contains` + `mode: 'insensitive'` queries with no code changes — PostgreSQL automatically uses the GIN index for case-insensitive `LIKE` patterns.
 
-### Random Track Optimization
+#### Random Track Selection (Catalogue Shuffle)
 
-The `/api/tracks/random` endpoint uses `COUNT + OFFSET` which is O(n) at 2.5M tracks. Replace with:
+**Problem**: `/api/tracks/random` uses `COUNT + skip(random offset)`. At 2.5M tracks, `COUNT(*)` alone is ~200ms, plus the `OFFSET` scan. Every song transition in catalogue shuffle triggers this.
 
-```sql
--- Use tablesample for near-instant random selection
-SELECT * FROM "LocalReleaseTrack" TABLESAMPLE BERNOULLI(0.01) LIMIT 1;
+**Solution**: Use `TABLESAMPLE` via Prisma `$queryRaw`:
+
+```ts
+// Near-instant random selection — O(1) regardless of table size
+const [track] = await prisma.$queryRaw`
+  SELECT id, title, duration, genre, year, "localReleaseId"
+  FROM "LocalReleaseTrack"
+  TABLESAMPLE BERNOULLI(0.01)
+  LIMIT 1
+`;
 ```
 
-Or in Prisma, use `$queryRaw` with `ORDER BY RANDOM() LIMIT 1` (O(n) but avoids the separate COUNT query).
+`TABLESAMPLE BERNOULLI(0.01)` samples ~0.01% of pages randomly. At 2.5M rows this reliably returns results. If empty (rare), fall back to `BERNOULLI(0.1)`.
 
+#### Batch Random Track Pre-fetching
 
-### Image CDN / Caching
+**Problem**: Catalogue shuffle fetches 1 track at a time from `/api/tracks/random`. Each song transition blocks on a network round-trip + DB query.
 
-For serving 12k+ artist images and 150k+ release covers efficiently:
+**Solution**: Add `/api/tracks/random-batch` that returns N tracks at once:
 
-1. **In-memory cache**: The image middleware serves files with `Cache-Control: immutable` — browsers cache indefinitely after first load
-2. **Nginx sidecar** (optional): Add an Nginx container for static file serving + proxy caching, similar to the VPS setup
-3. **S3 offload**: Set `IMAGE_STORAGE=s3` to serve images from S3/Cloudflare R2 instead of the NAS filesystem, reducing container I/O
+```ts
+// Fetch 10 random tracks in a single query
+const tracks = await prisma.$queryRaw`
+  SELECT id, title, duration, genre, year, "localReleaseId"
+  FROM "LocalReleaseTrack"
+  TABLESAMPLE BERNOULLI(0.05)
+  LIMIT 10
+`;
+```
+
+On the client, pre-fetch the next batch when the queue drops below 3 tracks. This eliminates the per-song latency entirely.
+
+#### Explore Candidate Pool Caching
+
+**Problem**: `/api/tracks/explore` fetches 500 candidates per request, scores them, and returns 1 track. At 2.5M tracks, this is 500 rows loaded + scored for every single song transition.
+
+**Solution**: Cache the candidate pool server-side (in-memory or Redis) keyed by the explore slider parameters. Subsequent requests with the same params draw from the cached pool until exhausted, then refetch.
+
+```ts
+// Key: hash of energy+era+familiarity+sound params
+// Value: array of pre-scored track IDs
+// TTL: 5 minutes or until pool exhausted
+```
+
+This turns 500-row-fetch-per-song into 500-row-fetch-per-session.
+
+#### HTTP Response Caching Headers
+
+**Problem**: No API endpoints set `Cache-Control` headers. Every page load triggers fresh DB queries, even for data that changes rarely (stats, genres, timeline).
+
+**Solution**: Add `Cache-Control` headers to stable endpoints:
+
+```ts
+// In each endpoint handler:
+setResponseHeader(event, 'Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+```
+
+| Route | `max-age` | Rationale |
+|-------|-----------|-----------|
+| `/api/stats` | 300s | Aggregates, change on index/sync only |
+| `/api/genres` | 300s | Genre list is stable |
+| `/api/timeline/*` | 300s | Decade groupings are stable |
+| `/api/artists?sort=name` | 120s | Browse order rarely changes |
+| `/api/releases/latest` | 60s | Recently added, moderate churn |
+| `/api/releases/last-played` | 30s | Changes on every play |
+| `/api/audio/*` | 86400s | Audio files are immutable |
+
+This reduces DB load to zero for repeat visits within the TTL window — no Redis required for these cases.
+
+#### Audio Streaming: Accept-Ranges Optimization
+
+The audio endpoint already supports range requests. Two additional optimizations:
+
+1. **Set `Cache-Control` on audio responses**: Audio files never change — cache aggressively:
+   ```ts
+   setResponseHeader(event, 'Cache-Control', 'public, max-age=86400, immutable');
+   ```
+
+2. **Add `ETag` based on file mtime + size**: Allows conditional requests (`If-None-Match`) so the browser skips re-downloading entirely:
+   ```ts
+   const etag = `"${stat.size}-${stat.mtimeMs}"`;
+   setResponseHeader(event, 'ETag', etag);
+   if (getRequestHeader(event, 'if-none-match') === etag) {
+     return sendNoContent(event, 304);
+   }
+   ```
+
+#### Prisma Connection Pool Sizing
+
+**Problem**: Default Prisma pool is 10 connections. With `work_mem=256MB`, that's up to 2.5GB RAM if all connections sort simultaneously.
+
+**Solution**: Tune via `DATABASE_URL` query param:
+
+```
+DATABASE_URL=postgresql://...?connection_limit=20&pool_timeout=10
+```
+
+20 connections is plenty for a personal app and stays well within the `max_connections=50` PostgreSQL limit while leaving room for scripts and Prisma Studio.
+
+#### Materialized Views for Stats & Timeline
+
+**Problem**: `/api/stats` runs multiple `COUNT(*)` queries across large tables on every request. `/api/timeline/*` groups 2.5M tracks by year/decade.
+
+**Solution**: Create materialized views that are refreshed after index/sync runs:
+
+```sql
+-- Aggregate stats, refreshed after index/sync
+CREATE MATERIALIZED VIEW dmp_stats AS
+SELECT
+  (SELECT COUNT(*) FROM "Artist") AS artist_count,
+  (SELECT COUNT(*) FROM "LocalRelease") AS release_count,
+  (SELECT COUNT(*) FROM "LocalReleaseTrack") AS track_count,
+  (SELECT COUNT(DISTINCT genre) FROM "LocalReleaseTrack" WHERE genre IS NOT NULL) AS genre_count;
+
+CREATE UNIQUE INDEX ON dmp_stats (artist_count); -- required for CONCURRENTLY
+
+-- Decade/year aggregation for timeline
+CREATE MATERIALIZED VIEW dmp_timeline AS
+SELECT
+  (EXTRACT(YEAR FROM make_date(year, 1, 1)) / 10 * 10)::int AS decade,
+  year,
+  COUNT(*) AS track_count,
+  COUNT(DISTINCT "localReleaseId") AS release_count
+FROM "LocalReleaseTrack"
+WHERE year IS NOT NULL AND year > 0
+GROUP BY year;
+
+CREATE INDEX ON dmp_timeline (decade, year);
+
+-- Refresh after index/sync
+REFRESH MATERIALIZED VIEW CONCURRENTLY dmp_stats;
+REFRESH MATERIALIZED VIEW CONCURRENTLY dmp_timeline;
+```
+
+Query these views instead of running aggregations in real-time. Goes from seconds to <1ms.
+
+#### Artist Detail Page: Paginate Releases
+
+**Problem**: `/api/artists/[slug]` loads ALL releases + tracks for an artist with no limit. Artists with 100+ releases return massive payloads and trigger expensive JOINs.
+
+**Solution**: Paginate releases (default 20), lazy-load the rest on scroll:
+
+```ts
+// Initial load: first 20 releases
+const releases = await prisma.localRelease.findMany({
+  where: { tracks: { some: { trackArtists: { some: { artistId } } } } },
+  take: 20,
+  orderBy: { year: 'desc' },
+  select: { /* minimal fields */ },
+});
+```
+
+#### Favorites: Add Pagination
+
+**Problem**: `/api/favorites` loads ALL favorite releases and tracks with no limit. Unbounded as the user adds more favorites.
+
+**Solution**: Add `limit` and `offset` query params, default `limit=50`.
+
+#### Queue Persistence: Limit Stored Tracks
+
+**Problem**: `localStorage` stores the entire queue. With catalogue shuffle, the queue grows unbounded as tracks play. At some point this degrades `JSON.parse` on page load.
+
+**Solution**: Cap stored queue to ~200 tracks. Drop oldest entries when the cap is hit. The player already re-fetches random tracks, so there's no loss.

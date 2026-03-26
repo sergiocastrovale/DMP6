@@ -52,6 +52,9 @@ model Artist {
   trackArtists      TrackArtist[]        @relation("ArtistTracks")
 
   @@index([musicbrainzId])
+  @@index([totalPlayCount])
+  @@index([averageMatchScore])
+  @@index([createdAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +174,9 @@ model LocalRelease {
 
   @@unique([artistId, title])
   @@index([releaseId])
+  @@index([year])
+  @@index([createdAt])
+  @@index([lastPlayedAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +219,10 @@ model LocalReleaseTrack {
   @@index([lastPlayedAt])
   @@index([contentHash])
   @@index([mtime])
+  @@index([year])
+  @@index([year, genre])
+  @@index([playCount])
+  @@index([genre])
 }
 
 // ---------------------------------------------------------------------------
