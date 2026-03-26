@@ -148,7 +148,7 @@ ssh nas
 sudo nano /mnt/SSD/web/dmp/.env
 
 # Paste this
-DATABASE_URL=postgresql://dmp:0%yD33y5P80@1Hc8^B*0yv%Pa1$$Ra!%5@host.docker.internal:5432/dmp
+DATABASE_URL=postgresql://dmp:0%yD33y5P80@1Hc8^B*0yv%Pa1$$Ra!%5@host.docker.internal:5432/dmp?connection_limit=20&pool_timeout=10
 MUSIC_DIR=/mnt/dmp/music/mainstream
 DMP_DATA=/mnt/SSD/web/dmp
 DMP_PORT=3000
@@ -591,7 +591,7 @@ The audio endpoint already supports range requests. Two additional optimizations
    }
    ```
 
-#### Prisma Connection Pool Sizing
+#### Prisma Connection Pool Sizing ✅
 
 **Problem**: Default Prisma pool is 10 connections. With `work_mem=256MB`, that's up to 2.5GB RAM if all connections sort simultaneously.
 
