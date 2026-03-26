@@ -27,6 +27,18 @@ export default defineEventHandler(async (event) => {
   }
 
   const fileSize = stat.size
+
+  // ETag + Cache-Control: audio files are immutable at a given ID
+  const etag = `"${stat.size}-${stat.mtimeMs}"`
+  setResponseHeader(event, 'ETag', etag)
+  setResponseHeader(event, 'Cache-Control', 'public, max-age=86400, immutable')
+
+  const ifNoneMatch = getRequestHeader(event, 'if-none-match')
+  if (ifNoneMatch === etag) {
+    setResponseStatus(event, 304)
+    return ''
+  }
+
   const ext = filePath.split('.').pop()?.toLowerCase() || 'mp3'
   const mimeTypes: Record<string, string> = {
     mp3: 'audio/mpeg',

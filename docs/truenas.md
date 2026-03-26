@@ -573,7 +573,7 @@ setResponseHeader(event, 'Cache-Control', 'public, max-age=300, stale-while-reva
 
 This reduces DB load to zero for repeat visits within the TTL window — no Redis required for these cases.
 
-#### Audio Streaming: Accept-Ranges Optimization
+#### Audio Streaming: Accept-Ranges Optimization ✅
 
 The audio endpoint already supports range requests. Two additional optimizations:
 
