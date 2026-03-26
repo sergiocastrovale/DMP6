@@ -603,7 +603,7 @@ DATABASE_URL=postgresql://...?connection_limit=20&pool_timeout=10
 
 20 connections is plenty for a personal app and stays well within the `max_connections=50` PostgreSQL limit while leaving room for scripts and Prisma Studio.
 
-#### Materialized Views for Stats & Timeline
+#### ✅ Materialized Views for Stats & Timeline
 
 **Problem**: `/api/stats` runs multiple `COUNT(*)` queries across large tables on every request. `/api/timeline/*` groups 2.5M tracks by year/decade.
 

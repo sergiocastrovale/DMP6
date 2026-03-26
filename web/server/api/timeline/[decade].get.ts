@@ -61,15 +61,27 @@ export default defineEventHandler(async (event) => {
     prisma.localRelease.count({ where }),
   ])
 
-  // Get available years within this decade
-  const yearCounts = await prisma.localRelease.groupBy({
-    by: ['year'],
-    where: {
-      year: { gte: decade, lt: decade + 10 },
-    },
-    _count: true,
-    orderBy: { year: 'asc' },
-  })
+  // Get available years from materialized view (falls back to groupBy)
+  let years: { year: number; count: number }[]
+  try {
+    const rows = await prisma.$queryRaw<{ year: number; release_count: number }[]>`
+      SELECT year, release_count FROM dmp_timeline
+      WHERE decade = ${decade}
+      ORDER BY year ASC
+    `
+    years = rows.map(r => ({ year: r.year, count: Number(r.release_count) }))
+  }
+  catch {
+    const yearCounts = await prisma.localRelease.groupBy({
+      by: ['year'],
+      where: { year: { gte: decade, lt: decade + 10 } },
+      _count: true,
+      orderBy: { year: 'asc' },
+    })
+    years = yearCounts
+      .filter(y => y.year !== null)
+      .map(y => ({ year: y.year!, count: y._count }))
+  }
 
   return {
     releases: releases.map(r => ({
@@ -86,8 +98,6 @@ export default defineEventHandler(async (event) => {
     total,
     page,
     hasMore: skip + limit < total,
-    years: yearCounts
-      .filter(y => y.year !== null)
-      .map(y => ({ year: y.year!, count: y._count })),
+    years,
   }
 })
