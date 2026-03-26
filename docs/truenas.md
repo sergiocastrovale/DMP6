@@ -518,7 +518,7 @@ const [track] = await prisma.$queryRaw`
 
 `TABLESAMPLE BERNOULLI(0.01)` samples ~0.01% of pages randomly. At 2.5M rows this reliably returns results. If empty (rare), fall back to `BERNOULLI(0.1)`.
 
-#### Batch Random Track Pre-fetching
+#### Batch Random Track Pre-fetching ✅
 
 **Problem**: Catalogue shuffle fetches 1 track at a time from `/api/tracks/random`. Each song transition blocks on a network round-trip + DB query.
 

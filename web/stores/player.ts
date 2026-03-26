@@ -17,6 +17,9 @@ export const usePlayerStore = defineStore('player', () => {
   const explorerParams = ref<ExploreParams | null>(null)
   // Track IDs played during the current explorer session — used for deduplication
   const explorerHistory = ref<string[]>([])
+  // Pre-fetched tracks for catalogue shuffle — eliminates per-song network latency
+  const catalogueBuffer = ref<PlayerTrack[]>([])
+  let catalogueBufferFetching = false
 
   let audio: HTMLAudioElement | null = null
 
@@ -111,6 +114,17 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  async function refillCatalogueBuffer() {
+    if (catalogueBufferFetching || catalogueBuffer.value.length >= 5) return
+    catalogueBufferFetching = true
+    try {
+      const tracks = await $fetch<PlayerTrack[]>('/api/tracks/random-batch?count=10')
+      catalogueBuffer.value.push(...tracks)
+    }
+    catch { /* ignore */ }
+    finally { catalogueBufferFetching = false }
+  }
+
   async function next() {
     if (shuffleMode.value === 'explorer') {
       if (!explorerParams.value) return
@@ -133,11 +147,18 @@ export const usePlayerStore = defineStore('player', () => {
     }
 
     if (shuffleMode.value === 'catalogue') {
-      try {
-        const track = await $fetch<PlayerTrack>('/api/tracks/random')
-        if (track) playTrack(track)
+      if (catalogueBuffer.value.length > 0) {
+        const track = catalogueBuffer.value.shift()!
+        playTrack(track)
       }
-      catch { /* ignore */ }
+      else {
+        try {
+          const track = await $fetch<PlayerTrack>('/api/tracks/random')
+          if (track) playTrack(track)
+        }
+        catch { /* ignore */ }
+      }
+      refillCatalogueBuffer()
       return
     }
 
@@ -211,10 +232,13 @@ export const usePlayerStore = defineStore('player', () => {
         console.error('Failed to load artist tracks:', error)
       }
     }
+    else if (newMode === 'catalogue') {
+      refillCatalogueBuffer()
+    }
     else if (newMode === 'off') {
       queue.value = [...originalQueue.value]
     }
-    else if (newMode !== 'catalogue') {
+    else {
       queue.value = shuffleArray([...originalQueue.value])
     }
   }
