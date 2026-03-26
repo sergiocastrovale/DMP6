@@ -536,7 +536,7 @@ const tracks = await prisma.$queryRaw`
 
 On the client, pre-fetch the next batch when the queue drops below 3 tracks. This eliminates the per-song latency entirely.
 
-#### Explore Candidate Pool Caching
+#### Explore Candidate Pool Caching ✅
 
 **Problem**: `/api/tracks/explore` fetches 500 candidates per request, scores them, and returns 1 track. At 2.5M tracks, this is 500 rows loaded + scored for every single song transition.
 

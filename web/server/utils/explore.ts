@@ -308,6 +308,52 @@ function scoreSound(meta: Record<string, string | number> | null, genreTokens: s
   return 0.5 * 0.5
 }
 
+// ---------------------------------------------------------------------------
+// In-memory candidate pool cache
+// Keyed by slider params, avoids re-querying 500 rows per song transition
+// ---------------------------------------------------------------------------
+
+interface CachedPool {
+  candidates: TrackCandidate[]
+  createdAt: number
+}
+
+const POOL_TTL = 5 * 60 * 1000 // 5 minutes
+const poolCache = new Map<string, CachedPool>()
+
+export function getPoolCacheKey(params: ExploreParams): string {
+  return `${params.energy}-${params.era}-${params.familiarity}-${params.sound}`
+}
+
+export function getCachedPool(key: string, excludeIds: string[]): TrackCandidate[] | null {
+  const entry = poolCache.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.createdAt > POOL_TTL) {
+    poolCache.delete(key)
+    return null
+  }
+  // Filter out already-played tracks
+  const filtered = excludeIds.length > 0
+    ? entry.candidates.filter(t => !excludeIds.includes(t.id))
+    : entry.candidates
+  if (filtered.length === 0) {
+    poolCache.delete(key)
+    return null
+  }
+  return filtered
+}
+
+export function setCachedPool(key: string, candidates: TrackCandidate[]): void {
+  poolCache.set(key, { candidates: [...candidates], createdAt: Date.now() })
+}
+
+export function removeFromPool(key: string, trackId: string): void {
+  const entry = poolCache.get(key)
+  if (entry) {
+    entry.candidates = entry.candidates.filter(t => t.id !== trackId)
+  }
+}
+
 export function weightedRandomPick(scored: ScoredTrack[]): ScoredTrack | null {
   if (scored.length === 0) return null
 
