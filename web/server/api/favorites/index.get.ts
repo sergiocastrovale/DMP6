@@ -1,62 +1,46 @@
 import { prisma } from '~/server/utils/prisma'
 
-export default defineEventHandler(async () => {
-  const [favoriteReleases, favoriteTracks] = await Promise.all([
-    prisma.favoriteRelease.findMany({
-      include: {
-        release: {
-          include: {
-            artist: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-              },
-            },
-            type: {
-              select: {
-                name: true,
-              },
-            },
-            localReleases: {
-              select: {
-                id: true,
-                title: true,
-                year: true,
-                image: true,
-                imageUrl: true,
-              },
-              take: 1,
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.favoriteTrack.findMany({
-      include: {
-        track: {
-          include: {
-            localRelease: {
-              include: {
-                artist: {
-                  select: {
-                    id: true,
-                    name: true,
-                    slug: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    }),
-  ])
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event)
+  const type = (query.type as string) || 'all'
+  const page = Math.max(1, Number(query.page) || 1)
+  const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 50))
+  const skip = (page - 1) * pageSize
 
-  return {
-    releases: favoriteReleases.map((fav) => {
+  let releases: any[] = []
+  let tracks: any[] = []
+  let totalReleases = 0
+  let totalTracks = 0
+
+  if (type === 'all' || type === 'releases') {
+    const [rawReleases, count] = await Promise.all([
+      prisma.favoriteRelease.findMany({
+        skip,
+        take: pageSize,
+        include: {
+          release: {
+            include: {
+              artist: {
+                select: { id: true, name: true, slug: true },
+              },
+              type: {
+                select: { name: true },
+              },
+              localReleases: {
+                select: {
+                  id: true, title: true, year: true, image: true, imageUrl: true,
+                },
+                take: 1,
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.favoriteRelease.count(),
+    ])
+    totalReleases = count
+    releases = rawReleases.map((fav) => {
       const localRelease = fav.release.localReleases[0]
       return {
         id: fav.id,
@@ -69,16 +53,37 @@ export default defineEventHandler(async () => {
           image: localRelease?.image || null,
           imageUrl: localRelease?.imageUrl || null,
           artist: fav.release.artist
-            ? {
-                id: fav.release.artist.id,
-                name: fav.release.artist.name,
-                slug: fav.release.artist.slug,
-              }
+            ? { id: fav.release.artist.id, name: fav.release.artist.name, slug: fav.release.artist.slug }
             : null,
         },
       }
-    }),
-    tracks: favoriteTracks.map(fav => ({
+    })
+  }
+
+  if (type === 'all' || type === 'tracks') {
+    const [rawTracks, count] = await Promise.all([
+      prisma.favoriteTrack.findMany({
+        skip: type === 'all' ? skip : skip,
+        take: pageSize,
+        include: {
+          track: {
+            include: {
+              localRelease: {
+                include: {
+                  artist: {
+                    select: { id: true, name: true, slug: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.favoriteTrack.count(),
+    ])
+    totalTracks = count
+    tracks = rawTracks.map(fav => ({
       id: fav.id,
       createdAt: fav.createdAt,
       track: {
@@ -94,15 +99,22 @@ export default defineEventHandler(async () => {
               image: fav.track.localRelease.image,
               imageUrl: fav.track.localRelease.imageUrl,
               artist: fav.track.localRelease.artist
-                ? {
-                    id: fav.track.localRelease.artist.id,
-                    name: fav.track.localRelease.artist.name,
-                    slug: fav.track.localRelease.artist.slug,
-                  }
+                ? { id: fav.track.localRelease.artist.id, name: fav.track.localRelease.artist.name, slug: fav.track.localRelease.artist.slug }
                 : null,
             }
           : null,
       },
-    })),
+    }))
+  }
+
+  return {
+    releases,
+    tracks,
+    totalReleases,
+    totalTracks,
+    page,
+    pageSize,
+    hasMoreReleases: skip + pageSize < totalReleases,
+    hasMoreTracks: skip + pageSize < totalTracks,
   }
 })

@@ -42,4 +42,10 @@ export interface FavoriteTrack {
 export interface FavoritesResponse {
   releases: FavoriteRelease[]
   tracks: FavoriteTrack[]
+  totalReleases: number
+  totalTracks: number
+  page: number
+  pageSize: number
+  hasMoreReleases: boolean
+  hasMoreTracks: boolean
 }

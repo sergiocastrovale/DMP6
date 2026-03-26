@@ -656,7 +656,7 @@ const releases = await prisma.localRelease.findMany({
 });
 ```
 
-#### Favorites: Add Pagination
+#### ✅ Favorites: Add Pagination
 
 **Problem**: `/api/favorites` loads ALL favorite releases and tracks with no limit. Unbounded as the user adds more favorites.
 
