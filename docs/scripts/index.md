@@ -1,87 +1,61 @@
 # Scripts: index
 
-Scans audio files, extracts metadata, and populates the database.
+Scans audio files, extracts metadata, and populates the database. Processes each artist folder completely (scan, upsert, cover art, totals) before moving to the next.
 
 ## Build
-
-Scripts auto-build on first run. To build manually:
 
 ```bash
 cd scripts/index && cargo build --release
 ```
 
-### Usage
+## Usage
 
 ```bash
-# Basic usage (reads MUSIC_DIR from .env)
-./index
-
-# Override music directory
-./index /path/to/music
-
-# Full re-index (deletes existing data first)
-./index --overwrite
-
-# Scan specific range
-./index --from r --to s
-
-# Only scan folders starting with "radiohead"
-./index --only radiohead
-
-# Resume interrupted scan
-./index --resume
-
-# Skip cover art extraction
-./index --skip-images
-
-# Limit threads and file count
-./index --threads 4 --limit 1000
+./index                          # Index all artists
+./index /path/to/music           # Override music directory
+./index --overwrite              # Nuke + re-index all
+./index --from r --to s          # Index range R–S
+./index --only radiohead         # Only folders starting with "radiohead"
+./index --resume                 # Continue from last completed artist
+./index --skip-images            # Skip cover art extraction
+./index --threads 4 --limit 1000 # Limit threads and file count
 ```
 
-### How it works
+## Per-Artist Flow
 
-1. **Walk** the music directory for audio files (mp3, flac, aac, opus, m4a, ogg)
-2. **Extract** metadata using `lofty` crate (fast, Rust-native)
-3. **Change detection**:
-   - If `mtime + fileSize` match existing record: skip entirely
-   - If changed, compute `contentHash` (MD5 of key fields). If hash matches: update mtime only
-   - If hash differs: full metadata update
-4. **Split artist tags** into individual artists (see below)
-5. **Write** Artist, LocalRelease, LocalReleaseTrack, and TrackArtist records
-   - **Note**: "Various Artists" / "Various" / "VA" are automatically skipped
-6. **Extract** cover art from first track per release (200x200 JPEG)
-7. **Update** release and artist totals
+For each artist folder, the indexer completes all work before moving on:
 
-### Multi-artist tag splitting
+1. **Walk** folder for audio files (mp3, flac, aac, opus, m4a, ogg)
+2. **Extract** metadata in parallel (rayon + lofty)
+3. **Change detection** — skip unchanged files (mtime + fileSize), hash-compare changed ones
+4. **Upsert** Artist, LocalRelease, LocalReleaseTrack, TrackArtist records (batch UNNEST)
+5. **Extract cover art** from first track per release (200x200 JPEG, S3 and/or local)
+6. **Update totals** for this artist's releases and tracks
+7. **Save progress** to `Statistics.lastIndexedArtist`
 
-Artist tags often contain multiple artists in a single string. The indexer splits these into individual Artist records and creates TrackArtist junction entries so each artist's page shows all their work.
+## Resume
 
-**Delimiters split on:**
-- `/` — "Artist A / Artist B"
-- `;` — "Artist A; Artist B"
-- `,` — only when **not** followed by a space or digit: catches `"Artist A,Artist B"` (compact tagger format) while preserving `"10,000 Maniacs"` (digit after comma) and `"Crosby, Stills & Nash"` (space after comma)
-- `feat.` / `ft.` / `featuring` (case-insensitive) — extracts featured artists
+- Progress is saved to `Statistics.lastIndexedArtist` after each artist completes
+- `--resume` skips all artists alphabetically <= the saved value
+- `--overwrite` clears progress before starting
+- A normal run (no `--resume`) also clears any stale progress
 
-**Not split on:**
-- `&` — too ambiguous ("Simon & Garfunkel", "Vic Schoen & His Orchestra")
-- `,` followed by a space or digit — band names and numbers
+## Artist Tag Splitting
 
-**How it maps to TrackArtist roles:**
+Multi-artist tags are split into individual Artist + TrackArtist records:
 
-| Tag | Split into | Role |
-|-----|-----------|------|
-| `albumArtist` main artists | Each gets an Artist record | `ALBUM_ARTIST` |
-| `artist` main artists | Each gets an Artist record | `PRIMARY` |
-| Featured artists (from either tag) | Each gets an Artist record | `FEATURED` |
+- **Split on**: `/`, `//`, `\`, `\\`, `|`, `||`, `;`, `feat.`/`ft.`/`featuring`
+- **Not split on**: `,` (preserves "10,000 Maniacs", "Crosby, Stills & Nash"), `&` (too ambiguous)
+- "Various Artists" / "Various" / "VA" are skipped
 
-The **first main album artist** (or first main track artist as fallback) becomes the canonical artist for `LocalRelease.artistId`. The web API queries through TrackArtist to show all releases/tracks where an artist appears in any role.
+| Tag source | Role |
+|-----------|------|
+| `albumArtist` main artists | `ALBUM_ARTIST` |
+| `artist` main artists | `PRIMARY` |
+| Featured artists (either tag) | `FEATURED` |
 
-### Checkpoint/Resume
+## Error Handling
 
-The indexer saves progress to the `IndexCheckpoint` table every 100 files. Use `--resume` to continue from where you left off after an interruption.
-
-### Error Handling
-
-- Files with missing artist tag are skipped and logged to `errors.log`
-- Each track is committed individually (one failure doesn't affect others)
-- Errors are non-fatal; indexing continues
+- Per-artist error summary printed to console: `Unable to parse N files for Artist`
+- Details logged to `errors.log` with `[timestamp][INDEX]` prefix
+- Errors are non-fatal; indexing continues with next artist

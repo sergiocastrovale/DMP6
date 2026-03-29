@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use slug::slugify;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
@@ -561,62 +561,37 @@ fn should_skip_release(rg: &MbReleaseGroup) -> Option<String> {
 
 async fn ensure_release_type(pool: &PgPool, name: &str) -> Result<String, sqlx::Error> {
     let type_slug = slugify(name);
-    let existing: Option<(String,)> =
-        sqlx::query_as(r#"SELECT id FROM "ReleaseType" WHERE slug = $1"#)
-            .bind(&type_slug)
-            .fetch_optional(pool)
-            .await?;
-
-    if let Some((id,)) = existing {
-        return Ok(id);
-    }
-
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
-    sqlx::query(
+    // Single query: INSERT or no-op on conflict, always RETURNING id
+    let row: (String,) = sqlx::query_as(
         r#"INSERT INTO "ReleaseType" (id, name, slug, "createdAt", "updatedAt")
            VALUES ($1, $2, $3, $4, $4)
-           ON CONFLICT (slug) DO NOTHING"#,
+           ON CONFLICT (slug) DO UPDATE SET slug = EXCLUDED.slug
+           RETURNING id"#,
     )
     .bind(&id)
     .bind(name)
     .bind(&type_slug)
     .bind(now)
-    .execute(pool)
+    .fetch_one(pool)
     .await?;
-
-    let row: (String,) = sqlx::query_as(r#"SELECT id FROM "ReleaseType" WHERE slug = $1"#)
-        .bind(&type_slug)
-        .fetch_one(pool)
-        .await?;
 
     Ok(row.0)
 }
 
 async fn ensure_genre(pool: &PgPool, name: &str) -> Result<String, sqlx::Error> {
-    let existing: Option<(String,)> =
-        sqlx::query_as(r#"SELECT id FROM "Genre" WHERE name = $1"#)
-            .bind(name)
-            .fetch_optional(pool)
-            .await?;
-
-    if let Some((id,)) = existing {
-        return Ok(id);
-    }
-
     let id = cuid2::create_id();
-    sqlx::query(
-        r#"INSERT INTO "Genre" (id, name) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING"#,
+    // Single query: INSERT or no-op on conflict, always RETURNING id
+    let row: (String,) = sqlx::query_as(
+        r#"INSERT INTO "Genre" (id, name) VALUES ($1, $2)
+           ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+           RETURNING id"#,
     )
     .bind(&id)
     .bind(name)
-    .execute(pool)
+    .fetch_one(pool)
     .await?;
-
-    let row: (String,) = sqlx::query_as(r#"SELECT id FROM "Genre" WHERE name = $1"#)
-        .bind(name)
-        .fetch_one(pool)
-        .await?;
 
     Ok(row.0)
 }
@@ -681,39 +656,16 @@ async fn upsert_mb_release(
     year: Option<i32>,
     mb_id: &str,
 ) -> Result<String, sqlx::Error> {
-    let existing: Option<(String,)> = sqlx::query_as(
-        r#"SELECT id FROM "MusicBrainzRelease" WHERE "artistId" = $1 AND title = $2"#,
-    )
-    .bind(artist_id)
-    .bind(title)
-    .fetch_optional(pool)
-    .await?;
-
-    if let Some((id,)) = existing {
-        let now = Utc::now().naive_utc();
-        sqlx::query(
-            r#"UPDATE "MusicBrainzRelease" SET
-                 "typeId" = $1, year = $2, "musicbrainzId" = $3, "updatedAt" = $4
-               WHERE id = $5"#,
-        )
-        .bind(type_id)
-        .bind(year)
-        .bind(mb_id)
-        .bind(now)
-        .bind(&id)
-        .execute(pool)
-        .await?;
-        return Ok(id);
-    }
-
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
-    sqlx::query(
+    // Single query: INSERT or UPDATE on conflict, always RETURNING id
+    let row: (String,) = sqlx::query_as(
         r#"INSERT INTO "MusicBrainzRelease"
            (id, title, "artistId", "typeId", year, "musicbrainzId", status, "createdAt", "updatedAt")
            VALUES ($1, $2, $3, $4, $5, $6, 'UNKNOWN', $7, $7)
            ON CONFLICT ("artistId", title) DO UPDATE SET
-             "typeId" = $4, year = $5, "musicbrainzId" = $6, "updatedAt" = $7
+             "typeId" = EXCLUDED."typeId", year = EXCLUDED.year,
+             "musicbrainzId" = EXCLUDED."musicbrainzId", "updatedAt" = EXCLUDED."updatedAt"
            RETURNING id"#,
     )
     .bind(&id)
@@ -724,8 +676,9 @@ async fn upsert_mb_release(
     .bind(mb_id)
     .bind(now)
     .fetch_one(pool)
-    .await
-    .map(|row| row.get::<String, _>("id"))
+    .await?;
+
+    Ok(row.0)
 }
 
 /// Batch insert MB tracks using UNNEST arrays
@@ -812,63 +765,35 @@ async fn link_artist_genre(
 }
 
 async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
-    use chrono::Utc;
     let now = Utc::now().naive_utc();
-    
-    // Count artists synced with MusicBrainz
-    let artists_synced: (i64,) = sqlx::query_as(
-        r#"SELECT COUNT(*)::bigint FROM "Artist" WHERE "musicbrainzId" IS NOT NULL"#
-    )
-    .fetch_one(pool)
-    .await?;
-    
-    // Count MB releases
-    let mb_releases: (i64,) = sqlx::query_as(
-        r#"SELECT COUNT(*)::bigint FROM "MusicBrainzRelease""#
-    )
-    .fetch_one(pool)
-    .await?;
-    
-    // Count artists with images
-    let artists_with_art: (i64,) = sqlx::query_as(
-        r#"SELECT COUNT(*)::bigint FROM "Artist" WHERE image IS NOT NULL"#
-    )
-    .fetch_one(pool)
-    .await?;
-    
-    // Count genres
-    let genre_count: (i64,) = sqlx::query_as(
-        r#"SELECT COUNT(*)::bigint FROM "Genre""#
-    )
-    .fetch_one(pool)
-    .await?;
-    
-    // Update statistics (only MB-specific fields, preserve index fields)
+
+    // Single query: compute all counts and upsert in one round-trip
     sqlx::query(
         r#"INSERT INTO "Statistics" (
-             id, 
-             "artistsSyncedWithMusicbrainz", 
+             id,
+             "artistsSyncedWithMusicbrainz",
              "releasesSyncedWithMusicbrainz",
              "artistsWithCoverArt",
              genres,
              "updatedAt"
            )
-           VALUES ('main', $1, $2, $3, $4, $5)
+           SELECT 'main',
+             (SELECT COUNT(*)::int FROM "Artist" WHERE "musicbrainzId" IS NOT NULL),
+             (SELECT COUNT(*)::int FROM "MusicBrainzRelease"),
+             (SELECT COUNT(*)::int FROM "Artist" WHERE image IS NOT NULL),
+             (SELECT COUNT(*)::int FROM "Genre"),
+             $1
            ON CONFLICT (id) DO UPDATE SET
-             "artistsSyncedWithMusicbrainz" = $1,
-             "releasesSyncedWithMusicbrainz" = $2,
-             "artistsWithCoverArt" = $3,
-             genres = $4,
-             "updatedAt" = $5"#,
+             "artistsSyncedWithMusicbrainz" = EXCLUDED."artistsSyncedWithMusicbrainz",
+             "releasesSyncedWithMusicbrainz" = EXCLUDED."releasesSyncedWithMusicbrainz",
+             "artistsWithCoverArt" = EXCLUDED."artistsWithCoverArt",
+             genres = EXCLUDED.genres,
+             "updatedAt" = EXCLUDED."updatedAt""#,
     )
-    .bind(artists_synced.0 as i32)
-    .bind(mb_releases.0 as i32)
-    .bind(artists_with_art.0 as i32)
-    .bind(genre_count.0 as i32)
     .bind(now)
     .execute(pool)
     .await?;
-    
+
     Ok(())
 }
 
@@ -1005,40 +930,31 @@ async fn check_release_status(
 // Sync checkpoint
 // ---------------------------------------------------------------------------
 
-async fn save_sync_checkpoint(
-    pool: &PgPool,
-    last_artist_slug: &str,
-    artists_processed: i32,
-) -> Result<(), sqlx::Error> {
-    let now = chrono::Utc::now().naive_utc();
+async fn save_sync_progress(pool: &PgPool, artist_slug: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
-        r#"INSERT INTO "SyncCheckpoint" (id, "lastArtistSlug", "artistsProcessed", "createdAt", "updatedAt")
-           VALUES ('main', $1, $2, $3, $3)
-           ON CONFLICT (id) DO UPDATE SET
-             "lastArtistSlug" = $1, "artistsProcessed" = $2, "updatedAt" = $3"#,
+        r#"UPDATE "Statistics" SET "lastSyncedArtist" = $1, "updatedAt" = NOW() WHERE id = 'main'"#,
     )
-    .bind(last_artist_slug)
-    .bind(artists_processed)
-    .bind(now)
+    .bind(artist_slug)
     .execute(pool)
     .await?;
     Ok(())
 }
 
-async fn load_sync_checkpoint(pool: &PgPool) -> Result<Option<(String, i32)>, sqlx::Error> {
-    let row: Option<(Option<String>, i32)> = sqlx::query_as(
-        r#"SELECT "lastArtistSlug", "artistsProcessed" FROM "SyncCheckpoint" WHERE id = 'main'"#,
+async fn load_sync_progress(pool: &PgPool) -> Result<Option<String>, sqlx::Error> {
+    let row: Option<(Option<String>,)> = sqlx::query_as(
+        r#"SELECT "lastSyncedArtist" FROM "Statistics" WHERE id = 'main'"#,
     )
     .fetch_optional(pool)
     .await?;
-
-    Ok(row.map(|(slug, count)| (slug.unwrap_or_default(), count)))
+    Ok(row.and_then(|(v,)| v))
 }
 
-async fn clear_sync_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
-    sqlx::query(r#"DELETE FROM "SyncCheckpoint" WHERE id = 'main'"#)
-        .execute(pool)
-        .await?;
+async fn clear_sync_progress(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"UPDATE "Statistics" SET "lastSyncedArtist" = NULL, "updatedAt" = NOW() WHERE id = 'main'"#,
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -1266,7 +1182,7 @@ async fn download_and_resize(client: &Client, url: &str, out_path: &PathBuf) -> 
     match image::load_from_memory(&bytes) {
         Ok(img) => {
             let resized =
-                img.resize_to_fill(200, 200, image::imageops::FilterType::Lanczos3);
+                img.resize_to_fill(200, 200, image::imageops::FilterType::Triangle);
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).ok();
             }
@@ -1478,9 +1394,7 @@ async fn main() {
         let base_condition = if args.overwrite {
             "1=1".to_string()
         } else {
-            r#""musicbrainzId" IS NULL
-               OR "lastSyncedAt" IS NULL
-               OR "lastSyncedAt" < NOW() - INTERVAL '30 days'"#.to_string()
+            r#""musicbrainzId" IS NULL"#.to_string()
         };
 
         if let Some(ref prefix) = args.only {
@@ -1498,6 +1412,7 @@ async fn main() {
         } else if args.from.is_some() || args.to.is_some() {
             match (&args.from, &args.to) {
                 (Some(from), Some(to)) => {
+                    let to_upper = format!("{}\u{10FFFF}", to.to_lowercase());
                     let query = format!(
                         r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" WHERE ({}) AND LOWER(slug) >= $1 AND LOWER(slug) <= $2 ORDER BY slug{}"#,
                         base_condition,
@@ -1505,7 +1420,7 @@ async fn main() {
                     );
                     sqlx::query_as(&query)
                         .bind(&from.to_lowercase())
-                        .bind(&to.to_lowercase())
+                        .bind(&to_upper)
                         .fetch_all(&pool)
                         .await
                         .expect("Failed to fetch artists")
@@ -1523,13 +1438,14 @@ async fn main() {
                         .expect("Failed to fetch artists")
                 }
                 (None, Some(to)) => {
+                    let to_upper = format!("{}\u{10FFFF}", to.to_lowercase());
                     let query = format!(
                         r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist" WHERE ({}) AND LOWER(slug) <= $1 ORDER BY slug{}"#,
                         base_condition,
                         if args.limit > 0 { format!(" LIMIT {}", args.limit) } else { String::new() }
                     );
                     sqlx::query_as(&query)
-                        .bind(&to.to_lowercase())
+                        .bind(&to_upper)
                         .fetch_all(&pool)
                         .await
                         .expect("Failed to fetch artists")
@@ -1562,23 +1478,28 @@ async fn main() {
         })
         .collect();
 
-    // --- Resume: load checkpoint and skip already-processed artists ---
+    // Ensure Statistics row exists
+    sqlx::query(
+        r#"INSERT INTO "Statistics" (id, "updatedAt") VALUES ('main', NOW()) ON CONFLICT DO NOTHING"#,
+    )
+    .execute(&pool)
+    .await
+    .ok();
+
+    // --- Resume: load progress and skip already-processed artists ---
     let resume_slug = if args.resume {
-        match load_sync_checkpoint(&pool).await {
-            Ok(Some((slug, count))) => {
-                println!(
-                    "Resuming from artist '{}' ({} artists already processed)",
-                    slug, count
-                );
+        match load_sync_progress(&pool).await {
+            Ok(Some(slug)) => {
+                println!("Resuming after '{}'", slug);
                 Some(slug)
             }
             _ => {
-                println!("No checkpoint found, starting from scratch");
+                println!("No progress found, starting from scratch");
                 None
             }
         }
     } else {
-        clear_sync_checkpoint(&pool).await.ok();
+        clear_sync_progress(&pool).await.ok();
         None
     };
 
@@ -1672,7 +1593,7 @@ async fn main() {
                 Ok(None) => {
                     failed_artists.push((artist_name.clone(), "No MusicBrainz match".to_string()));
                     if let Ok(mut f) = error_log.lock() {
-                        writeln!(f, "[SYNC] No MusicBrainz match for artist: {}", artist_name).ok();
+                        writeln!(f, "[{}][SYNC] No MusicBrainz match for artist: {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), artist_name).ok();
                     }
                     // Mark as synced (update lastSyncedAt) so we don't retry immediately
                     sqlx::query(
@@ -1689,7 +1610,7 @@ async fn main() {
                     println!("    {} Error: {}", "✗".red(), e.bright_red());
                     failed_artists.push((artist_name.clone(), format!("Search error: {}", e)));
                     if let Ok(mut f) = error_log.lock() {
-                        writeln!(f, "[SYNC] Search error for artist '{}': {}", artist_name, e).ok();
+                        writeln!(f, "[{}][SYNC] Search error for artist '{}': {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), artist_name, e).ok();
                     }
                     failed += 1;
                     continue;
@@ -1835,7 +1756,7 @@ async fn main() {
                 println!("    {} Error: {}", "✗".red(), e.bright_red());
                 failed_artists.push((artist_name.clone(), format!("Failed to fetch releases: {}", e)));
                 if let Ok(mut f) = error_log.lock() {
-                    writeln!(f, "[SYNC] Failed to fetch releases for artist '{}': {}", artist_name, e).ok();
+                    writeln!(f, "[{}][SYNC] Failed to fetch releases for artist '{}': {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), artist_name, e).ok();
                 }
                 failed += 1;
                 continue;
@@ -1902,7 +1823,7 @@ async fn main() {
                             rg.title, artist_name, e
                         );
                         if let Ok(mut f) = error_log.lock() {
-                            writeln!(f, "[SYNC] DB error inserting release '{}' for artist '{}': {}", rg.title, artist_name, e).ok();
+                            writeln!(f, "[{}][SYNC] DB error inserting release '{}' for artist '{}': {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), rg.title, artist_name, e).ok();
                         }
                         release_failures += 1;
                         continue;
@@ -1925,7 +1846,7 @@ async fn main() {
                         release_failures += 1;
 
                         if let Ok(mut f) = error_log.lock() {
-                            writeln!(f, "[SYNC] Failed to fetch tracks for release '{}' by '{}': {}", rg.title, artist_name, e).ok();
+                            writeln!(f, "[{}][SYNC] Failed to fetch tracks for release '{}' by '{}': {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), rg.title, artist_name, e).ok();
                         }
 
                         // If the error suggests we should stop entirely, break
@@ -2042,7 +1963,7 @@ async fn main() {
             .await
             .ok();
         } else {
-            // Just update timestamp (will be retried in 30 days)
+            // Just update timestamp (retry requires --overwrite)
             sqlx::query(
                 r#"UPDATE "Artist" SET
                      "lastSyncedAt" = $1,
@@ -2058,7 +1979,7 @@ async fn main() {
             failed += 1;
             failed_artists.push((artist_name.clone(), "Could not process any releases (errors occurred)".to_string()));
             if let Ok(mut f) = error_log.lock() {
-                writeln!(f, "[SYNC] Artist '{}' could not process any releases (errors occurred)", artist_name).ok();
+                writeln!(f, "[{}][SYNC] Artist '{}' could not process any releases (errors occurred)", Utc::now().format("%Y-%m-%d %H:%M:%S"), artist_name).ok();
             }
         }
 
@@ -2079,14 +2000,12 @@ async fn main() {
             println!("  {} Failed to sync", "✗".red().bold());
         }
 
-        // Save checkpoint every 10 artists
-        if (idx + 1) % 10 == 0 {
-            save_sync_checkpoint(&pool, artist_slug, (idx + 1) as i32).await.ok();
-        }
+        // Save progress after each artist
+        save_sync_progress(&pool, artist_slug).await.ok();
     }
 
-    // Clear checkpoint on successful completion
-    clear_sync_checkpoint(&pool).await.ok();
+    // Clear progress on successful completion
+    clear_sync_progress(&pool).await.ok();
 
     // Update statistics
     update_statistics(&pool).await.ok();

@@ -336,36 +336,10 @@ model Statistics {
   releasesWithCoverArt                Int       @default(0)
   lastScanStartedAt                   DateTime?
   lastScanEndedAt                     DateTime?
+  lastIndexedArtist                   String?
+  lastSyncedArtist                    String?
   createdAt                           DateTime  @default(now())
   updatedAt                           DateTime  @updatedAt
-}
-
-// ---------------------------------------------------------------------------
-// IndexCheckpoint (for resume functionality)
-// ---------------------------------------------------------------------------
-
-model IndexCheckpoint {
-  id              String   @id @default("main")
-  lastFolder      String?  @db.Text
-  filesProcessed  Int      @default(0)
-  musicDir        String?  @db.Text
-  filterFrom      String?
-  filterTo        String?
-  filterOnly      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-// ---------------------------------------------------------------------------
-// SyncCheckpoint (for sync resume functionality)
-// ---------------------------------------------------------------------------
-
-model SyncCheckpoint {
-  id               String   @id @default("main")
-  lastArtistSlug   String?  @db.Text
-  artistsProcessed Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------

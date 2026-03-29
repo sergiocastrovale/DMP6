@@ -27,8 +27,8 @@ function parseDatabaseUrl(url: string): DatabaseConfig {
     return {
       host: parsed.hostname,
       port: parsed.port ? Number.parseInt(parsed.port, 10) : 5432,
-      user: parsed.username,
-      password: parsed.password,
+      user: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
       database: parsed.pathname.substring(1),
     }
   } catch (error) {

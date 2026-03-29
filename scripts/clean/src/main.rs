@@ -302,7 +302,7 @@ async fn main() {
                     Err(e) => {
                         s3_failed += 1;
                         if let Ok(mut f) = error_log.lock() {
-                            writeln!(f, "[CLEAN] Failed to delete S3 object '{}': {}", object_key, e).ok();
+                            writeln!(f, "[{}][CLEAN] Failed to delete S3 object '{}': {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), object_key, e).ok();
                         }
                     }
                 }
@@ -322,7 +322,7 @@ async fn main() {
                     if e.kind() != std::io::ErrorKind::NotFound {
                         local_failed += 1;
                         if let Ok(mut f) = error_log.lock() {
-                            writeln!(f, "[CLEAN] Failed to delete local file '{}': {}", object_key, e).ok();
+                            writeln!(f, "[{}][CLEAN] Failed to delete local file '{}': {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), object_key, e).ok();
                         }
                     }
                 }

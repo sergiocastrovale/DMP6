@@ -199,8 +199,6 @@ async fn main() {
         "SearchSource",
         "Settings",
         "Statistics",
-        "IndexCheckpoint",
-        "SyncCheckpoint",
         "S3DeletionQueue",
     ];
 

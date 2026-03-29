@@ -29,7 +29,7 @@ Connect to the TrueNAS PostgreSQL instance:
 ```bash
 # From your dev machine (adjust port if TrueNAS maps to a different one)
 psql -h 192.168.1.241 -p 5432 -U dmp
-# pw: 0%yD33y5P80@1Hc8^B*0yv%Pa1$Ra!%5
+# pw: 0yD33y5P801Hc8B0yvPa1$Ra!%5
 ```
 
 Create the database:
@@ -148,7 +148,7 @@ ssh nas
 sudo nano /mnt/SSD/web/dmp/.env
 
 # Paste this
-DATABASE_URL=postgresql://dmp:0%yD33y5P80@1Hc8^B*0yv%Pa1$$Ra!%5@host.docker.internal:5432/dmp?connection_limit=20&pool_timeout=10
+DATABASE_URL=postgresql://dmp:0yD33y5P801Hc8B0yvPa1$$Ra!%5@host.docker.internal:5432/dmp?connection_limit=20&pool_timeout=10
 MUSIC_DIR=/mnt/dmp/music/mainstream
 DMP_DATA=/mnt/SSD/web/dmp
 DMP_PORT=3000

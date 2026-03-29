@@ -351,30 +351,14 @@ model Statistics {
   releasesWithCoverArt                Int       @default(0)
   lastScanStartedAt                   DateTime?
   lastScanEndedAt                     DateTime?
+  lastIndexedArtist                   String?   // Resume point for ./index --resume
+  lastSyncedArtist                    String?   // Resume point for ./sync --resume
   createdAt                           DateTime  @default(now())
   updatedAt                           DateTime  @updatedAt
 }
 ```
 
-### IndexCheckpoint
-
-Enables resumable indexing after interruption.
-
-```prisma
-model IndexCheckpoint {
-  id              String   @id @default("main")  // Singleton
-  lastFolder      String?  @db.Text
-  filesProcessed  Int      @default(0)
-  musicDir        String?  @db.Text
-  filterFrom      String?
-  filterTo        String?
-  filterOnly      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-```
-
-**Purpose**: The indexer saves progress every 100 files. If interrupted, use `--resume` to continue from the last checkpoint.
+**Purpose**: Global app stats (singleton row, id = "main"). The `lastIndexedArtist` / `lastSyncedArtist` fields store the last completed artist folder name for `--resume` support. Cleared on successful completion.
 
 ### S3DeletionQueue
 
