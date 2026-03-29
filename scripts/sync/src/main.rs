@@ -101,7 +101,6 @@ struct TrackMeta {
     // MusicBrainz IDs from embedded metadata
     mb_album_id: Option<String>,
     mb_album_artist_id: Option<String>,
-    mb_artist_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -350,7 +349,6 @@ fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, String> {
     let mut has_picture = false;
     let mut mb_album_id: Option<String> = None;
     let mut mb_album_artist_id: Option<String> = None;
-    let mut mb_artist_id: Option<String> = None;
 
     for tag in tagged_file.tags() {
         if title.is_none() {
@@ -426,17 +424,6 @@ fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, String> {
                         mb_album_artist_id = Some(trimmed.to_string());
                     }
                 }
-                if mb_artist_id.is_none()
-                    && (key_upper == "MUSICBRAINZ_ARTISTID"
-                        || key_upper == "MUSICBRAINZ ARTIST ID"
-                        || key_upper.contains("MUSICBRAINZARTISTID"))
-                {
-                    let trimmed = val.trim();
-                    if !trimmed.is_empty() && trimmed.len() >= 32 {
-                        mb_artist_id = Some(trimmed.to_string());
-                    }
-                }
-
                 all_tags.insert(key, val.clone());
             }
         }
@@ -504,7 +491,6 @@ fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, String> {
         has_picture,
         mb_album_id,
         mb_album_artist_id,
-        mb_artist_id,
     })
 }
 
@@ -652,6 +638,126 @@ fn extract_cover_art(path: &Path, output_path: &Path) -> bool {
         }
     }
     false
+}
+
+/// Try to use a folder image (cover.jpg, folder.jpg, or front.jpg) as release cover art.
+/// Resizes and saves to `output_path`. Returns the filename found, or None.
+fn use_folder_image(folder_path: &Path, output_path: &Path) -> Option<&'static str> {
+    for name in &["cover.jpg", "folder.jpg", "front.jpg", "Cover.jpg", "Folder.jpg", "Front.jpg"] {
+        let candidate = folder_path.join(name);
+        if candidate.is_file() {
+            match image::open(&candidate) {
+                Ok(img) => {
+                    let resized = img.resize_to_fill(200, 200, image::imageops::FilterType::Triangle);
+                    if let Some(parent) = output_path.parent() {
+                        fs::create_dir_all(parent).ok();
+                    }
+                    if resized.save(output_path).is_ok() {
+                        return Some(name);
+                    }
+                }
+                Err(_) => continue,
+            }
+        }
+    }
+    None
+}
+
+/// Try to use a local image from the artist folder as artist image.
+/// Checks folder.jpg, cover.jpg first, then falls back to any jpg/png in the root.
+/// Resizes and saves to `output_path`. Returns true if found and saved.
+fn use_artist_folder_image(artist_folder: &Path, output_path: &Path) -> bool {
+    // Priority names first
+    for name in &["folder.jpg", "cover.jpg", "Folder.jpg", "Cover.jpg"] {
+        let candidate = artist_folder.join(name);
+        if candidate.is_file() {
+            if let Ok(img) = image::open(&candidate) {
+                let resized = img.resize_to_fill(200, 200, image::imageops::FilterType::Triangle);
+                if let Some(parent) = output_path.parent() {
+                    fs::create_dir_all(parent).ok();
+                }
+                if resized.save(output_path).is_ok() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Fallback: first jpg/png found in the root of the artist folder
+    if let Ok(entries) = fs::read_dir(artist_folder) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                let ext_lower = ext.to_lowercase();
+                if ext_lower == "jpg" || ext_lower == "jpeg" || ext_lower == "png" {
+                    if let Ok(img) = image::open(&path) {
+                        let resized = img.resize_to_fill(200, 200, image::imageops::FilterType::Triangle);
+                        if let Some(parent) = output_path.parent() {
+                            fs::create_dir_all(parent).ok();
+                        }
+                        if resized.save(output_path).is_ok() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// Download cover art from Cover Art Archive for a release group.
+/// Saves resized image to `output_path` and also writes `folder.jpg` into `source_folder`.
+/// Returns (downloaded, wrote_folder_jpg).
+async fn download_cover_art(
+    client: &Client,
+    release_group_id: &str,
+    output_path: &Path,
+    source_folder: &Path,
+) -> Result<(bool, bool), String> {
+    let url = format!(
+        "https://coverartarchive.org/release-group/{}/front",
+        release_group_id
+    );
+
+    let resp = client
+        .get(&url)
+        .header("User-Agent", USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Ok((false, false));
+    }
+
+    let bytes = resp.bytes().await.map_err(|e| format!("read failed: {}", e))?;
+
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("invalid image: {}", e))?;
+
+    let resized = img.resize_to_fill(200, 200, image::imageops::FilterType::Triangle);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    resized.save(output_path).map_err(|e| format!("save failed: {}", e))?;
+
+    // Also save full-resolution folder.jpg in the source folder
+    let mut wrote_folder_jpg = false;
+    let folder_jpg = source_folder.join("folder.jpg");
+    if !folder_jpg.exists() {
+        if let Ok(full_img) = image::load_from_memory(&bytes) {
+            if full_img.save(&folder_jpg).is_ok() {
+                wrote_folder_jpg = true;
+            }
+        }
+    }
+
+    Ok((true, wrote_folder_jpg))
 }
 
 // ---------------------------------------------------------------------------
@@ -1192,8 +1298,20 @@ async fn upload_to_s3(
 // Database operations — indexing
 // ---------------------------------------------------------------------------
 
+fn make_slug(name: &str) -> String {
+    let s = slugify(name);
+    if s.is_empty() {
+        // Fallback for names with no alphanumeric chars (e.g. "!!!")
+        let mut hasher = Md5::new();
+        hasher.update(name.as_bytes());
+        format!("artist-{:x}", hasher.finalize())
+    } else {
+        s
+    }
+}
+
 async fn ensure_artist(pool: &PgPool, name: &str) -> Result<String, sqlx::Error> {
-    let artist_slug = slugify(name);
+    let artist_slug = make_slug(name);
     if artist_slug.is_empty() {
         return Ok(String::new());
     }
@@ -1221,7 +1339,7 @@ async fn ensure_artist_cached(
     name: &str,
     cache: &mut HashMap<String, String>,
 ) -> Result<String, sqlx::Error> {
-    let artist_slug = slugify(name);
+    let artist_slug = make_slug(name);
     if artist_slug.is_empty() {
         return Ok(String::new());
     }
@@ -1684,6 +1802,22 @@ async fn nuke_artists(pool: &PgPool, from: &str, to: &str, only: &str) -> Result
             fs::remove_file(img_path).ok();
         }
 
+        // Delete releases owned solely by this artist (no other artist links)
+        sqlx::query(
+            r#"DELETE FROM "LocalRelease" WHERE id IN (
+                SELECT lr.id FROM "LocalRelease" lr
+                JOIN "LocalReleaseArtist" lra ON lr.id = lra."localReleaseId"
+                WHERE lra."artistId" = $1
+                AND NOT EXISTS (
+                    SELECT 1 FROM "LocalReleaseArtist" lra2
+                    WHERE lra2."localReleaseId" = lr.id AND lra2."artistId" != $1
+                )
+            )"#,
+        )
+        .bind(artist_id)
+        .execute(pool)
+        .await?;
+
         sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#)
             .bind(artist_id)
             .execute(pool)
@@ -1691,6 +1825,15 @@ async fn nuke_artists(pool: &PgPool, from: &str, to: &str, only: &str) -> Result
 
         deleted += 1;
     }
+
+    // Clean up any remaining orphaned releases (no artist links at all)
+    sqlx::query(
+        r#"DELETE FROM "LocalRelease" WHERE id NOT IN (
+            SELECT DISTINCT "localReleaseId" FROM "LocalReleaseArtist"
+        )"#,
+    )
+    .execute(pool)
+    .await?;
 
     Ok(deleted)
 }
@@ -1905,6 +2048,7 @@ async fn download_artist_image(
     artist: &MbArtistDetail,
     artist_slug: &str,
     img_dir: &PathBuf,
+    artist_folder: &Path,
     s3_client: &Option<S3Client>,
     config: &Config,
     pool: &PgPool,
@@ -1914,28 +2058,39 @@ async fn download_artist_image(
     let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
     let use_local = config.image_storage == "local" || config.image_storage == "both";
 
-    let img_url = {
-        let mut found = None;
-        if let Some(ref relations) = artist.relations {
-            for rel in relations {
-                if rel.relation_type == "wikipedia" || rel.relation_type == "wikidata" {
-                    if let Some(ref url) = rel.url {
-                        if let Some(u) = get_wikipedia_image(client, &url.resource).await {
-                            found = Some(u);
-                            break;
+    // Try local folder image first (folder.jpg, cover.jpg, then any jpg/png)
+    let from_folder = use_artist_folder_image(artist_folder, &out_path);
+
+    if !from_folder {
+        // Fall back to external APIs (Wikipedia, Fanart.tv)
+        let img_url = {
+            let mut found = None;
+            if let Some(ref relations) = artist.relations {
+                for rel in relations {
+                    if rel.relation_type == "wikipedia" || rel.relation_type == "wikidata" {
+                        if let Some(ref url) = rel.url {
+                            if let Some(u) = get_wikipedia_image(client, &url.resource).await {
+                                found = Some(u);
+                                break;
+                            }
                         }
                     }
                 }
             }
-        }
-        if found.is_none() {
-            found = get_fanart_image(client, &artist.id).await;
-        }
-        found
-    }?;
+            if found.is_none() {
+                found = get_fanart_image(client, &artist.id).await;
+            }
+            found
+        };
 
-    if !download_and_resize(client, &img_url, &out_path).await {
-        return None;
+        match img_url {
+            Some(url) => {
+                if !download_and_resize(client, &url, &out_path).await {
+                    return None;
+                }
+            }
+            None => return None,
+        }
     }
 
     let mut stored = false;
@@ -2390,23 +2545,24 @@ async fn main() {
     let mut synced_mb_ids: HashMap<String, String> = HashMap::new();
     let mut failed_artists: Vec<(String, String)> = Vec::new();
 
-    // Helper closure: print artist header + sub-status on two lines, overwriting both
-    let print_status = |folder_name: &str, folder_idx: usize, total: usize, step: &str| {
-        eprint!(
-            "\r\x1b[K  {} {} [{}/{}]\n\x1b[K    {}\x1b[A",
-            "→".bright_black(),
-            format!("{:<45}", folder_name).bright_cyan(),
-            folder_idx + 1,
-            total,
-            step.bright_black(),
-        );
+    // Helper closure: overwrite a single status line beneath the folder header
+    let print_substep = |step: &str| {
+        eprint!("\r\x1b[K    {}", step);
     };
 
     println!("Processing {} artist folders...", total_folders.to_string().bright_white());
     println!();
 
     for (folder_idx, folder_name) in artist_folders.iter().enumerate() {
-        print_status(folder_name, folder_idx, total_folders, "scanning files...");
+        // Print permanent folder header
+        println!(
+            "  {} {} [{}/{}]",
+            "→".bright_black(),
+            folder_name.bright_cyan(),
+            folder_idx + 1,
+            total_folders,
+        );
+        print_substep("scanning files...");
 
         // =====================================================================
         // INDEX PHASE
@@ -2431,13 +2587,16 @@ async fn main() {
 
         let folder_file_count = paths.len();
         if folder_file_count == 0 {
+            eprint!("\r\x1b[K");
+            println!("    {} 0 files", "→".bright_black());
             save_sync_progress(&pool, folder_name).await.ok();
             continue;
         }
         total_files += folder_file_count as u64;
 
         // --- Step 2: Extract metadata in parallel ---
-        print_status(folder_name, folder_idx, total_folders, &format!("extracting metadata ({} files)...", folder_file_count));
+        eprint!("\r\x1b[K");
+        println!("    Extracting metadata ({} files)...", folder_file_count);
         let scan_errors = AtomicU64::new(0);
 
         let extracted: Vec<TrackMeta> = paths
@@ -2473,12 +2632,17 @@ async fn main() {
         }
 
         if extracted.is_empty() {
+            eprint!("\r\x1b[K");
+            println!("    {} {} files, all failed to parse", "→".bright_black(), folder_file_count);
             save_sync_progress(&pool, folder_name).await.ok();
             continue;
         }
 
         // --- Step 3: Change detection + batch upsert ---
-        print_status(folder_name, folder_idx, total_folders, "upserting to database...");
+        print_substep("upserting to database...");
+        let mut folder_new = 0u64;
+        let mut folder_updated = 0u64;
+        let mut folder_skipped = 0u64;
         let mut group_errors = 0u64;
         let mut batch_tracks: Vec<(&TrackMeta, String)> = Vec::new();
         let mut pending_links: Vec<(String, String, String)> = Vec::new();
@@ -2487,6 +2651,10 @@ async fn main() {
         // Collect embedded MB IDs per artist: artist_db_id -> (mb_artist_id, mb_album_id)
         let mut folder_mb_hints: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
         let mut releases_needing_art: HashMap<String, PathBuf> = HashMap::new();
+        // All releases in this folder: release_id -> relative folder path
+        let mut folder_releases: HashMap<String, String> = HashMap::new();
+        // Track releases that already have cover art (to avoid redundant work across steps)
+        let mut releases_with_art: HashSet<String> = HashSet::new();
 
         for track in &extracted {
             if let Some((existing_size, existing_mtime, existing_hash)) = existing_tracks.get(&track.file_path) {
@@ -2494,16 +2662,20 @@ async fn main() {
                     && (*existing_mtime - track.mtime).num_seconds().abs() < 2
                 {
                     skipped_total += 1;
+                    folder_skipped += 1;
                     continue;
                 }
                 if *existing_hash == track.content_hash {
                     mtime_updates.push((track.mtime, track.file_path.clone()));
                     skipped_total += 1;
+                    folder_skipped += 1;
                     continue;
                 }
                 updated_total += 1;
+                folder_updated += 1;
             } else {
                 new_total += 1;
+                folder_new += 1;
             }
 
             let album_artist_tag = track.album_artist.as_deref().unwrap_or("");
@@ -2544,6 +2716,9 @@ async fn main() {
             };
 
             let fp = track.file_path.clone();
+
+            // Track all releases in this folder for cover art fallback
+            folder_releases.entry(release_id.clone()).or_insert_with(|| folder_path_str.clone());
 
             // Link release to ALL album artists (many-to-many via LocalReleaseArtist)
             if main_album_artists.is_empty() {
@@ -2619,7 +2794,7 @@ async fn main() {
             if track.mb_album_artist_id.is_some() || track.mb_album_id.is_some() {
                 // Associate with the first album artist (canonical owner)
                 let target_artist = if !main_album_artists.is_empty() {
-                    artist_cache.get(&slugify(main_album_artists.first().unwrap())).cloned()
+                    artist_cache.get(&make_slug(main_album_artists.first().unwrap())).cloned()
                 } else {
                     None
                 };
@@ -2689,9 +2864,21 @@ async fn main() {
             }
         }
 
+        // Print index summary for this folder (clear ephemeral substep first)
+        eprint!("\r\x1b[K");
+        {
+            let mut parts: Vec<String> = Vec::new();
+            parts.push(format!("{} files", folder_file_count));
+            if folder_new > 0 { parts.push(format!("{} new", folder_new)); }
+            if folder_updated > 0 { parts.push(format!("{} updated", folder_updated)); }
+            if folder_skipped > 0 { parts.push(format!("{} skipped", folder_skipped)); }
+            if group_errors > 0 { parts.push(format!("{} errors", group_errors)); }
+            println!("    {} {}", "→".bright_black(), parts.join(" | "));
+        }
+
         // --- Step 4: Cover art extraction ---
         if !args.skip_images && !releases_needing_art.is_empty() {
-            print_status(folder_name, folder_idx, total_folders, &format!("extracting artwork ({} releases)...", releases_needing_art.len()));
+            println!("    Extracting artwork ({} releases)...", releases_needing_art.len());
             let art_entries: Vec<(&String, &PathBuf)> = releases_needing_art.iter().collect();
             let extracted_covers: Vec<(String, PathBuf, bool)> = art_entries
                 .par_iter()
@@ -2736,25 +2923,90 @@ async fn main() {
                 }
 
                 if use_local {
-                    let relative = format!("/img/releases/{}.jpg", release_id);
+                    let filename = format!("{}.jpg", release_id);
                     sqlx::query(
                         r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
                     )
-                    .bind(&relative)
+                    .bind(&filename)
                     .bind(release_id)
                     .execute(&pool)
                     .await
                     .ok();
                 }
 
-                if !use_local && use_s3 && out_path.exists() {
-                    fs::remove_file(out_path).ok();
+                releases_with_art.insert(release_id.clone());
+            }
+        }
+
+        // --- Step 4b: Folder image fallback (cover.jpg / folder.jpg) ---
+        if !args.skip_images {
+            // Find releases in this folder that still have no cover art
+            let releases_without_art: Vec<(String, String)> = folder_releases.iter()
+                .filter(|(rid, _)| !releases_with_art.contains(*rid))
+                .map(|(rid, fp)| (rid.clone(), fp.clone()))
+                .collect();
+
+            if !releases_without_art.is_empty() {
+                let mut folder_art_found = 0;
+                for (release_id, rel_folder_path) in &releases_without_art {
+                    let abs_folder = PathBuf::from(&music_dir).join(rel_folder_path);
+                    let out_path = release_img_dir.join(format!("{}.jpg", release_id));
+
+                    if let Some(_source_name) = use_folder_image(&abs_folder, &out_path) {
+                        folder_art_found += 1;
+
+                        if use_s3 {
+                            if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
+                                (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                            {
+                                let s3_key = format!("releases/{}.jpg", release_id);
+                                match upload_to_s3(client, bucket, &s3_key, &out_path).await {
+                                    Ok(_) => {
+                                        let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
+                                        sqlx::query(
+                                            r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                        )
+                                        .bind(&image_url)
+                                        .bind(release_id)
+                                        .execute(&pool)
+                                        .await
+                                        .ok();
+                                    }
+                                    Err(e) => {
+                                        if let Ok(mut f) = error_log.lock() {
+                                            writeln!(f, "[{}][SYNC] S3 upload failed for release {}: {:?}",
+                                                Utc::now().format("%Y-%m-%d %H:%M:%S"), release_id, e).ok();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if use_local {
+                            let filename = format!("{}.jpg", release_id);
+                            sqlx::query(
+                                r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                            )
+                            .bind(&filename)
+                            .bind(release_id)
+                            .execute(&pool)
+                            .await
+                            .ok();
+                        }
+
+                        releases_with_art.insert(release_id.clone());
+                    }
+                }
+                if folder_art_found > 0 {
+                    println!("    {} Found {} cover{} from folder images",
+                        "→".bright_black(),
+                        folder_art_found.to_string().bright_white(),
+                        if folder_art_found == 1 { "" } else { "s" });
                 }
             }
         }
 
         // --- Step 5: Update totals ---
-        print_status(folder_name, folder_idx, total_folders, "updating totals...");
         for aid in &folder_artist_ids {
             update_release_totals_for_artist(&pool, aid).await.ok();
             update_artist_totals_for_artist(&pool, aid).await.ok();
@@ -2763,9 +3015,6 @@ async fn main() {
         // =====================================================================
         // SYNC PHASE — per artist ID touched in this folder
         // =====================================================================
-
-        // Clear the two-line index status before sync output
-        eprint!("\r\x1b[K\n\x1b[K\x1b[A");
 
         for artist_id in &folder_artist_ids {
             // Look up artist info from DB
@@ -2798,14 +3047,14 @@ async fn main() {
                 // Fall through — the duplicate-check path will re-match local releases
             }
 
-            // Print sync header for this artist
-            println!(
-                "  [{}/{}] {} {}",
-                folder_idx + 1,
-                total_folders,
-                "Syncing:".white(),
-                artist_name.bright_cyan().bold()
-            );
+            // Print sync header — show artist name only when multiple artists in folder
+            if folder_artist_ids.len() > 1 {
+                println!(
+                    "    {} {}",
+                    "Syncing:".white(),
+                    artist_name.bright_cyan().bold()
+                );
+            }
 
             // 1. Find artist on MusicBrainz
             println!("    {} Searching MusicBrainz...", "→".bright_black());
@@ -2963,7 +3212,7 @@ async fn main() {
                         print!("    {} Downloading artist image... ", "→".bright_black());
                         std::io::stdout().flush().ok();
                         let img_result =
-                            download_artist_image(&http_client, &detail, &artist_slug, &artist_img_dir, &s3_client, &config, &pool, artist_id).await;
+                            download_artist_image(&http_client, &detail, &artist_slug, &artist_img_dir, &folder_path, &s3_client, &config, &pool, artist_id).await;
                         if img_result.is_some() {
                             println!("{}", "✓".green());
                         } else {
@@ -3203,7 +3452,7 @@ async fn main() {
                     Ok(id) if !id.is_empty() => id,
                     _ => continue,
                 };
-                let extra_slug = slugify(&extra_name);
+                let extra_slug = make_slug(&extra_name);
 
                 // Skip if already has a musicbrainzId (unless --overwrite)
                 let existing: Option<(Option<String>,)> = sqlx::query_as(
@@ -3221,8 +3470,7 @@ async fn main() {
                 }
 
                 println!(
-                    "  [{}/{}] {} {}",
-                    folder_idx + 1, total_folders,
+                    "    {} {}",
                     "Syncing (from split):".white(),
                     extra_name.bright_cyan().bold()
                 );
@@ -3282,7 +3530,7 @@ async fn main() {
                             std::io::stdout().flush().ok();
                             let img_result = download_artist_image(
                                 &http_client, &detail, &extra_slug, &artist_img_dir,
-                                &s3_client, &config, &pool, &extra_artist_id,
+                                &folder_path, &s3_client, &config, &pool, &extra_artist_id,
                             ).await;
                             if img_result.is_some() {
                                 println!("{}", "✓".green());
@@ -3382,6 +3630,130 @@ async fn main() {
                         println!("      {} Error: {}", "✗".red(), e.bright_red());
                         failed_sync += 1;
                     }
+                }
+            }
+        }
+
+        // --- Step 6: Cover Art Archive fallback ---
+        if !args.skip_images {
+            // Find releases still missing art after embedded + folder image steps
+            let still_missing_art: Vec<(String, String)> = folder_releases.iter()
+                .filter(|(rid, _)| !releases_with_art.contains(*rid))
+                .map(|(rid, fp)| (rid.clone(), fp.clone()))
+                .collect();
+
+            if !still_missing_art.is_empty() {
+                // Look up which of these releases have a linked MB release group
+                let mut caa_downloaded = 0u32;
+                let mut caa_not_found = 0u32;
+
+                for (release_id, rel_folder_path) in &still_missing_art {
+                    // Get the MB release group ID via LocalRelease → MusicBrainzRelease
+                    let mb_rg_id: Option<(String,)> = sqlx::query_as(
+                        r#"SELECT mbr."musicbrainzId"
+                           FROM "LocalRelease" lr
+                           JOIN "MusicBrainzRelease" mbr ON lr."releaseId" = mbr.id
+                           WHERE lr.id = $1 AND mbr."musicbrainzId" IS NOT NULL"#,
+                    )
+                    .bind(release_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None);
+
+                    let rg_id = match mb_rg_id {
+                        Some((id,)) => id,
+                        None => continue, // No MB link, skip
+                    };
+
+                    // Get release title for output
+                    let release_title: Option<(String,)> = sqlx::query_as(
+                        r#"SELECT title FROM "LocalRelease" WHERE id = $1"#,
+                    )
+                    .bind(release_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None);
+                    let title = release_title.map(|(t,)| t).unwrap_or_default();
+
+                    let out_path = release_img_dir.join(format!("{}.jpg", release_id));
+                    let abs_folder = PathBuf::from(&music_dir).join(rel_folder_path);
+
+                    match download_cover_art(&http_client, &rg_id, &out_path, &abs_folder).await {
+                        Ok((true, wrote_folder_jpg)) => {
+                            caa_downloaded += 1;
+                            let suffix = if wrote_folder_jpg { " (+ saved folder.jpg)" } else { "" };
+                            println!("    {} Downloaded cover from Cover Art Archive: {}{}",
+                                "↓".green(), title.bright_black(), suffix.bright_black());
+
+                            if use_s3 {
+                                if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
+                                    (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                                {
+                                    let s3_key = format!("releases/{}.jpg", release_id);
+                                    match upload_to_s3(client, bucket, &s3_key, &out_path).await {
+                                        Ok(_) => {
+                                            let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
+                                            sqlx::query(
+                                                r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                            )
+                                            .bind(&image_url)
+                                            .bind(release_id)
+                                            .execute(&pool)
+                                            .await
+                                            .ok();
+                                        }
+                                        Err(e) => {
+                                            if let Ok(mut f) = error_log.lock() {
+                                                writeln!(f, "[{}][SYNC] S3 upload failed for release {}: {:?}",
+                                                    Utc::now().format("%Y-%m-%d %H:%M:%S"), release_id, e).ok();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if use_local {
+                                let filename = format!("{}.jpg", release_id);
+                                sqlx::query(
+                                    r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                )
+                                .bind(&filename)
+                                .bind(release_id)
+                                .execute(&pool)
+                                .await
+                                .ok();
+                            }
+
+                            releases_with_art.insert(release_id.clone());
+                        }
+                        Ok((false, _)) => {
+                            caa_not_found += 1;
+                        }
+                        Err(e) => {
+                            caa_not_found += 1;
+                            if let Ok(mut f) = error_log.lock() {
+                                writeln!(f, "[{}][SYNC] Cover Art Archive error for release '{}': {}",
+                                    Utc::now().format("%Y-%m-%d %H:%M:%S"), title, e).ok();
+                            }
+                        }
+                    }
+                }
+
+                if caa_downloaded > 0 || caa_not_found > 0 {
+                    println!("    {} Cover Art Archive: {} downloaded, {} not found",
+                        "→".bright_black(),
+                        caa_downloaded.to_string().bright_green(),
+                        caa_not_found.to_string().bright_black());
+                }
+            }
+        }
+
+        // --- Cleanup: remove local temp images in S3-only mode ---
+        if !use_local && use_s3 {
+            for rid in &releases_with_art {
+                let tmp_path = release_img_dir.join(format!("{}.jpg", rid));
+                if tmp_path.exists() {
+                    fs::remove_file(&tmp_path).ok();
                 }
             }
         }

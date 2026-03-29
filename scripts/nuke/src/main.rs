@@ -268,6 +268,7 @@ async fn main() {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("jpg") {
+                    println!("  → {}", path.display());
                     if fs::remove_file(&path).is_ok() {
                         local_deleted_count += 1;
                     }

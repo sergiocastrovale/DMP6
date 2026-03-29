@@ -6,7 +6,7 @@ WORKDIR /build
 # Create a virtual workspace so all scripts share compiled dependencies
 RUN cat > Cargo.toml <<'TOML'
 [workspace]
-members = ["sync", "analysis", "clean", "nuke"]
+members = ["sync", "analysis", "clean", "nuke", "audit"]
 resolver = "2"
 TOML
 
@@ -15,13 +15,15 @@ COPY sync/Cargo.toml sync/Cargo.toml
 COPY analysis/Cargo.toml analysis/Cargo.toml
 COPY clean/Cargo.toml clean/Cargo.toml
 COPY nuke/Cargo.toml nuke/Cargo.toml
+COPY audit/Cargo.toml audit/Cargo.toml
 
 # Create dummy src files to pre-build dependencies
-RUN mkdir -p sync/src analysis/src clean/src nuke/src \
+RUN mkdir -p sync/src analysis/src clean/src nuke/src audit/src \
     && echo 'fn main(){}' > sync/src/main.rs \
     && echo 'fn main(){}' > analysis/src/main.rs \
     && echo 'fn main(){}' > clean/src/main.rs \
-    && echo 'fn main(){}' > nuke/src/main.rs
+    && echo 'fn main(){}' > nuke/src/main.rs \
+    && echo 'fn main(){}' > audit/src/main.rs
 
 # Build dependencies only (cached unless Cargo.toml changes)
 RUN cargo build --release --workspace 2>/dev/null || true
@@ -31,9 +33,10 @@ COPY sync/src sync/src
 COPY analysis/src analysis/src
 COPY clean/src clean/src
 COPY nuke/src nuke/src
+COPY audit/src audit/src
 
 # Touch source files to invalidate the dummy build
-RUN touch sync/src/main.rs analysis/src/main.rs clean/src/main.rs nuke/src/main.rs
+RUN touch sync/src/main.rs analysis/src/main.rs clean/src/main.rs nuke/src/main.rs audit/src/main.rs
 
 # Build all binaries
 RUN cargo build --release --workspace
@@ -53,6 +56,7 @@ COPY --from=builder /build/target/release/dmp-sync /usr/local/bin/
 COPY --from=builder /build/target/release/analysis /usr/local/bin/dmp-analysis
 COPY --from=builder /build/target/release/dmp-clean /usr/local/bin/
 COPY --from=builder /build/target/release/dmp-nuke /usr/local/bin/
+COPY --from=builder /build/target/release/dmp-audit /usr/local/bin/
 
 # No default CMD — run specific binaries as needed:
 #   docker run --rm dmp-scripts dmp-sync [args]

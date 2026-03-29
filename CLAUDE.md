@@ -28,6 +28,7 @@ Rust binaries compiled with `cargo build --release` and exposed as shell wrapper
 ./sync            # Index local files + sync against MusicBrainz (full pipeline per artist)
 ./sync --resume   # Resume from last checkpoint
 ./sync --only="Artist Name" --overwrite  # Re-index + re-sync specific artist
+./audit           # Generate data quality audit report (XLSX) in /reports
 ./analysis        # Generate metadata quality report in /reports
 ./clean           # Process S3DeletionQueue, remove orphaned images
 ./clean --dry-run
