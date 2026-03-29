@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
         take: limit,
         orderBy: [{ year: 'asc' }, { title: 'asc' }],
         include: {
-          artist: { select: { id: true, name: true, slug: true } },
+          artists: { select: { artist: { select: { id: true, name: true, slug: true } } } },
           release: {
             select: {
               id: true,
@@ -77,9 +77,7 @@ export default defineEventHandler(async (event) => {
         year: r.year,
         image: r.image,
         imageUrl: r.imageUrl,
-        artist: r.artist
-          ? { id: r.artist.id, name: r.artist.name, slug: r.artist.slug }
-          : null,
+        artist: r.artists[0]?.artist ?? null,
       })),
       total,
       page,

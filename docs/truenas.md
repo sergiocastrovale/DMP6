@@ -76,7 +76,7 @@ web/scripts/deploy-docker.sh build
 
 This builds:
 - `dmp-web:latest` — the Nuxt web app (~800MB, includes mediasoup worker)
-- `dmp-scripts:latest` — all Rust scripts: index, sync, analysis, clean, nuke (~50MB)
+- `dmp-scripts:latest` — all Rust scripts: sync, analysis, clean, nuke (~50MB)
 
 **Note**: The Dockerfile uses `node:20-bullseye` (Debian 11, OpenSSL 1.1.x) intentionally. TrueNAS Scale's Docker environment is detected by Prisma as requiring OpenSSL 1.1.x, so building on Bookworm (OpenSSL 3.0.x) causes a runtime mismatch even when both binary targets are included.
 
@@ -242,19 +242,12 @@ It will take several hours or days depending on the size of the DB.
 ssh nas
 cd /mnt/SSD/web/dmp
 
-# Index your music library
+# Index + sync (full pipeline per artist)
 docker run --rm \
   --env-file .env \
   -e MUSIC_DIR=/music \
   -e PROJECT_ROOT=/app \
   -v /mnt/SSD/media/music:/music:ro \
-  -v /mnt/SSD/web/dmp/img:/app/web/public/img \
-  dmp-scripts:latest dmp-index
-
-# Sync against MusicBrainz
-docker run --rm \
-  --env-file .env \
-  -e PROJECT_ROOT=/app \
   -v /mnt/SSD/web/dmp/img:/app/web/public/img \
   dmp-scripts:latest dmp-sync
 ```
@@ -270,18 +263,16 @@ All scripts run as ephemeral Docker containers sharing the same database and ima
 S="docker run --rm \
   --env-file /mnt/SSD/web/dmp/.env \
   -e PROJECT_ROOT=/app \
+  -e MUSIC_DIR=/music \
   -v /mnt/SSD/media/music:/music:ro \
   -v /mnt/SSD/web/dmp/img:/app/web/public/img \
   dmp-scripts:latest"
 
-# Index (scan music directory)
-$S dmp-index
-$S dmp-index --resume                    # Resume interrupted index
-$S dmp-index --only="Artist Name"        # Index specific artist
-
-# Sync (match against MusicBrainz)
+# Sync (index + MusicBrainz match, full pipeline per artist)
 $S dmp-sync
-$S dmp-sync --overwrite                  # Re-sync all
+$S dmp-sync --resume                     # Resume from checkpoint
+$S dmp-sync --only="Artist Name"         # Specific artist
+$S dmp-sync --overwrite                  # Nuke + re-sync all
 
 # Analysis (generate metadata report)
 # Note: reports output to /app/reports inside the container
@@ -304,8 +295,7 @@ $S dmp-nuke
 
 ```bash
 cat >> ~/.bashrc << 'EOF'
-alias dmp-index='docker run --rm --env-file /mnt/SSD/web/dmp/.env -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/SSD/media/music:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-index'
-alias dmp-sync='docker run --rm --env-file /mnt/SSD/web/dmp/.env -e PROJECT_ROOT=/app -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-sync'
+alias dmp-sync='docker run --rm --env-file /mnt/SSD/web/dmp/.env -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/SSD/media/music:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-sync'
 alias dmp-clean='docker run --rm --env-file /mnt/SSD/web/dmp/.env -e PROJECT_ROOT=/app -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-clean'
 alias dmp-nuke='docker run --rm --env-file /mnt/SSD/web/dmp/.env -e PROJECT_ROOT=/app -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-nuke'
 EOF

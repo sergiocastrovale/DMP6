@@ -25,11 +25,9 @@ pnpm db:studio    # Open Prisma Studio
 Rust binaries compiled with `cargo build --release` and exposed as shell wrappers:
 
 ```bash
-./index           # Scan MUSIC_DIR and index tracks into DB
-./index --resume  # Resume interrupted index
-./index --only="Artist Name" --overwrite  # Re-index specific artist
-./sync            # Sync indexed artists against MusicBrainz
-./sync --overwrite
+./sync            # Index local files + sync against MusicBrainz (full pipeline per artist)
+./sync --resume   # Resume from last checkpoint
+./sync --only="Artist Name" --overwrite  # Re-index + re-sync specific artist
 ./analysis        # Generate metadata quality report in /reports
 ./clean           # Process S3DeletionQueue, remove orphaned images
 ./clean --dry-run
@@ -43,7 +41,7 @@ Rust binaries compiled with `cargo build --release` and exposed as shell wrapper
 - **Icons**: `lucide-vue-next` only
 - **State**: Pinia stores in `web/stores/` with manual localStorage persistence (not the plugin)
 - **Database**: Prisma + PostgreSQL 16+; schema at `web/prisma/schema.prisma`
-- **Scripts**: Rust (stable toolchain) — `index`, `sync`, `analysis`, `clean`, `nuke` are separate Cargo workspaces in `scripts/`
+- **Scripts**: Rust (stable toolchain) — `sync`, `analysis`, `clean`, `nuke` are separate Cargo workspaces in `scripts/`
 - **Real-time**: Nitro WebSockets (`web/server/routes/_ws.ts`) + mediasoup for Listening Party audio streaming
 
 ## Architecture
@@ -53,7 +51,7 @@ Rust binaries compiled with `cargo build --release` and exposed as shell wrapper
 The core data model has two parallel trees joined by match status:
 
 - **MusicBrainz tree**: `Artist → MusicBrainzRelease → MusicBrainzReleaseTrack` (canonical metadata from MusicBrainz)
-- **Local tree**: `Artist → LocalRelease → LocalReleaseTrack` (actual files on disk)
+- **Local tree**: `Artist ←→ LocalReleaseArtist ←→ LocalRelease → LocalReleaseTrack` (actual files on disk; many-to-many — a release can belong to multiple artists)
 - `LocalRelease.releaseId` links to `MusicBrainzRelease`, `LocalReleaseTrack.mbTrackId` links to `MusicBrainzReleaseTrack`
 - `ReleaseStatus` enum tracks match quality: `COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING | UNSYNCABLE | UNKNOWN`
 

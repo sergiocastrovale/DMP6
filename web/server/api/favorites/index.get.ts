@@ -70,8 +70,8 @@ export default defineEventHandler(async (event) => {
             include: {
               localRelease: {
                 include: {
-                  artist: {
-                    select: { id: true, name: true, slug: true },
+                  artists: {
+                    select: { artist: { select: { id: true, name: true, slug: true } } },
                   },
                 },
               },
@@ -98,9 +98,7 @@ export default defineEventHandler(async (event) => {
               year: fav.track.localRelease.year,
               image: fav.track.localRelease.image,
               imageUrl: fav.track.localRelease.imageUrl,
-              artist: fav.track.localRelease.artist
-                ? { id: fav.track.localRelease.artist.id, name: fav.track.localRelease.artist.name, slug: fav.track.localRelease.artist.slug }
-                : null,
+              artist: fav.track.localRelease.artists[0]?.artist ?? null,
             }
           : null,
       },

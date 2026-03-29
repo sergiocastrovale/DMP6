@@ -41,58 +41,37 @@ Each script tries to load `.env` in this order:
 
 ## Available Scripts
 
-### 1. `index` - Index Local Music Files
+### 1. `sync` - Index + Sync with MusicBrainz
 
-Scans your music directory and indexes all audio files into the database.
-
-```bash
-cd scripts/index
-cargo run --release [OPTIONS] [MUSIC_DIR]
-
-# Examples:
-cargo run --release                          # Use MUSIC_DIR from .env
-cargo run --release /path/to/music          # Override MUSIC_DIR
-cargo run --release -- --only a             # Only index artists starting with 'a'
-cargo run --release -- --from a --to m      # Index artists from a to m
-cargo run --release -- --overwrite          # Re-index everything
-cargo run --release -- --resume             # Resume from last checkpoint
-cargo run --release -- --skip-images        # Don't extract cover art
-cargo run --release -- --threads 8          # Use 8 threads (default: all cores)
-cargo run --release -- --limit 1000         # Only process first 1000 files
-```
-
-**Options:**
-- `--overwrite` - Delete existing data and re-index
-- `--from <prefix>` - Start from artists beginning with prefix
-- `--to <prefix>` - Stop at artists ending with prefix
-- `--only <prefix>` - Only index artists starting with prefix
-- `--resume` - Continue from last checkpoint
-- `--skip-images` - Skip cover art extraction
-- `--threads <n>` - Number of parallel workers (0 = all cores)
-- `--limit <n>` - Limit to first N files (0 = no limit)
-
-### 2. `sync` - Sync with MusicBrainz
-
-Fetches metadata from MusicBrainz for artists in your library.
+Indexes local audio files and syncs artists against MusicBrainz. Processes the full pipeline per artist folder.
 
 ```bash
 cd scripts/sync
-cargo run --release [OPTIONS]
+cargo run --release [OPTIONS] [MUSIC_DIR]
 
 # Examples:
-cargo run --release                          # Sync new artists only
-cargo run --release -- --overwrite          # Re-sync all artists
-cargo run --release -- --only a             # Only sync artists starting with 'a'
-cargo run --release -- --from a --to m      # Sync artists from a to m
-cargo run --release -- --limit 10           # Only sync first 10 artists
+cargo run --release                          # Index + sync all
+cargo run --release /path/to/music          # Override MUSIC_DIR
+cargo run --release -- --only a             # Only folders starting with 'a'
+cargo run --release -- --from a --to m      # Process range
+cargo run --release -- --overwrite          # Nuke + re-index + re-sync
+cargo run --release -- --resume             # Resume from checkpoint
+cargo run --release -- --skip-images        # Skip all image operations
+cargo run --release -- --threads 8          # Use 8 threads (default: all cores)
+cargo run --release -- --limit 10           # Only first 10 folders
+cargo run --release -- --verbose            # Show skipped MB releases
 ```
 
 **Options:**
-- `--overwrite` - Re-sync all artists (including already synced)
-- `--only <prefix>` - Only sync artists starting with prefix
-- `--from <prefix>` - Sync artists starting from prefix
-- `--to <prefix>` - Sync artists up to and including prefix
-- `--limit <n>` - Limit to first N artists
+- `--overwrite` - Nuke matching data, re-index and re-sync
+- `--from <prefix>` - Start from folders beginning with prefix
+- `--to <prefix>` - Stop at folders ending with prefix
+- `--only <prefix>` - Only folders matching prefix
+- `--resume` - Continue from last checkpoint
+- `--skip-images` - Skip cover art extraction and artist image download
+- `--threads <n>` - Number of parallel metadata extraction workers (0 = all cores)
+- `--limit <n>` - Limit to first N artist folders (0 = no limit)
+- `--verbose` - Show skipped MusicBrainz releases in output
 
 **Note:** MusicBrainz has rate limits. Large syncs may take time.
 
@@ -256,10 +235,10 @@ let img_dir = PathBuf::from("/home/kp/web/DMPv6/web/public/img/releases");
 
 ## Performance Tips
 
-1. **Index script**: Use `--threads` to control parallelism (default uses all cores)
-2. **Sync script**: Use `--limit` to process in batches
-3. **Resume capability**: Both index and sync support resuming from checkpoints
-4. **Incremental updates**: By default, scripts only process new/changed data
+1. **Sync script**: Use `--threads` to control parallelism (default uses all cores)
+2. **Batch processing**: Use `--limit` to process in batches
+3. **Resume capability**: `./sync --resume` continues from last checkpoint
+4. **Incremental updates**: By default, only new/changed files are processed
 
 ## Error Logging
 

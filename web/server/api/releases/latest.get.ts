@@ -12,8 +12,8 @@ export default defineEventHandler(async (event) => {
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: {
-        artist: {
-          select: { id: true, name: true, slug: true },
+        artists: {
+          select: { artist: { select: { id: true, name: true, slug: true } } },
         },
         release: {
           select: {
@@ -33,9 +33,7 @@ export default defineEventHandler(async (event) => {
       image: release.image,
       imageUrl: release.imageUrl,
       createdAt: release.createdAt,
-      artist: release.artist
-        ? { id: release.artist.id, name: release.artist.name, slug: release.artist.slug }
-        : null,
+      artist: release.artists[0]?.artist ?? null,
       musicBrainzId: release.release?.id || null,
     }))
   })

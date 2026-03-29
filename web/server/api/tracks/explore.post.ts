@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
           select: {
             image: true,
             imageUrl: true,
-            artist: { select: { slug: true } },
+            artists: { select: { artist: { select: { slug: true } } } },
           },
         },
       },
@@ -121,7 +121,7 @@ export default defineEventHandler(async (event) => {
     artist: t.artist || 'Unknown',
     album: t.album || 'Unknown',
     duration: t.duration || 0,
-    artistSlug: t.localRelease?.artist?.slug || null,
+    artistSlug: (t.localRelease as any)?.artists?.[0]?.artist?.slug || null,
     releaseImage: t.localRelease?.image || null,
     releaseImageUrl: t.localRelease?.imageUrl || null,
     localReleaseId: t.localReleaseId,

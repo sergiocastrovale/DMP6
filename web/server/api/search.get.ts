@@ -56,11 +56,9 @@ export default defineEventHandler(async (event) => {
         ],
       },
       include: {
-        artist: {
+        artists: {
           select: {
-            id: true,
-            name: true,
-            slug: true,
+            artist: { select: { id: true, name: true, slug: true } },
           },
         },
         release: {
@@ -89,11 +87,9 @@ export default defineEventHandler(async (event) => {
       include: {
         localRelease: {
           include: {
-            artist: {
+            artists: {
               select: {
-                id: true,
-                name: true,
-                slug: true,
+                artist: { select: { id: true, name: true, slug: true } },
               },
             },
           },
@@ -119,13 +115,7 @@ export default defineEventHandler(async (event) => {
       year: release.year,
       image: release.image,
       imageUrl: release.imageUrl,
-      artist: release.artist
-        ? {
-            id: release.artist.id,
-            name: release.artist.name,
-            slug: release.artist.slug,
-          }
-        : null,
+      artist: release.artists[0]?.artist ?? null,
     })),
     tracks: tracks.map(track => ({
       id: track.id,
@@ -139,13 +129,7 @@ export default defineEventHandler(async (event) => {
             year: track.localRelease.year,
             image: track.localRelease.image,
             imageUrl: track.localRelease.imageUrl,
-            artist: track.localRelease.artist
-              ? {
-                  id: track.localRelease.artist.id,
-                  name: track.localRelease.artist.name,
-                  slug: track.localRelease.artist.slug,
-                }
-              : null,
+            artist: track.localRelease.artists[0]?.artist ?? null,
           }
         : null,
     })),

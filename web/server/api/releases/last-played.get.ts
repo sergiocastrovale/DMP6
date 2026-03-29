@@ -13,8 +13,8 @@ export default defineEventHandler(async (event) => {
       take: limit,
       orderBy: { lastPlayedAt: 'desc' },
       include: {
-        artist: {
-          select: { id: true, name: true, slug: true },
+        artists: {
+          select: { artist: { select: { id: true, name: true, slug: true } } },
         },
         release: {
           select: {
@@ -35,9 +35,7 @@ export default defineEventHandler(async (event) => {
       imageUrl: release.imageUrl,
       lastPlayedAt: release.lastPlayedAt,
       playCount: release.totalPlayCount,
-      artist: release.artist
-        ? { id: release.artist.id, name: release.artist.name, slug: release.artist.slug }
-        : null,
+      artist: release.artists[0]?.artist ?? null,
       musicBrainzId: release.release?.id || null,
     }))
   })

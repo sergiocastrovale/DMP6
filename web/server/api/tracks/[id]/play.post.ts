@@ -20,14 +20,22 @@ export default defineEventHandler(async (event) => {
       localRelease: {
         select: {
           id: true,
-          artistId: true,
-          artist: { select: { slug: true } },
+          artists: {
+            select: { artist: { select: { id: true, slug: true } } },
+          },
         },
       },
     },
   })
 
   if (track?.localRelease) {
+    const artistUpdates = track.localRelease.artists.map(lra =>
+      prisma.artist.update({
+        where: { id: lra.artist.id },
+        data: { totalPlayCount: { increment: 1 } },
+      })
+    )
+
     await Promise.all([
       prisma.localRelease.update({
         where: { id: track.localRelease.id },
@@ -36,19 +44,18 @@ export default defineEventHandler(async (event) => {
           lastPlayedAt: new Date(),
         },
       }),
-      prisma.artist.update({
-        where: { id: track.localRelease.artistId },
-        data: { totalPlayCount: { increment: 1 } },
-      }),
+      ...artistUpdates,
     ])
 
     // Invalidate caches affected by play counts / lastPlayedAt
-    const slug = track.localRelease.artist?.slug
-    await Promise.all([
+    const cacheInvalidations: Promise<void>[] = [
       invalidateCache('releases:last-played:*'),
       invalidateCache('stats'),
-      slug ? invalidateCache(`artist:${slug}`) : Promise.resolve(),
-    ])
+    ]
+    for (const lra of track.localRelease.artists) {
+      if (lra.artist.slug) cacheInvalidations.push(invalidateCache(`artist:${lra.artist.slug}`))
+    }
+    await Promise.all(cacheInvalidations)
   }
 
   return { ok: true }

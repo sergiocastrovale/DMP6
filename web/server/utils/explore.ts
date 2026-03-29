@@ -169,7 +169,7 @@ export interface TrackCandidate {
   localRelease: {
     image: string | null
     imageUrl: string | null
-    artist: { slug: string } | null
+    artists: { artist: { slug: string } }[]
   } | null
 }
 

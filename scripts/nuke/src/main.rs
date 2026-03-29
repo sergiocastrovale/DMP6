@@ -56,51 +56,35 @@ async fn create_s3_client() -> Option<S3Client> {
 
 async fn delete_s3_images(client: &S3Client, bucket: &str) -> Result<usize, Box<dyn std::error::Error>> {
     let mut deleted_count = 0;
-    
-    // Delete all objects in releases/ folder
-    let list_releases = client
-        .list_objects_v2()
-        .bucket(bucket)
-        .prefix("releases/")
-        .send()
-        .await?;
-    
-    if let Some(objects) = list_releases.contents {
-        for obj in objects {
-            if let Some(key) = obj.key {
-                client
-                    .delete_object()
-                    .bucket(bucket)
-                    .key(&key)
-                    .send()
-                    .await?;
-                deleted_count += 1;
+
+    for prefix in &["releases/", "artists/"] {
+        let list = client
+            .list_objects_v2()
+            .bucket(bucket)
+            .prefix(*prefix)
+            .send()
+            .await?;
+
+        if let Some(objects) = list.contents {
+            for obj in objects {
+                if let Some(key) = obj.key {
+                    eprint!("\r  Deleting: {:<60}", key);
+                    client
+                        .delete_object()
+                        .bucket(bucket)
+                        .key(&key)
+                        .send()
+                        .await?;
+                    deleted_count += 1;
+                }
             }
         }
     }
-    
-    // Delete all objects in artists/ folder
-    let list_artists = client
-        .list_objects_v2()
-        .bucket(bucket)
-        .prefix("artists/")
-        .send()
-        .await?;
-    
-    if let Some(objects) = list_artists.contents {
-        for obj in objects {
-            if let Some(key) = obj.key {
-                client
-                    .delete_object()
-                    .bucket(bucket)
-                    .key(&key)
-                    .send()
-                    .await?;
-                deleted_count += 1;
-            }
-        }
+
+    if deleted_count > 0 {
+        eprint!("\r{}\r", " ".repeat(75));
     }
-    
+
     Ok(deleted_count)
 }
 
@@ -186,6 +170,7 @@ async fn main() {
         "FavoriteTrack",
         "FavoriteRelease",
         "TrackArtist",
+        "LocalReleaseArtist",
         "LocalReleaseTrack",
         "LocalRelease",
         "MusicBrainzReleaseTrack",

@@ -38,14 +38,12 @@ export default defineEventHandler(async (event) => {
 
   if (!artist) throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
 
-  // Get all local release IDs where this artist has tracks (via TrackArtist)
-  const artistTrackLinks = await prisma.trackArtist.findMany({
+  // Get all local releases for this artist (via LocalReleaseArtist junction)
+  const releaseLinks = await prisma.localReleaseArtist.findMany({
     where: { artistId: artist.id },
-    select: { track: { select: { localReleaseId: true } } },
+    select: { localReleaseId: true },
   })
-  const releaseIds = [...new Set(
-    artistTrackLinks.map(ta => ta.track.localReleaseId).filter(Boolean),
-  )] as string[]
+  const releaseIds = [...new Set(releaseLinks.map(l => l.localReleaseId))]
 
   const localReleases = await prisma.localRelease.findMany({
     where: { id: { in: releaseIds } },

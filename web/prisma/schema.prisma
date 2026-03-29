@@ -46,7 +46,7 @@ model Artist {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   urls              ArtistUrl[]          @relation("ArtistUrls")
-  localReleases     LocalRelease[]       @relation("ArtistLocalReleases")
+  localReleases     LocalReleaseArtist[]
   mbReleases        MusicBrainzRelease[] @relation("ArtistMbReleases")
   genres            Genre[]              @relation("ArtistGenres")
   trackArtists      TrackArtist[]        @relation("ArtistTracks")
@@ -155,7 +155,6 @@ model LocalRelease {
   id              String              @id @default(cuid())
   title           String              @db.VarChar(500)
   year            Int?
-  artistId        String
   releaseId       String?
   matchStatus     ReleaseStatus       @default(UNKNOWN)
   forcedComplete  Boolean             @default(false)
@@ -168,15 +167,32 @@ model LocalRelease {
   lastPlayedAt    DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
-  artist          Artist              @relation("ArtistLocalReleases", fields: [artistId], references: [id], onDelete: Cascade)
+  artists         LocalReleaseArtist[]
   release         MusicBrainzRelease? @relation(fields: [releaseId], references: [id])
   tracks          LocalReleaseTrack[]
 
-  @@unique([artistId, title])
+  @@unique([title, folderPath])
   @@index([releaseId])
   @@index([year])
   @@index([createdAt])
   @@index([lastPlayedAt])
+}
+
+// ---------------------------------------------------------------------------
+// LocalReleaseArtist (many-to-many: a release can belong to multiple artists)
+// ---------------------------------------------------------------------------
+
+model LocalReleaseArtist {
+  id             String       @id @default(cuid())
+  localReleaseId String
+  artistId       String
+  createdAt      DateTime     @default(now())
+  localRelease   LocalRelease @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
+  artist         Artist       @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([localReleaseId, artistId])
+  @@index([localReleaseId])
+  @@index([artistId])
 }
 
 // ---------------------------------------------------------------------------
@@ -336,7 +352,6 @@ model Statistics {
   releasesWithCoverArt                Int       @default(0)
   lastScanStartedAt                   DateTime?
   lastScanEndedAt                     DateTime?
-  lastIndexedArtist                   String?
   lastSyncedArtist                    String?
   createdAt                           DateTime  @default(now())
   updatedAt                           DateTime  @updatedAt

@@ -24,7 +24,7 @@ model Artist {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   urls              ArtistUrl[]          @relation("ArtistUrls")
-  localReleases     LocalRelease[]       @relation("ArtistLocalReleases")
+  localReleases     LocalReleaseArtist[]
   mbReleases        MusicBrainzRelease[] @relation("ArtistMbReleases")
   genres            Genre[]              @relation("ArtistGenres")
   trackArtists      TrackArtist[]        @relation("ArtistTracks")
@@ -155,14 +155,13 @@ model MusicBrainzReleaseTrack {
 
 ### LocalRelease
 
-Releases extracted from local audio files, grouped by album name.
+Releases extracted from local audio files, grouped by album name. Linked to artists via `LocalReleaseArtist` (many-to-many — a release can belong to multiple artists, e.g. collaborations).
 
 ```prisma
 model LocalRelease {
   id              String              @id @default(cuid())
   title           String              @db.VarChar(500)
   year            Int?
-  artistId        String
   releaseId       String?             // FK to MusicBrainzRelease
   matchStatus     ReleaseStatus       @default(UNKNOWN)
   forcedComplete  Boolean             @default(false)  // Manual override
@@ -175,12 +174,31 @@ model LocalRelease {
   lastPlayedAt    DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
-  artist          Artist              @relation("ArtistLocalReleases", fields: [artistId], references: [id], onDelete: Cascade)
+  artists         LocalReleaseArtist[]
   release         MusicBrainzRelease? @relation(fields: [releaseId], references: [id])
   tracks          LocalReleaseTrack[]
 
-  @@unique([artistId, title])
+  @@unique([title, folderPath])
   @@index([releaseId])
+}
+```
+
+### LocalReleaseArtist
+
+Junction table linking releases to their artists (many-to-many).
+
+```prisma
+model LocalReleaseArtist {
+  id             String       @id @default(cuid())
+  localReleaseId String
+  artistId       String
+  createdAt      DateTime     @default(now())
+  localRelease   LocalRelease @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
+  artist         Artist       @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([localReleaseId, artistId])
+  @@index([localReleaseId])
+  @@index([artistId])
 }
 ```
 
@@ -351,14 +369,13 @@ model Statistics {
   releasesWithCoverArt                Int       @default(0)
   lastScanStartedAt                   DateTime?
   lastScanEndedAt                     DateTime?
-  lastIndexedArtist                   String?   // Resume point for ./index --resume
   lastSyncedArtist                    String?   // Resume point for ./sync --resume
   createdAt                           DateTime  @default(now())
   updatedAt                           DateTime  @updatedAt
 }
 ```
 
-**Purpose**: Global app stats (singleton row, id = "main"). The `lastIndexedArtist` / `lastSyncedArtist` fields store the last completed artist folder name for `--resume` support. Cleared on successful completion.
+**Purpose**: Global app stats (singleton row, id = "main"). The `lastSyncedArtist` field stores the last completed artist folder name for `--resume` support. Cleared on successful completion.
 
 ### S3DeletionQueue
 
