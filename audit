@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Build in release mode if binary doesn't exist or source is newer
+if [ ! -f "scripts/audit/target/release/dmp-audit" ] || [ "scripts/audit/src/main.rs" -nt "scripts/audit/target/release/dmp-audit" ]; then
+    echo "Building audit script..."
+    cd scripts/audit
+    cargo build --release --quiet
+    cd ../..
+fi
+
+# Create reports directory if missing
+mkdir -p reports
+
+# Run the compiled binary
+./scripts/audit/target/release/dmp-audit "$@"
