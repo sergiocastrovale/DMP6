@@ -58,9 +58,25 @@ export default defineEventHandler(async (event) => {
       releaseId: true,
       totalPlayCount: true,
       tracks: { select: { id: true } },
+      artists: {
+        select: {
+          artist: { select: { name: true, slug: true } },
+        },
+      },
     },
     orderBy: [{ year: 'asc' }, { title: 'asc' }],
   })
+
+  // Build co-artist map: for each local release, list other artists (excluding current)
+  const coArtistMap = new Map<string, { name: string; slug: string }[]>()
+  for (const lr of localReleases) {
+    const others = lr.artists
+      .map(a => a.artist)
+      .filter(a => a.slug !== slug)
+    if (others.length > 0) {
+      coArtistMap.set(lr.id, others)
+    }
+  }
 
   // Index local releases by their MB releaseId
   const localByMbId = new Map<string, typeof localReleases[number]>()
@@ -89,6 +105,7 @@ export default defineEventHandler(async (event) => {
     localTrackCount: number
     isMusicBrainz: boolean
     localReleaseId: string | null
+    coArtists?: { name: string; slug: string }[]
   }> = []
 
   const mbLinkedReleaseIds = new Set<string>()
@@ -111,6 +128,7 @@ export default defineEventHandler(async (event) => {
       localTrackCount: localRelease?.tracks.length || 0,
       isMusicBrainz: true,
       localReleaseId: localRelease?.id || null,
+      coArtists: localRelease ? coArtistMap.get(localRelease.id) : undefined,
     })
   }
 
@@ -132,6 +150,7 @@ export default defineEventHandler(async (event) => {
       localTrackCount: lr.tracks.length,
       isMusicBrainz: false,
       localReleaseId: lr.id,
+      coArtists: coArtistMap.get(lr.id),
     })
   }
 
@@ -156,6 +175,7 @@ export default defineEventHandler(async (event) => {
       localTrackCount: lr.tracks.length,
       isMusicBrainz: false,
       localReleaseId: lr.id,
+      coArtists: coArtistMap.get(lr.id),
     })
   }
 

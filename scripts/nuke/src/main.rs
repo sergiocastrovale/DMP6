@@ -55,28 +55,54 @@ async fn create_s3_client() -> Option<S3Client> {
 }
 
 async fn delete_s3_images(client: &S3Client, bucket: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    use aws_sdk_s3::types::{Delete, ObjectIdentifier};
+
     let mut deleted_count = 0;
 
     for prefix in &["releases/", "artists/"] {
-        let list = client
-            .list_objects_v2()
-            .bucket(bucket)
-            .prefix(*prefix)
-            .send()
-            .await?;
+        // Paginate through all objects with this prefix
+        let mut continuation_token: Option<String> = None;
+        loop {
+            let mut req = client
+                .list_objects_v2()
+                .bucket(bucket)
+                .prefix(*prefix)
+                .max_keys(1000);
+            if let Some(ref token) = continuation_token {
+                req = req.continuation_token(token);
+            }
+            let list = req.send().await?;
 
-        if let Some(objects) = list.contents {
-            for obj in objects {
-                if let Some(key) = obj.key {
-                    eprint!("\r  Deleting: {:<60}", key);
-                    client
-                        .delete_object()
-                        .bucket(bucket)
-                        .key(&key)
-                        .send()
-                        .await?;
-                    deleted_count += 1;
-                }
+            let objects = list.contents.unwrap_or_default();
+            if objects.is_empty() {
+                break;
+            }
+
+            // Batch delete up to 1000 objects at a time
+            let identifiers: Vec<ObjectIdentifier> = objects.iter()
+                .filter_map(|obj| obj.key().map(|k| ObjectIdentifier::builder().key(k).build().ok()).flatten())
+                .collect();
+
+            let count = identifiers.len();
+            if count > 0 {
+                eprint!("\r  Deleting {} objects from {prefix}...", count);
+                let delete = Delete::builder()
+                    .set_objects(Some(identifiers))
+                    .quiet(true)
+                    .build()?;
+                client
+                    .delete_objects()
+                    .bucket(bucket)
+                    .delete(delete)
+                    .send()
+                    .await?;
+                deleted_count += count;
+            }
+
+            if list.is_truncated.unwrap_or(false) {
+                continuation_token = list.next_continuation_token;
+            } else {
+                break;
             }
         }
     }

@@ -53,6 +53,10 @@ struct Args {
     #[arg(long, default_value = "")]
     only: String,
 
+    /// Use web/dump/test-artists as music dir (requires ./symlink-test-artists first)
+    #[arg(long)]
+    test: bool,
+
     /// Continue from last checkpoint
     #[arg(long)]
     resume: bool,
@@ -118,6 +122,7 @@ struct Config {
     s3_secret_key: Option<String>,
     s3_endpoint: Option<String>,
     s3_public_url: Option<String>,
+    fanart_api_key: Option<String>,
 }
 
 fn load_config(music_dir_override: &Option<String>) -> Config {
@@ -175,6 +180,7 @@ fn load_config(music_dir_override: &Option<String>) -> Config {
     let s3_secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").ok();
     let s3_endpoint = std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty());
     let s3_public_url = std::env::var("S3_PUBLIC_URL").ok();
+    let fanart_api_key = std::env::var("FANART_API_KEY").ok().filter(|s| !s.is_empty());
 
     Config {
         music_dir,
@@ -187,6 +193,7 @@ fn load_config(music_dir_override: &Option<String>) -> Config {
         s3_secret_key,
         s3_endpoint,
         s3_public_url,
+        fanart_api_key,
     }
 }
 
@@ -293,18 +300,6 @@ struct MbTag {
     count: Option<i32>,
 }
 
-#[derive(Debug, Deserialize)]
-struct FanartArtistResponse {
-    artistthumb: Option<Vec<FanartImage>>,
-    artistbackground: Option<Vec<FanartImage>>,
-    #[allow(dead_code)]
-    hdmusiclogo: Option<Vec<FanartImage>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct FanartImage {
-    url: String,
-}
 
 // ---------------------------------------------------------------------------
 // Metadata extraction
@@ -498,19 +493,30 @@ fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, String> {
 // Path helpers
 // ---------------------------------------------------------------------------
 
+/// Normalize a name for filter comparison: lowercase, treat hyphens as spaces.
+/// This ensures folder names ("070 Shake") and slugs ("070-shake") match the same filter.
+fn normalize_filter(s: &str) -> String {
+    s.to_lowercase().replace('-', " ")
+}
+
 fn matches_filter(folder: &str, from: &str, to: &str, only: &str) -> bool {
-    let folder_lower = folder.to_lowercase();
+    let folder_norm = normalize_filter(folder);
 
     if !only.is_empty() {
-        return folder_lower.starts_with(only);
+        let only_norm = normalize_filter(only);
+        return folder_norm.starts_with(&only_norm);
     }
 
-    if !from.is_empty() && folder_lower < from.to_string() {
-        return false;
+    if !from.is_empty() {
+        let from_norm = normalize_filter(from);
+        if folder_norm < from_norm {
+            return false;
+        }
     }
     if !to.is_empty() {
-        let to_upper = format!("{}\u{10FFFF}", to);
-        if folder_lower > to_upper {
+        let to_norm = normalize_filter(to);
+        let to_upper = format!("{}\u{10FFFF}", to_norm);
+        if folder_norm > to_upper {
             return false;
         }
     }
@@ -522,9 +528,24 @@ fn matches_filter(folder: &str, from: &str, to: &str, only: &str) -> bool {
 // Artist tag splitting
 // ---------------------------------------------------------------------------
 
+/// Known special MusicBrainz artist IDs that are not real artists.
+const SPECIAL_MB_ARTIST_IDS: &[&str] = &[
+    "89ad4ac3-39f7-470e-963a-56509c546377", // Various Artists
+    "f731ccc4-e22a-43af-a747-64213329e088", // [anonymous]
+    "33cf029c-63b0-41a0-9855-be2a3665fb3b", // [data]
+    "314e1c25-dde7-4e4d-b2f4-0a7b032fa3c6", // [dialogue]
+    "eec63d3c-3b81-4ad4-b1e4-7c147c4d2b61", // [no artist]
+    "125ec42a-7229-4250-afc5-e057484327fe", // [traditional]
+    "9be7f096-97ec-4615-8957-8c3b0b15e4e0", // [unknown]
+];
+
 fn is_various_artists(name: &str) -> bool {
     let lower = name.to_lowercase();
     lower == "various artists" || lower == "various" || lower == "va"
+}
+
+fn is_special_mb_artist(id: &str, name: &str) -> bool {
+    SPECIAL_MB_ARTIST_IDS.contains(&id) || is_various_artists(name)
 }
 
 /// Split an artist tag into individual artist names.
@@ -533,6 +554,7 @@ fn is_various_artists(name: &str) -> bool {
 /// Splitting rules:
 /// - Splits on "feat."/"ft."/"featuring" (case-insensitive) first to separate featured artists
 /// - Then splits each side by "/" "//" "\" "\\" "|" "||" ";"
+/// - Splits on "vs." / "vs" (unambiguous collaboration marker)
 /// - Does NOT split on "," (preserves "10,000 Maniacs", "Crosby, Stills & Nash")
 /// - Does NOT split on "&" (too ambiguous: "Simon & Garfunkel")
 /// - Trims whitespace, filters empties, deduplicates, skips "Various Artists" variants
@@ -553,8 +575,13 @@ fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
 
     // Delimiters (checked longest-first so // \\ || beat their single-char forms):
     //   // \\ || / \ | ;   — always split
-    //   ,                  — NOT split (preserves "10,000 Maniacs", "Crosby, Stills & Nash")
-    let split_part = |s: &str| -> Vec<String> {
+    //   vs. vs              — always split (unambiguous collaboration marker)
+    //   ,                   — NOT split (preserves "10,000 Maniacs", "Crosby, Stills & Nash")
+    //   &                   — NOT split (ambiguous: "Simon & Garfunkel")
+
+    // Character-level splitter for // \\ || ; |
+    // Single / and \ split only with surrounding spaces ("A / B" splits, "AC/DC" does not)
+    let split_by_chars = |s: &str| -> Vec<String> {
         let mut parts: Vec<String> = Vec::new();
         let mut current = String::new();
         let chars: Vec<char> = s.chars().collect();
@@ -571,7 +598,14 @@ fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
                     continue;
                 }
             }
-            if c == '/' || c == ';' || c == '\\' || c == '|' {
+            if c == ';' || c == '|' {
+                parts.push(current.trim().to_string());
+                current = String::new();
+            } else if (c == '/' || c == '\\')
+                && current.ends_with(' ')
+                && (i + 1 < len && chars[i + 1] == ' ')
+            {
+                // " / " or " \ " — split (multi-artist separator)
                 parts.push(current.trim().to_string());
                 current = String::new();
             } else {
@@ -582,6 +616,16 @@ fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
         parts.push(current.trim().to_string());
         parts.into_iter()
             .filter(|p| !p.is_empty() && !is_various_artists(p))
+            .collect()
+    };
+
+    // Compose: first split on "vs."/"vs" (regex), then split each segment by chars
+    static VS_RE: OnceLock<Regex> = OnceLock::new();
+    let vs_re = VS_RE.get_or_init(|| Regex::new(r"(?i)\s+vs\.?\s+").unwrap());
+
+    let split_part = |s: &str| -> Vec<String> {
+        vs_re.split(s)
+            .flat_map(|seg| split_by_chars(seg))
             .collect()
     };
 
@@ -897,6 +941,40 @@ fn names_are_similar(query: &str, result: &str) -> bool {
     (intersection as f64 / union as f64) >= 0.5
 }
 
+/// Check if `artist_name` is a compound/collaboration name that resolved to
+/// `match_name` (one of its component artists).  Returns false for simple name
+/// variations like "Godley And Creme" → "Godley & Creme".
+fn is_likely_compound_of(artist_name: &str, match_name: &str) -> bool {
+    let an = normalize_name(artist_name);
+    let mn = normalize_name(match_name);
+    if an == mn { return false; }
+
+    let lower = artist_name.to_lowercase();
+
+    // Unambiguous compound separators — always indicate multiple artists
+    if lower.contains(" vs ") || lower.contains(" vs. ")
+        || lower.contains(" – ") || lower.contains(" // ")
+        || lower.contains(" | ") || lower.contains(" x ") {
+        return true;
+    }
+
+    // Ambiguous separator: "&" only counts as compound if the match is a proper
+    // subset of the artist name (the artist name has words beyond the match).
+    // "10cc & Godley & Creme" → "Godley & Creme": {godley,creme} ⊂ {10cc,godley,creme} → compound
+    // "Simon & Garfunkel" → "Simon & Garfunkel": same normalized → caught by an==mn above
+    if lower.contains(" & ") {
+        let an_words: HashSet<&str> = an.split_whitespace().collect();
+        let mn_words: HashSet<&str> = mn.split_whitespace().collect();
+        if mn_words.is_subset(&an_words) && mn_words.len() < an_words.len() {
+            return true;
+        }
+    }
+
+    // No separator found — this is a name variation (e.g. "FŒHN" → "Fœhn Trio",
+    // "Hävok Ünit" → "Havoc Unit"), not a compound.
+    false
+}
+
 async fn mb_search_artist(
     client: &Client,
     name: &str,
@@ -917,14 +995,15 @@ async fn mb_search_artist(
 
 /// Returns (primary_match, additional_matches_from_split).
 /// The primary match is the one for the queried artist name.
-/// Additional matches are other artists found when splitting compound names.
+/// Additional matches are other artists found from credits or splitting compound names.
 ///
 /// Algorithm:
 ///   1. If we have an embedded MB album artist ID → direct lookup (source of truth)
 ///   2. If we have an embedded MB album ID → look up the release group to get its artist credits
 ///   3. Search MB by artist name (stored DB name)
 ///   4. Search MB by raw 'artist' tag from audio file
-///   5. Split raw 'albumArtist' tag by separators and search each part
+///   5. Search MB for a release-group by album title + artist name → use artist-credit array
+///   6. Split raw 'albumArtist' tag by unambiguous separators and search each part
 async fn find_mb_match_with_fallback(
     client: &Client,
     pool: &PgPool,
@@ -936,14 +1015,22 @@ async fn find_mb_match_with_fallback(
 ) -> Result<(Option<MbArtistMatch>, Vec<(String, MbArtistMatch)>), String> {
     // Step 1: direct lookup via embedded MUSICBRAINZ_ALBUMARTISTID
     if let Some(mb_aid) = mb_hint_artist_id {
-        match mb_lookup_artist(client, mb_aid, limiter).await {
-            Ok(m) => {
-                println!("    {} Found via embedded MB artist ID: {} ({})",
-                    "✓".green(), m.name.bright_white(), m.id.bright_black());
-                return Ok((Some(m), Vec::new()));
-            }
-            Err(e) => {
-                println!("    {} Embedded MB artist ID lookup failed: {}", "✗".yellow(), e.bright_black());
+        if SPECIAL_MB_ARTIST_IDS.contains(&mb_aid) {
+            println!("    {} Skipping special MB artist ID: {}", "→".bright_black(), mb_aid.bright_black());
+        } else {
+            match mb_lookup_artist(client, mb_aid, limiter).await {
+                Ok(m) if is_special_mb_artist(&m.id, &m.name) => {
+                    println!("    {} Skipping special artist from embedded ID: {} ({})",
+                        "→".bright_black(), m.name.bright_black(), m.id.bright_black());
+                }
+                Ok(m) => {
+                    println!("    {} Found via embedded MB artist ID: {} ({})",
+                        "✓".green(), m.name.bright_white(), m.id.bright_black());
+                    return Ok((Some(m), Vec::new()));
+                }
+                Err(e) => {
+                    println!("    {} Embedded MB artist ID lookup failed: {}", "✗".yellow(), e.bright_black());
+                }
             }
         }
     }
@@ -952,17 +1039,33 @@ async fn find_mb_match_with_fallback(
     if let Some(mb_rid) = mb_hint_album_id {
         match mb_lookup_release_group_artist(client, mb_rid, limiter).await {
             Ok(artists) if !artists.is_empty() => {
-                let primary = artists[0].clone();
-                println!("    {} Found via embedded MB album ID: {} ({})",
-                    "✓".green(), primary.name.bright_white(), primary.id.bright_black());
-                let additional: Vec<(String, MbArtistMatch)> = artists[1..].iter()
-                    .map(|a| {
-                        println!("    {} Also credited: {} ({})",
-                            "✓".green(), a.name.bright_white(), a.id.bright_black());
-                        (a.name.clone(), a.clone())
-                    })
+                // Filter out special artists from credits
+                let real_artists: Vec<MbArtistMatch> = artists.into_iter()
+                    .filter(|a| !is_special_mb_artist(&a.id, &a.name))
                     .collect();
-                return Ok((Some(primary), additional));
+                if !real_artists.is_empty() {
+                    // Pick the credit matching the searched artist as primary.
+                    // On a multi-artist compilation, the first credit may be a
+                    // different artist entirely (e.g. searching "Bethzaida" but
+                    // first credit is "…and Oceans").
+                    if let Some(matched) = real_artists.iter()
+                        .find(|a| names_are_similar(artist_name, &a.name) || a.name.eq_ignore_ascii_case(artist_name))
+                    {
+                        let primary = matched.clone();
+                        println!("    {} Found via embedded MB album ID: {} ({})",
+                            "✓".green(), primary.name.bright_white(), primary.id.bright_black());
+                        let additional: Vec<(String, MbArtistMatch)> = real_artists.iter()
+                            .filter(|a| a.id != primary.id)
+                            .map(|a| (a.name.clone(), a.clone()))
+                            .collect();
+                        return Ok((Some(primary), additional));
+                    }
+                    // No credit matches the searched name — don't use this result.
+                    // Fall through to name-based search (Step 3+).
+                } else {
+                    println!("    {} Embedded MB album ID returned only special artists, skipping",
+                        "→".bright_black());
+                }
             }
             Ok(_) => {
                 println!("    {} Embedded MB album ID returned no artists", "✗".yellow());
@@ -979,55 +1082,231 @@ async fn find_mb_match_with_fallback(
         return Ok((Some(m), Vec::new()));
     }
 
-    // Fetch raw tags from a sample track
-    let raw: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-        r#"SELECT lrt."albumArtist", lrt.artist
+    // Fetch distinct (artist_tag, albumArtist_tag, album_title) combos for this artist.
+    // Different tracks may have different compound tags (e.g. one album credits
+    // "070 Shake & Christine and the Queens", another credits "070 Shake\\NLE Choppa").
+    // Searches both LocalReleaseArtist (album-level) and TrackArtist (track-level) links.
+    let tag_rows: Vec<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        r#"SELECT DISTINCT lrt.artist, lrt."albumArtist", lr.title
            FROM "LocalReleaseTrack" lrt
            JOIN "LocalRelease" lr ON lrt."localReleaseId" = lr.id
-           JOIN "LocalReleaseArtist" lra ON lr.id = lra."localReleaseId"
-           WHERE lra."artistId" = $1
-           LIMIT 1"#,
+           WHERE EXISTS (
+               SELECT 1 FROM "LocalReleaseArtist" lra
+               WHERE lra."localReleaseId" = lr.id AND lra."artistId" = $1
+           ) OR EXISTS (
+               SELECT 1 FROM "TrackArtist" ta
+               WHERE ta."trackId" = lrt.id AND ta."artistId" = $1
+           )"#,
     )
     .bind(artist_id)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    let (raw_album_artist, raw_artist) = raw.unwrap_or((None, None));
+    // Build deduplicated list of (tag, album_title) pairs to try for Steps 4-6.
+    // `artist_name` itself may be a compound tag (e.g. "070 Shake & Christine and the Queens"),
+    // so include it as a candidate. Also collect distinct raw `artist` and `albumArtist` tags.
+    let mut all_tags: Vec<(String, Option<String>)> = Vec::new();
+    let mut seen_tags: HashSet<String> = HashSet::new();
 
-    // Step 4: try raw artist tag if different (save as early primary, don't return yet)
-    let mut early_primary: Option<MbArtistMatch> = None;
-    if let Some(ref a) = raw_artist {
-        let a = a.trim();
-        if !a.is_empty() && !a.eq_ignore_ascii_case(artist_name) {
-            if let Some(m) = mb_search_artist(client, a, limiter).await? {
-                println!(
-                    "    {} Found via 'artist' tag: {} ({})",
-                    "✓".green(), m.name.bright_white(), m.id.bright_black()
-                );
-                early_primary = Some(m);
+    // artist_name itself — always first (grab album title from first tag row)
+    {
+        let key = artist_name.to_lowercase();
+        seen_tags.insert(key);
+        let title = tag_rows.first().and_then(|(_, _, t)| t.clone());
+        all_tags.push((artist_name.to_string(), title));
+    }
+
+    for (raw_artist, raw_album_artist, album_title) in &tag_rows {
+        // artist tag
+        if let Some(a) = raw_artist {
+            let a = a.trim();
+            if !a.is_empty() {
+                let key = a.to_lowercase();
+                if seen_tags.insert(key) {
+                    all_tags.push((a.to_string(), album_title.clone()));
+                }
+            }
+        }
+        // albumArtist tag
+        if let Some(aa) = raw_album_artist {
+            let aa = aa.trim();
+            if !aa.is_empty() {
+                let key = aa.to_lowercase();
+                if seen_tags.insert(key) {
+                    all_tags.push((aa.to_string(), album_title.clone()));
+                }
             }
         }
     }
 
-    // Step 5: split albumArtist by separators, try ALL pieces, collect all matches
-    let album_artist = raw_album_artist.as_deref().unwrap_or(artist_name);
-    const SEPARATORS: &[&str] = &[
+    // Filter all_tags: only keep tags related to artist_name (containment or similarity).
+    // This prevents unrelated tags (e.g. albumArtist "070 Shake" for track artist "070phi")
+    // from being tried in Steps 4, 5, and 6.
+    let artist_name_norm = normalize_name(artist_name);
+    let artist_words: HashSet<String> = artist_name_norm.split_whitespace().map(|s| s.to_string()).collect();
+    all_tags.retain(|(tag, _)| {
+        if tag.eq_ignore_ascii_case(artist_name) {
+            return true; // always keep the artist's own name
+        }
+        let tag_norm = normalize_name(tag);
+        let tag_words: HashSet<&str> = tag_norm.split_whitespace().collect();
+        let artist_word_refs: HashSet<&str> = artist_words.iter().map(|s| s.as_str()).collect();
+        // Keep if one is a subset of the other (containment) or similar
+        tag_words.is_subset(&artist_word_refs)
+            || artist_word_refs.is_subset(&tag_words)
+            || names_are_similar(artist_name, tag)
+    });
+
+    // Step 4: try raw tags (excluding artist_name itself) as single artist names
+    let mut early_primary: Option<MbArtistMatch> = None;
+    for (tag, _) in &all_tags {
+        if tag.eq_ignore_ascii_case(artist_name) {
+            continue;
+        }
+        if let Some(m) = mb_search_artist(client, tag, limiter).await? {
+            println!(
+                "    {} Found via raw tag: {} ({})",
+                "✓".green(), m.name.bright_white(), m.id.bright_black()
+            );
+            early_primary = Some(m);
+            break;
+        }
+    }
+
+    // Step 5: search MB for a release-group by album title + tag,
+    // use the structured artist-credit array to resolve compound names.
+    // This avoids ambiguous string splitting (e.g. "Kool & the Gang" stays as one artist,
+    // while "…and Oceans vs. Bloodthorn" correctly yields two).
+    for (tag, album_title) in &all_tags {
+        if let Some(ref title) = album_title {
+            if let Some(result) = try_release_group_credits(
+                client, title, tag, &early_primary, limiter,
+            ).await? {
+                return Ok(result);
+            }
+        }
+    }
+
+    // Step 6 (last resort): split tags by unambiguous separators only.
+    // Ambiguous separators (&, ,) are NOT used here — they are handled by Step 5's
+    // structured artist-credit approach instead.
+    for (tag, _) in &all_tags {
+        if let Some(result) = try_split_tag(
+            client, tag, artist_name, &early_primary, limiter,
+        ).await? {
+            return Ok(result);
+        }
+    }
+
+    // Step 4 found a match but no split/credit worked — return it as sole match
+    if early_primary.is_some() {
+        return Ok((early_primary, Vec::new()));
+    }
+
+    println!("    {} No match found", "✗".red());
+    Ok((None, Vec::new()))
+}
+
+/// Step 5 helper: search MB for a release-group by album title + artist tag,
+/// return resolved artists from the artist-credit array.
+async fn try_release_group_credits(
+    client: &Client,
+    album_title: &str,
+    artist_tag: &str,
+    early_primary: &Option<MbArtistMatch>,
+    limiter: &mut RateLimiter,
+) -> Result<Option<(Option<MbArtistMatch>, Vec<(String, MbArtistMatch)>)>, String> {
+    let credits = mb_search_release_group_credits(client, album_title, artist_tag, limiter).await
+        .unwrap_or_default();
+    let real_credits: Vec<MbArtistMatch> = credits.into_iter()
+        .filter(|a| !is_special_mb_artist(&a.id, &a.name))
+        .collect();
+    if real_credits.is_empty() {
+        return Ok(None);
+    }
+
+    // Validate: at least one credit name must be related to the artist_tag.
+    // This prevents "070phi" from accepting credits for "070 Shake" just because
+    // the release-group search returned a fuzzy match.
+    let tag_norm = normalize_name(artist_tag);
+    let tag_words: HashSet<&str> = tag_norm.split_whitespace().collect();
+    let any_credit_matches = real_credits.iter().any(|c| {
+        let c_norm = normalize_name(&c.name);
+        let c_words: HashSet<&str> = c_norm.split_whitespace().collect();
+        c_words.is_subset(&tag_words) || tag_words.is_subset(&c_words)
+            || names_are_similar(artist_tag, &c.name)
+    });
+    if !any_credit_matches {
+        return Ok(None);
+    }
+
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    let mut primary: Option<MbArtistMatch> = None;
+    let mut additional: Vec<(String, MbArtistMatch)> = Vec::new();
+    let mut found_new = false;
+
+    if let Some(ref ep) = early_primary {
+        seen_ids.insert(ep.id.clone());
+        primary = Some(ep.clone());
+    }
+
+    for credit in real_credits {
+        if seen_ids.contains(&credit.id) {
+            continue;
+        }
+        found_new = true;
+        seen_ids.insert(credit.id.clone());
+        if primary.is_none() {
+            println!("    {} Found via release-group credits: {} ({})",
+                "✓".green(), credit.name.bright_white(), credit.id.bright_black());
+            primary = Some(credit);
+        } else {
+            additional.push((credit.name.clone(), credit));
+        }
+    }
+
+    // Only return if credits provided new information beyond early_primary.
+    // If credits just confirmed what we already knew, let later steps try splitting.
+    if primary.is_some() && (early_primary.is_none() || found_new) {
+        Ok(Some((primary, additional)))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Step 6 helper: split a compound tag by separators and search each part.
+/// Unambiguous separators are always tried. Ambiguous separators (& ,) are only
+/// tried when `early_primary` is set — having a confirmed anchor artist means
+/// the remaining parts after splitting are likely real additional artists.
+/// This prevents "Kool & the Gang" from being split (no early_primary, Step 3 finds it directly).
+async fn try_split_tag(
+    client: &Client,
+    tag: &str,
+    artist_name: &str,
+    early_primary: &Option<MbArtistMatch>,
+    limiter: &mut RateLimiter,
+) -> Result<Option<(Option<MbArtistMatch>, Vec<(String, MbArtistMatch)>)>, String> {
+    let mut separators: Vec<&str> = vec![
         "// ", "//",
         "\\\\ ", "\\\\",
         "|| ", "||",
         " feat. ", " feat ",
         " vs. ", " vs ",
-        " & ", " – ",
-        "/ ", "/",
-        "\\ ", "\\",
+        " – ",
+        " / ", " \\ ",
         "| ", "|",
         "; ", ";",
-        ", ", ",",
     ];
+    // Only try ambiguous separators (no surrounding spaces) when we have a
+    // confirmed anchor artist. Prevents "AC/DC", "Kool & the Gang" from splitting
+    // when the full name matches on MB directly (Step 3).
+    if early_primary.is_some() {
+        separators.extend_from_slice(&["/", "\\", " & ", ", "]);
+    }
 
-    for sep in SEPARATORS {
-        let parts: Vec<&str> = album_artist
+    for sep in &separators {
+        let parts: Vec<&str> = tag
             .split(sep)
             .map(str::trim)
             .filter(|s| !s.is_empty())
@@ -1036,7 +1315,13 @@ async fn find_mb_match_with_fallback(
             continue;
         }
 
-        // Seed with step-4 match if present
+        // If artist_name appears as one of the split parts (e.g. "A feat. artist_name"),
+        // this tag won't help us find artist_name's MB match — the other parts are
+        // different artists. Skip this separator.
+        if parts.iter().any(|p| p.eq_ignore_ascii_case(artist_name)) {
+            continue;
+        }
+
         let mut primary: Option<MbArtistMatch> = None;
         let mut additional: Vec<(String, MbArtistMatch)> = Vec::new();
         let mut seen_ids: HashSet<String> = HashSet::new();
@@ -1047,9 +1332,6 @@ async fn find_mb_match_with_fallback(
         }
 
         for part in &parts {
-            if part.eq_ignore_ascii_case(artist_name) {
-                continue;
-            }
             if let Some(ref ep) = early_primary {
                 if part.eq_ignore_ascii_case(&ep.name) {
                     continue;
@@ -1061,33 +1343,19 @@ async fn find_mb_match_with_fallback(
                 }
                 seen_ids.insert(m.id.clone());
                 if primary.is_none() {
-                    println!(
-                        "    {} Found via split on '{}': {} ({})",
-                        "✓".green(), sep.trim(), m.name.bright_white(), m.id.bright_black()
-                    );
                     primary = Some(m);
                 } else {
-                    println!(
-                        "    {} Also found: {} ({})",
-                        "✓".green(), m.name.bright_white(), m.id.bright_black()
-                    );
                     additional.push((part.to_string(), m));
                 }
             }
         }
 
         if primary.is_some() {
-            return Ok((primary, additional));
+            return Ok(Some((primary, additional)));
         }
     }
 
-    // Step 4 found a match but no separator split worked — return it as sole match
-    if early_primary.is_some() {
-        return Ok((early_primary, Vec::new()));
-    }
-
-    println!("    {} No match found", "✗".red());
-    Ok((None, Vec::new()))
+    Ok(None)
 }
 
 /// Look up an artist directly by MB ID (no search needed).
@@ -1139,6 +1407,55 @@ async fn mb_lookup_release_group_artist(
     Ok(rg.artist_credit.unwrap_or_default().into_iter().map(|ac| {
         MbArtistMatch { id: ac.artist.id, name: ac.artist.name, score: Some(100) }
     }).collect())
+}
+
+/// Search for a release-group by album title + artist name, return artist-credit entries.
+/// Uses the structured artist-credit array from MB to resolve compound artist names
+/// without ambiguous string splitting (e.g. "Kool & the Gang" stays as one artist).
+async fn mb_search_release_group_credits(
+    client: &Client,
+    album_title: &str,
+    artist_name: &str,
+    limiter: &mut RateLimiter,
+) -> Result<Vec<MbArtistMatch>, String> {
+    let query = format!(
+        "releasegroup:\"{}\" AND artist:\"{}\"",
+        album_title.replace('"', ""),
+        artist_name.replace('"', ""),
+    );
+    let encoded = urlencoding::encode(&query);
+    let url = format!("{}/release-group/?query={}&limit=1&fmt=json", MB_BASE, encoded);
+    let body = mb_get(client, &url, limiter).await?;
+
+    #[derive(Deserialize)]
+    struct ArtistRef { id: String, name: String }
+    #[derive(Deserialize)]
+    struct ArtistCredit { artist: ArtistRef }
+    #[derive(Deserialize)]
+    struct RgResult {
+        #[serde(rename = "artist-credit")]
+        artist_credit: Option<Vec<ArtistCredit>>,
+        score: Option<u32>,
+    }
+    #[derive(Deserialize)]
+    struct SearchResult {
+        #[serde(rename = "release-groups")]
+        release_groups: Option<Vec<RgResult>>,
+    }
+
+    let result: SearchResult = serde_json::from_str(&body)
+        .map_err(|e| format!("Parse error: {}", e))?;
+
+    let rgs = result.release_groups.unwrap_or_default();
+    if let Some(rg) = rgs.into_iter().next() {
+        if rg.score.unwrap_or(0) >= 80 {
+            return Ok(rg.artist_credit.unwrap_or_default().into_iter().map(|ac| {
+                MbArtistMatch { id: ac.artist.id, name: ac.artist.name, score: Some(100) }
+            }).collect());
+        }
+    }
+
+    Ok(Vec::new())
 }
 
 async fn mb_get_artist_detail(
@@ -1294,6 +1611,37 @@ async fn upload_to_s3(
     Ok(())
 }
 
+async fn delete_from_s3(client: &S3Client, bucket: &str, key: &str) {
+    client.delete_object().bucket(bucket).key(key).send().await.ok();
+}
+
+/// Upload a release image to S3 and update the DB. Returns true if successful.
+async fn upload_release_image_to_s3(
+    s3_client: &S3Client,
+    bucket: &str,
+    public_url: &str,
+    pool: &PgPool,
+    release_id: &str,
+    file_path: &Path,
+) -> bool {
+    let s3_key = format!("releases/{}.jpg", release_id);
+    match upload_to_s3(s3_client, bucket, &s3_key, file_path).await {
+        Ok(_) => {
+            let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
+            sqlx::query(
+                r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            )
+            .bind(&image_url)
+            .bind(release_id)
+            .execute(pool)
+            .await
+            .ok();
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Database operations — indexing
 // ---------------------------------------------------------------------------
@@ -1378,25 +1726,6 @@ async fn ensure_local_release(
     .await?;
 
     Ok(row.0)
-}
-
-async fn ensure_local_release_artist(
-    pool: &PgPool,
-    local_release_id: &str,
-    artist_id: &str,
-) -> Result<(), sqlx::Error> {
-    let id = cuid2::create_id();
-    sqlx::query(
-        r#"INSERT INTO "LocalReleaseArtist" (id, "localReleaseId", "artistId", "createdAt")
-           VALUES ($1, $2, $3, NOW())
-           ON CONFLICT ("localReleaseId", "artistId") DO NOTHING"#,
-    )
-    .bind(&id)
-    .bind(local_release_id)
-    .bind(artist_id)
-    .execute(pool)
-    .await?;
-    Ok(())
 }
 
 async fn ensure_local_release_cached(
@@ -1629,29 +1958,6 @@ async fn ensure_genre_cached(
     Ok(id)
 }
 
-async fn upsert_artist_url(
-    pool: &PgPool,
-    artist_id: &str,
-    url_type: &str,
-    url: &str,
-) -> Result<(), sqlx::Error> {
-    let id = cuid2::create_id();
-    let now = Utc::now().naive_utc();
-    sqlx::query(
-        r#"INSERT INTO "ArtistUrl" (id, type, url, "artistId", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $5)
-           ON CONFLICT ("artistId", type, url) DO NOTHING"#,
-    )
-    .bind(&id)
-    .bind(url_type)
-    .bind(url)
-    .bind(artist_id)
-    .bind(now)
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
 async fn upsert_mb_release(
     pool: &PgPool,
     artist_id: &str,
@@ -1749,18 +2055,81 @@ async fn delete_mb_tracks_for_release(
     Ok(result.rows_affected())
 }
 
-async fn link_artist_genre(
+/// Batch insert artist-genre links via UNNEST.
+async fn batch_link_artist_genres(
     pool: &PgPool,
     artist_id: &str,
-    genre_id: &str,
+    genre_ids: &[String],
 ) -> Result<(), sqlx::Error> {
+    if genre_ids.is_empty() {
+        return Ok(());
+    }
+    let artist_ids: Vec<String> = vec![artist_id.to_string(); genre_ids.len()];
     sqlx::query(
         r#"INSERT INTO "_ArtistGenres" ("A", "B")
-           VALUES ($1, $2)
+           SELECT * FROM UNNEST($1::text[], $2::text[])
            ON CONFLICT DO NOTHING"#,
     )
-    .bind(artist_id)
-    .bind(genre_id)
+    .bind(&artist_ids)
+    .bind(genre_ids)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Batch insert artist URLs via UNNEST.
+async fn batch_upsert_artist_urls(
+    pool: &PgPool,
+    artist_id: &str,
+    urls: &[(String, String)], // (type, url)
+) -> Result<(), sqlx::Error> {
+    if urls.is_empty() {
+        return Ok(());
+    }
+    let now = Utc::now().naive_utc();
+    let ids: Vec<String> = urls.iter().map(|_| cuid2::create_id()).collect();
+    let types: Vec<String> = urls.iter().map(|(t, _)| t.clone()).collect();
+    let url_vals: Vec<String> = urls.iter().map(|(_, u)| u.clone()).collect();
+    let artist_ids: Vec<String> = vec![artist_id.to_string(); urls.len()];
+    let timestamps: Vec<NaiveDateTime> = vec![now; urls.len()];
+    sqlx::query(
+        r#"INSERT INTO "ArtistUrl" (id, type, url, "artistId", "createdAt", "updatedAt")
+           SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamp[], $6::timestamp[])
+           ON CONFLICT ("artistId", type, url) DO NOTHING"#,
+    )
+    .bind(&ids)
+    .bind(&types)
+    .bind(&url_vals)
+    .bind(&artist_ids)
+    .bind(&timestamps)
+    .bind(&timestamps)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Batch insert LocalReleaseArtist links via UNNEST.
+async fn batch_ensure_local_release_artists(
+    pool: &PgPool,
+    links: &[(String, String)], // (release_id, artist_id)
+) -> Result<(), sqlx::Error> {
+    if links.is_empty() {
+        return Ok(());
+    }
+    let now = Utc::now().naive_utc();
+    let ids: Vec<String> = links.iter().map(|_| cuid2::create_id()).collect();
+    let release_ids: Vec<String> = links.iter().map(|(r, _)| r.clone()).collect();
+    let artist_ids: Vec<String> = links.iter().map(|(_, a)| a.clone()).collect();
+    let timestamps: Vec<NaiveDateTime> = vec![now; links.len()];
+    sqlx::query(
+        r#"INSERT INTO "LocalReleaseArtist" (id, "localReleaseId", "artistId", "createdAt")
+           SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::timestamp[])
+           ON CONFLICT ("localReleaseId", "artistId") DO NOTHING"#,
+    )
+    .bind(&ids)
+    .bind(&release_ids)
+    .bind(&artist_ids)
+    .bind(&timestamps)
     .execute(pool)
     .await?;
     Ok(())
@@ -1770,61 +2139,158 @@ async fn link_artist_genre(
 // Overwrite / nuke
 // ---------------------------------------------------------------------------
 
-async fn nuke_artists(pool: &PgPool, from: &str, to: &str, only: &str) -> Result<u64, sqlx::Error> {
-    let artists: Vec<(String, String, Option<String>)> = sqlx::query_as(
-        r#"SELECT id, slug, image FROM "Artist""#,
+async fn nuke_artists(pool: &PgPool, from: &str, to: &str, only: &str, project_root: &str, s3_client: &Option<S3Client>, config: &Config) -> Result<u64, sqlx::Error> {
+    let artist_img_dir = PathBuf::from(project_root).join("web/public/img/artists");
+    let release_img_dir = PathBuf::from(project_root).join("web/public/img/releases");
+    let use_local = config.image_storage == "local" || config.image_storage == "both";
+    let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
+
+    // id, slug, image (local filename), imageUrl (S3 URL)
+    let artists: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
+        r#"SELECT id, slug, image, "imageUrl" FROM "Artist""#,
     )
     .fetch_all(pool)
     .await?;
 
-    let mut deleted = 0u64;
-    for (artist_id, slug, image) in &artists {
-        if !matches_filter(slug, from, to, only) {
-            continue;
+    // Collect the directly-targeted artist IDs — match on name (not slug,
+    // since slugify strips punctuation like leading dots in "...And Oceans")
+    let artists_with_names: Vec<(String, String)> = sqlx::query_as(
+        r#"SELECT id, name FROM "Artist""#,
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut target_ids: Vec<String> = Vec::new();
+    for (artist_id, name) in &artists_with_names {
+        if matches_filter(name, from, to, only) {
+            target_ids.push(artist_id.clone());
+        }
+    }
+
+    if target_ids.is_empty() {
+        return Ok(0);
+    }
+
+    // Find ALL releases linked to the targeted artists
+    let shared_release_ids: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT DISTINCT lra."localReleaseId" FROM "LocalReleaseArtist" lra
+           WHERE lra."artistId" = ANY($1::text[])"#,
+    )
+    .bind(&target_ids)
+    .fetch_all(pool)
+    .await?;
+    let release_ids: Vec<String> = shared_release_ids.into_iter().map(|(id,)| id).collect();
+
+    // Find ALL artists linked to those releases (includes co-artists on shared releases)
+    let all_artist_ids: Vec<(String,)> = if !release_ids.is_empty() {
+        sqlx::query_as(
+            r#"SELECT DISTINCT lra."artistId" FROM "LocalReleaseArtist" lra
+               WHERE lra."localReleaseId" = ANY($1::text[])"#,
+        )
+        .bind(&release_ids)
+        .fetch_all(pool)
+        .await?
+    } else {
+        Vec::new()
+    };
+    let mut nuke_ids: HashSet<String> = target_ids.iter().cloned().collect();
+    for (aid,) in &all_artist_ids {
+        nuke_ids.insert(aid.clone());
+    }
+
+    let nuke_list: Vec<String> = nuke_ids.into_iter().collect();
+    let deleted = nuke_list.len() as u64;
+
+    // Collect unique images to delete. Each entry: (local_filename, s3_key).
+    // Use slug/id to derive S3 keys — imageUrl may be set even when image (local) is null.
+    let mut artist_imgs: Vec<(Option<String>, String)> = Vec::new(); // (local_filename, s3_key)
+    let mut release_imgs: HashSet<(Option<String>, String)> = HashSet::new(); // (local_filename, s3_key)
+
+    for (artist_id, slug, image, image_url) in &artists {
+        if !nuke_list.contains(artist_id) { continue; }
+
+        // Include artist if it has any image stored (local or S3)
+        if image.is_some() || image_url.is_some() {
+            artist_imgs.push((image.clone(), format!("artists/{}.jpg", slug)));
         }
 
-        let release_images: Vec<(Option<String>,)> = sqlx::query_as(
-            r#"SELECT lr.image FROM "LocalRelease" lr
+        // id, image (local filename), imageUrl
+        let imgs: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+            r#"SELECT DISTINCT lr.id, lr.image, lr."imageUrl" FROM "LocalRelease" lr
                JOIN "LocalReleaseArtist" lra ON lr.id = lra."localReleaseId"
-               WHERE lra."artistId" = $1"#,
+               WHERE lra."artistId" = $1
+                 AND (lr.image IS NOT NULL OR lr."imageUrl" IS NOT NULL)"#,
         )
         .bind(artist_id)
         .fetch_all(pool)
         .await?;
 
-        for (img,) in &release_images {
-            if let Some(img_path) = img {
-                fs::remove_file(img_path).ok();
+        for (release_id, img, img_url) in imgs {
+            if img.is_some() || img_url.is_some() {
+                release_imgs.insert((img, format!("releases/{}.jpg", release_id)));
             }
         }
+    }
 
-        if let Some(img_path) = image {
-            fs::remove_file(img_path).ok();
+    let total_images = artist_imgs.len() + release_imgs.len();
+    if total_images > 0 {
+        println!("  Deleting {} image(s) ({} artist, {} release)...",
+            total_images, artist_imgs.len(), release_imgs.len());
+    }
+
+    let mut local_deleted = 0usize;
+    let mut s3_deleted = 0usize;
+
+    for (local_filename, s3_key) in &artist_imgs {
+        if use_local {
+            if let Some(f) = local_filename {
+                if fs::remove_file(artist_img_dir.join(f)).is_ok() { local_deleted += 1; }
+            }
         }
+        if use_s3 {
+            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
+                delete_from_s3(s3, bucket, s3_key).await;
+                s3_deleted += 1;
+            }
+        }
+    }
 
-        // Delete releases owned solely by this artist (no other artist links)
-        sqlx::query(
-            r#"DELETE FROM "LocalRelease" WHERE id IN (
-                SELECT lr.id FROM "LocalRelease" lr
-                JOIN "LocalReleaseArtist" lra ON lr.id = lra."localReleaseId"
-                WHERE lra."artistId" = $1
-                AND NOT EXISTS (
-                    SELECT 1 FROM "LocalReleaseArtist" lra2
-                    WHERE lra2."localReleaseId" = lr.id AND lra2."artistId" != $1
-                )
-            )"#,
-        )
-        .bind(artist_id)
-        .execute(pool)
-        .await?;
+    for (local_filename, s3_key) in &release_imgs {
+        if use_local {
+            if let Some(f) = local_filename {
+                if fs::remove_file(release_img_dir.join(f)).is_ok() { local_deleted += 1; }
+            }
+        }
+        if use_s3 {
+            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
+                delete_from_s3(s3, bucket, s3_key).await;
+                s3_deleted += 1;
+            }
+        }
+    }
 
-        sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#)
-            .bind(artist_id)
+    if total_images > 0 {
+        if use_local && use_s3 {
+            println!("  {} Deleted {} local, {} S3", "✓".green(), local_deleted, s3_deleted);
+        } else if use_s3 {
+            println!("  {} Deleted {} from S3", "✓".green(), s3_deleted);
+        } else {
+            println!("  {} Deleted {} local", "✓".green(), local_deleted);
+        }
+    }
+
+    // Delete all linked releases (cascades to tracks, release-artist links)
+    if !release_ids.is_empty() {
+        sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = ANY($1::text[])"#)
+            .bind(&release_ids)
             .execute(pool)
             .await?;
-
-        deleted += 1;
     }
+
+    // Delete all affected artists
+    sqlx::query(r#"DELETE FROM "Artist" WHERE id = ANY($1::text[])"#)
+        .bind(&nuke_list)
+        .execute(pool)
+        .await?;
 
     // Clean up any remaining orphaned releases (no artist links at all)
     sqlx::query(
@@ -1884,18 +2350,21 @@ async fn check_release_status(
     mb_release_title: &str,
     mb_tracks: &[(String, Option<i32>)],
 ) -> Result<(MatchStatus, Option<JsonValue>, Option<JsonValue>, f64), sqlx::Error> {
-    let local_release: Option<(String,)> = sqlx::query_as(
-        r#"SELECT lr.id FROM "LocalRelease" lr
+    // Fetch all local releases for this artist and match by normalized title.
+    // Normalization strips punctuation (hyphens, en-dashes, etc.) so
+    // "Collateral Damage - Complete War Series" matches "Collateral Damage – Complete War Series".
+    let all_local: Vec<(String, String)> = sqlx::query_as(
+        r#"SELECT lr.id, lr.title FROM "LocalRelease" lr
            JOIN "LocalReleaseArtist" lra ON lr.id = lra."localReleaseId"
-           WHERE lra."artistId" = $1 AND LOWER(lr.title) = LOWER($2)"#,
+           WHERE lra."artistId" = $1"#,
     )
     .bind(artist_id)
-    .bind(mb_release_title)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
 
-    let local_release_id = match local_release {
-        Some((id,)) => id,
+    let mb_title_norm = normalize_title(mb_release_title);
+    let local_release_id = match all_local.iter().find(|(_, t)| normalize_title(t) == mb_title_norm) {
+        Some((id, _)) => id.clone(),
         None => {
             return Ok((MatchStatus::Missing, None, None, 0.0));
         }
@@ -2046,6 +2515,7 @@ async fn update_artist_totals_for_artist(pool: &PgPool, artist_id: &str) -> Resu
 async fn download_artist_image(
     client: &Client,
     artist: &MbArtistDetail,
+    artist_name: &str,
     artist_slug: &str,
     img_dir: &PathBuf,
     artist_folder: &Path,
@@ -2053,43 +2523,95 @@ async fn download_artist_image(
     config: &Config,
     pool: &PgPool,
     artist_id: &str,
-) -> Option<String> {
+    use_folder_img: bool,
+) -> Option<(&'static str, String)> {
     let out_path = img_dir.join(format!("{}.jpg", artist_slug));
     let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
     let use_local = config.image_storage == "local" || config.image_storage == "both";
 
-    // Try local folder image first (folder.jpg, cover.jpg, then any jpg/png)
-    let from_folder = use_artist_folder_image(artist_folder, &out_path);
+    // Track which source provided the image
+    let mut source: &'static str = "local folder";
+
+    // Only try local folder image when explicitly allowed (single-artist folders).
+    // Multi-artist folders would give all artists the same image.
+    let from_folder = if use_folder_img {
+        use_artist_folder_image(artist_folder, &out_path)
+    } else {
+        false
+    };
 
     if !from_folder {
-        // Fall back to external APIs (Wikipedia, Fanart.tv)
-        let img_url = {
-            let mut found = None;
-            if let Some(ref relations) = artist.relations {
-                for rel in relations {
-                    if rel.relation_type == "wikipedia" || rel.relation_type == "wikidata" {
-                        if let Some(ref url) = rel.url {
-                            if let Some(u) = get_wikipedia_image(client, &url.resource).await {
-                                found = Some(u);
-                                break;
-                            }
+        // External APIs: MB image → Fanart.tv → Wikidata → Wikipedia → folder fallback
+        let mut found: Option<(&'static str, String)> = None;
+        let mut wikidata_url: Option<String> = None;
+        let mut wikipedia_url: Option<String> = None;
+
+        if let Some(ref relations) = artist.relations {
+            for rel in relations {
+                if let Some(ref url) = rel.url {
+                    match rel.relation_type.as_str() {
+                        "image" => {
+                            // MB image relation — often a Wikimedia Commons page URL,
+                            // not a direct image. Convert to Special:FilePath.
+                            found = Some(("MusicBrainz", commons_page_to_file_url(&url.resource)));
+                            break;
                         }
+                        "wikidata" => { wikidata_url = Some(url.resource.clone()); }
+                        "wikipedia" => { wikipedia_url = Some(url.resource.clone()); }
+                        _ => {}
                     }
                 }
             }
-            if found.is_none() {
-                found = get_fanart_image(client, &artist.id).await;
-            }
-            found
-        };
+        }
 
-        match img_url {
-            Some(url) => {
+        // Fanart.tv (uses MB ID, no name needed)
+        if found.is_none() {
+            if let Some(ref api_key) = config.fanart_api_key {
+                if let Some(url) = get_fanart_image(client, &artist.id, api_key).await {
+                    found = Some(("Fanart.tv", url));
+                }
+            }
+        }
+
+        // Wikidata P18 image claim
+        if found.is_none() {
+            if let Some(ref url) = wikidata_url {
+                if let Some(img) = get_wikidata_image(client, url).await {
+                    found = Some(("Wikidata", img));
+                }
+            }
+        }
+
+        // Wikipedia page image
+        if found.is_none() {
+            if let Some(ref url) = wikipedia_url {
+                if let Some(img) = get_wikipedia_image(client, url).await {
+                    found = Some(("Wikipedia", img));
+                }
+            }
+        }
+
+        match found {
+            Some((src, url)) => {
+                source = src;
                 if !download_and_resize(client, &url, &out_path).await {
                     return None;
                 }
             }
-            None => return None,
+            None => {
+                // Last resort: use folder image if artist name exactly matches folder name
+                let folder_name = artist_folder.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                if folder_name.eq_ignore_ascii_case(artist_name) {
+                    if !use_artist_folder_image(artist_folder, &out_path) {
+                        return None;
+                    }
+                    source = "local folder";
+                } else {
+                    return None;
+                }
+            }
         }
     }
 
@@ -2131,60 +2653,66 @@ async fn download_artist_image(
     }
 
     if stored {
-        Some(format!("/img/artists/{}.jpg", artist_slug))
+        Some((source, format!("/img/artists/{}.jpg", artist_slug)))
     } else {
         None
     }
 }
 
+/// Convert a Wikimedia Commons page URL to a direct file URL.
+/// e.g. "https://commons.wikimedia.org/wiki/File:Foo.png" → "https://commons.wikimedia.org/wiki/Special:FilePath/Foo.png?width=500"
+/// Non-Commons URLs are returned as-is.
+fn commons_page_to_file_url(url: &str) -> String {
+    if let Some(rest) = url.strip_prefix("https://commons.wikimedia.org/wiki/File:") {
+        let encoded = urlencoding::encode(rest);
+        format!("https://commons.wikimedia.org/wiki/Special:FilePath/{}?width=500", encoded)
+    } else {
+        url.to_string()
+    }
+}
+
+/// Fetch artist image from Wikidata P18 claim.
+async fn get_wikidata_image(client: &Client, wikidata_url: &str) -> Option<String> {
+    let wikidata_id = wikidata_url.rsplit('/').next()?;
+    let api_url = format!(
+        "https://www.wikidata.org/w/api.php?action=wbgetentities&ids={}&props=claims&format=json",
+        wikidata_id
+    );
+
+    let resp = client
+        .get(&api_url)
+        .header("User-Agent", USER_AGENT)
+        .send()
+        .await
+        .ok()?;
+
+    let body: JsonValue = resp.json().await.ok()?;
+
+    let filename = body
+        .get("entities")?
+        .get(wikidata_id)?
+        .get("claims")?
+        .get("P18")?
+        .get(0)?
+        .get("mainsnak")?
+        .get("datavalue")?
+        .get("value")?
+        .as_str()?;
+
+    let filename_encoded = urlencoding::encode(filename);
+    Some(format!(
+        "https://commons.wikimedia.org/wiki/Special:FilePath/{}?width=500",
+        filename_encoded
+    ))
+}
+
+/// Fetch artist image from Wikipedia page image API.
 async fn get_wikipedia_image(client: &Client, wiki_url: &str) -> Option<String> {
     let title = wiki_url.rsplit('/').next()?;
-
-    if wiki_url.contains("wikidata.org") {
-        let wikidata_id = title;
-        let api_url = format!(
-            "https://www.wikidata.org/w/api.php?action=wbgetentities&ids={}&props=claims&format=json",
-            wikidata_id
-        );
-
-        let resp = client
-            .get(&api_url)
-            .header("User-Agent", USER_AGENT)
-            .send()
-            .await
-            .ok()?;
-
-        let body: JsonValue = resp.json().await.ok()?;
-
-        if let Some(entities) = body.get("entities") {
-            if let Some(entity) = entities.get(wikidata_id) {
-                if let Some(claims) = entity.get("claims") {
-                    if let Some(images) = claims.get("P18") {
-                        if let Some(first_image) = images.get(0) {
-                            if let Some(mainsnak) = first_image.get("mainsnak") {
-                                if let Some(datavalue) = mainsnak.get("datavalue") {
-                                    if let Some(value) = datavalue.get("value") {
-                                        if let Some(filename) = value.as_str() {
-                                            let filename_encoded = urlencoding::encode(filename);
-                                            return Some(format!(
-                                                "https://commons.wikimedia.org/wiki/Special:FilePath/{}?width=500",
-                                                filename_encoded
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return None;
-    }
-
+    let encoded_title = urlencoding::encode(title);
     let api_url = format!(
         "https://en.wikipedia.org/w/api.php?action=query&titles={}&prop=pageimages&format=json&pithumbsize=500",
-        title
+        encoded_title
     );
 
     let resp = client
@@ -2208,33 +2736,26 @@ async fn get_wikipedia_image(client: &Client, wiki_url: &str) -> Option<String> 
     None
 }
 
-async fn get_fanart_image(client: &Client, mb_id: &str) -> Option<String> {
+/// Fetch artist image from Fanart.tv using MB artist ID.
+async fn get_fanart_image(client: &Client, mb_id: &str, api_key: &str) -> Option<String> {
     let url = format!(
         "https://webservice.fanart.tv/v3/music/{}?api_key={}",
-        mb_id, "NO_KEY"
+        mb_id, api_key
     );
 
-    let resp = client
-        .get(&url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await
-        .ok()?;
+    let resp = client.get(&url).header("User-Agent", USER_AGENT).send().await.ok()?;
+    if resp.status() != 200 { return None; }
 
-    if resp.status() != 200 {
-        return None;
-    }
+    let data: JsonValue = resp.json().await.ok()?;
 
-    let data: FanartArtistResponse = resp.json().await.ok()?;
-
-    if let Some(ref thumbs) = data.artistthumb {
-        if let Some(first) = thumbs.first() {
-            return Some(first.url.clone());
-        }
-    }
-    if let Some(ref bgs) = data.artistbackground {
-        if let Some(first) = bgs.first() {
-            return Some(first.url.clone());
+    // Try artistthumb first, then artistbackground
+    for key in &["artistthumb", "artistbackground"] {
+        if let Some(arr) = data.get(key).and_then(|v| v.as_array()) {
+            if let Some(first) = arr.first() {
+                if let Some(url) = first.get("url").and_then(|u| u.as_str()) {
+                    return Some(url.to_string());
+                }
+            }
         }
     }
 
@@ -2328,7 +2849,17 @@ async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
 async fn main() {
     let args = Args::parse();
     let config = load_config(&args.music_dir);
-    let music_dir = config.music_dir.trim_end_matches('/').to_string();
+    let music_dir = if args.test {
+        let test_dir = PathBuf::from(&config.project_root).join("web/dump/test-artists");
+        if !test_dir.exists() {
+            eprintln!("Test directory not found: {}", test_dir.display());
+            eprintln!("Run ./symlink-test-artists first to create it.");
+            std::process::exit(1);
+        }
+        test_dir.to_string_lossy().trim_end_matches('/').to_string()
+    } else {
+        config.music_dir.trim_end_matches('/').to_string()
+    };
 
     // Configure thread pool
     if args.threads > 0 {
@@ -2341,7 +2872,8 @@ async fn main() {
 
     println!("{}", "DMP Sync".bright_cyan().bold());
     println!("{}", "========".bright_black());
-    println!("Music dir     : {}", music_dir.bright_white());
+    println!("Music dir     : {}{}", music_dir.bright_white(),
+        if args.test { " (test mode)".yellow().to_string() } else { String::new() });
     println!("Image storage : {}", config.image_storage.bright_white());
     if !args.only.is_empty() {
         println!("Filter        : only '{}'", args.only.bright_white());
@@ -2363,6 +2895,7 @@ async fn main() {
         println!("Images        : {}", "skipped".yellow());
     }
     println!("Threads       : {}", thread_count.to_string().bright_white());
+    println!("Started at    : {}", Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string().bright_white());
     println!();
 
     // Connect to database
@@ -2391,10 +2924,14 @@ async fn main() {
     .await
     .ok();
 
+    // --- S3 client (needed for nuke image cleanup and later for image uploads) ---
+    let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
+    let s3_client = if use_s3 { create_s3_client(&config).await } else { None };
+
     // --- Overwrite: nuke matching data first ---
     if args.overwrite {
         println!("Nuking matching data...");
-        match nuke_artists(&pool, &from_filter, &to_filter, &only_filter).await {
+        match nuke_artists(&pool, &from_filter, &to_filter, &only_filter, &config.project_root, &s3_client, &config).await {
             Ok(count) => println!("  Deleted {} artists and all related data", count.to_string().bright_white()),
             Err(e) => {
                 eprintln!("  Error during nuke: {}", e);
@@ -2433,28 +2970,14 @@ async fn main() {
 
     println!("Loading caches...");
 
-    // Load existing tracks for change detection
-    let existing_rows: Vec<(String, i64, Option<NaiveDateTime>, Option<String>)> = sqlx::query_as(
-        r#"SELECT "filePath", "fileSize", mtime, "contentHash" FROM "LocalReleaseTrack""#,
+    // Track count for display (lightweight count instead of loading all rows)
+    let existing_track_count: (i64,) = sqlx::query_as(
+        r#"SELECT COUNT(*) FROM "LocalReleaseTrack""#,
     )
-    .fetch_all(&pool)
+    .fetch_one(&pool)
     .await
-    .unwrap_or_default();
-
-    let existing_tracks: HashMap<String, (i64, NaiveDateTime, String)> = existing_rows
-        .into_iter()
-        .map(|(path, size, mtime, hash)| {
-            (
-                path,
-                (
-                    size,
-                    mtime.unwrap_or_else(|| Utc::now().naive_utc()),
-                    hash.unwrap_or_default(),
-                ),
-            )
-        })
-        .collect();
-    eprintln!("  {} existing tracks", existing_tracks.len().to_string().bright_white());
+    .unwrap_or((0,));
+    eprintln!("  {} existing tracks", existing_track_count.0.to_string().bright_white());
 
     let mut artist_cache: HashMap<String, String> = HashMap::new();
     {
@@ -2499,7 +3022,7 @@ async fn main() {
         .map(|e| e.file_name().to_string_lossy().to_string())
         .filter(|f| matches_filter(f, &from_filter, &to_filter, &only_filter))
         .collect();
-    artist_folders.sort_unstable();
+    artist_folders.sort_unstable_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
 
     if let Some(ref resume_f) = resume_folder {
         let resume_lower = resume_f.to_lowercase();
@@ -2516,14 +3039,9 @@ async fn main() {
         return;
     }
 
-    // --- Pre-init S3 client and image config ---
-    let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
+    // --- Pre-init image config ---
     let use_local = config.image_storage == "local" || config.image_storage == "both";
-    let s3_client = if use_s3 && !args.skip_images {
-        create_s3_client(&config).await
-    } else {
-        None
-    };
+    // s3_client already created above (needed for nuke)
     let release_img_dir = PathBuf::from(&config.project_root).join("web/public/img/releases");
     let artist_img_dir = PathBuf::from(&config.project_root).join("web/public/img/artists");
     fs::create_dir_all(&release_img_dir).ok();
@@ -2567,6 +3085,26 @@ async fn main() {
         // =====================================================================
         // INDEX PHASE
         // =====================================================================
+
+        // Load existing tracks for this folder only (not entire DB)
+        let folder_prefix = format!("{}/%", folder_name);
+        let existing_tracks: HashMap<String, (i64, NaiveDateTime, String)> = if !args.overwrite {
+            let rows: Vec<(String, i64, Option<NaiveDateTime>, Option<String>)> = sqlx::query_as(
+                r#"SELECT "filePath", "fileSize", mtime, "contentHash" FROM "LocalReleaseTrack"
+                   WHERE "filePath" LIKE $1"#,
+            )
+            .bind(&folder_prefix)
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default();
+            rows.into_iter()
+                .map(|(path, size, mtime, hash)| {
+                    (path, (size, mtime.unwrap_or_else(|| Utc::now().naive_utc()), hash.unwrap_or_default()))
+                })
+                .collect()
+        } else {
+            HashMap::new() // --overwrite: no change detection needed
+        };
 
         // --- Step 1: Walk files in this folder ---
         let folder_path = PathBuf::from(&music_dir).join(folder_name);
@@ -2653,26 +3191,34 @@ async fn main() {
         let mut releases_needing_art: HashMap<String, PathBuf> = HashMap::new();
         // All releases in this folder: release_id -> relative folder path
         let mut folder_releases: HashMap<String, String> = HashMap::new();
+        // Collect (release_id, artist_id) pairs for batch LocalReleaseArtist insert
+        let mut pending_release_artist_links: HashSet<(String, String)> = HashSet::new();
         // Track releases that already have cover art (to avoid redundant work across steps)
         let mut releases_with_art: HashSet<String> = HashSet::new();
 
         for track in &extracted {
-            if let Some((existing_size, existing_mtime, existing_hash)) = existing_tracks.get(&track.file_path) {
-                if *existing_size == track.file_size
-                    && (*existing_mtime - track.mtime).num_seconds().abs() < 2
-                {
-                    skipped_total += 1;
-                    folder_skipped += 1;
-                    continue;
+            // Change detection — skip unchanged tracks (unless --overwrite)
+            if !args.overwrite {
+                if let Some((existing_size, existing_mtime, existing_hash)) = existing_tracks.get(&track.file_path) {
+                    if *existing_size == track.file_size
+                        && (*existing_mtime - track.mtime).num_seconds().abs() < 2
+                    {
+                        skipped_total += 1;
+                        folder_skipped += 1;
+                        continue;
+                    }
+                    if *existing_hash == track.content_hash {
+                        mtime_updates.push((track.mtime, track.file_path.clone()));
+                        skipped_total += 1;
+                        folder_skipped += 1;
+                        continue;
+                    }
+                    updated_total += 1;
+                    folder_updated += 1;
+                } else {
+                    new_total += 1;
+                    folder_new += 1;
                 }
-                if *existing_hash == track.content_hash {
-                    mtime_updates.push((track.mtime, track.file_path.clone()));
-                    skipped_total += 1;
-                    folder_skipped += 1;
-                    continue;
-                }
-                updated_total += 1;
-                folder_updated += 1;
             } else {
                 new_total += 1;
                 folder_new += 1;
@@ -2728,7 +3274,7 @@ async fn main() {
                     .unwrap_or("Unknown Artist");
                 if let Ok(aid) = ensure_artist_cached(&pool, fallback_name, &mut artist_cache).await {
                     if !aid.is_empty() {
-                        ensure_local_release_artist(&pool, &release_id, &aid).await.ok();
+                        pending_release_artist_links.insert((release_id.clone(), aid.clone()));
                         folder_artist_ids.insert(aid.clone());
                         pending_links.push((fp.clone(), aid, "ALBUM_ARTIST".to_string()));
                     }
@@ -2737,7 +3283,7 @@ async fn main() {
                 for aa_name in &main_album_artists {
                     if let Ok(aa_id) = ensure_artist_cached(&pool, aa_name, &mut artist_cache).await {
                         if !aa_id.is_empty() {
-                            ensure_local_release_artist(&pool, &release_id, &aa_id).await.ok();
+                            pending_release_artist_links.insert((release_id.clone(), aa_id.clone()));
                             folder_artist_ids.insert(aa_id.clone());
                             pending_links.push((fp.clone(), aa_id.clone(), "ALBUM_ARTIST".to_string()));
                         }
@@ -2876,6 +3422,12 @@ async fn main() {
             println!("    {} {}", "→".bright_black(), parts.join(" | "));
         }
 
+        // --- Step 3b: Batch insert LocalReleaseArtist links ---
+        if !pending_release_artist_links.is_empty() {
+            let links: Vec<(String, String)> = pending_release_artist_links.into_iter().collect();
+            batch_ensure_local_release_artists(&pool, &links).await.ok();
+        }
+
         // --- Step 4: Cover art extraction ---
         if !args.skip_images && !releases_needing_art.is_empty() {
             println!("    Extracting artwork ({} releases)...", releases_needing_art.len());
@@ -2892,36 +3444,44 @@ async fn main() {
                 })
                 .collect();
 
-            for (release_id, out_path, newly_extracted) in &extracted_covers {
-                if !newly_extracted { continue; }
-
-                if use_s3 {
-                    if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
-                        (&s3_client, &config.s3_bucket, &config.s3_public_url)
-                    {
-                        let s3_key = format!("releases/{}.jpg", release_id);
-                        match upload_to_s3(client, bucket, &s3_key, out_path).await {
-                            Ok(_) => {
-                                let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
-                                sqlx::query(
-                                    r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                                )
-                                .bind(&image_url)
-                                .bind(release_id)
-                                .execute(&pool)
-                                .await
-                                .ok();
-                            }
-                            Err(e) => {
-                                if let Ok(mut f) = error_log.lock() {
-                                    writeln!(f, "[{}][SYNC] S3 upload failed for release {}: {:?}",
-                                        Utc::now().format("%Y-%m-%d %H:%M:%S"), release_id, e).ok();
-                                }
+            // Upload to S3 concurrently (up to 8 at a time)
+            if use_s3 {
+                if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
+                    (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                {
+                    use futures::stream::{FuturesUnordered, StreamExt};
+                    let mut uploads = FuturesUnordered::new();
+                    for (release_id, out_path, newly_extracted) in &extracted_covers {
+                        if !newly_extracted { continue; }
+                        let client = client.clone();
+                        let bucket = bucket.clone();
+                        let public_url = public_url.clone();
+                        let pool = pool.clone();
+                        let release_id = release_id.clone();
+                        let out_path = out_path.clone();
+                        uploads.push(async move {
+                            let ok = upload_release_image_to_s3(
+                                &client, &bucket, &public_url, &pool, &release_id, &out_path,
+                            ).await;
+                            (release_id, ok)
+                        });
+                        // Limit concurrency: drain when we hit 8 in-flight
+                        if uploads.len() >= 8 {
+                            if let Some((rid, _)) = uploads.next().await {
+                                releases_with_art.insert(rid);
                             }
                         }
                     }
+                    // Drain remaining
+                    while let Some((rid, _)) = uploads.next().await {
+                        releases_with_art.insert(rid);
+                    }
                 }
+            }
 
+            // Update local DB fields and track art status for non-S3 paths
+            for (release_id, _out_path, newly_extracted) in &extracted_covers {
+                if !newly_extracted { continue; }
                 if use_local {
                     let filename = format!("{}.jpg", release_id);
                     sqlx::query(
@@ -2933,7 +3493,6 @@ async fn main() {
                     .await
                     .ok();
                 }
-
                 releases_with_art.insert(release_id.clone());
             }
         }
@@ -3006,6 +3565,46 @@ async fn main() {
             }
         }
 
+        // --- Backfill folder context from DB for skipped tracks ---
+        // When tracks are skipped (unchanged), the artist/release collection code
+        // doesn't run. Query the DB for all releases and artists in this folder
+        // so the sync phase has the full picture.
+        {
+            // Backfill folder_releases: all releases whose tracks are in this folder
+            let folder_prefix = format!("{}/%", folder_name);
+            let db_releases: Vec<(String, String)> = sqlx::query_as(
+                r#"SELECT DISTINCT lr.id, lr."folderPath"
+                   FROM "LocalRelease" lr
+                   WHERE lr."folderPath" LIKE $1"#,
+            )
+            .bind(&folder_prefix)
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default();
+            for (rid, fp) in db_releases {
+                folder_releases.entry(rid).or_insert(fp);
+            }
+
+            // Backfill folder_artist_ids from album-level artist links only.
+            // Track-level artists (featured artists, compound names) are NOT included —
+            // they don't need full MB sync. Compound names are resolved via extra_artists_to_sync.
+            let folder_release_ids: Vec<String> = folder_releases.keys().cloned().collect();
+            if !folder_release_ids.is_empty() {
+                let album_artists: Vec<(String,)> = sqlx::query_as(
+                    r#"SELECT DISTINCT lra."artistId"
+                       FROM "LocalReleaseArtist" lra
+                       WHERE lra."localReleaseId" = ANY($1::text[])"#,
+                )
+                .bind(&folder_release_ids)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+                for (aid,) in album_artists {
+                    folder_artist_ids.insert(aid);
+                }
+            }
+        }
+
         // --- Step 5: Update totals ---
         for aid in &folder_artist_ids {
             update_release_totals_for_artist(&pool, aid).await.ok();
@@ -3015,6 +3614,10 @@ async fn main() {
         // =====================================================================
         // SYNC PHASE — per artist ID touched in this folder
         // =====================================================================
+
+        let mut pending_extra_artists: Vec<(String, MbArtistMatch)> = Vec::new();
+        // Single-artist folder: use folder image. Multi-artist: external only.
+        let is_single_artist_folder = folder_artist_ids.len() == 1;
 
         for artist_id in &folder_artist_ids {
             // Look up artist info from DB
@@ -3068,6 +3671,34 @@ async fn main() {
                 let hint_album = hints.and_then(|(_, b)| b.as_deref());
                 match find_mb_match_with_fallback(&http_client, &pool, artist_id, &artist_name, hint_artist, hint_album, &mut limiter).await {
                     Ok((Some(m), additional)) => {
+                        // Detect compound names like "10cc & Godley & Creme" → "10cc"
+                        // or "…and Oceans vs. Bloodthorn" → "…and Oceans".
+                        // Split into individual artists, link the shared release to
+                        // each one, and fetch their details. No full catalogue —
+                        // that happens when each artist's own folder is processed.
+                        if is_likely_compound_of(&artist_name, &m.name) {
+                            println!("    {} Compound name — splitting into components",
+                                "↷".yellow());
+                            // Queue ALL components (primary + credited) as extra artists
+                            println!("      {} {} ({})",
+                                "✓".green(), m.name.bright_white(), m.id.bright_black());
+                            pending_extra_artists.push((m.name.clone(), m));
+                            for (ref name, ref am) in &additional {
+                                println!("      {} {} ({})",
+                                    "✓".green(), name.bright_white(), am.id.bright_black());
+                            }
+                            pending_extra_artists.extend(additional);
+                            // Remove the compound artist's links so the individual
+                            // components take over and the compound gets cleaned up
+                            sqlx::query(r#"DELETE FROM "LocalReleaseArtist" WHERE "artistId" = $1"#)
+                                .bind(artist_id).execute(&pool).await.ok();
+                            sqlx::query(r#"DELETE FROM "TrackArtist" WHERE "artistId" = $1"#)
+                                .bind(artist_id).execute(&pool).await.ok();
+                            sqlx::query(r#"UPDATE "Artist" SET "totalTracks" = 0, "totalPlayCount" = 0, "totalFileSize" = 0 WHERE id = $1"#)
+                                .bind(artist_id).execute(&pool).await.ok();
+                            continue;
+                        }
+
                         sqlx::query(
                             r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW() WHERE id = $2"#,
                         )
@@ -3080,10 +3711,7 @@ async fn main() {
                         m.id
                     }
                     Ok((None, _)) => {
-                        failed_artists.push((artist_name.clone(), "No MusicBrainz match".to_string()));
-                        if let Ok(mut f) = error_log.lock() {
-                            writeln!(f, "[{}][SYNC] No MusicBrainz match for artist: {}", Utc::now().format("%Y-%m-%d %H:%M:%S"), artist_name).ok();
-                        }
+                        println!("      {} No MusicBrainz match", "⚠".yellow());
                         sqlx::query(
                             r#"UPDATE "Artist" SET "lastSyncedAt" = NOW(), "updatedAt" = NOW() WHERE id = $1"#,
                         )
@@ -3091,7 +3719,6 @@ async fn main() {
                         .execute(&pool)
                         .await
                         .ok();
-                        failed_sync += 1;
                         continue;
                     }
                     Err(e) => {
@@ -3112,8 +3739,53 @@ async fn main() {
                 if same_artist {
                     println!("    {} Already synced — re-matching local releases", "↷".yellow());
                 } else {
-                    println!("    {} Already synced as a different name — linking releases", "↷".yellow());
+                    let primary_name: Option<(String,)> = sqlx::query_as(
+                        r#"SELECT name FROM "Artist" WHERE id = $1"#,
+                    ).bind(&primary_artist_id).fetch_optional(&pool).await.unwrap_or(None);
+                    let pname = primary_name.map(|(n,)| n).unwrap_or_else(|| primary_artist_id.clone());
+                    println!("    {} Same MB ID as '{}' — merging", "↷".yellow(), pname.bright_white());
                 }
+
+                // If this resolved to the same MB ID as another artist in this folder,
+                // it's a duplicate — could be a compound name, mistagged track, or
+                // name variant. Always merge into the primary and clean up.
+                if !same_artist {
+                    // Move releases to the primary artist
+                    sqlx::query(
+                        r#"UPDATE "LocalReleaseArtist" SET "artistId" = $1
+                           WHERE "artistId" = $2 AND "localReleaseId" NOT IN (
+                               SELECT "localReleaseId" FROM "LocalReleaseArtist" WHERE "artistId" = $1
+                           )"#,
+                    )
+                    .bind(&primary_artist_id)
+                    .bind(artist_id)
+                    .execute(&pool)
+                    .await
+                    .ok();
+                    // Clean up the duplicate: remove all links then delete the artist
+                    sqlx::query(r#"DELETE FROM "LocalReleaseArtist" WHERE "artistId" = $1"#)
+                        .bind(artist_id).execute(&pool).await.ok();
+                    sqlx::query(r#"DELETE FROM "TrackArtist" WHERE "artistId" = $1"#)
+                        .bind(artist_id).execute(&pool).await.ok();
+                    sqlx::query(r#"DELETE FROM "ArtistUrl" WHERE "artistId" = $1"#)
+                        .bind(artist_id).execute(&pool).await.ok();
+                    sqlx::query(r#"DELETE FROM "_ArtistGenres" WHERE "A" = $1"#)
+                        .bind(artist_id).execute(&pool).await.ok();
+                    sqlx::query(r#"DELETE FROM "MusicBrainzReleaseTrack" WHERE "releaseId" IN (SELECT id FROM "MusicBrainzRelease" WHERE "artistId" = $1)"#)
+                        .bind(artist_id).execute(&pool).await.ok();
+                    sqlx::query(r#"DELETE FROM "MusicBrainzRelease" WHERE "artistId" = $1"#)
+                        .bind(artist_id).execute(&pool).await.ok();
+                    sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#)
+                        .bind(artist_id).execute(&pool).await.ok();
+                    update_release_totals_for_artist(&pool, &primary_artist_id).await.ok();
+                    update_artist_totals_for_artist(&pool, &primary_artist_id).await.ok();
+                    println!("    {} Releases moved, duplicate deleted", "✓".green());
+                    if !extra_artists_to_sync.is_empty() {
+                        pending_extra_artists.extend(extra_artists_to_sync);
+                    }
+                    continue;
+                }
+
                 sqlx::query(
                     r#"UPDATE "Artist" SET "musicbrainzId" = $1, "lastSyncedAt" = NOW(), "updatedAt" = NOW() WHERE id = $2"#,
                 )
@@ -3123,6 +3795,7 @@ async fn main() {
                 .await
                 .ok();
 
+                // Batch fetch all MB releases + their tracks in 2 queries (not N+1)
                 let mb_releases: Vec<(String, String)> = sqlx::query_as(
                     r#"SELECT id, title FROM "MusicBrainzRelease" WHERE "artistId" = $1"#,
                 )
@@ -3131,37 +3804,74 @@ async fn main() {
                 .await
                 .unwrap_or_default();
 
-                let mut linked = 0u32;
-                for (mb_release_id, mb_release_title) in &mb_releases {
-                    let mb_tracks: Vec<(String, Option<i32>)> = sqlx::query_as(
-                        r#"SELECT title, position FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
+                let mb_release_ids: Vec<String> = mb_releases.iter().map(|(id, _)| id.clone()).collect();
+                let all_mb_tracks: Vec<(String, String, Option<i32>)> = if !mb_release_ids.is_empty() {
+                    sqlx::query_as(
+                        r#"SELECT "releaseId", title, position FROM "MusicBrainzReleaseTrack"
+                           WHERE "releaseId" = ANY($1::text[])
+                           ORDER BY "releaseId", position"#,
                     )
-                    .bind(mb_release_id)
+                    .bind(&mb_release_ids)
                     .fetch_all(&pool)
                     .await
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
+
+                // Group tracks by release ID
+                let mut tracks_by_release: HashMap<String, Vec<(String, Option<i32>)>> = HashMap::new();
+                for (rel_id, title, pos) in all_mb_tracks {
+                    tracks_by_release.entry(rel_id).or_default().push((title, pos));
+                }
+
+                let mut linked = 0u32;
+                let mut status_updates: Vec<(String, String)> = Vec::new();
+                for (mb_release_id, mb_release_title) in &mb_releases {
+                    let mb_tracks = tracks_by_release.get(mb_release_id)
+                        .map(|v| v.as_slice())
+                        .unwrap_or(&[]);
 
                     if let Ok((status, _, _, _)) = check_release_status(
-                        &pool, artist_id, mb_release_id, mb_release_title, &mb_tracks,
+                        &pool, artist_id, mb_release_id, mb_release_title, mb_tracks,
                     ).await {
                         if status != MatchStatus::Missing {
                             linked += 1;
-                            sqlx::query(
-                                r#"UPDATE "LocalRelease" SET "matchStatus" = $1::"ReleaseStatus", "updatedAt" = NOW() WHERE "releaseId" = $2"#,
-                            )
-                            .bind(status.as_str())
-                            .bind(mb_release_id)
-                            .execute(&pool)
-                            .await
-                            .ok();
+                            status_updates.push((status.as_str().to_string(), mb_release_id.clone()));
                         }
                     }
+                }
+
+                // Batch update match statuses
+                if !status_updates.is_empty() {
+                    let statuses: Vec<String> = status_updates.iter().map(|(s, _)| s.clone()).collect();
+                    let rel_ids: Vec<String> = status_updates.iter().map(|(_, id)| id.clone()).collect();
+                    sqlx::query(
+                        r#"UPDATE "LocalRelease" SET
+                             "matchStatus" = t.status::"ReleaseStatus",
+                             "updatedAt" = NOW()
+                           FROM (SELECT UNNEST($1::text[]) as status, UNNEST($2::text[]) as release_id) t
+                           WHERE "LocalRelease"."releaseId" = t.release_id"#,
+                    )
+                    .bind(&statuses)
+                    .bind(&rel_ids)
+                    .execute(&pool)
+                    .await
+                    .ok();
                 }
 
                 if linked > 0 {
                     println!("    {} Linked {} local release(s)", "→".bright_black(), linked);
                 }
+                // Update totals for this artist after linking releases
+                update_release_totals_for_artist(&pool, artist_id).await.ok();
+                update_artist_totals_for_artist(&pool, artist_id).await.ok();
                 synced += 1;
+                // Process extra artists before continuing (e.g. "Christine and the Queens"
+                // discovered from splitting "070 Shake & Christine and the Queens")
+                if !extra_artists_to_sync.is_empty() {
+                    pending_extra_artists.extend(extra_artists_to_sync);
+                }
                 continue;
             }
 
@@ -3169,41 +3879,41 @@ async fn main() {
             println!("    {} Fetching artist details...", "→".bright_black());
             match mb_get_artist_detail(&http_client, &mb_id, &mut limiter).await {
                 Ok(detail) => {
-                    let mut details_count = 0;
-
+                    // Collect URLs and genres, then batch insert
+                    let mut url_batch: Vec<(String, String)> = Vec::new();
                     if let Some(ref rels) = detail.relations {
                         for rel in rels {
                             if let Some(ref url) = rel.url {
-                                upsert_artist_url(&pool, artist_id, &rel.relation_type, &url.resource)
-                                    .await
-                                    .ok();
-                                details_count += 1;
+                                url_batch.push((rel.relation_type.clone(), url.resource.clone()));
                             }
                         }
                     }
+                    let details_count = url_batch.len();
+                    batch_upsert_artist_urls(&pool, artist_id, &url_batch).await.ok();
 
-                    let mut genre_count = 0;
+                    let mut genre_ids: Vec<String> = Vec::new();
                     if let Some(ref genres) = detail.genres {
                         for g in genres {
                             if g.count.unwrap_or(0) > 0 {
                                 if let Ok(genre_id) = ensure_genre_cached(&pool, &g.name, &mut genre_cache).await {
-                                    link_artist_genre(&pool, artist_id, &genre_id).await.ok();
-                                    genre_count += 1;
+                                    genre_ids.push(genre_id);
                                 }
                             }
                         }
                     }
-
                     if let Some(ref tags) = detail.tags {
                         for t in tags {
                             if t.count.unwrap_or(0) > 0 {
                                 if let Ok(genre_id) = ensure_genre_cached(&pool, &t.name, &mut genre_cache).await {
-                                    link_artist_genre(&pool, artist_id, &genre_id).await.ok();
-                                    genre_count += 1;
+                                    genre_ids.push(genre_id);
                                 }
                             }
                         }
                     }
+                    genre_ids.sort();
+                    genre_ids.dedup();
+                    let genre_count = genre_ids.len();
+                    batch_link_artist_genres(&pool, artist_id, &genre_ids).await.ok();
 
                     println!("      {} Saved {} URLs, {} genres", "✓".green(), details_count, genre_count);
 
@@ -3211,12 +3921,10 @@ async fn main() {
                     if !args.skip_images {
                         print!("    {} Downloading artist image... ", "→".bright_black());
                         std::io::stdout().flush().ok();
-                        let img_result =
-                            download_artist_image(&http_client, &detail, &artist_slug, &artist_img_dir, &folder_path, &s3_client, &config, &pool, artist_id).await;
-                        if img_result.is_some() {
-                            println!("{}", "✓".green());
-                        } else {
-                            println!("{} (not found)", "✗".yellow());
+                        let use_folder_img = is_single_artist_folder;
+                        match download_artist_image(&http_client, &detail, &artist_name, &artist_slug, &artist_img_dir, &folder_path, &s3_client, &config, &pool, artist_id, use_folder_img).await {
+                            Some((src, _)) => println!("\n      {} Downloaded from {} {}", "→".bright_black(), src, "✓".green()),
+                            None => println!("{} (not found)", "✗".yellow()),
                         }
                     }
                 }
@@ -3440,40 +4148,134 @@ async fn main() {
                 println!("    {} Failed to sync", "✗".red().bold());
             }
 
-            // Sync additional artists discovered from compound name split
-            for (extra_name, extra_match) in extra_artists_to_sync {
+            // Collect extra artists for processing after the main loop
+            pending_extra_artists.extend(extra_artists_to_sync);
+        } // end of per-artist sync loop
+
+        // --- Resolve compound TrackArtist names ---
+        // Find track-level artist names that look compound (contain & or feat. etc.)
+        // and resolve them into individual artists via MB release-group credits or splitting.
+        {
+            let folder_release_ids: Vec<String> = folder_releases.keys().cloned().collect();
+            if !folder_release_ids.is_empty() {
+                // Get distinct track artist names that differ from any album artist
+                let compound_candidates: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
+                    r#"SELECT DISTINCT a.id, a.name, lrt.artist, lr.title
+                       FROM "TrackArtist" ta
+                       JOIN "Artist" a ON ta."artistId" = a.id
+                       JOIN "LocalReleaseTrack" lrt ON lrt.id = ta."trackId"
+                       JOIN "LocalRelease" lr ON lr.id = lrt."localReleaseId"
+                       WHERE lrt."localReleaseId" = ANY($1::text[])
+                         AND a."musicbrainzId" IS NULL
+                         AND a.id NOT IN (
+                             SELECT DISTINCT lra."artistId" FROM "LocalReleaseArtist" lra
+                             WHERE lra."localReleaseId" = ANY($1::text[])
+                         )"#,
+                )
+                .bind(&folder_release_ids)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+
+                // Build anchor from known synced album artists in this folder
+                let folder_anchor: Option<MbArtistMatch> = {
+                    let mut found = None;
+                    for aid in &folder_artist_ids {
+                        if let Some(mb_id) = synced_mb_ids.keys().find(|mid| synced_mb_ids.get(*mid) == Some(aid)) {
+                            let name: Option<(String,)> = sqlx::query_as(
+                                r#"SELECT name FROM "Artist" WHERE id = $1"#,
+                            ).bind(aid).fetch_optional(&pool).await.unwrap_or(None);
+                            if let Some((n,)) = name {
+                                found = Some(MbArtistMatch { id: mb_id.clone(), name: n, score: Some(100) });
+                                break;
+                            }
+                        }
+                    }
+                    found
+                };
+
+                for (_artist_id, artist_name, raw_artist, _album_title) in &compound_candidates {
+                    let tag = raw_artist.as_deref().unwrap_or(artist_name);
+
+                    // Use the folder's album artist as anchor for splitting.
+                    // This enables & and , separators since we have a confirmed artist.
+                    if let Ok(Some((_primary, additional))) = try_split_tag(
+                        &http_client, tag, artist_name, &folder_anchor, &mut limiter,
+                    ).await {
+                        for (name, m) in additional {
+                            if !synced_mb_ids.contains_key(&m.id) {
+                                println!("    {} Kept '{}' (from track credit '{}')",
+                                    "✓".green(), name.bright_white(), tag.bright_black());
+                                pending_extra_artists.push((name, m));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sync additional artists discovered from compound name splits
+        for (extra_name, extra_match) in pending_extra_artists {
                 // Skip if already synced this run
                 if synced_mb_ids.contains_key(&extra_match.id) {
                     continue;
                 }
 
-                // Ensure Artist record exists
-                let extra_artist_id = match ensure_artist_cached(&pool, &extra_name, &mut artist_cache).await {
-                    Ok(id) if !id.is_empty() => id,
-                    _ => continue,
-                };
+                // Check if this artist already exists and has an MB ID
                 let extra_slug = make_slug(&extra_name);
-
-                // Skip if already has a musicbrainzId (unless --overwrite)
-                let existing: Option<(Option<String>,)> = sqlx::query_as(
-                    r#"SELECT "musicbrainzId" FROM "Artist" WHERE id = $1"#,
+                let existing: Option<(String, Option<String>)> = sqlx::query_as(
+                    r#"SELECT id, "musicbrainzId" FROM "Artist" WHERE slug = $1"#,
                 )
-                .bind(&extra_artist_id)
+                .bind(&extra_slug)
                 .fetch_optional(&pool)
                 .await
                 .unwrap_or(None);
 
                 if !args.overwrite {
-                    if let Some((Some(_),)) = existing {
-                        continue;
+                    if let Some((_, Some(_))) = &existing {
+                        continue; // already has MB ID
                     }
                 }
+
+                // Check for matching local releases BEFORE creating the artist.
+                // Only match on albumArtist (not track-level artist) to avoid
+                // elevating featured credits to album-level links.
+                let compound_releases: Vec<(String,)> = sqlx::query_as(
+                    r#"SELECT DISTINCT lrt."localReleaseId"
+                       FROM "LocalReleaseTrack" lrt
+                       JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lrt."localReleaseId"
+                       WHERE lra."artistId" = ANY($1::text[])
+                         AND lrt."albumArtist" ILIKE '%' || $2 || '%'"#,
+                )
+                .bind(&folder_artist_ids.iter().cloned().collect::<Vec<_>>())
+                .bind(&extra_name)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+
+                // Skip artists with no local releases — don't even create the record
+                if compound_releases.is_empty() {
+                    continue;
+                }
+
+                // NOW create the Artist record (we know it has matches)
+                let extra_artist_id = match ensure_artist_cached(&pool, &extra_name, &mut artist_cache).await {
+                    Ok(id) if !id.is_empty() => id,
+                    _ => continue,
+                };
+
+                let links: Vec<(String, String)> = compound_releases.iter()
+                    .map(|(rel_id,)| (rel_id.clone(), extra_artist_id.clone()))
+                    .collect();
+                let release_link_count = links.len();
+                batch_ensure_local_release_artists(&pool, &links).await.ok();
 
                 println!(
                     "    {} {}",
                     "Syncing (from split):".white(),
                     extra_name.bright_cyan().bold()
                 );
+                println!("    {} Linked to {} local release(s)", "→".bright_black(), release_link_count);
 
                 // Save MB ID
                 sqlx::query(
@@ -3491,23 +4293,23 @@ async fn main() {
                 println!("    {} Fetching artist details...", "→".bright_black());
                 match mb_get_artist_detail(&http_client, &extra_mb_id, &mut limiter).await {
                     Ok(detail) => {
-                        let mut details_count = 0;
+                        let mut url_batch: Vec<(String, String)> = Vec::new();
                         if let Some(ref rels) = detail.relations {
                             for rel in rels {
                                 if let Some(ref url) = rel.url {
-                                    upsert_artist_url(&pool, &extra_artist_id, &rel.relation_type, &url.resource).await.ok();
-                                    details_count += 1;
+                                    url_batch.push((rel.relation_type.clone(), url.resource.clone()));
                                 }
                             }
                         }
+                        let details_count = url_batch.len();
+                        batch_upsert_artist_urls(&pool, &extra_artist_id, &url_batch).await.ok();
 
-                        let mut genre_count = 0;
+                        let mut genre_ids: Vec<String> = Vec::new();
                         if let Some(ref genres) = detail.genres {
                             for g in genres {
                                 if g.count.unwrap_or(0) > 0 {
                                     if let Ok(genre_id) = ensure_genre_cached(&pool, &g.name, &mut genre_cache).await {
-                                        link_artist_genre(&pool, &extra_artist_id, &genre_id).await.ok();
-                                        genre_count += 1;
+                                        genre_ids.push(genre_id);
                                     }
                                 }
                             }
@@ -3516,26 +4318,28 @@ async fn main() {
                             for t in tags {
                                 if t.count.unwrap_or(0) > 0 {
                                     if let Ok(genre_id) = ensure_genre_cached(&pool, &t.name, &mut genre_cache).await {
-                                        link_artist_genre(&pool, &extra_artist_id, &genre_id).await.ok();
-                                        genre_count += 1;
+                                        genre_ids.push(genre_id);
                                     }
                                 }
                             }
                         }
+                        genre_ids.sort();
+                        genre_ids.dedup();
+                        let genre_count = genre_ids.len();
+                        batch_link_artist_genres(&pool, &extra_artist_id, &genre_ids).await.ok();
 
                         println!("      {} Saved {} URLs, {} genres", "✓".green(), details_count, genre_count);
 
                         if !args.skip_images {
                             print!("    {} Downloading artist image... ", "→".bright_black());
                             std::io::stdout().flush().ok();
-                            let img_result = download_artist_image(
-                                &http_client, &detail, &extra_slug, &artist_img_dir,
+                            match download_artist_image(
+                                &http_client, &detail, &extra_name, &extra_slug, &artist_img_dir,
                                 &folder_path, &s3_client, &config, &pool, &extra_artist_id,
-                            ).await;
-                            if img_result.is_some() {
-                                println!("{}", "✓".green());
-                            } else {
-                                println!("{} (not found)", "✗".yellow());
+                                false,
+                            ).await {
+                                Some((src, _)) => println!("\n      {} Downloaded from {} {}", "→".bright_black(), src, "✓".green()),
+                                None => println!("{} (not found)", "✗".yellow()),
                             }
                         }
                     }
@@ -3544,7 +4348,7 @@ async fn main() {
                     }
                 }
 
-                // Fetch and process releases
+                // Full catalogue sync — treat extra artists the same as primary
                 println!("    {} Fetching releases...", "→".bright_black());
                 match mb_get_release_groups(&http_client, &extra_mb_id, &mut limiter).await {
                     Ok(rgs) => {
@@ -3623,12 +4427,81 @@ async fn main() {
                             .bind(avg_score).bind(now).bind(&extra_artist_id).execute(&pool).await.ok();
 
                         synced_mb_ids.insert(extra_mb_id.clone(), extra_artist_id.clone());
+                        update_release_totals_for_artist(&pool, &extra_artist_id).await.ok();
+                        update_artist_totals_for_artist(&pool, &extra_artist_id).await.ok();
                         synced += 1;
                         println!("    {} Fully synced", "✓".green().bold());
                     }
                     Err(e) => {
                         println!("      {} Error: {}", "✗".red(), e.bright_red());
                         failed_sync += 1;
+                    }
+                }
+        }
+
+        // --- Step 5b: Clean up empty artists ---
+        // Remove artist records created during indexing from compound tags
+        // (e.g. "Chaz Bundick & ScHoolboy Q") that have no MB match, no local
+        // releases, and no tracks — these are ghosts from unsplit compound names.
+        // Covers both album-level artists (folder_artist_ids) and track-level artists.
+        {
+            let folder_release_ids: Vec<String> = folder_releases.keys().cloned().collect();
+            if !folder_release_ids.is_empty() {
+                // Find all artist IDs touched in this folder (album + track level)
+                let all_folder_aids: Vec<(String,)> = sqlx::query_as(
+                    r#"SELECT DISTINCT a.id FROM "Artist" a
+                       WHERE (
+                           a.id = ANY($1::text[])
+                           OR EXISTS (
+                               SELECT 1 FROM "TrackArtist" ta
+                               JOIN "LocalReleaseTrack" lrt ON lrt.id = ta."trackId"
+                               WHERE ta."artistId" = a.id
+                                 AND lrt."localReleaseId" = ANY($2::text[])
+                           )
+                           OR EXISTS (
+                               SELECT 1 FROM "LocalReleaseArtist" lra
+                               WHERE lra."artistId" = a.id
+                                 AND lra."localReleaseId" = ANY($2::text[])
+                           )
+                       )
+                       AND a."musicbrainzId" IS NULL
+                       AND a."totalTracks" = 0"#,
+                )
+                .bind(&folder_artist_ids.iter().cloned().collect::<Vec<_>>())
+                .bind(&folder_release_ids)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+
+                let empty_aids: Vec<String> = all_folder_aids.into_iter().map(|(id,)| id).collect();
+                if !empty_aids.is_empty() {
+                    // Delete TrackArtist links first (FK constraint)
+                    sqlx::query(
+                        r#"DELETE FROM "TrackArtist" WHERE "artistId" = ANY($1::text[])"#,
+                    )
+                    .bind(&empty_aids)
+                    .execute(&pool)
+                    .await
+                    .ok();
+                    // Delete LocalReleaseArtist links
+                    sqlx::query(
+                        r#"DELETE FROM "LocalReleaseArtist" WHERE "artistId" = ANY($1::text[])"#,
+                    )
+                    .bind(&empty_aids)
+                    .execute(&pool)
+                    .await
+                    .ok();
+                    // Delete the empty artist records
+                    let deleted: Vec<(String,)> = sqlx::query_as(
+                        r#"DELETE FROM "Artist" WHERE id = ANY($1::text[]) RETURNING id"#,
+                    )
+                    .bind(&empty_aids)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+                    for (id,) in &deleted {
+                        artist_cache.retain(|_, v| v != id);
+                        folder_artist_ids.remove(id);
                     }
                 }
             }
@@ -3643,37 +4516,31 @@ async fn main() {
                 .collect();
 
             if !still_missing_art.is_empty() {
-                // Look up which of these releases have a linked MB release group
+                // Pre-fetch all release metadata + MB release group IDs in one query
+                let missing_ids: Vec<String> = still_missing_art.iter().map(|(id, _)| id.clone()).collect();
+                let caa_metadata: Vec<(String, String, Option<String>)> = sqlx::query_as(
+                    r#"SELECT lr.id, lr.title, mbr."musicbrainzId"
+                       FROM "LocalRelease" lr
+                       LEFT JOIN "MusicBrainzRelease" mbr ON lr."releaseId" = mbr.id
+                       WHERE lr.id = ANY($1::text[])"#,
+                )
+                .bind(&missing_ids)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+
+                let caa_map: HashMap<String, (String, Option<String>)> = caa_metadata.into_iter()
+                    .map(|(id, title, mb_id)| (id, (title, mb_id)))
+                    .collect();
+
                 let mut caa_downloaded = 0u32;
                 let mut caa_not_found = 0u32;
 
                 for (release_id, rel_folder_path) in &still_missing_art {
-                    // Get the MB release group ID via LocalRelease → MusicBrainzRelease
-                    let mb_rg_id: Option<(String,)> = sqlx::query_as(
-                        r#"SELECT mbr."musicbrainzId"
-                           FROM "LocalRelease" lr
-                           JOIN "MusicBrainzRelease" mbr ON lr."releaseId" = mbr.id
-                           WHERE lr.id = $1 AND mbr."musicbrainzId" IS NOT NULL"#,
-                    )
-                    .bind(release_id)
-                    .fetch_optional(&pool)
-                    .await
-                    .unwrap_or(None);
-
-                    let rg_id = match mb_rg_id {
-                        Some((id,)) => id,
-                        None => continue, // No MB link, skip
+                    let (title, rg_id) = match caa_map.get(release_id) {
+                        Some((t, Some(mb_id))) => (t.clone(), mb_id.clone()),
+                        _ => continue, // No MB link, skip
                     };
-
-                    // Get release title for output
-                    let release_title: Option<(String,)> = sqlx::query_as(
-                        r#"SELECT title FROM "LocalRelease" WHERE id = $1"#,
-                    )
-                    .bind(release_id)
-                    .fetch_optional(&pool)
-                    .await
-                    .unwrap_or(None);
-                    let title = release_title.map(|(t,)| t).unwrap_or_default();
 
                     let out_path = release_img_dir.join(format!("{}.jpg", release_id));
                     let abs_folder = PathBuf::from(&music_dir).join(rel_folder_path);
@@ -3804,10 +4671,16 @@ async fn main() {
     clear_sync_progress(&pool).await.ok();
 
     let elapsed = start.elapsed();
+    let total_secs = elapsed.as_secs();
+    let h = total_secs / 3600;
+    let m = (total_secs % 3600) / 60;
+    let s = total_secs % 60;
     println!();
     println!("{}", "═".repeat(60).bright_black());
     println!();
-    println!("{} {:.1}s", "Completed in:".white().bold(), elapsed.as_secs_f64());
+    println!("Ended at      : {} ({}h:{}m:{}s)",
+        Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string().bright_white(),
+        h, m, s);
     println!("  {} {}", "New tracks:".green(), new_total);
     println!("  {} {}", "Updated:".yellow(), updated_total);
     println!("  {} {}", "Skipped:".bright_black(), skipped_total);

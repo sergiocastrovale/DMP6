@@ -13,6 +13,7 @@ export interface UnifiedRelease {
   localTrackCount: number
   isMusicBrainz: boolean
   localReleaseId: string | null
+  coArtists?: { name: string; slug: string }[]
 }
 
 export type ReleaseStatus =

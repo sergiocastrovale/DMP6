@@ -385,7 +385,21 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
               </div>
 
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-zinc-50">{{ release.title }}</p>
+                <p class="truncate text-sm font-medium text-zinc-50">
+                  <template v-if="release.coArtists?.length">
+                    <span class="text-zinc-500">(with
+                      <template v-for="(co, i) in release.coArtists" :key="co.slug">
+                        <NuxtLink
+                          :to="`/artist/${co.slug}`"
+                          class="text-zinc-400 hover:text-amber-500 transition-colors"
+                          @click.stop
+                        >{{ co.name }}</NuxtLink><template v-if="i < release.coArtists.length - 1">, </template>
+                      </template>)
+                    </span>
+                    {{ ' ' }}
+                  </template>
+                  {{ release.title }}
+                </p>
                 <div class="flex items-center gap-3 text-xs text-zinc-400">
                   <span v-if="release.year">{{ release.year }}</span>
                   <span v-if="release.trackCount">{{ release.trackCount }} tracks</span>
