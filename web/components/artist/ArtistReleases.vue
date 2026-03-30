@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, Search, LayoutList, LayoutGrid, HelpCircle, Disc3, Loader2 } from 'lucide-vue-next'
+import { Play, Pause, Search, LayoutList, LayoutGrid, HelpCircle, Disc3, Loader2 } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/components/TrackList.vue'
@@ -164,6 +164,7 @@ const listViewColumns: TrackListColumn[] = [
   { key: 'trackNumber', label: '#' },
   { key: 'title', label: 'Title' },
   { key: 'status', label: 'Status' },
+  { key: 'playCount', label: 'Plays' },
   { key: 'favorite' },
   { key: 'duration' },
 ]
@@ -171,12 +172,26 @@ const listViewColumns: TrackListColumn[] = [
 const releaseTrackColumns: TrackListColumn[] = [
   { key: 'trackNumber', label: '#' },
   { key: 'title', label: 'Title' },
+  { key: 'playCount', label: 'Plays' },
   { key: 'favorite' },
   { key: 'duration' },
 ]
 
 function toggleExpand(id: string) {
   expandedRelease.value = expandedRelease.value === id ? null : id
+}
+
+function isReleasePlaying(release: UnifiedRelease) {
+  const releaseId = release.localReleaseId || release.id
+  return player.isPlaying && player.currentTrack?.localReleaseId === releaseId
+}
+
+function handleReleaseClick(release: UnifiedRelease) {
+  if (isReleasePlaying(release)) {
+    player.togglePlay()
+  } else {
+    playRelease(release)
+  }
 }
 
 async function playRelease(release: UnifiedRelease) {
@@ -360,10 +375,12 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
                 </div>
                 <button
                   v-if="!isStreamMode && (release.localReleaseId || release.localTrackCount > 0)"
-                  class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover/cover:opacity-100"
-                  @click.stop="playRelease(release)"
+                  class="absolute inset-0 flex items-center justify-center bg-black/60 transition-opacity"
+                  :class="isReleasePlaying(release) ? 'opacity-100' : 'opacity-0 group-hover/cover:opacity-100'"
+                  @click.stop="handleReleaseClick(release)"
                 >
-                  <Play :size="14" class="text-zinc-50" />
+                  <Pause v-if="isReleasePlaying(release)" :size="14" class="text-zinc-50" />
+                  <Play v-else :size="14" class="text-zinc-50" />
                 </button>
               </div>
 
@@ -375,6 +392,7 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
                   <span v-if="release.localTrackCount && release.trackCount !== release.localTrackCount">
                     {{ release.localTrackCount }} local
                   </span>
+                  <span v-if="release.totalPlayCount">{{ release.totalPlayCount.toLocaleString() }} plays</span>
                 </div>
               </div>
 

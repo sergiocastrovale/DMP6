@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideClock, LucidePlay, LucideMusic } from 'lucide-vue-next'
+import { LucideClock, LucidePlay, LucidePause, LucideMusic } from 'lucide-vue-next'
 
 interface Decade {
   decade: number
@@ -107,6 +107,18 @@ async function loadMore() {
   }
   finally {
     loadingMore.value = false
+  }
+}
+
+function isReleasePlaying(releaseId: string) {
+  return playerStore.isPlaying && playerStore.currentTrack?.localReleaseId === releaseId
+}
+
+function handleReleaseClick(releaseId: string) {
+  if (isReleasePlaying(releaseId)) {
+    playerStore.togglePlay()
+  } else {
+    playRelease(releaseId)
   }
 }
 
@@ -231,11 +243,13 @@ onMounted(() => {
                 </div>
                 <button
                   v-if="!isStreamMode"
-                  class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
-                  @click="playRelease(release.id)"
+                  class="absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity"
+                  :class="isReleasePlaying(release.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+                  @click="handleReleaseClick(release.id)"
                 >
                   <div class="rounded-full bg-amber-500 p-3 text-zinc-950 shadow-lg">
-                    <LucidePlay class="size-6" fill="currentColor" />
+                    <LucidePause v-if="isReleasePlaying(release.id)" class="size-6" fill="currentColor" />
+                    <LucidePlay v-else class="size-6" fill="currentColor" />
                   </div>
                 </button>
               </div>

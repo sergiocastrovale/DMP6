@@ -9,6 +9,7 @@ export interface UnifiedRelease {
   image: string | null
   imageUrl: string | null
   trackCount: number
+  totalPlayCount: number
   localTrackCount: number
   isMusicBrainz: boolean
   localReleaseId: string | null

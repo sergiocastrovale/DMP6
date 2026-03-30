@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { Play, Clock, Heart } from 'lucide-vue-next'
+import { Play, Pause, Clock, Heart } from 'lucide-vue-next'
 import type { Track } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
 import { usePlayerStore } from '~/stores/player'
 
 export interface TrackListColumn {
-  key: 'release' | 'trackNumber' | 'title' | 'artist' | 'status' | 'favorite' | 'duration'
+  key: 'release' | 'trackNumber' | 'title' | 'artist' | 'status' | 'playCount' | 'favorite' | 'duration'
   label?: string
 }
 
@@ -42,6 +42,22 @@ function formatDuration(seconds: number | null): string {
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+function isTrackPlaying(trackId: string) {
+  return player.isPlaying && player.currentTrack?.id === trackId
+}
+
+function isCurrentTrack(trackId: string) {
+  return player.currentTrack?.id === trackId
+}
+
+function handleTrackClick(track: Track) {
+  if (isCurrentTrack(track.id)) {
+    player.togglePlay()
+  } else {
+    playTrack(track)
+  }
 }
 
 function playTrack(track: Track) {
@@ -104,6 +120,7 @@ function hasColumn(key: string) {
           <th v-if="hasColumn('title')" class="py-2 pl-3 text-left">Title</th>
           <th v-if="hasColumn('artist')" class="hidden py-2 pl-3 text-left md:table-cell">Artist</th>
           <th v-if="hasColumn('status')" class="hidden py-2 pl-3 text-left sm:table-cell">Status</th>
+          <th v-if="hasColumn('playCount')" class="w-16 py-2 pr-3 text-right text-zinc-500">Plays</th>
           <th v-if="hasColumn('favorite') && !isStreamMode" class="w-12 py-2 text-center" />
           <th v-if="hasColumn('duration')" class="w-16 py-2 pr-4 text-right">
             <Clock :size="14" class="inline" />
@@ -115,6 +132,7 @@ function hasColumn(key: string) {
           v-for="track in tracks"
           :key="track.id"
           class="group border-b border-zinc-800/50 transition-colors hover:bg-zinc-900 last:border-b-0"
+          :class="{ 'bg-zinc-900/50': isCurrentTrack(track.id) }"
         >
           <td v-if="hasColumn('release')" class="py-2 pl-4 text-zinc-400 text-xs truncate max-w-[200px]">
             {{ releaseMap?.[track.localReleaseId || '']?.title || track.album || '-' }}
@@ -123,14 +141,19 @@ function hasColumn(key: string) {
             <template v-if="isStreamMode">
               {{ track.trackNumber || '-' }}
             </template>
+            <template v-else-if="isTrackPlaying(track.id)">
+              <button class="text-amber-500" @click="handleTrackClick(track)">
+                <Pause :size="14" />
+              </button>
+            </template>
             <template v-else>
-              <span class="group-hover:hidden">{{ track.trackNumber || '-' }}</span>
-              <button class="hidden group-hover:inline text-zinc-50" @click="playTrack(track)">
+              <span class="group-hover:hidden" :class="{ 'text-amber-500': isCurrentTrack(track.id) }">{{ track.trackNumber || '-' }}</span>
+              <button class="hidden group-hover:inline text-zinc-50" @click="handleTrackClick(track)">
                 <Play :size="14" />
               </button>
             </template>
           </td>
-          <td v-if="hasColumn('title')" class="py-2 pl-3 text-zinc-50">{{ track.title || 'Unknown' }}</td>
+          <td v-if="hasColumn('title')" class="py-2 pl-3" :class="isCurrentTrack(track.id) ? 'text-amber-500' : 'text-zinc-50'">{{ track.title || 'Unknown' }}</td>
           <td v-if="hasColumn('artist')" class="hidden py-2 pl-3 text-zinc-400 md:table-cell">{{ track.artist || '-' }}</td>
           <td v-if="hasColumn('status')" class="hidden py-2 pl-3 sm:table-cell">
             <span
@@ -141,6 +164,7 @@ function hasColumn(key: string) {
               {{ statusConfig[releaseMap[track.localReleaseId || '']?.status || 'UNKNOWN']?.label }}
             </span>
           </td>
+          <td v-if="hasColumn('playCount')" class="py-2 pr-3 text-right tabular-nums text-zinc-500">{{ track.playCount || '' }}</td>
           <td v-if="hasColumn('favorite') && !isStreamMode" class="py-2 text-center">
             <button
               class="text-zinc-500 transition-colors hover:text-amber-500"

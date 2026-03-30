@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play } from 'lucide-vue-next'
+import { Play, Pause } from 'lucide-vue-next'
 import Initial from '~/components/artist/Initial.vue'
 
 const { isStreamMode } = useStreamMode()
@@ -9,6 +9,7 @@ const props = defineProps<{
   imageUrl: string | null
   title: string
   size?: 'sm' | 'md' | 'lg'
+  playing?: boolean
 }>()
 
 const emit = defineEmits<{ play: [] }>()
@@ -39,10 +40,12 @@ const sizeClass = computed(() => {
     </div>
     <button
       v-if="!isStreamMode"
-      class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
+      class="absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity"
+      :class="playing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
       @click="emit('play')"
     >
-      <Play :size="24" class="text-zinc-50" />
+      <Pause v-if="playing" :size="24" class="text-zinc-50" />
+      <Play v-else :size="24" class="text-zinc-50" />
     </button>
   </div>
 </template>

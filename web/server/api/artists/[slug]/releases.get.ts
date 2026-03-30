@@ -27,6 +27,7 @@ export default defineEventHandler(async (event) => {
               title: true,
               image: true,
               imageUrl: true,
+              totalPlayCount: true,
               tracks: { select: { id: true } },
             },
           },
@@ -55,6 +56,7 @@ export default defineEventHandler(async (event) => {
       imageUrl: true,
       matchStatus: true,
       releaseId: true,
+      totalPlayCount: true,
       tracks: { select: { id: true } },
     },
     orderBy: [{ year: 'asc' }, { title: 'asc' }],
@@ -83,6 +85,7 @@ export default defineEventHandler(async (event) => {
     image: string | null
     imageUrl: string | null
     trackCount: number
+    totalPlayCount: number
     localTrackCount: number
     isMusicBrainz: boolean
     localReleaseId: string | null
@@ -104,6 +107,7 @@ export default defineEventHandler(async (event) => {
       image: localRelease?.image || null,
       imageUrl: localRelease?.imageUrl || null,
       trackCount: mbr.tracks.length,
+      totalPlayCount: localRelease?.totalPlayCount || 0,
       localTrackCount: localRelease?.tracks.length || 0,
       isMusicBrainz: true,
       localReleaseId: localRelease?.id || null,
@@ -124,6 +128,7 @@ export default defineEventHandler(async (event) => {
       image: lr.image,
       imageUrl: lr.imageUrl,
       trackCount: 0,
+      totalPlayCount: lr.totalPlayCount,
       localTrackCount: lr.tracks.length,
       isMusicBrainz: false,
       localReleaseId: lr.id,
@@ -147,6 +152,7 @@ export default defineEventHandler(async (event) => {
       image: lr.image,
       imageUrl: lr.imageUrl,
       trackCount: 0,
+      totalPlayCount: lr.totalPlayCount,
       localTrackCount: lr.tracks.length,
       isMusicBrainz: false,
       localReleaseId: lr.id,

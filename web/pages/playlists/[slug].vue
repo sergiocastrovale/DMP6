@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideListMusic, LucidePlay, LucideMusic, LucideTrash2, LucideX } from 'lucide-vue-next'
+import { LucideListMusic, LucidePlay, LucidePause, LucideMusic, LucideTrash2, LucideX } from 'lucide-vue-next'
 import type { PlaylistDetail } from '~/types/playlist'
 
 const { isStreamMode } = useStreamMode()
@@ -46,6 +46,22 @@ function playAll() {
     return
   const tracks = playlist.value.tracks.map(pt => pt.track)
   playerStore.playTrack(tracks[0], tracks as any)
+}
+
+function isTrackPlaying(trackId: string) {
+  return playerStore.isPlaying && playerStore.currentTrack?.id === trackId
+}
+
+function isCurrentTrack(trackId: string) {
+  return playerStore.currentTrack?.id === trackId
+}
+
+function handleTrackClick(track: any) {
+  if (isCurrentTrack(track.id)) {
+    playerStore.togglePlay()
+  } else {
+    playTrack(track)
+  }
 }
 
 function playTrack(track: any) {
@@ -182,14 +198,21 @@ onMounted(() => {
           v-for="(pt, idx) in playlist.tracks"
           :key="pt.id"
           class="group flex items-center gap-3 border-b border-zinc-800 p-3 last:border-b-0 hover:bg-zinc-800/50 transition-colors"
+          :class="{ 'bg-zinc-800/30': isCurrentTrack(pt.track.id) }"
         >
           <!-- Track number / play button -->
           <button
-            class="flex size-10 flex-shrink-0 items-center justify-center text-sm text-zinc-500 group-hover:text-amber-500"
-            @click="playTrack(pt.track)"
+            class="flex size-10 flex-shrink-0 items-center justify-center text-sm"
+            :class="isCurrentTrack(pt.track.id) ? 'text-amber-500' : 'text-zinc-500 group-hover:text-amber-500'"
+            @click="handleTrackClick(pt.track)"
           >
-            <span class="group-hover:hidden">{{ idx + 1 }}</span>
-            <LucidePlay class="hidden size-4 group-hover:block" fill="currentColor" />
+            <template v-if="isTrackPlaying(pt.track.id)">
+              <LucidePause class="size-4" fill="currentColor" />
+            </template>
+            <template v-else>
+              <span class="group-hover:hidden">{{ idx + 1 }}</span>
+              <LucidePlay class="hidden size-4 group-hover:block" fill="currentColor" />
+            </template>
           </button>
 
           <!-- Cover art -->
@@ -207,7 +230,7 @@ onMounted(() => {
 
           <!-- Track info -->
           <div class="flex-1 overflow-hidden">
-            <p class="truncate text-sm font-medium text-zinc-50">
+            <p class="truncate text-sm font-medium" :class="isCurrentTrack(pt.track.id) ? 'text-amber-500' : 'text-zinc-50'">
               {{ pt.track.title }}
             </p>
             <div v-if="pt.track.release" class="flex items-center gap-2 text-xs text-zinc-400">
