@@ -10,9 +10,15 @@ export default defineEventHandler(async (event) => {
 
   const artist = await prisma.artist.findUnique({
     where: { slug },
+    select: { id: true },
+  })
+
+  if (!artist) throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
+
+  const mbReleaseLinks = await prisma.musicBrainzReleaseArtist.findMany({
+    where: { artistId: artist.id },
     select: {
-      id: true,
-      mbReleases: {
+      release: {
         select: {
           id: true,
           title: true,
@@ -33,12 +39,10 @@ export default defineEventHandler(async (event) => {
             },
           },
         },
-        orderBy: [{ year: 'asc' }, { title: 'asc' }],
       },
     },
   })
-
-  if (!artist) throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
+  const mbReleases = mbReleaseLinks.map(l => l.release)
 
   // Get all local releases for this artist (via LocalReleaseArtist junction)
   const releaseLinks = await prisma.localReleaseArtist.findMany({
@@ -112,7 +116,7 @@ export default defineEventHandler(async (event) => {
 
   const mbLinkedReleaseIds = new Set<string>()
 
-  for (const mbr of artist.mbReleases) {
+  for (const mbr of mbReleases) {
     const localRelease = localByMbId.get(mbr.id) || mbr.localReleases[0] || null
     if (localRelease) mbLinkedReleaseIds.add(localRelease.id)
     releases.push({
@@ -159,7 +163,7 @@ export default defineEventHandler(async (event) => {
 
   // Add collaboration albums (local releases linked to MB releases not in this artist's catalogue)
   // Fetch the linked MB release data so "Appears On" entries get real type/year/status/trackCount
-  const mbReleaseIds = new Set(artist.mbReleases.map(mbr => mbr.id))
+  const mbReleaseIds = new Set(mbReleases.map(mbr => mbr.id))
   const appearsOnCandidates = localReleases.filter(
     lr => lr.releaseId && !mbReleaseIds.has(lr.releaseId) && !mbLinkedReleaseIds.has(lr.id),
   )

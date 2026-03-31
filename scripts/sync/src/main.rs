@@ -1960,7 +1960,6 @@ async fn ensure_genre_cached(
 
 async fn upsert_mb_release(
     pool: &PgPool,
-    artist_id: &str,
     title: &str,
     type_id: &str,
     year: Option<i32>,
@@ -1970,16 +1969,15 @@ async fn upsert_mb_release(
     let now = Utc::now().naive_utc();
     let row: (String,) = sqlx::query_as(
         r#"INSERT INTO "MusicBrainzRelease"
-           (id, title, "artistId", "typeId", year, "musicbrainzId", status, "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6, 'UNKNOWN', $7, $7)
-           ON CONFLICT ("artistId", title) DO UPDATE SET
+           (id, title, "typeId", year, "musicbrainzId", status, "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, 'UNKNOWN', $6, $6)
+           ON CONFLICT ("musicbrainzId") DO UPDATE SET
              "typeId" = EXCLUDED."typeId", year = EXCLUDED.year,
-             "musicbrainzId" = EXCLUDED."musicbrainzId", "updatedAt" = EXCLUDED."updatedAt"
+             "updatedAt" = EXCLUDED."updatedAt"
            RETURNING id"#,
     )
     .bind(&id)
     .bind(title)
-    .bind(artist_id)
     .bind(type_id)
     .bind(year)
     .bind(mb_id)
@@ -1988,6 +1986,25 @@ async fn upsert_mb_release(
     .await?;
 
     Ok(row.0)
+}
+
+async fn ensure_mb_release_artist_link(
+    pool: &PgPool,
+    release_id: &str,
+    artist_id: &str,
+) -> Result<(), sqlx::Error> {
+    let id = cuid2::create_id();
+    sqlx::query(
+        r#"INSERT INTO "MusicBrainzReleaseArtist" (id, "releaseId", "artistId")
+           VALUES ($1, $2, $3)
+           ON CONFLICT ("releaseId", "artistId") DO NOTHING"#,
+    )
+    .bind(&id)
+    .bind(release_id)
+    .bind(artist_id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn batch_insert_mb_tracks(
@@ -3789,10 +3806,13 @@ async fn main() {
                         .bind(artist_id).execute(&pool).await.ok();
                     sqlx::query(r#"DELETE FROM "_ArtistGenres" WHERE "A" = $1"#)
                         .bind(artist_id).execute(&pool).await.ok();
-                    sqlx::query(r#"DELETE FROM "MusicBrainzReleaseTrack" WHERE "releaseId" IN (SELECT id FROM "MusicBrainzRelease" WHERE "artistId" = $1)"#)
+                    sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "artistId" = $1"#)
                         .bind(artist_id).execute(&pool).await.ok();
-                    sqlx::query(r#"DELETE FROM "MusicBrainzRelease" WHERE "artistId" = $1"#)
-                        .bind(artist_id).execute(&pool).await.ok();
+                    // Clean up orphaned releases (no artist links remaining)
+                    sqlx::query(r#"DELETE FROM "MusicBrainzReleaseTrack" WHERE "releaseId" IN (SELECT id FROM "MusicBrainzRelease" WHERE id NOT IN (SELECT "releaseId" FROM "MusicBrainzReleaseArtist"))"#)
+                        .execute(&pool).await.ok();
+                    sqlx::query(r#"DELETE FROM "MusicBrainzRelease" WHERE id NOT IN (SELECT "releaseId" FROM "MusicBrainzReleaseArtist")"#)
+                        .execute(&pool).await.ok();
                     sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#)
                         .bind(artist_id).execute(&pool).await.ok();
                     update_release_totals_for_artist(&pool, &primary_artist_id).await.ok();
@@ -3815,7 +3835,9 @@ async fn main() {
 
                 // Batch fetch all MB releases + their tracks in 2 queries (not N+1)
                 let mb_releases: Vec<(String, String)> = sqlx::query_as(
-                    r#"SELECT id, title FROM "MusicBrainzRelease" WHERE "artistId" = $1"#,
+                    r#"SELECT mbr.id, mbr.title FROM "MusicBrainzRelease" mbr
+                       JOIN "MusicBrainzReleaseArtist" mbra ON mbr.id = mbra."releaseId"
+                       WHERE mbra."artistId" = $1"#,
                 )
                 .bind(&primary_artist_id)
                 .fetch_all(&pool)
@@ -4036,7 +4058,7 @@ async fn main() {
                 };
 
                 let mb_release_id =
-                    match upsert_mb_release(&pool, artist_id, &rg.title, &type_id, year, &rg.id).await {
+                    match upsert_mb_release(&pool, &rg.title, &type_id, year, &rg.id).await {
                         Ok(id) => id,
                         Err(e) => {
                             eprintln!(
@@ -4050,6 +4072,7 @@ async fn main() {
                             continue;
                         }
                     };
+                ensure_mb_release_artist_link(&pool, &mb_release_id, artist_id).await.ok();
 
                 let release_tracks =
                     match mb_get_release_tracks(&http_client, &rg.id, &mut limiter).await {
@@ -4419,10 +4442,11 @@ async fn main() {
                                 Err(_) => continue,
                             };
 
-                            let mb_release_id = match upsert_mb_release(&pool, &extra_artist_id, &rg.title, &type_id, year, &rg.id).await {
+                            let mb_release_id = match upsert_mb_release(&pool, &rg.title, &type_id, year, &rg.id).await {
                                 Ok(id) => id,
                                 Err(_) => { release_failures += 1; continue; }
                             };
+                            ensure_mb_release_artist_link(&pool, &mb_release_id, &extra_artist_id).await.ok();
 
                             match mb_get_release_tracks(&http_client, &rg.id, &mut limiter).await {
                                 Ok(rt) => {

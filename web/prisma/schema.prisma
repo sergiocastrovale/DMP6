@@ -47,7 +47,7 @@ model Artist {
   updatedAt         DateTime             @updatedAt
   urls              ArtistUrl[]          @relation("ArtistUrls")
   localReleases     LocalReleaseArtist[]
-  mbReleases        MusicBrainzRelease[] @relation("ArtistMbReleases")
+  mbReleases        MusicBrainzReleaseArtist[]
   genres            Genre[]              @relation("ArtistGenres")
   trackArtists      TrackArtist[]        @relation("ArtistTracks")
 
@@ -107,24 +107,21 @@ model ReleaseType {
 model MusicBrainzRelease {
   id             String                  @id @default(cuid())
   title          String                  @db.VarChar(500)
-  artistId       String
   typeId         String
   year           Int?
-  musicbrainzId  String?
+  musicbrainzId  String                  @unique
   status         ReleaseStatus           @default(UNKNOWN)
   statusReason   String?
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
   favorite       FavoriteRelease?
   localReleases  LocalRelease[]
-  artist         Artist                  @relation("ArtistMbReleases", fields: [artistId], references: [id], onDelete: Cascade)
+  artists        MusicBrainzReleaseArtist[]
   type           ReleaseType             @relation(fields: [typeId], references: [id])
   genres         Genre[]                 @relation("ReleaseGenres")
   tracks         MusicBrainzReleaseTrack[]
 
-  @@unique([artistId, title])
   @@index([typeId])
-  @@index([musicbrainzId])
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +190,23 @@ model LocalReleaseArtist {
 
   @@unique([localReleaseId, artistId])
   @@index([localReleaseId])
+  @@index([artistId])
+}
+
+// ---------------------------------------------------------------------------
+// MusicBrainzReleaseArtist (junction: MusicBrainzRelease ↔ Artist)
+// ---------------------------------------------------------------------------
+
+model MusicBrainzReleaseArtist {
+  id        String             @id @default(cuid())
+  releaseId String
+  artistId  String
+  createdAt DateTime           @default(now())
+  release   MusicBrainzRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  artist    Artist             @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([releaseId, artistId])
+  @@index([releaseId])
   @@index([artistId])
 }
 

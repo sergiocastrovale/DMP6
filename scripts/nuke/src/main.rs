@@ -200,6 +200,7 @@ async fn main() {
         "LocalReleaseTrack",
         "LocalRelease",
         "MusicBrainzReleaseTrack",
+        "MusicBrainzReleaseArtist",
         "MusicBrainzRelease",
         "ArtistUrl",
         "_ArtistGenres",

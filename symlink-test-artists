@@ -4,14 +4,13 @@
 
 # Artist folders to symlink
 ARTISTS=(
-    "070 Shake"
+    "Plini"
     "AC DC"
     "...And Oceans"
     "Crosby, Stills, Nash & Young"
     "Ayreon"
     "Tyler, The Creator"
     "Godley & Creme"
-    "FŒHN"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

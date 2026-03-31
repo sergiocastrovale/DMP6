@@ -301,7 +301,8 @@ async fn check_missing_releases(
     let rows: Vec<(String, String, String, Option<i32>)> = sqlx::query_as(
         r#"SELECT mbr.title, a.name, rt.name, mbr.year
            FROM "MusicBrainzRelease" mbr
-           JOIN "Artist" a ON mbr."artistId" = a.id
+           JOIN "MusicBrainzReleaseArtist" mbra ON mbr.id = mbra."releaseId"
+           JOIN "Artist" a ON mbra."artistId" = a.id
            JOIN "ReleaseType" rt ON mbr."typeId" = rt.id
            WHERE mbr.status = 'MISSING'
            ORDER BY a.name, mbr.title"#,
