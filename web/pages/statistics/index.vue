@@ -78,26 +78,26 @@ onMounted(() => {
           Library
         </h2>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          <NuxtLink to="/statistics/artists" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideUsers class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.artists) }}</p>
             <p class="text-xs text-zinc-500">Artists</p>
-          </div>
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          </NuxtLink>
+          <NuxtLink to="/statistics/releases" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideDisc class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.releases) }}</p>
             <p class="text-xs text-zinc-500">Releases</p>
-          </div>
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          </NuxtLink>
+          <NuxtLink to="/statistics/tracks" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideMusic2 class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.tracks) }}</p>
             <p class="text-xs text-zinc-500">Tracks</p>
-          </div>
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          </NuxtLink>
+          <NuxtLink to="/statistics/genres" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideTag class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.genres) }}</p>
             <p class="text-xs text-zinc-500">Genres</p>
-          </div>
+          </NuxtLink>
         </div>
       </section>
 
@@ -107,11 +107,11 @@ onMounted(() => {
           Playback
         </h2>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          <NuxtLink to="/statistics/plays" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucidePlay class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.plays) }}</p>
             <p class="text-xs text-zinc-500">Total Plays</p>
-          </div>
+          </NuxtLink>
           <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
             <LucideClock class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatPlaytime(stats.playtime) }}</p>
@@ -126,16 +126,16 @@ onMounted(() => {
           MusicBrainz Sync
         </h2>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          <NuxtLink to="/statistics/artists-synced" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideRefreshCw class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.artistsSyncedWithMusicbrainz) }}</p>
             <p class="text-xs text-zinc-500">Artists Synced</p>
-          </div>
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          </NuxtLink>
+          <NuxtLink to="/statistics/releases-synced" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideRefreshCw class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.releasesSyncedWithMusicbrainz) }}</p>
             <p class="text-xs text-zinc-500">Releases Synced</p>
-          </div>
+          </NuxtLink>
         </div>
       </section>
 
@@ -144,16 +144,16 @@ onMounted(() => {
           Cover Art
         </h2>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          <NuxtLink to="/statistics/artists-with-art" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideImage class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.artistsWithCoverArt) }}</p>
             <p class="text-xs text-zinc-500">Artists with photo</p>
-          </div>
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          </NuxtLink>
+          <NuxtLink to="/statistics/releases-with-art" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideImage class="mb-2 size-5 text-amber-500" />
             <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.releasesWithCoverArt) }}</p>
             <p class="text-xs text-zinc-500">Releases with cover art</p>
-          </div>
+          </NuxtLink>
         </div>
       </section>
     </div>

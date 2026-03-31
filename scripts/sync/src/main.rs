@@ -2349,7 +2349,7 @@ async fn check_release_status(
     mb_release_id: &str,
     mb_release_title: &str,
     mb_tracks: &[(String, Option<i32>)],
-) -> Result<(MatchStatus, Option<JsonValue>, Option<JsonValue>, f64), sqlx::Error> {
+) -> Result<(MatchStatus, Option<String>, f64), sqlx::Error> {
     // Fetch all local releases for this artist and match by normalized title.
     // Normalization strips punctuation (hyphens, en-dashes, etc.) so
     // "Collateral Damage - Complete War Series" matches "Collateral Damage – Complete War Series".
@@ -2366,7 +2366,7 @@ async fn check_release_status(
     let local_release_id = match all_local.iter().find(|(_, t)| normalize_title(t) == mb_title_norm) {
         Some((id, _)) => id.clone(),
         None => {
-            return Ok((MatchStatus::Missing, None, None, 0.0));
+            return Ok((MatchStatus::Missing, None, 0.0));
         }
     };
 
@@ -2411,17 +2411,16 @@ async fn check_release_status(
     let matched_count = mb_count - missing.len() as f64;
 
     if missing.is_empty() && extra.is_empty() {
-        Ok((MatchStatus::Complete, None, None, 1.0))
+        Ok((MatchStatus::Complete, None, 1.0))
     } else if missing.is_empty() && !extra.is_empty() {
-        let extra_json = serde_json::to_value(&extra).ok();
-        Ok((MatchStatus::ExtraTracks, None, extra_json, 1.0))
+        let reason = format!("Found all {} songs locally. Extra tracks: {}", mb_tracks.len(), extra.join(", "));
+        Ok((MatchStatus::ExtraTracks, Some(reason), 1.0))
     } else if !missing.is_empty() {
-        let missing_json = serde_json::to_value(&missing).ok();
-        let extra_json = if extra.is_empty() { None } else { serde_json::to_value(&extra).ok() };
+        let reason = format!("Found {}/{} songs locally. Missing {}", matched_count as usize, mb_tracks.len(), missing.join(", "));
         let score = if mb_count > 0.0 { matched_count / mb_count } else { 0.0 };
-        Ok((MatchStatus::Incomplete, missing_json, extra_json, score))
+        Ok((MatchStatus::Incomplete, Some(reason), score))
     } else {
-        Ok((MatchStatus::Unknown, None, None, 0.0))
+        Ok((MatchStatus::Unknown, None, 0.0))
     }
 }
 
@@ -3826,26 +3825,26 @@ async fn main() {
                 }
 
                 let mut linked = 0u32;
-                let mut status_updates: Vec<(String, String)> = Vec::new();
+                let mut status_updates: Vec<(String, String, Option<String>)> = Vec::new();
                 for (mb_release_id, mb_release_title) in &mb_releases {
                     let mb_tracks = tracks_by_release.get(mb_release_id)
                         .map(|v| v.as_slice())
                         .unwrap_or(&[]);
 
-                    if let Ok((status, _, _, _)) = check_release_status(
+                    if let Ok((status, reason, _)) = check_release_status(
                         &pool, artist_id, mb_release_id, mb_release_title, mb_tracks,
                     ).await {
                         if status != MatchStatus::Missing {
                             linked += 1;
-                            status_updates.push((status.as_str().to_string(), mb_release_id.clone()));
+                            status_updates.push((status.as_str().to_string(), mb_release_id.clone(), reason));
                         }
                     }
                 }
 
-                // Batch update match statuses
+                // Batch update LocalRelease match statuses
                 if !status_updates.is_empty() {
-                    let statuses: Vec<String> = status_updates.iter().map(|(s, _)| s.clone()).collect();
-                    let rel_ids: Vec<String> = status_updates.iter().map(|(_, id)| id.clone()).collect();
+                    let statuses: Vec<String> = status_updates.iter().map(|(s, _, _)| s.clone()).collect();
+                    let rel_ids: Vec<String> = status_updates.iter().map(|(_, id, _)| id.clone()).collect();
                     sqlx::query(
                         r#"UPDATE "LocalRelease" SET
                              "matchStatus" = t.status::"ReleaseStatus",
@@ -3858,6 +3857,23 @@ async fn main() {
                     .execute(&pool)
                     .await
                     .ok();
+
+                    // Update MusicBrainzRelease with status + reason
+                    for (status_str, mb_id, reason) in &status_updates {
+                        sqlx::query(
+                            r#"UPDATE "MusicBrainzRelease" SET
+                                 status = $1::"ReleaseStatus",
+                                 "statusReason" = $2,
+                                 "updatedAt" = NOW()
+                               WHERE id = $3"#,
+                        )
+                        .bind(status_str)
+                        .bind(reason)
+                        .bind(mb_id)
+                        .execute(&pool)
+                        .await
+                        .ok();
+                    }
                 }
 
                 if linked > 0 {
@@ -4053,18 +4069,23 @@ async fn main() {
                         .map(|track| (track.title.clone(), track.position.map(|p| p as i32)))
                         .collect();
 
-                    let (status, _missing, _extra, score) = match check_release_status(
+                    let (status, reason, score) = match check_release_status(
                         &pool, artist_id, &mb_release_id, &rg.title, &mb_track_pairs,
                     ).await {
                         Ok(result) => result,
-                        Err(_) => (MatchStatus::Unknown, None, None, 0.0),
+                        Err(_) => (MatchStatus::Unknown, None, 0.0),
                     };
 
                     let now = Utc::now().naive_utc();
                     sqlx::query(
-                        r#"UPDATE "MusicBrainzRelease" SET status = $1::"ReleaseStatus", "updatedAt" = $2 WHERE id = $3"#,
+                        r#"UPDATE "MusicBrainzRelease" SET
+                             status = $1::"ReleaseStatus",
+                             "statusReason" = $2,
+                             "updatedAt" = $3
+                           WHERE id = $4"#,
                     )
                     .bind(status.as_str())
+                    .bind(&reason)
                     .bind(now)
                     .bind(&mb_release_id)
                     .execute(&pool)
@@ -4194,6 +4215,7 @@ async fn main() {
                     found
                 };
 
+                let mut seen_extra_ids: HashSet<String> = pending_extra_artists.iter().map(|(_, m)| m.id.clone()).collect();
                 for (_artist_id, artist_name, raw_artist, _album_title) in &compound_candidates {
                     let tag = raw_artist.as_deref().unwrap_or(artist_name);
 
@@ -4203,9 +4225,7 @@ async fn main() {
                         &http_client, tag, artist_name, &folder_anchor, &mut limiter,
                     ).await {
                         for (name, m) in additional {
-                            if !synced_mb_ids.contains_key(&m.id) {
-                                println!("    {} Kept '{}' (from track credit '{}')",
-                                    "✓".green(), name.bright_white(), tag.bright_black());
+                            if !synced_mb_ids.contains_key(&m.id) && seen_extra_ids.insert(m.id.clone()) {
                                 pending_extra_artists.push((name, m));
                             }
                         }
@@ -4393,15 +4413,15 @@ async fn main() {
                                         let mb_track_pairs: Vec<(String, Option<i32>)> = tracks.iter()
                                             .map(|t| (t.title.clone(), t.position.map(|p| p as i32)))
                                             .collect();
-                                        let (status, _, _, score) = match check_release_status(
+                                        let (status, reason, score) = match check_release_status(
                                             &pool, &extra_artist_id, &mb_release_id, &rg.title, &mb_track_pairs,
                                         ).await {
                                             Ok(r) => r,
-                                            Err(_) => (MatchStatus::Unknown, None, None, 0.0),
+                                            Err(_) => (MatchStatus::Unknown, None, 0.0),
                                         };
                                         let now = Utc::now().naive_utc();
-                                        sqlx::query(r#"UPDATE "MusicBrainzRelease" SET status = $1::"ReleaseStatus", "updatedAt" = $2 WHERE id = $3"#)
-                                            .bind(status.as_str()).bind(now).bind(&mb_release_id).execute(&pool).await.ok();
+                                        sqlx::query(r#"UPDATE "MusicBrainzRelease" SET status = $1::"ReleaseStatus", "statusReason" = $2, "updatedAt" = $3 WHERE id = $4"#)
+                                            .bind(status.as_str()).bind(&reason).bind(now).bind(&mb_release_id).execute(&pool).await.ok();
                                         sqlx::query(r#"UPDATE "LocalRelease" SET "matchStatus" = $1::"ReleaseStatus", "updatedAt" = NOW() WHERE "releaseId" = $2"#)
                                             .bind(status.as_str()).bind(&mb_release_id).execute(&pool).await.ok();
                                         release_scores.push(score);

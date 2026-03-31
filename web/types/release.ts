@@ -14,6 +14,7 @@ export interface UnifiedRelease {
   isMusicBrainz: boolean
   localReleaseId: string | null
   coArtists?: { name: string; slug: string }[]
+  statusReason?: string | null
 }
 
 export type ReleaseStatus =

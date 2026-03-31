@@ -112,6 +112,7 @@ model MusicBrainzRelease {
   year           Int?
   musicbrainzId  String?
   status         ReleaseStatus           @default(UNKNOWN)
+  statusReason   String?
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
   favorite       FavoriteRelease?

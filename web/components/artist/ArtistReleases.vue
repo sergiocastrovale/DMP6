@@ -6,6 +6,10 @@ import type { TrackListColumn } from '~/components/TrackList.vue'
 import { usePlayerStore } from '~/stores/player'
 import { statuses } from '~/helpers/constants'
 
+function statusDescription(status: string) {
+  return statuses.find(s => s.value === status)?.description ?? ''
+}
+
 const props = defineProps<{
   slug: string
 }>()
@@ -28,7 +32,6 @@ const searchQuery = ref('')
 const statusFilter = ref<string | null>(null)
 const viewMode = ref<'catalogue' | 'list'>('catalogue')
 const expandedRelease = ref<string | null>(null)
-const showStatusHelp = ref(false)
 const allTracks = ref<Track[]>([])
 const allTracksLoading = ref(false)
 const allTracksLoaded = ref(false)
@@ -329,34 +332,39 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
         <div class="flex items-center gap-4 px-3 text-xs text-zinc-500">
           <div class="w-10 shrink-0" />
           <div class="min-w-0 flex-1" />
-          <div class="relative flex items-center gap-1 shrink-0">
+          <div class="flex items-center gap-1 shrink-0">
             <span>Status</span>
-            <button class="text-zinc-500 hover:text-zinc-300 transition-colors" @click="showStatusHelp = !showStatusHelp">
-              <HelpCircle :size="12" />
-            </button>
-            <div
-              v-if="showStatusHelp"
-              class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl"
-            >
-              <p class="mb-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Release Statuses</p>
-              <div class="flex flex-col gap-2">
-                <div v-for="s in statuses" :key="s.value" class="flex flex-col gap-1">
-                  <span :class="s.classes" class="inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
-                    {{ s.label }}
-                  </span>
-                  <p class="text-xs text-zinc-400">{{ s.description }}</p>
+            <Popover trigger="hover">
+              <template #trigger>
+                <button class="text-zinc-500 hover:text-zinc-300 transition-colors">
+                  <HelpCircle :size="12" />
+                </button>
+              </template>
+              <template #content>
+                <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
+                  <p class="mb-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Release Statuses</p>
+                  <div class="flex flex-col gap-2">
+                    <div v-for="s in statuses" :key="s.value" class="flex flex-col gap-1">
+                      <span :class="s.classes" class="inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
+                        {{ s.label }}
+                      </span>
+                      <p class="text-xs text-zinc-400">{{ s.description }}</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </template>
+            </Popover>
           </div>
         </div>
-        <div v-if="showStatusHelp" class="fixed inset-0 z-10" @click="showStatusHelp = false" />
 
         <div class="flex flex-col gap-1">
           <div
             v-for="release in filteredReleases"
             :key="release.id"
-            class="rounded-lg border border-zinc-800 bg-zinc-900/50 transition-colors hover:border-zinc-700"
+            :class="[
+              'rounded-lg border border-zinc-800 bg-zinc-900/50 transition-colors',
+              release.status !== 'MISSING' && 'hover:border-zinc-700',
+            ]"
           >
             <div
               class="flex cursor-pointer items-center gap-4 p-3"
@@ -385,36 +393,40 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
               </div>
 
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-zinc-50">
-                  <template v-if="release.coArtists?.length">
-                    <span class="text-zinc-500">(with
-                      <template v-for="(co, i) in release.coArtists" :key="co.slug">
-                        <NuxtLink
-                          :to="`/artist/${co.slug}`"
-                          class="text-zinc-400 hover:text-amber-500 transition-colors"
-                          @click.stop
-                        >{{ co.name }}</NuxtLink><template v-if="i < release.coArtists.length - 1">, </template>
-                      </template>)
-                    </span>
-                    {{ ' ' }}
-                  </template>
-                  {{ release.title }}
-                </p>
+                <p class="truncate text-sm font-medium text-zinc-50">{{ release.title }}</p>
                 <div class="flex items-center gap-3 text-xs text-zinc-400">
                   <span v-if="release.year">{{ release.year }}</span>
                   <span v-if="release.trackCount">{{ release.trackCount }} tracks</span>
                   <span v-if="release.localTrackCount && release.trackCount !== release.localTrackCount">
                     {{ release.localTrackCount }} local
                   </span>
+                  <span v-if="release.coArtists?.length" class="text-zinc-500">Feat.
+                    <template v-for="(co, i) in release.coArtists" :key="co.slug">
+                      <NuxtLink
+                        :to="`/artist/${co.slug}`"
+                        class="text-zinc-400 hover:text-amber-500 transition-colors"
+                        @click.stop
+                      >{{ co.name }}</NuxtLink><template v-if="i < release.coArtists.length - 1">, </template>
+                    </template>
+                  </span>
                   <span v-if="release.totalPlayCount">{{ release.totalPlayCount.toLocaleString() }} plays</span>
                 </div>
               </div>
 
-              <ReleaseStatusBadge :status="release.status" />
+              <Popover trigger="hover">
+                <template #trigger>
+                  <ReleaseStatusBadge :status="release.status" />
+                </template>
+                <template #content>
+                  <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
+                    <p class="text-xs text-zinc-400">{{ release.statusReason || statusDescription(release.status) }}</p>
+                  </div>
+                </template>
+              </Popover>
             </div>
 
             <div v-if="expandedRelease === release.id && (release.localReleaseId || release.localTrackCount > 0)" class="border-t border-zinc-800 px-3 pb-3">
-              <ReleaseTracksTable :release-id="release.localReleaseId || release.id" :columns="releaseTrackColumns" />
+              <ReleaseTracksTable :release-id="release.isMusicBrainz ? release.id : (release.localReleaseId || release.id)" :columns="releaseTrackColumns" />
             </div>
           </div>
         </div>

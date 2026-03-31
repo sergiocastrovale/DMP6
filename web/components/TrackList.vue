@@ -131,14 +131,17 @@ function hasColumn(key: string) {
         <tr
           v-for="track in tracks"
           :key="track.id"
-          class="group border-b border-zinc-800/50 transition-colors hover:bg-zinc-900 last:border-b-0"
-          :class="{ 'bg-zinc-900/50': isCurrentTrack(track.id) }"
+          class="group border-b border-zinc-800/50 transition-colors last:border-b-0"
+          :class="[
+            track.missing ? 'opacity-50' : 'hover:bg-zinc-900',
+            isCurrentTrack(track.id) && 'bg-zinc-900/50',
+          ]"
         >
           <td v-if="hasColumn('release')" class="py-2 pl-4 text-zinc-400 text-xs truncate max-w-[200px]">
             {{ releaseMap?.[track.localReleaseId || '']?.title || track.album || '-' }}
           </td>
           <td v-if="hasColumn('trackNumber')" class="py-2 pl-4 text-center text-zinc-500">
-            <template v-if="isStreamMode">
+            <template v-if="isStreamMode || track.missing">
               {{ track.trackNumber || '-' }}
             </template>
             <template v-else-if="isTrackPlaying(track.id)">
@@ -153,7 +156,16 @@ function hasColumn(key: string) {
               </button>
             </template>
           </td>
-          <td v-if="hasColumn('title')" class="py-2 pl-3" :class="isCurrentTrack(track.id) ? 'text-amber-500' : 'text-zinc-50'">{{ track.title || 'Unknown' }}</td>
+          <td v-if="hasColumn('title')" class="py-2 pl-3" :class="[isCurrentTrack(track.id) ? 'text-amber-500' : 'text-zinc-50', track.missing && 'line-through text-zinc-500']">
+            {{ track.title || 'Unknown' }}
+            <template v-if="track.artists?.length">
+              <span class="text-zinc-500"> Feat.
+                <template v-for="(a, i) in track.artists" :key="a.slug">
+                  <NuxtLink :to="`/artist/${a.slug}`" class="text-zinc-400 hover:text-amber-500 transition-colors" @click.stop>{{ a.name }}</NuxtLink><template v-if="i < track.artists.length - 1">, </template>
+                </template>
+              </span>
+            </template>
+          </td>
           <td v-if="hasColumn('artist')" class="hidden py-2 pl-3 text-zinc-400 md:table-cell">{{ track.artist || '-' }}</td>
           <td v-if="hasColumn('status')" class="hidden py-2 pl-3 sm:table-cell">
             <span
@@ -174,7 +186,7 @@ function hasColumn(key: string) {
               <Heart :size="14" :fill="favoriteTracks.has(track.id) ? 'currentColor' : 'none'" />
             </button>
           </td>
-          <td v-if="hasColumn('duration')" class="py-2 pr-4 text-right tabular-nums text-zinc-500">{{ formatDuration(track.duration) }}</td>
+          <td v-if="hasColumn('duration')" class="py-2 pr-4 text-right tabular-nums text-zinc-500" :class="track.missing && 'line-through'">{{ formatDuration(track.duration) }}</td>
         </tr>
       </tbody>
     </table>

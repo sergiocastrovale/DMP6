@@ -24,17 +24,19 @@ function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
   if (!data.value) return
   const release = (data.value as any).release
 
-  const playerTracks = allTracks.map(t => ({
-    id: t.id,
-    title: t.title || 'Unknown',
-    artist: t.artist || 'Unknown',
-    album: t.album || 'Unknown',
-    duration: t.duration || 0,
-    artistSlug: release?.artistSlug || null,
-    releaseImage: release?.image ? `/img/releases/${release.image}` : null,
-    releaseImageUrl: release?.imageUrl || null,
-    localReleaseId: t.localReleaseId,
-  }))
+  const playerTracks = allTracks
+    .filter(t => !t.missing)
+    .map(t => ({
+      id: t.id,
+      title: t.title || 'Unknown',
+      artist: t.artist || 'Unknown',
+      album: t.album || 'Unknown',
+      duration: t.duration || 0,
+      artistSlug: release?.artistSlug || null,
+      releaseImage: release?.image ? `/img/releases/${release.image}` : null,
+      releaseImageUrl: release?.imageUrl || null,
+      localReleaseId: t.localReleaseId,
+    }))
   const start = playerTracks.find(pt => pt.id === startTrack.id)
   player.setQueue(playerTracks, start)
 }

@@ -12,6 +12,8 @@ export interface Track {
   playCount: number
   filePath: string
   localReleaseId: string | null
+  artists?: { name: string; slug: string }[]
+  missing?: boolean
 }
 
 export interface TrackWithRelease extends Track {

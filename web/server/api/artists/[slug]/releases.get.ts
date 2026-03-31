@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
           year: true,
           musicbrainzId: true,
           status: true,
+          statusReason: true,
           type: { select: { name: true, slug: true } },
           tracks: { select: { id: true } },
           localReleases: {
@@ -106,6 +107,7 @@ export default defineEventHandler(async (event) => {
     isMusicBrainz: boolean
     localReleaseId: string | null
     coArtists?: { name: string; slug: string }[]
+    statusReason?: string | null
   }> = []
 
   const mbLinkedReleaseIds = new Set<string>()
@@ -129,6 +131,7 @@ export default defineEventHandler(async (event) => {
       isMusicBrainz: true,
       localReleaseId: localRelease?.id || null,
       coArtists: localRelease ? coArtistMap.get(localRelease.id) : undefined,
+      statusReason: mbr.statusReason,
     })
   }
 
@@ -154,28 +157,47 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Add collaboration albums (TrackArtist-linked but not in this artist's mbReleases)
+  // Add collaboration albums (local releases linked to MB releases not in this artist's catalogue)
+  // Fetch the linked MB release data so "Appears On" entries get real type/year/status/trackCount
   const mbReleaseIds = new Set(artist.mbReleases.map(mbr => mbr.id))
-  for (const lr of localReleases) {
-    if (!lr.releaseId) continue
-    if (mbReleaseIds.has(lr.releaseId)) continue
-    if (mbLinkedReleaseIds.has(lr.id)) continue
+  const appearsOnCandidates = localReleases.filter(
+    lr => lr.releaseId && !mbReleaseIds.has(lr.releaseId) && !mbLinkedReleaseIds.has(lr.id),
+  )
+  const appearsOnMbIds = appearsOnCandidates.map(lr => lr.releaseId!)
+  const appearsOnMbReleases = appearsOnMbIds.length > 0
+    ? await prisma.musicBrainzRelease.findMany({
+      where: { id: { in: appearsOnMbIds } },
+      select: {
+        id: true,
+        year: true,
+        status: true,
+        statusReason: true,
+        type: { select: { name: true, slug: true } },
+        tracks: { select: { id: true } },
+      },
+    })
+    : []
+  const appearsOnMbMap = new Map(appearsOnMbReleases.map(r => [r.id, r]))
+
+  for (const lr of appearsOnCandidates) {
+    const mbr = appearsOnMbMap.get(lr.releaseId!)
     releases.push({
-      id: lr.id,
+      id: mbr?.id ?? lr.id,
       title: lr.title,
-      year: lr.year,
-      type: 'Appears On',
-      typeSlug: 'appears-on',
+      year: mbr?.year ?? lr.year,
+      type: mbr ? mbr.type.name : 'Appears On',
+      typeSlug: mbr ? mbr.type.slug : 'appears-on',
       musicbrainzId: null,
-      status: lr.matchStatus,
+      status: mbr?.status ?? lr.matchStatus,
       image: lr.image,
       imageUrl: lr.imageUrl,
-      trackCount: 0,
+      trackCount: mbr?.tracks.length ?? 0,
       totalPlayCount: lr.totalPlayCount,
       localTrackCount: lr.tracks.length,
-      isMusicBrainz: false,
+      isMusicBrainz: !!mbr,
       localReleaseId: lr.id,
       coArtists: coArtistMap.get(lr.id),
+      statusReason: mbr?.statusReason ?? null,
     })
   }
 
