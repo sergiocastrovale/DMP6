@@ -90,21 +90,45 @@ async function getLocalReleaseTracks(
     orderBy: [{ discNumber: 'asc' }, { trackNumber: 'asc' }],
   })
 
-  const enrichedTracks = tracks.map(({ trackArtists, ...t }) => ({
-    ...t,
-    artists: trackArtists
-      .filter(ta => !albumArtistSlugs.has(ta.artist.slug))
-      .map(ta => ({ name: ta.artist.name, slug: ta.artist.slug })),
-    missing: false,
-  }))
+  // Build enriched tracks, checking for MB title differences via substring matching
+  const enrichedTracks: any[] = []
+  const matchedMbIds = new Set<string>()
 
-  // Add missing MB tracks that have no local match (by normalized title)
+  for (const { trackArtists, ...t } of tracks) {
+    let mbTitle: string | null = null
+
+    if (mbTracks) {
+      const localNorm = normalizeTitle(t.title || '')
+      // Find the MB track that matches this local track (exact or either-way substring)
+      const matchedMb = mbTracks.find((mbt) => {
+        const mbNorm = normalizeTitle(mbt.title)
+        return mbNorm === localNorm
+          || (localNorm.length > 0 && mbNorm.length > 0
+            && (mbNorm.includes(localNorm) || localNorm.includes(mbNorm)))
+      })
+      if (matchedMb) {
+        matchedMbIds.add(matchedMb.id)
+        // Only set mbTitle if the titles actually differ
+        if (normalizeTitle(matchedMb.title) !== normalizeTitle(t.title || '')) {
+          mbTitle = matchedMb.title
+        }
+      }
+    }
+
+    enrichedTracks.push({
+      ...t,
+      artists: trackArtists
+        .filter(ta => !albumArtistSlugs.has(ta.artist.slug))
+        .map(ta => ({ name: ta.artist.name, slug: ta.artist.slug })),
+      missing: false,
+      mbTitle,
+    })
+  }
+
+  // Add truly missing MB tracks (no exact or substring match)
   if (mbTracks) {
-    const localTitleSet = new Set(
-      tracks.map(t => normalizeTitle(t.title || '')),
-    )
     for (const mbt of mbTracks) {
-      if (!localTitleSet.has(normalizeTitle(mbt.title))) {
+      if (!matchedMbIds.has(mbt.id)) {
         enrichedTracks.push({
           id: mbt.id,
           title: mbt.title,
@@ -121,6 +145,7 @@ async function getLocalReleaseTracks(
           localReleaseId: null,
           artists: [],
           missing: true,
+          mbTitle: null,
         })
       }
     }

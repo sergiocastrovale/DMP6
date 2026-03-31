@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, Pause, Clock, Heart } from 'lucide-vue-next'
+import { Play, Pause, Clock, Heart, AlertTriangle } from 'lucide-vue-next'
 import type { Track } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
 import { usePlayerStore } from '~/stores/player'
@@ -158,6 +158,16 @@ function hasColumn(key: string) {
           </td>
           <td v-if="hasColumn('title')" class="py-2 pl-3" :class="[isCurrentTrack(track.id) ? 'text-amber-500' : 'text-zinc-50', track.missing && 'line-through text-zinc-500']">
             {{ track.title || 'Unknown' }}
+            <Popover v-if="track.mbTitle" trigger="hover">
+              <template #trigger>
+                <AlertTriangle :size="12" class="mb-0.5 ml-1 inline text-amber-500/70" />
+              </template>
+              <template #content>
+                <div class="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
+                  <p class="text-xs text-zinc-400">Title is slightly different in MusicBrainz: <span class="text-zinc-300">{{ track.mbTitle }}</span></p>
+                </div>
+              </template>
+            </Popover>
             <template v-if="track.artists?.length">
               <span class="text-zinc-500"> Feat.
                 <template v-for="(a, i) in track.artists" :key="a.slug">

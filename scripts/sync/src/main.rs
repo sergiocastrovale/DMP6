@@ -2395,15 +2395,34 @@ async fn check_release_status(
         .map(|(t, _)| normalize_title(t))
         .collect();
 
+    // Check if an MB track matches a local track:
+    // 1. Exact normalized match, OR
+    // 2. Either title contains the other as a substring
+    //    (e.g. local "September" matches MB "September (När hjärtat blöder)"
+    //     and local "New Model World (Featuring Valopinja)" matches MB "New Model World")
     let missing: Vec<String> = mb_tracks
         .iter()
-        .filter(|(t, _)| !local_titles.contains(&normalize_title(t)))
+        .filter(|(t, _)| {
+            let norm = normalize_title(t);
+            !local_titles.contains(&norm)
+                && !local_titles.iter().any(|lt| {
+                    !lt.is_empty() && !norm.is_empty()
+                        && (norm.contains(lt.as_str()) || lt.contains(norm.as_str()))
+                })
+        })
         .map(|(t, _)| t.clone())
         .collect();
 
     let extra: Vec<String> = local_tracks
         .iter()
-        .filter(|(t,)| !mb_titles.contains(&normalize_title(t)))
+        .filter(|(t,)| {
+            let norm = normalize_title(t);
+            !mb_titles.contains(&norm)
+                && !mb_titles.iter().any(|mt| {
+                    !norm.is_empty() && !mt.is_empty()
+                        && (mt.contains(norm.as_str()) || norm.contains(mt.as_str()))
+                })
+        })
         .map(|(t,)| t.clone())
         .collect();
 

@@ -14,6 +14,7 @@ export interface Track {
   localReleaseId: string | null
   artists?: { name: string; slug: string }[]
   missing?: boolean
+  mbTitle?: string | null
 }
 
 export interface TrackWithRelease extends Track {
