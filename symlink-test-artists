@@ -5,10 +5,8 @@
 # Artist folders to symlink
 ARTISTS=(
     "Plini"
-    "AC DC"
     "...And Oceans"
     "Crosby, Stills, Nash & Young"
-    "Ayreon"
     "Tyler, The Creator"
     "Godley & Creme"
 )

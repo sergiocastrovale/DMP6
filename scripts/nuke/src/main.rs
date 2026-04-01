@@ -277,6 +277,33 @@ async fn main() {
     }
     
     if args.local_only {
+        // Clean up orphaned artists that only existed through local data
+        // (featured artists, split artists, etc.) — they have no musicbrainzId
+        // and no MB release links, so they'll be recreated during re-indexing
+        // if their files still exist.
+        match sqlx::query_as::<_, (i64,)>(
+            r#"WITH deleted AS (
+                DELETE FROM "Artist"
+                WHERE "musicbrainzId" IS NULL
+                AND NOT EXISTS (
+                    SELECT 1 FROM "MusicBrainzReleaseArtist" WHERE "artistId" = "Artist".id
+                )
+                RETURNING id
+            ) SELECT COUNT(*) FROM deleted"#
+        )
+        .fetch_one(&pool)
+        .await
+        {
+            Ok((count,)) => {
+                if count > 0 {
+                    println!("  🧹 Cleaned up {} orphaned artist(s)", count);
+                }
+            }
+            Err(e) => {
+                eprintln!("  ✗ Error cleaning up orphaned artists: {}", e);
+            }
+        }
+
         println!();
         println!("✅ Local data nuked successfully! MB catalogue preserved.");
         println!("   Run ./sync to re-index (no MB API calls needed).");

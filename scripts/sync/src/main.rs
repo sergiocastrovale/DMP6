@@ -3716,12 +3716,11 @@ async fn main() {
             }
 
             // 1. Find artist on MusicBrainz
-            println!("    {} Searching MusicBrainz...", "→".bright_black());
             let mut extra_artists_to_sync: Vec<(String, MbArtistMatch)> = Vec::new();
             let mb_id = if let Some(ref mid) = existing_mb_id {
-                println!("      {} Using existing MB ID: {}", "✓".green(), mid.bright_black());
                 mid.clone()
             } else {
+                println!("    {} Searching MusicBrainz...", "→".bright_black());
                 let hints = folder_mb_hints.get(artist_id);
                 let hint_artist = hints.and_then(|(a, _)| a.as_deref());
                 let hint_album = hints.and_then(|(_, b)| b.as_deref());
