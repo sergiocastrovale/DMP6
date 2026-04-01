@@ -13,6 +13,10 @@ struct Args {
     /// Skip confirmation prompt
     #[arg(long)]
     y: bool,
+
+    /// Only delete local file-derived data, preserving MB catalogue and artist metadata
+    #[arg(long)]
+    local_only: bool,
 }
 
 async fn create_s3_client() -> Option<S3Client> {
@@ -155,7 +159,12 @@ async fn main() {
         }
     };
 
-    println!("⚠️️  WARNING: This will DELETE ALL DATA from the database!");
+    if args.local_only {
+        println!("⚠️️  WARNING: This will delete LOCAL data (tracks, releases, play counts).");
+        println!("MusicBrainz catalogue, artist images, and artist metadata will be preserved.");
+    } else {
+        println!("⚠️️  WARNING: This will DELETE ALL DATA from the database!");
+    }
     println!("Database: {}", database_url);
     println!();
 
@@ -187,32 +196,42 @@ async fn main() {
         }
     };
 
-    println!("Nuking all tables...");
-
-    // Truncate all tables in correct order (respecting foreign key constraints)
-    let tables = vec![
-        "PlaylistTrack",
-        "Playlist",
-        "FavoriteTrack",
-        "FavoriteRelease",
-        "TrackArtist",
-        "LocalReleaseArtist",
-        "LocalReleaseTrack",
-        "LocalRelease",
-        "MusicBrainzReleaseTrack",
-        "MusicBrainzReleaseArtist",
-        "MusicBrainzRelease",
-        "ArtistUrl",
-        "_ArtistGenres",
-        "_ReleaseGenres",
-        "Artist",
-        "Genre",
-        "ReleaseType",
-        "SearchSource",
-        "Settings",
-        "Statistics",
-        "S3DeletionQueue",
-    ];
+    let tables = if args.local_only {
+        println!("Nuking local tables (preserving MB catalogue)...");
+        vec![
+            "PlaylistTrack",
+            "FavoriteTrack",
+            "TrackArtist",
+            "LocalReleaseArtist",
+            "LocalReleaseTrack",
+            "LocalRelease",
+        ]
+    } else {
+        println!("Nuking all tables...");
+        vec![
+            "PlaylistTrack",
+            "Playlist",
+            "FavoriteTrack",
+            "FavoriteRelease",
+            "TrackArtist",
+            "LocalReleaseArtist",
+            "LocalReleaseTrack",
+            "LocalRelease",
+            "MusicBrainzReleaseTrack",
+            "MusicBrainzReleaseArtist",
+            "MusicBrainzRelease",
+            "ArtistUrl",
+            "_ArtistGenres",
+            "_ReleaseGenres",
+            "Artist",
+            "Genre",
+            "ReleaseType",
+            "SearchSource",
+            "Settings",
+            "Statistics",
+            "S3DeletionQueue",
+        ]
+    };
 
     for table in &tables {
         match sqlx::query(&format!(r#"TRUNCATE TABLE "{}" CASCADE"#, table))
@@ -257,6 +276,13 @@ async fn main() {
         }
     }
     
+    if args.local_only {
+        println!();
+        println!("✅ Local data nuked successfully! MB catalogue preserved.");
+        println!("   Run ./sync to re-index (no MB API calls needed).");
+        return;
+    }
+
     // Delete image files (local)
     println!();
     println!("Deleting local image files...");
