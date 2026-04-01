@@ -938,7 +938,28 @@ fn names_are_similar(query: &str, result: &str) -> bool {
     if union == 0 {
         return true;
     }
-    (intersection as f64 / union as f64) >= 0.5
+    if (intersection as f64 / union as f64) < 0.5 {
+        return false;
+    }
+
+    // When one name's words are a proper subset of the other, the extra
+    // words must be noise (and/the/of/etc.) — otherwise they're different
+    // artists (e.g. "Crosby, Stills & Nash" vs "Crosby, Stills, Nash & Young").
+    static NOISE: &[&str] = &["and", "the", "of", "a", "an", "in", "on", "at", "to",
+        "for", "with", "by", "from", "or", "is", "et", "und", "e", "y", "i"];
+    if q_set.is_subset(&r_set) && q_set.len() < r_set.len() {
+        let extra: HashSet<&str> = r_set.difference(&q_set).copied().collect();
+        if !extra.iter().all(|w| NOISE.contains(w)) {
+            return false;
+        }
+    } else if r_set.is_subset(&q_set) && r_set.len() < q_set.len() {
+        let extra: HashSet<&str> = q_set.difference(&r_set).copied().collect();
+        if !extra.iter().all(|w| NOISE.contains(w)) {
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Check if `artist_name` is a compound/collaboration name that resolved to
