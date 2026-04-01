@@ -9,10 +9,12 @@ import {
   BarChart3,
   PanelLeftClose,
   PanelLeft,
+  LogOut,
 } from 'lucide-vue-next'
 
 const collapsed = ref(false)
 const { isStreamMode } = useStreamMode()
+const { logout } = useAuth()
 
 const allNavItems = [
   { to: '/', label: 'Home', icon: Home },
@@ -79,7 +81,7 @@ function isActive(path: string) {
       </NuxtLink>
     </nav>
 
-    <!-- Bottom: Statistics -->
+    <!-- Bottom: Statistics + Logout -->
     <div class="mb-4 px-2">
       <NuxtLink
         to="/statistics"
@@ -95,6 +97,15 @@ function isActive(path: string) {
           Statistics
         </span>
       </NuxtLink>
+      <button
+        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-50"
+        @click="logout"
+      >
+        <LogOut :size="20" class="shrink-0" />
+        <span class="transition-opacity duration-200 group-data-[collapsed]/sidebar:hidden">
+          Sign out
+        </span>
+      </button>
     </div>
   </aside>
 </template>
