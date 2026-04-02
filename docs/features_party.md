@@ -508,7 +508,7 @@ pnpm dev
 
 #### Listener Testing
 
-1. Deploy to NAS via `web/scripts/deploy-docker.sh`
+1. Deploy to NAS via `web/deploy.sh`
 2. Start local dev server with `pnpm dev`
 3. Locally: Go to `/party`, start session, play track
 4. On phone or another device on your LAN:

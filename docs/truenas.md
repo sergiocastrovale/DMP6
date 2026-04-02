@@ -1,363 +1,235 @@
-# Setup: TrueNAS Scale
+# TrueNAS Setup
 
-Deploy DMP on TrueNAS Scale using Docker Compose. The NAS runs the web app and scripts — your dev machine is only used for building Docker images.
+Deploy DMP on TrueNAS Scale. Images are built on your dev machine and pushed to the NAS via `web/deploy.sh`.
 
 ## Prerequisites
 
-- TrueNAS Scale 25.04+ (native Docker Compose support)
-- PostgreSQL app installed and running in TrueNAS
-- SSH access to TrueNAS
-- Docker installed on your dev machine (for building images)
-- 'Kp' is has full privileges in your NAS
-- /mnt/nas is your main pool
-- /mnt/dmp is your DMP pool
-- /mnt/dmp/music/mainstream is the path to the archive
-- /mnt/SSD is the drive where your postgres and web projects live
-
-## 1. Database Setup
-
-### Find PostgreSQL Connection Details
-
-In TrueNAS web UI, go to **Apps > PostgreSQL** and note:
-- The mapped port (e.g., `5432` or a custom port like `15432`)
-- The host IP (your NAS IP on the local network)
-
-### Create Database and User
-
-Connect to the TrueNAS PostgreSQL instance:
-
-```bash
-# From your dev machine (adjust port if TrueNAS maps to a different one)
-psql -h 192.168.1.241 -p 5432 -U dmp
-# pw: 0yD33y5P801Hc8B0yvPa1$Ra!%5
-```
-
-Create the database:
-
-```sql
-CREATE USER dmp WITH PASSWORD 'your-secure-password';
-CREATE DATABASE dmp OWNER dmp;
-GRANT ALL PRIVILEGES ON DATABASE dmp TO dmp;
-\q
-```
-
-### Verify Connectivity
-
-```bash
-psql postgresql://dmp:your-secure-password@192.168.1.241:5432/dmp -c "SELECT 1;"
-```
-
-## 2. NAS Storage Setup
-
-Create directories for DMP data. The paths depend on your ZFS pool name (commonly `tank` or `pool`).
-
-```bash
-ssh nas
-
-# Create app data directory
-sudo mkdir -p /mnt/SSD/web/dmp/img/artists && sudo mkdir -p /mnt/SSD/web/dmp/img/releases && sudo mkdir -p /mnt/SSD/web/dmp/dump
-
-# Set ownership to UID 999 (node user inside the container)
-chown -R 999:999 /mnt/SSD/web/dmp
-```
-
-**Your music library** should already be on a ZFS dataset (e.g., `/mnt/dmp/music/mainstream`). Note the full path — you'll need it for the `.env` file.
-
-## 3. Build Docker Images
-
-On your **dev machine**:
-
-```bash
-cd /home/kp/web/DMPv6
-
-# Build both images
-web/scripts/deploy-docker.sh build
-```
-
-This builds:
-- `dmp-web:latest` — the Nuxt web app (~800MB, includes mediasoup worker)
-- `dmp-scripts:latest` — all Rust scripts: sync, analysis, clean, nuke (~50MB)
-
-**Note**: The Dockerfile uses `node:20-bullseye` (Debian 11, OpenSSL 1.1.x) intentionally. TrueNAS Scale's Docker environment is detected by Prisma as requiring OpenSSL 1.1.x, so building on Bookworm (OpenSSL 3.0.x) causes a runtime mismatch even when both binary targets are included.
-
-## 4. Transfer Images to NAS
-
-### Option A: Using the deploy script
-
-#### Setting up SSH key auth (recommended)
-
-If you don't already have an SSH key for TrueNAS, set one up first:
-
-**1. Generate a key pair on your dev machine**:
-
-```bash
-ssh-keygen -t ed25519 -C "sergio.castro.vale@gmail.com" -N ""  -f ~/.ssh/nas
-```
-
-**2. Add a block like this to ~/.ssh/config:**
-
-```bash
-  Host nas
-      HostName 192.168.1.241
-      User Kp
-      IdentityFile ~/.ssh/nas
-      IdentitiesOnly yes
-```
-
-**3. Refresh:**
-
-```bash
- eval "$(ssh-agent -s)"
-```
-
-**4. Add the public key to TrueNAS Scale:**
-
-In the TrueNAS web UI:
-- Go to **Credentials > Local Users**
-- Click on the `admin` user → **Edit**
-- Scroll to **SSH Public Keys** and paste the contents of `~/.ssh/nas.pub`
-- Click **Save**
-
-**5. Make sure SSH service is enabled:**
-
-In TrueNAS web UI, go to **System > Services**, find **SSH**, and ensure it is **Running** and set to **Start Automatically**.
+- TrueNAS Scale 25.04+, PostgreSQL app installed
+- Docker on your dev machine
+- SSH access: user `Kp` with full privileges
+- Music at `/mnt/dmp/music/mainstream`, SSD pool at `/mnt/SSD`
 
 ---
 
-Set these in your `web/.env`:
+## 1. Database
+
+```bash
+psql -h 192.168.1.241 -p 5432 -U postgres
+```
+
+```sql
+CREATE USER dmp WITH PASSWORD 'your-password';
+CREATE DATABASE dmp OWNER dmp;
+GRANT ALL PRIVILEGES ON DATABASE dmp TO dmp;
+```
+
+Verify: `psql postgresql://dmp:your-password@192.168.1.241:5432/dmp -c "SELECT 1;"`
+
+---
+
+## 2. NAS Storage
+
+```bash
+ssh nas
+mkdir -p /mnt/SSD/web/dmp/{img/artists,img/releases,dump,redis}
+chown -R 999:999 /mnt/SSD/web/dmp   # 999 = node user inside the container
+```
+
+---
+
+## 3. SSH Key (first time)
+
+```bash
+# Dev machine
+ssh-keygen -t ed25519 -f ~/.ssh/nas -N ""
+eval "$(ssh-agent -s)"
+```
+
+Add to `~/.ssh/config`:
+
+```
+Host nas
+    HostName 192.168.1.241
+    User Kp
+    IdentityFile ~/.ssh/nas
+    IdentitiesOnly yes
+```
+
+In TrueNAS UI: **Credentials > Local Users > Kp > Edit** → paste `~/.ssh/nas.pub` into **SSH Public Keys**.
+
+Enable SSH: **System > Services > SSH** → Running + Start Automatically.
+
+Set in `web/.env`:
 
 ```env
 SERVER_HOST=192.168.1.241
 SERVER_USER=Kp
 DEPLOY_PATH=/mnt/SSD/web/dmp
-SSH_KEY_PATH=~/.ssh/nas   # omit this line to use password auth
+SSH_KEY_PATH=~/.ssh/nas
 ```
 
-Then run:
+---
+
+## 4. Build Images
 
 ```bash
-web/scripts/deploy-docker.sh push
+cd /home/kp/web/DMPv6
+web/deploy.sh build
 ```
 
-## 5. Deploy
+Produces `dmp-web:latest` (~800MB) and `dmp-scripts:latest` (~50MB).
 
-### Create `.env` on NAS
+---
+
+## 5. NAS `.env`
 
 ```bash
 ssh nas
-sudo nano /mnt/SSD/web/dmp/.env
+nano /mnt/SSD/web/dmp/.env
+```
 
-# Paste this
-DATABASE_URL=postgresql://dmp:0yD33y5P801Hc8B0yvPa1$$Ra!%5@host.docker.internal:5432/dmp?connection_limit=20&pool_timeout=10
+```env
+DATABASE_URL=postgresql://dmp:your-password@host.docker.internal:5432/dmp?connection_limit=20&pool_timeout=10
 MUSIC_DIR=/mnt/dmp/music/mainstream
 DMP_DATA=/mnt/SSD/web/dmp
 DMP_PORT=3000
+ADMIN_USER=kp
+ADMIN_PASSWORD=your-password
 PARTY_ENABLED=false
 ```
 
-**Note on `DATABASE_URL`**: If PostgreSQL is running as a TrueNAS app (in Docker), use `host.docker.internal` or the NAS's actual LAN IP. Using `localhost` won't work since the DMP container has its own network namespace.
+> **`host.docker.internal`**: use this (or the NAS LAN IP) for PostgreSQL — `localhost` won't work from inside the DMP container.
 
-**Note on special characters**: Docker Compose interpolates `$VAR` in `.env` files. If your password contains `$`, escape it as `$$` (e.g. `$Ra` → `$$Ra`). Do not quote the value — Docker Compose does not strip quotes from `.env` files.
+---
 
-### Copy Compose File
+## 6. Deploy
 
 ```bash
-# From your dev machine
-scp docker-compose.yml nas:/mnt/SSD/web/dmp/
+# From dev machine
+web/deploy.sh          # build + transfer + restart (full)
+web/deploy.sh push     # transfer pre-built images only
+web/deploy.sh deploy   # copy docker-compose.yml + restart only
 ```
 
-### Start the App
+See [docs/deploy.md](deploy.md) for all modes.
+
+---
+
+## 7. Verify
 
 ```bash
 ssh nas
-cd /mnt/SSD/web/dmp
-docker compose up -d
-
-# If permission errors: 
-# sudo usermod -aG docker Kp && newgrp docker
-```
-
-### Verify
-
-```bash
-# Check container is running
 docker ps
-
-# Check health
 docker inspect --format='{{.State.Health.Status}}' dmp-web
-
-# Check logs
-docker logs dmp-web
-
-# Test the app
 curl http://localhost:3000/api/stats
 ```
 
-Access the web UI at `http://192.168.1.241:3000` from any device on your LAN.
+Access: `http://192.168.1.241:3000`
 
-## 6. Initial Data Load
+---
 
-You have two options: restore from an existing backup, or run a fresh index.
+## 8. Initial Data Load
 
-### Option A: Restore from Backup
-
-Useful if you want a small test database.
-
-On your dev machine:
+### Option A — Restore a backup
 
 ```bash
-cd web && pnpm backup   # Creates dump/YYYY-MM-DD-HH-MM-SS.sql.gz
-```
-
-Transfer and restore on NAS:
-
-```bash
-# Transfer the most recent dump
+# Dev machine
+cd web && pnpm backup   # → dump/YYYY-MM-DD-HH-MM-SS.sql.gz
 scp "dump/$(ls -t dump/ | head -1)" nas:/mnt/SSD/web/dmp/dump/
 
-# SSH to NAS and restore
+# NAS
 ssh nas
 cd /mnt/SSD/web/dmp
-
-# Drop and recreate the database
-# If you need to find the name of the postgres app container:
-# docker ps --format "{{.Names}}" | grep -i post
 docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "DROP DATABASE IF EXISTS dmp;"
 docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "CREATE DATABASE dmp OWNER dmp;"
-
-# Restore
 gunzip -c "dump/$(ls -t dump/ | head -1)" | docker exec -i ix-postgres-postgres-1 psql -U dmp -d dmp
-
-# Restart the web app to pick up data
 docker restart dmp-web
 ```
 
-### Option B: Fresh Index
+### Option B — Fresh sync
 
-Run the index and sync scripts on the NAS. This is the recommended approach if you want the "production" database.
-
-It will take several hours or days depending on the size of the DB.
+Takes several hours on a large library.
 
 ```bash
 ssh nas
-cd /mnt/SSD/web/dmp
-
-# Index + sync (full pipeline per artist)
 docker run --rm \
-  --env-file .env \
-  -e MUSIC_DIR=/music \
+  --env-file /mnt/SSD/web/dmp/.env \
   -e PROJECT_ROOT=/app \
-  -v /mnt/SSD/media/music:/music:ro \
+  -e MUSIC_DIR=/music \
+  -v /mnt/dmp/music/mainstream:/music:ro \
   -v /mnt/SSD/web/dmp/img:/app/web/public/img \
   dmp-scripts:latest dmp-sync
 ```
 
-**Note**: The scripts use `PROJECT_ROOT/web/public/img/` to write cover art. The volume mount at `/app/web/public/img` maps to the shared image directory that the web container reads from via `/app/data/img`.
+---
 
-## 7. Running Scripts
-
-All scripts run as ephemeral Docker containers sharing the same database and image storage.
+## 9. Running Scripts
 
 ```bash
-# Common pattern: --env-file loads DB URL, volumes mount music + images
 S="docker run --rm \
   --env-file /mnt/SSD/web/dmp/.env \
   -e PROJECT_ROOT=/app \
   -e MUSIC_DIR=/music \
-  -v /mnt/SSD/media/music:/music:ro \
+  -v /mnt/dmp/music/mainstream:/music:ro \
   -v /mnt/SSD/web/dmp/img:/app/web/public/img \
   dmp-scripts:latest"
 
-# Sync (index + MusicBrainz match, full pipeline per artist)
 $S dmp-sync
-$S dmp-sync --resume                     # Resume from checkpoint
-$S dmp-sync --only="Artist Name"         # Specific artist
-$S dmp-sync --overwrite                  # Nuke + re-sync all
+$S dmp-sync --resume
+$S dmp-sync --only="Artist Name"
+$S dmp-clean
+$S dmp-clean --dry-run
+$S dmp-nuke                     # DESTRUCTIVE
 
-# Analysis (generate metadata report)
-# Note: reports output to /app/reports inside the container
+# Analysis writes to /app/reports
 docker run --rm \
   --env-file /mnt/SSD/web/dmp/.env \
   -e MUSIC_DIR=/music \
-  -v /mnt/SSD/media/music:/music:ro \
+  -v /mnt/dmp/music/mainstream:/music:ro \
   -v /mnt/SSD/web/dmp/reports:/app/reports \
   dmp-scripts:latest dmp-analysis
-
-# Clean (remove orphaned images)
-$S dmp-clean
-$S dmp-clean --dry-run
-
-# Nuke (wipe database + images — DESTRUCTIVE)
-$S dmp-nuke
 ```
 
-**Tip**: Create shell aliases on TrueNAS for convenience:
-
-```bash
-cat >> ~/.bashrc << 'EOF'
-alias dmp-sync='docker run --rm --env-file /mnt/SSD/web/dmp/.env -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/SSD/media/music:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-sync'
-alias dmp-clean='docker run --rm --env-file /mnt/SSD/web/dmp/.env -e PROJECT_ROOT=/app -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-clean'
-alias dmp-nuke='docker run --rm --env-file /mnt/SSD/web/dmp/.env -e PROJECT_ROOT=/app -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-nuke'
-EOF
-```
-
-## 8. Updating
-
-When you make changes to the web app or scripts:
-
-```bash
-# On your dev machine — full rebuild + deploy
-cd /home/kp/web/DMPv6
-web/scripts/deploy-docker.sh
-
-# Or just the web app
-web/scripts/deploy-docker.sh web
-
-# Or just the scripts
-web/scripts/deploy-docker.sh scripts
-```
-
-## 9. Monitoring
-
-```bash
-# Container status
-docker ps
-
-# Logs (follow mode)
-docker logs -f dmp-web
-
-# Resource usage
-docker stats dmp-web
-
-# Health check
-docker inspect --format='{{json .State.Health}}' dmp-web | python3 -m json.tool
-
-# Restart
-docker restart dmp-web
-```
-
-## 10. Tailscale Access
-
-If you have Tailscale running on the NAS, you can access DMP from anywhere:
-
-```
-http://NAS_TAILSCALE_IP:3000
-```
-
-No SSL needed — Tailscale traffic is already encrypted end-to-end.
+Add shell aliases on the NAS by appending the `$S dmp-*` lines to `~/.bashrc`.
 
 ---
 
-## Performance Optimizations
+## 10. Updates
 
-### PostgreSQL Tuning
+```bash
+web/deploy.sh          # rebuild + redeploy everything
+web/deploy.sh web      # web only
+web/deploy.sh scripts  # scripts only
+```
 
-The TrueNAS PostgreSQL app runs as container `ix-postgres-postgres-1`. Settings are applied via `ALTER SYSTEM SET` (writes to `postgresql.auto.conf` inside the container's data directory, so they survive container recreation) and require a full restart to take effect.
+---
+
+## 11. Monitoring
+
+```bash
+docker ps
+docker logs -f dmp-web
+docker stats dmp-web
+docker inspect --format='{{json .State.Health}}' dmp-web | python3 -m json.tool
+docker restart dmp-web
+```
+
+---
+
+## 12. Tailscale
+
+Access from anywhere: `http://NAS_TAILSCALE_IP:3000`
+
+---
+
+## Performance Tuning
+
+### PostgreSQL
+
+Settings survive container recreation (written to `postgresql.auto.conf`). Requires a full restart.
 
 ```bash
 ssh nas
-
-# Apply all settings — each ALTER SYSTEM must be its own statement
 for setting in \
   "shared_buffers = '8GB'" \
   "effective_cache_size = '24GB'" \
@@ -376,64 +248,91 @@ for setting in \
 do
   docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -c "ALTER SYSTEM SET $setting;"
 done
-
-# Restart is required — shared_buffers and max_connections need it
 docker restart ix-postgres-postgres-1
 
 # Verify
 docker exec ix-postgres-postgres-1 psql -U dmp -d dmp \
   -c 'SHOW shared_buffers; SHOW work_mem; SHOW max_connections; SHOW effective_cache_size;'
-```
 
-Values sized for 32GB RAM. If you ever rebuild the PostgreSQL app from scratch in TrueNAS UI, `postgresql.auto.conf` lives inside the app's persistent volume — check it survived with:
-
-```bash
+# Check settings survived a rebuild
 docker exec ix-postgres-postgres-1 cat /var/lib/postgresql/data/postgresql.auto.conf
 ```
 
-### Redis API Cache
+Sized for 32 GB RAM. Keep `SSD` pool defaults for PostgreSQL — random I/O benefits from smaller records and full ARC caching.
 
-Redis runs as a sidecar container (`dmp-redis`) and caches responses for stats, genres, artists, timeline, and release endpoints — reducing repeated Prisma queries to sub-millisecond cache reads.
+### Redis
 
-**NAS setup required before first deploy:**
+`dmp-redis` runs as a sidecar; the web container connects via `REDIS_URL=redis://dmp-redis:6379` (set in `docker-compose.yml`). If unreachable the app falls through to the database silently.
+
+Create the data dir before first deploy:
 
 ```bash
-ssh nas
 mkdir -p /mnt/SSD/web/dmp/redis
 ```
 
-The web container connects via `REDIS_URL=redis://dmp-redis:6379` (already set in `docker-compose.yml`). If Redis is unreachable the app silently falls through to the database — it is never a hard dependency.
+See [docs/redis.md](redis.md) for cached endpoints, TTLs, and invalidation.
 
-See [docs/redis.md](redis.md) for full details on what is cached, TTLs, and invalidation logic.
-
-### ZFS Tuning for Music Streaming
-
-Music files are large sequential reads. The music library lives on the `dmp/music` dataset. Apply these properties from the NAS shell:
+### ZFS (music dataset)
 
 ```bash
 ssh nas
-
-# Larger recordsize for sequential streaming (default is 128K)
 sudo zfs set recordsize=1M dmp/music
-
-# Stop large audio files from evicting useful metadata out of the ARC
 sudo zfs set primarycache=metadata dmp/music
-
-# Disable access time updates — saves a write on every file read
 sudo zfs set atime=off dmp/music
 
-# Verify
 zfs get recordsize,primarycache,atime dmp/music
 ```
 
-Expected output:
-```
-NAME       PROPERTY      VALUE     SOURCE
-dmp/music  recordsize    1M        local
-dmp/music  primarycache  metadata  local
-dmp/music  atime         off       local
+Properties persist across reboots and TrueNAS upgrades.
+
+## Domain configuration
+
+### dmp.nrnas.com
+
+`docker-compose.yml` is configured to work with a `dmp-cloudflared` container:
+
+```yaml
+cloudflared:
+  image: cloudflare/cloudflared:latest
+  container_name: dmp-cloudflared
+  restart: unless-stopped
+  command: tunnel --no-autoupdate run
+  environment:
+    - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+  depends_on:
+    web:
+      condition: service_healthy
 ```
 
-These properties are persistent across reboots and TrueNAS upgrades — no need to reapply unless the dataset is recreated.
+Steps you need to do in Cloudflare before deploying:
 
-The `SSD` pool holding PostgreSQL data should keep the defaults (`recordsize=128K`, `primarycache=all`) — random I/O benefits from smaller records and full ARC caching.
+  1. Create the tunnel:
+    - Cloudflare dash → Zero Trust → Networks → Connectors → Create a tunnel
+    - Connector type: Docker
+    - Name: dmp
+    - Copy the token from the docker run ... --token <TOKEN> command shown
+  2. Networks -> Overview -> Route to a published application
+    - Subdomain: dmp, Domain: nrnas.com
+    - Service type: HTTP, URL: dmp-web:3000
+  3. Add the token to the NAS .env:
+  `ssh nas`
+  `echo "CLOUDFLARE_TUNNEL_TOKEN=<your-token>" >> /mnt/SSD/web/dmp/.env`
+
+  Then deploy:
+  ```bash
+  scp docker-compose.yml nas:/mnt/SSD/web/dmp/ && ssh nas "cd /mnt/SSD/web/dmp && docker compose up -d"
+  ```
+
+  Then https://dmp.nrnas.com should be live.
+
+  ### discodomeuprimo.online redirect
+
+  1. Namecheap → Domain List → Manage discodomeuprimo.online
+  2. Advanced DNS tab → Add New Record
+    - Type: URL Redirect Record
+    - Host: @
+    - Value: https://dmp.nrnas.com
+    - Redirect type: Permanent (301)
+  3. Save
+
+  If you also want www.discodomeuprimo.online to redirect, add a second identical record with Host: www.

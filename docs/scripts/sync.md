@@ -23,11 +23,16 @@ cd scripts/sync && cargo build --release
 ./sync --verbose                 # Show skipped MB releases
 ./sync --test                    # Use test artists (see below)
 ./sync --test --overwrite        # Nuke + re-sync test artists only
+./sync --clean                   # Remove orphaned artists (0 tracks)
 ```
 
 ### Test mode
 
 `--test` overrides `MUSIC_DIR` with `web/dump/test-artists/`, a directory of symlinks to a curated subset of artist folders. Requires running [`./symlink-test-artists`](symlink-test-artists.md) first to create the symlinks. Useful for fast iteration during development.
+
+### --clean
+
+`--clean` scans the database for artists that have zero local release tracks associated with them and removes them along with all related data (URLs, genres, MB release links, images). Orphaned MB releases left with no artist links are also cleaned up. Useful after re-syncing an artist whose catalogue had erroneous artist records created from bad metadata. Exits after cleanup without running any sync.
 
 ### --overwrite behaviour
 
@@ -42,7 +47,7 @@ For each artist folder in MUSIC_DIR:
 2. **Extract** metadata in parallel (rayon + lofty), including embedded MusicBrainz IDs
 3. **Change detection** — skip unchanged files (mtime + fileSize), hash-compare changed ones
 4. **Split** album artist and track artist tags into individual artists (see [Artist Tag Splitting](#artist-tag-splitting))
-5. **Upsert** Artist, LocalRelease (keyed by title + folderPath), LocalReleaseTrack, TrackArtist, and LocalReleaseArtist junction records (batch UNNEST)
+5. **Upsert** Artist, LocalRelease (keyed by `groupKey` — see [Release Grouping](#release-grouping)), LocalReleaseTrack, TrackArtist, and LocalReleaseArtist junction records (batch UNNEST)
 6. **Cover art** — three-tier resolution (see [Cover Art Resolution](#cover-art-resolution))
 7. **Update totals** for this artist's releases and tracks
 
@@ -65,9 +70,21 @@ After the primary sync loop, artists discovered from MB release credits or compo
 19. **Discard** candidates with no local albumArtist match — not created, not linked
 20. **Full sync** for validated extras — same treatment as primary artists: details, image (external sources only — folder image fallback still applies if name matches), full MB catalogue, match status, averageMatchScore
 
+## Release Grouping
+
+Releases are deduplicated by a `groupKey` column on `LocalRelease`, computed from **metadata** rather than folder structure. This correctly groups multi-disc albums (CD1/, CD2/ subfolders) into a single release.
+
+**Grouping priority:**
+1. **MusicBrainz album ID** — when tracks have an embedded `MUSICBRAINZ_ALBUMID` or `MUSICBRAINZ_RELEASEGROUPID` tag, the key is `mb:{id}`. All tracks sharing the same MB release ID belong to one release regardless of folder layout.
+2. **Metadata fallback** — when no MB ID is present, the key is `meta:{slug(title)}:{year}:{slug(album_artist)}`. Tracks with the same album title, year, and album artist are grouped together.
+
+**MB ID propagation:** If some tracks in an album have an embedded MB album ID and others don't (but share the same title/year/artist metadata), the MB ID is propagated to all of them so they receive the same `groupKey`.
+
+**Disc subfolder stripping:** Folder paths ending in common disc patterns (`CD1`, `Disc 2`, `Disk3`, etc.) are normalized to the parent directory for the `folderPath` stored on the release.
+
 ## Multi-Artist Handling
 
-Releases are keyed by `(title, folderPath)` — not tied to a single artist. A release can belong to multiple artists via the `LocalReleaseArtist` junction table. This means:
+A release can belong to multiple artists via the `LocalReleaseArtist` junction table. This means:
 
 - **No compound artists**: "Abc vs. XY" is never stored as one artist. Instead, two separate Artist records are created and both are linked to the same release.
 - **Shared releases**: If you browse artist "Abc", you see the collaboration release. If you browse "XY", you see the same release (not a copy).
