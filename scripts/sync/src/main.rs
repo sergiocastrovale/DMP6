@@ -76,6 +76,10 @@ struct Args {
     /// Show skipped MB releases in output
     #[arg(long)]
     verbose: bool,
+
+    /// Remove artists with zero local release tracks, then exit
+    #[arg(long)]
+    clean: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -493,10 +497,16 @@ fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, String> {
 // Path helpers
 // ---------------------------------------------------------------------------
 
-/// Normalize a name for filter comparison: lowercase, treat hyphens as spaces.
-/// This ensures folder names ("070 Shake") and slugs ("070-shake") match the same filter.
+/// Normalize a name for filter comparison: lowercase, strip non-alphanumeric, collapse whitespace.
+/// This ensures "A.A. Bondy" matches "AA Bondy", "070-shake" matches "070 Shake", etc.
 fn normalize_filter(s: &str) -> String {
-    s.to_lowercase().replace('-', " ")
+    s.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join(" ")
 }
 
 fn matches_filter(folder: &str, from: &str, to: &str, only: &str) -> bool {
@@ -522,6 +532,56 @@ fn matches_filter(folder: &str, from: &str, to: &str, only: &str) -> bool {
     }
 
     true
+}
+
+/// If the folder path ends with a CD/Disc subfolder pattern, strip it to get the parent.
+/// e.g. "Ayreon/Albums/2008 - 01011001/CD1" → "Ayreon/Albums/2008 - 01011001"
+///      "Artist/Album" → "Artist/Album" (unchanged)
+fn strip_disc_subfolder(folder_path: &str) -> String {
+    if let Some(last_slash) = folder_path.rfind('/') {
+        let last_segment = &folder_path[last_slash + 1..];
+        let lower = last_segment.to_lowercase();
+        // Match common disc-subfolder patterns: CD1, CD 1, Disc1, Disc 1, Disk1, Disk 1
+        let is_disc_folder = if let Some(rest) = lower.strip_prefix("cd") {
+            let rest = rest.trim_start();
+            !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+        } else if let Some(rest) = lower.strip_prefix("disc") {
+            let rest = rest.trim_start();
+            !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+        } else if let Some(rest) = lower.strip_prefix("disk") {
+            let rest = rest.trim_start();
+            !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+        } else {
+            false
+        };
+        if is_disc_folder {
+            return folder_path[..last_slash].to_string();
+        }
+    }
+    folder_path.to_string()
+}
+
+/// Build a deterministic grouping key for release deduplication.
+/// Priority: MusicBrainz album ID > metadata (title + year + album artist).
+fn build_group_key(
+    mb_album_id: Option<&str>,
+    album_title: &str,
+    year: Option<i32>,
+    album_artist: &str,
+) -> String {
+    if let Some(mb_id) = mb_album_id {
+        if !mb_id.is_empty() {
+            return format!("mb:{}", mb_id);
+        }
+    }
+    let title_slug = slugify(album_title);
+    let artist_slug = if album_artist.is_empty() {
+        "unknown".to_string()
+    } else {
+        slugify(album_artist)
+    };
+    let yr = year.unwrap_or(0);
+    format!("meta:{}:{}:{}", title_slug, yr, artist_slug)
 }
 
 // ---------------------------------------------------------------------------
@@ -1729,13 +1789,16 @@ async fn ensure_local_release(
     title: &str,
     year: Option<i32>,
     folder_path: &str,
+    group_key: &str,
 ) -> Result<String, sqlx::Error> {
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
     let row: (String,) = sqlx::query_as(
-        r#"INSERT INTO "LocalRelease" (id, title, year, "matchStatus", "forcedComplete", "totalPlayCount", "totalDuration", "totalFileSize", "createdAt", "updatedAt", "folderPath")
-           VALUES ($1, $2, $3, 'UNKNOWN', false, 0, 0, 0, $4, $4, $5)
-           ON CONFLICT (title, "folderPath") DO UPDATE SET year = COALESCE(EXCLUDED.year, "LocalRelease".year), "updatedAt" = $4
+        r#"INSERT INTO "LocalRelease" (id, title, year, "matchStatus", "forcedComplete", "totalPlayCount", "totalDuration", "totalFileSize", "createdAt", "updatedAt", "folderPath", "groupKey")
+           VALUES ($1, $2, $3, 'UNKNOWN', false, 0, 0, 0, $4, $4, $5, $6)
+           ON CONFLICT ("groupKey") DO UPDATE SET
+             year = COALESCE(EXCLUDED.year, "LocalRelease".year),
+             "updatedAt" = $4
            RETURNING id"#,
     )
     .bind(&id)
@@ -1743,6 +1806,7 @@ async fn ensure_local_release(
     .bind(year)
     .bind(now)
     .bind(folder_path)
+    .bind(group_key)
     .fetch_one(pool)
     .await?;
 
@@ -1754,15 +1818,15 @@ async fn ensure_local_release_cached(
     title: &str,
     year: Option<i32>,
     folder_path: &str,
-    cache: &mut HashMap<(String, String), String>,
+    group_key: &str,
+    cache: &mut HashMap<String, String>,
 ) -> Result<String, sqlx::Error> {
-    let key = (folder_path.to_string(), title.to_string());
-    if let Some(id) = cache.get(&key) {
+    if let Some(id) = cache.get(group_key) {
         return Ok(id.clone());
     }
 
-    let id = ensure_local_release(pool, title, year, folder_path).await?;
-    cache.insert(key, id.clone());
+    let id = ensure_local_release(pool, title, year, folder_path, group_key).await?;
+    cache.insert(group_key.to_string(), id.clone());
     Ok(id)
 }
 
@@ -2947,6 +3011,9 @@ async fn main() {
     if args.overwrite {
         println!("Mode          : {}", "overwrite (nuke + re-sync)".red());
     }
+    if args.clean {
+        println!("Mode          : {}", "clean (remove orphaned artists)".yellow());
+    }
     if args.skip_images {
         println!("Images        : {}", "skipped".yellow());
     }
@@ -2960,6 +3027,81 @@ async fn main() {
         .connect(&config.database_url)
         .await
         .expect("Failed to connect to database. Is PostgreSQL running?");
+
+    // --clean: remove artists with zero local release tracks, then exit
+    if args.clean {
+        println!("Cleaning up orphaned artists...");
+        let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
+        let use_local = config.image_storage == "local" || config.image_storage == "both";
+        let s3_client = if use_s3 { create_s3_client(&config).await } else { None };
+        let artist_img_dir = PathBuf::from(&config.project_root).join("web/public/img/artists");
+
+        // Find artists with no local release tracks
+        let orphans: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+            r#"SELECT a.id, a.name, a.slug, a.image FROM "Artist" a
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM "LocalReleaseArtist" lra
+                   JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lra."localReleaseId"
+                   WHERE lra."artistId" = a.id
+               )"#,
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default();
+
+        if orphans.is_empty() {
+            println!("  No orphaned artists found.");
+        } else {
+            println!("  Found {} orphaned artist(s):", orphans.len().to_string().bright_white());
+            for (id, name, _slug, image) in &orphans {
+                println!("    {} {}", "×".red(), name.bright_white());
+
+                // Delete artist image from local disk and/or S3
+                if let Some(img) = image {
+                    if use_local {
+                        let path = artist_img_dir.join(img);
+                        if path.exists() { fs::remove_file(&path).ok(); }
+                    }
+                    if use_s3 {
+                        if let Some(ref s3) = s3_client {
+                            let bucket = config.s3_bucket.as_deref().unwrap_or("dmp-img");
+                            let key = format!("artists/{}", img);
+                            delete_from_s3(s3, bucket, &key).await;
+                        }
+                    }
+                }
+
+                // Delete all related data
+                sqlx::query(r#"DELETE FROM "LocalReleaseArtist" WHERE "artistId" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "TrackArtist" WHERE "artistId" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "ArtistUrl" WHERE "artistId" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "_ArtistGenres" WHERE "A" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "artistId" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+            }
+
+            // Clean up orphaned MB releases (no artist links remaining)
+            sqlx::query(r#"DELETE FROM "MusicBrainzReleaseTrack" WHERE "releaseId" IN (SELECT id FROM "MusicBrainzRelease" WHERE id NOT IN (SELECT "releaseId" FROM "MusicBrainzReleaseArtist"))"#)
+                .execute(&pool).await.ok();
+            sqlx::query(r#"DELETE FROM "MusicBrainzRelease" WHERE id NOT IN (SELECT "releaseId" FROM "MusicBrainzReleaseArtist")"#)
+                .execute(&pool).await.ok();
+
+            // Update statistics
+            let artist_count: (i64,) = sqlx::query_as(r#"SELECT COUNT(*) FROM "Artist""#)
+                .fetch_one(&pool).await.unwrap_or((0,));
+            sqlx::query(r#"UPDATE "Statistics" SET artists = $1, "updatedAt" = NOW() WHERE id = 'main'"#)
+                .bind(artist_count.0 as i32).execute(&pool).await.ok();
+
+            println!("  {} Removed {} orphaned artist(s)", "✓".green(), orphans.len());
+        }
+        return;
+    }
 
     let http_client = Client::builder()
         .timeout(Duration::from_secs(30))
@@ -3049,17 +3191,16 @@ async fn main() {
         eprintln!("  {} artists", artist_cache.len().to_string().bright_white());
     }
 
-    let mut release_cache: HashMap<(String, String), String> = HashMap::new();
+    let mut release_cache: HashMap<String, String> = HashMap::new();
     {
-        let rows: Vec<(Option<String>, String, String)> = sqlx::query_as(
-            r#"SELECT "folderPath", title, id FROM "LocalRelease""#,
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT "groupKey", id FROM "LocalRelease""#,
         )
         .fetch_all(&pool)
         .await
         .unwrap_or_default();
-        for (folder_path, title, id) in rows {
-            let fp = folder_path.unwrap_or_default();
-            release_cache.insert((fp, title), id);
+        for (group_key, id) in rows {
+            release_cache.insert(group_key, id);
         }
         eprintln!("  {} releases", release_cache.len().to_string().bright_white());
     }
@@ -3252,6 +3393,24 @@ async fn main() {
         // Track releases that already have cover art (to avoid redundant work across steps)
         let mut releases_with_art: HashSet<String> = HashSet::new();
 
+        // Pre-scan: propagate MB album IDs within the same logical album.
+        // If some tracks have mb_album_id and others don't (but share the same
+        // album/year/artist metadata), propagate so they get the same groupKey.
+        let mb_id_by_meta: HashMap<(String, i32, String), String> = {
+            let mut map: HashMap<(String, i32, String), String> = HashMap::new();
+            for track in &extracted {
+                if let Some(ref mb_id) = track.mb_album_id {
+                    let key = (
+                        track.album.as_deref().unwrap_or("").to_lowercase(),
+                        track.year.unwrap_or(0),
+                        track.album_artist.as_deref().unwrap_or("").to_lowercase(),
+                    );
+                    map.entry(key).or_insert_with(|| mb_id.clone());
+                }
+            }
+            map
+        };
+
         for track in &extracted {
             // Change detection — skip unchanged tracks (unless --overwrite)
             if !args.overwrite {
@@ -3297,15 +3456,33 @@ async fn main() {
 
             let album_name = track.album.as_deref().unwrap_or("Unknown Album");
 
-            let folder_path_str = {
+            let raw_folder_path = {
                 let parts: Vec<&str> = track.file_path.rsplitn(2, '/').collect();
                 if parts.len() > 1 { parts[1].to_string() } else { String::new() }
             };
+            let folder_path_str = strip_disc_subfolder(&raw_folder_path);
 
-            // Create release keyed by (title, folderPath) — no artist dependency
+            // Resolve MB album ID: use track's own, or propagated from sibling tracks
+            let effective_mb_id = track.mb_album_id.as_deref().or_else(|| {
+                let key = (
+                    track.album.as_deref().unwrap_or("").to_lowercase(),
+                    track.year.unwrap_or(0),
+                    track.album_artist.as_deref().unwrap_or("").to_lowercase(),
+                );
+                mb_id_by_meta.get(&key).map(|s| s.as_str())
+            });
+
+            let group_key = build_group_key(
+                effective_mb_id,
+                album_name,
+                track.year,
+                track.album_artist.as_deref().unwrap_or(""),
+            );
+
+            // Create release keyed by groupKey (MB album ID or metadata-based)
             let release_id = match ensure_local_release_cached(
                 &pool, album_name, track.year,
-                &folder_path_str, &mut release_cache,
+                &folder_path_str, &group_key, &mut release_cache,
             ).await {
                 Ok(id) => id,
                 Err(e) => {
@@ -3835,9 +4012,98 @@ async fn main() {
                         .execute(&pool).await.ok();
                     sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#)
                         .bind(artist_id).execute(&pool).await.ok();
+                    println!("    {} Releases moved, duplicate deleted", "✓".green());
+
+                    // Re-match local releases for the primary artist — the merge
+                    // transferred new releases that haven't been matched yet.
+                    {
+                        let mb_releases: Vec<(String, String)> = sqlx::query_as(
+                            r#"SELECT mbr.id, mbr.title FROM "MusicBrainzRelease" mbr
+                               JOIN "MusicBrainzReleaseArtist" mbra ON mbr.id = mbra."releaseId"
+                               WHERE mbra."artistId" = $1"#,
+                        )
+                        .bind(&primary_artist_id)
+                        .fetch_all(&pool)
+                        .await
+                        .unwrap_or_default();
+
+                        let mb_release_ids: Vec<String> = mb_releases.iter().map(|(id, _)| id.clone()).collect();
+                        let all_mb_tracks: Vec<(String, String, Option<i32>)> = if !mb_release_ids.is_empty() {
+                            sqlx::query_as(
+                                r#"SELECT "releaseId", title, position FROM "MusicBrainzReleaseTrack"
+                                   WHERE "releaseId" = ANY($1::text[])
+                                   ORDER BY "releaseId", position"#,
+                            )
+                            .bind(&mb_release_ids)
+                            .fetch_all(&pool)
+                            .await
+                            .unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        };
+
+                        let mut tracks_by_release: HashMap<String, Vec<(String, Option<i32>)>> = HashMap::new();
+                        for (rel_id, title, pos) in all_mb_tracks {
+                            tracks_by_release.entry(rel_id).or_default().push((title, pos));
+                        }
+
+                        let mut linked = 0u32;
+                        let mut status_updates: Vec<(String, String, Option<String>)> = Vec::new();
+                        for (mb_release_id, mb_release_title) in &mb_releases {
+                            let mb_tracks = tracks_by_release.get(mb_release_id)
+                                .map(|v| v.as_slice())
+                                .unwrap_or(&[]);
+
+                            if let Ok((status, reason, _)) = check_release_status(
+                                &pool, &primary_artist_id, mb_release_id, mb_release_title, mb_tracks,
+                            ).await {
+                                if status != MatchStatus::Missing {
+                                    linked += 1;
+                                    status_updates.push((status.as_str().to_string(), mb_release_id.clone(), reason));
+                                }
+                            }
+                        }
+
+                        if !status_updates.is_empty() {
+                            let statuses: Vec<String> = status_updates.iter().map(|(s, _, _)| s.clone()).collect();
+                            let rel_ids: Vec<String> = status_updates.iter().map(|(_, id, _)| id.clone()).collect();
+                            sqlx::query(
+                                r#"UPDATE "LocalRelease" SET
+                                     "matchStatus" = t.status::"ReleaseStatus",
+                                     "updatedAt" = NOW()
+                                   FROM (SELECT UNNEST($1::text[]) as status, UNNEST($2::text[]) as release_id) t
+                                   WHERE "LocalRelease"."releaseId" = t.release_id"#,
+                            )
+                            .bind(&statuses)
+                            .bind(&rel_ids)
+                            .execute(&pool)
+                            .await
+                            .ok();
+
+                            for (status_str, mb_id, reason) in &status_updates {
+                                sqlx::query(
+                                    r#"UPDATE "MusicBrainzRelease" SET
+                                         status = $1::"ReleaseStatus",
+                                         "statusReason" = $2,
+                                         "updatedAt" = NOW()
+                                       WHERE id = $3"#,
+                                )
+                                .bind(status_str)
+                                .bind(reason)
+                                .bind(mb_id)
+                                .execute(&pool)
+                                .await
+                                .ok();
+                            }
+                        }
+
+                        if linked > 0 {
+                            println!("    {} Re-matched {} local release(s) for primary artist", "→".bright_black(), linked);
+                        }
+                    }
+
                     update_release_totals_for_artist(&pool, &primary_artist_id).await.ok();
                     update_artist_totals_for_artist(&pool, &primary_artist_id).await.ok();
-                    println!("    {} Releases moved, duplicate deleted", "✓".green());
                     if !extra_artists_to_sync.is_empty() {
                         pending_extra_artists.extend(extra_artists_to_sync);
                     }
