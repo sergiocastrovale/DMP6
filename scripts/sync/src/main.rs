@@ -381,8 +381,7 @@ fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, String> {
                 if album_artist.is_none()
                     && (key_upper == "ALBUMARTIST"
                         || key_upper == "ALBUM_ARTIST"
-                        || key_upper == "ALBUM ARTIST"
-                        || key_upper.contains("ALBUMARTIST"))
+                        || key_upper == "ALBUM ARTIST")
                 {
                     album_artist = Some(val.clone());
                 }
@@ -5015,6 +5014,51 @@ async fn main() {
         partial_sync.to_string().bright_yellow(),
         if failed_sync > 0 { failed_sync.to_string().red() } else { "0".to_string().bright_black() }
     );
+
+    // After overwrite, auto-clean orphaned artists (e.g. numeric artists "01", "02"
+    // created from bad metadata that was since fixed and re-synced)
+    if args.overwrite {
+        let orphans: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT a.id, a.name FROM "Artist" a
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM "LocalReleaseArtist" lra
+                   JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lra."localReleaseId"
+                   WHERE lra."artistId" = a.id
+               )"#,
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default();
+
+        if !orphans.is_empty() {
+            println!("  Cleaning up {} orphaned artist(s)...", orphans.len().to_string().bright_white());
+            for (id, name) in &orphans {
+                println!("    {} {}", "×".red(), name.bright_white());
+                sqlx::query(r#"DELETE FROM "LocalReleaseArtist" WHERE "artistId" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "TrackArtist" WHERE "artistId" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "ArtistUrl" WHERE "artistId" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "_ArtistGenres" WHERE "A" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "artistId" = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+                sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#)
+                    .bind(id).execute(&pool).await.ok();
+            }
+            // Clean up orphaned MB releases
+            sqlx::query(r#"DELETE FROM "MusicBrainzReleaseTrack" WHERE "releaseId" IN (SELECT id FROM "MusicBrainzRelease" WHERE id NOT IN (SELECT "releaseId" FROM "MusicBrainzReleaseArtist"))"#)
+                .execute(&pool).await.ok();
+            sqlx::query(r#"DELETE FROM "MusicBrainzRelease" WHERE id NOT IN (SELECT "releaseId" FROM "MusicBrainzReleaseArtist")"#)
+                .execute(&pool).await.ok();
+            // Also clean up orphaned local releases (no tracks remaining)
+            sqlx::query(r#"DELETE FROM "LocalReleaseArtist" WHERE "localReleaseId" IN (SELECT id FROM "LocalRelease" WHERE NOT EXISTS (SELECT 1 FROM "LocalReleaseTrack" WHERE "localReleaseId" = "LocalRelease".id))"#)
+                .execute(&pool).await.ok();
+            sqlx::query(r#"DELETE FROM "LocalRelease" WHERE NOT EXISTS (SELECT 1 FROM "LocalReleaseTrack" WHERE "localReleaseId" = "LocalRelease".id)"#)
+                .execute(&pool).await.ok();
+        }
+    }
 
     update_statistics(&pool).await.ok();
     clear_sync_progress(&pool).await.ok();

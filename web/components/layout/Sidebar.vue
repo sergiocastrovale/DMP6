@@ -13,7 +13,6 @@ import {
 } from 'lucide-vue-next'
 
 const collapsed = ref(false)
-const { isStreamMode } = useStreamMode()
 const { logout } = useAuth()
 
 const allNavItems = [
@@ -21,13 +20,11 @@ const allNavItems = [
   { to: '/browse', label: 'Browse', icon: Library },
   { to: '/explore', label: 'Explore', icon: Compass },
   { to: '/timeline', label: 'Timeline', icon: Clock },
-  { to: '/playlists', label: 'Playlists', icon: ListMusic, hostOnly: true },
-  { to: '/favorites', label: 'Favorites', icon: Heart, hostOnly: true },
+  { to: '/playlists', label: 'Playlists', icon: ListMusic },
+  { to: '/favorites', label: 'Favorites', icon: Heart },
 ]
 
-const navItems = computed(() =>
-  isStreamMode.value ? allNavItems.filter(i => !i.hostOnly) : allNavItems,
-)
+const navItems = computed(() => allNavItems)
 
 const route = useRoute()
 

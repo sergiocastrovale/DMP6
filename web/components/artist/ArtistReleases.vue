@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, Pause, Search, LayoutList, LayoutGrid, HelpCircle, Disc3, Loader2 } from 'lucide-vue-next'
+import { Play, Pause, Search, LayoutList, LayoutGrid, HelpCircle, Disc3, Loader2, Link } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/components/TrackList.vue'
@@ -17,7 +17,6 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 const player = usePlayerStore()
-const { isStreamMode } = useStreamMode()
 
 // All loaded releases (accumulated across pages)
 const releases = ref<UnifiedRelease[]>([])
@@ -30,6 +29,7 @@ const PAGE_SIZE = 20
 
 const searchQuery = ref('')
 const statusFilter = ref<string | null>(null)
+const showMissing = ref(true)
 const viewMode = ref<'catalogue' | 'list'>('catalogue')
 const expandedRelease = ref<string | null>(null)
 const allTracks = ref<Track[]>([])
@@ -98,8 +98,14 @@ async function loadMore() {
 }
 
 const filteredByStatus = computed(() => {
-  if (!statusFilter.value) return releases.value
-  return releases.value.filter(r => r.status === statusFilter.value)
+  let result = releases.value
+  if (!showMissing.value) {
+    result = result.filter(r => r.status !== 'MISSING')
+  }
+  if (statusFilter.value) {
+    result = result.filter(r => r.status === statusFilter.value)
+  }
+  return result
 })
 
 const types = computed(() => {
@@ -113,7 +119,7 @@ const types = computed(() => {
       typeMap.set(r.typeSlug, { name: r.type, slug: r.typeSlug, count: 1 })
     }
   }
-  return Array.from(typeMap.values())
+  return Array.from(typeMap.values()).sort((a, b) => a.name.localeCompare(b.name))
 })
 
 const activeTab = ref('')
@@ -332,6 +338,7 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
         <div class="flex items-center gap-4 px-3 text-xs text-zinc-500">
           <div class="w-10 shrink-0" />
           <div class="min-w-0 flex-1" />
+          <Switch v-model="showMissing" label="Show missing" />
           <div class="flex items-center gap-1 shrink-0">
             <span>Status</span>
             <Popover trigger="hover">
@@ -382,7 +389,7 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
                   <Disc3 :size="20" />
                 </div>
                 <button
-                  v-if="!isStreamMode && (release.localReleaseId || release.localTrackCount > 0)"
+                  v-if="release.localReleaseId || release.localTrackCount > 0"
                   class="absolute inset-0 flex items-center justify-center bg-black/60 transition-opacity"
                   :class="isReleasePlaying(release) ? 'opacity-100' : 'opacity-0 group-hover/cover:opacity-100'"
                   @click.stop="handleReleaseClick(release)"
@@ -393,7 +400,22 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
               </div>
 
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-zinc-50">{{ release.title }}</p>
+                <div class="flex items-center gap-1">
+                  <div class="truncate text-sm font-medium text-zinc-50">{{ release.title }}</div>
+
+                  <a
+                    v-if="release.status === 'MISSING' && release.musicbrainzId"
+                    :href="`https://musicbrainz.org/release-group/${release.musicbrainzId}`"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="shrink-0 text-zinc-600 hover:text-zinc-400 transition-colors"
+                    title="View on MusicBrainz"
+                    @click.stop
+                  >
+                    <Link :size="10" />
+                  </a>
+                </div>
+
                 <div class="flex items-center gap-3 text-xs text-zinc-400">
                   <span v-if="release.year">{{ release.year }}</span>
                   <span v-if="release.trackCount">{{ release.trackCount }} tracks</span>

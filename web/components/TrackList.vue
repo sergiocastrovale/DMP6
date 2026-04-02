@@ -24,7 +24,6 @@ const props = withDefaults(defineProps<{
 })
 
 const player = usePlayerStore()
-const { isStreamMode } = useStreamMode()
 const favoriteTracks = ref<Set<string>>(new Set())
 
 onMounted(async () => {
@@ -121,7 +120,7 @@ function hasColumn(key: string) {
           <th v-if="hasColumn('artist')" class="hidden py-2 pl-3 text-left md:table-cell">Artist</th>
           <th v-if="hasColumn('status')" class="hidden py-2 pl-3 text-left sm:table-cell">Status</th>
           <th v-if="hasColumn('playCount')" class="w-16 py-2 pr-3 text-right text-zinc-500">Plays</th>
-          <th v-if="hasColumn('favorite') && !isStreamMode" class="w-12 py-2 text-center" />
+          <th v-if="hasColumn('favorite')" class="w-12 py-2 text-center" />
           <th v-if="hasColumn('duration')" class="w-16 py-2 pr-4 text-right">
             <Clock :size="14" class="inline" />
           </th>
@@ -141,7 +140,7 @@ function hasColumn(key: string) {
             {{ releaseMap?.[track.localReleaseId || '']?.title || track.album || '-' }}
           </td>
           <td v-if="hasColumn('trackNumber')" class="py-2 pl-4 text-center text-zinc-500">
-            <template v-if="isStreamMode || track.missing">
+            <template v-if="track.missing">
               {{ track.trackNumber || '-' }}
             </template>
             <template v-else-if="isTrackPlaying(track.id)">
@@ -187,7 +186,7 @@ function hasColumn(key: string) {
             </span>
           </td>
           <td v-if="hasColumn('playCount')" class="py-2 pr-3 text-right tabular-nums text-zinc-500">{{ track.playCount || '' }}</td>
-          <td v-if="hasColumn('favorite') && !isStreamMode" class="py-2 text-center">
+          <td v-if="hasColumn('favorite')" class="py-2 text-center">
             <button
               class="text-zinc-500 transition-colors hover:text-amber-500"
               :class="{ 'text-amber-500': favoriteTracks.has(track.id) }"

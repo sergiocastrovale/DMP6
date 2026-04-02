@@ -16,7 +16,7 @@ export default defineEventHandler((event) => {
   ) return
 
   // Public auth endpoints
-  if (path === '/api/auth/login' || path === '/api/auth/logout') return
+  if (path === '/api/auth/login' || path === '/api/auth/logout' || path === '/api/health') return
 
   const token = getCookie(event, SESSION_COOKIE)
   const authenticated = validateSession(token)

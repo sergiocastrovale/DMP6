@@ -2,8 +2,6 @@
 import type { SearchRelease } from '~/types/search'
 import type { PlaylistSummary } from '~/types/playlist'
 
-const { isStreamMode } = useStreamMode()
-
 const loading = ref(true)
 const latestReleases = ref<SearchRelease[]>([])
 const recentlyPlayed = ref<SearchRelease[]>([])
@@ -11,34 +9,26 @@ const playlists = ref<PlaylistSummary[]>([])
 const favoriteReleases = ref<SearchRelease[]>([])
 
 const hasRecentlyPlayed = computed(() => recentlyPlayed.value.length)
-const hasPlaylists = computed(() => !isStreamMode.value && playlists.value.length)
-const hasFavoriteReleases = computed(() => !isStreamMode.value && favoriteReleases.value.length)
+const hasPlaylists = computed(() => playlists.value.length)
+const hasFavoriteReleases = computed(() => favoriteReleases.value.length)
 
 async function loadData() {
   loading.value = true
 
   try {
-    const fetches: Promise<any>[] = [
+    const [latest, lastPlayed, playlistData, favData] = await Promise.all([
       $fetch<any[]>('/api/releases/latest?limit=12'),
       $fetch<any[]>('/api/releases/last-played?limit=12'),
-    ]
+      $fetch<PlaylistSummary[]>('/api/playlists'),
+      $fetch<any>('/api/favorites'),
+    ])
 
-    if (!isStreamMode.value) {
-      fetches.push($fetch<PlaylistSummary[]>('/api/playlists'))
-      fetches.push($fetch<any>('/api/favorites'))
-    }
-
-    const results = await Promise.all(fetches)
-
-    latestReleases.value = results[0]
-    recentlyPlayed.value = results[1]
-
-    if (!isStreamMode.value) {
-      playlists.value = (results[2] || []).slice(0, 12)
-      favoriteReleases.value = (results[3]?.releases || [])
-        .slice(0, 12)
-        .map((fav: any) => fav.release)
-    }
+    latestReleases.value = latest
+    recentlyPlayed.value = lastPlayed
+    playlists.value = (playlistData || []).slice(0, 12)
+    favoriteReleases.value = (favData?.releases || [])
+      .slice(0, 12)
+      .map((fav: any) => fav.release)
   }
   catch (error) {
     console.error('Failed to load home page data:', error)

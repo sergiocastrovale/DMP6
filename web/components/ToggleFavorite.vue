@@ -2,8 +2,6 @@
 import { usePlayerStore } from '~/stores/player'
 import { Heart } from 'lucide-vue-next'
 
-const { isStreamMode } = useStreamMode()
-
 const player = usePlayerStore()
 const isFavorite = ref(false)
 
@@ -28,13 +26,13 @@ async function toggleFavorite() {
 }
 
 watch(() => player.currentTrack?.id, () => {
-  if (player.currentTrack && !isStreamMode.value) {
+  if (player.currentTrack) {
     checkFavorite()
   }
 })
 
 onMounted(() => {
-  if (player.currentTrack && !isStreamMode.value) {
+  if (player.currentTrack) {
     checkFavorite()
   }
 })
@@ -42,7 +40,6 @@ onMounted(() => {
 
 <template>
   <button
-    v-if="!isStreamMode"
     class="hidden lg:block text-zinc-400 hover:text-amber-500 transition-colors"
     :class="{ 'text-amber-500': isFavorite }"
     @click="toggleFavorite"

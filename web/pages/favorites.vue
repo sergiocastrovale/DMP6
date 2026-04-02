@@ -2,11 +2,6 @@
 import { LucideHeart, LucideDisc, LucideMusic, Loader2 } from 'lucide-vue-next'
 import type { FavoritesResponse, FavoriteRelease, FavoriteTrack } from '~/types/favorites'
 
-const { isStreamMode } = useStreamMode()
-if (isStreamMode.value) {
-  navigateTo('/')
-}
-
 const route = useRoute()
 const router = useRouter()
 

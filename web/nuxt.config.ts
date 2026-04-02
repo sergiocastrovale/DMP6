@@ -13,30 +13,14 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  nitro: {
-    experimental: {
-      websocket: true,
-    },
-    externals: {
-      inline: [],
-    },
-  },
-
   runtimeConfig: {
     musicDir: process.env.MUSIC_DIR || '',
     imageDir: process.env.IMAGE_DIR || './public/img',
     imageStorage: process.env.IMAGE_STORAGE || 'local',
     s3PublicUrl: process.env.S3_PUBLIC_URL || '',
-    mediasoupAnnouncedIp: process.env.MEDIASOUP_ANNOUNCED_IP || '127.0.0.1',
-    rtcMinPort: parseInt(process.env.RTC_MIN_PORT || '10000'),
-    rtcMaxPort: parseInt(process.env.RTC_MAX_PORT || '10100'),
-    partySecret: process.env.PARTY_SECRET || '',
     public: {
       imageStorage: process.env.IMAGE_STORAGE || 'local',
       s3PublicUrl: process.env.S3_PUBLIC_URL || '',
-      partyEnabled: process.env.PARTY_ENABLED === 'true',
-      partyRole: process.env.PARTY_ROLE || 'host',
-      partyUrl: process.env.PARTY_URL || '',
     },
   },
 

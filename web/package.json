@@ -21,9 +21,7 @@
     "dotenv": "^16.4.7",
     "ioredis": "^5.10.1",
     "lucide-vue-next": "^0.475.0",
-    "mediasoup": "^3.19.17",
-    "mediasoup-client": "^3.18.7",
-    "nuxt": "^4.3.1",
+"nuxt": "^4.3.1",
     "pinia": "^3.0.0",
     "vue": "^3.5.28",
     "vue-router": "^4.6.4"
@@ -45,8 +43,7 @@
       "@prisma/client",
       "@prisma/engines",
       "esbuild",
-      "mediasoup",
-      "prisma"
+"prisma"
     ]
   }
 }

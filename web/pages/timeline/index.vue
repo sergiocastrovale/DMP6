@@ -39,7 +39,6 @@ const loadingMore = ref(false)
 
 const { releaseImage } = useImageUrl()
 const playerStore = usePlayerStore()
-const { isStreamMode } = useStreamMode()
 
 async function loadDecades() {
   loading.value = true
@@ -242,7 +241,6 @@ onMounted(() => {
                   <LucideMusic class="size-12" />
                 </div>
                 <button
-                  v-if="!isStreamMode"
                   class="absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity"
                   :class="isReleasePlaying(release.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
                   @click="handleReleaseClick(release.id)"

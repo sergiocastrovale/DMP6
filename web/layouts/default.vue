@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { Loader2, Terminal } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
+import { useTerminalStore } from '~/stores/terminal'
 
 const player = usePlayerStore()
+const terminal = useTerminalStore()
 </script>
 
 <template>
@@ -13,7 +16,7 @@ const player = usePlayerStore()
     <LayoutMobileNav />
 
     <!-- Main content -->
-    <div class="lg:ml-56 transition-all duration-200">
+    <div class="lg:ml-56 transition-all duration-300" :class="{ 'lg:mr-[500px]': terminal.isOpen }">
       <!-- Top bar with search -->
       <header class="sticky top-0 z-30 flex h-14 items-center justify-end border-b border-zinc-800 bg-zinc-950/80 px-4 backdrop-blur-sm lg:px-6">
         <LayoutSearchBar />
@@ -31,6 +34,20 @@ const player = usePlayerStore()
         <slot />
       </main>
     </div>
+
+    <!-- Terminal panel -->
+    <TerminalOutput />
+
+    <!-- Background terminal indicator -->
+    <button
+      v-if="terminal.hasBackground"
+      @click="terminal.open()"
+      class="fixed bottom-24 right-4 z-50 flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 shadow-lg transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+    >
+      <Loader2 :size="14" class="animate-spin text-amber-500" />
+      <Terminal :size="14" />
+      <span>Terminal running</span>
+    </button>
 
     <!-- Audio player -->
     <PlayerAudioPlayer />

@@ -4,20 +4,16 @@ import { usePlayerStore } from '~/stores/player'
 
 const route = useRoute()
 const player = usePlayerStore()
-const { isStreamMode } = useStreamMode()
-
 const allItems = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/browse', label: 'Browse', icon: Library },
   { to: '/explore', label: 'Explore', icon: Compass },
   { to: '/timeline', label: 'Timeline', icon: Clock },
-  { to: '/playlists', label: 'Playlists', icon: ListMusic, hostOnly: true },
-  { to: '/favorites', label: 'Favorites', icon: Heart, hostOnly: true },
+  { to: '/playlists', label: 'Playlists', icon: ListMusic },
+  { to: '/favorites', label: 'Favorites', icon: Heart },
 ]
 
-const items = computed(() =>
-  isStreamMode.value ? allItems.filter(i => !i.hostOnly) : allItems,
-)
+const items = computed(() => allItems)
 
 function isActive(path: string) {
   if (path === '/') return route.path === '/'

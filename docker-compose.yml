@@ -67,6 +67,8 @@ services:
       - PARTY_ROLE=${PARTY_ROLE:-listener}
       - PARTY_URL=${PARTY_URL:-}
       - PARTY_SECRET=${PARTY_SECRET:-}
+      - ADMIN_USER=${ADMIN_USER}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - MEDIASOUP_ANNOUNCED_IP=${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
       - RTC_MIN_PORT=${RTC_MIN_PORT:-10000}
       - RTC_MAX_PORT=${RTC_MAX_PORT:-10100}
@@ -79,7 +81,7 @@ services:
         reservations:
           memory: 512M
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/stats').then(r=>{if(!r.ok)throw 1;process.exit(0)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)throw 1;process.exit(0)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       start_period: 15s

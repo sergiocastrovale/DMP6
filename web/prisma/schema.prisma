@@ -157,6 +157,7 @@ model LocalRelease {
   matchStatus     ReleaseStatus       @default(UNKNOWN)
   forcedComplete  Boolean             @default(false)
   folderPath      String?             @db.Text
+  groupKey        String              @db.VarChar(500)
   image           String?
   imageUrl        String?             @db.Text
   totalPlayCount  Int                 @default(0)
@@ -169,7 +170,7 @@ model LocalRelease {
   release         MusicBrainzRelease? @relation(fields: [releaseId], references: [id])
   tracks          LocalReleaseTrack[]
 
-  @@unique([title, folderPath])
+  @@unique([groupKey])
   @@index([releaseId])
   @@index([year])
   @@index([createdAt])

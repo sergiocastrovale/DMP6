@@ -2,11 +2,6 @@
 import { LucideListMusic, LucidePlay, LucidePause, LucideMusic, LucideTrash2, LucideX } from 'lucide-vue-next'
 import type { PlaylistDetail } from '~/types/playlist'
 
-const { isStreamMode } = useStreamMode()
-if (isStreamMode.value) {
-  navigateTo('/')
-}
-
 const route = useRoute()
 const router = useRouter()
 const slug = route.params.slug as string
