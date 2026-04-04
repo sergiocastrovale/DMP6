@@ -144,6 +144,61 @@ The sync script (`scripts/sync/src/main.rs`) is the largest codebase component. 
 ### Rate limiting
 - MusicBrainz API: adaptive backoff 1s–10s, doubles on 429/503, reduces 15% on success
 
+## Post-Sync Bulk Scan Routine
+
+When syncing the full collection in batches (e.g. letter ranges: `--from=a --to=bz`), run this routine after each batch to catch and fix errors:
+
+### Phase 1: Error Analysis
+```bash
+# After sync completes:
+# I will check errors.log and present findings by category (encoding, corrupt MPEG, missing tags, etc.)
+# You review and approve fixes.
+```
+
+### Phase 2: Fix Errors
+I will fix files using:
+- **Invalid encoding**: Strip + rewrite as ID3v2.4 UTF-8 with mutagen
+- **Invalid item size / corrupt MPEG**: ffmpeg lossless remux
+- **Bad tags**: Read TXXX:ARTISTS / TXXX:ALBUM_ARTISTS and copy to TPE1/TPE2
+- **Truly corrupt**: Flag for deletion/re-download
+
+Then resync all affected artists:
+```bash
+./sync --only="Artist1;Artist2;Artist3" --overwrite
+```
+
+### Phase 3: Ampersand Artist Analysis
+```bash
+python3 scripts/check_ampersand_artists.py
+# → separator_analysis.log
+```
+
+I will present findings:
+- **MULTIPLE**: Confirmed separate artists (multiple MB IDs or `;` in sort names) → fix with mutagen
+- **LIKELY_MULTIPLE**: Needs MB research → I'll investigate and report
+- **SINGLE**: Legitimate band names with `&` → no action
+
+### Phase 4: Fix Ampersand Artists
+For confirmed MULTIPLE artists, I replace ` & ` with `\\` in TPE2 (album artist) tag across all MP3s in the folder using mutagen.
+
+Then resync:
+```bash
+./sync --only="ArtistName;AnotherBand" --overwrite
+```
+
+### Phase 5: Verify & Loop
+Repeat until errors.log is clean.
+
+### How to Request
+
+Say one of these when you've finished a batch sync:
+
+- **"run the routine"** — start from Phase 1 (full analysis → fixes → verification)
+- **"check errors"** — start Phase 1 only (analyze + present findings)
+- **"fix the errors"** — skip to Phase 2 (apply fixes + resync)
+- **"check ampersand"** — run Phase 3 (analysis of separator_analysis.log)
+- **"fix ampersand"** — skip to Phase 4 (split tags + resync)
+
 ## API Endpoints
 
 ### Core
