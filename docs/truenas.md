@@ -95,7 +95,6 @@ DMP_DATA=/mnt/SSD/web/dmp
 DMP_PORT=3000
 ADMIN_USER=kp
 ADMIN_PASSWORD=your-password
-PARTY_ENABLED=false
 ```
 
 > **`host.docker.internal`**: use this (or the NAS LAN IP) for PostgreSQL — `localhost` won't work from inside the DMP container.
@@ -324,15 +323,3 @@ Steps you need to do in Cloudflare before deploying:
   ```
 
   Then https://dmp.nrnas.com should be live.
-
-  ### discodomeuprimo.online redirect
-
-  1. Namecheap → Domain List → Manage discodomeuprimo.online
-  2. Advanced DNS tab → Add New Record
-    - Type: URL Redirect Record
-    - Host: @
-    - Value: https://dmp.nrnas.com
-    - Redirect type: Permanent (301)
-  3. Save
-
-  If you also want www.discodomeuprimo.online to redirect, add a second identical record with Host: www.

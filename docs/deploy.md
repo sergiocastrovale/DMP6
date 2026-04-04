@@ -44,7 +44,7 @@ These must be set in `web/.env`. The deploy script sources this file.
 | `ADMIN_USER` | Login username for the web UI |
 | `ADMIN_PASSWORD` | Login password — quote the value if it contains shell special chars |
 
-Optional vars (image storage, S3, party mode, etc.) are documented in `.env` itself.
+Optional vars (image storage, S3, etc.) are documented in `.env` itself.
 
 > **Shell special characters in passwords** — if `ADMIN_PASSWORD` contains `&`, `!`, `$`, backticks, or spaces, wrap the value in double quotes in `.env`:
 > ```

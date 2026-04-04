@@ -15,6 +15,7 @@ cd scripts/sync && cargo build --release
 ./sync /path/to/music            # Override music directory
 ./sync --overwrite               # Nuke + re-index + re-sync all
 ./sync --only="radiohead"        # Only folders matching prefix
+./sync --only="radiohead;brand x;bjork"  # Multiple artists, processed in given order
 ./sync --from="A" --to="M"      # Process range
 ./sync --limit=10                # Limit to first N folders
 ./sync --resume                  # Continue from last checkpoint

@@ -247,6 +247,7 @@ struct MbRelease {
     id: String,
     title: String,
     date: Option<String>,
+    status: Option<String>,
     media: Option<Vec<MbMedia>>,
 }
 
@@ -512,8 +513,12 @@ fn matches_filter(folder: &str, from: &str, to: &str, only: &str) -> bool {
     let folder_norm = normalize_filter(folder);
 
     if !only.is_empty() {
-        let only_norm = normalize_filter(only);
-        return folder_norm.starts_with(&only_norm);
+        return only.split(';').any(|part| {
+            let part = part.trim();
+            if part.is_empty() { return false; }
+            let part_norm = normalize_filter(part);
+            folder_norm.starts_with(&part_norm)
+        });
     }
 
     if !from.is_empty() {
@@ -601,6 +606,9 @@ const SPECIAL_MB_ARTIST_IDS: &[&str] = &[
 fn is_various_artists(name: &str) -> bool {
     let lower = name.to_lowercase();
     lower == "various artists" || lower == "various" || lower == "va"
+        || lower.starts_with("various artists,")
+        || lower.starts_with("various artists &")
+        || lower.starts_with("various artists /")
 }
 
 fn is_special_mb_artist(id: &str, name: &str) -> bool {
@@ -1245,6 +1253,9 @@ async fn find_mb_match_with_fallback(
             continue;
         }
         if let Some(m) = mb_search_artist(client, tag, limiter).await? {
+            if is_special_mb_artist(&m.id, &m.name) {
+                continue;
+            }
             println!(
                 "    {} Found via raw tag: {} ({})",
                 "✓".green(), m.name.bright_white(), m.id.bright_black()
@@ -1597,6 +1608,12 @@ async fn mb_get_release_tracks(
 
     let mut releases = Vec::new();
     for release in result.releases {
+        // Skip non-official releases (Bootleg, Promotional, etc.)
+        if let Some(ref status) = release.status {
+            if !status.eq_ignore_ascii_case("Official") {
+                continue;
+            }
+        }
         let mut tracks = Vec::new();
         if let Some(ref media) = release.media {
             for medium in media {
@@ -3218,7 +3235,19 @@ async fn main() {
         .map(|e| e.file_name().to_string_lossy().to_string())
         .filter(|f| matches_filter(f, &from_filter, &to_filter, &only_filter))
         .collect();
-    artist_folders.sort_unstable_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    // When --only has multiple ";"-separated values, sort by the order given
+    if only_filter.contains(';') {
+        let prefixes: Vec<String> = only_filter.split(';')
+            .map(|p| normalize_filter(p.trim()))
+            .filter(|p| !p.is_empty())
+            .collect();
+        artist_folders.sort_by_key(|f| {
+            let norm = normalize_filter(f);
+            prefixes.iter().position(|p| norm.starts_with(p)).unwrap_or(usize::MAX)
+        });
+    } else {
+        artist_folders.sort_unstable_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    }
 
     if let Some(ref resume_f) = resume_folder {
         let resume_lower = resume_f.to_lowercase();
@@ -4387,6 +4416,18 @@ async fn main() {
                         }
                     };
 
+                // All releases were non-official (bootleg/promo) — remove the MB release
+                if release_tracks.is_empty() {
+                    sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "releaseId" = $1"#)
+                        .bind(&mb_release_id).execute(&pool).await.ok();
+                    sqlx::query(r#"DELETE FROM "MusicBrainzRelease" WHERE id = $1"#)
+                        .bind(&mb_release_id).execute(&pool).await.ok();
+                    if args.verbose {
+                        println!("      {} Skipped (no official releases)", "⊘".bright_black());
+                    }
+                    continue;
+                }
+
                 if let Some((_, tracks)) = release_tracks.first() {
                     delete_mb_tracks_for_release(&pool, &mb_release_id).await.ok();
                     batch_insert_mb_tracks(&pool, &mb_release_id, tracks, 1).await.ok();
@@ -4735,6 +4776,14 @@ async fn main() {
 
                             match mb_get_release_tracks(&http_client, &rg.id, &mut limiter).await {
                                 Ok(rt) => {
+                                    if rt.is_empty() {
+                                        // All releases were non-official — clean up
+                                        sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "releaseId" = $1"#)
+                                            .bind(&mb_release_id).execute(&pool).await.ok();
+                                        sqlx::query(r#"DELETE FROM "MusicBrainzRelease" WHERE id = $1"#)
+                                            .bind(&mb_release_id).execute(&pool).await.ok();
+                                        continue;
+                                    }
                                     if let Some((_, tracks)) = rt.first() {
                                         delete_mb_tracks_for_release(&pool, &mb_release_id).await.ok();
                                         batch_insert_mb_tracks(&pool, &mb_release_id, tracks, 1).await.ok();
