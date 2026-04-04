@@ -17,6 +17,9 @@ export const usePlayerStore = defineStore('player', () => {
   const explorerParams = ref<ExploreParams | null>(null)
   // Track IDs played during the current explorer session — used for deduplication
   const explorerHistory = ref<string[]>([])
+  // Explorer session state — drives the /explore page reactively
+  const explorerCurrentTrack = ref<PlayerTrack | null>(null)
+  const explorerSessionHistory = ref<PlayerTrack[]>([])
   // Pre-fetched tracks for catalogue shuffle — eliminates per-song network latency
   const catalogueBuffer = ref<PlayerTrack[]>([])
   let catalogueBufferFetching = false
@@ -125,24 +128,58 @@ export const usePlayerStore = defineStore('player', () => {
     finally { catalogueBufferFetching = false }
   }
 
+  async function fetchExplorerTrack(params: ExploreParams): Promise<PlayerTrack | null> {
+    try {
+      return await $fetch<PlayerTrack>('/api/tracks/explore', {
+        method: 'POST',
+        body: { ...params, excludeIds: explorerHistory.value },
+      })
+    }
+    catch { return null }
+  }
+
+  // Called from the Explore page button — fetches next track, updates session state, plays it
+  async function pickExplorerTrack(params: ExploreParams): Promise<void> {
+    if (explorerCurrentTrack.value) {
+      explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
+    }
+    explorerParams.value = params
+    shuffleMode.value = 'explorer'
+
+    const track = await fetchExplorerTrack(params)
+    if (!track) return
+
+    explorerCurrentTrack.value = track
+    explorerHistory.value.push(track.id)
+    if (explorerHistory.value.length > 50) explorerHistory.value.shift()
+    playTrack(track)
+  }
+
+  // Called when replaying a history track from the Explore page
+  function setExplorerTrack(track: PlayerTrack, params: ExploreParams): void {
+    if (explorerCurrentTrack.value && explorerCurrentTrack.value.id !== track.id) {
+      explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
+    }
+    explorerCurrentTrack.value = track
+    explorerParams.value = params
+    shuffleMode.value = 'explorer'
+    explorerHistory.value = [track.id]
+    playTrack(track)
+  }
+
   async function next() {
     if (shuffleMode.value === 'explorer') {
       if (!explorerParams.value) return
-      try {
-        const track = await $fetch<PlayerTrack>('/api/tracks/explore', {
-          method: 'POST',
-          body: {
-            ...explorerParams.value,
-            excludeIds: explorerHistory.value,
-          },
-        })
-        if (track) {
-          explorerHistory.value.push(track.id)
-          if (explorerHistory.value.length > 50) explorerHistory.value.shift()
-          playTrack(track)
-        }
+      if (explorerCurrentTrack.value) {
+        explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
       }
-      catch { /* ignore */ }
+      const track = await fetchExplorerTrack(explorerParams.value)
+      if (track) {
+        explorerCurrentTrack.value = track
+        explorerHistory.value.push(track.id)
+        if (explorerHistory.value.length > 50) explorerHistory.value.shift()
+        playTrack(track)
+      }
       return
     }
 
@@ -197,12 +234,39 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  async function fetchReleaseTracks(localReleaseId: string): Promise<PlayerTrack[]> {
+    const res = await $fetch<{ release: { image: string | null, imageUrl: string | null, artistSlug: string } | null, tracks: any[] }>(`/api/releases/${localReleaseId}/tracks`)
+    return res.tracks
+      .filter(t => !t.missing)
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist ?? t.albumArtist ?? '',
+        album: t.album ?? '',
+        duration: t.duration ?? 0,
+        artistSlug: res.release?.artistSlug ?? null,
+        releaseImage: res.release?.image ?? null,
+        releaseImageUrl: res.release?.imageUrl ?? null,
+        localReleaseId: t.localReleaseId,
+      }))
+  }
+
   async function cycleShuffleMode() {
     // Explorer mode is toggled off directly — not part of the normal cycle
     if (shuffleMode.value === 'explorer') {
       shuffleMode.value = 'off'
       explorerParams.value = null
       explorerHistory.value = []
+      explorerCurrentTrack.value = null
+      explorerSessionHistory.value = []
+      if (currentTrack.value?.localReleaseId) {
+        try {
+          const tracks = await fetchReleaseTracks(currentTrack.value.localReleaseId)
+          originalQueue.value = tracks
+          queue.value = tracks
+        }
+        catch { /* ignore */ }
+      }
       return
     }
 
@@ -212,9 +276,9 @@ export const usePlayerStore = defineStore('player', () => {
     shuffleMode.value = newMode
 
     // Fetch appropriate tracks for the new mode
-    if (newMode === 'release' && currentTrack.value?.releaseId) {
+    if (newMode === 'release' && currentTrack.value?.localReleaseId) {
       try {
-        const tracks = await $fetch<PlayerTrack[]>(`/api/releases/${currentTrack.value.releaseId}/tracks`)
+        const tracks = await fetchReleaseTracks(currentTrack.value.localReleaseId)
         originalQueue.value = tracks
         queue.value = shuffleArray([...tracks])
       }
@@ -243,13 +307,6 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  // Called only from the Explore page. Sets explorer mode with the given params
-  // and seeds explorerHistory so the next auto-play won't repeat this track.
-  function activateExplorer(params: ExploreParams, firstTrackId: string) {
-    explorerParams.value = params
-    explorerHistory.value = [firstTrackId]
-    shuffleMode.value = 'explorer'
-  }
 
   function shuffleArray<T>(arr: T[]): T[] {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -327,6 +384,8 @@ export const usePlayerStore = defineStore('player', () => {
     history,
     explorerParams,
     explorerHistory,
+    explorerCurrentTrack,
+    explorerSessionHistory,
     playTrack,
     togglePlay,
     seek,
@@ -336,7 +395,8 @@ export const usePlayerStore = defineStore('player', () => {
     next,
     previous,
     cycleShuffleMode,
-    activateExplorer,
+    pickExplorerTrack,
+    setExplorerTrack,
     getAudioElement,
   }
 })

@@ -155,6 +155,38 @@ function clampMood(val: unknown): number {
   return Math.max(0, Math.min(99, isNaN(n) ? 0 : n))
 }
 
+// Resolve a metadata key across MP3 (e.g. "MOOD_HAPPY") and iTunes (e.g. "----:com.apple.iTunes:MOOD_HAPPY") variants
+function getMeta(meta: Record<string, string | number> | null, key: string): string | number | undefined {
+  if (!meta) return undefined
+  if (meta[key] !== undefined) return meta[key]
+  const itunesKey = `----:com.apple.iTunes:${key}`
+  if (meta[itunesKey] !== undefined) return meta[itunesKey]
+  return undefined
+}
+
+// Check if any mood tag exists (MP3 or iTunes)
+function hasMoodData(meta: Record<string, string | number> | null): boolean {
+  return getMeta(meta, 'MOOD_HAPPY') !== undefined
+}
+
+// Get BPM from any available key variant, returns integer or null
+function getBpm(meta: Record<string, string | number> | null): number | null {
+  if (!meta) return null
+  for (const key of ['IntegerBpm', 'BPM', 'Bpm', 'FBPM', 'fBPM', '----:com.apple.iTunes:fBPM', 'fBPM2']) {
+    if (meta[key] !== undefined) {
+      const v = typeof meta[key] === 'string' ? parseFloat(meta[key] as string) : meta[key] as number
+      if (!isNaN(v) && v > 0) return Math.round(v)
+    }
+  }
+  return null
+}
+
+// Pre-computed genre signals passed to sub-scorers to prevent double-counting
+interface GenreSignals {
+  energy: number | null // 0-100
+  acoustic: number | null // 0-100 (0=acoustic, 100=electronic)
+}
+
 export interface TrackCandidate {
   id: string
   title: string | null
@@ -164,6 +196,7 @@ export interface TrackCandidate {
   year: number | null
   genre: string | null
   playCount: number
+  lastPlayedAt: Date | null
   metadata: Record<string, unknown> | null
   localReleaseId: string | null
   localRelease: {
@@ -189,39 +222,41 @@ export function scoreTrack(track: TrackCandidate, params: ExploreParams): number
   const meta = track.metadata as Record<string, string | number> | null
   const genreTokens = track.genre ? tokenizeGenre(track.genre) : []
 
-  const energyScore = scoreEnergy(meta, genreTokens, params.energy)
+  // Pre-compute genre signals once to avoid double-counting in energy + sound
+  const genreSignals: GenreSignals = {
+    energy: lookupGenre(genreTokens, GENRE_ENERGY_MAP),
+    acoustic: lookupGenre(genreTokens, GENRE_ACOUSTIC_MAP),
+  }
+
+  const energyScore = scoreEnergy(meta, genreSignals, params.energy)
   const eraScore = scoreEra(track.year, params.era)
-  const familiarityScore = scoreFamiliarity(track.playCount, params.familiarity)
-  const soundScore = scoreSound(meta, genreTokens, params.sound)
+  const familiarityScore = scoreFamiliarity(track.playCount, track.lastPlayedAt, params.familiarity)
+  const soundScore = scoreSound(meta, genreSignals, params.sound)
 
   return (energyScore * 0.40) + (eraScore * 0.20) + (familiarityScore * 0.20) + (soundScore * 0.20)
 }
 
-function scoreEnergy(meta: Record<string, string | number> | null, genreTokens: string[], slider: number): number {
-  const config = ENERGY_CONFIGS[slider]
-  const hasBpm = meta && meta['IntegerBpm'] !== undefined
-  const hasMood = meta && meta['MOOD_HAPPY'] !== undefined
+function scoreEnergy(meta: Record<string, string | number> | null, genre: GenreSignals, slider: number): number {
+  const config = ENERGY_CONFIGS[slider]!
+  const bpm = getBpm(meta)
+  const hasMood = hasMoodData(meta)
 
   let bpmScore: number
   let bpmConfidence = 1.0
 
-  if (hasBpm) {
-    const bpm = typeof meta!['IntegerBpm'] === 'string' ? parseInt(meta!['IntegerBpm'] as string, 10) : meta!['IntegerBpm'] as number
+  if (bpm !== null) {
     if (bpm >= config.bpmMin && bpm <= config.bpmMax) {
       bpmScore = 1.0
     } else {
       const nearestEdge = bpm < config.bpmMin ? config.bpmMin : config.bpmMax
       const dist = Math.abs(bpm - nearestEdge)
-      if (dist <= 15) bpmScore = 0.5
-      else bpmScore = Math.max(0, 1 - dist / 50)
+      bpmScore = Math.max(0, 1 - dist / 50)
     }
   } else {
     // Genre fallback for BPM
-    const genreEnergy = lookupGenre(genreTokens, GENRE_ENERGY_MAP)
-    if (genreEnergy !== null) {
-      // Map genre energy (0-100) to how well it fits this slider's expected energy range
+    if (genre.energy !== null) {
       const sliderEnergy = (slider / 9) * 100
-      const dist = Math.abs(genreEnergy - sliderEnergy)
+      const dist = Math.abs(genre.energy - sliderEnergy)
       bpmScore = Math.max(0, 1 - dist / 60)
       bpmConfidence = 0.75
     } else {
@@ -236,18 +271,18 @@ function scoreEnergy(meta: Record<string, string | number> | null, genreTokens: 
   if (hasMood) {
     const dims: number[] = []
     for (const [key, target] of Object.entries(config.moods)) {
-      const trackVal = clampMood(meta![key])
+      const trackVal = clampMood(getMeta(meta, key))
       dims.push(1 - Math.abs(trackVal - target!) / 100)
     }
     moodScore = dims.length > 0 ? dims.reduce((a, b) => a + b, 0) / dims.length : 0.5
   } else {
-    // Genre fallback for mood
-    const genreEnergy = lookupGenre(genreTokens, GENRE_ENERGY_MAP)
-    if (genreEnergy !== null) {
+    // Genre fallback for mood — uses same genre.energy signal as BPM fallback
+    // but with reduced confidence since this is a second use of the same signal
+    if (genre.energy !== null) {
       const sliderEnergy = (slider / 9) * 100
-      const dist = Math.abs(genreEnergy - sliderEnergy)
+      const dist = Math.abs(genre.energy - sliderEnergy)
       moodScore = Math.max(0, 1 - dist / 60)
-      moodConfidence = 0.75
+      moodConfidence = 0.5 // lower than BPM genre fallback to reduce double-counting weight
     } else {
       moodScore = 0.5
       moodConfidence = 0.5
@@ -261,47 +296,54 @@ function scoreEnergy(meta: Record<string, string | number> | null, genreTokens: 
 function scoreEra(year: number | null, slider: number): number {
   if (year === null) return 0.5
 
-  const [targetMin, targetMax] = ERA_CONFIGS[slider]
+  const [targetMin, targetMax] = ERA_CONFIGS[slider]!
 
   if (year >= targetMin && year <= targetMax) return 1.0
 
-  const distMin = Math.abs(year - targetMin)
-  const distMax = Math.abs(year - targetMax)
-  const dist = Math.min(distMin, distMax)
-
-  if (dist <= 5) return 0.6
-  if (dist <= 10) return 0.3
-  return 0.0
+  // Smooth linear decay: 0 at 30 years away from the target range edge
+  const dist = Math.min(Math.abs(year - targetMin), Math.abs(year - targetMax))
+  return Math.max(0, 1 - dist / 30)
 }
 
-function scoreFamiliarity(playCount: number, slider: number): number {
+function scoreFamiliarity(playCount: number, lastPlayedAt: Date | null, slider: number): number {
   if (slider === 9 && playCount > 0) return 0
 
-  const normalizedPlays = Math.min(playCount / 20, 1.0)
+  // Weight play count by recency: plays from 1 year ago count half
+  const daysSince = lastPlayedAt ? (Date.now() - new Date(lastPlayedAt).getTime()) / 86400000 : Infinity
+  const recencyFactor = isFinite(daysSince) ? Math.exp(-daysSince / 365) : 0
+  const effectivePlays = playCount * (0.5 + 0.5 * recencyFactor)
+
+  const normalizedPlays = Math.min(effectivePlays / 20, 1.0)
   const targetFamiliarity = slider / 9 // 0 = familiar, 1 = uncharted
   const distance = Math.abs(targetFamiliarity - (1 - normalizedPlays))
   return 1 - distance
 }
 
-function scoreSound(meta: Record<string, string | number> | null, genreTokens: string[], slider: number): number {
-  const [targetAcoustic, targetElectronic] = SOUND_CONFIGS[slider]
-  const hasMood = meta && meta['MOOD_ACOUSTIC'] !== undefined
+function scoreSound(meta: Record<string, string | number> | null, genre: GenreSignals, slider: number): number {
+  const [targetAcoustic, targetElectronic] = SOUND_CONFIGS[slider]!
+  const hasAcousticMood = getMeta(meta, 'MOOD_ACOUSTIC') !== undefined
 
-  if (hasMood) {
-    const trackAcoustic = clampMood(meta!['MOOD_ACOUSTIC'])
-    const trackElectronic = clampMood(meta!['MOOD_ELECTRONIC'])
-    const acousticDist = Math.abs(trackAcoustic - targetAcoustic) / 100
-    const electronicDist = Math.abs(trackElectronic - targetElectronic) / 100
-    return 1 - (acousticDist + electronicDist) / 2
+  if (hasAcousticMood) {
+    const trackAcoustic = clampMood(getMeta(meta, 'MOOD_ACOUSTIC'))
+    const trackElectronic = clampMood(getMeta(meta, 'MOOD_ELECTRONIC'))
+    let score = 1 - (Math.abs(trackAcoustic - targetAcoustic) / 100 + Math.abs(trackElectronic - targetElectronic) / 100) / 2
+
+    // Boost with timbre brightness if available (secondary signal)
+    const timbre = getMeta(meta, 'TIMBRE_BRIGHTNESS')
+    if (timbre !== undefined) {
+      const brightness = clampMood(timbre) / 99 // 0-1, higher = brighter = more electronic
+      const targetBrightness = slider / 9
+      const timbreScore = 1 - Math.abs(brightness - targetBrightness)
+      score = score * 0.85 + timbreScore * 0.15
+    }
+
+    return score
   }
 
   // Genre fallback
-  const genreAcoustic = lookupGenre(genreTokens, GENRE_ACOUSTIC_MAP)
-  if (genreAcoustic !== null) {
-    // genreAcoustic is 0-100 where 0=acoustic, 100=electronic
-    // targetAcoustic is 0-99, targetElectronic is 0-99
+  if (genre.acoustic !== null) {
     const sliderElectronic = (slider / 9) * 100
-    const dist = Math.abs(genreAcoustic - sliderElectronic)
+    const dist = Math.abs(genre.acoustic - sliderElectronic)
     return Math.max(0, 1 - dist / 60) * 0.75
   }
 
@@ -357,26 +399,24 @@ export function removeFromPool(key: string, trackId: string): void {
 export function weightedRandomPick(scored: ScoredTrack[]): ScoredTrack | null {
   if (scored.length === 0) return null
 
-  // Take top 15% (minimum 20)
-  const poolSize = Math.max(20, Math.ceil(scored.length * 0.15))
-  const pool = scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, poolSize)
+  // Softmax temperature sampling over all candidates
+  // T < 1 sharpens the distribution (favors high scores), T > 1 flattens it
+  const T = 0.15
 
-  // Weighted random: probability proportional to score^2
-  const weights = pool.map(t => t.score * t.score)
+  // Find max score for numerical stability (subtract before exp)
+  const maxScore = Math.max(...scored.map(t => t.score))
+  const weights = scored.map(t => Math.exp((t.score - maxScore) / T))
   const totalWeight = weights.reduce((a, b) => a + b, 0)
 
   if (totalWeight === 0) {
-    // All scores zero — pick random from pool
-    return pool[Math.floor(Math.random() * pool.length)]
+    return scored[Math.floor(Math.random() * scored.length)] ?? null
   }
 
   let r = Math.random() * totalWeight
-  for (let i = 0; i < pool.length; i++) {
-    r -= weights[i]
-    if (r <= 0) return pool[i]
+  for (let i = 0; i < scored.length; i++) {
+    r -= weights[i]!
+    if (r <= 0) return scored[i]!
   }
 
-  return pool[pool.length - 1]
+  return scored[scored.length - 1] ?? null
 }

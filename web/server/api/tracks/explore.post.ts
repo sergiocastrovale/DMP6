@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
       [2000, 2004], [2005, 2009], [2010, 2014], [2015, 2019],
       [2020, 2024], [2025, 2030],
     ]
-    const [eraMin, eraMax] = ERA_RANGES[params.era]
+    const [eraMin, eraMax] = ERA_RANGES[params.era]!
 
     // Build where clause for SQL pre-filtering
     const where: Record<string, unknown> = {}
@@ -69,6 +69,7 @@ export default defineEventHandler(async (event) => {
         year: true,
         genre: true,
         playCount: true,
+        lastPlayedAt: true,
         metadata: true,
         localReleaseId: true,
         localRelease: {
@@ -89,7 +90,7 @@ export default defineEventHandler(async (event) => {
     // Shuffle candidates
     for (let i = raw.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
-      ;[raw[i], raw[j]] = [raw[j], raw[i]]
+      ;[raw[i], raw[j]] = [raw[j]!, raw[i]!]
     }
 
     candidates = raw.slice(0, 500) as unknown as TrackCandidate[]

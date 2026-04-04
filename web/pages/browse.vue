@@ -3,7 +3,7 @@ import { Search } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
 
 const store = useBrowseStore()
-const searchInput = ref('')
+const searchInput = ref(store.searchQuery)
 
 let searchTimeout: ReturnType<typeof setTimeout>
 
@@ -13,6 +13,11 @@ function handleSearch(value: string) {
   searchTimeout = setTimeout(() => {
     store.setSearch(value)
   }, 300)
+}
+
+function handleLetterSelect(letter: string | null) {
+  searchInput.value = ''
+  store.setLetterFilter(letter)
 }
 
 onMounted(() => {
@@ -53,7 +58,7 @@ onMounted(() => {
     </div>
 
     <!-- Letter filter -->
-    <BrowseFilterLetter :active="store.letterFilter" @select="store.setLetterFilter" />
+    <BrowseFilterLetter :active="store.letterFilter" @select="handleLetterSelect" />
 
     <!-- Artist grid -->
     <BrowseArtistGrid />
