@@ -55,6 +55,7 @@ model Artist {
   @@index([totalPlayCount])
   @@index([averageMatchScore])
   @@index([createdAt])
+  @@index([name]) // B-tree for ORDER BY name; trigram GIN index for ILIKE added via raw migration
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +176,7 @@ model LocalRelease {
   @@index([year])
   @@index([createdAt])
   @@index([lastPlayedAt])
+  @@index([title]) // B-tree for ORDER BY title; trigram GIN index for ILIKE added via raw migration
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +257,8 @@ model LocalReleaseTrack {
   @@index([year, genre])
   @@index([playCount])
   @@index([genre])
+  @@index([localReleaseId, discNumber, trackNumber]) // Composite for ORDER BY discNumber, trackNumber within a release
+  // Trigram GIN index for title ILIKE and expression index on LOWER(genre) added via raw migration
 }
 
 // ---------------------------------------------------------------------------
@@ -273,6 +277,7 @@ model TrackArtist {
   @@unique([trackId, artistId, role])
   @@index([trackId])
   @@index([artistId])
+  @@index([trackId, role, artistId]) // Composite for WHERE trackId = ? AND role = 'PRIMARY' JOINs
 }
 
 // ---------------------------------------------------------------------------

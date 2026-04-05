@@ -85,6 +85,9 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "deploy" ]; then
 
   echo "--- Restarting containers ---"
   ssh_cmd "cd $NAS_DEPLOY_PATH && docker compose up -d"
+
+  echo "--- Applying DB schema ---"
+  ssh_cmd "cd $NAS_DEPLOY_PATH && sleep 3 && docker compose exec -T web prisma db push --schema=prisma/schema.prisma --accept-data-loss 2>&1 || true"
   echo ""
 fi
 

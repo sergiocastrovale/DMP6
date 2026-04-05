@@ -29,6 +29,10 @@ WORKDIR /app
 
 # Copy built output
 COPY --from=builder /build/.output .output/
+COPY --from=builder /build/prisma/schema.prisma prisma/schema.prisma
+
+# Prisma CLI for db push on deploy (pinned to match project version)
+RUN npm install -g prisma@6
 
 # Create mount point directories
 RUN mkdir -p /app/data/img/artists /app/data/img/releases /app/data/dump
