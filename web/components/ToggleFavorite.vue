@@ -5,6 +5,12 @@ import { Heart } from 'lucide-vue-next'
 const player = usePlayerStore()
 const isFavorite = ref(false)
 
+const props = withDefaults(defineProps<{
+  size?: number
+}>(), {
+  size: 18,
+})
+
 async function checkFavorite() {
   try {
     const favorites = await $fetch<any>('/api/favorites')
@@ -17,8 +23,10 @@ async function checkFavorite() {
 
 async function toggleFavorite() {
   try {
-    await $fetch(`/api/favorites/tracks/${player.currentTrack?.id}`, { method: 'POST' })
-    isFavorite.value = true
+    await $fetch(`/api/favorites/tracks/${player.currentTrack?.id}`, {
+      method: isFavorite.value ? 'DELETE' : 'POST',
+    })
+    isFavorite.value = !isFavorite.value
   }
   catch (error) {
     console.error('Failed to toggle favorite:', error)
@@ -40,10 +48,10 @@ onMounted(() => {
 
 <template>
   <button
-    class="hidden lg:block text-zinc-400 hover:text-amber-500 transition-colors"
+    class="hidden lg:block text-zinc-400 hover:text-amber-500 transition-colors cursor-pointer"
     :class="{ 'text-amber-500': isFavorite }"
     @click="toggleFavorite"
   >
-    <Heart :size="18" :fill="isFavorite ? 'currentColor' : 'none'" />
+    <Heart :size="props.size" :fill="isFavorite ? 'currentColor' : 'none'" />
   </button>
 </template>

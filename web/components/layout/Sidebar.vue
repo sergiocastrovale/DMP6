@@ -11,9 +11,11 @@ import {
   PanelLeft,
   LogOut,
 } from 'lucide-vue-next'
+import { usePlayerStore } from '~/stores/player'
 
 const collapsed = ref(false)
 const { logout } = useAuth()
+const player = usePlayerStore()
 
 const allNavItems = [
   { to: '/', label: 'Home', icon: Home },
@@ -79,7 +81,7 @@ function isActive(path: string) {
     </nav>
 
     <!-- Bottom: Statistics + Logout -->
-    <div class="mb-4 px-2">
+    <div class="px-2 transition-all duration-200" :class="player.isVisible ? 'mb-28' : 'mb-4'">
       <NuxtLink
         to="/statistics"
         class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"

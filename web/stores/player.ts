@@ -106,6 +106,13 @@ export const usePlayerStore = defineStore('player', () => {
     a.volume = isMuted.value ? 0 : volume.value
   }
 
+  function dismiss() {
+    const a = getAudio()
+    a.pause()
+    isPlaying.value = false
+    isVisible.value = false
+  }
+
   function setQueue(tracks: PlayerTrack[], startTrack?: PlayerTrack) {
     originalQueue.value = [...tracks]
     queue.value = shuffleMode.value !== 'off' ? shuffleArray([...tracks]) : [...tracks]
@@ -398,5 +405,6 @@ export const usePlayerStore = defineStore('player', () => {
     pickExplorerTrack,
     setExplorerTrack,
     getAudioElement,
+    dismiss,
   }
 })
