@@ -1,0 +1,24 @@
+[package]
+name = "dmp-genre-playlists"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "dmp-genre-playlists"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono"] }
+tokio = { version = "1", features = ["full"] }
+dotenvy = "0.15"
+colored = "2.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = { version = "0.8", features = ["std_rng"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

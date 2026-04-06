@@ -1,0 +1,126 @@
+{
+  "max_tracks": 500,
+  "max_per_release": 3,
+  "groups": [
+    {
+      "name": "Rock",
+      "slug": "rock",
+      "description": "Classic and modern rock across all subgenres",
+      "roots": ["rock"],
+      "includes": ["grunge", "britpop", "new wave", "post-rock"],
+      "excludes": ["indie rock", "indie pop"]
+    },
+    {
+      "name": "Metal",
+      "slug": "metal",
+      "description": "All forms of heavy metal",
+      "roots": ["metal"],
+      "includes": ["metalcore", "deathcore", "grindcore", "djent"],
+      "excludes": []
+    },
+    {
+      "name": "Post-Rock",
+      "slug": "post-rock",
+      "description": "Post-rock and related genres",
+      "roots": ["post-rock"],
+      "includes": ["post-rock", "math rock", "slowcore", "noise pop", "chamber pop", "twee pop", "jangle pop", "emo", "midwest emo"],
+      "excludes": ["indie rock", "indie pop"]
+    },
+    {
+      "name": "Indie",
+      "slug": "indie",
+      "description": "Independent and alternative music",
+      "roots": ["indie"],
+      "includes": ["lo-fi", "dream pop", "shoegaze", "post-rock", "post-punk", "math rock", "slowcore", "noise pop", "chamber pop", "twee pop", "jangle pop", "emo", "midwest emo"],
+      "excludes": []
+    },
+    {
+      "name": "Pop",
+      "slug": "pop",
+      "description": "Pop music from all eras",
+      "roots": ["pop"],
+      "includes": ["new wave", "disco"],
+      "excludes": []
+    },
+    {
+      "name": "Electronic",
+      "slug": "electronic",
+      "description": "Electronic and synthesizer-driven music",
+      "roots": ["electronic", "electro"],
+      "includes": ["techno", "house", "trance", "dubstep", "drum and bass", "ambient", "idm", "downtempo", "trip hop", "breakbeat", "synthwave", "vaporwave", "chillwave", "uk garage", "future bass", "glitch", "jungle", "hardstyle", "big beat", "synth-pop", "synthpop", "new age"],
+      "excludes": []
+    },
+    {
+      "name": "Classical",
+      "slug": "classical",
+      "description": "Classical, orchestral, and composed music",
+      "roots": ["classical"],
+      "includes": ["baroque", "romantic", "orchestral", "chamber music", "opera", "choral", "contemporary classical", "neoclassical", "minimalism", "film score", "soundtrack"],
+      "excludes": []
+    },
+    {
+      "name": "Acoustic",
+      "slug": "acoustic",
+      "description": "Acoustic and unplugged music",
+      "roots": ["acoustic", "singer-songwriter"],
+      "includes": ["folk", "americana", "country", "bluegrass", "celtic", "bossa nova", "world music", "easy listening"],
+      "excludes": ["folk metal", "folk rock", "folk punk"]
+    },
+    {
+      "name": "Minimal",
+      "slug": "minimal",
+      "description": "Minimal and reductive music",
+      "roots": ["minimal", "minimalism"],
+      "includes": ["drone", "lowercase", "reductionism", "microhouse", "synthwave", "vaporwave", "chillwave", "ambient"],
+      "excludes": []
+    },
+    {
+      "name": "Prog",
+      "slug": "prog",
+      "description": "Progressive and complex music",
+      "roots": ["progressive", "prog"],
+      "includes": ["art rock", "krautrock", "zeuhl", "canterbury scene", "math rock", "post-rock", "space rock", "progressive rock", "psychedelic rock", "progressive metal"],
+      "excludes": []
+    },
+    {
+      "name": "Dance",
+      "slug": "dance",
+      "description": "Dance and club music",
+      "roots": ["dance"],
+      "includes": ["house", "techno", "trance", "disco", "edm", "eurodance", "italo disco", "uk garage", "garage", "dancehall", "freestyle", "hi-nrg", "breakbeat"],
+      "excludes": []
+    },
+    {
+      "name": "Hip-Hop",
+      "slug": "hip-hop",
+      "description": "Hip-hop, rap, and related genres",
+      "roots": ["hip hop", "hip-hop", "rap"],
+      "includes": ["trap", "boom bap", "grime", "turntablism", "cloud rap", "lo-fi hip hop"],
+      "excludes": ["trip hop"]
+    },
+    {
+      "name": "Jazz",
+      "slug": "jazz",
+      "description": "Jazz across all eras and styles",
+      "roots": ["jazz"],
+      "includes": ["bebop", "hard bop", "cool jazz", "modal jazz", "free jazz", "swing", "big band", "bossa nova"],
+      "excludes": []
+    },
+    {
+      "name": "Soul & R&B",
+      "slug": "soul-rnb",
+      "description": "Soul, R&B, and funk",
+      "roots": ["soul", "r&b", "rhythm and blues", "funk"],
+      "includes": ["motown", "northern soul", "new jack swing", "quiet storm", "gospel", "doo-wop"],
+      "excludes": ["soul jazz"]
+    },
+    {
+      "name": "Punk",
+      "slug": "punk",
+      "description": "Punk rock and hardcore",
+      "roots": ["punk"],
+      "includes": ["hardcore", "oi!", "d-beat", "crust", "screamo"],
+      "excludes": ["steampunk", "cyberpunk"]
+    }
+  ]
+}

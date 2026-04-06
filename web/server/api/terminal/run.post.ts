@@ -1,7 +1,7 @@
 import { spawn } from 'child_process'
 import path from 'path'
 
-const ALLOWED_COMMANDS = ['./sync', './analysis', './clean', './nuke']
+const ALLOWED_COMMANDS = ['./sync', './analysis', './clean', './nuke', './update-genre-playlists']
 
 function stripAnsi(str: string): string {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')

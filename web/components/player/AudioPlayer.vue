@@ -7,6 +7,7 @@ import {
   Shuffle,
   Compass,
   ListMusic,
+  Check,
   X,
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
@@ -18,7 +19,9 @@ const albumCover = computed(() =>
   resolve(player.currentTrack?.releaseImage ?? null, player.currentTrack?.releaseImageUrl ?? null, 'releases'),
 )
 const showPlaylistMenu = ref(false)
+const showNewPlaylistDialog = ref(false)
 const playlists = ref<any[]>([])
+const trackPlaylistSlugs = ref<Set<string>>(new Set())
 
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds))
@@ -59,50 +62,51 @@ function getShuffleTooltip() {
 
 async function loadPlaylists() {
   try {
-    playlists.value = await $fetch<any[]>('/api/playlists')
+    const [all, slugs] = await Promise.all([
+      $fetch<any[]>('/api/playlists'),
+      player.currentTrack
+        ? $fetch<string[]>(`/api/tracks/${player.currentTrack.id}/playlists`)
+        : Promise.resolve([]),
+    ])
+    playlists.value = all.filter((p: any) => p.type !== 'GENRE')
+    trackPlaylistSlugs.value = new Set(slugs)
   }
   catch (error) {
     console.error('Failed to load playlists:', error)
   }
 }
 
-async function addToPlaylist(playlistSlug: string) {
+async function togglePlaylist(playlistSlug: string) {
   if (!player.currentTrack)
     return
+  const isIn = trackPlaylistSlugs.value.has(playlistSlug)
   try {
-    await $fetch(`/api/playlists/${playlistSlug}/tracks`, {
-      method: 'POST',
-      body: { trackId: player.currentTrack.id },
-    })
-    showPlaylistMenu.value = false
+    if (isIn) {
+      await $fetch(`/api/playlists/${playlistSlug}/tracks/${player.currentTrack.id}`, {
+        method: 'DELETE',
+      })
+      trackPlaylistSlugs.value.delete(playlistSlug)
+    }
+    else {
+      await $fetch(`/api/playlists/${playlistSlug}/tracks`, {
+        method: 'POST',
+        body: { trackId: player.currentTrack.id },
+      })
+      trackPlaylistSlugs.value.add(playlistSlug)
+    }
   }
   catch (error) {
-    console.error('Failed to add to playlist:', error)
-    alert('Failed to add track to playlist')
+    console.error('Failed to update playlist:', error)
   }
 }
 
-async function createNewPlaylist() {
-  const name = prompt('Enter playlist name:')
-  if (!name?.trim())
-    return
-  const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
-  if (!slug) {
-    alert('Invalid playlist name')
-    return
-  }
-  try {
-    const playlist = await $fetch<any>('/api/playlists', {
-      method: 'POST',
-      body: { name, slug },
-    })
-    await addToPlaylist(playlist.slug)
-    await loadPlaylists()
-  }
-  catch (error) {
-    console.error('Failed to create playlist:', error)
-    alert('Failed to create playlist')
-  }
+function openNewPlaylistDialog() {
+  showPlaylistMenu.value = false
+  showNewPlaylistDialog.value = true
+}
+
+async function onPlaylistCreated() {
+  await loadPlaylists()
 }
 
 const progressPct = computed(() =>
@@ -197,7 +201,7 @@ const progressPct = computed(() =>
               <div class="max-h-64 overflow-y-auto p-2">
                 <button
                   class="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-sm font-medium text-amber-500 hover:bg-zinc-700 transition-colors mb-2"
-                  @click="createNewPlaylist"
+                  @click="openNewPlaylistDialog"
                 >
                   + Create new playlist
                 </button>
@@ -205,10 +209,12 @@ const progressPct = computed(() =>
                   <button
                     v-for="playlist in playlists"
                     :key="playlist.id"
-                    class="w-full rounded px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
-                    @click="addToPlaylist(playlist.slug)"
+                    class="flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm transition-colors"
+                    :class="trackPlaylistSlugs.has(playlist.slug) ? 'text-amber-500 hover:bg-zinc-800' : 'text-zinc-300 hover:bg-zinc-800'"
+                    @click="togglePlaylist(playlist.slug)"
                   >
                     {{ playlist.name }}
+                    <Check v-if="trackPlaylistSlugs.has(playlist.slug)" :size="14" />
                   </button>
                 </div>
                 <div v-if="playlists.length === 0" class="px-3 py-2 text-sm text-zinc-500">
@@ -256,5 +262,11 @@ const progressPct = computed(() =>
         <X :size="18" />
       </button>
     </div>
+
+    <PlaylistAddDialog
+      v-model="showNewPlaylistDialog"
+      :track-id="player.currentTrack?.id ?? null"
+      @created="onPlaylistCreated"
+    />
   </div>
 </template>

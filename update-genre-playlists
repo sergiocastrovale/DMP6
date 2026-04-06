@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BINARY="$SCRIPT_DIR/scripts/genre-playlists/target/release/dmp-genre-playlists"
+
+if [ ! -f "$BINARY" ] && command -v cargo &>/dev/null; then
+  echo "Building genre-playlists script..."
+  (cd "$SCRIPT_DIR/scripts/genre-playlists" && cargo build --release --quiet)
+fi
+
+if [ -f "$BINARY" ]; then
+  exec "$BINARY" "$@"
+fi
+
+# Docker fallback (NAS)
+if [ -f "$SCRIPT_DIR/scripts/_docker_run" ]; then
+  source "$SCRIPT_DIR/scripts/_docker_run"
+elif [ -f "$SCRIPT_DIR/_docker_run" ]; then
+  source "$SCRIPT_DIR/_docker_run"
+else
+  echo "Error: Binary not found. Build with: cd scripts/genre-playlists && cargo build --release" >&2
+  exit 1
+fi
+_dmp_run dmp-genre-playlists "$@"

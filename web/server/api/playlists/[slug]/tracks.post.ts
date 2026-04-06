@@ -36,6 +36,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (playlist.type === 'GENRE') {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Cannot add tracks to generated playlists',
+    })
+  }
+
   // Get next position
   const nextPosition = playlist.tracks.length > 0 ? playlist.tracks[0].position + 1 : 0
 

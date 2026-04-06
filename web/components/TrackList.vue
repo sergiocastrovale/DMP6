@@ -110,7 +110,7 @@ function hasColumn(key: string) {
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-lg border border-zinc-800">
+  <div class="overflow-hidden border border-zinc-800">
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-zinc-800 text-xs text-zinc-500">
@@ -130,11 +130,12 @@ function hasColumn(key: string) {
         <tr
           v-for="track in tracks"
           :key="track.id"
-          class="group border-b border-zinc-800/50 transition-colors last:border-b-0"
+          class="group border-b border-zinc-800/50 transition-colors last:border-b-0 cursor-pointer"
           :class="[
             track.missing ? 'opacity-50' : 'hover:bg-zinc-900',
             isCurrentTrack(track.id) && 'bg-zinc-900/50',
           ]"
+           @click="handleTrackClick(track)"
         >
           <td v-if="hasColumn('release')" class="py-2 pl-4 text-zinc-400 text-xs truncate max-w-[200px]">
             {{ releaseMap?.[track.localReleaseId || '']?.title || track.album || '-' }}
@@ -144,13 +145,13 @@ function hasColumn(key: string) {
               {{ track.trackNumber || '-' }}
             </template>
             <template v-else-if="isTrackPlaying(track.id)">
-              <button class="text-amber-500" @click="handleTrackClick(track)">
+              <button class="text-amber-500">
                 <Pause :size="14" />
               </button>
             </template>
             <template v-else>
               <span class="group-hover:hidden" :class="{ 'text-amber-500': isCurrentTrack(track.id) }">{{ track.trackNumber || '-' }}</span>
-              <button class="hidden group-hover:inline text-zinc-50" @click="handleTrackClick(track)">
+              <button class="hidden group-hover:inline text-zinc-50">
                 <Play :size="14" />
               </button>
             </template>

@@ -3,6 +3,8 @@ export interface PlaylistSummary {
   name: string
   slug: string
   description: string | null
+  type: 'MANUAL' | 'GENRE'
+  genreGroup: string | null
   createdAt: Date
   updatedAt: Date
   trackCount: number
@@ -41,6 +43,8 @@ export interface PlaylistDetail {
   name: string
   slug: string
   description: string | null
+  type: 'MANUAL' | 'GENRE'
+  genreGroup: string | null
   createdAt: Date
   updatedAt: Date
   tracks: PlaylistTrack[]

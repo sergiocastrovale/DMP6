@@ -29,6 +29,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (playlist.type === 'GENRE') {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Cannot remove tracks from generated playlists',
+    })
+  }
+
   // Delete the track from the playlist
   await prisma.playlistTrack.deleteMany({
     where: {

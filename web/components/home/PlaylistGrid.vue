@@ -27,60 +27,10 @@
       v-if="playlists.length > 0"
       class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
     >
-      <NuxtLink
-        v-for="playlist in playlists"
-        :key="playlist.id"
-        :to="`/playlists/${playlist.slug}`"
-        class="group flex flex-col gap-2"
-      >
-        <!-- Cover mosaic -->
-        <div class="relative aspect-square overflow-hidden rounded-lg bg-zinc-800">
-          <div
-            v-if="playlist.coverImages.length > 0"
-            class="grid h-full w-full"
-            :class="{
-              'grid-cols-1': playlist.coverImages.length === 1,
-              'grid-cols-2': playlist.coverImages.length > 1,
-            }"
-          >
-            <div
-              v-for="(cover, idx) in playlist.coverImages.slice(0, 4)"
-              :key="idx"
-              class="relative overflow-hidden bg-zinc-900"
-            >
-              <img
-                v-if="coverImageUrl(cover)"
-                :src="coverImageUrl(cover)!"
-                :alt="`Cover ${idx + 1}`"
-                loading="lazy"
-                class="h-full w-full object-cover transition-transform group-hover:scale-105"
-              >
-              <div
-                v-else
-                class="flex h-full w-full items-center justify-center text-zinc-700"
-              >
-                <LucideMusic class="size-8" />
-              </div>
-            </div>
-          </div>
-          <div
-            v-else
-            class="flex h-full w-full items-center justify-center text-zinc-600"
-          >
-            <LucideListMusic class="size-12" />
-          </div>
-        </div>
-
-        <!-- Playlist info -->
-        <div class="flex flex-col gap-0.5">
-          <p class="line-clamp-1 text-sm font-medium text-zinc-50 group-hover:text-amber-500 transition-colors">
-            {{ playlist.name }}
-          </p>
-          <p class="text-xs text-zinc-500">
-            {{ playlist.trackCount }} {{ playlist.trackCount === 1 ? 'track' : 'tracks' }}
-          </p>
-        </div>
-      </NuxtLink>
+      <template v-for="playlist in playlists" :key="playlist.id">
+        <PlaylistBlockGenerated v-if="playlist.type === 'GENRE'" :playlist="playlist" />
+        <PlaylistBlock v-else :playlist="playlist" />
+      </template>
     </div>
 
     <!-- Empty state -->
@@ -153,27 +103,21 @@
 </template>
 
 <script setup lang="ts">
-import { LucidePlus, LucideMusic, LucideListMusic } from 'lucide-vue-next'
+import { LucidePlus, LucideListMusic } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 
-interface Props {
+defineProps<{
   playlists: PlaylistSummary[]
-}
+}>()
 
-const props = defineProps<Props>()
 const emit = defineEmits<{
   refresh: []
 }>()
 
-const { resolve } = useImageUrl()
 const showCreateDialog = ref(false)
 const newPlaylistName = ref('')
 const newPlaylistDescription = ref('')
 const creating = ref(false)
-
-function coverImageUrl(cover: { image: string | null; imageUrl: string | null }) {
-  return resolve(cover.image, cover.imageUrl, 'releases')
-}
 
 async function createPlaylist() {
   if (!newPlaylistName.value.trim() || creating.value)
@@ -189,12 +133,9 @@ async function createPlaylist() {
       },
     })
 
-    // Reset form
     newPlaylistName.value = ''
     newPlaylistDescription.value = ''
     showCreateDialog.value = false
-
-    // Refresh parent data
     emit('refresh')
   }
   catch (error) {

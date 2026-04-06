@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { LucideListMusic, LucidePlay, LucidePause, LucideMusic, LucideTrash2, LucideX } from 'lucide-vue-next'
-import type { PlaylistDetail } from '~/types/playlist'
+import { LucideListMusic, LucidePlay, LucidePause, LucideMusic, LucideTrash2, LucideX, LucideSparkles } from 'lucide-vue-next'
+import type { PlaylistDetail, PlaylistTrack } from '~/types/playlist'
+import type { PlayerTrack } from '~/types/player'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,6 +14,34 @@ const showDeleteConfirm = ref(false)
 
 const playerStore = usePlayerStore()
 const { releaseImage } = useImageUrl()
+
+const isGenrePlaylist = computed(() => playlist.value?.type === 'GENRE')
+
+function toPlayerTrack(pt: PlaylistTrack): PlayerTrack {
+  return {
+    id: pt.track.id,
+    title: pt.track.title,
+    artist: pt.track.release?.artist?.name ?? '',
+    album: pt.track.release?.title ?? '',
+    duration: pt.track.duration ?? 0,
+    artistSlug: pt.track.release?.artist?.slug ?? null,
+    releaseImage: pt.track.release?.image ?? null,
+    releaseImageUrl: pt.track.release?.imageUrl ?? null,
+    localReleaseId: pt.track.release?.id ?? null,
+  }
+}
+
+const playerTracks = computed(() =>
+  playlist.value?.tracks.map(toPlayerTrack) ?? [],
+)
+
+const coverImages = computed(() => {
+  if (!playlist.value) return []
+  return playlist.value.tracks.slice(0, 4).map(pt => ({
+    image: pt.track.release?.image ?? null,
+    imageUrl: pt.track.release?.imageUrl ?? null,
+  }))
+})
 
 async function loadPlaylist() {
   loading.value = true
@@ -37,10 +66,9 @@ function formatDuration(seconds: number | null) {
 }
 
 function playAll() {
-  if (!playlist.value || playlist.value.tracks.length === 0)
+  if (!playerTracks.value.length)
     return
-  const tracks = playlist.value.tracks.map(pt => pt.track)
-  playerStore.playTrack(tracks[0], tracks as any)
+  playerStore.playTrack(playerTracks.value[0], playerTracks.value)
 }
 
 function isTrackPlaying(trackId: string) {
@@ -51,16 +79,14 @@ function isCurrentTrack(trackId: string) {
   return playerStore.currentTrack?.id === trackId
 }
 
-function handleTrackClick(track: any) {
-  if (isCurrentTrack(track.id)) {
+function handleTrackClick(pt: PlaylistTrack) {
+  if (isCurrentTrack(pt.track.id)) {
     playerStore.togglePlay()
-  } else {
-    playTrack(track)
   }
-}
-
-function playTrack(track: any) {
-  playerStore.playTrack(track, [track])
+  else {
+    const track = toPlayerTrack(pt)
+    playerStore.playTrack(track, playerTracks.value)
+  }
 }
 
 async function removeTrack(trackId: string) {
@@ -115,45 +141,28 @@ onMounted(() => {
     <div v-else-if="playlist" class="flex flex-col gap-6">
       <!-- Header -->
       <div class="flex flex-col gap-6 sm:flex-row sm:items-start">
-        <!-- Playlist cover (mosaic) -->
-        <div class="h-48 w-48 flex-shrink-0 overflow-hidden rounded-lg bg-zinc-800">
-          <div
-            v-if="playlist.tracks.length > 0"
-            class="grid h-full w-full grid-cols-2"
-          >
-            <div
-              v-for="(pt, idx) in playlist.tracks.slice(0, 4)"
-              :key="idx"
-              class="relative overflow-hidden bg-zinc-900"
-            >
-              <img
-                v-if="pt.track.release && releaseImage(pt.track.release)"
-                :src="releaseImage(pt.track.release)!"
-                :alt="`Cover ${idx + 1}`"
-                class="h-full w-full object-cover"
-              >
-              <div
-                v-else
-                class="flex h-full w-full items-center justify-center text-zinc-700"
-              >
-                <LucideMusic class="size-8" />
-              </div>
-            </div>
-          </div>
-          <div
-            v-else
-            class="flex h-full w-full items-center justify-center text-zinc-600"
-          >
-            <LucideListMusic class="size-12" />
-          </div>
+        <div
+          class="h-48 w-48 flex-shrink-0 overflow-hidden rounded-sm bg-zinc-800"
+          :class="{ 'genre-border': isGenrePlaylist }"
+        >
+          <PlaylistCoverMosaic :cover-images="coverImages" />
         </div>
 
         <!-- Playlist info -->
         <div class="flex flex-1 flex-col gap-4">
           <div>
-            <p class="text-sm text-zinc-500">
-              Playlist
-            </p>
+            <div class="flex items-center gap-2">
+              <p class="text-sm text-zinc-500">
+                Playlist
+              </p>
+              <span
+                v-if="isGenrePlaylist"
+                class="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-500"
+              >
+                <LucideSparkles class="size-3" />
+                Auto-generated
+              </span>
+            </div>
             <h1 class="text-3xl font-bold text-zinc-50">
               {{ playlist.name }}
             </h1>
@@ -177,6 +186,7 @@ onMounted(() => {
               Play All
             </button>
             <button
+              v-if="!isGenrePlaylist"
               class="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
               @click="showDeleteConfirm = true"
             >
@@ -199,7 +209,7 @@ onMounted(() => {
           <button
             class="flex size-10 flex-shrink-0 items-center justify-center text-sm"
             :class="isCurrentTrack(pt.track.id) ? 'text-amber-500' : 'text-zinc-500 group-hover:text-amber-500'"
-            @click="handleTrackClick(pt.track)"
+            @click="handleTrackClick(pt)"
           >
             <template v-if="isTrackPlaying(pt.track.id)">
               <LucidePause class="size-4" fill="currentColor" />
@@ -246,8 +256,9 @@ onMounted(() => {
             {{ formatDuration(pt.track.duration) }}
           </span>
 
-          <!-- Remove button -->
+          <!-- Remove button (manual playlists only) -->
           <button
+            v-if="!isGenrePlaylist"
             class="rounded-full p-1.5 text-zinc-500 hover:text-zinc-50 opacity-0 transition-opacity group-hover:opacity-100"
             @click="removeTrack(pt.track.id)"
           >
@@ -311,3 +322,26 @@ onMounted(() => {
     </Teleport>
   </div>
 </template>
+
+<style scoped>
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.genre-border {
+  border: 2px solid transparent;
+  border-radius: 0.5rem;
+  background:
+    linear-gradient(var(--color-surface), var(--color-surface)) padding-box,
+    conic-gradient(from var(--angle), #f59e0b, #fbbf24, #f59e0b, #d97706, #f59e0b) border-box;
+  animation: rotate-gradient 3s linear infinite;
+}
+
+@keyframes rotate-gradient {
+  to {
+    --angle: 360deg;
+  }
+}
+</style>

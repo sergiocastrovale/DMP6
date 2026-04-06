@@ -284,12 +284,19 @@ model TrackArtist {
 // Playlist
 // ---------------------------------------------------------------------------
 
+enum PlaylistType {
+  MANUAL
+  GENRE
+}
+
 model Playlist {
   id          String          @id @default(cuid())
   name        String
   slug        String          @unique
   description String?         @db.Text
   image       String?
+  type        PlaylistType    @default(MANUAL)
+  genreGroup  String?         @unique
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   tracks      PlaylistTrack[]

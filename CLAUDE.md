@@ -41,6 +41,7 @@ scripts/
   clean/src/main.rs            # Process S3DeletionQueue
   nuke/src/main.rs             # DB reset (full or local-only)
   audit/src/main.rs            # Data integrity → XLSX
+  genre-playlists/src/main.rs  # Auto-generate genre playlists
 docker-compose.yml             # 3 services: dmp-web, dmp-redis, dmp-cloudflared
 web/Dockerfile                 # Multi-stage Node 20 build
 web/deploy.sh                  # Build → SCP → docker load → restart
@@ -65,6 +66,7 @@ Link: LocalReleaseTrack.mbTrackId → MusicBrainzReleaseTrack.id
 - No compound artists — collaborations split into individual artists, all linked to shared releases
 - `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING | UNSYNCABLE | UNKNOWN
 - `TrackArtistRole`: PRIMARY | ALBUM_ARTIST | FEATURED
+- `PlaylistType`: MANUAL | GENRE
 - Releases deduplicated by `groupKey` (unique): `"mb:{mbAlbumId}"` or `"meta:{slugTitle}:{year}:{slugArtist}"`
 
 ## Key Conventions
@@ -108,6 +110,10 @@ cd scripts/sync && cargo build --release    # Must rebuild manually!
 ./clean --dry-run             # Preview deletions
 ./nuke                        # Full DB reset + image deletion
 ./nuke --local-only           # Keep MB catalogue, reset local data
+./update-genre-playlists      # Generate/update genre playlists
+./update-genre-playlists --dry-run  # Preview without changes
+./update-genre-playlists --report   # Show genre → group assignments
+./update-genre-playlists --group rock # Update single group
 ```
 
 ### Running Sync Directly on NAS

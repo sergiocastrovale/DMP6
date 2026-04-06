@@ -46,6 +46,8 @@ export default defineEventHandler(async (event) => {
     name: playlist.name,
     slug: playlist.slug,
     description: playlist.description,
+    type: playlist.type,
+    genreGroup: playlist.genreGroup,
     createdAt: playlist.createdAt,
     updatedAt: playlist.updatedAt,
     tracks: playlist.tracks.map(pt => ({
