@@ -151,45 +151,34 @@ Takes several hours on a large library.
 
 ```bash
 ssh nas
-docker run --rm \
-  --env-file /mnt/SSD/web/dmp/.env \
-  -e PROJECT_ROOT=/app \
-  -e MUSIC_DIR=/music \
-  -v /mnt/dmp/music/mainstream:/music:ro \
-  -v /mnt/SSD/web/dmp/img:/app/web/public/img \
-  dmp-scripts:latest dmp-sync
+cd /mnt/SSD/web/dmp
+./sync
 ```
 
 ---
 
 ## 9. Running Scripts
 
+Wrapper scripts live at `DEPLOY_PATH` (e.g. `/mnt/SSD/web/dmp/`). They source `.env` automatically and invoke the correct Docker command.
+
 ```bash
-S="docker run --rm \
-  --env-file /mnt/SSD/web/dmp/.env \
-  -e PROJECT_ROOT=/app \
-  -e MUSIC_DIR=/music \
-  -v /mnt/dmp/music/mainstream:/music:ro \
-  -v /mnt/SSD/web/dmp/img:/app/web/public/img \
-  dmp-scripts:latest"
+ssh nas
+cd /mnt/SSD/web/dmp
 
-$S dmp-sync
-$S dmp-sync --resume
-$S dmp-sync --only="Artist Name"
-$S dmp-clean
-$S dmp-clean --dry-run
-$S dmp-nuke                     # DESTRUCTIVE
-
-# Analysis writes to /app/reports
-docker run --rm \
-  --env-file /mnt/SSD/web/dmp/.env \
-  -e MUSIC_DIR=/music \
-  -v /mnt/dmp/music/mainstream:/music:ro \
-  -v /mnt/SSD/web/dmp/reports:/app/reports \
-  dmp-scripts:latest dmp-analysis
+./sync                           # full index + MB sync
+./sync --resume                  # continue from last checkpoint
+./sync --only="Artist Name"      # single artist
+./sync --only="Artist" --overwrite
+./sync --from=a --to=cz          # letter range batch
+./analysis                       # metadata quality HTML report
+./clean                          # process S3 deletion queue
+./clean --dry-run
+./nuke                           # DESTRUCTIVE — full DB reset
+./nuke --local-only              # keep MB catalogue, reset local data
+./audit                          # data integrity → XLSX
 ```
 
-Add shell aliases on the NAS by appending the `$S dmp-*` lines to `~/.bashrc`.
+The same wrapper scripts from the project root (`sync`, `analysis`, etc.) are deployed automatically by `web/deploy.sh deploy` (or a full deploy). Each script is dual-mode: when a local Rust binary is available it runs directly; on the NAS (no binary, no cargo) it falls back to Docker via `scripts/_docker_run`.
 
 ---
 

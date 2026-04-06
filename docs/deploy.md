@@ -26,7 +26,7 @@ cd web
 1. **Build** — runs `docker build` locally for `dmp-web` and/or `dmp-scripts`.
 2. **Pack & transfer** — saves the image(s) to `/tmp/dmp-images.tar.gz`, SCPs to the NAS.
 3. **Load** — runs `docker load` on the NAS, then deletes the archive.
-4. **Deploy** (full run only) — copies `docker-compose.yml` to `DEPLOY_PATH` on the NAS and runs `docker compose up -d`.
+4. **Deploy** (full run only) — copies `docker-compose.yml` and the script wrappers (`sync`, `analysis`, `clean`, `nuke`, `audit` + `scripts/_docker_run`) to `DEPLOY_PATH` on the NAS, then runs `docker compose up -d`. The wrappers are the same files used locally — on the NAS they detect no local binary and fall back to running via Docker.
 
 ## Required env vars
 

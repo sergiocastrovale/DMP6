@@ -83,6 +83,10 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "deploy" ]; then
   ssh_cmd "mkdir -p $NAS_DEPLOY_PATH"
   scp_cmd "$PROJECT_ROOT/docker-compose.yml" "$NAS_USER@$NAS_HOST:$NAS_DEPLOY_PATH/"
 
+  echo "--- Deploying NAS script wrappers ---"
+  scp_cmd "$PROJECT_ROOT/scripts/_docker_run" "$PROJECT_ROOT/sync" "$PROJECT_ROOT/analysis" "$PROJECT_ROOT/clean" "$PROJECT_ROOT/nuke" "$PROJECT_ROOT/audit" "$NAS_USER@$NAS_HOST:$NAS_DEPLOY_PATH/"
+  ssh_cmd "chmod +x $NAS_DEPLOY_PATH/sync $NAS_DEPLOY_PATH/analysis $NAS_DEPLOY_PATH/clean $NAS_DEPLOY_PATH/nuke $NAS_DEPLOY_PATH/audit"
+
   echo "--- Restarting containers ---"
   ssh_cmd "cd $NAS_DEPLOY_PATH && docker compose up -d"
 

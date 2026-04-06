@@ -1,11 +1,24 @@
 #!/usr/bin/env bash
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY="$SCRIPT_DIR/scripts/nuke/target/release/dmp-nuke"
 
-if [ ! -f "$BINARY" ]; then
-    echo "Binary not found. Building..."
-    cd "$SCRIPT_DIR/scripts/nuke" && cargo build --release
-    cd "$SCRIPT_DIR"
+if [ ! -f "$BINARY" ] && command -v cargo &>/dev/null; then
+  echo "Binary not found. Building..."
+  (cd "$SCRIPT_DIR/scripts/nuke" && cargo build --release)
 fi
 
-exec "$BINARY" "$@"
+if [ -f "$BINARY" ]; then
+  exec "$BINARY" "$@"
+fi
+
+# Docker fallback (NAS)
+if [ -f "$SCRIPT_DIR/scripts/_docker_run" ]; then
+  source "$SCRIPT_DIR/scripts/_docker_run"
+elif [ -f "$SCRIPT_DIR/_docker_run" ]; then
+  source "$SCRIPT_DIR/_docker_run"
+else
+  echo "Error: Binary not found. Build with: cd scripts/nuke && cargo build --release" >&2
+  exit 1
+fi
+_dmp_run dmp-nuke "$@"

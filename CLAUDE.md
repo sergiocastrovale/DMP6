@@ -110,6 +110,27 @@ cd scripts/sync && cargo build --release    # Must rebuild manually!
 ./nuke --local-only           # Keep MB catalogue, reset local data
 ```
 
+### Running Sync Directly on NAS
+
+SSH into the NAS and run:
+
+```bash
+docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-sync --from=e --to=fz
+```
+
+- `--add-host=host.docker.internal:host-gateway` is required for standalone `docker run`
+- Must be a single-line command (zsh on TrueNAS doesn't handle multiline well)
+
+### Fixing MP3 Errors
+
+```bash
+python3 scripts/fix_sync_errors.py              # Dry run — show what would be fixed
+python3 scripts/fix_sync_errors.py --apply      # Apply all fixes
+python3 scripts/fix_sync_errors.py --apply --only=encoding  # One category only
+```
+
+Categories: `encoding`, `item_size`, `mpeg_frame`, `ape_utf8`, `missing_artist`
+
 ## Sync Script Architecture
 
 The sync script (`scripts/sync/src/main.rs`) is the largest codebase component. Key phases:

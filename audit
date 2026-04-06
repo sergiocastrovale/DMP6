@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BINARY="$SCRIPT_DIR/scripts/audit/target/release/dmp-audit"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-
-# Build in release mode if binary doesn't exist or source is newer
-if [ ! -f "scripts/audit/target/release/dmp-audit" ] || [ "scripts/audit/src/main.rs" -nt "scripts/audit/target/release/dmp-audit" ]; then
-    echo "Building audit script..."
-    cd scripts/audit
-    cargo build --release --quiet
-    cd ../..
+if [ ! -f "$BINARY" ] && command -v cargo &>/dev/null; then
+  echo "Building audit script..."
+  (cd "$SCRIPT_DIR/scripts/audit" && cargo build --release --quiet)
 fi
 
-# Create reports directory if missing
-mkdir -p reports
+if [ -f "$BINARY" ]; then
+  mkdir -p "$SCRIPT_DIR/reports"
+  exec "$BINARY" "$@"
+fi
 
-# Run the compiled binary
-./scripts/audit/target/release/dmp-audit "$@"
+# Docker fallback (NAS)
+if [ -f "$SCRIPT_DIR/scripts/_docker_run" ]; then
+  source "$SCRIPT_DIR/scripts/_docker_run"
+elif [ -f "$SCRIPT_DIR/_docker_run" ]; then
+  source "$SCRIPT_DIR/_docker_run"
+else
+  echo "Error: Binary not found. Build with: cd scripts/audit && cargo build --release" >&2
+  exit 1
+fi
+_dmp_run dmp-audit "$@"
