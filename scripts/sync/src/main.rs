@@ -611,8 +611,13 @@ fn is_various_artists(name: &str) -> bool {
         || lower.starts_with("various artists /")
 }
 
+fn is_special_artist_name(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    is_various_artists(name) || lower == "unknown" || lower == "[unknown]"
+}
+
 fn is_special_mb_artist(id: &str, name: &str) -> bool {
-    SPECIAL_MB_ARTIST_IDS.contains(&id) || is_various_artists(name)
+    SPECIAL_MB_ARTIST_IDS.contains(&id) || is_special_artist_name(name)
 }
 
 /// Split an artist tag into individual artist names.
@@ -682,7 +687,7 @@ fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
         }
         parts.push(current.trim().to_string());
         parts.into_iter()
-            .filter(|p| !p.is_empty() && !is_various_artists(p))
+            .filter(|p| !p.is_empty() && !is_special_artist_name(p))
             .collect()
     };
 
@@ -3470,7 +3475,7 @@ async fn main() {
             let album_artist_tag = track.album_artist.as_deref().unwrap_or("");
             let track_artist_tag = track.artist.as_deref().unwrap_or("");
 
-            let (main_album_artists, feat_album_artists) = if !album_artist_tag.is_empty() && !is_various_artists(album_artist_tag) {
+            let (main_album_artists, feat_album_artists) = if !album_artist_tag.is_empty() && !is_special_artist_name(album_artist_tag) {
                 split_artists(album_artist_tag)
             } else {
                 (Vec::new(), Vec::new())
@@ -3896,7 +3901,7 @@ async fn main() {
             };
 
             // Skip "Various Artists"
-            if is_various_artists(&artist_name) {
+            if is_special_artist_name(&artist_name) {
                 continue;
             }
 
