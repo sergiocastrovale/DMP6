@@ -1,7 +1,6 @@
 use chrono::Utc;
 use clap::Parser;
 use colored::*;
-use rand::SeedableRng;
 use serde::Deserialize;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -242,7 +241,6 @@ struct TrackCandidate {
     track_id: String,
     artist_id: String,
     local_release_id: Option<String>,
-    genre: Option<String>,
 }
 
 async fn fetch_tracks_for_artists(pool: &PgPool, artist_ids: &[String]) -> Vec<TrackCandidate> {
@@ -267,11 +265,10 @@ async fn fetch_tracks_for_artists(pool: &PgPool, artist_ids: &[String]) -> Vec<T
     .expect("Failed to fetch tracks");
 
     rows.into_iter()
-        .map(|(track_id, artist_id, local_release_id, genre)| TrackCandidate {
+        .map(|(track_id, artist_id, local_release_id, _genre)| TrackCandidate {
             track_id,
             artist_id,
             local_release_id,
-            genre,
         })
         .collect()
 }
@@ -387,26 +384,12 @@ struct ScoredTrack {
 fn select_tracks(
     tracks: Vec<TrackCandidate>,
     artist_scores: &HashMap<String, f64>,
-    group: &GenreGroup,
     config: &GenreConfig,
 ) -> Vec<String> {
-    let mut scored: Vec<ScoredTrack> = tracks
+    let mut candidates: Vec<ScoredTrack> = tracks
         .into_iter()
         .filter_map(|t| {
-            let artist_score = artist_scores.get(&t.artist_id)?;
-            let mut score = *artist_score;
-
-            // Small bonus if track's own ID3 genre field matches
-            if let Some(ref genre_str) = t.genre {
-                let genre_lower = genre_str.to_lowercase();
-                for root in &group.roots {
-                    if genre_lower.contains(&root.to_lowercase()) {
-                        score += 0.05;
-                        break;
-                    }
-                }
-            }
-
+            let &score = artist_scores.get(&t.artist_id)?;
             Some(ScoredTrack {
                 track_id: t.track_id,
                 release_id: t.local_release_id,
@@ -417,43 +400,23 @@ fn select_tracks(
 
     // Deduplicate by track_id, keeping highest score
     // (a track can appear multiple times via different artist roles)
-    scored.sort_by(|a, b| {
+    candidates.sort_by(|a, b| {
         a.track_id.cmp(&b.track_id)
             .then(b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal))
     });
-    scored.dedup_by(|a, b| a.track_id == b.track_id);
+    candidates.dedup_by(|a, b| a.track_id == b.track_id);
 
-    // Shuffle within same score tier using date-seeded RNG
-    let today = Utc::now().format("%Y-%m-%d").to_string();
-    let seed_str = format!("{}-{}", group.slug, today);
-    let seed = {
-        let mut hash: u64 = 0;
-        for b in seed_str.as_bytes() {
-            hash = hash.wrapping_mul(31).wrapping_add(*b as u64);
-        }
-        hash
-    };
-    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    // Sort by score descending to pick the best candidates
+    candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Add small random perturbation within tier (0.001 range so it doesn't cross tiers)
-    for track in &mut scored {
-        use rand::Rng;
-        let jitter: f64 = rng.gen::<f64>() * 0.001;
-        track.score += jitter;
-    }
-
-    // Sort by score descending
-    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
-    // Enforce max per release
+    // Take top max_tracks respecting max_per_release
     let mut release_counts: HashMap<String, usize> = HashMap::new();
     let mut selected = Vec::new();
 
-    for track in scored {
+    for track in candidates {
         if selected.len() >= config.max_tracks {
             break;
         }
-
         if let Some(ref release_id) = track.release_id {
             let count = release_counts.entry(release_id.clone()).or_insert(0);
             if *count >= config.max_per_release {
@@ -461,9 +424,12 @@ fn select_tracks(
             }
             *count += 1;
         }
-
         selected.push(track.track_id);
     }
+
+    // Shuffle the final selection so playback order is fresh on every regeneration
+    use rand::seq::SliceRandom;
+    selected.shuffle(&mut rand::thread_rng());
 
     selected
 }
@@ -684,8 +650,8 @@ async fn main() {
             continue;
         }
 
-        // 6. Select top tracks
-        let selected = select_tracks(tracks, &artist_scores, group, &genre_config);
+        // 6. Select top tracks, shuffled
+        let selected = select_tracks(tracks, &artist_scores, &genre_config);
 
         if selected.len() < 10 {
             println!(
