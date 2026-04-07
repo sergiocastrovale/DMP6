@@ -1,4 +1,5 @@
 export const maxGenres = 5
+export const SKELETON_GRID_SIZE = 12
 
 export const statuses = [
   { 

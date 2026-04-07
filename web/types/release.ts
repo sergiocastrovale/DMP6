@@ -1,3 +1,16 @@
+export interface Release {
+  id: string
+  title: string
+  releaseType: string | null
+  year: number | null
+  image: string | null
+  imageUrl: string | null
+  artist: {
+    id: string
+    name: string
+    slug: string
+  } | null
+}
 export interface UnifiedRelease {
   id: string
   title: string

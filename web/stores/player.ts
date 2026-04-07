@@ -23,6 +23,7 @@ export const usePlayerStore = defineStore('player', () => {
   // Pre-fetched tracks for catalogue shuffle — eliminates per-song network latency
   const catalogueBuffer = ref<PlayerTrack[]>([])
   let catalogueBufferFetching = false
+  const currentPlaylistSlug = ref<string | null>(null)
 
   let audio: HTMLAudioElement | null = null
 
@@ -114,12 +115,22 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function setQueue(tracks: PlayerTrack[], startTrack?: PlayerTrack) {
+    currentPlaylistSlug.value = null
     originalQueue.value = [...tracks]
     queue.value = shuffleMode.value !== 'off' ? shuffleArray([...tracks]) : [...tracks]
     if (startTrack) {
       playTrack(startTrack)
     }
     else if (tracks.length > 0) {
+      playTrack(queue.value[0])
+    }
+  }
+
+  function playPlaylist(slug: string, tracks: PlayerTrack[]) {
+    currentPlaylistSlug.value = slug
+    originalQueue.value = [...tracks]
+    queue.value = shuffleMode.value !== 'off' ? shuffleArray([...tracks]) : [...tracks]
+    if (tracks.length > 0) {
       playTrack(queue.value[0])
     }
   }
@@ -398,7 +409,9 @@ export const usePlayerStore = defineStore('player', () => {
     seek,
     setVolume,
     toggleMute,
+    currentPlaylistSlug,
     setQueue,
+    playPlaylist,
     next,
     previous,
     cycleShuffleMode,

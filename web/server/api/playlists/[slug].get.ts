@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
     where: { slug },
     include: {
       tracks: {
+        take: 500,
         orderBy: { position: 'asc' },
         include: {
           track: {

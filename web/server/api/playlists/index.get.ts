@@ -1,7 +1,14 @@
 import { prisma } from '~/server/utils/prisma'
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event)
+  const limit = query.limit ? Math.min(Number(query.limit), 100) : undefined
+  const type = query.type as 'all' | 'genre' | 'manual' | undefined
+  const typeFilter = type === 'genre' ? 'GENRE' : type === 'manual' ? 'MANUAL' : undefined
+
   const playlists = await prisma.playlist.findMany({
+    ...(limit ? { take: limit } : {}),
+    ...(typeFilter ? { where: { type: typeFilter } } : {}),
     include: {
       _count: {
         select: {
