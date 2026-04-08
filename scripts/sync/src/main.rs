@@ -22,7 +22,7 @@ use std::io::Write as IoWrite;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use tokio::time::sleep;
 use walkdir::WalkDir;
 
@@ -885,24 +885,56 @@ struct RateLimiter {
     min_delay: u64,
     max_delay: u64,
     last_request: Instant,
+    /// Remaining requests in current MB rate-limit window
+    remaining: Option<u64>,
+    /// When the current rate-limit window resets (epoch seconds)
+    reset_at: Option<u64>,
 }
 
 impl RateLimiter {
     fn new() -> Self {
         Self {
-            delay_ms: 1000,
-            min_delay: 1000,
+            delay_ms: 500,
+            min_delay: 250,
             max_delay: 10000,
             last_request: Instant::now(),
+            remaining: None,
+            reset_at: None,
         }
     }
 
     async fn wait(&mut self) {
+        let effective_delay = self.effective_delay();
         let elapsed = self.last_request.elapsed().as_millis() as u64;
-        if elapsed < self.delay_ms {
-            sleep(Duration::from_millis(self.delay_ms - elapsed)).await;
+        if elapsed < effective_delay {
+            sleep(Duration::from_millis(effective_delay - elapsed)).await;
         }
         self.last_request = Instant::now();
+    }
+
+    /// Compute delay based on rate-limit headers when available,
+    /// otherwise fall back to the adaptive delay_ms.
+    fn effective_delay(&self) -> u64 {
+        if let (Some(remaining), Some(reset_at)) = (self.remaining, self.reset_at) {
+            let now = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let secs_left = reset_at.saturating_sub(now).max(1);
+            if remaining <= 10 {
+                // Almost out of budget — slow down significantly
+                return self.max_delay.min(secs_left * 1000 / 2);
+            }
+            // Spread remaining requests across the time left, with 20% headroom
+            let ideal = (secs_left * 1000) / (remaining * 80 / 100).max(1);
+            return ideal.max(self.min_delay).min(self.delay_ms);
+        }
+        self.delay_ms
+    }
+
+    fn update_from_headers(&mut self, remaining: Option<u64>, reset_at: Option<u64>) {
+        self.remaining = remaining;
+        self.reset_at = reset_at;
     }
 
     fn on_success(&mut self) {
@@ -913,6 +945,9 @@ impl RateLimiter {
 
     fn on_rate_limit(&mut self) {
         self.delay_ms = (self.delay_ms * 2).min(self.max_delay);
+        // Clear cached headers — they're stale after a rate limit
+        self.remaining = None;
+        self.reset_at = None;
     }
 }
 
@@ -944,6 +979,17 @@ async fn mb_get(
 
         let status = resp.status().as_u16();
 
+        // Parse X-RateLimit headers from every response
+        let rl_remaining = resp.headers()
+            .get("X-RateLimit-Remaining")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok());
+        let rl_reset = resp.headers()
+            .get("X-RateLimit-Reset")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok());
+        limiter.update_from_headers(rl_remaining, rl_reset);
+
         if status == 200 {
             limiter.on_success();
             return resp.text().await.map_err(|e| format!("Read body failed: {}", e));
@@ -954,15 +1000,15 @@ async fn mb_get(
 
             if attempt < max_attempts - 1 {
                 wait_time = (wait_time * 2).min(60000);
-                let reason = if status == 503 { "MB server busy" } else { "Rate limited" };
-                eprintln!(
-                    "\n      {} - waiting {:.1}s before retry {}/{}...",
-                    reason, wait_time as f64 / 1000.0, attempt + 1, max_attempts - 1
+                let reason = if status == 503 { "Waiting for MusicBrainz" } else { "Rate limited" };
+                eprint!(
+                    "\r\x1b[K      {} - waiting {:.1}s before next attempt ({}/{})...{}",
+                    reason, wait_time as f64 / 1000.0, attempt + 1, max_attempts - 1, " ".repeat(10)
                 );
                 sleep(Duration::from_millis(wait_time)).await;
                 continue;
             } else {
-                eprintln!();
+                eprint!("\r\x1b[K");
                 return Err(format!(
                     "MusicBrainz API still unavailable after {} retries (waited up to {}s). Will retry this release next time.",
                     max_attempts,

@@ -157,7 +157,43 @@ cd /mnt/SSD/web/dmp
 
 ---
 
-## 9. Running Scripts
+## 9. Long-Running Sync Sessions (tmux)
+
+A full library sync can take many hours. Use `tmux` to keep it running after you disconnect — it's pre-installed on TrueNAS Scale.
+
+### Start a session and run sync
+
+```bash
+ssh nas
+tmux new -s sync
+cd /mnt/SSD/web/dmp
+./sync --from=a --to=z
+```
+
+### Detach and disconnect
+
+Press **Ctrl+B**, then **D** — the sync keeps running in the background. You can now close your terminal or shut down your dev machine entirely.
+
+### Reconnect later to check progress
+
+```bash
+ssh nas
+tmux attach -t sync
+```
+
+### Other useful tmux commands
+
+| Command | What it does |
+|---|---|
+| `tmux ls` | List active sessions |
+| `tmux attach -t sync` | Reattach to the sync session |
+| `tmux kill-session -t sync` | Kill the session (stops the sync) |
+
+The session persists until the NAS reboots or you kill it manually. If the NAS does reboot mid-sync, use `./sync --resume` when you restart.
+
+---
+
+## 11. Running Scripts
 
 Wrapper scripts live at `DEPLOY_PATH` (e.g. `/mnt/SSD/web/dmp/`). They source `.env` automatically and invoke the correct Docker command.
 
@@ -182,7 +218,7 @@ The same wrapper scripts from the project root (`sync`, `analysis`, etc.) are de
 
 ---
 
-## 10. Updates
+## 12. Updates
 
 ```bash
 web/deploy.sh          # rebuild + redeploy everything
@@ -192,7 +228,7 @@ web/deploy.sh scripts  # scripts only
 
 ---
 
-## 11. Monitoring
+## 13. Monitoring
 
 ```bash
 docker ps
@@ -204,7 +240,7 @@ docker restart dmp-web
 
 ---
 
-## 12. Tailscale
+## 14. Tailscale
 
 Access from anywhere: `http://NAS_TAILSCALE_IP:3000`
 
