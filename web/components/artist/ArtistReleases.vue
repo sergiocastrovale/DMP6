@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, Pause, Search, LayoutList, LayoutGrid, HelpCircle, Disc3, Loader2, Link } from 'lucide-vue-next'
+import { Play, Pause, LayoutList, LayoutGrid, HelpCircle, Disc3, Loader2, Link, Heart } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/components/TrackList.vue'
@@ -83,6 +83,35 @@ onMounted(async () => {
 
 onUnmounted(() => observer?.disconnect())
 
+const favoriteReleases = ref<Set<string>>(new Set())
+
+onMounted(async () => {
+  try {
+    const data = await $fetch<any>('/api/favorites', { query: { type: 'releases', pageSize: 100 } })
+    if (data?.releases) {
+      favoriteReleases.value = new Set(data.releases.map((f: any) => f.release.id))
+    }
+  }
+  catch { /* ignore */ }
+})
+
+async function toggleFavoriteRelease(release: UnifiedRelease) {
+  if (!release.isMusicBrainz) return
+  const isFavorite = favoriteReleases.value.has(release.id)
+  try {
+    await $fetch(`/api/favorites/releases/${release.id}`, {
+      method: isFavorite ? 'DELETE' : 'POST',
+    })
+    if (isFavorite) {
+      favoriteReleases.value.delete(release.id)
+    }
+    else {
+      favoriteReleases.value.add(release.id)
+    }
+  }
+  catch { /* ignore */ }
+}
+
 async function loadMore() {
   if (!hasMore.value || loadingMore.value) return
   loadingMore.value = true
@@ -131,7 +160,12 @@ watch(types, (newTypes) => {
 }, { immediate: true })
 
 const filteredReleases = computed(() => {
-  return filteredByStatus.value.filter(r => r.typeSlug === activeTab.value)
+  let result = filteredByStatus.value.filter(r => r.typeSlug === activeTab.value)
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    result = result.filter(r => r.title.toLowerCase().includes(q))
+  }
+  return result
 })
 
 const releaseMap = computed(() => {
@@ -182,21 +216,25 @@ const releaseTrackColumns: TrackListColumn[] = [
   { key: 'trackNumber', label: '#' },
   { key: 'title', label: 'Title' },
   { key: 'playCount', label: 'Plays' },
-  { key: 'favorite' },
   { key: 'duration' },
+  { key: 'favorite' },
 ]
 
 function toggleExpand(id: string) {
   expandedRelease.value = expandedRelease.value === id ? null : id
 }
 
-function isReleasePlaying(release: UnifiedRelease) {
+function isCurrentRelease(release: UnifiedRelease) {
   const releaseId = release.localReleaseId || release.id
-  return player.isPlaying && player.currentTrack?.localReleaseId === releaseId
+  return player.currentTrack?.localReleaseId === releaseId
+}
+
+function isReleasePlaying(release: UnifiedRelease) {
+  return player.isPlaying && isCurrentRelease(release)
 }
 
 function handleReleaseClick(release: UnifiedRelease) {
-  if (isReleasePlaying(release)) {
+  if (isCurrentRelease(release)) {
     player.togglePlay()
   } else {
     playRelease(release)
@@ -225,11 +263,13 @@ async function playRelease(release: UnifiedRelease) {
   catch { /* ignore */ }
 }
 
+let allTracksSlug = ''
 async function loadAllTracks() {
-  if (allTracksLoaded.value) return
+  if (allTracksLoaded.value && allTracksSlug === props.slug) return
   allTracksLoading.value = true
   try {
     allTracks.value = await $fetch<Track[]>(`/api/artists/${props.slug}/tracks`)
+    allTracksSlug = props.slug
     allTracksLoaded.value = true
   }
   catch { /* ignore */ }
@@ -241,17 +281,6 @@ async function loadAllTracks() {
 function switchToListView() {
   viewMode.value = 'list'
   loadAllTracks()
-}
-
-let searchTimeout: ReturnType<typeof setTimeout>
-function handleSearch(value: string) {
-  clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(() => {
-    searchQuery.value = value
-    if (value) {
-      switchToListView()
-    }
-  }, 300)
 }
 
 function buildPlayerTracks(tracks: Track[], startTrack: Track) {
@@ -279,15 +308,7 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
 
     <template v-else>
       <div class="flex flex-wrap items-center gap-3">
-        <div class="relative flex-1 sm:max-w-xs">
-          <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-          <input
-            type="text"
-            placeholder="Search tracks..."
-            class="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 pl-8 pr-3 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
-            @input="handleSearch(($event.target as HTMLInputElement).value)"
-          />
-        </div>
+        <ArtistTrackSearch v-model="searchQuery" />
 
         <Dropdown
           v-model="statusFilter"
@@ -335,7 +356,8 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
           </button>
         </div>
 
-        <div class="flex items-center gap-4 px-3 text-xs text-zinc-500">
+        <TableHeader>
+          <div class="w-10 shrink-0" />
           <div class="w-10 shrink-0" />
           <div class="min-w-0 flex-1" />
           <Switch v-model="showMissing" label="Show missing" />
@@ -362,96 +384,104 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
               </template>
             </Popover>
           </div>
-        </div>
+        </TableHeader>
 
-        <div class="flex flex-col gap-1">
-          <div
+        <Table>
+          <TableRow
             v-for="release in filteredReleases"
             :key="release.id"
-            :class="[
-              'rounded-lg border border-zinc-800 bg-zinc-900/50 transition-colors',
-              release.status !== 'MISSING' && 'hover:border-zinc-700',
-            ]"
+            :muted="release.status === 'MISSING'"
+            :expanded="expandedRelease === release.id"
+            class="cursor-pointer"
+            @click="toggleExpand(release.id)"
           >
-            <div
-              class="flex cursor-pointer items-center gap-4 p-3"
-              @click="toggleExpand(release.id)"
+            <button
+              v-if="release.localReleaseId || release.localTrackCount > 0"
+              class="flex size-10 flex-shrink-0 items-center justify-center text-sm"
+              :class="isCurrentRelease(release) ? 'text-amber-500' : 'text-zinc-500 group-hover:text-amber-500'"
+              @click.stop="handleReleaseClick(release)"
             >
-              <div class="group/cover relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
-                <img
-                  v-if="release.image || release.imageUrl"
-                  :src="release.imageUrl || release.image!"
-                  :alt="release.title"
-                  class="size-full object-cover"
-                  loading="lazy"
-                />
-                <div v-else class="flex size-full items-center justify-center text-zinc-600">
-                  <Disc3 :size="20" />
-                </div>
-                <button
-                  v-if="release.localReleaseId || release.localTrackCount > 0"
-                  class="absolute inset-0 flex items-center justify-center bg-black/60 transition-opacity"
-                  :class="isReleasePlaying(release) ? 'opacity-100' : 'opacity-0 group-hover/cover:opacity-100'"
-                  @click.stop="handleReleaseClick(release)"
+              <Pause v-if="isReleasePlaying(release)" :size="16" fill="currentColor" />
+              <Play v-else :size="16" fill="currentColor" />
+            </button>
+            <div v-else class="size-10 flex-shrink-0" />
+
+            <div class="relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
+              <img
+                v-if="release.image || release.imageUrl"
+                :src="release.imageUrl || release.image!"
+                :alt="release.title"
+                class="size-full object-cover"
+                loading="lazy"
+              />
+              <div v-else class="flex size-full items-center justify-center text-zinc-600">
+                <Disc3 :size="20" />
+              </div>
+            </div>
+
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1">
+                <div class="truncate text-sm font-medium" :class="release.status === 'MISSING' ? 'text-zinc-500' : 'text-zinc-50'">{{ release.title }}</div>
+
+                <a
+                  v-if="release.status === 'MISSING' && release.musicbrainzId"
+                  :href="`https://musicbrainz.org/release-group/${release.musicbrainzId}`"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="shrink-0 text-zinc-600 hover:text-zinc-400 transition-colors"
+                  title="View on MusicBrainz"
+                  @click.stop
                 >
-                  <Pause v-if="isReleasePlaying(release)" :size="14" class="text-zinc-50" />
-                  <Play v-else :size="14" class="text-zinc-50" />
-                </button>
+                  <Link :size="10" />
+                </a>
               </div>
 
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-1">
-                  <div class="truncate text-sm font-medium text-zinc-50">{{ release.title }}</div>
-
-                  <a
-                    v-if="release.status === 'MISSING' && release.musicbrainzId"
-                    :href="`https://musicbrainz.org/release-group/${release.musicbrainzId}`"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="shrink-0 text-zinc-600 hover:text-zinc-400 transition-colors"
-                    title="View on MusicBrainz"
-                    @click.stop
-                  >
-                    <Link :size="10" />
-                  </a>
-                </div>
-
-                <div class="flex items-center gap-3 text-xs text-zinc-400">
-                  <span v-if="release.year">{{ release.year }}</span>
-                  <span v-if="release.trackCount">{{ release.trackCount }} tracks</span>
-                  <span v-if="release.localTrackCount && release.trackCount !== release.localTrackCount">
-                    {{ release.localTrackCount }} local
-                  </span>
-                  <span v-if="release.coArtists?.length" class="text-zinc-500">Feat.
-                    <template v-for="(co, i) in release.coArtists" :key="co.slug">
-                      <NuxtLink
-                        :to="`/artist/${co.slug}`"
-                        class="text-zinc-400 hover:text-amber-500 transition-colors"
-                        @click.stop
-                      >{{ co.name }}</NuxtLink><template v-if="i < release.coArtists.length - 1">, </template>
-                    </template>
-                  </span>
-                  <span v-if="release.totalPlayCount">{{ release.totalPlayCount.toLocaleString() }} plays</span>
-                </div>
+              <div class="flex items-center gap-3 text-xs" :class="release.status === 'MISSING' ? 'text-zinc-600' : 'text-zinc-400'">
+                <span v-if="release.year">{{ release.year }}</span>
+                <span v-if="release.trackCount">{{ release.trackCount }} tracks</span>
+                <span v-if="release.localTrackCount && release.trackCount !== release.localTrackCount">
+                  {{ release.localTrackCount }} local
+                </span>
+                <span v-if="release.coArtists?.length" class="text-zinc-500">Feat.
+                  <template v-for="(co, i) in release.coArtists" :key="co.slug">
+                    <NuxtLink
+                      :to="`/artist/${co.slug}`"
+                      class="text-zinc-400 hover:text-amber-500 transition-colors"
+                      @click.stop
+                    >{{ co.name }}</NuxtLink><template v-if="i < release.coArtists.length - 1">, </template>
+                  </template>
+                </span>
+                <span v-if="release.totalPlayCount">{{ release.totalPlayCount.toLocaleString() }} plays</span>
               </div>
-
-              <Popover trigger="hover">
-                <template #trigger>
-                  <ReleaseStatusBadge :status="release.status" />
-                </template>
-                <template #content>
-                  <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
-                    <p class="text-xs text-zinc-400">{{ release.statusReason || statusDescription(release.status) }}</p>
-                  </div>
-                </template>
-              </Popover>
             </div>
 
-            <div v-if="expandedRelease === release.id && (release.localReleaseId || release.localTrackCount > 0)" class="border-t border-zinc-800 px-3 pb-3">
-              <ReleaseTracksTable :release-id="release.isMusicBrainz ? release.id : (release.localReleaseId || release.id)" :columns="releaseTrackColumns" />
-            </div>
-          </div>
-        </div>
+            <Popover trigger="hover">
+              <template #trigger>
+                <ReleaseStatusBadge :status="release.status" />
+              </template>
+              <template #content>
+                <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
+                  <p class="text-xs text-zinc-400">{{ release.statusReason || statusDescription(release.status) }}</p>
+                </div>
+              </template>
+            </Popover>
+
+            <button
+              v-if="release.isMusicBrainz"
+              class="rounded-full p-1.5 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100"
+              :class="{ 'text-amber-500 opacity-100': favoriteReleases.has(release.id) }"
+              @click.stop="toggleFavoriteRelease(release)"
+            >
+              <Heart :size="14" :fill="favoriteReleases.has(release.id) ? 'currentColor' : 'none'" />
+            </button>
+
+            <template #expand>
+              <div v-if="expandedRelease === release.id && (release.localReleaseId || release.localTrackCount > 0)" class="border-t border-zinc-800 px-3 pb-3" @click.stop>
+                <ReleaseTracksTable :release-id="release.isMusicBrainz ? release.id : (release.localReleaseId || release.id)" :columns="releaseTrackColumns" />
+              </div>
+            </template>
+          </TableRow>
+        </Table>
 
         <div v-if="filteredReleases.length === 0 && !hasMore" class="py-8 text-center text-sm text-zinc-500">
           No releases in this category

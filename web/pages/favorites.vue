@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideHeart, LucideDisc, LucideMusic, Loader2 } from 'lucide-vue-next'
+import { LucideHeart, LucideDisc, LucideMusic, Loader2, LucidePlay, LucidePause } from 'lucide-vue-next'
 import type { FavoritesResponse, FavoriteRelease, FavoriteTrack } from '~/types/favorites'
 
 const route = useRoute()
@@ -138,18 +138,77 @@ function formatDuration(seconds: number | null) {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
+function isCurrentRelease(releaseId: string) {
+  return playerStore.currentTrack?.localReleaseId === releaseId
+}
+
+function isReleasePlaying(releaseId: string) {
+  return playerStore.isPlaying && isCurrentRelease(releaseId)
+}
+
+async function handleReleaseClick(releaseId: string) {
+  if (isCurrentRelease(releaseId)) {
+    playerStore.togglePlay()
+  }
+  else {
+    await playRelease(releaseId)
+  }
+}
+
 async function playRelease(releaseId: string) {
   try {
-    const { data } = await useFetch<any>(`/api/releases/${releaseId}/tracks`)
-    if (data.value && data.value.length > 0) {
-      playerStore.playTrack(data.value[0], data.value)
+    const data = await $fetch<any>(`/api/releases/${releaseId}/tracks`)
+    if (data?.tracks?.length) {
+      const tracks = data.tracks.filter((t: any) => !t.missing).map((t: any) => ({
+        id: t.id,
+        title: t.title || 'Unknown',
+        artist: t.artist || 'Unknown',
+        album: t.album || data.release?.title || 'Unknown',
+        duration: t.duration || 0,
+        artistSlug: data.release?.artistSlug || null,
+        releaseImage: data.release?.image ? `/img/releases/${data.release.image}` : null,
+        releaseImageUrl: data.release?.imageUrl || null,
+        localReleaseId: t.localReleaseId,
+      }))
+      if (tracks.length) {
+        playerStore.setQueue(tracks)
+      }
     }
   }
   catch { /* ignore */ }
 }
 
-function playTrack(track: any) {
-  playerStore.playTrack(track, [track])
+function isCurrentTrack(trackId: string) {
+  return playerStore.currentTrack?.id === trackId
+}
+
+function isTrackPlaying(trackId: string) {
+  return playerStore.isPlaying && isCurrentTrack(trackId)
+}
+
+function toPlayerTrack(fav: FavoriteTrack) {
+  return {
+    id: fav.track.id,
+    title: fav.track.title || 'Unknown',
+    artist: fav.track.release?.artist?.name || 'Unknown',
+    album: fav.track.release?.title || 'Unknown',
+    duration: fav.track.duration || 0,
+    artistSlug: fav.track.release?.artist?.slug || null,
+    releaseImage: fav.track.release?.image ? `/img/releases/${fav.track.release.image}` : null,
+    releaseImageUrl: fav.track.release?.imageUrl || null,
+    localReleaseId: fav.track.release?.id || null,
+  }
+}
+
+function handleTrackClick(fav: FavoriteTrack) {
+  if (isCurrentTrack(fav.track.id)) {
+    playerStore.togglePlay()
+  }
+  else {
+    const playerTracks = tracks.value.map(toPlayerTrack)
+    const start = playerTracks.find(t => t.id === fav.track.id)
+    playerStore.setQueue(playerTracks, start)
+  }
 }
 </script>
 
@@ -221,11 +280,13 @@ function playTrack(track: any) {
               </div>
 
               <button
-                class="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100"
-                @click="playRelease(fav.release.id)"
+                class="absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity"
+                :class="isCurrentRelease(fav.release.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+                @click="handleReleaseClick(fav.release.id)"
               >
                 <div class="rounded-full bg-amber-500 p-3 text-zinc-950 shadow-lg">
-                  <LucideMusic class="size-6" />
+                  <LucidePause v-if="isReleasePlaying(fav.release.id)" class="size-6" fill="currentColor" />
+                  <LucidePlay v-else class="size-6" fill="currentColor" />
                 </div>
               </button>
             </div>
@@ -259,18 +320,19 @@ function playTrack(track: any) {
 
       <!-- Tracks tab -->
       <div v-if="activeTab === 'tracks'">
-        <div v-if="tracks.length > 0" class="rounded-lg border border-zinc-800 bg-zinc-900">
-          <div
-            v-for="(fav, idx) in tracks"
+        <Table v-if="tracks.length > 0">
+          <TableRow
+            v-for="fav in tracks"
             :key="fav.id"
-            class="group flex items-center gap-3 border-b border-zinc-800 p-3 last:border-b-0 hover:bg-zinc-800/50 transition-colors"
+            :active="isCurrentTrack(fav.track.id)"
           >
             <button
-              class="flex size-10 flex-shrink-0 items-center justify-center text-sm text-zinc-500 group-hover:text-amber-500"
-              @click="playTrack(fav.track)"
+              class="flex size-10 shrink-0 items-center justify-center text-sm"
+              :class="isCurrentTrack(fav.track.id) ? 'text-amber-500' : 'text-zinc-500 group-hover:text-amber-500'"
+              @click="handleTrackClick(fav)"
             >
-              <span class="group-hover:hidden">{{ idx + 1 }}</span>
-              <LucideMusic class="hidden size-4 group-hover:block" />
+              <LucidePause v-if="isTrackPlaying(fav.track.id)" :size="16" fill="currentColor" />
+              <LucidePlay v-else :size="16" fill="currentColor" />
             </button>
 
             <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-zinc-800">
@@ -286,7 +348,7 @@ function playTrack(track: any) {
             </div>
 
             <div class="flex-1 overflow-hidden">
-              <p class="truncate text-sm font-medium text-zinc-50">
+              <p class="truncate text-sm font-medium" :class="isCurrentTrack(fav.track.id) ? 'text-amber-500' : 'text-zinc-50'">
                 {{ fav.track.title }}
               </p>
               <div v-if="fav.track.release" class="flex items-center gap-2 text-xs text-zinc-400">
@@ -312,8 +374,8 @@ function playTrack(track: any) {
             >
               <LucideHeart class="size-4" fill="currentColor" />
             </button>
-          </div>
-        </div>
+          </TableRow>
+        </Table>
 
         <div v-else class="flex flex-col items-center justify-center py-20 text-center text-zinc-500">
           <LucideMusic class="mb-3 size-12 opacity-50" />

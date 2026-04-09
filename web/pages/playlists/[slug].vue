@@ -215,15 +215,11 @@ onMounted(() => {
       </div>
 
       <!-- Tracks table -->
-      <div
-        v-if="playlist.tracks.length > 0"
-        class="rounded-lg border border-zinc-800 bg-zinc-900"
-      >
-        <div
+      <Table v-if="playlist.tracks.length > 0">
+        <TableRow
           v-for="(pt, idx) in playlist.tracks"
           :key="pt.id"
-          class="group flex items-center gap-3 border-b border-zinc-800 p-3 last:border-b-0 hover:bg-zinc-800/50 transition-colors"
-          :class="{ 'bg-zinc-800/30': isCurrentTrack(pt.track.id) }"
+          :active="isCurrentTrack(pt.track.id)"
         >
           <!-- Track number / play button -->
           <button
@@ -301,8 +297,8 @@ onMounted(() => {
           >
             <LucideX class="size-4" />
           </button>
-        </div>
-      </div>
+        </TableRow>
+      </Table>
 
       <!-- Empty state -->
       <div
