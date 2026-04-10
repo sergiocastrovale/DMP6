@@ -4,6 +4,8 @@ import type { ArtistListItem } from '~/types/artist'
 export const useBrowseStore = defineStore('browse', () => {  
   const artists = ref<ArtistListItem[]>([])
   const total = ref(0)
+  const mainCount = ref(0)
+  const relatedCount = ref(0)
   const page = ref(1)
   const pageSize = ref(48)
   const hasMore = ref(false)
@@ -42,6 +44,8 @@ export const useBrowseStore = defineStore('browse', () => {
       const data = await $fetch<{
         items: ArtistListItem[]
         total: number
+        mainCount: number
+        relatedCount: number
         page: number
         hasMore: boolean
       }>('/api/artists', { params })
@@ -54,6 +58,8 @@ export const useBrowseStore = defineStore('browse', () => {
         page.value = 1
       }
       total.value = data.total
+      mainCount.value = data.mainCount
+      relatedCount.value = data.relatedCount
       hasMore.value = data.hasMore
     }
     finally {
@@ -109,6 +115,8 @@ export const useBrowseStore = defineStore('browse', () => {
   return {
     artists,
     total,
+    mainCount,
+    relatedCount,
     page,
     hasMore,
     loading,

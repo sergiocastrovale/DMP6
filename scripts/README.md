@@ -13,6 +13,7 @@ Shell wrappers at the project root (`./sync`, `./analysis`, etc.) auto-build the
 | `clean/` | `dmp-clean` | Process S3 deletion queue for orphaned images | [docs/scripts/clean.md](../docs/scripts/clean.md) |
 | `nuke/` | `dmp-nuke` | Full or partial database reset | [docs/scripts/nuke.md](../docs/scripts/nuke.md) |
 | `audit/` | `dmp-audit` | Data integrity audit, exports XLSX report | [docs/scripts/audit.md](../docs/scripts/audit.md) |
+| `delete/` | `dmp-delete` | Permanently delete a single artist + their catalogue, with cascade to ghost co-artists | [docs/scripts/delete.md](../docs/scripts/delete.md) |
 
 Build any Rust script with:
 ```bash
@@ -30,6 +31,12 @@ Used during the [post-sync routine](../docs/post_sync.md) to fix MP3 tag issues 
 | `fix_compound_artists.py` | Fix known compound artist tags by replacing separators with `\\` | [docs/scripts/helpers.md#fix_compound_artistspy](../docs/scripts/helpers.md#fix_compound_artistspy) |
 | `fix_compound_tpe2.py` | Fix compound TPE2 tags library-wide (DB-driven, all ambiguous separators) | [docs/scripts/helpers.md#fix_compound_tpe2py](../docs/scripts/helpers.md#fix_compound_tpe2py) |
 | `missing_metadata_report.py` | Query DB for tracks missing mood/BPM/AcoustID, export XLSX | [docs/scripts/helpers.md#missing_metadata_reportpy](../docs/scripts/helpers.md#missing_metadata_reportpy) |
+
+## Bash Scripts
+
+| Script | Purpose | Docs |
+|--------|---------|------|
+| `backup` | Stream a compressed `pg_dump` from the NAS into `web/dump/` | [docs/scripts/backup.md](../docs/scripts/backup.md) |
 
 ## Other
 

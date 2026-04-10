@@ -369,6 +369,8 @@ model Settings {
 model Statistics {
   id                                  String    @id @default("main")
   artists                             Int       @default(0)
+  mainArtists                         Int       @default(0)
+  relatedArtists                      Int       @default(0)
   playtime                            BigInt    @default(0)
   plays                               BigInt    @default(0)
   tracks                              Int       @default(0)
@@ -381,6 +383,7 @@ model Statistics {
   lastScanStartedAt                   DateTime?
   lastScanEndedAt                     DateTime?
   lastSyncedArtist                    String?
+  lastSyncArgs                        Json?
   createdAt                           DateTime  @default(now())
   updatedAt                           DateTime  @updatedAt
 }

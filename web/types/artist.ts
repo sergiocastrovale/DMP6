@@ -14,6 +14,15 @@ export interface Artist {
   lastSyncedAt: string | null
   genres: Genre[]
   urls: ArtistUrl[]
+  relatedArtists?: RelatedArtist[]
+}
+
+export interface RelatedArtist {
+  id: string
+  name: string
+  slug: string
+  image: string | null
+  imageUrl: string | null
 }
 
 export interface ArtistListItem {

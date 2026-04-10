@@ -10,9 +10,7 @@
     "postinstall": "nuxt prepare",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
-    "db:studio": "prisma studio",
-    "backup": "tsx scripts/backup.ts",
-    "restore": "tsx scripts/restore.ts"
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",

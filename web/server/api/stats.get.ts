@@ -12,6 +12,8 @@ export default defineEventHandler(async (event) => {
     if (!stats) {
       return {
         artists: 0,
+        mainArtists: 0,
+        relatedArtists: 0,
         tracks: 0,
         releases: 0,
         genres: 0,
@@ -28,6 +30,8 @@ export default defineEventHandler(async (event) => {
 
     return {
       artists: stats.artists,
+      mainArtists: stats.mainArtists,
+      relatedArtists: stats.relatedArtists,
       tracks: stats.tracks,
       releases: stats.releases,
       genres: stats.genres,

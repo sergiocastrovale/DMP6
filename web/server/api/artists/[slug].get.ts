@@ -29,6 +29,30 @@ export default defineEventHandler(async (event) => {
 
     if (!artist) throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
 
+    // Related artists tied to this one: globally "related" (no TrackArtist rows, i.e.
+    // pulled in via compound-split) AND sharing at least one LocalReleaseArtist with
+    // the current artist. Mirrors the mainArtists/relatedArtists split in Statistics.
+    const relatedArtists = await prisma.$queryRaw<Array<{
+      id: string
+      name: string
+      slug: string
+      image: string | null
+      imageUrl: string | null
+    }>>`
+      SELECT DISTINCT a.id, a.name, a.slug, a.image, a."imageUrl"
+      FROM "Artist" a
+      WHERE a.id != ${artist.id}
+        AND NOT EXISTS (SELECT 1 FROM "TrackArtist" ta WHERE ta."artistId" = a.id)
+        AND EXISTS (
+          SELECT 1 FROM "LocalReleaseArtist" lra
+          WHERE lra."artistId" = a.id
+            AND lra."localReleaseId" IN (
+              SELECT "localReleaseId" FROM "LocalReleaseArtist" WHERE "artistId" = ${artist.id}
+            )
+        )
+      ORDER BY a.name ASC
+    `
+
     return {
       id: artist.id,
       name: artist.name,
@@ -43,6 +67,7 @@ export default defineEventHandler(async (event) => {
       lastSyncedAt: artist.lastSyncedAt,
       genres: artist.genres,
       urls: artist.urls,
+      relatedArtists,
     }
   })
 })

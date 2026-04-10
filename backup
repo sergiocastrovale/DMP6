@@ -1,2 +1,4 @@
 #!/usr/bin/env bash
-cd web && pnpm backup && cd ..
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$SCRIPT_DIR/scripts/backup" "$@"

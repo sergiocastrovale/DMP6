@@ -37,9 +37,18 @@ const imgUrl = computed(() => artistImage(props.artist))
 
       <Genres :genres="artist.genres" @more="showAllGenres = true" />
 
-      <div class="flex items-center gap-4 text-sm text-zinc-400">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-400">
         <TotalTracks :total="artist.totalTracks" />
         <TotalPlays :plays="artist.totalPlayCount" />
+        <span v-if="artist.relatedArtists?.length" class="text-zinc-500">
+          Related:
+          <template v-for="(rel, i) in artist.relatedArtists" :key="rel.slug">
+            <NuxtLink
+              :to="`/artist/${rel.slug}`"
+              class="text-zinc-400 transition-colors hover:text-amber-500"
+            >{{ rel.name }}</NuxtLink><template v-if="i < artist.relatedArtists.length - 1">, </template>
+          </template>
+        </span>
         <AverageMatchScore :score="artist.averageMatchScore" />
       </div>
 

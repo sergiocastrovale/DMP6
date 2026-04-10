@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+#
+# DMP database backup. Streams a compressed pg_dump from the NAS into web/dump/.
+# See docs/scripts/backup.md for details.
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DUMP_DIR="$SCRIPT_DIR/web/dump"
+ENV_FILE="$SCRIPT_DIR/web/.env"
+
+# Defaults — overridable via web/.env
+SSH_HOST_DEFAULT="nas"
+POSTGRES_CONTAINER_DEFAULT="ix-postgres-postgres-1"
+DB_USER_DEFAULT="dmp"
+DB_NAME_DEFAULT="dmp"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+SSH_HOST="${NAS_SSH_HOST:-$SSH_HOST_DEFAULT}"
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-$POSTGRES_CONTAINER_DEFAULT}"
+DB_USER="${BACKUP_DB_USER:-$DB_USER_DEFAULT}"
+DB_NAME="${BACKUP_DB_NAME:-$DB_NAME_DEFAULT}"
+
+mkdir -p "$DUMP_DIR"
+
+TIMESTAMP="$(date -u +%Y-%m-%dT%H-%M-%S)"
+OUT_FILE="$DUMP_DIR/${TIMESTAMP}.sql.gz"
+
+echo
+echo "🗄️  Starting database backup..."
+echo "============================================================"
+echo "📡 Source  : ${SSH_HOST} → ${POSTGRES_CONTAINER}"
+echo "📊 Database: ${DB_NAME}"
+echo "📁 Output  : web/dump/${TIMESTAMP}.sql.gz"
+echo "⏳ Streaming pg_dump | gzip -9 from NAS..."
+
+START_TS=$(date +%s)
+
+# pg_dump runs *inside* the NAS postgres container (avoids client/server version
+# mismatches), gzip -9 compresses on the NAS side (less bytes over the wire),
+# and the compressed bytes stream back through SSH straight into the local file.
+# Read-only — pg_dump never modifies the database.
+REMOTE_CMD="docker exec -i ${POSTGRES_CONTAINER} pg_dump --no-owner --no-acl --clean --if-exists -U ${DB_USER} ${DB_NAME} | gzip -9"
+
+set +e
+ssh "$SSH_HOST" "$REMOTE_CMD" > "$OUT_FILE"
+SSH_EXIT=$?
+set -e
+
+if [ $SSH_EXIT -ne 0 ]; then
+  rm -f "$OUT_FILE"
+  echo "❌ ssh/pg_dump exited with code ${SSH_EXIT}" >&2
+  exit $SSH_EXIT
+fi
+
+# Sanity check: gzip should validate, and the file should be > 1 KB.
+if ! gzip -t "$OUT_FILE" 2>/dev/null; then
+  rm -f "$OUT_FILE"
+  echo "❌ Output file failed gzip integrity check" >&2
+  exit 1
+fi
+
+SIZE_BYTES=$(stat -c%s "$OUT_FILE" 2>/dev/null || stat -f%z "$OUT_FILE")
+if [ "$SIZE_BYTES" -lt 1024 ]; then
+  rm -f "$OUT_FILE"
+  echo "❌ Dump suspiciously small (${SIZE_BYTES} bytes) — aborting" >&2
+  exit 1
+fi
+
+DURATION=$(( $(date +%s) - START_TS ))
+SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$SIZE_BYTES" 2>/dev/null || echo "${SIZE_BYTES} bytes")
+
+echo "============================================================"
+echo "✅ Database backup completed successfully!"
+echo "📁 File    : web/dump/${TIMESTAMP}.sql.gz"
+echo "📊 Size    : ${SIZE_HUMAN}"
+echo "⏱️  Duration: ${DURATION}s"

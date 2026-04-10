@@ -52,7 +52,7 @@ export default defineEventHandler(async (event) => {
         orderBy.slug = 'asc'
     }
 
-    const [items, total] = await Promise.all([
+    const [items, total, stats] = await Promise.all([
       prisma.artist.findMany({
         where,
         orderBy,
@@ -70,11 +70,17 @@ export default defineEventHandler(async (event) => {
         },
       }),
       prisma.artist.count({ where }),
+      prisma.statistics.findUnique({
+        where: { id: 'main' },
+        select: { mainArtists: true, relatedArtists: true },
+      }),
     ])
 
     return {
       items,
       total,
+      mainCount: stats?.mainArtists ?? 0,
+      relatedCount: stats?.relatedArtists ?? 0,
       page,
       pageSize,
       hasMore: page * pageSize < total,

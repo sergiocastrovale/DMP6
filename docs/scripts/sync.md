@@ -111,6 +111,16 @@ When a tag like "10cc & Godley & Creme" can't be split at index time (because `&
 3. All component artists are queued for validation (step 18 above) and full sync
 4. The compound artist record is cleaned up (links removed, deleted by Step 5b cleanup which removes artists with `musicbrainzId IS NULL` and no releases)
 
+### Main vs Related Artists
+
+The distinction is encoded in the database, not the filesystem:
+
+- **Main artist** — has at least one `TrackArtist` row. Written in the index loop (step 5) when a name comes directly from an `albumArtist`, `artist`, or `feat.` tag. The artist *is in the metadata*.
+- **Related artist** — has `LocalReleaseArtist` links but **no** `TrackArtist` rows. Created only by the extra-artists/compound-split phase (steps 18–20), where the name surfaced via MB artist-credit disambiguation, never from a raw tag. Added *because* they're associated with a main artist.
+
+`Statistics.mainArtists` / `Statistics.relatedArtists` are computed from exactly this signal:
+`EXISTS (SELECT 1 FROM "TrackArtist" WHERE "artistId" = a.id)`.
+
 ### Same MB ID = Same Artist
 
 When two different artist names resolve to the same MusicBrainz ID (e.g. "Hävok Ünit" and "Havoc Unit"), the second is always merged into the first: its local releases are redirected to the existing artist record, and the duplicate is cleaned up. MB ID is the identity — name differences are irrelevant.
@@ -171,8 +181,11 @@ All tiers support both local storage (`web/public/img/releases/`) and S3 upload,
 ## Resume
 
 - Progress saved to `Statistics.lastSyncedArtist` after each folder completes
+- The original `--from` / `--to` / `--only` of a fresh run are persisted to `Statistics.lastSyncArgs` (JSONB) at the start of that run, so a later `--resume` can reconstruct the exact same range with no flags
 - `--resume` skips all folders with name <= the saved value
 - If stopped mid-folder, resume restarts that folder from scratch
+- Restoration is per-flag: `./sync --resume --from=d` overrides only `from`, while `to`/`only` are still inherited from the saved checkpoint
+- Both `lastSyncedArtist` and `lastSyncArgs` are cleared on successful completion, and overwritten at the start of any non-resume run
 
 ## Rate Limiting
 

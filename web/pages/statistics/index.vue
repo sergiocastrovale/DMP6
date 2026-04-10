@@ -77,11 +77,16 @@ onMounted(() => {
         <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-500">
           Library
         </h2>
-        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <NuxtLink to="/statistics/artists" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideUsers class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.artists) }}</p>
+            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.mainArtists) }}</p>
             <p class="text-xs text-zinc-500">Artists</p>
+          </NuxtLink>
+          <NuxtLink to="/statistics/artists" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
+            <LucideUsers class="mb-2 size-5 text-amber-500/60" />
+            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.relatedArtists) }}</p>
+            <p class="text-xs text-zinc-500">Related artists</p>
           </NuxtLink>
           <NuxtLink to="/statistics/releases" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
             <LucideDisc class="mb-2 size-5 text-amber-500" />

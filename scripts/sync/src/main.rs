@@ -2648,6 +2648,13 @@ async fn check_release_status(
 // Checkpoint
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Default, Clone)]
+struct SavedSyncArgs {
+    from: String,
+    to: String,
+    only: String,
+}
+
 async fn save_sync_progress(pool: &PgPool, folder_name: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"UPDATE "Statistics" SET "lastSyncedArtist" = $1, "updatedAt" = NOW() WHERE id = 'main'"#,
@@ -2658,18 +2665,39 @@ async fn save_sync_progress(pool: &PgPool, folder_name: &str) -> Result<(), sqlx
     Ok(())
 }
 
-async fn load_sync_progress(pool: &PgPool) -> Result<Option<String>, sqlx::Error> {
-    let row: Option<(Option<String>,)> = sqlx::query_as(
-        r#"SELECT "lastSyncedArtist" FROM "Statistics" WHERE id = 'main'"#,
+/// Persist the from/to/only filters of the current sync run so a later --resume
+/// (with no filters of its own) can reconstruct the same range.
+async fn save_sync_args(pool: &PgPool, from: &str, to: &str, only: &str) -> Result<(), sqlx::Error> {
+    let json = serde_json::json!({ "from": from, "to": to, "only": only });
+    sqlx::query(
+        r#"UPDATE "Statistics" SET "lastSyncArgs" = $1, "updatedAt" = NOW() WHERE id = 'main'"#,
+    )
+    .bind(json)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn load_sync_progress(pool: &PgPool) -> Result<(Option<String>, Option<SavedSyncArgs>), sqlx::Error> {
+    let row: Option<(Option<String>, Option<JsonValue>)> = sqlx::query_as(
+        r#"SELECT "lastSyncedArtist", "lastSyncArgs" FROM "Statistics" WHERE id = 'main'"#,
     )
     .fetch_optional(pool)
     .await?;
-    Ok(row.and_then(|(v,)| v))
+
+    let (folder, args_json) = row.unwrap_or((None, None));
+    let parsed_args = args_json.map(|v| SavedSyncArgs {
+        from: v.get("from").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        to: v.get("to").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        only: v.get("only").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+    });
+
+    Ok((folder, parsed_args))
 }
 
 async fn clear_sync_progress(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(
-        r#"UPDATE "Statistics" SET "lastSyncedArtist" = NULL, "updatedAt" = NOW() WHERE id = 'main'"#,
+        r#"UPDATE "Statistics" SET "lastSyncedArtist" = NULL, "lastSyncArgs" = NULL, "updatedAt" = NOW() WHERE id = 'main'"#,
     )
     .execute(pool)
     .await?;
@@ -3021,32 +3049,51 @@ async fn download_and_resize(client: &Client, url: &str, out_path: &PathBuf) -> 
 async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
     let now = Utc::now().naive_utc();
 
+    // "Main artist" = has at least one TrackArtist row. TrackArtist is only written in the
+    // folder-processing loop (main.rs:3612-3668) when an artist name is extracted directly
+    // from a track's albumArtist/artist/feat. tags — i.e. the artist is *in the metadata*.
+    //
+    // "Related artist" = has LocalReleaseArtist links but no TrackArtist rows. The only code
+    // path that creates Artist + LocalReleaseArtist without any TrackArtist is the compound-
+    // split / extra-artists loop (main.rs:4700-4757), which pulls collaborators in via
+    // MusicBrainz disambiguation. That's exactly the "added because they're related to a
+    // main artist" case.
     sqlx::query(
         r#"INSERT INTO "Statistics" (
-             id, artists, tracks, releases, genres,
-             "releasesWithCoverArt", playtime,
+             id, artists, "mainArtists", "relatedArtists",
+             tracks, releases, genres,
+             "releasesWithCoverArt", playtime, plays,
              "artistsSyncedWithMusicbrainz", "releasesSyncedWithMusicbrainz",
              "artistsWithCoverArt",
              "lastScanEndedAt", "updatedAt"
            )
            SELECT 'main',
              (SELECT COUNT(*)::int FROM "Artist"),
+             (SELECT COUNT(*)::int FROM "Artist" a
+                WHERE EXISTS (SELECT 1 FROM "TrackArtist" ta WHERE ta."artistId" = a.id)),
+             (SELECT COUNT(*)::int FROM "Artist" a
+                WHERE NOT EXISTS (SELECT 1 FROM "TrackArtist" ta WHERE ta."artistId" = a.id)
+                  AND EXISTS (SELECT 1 FROM "LocalReleaseArtist" lra WHERE lra."artistId" = a.id)),
              (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
              (SELECT COUNT(*)::int FROM "LocalRelease"),
              (SELECT COUNT(*)::int FROM "Genre"),
-             (SELECT COUNT(*)::int FROM "LocalRelease" WHERE image IS NOT NULL),
+             (SELECT COUNT(*)::int FROM "LocalRelease" WHERE image IS NOT NULL OR "imageUrl" IS NOT NULL),
              COALESCE((SELECT SUM(duration)::bigint FROM "LocalReleaseTrack"), 0),
+             COALESCE((SELECT SUM("playCount")::bigint FROM "LocalReleaseTrack"), 0),
              (SELECT COUNT(*)::int FROM "Artist" WHERE "musicbrainzId" IS NOT NULL),
              (SELECT COUNT(*)::int FROM "MusicBrainzRelease"),
-             (SELECT COUNT(*)::int FROM "Artist" WHERE image IS NOT NULL),
+             (SELECT COUNT(*)::int FROM "Artist" WHERE image IS NOT NULL OR "imageUrl" IS NOT NULL),
              $1, $1
            ON CONFLICT (id) DO UPDATE SET
              artists = EXCLUDED.artists,
+             "mainArtists" = EXCLUDED."mainArtists",
+             "relatedArtists" = EXCLUDED."relatedArtists",
              tracks = EXCLUDED.tracks,
              releases = EXCLUDED.releases,
              genres = EXCLUDED.genres,
              "releasesWithCoverArt" = EXCLUDED."releasesWithCoverArt",
              playtime = EXCLUDED.playtime,
+             plays = EXCLUDED.plays,
              "artistsSyncedWithMusicbrainz" = EXCLUDED."artistsSyncedWithMusicbrainz",
              "releasesSyncedWithMusicbrainz" = EXCLUDED."releasesSyncedWithMusicbrainz",
              "artistsWithCoverArt" = EXCLUDED."artistsWithCoverArt",
@@ -3066,7 +3113,7 @@ async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
 
 #[tokio::main]
 async fn main() {
-    let args = Args::parse();
+    let mut args = Args::parse();
     let config = load_config(&args.music_dir);
     let music_dir = if args.test {
         let test_dir = PathBuf::from(&config.project_root).join("web/dump/test-artists");
@@ -3089,6 +3136,39 @@ async fn main() {
     }
     let thread_count = rayon::current_num_threads();
 
+    // Connect to database upfront so we can resolve --resume state before printing
+    // the run config (so the displayed filter reflects what will actually run).
+    let pool = PgPoolOptions::new()
+        .max_connections(20)
+        .connect(&config.database_url)
+        .await
+        .expect("Failed to connect to database. Is PostgreSQL running?");
+
+    // Pre-load checkpoint state for --resume. Done before the print block so any
+    // restored from/to/only show up in the "Filter" line.
+    let (preloaded_resume_folder, preloaded_resume_args) = if args.resume {
+        load_sync_progress(&pool).await.unwrap_or((None, None))
+    } else {
+        (None, None)
+    };
+    let mut resume_restored = Vec::<&'static str>::new();
+    if args.resume {
+        if let Some(saved) = &preloaded_resume_args {
+            if args.from.is_empty() && !saved.from.is_empty() {
+                args.from = saved.from.clone();
+                resume_restored.push("from");
+            }
+            if args.to.is_empty() && !saved.to.is_empty() {
+                args.to = saved.to.clone();
+                resume_restored.push("to");
+            }
+            if args.only.is_empty() && !saved.only.is_empty() {
+                args.only = saved.only.clone();
+                resume_restored.push("only");
+            }
+        }
+    }
+
     println!("{}", "DMP Sync".bright_cyan().bold());
     println!("{}", "========".bright_black());
     println!("Music dir     : {}{}", music_dir.bright_white(),
@@ -3100,6 +3180,10 @@ async fn main() {
         let from_str = if args.from.is_empty() { "A".to_string() } else { args.from.to_uppercase() };
         let to_str = if args.to.is_empty() { "Z".to_string() } else { args.to.to_uppercase() };
         println!("Filter        : {} to {}", from_str.bright_white(), to_str.bright_white());
+    }
+    if !resume_restored.is_empty() {
+        println!("              ({} from saved checkpoint)",
+            format!("--{} restored", resume_restored.join(", --")).bright_black());
     }
     if args.limit > 0 {
         println!("Limit         : {} folders", args.limit.to_string().bright_white());
@@ -3119,13 +3203,6 @@ async fn main() {
     println!("Threads       : {}", thread_count.to_string().bright_white());
     println!("Started at    : {}", Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string().bright_white());
     println!();
-
-    // Connect to database
-    let pool = PgPoolOptions::new()
-        .max_connections(20)
-        .connect(&config.database_url)
-        .await
-        .expect("Failed to connect to database. Is PostgreSQL running?");
 
     // --clean: remove artists with zero local release tracks, then exit
     if args.clean {
@@ -3239,20 +3316,23 @@ async fn main() {
         println!();
     }
 
-    // --- Resume: load progress ---
+    // --- Resume: use the checkpoint loaded earlier (before the print block).
+    // Fresh (non-resume) runs clear any prior checkpoint and stamp the current
+    // from/to/only so a future --resume can reconstruct this exact range.
     let resume_folder = if args.resume {
-        match load_sync_progress(&pool).await {
-            Ok(Some(folder)) => {
+        match preloaded_resume_folder {
+            Some(folder) => {
                 println!("Resuming after '{}'", folder.bright_white());
                 Some(folder)
             }
-            _ => {
+            None => {
                 println!("No progress found, starting from scratch");
                 None
             }
         }
     } else {
         clear_sync_progress(&pool).await.ok();
+        save_sync_args(&pool, &args.from, &args.to, &args.only).await.ok();
         None
     };
 
@@ -4753,7 +4833,7 @@ async fn main() {
                 let release_link_count = links.len();
                 batch_ensure_local_release_artists(&pool, &links).await.ok();
 
-                println!("    {} {}", "⤷".truecolor(180, 160, 60), format!("Found related artist: {}", extra_name).truecolor(180, 160, 60));
+                println!("    {} {}", "⤷".truecolor(180, 160, 60), format!("💿 Found related artist: {}", extra_name).truecolor(180, 160, 60));
                 println!("      {} Linked to {} local release(s)", "→".bright_black(), release_link_count);
 
                 // Save MB ID

@@ -14,7 +14,10 @@ DMP_DATA="${DMP_DATA:?DMP_DATA not set in .env}"
 _dmp_run() {
   local binary="$1"
   shift
-  exec docker run --rm \
+  # Pass -t when stdout is a TTY so Rust color libraries see isatty()=true.
+  local tty_flag=""
+  [ -t 1 ] && tty_flag="-t"
+  exec docker run --rm $tty_flag \
     --env-file "$SCRIPT_DIR/.env" \
     --add-host=host.docker.internal:host-gateway \
     -e PROJECT_ROOT=/app \
