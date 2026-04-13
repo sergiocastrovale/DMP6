@@ -21,7 +21,7 @@ use std::path::PathBuf;
              whose entire catalogue is contained within the deleted releases."
 )]
 struct Args {
-    /// Artist name (case-insensitive exact match)
+    /// Artist name(s), separated by ';' for multiple (case-insensitive exact match)
     artist: String,
 
     /// Skip confirmation prompt
@@ -134,6 +134,26 @@ async fn create_s3_client(config: &DeleteConfig) -> Option<S3Client> {
 
 async fn delete_from_s3(client: &S3Client, bucket: &str, key: &str) {
     client.delete_object().bucket(bucket).key(key).send().await.ok();
+}
+
+/// Extract the S3 object key from a full URL.
+/// "https://bucket.s3.region.amazonaws.com/artists/slug.jpg" → "artists/slug.jpg"
+fn extract_s3_key(url: &str) -> Option<String> {
+    // Try path after ".com/" or ".amazonaws.com/"
+    if let Some(pos) = url.find(".com/") {
+        return Some(url[pos + 5..].to_string());
+    }
+    // Fallback: anything after the third slash
+    let mut slashes = 0;
+    for (i, c) in url.char_indices() {
+        if c == '/' {
+            slashes += 1;
+            if slashes == 3 {
+                return Some(url[i + 1..].to_string());
+            }
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -312,43 +332,48 @@ async fn execute_plan(
     let mut s3_deleted = 0usize;
 
     // Artist images
-    for (_id, _name, slug, image, image_url) in &plan.artists {
-        if image.is_none() && image_url.is_none() {
+    for (_id, _name, _slug, image, image_url) in &plan.artists {
+        let has_local = image.as_ref().map_or(false, |s| !s.is_empty());
+        let has_s3 = image_url.as_ref().map_or(false, |s| !s.is_empty());
+        if !has_local && !has_s3 {
             continue;
         }
-        if use_local {
-            if let Some(filename) = image {
-                if fs::remove_file(artist_img_dir.join(filename)).is_ok() {
-                    local_deleted += 1;
-                }
+        if use_local && has_local {
+            let filename = image.as_ref().unwrap();
+            if fs::remove_file(artist_img_dir.join(filename)).is_ok() {
+                local_deleted += 1;
             }
         }
-        if use_s3 {
+        if use_s3 && has_s3 {
             if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
-                let key = format!("artists/{}.jpg", slug);
-                delete_from_s3(s3, bucket, &key).await;
-                s3_deleted += 1;
+                // Extract S3 key from the full URL (everything after the bucket hostname)
+                if let Some(key) = extract_s3_key(image_url.as_ref().unwrap()) {
+                    delete_from_s3(s3, bucket, &key).await;
+                    s3_deleted += 1;
+                }
             }
         }
     }
 
     // Release covers
-    for (release_id, image, image_url) in &plan.local_releases {
-        if image.is_none() && image_url.is_none() {
+    for (_release_id, image, image_url) in &plan.local_releases {
+        let has_local = image.as_ref().map_or(false, |s| !s.is_empty());
+        let has_s3 = image_url.as_ref().map_or(false, |s| !s.is_empty());
+        if !has_local && !has_s3 {
             continue;
         }
-        if use_local {
-            if let Some(filename) = image {
-                if fs::remove_file(release_img_dir.join(filename)).is_ok() {
-                    local_deleted += 1;
-                }
+        if use_local && has_local {
+            let filename = image.as_ref().unwrap();
+            if fs::remove_file(release_img_dir.join(filename)).is_ok() {
+                local_deleted += 1;
             }
         }
-        if use_s3 {
+        if use_s3 && has_s3 {
             if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
-                let key = format!("releases/{}.jpg", release_id);
-                delete_from_s3(s3, bucket, &key).await;
-                s3_deleted += 1;
+                if let Some(key) = extract_s3_key(image_url.as_ref().unwrap()) {
+                    delete_from_s3(s3, bucket, &key).await;
+                    s3_deleted += 1;
+                }
             }
         }
     }
@@ -453,12 +478,27 @@ async fn refresh_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
 async fn main() {
     let args = Args::parse();
 
+    // Parse artist names — split on ';' for multiple targets
+    let artist_names: Vec<String> = args
+        .artist
+        .split(';')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
     println!("{}", "DMP Delete".bright_cyan().bold());
     println!("{}", "==========".bright_black());
     if args.dry_run {
         println!("Mode    : {}", "DRY RUN (no changes will be made)".yellow().bold());
     }
-    println!("Target  : {}", args.artist.bright_white());
+    if artist_names.len() == 1 {
+        println!("Target  : {}", artist_names[0].bright_white());
+    } else {
+        println!("Targets : {} artists", artist_names.len().to_string().bright_white());
+        for name in &artist_names {
+            println!("    {} {}", "•".bright_black(), name.bright_white());
+        }
+    }
     println!();
 
     let config = load_config();
@@ -469,39 +509,94 @@ async fn main() {
         .await
         .expect("Failed to connect to database. Is PostgreSQL running?");
 
-    // Resolve target artist by exact case-insensitive name match.
-    let matches: Vec<(String, String, String)> = sqlx::query_as(
-        r#"SELECT id, name, slug FROM "Artist" WHERE LOWER(name) = LOWER($1) ORDER BY name ASC"#,
-    )
-    .bind(&args.artist)
-    .fetch_all(&pool)
-    .await
-    .expect("Failed to query Artist table");
+    // Resolve each target artist by exact case-insensitive name match.
+    let mut target_ids: Vec<(String, String)> = Vec::new(); // (id, name)
+    for name in &artist_names {
+        let matches: Vec<(String, String, String)> = sqlx::query_as(
+            r#"SELECT id, name, slug FROM "Artist" WHERE LOWER(name) = LOWER($1) ORDER BY name ASC"#,
+        )
+        .bind(name)
+        .fetch_all(&pool)
+        .await
+        .expect("Failed to query Artist table");
 
-    let target = match matches.len() {
-        0 => {
-            eprintln!("{} No artist found matching '{}'", "✗".red(), args.artist);
-            std::process::exit(1);
-        }
-        1 => &matches[0],
-        n => {
-            eprintln!("{} {} artists match '{}':", "✗".red(), n, args.artist);
-            for (_id, name, slug) in &matches {
-                eprintln!("    - {} ({})", name, slug.bright_black());
+        match matches.len() {
+            0 => {
+                eprintln!("{} No artist found matching '{}'", "✗".red(), name);
+                std::process::exit(1);
             }
-            eprintln!("Refine the name and try again.");
-            std::process::exit(1);
+            1 => {
+                target_ids.push((matches[0].0.clone(), matches[0].1.clone()));
+            }
+            n => {
+                eprintln!("{} {} artists match '{}':", "✗".red(), n, name);
+                for (_id, name, slug) in &matches {
+                    eprintln!("    - {} ({})", name, slug.bright_black());
+                }
+                eprintln!("Refine the name and try again.");
+                std::process::exit(1);
+            }
         }
-    };
+    }
 
-    let plan = build_plan(&pool, &target.0).await.expect("Failed to build deletion plan");
+    // Build a merged plan across all targets
+    let mut merged = DeletionPlan::default();
+    let mut seen_artist_ids: HashSet<String> = HashSet::new();
+    let mut seen_local_ids: HashSet<String> = HashSet::new();
+    let mut seen_mb_ids: HashSet<String> = HashSet::new();
+    let target_id_set: HashSet<String> = target_ids.iter().map(|(id, _)| id.clone()).collect();
+
+    for (tid, _tname) in &target_ids {
+        let plan = build_plan(&pool, tid).await.expect("Failed to build deletion plan");
+
+        for artist in plan.artists {
+            if seen_artist_ids.insert(artist.0.clone()) {
+                // Reclassify: if this was "cascaded" in one plan but is an explicit target, mark as target
+                if target_id_set.contains(&artist.0) {
+                    merged.artists.push(artist);
+                } else {
+                    merged.cascaded_artists.insert(artist.0.clone());
+                    merged.artists.push(artist);
+                }
+            }
+        }
+
+        for lr in plan.local_releases {
+            if seen_local_ids.insert(lr.0.clone()) {
+                merged.local_releases.push(lr);
+            }
+        }
+
+        for mb in plan.mb_releases {
+            if seen_mb_ids.insert(mb.clone()) {
+                merged.mb_releases.push(mb);
+            }
+        }
+
+        merged.track_count += plan.track_count;
+    }
+
+    // Deduplicate track count (tracks may be shared across plans)
+    if !seen_local_ids.is_empty() {
+        let lr_ids: Vec<String> = seen_local_ids.into_iter().collect();
+        let tc: (i64,) = sqlx::query_as(
+            r#"SELECT COUNT(*) FROM "LocalReleaseTrack" WHERE "localReleaseId" = ANY($1::text[])"#,
+        )
+        .bind(&lr_ids)
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to count tracks");
+        merged.track_count = tc.0;
+    }
+
+    let plan = merged;
 
     // ---------- Display the plan ----------
     println!("{}", "Plan".bright_cyan().bold());
     println!("{}", "----".bright_black());
     println!("Artists to delete: {}", plan.artists.len().to_string().bright_white());
     for (id, name, slug, _img, _img_url) in &plan.artists {
-        let tag = if id == &target.0 {
+        let tag = if target_id_set.contains(id) {
             "target".bright_white()
         } else if plan.cascaded_artists.contains(id) {
             "cascaded".yellow()
@@ -530,11 +625,11 @@ async fn main() {
 
     // ---------- Confirm ----------
     if !args.y {
-        print!("Type the artist name to confirm deletion: ");
+        print!("Type y to confirm: ");
         io::stdout().flush().unwrap();
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
-        if input.trim().to_lowercase() != target.1.to_lowercase() {
+        if input.trim().to_lowercase() != "y" {
             println!("Aborted.");
             std::process::exit(0);
         }

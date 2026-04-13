@@ -9,6 +9,8 @@ ARTISTS=(
     "Crosby, Stills, Nash & Young"
     "Tyler, The Creator"
     "Godley & Creme"
+    "Pete Seeger"
+    "Zeal & Ardor"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

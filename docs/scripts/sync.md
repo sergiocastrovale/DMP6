@@ -24,16 +24,11 @@ cd scripts/sync && cargo build --release
 ./sync --verbose                 # Show skipped MB releases
 ./sync --test                    # Use test artists (see below)
 ./sync --test --overwrite        # Nuke + re-sync test artists only
-./sync --clean                   # Remove orphaned artists (0 tracks)
 ```
 
 ### Test mode
 
 `--test` overrides `MUSIC_DIR` with `web/dump/test-artists/`, a directory of symlinks to a curated subset of artist folders. Requires running [`./symlink-test-artists`](symlink-test-artists.md) first to create the symlinks. Useful for fast iteration during development.
-
-### --clean
-
-`--clean` scans the database for artists that have zero local release tracks associated with them and removes them along with all related data (URLs, genres, MB release links, images). Orphaned MB releases left with no artist links are also cleaned up. Useful after re-syncing an artist whose catalogue had erroneous artist records created from bad metadata. Exits after cleanup without running any sync.
 
 ### --overwrite behaviour
 

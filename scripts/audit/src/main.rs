@@ -29,6 +29,15 @@ struct Config {
     music_dir: String,
 }
 
+fn expand_tilde(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = std::env::var("HOME").ok() {
+            return format!("{}/{}", home, rest);
+        }
+    }
+    path.to_string()
+}
+
 fn load_config() -> Config {
     let env_paths = [
         PathBuf::from("web/.env"),
@@ -56,22 +65,24 @@ fn load_config() -> Config {
     let database_url =
         std::env::var("DATABASE_URL").expect("DATABASE_URL not set in web/.env");
 
-    let project_root = std::env::var("PROJECT_ROOT").unwrap_or_else(|_| {
-        std::env::current_dir()
-            .ok()
-            .and_then(|d| {
-                if d.ends_with("scripts/audit") {
-                    d.parent()
-                        .and_then(|p| p.parent())
-                        .map(|p| p.to_string_lossy().to_string())
-                } else if d.ends_with("scripts") {
-                    d.parent().map(|p| p.to_string_lossy().to_string())
-                } else {
-                    Some(d.to_string_lossy().to_string())
-                }
-            })
-            .unwrap_or_else(|| ".".to_string())
-    });
+    let project_root = std::env::var("PROJECT_ROOT")
+        .map(|p| expand_tilde(&p))
+        .unwrap_or_else(|_| {
+            std::env::current_dir()
+                .ok()
+                .and_then(|d| {
+                    if d.ends_with("scripts/audit") {
+                        d.parent()
+                            .and_then(|p| p.parent())
+                            .map(|p| p.to_string_lossy().to_string())
+                    } else if d.ends_with("scripts") {
+                        d.parent().map(|p| p.to_string_lossy().to_string())
+                    } else {
+                        Some(d.to_string_lossy().to_string())
+                    }
+                })
+                .unwrap_or_else(|| ".".to_string())
+        });
 
     let music_dir = std::env::var("MUSIC_DIR").unwrap_or_default();
 

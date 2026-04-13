@@ -103,7 +103,7 @@ cd scripts/sync && cargo build --release    # Must rebuild manually!
 ./sync --only "Artist Name"   # Single artist
 ./sync --only "Name" --overwrite  # Re-sync from scratch
 ./sync --resume               # Continue from last checkpoint
-./sync --clean                # Remove orphaned artists, then exit
+./audit                       # Data quality → XLSX report
 ./sync --verbose              # Show skipped MB releases
 ./analysis                    # Metadata quality HTML report → reports/
 ./clean                       # Process S3 deletion queue
@@ -127,104 +127,41 @@ docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal
 - `--add-host=host.docker.internal:host-gateway` is required for standalone `docker run`
 - Must be a single-line command (zsh on TrueNAS doesn't handle multiline well)
 
-### Fixing MP3 Errors
+### Python Helper Scripts
+
+Tag fixers and metadata repair tools. See [`docs/scripts/helpers.md`](docs/scripts/helpers.md) for full documentation.
 
 ```bash
-python3 scripts/fix_sync_errors.py              # Dry run — show what would be fixed
-python3 scripts/fix_sync_errors.py --apply      # Apply all fixes
-python3 scripts/fix_sync_errors.py --apply --only=encoding  # One category only
+python3 scripts/fix_artist_names.py               # Fix corrupted TPE2 + split compound artists + DB cleanup
+python3 scripts/fix_sync_errors.py               # Fix broken MP3 tags from errors.log
+python3 scripts/fix_duplicates.py                 # Merge duplicate artists (same normalized name)
+python3 scripts/fix_incomplete_metadata.py        # Derive missing title/album from folder + filename
+python3 scripts/fix_unsplit_multiartist.py        # Split "feat."/"/"/";" albumArtist tags
+python3 scripts/check_ampersand_artists.py        # Analyse compound artist folders
 ```
 
-Categories: `encoding`, `item_size`, `mpeg_frame`, `ape_utf8`, `missing_artist`
+All support `--apply` (default is dry run). See [`docs/post_sync.md`](docs/post_sync.md) for the post-sync routine.
+
+### Fixing Wrong Artist Pages
+
+When browsing reveals artists with bad names (track numbers, paths, garbage):
+
+1. **Scan**: `python3 scripts/fix_artist_names.py` — detects corrupted TPE2 + compound artists needing separation, validates against MusicBrainz
+2. **Fix tags**: `python3 scripts/fix_artist_names.py --apply` — fixes tags via NAS SSH + cleans orphaned DB data
+3. **Resync**: Run the printed `./sync --only="..." --overwrite` command on the NAS
+4. **Iterate**: Re-run until clean — each fix pass may reveal more issues
+
+Use `--only=corrupted` or `--only=separators` to limit scope. Use `--cleanup` for DB cleanup only.
 
 ## Sync Script Architecture
 
-The sync script (`scripts/sync/src/main.rs`) is the largest codebase component. Key phases:
+See [`docs/scripts/sync.md`](docs/scripts/sync.md) for full sync documentation. Key points:
 
-### 1. Index Phase
-- Walk artist folders, find audio files (.mp3/.m4a/.opus/.aac/.ogg/.flac)
-- Extract metadata in parallel (rayon + lofty)
-- Change detection: skip unchanged files (mtime + size + MD5 hash)
-- Batch upsert LocalReleaseTrack, create Artist/LocalRelease/TrackArtist records
-- Extract cover art (embedded → folder image)
-
-### 2. MB Sync Phase
-- Artist matching: 6-step fallback (embedded MB ID → name search → album search → compound split)
-- Fetch artist details, genres, URLs, release groups
-- Filter release groups: skip Single/Bootleg/Demo/Interview/Broadcast types
-- For each group: fetch official releases only (skip Bootleg/Promotional status)
-- Match local releases to MB by normalized title
-- Compute match status and score
-
-### 3. Cleanup Phase
-- Split compound artists (e.g. "Band1 vs Band2")
-- Remove orphaned artists (zero local tracks)
-- Update statistics
-
-### Key matching functions
-- `names_are_similar()` — normalized Jaccard similarity >= 0.5, noise word filtering
-- `normalize_title()` — lowercase, strip non-alphanumeric, collapse spaces
-- `split_artists()` — parse multi-artist tags by delimiters and "feat." markers
-- `should_skip_release()` — filter by release group type
-- `check_release_status()` — compare local vs MB track lists
-
-### Rate limiting
-- MusicBrainz API: adaptive backoff 1s–10s, doubles on 429/503, reduces 15% on success
-
-## Post-Sync Bulk Scan Routine
-
-When syncing the full collection in batches (e.g. letter ranges: `--from=a --to=bz`), run this routine after each batch to catch and fix errors:
-
-### Phase 1: Error Analysis
-```bash
-# After sync completes:
-# I will check errors.log and present findings by category (encoding, corrupt MPEG, missing tags, etc.)
-# You review and approve fixes.
-```
-
-### Phase 2: Fix Errors
-I will fix files using:
-- **Invalid encoding**: Strip + rewrite as ID3v2.4 UTF-8 with mutagen
-- **Invalid item size / corrupt MPEG**: ffmpeg lossless remux
-- **Bad tags**: Read TXXX:ARTISTS / TXXX:ALBUM_ARTISTS and copy to TPE1/TPE2
-- **Truly corrupt**: Flag for deletion/re-download
-
-Then resync all affected artists:
-```bash
-./sync --only="Artist1;Artist2;Artist3" --overwrite
-```
-
-### Phase 3: Ampersand Artist Analysis
-```bash
-python3 scripts/check_ampersand_artists.py
-# → separator_analysis.log
-```
-
-I will present findings:
-- **MULTIPLE**: Confirmed separate artists (multiple MB IDs or `;` in sort names) → fix with mutagen
-- **LIKELY_MULTIPLE**: Needs MB research → I'll investigate and report
-- **SINGLE**: Legitimate band names with `&` → no action
-
-### Phase 4: Fix Ampersand Artists
-For confirmed MULTIPLE artists, I replace ` & ` with `\\` in TPE2 (album artist) tag across all MP3s in the folder using mutagen.
-
-Then resync:
-```bash
-./sync --only="ArtistName;AnotherBand" --overwrite
-```
-
-### Phase 5: Verify & Loop
-Repeat until errors.log is clean.
-
-### How to Request
-
-Say one of these when you've finished a batch sync:
-
-- **"run the routine"** — start from Phase 1 (full analysis → fixes → verification)
-- **"check errors"** — start Phase 1 only (analyze + present findings)
-- **"fix the errors"** — skip to Phase 2 (apply fixes + resync)
-- **"check ampersand"** — run Phase 3 (analysis of separator_analysis.log)
-- **"fix ampersand"** — skip to Phase 4 (split tags + resync)
+- **Index phase**: walk folders, extract metadata (rayon + lofty), change detection, batch upsert
+- **MB sync phase**: 6-step artist matching, release group filtering, match status scoring
+- **Cleanup**: orphan artists + empty releases handled by `scripts/fix_artist_names.py --cleanup`
+- **Rate limiting**: MusicBrainz API adaptive backoff 1s-10s
+- **Key functions**: `names_are_similar()` (Jaccard >= 0.5), `normalize_title()`, `split_artists()`
 
 ## API Endpoints
 

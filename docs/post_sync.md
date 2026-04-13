@@ -44,66 +44,37 @@ Resync all affected artists after fixing:
 ./sync --only="Artist1;Artist2;Artist3" --overwrite
 ```
 
-## Phase 3: Ampersand Artist Analysis
+## Phase 3: Fix Artist Names
 
-Scan for compound artist folders (`&`, `/` in name) that should be split:
-
-```bash
-python3 scripts/check_ampersand_artists.py
-# Results → separator_analysis.log
-```
-
-See [`check_ampersand_artists.py`](scripts/helpers.md#check_ampersand_artistspy) for details.
-
-Verdicts:
-- **MULTIPLE** — confirmed separate artists (multiple MB IDs or `;` in sort names) — fix tags
-- **LIKELY_MULTIPLE** — needs manual MusicBrainz research
-- **SINGLE** — legitimate single artist name (e.g. "Simon & Garfunkel") — no action
-
-## Phase 4: Fix Ampersand Artists
-
-For confirmed MULTIPLE artists, replace the ambiguous separator with `\\` in TPE2 (album artist) across all MP3s in the folder.
-
-For one-off fixes, use [`fix_compound_artists.py`](scripts/helpers.md#fix_compound_artistspy):
+Fix corrupted albumArtist tags (garbage in TPE2) and compound artists (`&`, `/`, `feat.`) in a single pass. Validates all changes against MusicBrainz.
 
 ```bash
-python3 scripts/fix_compound_artists.py          # Dry run
-python3 scripts/fix_compound_artists.py --apply  # Apply fixes
+python3 scripts/fix_artist_names.py                      # Dry run — show all issues
+python3 scripts/fix_artist_names.py --only=corrupted     # Only garbage TPE2
+python3 scripts/fix_artist_names.py --only=separators    # Only compound splitting
+python3 scripts/fix_artist_names.py --apply              # Apply fixes + cleanup DB
 ```
 
-Then resync:
+See [`fix_artist_names.py`](scripts/helpers.md#fix_artist_namespy) for details on detection patterns, correction logic, and MusicBrainz validation.
+
+After fixing, resync affected artist folders:
 
 ```bash
 ./sync --only="Artist1;Artist2" --overwrite
 ```
 
-## Phase 5: Fix Compound TPE2 Tags (Library-Wide)
+## Phase 4: Cleanup (standalone)
 
-After several sync batches, compound artists accumulate in the DB — artists whose TPE2 tags use ambiguous separators (`/`, ` & `, `, `) that the sync doesn't split at index time. These show up in the browse view as "Artist1/Artist2" or "Artist1 & Artist2".
-
-Use [`fix_compound_tpe2.py`](scripts/helpers.md#fix_compound_tpe2py) to fix them all at once:
+If you need to run DB cleanup without tag fixes (e.g. after a manual resync):
 
 ```bash
-python3 scripts/fix_compound_tpe2.py                    # Dry run — show what would change
-python3 scripts/fix_compound_tpe2.py --apply             # Apply fixes
-python3 scripts/fix_compound_tpe2.py --apply --resync    # Apply + print resync command
+python3 scripts/fix_artist_names.py --cleanup            # Dry run
+python3 scripts/fix_artist_names.py --cleanup --apply    # Delete orphans + empty releases
 ```
 
-The script:
-1. Queries the DB for all artists without a MusicBrainz ID whose names contain `/`, ` & `, `, `, or ` w/ `
-2. Finds the release folder paths for each
-3. Reads TPE2 from files and replaces the compound name's separator with `\\`
-4. Handles mixed separators (e.g. "A, B & C" → "A\\B\\C") and broken tags (e.g. "lbumArtist/Name")
+## Phase 5: Verify & Loop
 
-After fixing, resync all affected artist folders:
-
-```bash
-./sync --only="Folder1;Folder2;..." --overwrite
-```
-
-## Phase 6: Verify & Loop
-
-Repeat from Phase 1 until `errors.log` is clean and no new compound artists appear.
+Repeat from Phase 1 until `errors.log` is clean and `fix_artist_names.py` reports no issues.
 
 ## Quick Reference
 
@@ -112,5 +83,5 @@ Repeat from Phase 1 until `errors.log` is clean and no new compound artists appe
 | "run the routine" | Start from Phase 1 (full analysis, fixes, verification) |
 | "check errors" | Phase 1 only (analyse + present findings) |
 | "fix the errors" | Skip to Phase 2 (apply fixes + resync) |
-| "check ampersand" | Phase 3 (analyse separator_analysis.log) |
-| "fix ampersand" | Skip to Phase 4 (split tags + resync) |
+| "fix artist names" | Phase 3 (corrupted TPE2 + compound artists + cleanup) |
+| "cleanup" | Phase 4 only (DB cleanup) |

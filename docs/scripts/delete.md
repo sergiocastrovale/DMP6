@@ -2,15 +2,24 @@
 
 Permanently removes a single artist, their entire local + MusicBrainz catalogue, and all associated images (local + S3). Cascades into "ghost" co-artists whose entire catalogue is contained within the deleted releases, but leaves any co-artist with releases beyond the shared set untouched.
 
+## Build
+
+```bash
+cd scripts/delete && cargo build --release
+```
+
 ## Usage
 
 ```bash
-./delete "Artist Name"            # Confirm with the artist's name, then delete
-./delete "Artist Name" --dry-run  # Preview the plan, change nothing
-./delete "Artist Name" --y        # Skip the confirmation prompt
+./delete "Artist Name"                     # Confirm with the artist's name, then delete
+./delete "Artist1;Artist2;Artist3"         # Delete multiple artists at once
+./delete "Artist Name" --dry-run           # Preview the plan, change nothing
+./delete "Artist Name" --y                 # Skip the confirmation prompt
 ```
 
-The artist name match is **exact and case-insensitive**. If multiple artists share the same name, the script lists them and exits — refine the input.
+The artist name match is **exact and case-insensitive**. Separate multiple artists with `;`. If any name matches multiple artists, the script lists them and exits — refine the input.
+
+When deleting multiple artists, plans are merged — releases shared between targets are counted once, and cascading is computed across all targets combined. Confirmation requires typing `yes` instead of the artist name.
 
 ## What gets deleted
 
@@ -46,7 +55,7 @@ The check is single-pass: a cascaded artist's catalogue is by definition already
 
 ## Confirmation
 
-By default the script prints the full plan and then asks you to **type the target artist's name** to confirm. Anything else aborts. Use `--y` to skip the prompt (e.g. in scripted contexts).
+By default the script prints the full plan and asks you to type `y` to confirm. Anything else aborts. Use `--y` to skip the prompt.
 
 ## Statistics
 
@@ -58,5 +67,5 @@ After a successful delete, the `Statistics` row is refreshed in place — `artis
 |---|---|
 | `./delete "Name"` | You want to permanently remove a specific artist and everything tied to them |
 | `./sync --only="Name" --overwrite` | You want to re-sync an artist from scratch (DB only — files on disk are kept and re-indexed) |
-| `./sync --clean` | You've removed an artist's folder from disk and want the DB to catch up |
+| `python3 scripts/fix_artist_names.py --cleanup --apply` | Remove orphan artists and empty releases left behind by metadata fixes |
 | `./nuke` / `./nuke --local-only` | Full DB wipe, all-or-nothing |
