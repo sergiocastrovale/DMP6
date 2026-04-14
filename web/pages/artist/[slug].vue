@@ -56,7 +56,7 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
           </template>
         </ButtonDropdown>
       </div>
-      <ArtistReleases :slug="artist.slug" />
+      <ArtistReleases :slug="artist.slug" :artist-name="artist.name" />
     </div>
   </div>
 </template>

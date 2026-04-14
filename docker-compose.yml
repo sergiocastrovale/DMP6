@@ -12,6 +12,18 @@ services:
       timeout: 5s
       retries: 3
 
+  slskd:
+    image: slskd/slskd:latest
+    container_name: dmp-slskd
+    restart: unless-stopped
+    ports:
+      - "5030:5030"
+      - "50300:50300"
+    volumes:
+      - ${SLSKD_DATA:-/mnt/SSD/slskd}/config:/app
+      - ${SLSKD_DATA:-/mnt/SSD/slskd}/data:/app/data
+      - ${DOWNLOADS_DIR:-/mnt/SSD/Downloads}:/downloads
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: dmp-cloudflared
@@ -36,6 +48,7 @@ services:
       - ${MUSIC_DIR}:/music:ro
       - ${DMP_DATA}/img:/app/data/img
       - ${DMP_DATA}/dump:/app/data/dump
+      - ${DOWNLOADS_DIR:-/mnt/SSD/Downloads}:/downloads
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://dmp-redis:6379
@@ -58,6 +71,13 @@ services:
       - NUXT_PUBLIC_S3_PUBLIC_URL=${S3_PUBLIC_URL:-}
       - ADMIN_USER=${ADMIN_USER}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - DOWNLOADS_PATH=/downloads
+      - DOWNLOAD_DIR_TEMPLATE=${DOWNLOAD_DIR_TEMPLATE:-{artist}/{year} - {album}}
+      - SLSKD_URL=${SLSKD_URL:-http://dmp-slskd:5030}
+      - SLSKD_API_KEY=${SLSKD_API_KEY:-}
+      - DEEZER_ARL=${DEEZER_ARL:-}
+      - DOWNLOAD_FORMATS=${DOWNLOAD_FORMATS:-flac,mp3}
+      - DOWNLOAD_MIN_BITRATE=${DOWNLOAD_MIN_BITRATE:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     deploy:

@@ -49,6 +49,9 @@ const terminal = useTerminalStore()
       <span>Terminal running</span>
     </button>
 
+    <!-- Downloads progress indicator -->
+    <DownloadsIndicator />
+
     <!-- Audio player -->
     <PlayerAudioPlayer />
   </div>

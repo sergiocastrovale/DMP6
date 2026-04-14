@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { DownloadSource } from '~/types/download'
 
 export const useTerminalStore = defineStore('terminal', () => {
   const isOpen = ref(false)
@@ -10,7 +11,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   let abortController: AbortController | null = null
 
-  async function run(command: string, args: string[]) {
+  async function streamSSE(url: string, body: Record<string, any>) {
     lines.value = []
     exitCode.value = null
     isRunning.value = true
@@ -19,10 +20,10 @@ export const useTerminalStore = defineStore('terminal', () => {
     abortController = new AbortController()
 
     try {
-      const response = await fetch('/api/terminal/run', {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, args }),
+        body: JSON.stringify(body),
         signal: abortController.signal,
       })
 
@@ -74,6 +75,20 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
 
+  async function run(command: string, args: string[]) {
+    return streamSSE('/api/terminal/run', { command, args })
+  }
+
+  async function runDownload(
+    source: DownloadSource,
+    query: string,
+    albumTitle?: string,
+    artistName?: string,
+    year?: number | null,
+  ) {
+    return streamSSE('/api/downloads/stream', { source, query, albumTitle, artistName, year })
+  }
+
   function open() {
     isOpen.value = true
   }
@@ -86,5 +101,5 @@ export const useTerminalStore = defineStore('terminal', () => {
     abortController?.abort()
   }
 
-  return { isOpen, isRunning, lines, exitCode, hasBackground, run, open, close, stop }
+  return { isOpen, isRunning, lines, exitCode, hasBackground, run, runDownload, open, close, stop }
 })

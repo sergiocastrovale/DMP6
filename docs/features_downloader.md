@@ -1,169 +1,68 @@
-# Soulseek Integration
+# Downloads
 
-Soulseek (slsk) is a peer-to-peer file sharing network focused on music. DMP v6 will integrate with slsk to download missing releases identified during the sync process.
+DMP can download missing releases directly from the artist page. Three free sources are supported:
 
-## Status
+| Source | Setup | Cost | Quality |
+|--------|-------|------|---------|
+| [HiFi](downloads_hifi.md) | None | Free, no account | FLAC |
+| [Soulseek](downloads_slskd.md) | Run slskd daemon | Free account | Depends on peers |
+| [Deezer](downloads_deezer.md) | Get ARL token | Free account | FLAC |
 
-🚧 **PLANNED** - Not yet implemented
+## How it works
 
-## Planned Features
+Each release on an artist page that isn't in your library shows a download icon. Clicking it opens a dialog where you pick a source and review results. A second button at the top — "Download missing" — lets you grab every missing release in the current view in one go.
 
-### 1. CLI Integration
+Downloads run in the background and show live progress in the side panel (same one used by the Sync command).
 
-Use `slskd` (Soulseek daemon) as the backend:
-- API-based interaction
-- Headless operation (no GUI required)
-- Web UI for monitoring (optional)
+## Where files go
 
-### 2. Automated Downloads
-
-- Identify `MISSING` releases from MusicBrainz sync
-- Search slsk for matching releases
-- Filter by quality (bitrate, format, file size)
-- Queue downloads automatically
-- Trigger re-indexing after download completion
-
-### 3. Quality Filters
-
-Configuration via `Settings` table:
-- `slskAllowedFormats`: Comma-separated (e.g., `mp3,flac,opus`)
-- `slskMinBitrate`: Minimum bitrate in kbps (e.g., `320`)
-- `slskDownloadDir`: Target directory for downloads
-
-### 4. Post-Processing
-
-After download:
-1. Run Beets to clean up metadata (see `docs/beets.md`)
-2. Automatically trigger `./index` for new files
-3. Re-sync artist to update status
-4. Mark release as `COMPLETE` if all tracks found
-
-## Installation (When Implemented)
-
-### 1. Install slskd
-
-```bash
-# Ubuntu/Debian
-wget https://github.com/slskd/slskd/releases/latest/download/slskd-linux-x64
-chmod +x slskd-linux-x64
-sudo mv slskd-linux-x64 /usr/local/bin/slskd
-```
-
-### 2. Configure slskd
-
-Create config at `~/.config/slskd/slskd.yml`:
-
-```yaml
-soulseek:
-  username: your_username
-  password: your_password
-
-downloads:
-  dir: /path/to/downloads
-
-web:
-  port: 5030
-  authentication:
-    username: admin
-    password: admin_password
-```
-
-### 3. Run slskd
-
-```bash
-# Start daemon
-slskd
-
-# Or as systemd service
-sudo systemctl enable slskd
-sudo systemctl start slskd
-```
-
-### 4. Configure DMP
-
-Update `Settings` table via web UI:
-
-```sql
-UPDATE "Settings" SET
-  "slskPath" = '/usr/local/bin/slskd',
-  "slskUsername" = 'your_username',
-  "slskPassword" = 'your_password',
-  "slskDownloadDir" = '/path/to/downloads',
-  "slskAllowedFormats" = 'mp3,flac',
-  "slskMinBitrate" = 320
-WHERE id = 'main';
-```
-
-## Usage (Planned)
-
-### Automatic Mode
-
-After running `./sync`, the web UI will show missing releases. Click "Download" to:
-1. Search slsk for the release
-2. Select best match (by bitrate, format, file count)
-3. Queue download
-4. Trigger post-processing on completion
-
-### Manual Mode
-
-Use the web UI to search and download any release:
-1. Navigate to Artist → Releases
-2. Click "Search Soulseek" for any release
-3. Browse results, filter by quality
-4. Select and download
-
-### Batch Mode (CLI)
-
-```bash
-# Download all MISSING releases for an artist
-./slsk --download --artist "Radiohead"
-
-# Download specific release
-./slsk --download --release "OK Computer"
-
-# Search without downloading
-./slsk --search --artist "Radiohead" --release "OK Computer"
-```
-
-## Integration Points
-
-### 1. Database Schema
-
-The `Settings` table already includes slsk fields:
-- `slskPath`
-- `slskUsername`
-- `slskPassword`
-- `slskDownloadDir`
-- `slskAllowedFormats`
-- `slskMinBitrate`
-
-### 2. Web UI
-
-Planned UI components:
-- **Artist page**: "Download missing releases" button
-- **Release detail**: "Download from Soulseek" button
-- **Downloads page**: Active downloads, queue, history
-- **Settings page**: Configure slsk credentials and filters
-
-### 3. Workflow
+All sources save to `DOWNLOADS_PATH`, nested inside a folder derived from `DOWNLOAD_DIR_TEMPLATE`. The default template is `{artist}/{year} - {album}`, so a download lands as:
 
 ```
-Sync → Identify MISSING → Search slsk → Download → Beets cleanup → Re-index → Update status
+DOWNLOADS_PATH/
+└── Radiohead/
+    └── 2007 - In Rainbows/
+        ├── 01 - 15 Step.flac
+        └── ...
 ```
 
-## Security Considerations
+HiFi and Deezer write directly into this folder. Soulseek is different — slskd owns its downloads directory, so DMP waits for each transfer to complete and then **moves** the files into the templated folder. This assumes slskd's download directory is reachable under `DOWNLOADS_PATH` (in the default docker-compose setup both containers share `/downloads`). If slskd stores files on a volume DMP can't see, the move step silently no-ops and files stay where slskd put them.
 
-- **Credentials**: Store slsk username/password securely (encrypt in DB)
-- **API access**: Restrict slskd API to localhost or VPN
-- **Legal**: Ensure compliance with local copyright laws
+DMP does **not** automatically move anything into your music library — that's a manual step:
 
-## References
+1. Download lands in `DOWNLOADS_PATH/<templated folder>`
+2. You move it into `MUSIC_DIR` (with proper folder structure)
+3. Run `./sync --only "Artist Name"` to pick it up
 
-- **slskd GitHub**: https://github.com/slskd/slskd
-- **Soulseek network**: https://www.slsknet.org/
-- **Soulseek protocol**: P2P, no central server
+## Settings
 
-## See Also
+Everything is configurable in both `.env` and the Settings DB table. DB values win when both are set.
 
-- `docs/beets.md` - Metadata cleanup after downloads
-- `docs/sync.md` - Identifying missing releases
+Shared config:
+
+```
+DOWNLOADS_PATH=/path/to/downloads
+DOWNLOAD_DIR_TEMPLATE='{artist}/{year} - {album}'  # folder layout
+DOWNLOAD_FORMATS=flac,mp3                         # what to accept
+DOWNLOAD_MIN_BITRATE=320                          # kbps minimum
+```
+
+`DOWNLOAD_DIR_TEMPLATE` placeholders:
+
+| Placeholder | Substituted with |
+|-------------|------------------|
+| `{artist}`  | Release's primary artist |
+| `{album}`   | Release title |
+| `{year}`    | Release year (omitted with surrounding ` - ` padding if unknown) |
+
+Forward slashes in the template create nested folders. Each segment is sanitized independently so slashes inside titles don't escape the intended structure.
+
+Source-specific config is in each source's doc.
+
+## Recommendation
+
+Enable all three. They complement each other:
+
+- **HiFi** first — free, lossless, fast
+- **Soulseek** as fallback — huge catalog, anything obscure
+- **Deezer** for mainstream releases HiFi can't find

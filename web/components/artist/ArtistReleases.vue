@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { Play, Pause, LayoutList, LayoutGrid, HelpCircle, Disc3, Loader2, Link, Heart } from 'lucide-vue-next'
+import { Play, Pause, LayoutList, LayoutGrid, HelpCircle, Disc3, Loader2, Link, Heart, Download } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/components/TrackList.vue'
+import type { ButtonDropdownOption } from '~/components/ButtonDropdown.vue'
 import { usePlayerStore } from '~/stores/player'
+import { useDownloadsStore } from '~/stores/downloads'
+import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'
 
 function statusDescription(status: string) {
@@ -12,6 +15,7 @@ function statusDescription(status: string) {
 
 const props = defineProps<{
   slug: string
+  artistName?: string
 }>()
 
 const route = useRoute()
@@ -35,6 +39,64 @@ const expandedRelease = ref<string | null>(null)
 const allTracks = ref<Track[]>([])
 const allTracksLoading = ref(false)
 const allTracksLoaded = ref(false)
+
+// Downloads
+const downloadsStore = useDownloadsStore()
+const terminal = useTerminalStore()
+const downloadRelease = ref<UnifiedRelease | null>(null)
+const showDownloadDialog = ref(false)
+
+onMounted(() => {
+  downloadsStore.checkStatus()
+})
+
+function openDownloadDialog(release: UnifiedRelease) {
+  downloadRelease.value = release
+  showDownloadDialog.value = true
+}
+
+const missingReleasesInTab = computed(() =>
+  filteredReleases.value.filter(r => r.status === 'MISSING'),
+)
+
+const downloadAllOptions = computed<ButtonDropdownOption[]>(() => {
+  const missing = missingReleasesInTab.value
+  if (missing.length === 0) return []
+
+  const artist = props.artistName || ''
+  const opts: ButtonDropdownOption[] = []
+  if (downloadsStore.slskd.connected) {
+    opts.push({
+      label: `Soulseek (${missing.length})`,
+      description: `Search & download ${missing.length} missing releases`,
+      action: () => {
+        const first = missing[0]
+        if (first) terminal.runDownload('slskd', `${artist} ${first.title}`, first.title, artist, first.year)
+      },
+    })
+  }
+  if (downloadsStore.hifi.connected) {
+    opts.push({
+      label: `HiFi (${missing.length})`,
+      description: `Free FLAC lossless — no account needed`,
+      action: () => {
+        const first = missing[0]
+        if (first) terminal.runDownload('hifi', `${artist} ${first.title}`, first.title, artist, first.year)
+      },
+    })
+  }
+  if (downloadsStore.deezer.connected) {
+    opts.push({
+      label: `Deezer (${missing.length})`,
+      description: `Download ${missing.length} missing releases from Deezer`,
+      action: () => {
+        const first = missing[0]
+        if (first) terminal.runDownload('deezer', `${artist} ${first.title}`, first.title, artist, first.year)
+      },
+    })
+  }
+  return opts
+})
 
 // Infinite scroll sentinel
 const sentinel = ref<HTMLElement>()
@@ -360,6 +422,15 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
           <div class="w-10 shrink-0" />
           <div class="w-10 shrink-0" />
           <div class="min-w-0 flex-1" />
+          <ButtonDropdown
+            v-if="downloadsStore.anyConfigured && missingReleasesInTab.length > 0 && showMissing"
+            label="Download missing"
+            :options="downloadAllOptions"
+          >
+            <template #icon>
+              <Download :size="14" />
+            </template>
+          </ButtonDropdown>
           <Switch v-model="showMissing" label="Show missing" />
           <div class="flex items-center gap-1 shrink-0">
             <span>Status</span>
@@ -467,9 +538,18 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
             </Popover>
 
             <button
+              v-if="release.status === 'MISSING' && downloadsStore.anyConfigured"
+              class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-amber-500"
+              title="Download this release"
+              @click.stop="openDownloadDialog(release)"
+            >
+              <Download :size="14" />
+            </button>
+
+            <button
               v-if="release.isMusicBrainz"
-              class="rounded-full p-1.5 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100"
-              :class="{ 'text-amber-500 opacity-100': favoriteReleases.has(release.id) }"
+              class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-amber-500"
+              :class="{ 'text-amber-500': favoriteReleases.has(release.id) }"
               @click.stop="toggleFavoriteRelease(release)"
             >
               <Heart :size="14" :fill="favoriteReleases.has(release.id) ? 'currentColor' : 'none'" />
@@ -510,5 +590,13 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
         />
       </template>
     </template>
+
+    <ReleaseDownloadDialog
+      v-if="showDownloadDialog && downloadRelease"
+      v-model="showDownloadDialog"
+      :release-title="downloadRelease.title"
+      :artist-name="props.artistName || ''"
+      :release-year="downloadRelease.year"
+    />
   </div>
 </template>

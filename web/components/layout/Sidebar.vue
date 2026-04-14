@@ -7,6 +7,7 @@ import {
   ListMusic,
   Heart,
   BarChart3,
+  Settings,
   PanelLeftClose,
   PanelLeft,
   LogOut,
@@ -94,6 +95,20 @@ function isActive(path: string) {
         <BarChart3 :size="20" class="shrink-0" />
         <span class="transition-opacity duration-200 group-data-[collapsed]/sidebar:hidden">
           Statistics
+        </span>
+      </NuxtLink>
+      <NuxtLink
+        to="/settings"
+        class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+        :class="
+          isActive('/settings')
+            ? 'bg-zinc-800 text-amber-500'
+            : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-50'
+        "
+      >
+        <Settings :size="20" class="shrink-0" />
+        <span class="transition-opacity duration-200 group-data-[collapsed]/sidebar:hidden">
+          Settings
         </span>
       </NuxtLink>
       <button

@@ -355,15 +355,16 @@ model SearchSource {
 }
 
 model Settings {
-  id                String   @id @default("main")
-  slskPath          String?
-  slskUsername      String?
-  slskPassword      String?
-  slskDownloadDir   String?
-  slskAllowedFormats String?
-  slskMinBitrate    Int?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                 String   @id @default("main")
+  slskdUrl           String?  // slskd REST API URL (e.g. "http://localhost:5030")
+  slskdApiKey        String?  // slskd X-API-Key header value
+  deezerArl          String?  // Deezer ARL cookie token for authenticated downloads
+  downloadsPath      String?  // Directory where downloaded files are saved
+  downloadDirTemplate String? // Folder template for downloads, e.g. "{artist}/{year} - {album}"
+  downloadFormats    String?  // Comma-separated allowed formats: "flac,mp3"
+  downloadMinBitrate Int?     // Minimum bitrate in kbps (e.g. 320)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model Statistics {
