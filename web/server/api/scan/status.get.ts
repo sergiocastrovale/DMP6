@@ -19,18 +19,22 @@ export default defineEventHandler(async (): Promise<ScanStatus> => {
       lastScanStartedAt: true,
       lastScanEndedAt: true,
       lastSyncedArtist: true,
+      lastIndexedFolder: true,
+      scanLockedBy: true,
+      scanLockedAt: true,
+      scanPid: true,
     },
   })
 
   return {
-    isRunning: false,
-    lockedBy: null,
-    lockedAt: null,
-    pid: null,
+    isRunning: !!stats?.scanLockedBy,
+    lockedBy: stats?.scanLockedBy ?? null,
+    lockedAt: stats?.scanLockedAt?.toISOString() ?? null,
+    pid: stats?.scanPid ?? null,
     args: null,
     lastScanStartedAt: stats?.lastScanStartedAt?.toISOString() ?? null,
     lastScanEndedAt: stats?.lastScanEndedAt?.toISOString() ?? null,
-    lastIndexedFolder: null,
+    lastIndexedFolder: stats?.lastIndexedFolder ?? null,
     lastSyncedArtist: stats?.lastSyncedArtist ?? null,
   }
 })

@@ -1,0 +1,94 @@
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct MbArtistSearchResult {
+    pub artists: Vec<MbArtistMatch>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MbArtistMatch {
+    pub id: String,
+    pub name: String,
+    pub score: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MbReleaseGroupList {
+    #[serde(rename = "release-groups")]
+    pub release_groups: Vec<MbReleaseGroup>,
+    #[serde(rename = "release-group-count")]
+    pub release_group_count: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MbReleaseGroup {
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "primary-type")]
+    pub primary_type: Option<String>,
+    #[serde(rename = "secondary-types")]
+    pub secondary_types: Option<Vec<String>>,
+    #[serde(rename = "first-release-date")]
+    pub first_release_date: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MbRelease {
+    pub id: String,
+    pub title: String,
+    pub date: Option<String>,
+    pub status: Option<String>,
+    pub media: Option<Vec<MbMedia>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MbReleaseList {
+    pub releases: Vec<MbRelease>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MbMedia {
+    pub position: Option<u32>,
+    pub tracks: Option<Vec<MbTrack>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MbTrack {
+    pub id: String,
+    pub title: String,
+    pub position: Option<u32>,
+    pub length: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MbArtistDetail {
+    pub id: String,
+    pub name: String,
+    pub relations: Option<Vec<MbRelation>>,
+    pub genres: Option<Vec<MbGenre>>,
+    pub tags: Option<Vec<MbTag>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MbRelation {
+    #[serde(rename = "type")]
+    pub relation_type: String,
+    pub url: Option<MbUrl>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MbUrl {
+    pub resource: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MbGenre {
+    pub name: String,
+    pub count: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MbTag {
+    pub name: String,
+    pub count: Option<i32>,
+}

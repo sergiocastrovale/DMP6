@@ -43,6 +43,7 @@ model Artist {
   totalTracks       Int                  @default(0)
   totalFileSize     BigInt               @default(0)
   lastSyncedAt      DateTime?
+  lastIndexedAt     DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   urls              ArtistUrl[]          @relation("ArtistUrls")
@@ -234,6 +235,8 @@ model LocalReleaseTrack {
   discNumber     Int?
   localReleaseId String?
   mbTrackId      String?
+  mbAlbumId      String?
+  mbAlbumArtistId String?
   fileSize       BigInt?
   mtime          DateTime?
   contentHash    String?                  @db.VarChar(32)
@@ -258,6 +261,7 @@ model LocalReleaseTrack {
   @@index([playCount])
   @@index([genre])
   @@index([localReleaseId, discNumber, trackNumber]) // Composite for ORDER BY discNumber, trackNumber within a release
+  @@index([mbAlbumId])
   // Trigram GIN index for title ILIKE and expression index on LOWER(genre) added via raw migration
 }
 
@@ -385,6 +389,10 @@ model Statistics {
   lastScanEndedAt                     DateTime?
   lastSyncedArtist                    String?
   lastSyncArgs                        Json?
+  lastIndexedFolder                   String?
+  scanLockedBy                        String?
+  scanLockedAt                        DateTime?
+  scanPid                             Int?
   createdAt                           DateTime  @default(now())
   updatedAt                           DateTime  @updatedAt
 }
@@ -399,4 +407,13 @@ model S3DeletionQueue {
   createdAt  DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// FolderScan — per-folder mtime cache for quick-mode change detection
+// ---------------------------------------------------------------------------
+
+model FolderScan {
+  folderPath  String   @id
+  mtime       DateTime
 }

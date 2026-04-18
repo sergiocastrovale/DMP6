@@ -39,7 +39,7 @@ scripts/
   sync/src/main.rs             # Index local files + MusicBrainz sync (~5000 lines)
   analysis/src/main.rs         # Metadata quality scanner, HTML reports
   clean/src/main.rs            # Process S3DeletionQueue
-  nuke/src/main.rs             # DB reset (full or local-only)
+  nuke/src/main.rs             # DB reset (full wipe)
   audit/src/main.rs            # Data integrity → XLSX
   genre-playlists/src/main.rs  # Auto-generate genre playlists
 docker-compose.yml             # 3 services: dmp-web, dmp-redis, dmp-cloudflared
@@ -95,37 +95,43 @@ cd web && pnpm restore          # Restore latest dump
 Shell wrappers at project root. Each uses a pre-built release binary — **rebuild after code changes**:
 
 ```bash
-cd scripts/sync && cargo build --release    # Must rebuild manually!
+cd scripts && cargo build --release    # Must rebuild manually!
 ```
 
 ```bash
-./sync                        # Full index + MB sync
-./sync --only "Artist Name"   # Single artist
-./sync --only "Name" --overwrite  # Re-sync from scratch
-./sync --resume               # Continue from last checkpoint
-./audit                       # Data quality → XLSX report
+./index                       # Index local files (extract metadata, upsert to DB)
+./sync                        # MusicBrainz sync (artists where lastIndexedAt > lastSyncedAt)
+./index && ./sync             # Full workflow
+./index --only "Artist Name"  # Index single artist
+./sync --only "Artist Name"   # Sync single artist
+./index --only "Name" --overwrite  # Force re-index
+./sync --only "Name" --overwrite   # Force re-sync
+./index --resume              # Continue from last checkpoint
+./index --quick               # Skip unchanged folders (mtime check)
 ./sync --verbose              # Show skipped MB releases
+./audit                       # Data quality → XLSX report
 ./analysis                    # Metadata quality HTML report → reports/
 ./clean                       # Process S3 deletion queue
 ./clean --dry-run             # Preview deletions
 ./nuke                        # Full DB reset + image deletion
-./nuke --local-only           # Keep MB catalogue, reset local data
+./nuke --keep-artist-img      # Full reset but preserve artist images
+./nuke --only="Artist Name"   # Delete one artist + cascade ghost co-artists
+./nuke --only="Name" --dry-run  # Preview what --only would delete
 ./update-genre-playlists      # Generate/update genre playlists
 ./update-genre-playlists --dry-run  # Preview without changes
 ./update-genre-playlists --report   # Show genre → group assignments
 ./update-genre-playlists --group rock # Update single group
 ```
 
-### Running Sync Directly on NAS
+### Running on NAS (Docker)
 
-SSH into the NAS and run:
+SSH into the NAS and run as single-line commands (zsh on TrueNAS doesn't handle multiline):
 
 ```bash
-docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-sync --from=e --to=fz
+docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-index --from=e --to=fz
 ```
 
-- `--add-host=host.docker.internal:host-gateway` is required for standalone `docker run`
-- Must be a single-line command (zsh on TrueNAS doesn't handle multiline well)
+Run the same with `dmp-sync --from=e --to=fz` for the MB sync step.
 
 ### Python Helper Scripts
 
@@ -133,7 +139,7 @@ Tag fixers and metadata repair tools. See [`docs/scripts/helpers.md`](docs/scrip
 
 ```bash
 python3 scripts/fix_artist_names.py               # Fix corrupted TPE2 + split compound artists + DB cleanup
-python3 scripts/fix_sync_errors.py               # Fix broken MP3 tags from errors.log
+python3 scripts/fix_sync_errors.py                # Fix broken MP3 tags from errors.log
 python3 scripts/fix_duplicates.py                 # Merge duplicate artists (same normalized name)
 python3 scripts/fix_incomplete_metadata.py        # Derive missing title/album from folder + filename
 python3 scripts/fix_unsplit_multiartist.py        # Split "feat."/"/"/";" albumArtist tags
@@ -146,22 +152,22 @@ All support `--apply` (default is dry run). See [`docs/post_sync.md`](docs/post_
 
 When browsing reveals artists with bad names (track numbers, paths, garbage):
 
-1. **Scan**: `python3 scripts/fix_artist_names.py` — detects corrupted TPE2 + compound artists needing separation, validates against MusicBrainz
-2. **Fix tags**: `python3 scripts/fix_artist_names.py --apply` — fixes tags via NAS SSH + cleans orphaned DB data
-3. **Resync**: Run the printed `./sync --only="..." --overwrite` command on the NAS
-4. **Iterate**: Re-run until clean — each fix pass may reveal more issues
+1. **Scan**: `python3 scripts/fix_artist_names.py` — detects corrupted TPE2 + compound artists
+2. **Fix tags**: `python3 scripts/fix_artist_names.py --apply` — fixes tags + cleans orphaned DB data
+3. **Re-index + re-sync**: `./index --only="..." --overwrite && ./sync --only="..." --overwrite`
+4. **Iterate**: Re-run until clean
 
 Use `--only=corrupted` or `--only=separators` to limit scope. Use `--cleanup` for DB cleanup only.
 
-## Sync Script Architecture
+## Script Architecture
 
-See [`docs/scripts/sync.md`](docs/scripts/sync.md) for full sync documentation. Key points:
+See [`docs/scripts/sync.md`](docs/scripts/sync.md) for full documentation. Key points:
 
-- **Index phase**: walk folders, extract metadata (rayon + lofty), change detection, batch upsert
-- **MB sync phase**: 6-step artist matching, release group filtering, match status scoring
+- **dmp-index**: walk folders (jwalk), extract metadata (rayon + lofty), batch upsert, sets `lastIndexedAt`
+- **dmp-sync**: queries artists where `lastIndexedAt > lastSyncedAt`, 6-step MB matching, rate-limited API
 - **Cleanup**: orphan artists + empty releases handled by `scripts/fix_artist_names.py --cleanup`
-- **Rate limiting**: MusicBrainz API adaptive backoff 1s-10s
-- **Key functions**: `names_are_similar()` (Jaccard >= 0.5), `normalize_title()`, `split_artists()`
+- **Rate limiting**: MusicBrainz API adaptive backoff 250ms-10s
+- **Key functions**: `names_are_similar()` (Jaccard ≥ 0.5), `normalize_title()`, `split_artists()`
 
 ## API Endpoints
 
