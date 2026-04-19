@@ -45,16 +45,19 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
     <div v-else-if="artist" class="flex flex-col gap-8">
       <div class="flex items-start justify-between gap-4">
         <ArtistHeader :artist="artist" class="min-w-0" />
-        <ButtonDropdown
-          label="Sync"
-          :options="syncOptions"
-          :disabled="terminal.isRunning"
-        >
-          <template #icon>
-            <Loader2 v-if="terminal.isRunning" :size="14" class="animate-spin" />
-            <RefreshCw v-else :size="14" />
-          </template>
-        </ButtonDropdown>
+        <div class="flex items-center gap-2">
+          <UiReindexSyncButton :only="[artist.name]" />
+          <ButtonDropdown
+            label="Sync"
+            :options="syncOptions"
+            :disabled="terminal.isRunning"
+          >
+            <template #icon>
+              <Loader2 v-if="terminal.isRunning" :size="14" class="animate-spin" />
+              <RefreshCw v-else :size="14" />
+            </template>
+          </ButtonDropdown>
+        </div>
       </div>
       <ArtistReleases :slug="artist.slug" :artist-name="artist.name" />
     </div>

@@ -1,13 +1,15 @@
 # Ideas and future features
 
-##  Scrobbler / last.fm integration
+## Scrobbler / Last.fm
 
-- Scrobbler / last.fm integration config in settings page
-
-- Integrate in player
+- Config in settings page (API key, username)
+- Hook into player store on track play
 
 ## Settings
 
-- Allow setting up paths via DB (directly modify .env?)
+- Allow setting up paths via DB / env editor
 
-- Allow invoking scripts via Settings?
+## Dataviz
+
+- Proximity map (artists by genre/era similarity)
+- World map of release origins (MusicBrainz release country)

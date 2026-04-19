@@ -1,6 +1,6 @@
 # Scripts: Python Helpers
 
-Python utilities for database cleanup and MP3 tag fixes. Typically run as part of the [post-sync routine](../post_sync.md) after each batch sync.
+Legacy Python utilities for tag fixes and DB cleanup. Most use cases are now covered by `./audit` + `./fix` — use those first. These scripts remain useful as fallbacks or for edge cases not yet handled by the Rust binaries.
 
 All tag fixers require `mutagen`: `pip3 install --user --break-system-packages mutagen`
 
@@ -8,56 +8,30 @@ All tag fixers require `mutagen`: `pip3 install --user --break-system-packages m
 
 ## fix_artist_names.py
 
-Unified script that fixes artist name issues and cleans up orphaned DB data.
+Fixes corrupted TPE2 tags and compound artists, then cleans up orphaned DB data. Superceded by `./audit --corrupted/--unsplit` + `./fix --corrupted/--unsplit` for most cases, but retained for MusicBrainz-validated compound splitting.
 
 ```bash
 python3 scripts/fix_artist_names.py                      # Dry run — all modes
 python3 scripts/fix_artist_names.py --apply              # Apply all fixes + cleanup
-python3 scripts/fix_artist_names.py --only=corrupted     # Only garbage in TPE2
+python3 scripts/fix_artist_names.py --only=corrupted     # Only garbage TPE2
 python3 scripts/fix_artist_names.py --only=separators    # Only compound artist splitting
 python3 scripts/fix_artist_names.py --cleanup            # Only DB cleanup
 python3 scripts/fix_artist_names.py --skip-mb            # Skip MusicBrainz validation
 ```
 
-### Mode: corrupted
-
-Finds tracks with corrupted albumArtist (TPE2) tags and derives corrections from DB signals.
-
-| Pattern | Example | Cause |
-|---------|---------|-------|
-| Purely numeric | `002`, `101` | Track number in TPE2 |
-| Track-number prefix | `05 - Regurgitate` | Track num + artist concatenated |
-| Year as albumArtist | `1996` | Year field leaked into TPE2 |
-| Full path string | `1966 - Artist - Album @320` | Filename/folder info in TPE2 |
-
-Correction signals (priority order):
+Correction signals for corrupted mode (priority order):
 1. Majority vote — non-corrupt albumArtist from other tracks in the same release
 2. Linked artists — `LocalReleaseArtist` records with ≥ 3 TrackArtist links
 3. Folder consensus — most common non-corrupt albumArtist in the artist folder
 4. Artist tag consensus — most common TPE1 value across the release's tracks
 
-### Mode: separators
-
-Finds artists with `&`, `/`, or `feat.` in their name and determines whether they are compound or single artists. Uses MusicBrainz validation per artist (full name check + parts check).
-
-### Mode: cleanup
-
-Removes orphaned DB data after tag fixes and resyncs.
-
-| Category | What it deletes |
-|----------|-----------------|
-| Phantom artists | Stale TrackArtist + LocalReleaseArtist links |
-| Orphan artists | Artists with zero local release tracks + images |
-| Orphan MB releases | `MusicBrainzRelease` with no artist links |
-| Empty releases | `LocalRelease` with zero tracks |
-
-Requires `boto3` for S3 image deletion (gracefully skipped if missing).
+The `separators` mode validates each proposed artist split against MusicBrainz before applying (skips `--skip-mb` to bypass this).
 
 ---
 
 ## fix_sync_errors.py
 
-Parses `errors.log` and fixes broken MP3 files by category.
+Parses `errors.log` and fixes broken MP3 files by error category. Still the primary tool for encoding/frame corruption issues (not yet covered by `dmp-fix`).
 
 ```bash
 python3 scripts/fix_sync_errors.py                        # Dry run
@@ -75,14 +49,14 @@ python3 scripts/fix_sync_errors.py --apply --only=encoding  # One category
 
 After fixing, re-index and re-sync affected artists:
 ```bash
-./index --only="Artist1;Artist2" --overwrite && ./sync --only="Artist1;Artist2" --overwrite
+./reindex-sync --only="Artist1;Artist2"
 ```
 
 ---
 
 ## check_ampersand_artists.py
 
-Scans artist folders containing `&` or `/` to detect compound artists that should be split.
+Scans artist folders containing `&` or `/` to detect compound artists that should be split. Diagnostic only — no changes made.
 
 ```bash
 python3 scripts/check_ampersand_artists.py              # Tag-based analysis
@@ -93,22 +67,9 @@ Results written to `separator_analysis.log`.
 
 ---
 
-## missing_metadata_report.py
-
-Queries the DB for tracks missing mood, BPM, or AcoustID metadata and exports an XLSX report.
-
-```bash
-python3 scripts/missing_metadata_report.py
-python3 scripts/missing_metadata_report.py --output report.xlsx
-```
-
-Requires `openpyxl` and `psycopg2-binary`.
-
----
-
 ## fix_duplicates.py
 
-Finds duplicate artists (same normalized name, different DB records) and fixes albumArtist tags on the smaller set so a resync merges them.
+Finds duplicate artists (same normalized name, different DB records) and fixes albumArtist tags so a resync merges them. Superceded by `./audit --duplicates` + `./fix --duplicates` for most cases.
 
 ```bash
 python3 scripts/fix_duplicates.py               # Dry run
@@ -119,7 +80,7 @@ python3 scripts/fix_duplicates.py --apply        # Fix tags + print resync comma
 
 ## fix_incomplete_metadata.py
 
-Finds tracks missing title, artist, or album and derives values from folder structure and filename.
+Finds tracks missing title, artist, or album and derives values from folder structure and filename. Still useful for cases where `./audit --missing` finds no auto-derivable values (i.e., `proposedValues` is null).
 
 ```bash
 python3 scripts/fix_incomplete_metadata.py               # Dry run
@@ -130,7 +91,7 @@ python3 scripts/fix_incomplete_metadata.py --apply        # Fix tags + print res
 
 ## fix_unsplit_multiartist.py
 
-Finds releases whose albumArtist tag contains separators and rewrites them as backslash-delimited multi-value tags.
+Splits `albumArtist` tags containing separators into backslash-delimited format. Superceded by `./fix --unsplit` which now correctly distributes the compound value between TPE2 (primary only) and TPE1 (full compound).
 
 ```bash
 python3 scripts/fix_unsplit_multiartist.py                # Dry run

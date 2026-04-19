@@ -20,7 +20,6 @@ cd scripts && cargo build --release -p dmp-index
 ./index --resume                 # Continue from last checkpoint
 ./index --skip-covers            # Skip cover art extraction
 ./index --threads 4              # Rayon thread count (default 8)
-./index --delete                 # Delete local data for matched artists, then exit
 ```
 
 ## Per-Folder Flow
@@ -34,12 +33,6 @@ cd scripts && cargo build --release -p dmp-index
 7. **Update totals** for this artist's releases and tracks
 8. **Set `lastIndexedAt`** on Artist
 9. **Upsert FolderScan** — stores folder mtime for `--quick` mode
-
-## --delete behaviour
-
-Deletes Artist rows, all LocalRelease + LocalReleaseTrack records, and images for matched artists, then exits. Also clears `FolderScan` entries for deleted folders.
-
-After `--delete`, re-running `./index` (without `--overwrite`) will re-process those folders from scratch — file change detection starts clean. `--quick` mode will also re-process them because the FolderScan entries are gone.
 
 ## Release Grouping
 

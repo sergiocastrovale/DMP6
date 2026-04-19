@@ -3,6 +3,7 @@ members = [
     "dmp-common",
     "dmp-index",
     "dmp-sync",
+    "dmp-fix",
     "analysis",
     "audit",
     "clean",

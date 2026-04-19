@@ -1,10 +1,10 @@
 [package]
-name = "dmp-audit"
+name = "dmp-fix"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "dmp-audit"
+name = "dmp-fix"
 path = "src/main.rs"
 
 [dependencies]
@@ -13,8 +13,6 @@ sqlx = { workspace = true }
 tokio = { workspace = true }
 colored = { workspace = true }
 chrono = { workspace = true }
-regex = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
-cuid2 = { workspace = true }
+lofty = { workspace = true }
 dmp-common = { path = "../dmp-common" }

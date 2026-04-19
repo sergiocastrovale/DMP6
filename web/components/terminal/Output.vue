@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { X, Square } from 'lucide-vue-next'
+import { X, Square, Copy } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
+
+function copySession(session: string) {
+  navigator.clipboard.writeText(`tmux attach-session -t ${session}`)
+}
 
 const terminal = useTerminalStore()
 
@@ -55,6 +59,24 @@ watch(() => terminal.lines.length, () => {
             <X :size="16" />
           </button>
         </div>
+      </div>
+
+      <!-- Tmux hint -->
+      <div
+        v-if="terminal.currentSession || terminal.isRunning"
+        class="flex items-center gap-2 border-b border-zinc-800 px-4 py-2"
+      >
+        <span class="font-mono text-xs text-zinc-500">
+          tmux attach-session -t {{ terminal.currentSession ?? '...' }}
+        </span>
+        <button
+          v-if="terminal.currentSession"
+          @click="copySession(terminal.currentSession!)"
+          class="rounded p-0.5 text-zinc-600 hover:text-zinc-400"
+          title="Copy"
+        >
+          <Copy :size="12" />
+        </button>
       </div>
 
       <!-- Output -->

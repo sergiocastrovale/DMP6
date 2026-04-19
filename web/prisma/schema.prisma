@@ -12,6 +12,13 @@ datasource db {
 // Enums
 // ---------------------------------------------------------------------------
 
+enum IssueStatus {
+  DETECTED
+  PENDING
+  RESOLVED
+  FAILED
+}
+
 enum ReleaseStatus {
   COMPLETE
   INCOMPLETE
@@ -51,6 +58,10 @@ model Artist {
   mbReleases        MusicBrainzReleaseArtist[]
   genres            Genre[]              @relation("ArtistGenres")
   trackArtists      TrackArtist[]        @relation("ArtistTracks")
+  unsplitIssues     IssueUnsplitArtist[] @relation("UnsplitArtistIssue")
+  orphanIssues      IssueOrphanArtist[]  @relation("OrphanArtistIssue")
+  duplicateAIssues  IssueDuplicateArtist[] @relation("DuplicateArtistA")
+  duplicateBIssues  IssueDuplicateArtist[] @relation("DuplicateArtistB")
 
   @@index([musicbrainzId])
   @@index([totalPlayCount])
@@ -168,9 +179,10 @@ model LocalRelease {
   lastPlayedAt    DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
-  artists         LocalReleaseArtist[]
-  release         MusicBrainzRelease? @relation(fields: [releaseId], references: [id])
-  tracks          LocalReleaseTrack[]
+  artists          LocalReleaseArtist[]
+  release          MusicBrainzRelease? @relation(fields: [releaseId], references: [id])
+  tracks           LocalReleaseTrack[]
+  enrichmentIssues IssueEnrichmentGap[]
 
   @@unique([groupKey])
   @@index([releaseId])
@@ -249,7 +261,9 @@ model LocalReleaseTrack {
   mbTrack        MusicBrainzReleaseTrack? @relation(fields: [mbTrackId], references: [id])
   favorite       FavoriteTrack?
   playlistTracks PlaylistTrack[]
-  trackArtists   TrackArtist[]            @relation("TrackArtists")
+  trackArtists     TrackArtist[]            @relation("TrackArtists")
+  corruptedIssues  IssueCorruptedTpe2[]     @relation("CorruptedTrackIssue")
+  missingIssues    IssueMissingMetadata[]   @relation("MissingMetadataIssue")
 
   @@index([localReleaseId])
   @@index([mbTrackId])
@@ -416,4 +430,119 @@ model S3DeletionQueue {
 model FolderScan {
   folderPath  String   @id
   mtime       DateTime
+}
+
+// ---------------------------------------------------------------------------
+// Audit — issue detection and fix tracking
+// ---------------------------------------------------------------------------
+
+model AuditRun {
+  id               String                 @id @default(cuid())
+  startedAt        DateTime               @default(now())
+  finishedAt       DateTime?
+  counts           Json?
+  createdAt        DateTime               @default(now())
+  corruptedIssues  IssueCorruptedTpe2[]
+  unsplitIssues    IssueUnsplitArtist[]
+  orphanIssues     IssueOrphanArtist[]
+  duplicateIssues  IssueDuplicateArtist[]
+  missingIssues    IssueMissingMetadata[]
+  enrichmentIssues IssueEnrichmentGap[]
+}
+
+model IssueCorruptedTpe2 {
+  id            String            @id @default(cuid())
+  auditRunId    String
+  status        IssueStatus       @default(DETECTED)
+  trackId       String
+  currentValue  String
+  proposedValue String
+  confidence    String
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  auditRun      AuditRun          @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  track         LocalReleaseTrack @relation("CorruptedTrackIssue", fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([auditRunId])
+}
+
+model IssueUnsplitArtist {
+  id            String      @id @default(cuid())
+  auditRunId    String
+  status        IssueStatus @default(DETECTED)
+  artistId      String
+  separator     String
+  proposedParts String[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  auditRun      AuditRun    @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  artist        Artist      @relation("UnsplitArtistIssue", fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([auditRunId])
+}
+
+model IssueOrphanArtist {
+  id         String      @id @default(cuid())
+  auditRunId String
+  status     IssueStatus @default(DETECTED)
+  artistId   String
+  reason     String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  auditRun   AuditRun    @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  artist     Artist      @relation("OrphanArtistIssue", fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([auditRunId])
+}
+
+model IssueDuplicateArtist {
+  id         String      @id @default(cuid())
+  auditRunId String
+  status     IssueStatus @default(DETECTED)
+  artistAId  String
+  artistBId  String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  auditRun   AuditRun    @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  artistA    Artist      @relation("DuplicateArtistA", fields: [artistAId], references: [id], onDelete: Cascade)
+  artistB    Artist      @relation("DuplicateArtistB", fields: [artistBId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([auditRunId])
+}
+
+model IssueMissingMetadata {
+  id             String            @id @default(cuid())
+  auditRunId     String
+  status         IssueStatus       @default(DETECTED)
+  trackId        String
+  missingFields  String[]
+  proposedValues Json?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  auditRun       AuditRun          @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  track          LocalReleaseTrack @relation("MissingMetadataIssue", fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([auditRunId])
+}
+
+model IssueEnrichmentGap {
+  id             String       @id @default(cuid())
+  auditRunId     String
+  status         IssueStatus  @default(DETECTED)
+  localReleaseId String
+  // Missing field identifiers: "bpm" | "mood" | "acousticId" | "mbRelease" | "discogs" | "bandcamp" | "wikipedia"
+  missingFields  String[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  auditRun       AuditRun     @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  localRelease   LocalRelease @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([auditRunId])
+  @@index([localReleaseId])
 }

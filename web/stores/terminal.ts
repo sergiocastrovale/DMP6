@@ -6,6 +6,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   const isRunning = ref(false)
   const lines = ref<string[]>([])
   const exitCode = ref<number | null>(null)
+  const currentSession = ref<string | null>(null)
 
   const hasBackground = computed(() => isRunning.value && !isOpen.value)
 
@@ -71,12 +72,15 @@ export const useTerminalStore = defineStore('terminal', () => {
       }
     } finally {
       isRunning.value = false
+      currentSession.value = null
       abortController = null
     }
   }
 
-  async function run(command: string, args: string[]) {
-    return streamSSE('/api/terminal/run', { command, args })
+  async function run(command: string, args: string[], session?: string) {
+    const resolvedSession = session ?? `dmp-${command.replace('./', '')}`
+    currentSession.value = resolvedSession
+    return streamSSE('/api/terminal/run', { command, args, session: resolvedSession })
   }
 
   async function runDownload(
@@ -101,5 +105,5 @@ export const useTerminalStore = defineStore('terminal', () => {
     abortController?.abort()
   }
 
-  return { isOpen, isRunning, lines, exitCode, hasBackground, run, runDownload, open, close, stop }
+  return { isOpen, isRunning, lines, exitCode, currentSession, hasBackground, run, runDownload, open, close, stop }
 })

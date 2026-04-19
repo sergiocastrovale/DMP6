@@ -40,7 +40,8 @@ scripts/
   analysis/src/main.rs         # Metadata quality scanner, HTML reports
   clean/src/main.rs            # Process S3DeletionQueue
   nuke/src/main.rs             # DB reset (full wipe)
-  audit/src/main.rs            # Data integrity → XLSX
+  audit/src/main.rs            # Issue detection → DB (IssueCorruptedTpe2, IssueUnsplitArtist, etc.)
+  dmp-fix/src/main.rs          # Issue remediation → tag writes + DB ops
   genre-playlists/src/main.rs  # Auto-generate genre playlists
 docker-compose.yml             # 3 services: dmp-web, dmp-redis, dmp-cloudflared
 web/Dockerfile                 # Multi-stage Node 20 build
@@ -109,7 +110,20 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./index --resume              # Continue from last checkpoint
 ./index --quick               # Skip unchanged folders (mtime check)
 ./sync --verbose              # Show skipped MB releases
-./audit                       # Data quality → XLSX report
+./audit                       # Detect metadata issues → write to DB (all types)
+./audit --corrupted           # Only detect corrupted TPE2 tags
+./audit --unsplit             # Only detect unsplit compound artists
+./audit --orphans             # Only detect orphan artists
+./audit --duplicates          # Only detect duplicate artists
+./audit --missing             # Only detect missing metadata fields
+./audit --enrichment          # Only detect enrichment gaps (BPM, mood, AcousticID, MB links, Discogs, Bandcamp, Wikipedia)
+./fix --corrupted             # Apply PENDING corrupted TPE2 fixes (tag writes)
+./fix --unsplit               # Apply PENDING unsplit artist fixes (albumArtist → primary, artist → compound)
+./fix --orphans               # Apply PENDING orphan artist fixes (delete from DB)
+./fix --duplicates            # Apply PENDING duplicate artist fixes (merge B into A)
+./fix --missing               # Apply PENDING missing metadata fixes (tag writes)
+./reindex-sync                # ./index && ./sync with same args
+./reindex-sync --only="Name"  # Re-index + re-sync specific artist
 ./analysis                    # Metadata quality HTML report → reports/
 ./clean                       # Process S3 deletion queue
 ./clean --dry-run             # Preview deletions
@@ -214,6 +228,8 @@ See [`docs/scripts/sync.md`](docs/scripts/sync.md) for full documentation. Key p
 | `/favorites` | Tabbed favorites (releases/tracks) |
 | `/timeline` | Browse by decade/year |
 | `/statistics` | Library stats dashboard |
+| `/issues` | Metadata issue overview — run audit, view counts per type |
+| `/issues/[type]` | Per-type issue table — select, edit proposed fixes, queue for fix |
 | `/login` | Auth page |
 
 ## Component Organization
