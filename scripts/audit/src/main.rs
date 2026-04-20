@@ -7,12 +7,12 @@ mod enrichment;
 
 use clap::Parser;
 use colored::Colorize;
-use dmp_common::{config::load_config, db::create_pool};
+use common::{config::load_config, db::create_pool};
 use serde_json::json;
 use sqlx::PgPool;
 
 #[derive(Parser, Debug)]
-#[command(name = "dmp-audit", about = "Detect metadata issues and persist them in the DB")]
+#[command(name = "audit", about = "Detect metadata issues and persist them in the DB")]
 struct Args {
     /// Only run corrupted TPE2 detection
     #[arg(long)]
@@ -52,7 +52,7 @@ async fn main() {
     let config = load_config(None);
     let pool = create_pool(&config.database_url).await;
 
-    println!("{}", "dmp-audit starting...".bold());
+    println!("{}", "audit starting...".bold());
 
     let run_id = create_audit_run(&pool).await;
     let mut counts = serde_json::Map::new();

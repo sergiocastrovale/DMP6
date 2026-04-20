@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/scripts/dmp-sync/target/release/dmp-sync"
+BINARY="$SCRIPT_DIR/scripts/target/release/sync"
 
 if [ ! -f "$BINARY" ] && command -v cargo &>/dev/null; then
   echo "Binary not found. Building..."
-  (cd "$SCRIPT_DIR/scripts" && cargo build --release -p dmp-sync)
+  (cd "$SCRIPT_DIR/scripts" && cargo build --release -p sync)
 fi
 
 if [ -f "$BINARY" ]; then
@@ -14,4 +14,4 @@ fi
 
 # Docker fallback (NAS)
 source "$SCRIPT_DIR/scripts/_docker_run"
-_dmp_run dmp-sync "$@"
+_dmp_run sync "$@"

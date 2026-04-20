@@ -1,4 +1,4 @@
-# Scripts: dmp-audit
+# Scripts: audit
 
 Scans the database for metadata issues and persists them in typed issue tables. Each run wipes and repopulates all detected rows, linked to a new `AuditRun` record.
 
@@ -44,7 +44,7 @@ Detection skips a hardcoded list of known-single artists (AC/DC, Simon & Garfunk
 - `albumArtist` (TPE2) = first proposed part (primary/album artist)
 - `artist` (TPE1) = original compound name (preserves multi-artist credit)
 
-After fixing tags, run `./reindex-sync --only="ArtistName"` to rebuild DB records.
+After fixing tags, run `./refresh --only="ArtistName"` to rebuild DB records.
 
 ### Orphan Artists (`IssueOrphanArtist`)
 
@@ -86,7 +86,7 @@ Tracks with NULL or empty `title`, `artist`, `albumArtist`, `album`, or `year`.
 ./audit                          # Detect all issues, write to DB
 # Open /issues in browser — review, edit proposed values, select rows
 # Click "Fix Selected" per type — queues rows as PENDING, runs ./fix --{type}
-# After fix completes: click "Re-index + Re-sync" for affected artists
+# After fix completes: click "Refresh" for affected artists
 ./audit                          # Re-run to verify
 ```
 

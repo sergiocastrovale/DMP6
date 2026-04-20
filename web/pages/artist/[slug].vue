@@ -46,7 +46,7 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
       <div class="flex items-start justify-between gap-4">
         <ArtistHeader :artist="artist" class="min-w-0" />
         <div class="flex items-center gap-2">
-          <UiReindexSyncButton :only="[artist.name]" />
+          <UiRefreshButton :only="[artist.name]" />
           <ButtonDropdown
             label="Sync"
             :options="syncOptions"

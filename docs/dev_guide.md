@@ -93,13 +93,6 @@ This creates all tables and relations automatically. Run this whenever the schem
 ./sync
 ```
 
-###  Clean up orphaned images
-
-```bash
-# Cleans orphaned artist and release images from S3, local or both
-./clean
-```
-
 ###  Rebuild entire DB and catalogue
 
 ```bash

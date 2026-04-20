@@ -12,7 +12,7 @@ slskd runs as a Docker service alongside DMP. Its config/state live in `/mnt/SSD
 /mnt/SSD/Downloads/    # finished downloads land here (shared with dmp-web)
 ```
 
-The service is defined in [`docker-compose.yml`](../docker-compose.yml) and launches automatically when you run `docker compose up -d` or deploy via `web/deploy.sh deploy`. Both `slskd` and `web` mount the same host path at `/downloads`, so DMP can move slskd's finished files into the templated `{artist}/{year} - {album}` folder.
+The service is defined in [`docker-compose.yml`](../docker-compose.yml) and launches automatically when you run `docker compose up -d` or deploy via `./deploy.sh deploy`. Both `slskd` and `web` mount the same host path at `/downloads`, so DMP can move slskd's finished files into the templated `{artist}/{year} - {album}` folder.
 
 ## First-time setup
 

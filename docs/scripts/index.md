@@ -1,11 +1,11 @@
-# Scripts: dmp-index
+# Scripts: index
 
-Walks MUSIC_DIR, extracts metadata from audio files, and upserts the local DB tree. Sets `lastIndexedAt` on each processed artist, which triggers `dmp-sync` to re-sync on the next run.
+Walks MUSIC_DIR, extracts metadata from audio files, and upserts the local DB tree. Sets `lastIndexedAt` on each processed artist, which triggers `sync` to re-sync on the next run.
 
 ## Build
 
 ```bash
-cd scripts && cargo build --release -p dmp-index
+cd scripts && cargo build --release -p index
 ```
 
 ## Usage
@@ -42,7 +42,7 @@ Releases are deduplicated by `groupKey`:
 
 ## Artist Tag Splitting
 
-`split_artists()` in `dmp-common/src/artists.rs`:
+`split_artists()` in `common/src/artists.rs`:
 - Splits on `feat.`/`ft.`/`featuring` → featured artists
 - Splits on `//` `\\` `||` `;` `|` — unambiguous separators
 - Splits on ` / ` ` \ ` (space-surrounded only — preserves AC/DC)
@@ -53,5 +53,5 @@ Releases are deduplicated by `groupKey`:
 ## NAS One-Liner
 
 ```bash
-docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-index --from=e --to=fz
+docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest index --from=e --to=fz
 ```

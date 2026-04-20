@@ -2,7 +2,7 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client as S3Client;
 use clap::Parser;
 use colored::*;
-use dmp_common::filters::matches_filter;
+use common::filters::matches_filter;
 use dotenvy;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -12,7 +12,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "dmp-nuke", about = "Delete all data from DMP database and images")]
+#[command(name = "nuke", about = "Delete all data from DMP database and images")]
 struct Args {
     /// Skip confirmation prompt
     #[arg(long)]
@@ -54,7 +54,7 @@ async fn create_s3_client() -> Option<S3Client> {
         std::env::var("AWS_SECRET_ACCESS_KEY").ok(),
     ) {
         aws_config = aws_config.credentials_provider(aws_sdk_s3::config::Credentials::new(
-            key, secret, None, None, "dmp-nuke",
+            key, secret, None, None, "nuke",
         ));
     }
 
@@ -828,7 +828,6 @@ async fn main() {
         "Settings",
         "Statistics",
         "FolderScan",
-        "S3DeletionQueue",
     ];
 
     for table in &tables {

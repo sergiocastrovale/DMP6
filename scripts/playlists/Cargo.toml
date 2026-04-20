@@ -1,0 +1,19 @@
+[package]
+name = "playlists"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "playlists"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+dotenvy = { workspace = true }
+colored = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }
+chrono = { workspace = true }

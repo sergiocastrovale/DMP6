@@ -16,7 +16,7 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "dmp-delete",
+    name = "delete",
     about = "Permanently delete an artist, their catalogue, and any related artists \
              whose entire catalogue is contained within the deleted releases."
 )]
@@ -118,7 +118,7 @@ async fn create_s3_client(config: &DeleteConfig) -> Option<S3Client> {
 
     if let (Some(ref key), Some(ref secret)) = (&config.s3_access_key, &config.s3_secret_key) {
         aws_config = aws_config.credentials_provider(
-            aws_sdk_s3::config::Credentials::new(key, secret, None, None, "dmp-delete"),
+            aws_sdk_s3::config::Credentials::new(key, secret, None, None, "delete"),
         );
     }
 

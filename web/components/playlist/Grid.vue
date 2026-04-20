@@ -24,7 +24,7 @@
       </div>
     </div>
 
-    <UiLoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
+    <LoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
     <div
       v-else-if="playlists.length > 0"
       class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"

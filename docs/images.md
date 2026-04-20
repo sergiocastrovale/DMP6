@@ -168,70 +168,24 @@ For 2 million tracks with ~26 images:
 
 ## Image Deletion
 
-The system handles image deletion automatically in two ways:
+Image cleanup is always synchronous — every deletion path removes the local file and the S3 object **before** deleting the DB row. There is no queue, no trigger, no background worker: if a row is gone, its images are gone too.
 
-### 1. Full Nuke (`./nuke --yes`)
+### Deletion paths
 
-When you run the nuke script, it will:
-- ✅ Delete all local images from `web/public/img/releases/` and `web/public/img/artists/`
-- ✅ Delete all S3 images from `releases/` and `artists/` folders (if `IMAGE_STORAGE=s3` or `IMAGE_STORAGE=both`)
-- ✅ Truncate all database tables including the `S3DeletionQueue`
+| Trigger | Handler |
+|---|---|
+| Full DB reset | `./nuke` — wipes all local + S3 images, then truncates tables |
+| `./nuke --only="Artist"` | Removes that artist's images + cascaded orphan artist/release images |
+| `./index` (folder removed from disk) | `detect_deleted_folders` calls `delete_release_images` / `delete_artist_images` before deleting empty releases and orphan artists |
+| `./sync` (ghost artists) | `cleanup_ghost_artists` calls `delete_artist_images` before the DB delete |
+| `./fix --orphans` | Deletes the artist's images before deleting the `Artist` row |
+| `./fix --duplicates` | Deletes artist B's image before merging B into A |
 
-### 2. Individual Deletions (Database Triggers + Clean Script)
+### Shared helpers
 
-When individual artists or releases are deleted from the database:
-- ✅ **Database triggers** automatically queue the images for deletion in the `S3DeletionQueue` table
-- ✅ Images are queued if they have an `imageUrl` set (indicating S3 storage was used)
-- ✅ **Clean script** processes the queue and deletes images from both S3 and local storage
+Both helpers live in [`scripts/common/src/images.rs`](../scripts/common/src/images.rs):
 
-**To process the deletion queue**, run the clean script:
+- `delete_artist_images(pool, config, artist_ids)` — looks up `slug`, `image`, `imageUrl` and deletes `web/public/img/artists/{image}` + S3 key `artists/{slug}.jpg`
+- `delete_release_images(pool, config, release_ids)` — looks up `image`, `imageUrl` and deletes `web/public/img/releases/{image}` + S3 key `releases/{id}.jpg`
 
-```bash
-# Preview what will be deleted (dry run)
-./clean --dry-run
-
-# Actually delete the images
-./clean
-```
-
-**Clean script features**:
-- ✅ Reads from `S3DeletionQueue` table
-- ✅ Deletes from S3 (if `IMAGE_STORAGE=s3` or `IMAGE_STORAGE=both`)
-- ✅ Deletes from local storage (if `IMAGE_STORAGE=local` or `IMAGE_STORAGE=both`)
-- ✅ Removes processed entries from the queue
-- ✅ Logs errors to `errors.log`
-- ✅ Shows colorized progress output
-- ✅ Supports `--dry-run` mode
-
-**Example output**:
-
-```
-DMP Image Cleanup
-=================
-
-Image storage: both
-S3 client: ✓ Initialized
-
-Fetching deletion queue...
-  → Found 3 image(s) pending deletion
-
-  → artists/old-artist.jpg (queued 2h ago)... ✓ S3 + local
-  → releases/abc123.jpg (queued 5h ago)... ✓ S3 + local
-  → releases/xyz789.jpg (queued 24h ago)... ✓ S3 + local
-
-════════════════════════════════════════════════════════════
-
-Summary:
-  S3       : 3 deleted, 0 failed
-  Local    : 3 deleted, 0 failed
-  Queue    : 3 removed
-```
-
-**Recommendation**: Run `./clean` periodically (e.g., daily cron job) to keep storage clean:
-
-```bash
-# Add to crontab (run daily at 3 AM)
-0 3 * * * cd /path/to/DMPv6 && ./clean >> clean.log 2>&1
-```
-
-**Note**: The nuke script handles bulk deletion immediately. The clean script is for processing individual deletions that happen through the web app or API.
+Both respect `IMAGE_STORAGE` (local / s3 / both) and are safe to call with an empty slice.

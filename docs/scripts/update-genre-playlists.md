@@ -1,26 +1,26 @@
-# Scripts: update-genre-playlists
+# Scripts: playlists
 
 Generates or updates genre-based playlists by matching artists' MusicBrainz genres against configurable genre groups with weighted proximity scoring.
 
 ## Build
 
 ```bash
-cd scripts/genre-playlists && cargo build --release
+cd scripts/playlists && cargo build --release
 ```
 
 ## Usage
 
 ```bash
-./update-genre-playlists                              # Update all genre playlists
-./update-genre-playlists --dry-run                    # Preview without DB writes
-./update-genre-playlists --group rock                 # Update single group
-./update-genre-playlists --report                     # Show all genres → group assignments
-./update-genre-playlists --config path/to/custom.json # Custom config file
+./playlists                              # Update all genre playlists
+./playlists --dry-run                    # Preview without DB writes
+./playlists --group rock                 # Update single group
+./playlists --report                     # Show all genres → group assignments
+./playlists --config path/to/custom.json # Custom config file
 ```
 
 ## How It Works
 
-1. Reads genre group definitions from `scripts/genre-playlists/genre-groups.json`
+1. Reads genre group definitions from `scripts/playlists/genre-groups.json`
 2. Fetches all genres from the database (sourced from MusicBrainz artist genres/tags)
 3. For each group, matches genres using root keyword matching + includes/excludes
 4. Scores artists by their best matching genre weight
@@ -54,7 +54,7 @@ Weight tiers by match quality:
 
 ## Config Format
 
-`scripts/genre-playlists/genre-groups.json`:
+`scripts/playlists/genre-groups.json`:
 
 ```json
 {
@@ -98,15 +98,15 @@ Run after sync to populate genre playlists:
 
 ```bash
 ./sync
-./update-genre-playlists
+./playlists
 ```
 
 Or run report first to verify assignments:
 
 ```bash
-./update-genre-playlists --report
+./playlists --report
 # review output, adjust genre-groups.json if needed
-./update-genre-playlists
+./playlists
 ```
 
 ## Database

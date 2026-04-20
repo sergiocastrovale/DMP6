@@ -47,7 +47,7 @@ onMounted(() => loadPlaylists())
       </button>
     </div>
 
-    <UiLoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
+    <LoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
 
     <template v-else>
       <div v-if="manualPlaylists.length > 0" class="flex flex-col gap-4">

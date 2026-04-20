@@ -2,7 +2,7 @@
   <button
     class="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
     :disabled="terminal.isRunning"
-    @click="terminal.run('./update-genre-playlists', [])"
+    @click="terminal.run('./playlists', [])"
   >
     <LucideLoader2 v-if="terminal.isRunning" class="size-3.5 animate-spin" />
     <LucideRefreshCw v-else class="size-3.5" />

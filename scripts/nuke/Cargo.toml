@@ -1,10 +1,10 @@
 [package]
-name = "dmp-nuke"
+name = "nuke"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "dmp-nuke"
+name = "nuke"
 path = "src/main.rs"
 
 [dependencies]
@@ -15,4 +15,4 @@ dotenvy = { workspace = true }
 aws-sdk-s3 = { workspace = true }
 aws-config = { workspace = true }
 colored = { workspace = true }
-dmp-common = { path = "../dmp-common" }
+common = { path = "../common" }

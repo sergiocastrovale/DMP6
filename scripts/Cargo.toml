@@ -1,14 +1,13 @@
 [workspace]
 members = [
-    "dmp-common",
-    "dmp-index",
-    "dmp-sync",
-    "dmp-fix",
+    "common",
+    "index",
+    "sync",
+    "fix",
     "analysis",
     "audit",
-    "clean",
     "nuke",
-    "genre-playlists",
+    "playlists",
 ]
 resolver = "2"
 

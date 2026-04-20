@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/scripts/analysis/target/release/analysis"
+BINARY="$SCRIPT_DIR/scripts/target/release/analysis"
 REPORTS_DIR="$SCRIPT_DIR/reports"
 
 if [ -f "$BINARY" ]; then
@@ -31,4 +31,4 @@ else
   echo "Error: Binary not found. Build with: cd scripts/analysis && cargo build --release" >&2
   exit 1
 fi
-_dmp_run dmp-analysis "$@"
+_dmp_run analysis "$@"

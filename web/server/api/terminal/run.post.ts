@@ -3,8 +3,8 @@ import path from 'path'
 import fs from 'fs'
 
 const ALLOWED_COMMANDS = [
-  './index', './sync', './analysis', './clean', './nuke',
-  './update-genre-playlists', './audit', './fix', './reindex-sync',
+  './index', './sync', './analysis', './nuke',
+  './playlists', './audit', './fix', './refresh',
 ]
 
 function stripAnsi(str: string): string {

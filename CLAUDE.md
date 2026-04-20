@@ -5,8 +5,8 @@ Personal music library web app. Scans local audio files, matches against MusicBr
 ## Stack
 
 - **Web**: Nuxt 4 + Vue 3 + TypeScript + Tailwind v4 + Pinia + Prisma + PostgreSQL
-- **Scripts**: Rust CLI tools (`sync`, `analysis`, `clean`, `nuke`, `audit`)
-- **Deployment**: Docker on TrueNAS NAS via `web/deploy.sh`
+- **Scripts**: Rust CLI tools (`sync`, `analysis`, `nuke`, `audit`, `fix`)
+- **Deployment**: Docker on TrueNAS NAS via `./deploy.sh`
 - **Optional**: Redis cache (ioredis), S3 image storage, Cloudflare Tunnel
 
 ## Project Layout
@@ -38,14 +38,13 @@ web/                          # Nuxt app
 scripts/
   sync/src/main.rs             # Index local files + MusicBrainz sync (~5000 lines)
   analysis/src/main.rs         # Metadata quality scanner, HTML reports
-  clean/src/main.rs            # Process S3DeletionQueue
   nuke/src/main.rs             # DB reset (full wipe)
   audit/src/main.rs            # Issue detection → DB (IssueCorruptedTpe2, IssueUnsplitArtist, etc.)
-  dmp-fix/src/main.rs          # Issue remediation → tag writes + DB ops
-  genre-playlists/src/main.rs  # Auto-generate genre playlists
+  fix/src/main.rs          # Issue remediation → tag writes + DB ops
+  playlists/src/main.rs  # Auto-generate genre playlists
 docker-compose.yml             # 3 services: dmp-web, dmp-redis, dmp-cloudflared
 web/Dockerfile                 # Multi-stage Node 20 build
-web/deploy.sh                  # Build → SCP → docker load → restart
+./deploy.sh                  # Build → SCP → docker load → restart
 ```
 
 ## Data Model
@@ -122,19 +121,17 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./fix --orphans               # Apply PENDING orphan artist fixes (delete from DB)
 ./fix --duplicates            # Apply PENDING duplicate artist fixes (merge B into A)
 ./fix --missing               # Apply PENDING missing metadata fixes (tag writes)
-./reindex-sync                # ./index && ./sync with same args
-./reindex-sync --only="Name"  # Re-index + re-sync specific artist
+./refresh                # ./index && ./sync with same args
+./refresh --only="Name"  # Refresh specific artist
 ./analysis                    # Metadata quality HTML report → reports/
-./clean                       # Process S3 deletion queue
-./clean --dry-run             # Preview deletions
 ./nuke                        # Full DB reset + image deletion
 ./nuke --keep-artist-img      # Full reset but preserve artist images
 ./nuke --only="Artist Name"   # Delete one artist + cascade ghost co-artists
 ./nuke --only="Name" --dry-run  # Preview what --only would delete
-./update-genre-playlists      # Generate/update genre playlists
-./update-genre-playlists --dry-run  # Preview without changes
-./update-genre-playlists --report   # Show genre → group assignments
-./update-genre-playlists --group rock # Update single group
+./playlists      # Generate/update genre playlists
+./playlists --dry-run  # Preview without changes
+./playlists --report   # Show genre → group assignments
+./playlists --group rock # Update single group
 ```
 
 ### Running on NAS (Docker)
@@ -142,44 +139,28 @@ cd scripts && cargo build --release    # Must rebuild manually!
 SSH into the NAS and run as single-line commands (zsh on TrueNAS doesn't handle multiline):
 
 ```bash
-docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest dmp-index --from=e --to=fz
+docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest index --from=e --to=fz
 ```
 
-Run the same with `dmp-sync --from=e --to=fz` for the MB sync step.
-
-### Python Helper Scripts
-
-Tag fixers and metadata repair tools. See [`docs/scripts/helpers.md`](docs/scripts/helpers.md) for full documentation.
-
-```bash
-python3 scripts/fix_artist_names.py               # Fix corrupted TPE2 + split compound artists + DB cleanup
-python3 scripts/fix_sync_errors.py                # Fix broken MP3 tags from errors.log
-python3 scripts/fix_duplicates.py                 # Merge duplicate artists (same normalized name)
-python3 scripts/fix_incomplete_metadata.py        # Derive missing title/album from folder + filename
-python3 scripts/fix_unsplit_multiartist.py        # Split "feat."/"/"/";" albumArtist tags
-python3 scripts/check_ampersand_artists.py        # Analyse compound artist folders
-```
-
-All support `--apply` (default is dry run). See [`docs/post_sync.md`](docs/post_sync.md) for the post-sync routine.
+Run the same with `sync --from=e --to=fz` for the MB sync step.
 
 ### Fixing Wrong Artist Pages
 
 When browsing reveals artists with bad names (track numbers, paths, garbage):
 
-1. **Scan**: `python3 scripts/fix_artist_names.py` — detects corrupted TPE2 + compound artists
-2. **Fix tags**: `python3 scripts/fix_artist_names.py --apply` — fixes tags + cleans orphaned DB data
-3. **Re-index + re-sync**: `./index --only="..." --overwrite && ./sync --only="..." --overwrite`
-4. **Iterate**: Re-run until clean
-
-Use `--only=corrupted` or `--only=separators` to limit scope. Use `--cleanup` for DB cleanup only.
+1. **Detect**: `./audit` — writes issues to DB
+2. **Review**: `/issues` in the web UI — inspect and queue fixes
+3. **Fix**: `./fix --corrupted` / `./fix --unsplit` / `./fix --orphans` etc.
+4. **Refresh**: `./refresh --only="..."` for file-writing fix types
+5. **Iterate**: Re-run audit until clean
 
 ## Script Architecture
 
 See [`docs/scripts/sync.md`](docs/scripts/sync.md) for full documentation. Key points:
 
-- **dmp-index**: walk folders (jwalk), extract metadata (rayon + lofty), batch upsert, sets `lastIndexedAt`
-- **dmp-sync**: queries artists where `lastIndexedAt > lastSyncedAt`, 6-step MB matching, rate-limited API
-- **Cleanup**: orphan artists + empty releases handled by `scripts/fix_artist_names.py --cleanup`
+- **index**: walk folders (jwalk), extract metadata (rayon + lofty), batch upsert, sets `lastIndexedAt`
+- **sync**: queries artists where `lastIndexedAt > lastSyncedAt`, 6-step MB matching, rate-limited API
+- **Cleanup**: orphan artists + empty releases deleted automatically during `./index` and `./sync` runs
 - **Rate limiting**: MusicBrainz API adaptive backoff 250ms-10s
 - **Key functions**: `names_are_similar()` (Jaccard ≥ 0.5), `normalize_title()`, `split_artists()`
 
@@ -277,12 +258,12 @@ Invalidated on track play (`last-played`, `stats`, `artist:{slug}`) and timeline
 ## Deployment
 
 ```bash
-web/deploy.sh              # Build + transfer + restart (full)
-web/deploy.sh web           # Web image only
-web/deploy.sh scripts       # Scripts image only
-web/deploy.sh build         # Build locally, no transfer
-web/deploy.sh push          # Transfer pre-built images
-web/deploy.sh deploy        # Copy docker-compose.yml + restart
+./deploy.sh              # Build + transfer + restart (full)
+./deploy.sh web           # Web image only
+./deploy.sh scripts       # Scripts image only
+./deploy.sh build         # Build locally, no transfer
+./deploy.sh push          # Transfer pre-built images
+./deploy.sh deploy        # Copy docker-compose.yml + restart
 ```
 
 NAS target: TrueNAS at `192.168.1.241`, data at `/mnt/SSD/web/dmp/`, music at `/mnt/dmp/music/mainstream`.

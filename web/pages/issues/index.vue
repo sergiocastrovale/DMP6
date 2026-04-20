@@ -14,7 +14,7 @@ watch(() => terminal.exitCode, (code) => {
 })
 
 function runAudit() {
-  terminal.run('./audit', [], 'dmp-audit')
+  terminal.run('./audit', [], 'audit')
   terminal.open()
 }
 

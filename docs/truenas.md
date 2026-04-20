@@ -1,6 +1,6 @@
 # TrueNAS Setup
 
-Deploy DMP on TrueNAS Scale. Images are built on your dev machine and pushed to the NAS via `web/deploy.sh`.
+Deploy DMP on TrueNAS Scale. Images are built on your dev machine and pushed to the NAS via `./deploy.sh`.
 
 ## Prerequisites
 
@@ -74,7 +74,7 @@ SSH_KEY_PATH=~/.ssh/nas
 
 ```bash
 cd /home/kp/web/DMPv6
-web/deploy.sh build
+./deploy.sh build
 ```
 
 Produces `dmp-web:latest` (~800MB) and `dmp-scripts:latest` (~50MB).
@@ -105,9 +105,9 @@ ADMIN_PASSWORD=your-password
 
 ```bash
 # From dev machine
-web/deploy.sh          # build + transfer + restart (full)
-web/deploy.sh push     # transfer pre-built images only
-web/deploy.sh deploy   # copy docker-compose.yml + restart only
+./deploy.sh          # build + transfer + restart (full)
+./deploy.sh push     # transfer pre-built images only
+./deploy.sh deploy   # copy docker-compose.yml + restart only
 ```
 
 See [docs/deploy.md](deploy.md) for all modes.
@@ -207,23 +207,21 @@ cd /mnt/SSD/web/dmp
 ./sync --only="Artist" --overwrite
 ./sync --from=a --to=cz          # letter range batch
 ./analysis                       # metadata quality HTML report
-./clean                          # process S3 deletion queue
-./clean --dry-run
 ./nuke                           # DESTRUCTIVE — full DB reset
 ./nuke --local-only              # keep MB catalogue, reset local data
 ./audit                          # data integrity → XLSX
 ```
 
-The same wrapper scripts from the project root (`sync`, `analysis`, etc.) are deployed automatically by `web/deploy.sh deploy` (or a full deploy). Each script is dual-mode: when a local Rust binary is available it runs directly; on the NAS (no binary, no cargo) it falls back to Docker via `scripts/_docker_run`.
+The same wrapper scripts from the project root (`sync`, `analysis`, etc.) are deployed automatically by `./deploy.sh deploy` (or a full deploy). Each script is dual-mode: when a local Rust binary is available it runs directly; on the NAS (no binary, no cargo) it falls back to Docker via `scripts/_docker_run`.
 
 ---
 
 ## 12. Updates
 
 ```bash
-web/deploy.sh          # rebuild + redeploy everything
-web/deploy.sh web      # web only
-web/deploy.sh scripts  # scripts only
+./deploy.sh          # rebuild + redeploy everything
+./deploy.sh web      # web only
+./deploy.sh scripts  # scripts only
 ```
 
 ---

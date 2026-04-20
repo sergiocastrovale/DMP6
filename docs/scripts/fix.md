@@ -1,4 +1,4 @@
-# Scripts: dmp-fix
+# Scripts: fix
 
 Reads `PENDING` issue rows from the DB and applies the corresponding fix: tag writes for corrupted/unsplit/missing issues, DB-only operations for orphans and duplicates.
 
@@ -23,7 +23,7 @@ All types can be combined in one invocation. Only rows with `status = 'PENDING'`
 Reads `IssueCorruptedTpe2` rows where `status = 'PENDING'`. For each:
 1. Opens the audio file at `track.filePath` (resolved against `MUSIC_DIR`)
 2. Writes `proposedValue` as the new `albumArtist` tag (TPE2/ALBUMARTIST/aART)
-3. Bumps parent directory mtime (creates and deletes `.dmp-fix-touch`) so `./index --quick` detects the change
+3. Bumps parent directory mtime (creates and deletes `.fix-touch`) so `./index --quick` detects the change
 4. Marks issue as `RESOLVED` or `FAILED`
 
 ### `--unsplit`
@@ -37,7 +37,7 @@ Reads `IssueUnsplitArtist` rows where `status = 'PENDING'`. For each:
 
 **Why this split:** `albumArtist` (TPE2) is for the album's primary artist — used for grouping/sorting. `artist` (TPE1) is the track-level performing artist list — can be compound.
 
-After `./fix --unsplit`, run `./reindex-sync --only="ArtistName"` to rebuild DB records from the corrected tags.
+After `./fix --unsplit`, run `./refresh --only="ArtistName"` to rebuild DB records from the corrected tags.
 
 ### `--orphans`
 
@@ -72,8 +72,8 @@ Rows where `proposedValues` is null (title/album with no derivable value) are sk
 After fixing tag-writing types (`corrupted`, `unsplit`, `missing`), re-index and re-sync affected artists:
 
 ```bash
-./reindex-sync --only="Artist1;Artist2"
-# or use the "Re-index + Re-sync" button in the web UI
+./refresh --only="Artist1;Artist2"
+# or use the "Refresh" button in the web UI
 ```
 
 After `orphans` and `duplicates` (DB-only), no re-index needed — statistics are updated automatically.
@@ -81,5 +81,5 @@ After `orphans` and `duplicates` (DB-only), no re-index needed — statistics ar
 ## Build
 
 ```bash
-cd scripts/dmp-fix && cargo build --release
+cd scripts/fix && cargo build --release
 ```

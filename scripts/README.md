@@ -1,6 +1,6 @@
 # DMP Scripts
 
-Rust CLI tools and Python helpers for managing the DMP music library. All scripts read configuration from `web/.env`.
+Rust CLI tools for managing the DMP music library. All scripts read configuration from `web/.env`.
 
 Shell wrappers at the project root (`./sync`, `./analysis`, etc.) auto-build the Rust binary if `cargo` is available, or fall back to Docker for NAS deployment.
 
@@ -8,29 +8,19 @@ Shell wrappers at the project root (`./sync`, `./analysis`, etc.) auto-build the
 
 | Script | Binary | Purpose | Docs |
 |--------|--------|---------|------|
-| `sync/` | `dmp-sync` | Index local audio files + sync against MusicBrainz | [docs/scripts/sync.md](../docs/scripts/sync.md) |
+| `index/` | `index` | Extract metadata from local audio files, upsert to DB | [docs/scripts/sync.md](../docs/scripts/sync.md) |
+| `sync/` | `sync` | MusicBrainz sync for indexed artists | [docs/scripts/sync.md](../docs/scripts/sync.md) |
+| `audit/` | `audit` | Detect metadata issues → write to DB | [docs/scripts/audit.md](../docs/scripts/audit.md) |
+| `fix/` | `fix` | Apply PENDING issue fixes (tag writes + DB ops) | [docs/scripts/audit.md](../docs/scripts/audit.md) |
 | `analysis/` | `analysis` | Metadata quality scanner, generates HTML reports | [docs/scripts/analysis.md](../docs/scripts/analysis.md) |
-| `clean/` | `dmp-clean` | Process S3 deletion queue for orphaned images | [docs/scripts/clean.md](../docs/scripts/clean.md) |
-| `nuke/` | `dmp-nuke` | Full or partial database reset | [docs/scripts/nuke.md](../docs/scripts/nuke.md) |
-| `audit/` | `dmp-audit` | Data integrity audit, exports XLSX report | [docs/scripts/audit.md](../docs/scripts/audit.md) |
-| `delete/` | `dmp-delete` | Permanently delete a single artist + their catalogue, with cascade to ghost co-artists | [docs/scripts/delete.md](../docs/scripts/delete.md) |
+| `nuke/` | `nuke` | Full or partial database reset | [docs/scripts/nuke.md](../docs/scripts/nuke.md) |
+| `playlists/` | `playlists` | Auto-generate genre playlists | — |
+| `delete/` | `delete` | Permanently delete a single artist + cascade | [docs/scripts/delete.md](../docs/scripts/delete.md) |
 
-Build any Rust script with:
+Build the full workspace:
 ```bash
-cd scripts/<name> && cargo build --release
+cd scripts && cargo build --release
 ```
-
-## Python Helpers
-
-Used during the [post-sync routine](../docs/post_sync.md) to fix MP3 tag issues found by sync.
-
-| Script | Purpose | Docs |
-|--------|---------|------|
-| `fix_sync_errors.py` | Parse `errors.log` and fix broken MP3s by category (encoding, corrupt frames, missing tags) | [docs/scripts/helpers.md#fix_sync_errorspy](../docs/scripts/helpers.md#fix_sync_errorspy) |
-| `check_ampersand_artists.py` | Detect compound artists (`&`, `/` in name) that should be split | [docs/scripts/helpers.md#check_ampersand_artistspy](../docs/scripts/helpers.md#check_ampersand_artistspy) |
-| `fix_compound_artists.py` | Fix known compound artist tags by replacing separators with `\\` | [docs/scripts/helpers.md#fix_compound_artistspy](../docs/scripts/helpers.md#fix_compound_artistspy) |
-| `fix_compound_tpe2.py` | Fix compound TPE2 tags library-wide (DB-driven, all ambiguous separators) | [docs/scripts/helpers.md#fix_compound_tpe2py](../docs/scripts/helpers.md#fix_compound_tpe2py) |
-| `missing_metadata_report.py` | Query DB for tracks missing mood/BPM/AcoustID, export XLSX | [docs/scripts/helpers.md#missing_metadata_reportpy](../docs/scripts/helpers.md#missing_metadata_reportpy) |
 
 ## Bash Scripts
 

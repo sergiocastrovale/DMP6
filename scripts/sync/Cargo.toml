@@ -1,0 +1,28 @@
+[package]
+name = "sync"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sync"
+path = "src/main.rs"
+
+[dependencies]
+common = { path = "../common" }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+reqwest = { workspace = true }
+image = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+aws-config = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+colored = { workspace = true }
+regex = { workspace = true }
+urlencoding = { workspace = true }
+futures = { workspace = true }
+dotenvy = { workspace = true }
+slug = { workspace = true }
+cuid2 = { workspace = true }

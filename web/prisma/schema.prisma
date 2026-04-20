@@ -412,18 +412,6 @@ model Statistics {
 }
 
 // ---------------------------------------------------------------------------
-// S3DeletionQueue (for cleanup of deleted images)
-// ---------------------------------------------------------------------------
-
-model S3DeletionQueue {
-  id         String   @id @default(cuid())
-  objectKey  String
-  createdAt  DateTime @default(now())
-
-  @@index([createdAt])
-}
-
-// ---------------------------------------------------------------------------
 // FolderScan — per-folder mtime cache for quick-mode change detection
 // ---------------------------------------------------------------------------
 

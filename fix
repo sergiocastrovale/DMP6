@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/scripts/dmp-fix/target/release/dmp-fix"
+BINARY="$SCRIPT_DIR/scripts/target/release/fix"
 
 if [ ! -f "$BINARY" ] && command -v cargo &>/dev/null; then
   echo "Binary not found. Building..."
-  (cd "$SCRIPT_DIR/scripts/dmp-fix" && cargo build --release --quiet)
+  (cd "$SCRIPT_DIR/scripts" && cargo build --release -p fix --quiet)
 fi
 
 if [ -f "$BINARY" ]; then
@@ -18,7 +18,7 @@ if [ -f "$SCRIPT_DIR/scripts/_docker_run" ]; then
 elif [ -f "$SCRIPT_DIR/_docker_run" ]; then
   source "$SCRIPT_DIR/_docker_run"
 else
-  echo "Error: Binary not found. Build with: cd scripts/dmp-fix && cargo build --release" >&2
+  echo "Error: Binary not found. Build with: cd scripts/fix && cargo build --release" >&2
   exit 1
 fi
-_dmp_run dmp-fix "$@"
+_dmp_run fix "$@"

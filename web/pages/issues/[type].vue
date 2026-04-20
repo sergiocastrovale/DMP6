@@ -59,7 +59,7 @@ async function fixSelected() {
   selected.value = new Set()
   await issuesStore.queueIds(type, ids)
   hasFixed.value = true
-  terminal.run('./fix', [`--${type}`], `dmp-fix`)
+  terminal.run('./fix', [`--${type}`], `fix`)
   terminal.open()
 }
 
@@ -151,7 +151,7 @@ function formatDate(date: string): string {
       <div class="mb-4 flex items-center justify-between gap-4">
         <h1 class="text-lg font-semibold text-white">{{ typeLabels[type] }}</h1>
         <div class="flex items-center gap-2">
-          <UiReindexSyncButton v-if="showReindexButton" :only="affectedArtists.length ? affectedArtists : undefined" />
+          <UiRefreshButton v-if="showReindexButton" :only="affectedArtists.length ? affectedArtists : undefined" />
           <div class="relative">
             <Search :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input
@@ -248,14 +248,23 @@ function formatDate(date: string): string {
             </NuxtLink>
           </template>
 
-          <!-- Missing: missing fields as tags -->
+          <!-- Missing: missing fields / Enrichment: EnrichmentFieldBadge chips -->
           <template #cell-missingFields="{ item }">
             <div class="flex flex-wrap gap-1">
-              <span
-                v-for="f in item.missingFields"
-                :key="f"
-                class="rounded bg-red-900/30 px-1.5 py-0.5 text-xs text-red-400"
-              >{{ f }}</span>
+              <template v-if="type === 'enrichment'">
+                <IssuesEnrichmentFieldBadge
+                  v-for="f in item.missingFields"
+                  :key="f"
+                  :field="f"
+                />
+              </template>
+              <template v-else>
+                <span
+                  v-for="f in item.missingFields"
+                  :key="f"
+                  class="rounded bg-red-900/30 px-1.5 py-0.5 text-xs text-red-400"
+                >{{ f }}</span>
+              </template>
             </div>
           </template>
 
@@ -279,28 +288,9 @@ function formatDate(date: string): string {
             <span v-else class="text-zinc-600">—</span>
           </template>
 
-          <!-- Enrichment: missing fields as EnrichmentFieldBadge chips -->
-          <template #cell-missingFields="{ item }">
-            <div v-if="type === 'enrichment'" class="flex flex-wrap gap-1">
-              <IssuesEnrichmentFieldBadge
-                v-for="f in item.missingFields"
-                :key="f"
-                :field="f"
-              />
-            </div>
-            <!-- fallback for missing type -->
-            <div v-else class="flex flex-wrap gap-1">
-              <span
-                v-for="f in item.missingFields"
-                :key="f"
-                class="rounded bg-red-900/30 px-1.5 py-0.5 text-xs text-red-400"
-              >{{ f }}</span>
-            </div>
-          </template>
-
           <!-- Enrichment: Re-sync button for MB-unlinked releases -->
           <template #cell__resync="{ item }">
-            <UiReindexSyncButton
+            <UiRefreshButton
               v-if="item.missingFields?.includes('mbRelease') && item.artist"
               :only="[item.artist.name]"
             />

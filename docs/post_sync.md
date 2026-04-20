@@ -2,27 +2,22 @@
 
 After running `./index && ./sync` in batches, run this routine to catch and fix errors before moving to the next batch.
 
-## Phase 1: Fix Encoding Errors
+## Phase 1: Check Encoding Errors
 
-Check `errors.log` for files that failed during indexing:
+If `./index` logged errors, check `errors.log` for files that failed:
 
-| Category | Cause | Fix |
+| Category | Cause | Manual fix |
 |----------|-------|-----|
-| Invalid encoding | ID3 tags not UTF-8 | Strip + rewrite as ID3v2.4 |
-| Invalid item size | Corrupt tag frame sizes | Lossless remux with ffmpeg |
-| Invalid MPEG frame | Damaged audio frames | Lossless remux with ffmpeg |
+| Invalid encoding | ID3 tags not UTF-8 | Strip + rewrite as ID3v2.4 with `mutagen` |
+| Invalid item size | Corrupt tag frame sizes | Lossless remux with `ffmpeg` |
+| Invalid MPEG frame | Damaged audio frames | Lossless remux with `ffmpeg` |
 | APE UTF-8 error | Malformed APE tags | Strip APE, keep ID3v2 |
 | Missing artist | No TPE1 tag | Copy from TXXX:ARTISTS into TPE1 |
 
-```bash
-python3 scripts/fix_sync_errors.py              # Dry run
-python3 scripts/fix_sync_errors.py --apply      # Apply all fixes
-```
-
-After fixing, re-index and re-sync affected artists:
+After fixing files manually, re-index the affected artists:
 
 ```bash
-./reindex-sync --only="Artist1;Artist2"
+./refresh --only="Artist1;Artist2"
 ```
 
 ## Phase 2: Detect and Fix Metadata Issues
@@ -49,8 +44,8 @@ Alternatively, from the command line:
 After any tag-writing fix, re-index and re-sync:
 
 ```bash
-./reindex-sync --only="Artist1;Artist2"
-# or use the "Re-index + Re-sync" button in the /issues UI
+./refresh --only="Artist1;Artist2"
+# or use the "Refresh" button in the /issues UI
 ```
 
 ## Phase 3: Verify
