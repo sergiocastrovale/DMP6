@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { verifyImage } from '~/server/utils/images'
 
 function normalizeTitle(title: string): string {
   return title
@@ -160,13 +161,14 @@ async function getLocalReleaseTracks(
     })
   }
 
+  const releaseImg = release ? verifyImage(release.image, release.imageUrl, 'releases') : null
   return {
     release: release
       ? {
           id: release.id,
           title: release.title,
-          image: release.image,
-          imageUrl: release.imageUrl,
+          image: releaseImg!.image,
+          imageUrl: releaseImg!.imageUrl,
           artistName: release.artists[0]?.artist?.name ?? 'Unknown',
           artistSlug: release.artists[0]?.artist?.slug ?? '',
         }

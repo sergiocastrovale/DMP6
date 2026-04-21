@@ -28,9 +28,3 @@ cd scripts && cargo build --release
 |--------|---------|------|
 | `backup` | Stream a compressed `pg_dump` from the NAS into `web/dump/` | [docs/scripts/backup.md](../docs/scripts/backup.md) |
 
-## Other
-
-| File | Purpose |
-|------|---------|
-| `_docker_run` | Shared helper sourced by wrapper scripts for Docker-based execution on the NAS |
-| `Dockerfile` | Multi-stage build for the `dmp-scripts` Docker image |

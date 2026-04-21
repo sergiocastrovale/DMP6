@@ -23,8 +23,6 @@ CREATE DATABASE dmp OWNER dmp;
 GRANT ALL PRIVILEGES ON DATABASE dmp TO dmp;
 ```
 
-Verify: `psql postgresql://dmp:your-password@192.168.1.241:5432/dmp -c "SELECT 1;"`
-
 ---
 
 ## 2. NAS Storage
@@ -32,7 +30,7 @@ Verify: `psql postgresql://dmp:your-password@192.168.1.241:5432/dmp -c "SELECT 1
 ```bash
 ssh nas
 mkdir -p /mnt/SSD/web/dmp/{img/artists,img/releases,dump,redis}
-chown -R 999:999 /mnt/SSD/web/dmp   # 999 = node user inside the container
+chown -R 999:999 /mnt/SSD/web/dmp
 ```
 
 ---
@@ -40,9 +38,7 @@ chown -R 999:999 /mnt/SSD/web/dmp   # 999 = node user inside the container
 ## 3. SSH Key (first time)
 
 ```bash
-# Dev machine
 ssh-keygen -t ed25519 -f ~/.ssh/nas -N ""
-eval "$(ssh-agent -s)"
 ```
 
 Add to `~/.ssh/config`:
@@ -70,22 +66,10 @@ SSH_KEY_PATH=~/.ssh/nas
 
 ---
 
-## 4. Build Images
+## 4. NAS `.env`
 
 ```bash
-cd /home/kp/web/DMPv6
-./deploy.sh build
-```
-
-Produces `dmp-web:latest` (~800MB) and `dmp-scripts:latest` (~50MB).
-
----
-
-## 5. NAS `.env`
-
-```bash
-ssh nas
-nano /mnt/SSD/web/dmp/.env
+ssh nas && nano /mnt/SSD/web/dmp/.env
 ```
 
 ```env
@@ -97,39 +81,34 @@ ADMIN_USER=kp
 ADMIN_PASSWORD=your-password
 ```
 
-> **`host.docker.internal`**: use this (or the NAS LAN IP) for PostgreSQL — `localhost` won't work from inside the DMP container.
+> Use `host.docker.internal` (not `localhost`) for PostgreSQL — `localhost` resolves to the container itself.
 
 ---
 
-## 6. Deploy
+## 5. Deploy
 
 ```bash
-# From dev machine
-./deploy.sh          # build + transfer + restart (full)
-./deploy.sh push     # transfer pre-built images only
-./deploy.sh deploy   # copy docker-compose.yml + restart only
+./deploy.sh          # build + transfer + restart
 ```
-
-See [docs/deploy.md](deploy.md) for all modes.
 
 ---
 
-## 7. Verify
+## 6. Verify
 
 ```bash
 ssh nas
 docker ps
-docker inspect --format='{{.State.Health.Status}}' dmp-web
-curl http://localhost:3000/api/stats
+docker inspect --format='{{.State.Health.Status}}' dmp
+curl http://localhost:3000/api/health
 ```
 
 Access: `http://192.168.1.241:3000`
 
 ---
 
-## 8. Initial Data Load
+## 7. Initial Data Load
 
-### Option A — Restore a backup
+**Option A — Restore a backup:**
 
 ```bash
 # Dev machine
@@ -142,113 +121,90 @@ cd /mnt/SSD/web/dmp
 docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "DROP DATABASE IF EXISTS dmp;"
 docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "CREATE DATABASE dmp OWNER dmp;"
 gunzip -c "dump/$(ls -t dump/ | head -1)" | docker exec -i ix-postgres-postgres-1 psql -U dmp -d dmp
-docker restart dmp-web
+docker restart dmp
 ```
 
-### Option B — Fresh sync
-
-Takes several hours on a large library.
+**Option B — Fresh index + sync** (takes several hours on a large library):
 
 ```bash
 ssh nas
 cd /mnt/SSD/web/dmp
-./sync
+./index && ./sync
 ```
 
 ---
 
-## 9. Long-Running Sync Sessions (tmux)
+## 8. Running Scripts
 
-A full library sync can take many hours. Use `tmux` to keep it running after you disconnect — it's pre-installed on TrueNAS Scale.
+Shell wrappers are deployed to `DEPLOY_PATH`. They run binaries inside the container via `docker exec`.
 
-### Start a session and run sync
+```bash
+ssh nas
+cd /mnt/SSD/web/dmp
+
+./index                          # extract metadata from files → DB
+./index --only="Artist Name"     # single artist
+./index --quick                  # skip unchanged folders (mtime check)
+./index --resume                 # continue from last checkpoint
+./index --from=a --to=cz         # letter range batch
+
+./sync                           # MusicBrainz sync
+./sync --only="Artist Name"      # single artist
+./sync --only="Artist" --overwrite
+./sync --from=a --to=cz
+
+./refresh                        # ./index && ./sync (same args)
+./refresh --only="Artist Name"   # re-index + re-sync specific artist
+
+./audit                          # detect metadata issues → DB
+./fix --corrupted                # apply pending fixes
+./analysis                       # metadata quality HTML report
+./nuke                           # DESTRUCTIVE — full DB reset
+```
+
+---
+
+## 9. Long-Running Sessions (tmux)
+
+tmux is pre-installed on TrueNAS Scale. Use it to keep syncs running after you disconnect.
 
 ```bash
 ssh nas
 tmux new -s sync
 cd /mnt/SSD/web/dmp
-./sync --from=a --to=z
+./index --from=a --to=z && ./sync --from=a --to=z
 ```
 
-### Detach and disconnect
+- **Detach**: `Ctrl+B` then `D` — session keeps running
+- **Reattach**: `tmux attach -t sync`
+- **List sessions**: `tmux ls`
+- **Kill session**: `tmux kill-session -t sync`
 
-Press **Ctrl+B**, then **D** — the sync keeps running in the background. You can now close your terminal or shut down your dev machine entirely.
+If the NAS reboots mid-index, resume with `./index --resume`.
 
-### Reconnect later to check progress
+---
+
+## 10. Updates
 
 ```bash
-ssh nas
-tmux attach -t sync
+./deploy.sh          # rebuild + redeploy
 ```
-
-### Other useful tmux commands
-
-| Command | What it does |
-|---|---|
-| `tmux ls` | List active sessions |
-| `tmux attach -t sync` | Reattach to the sync session |
-| `tmux kill-session -t sync` | Kill the session (stops the sync) |
-
-The session persists until the NAS reboots or you kill it manually. If the NAS does reboot mid-sync, use `./sync --resume` when you restart.
 
 ---
 
-## 11. Running Scripts
-
-Wrapper scripts live at `DEPLOY_PATH` (e.g. `/mnt/SSD/web/dmp/`). They source `.env` automatically and invoke the correct Docker command.
+## 11. Monitoring
 
 ```bash
-ssh nas
-cd /mnt/SSD/web/dmp
-
-./sync                           # full index + MB sync
-./sync --resume                  # continue from last checkpoint
-./sync --only="Artist Name"      # single artist
-./sync --only="Artist" --overwrite
-./sync --from=a --to=cz          # letter range batch
-./analysis                       # metadata quality HTML report
-./nuke                           # DESTRUCTIVE — full DB reset
-./nuke --local-only              # keep MB catalogue, reset local data
-./audit                          # data integrity → XLSX
-```
-
-The same wrapper scripts from the project root (`sync`, `analysis`, etc.) are deployed automatically by `./deploy.sh deploy` (or a full deploy). Each script is dual-mode: when a local Rust binary is available it runs directly; on the NAS (no binary, no cargo) it falls back to Docker via `scripts/_docker_run`.
-
----
-
-## 12. Updates
-
-```bash
-./deploy.sh          # rebuild + redeploy everything
-./deploy.sh web      # web only
-./deploy.sh scripts  # scripts only
+docker logs -f dmp
+docker stats dmp
+docker restart dmp
 ```
 
 ---
 
-## 13. Monitoring
-
-```bash
-docker ps
-docker logs -f dmp-web
-docker stats dmp-web
-docker inspect --format='{{json .State.Health}}' dmp-web | python3 -m json.tool
-docker restart dmp-web
-```
-
----
-
-## 14. Tailscale
-
-Access from anywhere: `http://NAS_TAILSCALE_IP:3000`
-
----
-
-## Performance Tuning
+## 12. Performance Tuning
 
 ### PostgreSQL
-
-Settings survive container recreation (written to `postgresql.auto.conf`). Requires a full restart.
 
 ```bash
 ssh nas
@@ -271,78 +227,40 @@ do
   docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -c "ALTER SYSTEM SET $setting;"
 done
 docker restart ix-postgres-postgres-1
-
-# Verify
-docker exec ix-postgres-postgres-1 psql -U dmp -d dmp \
-  -c 'SHOW shared_buffers; SHOW work_mem; SHOW max_connections; SHOW effective_cache_size;'
-
-# Check settings survived a rebuild
-docker exec ix-postgres-postgres-1 cat /var/lib/postgresql/data/postgresql.auto.conf
 ```
 
-Sized for 32 GB RAM. Keep `SSD` pool defaults for PostgreSQL — random I/O benefits from smaller records and full ARC caching.
+Sized for 32 GB RAM. Settings survive container recreation (written to `postgresql.auto.conf`).
 
 ### Redis
 
-`dmp-redis` runs as a sidecar; the web container connects via `REDIS_URL=redis://dmp-redis:6379` (set in `docker-compose.yml`). If unreachable the app falls through to the database silently.
-
-Create the data dir before first deploy:
+Runs as `dmp-redis` sidecar. If unreachable the app falls through to the DB silently.
 
 ```bash
 mkdir -p /mnt/SSD/web/dmp/redis
 ```
 
-See [docs/redis.md](redis.md) for cached endpoints, TTLs, and invalidation.
-
 ### ZFS (music dataset)
 
 ```bash
-ssh nas
 sudo zfs set recordsize=1M dmp/music
 sudo zfs set primarycache=metadata dmp/music
 sudo zfs set atime=off dmp/music
-
-zfs get recordsize,primarycache,atime dmp/music
 ```
 
-Properties persist across reboots and TrueNAS upgrades.
+---
 
-## Domain configuration
+## 13. Cloudflare Tunnel (dmp.nrnas.com)
 
-### dmp.nrnas.com
+1. Cloudflare dash → **Zero Trust → Networks → Connectors → Create a tunnel**
+   - Type: Docker, Name: `dmp`
+   - Copy the token from the shown `docker run` command
+2. **Networks → Overview → Route to a published application**
+   - Subdomain: `dmp`, Domain: `nrnas.com`
+   - Service: HTTP, URL: `dmp:3000`
+3. Add the token to the NAS `.env`:
+   ```bash
+   echo "CLOUDFLARE_TUNNEL_TOKEN=<token>" >> /mnt/SSD/web/dmp/.env
+   ```
+4. Redeploy: `./deploy.sh`
 
-`docker-compose.yml` is configured to work with a `dmp-cloudflared` container:
-
-```yaml
-cloudflared:
-  image: cloudflare/cloudflared:latest
-  container_name: dmp-cloudflared
-  restart: unless-stopped
-  command: tunnel --no-autoupdate run
-  environment:
-    - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-  depends_on:
-    web:
-      condition: service_healthy
-```
-
-Steps you need to do in Cloudflare before deploying:
-
-  1. Create the tunnel:
-    - Cloudflare dash → Zero Trust → Networks → Connectors → Create a tunnel
-    - Connector type: Docker
-    - Name: dmp
-    - Copy the token from the docker run ... --token <TOKEN> command shown
-  2. Networks -> Overview -> Route to a published application
-    - Subdomain: dmp, Domain: nrnas.com
-    - Service type: HTTP, URL: dmp-web:3000
-  3. Add the token to the NAS .env:
-  `ssh nas`
-  `echo "CLOUDFLARE_TUNNEL_TOKEN=<your-token>" >> /mnt/SSD/web/dmp/.env`
-
-  Then deploy:
-  ```bash
-  scp docker-compose.yml nas:/mnt/SSD/web/dmp/ && ssh nas "cd /mnt/SSD/web/dmp && docker compose up -d"
-  ```
-
-  Then https://dmp.nrnas.com should be live.
+`https://dmp.nrnas.com` will be live once the tunnel connects.

@@ -14,7 +14,7 @@ pub struct DeletionStats {
 
 /// Delete track rows whose filePath no longer exists on disk.
 /// Returns the count deleted.
-pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str) -> u64 {
+pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir: &str) -> u64 {
     let rows: Vec<(String, String)> = sqlx::query_as(
         r#"SELECT id, "filePath" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
     )
@@ -23,9 +23,10 @@ pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str) -> u64 {
     .await
     .unwrap_or_default();
 
+    let base = Path::new(music_dir);
     let missing: Vec<String> = rows
         .into_iter()
-        .filter(|(_, path)| !Path::new(path).exists())
+        .filter(|(_, path)| !base.join(path).exists())
         .map(|(id, _)| id)
         .collect();
 

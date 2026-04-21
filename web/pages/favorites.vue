@@ -166,7 +166,7 @@ async function playRelease(releaseId: string) {
         album: t.album || data.release?.title || 'Unknown',
         duration: t.duration || 0,
         artistSlug: data.release?.artistSlug || null,
-        releaseImage: data.release?.image ? `/img/releases/${data.release.image}` : null,
+        releaseImage: data.release?.image || null,
         releaseImageUrl: data.release?.imageUrl || null,
         localReleaseId: t.localReleaseId,
       }))
@@ -194,7 +194,7 @@ function toPlayerTrack(fav: FavoriteTrack) {
     album: fav.track.release?.title || 'Unknown',
     duration: fav.track.duration || 0,
     artistSlug: fav.track.release?.artist?.slug || null,
-    releaseImage: fav.track.release?.image ? `/img/releases/${fav.track.release.image}` : null,
+    releaseImage: fav.track.release?.image || null,
     releaseImageUrl: fav.track.release?.imageUrl || null,
     localReleaseId: fav.track.release?.id || null,
   }

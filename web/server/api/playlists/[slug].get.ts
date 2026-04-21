@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { verifyImage } from '~/server/utils/images'
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
@@ -65,8 +66,7 @@ export default defineEventHandler(async (event) => {
               id: pt.track.localRelease.id,
               title: pt.track.localRelease.title,
               year: pt.track.localRelease.year,
-              image: pt.track.localRelease.image,
-              imageUrl: pt.track.localRelease.imageUrl,
+              ...verifyImage(pt.track.localRelease.image, pt.track.localRelease.imageUrl, 'releases'),
               artist: pt.track.localRelease.artists[0]?.artist ?? null,
             }
           : null,

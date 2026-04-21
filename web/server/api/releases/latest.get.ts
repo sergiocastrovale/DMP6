@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
+import { verifyImage } from '~/server/utils/images'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'public, max-age=60, stale-while-revalidate=30')
@@ -30,8 +31,7 @@ export default defineEventHandler(async (event) => {
       title: release.title || release.release?.title || 'Unknown Release',
       releaseType: release.release?.type?.name || null,
       year: release.year,
-      image: release.image,
-      imageUrl: release.imageUrl,
+      ...verifyImage(release.image, release.imageUrl, 'releases'),
       createdAt: release.createdAt,
       artist: release.artists[0]?.artist ?? null,
       musicBrainzId: release.release?.id || null,

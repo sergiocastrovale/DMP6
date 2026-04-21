@@ -3,7 +3,7 @@ use colored::Colorize;
 use common::config::load_config;
 use common::db::create_pool;
 use common::filters::matches_filter;
-use common::lock::{acquire_lock, clear_stale_lock, release_lock};
+use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
 use common::progress::sync_progress;
 use common::s3::create_s3_client;
 use common::statistics::update_statistics;
@@ -85,7 +85,7 @@ async fn main() {
     let config = load_config(None);
     let pool = create_pool(&config.database_url).await;
 
-    if clear_stale_lock(&pool, 2).await {
+    if clear_stale_lock_minutes(&pool, 10).await {
         eprintln!("Cleared stale scan lock.");
     }
 
@@ -102,7 +102,21 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // SIGTERM / Ctrl-C handler — release lock before exiting
     let running = Arc::new(AtomicBool::new(true));
+    {
+        let running = running.clone();
+        let pool2 = pool.clone();
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.ok();
+            running.store(false, Ordering::SeqCst);
+            eprintln!("\nShutdown requested — finishing current artist...");
+            // Second Ctrl-C → force exit after releasing lock
+            tokio::signal::ctrl_c().await.ok();
+            release_lock(&pool2).await;
+            std::process::exit(1);
+        });
+    }
     {
         let running = running.clone();
         let pool2 = pool.clone();
@@ -300,7 +314,7 @@ async fn main() {
 
         // Artist image — skip if already present in DB (image or imageUrl set)
         if !args.skip_artist_img && !artist.has_image {
-            download_artist_image(
+            if let Ok(true) = download_artist_image(
                 &http_client,
                 &detail,
                 &artist.slug,
@@ -309,7 +323,36 @@ async fn main() {
                 &config,
             )
             .await
-            .ok();
+            {
+                if config.use_local() {
+                    let filename = format!("{}.jpg", &artist.slug);
+                    sqlx::query(
+                        r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                    )
+                    .bind(&filename)
+                    .bind(&artist.id)
+                    .execute(&pool)
+                    .await
+                    .ok();
+                }
+                if config.use_s3() {
+                    if let Some(ref public_url) = config.s3_public_url {
+                        let image_url = format!(
+                            "{}/artists/{}.jpg",
+                            public_url.trim_end_matches('/'),
+                            &artist.slug
+                        );
+                        sqlx::query(
+                            r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                        )
+                        .bind(&image_url)
+                        .bind(&artist.id)
+                        .execute(&pool)
+                        .await
+                        .ok();
+                    }
+                }
+            }
         }
 
         // Release groups
@@ -441,7 +484,7 @@ async fn main() {
                 .ok();
 
             if !args.skip_release_img {
-                download_cover_art(
+                if let Ok(true) = download_cover_art(
                     &http_client,
                     &rg.id,
                     &config.project_root,
@@ -449,7 +492,36 @@ async fn main() {
                     &config,
                 )
                 .await
-                .ok();
+                {
+                    let filename = format!("{}.jpg", &rg.id);
+                    if config.use_local() {
+                        sqlx::query(
+                            r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                        )
+                        .bind(&filename)
+                        .bind(&local_release.id)
+                        .execute(&pool)
+                        .await
+                        .ok();
+                    }
+                    if config.use_s3() {
+                        if let Some(ref public_url) = config.s3_public_url {
+                            let image_url = format!(
+                                "{}/releases/{}",
+                                public_url.trim_end_matches('/'),
+                                &filename
+                            );
+                            sqlx::query(
+                                r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                            )
+                            .bind(&image_url)
+                            .bind(&local_release.id)
+                            .execute(&pool)
+                            .await
+                            .ok();
+                        }
+                    }
+                }
             }
 
             score_sum += match status_check.status {

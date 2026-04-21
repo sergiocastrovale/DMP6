@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { verifyImage } from '~/server/utils/images'
 
 interface RawTrack {
   id: string
@@ -44,6 +45,7 @@ export default defineEventHandler(async () => {
       })
     : null
 
+  const img = verifyImage(release?.image, release?.imageUrl, 'releases')
   return {
     id: raw.id,
     title: raw.title || 'Unknown',
@@ -51,8 +53,8 @@ export default defineEventHandler(async () => {
     album: raw.album || 'Unknown',
     duration: raw.duration || 0,
     artistSlug: release?.artists[0]?.artist?.slug || null,
-    releaseImage: release?.image || null,
-    releaseImageUrl: release?.imageUrl || null,
+    releaseImage: img.image,
+    releaseImageUrl: img.imageUrl,
     localReleaseId: raw.localReleaseId,
   }
 })

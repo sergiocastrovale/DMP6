@@ -1,6 +1,6 @@
 use aws_sdk_s3::Client as S3Client;
 use common::config::Config;
-use common::s3::{delete_from_s3, upload_to_s3};
+use common::s3::upload_to_s3;
 use image::imageops::FilterType;
 use reqwest::Client;
 use std::path::{Path, PathBuf};
@@ -273,20 +273,3 @@ pub async fn download_artist_image(
     }
 }
 
-pub async fn delete_artist_image(
-    artist_slug: &str,
-    project_root: &str,
-    s3_client: &Option<S3Client>,
-    config: &Config,
-) {
-    let local_path = PathBuf::from(project_root)
-        .join("web/public/img/artists")
-        .join(format!("{}.jpg", artist_slug));
-    if local_path.exists() {
-        let _ = std::fs::remove_file(&local_path);
-    }
-    if let (Some(ref client), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
-        let key = format!("artists/{}.jpg", artist_slug);
-        delete_from_s3(client, bucket, &key).await;
-    }
-}

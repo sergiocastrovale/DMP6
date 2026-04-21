@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
+import { verifyImage } from '~/server/utils/images'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'public, max-age=120, stale-while-revalidate=60')
@@ -76,8 +77,13 @@ export default defineEventHandler(async (event) => {
       }),
     ])
 
+    const verifiedItems = items.map(a => ({
+      ...a,
+      ...verifyImage(a.image, a.imageUrl, 'artists'),
+    }))
+
     return {
-      items,
+      items: verifiedItems,
       total,
       mainCount: stats?.mainArtists ?? 0,
       relatedCount: stats?.relatedArtists ?? 0,

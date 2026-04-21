@@ -156,7 +156,7 @@ async function playRelease(releaseId: string) {
         album: response.release?.title || 'Unknown',
         duration: t.duration || 0,
         artistSlug: response.release?.artistSlug || null,
-        releaseImage: response.release?.image ? `/img/releases/${response.release.image}` : null,
+        releaseImage: response.release?.image || null,
         releaseImageUrl: response.release?.imageUrl || null,
         localReleaseId: t.localReleaseId,
       }))

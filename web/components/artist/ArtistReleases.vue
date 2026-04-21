@@ -21,6 +21,7 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 const player = usePlayerStore()
+const { releaseImage } = useImageUrl()
 
 // All loaded releases (accumulated across pages)
 const releases = ref<UnifiedRelease[]>([])
@@ -315,7 +316,7 @@ async function playRelease(release: UnifiedRelease) {
         album: t.album || release.title,
         duration: t.duration || 0,
         artistSlug: props.slug,
-        releaseImage: data.release?.image ? `/img/releases/${data.release.image}` : null,
+        releaseImage: data.release?.image || null,
         releaseImageUrl: data.release?.imageUrl || null,
         localReleaseId: t.localReleaseId,
       }))
@@ -479,8 +480,8 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
 
             <div class="relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
               <img
-                v-if="release.image || release.imageUrl"
-                :src="release.imageUrl || release.image!"
+                v-if="releaseImage(release)"
+                :src="releaseImage(release)!"
                 :alt="release.title"
                 class="size-full object-cover"
                 loading="lazy"

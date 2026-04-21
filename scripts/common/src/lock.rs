@@ -59,11 +59,11 @@ pub async fn release_lock(pool: &PgPool) {
     .ok();
 }
 
-/// Detect and clear a stale lock (held for longer than max_age_hours).
+/// Detect and clear a stale lock (held for longer than max_age_minutes).
 /// Returns true if a stale lock was found and cleared.
-pub async fn clear_stale_lock(pool: &PgPool, max_age_hours: u64) -> bool {
+pub async fn clear_stale_lock_minutes(pool: &PgPool, max_age_minutes: u64) -> bool {
     let threshold = Utc::now().naive_utc()
-        - chrono::Duration::hours(max_age_hours as i64);
+        - chrono::Duration::minutes(max_age_minutes as i64);
 
     let result = sqlx::query(
         r#"UPDATE "Statistics"

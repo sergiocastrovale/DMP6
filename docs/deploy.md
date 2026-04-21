@@ -1,7 +1,7 @@
 # Deployment
 
-DMP runs as Docker containers on a NAS (TrueNAS / any Linux host reachable over SSH).
-The `deploy.sh` script in `web/` builds images locally, ships them to the NAS, and restarts the stack.
+DMP runs as a Docker container on a NAS (TrueNAS / any Linux host reachable over SSH).
+The `deploy.sh` script builds the image locally, ships it to the NAS, and restarts the stack.
 
 ## Prerequisites
 
@@ -12,21 +12,16 @@ The `deploy.sh` script in `web/` builds images locally, ships them to the NAS, a
 ## Quick start
 
 ```bash
-cd web
-./deploy.sh          # build both images, transfer, restart
-./deploy.sh web      # rebuild + redeploy web only
-./deploy.sh scripts  # rebuild + redeploy scripts only
-./deploy.sh build    # build both images locally, no transfer
-./deploy.sh push     # transfer already-built images (skip build)
-./deploy.sh deploy   # upload docker-compose.yml + restart containers (no build)
+./deploy.sh          # build, transfer, deploy, restart
 ```
 
 ## How it works
 
-1. **Build** — runs `docker build` locally for `dmp-web` and/or `dmp-scripts`.
-2. **Pack & transfer** — saves the image(s) to `/tmp/dmp-images.tar.gz`, SCPs to the NAS.
+1. **Build** — runs `docker build` locally, producing a single `dmp:latest` image (Rust scripts + Nuxt app).
+2. **Pack & transfer** — saves the image to `/tmp/dmp-image.tar.gz`, SCPs to the NAS.
 3. **Load** — runs `docker load` on the NAS, then deletes the archive.
-4. **Deploy** (full run only) — copies `docker-compose.yml` and the script wrappers (`sync`, `analysis`, `clean`, `nuke`, `audit` + `scripts/_docker_run`) to `DEPLOY_PATH` on the NAS, then runs `docker compose up -d`. The wrappers are the same files used locally — on the NAS they detect no local binary and fall back to running via Docker.
+4. **Deploy** — copies `docker-compose.yml` to `DEPLOY_PATH` on the NAS, runs `docker compose up -d web`.
+5. **Schema** — runs `prisma db push` inside the container to apply any schema changes.
 
 ## Required env vars
 
@@ -55,13 +50,34 @@ For first-time NAS setup (storage, SSH key, NAS `.env`) see [docs/truenas.md](tr
 
 ## Docker services
 
-The `docker-compose.yml` at the project root defines three services:
+The `docker-compose.yml` at the project root defines these services:
 
 | Service | Description |
 |---|---|
-| `dmp-web` | Nuxt app — serves the UI and API on port `DMP_PORT` (default 3000) |
+| `dmp` | Nuxt app + Rust scripts — serves the UI/API on port `DMP_PORT` (default 3000) |
 | `dmp-redis` | Redis cache (512 MB LRU) |
 | `dmp-cloudflared` | Cloudflare Tunnel — exposes the app publicly without port-forwarding |
+
+## Running scripts on the NAS
+
+Shell wrappers are deployed alongside `docker-compose.yml`. They invoke binaries inside the container via `docker exec`.
+
+```bash
+cd /mnt/SSD/web/dmp
+./index --from=a --to=z
+./sync --only="Artist Name"
+./audit
+./fix --corrupted
+```
+
+For long-running commands, use tmux on the NAS host:
+
+```bash
+tmux new -s sync
+cd /mnt/SSD/web/dmp
+./index --from=a --to=z && ./sync --from=a --to=z
+# Ctrl+B, D to detach
+```
 
 ## Cloudflare Tunnel
 

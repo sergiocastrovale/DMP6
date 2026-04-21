@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { verifyImage } from '~/server/utils/images'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -105,16 +106,14 @@ export default defineEventHandler(async (event) => {
       id: artist.id,
       name: artist.name,
       slug: artist.slug,
-      image: artist.image,
-      imageUrl: artist.imageUrl,
+      ...verifyImage(artist.image, artist.imageUrl, 'artists'),
     })),
     releases: releases.map(release => ({
       id: release.id,
       title: release.title || release.release?.title || 'Unknown Release',
       releaseType: release.release?.type?.name || null,
       year: release.year,
-      image: release.image,
-      imageUrl: release.imageUrl,
+      ...verifyImage(release.image, release.imageUrl, 'releases'),
       artist: release.artists[0]?.artist ?? null,
     })),
     tracks: tracks.map(track => ({
@@ -127,8 +126,7 @@ export default defineEventHandler(async (event) => {
             id: track.localRelease.id,
             title: track.localRelease.title,
             year: track.localRelease.year,
-            image: track.localRelease.image,
-            imageUrl: track.localRelease.imageUrl,
+            ...verifyImage(track.localRelease.image, track.localRelease.imageUrl, 'releases'),
             artist: track.localRelease.artists[0]?.artist ?? null,
           }
         : null,

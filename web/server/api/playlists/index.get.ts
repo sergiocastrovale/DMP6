@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { verifyImage } from '~/server/utils/images'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -46,9 +47,8 @@ export default defineEventHandler(async (event) => {
     updatedAt: playlist.updatedAt,
     trackCount: playlist._count.tracks,
     // Cover art: mosaic of first 4 track covers
-    coverImages: playlist.tracks.map(pt => ({
-      image: pt.track.localRelease?.image || null,
-      imageUrl: pt.track.localRelease?.imageUrl || null,
-    })),
+    coverImages: playlist.tracks.map(pt =>
+      verifyImage(pt.track.localRelease?.image, pt.track.localRelease?.imageUrl, 'releases'),
+    ),
   }))
 })

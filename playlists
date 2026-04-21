@@ -12,13 +12,6 @@ if [ -f "$BINARY" ]; then
   exec "$BINARY" "$@"
 fi
 
-# Docker fallback (NAS)
-if [ -f "$SCRIPT_DIR/scripts/_docker_run" ]; then
-  source "$SCRIPT_DIR/scripts/_docker_run"
-elif [ -f "$SCRIPT_DIR/_docker_run" ]; then
-  source "$SCRIPT_DIR/_docker_run"
-else
-  echo "Error: Binary not found. Build with: cd scripts/playlists && cargo build --release" >&2
-  exit 1
-fi
-_dmp_run playlists "$@"
+# Docker fallback (NAS — binary is inside the running container)
+TTY_FLAG=""; [ -t 0 ] && TTY_FLAG="-it"
+exec docker exec $TTY_FLAG dmp playlists "$@"

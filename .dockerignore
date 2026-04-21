@@ -1,0 +1,14 @@
+.git/
+scripts/target/
+web/node_modules/
+web/.output/
+web/.nuxt/
+web/.env
+web/.env.*
+web/dump/
+web/public/img/
+venv/
+problems/
+reports/
+*.log
+.DS_Store

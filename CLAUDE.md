@@ -42,8 +42,8 @@ scripts/
   audit/src/main.rs            # Issue detection → DB (IssueCorruptedTpe2, IssueUnsplitArtist, etc.)
   fix/src/main.rs          # Issue remediation → tag writes + DB ops
   playlists/src/main.rs  # Auto-generate genre playlists
-docker-compose.yml             # 3 services: dmp-web, dmp-redis, dmp-cloudflared
-web/Dockerfile                 # Multi-stage Node 20 build
+Dockerfile                     # Unified multi-stage build (Rust + Node → production)
+docker-compose.yml             # 4 services: dmp, dmp-redis, dmp-slskd, dmp-cloudflared
 ./deploy.sh                  # Build → SCP → docker load → restart
 ```
 
@@ -136,13 +136,12 @@ cd scripts && cargo build --release    # Must rebuild manually!
 
 ### Running on NAS (Docker)
 
-SSH into the NAS and run as single-line commands (zsh on TrueNAS doesn't handle multiline):
+Scripts are built into the web container. Run via `docker exec`:
 
 ```bash
-docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest index --from=e --to=fz
+docker exec dmp index --from=e --to=fz
+docker exec dmp sync --from=e --to=fz
 ```
-
-Run the same with `sync --from=e --to=fz` for the MB sync step.
 
 ### Fixing Wrong Artist Pages
 
@@ -258,12 +257,7 @@ Invalidated on track play (`last-played`, `stats`, `artist:{slug}`) and timeline
 ## Deployment
 
 ```bash
-./deploy.sh              # Build + transfer + restart (full)
-./deploy.sh web           # Web image only
-./deploy.sh scripts       # Scripts image only
-./deploy.sh build         # Build locally, no transfer
-./deploy.sh push          # Transfer pre-built images
-./deploy.sh deploy        # Copy docker-compose.yml + restart
+./deploy.sh              # Build + transfer + restart
 ```
 
 NAS target: TrueNAS at `192.168.1.241`, data at `/mnt/SSD/web/dmp/`, music at `/mnt/dmp/music/mainstream`.

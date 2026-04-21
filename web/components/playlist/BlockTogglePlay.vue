@@ -33,7 +33,7 @@ async function play() {
       album: pt.track.release?.title || 'Unknown',
       duration: pt.track.duration || 0,
       artistSlug: pt.track.release?.artist?.slug || null,
-      releaseImage: pt.track.release?.image ? `/img/releases/${pt.track.release.image}` : null,
+      releaseImage: pt.track.release?.image || null,
       releaseImageUrl: pt.track.release?.imageUrl || null,
       localReleaseId: pt.track.release?.id || null,
     }))

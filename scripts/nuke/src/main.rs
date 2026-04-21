@@ -11,6 +11,18 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+/// println that always flushes immediately (Rust buffers stdout when not a TTY)
+macro_rules! log {
+    () => {{
+        writeln!(io::stdout()).ok();
+        io::stdout().flush().ok();
+    }};
+    ($($arg:tt)*) => {{
+        writeln!(io::stdout(), $($arg)*).ok();
+        io::stdout().flush().ok();
+    }};
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "nuke", about = "Delete all data from DMP database and images")]
 struct Args {
@@ -105,7 +117,7 @@ async fn delete_s3_prefix(
 
         let count = identifiers.len();
         if count > 0 {
-            eprint!("\r  Deleting {} objects from {prefix}...", count);
+            log!("  Deleting {} S3 objects from {}...", count, prefix.trim_end_matches('/'));
             let delete = Delete::builder()
                 .set_objects(Some(identifiers))
                 .quiet(true)
@@ -124,10 +136,6 @@ async fn delete_s3_prefix(
         } else {
             break;
         }
-    }
-
-    if deleted_count > 0 {
-        eprint!("\r{}\r", " ".repeat(75));
     }
 
     Ok(deleted_count)
@@ -446,8 +454,11 @@ async fn execute_only_plan(
         for artist in &plan.artists {
             if use_local {
                 if let Some(ref img) = artist.image {
-                    if !img.is_empty() && fs::remove_file(artist_img_dir.join(img)).is_ok() {
-                        local_deleted += 1;
+                    if !img.is_empty() {
+                        log!("  Deleting local artist image: {}", img);
+                        if fs::remove_file(artist_img_dir.join(img)).is_ok() {
+                            local_deleted += 1;
+                        }
                     }
                 }
             }
@@ -456,6 +467,7 @@ async fn execute_only_plan(
                     if !url.is_empty() {
                         if let (Some(ref s3), Some(ref bucket)) = (s3_client, s3_bucket) {
                             if let Some(key) = extract_s3_key(url) {
+                                log!("  Deleting S3 artist image: {}", key);
                                 delete_s3_object(s3, bucket, &key).await;
                                 s3_deleted += 1;
                             }
@@ -469,8 +481,11 @@ async fn execute_only_plan(
     for release in &plan.local_releases {
         if use_local {
             if let Some(ref img) = release.image {
-                if !img.is_empty() && fs::remove_file(release_img_dir.join(img)).is_ok() {
-                    local_deleted += 1;
+                if !img.is_empty() {
+                    log!("  Deleting local release image: {}", img);
+                    if fs::remove_file(release_img_dir.join(img)).is_ok() {
+                        local_deleted += 1;
+                    }
                 }
             }
         }
@@ -479,6 +494,7 @@ async fn execute_only_plan(
                 if !url.is_empty() {
                     if let (Some(ref s3), Some(ref bucket)) = (s3_client, s3_bucket) {
                         if let Some(key) = extract_s3_key(url) {
+                            log!("  Deleting S3 release image: {}", key);
                             delete_s3_object(s3, bucket, &key).await;
                             s3_deleted += 1;
                         }
@@ -651,12 +667,12 @@ async fn main() {
 
     // --only mode: selective artist deletion
     if let Some(ref only) = args.only {
-        println!("{}", "DMP Nuke --only".bright_cyan().bold());
-        println!("{}", "===============".bright_black());
+        log!("{}", "DMP Nuke --only".bright_cyan().bold());
+        log!("{}", "===============".bright_black());
         if args.dry_run {
-            println!("Mode: {}", "DRY RUN (no changes will be made)".yellow().bold());
+            log!("Mode: {}", "DRY RUN (no changes will be made)".yellow().bold());
         }
-        println!();
+        log!();
 
         let pool = match PgPoolOptions::new()
             .max_connections(5)
@@ -679,11 +695,11 @@ async fn main() {
         };
 
         if plan.artists.is_empty() {
-            println!("No artists match '{}'.", only);
+            log!("No artists match '{}'.", only);
             return;
         }
 
-        println!("Artists to delete  : {}", plan.artists.len().to_string().bright_white());
+        log!("Artists to delete  : {}", plan.artists.len().to_string().bright_white());
         for artist in &plan.artists {
             let tag = if plan.target_ids.contains(&artist.id) {
                 "target".bright_white()
@@ -692,20 +708,20 @@ async fn main() {
             } else {
                 "".normal()
             };
-            println!(
+            log!(
                 "  {} {}  {}",
                 "•".bright_black(),
                 artist.name.bright_white(),
                 format!("({}) {}", artist.slug, tag).bright_black()
             );
         }
-        println!("Local releases     : {}", plan.local_releases.len().to_string().bright_white());
-        println!("Local tracks       : {}", plan.track_count.to_string().bright_white());
-        println!("MB releases        : {}", plan.mb_release_ids.len().to_string().bright_white());
-        println!();
+        log!("Local releases     : {}", plan.local_releases.len().to_string().bright_white());
+        log!("Local tracks       : {}", plan.track_count.to_string().bright_white());
+        log!("MB releases        : {}", plan.mb_release_ids.len().to_string().bright_white());
+        log!();
 
         if args.dry_run {
-            println!("{} (dry run — no changes made)", "✓".green());
+            log!("{} (dry run — no changes made)", "✓".green());
             return;
         }
 
@@ -715,16 +731,16 @@ async fn main() {
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
             if input.trim().to_lowercase() != "y" {
-                println!("Aborted.");
+                log!("Aborted.");
                 std::process::exit(0);
             }
-            println!();
+            log!();
         }
 
         let use_s3 = image_storage == "s3" || image_storage == "both";
         let s3_client = if use_s3 { create_s3_client().await } else { None };
 
-        println!("Deleting...");
+        log!("Deleting...");
         match execute_only_plan(
             &pool,
             &plan,
@@ -737,7 +753,7 @@ async fn main() {
         .await
         {
             Ok((local, s3)) => {
-                println!(
+                log!(
                     "  {} {} local image(s), {} S3 object(s) removed",
                     "✓".green(),
                     local,
@@ -752,32 +768,32 @@ async fn main() {
 
         refresh_statistics(&pool).await;
 
-        println!();
-        println!(
+        log!();
+        log!(
             "{} {} artist(s), {} local release(s), {} MB release(s) deleted.",
             "✓".green().bold(),
             plan.artists.len(),
             plan.local_releases.len(),
             plan.mb_release_ids.len()
         );
-        println!("Run ./index && ./sync to re-index the affected artists.");
+        log!("Run ./index && ./sync to re-index the affected artists.");
         return;
     }
 
     // Full wipe mode
-    println!("DMP Database Nuke");
-    println!("=================");
-    println!();
+    log!("DMP Database Nuke");
+    log!("=================");
+    log!();
 
-    println!("WARNING: This will DELETE ALL DATA from the database and images.");
+    log!("WARNING: This will DELETE ALL DATA from the database and images.");
     if args.keep_artist_img {
-        println!("Artist images will be preserved.");
+        log!("Artist images will be preserved.");
     }
-    println!("Database: {}", database_url);
-    println!();
+    log!("Database: {}", database_url);
+    log!();
 
     if args.dry_run {
-        println!("(dry run — no changes made)");
+        log!("(dry run — no changes made)");
         return;
     }
 
@@ -787,10 +803,10 @@ async fn main() {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         if input.trim() != "y" {
-            println!("Aborted.");
+            log!("Aborted.");
             std::process::exit(0);
         }
-        println!();
+        log!();
     }
 
     let pool = match PgPoolOptions::new()
@@ -805,7 +821,7 @@ async fn main() {
         }
     };
 
-    println!("Truncating all tables...");
+    log!("Truncating all tables...");
     let tables = vec![
         "PlaylistTrack",
         "Playlist",
@@ -831,17 +847,18 @@ async fn main() {
     ];
 
     for table in &tables {
-        match sqlx::query(&format!(r#"TRUNCATE TABLE "{}" CASCADE"#, table))
+        log!("  Truncating {}...", table);
+        if let Err(e) = sqlx::query(&format!(r#"TRUNCATE TABLE "{}" CASCADE"#, table))
             .execute(&pool)
             .await
         {
-            Ok(_) => println!("  ✓ {}", table),
-            Err(e) => eprintln!("  ✗ Error truncating {}: {}", table, e),
+            log!("  {} Error truncating {}: {}", "✗".red(), table, e);
         }
     }
+    log!("  {} Truncated {} tables", "✓".green(), tables.len());
 
-    println!();
-    println!("Deleting image files...");
+    log!();
+    log!("Deleting image files...");
 
     let img_dirs: Vec<(&str, PathBuf)> = vec![
         (
@@ -857,31 +874,29 @@ async fn main() {
     let mut local_deleted = 0usize;
     for (label, dir) in &img_dirs {
         if *label == "artists" && args.keep_artist_img {
-            println!("  Skipping artist images (--keep-artist-img)");
+            log!("  Skipping artist images (--keep-artist-img)");
             continue;
         }
         if !dir.exists() {
             continue;
         }
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file()
-                    && path.extension().and_then(|s| s.to_str()) == Some("jpg")
-                {
-                    if fs::remove_file(&path).is_ok() {
-                        local_deleted += 1;
-                    }
+        for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("jpg") {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                log!("  Deleting {}/{}", label, name);
+                if fs::remove_file(&path).is_ok() {
+                    local_deleted += 1;
                 }
             }
         }
     }
-    println!("  ✓ Deleted {} local image(s)", local_deleted);
+    log!("  {} Deleted {} local image(s)", "✓".green(), local_deleted);
 
     let use_s3 = image_storage == "s3" || image_storage == "both";
 
     if use_s3 {
-        println!("Deleting S3 images...");
+        log!("Deleting S3 images...");
         if let Some(s3_client) = create_s3_client().await {
             if let Some(bucket) = &s3_bucket {
                 let prefixes: Vec<&str> = if args.keep_artist_img {
@@ -893,14 +908,24 @@ async fn main() {
                 for prefix in prefixes {
                     match delete_s3_prefix(&s3_client, bucket, prefix).await {
                         Ok(n) => s3_deleted += n,
-                        Err(e) => eprintln!("  ✗ S3 error ({}): {}", prefix, e),
+                        Err(e) => eprintln!("  {} S3 error ({}): {}", "✗".red(), prefix, e),
                     }
                 }
-                println!("  ✓ Deleted {} S3 image(s)", s3_deleted);
+                log!("  {} Deleted {} S3 image(s)", "✓".green(), s3_deleted);
+            } else {
+                log!("  {} Skipped (S3_IMAGE_BUCKET not set)", "–".bright_black());
             }
+        } else {
+            log!("  {} Skipped (S3 credentials not configured)", "–".bright_black());
         }
+    } else {
+        log!(
+            "S3 images: {} (IMAGE_STORAGE={})",
+            "skipped".bright_black(),
+            image_storage.bright_black()
+        );
     }
 
-    println!();
-    println!("Done. Run ./index && ./sync to rebuild.");
+    log!();
+    log!("Done. Run ./index && ./sync to rebuild.");
 }

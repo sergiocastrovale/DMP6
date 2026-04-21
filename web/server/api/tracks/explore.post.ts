@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { verifyImage } from '~/server/utils/images'
 import {
   scoreTrack, weightedRandomPick,
   getPoolCacheKey, getCachedPool, setCachedPool, removeFromPool,
@@ -116,6 +117,7 @@ export default defineEventHandler(async (event) => {
   removeFromPool(cacheKey, pick.track.id)
 
   const t = pick.track
+  const img = verifyImage(t.localRelease?.image, t.localRelease?.imageUrl, 'releases')
   return {
     id: t.id,
     title: t.title || 'Unknown',
@@ -123,8 +125,8 @@ export default defineEventHandler(async (event) => {
     album: t.album || 'Unknown',
     duration: t.duration || 0,
     artistSlug: (t.localRelease as any)?.artists?.[0]?.artist?.slug || null,
-    releaseImage: t.localRelease?.image || null,
-    releaseImageUrl: t.localRelease?.imageUrl || null,
+    releaseImage: img.image,
+    releaseImageUrl: img.imageUrl,
     localReleaseId: t.localReleaseId,
   }
 })

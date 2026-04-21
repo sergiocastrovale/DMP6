@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Fields required by serde Deserialize even if not read directly
+
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

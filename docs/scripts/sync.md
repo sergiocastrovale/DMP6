@@ -62,8 +62,8 @@ After `--delete`, re-running `./sync` (without `--overwrite`) automatically re-s
 
 Adaptive backoff: 250ms–10s per request, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers. Retries up to 10× on 429/503 with exponential backoff.
 
-## NAS One-Liner
+## Running on NAS
 
 ```bash
-docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest sync --from=e --to=fz
+docker exec dmp sync --from=e --to=fz
 ```

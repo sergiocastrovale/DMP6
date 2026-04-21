@@ -451,8 +451,6 @@ pub async fn get_artists_pending_sync(
 pub struct LocalReleaseRow {
     pub id: String,
     pub title: String,
-    pub year: Option<i32>,
-    pub group_key: String,
     pub forced_complete: bool,
 }
 
@@ -460,8 +458,8 @@ pub async fn get_local_releases_for_artist(
     pool: &PgPool,
     artist_id: &str,
 ) -> Result<Vec<LocalReleaseRow>, sqlx::Error> {
-    let rows: Vec<(String, String, Option<i32>, String, bool)> = sqlx::query_as(
-        r#"SELECT lr.id, lr.title, lr.year, lr."groupKey", lr."forcedComplete"
+    let rows: Vec<(String, String, bool)> = sqlx::query_as(
+        r#"SELECT lr.id, lr.title, lr."forcedComplete"
            FROM "LocalRelease" lr
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
            WHERE lra."artistId" = $1
@@ -473,11 +471,9 @@ pub async fn get_local_releases_for_artist(
 
     Ok(rows
         .into_iter()
-        .map(|(id, title, year, group_key, forced_complete)| LocalReleaseRow {
+        .map(|(id, title, forced_complete)| LocalReleaseRow {
             id,
             title,
-            year,
-            group_key,
             forced_complete,
         })
         .collect())
@@ -528,27 +524,3 @@ pub async fn get_local_tracks_for_release(
         .collect())
 }
 
-// ---------------------------------------------------------------------------
-// Mark local release as UNSYNCABLE
-// ---------------------------------------------------------------------------
-
-pub async fn mark_release_unsyncable(
-    pool: &PgPool,
-    local_release_id: &str,
-    reason: &str,
-) -> Result<(), sqlx::Error> {
-    let now = Utc::now().naive_utc();
-    sqlx::query(
-        r#"UPDATE "LocalRelease"
-           SET "matchStatus" = 'UNSYNCABLE'::"ReleaseStatus",
-               "statusReason" = $1,
-               "updatedAt" = $2
-           WHERE id = $3"#,
-    )
-    .bind(reason)
-    .bind(now)
-    .bind(local_release_id)
-    .execute(pool)
-    .await?;
-    Ok(())
-}

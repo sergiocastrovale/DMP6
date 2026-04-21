@@ -13,7 +13,7 @@ use common::{
     config::load_config,
     db::{create_pool, ensure_artist_cached},
     filters::matches_filter,
-    lock::{acquire_lock, clear_stale_lock, release_lock},
+    lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
     progress::index_progress,
     s3::{create_s3_client, upload_to_s3},
     statistics::update_statistics,
@@ -84,9 +84,9 @@ async fn main() {
     let music_dir = config.require_music_dir().to_string();
     let pool = create_pool(&config.database_url).await;
 
-    // Clear stale locks held > 24h
-    if clear_stale_lock(&pool, 24).await {
-        println!("Cleared a stale lock (held > 24h).");
+    // Clear stale locks (held > 10 min = leftover from crash/kill)
+    if clear_stale_lock_minutes(&pool, 10).await {
+        println!("Cleared a stale lock.");
     }
 
     let args_str = format!(
@@ -103,14 +103,35 @@ async fn main() {
         std::process::exit(1);
     }
 
-    // SIGTERM / Ctrl-C handler
+    // SIGTERM / Ctrl-C handler — release lock before exiting
     let shutdown = Arc::new(AtomicBool::new(false));
-    let shutdown_clone = shutdown.clone();
-    tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.ok();
-        shutdown_clone.store(true, Ordering::SeqCst);
-        eprintln!("\nShutdown requested — finishing current folder...");
-    });
+    {
+        let shutdown = shutdown.clone();
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.ok();
+            shutdown.store(true, Ordering::SeqCst);
+            eprintln!("\nShutdown requested — finishing current folder...");
+            // Wait for second Ctrl-C → force exit after releasing lock
+            tokio::signal::ctrl_c().await.ok();
+            release_lock(&pool).await;
+            std::process::exit(1);
+        });
+    }
+    {
+        let shutdown = shutdown.clone();
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            let mut term = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::terminate(),
+            )
+            .expect("SIGTERM handler");
+            term.recv().await;
+            shutdown.store(true, Ordering::SeqCst);
+            release_lock(&pool).await;
+            std::process::exit(0);
+        });
+    }
 
     let project_root = config.project_root.clone();
     let use_local = config.use_local();
@@ -772,43 +793,42 @@ async fn main() {
                     .unwrap_or(true);
 
                 if needs_image {
-                    let out_path = artist_img_dir.join(format!("{}.jpg", artist_id));
-                    if images::use_artist_folder_image(&folder_path, &out_path) {
-                        // Look up slug once for image storage
-                        let slug: Option<String> = sqlx::query_as::<_, (String,)>(
-                            r#"SELECT slug FROM "Artist" WHERE id = $1"#,
-                        )
-                        .bind(artist_id)
-                        .fetch_optional(&pool)
-                        .await
-                        .ok()
-                        .flatten()
-                        .map(|(s,)| s);
+                    let slug: Option<String> = sqlx::query_as::<_, (String,)>(
+                        r#"SELECT slug FROM "Artist" WHERE id = $1"#,
+                    )
+                    .bind(artist_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|(s,)| s);
 
-                        if use_s3 {
-                            if let (Some(ref client), Some(ref bucket), Some(ref public_url), Some(ref artist_slug)) =
-                                (&s3_client, &config.s3_bucket, &config.s3_public_url, &slug)
-                            {
-                                let s3_key = format!("artists/{}.jpg", artist_slug);
-                                if upload_to_s3(client, bucket, &s3_key, &out_path).await.is_ok() {
-                                    let image_url = format!(
-                                        "{}/{}",
-                                        public_url.trim_end_matches('/'),
-                                        s3_key
-                                    );
-                                    sqlx::query(
-                                        r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                                    )
-                                    .bind(&image_url)
-                                    .bind(artist_id)
-                                    .execute(&pool)
-                                    .await
-                                    .ok();
+                    if let Some(ref artist_slug) = slug {
+                        let out_path = artist_img_dir.join(format!("{}.jpg", artist_slug));
+                        if images::use_artist_folder_image(&folder_path, &out_path) {
+                            if use_s3 {
+                                if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
+                                    (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                                {
+                                    let s3_key = format!("artists/{}.jpg", artist_slug);
+                                    if upload_to_s3(client, bucket, &s3_key, &out_path).await.is_ok() {
+                                        let image_url = format!(
+                                            "{}/{}",
+                                            public_url.trim_end_matches('/'),
+                                            s3_key
+                                        );
+                                        sqlx::query(
+                                            r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                        )
+                                        .bind(&image_url)
+                                        .bind(artist_id)
+                                        .execute(&pool)
+                                        .await
+                                        .ok();
+                                    }
                                 }
                             }
-                        }
-                        if use_local {
-                            if let Some(ref artist_slug) = slug {
+                            if use_local {
                                 let filename = format!("{}.jpg", artist_slug);
                                 sqlx::query(
                                     r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
@@ -836,7 +856,7 @@ async fn main() {
         // -----------------------------------------------------------------
         // Delete tracks that no longer exist on disk
         // -----------------------------------------------------------------
-        let deleted_tracks = delete_removed_tracks(&pool, &folder_prefix).await;
+        let deleted_tracks = delete_removed_tracks(&pool, &folder_prefix, &music_dir).await;
 
         // -----------------------------------------------------------------
         // Update totals + lastIndexedAt

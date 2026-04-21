@@ -36,8 +36,9 @@ services:
         condition: service_healthy
 
   web:
-    image: dmp-web:latest
-    container_name: dmp-web
+    image: dmp:latest
+    container_name: dmp
+    hostname: dmp-web
     restart: unless-stopped
     depends_on:
       redis:

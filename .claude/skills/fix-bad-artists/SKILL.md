@@ -103,7 +103,7 @@ Review detected issues in the `/issues` UI — inspect proposed fixes, edit if n
 After any tag-writing fix, resync on the NAS via Docker (values from `.env`: `SSH_KEY_PATH`, `SERVER_USER`, `SERVER_HOST`, `DEPLOY_PATH`):
 
 ```bash
-ssh -i $SSH_KEY_PATH $SERVER_USER@$SERVER_HOST 'docker run --rm --env-file $DEPLOY_PATH/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v $DEPLOY_PATH/img:/app/web/public/img dmp-scripts:latest sync --only="ARTIST1;ARTIST2" --overwrite'
+ssh -i $SSH_KEY_PATH $SERVER_USER@$SERVER_HOST 'docker exec dmp sync --only="ARTIST1;ARTIST2" --overwrite'
 ```
 
 **This takes hours** for artists with large catalogues. Run in background:

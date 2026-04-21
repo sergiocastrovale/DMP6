@@ -50,8 +50,8 @@ Releases are deduplicated by `groupKey`:
 - Does **not** split on `,` (preserves "10,000 Maniacs")
 - Does **not** split on `&` (preserves "Simon & Garfunkel")
 
-## NAS One-Liner
+## Running on NAS
 
 ```bash
-docker run --rm --env-file /mnt/SSD/web/dmp/.env --add-host=host.docker.internal:host-gateway -e PROJECT_ROOT=/app -e MUSIC_DIR=/music -v /mnt/dmp/music/mainstream:/music:ro -v /mnt/SSD/web/dmp/img:/app/web/public/img dmp-scripts:latest index --from=e --to=fz
+docker exec dmp index --from=e --to=fz
 ```

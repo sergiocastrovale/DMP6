@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { verifyImage } from '~/server/utils/images'
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
@@ -119,6 +120,7 @@ export default defineEventHandler(async (event) => {
   for (const mbr of mbReleases) {
     const localRelease = localByMbId.get(mbr.id) || mbr.localReleases[0] || null
     if (localRelease) mbLinkedReleaseIds.add(localRelease.id)
+    const img = verifyImage(localRelease?.image, localRelease?.imageUrl, 'releases')
     releases.push({
       id: mbr.id,
       title: mbr.title,
@@ -127,8 +129,8 @@ export default defineEventHandler(async (event) => {
       typeSlug: mbr.type.slug,
       musicbrainzId: mbr.musicbrainzId,
       status: mbr.status,
-      image: localRelease?.image || null,
-      imageUrl: localRelease?.imageUrl || null,
+      image: img.image,
+      imageUrl: img.imageUrl,
       trackCount: mbr.tracks.length,
       totalPlayCount: localRelease?.totalPlayCount || 0,
       localTrackCount: localRelease?.tracks.length || 0,
@@ -142,6 +144,7 @@ export default defineEventHandler(async (event) => {
   // Add unmatched local releases
   for (const lr of unmatchedLocal) {
     if (mbLinkedReleaseIds.has(lr.id)) continue
+    const unmatchedImg = verifyImage(lr.image, lr.imageUrl, 'releases')
     releases.push({
       id: lr.id,
       title: lr.title,
@@ -150,8 +153,8 @@ export default defineEventHandler(async (event) => {
       typeSlug: 'unmatched',
       musicbrainzId: null,
       status: lr.matchStatus,
-      image: lr.image,
-      imageUrl: lr.imageUrl,
+      image: unmatchedImg.image,
+      imageUrl: unmatchedImg.imageUrl,
       trackCount: 0,
       totalPlayCount: lr.totalPlayCount,
       localTrackCount: lr.tracks.length,
@@ -185,6 +188,7 @@ export default defineEventHandler(async (event) => {
 
   for (const lr of appearsOnCandidates) {
     const mbr = appearsOnMbMap.get(lr.releaseId!)
+    const appearsOnImg = verifyImage(lr.image, lr.imageUrl, 'releases')
     releases.push({
       id: mbr?.id ?? lr.id,
       title: lr.title,
@@ -193,8 +197,8 @@ export default defineEventHandler(async (event) => {
       typeSlug: mbr ? mbr.type.slug : 'appears-on',
       musicbrainzId: null,
       status: mbr?.status ?? lr.matchStatus,
-      image: lr.image,
-      imageUrl: lr.imageUrl,
+      image: appearsOnImg.image,
+      imageUrl: appearsOnImg.imageUrl,
       trackCount: mbr?.tracks.length ?? 0,
       totalPlayCount: lr.totalPlayCount,
       localTrackCount: lr.tracks.length,

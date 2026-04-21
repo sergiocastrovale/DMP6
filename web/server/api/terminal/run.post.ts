@@ -1,5 +1,4 @@
 import { spawn, execSync } from 'child_process'
-import path from 'path'
 import fs from 'fs'
 
 const ALLOWED_COMMANDS = [
@@ -31,7 +30,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: `Command not allowed: ${command}` })
   }
 
-  const projectRoot = path.resolve(process.cwd(), '..')
+  // Binaries are in /usr/local/bin/ (built into container image)
+  const binary = command.replace('./', '')
+  const workDir = process.env.PROJECT_ROOT || '/app'
 
   setResponseHeaders(event, {
     'Content-Type': 'text/event-stream',
@@ -60,11 +61,10 @@ export default defineEventHandler(async (event) => {
     const logFile = `/tmp/dmp-${session}.log`
     const scriptFile = `/tmp/dmp-${session}.sh`
     const safeArgs = args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
-    const binary = `${projectRoot}/${command.replace('./', '')}`
-    const fullCmd = safeArgs ? `"${binary}" ${safeArgs}` : `"${binary}"`
+    const fullCmd = safeArgs ? `${binary} ${safeArgs}` : binary
 
     const script = `#!/bin/bash
-cd "${projectRoot}"
+cd "${workDir}"
 ${fullCmd} 2>&1 | tee "${logFile}"
 echo "DMP_EXIT:$?" >> "${logFile}"
 `
@@ -128,8 +128,8 @@ echo "DMP_EXIT:$?" >> "${logFile}"
 
   // Direct spawn mode (no session — backward compatible path)
   return new Promise<void>((resolve) => {
-    const proc = spawn(command, args, {
-      cwd: projectRoot,
+    const proc = spawn(binary, args, {
+      cwd: workDir,
       env: { ...process.env, NO_COLOR: '1', TERM: 'dumb' },
     })
 

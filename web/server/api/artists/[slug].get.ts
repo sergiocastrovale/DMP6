@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
+import { verifyImage } from '~/server/utils/images'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'public, max-age=600, stale-while-revalidate=60')
@@ -53,12 +54,14 @@ export default defineEventHandler(async (event) => {
       ORDER BY a.name ASC
     `
 
+    const img = verifyImage(artist.image, artist.imageUrl, 'artists')
+
     return {
       id: artist.id,
       name: artist.name,
       slug: artist.slug,
-      image: artist.image,
-      imageUrl: artist.imageUrl,
+      image: img.image,
+      imageUrl: img.imageUrl,
       musicbrainzId: artist.musicbrainzId,
       averageMatchScore: artist.averageMatchScore,
       totalPlayCount: artist.totalPlayCount,
@@ -67,7 +70,10 @@ export default defineEventHandler(async (event) => {
       lastSyncedAt: artist.lastSyncedAt,
       genres: artist.genres,
       urls: artist.urls,
-      relatedArtists,
+      relatedArtists: relatedArtists.map(a => ({
+        ...a,
+        ...verifyImage(a.image, a.imageUrl, 'artists'),
+      })),
     }
   })
 })

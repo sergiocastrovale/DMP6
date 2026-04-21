@@ -33,7 +33,7 @@ function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
       album: t.album || 'Unknown',
       duration: t.duration || 0,
       artistSlug: release?.artistSlug || null,
-      releaseImage: release?.image ? `/img/releases/${release.image}` : null,
+      releaseImage: release?.image || null,
       releaseImageUrl: release?.imageUrl || null,
       localReleaseId: t.localReleaseId,
     }))

@@ -48,8 +48,6 @@ pub enum ReleaseStatus {
 pub struct StatusCheck {
     pub status: ReleaseStatus,
     pub matched_mb_tracks: Vec<(MbTrack, Option<String>)>, // (mb_track, local_track_id)
-    pub local_track_count: usize,
-    pub mb_track_count: usize,
 }
 
 pub fn check_release_status(
@@ -61,8 +59,6 @@ pub fn check_release_status(
         return StatusCheck {
             status: ReleaseStatus::Incomplete,
             matched_mb_tracks: Vec::new(),
-            local_track_count: local_tracks.len(),
-            mb_track_count: 0,
         };
     }
 
@@ -119,8 +115,6 @@ pub fn check_release_status(
     StatusCheck {
         status,
         matched_mb_tracks: matched,
-        local_track_count: local_count,
-        mb_track_count: mb_count,
     }
 }
 
