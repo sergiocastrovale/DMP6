@@ -20,7 +20,12 @@ cd scripts && cargo build --release -p index
 ./index --resume                 # Continue from last checkpoint
 ./index --skip-covers            # Skip cover art extraction
 ./index --threads 4              # Rayon thread count (default 8)
+./index --web                    # Emit PROGRESS:{json} for the web terminal
 ```
+
+## Output modes
+
+Without `--web`, the script prints colored, indented progress (folder headers, `→` steps, `✓` success marks). With `--web`, it emits `PROGRESS:{json}` lines consumed by the web UI progress bar, plus plain text for the terminal panel. The web UI appends `--web` automatically when invoking scripts.
 
 ## Per-Folder Flow
 

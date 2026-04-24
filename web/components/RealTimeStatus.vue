@@ -76,15 +76,15 @@ const progress = computed<ScanProgress | null>(() => {
 })
 
 function runQuickScan() {
-  terminal.run('./sync', ['--quick'])
+  terminal.run('./index', ['--quick'])
 }
 
 function runFullScan() {
-  terminal.run('./sync', [])
+  terminal.run('./refresh', [])
 }
 
 function runSync() {
-  terminal.run('./sync', ['--sync-only'])
+  terminal.run('./sync', [])
 }
 
 function formatRelativeTime(iso: string | null): string {
@@ -197,7 +197,7 @@ onUnmounted(() => {
         >
           <HardDriveDownload :size="20" class="shrink-0 text-amber-500" />
           <div>
-            <p class="text-sm font-medium text-zinc-50">Quick Scan</p>
+            <p class="text-sm font-medium text-zinc-50">Quick Index</p>
             <p class="text-xs text-zinc-500">Changed folders only</p>
           </div>
         </button>
@@ -208,8 +208,8 @@ onUnmounted(() => {
         >
           <RefreshCw :size="20" class="shrink-0 text-amber-500" />
           <div>
-            <p class="text-sm font-medium text-zinc-50">Full Scan</p>
-            <p class="text-xs text-zinc-500">Re-scan entire library</p>
+            <p class="text-sm font-medium text-zinc-50">Full Refresh</p>
+            <p class="text-xs text-zinc-500">Index + MusicBrainz sync</p>
           </div>
         </button>
         <button
@@ -219,8 +219,8 @@ onUnmounted(() => {
         >
           <Play :size="20" class="shrink-0 text-amber-500" />
           <div>
-            <p class="text-sm font-medium text-zinc-50">Sync Metadata</p>
-            <p class="text-xs text-zinc-500">MusicBrainz sync only</p>
+            <p class="text-sm font-medium text-zinc-50">MusicBrainz Sync</p>
+            <p class="text-xs text-zinc-500">Sync metadata only, no index</p>
           </div>
         </button>
       </div>

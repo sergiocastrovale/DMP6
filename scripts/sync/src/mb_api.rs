@@ -18,6 +18,7 @@ pub struct RateLimiter {
     last_request: Instant,
     remaining: Option<u64>,
     reset_at: Option<u64>,
+    web: bool,
 }
 
 impl RateLimiter {
@@ -29,7 +30,12 @@ impl RateLimiter {
             last_request: Instant::now(),
             remaining: None,
             reset_at: None,
+            web: false,
         }
+    }
+
+    pub fn set_web(&mut self, web: bool) {
+        self.web = web;
     }
 
     pub async fn wait(&mut self) {
@@ -129,17 +135,31 @@ pub async fn mb_get(
                 } else {
                     "Rate limited"
                 };
-                eprint!(
-                    "\r\x1b[K      {} - waiting {:.1}s before next attempt ({}/{})...",
-                    reason,
-                    wait_time as f64 / 1000.0,
-                    attempt + 1,
-                    max_attempts - 1
-                );
+                if limiter.web {
+                    println!(
+                        "      {} - waiting {:.1}s before next attempt ({}/{})...",
+                        reason,
+                        wait_time as f64 / 1000.0,
+                        attempt + 1,
+                        max_attempts - 1
+                    );
+                } else {
+                    use std::io::Write;
+                    eprint!(
+                        "\r\x1b[K      {} - waiting {:.1}s before next attempt ({}/{})...",
+                        reason,
+                        wait_time as f64 / 1000.0,
+                        attempt + 1,
+                        max_attempts - 1
+                    );
+                    let _ = std::io::stderr().flush();
+                }
                 sleep(Duration::from_millis(wait_time)).await;
                 continue;
             } else {
-                eprint!("\r\x1b[K");
+                if !limiter.web {
+                    eprint!("\r\x1b[K");
+                }
                 return Err(format!(
                     "MusicBrainz API still unavailable after {} retries (waited up to {}s). Will retry this release next time.",
                     max_attempts,

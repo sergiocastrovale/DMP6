@@ -40,6 +40,7 @@ struct Args {
 struct DeleteConfig {
     database_url: String,
     project_root: String,
+    image_dir: String,
     image_storage: String,
     s3_bucket: Option<String>,
     s3_region: Option<String>,
@@ -89,9 +90,17 @@ fn load_config() -> DeleteConfig {
             .unwrap_or_else(|| ".".to_string())
     });
 
+    let image_dir = std::env::var("IMAGE_DIR").unwrap_or_else(|_| {
+        PathBuf::from(&project_root)
+            .join("web/public/img")
+            .to_string_lossy()
+            .to_string()
+    });
+
     DeleteConfig {
         database_url,
         project_root,
+        image_dir,
         image_storage: std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string()),
         s3_bucket: std::env::var("S3_IMAGE_BUCKET").ok(),
         s3_region: std::env::var("AWS_REGION").ok(),
@@ -325,8 +334,8 @@ async fn execute_plan(
     let use_local = config.image_storage == "local" || config.image_storage == "both";
     let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
 
-    let artist_img_dir = PathBuf::from(&config.project_root).join("web/public/img/artists");
-    let release_img_dir = PathBuf::from(&config.project_root).join("web/public/img/releases");
+    let artist_img_dir = PathBuf::from(&config.image_dir).join("artists");
+    let release_img_dir = PathBuf::from(&config.image_dir).join("releases");
 
     let mut local_deleted = 0usize;
     let mut s3_deleted = 0usize;

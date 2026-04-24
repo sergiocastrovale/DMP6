@@ -23,16 +23,18 @@ pub fn extract_cover_art(path: &Path, output_path: &Path) -> bool {
     };
 
     for tag in tagged_file.tags() {
-        if let Some(pic) = tag.pictures().first() {
+        for pic in tag.pictures() {
             match image::load_from_memory(pic.data()) {
                 Ok(img) => {
                     let resized = img.resize_to_fill(200, 200, FilterType::Triangle);
                     if let Some(parent) = output_path.parent() {
                         fs::create_dir_all(parent).ok();
                     }
-                    return resized.save(output_path).is_ok();
+                    if resized.save(output_path).is_ok() {
+                        return true;
+                    }
                 }
-                Err(_) => return false,
+                Err(_) => continue,
             }
         }
     }

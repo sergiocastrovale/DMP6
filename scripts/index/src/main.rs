@@ -6,7 +6,6 @@ mod nuke;
 
 use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
-use colored::Colorize;
 use common::{
     artists::{is_special_artist_name, split_artists},
     checkpoint::{clear_index_checkpoint, load_index_checkpoint, save_index_checkpoint},
@@ -14,7 +13,7 @@ use common::{
     db::{create_pool, ensure_artist_cached},
     filters::matches_filter,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
-    progress::index_progress,
+    progress::Reporter,
     s3::{create_s3_client, upload_to_s3},
     statistics::update_statistics,
     totals::{update_artist_totals_for_artist, update_release_totals_for_artist},
@@ -71,6 +70,9 @@ struct IndexArgs {
 
     #[arg(long, help = "Override MUSIC_DIR from env")]
     music_dir: Option<String>,
+
+    #[arg(long, help = "Emit PROGRESS:{json} lines for the web terminal (default: pretty console)")]
+    web: bool,
 }
 
 fn has_filter(args: &IndexArgs) -> bool {
@@ -80,13 +82,14 @@ fn has_filter(args: &IndexArgs) -> bool {
 #[tokio::main]
 async fn main() {
     let args = IndexArgs::parse();
+    let reporter = Reporter::new(args.web);
     let config = load_config(args.music_dir.as_deref());
     let music_dir = config.require_music_dir().to_string();
     let pool = create_pool(&config.database_url).await;
 
     // Clear stale locks (held > 10 min = leftover from crash/kill)
     if clear_stale_lock_minutes(&pool, 10).await {
-        println!("Cleared a stale lock.");
+        reporter.warn("Cleared a stale lock.");
     }
 
     let args_str = format!(
@@ -99,7 +102,7 @@ async fn main() {
         args.delete,
     );
     if let Err(e) = acquire_lock(&pool, "index", std::process::id(), &args_str).await {
-        eprintln!("Cannot start: {}", e);
+        reporter.err(&format!("Cannot start: {}", e));
         std::process::exit(1);
     }
 
@@ -136,8 +139,8 @@ async fn main() {
     let project_root = config.project_root.clone();
     let use_local = config.use_local();
     let use_s3 = config.use_s3();
-    let release_img_dir = PathBuf::from(&project_root).join("web/public/img/releases");
-    let artist_img_dir = PathBuf::from(&project_root).join("web/public/img/artists");
+    let release_img_dir = PathBuf::from(&config.image_dir).join("releases");
+    let artist_img_dir = PathBuf::from(&config.image_dir).join("artists");
 
     let s3_client = create_s3_client(&config).await;
 
@@ -148,10 +151,10 @@ async fn main() {
         let from = args.from.as_deref().unwrap_or("");
         let to = args.to.as_deref().unwrap_or("");
         let only = args.only.as_deref().unwrap_or("");
-        println!("Deleting local data for matched artists...");
+        reporter.info("Deleting local data for matched artists...");
         match nuke_local_artists(&pool, from, to, only, &project_root, &s3_client, &config).await {
-            Ok(n) => println!("Deleted {} artist(s).", n),
-            Err(e) => eprintln!("Delete error: {}", e),
+            Ok(n) => reporter.info(&format!("Deleted {} artist(s).", n)),
+            Err(e) => reporter.err(&format!("Delete error: {}", e)),
         }
         release_lock(&pool).await;
         return;
@@ -217,19 +220,46 @@ async fn main() {
                 .iter()
                 .position(|f| f.to_lowercase() >= checkpoint.to_lowercase());
             if let Some(idx) = pos {
-                println!("Resuming from '{}'...", &checkpoint);
+                reporter.info(&format!("Resuming from '{}'...", &checkpoint));
                 artist_folders = artist_folders.split_off(idx);
             }
         }
     }
 
     let total_folders = artist_folders.len();
-    println!(
-        "Indexing {} folder{} in {}",
-        total_folders,
-        if total_folders == 1 { "" } else { "s" },
-        music_dir
+
+    reporter.header("DMP Index");
+    reporter.kv("Music dir", &music_dir);
+    reporter.kv("Threads", &if args.threads > 0 { args.threads.to_string() } else { "8".into() });
+    if args.overwrite {
+        reporter.kv("Mode", "overwrite");
+    } else if args.quick {
+        reporter.kv("Mode", "quick (skip unchanged folders)");
+    }
+    if args.skip_covers {
+        reporter.kv("Covers", "skipped");
+    }
+    if let Some(ref only) = args.only {
+        reporter.kv("Filter", &format!("only '{}'", only));
+    } else if args.from.is_some() || args.to.is_some() {
+        reporter.kv(
+            "Filter",
+            &format!(
+                "{} to {}",
+                args.from.as_deref().unwrap_or(""),
+                args.to.as_deref().unwrap_or("")
+            ),
+        );
+    }
+    reporter.kv(
+        "Folders",
+        &format!(
+            "{}{}",
+            total_folders,
+            if total_folders == 1 { " folder" } else { " folders" }
+        ),
     );
+    reporter.blank();
 
     // Record scan start
     sqlx::query(
@@ -264,12 +294,7 @@ async fn main() {
             continue;
         }
 
-        println!(
-            "\u{1F4C2} {} [{}/{}]",
-            folder_name.truecolor(130, 180, 255).bold(),
-            folder_idx + 1,
-            total_folders,
-        );
+        reporter.item("", folder_name, folder_idx + 1, total_folders);
 
         // -----------------------------------------------------------------
         // Walk all audio files in this folder recursively
@@ -294,10 +319,11 @@ async fn main() {
 
         let file_count = paths.len();
         if file_count == 0 {
-            println!("    {} 0 files", "→".bright_black());
+            reporter.sub_step("0 files");
             save_index_checkpoint(&pool, folder_name).await.ok();
             continue;
         }
+        reporter.step(&format!("Extracting metadata ({} files)...", file_count));
         total_files += file_count as u64;
 
         // -----------------------------------------------------------------
@@ -356,11 +382,7 @@ async fn main() {
         error_total += folder_errors;
 
         if extracted.is_empty() {
-            println!(
-                "    {} {} files, all failed to parse",
-                "→".bright_black(),
-                file_count
-            );
+            reporter.sub_step(&format!("{} files, all failed to parse", file_count));
             save_index_checkpoint(&pool, folder_name).await.ok();
             continue;
         }
@@ -485,7 +507,7 @@ async fn main() {
             {
                 Ok(id) => id,
                 Err(e) => {
-                    eprintln!("[INDEX] DB error (release '{}'): {}", album_name, e);
+                    reporter.err(&format!("DB error (release '{}'): {}", album_name, e));
                     error_total += 1;
                     continue;
                 }
@@ -592,7 +614,7 @@ async fn main() {
                     batch_ensure_track_artists(&pool, &resolved).await.ok();
                 }
                 Err(e) => {
-                    eprintln!("[INDEX] Batch upsert error for '{}': {}", folder_name, e);
+                    reporter.err(&format!("Batch upsert error for '{}': {}", folder_name, e));
                     error_total += batch_tracks.len() as u64;
                 }
             }
@@ -656,13 +678,17 @@ async fn main() {
             if folder_errors > 0 {
                 parts.push(format!("{} errors", folder_errors));
             }
-            println!("     {} {}", "✓".green(), parts.join(", "));
+            reporter.ok(&parts.join(", "));
         }
 
         // -----------------------------------------------------------------
         // Cover art: embedded
         // -----------------------------------------------------------------
         if !args.skip_covers && !releases_needing_art.is_empty() {
+            reporter.step(&format!(
+                "Extracting artwork ({} releases)...",
+                releases_needing_art.len()
+            ));
             let art_entries: Vec<_> = releases_needing_art.iter().collect();
             let extracted_covers: Vec<(String, PathBuf, bool)> = art_entries
                 .par_iter()
@@ -885,9 +911,10 @@ async fn main() {
             }
         }
         save_index_checkpoint(&pool, folder_name).await.ok();
+        update_statistics(&pool).await.ok();
 
         // Emit structured progress for terminal UI
-        index_progress(
+        reporter.index_progress(
             folder_name,
             folder_idx + 1,
             total_folders,
@@ -904,22 +931,22 @@ async fn main() {
     if !shutdown.load(Ordering::SeqCst) && !has_filter(&args) {
         let del = detect_deleted_folders(&pool, &scanned_folders, &config).await;
         if del.tracks_deleted > 0 {
-            println!(
+            reporter.info(&format!(
                 "Removed {} track(s), {} release(s), {} artist(s) for deleted folders.",
                 del.tracks_deleted, del.releases_deleted, del.artists_deleted
-            );
+            ));
         }
     }
 
     // -------------------------------------------------------------------------
     // Finalization
     // -------------------------------------------------------------------------
-    println!();
-    println!("Done.");
-    println!(
+    reporter.blank();
+    reporter.done("Done.");
+    reporter.info(&format!(
         "  Files: {} | New: {} | Updated: {} | Skipped: {} | Errors: {}",
         total_files, new_total, updated_total, skipped_total, error_total
-    );
+    ));
 
     clear_index_checkpoint(&pool).await.ok();
     update_statistics(&pool).await.ok();

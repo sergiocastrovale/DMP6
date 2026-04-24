@@ -1,6 +1,6 @@
 use crate::mb_types::MbReleaseGroup;
 
-const SKIP_PRIMARY: &[&str] = &["Single", "EP"];
+const SKIP_PRIMARY: &[&str] = &["Single"];
 const SKIP_SECONDARY: &[&str] = &["Bootleg", "Demo", "Interview", "Broadcast", "Mixtape/Street"];
 
 pub fn should_skip_release(rg: &MbReleaseGroup) -> bool {

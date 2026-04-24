@@ -9,44 +9,6 @@ Personal music library web app. Scans local audio files, matches against MusicBr
 - **Deployment**: Docker on TrueNAS NAS via `./deploy.sh`
 - **Optional**: Redis cache (ioredis), S3 image storage, Cloudflare Tunnel
 
-## Project Layout
-
-```
-web/                          # Nuxt app
-  nuxt.config.ts
-  prisma/schema.prisma        # DB schema (source of truth)
-  server/
-    api/                      # ~35 API endpoints
-    middleware/auth.ts         # Session-based auth (in-memory, single-user)
-    middleware/images.ts       # Serves /img/* with cache headers
-    utils/prisma.ts            # Singleton PrismaClient
-    utils/redis.ts             # Optional Redis, graceful fallback
-    utils/cache.ts             # cachedResponse() / invalidateCache()
-    utils/auth.ts              # createSession / validateSession
-    utils/explore.ts           # 4-slider track scoring algorithm
-  stores/
-    player.ts                  # Audio playback, queue, shuffle modes, explorer
-    browse.ts                  # Artist grid with filters/pagination
-    terminal.ts                # In-app terminal for running scripts
-  composables/
-    useImageUrl.ts             # Resolves S3 vs local image paths
-    useAuth.ts                 # Login/logout
-  components/                  # ~45 Vue components (see below)
-  pages/                       # 11 routes (see below)
-  types/                       # All TypeScript interfaces
-  helpers/constants.ts         # Statuses, link icons, limits
-scripts/
-  sync/src/main.rs             # Index local files + MusicBrainz sync (~5000 lines)
-  analysis/src/main.rs         # Metadata quality scanner, HTML reports
-  nuke/src/main.rs             # DB reset (full wipe)
-  audit/src/main.rs            # Issue detection → DB (IssueCorruptedTpe2, IssueUnsplitArtist, etc.)
-  fix/src/main.rs          # Issue remediation → tag writes + DB ops
-  playlists/src/main.rs  # Auto-generate genre playlists
-Dockerfile                     # Unified multi-stage build (Rust + Node → production)
-docker-compose.yml             # 4 services: dmp, dmp-redis, dmp-slskd, dmp-cloudflared
-./deploy.sh                  # Build → SCP → docker load → restart
-```
-
 ## Data Model
 
 Dual tree linked by match IDs:
@@ -69,26 +31,54 @@ Link: LocalReleaseTrack.mbTrackId → MusicBrainzReleaseTrack.id
 - `PlaylistType`: MANUAL | GENRE
 - Releases deduplicated by `groupKey` (unique): `"mb:{mbAlbumId}"` or `"meta:{slugTitle}:{year}:{slugArtist}"`
 
-## Key Conventions
+## Standards
 
-- **Zero custom CSS** — Tailwind utility classes only, no exceptions
-- **Icons**: `lucide-vue-next` only
-- **Prisma singleton**: `web/server/utils/prisma.ts` — the only place to instantiate PrismaClient
+### Coding standards
+
+- Never write comments in HTML
+- Prefer arrow functions in every context
+- Always wrap statements around {}: 
+
+```javascript
+# WRONG
+if (a) return b
+
+# CORRECT
+if (a) {
+  return b
+}
+```
+
+- Boyscout rule: if you find any wrong conventions as you go through the files, apply the correct ones (e.g. one-line if statements)
+- Split big Vue contexts into modular components; prefer slim pages with many imported components
+- Add meaningful constants in helpers/constants.ts
+- Add multi-purpose functions in helpers/functions.ts
+- Prefer ternary operators:
+
+```javascript
+# WRONG
+if (a) {
+  return b
+}
+
+return c
+
+# CORRECT
+return a ? b : c
+```
+
+- In Vue files, always organize the script code by context: 1. composables 2. static variables 3. watchers 4. computed 5. refs 5. methods
+- Zero custom CSS: Tailwind utility classes only, no exceptions
+- Icons: `lucide-vue-next` only
+- Prisma singleton: `web/server/utils/prisma.ts` is the only place to instantiate PrismaClient
+
+### Project conventions
+
 - **Images**: Always use `useImageUrl()` composable to resolve artist/release images
 - **Types**: All TypeScript definitions in `web/types/`
-- **No scripts code in web app** — scripts are separate Rust binaries
-- **Metadata is source of truth** — never use filesystem paths/folder names for artist, album, year
+- **No scripts code in web app** — scripts are separate Rust binaries located in /scripts
+- **Metadata is source of truth** — never use filesystem paths/folder names for artist, album, year or any other information
 - **MusicBrainz IDs are definitive** — when embedded MB IDs exist in tags, use them directly without re-verification
-
-## Dev Commands
-
-```bash
-cd web && pnpm dev              # Dev server (localhost:3000)
-cd web && pnpm db:push          # Apply schema changes (no migrations, just push)
-cd web && pnpm db:studio        # Prisma Studio GUI
-cd web && pnpm backup           # Dump DB to web/dump/
-cd web && pnpm restore          # Restore latest dump
-```
 
 ## Scripts
 
@@ -133,15 +123,7 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./playlists --report   # Show genre → group assignments
 ./playlists --group rock # Update single group
 ```
-
-### Running on NAS (Docker)
-
-Scripts are built into the web container. Run via `docker exec`:
-
-```bash
-docker exec dmp index --from=e --to=fz
-docker exec dmp sync --from=e --to=fz
-```
+See the docs/scripts folder for context on each script.
 
 ### Fixing Wrong Artist Pages
 
@@ -152,16 +134,6 @@ When browsing reveals artists with bad names (track numbers, paths, garbage):
 3. **Fix**: `./fix --corrupted` / `./fix --unsplit` / `./fix --orphans` etc.
 4. **Refresh**: `./refresh --only="..."` for file-writing fix types
 5. **Iterate**: Re-run audit until clean
-
-## Script Architecture
-
-See [`docs/scripts/sync.md`](docs/scripts/sync.md) for full documentation. Key points:
-
-- **index**: walk folders (jwalk), extract metadata (rayon + lofty), batch upsert, sets `lastIndexedAt`
-- **sync**: queries artists where `lastIndexedAt > lastSyncedAt`, 6-step MB matching, rate-limited API
-- **Cleanup**: orphan artists + empty releases deleted automatically during `./index` and `./sync` runs
-- **Rate limiting**: MusicBrainz API adaptive backoff 250ms-10s
-- **Key functions**: `names_are_similar()` (Jaccard ≥ 0.5), `normalize_title()`, `split_artists()`
 
 ## API Endpoints
 
@@ -212,21 +184,6 @@ See [`docs/scripts/sync.md`](docs/scripts/sync.md) for full documentation. Key p
 | `/issues/[type]` | Per-type issue table — select, edit proposed fixes, queue for fix |
 | `/login` | Auth page |
 
-## Component Organization
-
-```
-components/
-  layout/          # Logo, SearchBar, SearchDropdown, Sidebar, MobileNav
-  browse/          # FilterLetter, FilterSort, FilterGenre, FilterScore, ArtistCard, ArtistGrid
-  artist/          # ArtistHeader, ArtistReleases, Cover, Initial, Genres, Links, TotalPlays, etc.
-  release/         # ReleaseCover, StatusBadge, TracksTable
-  home/            # ReleaseGrid, PlaylistGrid
-  player/          # AudioPlayer
-  terminal/        # Output
-  ui/              # Skeleton, ReleaseSkeleton
-  # Root-level: TrackList, Dialog, Dropdown, ButtonDropdown, Popover, Slider, Switch, ToggleFavorite
-```
-
 ## Player Store
 
 The player (`stores/player.ts`) supports 5 shuffle modes:
@@ -254,19 +211,25 @@ Optional Redis sidecar. Falls through to DB silently if unavailable.
 
 Invalidated on track play (`last-played`, `stats`, `artist:{slug}`) and timeline refresh.
 
-## Deployment
-
-```bash
-./deploy.sh              # Build + transfer + restart
-```
+## NAS integration (production server)
 
 NAS target: TrueNAS at `192.168.1.241`, data at `/mnt/SSD/web/dmp/`, music at `/mnt/dmp/music/mainstream`.
 
-## Environment Variables
+## Deployment
 
-Essential: `MUSIC_DIR`, `DATABASE_URL`, `PROJECT_ROOT`
-Optional: `REDIS_URL`, `IMAGE_STORAGE` (local/s3/both), `FANART_API_KEY`
-Deployment: `SERVER_HOST`, `SERVER_USER`, `DEPLOY_PATH`, `SSH_KEY_PATH`, `ADMIN_USER`, `ADMIN_PASSWORD`
-S3: `S3_IMAGE_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_PUBLIC_URL`
+```bash
+./deploy.sh  # Build + transfer + restart
+```
+
+### Running scripts
+
+Scripts are built into the docker container and copied to the NAS folder. You can run them directly:
+
+```bash
+./index --from=e --to=fz
+./sync --from=e --to=fz
+```
+
+## Environment Variables
 
 See `web/.env.example` for full documentation.

@@ -1,10 +1,9 @@
 use clap::Parser;
-use colored::Colorize;
 use common::config::load_config;
 use common::db::create_pool;
 use common::filters::matches_filter;
 use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
-use common::progress::sync_progress;
+use common::progress::Reporter;
 use common::s3::create_s3_client;
 use common::statistics::update_statistics;
 use common::types::TrackMeta;
@@ -51,6 +50,10 @@ struct SyncArgs {
     delete: bool,
     #[arg(long)]
     verbose: bool,
+    /// Emit PROGRESS:{json} lines and plain output for the web terminal.
+    /// Default is pretty colored console output.
+    #[arg(long)]
+    web: bool,
 }
 
 fn local_track_to_meta(t: &LocalTrackRow) -> TrackMeta {
@@ -82,11 +85,12 @@ fn local_track_to_meta(t: &LocalTrackRow) -> TrackMeta {
 #[tokio::main]
 async fn main() {
     let args = SyncArgs::parse();
+    let reporter = Reporter::new(args.web);
     let config = load_config(None);
     let pool = create_pool(&config.database_url).await;
 
     if clear_stale_lock_minutes(&pool, 10).await {
-        eprintln!("Cleared stale scan lock.");
+        reporter.warn("Cleared stale scan lock.");
     }
 
     let pid = std::process::id();
@@ -98,7 +102,7 @@ async fn main() {
     });
 
     if let Err(e) = acquire_lock(&pool, "sync", pid, &lock_args.to_string()).await {
-        eprintln!("Cannot start: {}", e);
+        reporter.err(&format!("Cannot start: {}", e));
         std::process::exit(1);
     }
 
@@ -140,6 +144,7 @@ async fn main() {
         .expect("HTTP client");
 
     let mut limiter = RateLimiter::new();
+    limiter.set_web(args.web);
 
     if args.delete {
         match nuke_mb_data(
@@ -153,12 +158,35 @@ async fn main() {
         )
         .await
         {
-            Ok(n) => eprintln!("Nuked MB data for {} artists.", n),
-            Err(e) => eprintln!("Nuke error: {}", e),
+            Ok(n) => reporter.info(&format!("Nuked MB data for {} artists.", n)),
+            Err(e) => reporter.err(&format!("Nuke error: {}", e)),
         }
         release_lock(&pool).await;
         return;
     }
+
+    reporter.header("DMP Sync");
+    reporter.kv(
+        "Mode",
+        if args.overwrite {
+            "overwrite (re-sync all matched)"
+        } else {
+            "pending (lastIndexedAt > lastSyncedAt)"
+        },
+    );
+    if let Some(ref only) = args.only {
+        reporter.kv("Filter", &format!("only '{}'", only));
+    } else if args.from.is_some() || args.to.is_some() {
+        reporter.kv(
+            "Filter",
+            &format!(
+                "{} to {}",
+                args.from.as_deref().unwrap_or(""),
+                args.to.as_deref().unwrap_or("")
+            ),
+        );
+    }
+    reporter.blank();
 
     let artists: Vec<ArtistSyncRow> = if args.overwrite {
         let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
@@ -198,7 +226,8 @@ async fn main() {
     };
 
     let total = artists.len();
-    eprintln!("Syncing {} artist(s)...", total);
+    reporter.info(&format!("Syncing {} artist(s)...", total));
+    reporter.blank();
 
     let mut release_type_cache: HashMap<String, String> = HashMap::new();
     let mut genre_cache: HashMap<String, String> = HashMap::new();
@@ -208,20 +237,20 @@ async fn main() {
             break;
         }
 
-        sync_progress(&artist.name, i + 1, total, "syncing");
-        eprint!("  [{}] {}...", i + 1, artist.name);
+        reporter.sync_progress(&artist.name, i + 1, total, "syncing");
+        reporter.item("", &artist.name, i + 1, total);
 
         let local_releases = match get_local_releases_for_artist(&pool, &artist.id).await {
             Ok(r) => r,
             Err(e) => {
-                eprintln!(" error: {}", e);
+                reporter.err(&format!("DB error: {}", e));
                 continue;
             }
         };
 
         if local_releases.is_empty() {
-            eprintln!(" skipped (no releases)");
-            sync_progress(&artist.name, i + 1, total, "skipped");
+            reporter.skip("No local releases — skipped");
+            reporter.sync_progress(&artist.name, i + 1, total, "skipped");
             continue;
         }
 
@@ -239,6 +268,7 @@ async fn main() {
         let sample_refs: Vec<&TrackMeta> = sample_metas.iter().collect();
 
         // Artist MB match
+        reporter.step("Searching MusicBrainz...");
         let mb_artist = if let Some(ref existing_id) = artist.mb_id {
             if !existing_id.is_empty() && !args.overwrite {
                 match mb_api::mb_lookup_artist(&http_client, existing_id, &mut limiter).await {
@@ -261,10 +291,13 @@ async fn main() {
         };
 
         let mb_artist = match mb_artist {
-            Some(m) => m,
+            Some(m) => {
+                reporter.sub_ok(&format!("Found: {} ({})", m.name, m.id));
+                m
+            }
             None => {
-                eprintln!(" no MB match");
-                sync_progress(&artist.name, i + 1, total, "no_match");
+                reporter.sub_step("No MB match");
+                reporter.sync_progress(&artist.name, i + 1, total, "no_match");
                 let now = chrono::Utc::now().naive_utc();
                 sqlx::query(
                     r#"UPDATE "Artist" SET "lastSyncedAt" = $1, "updatedAt" = $1 WHERE id = $2"#,
@@ -279,10 +312,11 @@ async fn main() {
         };
 
         // Artist detail (genres, URLs)
+        reporter.step("Fetching artist details...");
         let detail = match mb_api::mb_get_artist_detail(&http_client, &mb_artist.id, &mut limiter).await {
             Ok(d) => d,
             Err(e) => {
-                eprintln!(" detail error: {}", e);
+                reporter.err(&format!("Detail error: {}", e));
                 continue;
             }
         };
@@ -311,9 +345,15 @@ async fn main() {
             .filter_map(|r| r.url.as_ref().map(|u| (r.relation_type.clone(), u.resource.clone())))
             .collect();
         batch_upsert_artist_urls(&pool, &artist.id, &urls).await.ok();
+        reporter.sub_ok(&format!(
+            "Saved {} URLs, {} genres",
+            urls.len(),
+            artist_genre_ids.len()
+        ));
 
         // Artist image — skip if already present in DB (image or imageUrl set)
         if !args.skip_artist_img && !artist.has_image {
+            reporter.sub_step("Downloading artist image...");
             if let Ok(true) = download_artist_image(
                 &http_client,
                 &detail,
@@ -324,6 +364,7 @@ async fn main() {
             )
             .await
             {
+                reporter.sub_ok("Artist image downloaded");
                 if config.use_local() {
                     let filename = format!("{}.jpg", &artist.slug);
                     sqlx::query(
@@ -356,11 +397,15 @@ async fn main() {
         }
 
         // Release groups
+        reporter.step("Fetching releases...");
         let release_groups =
             match mb_api::mb_get_release_groups(&http_client, &mb_artist.id, &mut limiter).await {
-                Ok(rgs) => rgs,
+                Ok(rgs) => {
+                    reporter.sub_ok(&format!("Found {} release groups", rgs.len()));
+                    rgs
+                }
                 Err(e) => {
-                    eprintln!(" release groups error: {}", e);
+                    reporter.err(&format!("Release groups error: {}", e));
                     vec![]
                 }
             };
@@ -382,7 +427,7 @@ async fn main() {
                 Some(r) => r,
                 None => {
                     if args.verbose {
-                        eprintln!("\n    Skipped: {} (no MB match)", local_release.title);
+                        reporter.skip(&format!("{} (no MB match)", local_release.title));
                     }
                     continue;
                 }
@@ -474,7 +519,7 @@ async fn main() {
                 .collect();
             link_local_tracks_to_mb(&pool, &track_links).await.ok();
 
-            update_local_release_match(&pool, &local_release.id, &mb_db_id, status_str, None)
+            update_local_release_match(&pool, &local_release.id, &mb_db_id, status_str)
                 .await
                 .ok();
 
@@ -543,18 +588,19 @@ async fn main() {
             .await
             .ok();
 
-        let synced_label = if score_count > 0 {
-            format!("{} release(s)", score_count).green().to_string()
+        if score_count > 0 {
+            reporter.ok(&format!("Synced {} release(s)", score_count));
         } else {
-            "0 releases".yellow().to_string()
-        };
-        eprintln!(" {}", synced_label);
-        sync_progress(&artist.name, i + 1, total, "done");
+            reporter.warn("Synced 0 releases");
+        }
+        reporter.sync_progress(&artist.name, i + 1, total, "done");
+        update_statistics(&pool).await.ok();
     }
 
     cleanup_ghost_artists(&pool, &config).await.ok();
     update_statistics(&pool).await.ok();
     release_lock(&pool).await;
 
-    eprintln!("{}", "Sync complete.".green());
+    reporter.blank();
+    reporter.done("Sync complete.");
 }

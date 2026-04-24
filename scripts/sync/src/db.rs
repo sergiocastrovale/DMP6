@@ -92,12 +92,12 @@ pub async fn upsert_mb_release(
     let row: (String,) = sqlx::query_as(
         r#"INSERT INTO "MusicBrainzRelease"
              (id, title, "typeId", year, "musicbrainzId", status, "statusReason", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6::\"ReleaseStatus\", $7, $8, $8)
+           VALUES ($1, $2, $3, $4, $5, $6::"ReleaseStatus", $7, $8, $8)
            ON CONFLICT ("musicbrainzId") DO UPDATE SET
              title = EXCLUDED.title,
              "typeId" = EXCLUDED."typeId",
              year = COALESCE(EXCLUDED.year, "MusicBrainzRelease".year),
-             status = EXCLUDED.status::\"ReleaseStatus\",
+             status = EXCLUDED.status::"ReleaseStatus",
              "statusReason" = EXCLUDED."statusReason",
              "updatedAt" = EXCLUDED."updatedAt"
            RETURNING id"#,
@@ -274,20 +274,17 @@ pub async fn update_local_release_match(
     local_release_id: &str,
     mb_release_id: &str,
     status: &str,
-    status_reason: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     let now = Utc::now().naive_utc();
     sqlx::query(
         r#"UPDATE "LocalRelease"
            SET "releaseId" = $1,
-               "matchStatus" = $2::\"ReleaseStatus\",
-               "statusReason" = $3,
-               "updatedAt" = $4
-           WHERE id = $5"#,
+               "matchStatus" = $2::"ReleaseStatus",
+               "updatedAt" = $3
+           WHERE id = $4"#,
     )
     .bind(mb_release_id)
     .bind(status)
-    .bind(status_reason)
     .bind(now)
     .bind(local_release_id)
     .execute(pool)

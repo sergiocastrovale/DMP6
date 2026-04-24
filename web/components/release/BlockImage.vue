@@ -34,6 +34,6 @@ const props = withDefaults(defineProps<{
 })
 
 const { releaseImage } = useImageUrl()
-
+console.log(props.release)
 const imageUrl = computed(() => props.release ? releaseImage(props.release) : null)
 </script>

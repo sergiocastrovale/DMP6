@@ -14,11 +14,13 @@ import {
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 
-const collapsed = ref(false)
 const { logout } = useAuth()
 const player = usePlayerStore()
+const route = useRoute()
 
-const allNavItems = [
+const collapsed = ref(false)
+
+const navItems = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/browse', label: 'Browse', icon: Library },
   { to: '/explore', label: 'Explore', icon: Compass },
@@ -27,19 +29,19 @@ const allNavItems = [
   { to: '/favorites', label: 'Favorites', icon: Heart },
 ]
 
-const navItems = computed(() => allNavItems)
 
-const route = useRoute()
+const isActive = (path: string) => {
+  if (path === '/') {
+    return route.path === '/'
+  }
 
-function isActive(path: string) {
-  if (path === '/') return route.path === '/'
   return route.path.startsWith(path)
 }
 </script>
 
 <template>
   <aside
-    :data-collapsed="collapsed || undefined"
+    :data-collapsed="collapsed"
     class="group/sidebar fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-zinc-800 bg-zinc-950 transition-all duration-200"
     :class="collapsed ? 'w-16' : 'w-56'"
   >
@@ -47,7 +49,7 @@ function isActive(path: string) {
     <div class="flex h-14 items-center justify-between px-3">
       <LayoutLogo />
       <button
-        class="rounded-md p-1 text-zinc-400 hover:text-zinc-50 transition-opacity duration-200 group-data-[collapsed]/sidebar:hidden"
+        class="rounded-md p-1 text-zinc-400 hover:text-zinc-50 transition-opacity duration-200 group-data-collapsed/sidebar:hidden"
         @click="collapsed = !collapsed"
       >
         <PanelLeftClose :size="18" />
@@ -75,7 +77,7 @@ function isActive(path: string) {
         "
       >
         <component :is="item.icon" :size="20" class="shrink-0" />
-        <span class="transition-opacity duration-200 group-data-[collapsed]/sidebar:hidden">
+        <span class="transition-opacity duration-200 group-data-collapsed/sidebar:hidden">
           {{ item.label }}
         </span>
       </NuxtLink>
@@ -93,7 +95,7 @@ function isActive(path: string) {
         "
       >
         <BarChart3 :size="20" class="shrink-0" />
-        <span class="transition-opacity duration-200 group-data-[collapsed]/sidebar:hidden">
+        <span class="transition-opacity duration-200 group-data-collapsed/sidebar:hidden">
           Statistics
         </span>
       </NuxtLink>
@@ -107,7 +109,7 @@ function isActive(path: string) {
         "
       >
         <Settings :size="20" class="shrink-0" />
-        <span class="transition-opacity duration-200 group-data-[collapsed]/sidebar:hidden">
+        <span class="transition-opacity duration-200 group-data-collapsed/sidebar:hidden">
           Settings
         </span>
       </NuxtLink>
@@ -116,7 +118,7 @@ function isActive(path: string) {
         @click="logout"
       >
         <LogOut :size="20" class="shrink-0" />
-        <span class="transition-opacity duration-200 group-data-[collapsed]/sidebar:hidden">
+        <span class="transition-opacity duration-200 group-data-collapsed/sidebar:hidden">
           Sign out
         </span>
       </button>

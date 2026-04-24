@@ -75,8 +75,8 @@ pub async fn download_cover_art(
     config: &Config,
 ) -> Result<bool, String> {
     let s3_key = format!("releases/{}.jpg", mb_release_id);
-    let local_path = PathBuf::from(project_root)
-        .join("web/public/img/releases")
+    let local_path = PathBuf::from(&config.image_dir)
+        .join("releases")
         .join(format!("{}.jpg", mb_release_id));
 
     if config.use_local() && local_path.exists() {
@@ -221,8 +221,8 @@ pub async fn download_artist_image(
     config: &Config,
 ) -> Result<bool, String> {
     let s3_key = format!("artists/{}.jpg", artist_slug);
-    let local_path = PathBuf::from(project_root)
-        .join("web/public/img/artists")
+    let local_path = PathBuf::from(&config.image_dir)
+        .join("artists")
         .join(format!("{}.jpg", artist_slug));
 
     if config.use_local() && local_path.exists() {

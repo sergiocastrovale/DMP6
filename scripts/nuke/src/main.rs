@@ -435,7 +435,7 @@ async fn build_only_plan(pool: &PgPool, only: &str) -> Result<OnlyPlan, sqlx::Er
 async fn execute_only_plan(
     pool: &PgPool,
     plan: &OnlyPlan,
-    project_root: &str,
+    image_dir: &str,
     image_storage: &str,
     s3_client: &Option<S3Client>,
     s3_bucket: &Option<String>,
@@ -444,8 +444,8 @@ async fn execute_only_plan(
     let use_local = image_storage == "local" || image_storage == "both";
     let use_s3 = image_storage == "s3" || image_storage == "both";
 
-    let artist_img_dir = PathBuf::from(project_root).join("web/public/img/artists");
-    let release_img_dir = PathBuf::from(project_root).join("web/public/img/releases");
+    let artist_img_dir = PathBuf::from(image_dir).join("artists");
+    let release_img_dir = PathBuf::from(image_dir).join("releases");
 
     let mut local_deleted = 0usize;
     let mut s3_deleted = 0usize;
@@ -663,6 +663,12 @@ async fn main() {
 
     let image_storage =
         std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
+    let image_dir = std::env::var("IMAGE_DIR").unwrap_or_else(|_| {
+        PathBuf::from(&project_root)
+            .join("web/public/img")
+            .to_string_lossy()
+            .to_string()
+    });
     let s3_bucket = std::env::var("S3_IMAGE_BUCKET").ok();
 
     // --only mode: selective artist deletion
@@ -744,7 +750,7 @@ async fn main() {
         match execute_only_plan(
             &pool,
             &plan,
-            &project_root,
+            &image_dir,
             &image_storage,
             &s3_client,
             &s3_bucket,
@@ -861,14 +867,8 @@ async fn main() {
     log!("Deleting image files...");
 
     let img_dirs: Vec<(&str, PathBuf)> = vec![
-        (
-            "releases",
-            PathBuf::from(&project_root).join("web/public/img/releases"),
-        ),
-        (
-            "artists",
-            PathBuf::from(&project_root).join("web/public/img/artists"),
-        ),
+        ("releases", PathBuf::from(&image_dir).join("releases")),
+        ("artists", PathBuf::from(&image_dir).join("artists")),
     ];
 
     let mut local_deleted = 0usize;

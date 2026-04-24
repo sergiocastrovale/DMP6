@@ -4,6 +4,7 @@ pub struct Config {
     pub music_dir: Option<String>,
     pub database_url: String,
     pub project_root: String,
+    pub image_dir: String,
     pub image_storage: String,
     pub s3_bucket: Option<String>,
     pub s3_region: Option<String>,
@@ -70,10 +71,18 @@ pub fn load_config(music_dir_override: Option<&str>) -> Config {
             .unwrap_or_else(|| ".".to_string())
     });
 
+    let image_dir = std::env::var("IMAGE_DIR").unwrap_or_else(|_| {
+        PathBuf::from(&project_root)
+            .join("web/public/img")
+            .to_string_lossy()
+            .to_string()
+    });
+
     Config {
         music_dir,
         database_url,
         project_root,
+        image_dir,
         image_storage: std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string()),
         s3_bucket: std::env::var("S3_IMAGE_BUCKET").ok(),
         s3_region: std::env::var("AWS_REGION").ok(),

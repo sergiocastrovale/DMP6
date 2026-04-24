@@ -6,6 +6,9 @@ const ALLOWED_COMMANDS = [
   './playlists', './audit', './fix', './refresh',
 ]
 
+// Commands that support the --web flag (structured PROGRESS:{json} output)
+const WEB_MODE_COMMANDS = new Set(['./index', './sync', './refresh'])
+
 function stripAnsi(str: string): string {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')
 }
@@ -33,6 +36,13 @@ export default defineEventHandler(async (event) => {
   // Binaries are in /usr/local/bin/ (built into container image)
   const binary = command.replace('./', '')
   const workDir = process.env.PROJECT_ROOT || '/app'
+
+  // Web UI always runs scripts in --web mode so the terminal store can
+  // consume PROGRESS:{json} lines. Only append if the script supports it
+  // and the caller hasn't already passed --web.
+  if (WEB_MODE_COMMANDS.has(command) && !args.includes('--web')) {
+    args = [...args, '--web']
+  }
 
   setResponseHeaders(event, {
     'Content-Type': 'text/event-stream',

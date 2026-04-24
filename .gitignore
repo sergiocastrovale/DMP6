@@ -33,6 +33,10 @@ Thumbs.db
 *.so
 *.dylib
 
+# DB assets
+public/img/releases
+public/img/artists
+
 # Reports
 reports/
 web/dump

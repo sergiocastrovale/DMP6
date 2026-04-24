@@ -3,7 +3,6 @@
     v-if="results && hasResults"
     class="absolute left-0 right-0 top-full z-50 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
   >
-    <!-- Artists -->
     <div v-if="results.artists.length > 0" class="border-b border-zinc-800 p-2">
       <div class="px-2 py-1 text-xs font-semibold uppercase text-zinc-500">
         Artists
@@ -15,7 +14,7 @@
         class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800 transition-colors"
         @click="emit('select')"
       >
-        <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-zinc-800">
+        <div class="relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
           <img
             v-if="artistImageUrl(artist)"
             :src="artistImageUrl(artist)!"
@@ -34,7 +33,6 @@
       </NuxtLink>
     </div>
 
-    <!-- Releases -->
     <div v-if="results.releases.length > 0" class="border-b border-zinc-800 p-2">
       <div class="px-2 py-1 text-xs font-semibold uppercase text-zinc-500">
         Releases
@@ -45,7 +43,7 @@
         class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800 transition-colors text-left"
         @click="playRelease(release.id)"
       >
-        <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-zinc-800">
+        <div class="relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
           <img
             v-if="releaseImageUrl(release)"
             :src="releaseImageUrl(release)!"
@@ -68,7 +66,6 @@
       </button>
     </div>
 
-    <!-- Tracks -->
     <div v-if="results.tracks.length > 0" class="p-2">
       <div class="px-2 py-1 text-xs font-semibold uppercase text-zinc-500">
         Tracks
@@ -79,7 +76,7 @@
         class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800 transition-colors text-left"
         @click="playTrack(track)"
       >
-        <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-zinc-800">
+        <div class="relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
           <img
             v-if="track.release && releaseImageUrl(track.release)"
             :src="releaseImageUrl(track.release)!"
@@ -145,7 +142,7 @@ function formatDuration(seconds: number) {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
-async function playRelease(releaseId: string) {
+const playRelease = async (releaseId: string) => {
   try {
     const response = await $fetch<any>(`/api/releases/${releaseId}/tracks`)
     if (response?.tracks?.length > 0) {
@@ -160,7 +157,9 @@ async function playRelease(releaseId: string) {
         releaseImageUrl: response.release?.imageUrl || null,
         localReleaseId: t.localReleaseId,
       }))
+
       playerStore.setQueue(playerTracks)
+
       emit('select')
     }
   }
@@ -169,8 +168,8 @@ async function playRelease(releaseId: string) {
   }
 }
 
-function playTrack(track: SearchTrack) {
-  const playerTrack = {
+const playTrack = (track: SearchTrack) => {
+  playerStore.setQueue([{
     id: track.id,
     title: track.title || 'Unknown',
     artist: track.artist || 'Unknown',
@@ -180,8 +179,8 @@ function playTrack(track: SearchTrack) {
     releaseImage: track.releaseImage || null,
     releaseImageUrl: track.releaseImageUrl || null,
     localReleaseId: track.localReleaseId,
-  }
-  playerStore.setQueue([playerTrack])
+  }])
+
   emit('select')
 }
 </script>

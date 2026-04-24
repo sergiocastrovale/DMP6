@@ -44,8 +44,8 @@ pub async fn nuke_mb_data(
         .await?;
 
         for (_, mb_id) in &mb_release_ids {
-            let local_path = PathBuf::from(project_root)
-                .join("web/public/img/releases")
+            let local_path = PathBuf::from(&config.image_dir)
+                .join("releases")
                 .join(format!("{}.jpg", mb_id));
             if local_path.exists() {
                 let _ = std::fs::remove_file(&local_path);

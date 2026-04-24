@@ -17,17 +17,12 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
     {
       label: 'Update',
       description: 'Sync new & changed files',
-      action: () => terminal.run('./sync', ['--only', name]),
+      action: () => terminal.run('./refresh', ['--only', name]),
     },
     {
       label: 'Re-sync',
       description: 'Nuke & rebuild from scratch',
-      action: () => terminal.run('./sync', ['--only', name, '--overwrite']),
-    },
-    {
-      label: 'Refresh local catalogue',
-      description: 'Re-index files without MusicBrainz',
-      action: () => terminal.run('./sync', ['--local-only', '--only', name]),
+      action: () => terminal.run('./refresh', ['--only', name, '--overwrite']),
     },
   ]
 })
@@ -46,7 +41,6 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
       <div class="flex items-start justify-between gap-4">
         <ArtistHeader :artist="artist" class="min-w-0" />
         <div class="flex items-center gap-2">
-          <UiRefreshButton :only="[artist.name]" />
           <ButtonDropdown
             label="Sync"
             :options="syncOptions"

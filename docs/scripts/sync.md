@@ -21,7 +21,12 @@ cd scripts && cargo build --release -p sync
 ./sync --skip-release-img        # Skip cover art downloads
 ./sync --verbose                 # Show skipped MB releases
 ./sync --delete                  # Delete MB data for matched artists, then exit
+./sync --web                     # Emit PROGRESS:{json} for the web terminal
 ```
+
+## Output modes
+
+Without `--web`, the script prints colored, indented progress (artist headers, `→` step lines, `✓` success marks, MusicBrainz rate-limit countdown). With `--web`, it emits `PROGRESS:{json}` lines consumed by the web UI progress bar, plus plain text for the terminal panel. The web UI appends `--web` automatically when invoking scripts.
 
 ## Per-Artist Flow
 

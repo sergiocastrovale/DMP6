@@ -59,18 +59,6 @@ pub fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, Strin
         if title.is_none() {
             title = tag.title().map(|s| s.to_string());
         }
-        if artist.is_none() {
-            artist = tag.artist().map(|s| s.to_string());
-        }
-        if album.is_none() {
-            album = tag.album().map(|s| s.to_string());
-        }
-        if year.is_none() {
-            year = tag.year().and_then(|y| i32::try_from(y).ok());
-        }
-        if genre.is_none() {
-            genre = tag.genre().map(|s| s.to_string());
-        }
         if !tag.pictures().is_empty() {
             has_picture = true;
         }
@@ -128,6 +116,19 @@ pub fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, Strin
                 }
                 all_tags.insert(key, val.clone());
             }
+        }
+
+        if artist.is_none() {
+            artist = tag.artist().map(|s| s.to_string());
+        }
+        if album.is_none() {
+            album = tag.album().map(|s| s.to_string());
+        }
+        if year.is_none() {
+            year = tag.year().and_then(|y| i32::try_from(y).ok());
+        }
+        if genre.is_none() {
+            genre = tag.genre().map(|s| s.to_string());
         }
     }
 

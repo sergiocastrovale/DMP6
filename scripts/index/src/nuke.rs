@@ -19,8 +19,8 @@ pub async fn nuke_local_artists(
     s3_client: &Option<S3Client>,
     config: &Config,
 ) -> Result<u64, sqlx::Error> {
-    let artist_img_dir = PathBuf::from(project_root).join("web/public/img/artists");
-    let release_img_dir = PathBuf::from(project_root).join("web/public/img/releases");
+    let artist_img_dir = PathBuf::from(&config.image_dir).join("artists");
+    let release_img_dir = PathBuf::from(&config.image_dir).join("releases");
     let use_local = config.use_local();
     let use_s3 = config.use_s3();
 

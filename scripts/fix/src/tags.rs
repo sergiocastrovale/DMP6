@@ -35,8 +35,8 @@ pub fn write_album_artist(abs_path: &Path, value: &str) -> Result<(), String> {
 /// `image_file` is the bare filename (e.g. "the-rolling-stones.jpg") as stored in the DB.
 pub async fn delete_artist_image(config: &Config, image_file: &str) {
     if config.use_local() {
-        let local_path = Path::new(&config.project_root)
-            .join("web/public/img/artists")
+        let local_path = Path::new(&config.image_dir)
+            .join("artists")
             .join(image_file);
         if let Err(e) = std::fs::remove_file(&local_path) {
             if e.kind() != std::io::ErrorKind::NotFound {

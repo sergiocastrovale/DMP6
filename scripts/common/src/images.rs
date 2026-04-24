@@ -30,7 +30,7 @@ pub async fn delete_artist_images(pool: &PgPool, config: &Config, artist_ids: &[
         return;
     }
 
-    let artist_dir = PathBuf::from(&config.project_root).join("web/public/img/artists");
+    let artist_dir = PathBuf::from(&config.image_dir).join("artists");
     let use_local = config.use_local();
     let use_s3 = config.use_s3();
 
@@ -84,7 +84,7 @@ pub async fn delete_release_images(pool: &PgPool, config: &Config, release_ids: 
         return;
     }
 
-    let release_dir = PathBuf::from(&config.project_root).join("web/public/img/releases");
+    let release_dir = PathBuf::from(&config.image_dir).join("releases");
     let use_local = config.use_local();
     let use_s3 = config.use_s3();
 
