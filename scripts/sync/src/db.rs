@@ -4,6 +4,77 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
+// Artist upsert (for extra/compound artists)
+// ---------------------------------------------------------------------------
+
+pub async fn ensure_artist(pool: &PgPool, name: &str) -> Result<String, sqlx::Error> {
+    let artist_slug = slugify(name);
+    if artist_slug.is_empty() {
+        return Ok(String::new());
+    }
+    let id = cuid2::create_id();
+    let now = Utc::now().naive_utc();
+    let row: (String,) = sqlx::query_as(
+        r#"INSERT INTO "Artist" (id, name, slug, "totalPlayCount", "totalTracks", "totalFileSize", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, 0, 0, 0, $4, $4)
+           ON CONFLICT (slug) DO UPDATE SET slug = EXCLUDED.slug
+           RETURNING id"#,
+    )
+    .bind(&id)
+    .bind(name)
+    .bind(&artist_slug)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
+// ---------------------------------------------------------------------------
+// LocalReleaseArtist batch upsert (for extra/compound artists)
+// ---------------------------------------------------------------------------
+
+pub async fn batch_ensure_local_release_artists(
+    pool: &PgPool,
+    links: &[(String, String)], // (release_id, artist_id)
+) -> Result<(), sqlx::Error> {
+    if links.is_empty() {
+        return Ok(());
+    }
+    let now = Utc::now().naive_utc();
+    let ids: Vec<String> = links.iter().map(|_| cuid2::create_id()).collect();
+    let release_ids: Vec<&str> = links.iter().map(|(r, _)| r.as_str()).collect();
+    let artist_ids: Vec<&str> = links.iter().map(|(_, a)| a.as_str()).collect();
+    let timestamps: Vec<NaiveDateTime> = vec![now; links.len()];
+    sqlx::query(
+        r#"INSERT INTO "LocalReleaseArtist" (id, "localReleaseId", "artistId", "createdAt")
+           SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::timestamp[])
+           ON CONFLICT ("localReleaseId", "artistId") DO NOTHING"#,
+    )
+    .bind(&ids)
+    .bind(&release_ids)
+    .bind(&artist_ids)
+    .bind(&timestamps)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Get existing MB release DB id by release-group id
+// ---------------------------------------------------------------------------
+
+pub async fn get_existing_mb_release_id(pool: &PgPool, mb_release_group_id: &str) -> Option<String> {
+    let row: Option<(String,)> = sqlx::query_as(
+        r#"SELECT id FROM "MusicBrainzRelease" WHERE "musicbrainzId" = $1"#,
+    )
+    .bind(mb_release_group_id)
+    .fetch_optional(pool)
+    .await
+    .ok()?;
+    row.map(|(id,)| id)
+}
+
+// ---------------------------------------------------------------------------
 // ReleaseType
 // ---------------------------------------------------------------------------
 
@@ -374,6 +445,21 @@ pub async fn batch_link_release_genres(
 }
 
 // ---------------------------------------------------------------------------
+// Cleanup: delete MusicBrainzRelease rows with no tracks and no local match
+// ---------------------------------------------------------------------------
+
+pub async fn delete_empty_mb_releases(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"DELETE FROM "MusicBrainzRelease"
+           WHERE id NOT IN (SELECT DISTINCT "releaseId" FROM "MusicBrainzReleaseTrack")
+             AND id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)"#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+// ---------------------------------------------------------------------------
 // Get artists pending sync (lastIndexedAt > lastSyncedAt OR never synced)
 // ---------------------------------------------------------------------------
 
@@ -449,14 +535,16 @@ pub struct LocalReleaseRow {
     pub id: String,
     pub title: String,
     pub forced_complete: bool,
+    pub release_id: Option<String>,
+    pub match_status: Option<String>,
 }
 
 pub async fn get_local_releases_for_artist(
     pool: &PgPool,
     artist_id: &str,
 ) -> Result<Vec<LocalReleaseRow>, sqlx::Error> {
-    let rows: Vec<(String, String, bool)> = sqlx::query_as(
-        r#"SELECT lr.id, lr.title, lr."forcedComplete"
+    let rows: Vec<(String, String, bool, Option<String>, Option<String>)> = sqlx::query_as(
+        r#"SELECT lr.id, lr.title, lr."forcedComplete", lr."releaseId", lr."matchStatus"::text
            FROM "LocalRelease" lr
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
            WHERE lra."artistId" = $1
@@ -468,10 +556,12 @@ pub async fn get_local_releases_for_artist(
 
     Ok(rows
         .into_iter()
-        .map(|(id, title, forced_complete)| LocalReleaseRow {
+        .map(|(id, title, forced_complete, release_id, match_status)| LocalReleaseRow {
             id,
             title,
             forced_complete,
+            release_id,
+            match_status,
         })
         .collect())
 }

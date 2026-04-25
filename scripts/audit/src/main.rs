@@ -7,7 +7,7 @@ mod enrichment;
 
 use clap::Parser;
 use colored::Colorize;
-use common::{config::load_config, db::create_pool};
+use common::{config::{apply_db_overrides, load_config}, db::create_pool};
 use serde_json::json;
 use sqlx::PgPool;
 
@@ -49,8 +49,9 @@ impl Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    let config = load_config(None);
+    let mut config = load_config(None);
     let pool = create_pool(&config.database_url).await;
+    apply_db_overrides(&mut config, &pool).await;
 
     println!("{}", "audit starting...".bold());
 

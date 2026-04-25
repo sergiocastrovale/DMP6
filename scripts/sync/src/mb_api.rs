@@ -18,25 +18,21 @@ pub struct RateLimiter {
     last_request: Instant,
     remaining: Option<u64>,
     reset_at: Option<u64>,
-    web: bool,
 }
 
 impl RateLimiter {
     pub fn new() -> Self {
         Self {
-            delay_ms: 500,
-            min_delay: 250,
+            delay_ms: 1100,
+            min_delay: 1100,
             max_delay: 10000,
             last_request: Instant::now(),
             remaining: None,
             reset_at: None,
-            web: false,
         }
     }
 
-    pub fn set_web(&mut self, web: bool) {
-        self.web = web;
-    }
+    pub fn set_web(&mut self, _web: bool) {}
 
     pub async fn wait(&mut self) {
         let effective = self.effective_delay();
@@ -90,8 +86,8 @@ pub async fn mb_get(
     url: &str,
     limiter: &mut RateLimiter,
 ) -> Result<String, String> {
-    let max_attempts = 10;
-    let mut wait_time = limiter.delay_ms;
+    let max_attempts = 6;
+    let mut wait_time: u64 = 1000;
 
     for attempt in 0..max_attempts {
         limiter.wait().await;
@@ -129,37 +125,24 @@ pub async fn mb_get(
         if status == 503 || status == 429 {
             limiter.on_rate_limit();
             if attempt < max_attempts - 1 {
-                wait_time = (wait_time * 2).min(60000);
+                wait_time = (wait_time * 2).min(16000);
                 let reason = if status == 503 {
                     "Waiting for MusicBrainz"
                 } else {
                     "Rate limited"
                 };
-                if limiter.web {
-                    println!(
-                        "      {} - waiting {:.1}s before next attempt ({}/{})...",
-                        reason,
-                        wait_time as f64 / 1000.0,
-                        attempt + 1,
-                        max_attempts - 1
-                    );
-                } else {
-                    use std::io::Write;
-                    eprint!(
-                        "\r\x1b[K      {} - waiting {:.1}s before next attempt ({}/{})...",
-                        reason,
-                        wait_time as f64 / 1000.0,
-                        attempt + 1,
-                        max_attempts - 1
-                    );
-                    let _ = std::io::stderr().flush();
-                }
+                eprintln!(
+                    "      ⚠ HTTP {} - {} - waiting {:.1}s before next attempt ({}/{}) [delay_ms={}]",
+                    status,
+                    reason,
+                    wait_time as f64 / 1000.0,
+                    attempt + 1,
+                    max_attempts - 1,
+                    limiter.delay_ms,
+                );
                 sleep(Duration::from_millis(wait_time)).await;
                 continue;
             } else {
-                if !limiter.web {
-                    eprint!("\r\x1b[K");
-                }
                 return Err(format!(
                     "MusicBrainz API still unavailable after {} retries (waited up to {}s). Will retry this release next time.",
                     max_attempts,
@@ -387,7 +370,9 @@ pub async fn mb_get_release_tracks(
             for medium in media {
                 if let Some(ref trks) = medium.tracks {
                     for trk in trks {
-                        tracks.push(trk.clone());
+                        let mut t = trk.clone();
+                        t.disc_number = medium.position;
+                        tracks.push(t);
                     }
                 }
             }

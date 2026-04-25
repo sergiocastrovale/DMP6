@@ -15,6 +15,7 @@ export interface Track {
   artists?: { name: string; slug: string }[]
   missing?: boolean
   mbTitle?: string | null
+  mbTrackMusicbrainzId?: string | null
 }
 
 export interface TrackWithRelease extends Track {

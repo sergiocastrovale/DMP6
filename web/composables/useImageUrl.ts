@@ -1,14 +1,15 @@
 export function useImageUrl() {
-  const config = useRuntimeConfig()
-  const imageStorage = config.public.imageStorage as string
-  const useS3 = imageStorage === 's3' || imageStorage === 'both'
+  const settingsStore = useSettingsStore()
+  const useS3 = computed(() =>
+    settingsStore.imageStorage === 's3' || settingsStore.imageStorage === 'both',
+  )
 
   function resolve(
     image: string | null | undefined,
     imageUrl: string | null | undefined,
     type: 'artists' | 'releases',
   ): string | null {
-    if (useS3 && imageUrl) {
+    if (useS3.value && imageUrl) {
       return imageUrl
     }
     if (image) {

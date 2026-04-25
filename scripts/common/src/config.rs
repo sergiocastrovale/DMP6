@@ -1,7 +1,10 @@
+use sqlx::PgPool;
 use std::path::PathBuf;
 
 pub struct Config {
     pub music_dir: Option<String>,
+    /// true when music_dir came from a CLI arg — DB override must not replace it.
+    pub music_dir_locked: bool,
     pub database_url: String,
     pub project_root: String,
     pub image_dir: String,
@@ -80,6 +83,7 @@ pub fn load_config(music_dir_override: Option<&str>) -> Config {
 
     Config {
         music_dir,
+        music_dir_locked: music_dir_override.is_some(),
         database_url,
         project_root,
         image_dir,
@@ -91,5 +95,46 @@ pub fn load_config(music_dir_override: Option<&str>) -> Config {
         s3_endpoint: std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty()),
         s3_public_url: std::env::var("S3_PUBLIC_URL").ok(),
         fanart_api_key: std::env::var("FANART_API_KEY").ok().filter(|s| !s.is_empty()),
+    }
+}
+
+/// Override env-loaded config fields with values from the DB Settings row.
+/// Call this after creating the pool. Errors are soft — logs a warning and continues.
+pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
+    let row: Option<(
+        Option<String>, // musicDir
+        Option<String>, // imageStorage
+        Option<String>, // s3ImageBucket
+        Option<String>, // awsRegion
+        Option<String>, // awsAccessKeyId
+        Option<String>, // awsSecretAccessKey
+        Option<String>, // s3Endpoint
+        Option<String>, // s3PublicUrl
+        Option<String>, // fanartApiKey
+    )> = sqlx::query_as(
+        r#"SELECT "musicDir", "imageStorage", "s3ImageBucket", "awsRegion",
+                  "awsAccessKeyId", "awsSecretAccessKey", "s3Endpoint", "s3PublicUrl",
+                  "fanartApiKey"
+           FROM "Settings" WHERE id = 'main'"#,
+    )
+    .fetch_optional(pool)
+    .await
+    .unwrap_or_else(|e| {
+        eprintln!("Warning: could not load DB settings overrides: {e}");
+        None
+    });
+
+    if let Some((music_dir, image_storage, s3_bucket, s3_region, s3_access_key, s3_secret_key, s3_endpoint, s3_public_url, fanart_api_key)) = row {
+        if !config.music_dir_locked {
+            if let Some(v) = music_dir { config.music_dir = Some(v); }
+        }
+        if let Some(v) = image_storage { config.image_storage = v; }
+        if let Some(v) = s3_bucket { config.s3_bucket = Some(v); }
+        if let Some(v) = s3_region { config.s3_region = Some(v); }
+        if let Some(v) = s3_access_key { config.s3_access_key = Some(v); }
+        if let Some(v) = s3_secret_key { config.s3_secret_key = Some(v); }
+        if let Some(v) = s3_endpoint { config.s3_endpoint = Some(v); }
+        if let Some(v) = s3_public_url { config.s3_public_url = Some(v); }
+        if let Some(v) = fanart_api_key { config.fanart_api_key = Some(v); }
     }
 }

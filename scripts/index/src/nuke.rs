@@ -15,7 +15,7 @@ pub async fn nuke_local_artists(
     from: &str,
     to: &str,
     only: &str,
-    project_root: &str,
+    _project_root: &str,
     s3_client: &Option<S3Client>,
     config: &Config,
 ) -> Result<u64, sqlx::Error> {

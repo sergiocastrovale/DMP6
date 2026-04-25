@@ -60,6 +60,8 @@ pub struct MbTrack {
     pub title: String,
     pub position: Option<u32>,
     pub length: Option<u64>,
+    #[serde(default)]
+    pub disc_number: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

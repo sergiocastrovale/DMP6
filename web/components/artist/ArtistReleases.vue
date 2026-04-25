@@ -19,18 +19,11 @@ const props = defineProps<{
 }>()
 
 const route = useRoute()
-const router = useRouter()
 const player = usePlayerStore()
 const { releaseImage } = useImageUrl()
 
-// All loaded releases (accumulated across pages)
 const releases = ref<UnifiedRelease[]>([])
 const loading = ref(true)
-const loadingMore = ref(false)
-const currentPage = ref(1)
-const hasMore = ref(false)
-const totalReleases = ref(0)
-const PAGE_SIZE = 20
 
 const searchQuery = ref('')
 const statusFilter = ref<string | null>(null)
@@ -47,9 +40,9 @@ const terminal = useTerminalStore()
 const downloadRelease = ref<UnifiedRelease | null>(null)
 const showDownloadDialog = ref(false)
 
-onMounted(() => {
-  downloadsStore.checkStatus()
-})
+function toReleaseSlug(title: string) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
 
 function openDownloadDialog(release: UnifiedRelease) {
   downloadRelease.value = release
@@ -99,52 +92,35 @@ const downloadAllOptions = computed<ButtonDropdownOption[]>(() => {
   return opts
 })
 
-// Infinite scroll sentinel
-const sentinel = ref<HTMLElement>()
-let observer: IntersectionObserver | null = null
-
-async function fetchPage(page: number): Promise<boolean> {
-  const data = await $fetch<{
-    releases: UnifiedRelease[]
-    total: number
-    page: number
-    hasMore: boolean
-  }>(`/api/artists/${props.slug}/releases`, {
-    query: { page, pageSize: PAGE_SIZE },
-  })
-  releases.value.push(...data.releases)
-  totalReleases.value = data.total
-  hasMore.value = data.hasMore
-  currentPage.value = page
-  return data.hasMore
-}
-
-// Initial load: restore page from query param
 onMounted(async () => {
-  const targetPage = Math.max(1, Number(route.query.releasePage) || 1)
+  downloadsStore.checkStatus()
   try {
-    for (let p = 1; p <= targetPage; p++) {
-      const more = await fetchPage(p)
-      if (!more) break
-    }
+    const data = await $fetch<{ releases: UnifiedRelease[] }>(
+      `/api/artists/${props.slug}/releases`,
+      { query: { pageSize: 500 } },
+    )
+    releases.value = data.releases
   }
   catch { /* ignore */ }
   finally {
     loading.value = false
+    handleReleaseDeepLink()
   }
-
-  // Set up infinite scroll observer
-  nextTick(() => {
-    observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && hasMore.value && !loadingMore.value) {
-        loadMore()
-      }
-    }, { rootMargin: '400px' })
-    if (sentinel.value) observer.observe(sentinel.value)
-  })
 })
 
-onUnmounted(() => observer?.disconnect())
+async function handleReleaseDeepLink() {
+  const targetSlug = route.query.release as string | undefined
+  if (!targetSlug) return
+  await nextTick()
+  const release = releases.value.find(r => toReleaseSlug(r.title) === targetSlug)
+  if (!release) return
+  activeTab.value = release.typeSlug
+  await nextTick()
+  expandedRelease.value = release.id
+  await nextTick()
+  document.querySelector(`[data-release-id="${release.id}"]`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
 
 const favoriteReleases = ref<Set<string>>(new Set())
 
@@ -175,19 +151,6 @@ async function toggleFavoriteRelease(release: UnifiedRelease) {
   catch { /* ignore */ }
 }
 
-async function loadMore() {
-  if (!hasMore.value || loadingMore.value) return
-  loadingMore.value = true
-  try {
-    const nextPage = currentPage.value + 1
-    await fetchPage(nextPage)
-    router.replace({ query: { ...route.query, releasePage: String(nextPage) } })
-  }
-  catch { /* ignore */ }
-  finally {
-    loadingMore.value = false
-  }
-}
 
 const filteredByStatus = computed(() => {
   let result = releases.value
@@ -308,8 +271,9 @@ async function playRelease(release: UnifiedRelease) {
   const releaseId = release.localReleaseId || release.id
   try {
     const data = await $fetch<any>(`/api/releases/${releaseId}/tracks`)
-    if (data?.tracks?.length) {
-      const playerTracks = data.tracks.map((t: any) => ({
+    const playable = data?.tracks?.filter((t: any) => !t.missing) ?? []
+    if (playable.length) {
+      const playerTracks = playable.map((t: any) => ({
         id: t.id,
         title: t.title || 'Unknown',
         artist: t.artist || 'Unknown',
@@ -320,7 +284,7 @@ async function playRelease(release: UnifiedRelease) {
         releaseImageUrl: data.release?.imageUrl || null,
         localReleaseId: t.localReleaseId,
       }))
-      player.setQueue(playerTracks)
+      player.setQueue(playerTracks, playerTracks[0])
     }
   }
   catch { /* ignore */ }
@@ -462,6 +426,7 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
           <TableRow
             v-for="release in filteredReleases"
             :key="release.id"
+            :data-release-id="release.id"
             :muted="release.status === 'MISSING'"
             :expanded="expandedRelease === release.id"
             class="cursor-pointer"
@@ -492,21 +457,7 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
             </div>
 
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1">
-                <div class="truncate text-sm font-medium" :class="release.status === 'MISSING' ? 'text-zinc-500' : 'text-zinc-50'">{{ release.title }}</div>
-
-                <a
-                  v-if="release.status === 'MISSING' && release.musicbrainzId"
-                  :href="`https://musicbrainz.org/release-group/${release.musicbrainzId}`"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="shrink-0 text-zinc-600 hover:text-zinc-400 transition-colors"
-                  title="View on MusicBrainz"
-                  @click.stop
-                >
-                  <Link :size="10" />
-                </a>
-              </div>
+              <div class="truncate text-sm font-medium" :class="release.status === 'MISSING' ? 'text-zinc-500' : 'text-zinc-50'">{{ release.title }}</div>
 
               <div class="flex items-center gap-3 text-xs" :class="release.status === 'MISSING' ? 'text-zinc-600' : 'text-zinc-400'">
                 <span v-if="release.year">{{ release.year }}</span>
@@ -556,6 +507,18 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
               <Heart :size="14" :fill="favoriteReleases.has(release.id) ? 'currentColor' : 'none'" />
             </button>
 
+            <a
+              v-if="release.musicbrainzId"
+              :href="`https://musicbrainz.org/release-group/${release.musicbrainzId}`"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="rounded-full p-1.5 text-zinc-600 transition-colors hover:text-zinc-400"
+              title="View on MusicBrainz"
+              @click.stop
+            >
+              <Link :size="14" />
+            </a>
+
             <template #expand>
               <div v-if="expandedRelease === release.id && (release.localReleaseId || release.localTrackCount > 0)" class="border-t border-zinc-800 px-3 pb-3" @click.stop>
                 <ReleaseTracksTable :release-id="release.isMusicBrainz ? release.id : (release.localReleaseId || release.id)" :columns="releaseTrackColumns" />
@@ -564,14 +527,8 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
           </TableRow>
         </Table>
 
-        <div v-if="filteredReleases.length === 0 && !hasMore" class="py-8 text-center text-sm text-zinc-500">
+        <div v-if="filteredReleases.length === 0" class="py-8 text-center text-sm text-zinc-500">
           No releases in this category
-        </div>
-
-        <!-- Infinite scroll sentinel -->
-        <div ref="sentinel" class="h-1" />
-        <div v-if="loadingMore" class="flex justify-center py-4">
-          <Loader2 :size="20" class="animate-spin text-zinc-500" />
         </div>
       </template>
 

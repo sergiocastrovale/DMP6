@@ -23,6 +23,7 @@ enum ReleaseStatus {
   COMPLETE
   INCOMPLETE
   EXTRA_TRACKS
+  MISSING_TRACKS
   MISSING
   UNSYNCABLE
   UNKNOWN
@@ -374,13 +375,27 @@ model SearchSource {
 
 model Settings {
   id                 String   @id @default("main")
-  slskdUrl           String?  // slskd REST API URL (e.g. "http://localhost:5030")
-  slskdApiKey        String?  // slskd X-API-Key header value
-  deezerArl          String?  // Deezer ARL cookie token for authenticated downloads
-  downloadsPath      String?  // Directory where downloaded files are saved
-  downloadDirTemplate String? // Folder template for downloads, e.g. "{artist}/{year} - {album}"
-  downloadFormats    String?  // Comma-separated allowed formats: "flac,mp3"
-  downloadMinBitrate Int?     // Minimum bitrate in kbps (e.g. 320)
+  // Library
+  musicDir           String?
+  // Downloads
+  slskdUrl           String?
+  slskdApiKey        String?
+  deezerArl          String?
+  downloadsPath      String?
+  downloadDirTemplate String?
+  downloadFormats    String?
+  downloadMinBitrate Int?
+  // Storage
+  imageStorage       String?
+  s3ImageBucket      String?
+  s3BackupsBucket    String?
+  awsRegion          String?
+  awsAccessKeyId     String?
+  awsSecretAccessKey String?
+  s3Endpoint         String?
+  s3PublicUrl        String?
+  // API Keys
+  fanartApiKey       String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

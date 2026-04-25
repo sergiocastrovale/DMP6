@@ -171,7 +171,7 @@ async function playRelease(releaseId: string) {
         localReleaseId: t.localReleaseId,
       }))
       if (tracks.length) {
-        playerStore.setQueue(tracks)
+        playerStore.setQueue(tracks, tracks[0])
       }
     }
   }

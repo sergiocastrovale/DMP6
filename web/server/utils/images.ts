@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { getCachedSettings } from '~/server/utils/settingsCache'
 
 let _imageDir: string | null = null
 
@@ -43,8 +44,7 @@ export function verifyImage(
   imageUrl: string | null | undefined,
   type: 'artists' | 'releases',
 ): { image: string | null; imageUrl: string | null } {
-  const config = useRuntimeConfig()
-  const storage = config.imageStorage as string
+  const storage = getCachedSettings().imageStorage
 
   const validUrl = imageUrl || null
   let validImage: string | null = null

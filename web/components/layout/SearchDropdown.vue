@@ -145,8 +145,9 @@ function formatDuration(seconds: number) {
 const playRelease = async (releaseId: string) => {
   try {
     const response = await $fetch<any>(`/api/releases/${releaseId}/tracks`)
-    if (response?.tracks?.length > 0) {
-      const playerTracks = response.tracks.map((t: any) => ({
+    const playable = response?.tracks?.filter((t: any) => !t.missing) ?? []
+    if (playable.length > 0) {
+      const playerTracks = playable.map((t: any) => ({
         id: t.id,
         title: t.title || 'Unknown',
         artist: t.artist || 'Unknown',
@@ -157,9 +158,7 @@ const playRelease = async (releaseId: string) => {
         releaseImageUrl: response.release?.imageUrl || null,
         localReleaseId: t.localReleaseId,
       }))
-
-      playerStore.setQueue(playerTracks)
-
+      playerStore.setQueue(playerTracks, playerTracks[0])
       emit('select')
     }
   }
@@ -172,15 +171,14 @@ const playTrack = (track: SearchTrack) => {
   playerStore.setQueue([{
     id: track.id,
     title: track.title || 'Unknown',
-    artist: track.artist || 'Unknown',
-    album: track.album || 'Unknown',
+    artist: track.release?.artist?.name || 'Unknown',
+    album: track.release?.title || 'Unknown',
     duration: track.duration || 0,
-    artistSlug: track.artistSlug || null,
-    releaseImage: track.releaseImage || null,
-    releaseImageUrl: track.releaseImageUrl || null,
-    localReleaseId: track.localReleaseId,
+    artistSlug: track.release?.artist?.slug || null,
+    releaseImage: track.release?.image || null,
+    releaseImageUrl: track.release?.imageUrl || null,
+    localReleaseId: track.release?.id || null,
   }])
-
   emit('select')
 }
 </script>

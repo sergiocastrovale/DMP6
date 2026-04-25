@@ -1,7 +1,7 @@
 <template>
   <NuxtLink
     v-if="release.artist"
-    :to="`/artist/${release.artist.slug}`"
+    :to="`/artist/${release.artist.slug}?release=${toReleaseSlug(release.title)}`"
     class="line-clamp-1 text-sm font-medium text-zinc-50 hover:text-amber-500 transition-colors"
   >
     {{ release.title }}
@@ -18,4 +18,7 @@
 import type { Release } from '~/types/release'
 
 const props = defineProps<{ release: Release }>()
+
+const toReleaseSlug = (title: string) =>
+  title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 </script>

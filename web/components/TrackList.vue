@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, Pause, Heart, AlertTriangle } from 'lucide-vue-next'
+import { Play, Pause, Heart, AlertTriangle, ExternalLink } from 'lucide-vue-next'
 import type { Track } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
 import { usePlayerStore } from '~/stores/player'
@@ -178,13 +178,26 @@ function hasColumn(key: string) {
         <td v-if="hasColumn('playCount')" class="py-2 pr-3 text-center tabular-nums text-zinc-500">{{ track.playCount ?? 0 }}</td>
         <td v-if="hasColumn('duration')" class="py-2 pr-4 text-center tabular-nums text-zinc-500" :class="track.missing && 'line-through'">{{ formatDuration(track.duration) }}</td>
         <td v-if="hasColumn('favorite')" class="py-2 text-center">
-          <button
-            class="text-zinc-500 transition-colors hover:text-amber-500"
-            :class="{ 'text-amber-500': favoriteTracks.has(track.id) }"
-            @click.stop="toggleFavorite(track.id)"
-          >
-            <Heart :size="14" :fill="favoriteTracks.has(track.id) ? 'currentColor' : 'none'" />
-          </button>
+          <div class="flex items-center justify-center gap-1">
+            <button
+              class="text-zinc-500 transition-colors hover:text-amber-500"
+              :class="{ 'text-amber-500': favoriteTracks.has(track.id) }"
+              @click.stop="toggleFavorite(track.id)"
+            >
+              <Heart :size="14" :fill="favoriteTracks.has(track.id) ? 'currentColor' : 'none'" />
+            </button>
+            <a
+              v-if="track.mbTrackMusicbrainzId"
+              :href="`https://musicbrainz.org/recording/${track.mbTrackMusicbrainzId}`"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-zinc-600 transition-colors hover:text-zinc-400"
+              title="View on MusicBrainz"
+              @click.stop
+            >
+              <ExternalLink :size="12" />
+            </a>
+          </div>
         </td>
       </SlimTableRow>
     </SlimTableBody>

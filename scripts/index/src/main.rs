@@ -9,7 +9,7 @@ use clap::Parser;
 use common::{
     artists::{is_special_artist_name, split_artists},
     checkpoint::{clear_index_checkpoint, load_index_checkpoint, save_index_checkpoint},
-    config::load_config,
+    config::{apply_db_overrides, load_config},
     db::{create_pool, ensure_artist_cached},
     filters::matches_filter,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
@@ -25,7 +25,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc,
     },
 };
@@ -83,9 +83,10 @@ fn has_filter(args: &IndexArgs) -> bool {
 async fn main() {
     let args = IndexArgs::parse();
     let reporter = Reporter::new(args.web);
-    let config = load_config(args.music_dir.as_deref());
-    let music_dir = config.require_music_dir().to_string();
+    let mut config = load_config(args.music_dir.as_deref());
     let pool = create_pool(&config.database_url).await;
+    apply_db_overrides(&mut config, &pool).await;
+    let music_dir = config.require_music_dir().to_string();
 
     // Clear stale locks (held > 10 min = leftover from crash/kill)
     if clear_stale_lock_minutes(&pool, 10).await {
@@ -218,7 +219,7 @@ async fn main() {
         if let Some(checkpoint) = load_index_checkpoint(&pool).await {
             let pos = artist_folders
                 .iter()
-                .position(|f| f.to_lowercase() >= checkpoint.to_lowercase());
+                .position(|f| f.to_lowercase() > checkpoint.to_lowercase());
             if let Some(idx) = pos {
                 reporter.info(&format!("Resuming from '{}'...", &checkpoint));
                 artist_folders = artist_folders.split_off(idx);
@@ -260,6 +261,8 @@ async fn main() {
         ),
     );
     reporter.blank();
+
+    let start_time = std::time::Instant::now();
 
     // Record scan start
     sqlx::query(
@@ -358,28 +361,35 @@ async fn main() {
         // -----------------------------------------------------------------
         // Parallel metadata extraction
         // -----------------------------------------------------------------
-        let scan_errors = AtomicU64::new(0);
         let music_dir_clone = music_dir.clone();
 
-        let extracted: Vec<_> = paths
+        let par_results: Vec<Result<_, String>> = paths
             .par_iter()
-            .filter_map(|p| match extract_metadata(p, &music_dir_clone) {
+            .map(|p| match extract_metadata(p, &music_dir_clone) {
                 Ok(meta) => {
                     if meta.artist.is_none() || meta.artist.as_deref() == Some("") {
-                        scan_errors.fetch_add(1, Ordering::Relaxed);
-                        return None;
+                        Err(format!("no artist tag: {}", p.display()))
+                    } else {
+                        Ok(meta)
                     }
-                    Some(meta)
                 }
-                Err(_) => {
-                    scan_errors.fetch_add(1, Ordering::Relaxed);
-                    None
-                }
+                Err(e) => Err(format!("{}: {}", p.display(), e)),
             })
             .collect();
 
-        let folder_errors = scan_errors.load(Ordering::Relaxed);
+        let mut extracted = Vec::with_capacity(par_results.len());
+        let mut parse_errors: Vec<String> = Vec::new();
+        for result in par_results {
+            match result {
+                Ok(meta) => extracted.push(meta),
+                Err(msg) => parse_errors.push(msg),
+            }
+        }
+        let folder_errors = parse_errors.len() as u64;
         error_total += folder_errors;
+        for msg in &parse_errors {
+            reporter.warn(msg);
+        }
 
         if extracted.is_empty() {
             reporter.sub_step(&format!("{} files, all failed to parse", file_count));
@@ -493,6 +503,7 @@ async fn main() {
                 album_name,
                 track.year,
                 track.album_artist.as_deref().unwrap_or(""),
+                &folder_path_str,
             );
 
             let release_id = match ensure_local_release_cached(
@@ -662,23 +673,19 @@ async fn main() {
             }
         }
 
-        // Print folder summary
+        // Print folder summary — verbose only when something actually changed
         {
-            let mut parts: Vec<String> = Vec::new();
-            parts.push(format!("{} files", file_count));
-            if folder_new > 0 {
-                parts.push(format!("{} new", folder_new));
+            if folder_new > 0 || folder_updated > 0 {
+                let mut parts = vec![format!("{} files", file_count)];
+                if folder_new > 0 { parts.push(format!("{} new", folder_new)); }
+                if folder_updated > 0 { parts.push(format!("{} updated", folder_updated)); }
+                if folder_skipped > 0 { parts.push(format!("{} skipped", folder_skipped)); }
+                if folder_errors > 0 { parts.push(format!("{} errors", folder_errors)); }
+                reporter.ok(&parts.join(", "));
+            } else if folder_errors > 0 {
+                reporter.warn(&format!("{} errors", folder_errors));
             }
-            if folder_updated > 0 {
-                parts.push(format!("{} updated", folder_updated));
-            }
-            if folder_skipped > 0 {
-                parts.push(format!("{} skipped", folder_skipped));
-            }
-            if folder_errors > 0 {
-                parts.push(format!("{} errors", folder_errors));
-            }
-            reporter.ok(&parts.join(", "));
+            // else: nothing changed — step header is sufficient
         }
 
         // -----------------------------------------------------------------
@@ -871,6 +878,10 @@ async fn main() {
             }
         }
 
+        if !args.skip_covers && !releases_with_art.is_empty() {
+            reporter.sub_ok(&format!("Extracted {} cover(s)", releases_with_art.len()));
+        }
+
         // Clean up temp images in S3-only mode
         if !use_local && use_s3 {
             for rid in &releases_with_art {
@@ -890,6 +901,7 @@ async fn main() {
         for aid in &folder_artist_ids {
             update_release_totals_for_artist(&pool, aid).await.ok();
             update_artist_totals_for_artist(&pool, aid).await.ok();
+            propagate_mb_artist_id(&pool, aid).await.ok();
         }
 
         let artist_ids_vec: Vec<String> = folder_artist_ids.into_iter().collect();
@@ -941,12 +953,25 @@ async fn main() {
     // -------------------------------------------------------------------------
     // Finalization
     // -------------------------------------------------------------------------
+    let elapsed = start_time.elapsed();
+    let h = elapsed.as_secs() / 3600;
+    let m = (elapsed.as_secs() % 3600) / 60;
+    let s = elapsed.as_secs() % 60;
+
     reporter.blank();
-    reporter.done("Done.");
-    reporter.info(&format!(
-        "  Files: {} | New: {} | Updated: {} | Skipped: {} | Errors: {}",
-        total_files, new_total, updated_total, skipped_total, error_total
-    ));
+    reporter.info(&format!("{}", "═".repeat(60)));
+    reporter.blank();
+    reporter.done(&format!("Done. ({}h:{:02}m:{:02}s)", h, m, s));
+    if new_total > 0 || updated_total > 0 {
+        reporter.info(&format!(
+            "  Files: {} | New: {} | Updated: {} | Skipped: {} | Errors: {}",
+            total_files, new_total, updated_total, skipped_total, error_total
+        ));
+    } else {
+        let mut parts = vec![format!("{} up to date", skipped_total)];
+        if error_total > 0 { parts.push(format!("{} errors", error_total)); }
+        reporter.info(&format!("  {}", parts.join(" | ")));
+    }
 
     clear_index_checkpoint(&pool).await.ok();
     update_statistics(&pool).await.ok();

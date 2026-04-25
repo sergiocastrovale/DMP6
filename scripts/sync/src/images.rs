@@ -31,7 +31,7 @@ async fn download_and_resize(
 
     let (w, h) = (img.width(), img.height());
     let img = if w > max_px || h > max_px {
-        img.resize(max_px, max_px, FilterType::Lanczos3)
+        img.resize(max_px, max_px, FilterType::Triangle)
     } else {
         img
     };
@@ -50,13 +50,15 @@ async fn upload_image(
     config: &Config,
     s3_key: &str,
 ) -> Result<(), String> {
-    if let Some(ref client) = s3_client {
-        if let Some(ref bucket) = config.s3_bucket {
-            upload_to_s3(client, bucket, s3_key, local_path)
-                .await
-                .map_err(|e| format!("S3 upload failed: {}", e))?;
-            if !config.use_local() {
-                let _ = std::fs::remove_file(local_path);
+    if config.use_s3() {
+        if let Some(ref client) = s3_client {
+            if let Some(ref bucket) = config.s3_bucket {
+                upload_to_s3(client, bucket, s3_key, local_path)
+                    .await
+                    .map_err(|e| format!("S3 upload failed: {}", e))?;
+                if !config.use_local() {
+                    let _ = std::fs::remove_file(local_path);
+                }
             }
         }
     }
@@ -70,7 +72,7 @@ async fn upload_image(
 pub async fn download_cover_art(
     client: &Client,
     mb_release_id: &str,
-    project_root: &str,
+    _project_root: &str,
     s3_client: &Option<S3Client>,
     config: &Config,
 ) -> Result<bool, String> {
@@ -113,7 +115,7 @@ pub async fn download_cover_art(
         if let Some(parent) = local_path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
-        let img = img.resize(500, 500, FilterType::Lanczos3);
+        let img = img.resize(500, 500, FilterType::Triangle);
         img.save(&local_path)
             .map_err(|e| format!("Save cover: {}", e))?;
         upload_image(s3_client, &local_path, config, &s3_key).await?;
@@ -216,7 +218,7 @@ pub async fn download_artist_image(
     client: &Client,
     detail: &MbArtistDetail,
     artist_slug: &str,
-    project_root: &str,
+    _project_root: &str,
     s3_client: &Option<S3Client>,
     config: &Config,
 ) -> Result<bool, String> {

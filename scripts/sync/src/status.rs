@@ -22,7 +22,11 @@ fn titles_match(a: &str, b: &str) -> bool {
     if na == nb {
         return true;
     }
-    // Jaccard on word sets
+    // Substring containment handles remaster/live/bonus variants
+    if na.contains(nb.as_str()) || nb.contains(na.as_str()) {
+        return true;
+    }
+    // Jaccard on word sets as fallback
     let words_a: std::collections::HashSet<&str> = na.split_whitespace().collect();
     let words_b: std::collections::HashSet<&str> = nb.split_whitespace().collect();
     if words_a.is_empty() || words_b.is_empty() {
@@ -48,6 +52,7 @@ pub enum ReleaseStatus {
 pub struct StatusCheck {
     pub status: ReleaseStatus,
     pub matched_mb_tracks: Vec<(MbTrack, Option<String>)>, // (mb_track, local_track_id)
+    pub best_release_idx: usize,
 }
 
 pub fn check_release_status(
@@ -59,18 +64,19 @@ pub fn check_release_status(
         return StatusCheck {
             status: ReleaseStatus::Incomplete,
             matched_mb_tracks: Vec::new(),
+            best_release_idx: 0,
         };
     }
 
-    // Pick the MB release whose track count is closest to local
+    // Pick the best MB release:
+    // 1. Exact track count match → use that release
+    // 2. No exact match → use the first release (usually the original)
     let local_count = local_tracks.len();
-    let best_release = mb_releases
+    let best_idx = mb_releases
         .iter()
-        .min_by_key(|(_, tracks)| {
-            let diff = tracks.len() as i64 - local_count as i64;
-            diff.unsigned_abs()
-        })
-        .unwrap();
+        .position(|(_, tracks)| tracks.len() == local_count)
+        .unwrap_or(0);
+    let best_release = &mb_releases[best_idx];
 
     let mb_tracks = &best_release.1;
     let mb_count = mb_tracks.len();
@@ -80,18 +86,18 @@ pub fn check_release_status(
     let mut used_local: std::collections::HashSet<usize> = Default::default();
 
     for mb_track in mb_tracks {
-        let mut best_idx: Option<usize> = None;
+        let mut matched_idx: Option<usize> = None;
         for (i, local) in local_tracks.iter().enumerate() {
             if used_local.contains(&i) {
                 continue;
             }
             let local_title = local.title.as_deref().unwrap_or("");
             if titles_match(&mb_track.title, local_title) {
-                best_idx = Some(i);
+                matched_idx = Some(i);
                 break;
             }
         }
-        if let Some(idx) = best_idx {
+        if let Some(idx) = matched_idx {
             used_local.insert(idx);
             matched.push((mb_track.clone(), Some(local_track_ids[idx].clone())));
         } else {
@@ -115,6 +121,7 @@ pub fn check_release_status(
     StatusCheck {
         status,
         matched_mb_tracks: matched,
+        best_release_idx: best_idx,
     }
 }
 
@@ -123,6 +130,6 @@ pub fn status_to_db_string(s: &ReleaseStatus) -> &'static str {
         ReleaseStatus::Complete => "COMPLETE",
         ReleaseStatus::Incomplete => "INCOMPLETE",
         ReleaseStatus::ExtraTracks => "EXTRA_TRACKS",
-        ReleaseStatus::MissingTracks => "INCOMPLETE",
+        ReleaseStatus::MissingTracks => "MISSING_TRACKS",
     }
 }

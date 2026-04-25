@@ -1,6 +1,7 @@
 import { createReadStream, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
+import { getCachedSettings } from '~/server/utils/settingsCache'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
@@ -13,7 +14,7 @@ export default defineEventHandler(async (event) => {
 
   if (!track) throw createError({ statusCode: 404, statusMessage: 'Track not found' })
 
-  const musicDir = useRuntimeConfig().musicDir
+  const musicDir = getCachedSettings().musicDir
   if (!musicDir) throw createError({ statusCode: 500, statusMessage: 'MUSIC_DIR not configured' })
 
   const filePath = join(musicDir, track.filePath)

@@ -7,7 +7,7 @@ mod tags;
 
 use clap::Parser;
 use colored::Colorize;
-use common::{config::load_config, db::create_pool};
+use common::{config::{apply_db_overrides, load_config}, db::create_pool};
 
 #[derive(Parser, Debug)]
 #[command(name = "fix", about = "Apply fixes for PENDING metadata issues")]
@@ -32,8 +32,9 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    let config = load_config(None);
+    let mut config = load_config(None);
     let pool = create_pool(&config.database_url).await;
+    apply_db_overrides(&mut config, &pool).await;
 
     if !args.corrupted && !args.unsplit && !args.orphans && !args.duplicates && !args.missing {
         eprintln!("{}", "Specify at least one fix type: --corrupted, --unsplit, --orphans, --duplicates, --missing".red());

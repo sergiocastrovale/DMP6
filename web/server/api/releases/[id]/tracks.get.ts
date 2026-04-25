@@ -30,6 +30,7 @@ export default defineEventHandler(async (event) => {
           position: true,
           discNumber: true,
           durationMs: true,
+          musicbrainzId: true,
         },
         orderBy: [{ discNumber: 'asc' }, { position: 'asc' }],
       },
@@ -48,7 +49,7 @@ export default defineEventHandler(async (event) => {
 
 async function getLocalReleaseTracks(
   localReleaseId: string,
-  mbTracks?: { id: string; title: string; position: number | null; discNumber: number | null; durationMs: number | null }[],
+  mbTracks?: { id: string; title: string; position: number | null; discNumber: number | null; durationMs: number | null; musicbrainzId: string | null }[],
 ) {
   const release = await prisma.localRelease.findUnique({
     where: { id: localReleaseId },
@@ -81,6 +82,9 @@ async function getLocalReleaseTracks(
       playCount: true,
       filePath: true,
       localReleaseId: true,
+      mbTrack: {
+        select: { musicbrainzId: true },
+      },
       trackArtists: {
         where: { role: { in: ['PRIMARY', 'FEATURED'] } },
         select: {
@@ -95,7 +99,7 @@ async function getLocalReleaseTracks(
   const enrichedTracks: any[] = []
   const matchedMbIds = new Set<string>()
 
-  for (const { trackArtists, ...t } of tracks) {
+  for (const { trackArtists, mbTrack, ...t } of tracks) {
     let mbTitle: string | null = null
 
     if (mbTracks) {
@@ -123,6 +127,7 @@ async function getLocalReleaseTracks(
         .map(ta => ({ name: ta.artist.name, slug: ta.artist.slug })),
       missing: false,
       mbTitle,
+      mbTrackMusicbrainzId: mbTrack?.musicbrainzId || null,
     })
   }
 
@@ -147,6 +152,7 @@ async function getLocalReleaseTracks(
           artists: [],
           missing: true,
           mbTitle: null,
+          mbTrackMusicbrainzId: mbt.musicbrainzId || null,
         })
       }
     }

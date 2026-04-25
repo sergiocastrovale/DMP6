@@ -32,10 +32,11 @@ pub fn build_group_key(
     album_title: &str,
     year: Option<i32>,
     album_artist: &str,
+    folder_path: &str,
 ) -> String {
     if let Some(mb_id) = mb_album_id {
         if !mb_id.is_empty() {
-            return format!("mb:{}", mb_id);
+            return format!("mb:{}:{}", mb_id, folder_path);
         }
     }
     let title_slug = slugify(album_title);
@@ -343,5 +344,48 @@ pub async fn load_folder_scans(pool: &PgPool) -> HashMap<String, NaiveDateTime> 
     .await
     .unwrap_or_default();
     rows.into_iter().collect()
+}
+
+pub async fn propagate_mb_artist_id(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Result<(), sqlx::Error> {
+    let existing: Option<(Option<String>,)> = sqlx::query_as(
+        r#"SELECT "musicbrainzId" FROM "Artist" WHERE id = $1"#,
+    )
+    .bind(artist_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((Some(ref mb_id),)) = existing {
+        if !mb_id.is_empty() {
+            return Ok(());
+        }
+    }
+
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT DISTINCT lrt."mbAlbumArtistId"
+           FROM "LocalReleaseTrack" lrt
+           JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lrt."localReleaseId"
+           WHERE lra."artistId" = $1
+             AND lrt."mbAlbumArtistId" IS NOT NULL
+             AND lrt."mbAlbumArtistId" != ''"#,
+    )
+    .bind(artist_id)
+    .fetch_all(pool)
+    .await?;
+
+    if rows.len() == 1 {
+        sqlx::query(
+            r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW()
+               WHERE id = $2 AND ("musicbrainzId" IS NULL OR "musicbrainzId" = '')"#,
+        )
+        .bind(&rows[0].0)
+        .bind(artist_id)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
 }
 
