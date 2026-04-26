@@ -21,7 +21,8 @@ pub struct TrackMeta {
     pub content_hash: String,
     pub metadata_json: JsonValue,
     pub has_picture: bool,
-    pub mb_album_id: Option<String>,
+    pub mb_release_id: Option<String>,
+    pub mb_release_group_id: Option<String>,
     pub mb_album_artist_id: Option<String>,
 }
 

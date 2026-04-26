@@ -13,6 +13,7 @@ The results drive the `/issues` web UI — run audit first, then review and fix 
 ./audit --orphans        # Only orphan/phantom artists
 ./audit --duplicates     # Only artists with duplicate normalized names
 ./audit --missing        # Only tracks with missing core metadata fields
+./audit --enrichment     # Only enrichment gaps (BPM, mood, AcousticID, MB, Discogs, Bandcamp, Wikipedia)
 ```
 
 ## Issue Types

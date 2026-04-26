@@ -40,6 +40,7 @@ pub struct MbRelease {
     pub title: String,
     pub date: Option<String>,
     pub status: Option<String>,
+    pub disambiguation: Option<String>,
     pub media: Option<Vec<MbMedia>>,
 }
 

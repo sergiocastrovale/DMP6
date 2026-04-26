@@ -29,7 +29,7 @@ use images::{download_artist_image, download_cover_art};
 use mb_api::RateLimiter;
 use mb_filter::should_skip_release;
 use mb_matching::{find_mb_match_with_fallback, is_likely_compound_of, is_special_artist_name};
-use mb_types::MbArtistMatch;
+use mb_types::{MbArtistMatch, MbRelease, MbTrack};
 use nuke::nuke_mb_data;
 use status::{check_release_status, normalize_title, status_to_db_string};
 
@@ -58,6 +58,21 @@ struct SyncArgs {
     web: bool,
 }
 
+fn get_majority_id(tracks: &[LocalTrackRow], field: fn(&LocalTrackRow) -> &Option<String>) -> Option<String> {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for t in tracks {
+        if let Some(ref id) = field(t) {
+            if !id.is_empty() {
+                *counts.entry(id.as_str()).or_insert(0) += 1;
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .max_by_key(|(_, c)| *c)
+        .map(|(id, _)| id.to_string())
+}
+
 fn local_track_to_meta(t: &LocalTrackRow) -> TrackMeta {
     let now = chrono::Utc::now().naive_utc();
     TrackMeta {
@@ -79,7 +94,8 @@ fn local_track_to_meta(t: &LocalTrackRow) -> TrackMeta {
         content_hash: String::new(),
         metadata_json: serde_json::Value::Null,
         has_picture: false,
-        mb_album_id: t.mb_album_id.clone(),
+        mb_release_id: t.mb_release_id.clone(),
+        mb_release_group_id: t.mb_release_group_id.clone(),
         mb_album_artist_id: t.mb_album_artist_id.clone(),
     }
 }
@@ -534,7 +550,7 @@ async fn main() {
         let mut score_count = 0u32;
         let mut newly_synced_count = 0u32;
         let mut release_failures = 0u32;
-        let mut releases_for_art: Vec<(String, String)> = Vec::new();
+        let mut releases_for_art: Vec<(String, String, String)> = Vec::new();
 
         let local_release_total = local_releases.len();
         for (lr_idx, local_release) in local_releases.iter().enumerate() {
@@ -548,35 +564,6 @@ async fn main() {
                 local_release_total,
                 local_release.title,
             ));
-
-            let local_title_norm = normalize_title(&local_release.title);
-            let rg = release_groups.iter().find(|rg| {
-                should_skip_release(rg).is_none()
-                    && normalize_title(&rg.title) == local_title_norm
-            });
-
-            let rg = match rg {
-                Some(r) => r,
-                None => {
-                    if args.verbose {
-                        reporter.skip(&format!("{} (no MB match)", local_release.title));
-                    }
-                    continue;
-                }
-            };
-
-            let type_name = rg.primary_type.as_deref().unwrap_or("Other");
-            let type_id =
-                match ensure_release_type_cached(&pool, type_name, &mut release_type_cache).await {
-                    Ok(id) => id,
-                    Err(_) => continue,
-                };
-
-            let year = rg
-                .first_release_date
-                .as_deref()
-                .and_then(|d| d.split('-').next())
-                .and_then(|y| y.parse::<i32>().ok());
 
             // If already synced and not overwriting, skip the MB API call entirely.
             if !args.overwrite {
@@ -603,41 +590,145 @@ async fn main() {
                 }
             }
 
-            if args.verbose {
-                reporter.sub_step(&format!("{} ({})...", local_release.title, type_name));
-            }
+            let local_tracks = match get_local_tracks_for_release(&pool, &local_release.id).await {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
 
-            let api_start = std::time::Instant::now();
-            reporter.info(&format!(
-                "      → MB fetch release-group {} ({})",
-                rg.id, type_name
-            ));
-            let mb_release_tracks =
-                match mb_api::mb_get_release_tracks(&http_client, &rg.id, &mut limiter).await {
-                    Ok(t) => t,
+            // 4-tier matching: collect majority MB IDs from local tracks
+            let majority_release_id = get_majority_id(&local_tracks, |t| &t.mb_release_id);
+            let majority_rg_id = get_majority_id(&local_tracks, |t| &t.mb_release_group_id);
+
+            // Tier 1: Direct release lookup via embedded MUSICBRAINZ_ALBUMID
+            let mut matched: Option<(String, String, Vec<(MbRelease, Vec<MbTrack>)>, String)> = None; // (release_id, rg_id, releases, type_name)
+            if let Some(ref rel_id) = majority_release_id {
+                let api_start = std::time::Instant::now();
+                reporter.info(&format!("      → Tier 1: direct release lookup {}", rel_id));
+                match mb_api::mb_get_release_by_id(&http_client, rel_id, &mut limiter).await {
+                    Ok((release, tracks, rg_id)) => {
+                        reporter.info(&format!(
+                            "      ← Tier 1 done in {:.1}s ({} tracks)",
+                            api_start.elapsed().as_secs_f64(),
+                            tracks.len()
+                        ));
+                        let type_name = release_groups.iter()
+                            .find(|rg| rg.id == rg_id)
+                            .and_then(|rg| rg.primary_type.as_deref())
+                            .unwrap_or("Other")
+                            .to_string();
+                        matched = Some((rel_id.clone(), rg_id, vec![(release, tracks)], type_name));
+                    }
+                    Err(e) if e.contains("HTTP 404") => {
+                        reporter.info("      ← Tier 1: 404, trying as release group...");
+                    }
+                    Err(e) if e.contains("unavailable") || e.contains("503") || e.contains("429") => {
+                        reporter.warn(&format!("{}: MB unavailable, skipping", local_release.title));
+                        continue;
+                    }
                     Err(e) => {
                         release_failures += 1;
                         reporter.err(&format!("{}: {}", local_release.title, e));
                         continue;
                     }
-                };
-            reporter.info(&format!(
-                "      ← MB fetch done in {:.1}s ({} releases)",
-                api_start.elapsed().as_secs_f64(),
-                mb_release_tracks.len()
-            ));
-
-            if mb_release_tracks.is_empty() {
-                if args.verbose {
-                    reporter.skip(&format!("{} (no official releases)", local_release.title));
                 }
-                continue;
             }
 
-            let local_tracks = match get_local_tracks_for_release(&pool, &local_release.id).await {
-                Ok(t) => t,
-                Err(_) => continue,
+            // Tier 2: Release group lookup via MUSICBRAINZ_RELEASEGROUPID (or Tier 1 fallback)
+            if matched.is_none() {
+                let rg_id_to_try = majority_rg_id.as_deref()
+                    .or(majority_release_id.as_deref()); // Tier 1 404 fallback
+                if let Some(rg_id) = rg_id_to_try {
+                    let api_start = std::time::Instant::now();
+                    reporter.info(&format!("      → Tier 2: release-group lookup {}", rg_id));
+                    match mb_api::mb_get_release_tracks(&http_client, rg_id, &mut limiter).await {
+                        Ok(releases) if !releases.is_empty() => {
+                            reporter.info(&format!(
+                                "      ← Tier 2 done in {:.1}s ({} releases)",
+                                api_start.elapsed().as_secs_f64(),
+                                releases.len()
+                            ));
+                            let type_name = release_groups.iter()
+                                .find(|rg2| rg2.id == rg_id)
+                                .and_then(|rg2| rg2.primary_type.as_deref())
+                                .unwrap_or("Other")
+                                .to_string();
+                            matched = Some((String::new(), rg_id.to_string(), releases, type_name));
+                        }
+                        Ok(_) => {
+                            if args.verbose {
+                                reporter.skip(&format!("{} (no official releases via Tier 2)", local_release.title));
+                            }
+                        }
+                        Err(e) if e.contains("unavailable") || e.contains("503") || e.contains("429") => {
+                            reporter.warn(&format!("{}: MB unavailable, skipping", local_release.title));
+                            continue;
+                        }
+                        Err(e) => {
+                            release_failures += 1;
+                            reporter.err(&format!("{}: {}", local_release.title, e));
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Tier 3: Title matching against release groups
+            if matched.is_none() {
+                let local_title_norm = normalize_title(&local_release.title);
+                let rg = release_groups.iter().find(|rg| {
+                    should_skip_release(rg).is_none()
+                        && normalize_title(&rg.title) == local_title_norm
+                });
+                if let Some(rg) = rg {
+                    let type_name = rg.primary_type.as_deref().unwrap_or("Other").to_string();
+                    let api_start = std::time::Instant::now();
+                    reporter.info(&format!("      → Tier 3: title match → release-group {} ({})", rg.id, type_name));
+                    match mb_api::mb_get_release_tracks(&http_client, &rg.id, &mut limiter).await {
+                        Ok(releases) if !releases.is_empty() => {
+                            reporter.info(&format!(
+                                "      ← Tier 3 done in {:.1}s ({} releases)",
+                                api_start.elapsed().as_secs_f64(),
+                                releases.len()
+                            ));
+                            matched = Some((String::new(), rg.id.clone(), releases, type_name));
+                        }
+                        Ok(_) => {
+                            if args.verbose {
+                                reporter.skip(&format!("{} (no official releases)", local_release.title));
+                            }
+                        }
+                        Err(e) => {
+                            release_failures += 1;
+                            reporter.err(&format!("{}: {}", local_release.title, e));
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Tier 4: No match
+            let (tier_release_id, rg_id, mb_release_tracks, type_name) = match matched {
+                Some(m) => m,
+                None => {
+                    if args.verbose {
+                        reporter.skip(&format!("{} (no MB match)", local_release.title));
+                    }
+                    continue;
+                }
             };
+
+            let type_id =
+                match ensure_release_type_cached(&pool, &type_name, &mut release_type_cache).await {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+
+            let year = release_groups.iter()
+                .find(|rg| rg.id == rg_id)
+                .and_then(|rg| rg.first_release_date.as_deref())
+                .or_else(|| mb_release_tracks[0].0.date.as_deref())
+                .and_then(|d| d.split('-').next())
+                .and_then(|y| y.parse::<i32>().ok());
 
             let local_track_ids: Vec<String> =
                 local_tracks.iter().map(|t| t.id.clone()).collect();
@@ -651,14 +742,24 @@ async fn main() {
 
             let best_tracks = &mb_release_tracks[status_check.best_release_idx].1;
 
+            // Use Tier 1 release ID if available, otherwise use best match from status check
+            let final_release_id = if !tier_release_id.is_empty() {
+                tier_release_id
+            } else {
+                status_check.best_release_id.clone()
+            };
+            let disambiguation = status_check.best_release_disambiguation.as_deref();
+
             let mb_db_id = match upsert_mb_release(
                 &pool,
-                &rg.id,
-                &rg.title,
+                &final_release_id,
+                &rg_id,
+                &local_release.title,
                 year,
                 &type_id,
                 status_str,
                 None,
+                disambiguation,
             )
             .await
             {
@@ -719,7 +820,7 @@ async fn main() {
                 .ok();
 
             if !args.skip_release_img {
-                releases_for_art.push((rg.id.clone(), local_release.id.clone()));
+                releases_for_art.push((final_release_id.clone(), rg_id.clone(), local_release.id.clone()));
             }
 
             let score = match status_check.status {
@@ -756,9 +857,9 @@ async fn main() {
         if !releases_for_art.is_empty() {
             reporter.step(&format!("Downloading cover art ({} releases)...", releases_for_art.len()));
             let mut art_downloaded = 0u32;
-            for (rg_id, local_release_id) in &releases_for_art {
+            for (rel_id, rg_id, local_release_id) in &releases_for_art {
                 let art_start = std::time::Instant::now();
-                match download_cover_art(&http_client, rg_id, &config.project_root, &s3_client, &config).await {
+                match download_cover_art(&http_client, rel_id, rg_id, &config.project_root, &s3_client, &config).await {
                     Ok(true) => {
                         art_downloaded += 1;
                         let filename = format!("{}.jpg", rg_id);
@@ -1114,16 +1215,21 @@ async fn main() {
                         continue;
                     }
 
-                    let best_tracks = &mb_release_tracks[0].1;
+                    let best_release = &mb_release_tracks[0];
+                    let best_tracks = &best_release.1;
+                    let best_release_id = &best_release.0.id;
+                    let best_disambiguation = best_release.0.disambiguation.as_deref();
 
                     let mb_db_id = match upsert_mb_release(
                         &pool,
+                        best_release_id,
                         &rg.id,
                         &rg.title,
                         year,
                         &type_id,
                         "UNKNOWN",
                         None,
+                        best_disambiguation,
                     )
                     .await
                     {

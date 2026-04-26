@@ -34,9 +34,13 @@ Without `--web`, the script prints colored, indented progress (artist headers, `
 2. **Fetch** artist detail: URLs, genres
 3. **Download** artist image (Wikidata → Wikipedia → Fanart.tv), resize to 500px
 4. **Fetch** release groups (paginated)
-5. **For each local release** — find matching release group by title, upsert MB release + tracks
+5. **For each local release** — 4-tier matching:
+   - Tier 1: Direct release lookup via embedded `MUSICBRAINZ_ALBUMID`
+   - Tier 2: Release group lookup via `MUSICBRAINZ_RELEASEGROUPID`, pick best release by track count
+   - Tier 3: Title matching against release groups, pick best release
+   - Tier 4: No match — skip gracefully
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
-7. **Download** cover art from Cover Art Archive, resize to 500px
+7. **Download** cover art from Cover Art Archive (release-level first, release-group fallback), resize to 500px
 8. **Set `lastSyncedAt`** on Artist
 
 ## --delete behaviour
@@ -61,11 +65,21 @@ After `--delete`, re-running `./sync` (without `--overwrite`) automatically re-s
 | `COMPLETE` | All MB tracks matched to local tracks |
 | `INCOMPLETE` | Some MB tracks unmatched |
 | `EXTRA_TRACKS` | More local tracks than MB tracks |
+| `MISSING_TRACKS` | MB has tracks not found locally |
 | `UNSYNCABLE` | No matching release group found |
 
 ## Rate Limiting
 
-Adaptive backoff: 250ms–10s per request, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers. Retries up to 10× on 429/503 with exponential backoff.
+Adaptive backoff: 1100ms–10s per request, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers. Retries up to 6× on 429/503 with exponential backoff (1s→2s→4s→8s→16s cap).
+
+## Multi-Edition Handling
+
+Multiple editions of the same album (original, remaster, deluxe) are stored as separate `MusicBrainzRelease` rows. Each row stores:
+- `musicbrainzId` — specific MB release ID (unique per edition)
+- `releaseGroupId` — MB release group ID (shared across editions)
+- `disambiguation` — edition label from MB ("2009 Remaster", "Deluxe Edition")
+
+Cover art fetched per-release first, falling back to release-group art.
 
 ## Running on NAS
 

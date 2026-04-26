@@ -18,6 +18,8 @@ export interface UnifiedRelease {
   type: string
   typeSlug: string
   musicbrainzId: string | null
+  releaseGroupId: string | null
+  disambiguation: string | null
   status: ReleaseStatus
   image: string | null
   imageUrl: string | null
@@ -34,6 +36,7 @@ export type ReleaseStatus =
   | 'COMPLETE'
   | 'INCOMPLETE'
   | 'EXTRA_TRACKS'
+  | 'MISSING_TRACKS'
   | 'MISSING'
   | 'UNSYNCABLE'
   | 'UNKNOWN'

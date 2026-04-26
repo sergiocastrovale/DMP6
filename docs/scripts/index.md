@@ -30,7 +30,7 @@ Without `--web`, the script prints colored, indented progress (folder headers, `
 ## Per-Folder Flow
 
 1. **Walk** folder for audio files (mp3, flac, aac, opus, m4a, ogg)
-2. **Extract** metadata in parallel (rayon + lofty), including embedded MusicBrainz IDs
+2. **Extract** metadata in parallel (rayon + lofty), including 3 MusicBrainz tags: `MUSICBRAINZ_ALBUMID` (release), `MUSICBRAINZ_RELEASEGROUPID` (release group), `MUSICBRAINZ_ALBUMARTISTID`
 3. **Change detection** — skip unchanged files (mtime + fileSize), hash-compare changed ones
 4. **Split** album artist and track artist tags into individual artists
 5. **Upsert** Artist, LocalRelease, LocalReleaseTrack, TrackArtist, LocalReleaseArtist (batch UNNEST)
@@ -41,9 +41,10 @@ Without `--web`, the script prints colored, indented progress (folder headers, `
 
 ## Release Grouping
 
-Releases are deduplicated by `groupKey`:
-- With MB album ID: `"mb:{mbAlbumId}"`
-- Without: `"meta:{slugTitle}:{year}:{slugArtist}"`
+Releases are deduplicated by `groupKey` (3-tier):
+- With MB release ID: `"mbr:{mbReleaseId}:{folderPath}"` (edition-specific)
+- With MB release group ID: `"mb:{mbReleaseGroupId}:{folderPath}"`
+- Without MB IDs: `"meta:{slugTitle}:{year}:{slugArtist}"`
 
 ## Artist Tag Splitting
 

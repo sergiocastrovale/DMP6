@@ -65,7 +65,7 @@ pub async fn batch_ensure_local_release_artists(
 
 pub async fn get_existing_mb_release_id(pool: &PgPool, mb_release_group_id: &str) -> Option<String> {
     let row: Option<(String,)> = sqlx::query_as(
-        r#"SELECT id FROM "MusicBrainzRelease" WHERE "musicbrainzId" = $1"#,
+        r#"SELECT id FROM "MusicBrainzRelease" WHERE "releaseGroupId" = $1 LIMIT 1"#,
     )
     .bind(mb_release_group_id)
     .fetch_optional(pool)
@@ -151,23 +151,27 @@ pub async fn ensure_genre_cached(
 
 pub async fn upsert_mb_release(
     pool: &PgPool,
-    mb_release_group_id: &str,
+    mb_release_id: &str,
+    release_group_id: &str,
     title: &str,
     year: Option<i32>,
     type_id: &str,
     status: &str,
     status_reason: Option<&str>,
+    disambiguation: Option<&str>,
 ) -> Result<String, sqlx::Error> {
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
     let row: (String,) = sqlx::query_as(
         r#"INSERT INTO "MusicBrainzRelease"
-             (id, title, "typeId", year, "musicbrainzId", status, "statusReason", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6::"ReleaseStatus", $7, $8, $8)
+             (id, title, "typeId", year, "musicbrainzId", "releaseGroupId", disambiguation, status, "statusReason", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::"ReleaseStatus", $9, $10, $10)
            ON CONFLICT ("musicbrainzId") DO UPDATE SET
              title = EXCLUDED.title,
              "typeId" = EXCLUDED."typeId",
              year = COALESCE(EXCLUDED.year, "MusicBrainzRelease".year),
+             "releaseGroupId" = EXCLUDED."releaseGroupId",
+             disambiguation = EXCLUDED.disambiguation,
              status = EXCLUDED.status::"ReleaseStatus",
              "statusReason" = EXCLUDED."statusReason",
              "updatedAt" = EXCLUDED."updatedAt"
@@ -177,7 +181,9 @@ pub async fn upsert_mb_release(
     .bind(title)
     .bind(type_id)
     .bind(year)
-    .bind(mb_release_group_id)
+    .bind(mb_release_id)
+    .bind(release_group_id)
+    .bind(disambiguation)
     .bind(status)
     .bind(status_reason)
     .bind(now)
@@ -574,7 +580,8 @@ pub struct LocalTrackRow {
     pub id: String,
     pub title: Option<String>,
     pub artist: Option<String>,
-    pub mb_album_id: Option<String>,
+    pub mb_release_id: Option<String>,
+    pub mb_release_group_id: Option<String>,
     pub mb_album_artist_id: Option<String>,
     pub track_number: Option<i32>,
     pub disc_number: Option<i32>,
@@ -584,9 +591,9 @@ pub async fn get_local_tracks_for_release(
     pool: &PgPool,
     release_id: &str,
 ) -> Result<Vec<LocalTrackRow>, sqlx::Error> {
-    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>)> =
+    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>)> =
         sqlx::query_as(
-            r#"SELECT id, title, artist, "mbAlbumId", "mbAlbumArtistId", "trackNumber", "discNumber"
+            r#"SELECT id, title, artist, "mbReleaseId", "mbReleaseGroupId", "mbAlbumArtistId", "trackNumber", "discNumber"
                FROM "LocalReleaseTrack"
                WHERE "localReleaseId" = $1
                ORDER BY "discNumber", "trackNumber""#,
@@ -597,12 +604,13 @@ pub async fn get_local_tracks_for_release(
 
     Ok(rows
         .into_iter()
-        .map(|(id, title, artist, mb_album_id, mb_album_artist_id, track_number, disc_number)| {
+        .map(|(id, title, artist, mb_release_id, mb_release_group_id, mb_album_artist_id, track_number, disc_number)| {
             LocalTrackRow {
                 id,
                 title,
                 artist,
-                mb_album_id,
+                mb_release_id,
+                mb_release_group_id,
                 mb_album_artist_id,
                 track_number,
                 disc_number,

@@ -71,40 +71,50 @@ async fn upload_image(
 
 pub async fn download_cover_art(
     client: &Client,
-    mb_release_id: &str,
+    release_id: &str,
+    release_group_id: &str,
     _project_root: &str,
     s3_client: &Option<S3Client>,
     config: &Config,
 ) -> Result<bool, String> {
-    let s3_key = format!("releases/{}.jpg", mb_release_id);
+    let file_id = release_group_id;
+    let s3_key = format!("releases/{}.jpg", file_id);
     let local_path = PathBuf::from(&config.image_dir)
         .join("releases")
-        .join(format!("{}.jpg", mb_release_id));
+        .join(format!("{}.jpg", file_id));
 
     if config.use_local() && local_path.exists() {
         return Ok(false);
     }
 
-    let url = format!(
-        "https://coverartarchive.org/release-group/{}/front-500",
-        mb_release_id
-    );
+    let urls = [
+        format!("https://coverartarchive.org/release/{}/front-500", release_id),
+        format!("https://coverartarchive.org/release-group/{}/front-500", release_group_id),
+    ];
 
-    let resp = client
-        .get(&url)
-        .header("User-Agent", crate::mb_api::USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("CAA request failed: {}", e))?;
+    let mut bytes_result = None;
+    for url in &urls {
+        let resp = client
+            .get(url)
+            .header("User-Agent", crate::mb_api::USER_AGENT)
+            .send()
+            .await
+            .map_err(|e| format!("CAA request failed: {}", e))?;
 
-    if !resp.status().is_success() {
-        return Ok(false);
+        if resp.status().is_success() {
+            bytes_result = Some(
+                resp.bytes()
+                    .await
+                    .map_err(|e| format!("CAA read body: {}", e))?,
+            );
+            break;
+        }
     }
 
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("CAA read body: {}", e))?;
+    let bytes = match bytes_result {
+        Some(b) => b,
+        None => return Ok(false),
+    };
 
     let img = match image::load_from_memory(&bytes) {
         Ok(i) => i,

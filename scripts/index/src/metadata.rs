@@ -52,7 +52,8 @@ pub fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, Strin
     let mut position: Option<String> = None;
     let mut all_tags: HashMap<String, String> = HashMap::new();
     let mut has_picture = false;
-    let mut mb_album_id: Option<String> = None;
+    let mut mb_release_id: Option<String> = None;
+    let mut mb_release_group_id: Option<String> = None;
     let mut mb_album_artist_id: Option<String> = None;
 
     for tag in tagged_file.tags() {
@@ -92,16 +93,24 @@ pub fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, Strin
                 if position.is_none() && key_upper == "POSITION" {
                     position = Some(val.clone());
                 }
-                if mb_album_id.is_none()
+                if mb_release_id.is_none()
                     && (key_upper == "MUSICBRAINZ_ALBUMID"
                         || key_upper == "MUSICBRAINZ ALBUM ID"
-                        || key_upper == "MUSICBRAINZ_RELEASEGROUPID"
+                        || key_upper == "MUSICBRAINZALBUMID")
+                {
+                    let trimmed = val.trim();
+                    if !trimmed.is_empty() && trimmed.len() >= 32 {
+                        mb_release_id = Some(trimmed.to_string());
+                    }
+                }
+                if mb_release_group_id.is_none()
+                    && (key_upper == "MUSICBRAINZ_RELEASEGROUPID"
                         || key_upper == "MUSICBRAINZ RELEASE GROUP ID"
                         || key_upper.contains("MUSICBRAINZRELEASEGROUPID"))
                 {
                     let trimmed = val.trim();
                     if !trimmed.is_empty() && trimmed.len() >= 32 {
-                        mb_album_id = Some(trimmed.to_string());
+                        mb_release_group_id = Some(trimmed.to_string());
                     }
                 }
                 if mb_album_artist_id.is_none()
@@ -192,7 +201,8 @@ pub fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, Strin
         content_hash,
         metadata_json,
         has_picture,
-        mb_album_id,
+        mb_release_id,
+        mb_release_group_id,
         mb_album_artist_id,
     })
 }

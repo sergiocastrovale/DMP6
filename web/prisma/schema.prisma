@@ -119,23 +119,26 @@ model ReleaseType {
 // ---------------------------------------------------------------------------
 
 model MusicBrainzRelease {
-  id             String                  @id @default(cuid())
-  title          String                  @db.VarChar(500)
-  typeId         String
-  year           Int?
-  musicbrainzId  String                  @unique
-  status         ReleaseStatus           @default(UNKNOWN)
-  statusReason   String?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  favorite       FavoriteRelease?
-  localReleases  LocalRelease[]
-  artists        MusicBrainzReleaseArtist[]
-  type           ReleaseType             @relation(fields: [typeId], references: [id])
-  genres         Genre[]                 @relation("ReleaseGenres")
-  tracks         MusicBrainzReleaseTrack[]
+  id              String                  @id @default(cuid())
+  title           String                  @db.VarChar(500)
+  typeId          String
+  year            Int?
+  musicbrainzId   String                  @unique
+  releaseGroupId  String?
+  disambiguation  String?
+  status          ReleaseStatus           @default(UNKNOWN)
+  statusReason    String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  favorite        FavoriteRelease?
+  localReleases   LocalRelease[]
+  artists         MusicBrainzReleaseArtist[]
+  type            ReleaseType             @relation(fields: [typeId], references: [id])
+  genres          Genre[]                 @relation("ReleaseGenres")
+  tracks          MusicBrainzReleaseTrack[]
 
   @@index([typeId])
+  @@index([releaseGroupId])
 }
 
 // ---------------------------------------------------------------------------
@@ -246,10 +249,11 @@ model LocalReleaseTrack {
   position       String?                  @db.Text
   trackNumber    Int?
   discNumber     Int?
-  localReleaseId String?
-  mbTrackId      String?
-  mbAlbumId      String?
-  mbAlbumArtistId String?
+  localReleaseId    String?
+  mbTrackId         String?
+  mbReleaseGroupId  String?
+  mbReleaseId       String?
+  mbAlbumArtistId   String?
   fileSize       BigInt?
   mtime          DateTime?
   contentHash    String?                  @db.VarChar(32)
@@ -276,7 +280,8 @@ model LocalReleaseTrack {
   @@index([playCount])
   @@index([genre])
   @@index([localReleaseId, discNumber, trackNumber]) // Composite for ORDER BY discNumber, trackNumber within a release
-  @@index([mbAlbumId])
+  @@index([mbReleaseGroupId])
+  @@index([mbReleaseId])
   // Trigram GIN index for title ILIKE and expression index on LOWER(genre) added via raw migration
 }
 

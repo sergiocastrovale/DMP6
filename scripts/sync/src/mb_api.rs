@@ -382,3 +382,50 @@ pub async fn mb_get_release_tracks(
 
     Ok(releases)
 }
+
+pub async fn mb_get_release_by_id(
+    client: &Client,
+    release_id: &str,
+    limiter: &mut RateLimiter,
+) -> Result<(MbRelease, Vec<MbTrack>, String), String> {
+    let url = format!(
+        "{}/release/{}?inc=recordings+release-groups&fmt=json",
+        MB_BASE, release_id
+    );
+    let body = mb_get(client, &url, limiter).await?;
+
+    #[derive(serde::Deserialize)]
+    struct ReleaseGroupRef {
+        id: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct ReleaseLookup {
+        #[serde(flatten)]
+        release: MbRelease,
+        #[serde(rename = "release-group")]
+        release_group: Option<ReleaseGroupRef>,
+    }
+
+    let lookup: ReleaseLookup =
+        serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
+
+    let rg_id = lookup
+        .release_group
+        .map(|rg| rg.id)
+        .unwrap_or_default();
+
+    let mut tracks = Vec::new();
+    if let Some(ref media) = lookup.release.media {
+        for medium in media {
+            if let Some(ref trks) = medium.tracks {
+                for trk in trks {
+                    let mut t = trk.clone();
+                    t.disc_number = medium.position;
+                    tracks.push(t);
+                }
+            }
+        }
+    }
+
+    Ok((lookup.release, tracks, rg_id))
+}

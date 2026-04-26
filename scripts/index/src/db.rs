@@ -28,15 +28,21 @@ pub fn strip_disc_subfolder(folder_path: &str) -> String {
 }
 
 pub fn build_group_key(
-    mb_album_id: Option<&str>,
+    mb_release_id: Option<&str>,
+    mb_release_group_id: Option<&str>,
     album_title: &str,
     year: Option<i32>,
     album_artist: &str,
     folder_path: &str,
 ) -> String {
-    if let Some(mb_id) = mb_album_id {
-        if !mb_id.is_empty() {
-            return format!("mb:{}:{}", mb_id, folder_path);
+    if let Some(id) = mb_release_id {
+        if !id.is_empty() {
+            return format!("mbr:{}:{}", id, folder_path);
+        }
+    }
+    if let Some(id) = mb_release_group_id {
+        if !id.is_empty() {
+            return format!("mb:{}:{}", id, folder_path);
         }
     }
     let title_slug = slugify(album_title);
@@ -123,7 +129,8 @@ pub async fn batch_upsert_tracks(
     let mut mtimes: Vec<NaiveDateTime> = Vec::with_capacity(len);
     let mut content_hashes: Vec<String> = Vec::with_capacity(len);
     let mut metadatas: Vec<serde_json::Value> = Vec::with_capacity(len);
-    let mut mb_album_ids: Vec<Option<String>> = Vec::with_capacity(len);
+    let mut mb_release_group_ids: Vec<Option<String>> = Vec::with_capacity(len);
+    let mut mb_release_ids: Vec<Option<String>> = Vec::with_capacity(len);
     let mut mb_album_artist_ids: Vec<Option<String>> = Vec::with_capacity(len);
     let now = Utc::now().naive_utc();
 
@@ -147,7 +154,8 @@ pub async fn batch_upsert_tracks(
         mtimes.push(track.mtime);
         content_hashes.push(track.content_hash.clone());
         metadatas.push(serde_json::to_value(&track.metadata_json).unwrap_or(serde_json::Value::Null));
-        mb_album_ids.push(track.mb_album_id.clone());
+        mb_release_group_ids.push(track.mb_release_group_id.clone());
+        mb_release_ids.push(track.mb_release_id.clone());
         mb_album_artist_ids.push(track.mb_album_artist_id.clone());
     }
 
@@ -159,12 +167,12 @@ pub async fn batch_upsert_tracks(
            (id, title, artist, "albumArtist", album, year, genre,
             duration, bitrate, "sampleRate", "filePath", position, "trackNumber", "discNumber",
             "localReleaseId", "fileSize", mtime, "contentHash", metadata,
-            "playCount", "createdAt", "updatedAt", "mbAlbumId", "mbAlbumArtistId")
+            "playCount", "createdAt", "updatedAt", "mbReleaseGroupId", "mbReleaseId", "mbAlbumArtistId")
            SELECT * FROM UNNEST(
                $1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::text[],
                $8::int[], $9::int[], $10::int[], $11::text[], $12::text[], $13::int[], $14::int[],
                $15::text[], $16::bigint[], $17::timestamp[], $18::text[], $19::jsonb[],
-               $20::int[], $21::timestamp[], $22::timestamp[], $23::text[], $24::text[]
+               $20::int[], $21::timestamp[], $22::timestamp[], $23::text[], $24::text[], $25::text[]
            )
            ON CONFLICT ("filePath") DO UPDATE SET
              title = EXCLUDED.title, artist = EXCLUDED.artist, "albumArtist" = EXCLUDED."albumArtist",
@@ -173,7 +181,8 @@ pub async fn batch_upsert_tracks(
              position = EXCLUDED.position, "trackNumber" = EXCLUDED."trackNumber", "discNumber" = EXCLUDED."discNumber",
              "localReleaseId" = EXCLUDED."localReleaseId", "fileSize" = EXCLUDED."fileSize",
              mtime = EXCLUDED.mtime, "contentHash" = EXCLUDED."contentHash", metadata = EXCLUDED.metadata,
-             "mbAlbumId" = EXCLUDED."mbAlbumId", "mbAlbumArtistId" = EXCLUDED."mbAlbumArtistId",
+             "mbReleaseGroupId" = EXCLUDED."mbReleaseGroupId", "mbReleaseId" = EXCLUDED."mbReleaseId",
+             "mbAlbumArtistId" = EXCLUDED."mbAlbumArtistId",
              "updatedAt" = EXCLUDED."updatedAt"
            RETURNING id, "filePath""#,
     )
@@ -199,7 +208,8 @@ pub async fn batch_upsert_tracks(
     .bind(&play_counts)
     .bind(&created)
     .bind(&created)
-    .bind(&mb_album_ids)
+    .bind(&mb_release_group_ids)
+    .bind(&mb_release_ids)
     .bind(&mb_album_artist_ids)
     .fetch_all(pool)
     .await?;

@@ -25,6 +25,8 @@ export default defineEventHandler(async (event) => {
           title: true,
           year: true,
           musicbrainzId: true,
+          releaseGroupId: true,
+          disambiguation: true,
           status: true,
           statusReason: true,
           type: { select: { name: true, slug: true } },
@@ -103,6 +105,8 @@ export default defineEventHandler(async (event) => {
     type: string
     typeSlug: string
     musicbrainzId: string | null
+    releaseGroupId: string | null
+    disambiguation: string | null
     status: string
     image: string | null
     imageUrl: string | null
@@ -128,6 +132,8 @@ export default defineEventHandler(async (event) => {
       type: mbr.type.name,
       typeSlug: mbr.type.slug,
       musicbrainzId: mbr.musicbrainzId,
+      releaseGroupId: mbr.releaseGroupId ?? null,
+      disambiguation: mbr.disambiguation ?? null,
       status: mbr.status,
       image: img.image,
       imageUrl: img.imageUrl,
@@ -152,6 +158,8 @@ export default defineEventHandler(async (event) => {
       type: 'Unmatched',
       typeSlug: 'unmatched',
       musicbrainzId: null,
+      releaseGroupId: null,
+      disambiguation: null,
       status: lr.matchStatus,
       image: unmatchedImg.image,
       imageUrl: unmatchedImg.imageUrl,
@@ -196,6 +204,8 @@ export default defineEventHandler(async (event) => {
       type: mbr ? mbr.type.name : 'Appears On',
       typeSlug: mbr ? mbr.type.slug : 'appears-on',
       musicbrainzId: null,
+      releaseGroupId: null,
+      disambiguation: null,
       status: mbr?.status ?? lr.matchStatus,
       image: appearsOnImg.image,
       imageUrl: appearsOnImg.imageUrl,

@@ -14,13 +14,19 @@ export const statuses = [
     classes: 'bg-amber-500/20 text-amber-400',
     description: 'Some tracks missing locally'
   },
-  { 
+  {
     value: 'EXTRA_TRACKS',
     label: 'Extra tracks',
     classes: 'bg-blue-500/20 text-blue-400',
     description: 'More local tracks than MB'
   },
-  { 
+  {
+    value: 'MISSING_TRACKS',
+    label: 'Missing tracks',
+    classes: 'bg-orange-500/20 text-orange-400',
+    description: 'MB has tracks not found locally'
+  },
+  {
     value: 'MISSING',
     label: 'Missing',
     classes: 'bg-red-500/20 text-red-400',

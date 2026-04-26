@@ -53,6 +53,8 @@ pub struct StatusCheck {
     pub status: ReleaseStatus,
     pub matched_mb_tracks: Vec<(MbTrack, Option<String>)>, // (mb_track, local_track_id)
     pub best_release_idx: usize,
+    pub best_release_id: String,
+    pub best_release_disambiguation: Option<String>,
 }
 
 pub fn check_release_status(
@@ -65,6 +67,8 @@ pub fn check_release_status(
             status: ReleaseStatus::Incomplete,
             matched_mb_tracks: Vec::new(),
             best_release_idx: 0,
+            best_release_id: String::new(),
+            best_release_disambiguation: None,
         };
     }
 
@@ -122,6 +126,8 @@ pub fn check_release_status(
         status,
         matched_mb_tracks: matched,
         best_release_idx: best_idx,
+        best_release_id: best_release.0.id.clone(),
+        best_release_disambiguation: best_release.0.disambiguation.clone(),
     }
 }
 

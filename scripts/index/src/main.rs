@@ -398,18 +398,32 @@ async fn main() {
         }
 
         // -----------------------------------------------------------------
-        // Pre-scan: propagate MB album IDs within the same logical album
+        // Pre-scan: propagate MB IDs within the same logical album
         // -----------------------------------------------------------------
-        let mb_id_by_meta: HashMap<(String, i32, String), String> = {
+        let mb_release_id_by_meta: HashMap<(String, i32, String), String> = {
             let mut map: HashMap<(String, i32, String), String> = HashMap::new();
             for track in &extracted {
-                if let Some(ref mb_id) = track.mb_album_id {
+                if let Some(ref id) = track.mb_release_id {
                     let key = (
                         track.album.as_deref().unwrap_or("").to_lowercase(),
                         track.year.unwrap_or(0),
                         track.album_artist.as_deref().unwrap_or("").to_lowercase(),
                     );
-                    map.entry(key).or_insert_with(|| mb_id.clone());
+                    map.entry(key).or_insert_with(|| id.clone());
+                }
+            }
+            map
+        };
+        let mb_release_group_id_by_meta: HashMap<(String, i32, String), String> = {
+            let mut map: HashMap<(String, i32, String), String> = HashMap::new();
+            for track in &extracted {
+                if let Some(ref id) = track.mb_release_group_id {
+                    let key = (
+                        track.album.as_deref().unwrap_or("").to_lowercase(),
+                        track.year.unwrap_or(0),
+                        track.album_artist.as_deref().unwrap_or("").to_lowercase(),
+                    );
+                    map.entry(key).or_insert_with(|| id.clone());
                 }
             }
             map
@@ -488,18 +502,21 @@ async fn main() {
             };
             let folder_path_str = strip_disc_subfolder(&raw_folder_path);
 
-            // Resolve effective MB album ID (propagated from siblings if needed)
-            let effective_mb_id = track.mb_album_id.as_deref().or_else(|| {
-                let key = (
-                    track.album.as_deref().unwrap_or("").to_lowercase(),
-                    track.year.unwrap_or(0),
-                    track.album_artist.as_deref().unwrap_or("").to_lowercase(),
-                );
-                mb_id_by_meta.get(&key).map(|s| s.as_str())
+            let meta_key = (
+                track.album.as_deref().unwrap_or("").to_lowercase(),
+                track.year.unwrap_or(0),
+                track.album_artist.as_deref().unwrap_or("").to_lowercase(),
+            );
+            let effective_release_id = track.mb_release_id.as_deref().or_else(|| {
+                mb_release_id_by_meta.get(&meta_key).map(|s| s.as_str())
+            });
+            let effective_rg_id = track.mb_release_group_id.as_deref().or_else(|| {
+                mb_release_group_id_by_meta.get(&meta_key).map(|s| s.as_str())
             });
 
             let group_key = build_group_key(
-                effective_mb_id,
+                effective_release_id,
+                effective_rg_id,
                 album_name,
                 track.year,
                 track.album_artist.as_deref().unwrap_or(""),

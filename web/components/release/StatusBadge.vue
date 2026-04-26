@@ -11,6 +11,7 @@ const config: Record<ReleaseStatus, { label: string; classes: string }> = {
   COMPLETE: { label: 'Complete', classes: 'bg-emerald-500/20 text-emerald-400' },
   INCOMPLETE: { label: 'Incomplete', classes: 'bg-amber-500/20 text-amber-400' },
   EXTRA_TRACKS: { label: 'Extra tracks', classes: 'bg-blue-500/20 text-blue-400' },
+  MISSING_TRACKS: { label: 'Missing tracks', classes: 'bg-orange-500/20 text-orange-400' },
   MISSING: { label: 'Missing', classes: 'bg-red-500/20 text-red-400' },
   UNSYNCABLE: { label: 'Unsyncable', classes: 'bg-zinc-700 text-zinc-400' },
   UNKNOWN: { label: 'Unknown', classes: 'bg-zinc-700 text-zinc-400' },

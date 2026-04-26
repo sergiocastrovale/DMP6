@@ -457,7 +457,10 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
             </div>
 
             <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium" :class="release.status === 'MISSING' ? 'text-zinc-500' : 'text-zinc-50'">{{ release.title }}</div>
+              <div class="truncate text-sm font-medium" :class="release.status === 'MISSING' ? 'text-zinc-500' : 'text-zinc-50'">
+                {{ release.title }}
+                <span v-if="release.disambiguation" class="ml-1 text-xs font-normal text-zinc-500">({{ release.disambiguation }})</span>
+              </div>
 
               <div class="flex items-center gap-3 text-xs" :class="release.status === 'MISSING' ? 'text-zinc-600' : 'text-zinc-400'">
                 <span v-if="release.year">{{ release.year }}</span>
@@ -509,7 +512,7 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
 
             <a
               v-if="release.musicbrainzId"
-              :href="`https://musicbrainz.org/release-group/${release.musicbrainzId}`"
+              :href="`https://musicbrainz.org/release/${release.musicbrainzId}`"
               target="_blank"
               rel="noopener noreferrer"
               class="rounded-full p-1.5 text-zinc-600 transition-colors hover:text-zinc-400"

@@ -129,7 +129,7 @@ pub fn is_likely_compound_of(artist_name: &str, match_name: &str) -> bool {
 ///
 /// Algorithm:
 ///   1. If Artist.musicbrainzId is already set → direct lookup
-///   2. If any track has mbAlbumId → look up release group → get artist credits
+///   2. If any track has mbReleaseGroupId → look up release group → get artist credits
 ///   3. Search MB by stored artist name
 ///   4. Search by raw artist/albumArtist tags from DB
 ///   5. Search MB for a release-group by album title + tag → use artist-credit array
@@ -157,16 +157,17 @@ pub async fn find_mb_match_with_fallback(
         }
     }
 
-    // Step 2: lookup via first available mbAlbumId → release group artist credits
-    let mb_album_id_hint: Option<String> = sqlx::query_as::<_, (String,)>(
-        r#"SELECT DISTINCT lrt."mbAlbumId"
+    // Step 2: lookup via first available mbReleaseGroupId → release group artist credits
+    // Only use mbReleaseGroupId here — mbReleaseId is a release (not group) and would 404
+    let mb_rg_id_hint: Option<String> = sqlx::query_as::<_, (String,)>(
+        r#"SELECT DISTINCT lrt."mbReleaseGroupId"
            FROM "LocalReleaseTrack" lrt
            JOIN "LocalRelease" lr ON lrt."localReleaseId" = lr.id
            WHERE EXISTS (
                SELECT 1 FROM "LocalReleaseArtist" lra
                WHERE lra."localReleaseId" = lr.id AND lra."artistId" = $1
            )
-           AND lrt."mbAlbumId" IS NOT NULL AND lrt."mbAlbumId" != ''
+           AND lrt."mbReleaseGroupId" IS NOT NULL AND lrt."mbReleaseGroupId" != ''
            LIMIT 1"#,
     )
     .bind(artist_id)
@@ -176,7 +177,7 @@ pub async fn find_mb_match_with_fallback(
     .flatten()
     .map(|(id,)| id);
 
-    if let Some(ref mb_rid) = mb_album_id_hint {
+    if let Some(ref mb_rid) = mb_rg_id_hint {
         match mb_lookup_release_group_artist(client, mb_rid, limiter).await {
             Ok(artists) if !artists.is_empty() => {
                 let real_artists: Vec<MbArtistMatch> = artists
