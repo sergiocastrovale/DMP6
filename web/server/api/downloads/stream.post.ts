@@ -264,7 +264,7 @@ async function streamDeezerDownload(
   send(`Found ${albums.length} album(s)`)
 
   // Pick best match (first result, Deezer sorts by relevance)
-  const album = albums[0]
+  const album = albums[0]!
   send(`  Selected: ${album.artist} — ${album.title} (${album.trackCount} tracks)`)
   send('')
 
@@ -312,7 +312,7 @@ async function streamDeezerDownload(
     const errored = relevant.filter(d => d.state === 'Errored')
 
     if (inProgress.length > 0) {
-      const current = inProgress[0]
+      const current = inProgress[0]!
       send(`  Downloading: ${current.displayName} (${Math.round(current.progress)}%)`)
     }
 
@@ -327,7 +327,7 @@ async function streamDeezerDownload(
       send('')
       send(`Download complete — ${done.length}/${relevant.length} files`)
       if (errored.length > 0) send(`  ${errored.length} file(s) failed`)
-      send(`${albumTitle || album.title} downloaded to ${downloadsPath}.`)
+      send(`${albumTitle || album!.title} downloaded to ${downloadsPath}.`)
     }
   }
 }
@@ -431,8 +431,8 @@ async function streamHifiDownload(
   const groupId = await startHifiDownload(
     trackIds,
     downloadsPath,
-    albumTitle || tracks[0].album,
-    artistName || tracks[0].artist,
+    albumTitle || tracks[0]!.album,
+    artistName || tracks[0]!.artist,
     year ?? null,
     dirTemplate,
   )
@@ -456,7 +456,7 @@ async function streamHifiDownload(
     const errored = relevant.filter(d => d.state === 'Errored')
 
     if (inProgress.length > 0) {
-      const current = inProgress[0]
+      const current = inProgress[0]!
       send(`  Downloading: ${current.displayName} (${Math.round(current.progress)}%)`)
     }
 

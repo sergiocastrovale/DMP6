@@ -4,7 +4,6 @@ import type { UnifiedRelease, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/components/TrackList.vue'
 import type { ButtonDropdownOption } from '~/components/ButtonDropdown.vue'
-import { usePlayerStore } from '~/stores/player'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'
@@ -20,6 +19,7 @@ const props = defineProps<{
 
 const route = useRoute()
 const player = usePlayerStore()
+const { playRelease: playReleaseById, isCurrentRelease: isCurrentReleaseId, isReleasePlaying: isReleasePlayingId, toggleOrPlay } = usePlayRelease()
 const { releaseImage } = useImageUrl()
 
 const releases = ref<UnifiedRelease[]>([])
@@ -250,45 +250,10 @@ function toggleExpand(id: string) {
   expandedRelease.value = expandedRelease.value === id ? null : id
 }
 
-function isCurrentRelease(release: UnifiedRelease) {
-  const releaseId = release.localReleaseId || release.id
-  return player.currentTrack?.localReleaseId === releaseId
-}
-
-function isReleasePlaying(release: UnifiedRelease) {
-  return player.isPlaying && isCurrentRelease(release)
-}
-
-function handleReleaseClick(release: UnifiedRelease) {
-  if (isCurrentRelease(release)) {
-    player.togglePlay()
-  } else {
-    playRelease(release)
-  }
-}
-
-async function playRelease(release: UnifiedRelease) {
-  const releaseId = release.localReleaseId || release.id
-  try {
-    const data = await $fetch<any>(`/api/releases/${releaseId}/tracks`)
-    const playable = data?.tracks?.filter((t: any) => !t.missing) ?? []
-    if (playable.length) {
-      const playerTracks = playable.map((t: any) => ({
-        id: t.id,
-        title: t.title || 'Unknown',
-        artist: t.artist || 'Unknown',
-        album: t.album || release.title,
-        duration: t.duration || 0,
-        artistSlug: props.slug,
-        releaseImage: data.release?.image || null,
-        releaseImageUrl: data.release?.imageUrl || null,
-        localReleaseId: t.localReleaseId,
-      }))
-      player.setQueue(playerTracks, playerTracks[0])
-    }
-  }
-  catch { /* ignore */ }
-}
+const getReleaseId = (release: UnifiedRelease) => release.localReleaseId || release.id
+const isCurrentRelease = (release: UnifiedRelease) => isCurrentReleaseId(getReleaseId(release))
+const isReleasePlaying = (release: UnifiedRelease) => isReleasePlayingId(getReleaseId(release))
+const handleReleaseClick = (release: UnifiedRelease) => toggleOrPlay(getReleaseId(release), props.slug)
 
 let allTracksSlug = ''
 async function loadAllTracks() {

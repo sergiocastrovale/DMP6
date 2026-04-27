@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Compass, RefreshCw } from 'lucide-vue-next'
 import type { PlayerTrack } from '~/types/player'
+import { formatDuration } from '~/helpers/functions'
 
 const props = defineProps<{
   track: PlayerTrack
@@ -17,11 +18,6 @@ const image = computed(() =>
   resolveImage(props.track.releaseImage, props.track.releaseImageUrl, 'releases'),
 )
 
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
 </script>
 
 <template>

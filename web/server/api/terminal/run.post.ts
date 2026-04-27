@@ -23,11 +23,13 @@ function tmuxAvailable(): boolean {
 }
 
 export default defineEventHandler(async (event) => {
-  const { command, args = [], session } = await readBody<{
+  const body = await readBody<{
     command: string
     args: string[]
     session?: string
   }>(event)
+  const { command, session } = body
+  let args = body.args ?? []
 
   if (!ALLOWED_COMMANDS.includes(command)) {
     throw createError({ statusCode: 400, message: `Command not allowed: ${command}` })

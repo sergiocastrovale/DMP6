@@ -121,8 +121,8 @@ export const usePlayerStore = defineStore('player', () => {
     if (startTrack) {
       playTrack(startTrack)
     }
-    else if (tracks.length > 0) {
-      playTrack(queue.value[0])
+    else if (queue.value.length > 0) {
+      playTrack(queue.value[0]!)
     }
   }
 
@@ -130,8 +130,8 @@ export const usePlayerStore = defineStore('player', () => {
     currentPlaylistSlug.value = slug
     originalQueue.value = [...tracks]
     queue.value = shuffleMode.value !== 'off' ? shuffleArray([...tracks]) : [...tracks]
-    if (tracks.length > 0) {
-      playTrack(queue.value[0])
+    if (queue.value.length > 0) {
+      playTrack(queue.value[0]!)
     }
   }
 
@@ -230,10 +230,10 @@ export const usePlayerStore = defineStore('player', () => {
     const idx = queue.value.findIndex(t => t.id === currentTrack.value?.id)
     const nextIdx = idx + 1
     if (nextIdx < queue.value.length) {
-      playTrack(queue.value[nextIdx])
+      playTrack(queue.value[nextIdx]!)
     }
-    else {
-      playTrack(queue.value[0])
+    else if (queue.value.length > 0) {
+      playTrack(queue.value[0]!)
     }
   }
 
@@ -290,7 +290,7 @@ export const usePlayerStore = defineStore('player', () => {
 
     const modes: ShuffleMode[] = ['off', 'release', 'artist', 'catalogue']
     const idx = modes.indexOf(shuffleMode.value)
-    const newMode = modes[(idx + 1) % modes.length]
+    const newMode = modes[(idx + 1) % modes.length]!
     shuffleMode.value = newMode
 
     // Fetch appropriate tracks for the new mode
@@ -329,7 +329,7 @@ export const usePlayerStore = defineStore('player', () => {
   function shuffleArray<T>(arr: T[]): T[] {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
-      ;[arr[i], arr[j]] = [arr[j], arr[i]]
+      ;[arr[i], arr[j]] = [arr[j]!, arr[i]!]
     }
     return arr
   }

@@ -36,12 +36,6 @@ export function useExplorer() {
     player.setExplorerTrack(track, params.value)
   }
 
-  function formatDuration(seconds: number): string {
-    const m = Math.floor(seconds / 60)
-    const s = seconds % 60
-    return `${m}:${s.toString().padStart(2, '0')}`
-  }
-
   return {
     energy,
     era,
@@ -52,6 +46,5 @@ export function useExplorer() {
     error,
     explore,
     playFromHistory,
-    formatDuration,
   }
 }

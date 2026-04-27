@@ -3,6 +3,7 @@ import { Play, Pause, Heart, AlertTriangle, ExternalLink } from 'lucide-vue-next
 import type { Track } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
 import { usePlayerStore } from '~/stores/player'
+import { formatDuration } from '~/helpers/functions'
 
 export interface TrackListColumn {
   key: 'release' | 'trackNumber' | 'title' | 'artist' | 'status' | 'playCount' | 'favorite' | 'duration'
@@ -36,12 +37,6 @@ onMounted(async () => {
   catch { /* ignore */ }
 })
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '--:--'
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
 
 function isTrackPlaying(trackId: string) {
   return player.isPlaying && player.currentTrack?.id === trackId

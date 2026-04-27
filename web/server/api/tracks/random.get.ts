@@ -31,7 +31,7 @@ export default defineEventHandler(async () => {
 
   if (rows.length === 0) return null
 
-  const raw = rows[0]
+  const raw = rows[0]!
 
   // Fetch release image data — single PK lookup, instant
   const release = raw.localReleaseId

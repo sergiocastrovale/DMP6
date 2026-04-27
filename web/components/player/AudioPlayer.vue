@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
+import { formatDuration } from '~/helpers/functions'
 
 const player = usePlayerStore()
 const { resolve } = useImageUrl()
@@ -22,14 +23,6 @@ const showPlaylistMenu = ref(false)
 const showNewPlaylistDialog = ref(false)
 const playlists = ref<any[]>([])
 const trackPlaylistSlugs = ref<Set<string>>(new Set())
-
-function formatTime(seconds: number): string {
-  if (!seconds || !isFinite(seconds))
-    return '0:00'
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
 
 function handleProgressClick(e: MouseEvent) {
   const bar = e.currentTarget as HTMLElement
@@ -227,7 +220,7 @@ const progressPct = computed(() =>
 
         <!-- Progress bar -->
         <div class="flex w-full items-center gap-2">
-          <span class="w-8 shrink-0 text-right text-[10px] text-zinc-500 tabular-nums">{{ formatTime(player.currentTime) }}</span>
+          <span class="w-8 shrink-0 text-right text-[10px] text-zinc-500 tabular-nums">{{ formatDuration(player.currentTime) }}</span>
           <div
             class="group relative h-1.5 flex-1 cursor-pointer rounded-full bg-zinc-800"
             @click="handleProgressClick"
@@ -240,7 +233,7 @@ const progressPct = computed(() =>
               }"
             />
           </div>
-          <span class="w-8 shrink-0 text-[10px] text-zinc-500 tabular-nums">{{ formatTime(player.duration) }}</span>
+          <span class="w-8 shrink-0 text-[10px] text-zinc-500 tabular-nums">{{ formatDuration(player.duration) }}</span>
         </div>
       </div>
 

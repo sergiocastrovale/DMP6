@@ -107,6 +107,7 @@
 <script setup lang="ts">
 import { LucideUser, LucideDisc, LucideMusic } from 'lucide-vue-next'
 import type { SearchResults, SearchTrack } from '~/types/search'
+import { formatDuration } from '~/helpers/functions'
 
 interface Props {
   results: SearchResults | null
@@ -119,6 +120,7 @@ const emit = defineEmits<{
 
 const { artistImage, releaseImage } = useImageUrl()
 const playerStore = usePlayerStore()
+const { playRelease: playReleaseById } = usePlayRelease()
 
 const hasResults = computed(() => {
   if (!props.results)
@@ -136,35 +138,10 @@ function releaseImageUrl(release: any) {
   return releaseImage(release)
 }
 
-function formatDuration(seconds: number) {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs.toString().padStart(2, '0')}`
-}
 
 const playRelease = async (releaseId: string) => {
-  try {
-    const response = await $fetch<any>(`/api/releases/${releaseId}/tracks`)
-    const playable = response?.tracks?.filter((t: any) => !t.missing) ?? []
-    if (playable.length > 0) {
-      const playerTracks = playable.map((t: any) => ({
-        id: t.id,
-        title: t.title || 'Unknown',
-        artist: t.artist || 'Unknown',
-        album: response.release?.title || 'Unknown',
-        duration: t.duration || 0,
-        artistSlug: response.release?.artistSlug || null,
-        releaseImage: response.release?.image || null,
-        releaseImageUrl: response.release?.imageUrl || null,
-        localReleaseId: t.localReleaseId,
-      }))
-      playerStore.setQueue(playerTracks, playerTracks[0])
-      emit('select')
-    }
-  }
-  catch (error) {
-    console.error('Failed to load release tracks:', error)
-  }
+  await playReleaseById(releaseId)
+  emit('select')
 }
 
 const playTrack = (track: SearchTrack) => {

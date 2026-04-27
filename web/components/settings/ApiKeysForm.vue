@@ -7,30 +7,13 @@ const { data: settings, refresh } = await useAsyncData('settings-db', () =>
 
 const fanartApiKey = ref(settings.value?.fanartApiKey ?? '')
 
-const saving = ref(false)
-const saved = ref(false)
-const error = ref('')
-
-async function save() {
-  saving.value = true
-  saved.value = false
-  error.value = ''
-  try {
-    await $fetch('/api/settings', {
-      method: 'PUT',
-      body: { fanartApiKey: fanartApiKey.value || null },
-    })
-    await refresh()
-    saved.value = true
-    setTimeout(() => { saved.value = false }, 3000)
-  }
-  catch (e: any) {
-    error.value = e?.message || 'Save failed'
-  }
-  finally {
-    saving.value = false
-  }
-}
+const { saving, saved, error, save } = useFormSave(async () => {
+  await $fetch('/api/settings', {
+    method: 'PUT',
+    body: { fanartApiKey: fanartApiKey.value || null },
+  })
+  await refresh()
+})
 </script>
 
 <template>

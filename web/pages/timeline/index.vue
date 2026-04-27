@@ -38,14 +38,14 @@ const loadingDecade = ref(false)
 const loadingMore = ref(false)
 
 const { releaseImage } = useImageUrl()
-const playerStore = usePlayerStore()
+const { isReleasePlaying, toggleOrPlay: handleReleaseClick } = usePlayRelease()
 
 async function loadDecades() {
   loading.value = true
   try {
     decades.value = await $fetch<Decade[]>('/api/timeline/decades')
     if (decades.value.length > 0) {
-      await selectDecade(decades.value[0].decade)
+      await selectDecade(decades.value[0]!.decade)
     }
   }
   catch (error) {
@@ -109,29 +109,6 @@ async function loadMore() {
   }
 }
 
-function isReleasePlaying(releaseId: string) {
-  return playerStore.isPlaying && playerStore.currentTrack?.localReleaseId === releaseId
-}
-
-function handleReleaseClick(releaseId: string) {
-  if (isReleasePlaying(releaseId)) {
-    playerStore.togglePlay()
-  } else {
-    playRelease(releaseId)
-  }
-}
-
-async function playRelease(releaseId: string) {
-  try {
-    const tracks = await $fetch<any[]>(`/api/releases/${releaseId}/tracks`)
-    if (tracks && tracks.length > 0) {
-      playerStore.playTrack(tracks[0], tracks)
-    }
-  }
-  catch (error) {
-    console.error('Failed to load release tracks:', error)
-  }
-}
 
 // Group releases by year for display
 const releasesByYear = computed(() => {

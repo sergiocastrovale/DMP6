@@ -179,10 +179,10 @@ export async function searchHifi(query: string, artist?: string): Promise<Search
   const results: SearchResult[] = []
   for (const [album, albumTracks] of albumMap) {
     results.push({
-      id: `hifi:${albumTracks[0].id}`,
+      id: `hifi:${albumTracks[0]!.id}`,
       source: 'hifi',
       username: 'hifi',
-      folderPath: `${albumTracks[0].artist} - ${album}`,
+      folderPath: `${albumTracks[0]!.artist} - ${album}`,
       files: albumTracks.map(t => ({
         filename: `${t.id}||${t.artist} - ${t.title}`,
         size: 0,
@@ -253,7 +253,7 @@ export async function startDownload(
     if (!params.files?.length) {
       throw createError({ statusCode: 400, message: 'files (with track IDs) required for HiFi' })
     }
-    const trackIds = params.files.map(f => f.filename.split('||')[0])
+    const trackIds = params.files.map(f => f.filename.split('||')[0]!)
     const groupId = await startHifiDownload(
       trackIds, downloadsPath, params.albumTitle, params.artistName, params.year, dirTemplate,
     )

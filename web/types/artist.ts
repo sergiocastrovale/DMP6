@@ -10,7 +10,7 @@ export interface Artist {
   averageMatchScore: number | null
   totalPlayCount: number
   totalTracks: number
-  totalFileSize: bigint | number
+  totalFileSize: bigint | number | string
   lastSyncedAt: string | null
   genres: Genre[]
   urls: ArtistUrl[]

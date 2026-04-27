@@ -15,38 +15,21 @@ const form = reactive({
   downloadMinBitrate: settings.value?.downloadMinBitrate ?? '',
 })
 
-const saving = ref(false)
-const saved = ref(false)
-const error = ref('')
-
-async function save() {
-  saving.value = true
-  saved.value = false
-  error.value = ''
-  try {
-    await $fetch('/api/settings', {
-      method: 'PUT',
-      body: {
-        slskdUrl: form.slskdUrl || null,
-        slskdApiKey: form.slskdApiKey || null,
-        deezerArl: form.deezerArl || null,
-        downloadsPath: form.downloadsPath || null,
-        downloadDirTemplate: form.downloadDirTemplate || null,
-        downloadFormats: form.downloadFormats || null,
-        downloadMinBitrate: form.downloadMinBitrate ? Number(form.downloadMinBitrate) : null,
-      },
-    })
-    await refresh()
-    saved.value = true
-    setTimeout(() => { saved.value = false }, 3000)
-  }
-  catch (e: any) {
-    error.value = e?.message || 'Save failed'
-  }
-  finally {
-    saving.value = false
-  }
-}
+const { saving, saved, error, save } = useFormSave(async () => {
+  await $fetch('/api/settings', {
+    method: 'PUT',
+    body: {
+      slskdUrl: form.slskdUrl || null,
+      slskdApiKey: form.slskdApiKey || null,
+      deezerArl: form.deezerArl || null,
+      downloadsPath: form.downloadsPath || null,
+      downloadDirTemplate: form.downloadDirTemplate || null,
+      downloadFormats: form.downloadFormats || null,
+      downloadMinBitrate: form.downloadMinBitrate ? Number(form.downloadMinBitrate) : null,
+    },
+  })
+  await refresh()
+})
 </script>
 
 <template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { LucideBarChart3, LucideUsers, LucideDisc, LucideMusic2, LucideTag, LucidePlay, LucideClock, LucideRefreshCw, LucideImage } from 'lucide-vue-next'
 import type { Statistics } from '~/types/stats'
+import { formatNumber, formatPlaytime } from '~/helpers/functions'
 
 const loading = ref(true)
 const stats = ref<Statistics | null>(null)
@@ -18,21 +19,6 @@ async function loadStats() {
   }
 }
 
-function formatNumber(n: number): string {
-  return n.toLocaleString()
-}
-
-function formatPlaytime(seconds: number): string {
-  if (seconds === 0) return '0 seconds'
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  const mins = Math.floor((seconds % 3600) / 60)
-  const parts: string[] = []
-  if (days > 0) parts.push(`${days}d`)
-  if (hours > 0) parts.push(`${hours}h`)
-  if (mins > 0) parts.push(`${mins}m`)
-  return parts.join(' ') || '< 1m'
-}
 
 function formatDate(iso: string | null): string {
   if (!iso) {

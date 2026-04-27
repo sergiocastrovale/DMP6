@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Clock, Play } from 'lucide-vue-next'
 import type { PlayerTrack } from '~/types/player'
+import { formatDuration } from '~/helpers/functions'
 
 defineProps<{
   tracks: PlayerTrack[]
@@ -10,11 +11,6 @@ const emit = defineEmits<{
   play: [track: PlayerTrack]
 }>()
 
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
 </script>
 
 <template>

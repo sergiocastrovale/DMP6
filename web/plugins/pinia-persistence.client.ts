@@ -1,7 +1,7 @@
 import { createPersistedState } from 'pinia-plugin-persistedstate'
 
 export default defineNuxtPlugin((nuxtApp) => {
-  nuxtApp.$pinia.use(createPersistedState({
+  (nuxtApp.$pinia as any).use(createPersistedState({
     storage: sessionStorage,
   }))
 })

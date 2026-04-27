@@ -9,10 +9,10 @@ export default defineEventHandler((event) => {
   const match = path.match(/^\/img\/(artists|releases)\/(.+)$/)
   if (!match) return
 
-  const [, type, filename] = match
+  const type = match[1]!
+  const filename = match[2]!
 
-  // Prevent directory traversal
-  if (filename.includes('..') || filename.includes('/')) return
+  if (filename.includes('..') || filename.includes('/')) { return }
 
   const imageDir = useRuntimeConfig().imageDir
   const filePath = resolve(join(imageDir, type, filename))

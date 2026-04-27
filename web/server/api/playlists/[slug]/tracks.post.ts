@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Get next position
-  const nextPosition = playlist.tracks.length > 0 ? playlist.tracks[0].position + 1 : 0
+  const nextPosition = playlist.tracks.length > 0 ? playlist.tracks[0]!.position + 1 : 0
 
   // Add track to playlist
   const playlistTrack = await prisma.playlistTrack.create({

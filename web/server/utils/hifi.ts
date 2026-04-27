@@ -53,7 +53,7 @@ async function rateLimit() {
 }
 
 function currentInstance(): string {
-  return _instances[_currentIdx] || _instances[0]
+  return (_instances[_currentIdx] || _instances[0])!
 }
 
 function rotateInstance() {
@@ -248,8 +248,8 @@ function stripArtistPrefix(query: string, artist: string): string {
   let charIdx = 0
   let consumed = 0
   while (charIdx < lower.length && consumed < i) {
-    while (charIdx < lower.length && /[^a-z0-9]/.test(lower[charIdx])) charIdx++
-    while (charIdx < lower.length && /[a-z0-9]/.test(lower[charIdx])) charIdx++
+    while (charIdx < lower.length && /[^a-z0-9]/.test(lower[charIdx]!)) charIdx++
+    while (charIdx < lower.length && /[a-z0-9]/.test(lower[charIdx]!)) charIdx++
     consumed++
   }
   return query.slice(charIdx).replace(/^[^A-Za-z0-9]+/, '').trim() || query

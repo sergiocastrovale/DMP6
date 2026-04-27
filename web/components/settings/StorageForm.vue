@@ -22,42 +22,25 @@ const storageOptions = [
   { value: 'both', label: 'Local + S3' },
 ]
 
-const saving = ref(false)
-const saved = ref(false)
-const error = ref('')
-
 const settingsStore = useSettingsStore()
 
-async function save() {
-  saving.value = true
-  saved.value = false
-  error.value = ''
-  try {
-    await $fetch('/api/settings', {
-      method: 'PUT',
-      body: {
-        imageStorage: form.imageStorage || null,
-        s3ImageBucket: form.s3ImageBucket || null,
-        s3BackupsBucket: form.s3BackupsBucket || null,
-        awsRegion: form.awsRegion || null,
-        awsAccessKeyId: form.awsAccessKeyId || null,
-        awsSecretAccessKey: form.awsSecretAccessKey || null,
-        s3Endpoint: form.s3Endpoint || null,
-        s3PublicUrl: form.s3PublicUrl || null,
-      },
-    })
-    await refresh()
-    await settingsStore.load()
-    saved.value = true
-    setTimeout(() => { saved.value = false }, 3000)
-  }
-  catch (e: any) {
-    error.value = e?.message || 'Save failed'
-  }
-  finally {
-    saving.value = false
-  }
-}
+const { saving, saved, error, save } = useFormSave(async () => {
+  await $fetch('/api/settings', {
+    method: 'PUT',
+    body: {
+      imageStorage: form.imageStorage || null,
+      s3ImageBucket: form.s3ImageBucket || null,
+      s3BackupsBucket: form.s3BackupsBucket || null,
+      awsRegion: form.awsRegion || null,
+      awsAccessKeyId: form.awsAccessKeyId || null,
+      awsSecretAccessKey: form.awsSecretAccessKey || null,
+      s3Endpoint: form.s3Endpoint || null,
+      s3PublicUrl: form.s3PublicUrl || null,
+    },
+  })
+  await refresh()
+  await settingsStore.load()
+})
 </script>
 
 <template>
