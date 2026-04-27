@@ -55,12 +55,34 @@ pub struct StatusCheck {
     pub best_release_idx: usize,
     pub best_release_id: String,
     pub best_release_disambiguation: Option<String>,
+    // Strict-match flag: true when binding to a specific MB release is unambiguous.
+    // - Tier 1 (single release returned): always true.
+    // - Tier 2 (release group with multiple siblings): true only when exactly one sibling
+    //   has a track count equal to the local folder's track count.
+    // When false, callers must NOT bind LocalRelease.releaseId — leave Unmatched.
+    pub is_confident: bool,
+}
+
+fn year_from_date(d: Option<&str>) -> Option<i32> {
+    d.and_then(|s| s.split('-').next()).and_then(|y| y.parse::<i32>().ok())
+}
+
+fn release_has_cd_format(release: &MbRelease) -> bool {
+    release.media.as_ref().is_some_and(|ms| {
+        ms.iter().any(|m| {
+            m.format
+                .as_deref()
+                .map(|f| f.eq_ignore_ascii_case("CD"))
+                .unwrap_or(false)
+        })
+    })
 }
 
 pub fn check_release_status(
     local_tracks: &[&TrackMeta],
     local_track_ids: &[String],
     mb_releases: &[(MbRelease, Vec<MbTrack>)],
+    local_year: Option<i32>,
 ) -> StatusCheck {
     if mb_releases.is_empty() {
         return StatusCheck {
@@ -69,17 +91,61 @@ pub fn check_release_status(
             best_release_idx: 0,
             best_release_id: String::new(),
             best_release_disambiguation: None,
+            is_confident: false,
         };
     }
 
-    // Pick the best MB release:
-    // 1. Exact track count match → use that release
-    // 2. No exact match → use the first release (usually the original)
     let local_count = local_tracks.len();
-    let best_idx = mb_releases
+
+    let exact_matches: Vec<usize> = mb_releases
         .iter()
-        .position(|(_, tracks)| tracks.len() == local_count)
-        .unwrap_or(0);
+        .enumerate()
+        .filter(|(_, (_, tracks))| tracks.len() == local_count)
+        .map(|(i, _)| i)
+        .collect();
+
+    let (best_idx, is_confident) = if mb_releases.len() == 1 {
+        (0, true)
+    } else if exact_matches.len() == 1 {
+        (exact_matches[0], true)
+    } else if !exact_matches.is_empty() {
+        // Tiebreak among same-track-count siblings:
+        //   1. Prefer same year as local folder.
+        //   2. Prefer CD format.
+        //   3. Earliest date wins.
+        let by_year: Vec<usize> = local_year
+            .map(|ly| {
+                exact_matches
+                    .iter()
+                    .copied()
+                    .filter(|&i| year_from_date(mb_releases[i].0.date.as_deref()) == Some(ly))
+                    .collect::<Vec<_>>()
+            })
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| exact_matches.clone());
+
+        let by_cd: Vec<usize> = by_year
+            .iter()
+            .copied()
+            .filter(|&i| release_has_cd_format(&mb_releases[i].0))
+            .collect();
+        let pool = if !by_cd.is_empty() { by_cd } else { by_year };
+
+        let chosen = *pool
+            .iter()
+            .min_by_key(|&&i| {
+                mb_releases[i]
+                    .0
+                    .date
+                    .clone()
+                    .unwrap_or_else(|| "9999-99-99".into())
+            })
+            .unwrap();
+        (chosen, true)
+    } else {
+        (0, false)
+    };
+
     let best_release = &mb_releases[best_idx];
 
     let mb_tracks = &best_release.1;
@@ -128,6 +194,7 @@ pub fn check_release_status(
         best_release_idx: best_idx,
         best_release_id: best_release.0.id.clone(),
         best_release_disambiguation: best_release.0.disambiguation.clone(),
+        is_confident,
     }
 }
 

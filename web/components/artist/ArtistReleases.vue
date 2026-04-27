@@ -135,10 +135,11 @@ onMounted(async () => {
 })
 
 async function toggleFavoriteRelease(release: UnifiedRelease) {
-  if (!release.isMusicBrainz) return
+  if (!release.mbReleaseRowId) return
+  const mbRowId = release.mbReleaseRowId
   const isFavorite = favoriteReleases.value.has(release.id)
   try {
-    await $fetch(`/api/favorites/releases/${release.id}`, {
+    await $fetch(`/api/favorites/releases/${mbRowId}`, {
       method: isFavorite ? 'DELETE' : 'POST',
     })
     if (isFavorite) {
@@ -193,6 +194,44 @@ const filteredReleases = computed(() => {
   }
   return result
 })
+
+type GroupedRelease = UnifiedRelease & {
+  groupKey: string
+  groupSize: number
+  groupIndex: number
+}
+
+const sortKey = (r: UnifiedRelease) => r.releaseDate || (r.year ? `${r.year}-00-00` : '9999-99-99')
+
+const filteredReleasesGrouped = computed<GroupedRelease[]>(() => {
+  const buckets = new Map<string, UnifiedRelease[]>()
+  for (const r of filteredReleases.value) {
+    const key = r.releaseGroupId || `solo:${r.id}`
+    const arr = buckets.get(key)
+    if (arr) {
+      arr.push(r)
+    }
+    else {
+      buckets.set(key, [r])
+    }
+  }
+
+  const groups = Array.from(buckets.entries()).map(([key, items]) => {
+    items.sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
+    return { key, items, earliest: sortKey(items[0]!) }
+  })
+  groups.sort((a, b) => a.earliest.localeCompare(b.earliest))
+
+  const out: GroupedRelease[] = []
+  for (const g of groups) {
+    g.items.forEach((r, i) => {
+      out.push({ ...r, groupKey: g.key, groupSize: g.items.length, groupIndex: i })
+    })
+  }
+  return out
+})
+
+const editionLabel = (r: UnifiedRelease) => r.disambiguation || r.editionLabel || null
 
 const releaseMap = computed(() => {
   const map: Record<string, { title: string; status: ReleaseStatus; image: string | null; imageUrl: string | null }> = {}
@@ -389,12 +428,13 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
 
         <Table>
           <TableRow
-            v-for="release in filteredReleases"
+            v-for="release in filteredReleasesGrouped"
             :key="release.id"
             :data-release-id="release.id"
             :muted="release.status === 'MISSING'"
             :expanded="expandedRelease === release.id"
             class="cursor-pointer"
+            :class="release.groupSize > 1 && release.groupIndex > 0 ? 'border-l-2 border-zinc-700 ml-6' : ''"
             @click="toggleExpand(release.id)"
           >
             <button
@@ -424,7 +464,8 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
             <div class="min-w-0 flex-1">
               <div class="truncate text-sm font-medium" :class="release.status === 'MISSING' ? 'text-zinc-500' : 'text-zinc-50'">
                 {{ release.title }}
-                <span v-if="release.disambiguation" class="ml-1 text-xs font-normal text-zinc-500">({{ release.disambiguation }})</span>
+                <span v-if="editionLabel(release)" class="ml-1 text-xs font-normal text-zinc-500">({{ editionLabel(release) }})</span>
+                <span v-if="release.groupSize > 1 && release.groupIndex === 0" class="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-normal text-zinc-400">{{ release.groupSize }} editions</span>
               </div>
 
               <div class="flex items-center gap-3 text-xs" :class="release.status === 'MISSING' ? 'text-zinc-600' : 'text-zinc-400'">
@@ -489,7 +530,7 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
 
             <template #expand>
               <div v-if="expandedRelease === release.id && (release.localReleaseId || release.localTrackCount > 0)" class="border-t border-zinc-800 px-3 pb-3" @click.stop>
-                <ReleaseTracksTable :release-id="release.isMusicBrainz ? release.id : (release.localReleaseId || release.id)" :columns="releaseTrackColumns" />
+                <ReleaseTracksTable :release-id="release.localReleaseId || release.mbReleaseRowId || release.id" :columns="releaseTrackColumns" />
               </div>
             </template>
           </TableRow>

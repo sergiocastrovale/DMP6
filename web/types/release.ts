@@ -17,9 +17,15 @@ export interface UnifiedRelease {
   year: number | null
   type: string
   typeSlug: string
+  mbReleaseRowId: string | null
   musicbrainzId: string | null
   releaseGroupId: string | null
   disambiguation: string | null
+  editionLabel: string | null
+  releaseDate: string | null
+  packaging: string | null
+  country: string | null
+  format: string | null
   status: ReleaseStatus
   image: string | null
   imageUrl: string | null
@@ -27,7 +33,9 @@ export interface UnifiedRelease {
   totalPlayCount: number
   localTrackCount: number
   isMusicBrainz: boolean
+  hasLocal: boolean
   localReleaseId: string | null
+  folderPath: string | null
   coArtists?: { name: string; slug: string }[]
   statusReason?: string | null
 }

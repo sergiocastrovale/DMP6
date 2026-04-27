@@ -126,6 +126,11 @@ model MusicBrainzRelease {
   musicbrainzId   String                  @unique
   releaseGroupId  String?
   disambiguation  String?
+  editionLabel    String?
+  releaseDate     String?
+  packaging       String?
+  country         String?
+  format          String?
   status          ReleaseStatus           @default(UNKNOWN)
   statusReason    String?
   createdAt       DateTime                @default(now())

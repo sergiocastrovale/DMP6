@@ -31,7 +31,7 @@ use mb_filter::should_skip_release;
 use mb_matching::{find_mb_match_with_fallback, is_likely_compound_of, is_special_artist_name};
 use mb_types::{MbArtistMatch, MbRelease, MbTrack};
 use nuke::nuke_mb_data;
-use status::{check_release_status, normalize_title, status_to_db_string};
+use status::{check_release_status, status_to_db_string};
 
 #[derive(Parser, Debug)]
 #[command(name = "sync")]
@@ -71,6 +71,42 @@ fn get_majority_id(tracks: &[LocalTrackRow], field: fn(&LocalTrackRow) -> &Optio
         .into_iter()
         .max_by_key(|(_, c)| *c)
         .map(|(id, _)| id.to_string())
+}
+
+fn synthesize_edition_label(
+    release: &mb_types::MbRelease,
+    rg_first_release_date: Option<&str>,
+) -> Option<String> {
+    if release.disambiguation.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) {
+        return None;
+    }
+    let release_year = release.date.as_deref().and_then(year_from_date)?;
+    let rg_year = rg_first_release_date.and_then(year_from_date);
+    match rg_year {
+        Some(rg_y) if rg_y == release_year => Some("original release".to_string()),
+        Some(_) => Some(format!("{} reissue", release_year)),
+        None => None,
+    }
+}
+
+fn year_from_date(date: &str) -> Option<i32> {
+    date.split('-').next()?.parse::<i32>().ok()
+}
+
+fn format_from_media(media: &Option<Vec<mb_types::MbMedia>>) -> Option<String> {
+    let media = media.as_ref()?;
+    let mut formats: Vec<String> = media
+        .iter()
+        .filter_map(|m| m.format.as_deref())
+        .map(|s| s.to_string())
+        .collect();
+    formats.sort();
+    formats.dedup();
+    if formats.is_empty() {
+        None
+    } else {
+        Some(formats.join(", "))
+    }
 }
 
 fn local_track_to_meta(t: &LocalTrackRow) -> TrackMeta {
@@ -672,46 +708,15 @@ async fn main() {
                 }
             }
 
-            // Tier 3: Title matching against release groups
-            if matched.is_none() {
-                let local_title_norm = normalize_title(&local_release.title);
-                let rg = release_groups.iter().find(|rg| {
-                    should_skip_release(rg).is_none()
-                        && normalize_title(&rg.title) == local_title_norm
-                });
-                if let Some(rg) = rg {
-                    let type_name = rg.primary_type.as_deref().unwrap_or("Other").to_string();
-                    let api_start = std::time::Instant::now();
-                    reporter.info(&format!("      → Tier 3: title match → release-group {} ({})", rg.id, type_name));
-                    match mb_api::mb_get_release_tracks(&http_client, &rg.id, &mut limiter).await {
-                        Ok(releases) if !releases.is_empty() => {
-                            reporter.info(&format!(
-                                "      ← Tier 3 done in {:.1}s ({} releases)",
-                                api_start.elapsed().as_secs_f64(),
-                                releases.len()
-                            ));
-                            matched = Some((String::new(), rg.id.clone(), releases, type_name));
-                        }
-                        Ok(_) => {
-                            if args.verbose {
-                                reporter.skip(&format!("{} (no official releases)", local_release.title));
-                            }
-                        }
-                        Err(e) => {
-                            release_failures += 1;
-                            reporter.err(&format!("{}: {}", local_release.title, e));
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            // Tier 4: No match
+            // Strict policy: metadata wins. No MB metadata in tags → leave Unmatched.
+            // Title fuzzy matching (former Tier 3) is intentionally disabled to avoid
+            // collapsing distinct editions onto a single MB release.
             let (tier_release_id, rg_id, mb_release_tracks, type_name) = match matched {
                 Some(m) => m,
                 None => {
+                    mark_local_release_unmatched(&pool, &local_release.id).await.ok();
                     if args.verbose {
-                        reporter.skip(&format!("{} (no MB match)", local_release.title));
+                        reporter.skip(&format!("{} (no MB metadata in tags — left Unmatched)", local_release.title));
                     }
                     continue;
                 }
@@ -736,10 +741,29 @@ async fn main() {
                 local_tracks.iter().map(local_track_to_meta).collect();
             let local_meta_refs: Vec<&TrackMeta> = local_metas.iter().collect();
 
-            let status_check =
-                check_release_status(&local_meta_refs, &local_track_ids, &mb_release_tracks);
+            let status_check = check_release_status(
+                &local_meta_refs,
+                &local_track_ids,
+                &mb_release_tracks,
+                local_release.year,
+            );
             let status_str = status_to_db_string(&status_check.status);
 
+            // Strict policy: when a release-group lookup returned multiple siblings and
+            // none (or several) match the local track count, refuse to bind a specific
+            // edition. Leave the LocalRelease Unmatched so the user can disambiguate
+            // by tagging the files with the correct MUSICBRAINZ_ALBUMID.
+            if !status_check.is_confident {
+                mark_local_release_unmatched(&pool, &local_release.id).await.ok();
+                reporter.skip(&format!(
+                    "{} ({} MB siblings, no exact track-count match — left Unmatched)",
+                    local_release.title,
+                    mb_release_tracks.len()
+                ));
+                continue;
+            }
+
+            let best_release = &mb_release_tracks[status_check.best_release_idx].0;
             let best_tracks = &mb_release_tracks[status_check.best_release_idx].1;
 
             // Use Tier 1 release ID if available, otherwise use best match from status check
@@ -749,6 +773,18 @@ async fn main() {
                 status_check.best_release_id.clone()
             };
             let disambiguation = status_check.best_release_disambiguation.as_deref();
+            let format_str = format_from_media(&best_release.media);
+            let rg_first_date = release_groups.iter()
+                .find(|rg| rg.id == rg_id)
+                .and_then(|rg| rg.first_release_date.as_deref());
+            let edition_label = synthesize_edition_label(best_release, rg_first_date);
+            let extras = MbReleaseExtras {
+                edition_label: edition_label.as_deref(),
+                release_date: best_release.date.as_deref(),
+                packaging: best_release.packaging.as_deref(),
+                country: best_release.country.as_deref(),
+                format: format_str.as_deref(),
+            };
 
             let mb_db_id = match upsert_mb_release(
                 &pool,
@@ -760,6 +796,7 @@ async fn main() {
                 status_str,
                 None,
                 disambiguation,
+                &extras,
             )
             .await
             {
@@ -1219,6 +1256,18 @@ async fn main() {
                     let best_tracks = &best_release.1;
                     let best_release_id = &best_release.0.id;
                     let best_disambiguation = best_release.0.disambiguation.as_deref();
+                    let extra_format_str = format_from_media(&best_release.0.media);
+                    let extra_edition_label = synthesize_edition_label(
+                        &best_release.0,
+                        rg.first_release_date.as_deref(),
+                    );
+                    let extra_extras = MbReleaseExtras {
+                        edition_label: extra_edition_label.as_deref(),
+                        release_date: best_release.0.date.as_deref(),
+                        packaging: best_release.0.packaging.as_deref(),
+                        country: best_release.0.country.as_deref(),
+                        format: extra_format_str.as_deref(),
+                    };
 
                     let mb_db_id = match upsert_mb_release(
                         &pool,
@@ -1230,6 +1279,7 @@ async fn main() {
                         "UNKNOWN",
                         None,
                         best_disambiguation,
+                        &extra_extras,
                     )
                     .await
                     {

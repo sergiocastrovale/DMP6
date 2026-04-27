@@ -350,16 +350,27 @@ pub async fn mb_get_release_tracks(
     release_group_id: &str,
     limiter: &mut RateLimiter,
 ) -> Result<Vec<(MbRelease, Vec<MbTrack>)>, String> {
-    let url = format!(
-        "{}/release?release-group={}&inc=recordings&limit=10&fmt=json",
-        MB_BASE, release_group_id
-    );
-    let body = mb_get(client, &url, limiter).await?;
-    let result: MbReleaseList =
-        serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
+    let limit = 100u32;
+    let mut offset = 0u32;
+    let mut all_releases: Vec<MbRelease> = Vec::new();
+    loop {
+        let url = format!(
+            "{}/release?release-group={}&inc=recordings&limit={}&offset={}&fmt=json",
+            MB_BASE, release_group_id, limit, offset
+        );
+        let body = mb_get(client, &url, limiter).await?;
+        let result: MbReleaseList =
+            serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
+        let batch_len = result.releases.len() as u32;
+        all_releases.extend(result.releases);
+        if batch_len < limit {
+            break;
+        }
+        offset += limit;
+    }
 
     let mut releases = Vec::new();
-    for release in result.releases {
+    for release in all_releases {
         if let Some(ref status) = release.status {
             if !status.eq_ignore_ascii_case("Official") {
                 continue;

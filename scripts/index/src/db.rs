@@ -52,7 +52,7 @@ pub fn build_group_key(
         slugify(album_artist)
     };
     let yr = year.unwrap_or(0);
-    format!("meta:{}:{}:{}", title_slug, yr, artist_slug)
+    format!("meta:{}:{}:{}:{}", title_slug, yr, artist_slug, folder_path)
 }
 
 pub async fn ensure_local_release(

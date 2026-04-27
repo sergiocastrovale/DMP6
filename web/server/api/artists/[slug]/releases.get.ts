@@ -27,25 +27,21 @@ export default defineEventHandler(async (event) => {
           musicbrainzId: true,
           releaseGroupId: true,
           disambiguation: true,
+          editionLabel: true,
+          releaseDate: true,
+          packaging: true,
+          country: true,
+          format: true,
           status: true,
           statusReason: true,
           type: { select: { name: true, slug: true } },
           tracks: { select: { id: true } },
-          localReleases: {
-            select: {
-              id: true,
-              title: true,
-              image: true,
-              imageUrl: true,
-              totalPlayCount: true,
-              tracks: { select: { id: true } },
-            },
-          },
         },
       },
     },
   })
   const mbReleases = mbReleaseLinks.map(l => l.release)
+  const mbById = new Map(mbReleases.map(r => [r.id, r]))
 
   // Get all local releases for this artist (via LocalReleaseArtist junction)
   const releaseLinks = await prisma.localReleaseArtist.findMany({
@@ -60,6 +56,7 @@ export default defineEventHandler(async (event) => {
       id: true,
       title: true,
       year: true,
+      folderPath: true,
       image: true,
       imageUrl: true,
       matchStatus: true,
@@ -86,27 +83,21 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Index local releases by their MB releaseId
-  const localByMbId = new Map<string, typeof localReleases[number]>()
-  const unmatchedLocal: typeof localReleases = []
-  for (const lr of localReleases) {
-    if (lr.releaseId) {
-      localByMbId.set(lr.releaseId, lr)
-    } else {
-      unmatchedLocal.push(lr)
-    }
-  }
-
-  // Build unified release list
-  const releases: Array<{
+  type ReleaseCard = {
     id: string
     title: string
     year: number | null
     type: string
     typeSlug: string
+    mbReleaseRowId: string | null
     musicbrainzId: string | null
     releaseGroupId: string | null
     disambiguation: string | null
+    editionLabel: string | null
+    releaseDate: string | null
+    packaging: string | null
+    country: string | null
+    format: string | null
     status: string
     image: string | null
     imageUrl: string | null
@@ -114,76 +105,137 @@ export default defineEventHandler(async (event) => {
     totalPlayCount: number
     localTrackCount: number
     isMusicBrainz: boolean
+    hasLocal: boolean
     localReleaseId: string | null
+    folderPath: string | null
     coArtists?: { name: string; slug: string }[]
     statusReason?: string | null
-  }> = []
+  }
 
-  const mbLinkedReleaseIds = new Set<string>()
+  const releases: ReleaseCard[] = []
+  const coveredMbIds = new Set<string>()
+  const appearsOnLocal: typeof localReleases = []
 
+  for (const lr of localReleases) {
+    const localImg = verifyImage(lr.image, lr.imageUrl, 'releases')
+    if (!lr.releaseId) {
+      releases.push({
+        id: lr.id,
+        title: lr.title,
+        year: lr.year,
+        type: 'Unmatched',
+        typeSlug: 'unmatched',
+        mbReleaseRowId: null,
+        musicbrainzId: null,
+        releaseGroupId: null,
+        disambiguation: null,
+        editionLabel: null,
+        releaseDate: null,
+        packaging: null,
+        country: null,
+        format: null,
+        status: lr.matchStatus,
+        image: localImg.image,
+        imageUrl: localImg.imageUrl,
+        trackCount: 0,
+        totalPlayCount: lr.totalPlayCount,
+        localTrackCount: lr.tracks.length,
+        isMusicBrainz: false,
+        hasLocal: true,
+        localReleaseId: lr.id,
+        folderPath: lr.folderPath,
+        coArtists: coArtistMap.get(lr.id),
+      })
+      continue
+    }
+
+    const mbr = mbById.get(lr.releaseId)
+    if (!mbr) {
+      appearsOnLocal.push(lr)
+      continue
+    }
+
+    coveredMbIds.add(mbr.id)
+    releases.push({
+      id: lr.id,
+      title: mbr.title,
+      year: mbr.year,
+      type: mbr.type.name,
+      typeSlug: mbr.type.slug,
+      mbReleaseRowId: mbr.id,
+      musicbrainzId: mbr.musicbrainzId,
+      releaseGroupId: mbr.releaseGroupId ?? null,
+      disambiguation: mbr.disambiguation ?? null,
+      editionLabel: mbr.editionLabel ?? null,
+      releaseDate: mbr.releaseDate ?? null,
+      packaging: mbr.packaging ?? null,
+      country: mbr.country ?? null,
+      format: mbr.format ?? null,
+      status: mbr.status,
+      image: localImg.image,
+      imageUrl: localImg.imageUrl,
+      trackCount: mbr.tracks.length,
+      totalPlayCount: lr.totalPlayCount,
+      localTrackCount: lr.tracks.length,
+      isMusicBrainz: true,
+      hasLocal: true,
+      localReleaseId: lr.id,
+      folderPath: lr.folderPath,
+      coArtists: coArtistMap.get(lr.id),
+      statusReason: mbr.statusReason,
+    })
+  }
+
+  // Catalogue gaps: MB releases in this artist's catalogue that have no LocalRelease.
   for (const mbr of mbReleases) {
-    const localRelease = localByMbId.get(mbr.id) || mbr.localReleases[0] || null
-    if (localRelease) mbLinkedReleaseIds.add(localRelease.id)
-    const img = verifyImage(localRelease?.image, localRelease?.imageUrl, 'releases')
+    if (coveredMbIds.has(mbr.id)) continue
+    const gapImg = verifyImage(null, null, 'releases')
     releases.push({
       id: mbr.id,
       title: mbr.title,
       year: mbr.year,
       type: mbr.type.name,
       typeSlug: mbr.type.slug,
+      mbReleaseRowId: mbr.id,
       musicbrainzId: mbr.musicbrainzId,
       releaseGroupId: mbr.releaseGroupId ?? null,
       disambiguation: mbr.disambiguation ?? null,
+      editionLabel: mbr.editionLabel ?? null,
+      releaseDate: mbr.releaseDate ?? null,
+      packaging: mbr.packaging ?? null,
+      country: mbr.country ?? null,
+      format: mbr.format ?? null,
       status: mbr.status,
-      image: img.image,
-      imageUrl: img.imageUrl,
+      image: gapImg.image,
+      imageUrl: gapImg.imageUrl,
       trackCount: mbr.tracks.length,
-      totalPlayCount: localRelease?.totalPlayCount || 0,
-      localTrackCount: localRelease?.tracks.length || 0,
+      totalPlayCount: 0,
+      localTrackCount: 0,
       isMusicBrainz: true,
-      localReleaseId: localRelease?.id || null,
-      coArtists: localRelease ? coArtistMap.get(localRelease.id) : undefined,
+      hasLocal: false,
+      localReleaseId: null,
+      folderPath: null,
       statusReason: mbr.statusReason,
     })
   }
 
-  // Add unmatched local releases
-  for (const lr of unmatchedLocal) {
-    if (mbLinkedReleaseIds.has(lr.id)) continue
-    const unmatchedImg = verifyImage(lr.image, lr.imageUrl, 'releases')
-    releases.push({
-      id: lr.id,
-      title: lr.title,
-      year: lr.year,
-      type: 'Unmatched',
-      typeSlug: 'unmatched',
-      musicbrainzId: null,
-      releaseGroupId: null,
-      disambiguation: null,
-      status: lr.matchStatus,
-      image: unmatchedImg.image,
-      imageUrl: unmatchedImg.imageUrl,
-      trackCount: 0,
-      totalPlayCount: lr.totalPlayCount,
-      localTrackCount: lr.tracks.length,
-      isMusicBrainz: false,
-      localReleaseId: lr.id,
-      coArtists: coArtistMap.get(lr.id),
-    })
-  }
-
-  // Add collaboration albums (local releases linked to MB releases not in this artist's catalogue)
-  // Fetch the linked MB release data so "Appears On" entries get real type/year/status/trackCount
-  const mbReleaseIds = new Set(mbReleases.map(mbr => mbr.id))
-  const appearsOnCandidates = localReleases.filter(
-    lr => lr.releaseId && !mbReleaseIds.has(lr.releaseId) && !mbLinkedReleaseIds.has(lr.id),
-  )
-  const appearsOnMbIds = appearsOnCandidates.map(lr => lr.releaseId!)
+  // Appears-On: LocalReleases whose MB release is NOT in this artist's catalogue.
+  // Fetch those MB rows so the cards get real type/year/status/trackCount.
+  const appearsOnMbIds = appearsOnLocal.map(lr => lr.releaseId!)
   const appearsOnMbReleases = appearsOnMbIds.length > 0
     ? await prisma.musicBrainzRelease.findMany({
       where: { id: { in: appearsOnMbIds } },
       select: {
         id: true,
+        title: true,
+        musicbrainzId: true,
+        releaseGroupId: true,
+        disambiguation: true,
+        editionLabel: true,
+        releaseDate: true,
+        packaging: true,
+        country: true,
+        format: true,
         year: true,
         status: true,
         statusReason: true,
@@ -194,18 +246,24 @@ export default defineEventHandler(async (event) => {
     : []
   const appearsOnMbMap = new Map(appearsOnMbReleases.map(r => [r.id, r]))
 
-  for (const lr of appearsOnCandidates) {
+  for (const lr of appearsOnLocal) {
     const mbr = appearsOnMbMap.get(lr.releaseId!)
     const appearsOnImg = verifyImage(lr.image, lr.imageUrl, 'releases')
     releases.push({
-      id: mbr?.id ?? lr.id,
-      title: lr.title,
+      id: lr.id,
+      title: mbr?.title ?? lr.title,
       year: mbr?.year ?? lr.year,
       type: mbr ? mbr.type.name : 'Appears On',
       typeSlug: mbr ? mbr.type.slug : 'appears-on',
-      musicbrainzId: null,
-      releaseGroupId: null,
-      disambiguation: null,
+      mbReleaseRowId: mbr?.id ?? null,
+      musicbrainzId: mbr?.musicbrainzId ?? null,
+      releaseGroupId: mbr?.releaseGroupId ?? null,
+      disambiguation: mbr?.disambiguation ?? null,
+      editionLabel: mbr?.editionLabel ?? null,
+      releaseDate: mbr?.releaseDate ?? null,
+      packaging: mbr?.packaging ?? null,
+      country: mbr?.country ?? null,
+      format: mbr?.format ?? null,
       status: mbr?.status ?? lr.matchStatus,
       image: appearsOnImg.image,
       imageUrl: appearsOnImg.imageUrl,
@@ -213,7 +271,9 @@ export default defineEventHandler(async (event) => {
       totalPlayCount: lr.totalPlayCount,
       localTrackCount: lr.tracks.length,
       isMusicBrainz: !!mbr,
+      hasLocal: true,
       localReleaseId: lr.id,
+      folderPath: lr.folderPath,
       coArtists: coArtistMap.get(lr.id),
       statusReason: mbr?.statusReason ?? null,
     })

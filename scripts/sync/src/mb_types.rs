@@ -41,6 +41,8 @@ pub struct MbRelease {
     pub date: Option<String>,
     pub status: Option<String>,
     pub disambiguation: Option<String>,
+    pub packaging: Option<String>,
+    pub country: Option<String>,
     pub media: Option<Vec<MbMedia>>,
 }
 
@@ -52,6 +54,7 @@ pub struct MbReleaseList {
 #[derive(Debug, Deserialize)]
 pub struct MbMedia {
     pub position: Option<u32>,
+    pub format: Option<String>,
     pub tracks: Option<Vec<MbTrack>>,
 }
 

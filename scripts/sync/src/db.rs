@@ -149,6 +149,15 @@ pub async fn ensure_genre_cached(
 // MusicBrainzRelease upsert
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Default, Clone)]
+pub struct MbReleaseExtras<'a> {
+    pub edition_label: Option<&'a str>,
+    pub release_date: Option<&'a str>,
+    pub packaging: Option<&'a str>,
+    pub country: Option<&'a str>,
+    pub format: Option<&'a str>,
+}
+
 pub async fn upsert_mb_release(
     pool: &PgPool,
     mb_release_id: &str,
@@ -159,19 +168,27 @@ pub async fn upsert_mb_release(
     status: &str,
     status_reason: Option<&str>,
     disambiguation: Option<&str>,
+    extras: &MbReleaseExtras<'_>,
 ) -> Result<String, sqlx::Error> {
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
     let row: (String,) = sqlx::query_as(
         r#"INSERT INTO "MusicBrainzRelease"
-             (id, title, "typeId", year, "musicbrainzId", "releaseGroupId", disambiguation, status, "statusReason", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::"ReleaseStatus", $9, $10, $10)
+             (id, title, "typeId", year, "musicbrainzId", "releaseGroupId",
+              disambiguation, "editionLabel", "releaseDate", packaging, country, format,
+              status, "statusReason", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::"ReleaseStatus", $14, $15, $15)
            ON CONFLICT ("musicbrainzId") DO UPDATE SET
              title = EXCLUDED.title,
              "typeId" = EXCLUDED."typeId",
              year = COALESCE(EXCLUDED.year, "MusicBrainzRelease".year),
              "releaseGroupId" = EXCLUDED."releaseGroupId",
              disambiguation = EXCLUDED.disambiguation,
+             "editionLabel" = EXCLUDED."editionLabel",
+             "releaseDate" = EXCLUDED."releaseDate",
+             packaging = EXCLUDED.packaging,
+             country = EXCLUDED.country,
+             format = EXCLUDED.format,
              status = EXCLUDED.status::"ReleaseStatus",
              "statusReason" = EXCLUDED."statusReason",
              "updatedAt" = EXCLUDED."updatedAt"
@@ -184,6 +201,11 @@ pub async fn upsert_mb_release(
     .bind(mb_release_id)
     .bind(release_group_id)
     .bind(disambiguation)
+    .bind(extras.edition_label)
+    .bind(extras.release_date)
+    .bind(extras.packaging)
+    .bind(extras.country)
+    .bind(extras.format)
     .bind(status)
     .bind(status_reason)
     .bind(now)
@@ -369,6 +391,25 @@ pub async fn update_local_release_match(
     Ok(())
 }
 
+pub async fn mark_local_release_unmatched(
+    pool: &PgPool,
+    local_release_id: &str,
+) -> Result<(), sqlx::Error> {
+    let now = Utc::now().naive_utc();
+    sqlx::query(
+        r#"UPDATE "LocalRelease"
+           SET "releaseId" = NULL,
+               "matchStatus" = 'UNKNOWN',
+               "updatedAt" = $1
+           WHERE id = $2"#,
+    )
+    .bind(now)
+    .bind(local_release_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // LocalReleaseTrack → MusicBrainzReleaseTrack link
 // ---------------------------------------------------------------------------
@@ -540,6 +581,7 @@ pub async fn get_artists_pending_sync(
 pub struct LocalReleaseRow {
     pub id: String,
     pub title: String,
+    pub year: Option<i32>,
     pub forced_complete: bool,
     pub release_id: Option<String>,
     pub match_status: Option<String>,
@@ -549,8 +591,8 @@ pub async fn get_local_releases_for_artist(
     pool: &PgPool,
     artist_id: &str,
 ) -> Result<Vec<LocalReleaseRow>, sqlx::Error> {
-    let rows: Vec<(String, String, bool, Option<String>, Option<String>)> = sqlx::query_as(
-        r#"SELECT lr.id, lr.title, lr."forcedComplete", lr."releaseId", lr."matchStatus"::text
+    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>)> = sqlx::query_as(
+        r#"SELECT lr.id, lr.title, lr.year, lr."forcedComplete", lr."releaseId", lr."matchStatus"::text
            FROM "LocalRelease" lr
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
            WHERE lra."artistId" = $1
@@ -562,9 +604,10 @@ pub async fn get_local_releases_for_artist(
 
     Ok(rows
         .into_iter()
-        .map(|(id, title, forced_complete, release_id, match_status)| LocalReleaseRow {
+        .map(|(id, title, year, forced_complete, release_id, match_status)| LocalReleaseRow {
             id,
             title,
+            year,
             forced_complete,
             release_id,
             match_status,

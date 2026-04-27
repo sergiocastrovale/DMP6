@@ -43,8 +43,30 @@ export default defineEventHandler(async (event) => {
     return getLocalReleaseTracks(localReleaseId, mbRelease?.tracks)
   }
 
-  // Try as LocalRelease
-  return getLocalReleaseTracks(id)
+  // Try as LocalRelease — also fetch its MB release tracks if linked.
+  const localRelease = await prisma.localRelease.findUnique({
+    where: { id },
+    select: {
+      releaseId: true,
+      release: {
+        select: {
+          tracks: {
+            select: {
+              id: true,
+              title: true,
+              position: true,
+              discNumber: true,
+              durationMs: true,
+              musicbrainzId: true,
+            },
+            orderBy: [{ discNumber: 'asc' }, { position: 'asc' }],
+          },
+        },
+      },
+    },
+  })
+
+  return getLocalReleaseTracks(id, localRelease?.release?.tracks)
 })
 
 async function getLocalReleaseTracks(
