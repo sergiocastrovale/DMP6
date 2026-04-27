@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { parsePagination } from '~/server/utils/pagination'
 import type { PaginatedResponse } from '~/types/api'
 
 const VALID_TYPES = ['corrupted', 'unsplit', 'orphans', 'duplicates', 'missing', 'enrichment'] as const
@@ -10,10 +11,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: `Unknown issue type: ${type}` })
   }
 
-  const { page = '1', pageSize = '50', sort, order = 'asc', q } = getQuery(event)
-  const p = Math.max(1, parseInt(page as string))
-  const ps = Math.min(100, Math.max(1, parseInt(pageSize as string)))
-  const skip = (p - 1) * ps
+  const rawQuery = getQuery(event)
+  const { sort, order = 'asc', q } = rawQuery
+  const { page: p, pageSize: ps, skip } = parsePagination(rawQuery, { defaultSize: 50, maxSize: 100 })
 
   const orderDir = order === 'desc' ? 'desc' : 'asc'
 

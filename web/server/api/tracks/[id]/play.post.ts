@@ -5,15 +5,6 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Missing id' })
 
-  await prisma.localReleaseTrack.update({
-    where: { id },
-    data: {
-      playCount: { increment: 1 },
-      lastPlayedAt: new Date(),
-    },
-  })
-
-  // Also update release and artist play counts
   const track = await prisma.localReleaseTrack.findUnique({
     where: { id },
     select: {
@@ -28,24 +19,38 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  if (track?.localRelease) {
-    const artistUpdates = track.localRelease.artists.map(lra =>
-      prisma.artist.update({
-        where: { id: lra.artist.id },
-        data: { totalPlayCount: { increment: 1 } },
-      })
-    )
+  if (!track) {
+    throw createError({ statusCode: 404, statusMessage: 'Track not found' })
+  }
 
-    await Promise.all([
+  const now = new Date()
+  const ops = [
+    prisma.localReleaseTrack.update({
+      where: { id },
+      data: { playCount: { increment: 1 }, lastPlayedAt: now },
+    }),
+  ]
+
+  if (track.localRelease) {
+    ops.push(
       prisma.localRelease.update({
         where: { id: track.localRelease.id },
-        data: {
-          totalPlayCount: { increment: 1 },
-          lastPlayedAt: new Date(),
-        },
-      }),
-      ...artistUpdates,
-    ])
+        data: { totalPlayCount: { increment: 1 }, lastPlayedAt: now },
+      }) as any,
+    )
+    for (const lra of track.localRelease.artists) {
+      ops.push(
+        prisma.artist.update({
+          where: { id: lra.artist.id },
+          data: { totalPlayCount: { increment: 1 } },
+        }) as any,
+      )
+    }
+  }
+
+  await prisma.$transaction(ops)
+
+  if (track.localRelease) {
 
     // Invalidate caches affected by play counts / lastPlayedAt
     const cacheInvalidations: Promise<void>[] = [

@@ -46,14 +46,19 @@ function hideDropdown() {
   showDropdown.value = false
 }
 
-// Close dropdown when clicking outside
+const onClickOutside = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (!target.closest('.search-container')) {
+    hideDropdown()
+  }
+}
+
 onMounted(() => {
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement
-    if (!target.closest('.search-container')) {
-      hideDropdown()
-    }
-  })
+  document.addEventListener('click', onClickOutside)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onClickOutside)
 })
 </script>
 
@@ -72,6 +77,7 @@ onMounted(() => {
       <button
         v-if="query"
         class="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+        aria-label="Clear search"
         @click="clear"
       >
         <X :size="14" />

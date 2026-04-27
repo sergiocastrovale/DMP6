@@ -160,6 +160,7 @@ export const usePlayerStore = defineStore('player', () => {
   async function pickExplorerTrack(params: ExploreParams): Promise<void> {
     if (explorerCurrentTrack.value) {
       explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
+      if (explorerSessionHistory.value.length > 200) explorerSessionHistory.value.length = 200
     }
     explorerParams.value = params
     shuffleMode.value = 'explorer'
@@ -177,6 +178,7 @@ export const usePlayerStore = defineStore('player', () => {
   function setExplorerTrack(track: PlayerTrack, params: ExploreParams): void {
     if (explorerCurrentTrack.value && explorerCurrentTrack.value.id !== track.id) {
       explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
+      if (explorerSessionHistory.value.length > 200) explorerSessionHistory.value.length = 200
     }
     explorerCurrentTrack.value = track
     explorerParams.value = params
@@ -190,6 +192,7 @@ export const usePlayerStore = defineStore('player', () => {
       if (!explorerParams.value) return
       if (explorerCurrentTrack.value) {
         explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
+        if (explorerSessionHistory.value.length > 200) explorerSessionHistory.value.length = 200
       }
       const track = await fetchExplorerTrack(explorerParams.value)
       if (track) {

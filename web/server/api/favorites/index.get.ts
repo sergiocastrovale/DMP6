@@ -1,12 +1,11 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
+import { parsePagination } from '~/server/utils/pagination'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const type = (query.type as string) || 'all'
-  const page = Math.max(1, Number(query.page) || 1)
-  const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 50))
-  const skip = (page - 1) * pageSize
+  const { page, pageSize, skip } = parsePagination(query, { defaultSize: 50, maxSize: 100 })
 
   let releases: any[] = []
   let tracks: any[] = []

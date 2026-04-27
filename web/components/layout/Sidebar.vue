@@ -41,7 +41,7 @@ const isActive = (path: string) => {
 
 <template>
   <aside
-    :data-collapsed="collapsed"
+    :data-collapsed="collapsed || undefined"
     class="group/sidebar fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-zinc-800 bg-zinc-950 transition-all duration-200"
     :class="collapsed ? 'w-16' : 'w-56'"
   >

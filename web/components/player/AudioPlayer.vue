@@ -156,6 +156,7 @@ const progressPct = computed(() =>
               class="transition-colors"
               :class="player.shuffleMode !== 'off' ? 'text-amber-500 hover:text-amber-400' : 'text-zinc-400 hover:text-zinc-50'"
               :title="getShuffleTooltip()"
+              :aria-label="getShuffleTooltip()"
               @click="player.cycleShuffleMode()"
             >
               <Compass v-if="player.shuffleMode === 'explorer'" :size="18" />
@@ -163,19 +164,20 @@ const progressPct = computed(() =>
             </button>
           </div>
 
-          <button class="text-zinc-400 hover:text-zinc-50 transition-colors" @click="player.previous()">
+          <button class="text-zinc-400 hover:text-zinc-50 transition-colors" aria-label="Previous track" @click="player.previous()">
             <SkipBack :size="20" />
           </button>
 
           <button
             class="flex size-11 items-center justify-center rounded-full bg-zinc-50 text-zinc-950 hover:scale-105 transition-transform"
+            :aria-label="player.isPlaying ? 'Pause' : 'Play'"
             @click="player.togglePlay()"
           >
             <Pause v-if="player.isPlaying" :size="20" />
             <Play v-else :size="20" class="ml-0.5" />
           </button>
 
-          <button class="text-zinc-400 hover:text-zinc-50 transition-colors" @click="player.next()">
+          <button class="text-zinc-400 hover:text-zinc-50 transition-colors" aria-label="Next track" @click="player.next()">
             <SkipForward :size="20" />
           </button>
 
@@ -183,6 +185,7 @@ const progressPct = computed(() =>
           <div class="relative">
             <button
               class="text-zinc-400 hover:text-zinc-50 transition-colors"
+              aria-label="Add to playlist"
               @click="showPlaylistMenu = !showPlaylistMenu; loadPlaylists()"
             >
               <ListMusic :size="18" />

@@ -30,8 +30,16 @@ export async function cachedResponse<T>(
 export async function invalidateCache(pattern: string) {
   if (!redis) return
   try {
-    const keys = await redis.keys(pattern)
-    if (keys.length) await redis.del(...keys)
+    if (!pattern.includes('*')) {
+      await redis.del(pattern)
+      return
+    }
+    let cursor = '0'
+    do {
+      const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100)
+      cursor = next
+      if (keys.length) await redis.del(...keys)
+    } while (cursor !== '0')
   }
   catch { /* ignore */ }
 }

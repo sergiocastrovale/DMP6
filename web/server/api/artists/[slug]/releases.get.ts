@@ -1,13 +1,13 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
+import { parsePagination } from '~/server/utils/pagination'
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
   if (!slug) throw createError({ statusCode: 400, statusMessage: 'Missing slug' })
 
   const query = getQuery(event)
-  const page = Math.max(1, Number(query.page) || 1)
-  const pageSize = Math.min(500, Math.max(1, Number(query.pageSize) || 20))
+  const { page, pageSize } = parsePagination(query, { defaultSize: 20, maxSize: 500 })
 
   const artist = await prisma.artist.findUnique({
     where: { slug },

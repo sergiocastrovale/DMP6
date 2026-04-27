@@ -21,12 +21,7 @@ export default defineEventHandler(async (event) => {
 
   const playlist = await prisma.playlist.findUnique({
     where: { slug },
-    include: {
-      tracks: {
-        orderBy: { position: 'desc' },
-        take: 1,
-      },
-    },
+    select: { id: true, type: true },
   })
 
   if (!playlist) {
@@ -43,16 +38,19 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Get next position
-  const nextPosition = playlist.tracks.length > 0 ? playlist.tracks[0]!.position + 1 : 0
-
-  // Add track to playlist
-  const playlistTrack = await prisma.playlistTrack.create({
-    data: {
-      playlistId: playlist.id,
-      trackId: body.trackId,
-      position: nextPosition,
-    },
+  const playlistTrack = await prisma.$transaction(async (tx) => {
+    const top = await tx.playlistTrack.findFirst({
+      where: { playlistId: playlist.id },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    })
+    return tx.playlistTrack.create({
+      data: {
+        playlistId: playlist.id,
+        trackId: body.trackId,
+        position: (top?.position ?? -1) + 1,
+      },
+    })
   })
 
   return {

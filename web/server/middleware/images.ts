@@ -1,44 +1,46 @@
 import { createReadStream, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-export default defineEventHandler((event) => {
+const mimeTypes: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  avif: 'image/avif',
+}
+
+export default defineEventHandler(async (event) => {
   const url = getRequestURL(event)
   const path = url.pathname
 
-  // Only handle /img/artists/* and /img/releases/*
   const match = path.match(/^\/img\/(artists|releases)\/(.+)$/)
-  if (!match) return
+  if (!match) { return }
 
   const type = match[1]!
   const filename = match[2]!
 
   if (filename.includes('..') || filename.includes('/')) { return }
 
-  const imageDir = useRuntimeConfig().imageDir
+  const { imageDir, nasUrl } = useRuntimeConfig()
   const filePath = resolve(join(imageDir, type, filename))
+  const ext = filename.split('.').pop()?.toLowerCase() || 'jpg'
 
-  let stat
   try {
-    stat = statSync(filePath)
+    const stat = statSync(filePath)
+    setResponseHeaders(event, {
+      'Content-Type': mimeTypes[ext] || 'image/jpeg',
+      'Content-Length': String(stat.size),
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    })
+    return sendStream(event, createReadStream(filePath))
   }
   catch {
-    throw createError({ statusCode: 404, statusMessage: 'Image not found' })
+    // Local file missing — proxy from NAS if configured
   }
 
-  const ext = filename.split('.').pop()?.toLowerCase() || 'jpg'
-  const mimeTypes: Record<string, string> = {
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    webp: 'image/webp',
-    avif: 'image/avif',
+  if (nasUrl) {
+    return proxyRequest(event, `${nasUrl}/img/${type}/${filename}`)
   }
 
-  setResponseHeaders(event, {
-    'Content-Type': mimeTypes[ext] || 'image/jpeg',
-    'Content-Length': String(stat.size),
-    'Cache-Control': 'public, max-age=31536000, immutable',
-  })
-
-  return sendStream(event, createReadStream(filePath))
+  throw createError({ statusCode: 404, statusMessage: 'Image not found' })
 })

@@ -49,8 +49,10 @@ export function verifyImage(
   const validUrl = imageUrl || null
   let validImage: string | null = null
 
+  const nasUrl = useRuntimeConfig().nasUrl
+
   if (image && (storage === 'local' || storage === 'both')) {
-    validImage = localImageExists(type, image) ? image : null
+    validImage = localImageExists(type, image) ? image : (nasUrl ? image : null)
   }
   else if (image) {
     validImage = image

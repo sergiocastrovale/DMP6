@@ -28,6 +28,10 @@ function cancelClose() {
 function close() {
   open.value = false
 }
+
+onBeforeUnmount(() => {
+  if (hoverTimeout) clearTimeout(hoverTimeout)
+})
 </script>
 
 <template>

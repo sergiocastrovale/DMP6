@@ -31,6 +31,7 @@ export default defineEventHandler(async (event) => {
       localReleaseId: true,
     },
     orderBy: [{ album: 'asc' }, { discNumber: 'asc' }, { trackNumber: 'asc' }],
+    take: 2000,
   })
 
   return tracks

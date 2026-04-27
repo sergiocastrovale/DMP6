@@ -1,13 +1,13 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
 import { verifyImage } from '~/server/utils/images'
+import { parsePagination } from '~/server/utils/pagination'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'public, max-age=120, stale-while-revalidate=60')
 
   const query = getQuery(event)
-  const page = Math.max(1, Number(query.page) || 1)
-  const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 48))
+  const { page, pageSize } = parsePagination(query, { defaultSize: 48, maxSize: 100 })
   const letter = (query.letter as string)?.toLowerCase() || null
   const genre = query.genre as string || null
   const sort = (query.sort as string) || 'name'

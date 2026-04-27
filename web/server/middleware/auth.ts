@@ -15,8 +15,9 @@ export default defineEventHandler((event) => {
     path === '/robots.txt'
   ) return
 
-  // Public auth endpoints
+  // Public endpoints
   if (path === '/api/auth/login' || path === '/api/auth/logout' || path === '/api/health') return
+  if (path.startsWith('/img/') || path.startsWith('/api/audio/')) return
 
   const token = getCookie(event, SESSION_COOKIE)
   const authenticated = validateSession(token)

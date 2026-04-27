@@ -6,6 +6,8 @@ const ALLOWED_COMMANDS = [
   './playlists', './audit', './fix', './refresh',
 ]
 
+const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/
+
 // Commands that support the --web flag (structured PROGRESS:{json} output)
 const WEB_MODE_COMMANDS = new Set(['./index', './sync', './refresh'])
 
@@ -63,6 +65,9 @@ export default defineEventHandler(async (event) => {
 
   // Tmux session mode (always used when session is provided)
   if (session) {
+    if (!SESSION_NAME_RE.test(session)) {
+      throw createError({ statusCode: 400, message: 'Invalid session name' })
+    }
     if (!tmuxAvailable()) {
       send('Error: tmux is required but not installed. Install tmux to run commands from the UI.')
       res.write(`event: done\ndata: 1\n\n`)

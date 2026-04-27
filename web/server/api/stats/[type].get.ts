@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { parsePagination } from '~/server/utils/pagination'
 
 const VALID_TYPES = new Set([
   'artists', 'releases', 'tracks', 'genres', 'plays',
@@ -12,10 +13,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid stat type' })
 
   const query = getQuery(event)
-  const page = Math.max(1, Number(query.page) || 1)
-  const pageSize = Math.min(200, Math.max(1, Number(query.pageSize) || 200))
+  const { page, pageSize, skip } = parsePagination(query, { defaultSize: 200, maxSize: 200 })
   const search = (query.search as string)?.trim() || ''
-  const skip = (page - 1) * pageSize
 
   switch (type) {
     case 'artists':

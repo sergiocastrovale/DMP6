@@ -10,22 +10,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Check if already favorited
-  const existing = await prisma.favoriteTrack.findUnique({
-    where: {
-      trackId: id,
-    },
-  })
-
-  if (existing) {
-    return { success: true, message: 'Already favorited' }
-  }
-
-  // Create favorite
-  await prisma.favoriteTrack.create({
-    data: {
-      trackId: id,
-    },
+  await prisma.favoriteTrack.upsert({
+    where: { trackId: id },
+    create: { trackId: id },
+    update: {},
   })
 
   return { success: true, message: 'Track favorited' }

@@ -24,6 +24,10 @@ export default defineEventHandler(async (event) => {
     stat = statSync(filePath)
   }
   catch {
+    const nasUrl = useRuntimeConfig().nasUrl
+    if (nasUrl) {
+      return proxyRequest(event, `${nasUrl}/api/audio/${id}`)
+    }
     throw createError({ statusCode: 404, statusMessage: 'Audio file not found on disk' })
   }
 

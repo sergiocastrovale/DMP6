@@ -12,9 +12,10 @@ const props = withDefaults(defineProps<{
 })
 
 async function checkFavorite() {
+  if (!player.currentTrack?.id) return
   try {
-    const favorites = await $fetch<any>('/api/favorites')
-    isFavorite.value = favorites.tracks.some((fav: any) => fav.track.id === player.currentTrack?.id)
+    const { isFavorite: fav } = await $fetch<{ isFavorite: boolean }>(`/api/favorites/tracks/${player.currentTrack.id}`)
+    isFavorite.value = fav
   }
   catch (error) {
     console.error('Failed to check favorite:', error)
@@ -50,6 +51,7 @@ onMounted(() => {
   <button
     class="hidden lg:block text-zinc-400 hover:text-amber-500 transition-colors cursor-pointer"
     :class="{ 'text-amber-500': isFavorite }"
+    :aria-label="isFavorite ? 'Remove from favorites' : 'Add to favorites'"
     @click="toggleFavorite"
   >
     <Heart :size="props.size" :fill="isFavorite ? 'currentColor' : 'none'" />

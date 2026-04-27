@@ -25,6 +25,10 @@ onMounted(() => {
     store.fetchArtists()
   }
 })
+
+onBeforeUnmount(() => {
+  clearTimeout(searchTimeout)
+})
 </script>
 
 <template>
