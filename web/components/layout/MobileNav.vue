@@ -4,18 +4,24 @@ import { usePlayerStore } from '~/stores/player'
 
 const route = useRoute()
 const player = usePlayerStore()
-const allItems = [
-  { to: '/', label: 'Home', icon: Home },
-  { to: '/browse', label: 'Browse', icon: Library },
-  { to: '/explore', label: 'Explore', icon: Compass },
-  { to: '/timeline', label: 'Timeline', icon: Clock },
-  { to: '/playlists', label: 'Playlists', icon: ListMusic },
-  { to: '/favorites', label: 'Favorites', icon: Heart },
-]
+const { hasPerm } = useAuth()
 
-const items = computed(() => allItems)
+const canViewPlaylists = hasPerm('playlists.view')
+const canViewFavorites = hasPerm('favorites.view')
 
-function isActive(path: string) {
+const items = computed(() => {
+  const all = [
+    { to: '/', label: 'Home', icon: Home, show: true },
+    { to: '/browse', label: 'Browse', icon: Library, show: true },
+    { to: '/explore', label: 'Explore', icon: Compass, show: true },
+    { to: '/timeline', label: 'Timeline', icon: Clock, show: true },
+    { to: '/playlists', label: 'Playlists', icon: ListMusic, show: canViewPlaylists.value },
+    { to: '/favorites', label: 'Favorites', icon: Heart, show: canViewFavorites.value },
+  ]
+  return all.filter((i) => i.show)
+})
+
+const isActive = (path: string) => {
   if (path === '/') return route.path === '/'
   return route.path.startsWith(path)
 }

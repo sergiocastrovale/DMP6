@@ -10,11 +10,16 @@
     "postinstall": "nuxt prepare",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
     "@vueuse/core": "^13.0.0",
+    "bcrypt": "^5.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "ioredis": "^5.10.1",
@@ -27,6 +32,7 @@
   "devDependencies": {
     "@pinia/nuxt": "^0.11.3",
     "@tailwindcss/vite": "^4.0.0",
+    "@types/bcrypt": "^5.0.2",
     "@types/node": "^22.10.5",
     "minimist": "^1.2.8",
     "pinia-plugin-persistedstate": "^4.0.0",
@@ -40,6 +46,7 @@
       "@parcel/watcher",
       "@prisma/client",
       "@prisma/engines",
+      "bcrypt",
       "esbuild",
       "prisma"
     ]

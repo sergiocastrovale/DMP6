@@ -3,6 +3,9 @@ import { LucideListMusic, LucidePlus, LucideSparkles } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
 
+const { hasPerm } = useAuth()
+const canCrud = hasPerm('playlists.crud')
+
 const loading = ref(true)
 const playlists = ref<PlaylistSummary[]>([])
 const showCreate = ref(false)
@@ -39,6 +42,7 @@ onMounted(() => loadPlaylists())
         </p>
       </div>
       <button
+        v-if="canCrud"
         class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-600 transition-colors"
         @click="showCreate = true"
       >
@@ -91,6 +95,7 @@ onMounted(() => loadPlaylists())
         <LucideListMusic class="mb-3 size-12 opacity-50" />
         <p>No playlists yet</p>
         <button
+          v-if="canCrud"
           class="mt-4 text-sm text-amber-500 hover:text-amber-600 transition-colors"
           @click="showCreate = true"
         >

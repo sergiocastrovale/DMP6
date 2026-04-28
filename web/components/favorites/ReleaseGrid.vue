@@ -12,6 +12,8 @@ const emit = defineEmits<{
 
 const { releaseImage } = useImageUrl()
 const { isCurrentRelease, isReleasePlaying, toggleOrPlay } = usePlayRelease()
+const { hasPerm } = useAuth()
+const canCrud = hasPerm('favorites.crud')
 </script>
 
 <template>
@@ -25,6 +27,7 @@ const { isCurrentRelease, isReleasePlaying, toggleOrPlay } = usePlayRelease()
       class="group relative flex flex-col gap-2"
     >
       <button
+        v-if="canCrud"
         class="absolute right-2 top-2 z-10 rounded-full bg-zinc-900/90 p-1.5 text-amber-500 opacity-0 transition-opacity group-hover:opacity-100"
         @click="emit('unfavorite', fav.release.id)"
       >

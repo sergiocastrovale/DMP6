@@ -1,6 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
+import { requirePermission } from '~/server/utils/permissions'
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'issues.view')
+
   const lastAudit = await prisma.auditRun.findFirst({
     orderBy: { startedAt: 'desc' },
   })

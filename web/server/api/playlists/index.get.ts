@@ -1,7 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'playlists.view')
+
   const query = getQuery(event)
   const limit = query.limit ? Math.min(Number(query.limit), 100) : undefined
   const type = query.type as 'all' | 'genre' | 'manual' | undefined

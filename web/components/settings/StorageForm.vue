@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { Save, CheckCircle2, AlertCircle } from 'lucide-vue-next'
 
+const { hasPerm } = useAuth()
+const canEdit = hasPerm('variables.edit')
+
 const { data: settings, refresh } = await useAsyncData('settings-db', () =>
   $fetch<Record<string, any>>('/api/settings'),
 )
@@ -105,7 +108,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
     <div class="flex items-center gap-3">
       <button
-        :disabled="saving"
+        :disabled="saving || !canEdit"
         @click="save"
         class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
       >

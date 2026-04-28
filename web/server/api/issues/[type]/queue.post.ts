@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { requirePermission } from '~/server/utils/permissions'
 
 const MODEL_MAP = {
   corrupted: 'issueCorruptedTpe2',
@@ -11,6 +12,8 @@ const MODEL_MAP = {
 type IssueType = keyof typeof MODEL_MAP
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'issues.view')
+
   const type = getRouterParam(event, 'type') as IssueType
   if (!(type in MODEL_MAP)) {
     throw createError({ statusCode: 404, message: `Unknown issue type: ${type}` })

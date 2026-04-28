@@ -3,6 +3,8 @@ import { usePlayerStore } from '~/stores/player'
 import { Heart } from 'lucide-vue-next'
 
 const player = usePlayerStore()
+const { hasPerm } = useAuth()
+const canCrud = hasPerm('favorites.crud')
 const isFavorite = ref(false)
 
 const props = withDefaults(defineProps<{
@@ -49,6 +51,7 @@ onMounted(() => {
 
 <template>
   <button
+    v-if="canCrud"
     class="hidden lg:block text-zinc-400 hover:text-amber-500 transition-colors cursor-pointer"
     :class="{ 'text-amber-500': isFavorite }"
     :aria-label="isFavorite ? 'Remove from favorites' : 'Add to favorites'"

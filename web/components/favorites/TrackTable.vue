@@ -13,6 +13,8 @@ const emit = defineEmits<{
 
 const { releaseImage } = useImageUrl()
 const playerStore = usePlayerStore()
+const { hasPerm } = useAuth()
+const canCrud = hasPerm('favorites.crud')
 
 const isCurrentTrack = (trackId: string) => playerStore.currentTrack?.id === trackId
 const isTrackPlaying = (trackId: string) => playerStore.isPlaying && isCurrentTrack(trackId)
@@ -90,6 +92,7 @@ const handleTrackClick = (fav: FavoriteTrack) => {
       </span>
 
       <button
+        v-if="canCrud"
         class="rounded-full p-1.5 text-amber-500 opacity-0 transition-opacity group-hover:opacity-100"
         @click="emit('unfavorite', fav.track.id)"
       >

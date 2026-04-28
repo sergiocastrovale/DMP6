@@ -1,11 +1,14 @@
 import { prisma } from '~/server/utils/prisma'
 import { parsePagination } from '~/server/utils/pagination'
+import { requirePermission } from '~/server/utils/permissions'
 import type { PaginatedResponse } from '~/types/api'
 
 const VALID_TYPES = ['corrupted', 'unsplit', 'orphans', 'duplicates', 'missing', 'enrichment'] as const
 type IssueType = typeof VALID_TYPES[number]
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'issues.view')
+
   const type = getRouterParam(event, 'type') as IssueType
   if (!VALID_TYPES.includes(type)) {
     throw createError({ statusCode: 404, message: `Unknown issue type: ${type}` })

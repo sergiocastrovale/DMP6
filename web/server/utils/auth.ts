@@ -1,34 +1,44 @@
 import { randomBytes } from 'node:crypto'
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-const sessions = new Map<string, number>()
 
-export function createSession(): string {
+type SessionEntry = {
+  userId: number
+  createdAt: number
+}
+
+const sessions = new Map<string, SessionEntry>()
+
+export const createSession = (userId: number): string => {
   const token = randomBytes(32).toString('hex')
-  sessions.set(token, Date.now())
+  sessions.set(token, { userId, createdAt: Date.now() })
   return token
 }
 
-export function validateSession(token: string | undefined): boolean {
-  if (!token) return false
-  const createdAt = sessions.get(token)
-  if (createdAt === undefined) return false
-  if (Date.now() - createdAt > SESSION_TTL_MS) {
+export const validateSession = (token: string | undefined): SessionEntry | null => {
+  if (!token) return null
+  const entry = sessions.get(token)
+  if (!entry) return null
+  if (Date.now() - entry.createdAt > SESSION_TTL_MS) {
     sessions.delete(token)
-    return false
+    return null
   }
-  return true
+  return entry
 }
 
-export function destroySession(token: string): void {
+export const destroySession = (token: string): void => {
   sessions.delete(token)
+}
+
+export const destroyUserSessions = (userId: number): void => {
+  for (const [token, entry] of sessions) {
+    if (entry.userId === userId) sessions.delete(token)
+  }
 }
 
 setInterval(() => {
   const now = Date.now()
-  for (const [token, createdAt] of sessions) {
-    if (now - createdAt > SESSION_TTL_MS) {
-      sessions.delete(token)
-    }
+  for (const [token, entry] of sessions) {
+    if (now - entry.createdAt > SESSION_TTL_MS) sessions.delete(token)
   }
 }, 60_000)

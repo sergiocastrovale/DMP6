@@ -1,29 +1,37 @@
+import { prisma } from '~/server/utils/prisma'
 import { createSession } from '~/server/utils/auth'
+import { verifyPassword } from '~/server/utils/password'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const { username, password } = body ?? {}
 
-  const adminUser = process.env.ADMIN_USER
-  const adminPassword = process.env.ADMIN_PASSWORD
-
-  if (!adminUser || !adminPassword) {
-    throw createError({ statusCode: 500, message: 'Auth not configured — set ADMIN_USER and ADMIN_PASSWORD' })
+  if (!username || !password) {
+    throw createError({ statusCode: 400, message: 'Missing credentials' })
   }
 
-  if (!username || !password || username !== adminUser || password !== adminPassword) {
+  const user = await prisma.user.findUnique({ where: { username } })
+  if (!user) {
     throw createError({ statusCode: 401, message: 'Invalid credentials' })
   }
 
-  const token = createSession()
+  const ok = await verifyPassword(password, user.passwordHash)
+  if (!ok) {
+    throw createError({ statusCode: 401, message: 'Invalid credentials' })
+  }
+
+  const token = createSession(user.id)
 
   setCookie(event, 'dmp_session', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
     path: '/',
   })
 
-  return { ok: true }
+  return {
+    ok: true,
+    mustChangePassword: user.mustChangePassword,
+  }
 })

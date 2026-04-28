@@ -1,6 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'playlists.crud')
+
   const slug = getRouterParam(event, 'slug')
 
   if (!slug) {

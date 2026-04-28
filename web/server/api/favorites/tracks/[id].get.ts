@@ -1,6 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'favorites.view')
+
   const id = getRouterParam(event, 'id')
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'Missing track ID' })

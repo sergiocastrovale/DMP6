@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { requirePermission } from '~/server/utils/permissions'
 
 const MODEL_MAP = {
   corrupted: 'issueCorruptedTpe2',
@@ -19,6 +20,8 @@ const ALLOWED_FIELDS: Record<IssueType, string[]> = {
 }
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'issues.view')
+
   const type = getRouterParam(event, 'type') as IssueType
   const id = getRouterParam(event, 'id')!
 

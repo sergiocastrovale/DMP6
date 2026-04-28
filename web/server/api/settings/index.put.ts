@@ -1,7 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
 import { invalidateSettingsCache } from '~/server/utils/settingsCache'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'variables.edit')
+
   const body = await readBody(event)
 
   const data = {

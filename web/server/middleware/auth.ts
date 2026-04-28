@@ -1,39 +1,78 @@
 import { validateSession } from '~/server/utils/auth'
+import { prisma } from '~/server/utils/prisma'
 
 const SESSION_COOKIE = 'dmp_session'
 
-export default defineEventHandler((event) => {
+const STATIC_PREFIXES = ['/_nuxt', '/__']
+const STATIC_FILES = ['/favicon.ico', '/apple-touch-icon.png', '/robots.txt']
+
+const PUBLIC_API = new Set(['/api/auth/login', '/api/auth/logout', '/api/health'])
+const PUBLIC_PREFIXES = ['/img/']
+
+const PASSWORD_CHANGE_PAGE = '/change-password'
+const PASSWORD_CHANGE_API = '/api/auth/change-password'
+const PASSWORD_CHANGE_ALLOWED_API = new Set([
+  '/api/auth/change-password',
+  '/api/auth/logout',
+  '/api/auth/me',
+])
+
+export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname
 
-  // Nuxt internals and static assets — always allow
-  if (
-    path.startsWith('/_nuxt') ||
-    path.startsWith('/__') ||
-    path === '/favicon.ico' ||
-    path.match(/^\/favicon[^/]*\.(ico|png|svg)$/) ||
-    path === '/apple-touch-icon.png' ||
-    path === '/robots.txt'
-  ) return
+  if (STATIC_PREFIXES.some((p) => path.startsWith(p))) return
+  if (STATIC_FILES.includes(path)) return
+  if (path.match(/^\/favicon[^/]*\.(ico|png|svg)$/)) return
 
-  // Public endpoints
-  if (path === '/api/auth/login' || path === '/api/auth/logout' || path === '/api/health') return
-  if (path.startsWith('/img/') || path.startsWith('/api/audio/')) return
+  if (PUBLIC_API.has(path)) return
+  if (PUBLIC_PREFIXES.some((p) => path.startsWith(p))) return
 
   const token = getCookie(event, SESSION_COOKIE)
-  const authenticated = validateSession(token)
+  const session = validateSession(token)
 
-  // Redirect authenticated users away from /login
   if (path === '/login') {
-    if (authenticated) return sendRedirect(event, '/')
+    if (session) return sendRedirect(event, '/')
     return
   }
 
-  if (!authenticated) {
-    // API and WebSocket: return 401
-    if (path.startsWith('/api/') || path === '/_ws') {
+  if (!session) {
+    if (path.startsWith('/api/') || path === '/_ws' || path.startsWith('/api/audio/')) {
       throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
-    // Page requests: redirect to login
     return sendRedirect(event, '/login')
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      mustChangePassword: true,
+    },
+  })
+
+  if (!user) {
+    deleteCookie(event, SESSION_COOKIE, { path: '/' })
+    if (path.startsWith('/api/')) {
+      throw createError({ statusCode: 401, message: 'Unauthorized' })
+    }
+    return sendRedirect(event, '/login')
+  }
+
+  event.context.user = user
+
+  if (user.mustChangePassword) {
+    const isApi = path.startsWith('/api/')
+    if (isApi && !PASSWORD_CHANGE_ALLOWED_API.has(path)) {
+      throw createError({ statusCode: 403, message: 'Password change required' })
+    }
+    if (!isApi && path !== PASSWORD_CHANGE_PAGE) {
+      return sendRedirect(event, PASSWORD_CHANGE_PAGE)
+    }
+  }
+  else if (path === PASSWORD_CHANGE_PAGE) {
+    return sendRedirect(event, '/')
   }
 })

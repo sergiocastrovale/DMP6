@@ -35,6 +35,12 @@ enum TrackArtistRole {
   FEATURED
 }
 
+enum Role {
+  VIEWER
+  MANAGER
+  ADMIN
+}
+
 // ---------------------------------------------------------------------------
 // Artist
 // ---------------------------------------------------------------------------
@@ -558,4 +564,28 @@ model IssueEnrichmentGap {
   @@index([status])
   @@index([auditRunId])
   @@index([localReleaseId])
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id                 Int      @id @default(autoincrement())
+  username           String   @unique
+  email              String   @unique
+  passwordHash       String
+  role               Role     @default(VIEWER)
+  mustChangePassword Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model RolePermission {
+  id         Int    @id @default(autoincrement())
+  role       Role
+  permission String
+
+  @@unique([role, permission])
+  @@index([role])
 }

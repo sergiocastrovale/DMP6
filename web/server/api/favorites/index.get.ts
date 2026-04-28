@@ -1,8 +1,11 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'favorites.view')
+
   const query = getQuery(event)
   const type = (query.type as string) || 'all'
   const { page, pageSize, skip } = parsePagination(query, { defaultSize: 50, maxSize: 100 })

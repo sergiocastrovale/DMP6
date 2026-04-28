@@ -1,7 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'playlists.view')
+
   const slug = getRouterParam(event, 'slug')
 
   if (!slug) {

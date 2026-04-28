@@ -1,7 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
 import { invalidateCache } from '~/server/utils/cache'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'play.view')
+
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Missing id' })
 

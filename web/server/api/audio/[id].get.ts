@@ -2,8 +2,11 @@ import { createReadStream, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { getCachedSettings } from '~/server/utils/settingsCache'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'play.view')
+
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Missing id' })
 

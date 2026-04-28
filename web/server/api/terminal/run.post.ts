@@ -1,10 +1,23 @@
 import { spawn, execSync } from 'child_process'
 import fs from 'fs'
+import { requirePermission, requireRole } from '~/server/utils/permissions'
+import type { PermissionKey } from '~/server/utils/permissions'
 
 const ALLOWED_COMMANDS = [
   './index', './sync', './analysis', './nuke',
   './playlists', './audit', './fix', './refresh',
 ]
+
+const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
+  './index': 'sync.view',
+  './sync': 'sync.view',
+  './refresh': 'sync.view',
+  './analysis': 'sync.view',
+  './playlists': 'sync.view',
+  './audit': 'issues.view',
+  './fix': 'issues.view',
+  './nuke': 'ADMIN',
+}
 
 const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/
 
@@ -35,6 +48,13 @@ export default defineEventHandler(async (event) => {
 
   if (!ALLOWED_COMMANDS.includes(command)) {
     throw createError({ statusCode: 400, message: `Command not allowed: ${command}` })
+  }
+
+  const perm = COMMAND_PERM[command]
+  if (perm === 'ADMIN') {
+    requireRole(event, 'ADMIN')
+  } else if (perm) {
+    await requirePermission(event, perm)
   }
 
   // Binaries are in /usr/local/bin/ (built into container image)

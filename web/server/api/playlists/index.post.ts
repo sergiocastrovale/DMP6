@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { requirePermission } from '~/server/utils/permissions'
 
 function generateSlug(name: string): string {
   return name
@@ -8,6 +9,8 @@ function generateSlug(name: string): string {
 }
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'playlists.crud')
+
   const body = await readBody(event)
 
   if (!body.name || typeof body.name !== 'string') {
