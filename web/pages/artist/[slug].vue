@@ -1,15 +1,27 @@
 <script setup lang="ts">
 import { Loader2, RefreshCw } from 'lucide-vue-next'
 import type { ButtonDropdownOption } from '~/components/ButtonDropdown.vue'
+import type { UnifiedRelease } from '~/types/release'
+import type { Track } from '~/types/track'
 import { useTerminalStore } from '~/stores/terminal'
 
 const route = useRoute()
 const slug = computed(() => route.params.slug as string)
 const terminal = useTerminalStore()
+const player = usePlayerStore()
 
-const { data: artist, pending, error } = useFetch(() => `/api/artists/${slug.value}`, {
+const { data: artist, pending: artistPending, error } = useFetch(() => `/api/artists/${slug.value}`, {
   key: `artist-${slug.value}`,
 })
+
+const { data: releasesData, pending: releasesPending } = useFetch(() => `/api/artists/${slug.value}/releases`, {
+  key: `artist-releases-${slug.value}`,
+  query: { pageSize: 500 },
+})
+
+const releases = computed<UnifiedRelease[]>(() => releasesData.value?.releases ?? [])
+const showMissing = ref(true)
+const pending = computed(() => artistPending.value || releasesPending.value)
 
 const syncOptions = computed<ButtonDropdownOption[]>(() => {
   const name = artist.value?.name ?? ''
@@ -26,6 +38,37 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
     },
   ]
 })
+
+const playingAll = ref(false)
+const playAll = async () => {
+  if (playingAll.value) {
+    return
+  }
+  playingAll.value = true
+  try {
+    const tracks = await $fetch<Track[]>(`/api/artists/${slug.value}/tracks`)
+    const playable = tracks.filter(t => !t.missing)
+    if (!playable.length) {
+      return
+    }
+    const playerTracks = playable.map(t => ({
+      id: t.id,
+      title: t.title || 'Unknown',
+      artist: t.artist || 'Unknown',
+      album: t.album || 'Unknown',
+      duration: t.duration || 0,
+      artistSlug: slug.value,
+      releaseImage: null as string | null,
+      releaseImageUrl: null as string | null,
+      localReleaseId: t.localReleaseId,
+    }))
+    player.setQueue(playerTracks, playerTracks[0])
+  }
+  catch { /* ignore */ }
+  finally {
+    playingAll.value = false
+  }
+}
 </script>
 
 <template>
@@ -39,8 +82,14 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
     </div>
     <div v-else-if="artist" class="flex flex-col gap-8">
       <div class="flex items-start justify-between gap-4">
-        <ArtistHeader :artist="artist" class="min-w-0" />
-        <div class="flex items-center gap-2">
+        <ArtistHeader
+          :artist="artist"
+          :releases="releases"
+          :play-disabled="playingAll || !releases.length"
+          class="min-w-0 flex-1"
+          @play-all="playAll"
+        />
+        <div class="flex shrink-0 items-center gap-2">
           <ButtonDropdown
             label="Sync"
             :options="syncOptions"
@@ -53,7 +102,12 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
           </ButtonDropdown>
         </div>
       </div>
-      <ArtistReleases :slug="artist.slug" :artist-name="artist.name" />
+      <ArtistReleases
+        v-model:show-missing="showMissing"
+        :slug="artist.slug"
+        :artist-name="artist.name"
+        :releases="releases"
+      />
     </div>
   </div>
 </template>

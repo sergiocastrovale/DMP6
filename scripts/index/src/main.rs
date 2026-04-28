@@ -968,6 +968,84 @@ async fn main() {
     }
 
     // -------------------------------------------------------------------------
+    // Post-loop: re-extract missing release covers (safety net)
+    // -------------------------------------------------------------------------
+    if !shutdown.load(Ordering::SeqCst) && !args.skip_covers {
+        let missing: Vec<(String, String, Option<String>)> = sqlx::query_as(
+            r#"SELECT DISTINCT ON (lr.id) lr.id, lrt."filePath", lr."folderPath"
+               FROM "LocalRelease" lr
+               JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
+               WHERE (lr.image IS NULL OR lr.image = '')
+                 AND (lr."imageUrl" IS NULL OR lr."imageUrl" = '')
+               ORDER BY lr.id, lrt."trackNumber" NULLS LAST, lrt."filePath""#,
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default();
+
+        if !missing.is_empty() {
+            reporter.step(&format!(
+                "Re-checking {} release(s) with missing images...",
+                missing.len()
+            ));
+            let mut fixed = 0u32;
+            for (release_id, file_path, folder_path) in &missing {
+                if shutdown.load(Ordering::SeqCst) {
+                    break;
+                }
+                let out_path = release_img_dir.join(format!("{}.jpg", release_id));
+
+                let mut got_image = out_path.exists();
+                if !got_image {
+                    let full_path = PathBuf::from(&music_dir).join(file_path);
+                    if extract_cover_art(&full_path, &out_path) {
+                        got_image = true;
+                    }
+                }
+                if !got_image {
+                    if let Some(fp) = folder_path {
+                        let abs_folder = PathBuf::from(&music_dir).join(fp);
+                        if use_folder_image(&abs_folder, &out_path).is_some() {
+                            got_image = true;
+                        }
+                    }
+                }
+
+                if got_image {
+                    if use_s3 {
+                        if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
+                            (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                        {
+                            upload_release_image_to_s3(
+                                client, bucket, public_url, &pool, release_id, &out_path,
+                            )
+                            .await;
+                        }
+                    }
+                    if use_local {
+                        let filename = format!("{}.jpg", release_id);
+                        sqlx::query(
+                            r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                        )
+                        .bind(&filename)
+                        .bind(release_id)
+                        .execute(&pool)
+                        .await
+                        .ok();
+                    }
+                    if !use_local && use_s3 {
+                        std::fs::remove_file(&out_path).ok();
+                    }
+                    fixed += 1;
+                }
+            }
+            if fixed > 0 {
+                reporter.ok(&format!("Restored {} missing cover(s)", fixed));
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Finalization
     // -------------------------------------------------------------------------
     let elapsed = start_time.elapsed();

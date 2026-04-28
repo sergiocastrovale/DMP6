@@ -105,7 +105,7 @@ async function getLocalReleaseTracks(
       filePath: true,
       localReleaseId: true,
       mbTrack: {
-        select: { musicbrainzId: true },
+        select: { id: true, title: true, musicbrainzId: true },
       },
       trackArtists: {
         where: { role: { in: ['PRIMARY', 'FEATURED'] } },
@@ -126,17 +126,35 @@ async function getLocalReleaseTracks(
 
     if (mbTracks) {
       const localNorm = normalizeTitle(t.title || '')
-      // Find the MB track that matches this local track (exact or either-way substring)
-      const matchedMb = mbTracks.find((mbt) => {
-        const mbNorm = normalizeTitle(mbt.title)
-        return mbNorm === localNorm
-          || (localNorm.length > 0 && mbNorm.length > 0
-            && (mbNorm.includes(localNorm) || localNorm.includes(mbNorm)))
-      })
+      let matchedMb: { id: string; title: string } | undefined
+
+      // Tier 1: trust mbTrackId FK
+      if (mbTrack?.id) {
+        matchedMb = mbTracks.find(m => m.id === mbTrack.id)
+      }
+
+      // Tier 2: exact normalized title match
+      if (!matchedMb) {
+        matchedMb = mbTracks.find(m =>
+          !matchedMbIds.has(m.id) && normalizeTitle(m.title) === localNorm,
+        )
+      }
+
+      // Tier 3: substring fallback
+      if (!matchedMb) {
+        matchedMb = mbTracks.find((m) => {
+          if (matchedMbIds.has(m.id)) {
+            return false
+          }
+          const mbNorm = normalizeTitle(m.title)
+          return localNorm.length > 0 && mbNorm.length > 0
+            && (mbNorm.includes(localNorm) || localNorm.includes(mbNorm))
+        })
+      }
+
       if (matchedMb) {
         matchedMbIds.add(matchedMb.id)
-        // Only set mbTitle if the titles actually differ
-        if (normalizeTitle(matchedMb.title) !== normalizeTitle(t.title || '')) {
+        if (normalizeTitle(matchedMb.title) !== localNorm) {
           mbTitle = matchedMb.title
         }
       }

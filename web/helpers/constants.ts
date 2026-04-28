@@ -6,43 +6,50 @@ export const statuses = [
     value: 'COMPLETE',
     label: 'Complete',
     classes: 'bg-emerald-500/20 text-emerald-400',
-    description: 'All MB tracks found locally'
-  },
-  { 
-    value: 'INCOMPLETE',
-    label: 'Incomplete',
-    classes: 'bg-amber-500/20 text-amber-400',
-    description: 'Some tracks missing locally'
+    description: 'All MB tracks found locally',
+    weight: 1,
   },
   {
     value: 'EXTRA_TRACKS',
     label: 'Extra tracks',
     classes: 'bg-blue-500/20 text-blue-400',
-    description: 'More local tracks than MB'
+    description: 'More local tracks than MB',
+    weight: 2,
   },
   {
     value: 'MISSING_TRACKS',
     label: 'Missing tracks',
     classes: 'bg-orange-500/20 text-orange-400',
-    description: 'MB has tracks not found locally'
+    description: 'MB has tracks not found locally',
+    weight: 3,
+  },
+  { 
+    value: 'INCOMPLETE',
+    label: 'Incomplete',
+    classes: 'bg-amber-500/20 text-amber-400',
+    description: 'Some tracks missing locally',
+    weight: 4,
   },
   {
     value: 'MISSING',
     label: 'Missing',
     classes: 'bg-red-500/20 text-red-400',
-    description: 'MB release not in local catalogue'
+    description: 'MB release not in local catalogue',
+    weight: 5,
   },
   { 
     value: 'UNSYNCABLE',
     label: 'Unsyncable',
     classes: 'bg-zinc-700 text-zinc-400',
-    description: 'No MB ID on local release'
+    description: 'No MB ID on local release',
+    weight: 6,
   },
   { 
     value: 'UNKNOWN',
     label: 'Unknown',
     classes: 'bg-zinc-700 text-zinc-400',
-    description: 'Has MB ID but not found online'
+    description: 'Has MB ID but not found online',
+    weight: 7,
   },
 ]
 
