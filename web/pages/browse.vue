@@ -3,6 +3,7 @@ import { Search, HelpCircle } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
 
 const store = useBrowseStore()
+const { initFromUrl } = useBrowseUrl()
 const searchInput = ref(store.searchQuery)
 
 let searchTimeout: ReturnType<typeof setTimeout>
@@ -21,7 +22,11 @@ function handleLetterSelect(letter: string | null) {
 }
 
 onMounted(() => {
-  if (store.artists.length === 0) {
+  const hasParams = initFromUrl()
+  if (hasParams) {
+    searchInput.value = store.searchQuery
+  }
+  if (hasParams || store.artists.length === 0) {
     store.fetchArtists()
   }
 })

@@ -14,13 +14,14 @@ const emit = defineEmits<{
 <template>
   <Dialog :model-value="modelValue" title="All Genres" @update:model-value="emit('update:modelValue', $event)">
     <div class="flex flex-wrap gap-2">
-      <span
+      <NuxtLink
         v-for="genre in props.genres"
         :key="genre.id"
-        class="rounded-full bg-zinc-800 px-3 py-1 text-sm text-zinc-300"
+        :to="{ path: '/browse', query: { genre: genre.name } }"
+        class="rounded-full bg-zinc-800 px-3 py-1 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-amber-400"
       >
         {{ genre.name }}
-      </span>
+      </NuxtLink>
     </div>
   </Dialog>
 </template>

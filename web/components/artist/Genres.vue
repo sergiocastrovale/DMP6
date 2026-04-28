@@ -16,13 +16,14 @@ const emit = defineEmits<{
 
 <template>
   <div v-if="genres.length" class="flex flex-wrap items-center gap-1.5">
-    <span
+    <NuxtLink
       v-for="genre in visibleGenres"
       :key="genre.id"
-      class="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs text-zinc-300"
+      :to="{ path: '/browse', query: { genre: genre.name } }"
+      class="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-amber-400"
     >
       {{ genre.name }}
-    </span>
+    </NuxtLink>
     <button
       v-if="hasMoreGenres"
       class="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs text-amber-500 hover:bg-zinc-700 transition-colors"
