@@ -26,12 +26,29 @@ export const usePlayerStore = defineStore('player', () => {
   const currentPlaylistSlug = ref<string | null>(null)
 
   let audio: HTMLAudioElement | null = null
+  let scrobbleStartTime = 0
+  let scrobbled = false
+
+  function checkScrobble() {
+    if (scrobbled || !currentTrack.value) return
+    const dur = duration.value
+    const cur = currentTime.value
+    if (dur < 30) return
+    if (cur > dur * 0.5 || cur > 240) {
+      scrobbled = true
+      $fetch('/api/scrobble/scrobble', {
+        method: 'POST',
+        body: { trackId: currentTrack.value.id, timestamp: scrobbleStartTime },
+      }).catch(() => {})
+    }
+  }
 
   function getAudio(): HTMLAudioElement {
     if (!audio && import.meta.client) {
       audio = new Audio()
       audio.addEventListener('timeupdate', () => {
         currentTime.value = audio!.currentTime
+        checkScrobble()
       })
       audio.addEventListener('loadedmetadata', () => {
         duration.value = audio!.duration
@@ -64,10 +81,16 @@ export const usePlayerStore = defineStore('player', () => {
 
     a.src = `/api/audio/${track.id}`
     a.load()
+    scrobbled = false
+    scrobbleStartTime = Date.now()
     try {
       await a.play()
       isPlaying.value = true
       $fetch(`/api/tracks/${track.id}/play`, { method: 'POST' }).catch(() => {})
+      $fetch('/api/scrobble/now-playing', {
+        method: 'POST',
+        body: { trackId: track.id },
+      }).catch(() => {})
     }
     catch {
       isPlaying.value = false

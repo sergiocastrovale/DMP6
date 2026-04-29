@@ -6,7 +6,7 @@ const tab = computed(() => route.params.tab as string)
 
 const { isAdmin } = useAuth()
 
-const allTabs = ['library', 'downloads', 'storage', 'api-keys', 'users', 'permissions']
+const allTabs = ['library', 'downloads', 'storage', 'api-keys', 'scrobble', 'users', 'permissions']
 const adminTabs = ['users', 'permissions']
 
 if (!allTabs.includes(tab.value)) {
@@ -36,6 +36,7 @@ useHead({ title: 'Settings' })
       <SettingsDownloadsForm v-else-if="tab === 'downloads'" />
       <SettingsStorageForm v-else-if="tab === 'storage'" />
       <SettingsApiKeysForm v-else-if="tab === 'api-keys'" />
+      <SettingsScrobbleForm v-else-if="tab === 'scrobble'" />
       <SettingsUsersForm v-else-if="tab === 'users' && isAdmin" />
       <SettingsPermissionsForm v-else-if="tab === 'permissions' && isAdmin" />
     </div>

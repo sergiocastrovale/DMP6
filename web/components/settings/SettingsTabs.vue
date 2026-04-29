@@ -8,6 +8,7 @@ const baseTabs = [
   { key: 'downloads', label: 'Downloads', href: '/settings/downloads' },
   { key: 'storage', label: 'Storage', href: '/settings/storage' },
   { key: 'api-keys', label: 'API Keys', href: '/settings/api-keys' },
+  { key: 'scrobble', label: 'Scrobble', href: '/settings/scrobble' },
 ]
 
 const adminTabs = [

@@ -11,6 +11,10 @@ export interface CachedSettings {
   s3Endpoint: string
   s3PublicUrl: string
   fanartApiKey: string
+  lastfmApiKey: string | null
+  lastfmSecret: string | null
+  lastfmSessionKey: string | null
+  lastfmUsername: string | null
 }
 
 const CACHE_TTL = 30_000
@@ -30,6 +34,10 @@ function defaults(): CachedSettings {
     s3Endpoint: process.env.S3_ENDPOINT || '',
     s3PublicUrl: process.env.S3_PUBLIC_URL || '',
     fanartApiKey: process.env.FANART_API_KEY || '',
+    lastfmApiKey: process.env.LASTFM_API_KEY || null,
+    lastfmSecret: process.env.LASTFM_SECRET || null,
+    lastfmSessionKey: process.env.LASTFM_SESSION_KEY || null,
+    lastfmUsername: process.env.LASTFM_USERNAME || null,
   }
 }
 
@@ -48,6 +56,10 @@ async function refreshCache(): Promise<void> {
       s3Endpoint: s?.s3Endpoint || d.s3Endpoint,
       s3PublicUrl: s?.s3PublicUrl || d.s3PublicUrl,
       fanartApiKey: s?.fanartApiKey || d.fanartApiKey,
+      lastfmApiKey: s?.lastfmApiKey || d.lastfmApiKey,
+      lastfmSecret: s?.lastfmSecret || d.lastfmSecret,
+      lastfmSessionKey: s?.lastfmSessionKey || d.lastfmSessionKey,
+      lastfmUsername: s?.lastfmUsername || d.lastfmUsername,
     }
     cacheExpiry = Date.now() + CACHE_TTL
   }

@@ -412,6 +412,11 @@ model Settings {
   s3PublicUrl        String?
   // API Keys
   fanartApiKey       String?
+  // Last.fm / Scrobbling
+  lastfmApiKey       String?
+  lastfmSecret       String?
+  lastfmSessionKey   String?
+  lastfmUsername      String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

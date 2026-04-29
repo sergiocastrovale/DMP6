@@ -25,6 +25,10 @@ export default defineEventHandler(async (event) => {
     s3Endpoint: body.s3Endpoint ?? undefined,
     s3PublicUrl: body.s3PublicUrl ?? undefined,
     fanartApiKey: body.fanartApiKey ?? undefined,
+    lastfmApiKey: body.lastfmApiKey ?? undefined,
+    lastfmSecret: body.lastfmSecret ?? undefined,
+    lastfmSessionKey: body.lastfmSessionKey ?? undefined,
+    lastfmUsername: body.lastfmUsername ?? undefined,
   }
 
   // Remove undefined keys

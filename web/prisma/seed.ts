@@ -4,7 +4,9 @@ import bcrypt from 'bcrypt'
 const prisma = new PrismaClient()
 
 const DEFAULT_MATRIX: Record<Role, string[]> = {
-  VIEWER: ['favorites.view', 'playlists.view', 'play.view'],
+  VIEWER: [
+    'play.view'
+  ],
   MANAGER: [
     'favorites.view',
     'favorites.crud',
