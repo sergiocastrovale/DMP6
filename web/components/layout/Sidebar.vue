@@ -15,7 +15,7 @@ import {
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 
-const { logout, hasPerm } = useAuth()
+const { logout, hasPerm, isAdmin } = useAuth()
 const player = usePlayerStore()
 const route = useRoute()
 
@@ -106,6 +106,7 @@ const isActive = (path: string) => {
         </span>
       </NuxtLink>
       <NuxtLink
+        v-if="isAdmin"
         to="/settings"
         class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
         :class="

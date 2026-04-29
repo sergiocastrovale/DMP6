@@ -6,13 +6,13 @@ const tab = computed(() => route.params.tab as string)
 
 const { isAdmin } = useAuth()
 
+if (!isAdmin.value) {
+  navigateTo('/')
+}
+
 const allTabs = ['library', 'downloads', 'storage', 'api-keys', 'scrobble', 'users', 'permissions']
-const adminTabs = ['users', 'permissions']
 
 if (!allTabs.includes(tab.value)) {
-  navigateTo('/settings/library')
-}
-if (adminTabs.includes(tab.value) && !isAdmin.value) {
   navigateTo('/settings/library')
 }
 

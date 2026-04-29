@@ -1,6 +1,12 @@
 <script setup lang="ts">
+const { isAdmin } = useAuth()
 const router = useRouter()
-router.replace('/settings/library')
+
+if (!isAdmin.value) {
+  router.replace('/')
+} else {
+  router.replace('/settings/library')
+}
 </script>
 
 <template>
