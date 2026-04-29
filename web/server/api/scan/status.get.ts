@@ -6,6 +6,7 @@ export interface ScanStatus {
   lockedAt: string | null
   pid: number | null
   args: string | null
+  sessionName: string | null
   lastScanStartedAt: string | null
   lastScanEndedAt: string | null
   lastIndexedFolder: string | null
@@ -26,12 +27,15 @@ export default defineEventHandler(async (): Promise<ScanStatus> => {
     },
   })
 
+  const lockedBy = stats?.scanLockedBy ?? null
+
   return {
-    isRunning: !!stats?.scanLockedBy,
-    lockedBy: stats?.scanLockedBy ?? null,
+    isRunning: !!lockedBy,
+    lockedBy,
     lockedAt: stats?.scanLockedAt?.toISOString() ?? null,
     pid: stats?.scanPid ?? null,
     args: null,
+    sessionName: lockedBy ? `dmp-${lockedBy}` : null,
     lastScanStartedAt: stats?.lastScanStartedAt?.toISOString() ?? null,
     lastScanEndedAt: stats?.lastScanEndedAt?.toISOString() ?? null,
     lastIndexedFolder: stats?.lastIndexedFolder ?? null,

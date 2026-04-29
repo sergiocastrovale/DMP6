@@ -96,10 +96,14 @@ const loadMore = async () => {
   }
 }
 
-const switchTab = (tab: 'releases' | 'tracks') => {
-  activeTab.value = tab
+watch(activeTab, (tab) => {
   router.replace({ query: { ...route.query, tab, page: undefined } })
-}
+})
+
+const favTabs = computed(() => [
+  { key: 'releases', label: 'Releases', count: totalReleases.value },
+  { key: 'tracks', label: 'Tracks', count: totalTracks.value },
+])
 
 const unfavoriteRelease = async (releaseId: string) => {
   try {
@@ -122,32 +126,9 @@ const unfavoriteTrack = async (trackId: string) => {
 
 <template>
   <div class="flex flex-col gap-6">
-    <div>
-      <h1 class="text-2xl font-bold text-zinc-50">
-        <LucideHeart class="inline size-6 -mt-1 text-amber-500" />
-        Favorites
-      </h1>
-      <p class="mt-1 text-sm text-zinc-500">
-        Your favorite releases and tracks
-      </p>
-    </div>
+    <PageTitle :icon="LucideHeart" text="Favorites" subtext="Your favorite releases and tracks" />
 
-    <div class="flex gap-2 border-b border-zinc-800">
-      <button
-        class="px-4 py-2 text-sm font-medium transition-colors"
-        :class="activeTab === 'releases' ? 'border-b-2 border-amber-500 text-amber-500' : 'text-zinc-400 hover:text-zinc-50'"
-        @click="switchTab('releases')"
-      >
-        Releases ({{ totalReleases }})
-      </button>
-      <button
-        class="px-4 py-2 text-sm font-medium transition-colors"
-        :class="activeTab === 'tracks' ? 'border-b-2 border-amber-500 text-amber-500' : 'text-zinc-400 hover:text-zinc-50'"
-        @click="switchTab('tracks')"
-      >
-        Tracks ({{ totalTracks }})
-      </button>
-    </div>
+    <Tabs v-model="activeTab" :tabs="favTabs" />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
       <Loader2 :size="24" class="animate-spin text-zinc-500" />

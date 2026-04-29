@@ -32,7 +32,8 @@ function tmuxAvailable(): boolean {
   try {
     execSync('tmux -V', { stdio: 'ignore' })
     return true
-  } catch {
+  }
+  catch {
     return false
   }
 }
@@ -41,7 +42,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{
     command: string
     args: string[]
-    session?: string
+    session: string
   }>(event)
   const { command, session } = body
   let args = body.args ?? []
@@ -50,20 +51,21 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: `Command not allowed: ${command}` })
   }
 
+  if (!session || !SESSION_NAME_RE.test(session)) {
+    throw createError({ statusCode: 400, message: 'Session name required' })
+  }
+
   const perm = COMMAND_PERM[command]
   if (perm === 'ADMIN') {
     requireRole(event, 'ADMIN')
-  } else if (perm) {
+  }
+  else if (perm) {
     await requirePermission(event, perm)
   }
 
-  // Binaries are in /usr/local/bin/ (built into container image)
-  const binary = command.replace('./', '')
+  const binary = command
   const workDir = process.env.PROJECT_ROOT || '/app'
 
-  // Web UI always runs scripts in --web mode so the terminal store can
-  // consume PROGRESS:{json} lines. Only append if the script supports it
-  // and the caller hasn't already passed --web.
   if (WEB_MODE_COMMANDS.has(command) && !args.includes('--web')) {
     args = [...args, '--web']
   }
@@ -83,112 +85,81 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Tmux session mode (always used when session is provided)
-  if (session) {
-    if (!SESSION_NAME_RE.test(session)) {
-      throw createError({ statusCode: 400, message: 'Invalid session name' })
-    }
-    if (!tmuxAvailable()) {
-      send('Error: tmux is required but not installed. Install tmux to run commands from the UI.')
-      res.write(`event: done\ndata: 1\n\n`)
-      res.end()
-      return
-    }
+  if (!tmuxAvailable()) {
+    send('Error: tmux is required but not installed.')
+    res.write(`event: done\ndata: 1\n\n`)
+    res.end()
+    return
+  }
 
-    const logFile = `/tmp/dmp-${session}.log`
-    const scriptFile = `/tmp/dmp-${session}.sh`
-    const safeArgs = args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
-    const fullCmd = safeArgs ? `${binary} ${safeArgs}` : binary
+  const logFile = `/tmp/dmp-${session}.log`
+  const scriptFile = `/tmp/dmp-${session}.sh`
+  const safeArgs = args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
+  const fullCmd = safeArgs ? `${binary} ${safeArgs}` : binary
 
-    const script = `#!/bin/bash
+  const script = `#!/bin/bash
 cd "${workDir}"
 ${fullCmd} 2>&1 | tee "${logFile}"
 echo "DMP_EXIT:$?" >> "${logFile}"
 `
-    fs.writeFileSync(scriptFile, script, { mode: 0o755 })
-    fs.writeFileSync(logFile, '')
+  fs.writeFileSync(scriptFile, script, { mode: 0o755 })
+  fs.writeFileSync(logFile, '')
 
-    try {
-      execSync(`tmux kill-session -t ${session} 2>/dev/null || true`)
-      execSync(`tmux new-session -d -s ${session} "${scriptFile}"`)
-    } catch (e: any) {
-      send(`Failed to start tmux session: ${e.message}`)
-      res.write(`event: done\ndata: 1\n\n`)
-      res.end()
-      return
-    }
-
-    return new Promise<void>((resolve) => {
-      const tail = spawn('tail', ['-f', logFile])
-
-      const finish = (code: number) => {
-        tail.kill('SIGTERM')
-        res.write(`event: done\ndata: ${code}\n\n`)
-        res.end()
-        resolve()
-      }
-
-      let done = false
-      tail.stdout.on('data', (chunk: Buffer) => {
-        const text = stripAnsi(chunk.toString())
-        for (const line of text.split('\n')) {
-          if (!line) continue
-          if (line.startsWith('DMP_EXIT:')) {
-            if (!done) {
-              done = true
-              const code = parseInt(line.slice(9)) || 0
-              finish(code)
-            }
-            return
-          }
-          res.write(`data: ${JSON.stringify(line)}\n\n`)
-        }
-      })
-
-      tail.on('error', (err) => {
-        if (!done) {
-          done = true
-          send(`Error: ${err.message}`)
-          finish(1)
-        }
-      })
-
-      event.node.req.on('close', () => {
-        if (!done) {
-          done = true
-          tail.kill('SIGTERM')
-          resolve()
-        }
-      })
-    })
+  try {
+    execSync(`tmux kill-session -t ${session} 2>/dev/null || true`)
+    execSync(`tmux new-session -d -s ${session} "${scriptFile}"`)
+  }
+  catch (e: any) {
+    send(`Failed to start tmux session: ${e.message}`)
+    res.write(`event: done\ndata: 1\n\n`)
+    res.end()
+    return
   }
 
-  // Direct spawn mode (no session — backward compatible path)
   return new Promise<void>((resolve) => {
-    const proc = spawn(binary, args, {
-      cwd: workDir,
-      env: { ...process.env, NO_COLOR: '1', TERM: 'dumb' },
-    })
+    const tail = spawn('tail', ['-f', logFile])
 
-    proc.stdout.on('data', (chunk: Buffer) => send(chunk.toString()))
-    proc.stderr.on('data', (chunk: Buffer) => send(chunk.toString()))
-
-    proc.on('close', (code) => {
-      res.write(`event: done\ndata: ${code ?? 1}\n\n`)
+    const finish = (code: number) => {
+      tail.kill('SIGTERM')
+      res.write(`event: done\ndata: ${code}\n\n`)
       res.end()
       resolve()
+    }
+
+    let done = false
+    tail.stdout.on('data', (chunk: Buffer) => {
+      const text = stripAnsi(chunk.toString())
+      for (const line of text.split('\n')) {
+        if (!line) continue
+        if (line.startsWith('DMP_EXIT:')) {
+          if (!done) {
+            done = true
+            const code = parseInt(line.slice(9)) || 0
+            finish(code)
+          }
+          return
+        }
+        res.write(`data: ${JSON.stringify(line)}\n\n`)
+      }
     })
 
-    proc.on('error', (err) => {
-      send(`Error: ${err.message}`)
-      res.write(`event: done\ndata: 1\n\n`)
-      res.end()
-      resolve()
+    tail.on('error', (err) => {
+      if (!done) {
+        done = true
+        send(`Error: ${err.message}`)
+        finish(1)
+      }
     })
 
+    // SSE disconnect: kill the log tail but leave the tmux session alive.
+    // Closing the terminal sidebar or navigating away keeps the process running.
+    // Explicit stop goes through /api/terminal/stop which signals the process.
     event.node.req.on('close', () => {
-      proc.kill('SIGTERM')
-      resolve()
+      if (!done) {
+        done = true
+        tail.kill('SIGTERM')
+        resolve()
+      }
     })
   })
 })

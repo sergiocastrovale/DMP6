@@ -107,7 +107,7 @@ const isActive = (path: string) => {
       </NuxtLink>
       <NuxtLink
         v-if="isAdmin"
-        to="/settings"
+        to="/settings/library"
         class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
         :class="
           isActive('/settings')

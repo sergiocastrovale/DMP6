@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, message: 'Invalid credentials' })
   }
 
-  const token = createSession(user.id)
+  const token = createSession(user.id, user.passwordHash)
 
   setCookie(event, 'dmp_session', token, {
     httpOnly: true,

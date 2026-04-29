@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Search, ArrowLeft, Loader2 } from 'lucide-vue-next'
 
+definePageMeta({ layout: 'admin' })
+
 interface StatItem {
   id: string
   name?: string

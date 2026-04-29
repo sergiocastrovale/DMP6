@@ -16,8 +16,12 @@ const emit = defineEmits<{
   playAll: []
 }>()
 
+const { artistImage } = useImageUrl()
+
 const showAllGenres = ref(false)
 const showAllLinks = ref(false)
+
+const imgUrl = computed(() => artistImage(props.artist))
 
 const groupCounts = computed(() => {
   const seen = new Map<string, string>()
@@ -62,32 +66,43 @@ const statsParts = computed(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <div class="flex flex-col gap-3">
-      <h1 class="text-4xl font-bold tracking-tight text-zinc-50 sm:text-5xl">
-        {{ artist.name }}
-      </h1>
+  <div class="relative overflow-hidden rounded-xl">
+    <template v-if="imgUrl">
+      <img
+        :src="imgUrl"
+        :alt="artist.name"
+        class="pointer-events-none absolute right-0 top-0 h-full w-auto min-w-[30%] object-cover object-right opacity-60"
+      />
+      <div class="pointer-events-none absolute inset-0 bg-gradient-to-r from-zinc-950 from-[65%] to-transparent" />
+    </template>
 
-      <div v-if="statsParts.length" class="text-sm text-zinc-400">
-        {{ statsParts.join(' · ') }}
+    <div class="relative flex flex-col gap-6 px-6 py-8">
+      <div class="flex flex-col gap-3">
+        <h1 class="text-4xl font-bold tracking-tight text-zinc-50 sm:text-5xl">
+          {{ artist.name }}
+        </h1>
+
+        <div v-if="statsParts.length" class="text-sm text-zinc-400">
+          {{ statsParts.join(' · ') }}
+        </div>
+
+        <Genres :genres="artist.genres" @more="showAllGenres = true" />
+
+        <div>
+          <button
+            type="button"
+            :disabled="playDisabled"
+            class="mt-2 inline-flex items-center gap-2 rounded-full bg-amber-500 px-5 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+            @click="emit('playAll')"
+          >
+            <Play :size="14" fill="currentColor" />
+            <span>Play all</span>
+          </button>
+        </div>
       </div>
 
-      <Genres :genres="artist.genres" @more="showAllGenres = true" />
-
-      <div>
-        <button
-          type="button"
-          :disabled="playDisabled"
-          class="mt-2 inline-flex items-center gap-2 rounded-full bg-amber-500 px-5 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
-          @click="emit('playAll')"
-        >
-          <Play :size="14" fill="currentColor" />
-          <span>Play all</span>
-        </button>
-      </div>
+      <DialogGenres v-model="showAllGenres" :genres="artist.genres" />
+      <DialogLinks v-model="showAllLinks" :links="artist.urls" />
     </div>
-
-    <DialogGenres v-model="showAllGenres" :genres="artist.genres" />
-    <DialogLinks v-model="showAllLinks" :links="artist.urls" />
   </div>
 </template>

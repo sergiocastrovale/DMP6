@@ -15,14 +15,7 @@ const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hyb
 
 <template>
   <div class="mx-auto max-w-2xl px-4 py-8 pb-32">
-    <!-- Header -->
-    <div class="mb-8 flex items-center gap-3">
-      <Compass :size="28" class="text-amber-500" />
-      <div>
-        <h1 class="text-2xl font-bold text-zinc-50">Explore</h1>
-        <p class="text-sm text-zinc-400">Discover something new</p>
-      </div>
-    </div>
+    <PageTitle :icon="Compass" text="Explore" subtext="Discover something new" class="mb-8" />
 
     <!-- Sliders -->
     <div class="flex flex-col gap-3">

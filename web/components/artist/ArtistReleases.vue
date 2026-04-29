@@ -97,6 +97,12 @@ const tabCounts = computed(() => {
 
 const visibleTabs = computed(() => TAB_BUCKETS.filter(t => tabCounts.value[t.slug] > 0))
 
+const tabItems = computed(() => visibleTabs.value.map(t => ({
+  key: t.slug,
+  label: t.label,
+  count: tabCounts.value[t.slug],
+})))
+
 watch(visibleTabs, (tabs) => {
   if (tabs.length && !tabs.find(t => t.slug === activeTab.value)) {
     activeTab.value = tabs[0]!.slug
@@ -409,29 +415,13 @@ watch(() => props.releases, () => {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div v-if="visibleTabs.length > 0" class="flex flex-wrap items-center gap-3 border-b border-zinc-800">
-      <div class="flex flex-wrap items-center gap-1">
-        <button
-          v-for="tab in visibleTabs"
-          :key="tab.slug"
-          type="button"
-          class="-mb-px flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors"
-          :class="activeTab === tab.slug
-            ? 'border-b-2 border-amber-500 text-zinc-50'
-            : 'border-b-2 border-transparent text-zinc-400 hover:text-zinc-50'"
-          @click="activeTab = tab.slug"
-        >
-          <span>{{ tab.label }}</span>
-          <span
-            class="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-400"
-          >{{ tabCounts[tab.slug] }}</span>
-        </button>
-      </div>
-      <div class="flex-1" />
-      <div class="pb-2">
-        <Switch v-model="showMissing" label="Show missing" />
-      </div>
-    </div>
+    <Tabs v-if="visibleTabs.length > 0" v-model="activeTab" :tabs="tabItems">
+      <template #append>
+        <div class="pb-2">
+          <Switch v-model="showMissing" label="Show missing" />
+        </div>
+      </template>
+    </Tabs>
 
     <div class="flex flex-wrap items-center gap-3">
       <ArtistTrackSearch v-model="searchQuery" />

@@ -288,7 +288,7 @@ export const usePlayerStore = defineStore('player', () => {
         artist: t.artist ?? t.albumArtist ?? '',
         album: t.album ?? '',
         duration: t.duration ?? 0,
-        artistSlug: res.release?.artistSlug ?? null,
+        artistSlug: res.release?.artistSlug || null,
         releaseImage: res.release?.image ?? null,
         releaseImageUrl: res.release?.imageUrl ?? null,
         localReleaseId: t.localReleaseId,
@@ -320,24 +320,45 @@ export const usePlayerStore = defineStore('player', () => {
     shuffleMode.value = newMode
 
     // Fetch appropriate tracks for the new mode
-    if (newMode === 'release' && currentTrack.value?.localReleaseId) {
-      try {
-        const tracks = await fetchReleaseTracks(currentTrack.value.localReleaseId)
-        originalQueue.value = tracks
-        queue.value = shuffleArray([...tracks])
-      }
-      catch (error) {
-        console.error('Failed to load release tracks:', error)
+    if (newMode === 'release') {
+      const localReleaseId = currentTrack.value?.localReleaseId
+        || originalQueue.value.find(t => t.localReleaseId)?.localReleaseId
+      if (localReleaseId) {
+        try {
+          const tracks = await fetchReleaseTracks(localReleaseId)
+          originalQueue.value = tracks
+          queue.value = shuffleArray([...tracks])
+        }
+        catch (error) {
+          console.error('Failed to load release tracks:', error)
+        }
       }
     }
-    else if (newMode === 'artist' && currentTrack.value?.artistSlug) {
-      try {
-        const tracks = await $fetch<PlayerTrack[]>(`/api/artists/${currentTrack.value.artistSlug}/tracks`)
-        originalQueue.value = tracks
-        queue.value = shuffleArray([...tracks])
-      }
-      catch (error) {
-        console.error('Failed to load artist tracks:', error)
+    else if (newMode === 'artist') {
+      const artistSlug = currentTrack.value?.artistSlug
+        || originalQueue.value.find(t => t.artistSlug)?.artistSlug
+      if (artistSlug) {
+        try {
+          const rawTracks = await $fetch<any[]>(`/api/artists/${artistSlug}/tracks`)
+          const tracks: PlayerTrack[] = rawTracks
+            .filter(t => t.filePath)
+            .map(t => ({
+              id: t.id,
+              title: t.title || 'Unknown',
+              artist: t.artist || t.albumArtist || 'Unknown',
+              album: t.album || 'Unknown',
+              duration: t.duration || 0,
+              artistSlug,
+              releaseImage: null,
+              releaseImageUrl: null,
+              localReleaseId: t.localReleaseId,
+            }))
+          originalQueue.value = tracks
+          queue.value = shuffleArray([...tracks])
+        }
+        catch (error) {
+          console.error('Failed to load artist tracks:', error)
+        }
       }
     }
     else if (newMode === 'catalogue') {

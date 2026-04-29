@@ -7,6 +7,7 @@ import {
   XCircle,
   Play,
   Square,
+  LockOpen,
 } from 'lucide-vue-next'
 import type { ScanStatus } from '~/server/api/scan/status.get'
 import { useTerminalStore } from '~/stores/terminal'
@@ -74,6 +75,42 @@ const progress = computed<ScanProgress | null>(() => {
   }
   return null
 })
+
+const staleLock = computed(() =>
+  !terminal.isRunning && status.value?.isRunning ? status.value : null,
+)
+
+const unlocking = ref(false)
+const reconnecting = ref(false)
+
+async function forceUnlock() {
+  unlocking.value = true
+  try {
+    await $fetch('/api/scan/unlock', { method: 'POST' })
+    await fetchStatus()
+  }
+  catch (e: any) {
+    console.error('Force unlock failed:', e)
+  }
+  finally {
+    unlocking.value = false
+  }
+}
+
+async function reconnectSession() {
+  const sessionName = staleLock.value?.sessionName
+  if (!sessionName) { return }
+  reconnecting.value = true
+  try {
+    await terminal.reconnect(sessionName)
+  }
+  catch {
+    await fetchStatus()
+  }
+  finally {
+    reconnecting.value = false
+  }
+}
 
 function runQuickScan() {
   terminal.run('./index', ['--quick'])
@@ -184,6 +221,45 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- Background / stale lock banner -->
+    <div
+      v-if="staleLock"
+      class="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3"
+    >
+      <div>
+        <p class="text-sm font-medium text-amber-400">
+          {{ staleLock.sessionName ? 'Session running in background' : 'Lock held externally' }}
+        </p>
+        <p class="text-xs text-zinc-500">
+          <span class="text-zinc-300">{{ staleLock.lockedBy }}</span>
+          (pid {{ staleLock.pid }})
+          <template v-if="staleLock.sessionName"> — reconnect to view output</template>
+          <template v-else> — process may have died without releasing the lock</template>
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          v-if="staleLock.sessionName"
+          :disabled="reconnecting"
+          class="flex items-center gap-1.5 rounded-md bg-amber-500/20 border border-amber-500/40 px-3 py-1.5 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/30 disabled:opacity-50"
+          @click="reconnectSession"
+        >
+          <Loader2 v-if="reconnecting" :size="12" class="animate-spin" />
+          <Play v-else :size="12" />
+          Reconnect
+        </button>
+        <button
+          :disabled="unlocking"
+          class="flex items-center gap-1.5 rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+          @click="forceUnlock"
+        >
+          <Loader2 v-if="unlocking" :size="12" class="animate-spin" />
+          <LockOpen v-else :size="12" />
+          Force Unlock
+        </button>
+      </div>
+    </div>
+
     <!-- Scan Actions -->
     <div>
       <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-500">
@@ -191,7 +267,7 @@ onUnmounted(() => {
       </h3>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <button
-          :disabled="terminal.isRunning"
+          :disabled="terminal.isRunning || !!staleLock"
           class="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
           @click="runQuickScan"
         >
@@ -202,7 +278,7 @@ onUnmounted(() => {
           </div>
         </button>
         <button
-          :disabled="terminal.isRunning"
+          :disabled="terminal.isRunning || !!staleLock"
           class="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
           @click="runFullScan"
         >
@@ -213,7 +289,7 @@ onUnmounted(() => {
           </div>
         </button>
         <button
-          :disabled="terminal.isRunning"
+          :disabled="terminal.isRunning || !!staleLock"
           class="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
           @click="runSync"
         >

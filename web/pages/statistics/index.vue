@@ -3,6 +3,8 @@ import { LucideBarChart3, LucideUsers, LucideDisc, LucideMusic2, LucideTag, Luci
 import type { Statistics } from '~/types/stats'
 import { formatNumber, formatPlaytime } from '~/helpers/functions'
 
+definePageMeta({ layout: 'admin' })
+
 const loading = ref(true)
 const stats = ref<Statistics | null>(null)
 
@@ -41,16 +43,11 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-8">
-    <!-- Header -->
-    <div>
-      <h1 class="text-2xl font-bold text-zinc-50">
-        <LucideBarChart3 class="inline size-6 -mt-1 text-amber-500" />
-        Statistics
-      </h1>
-      <div v-if="!loading && stats" class="mt-1 text-sm text-zinc-500">
-        Last scanned: {{ formatDate(stats.lastScanEndedAt) }}
-      </div>
-    </div>
+    <PageTitle
+      :icon="LucideBarChart3"
+      text="Statistics"
+      :subtext="!loading && stats ? `Last scanned: ${formatDate(stats.lastScanEndedAt)}` : undefined"
+    />
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">

@@ -53,6 +53,9 @@ scp_cmd "$PROJECT_ROOT/docker-compose.yml" "$NAS_USER@$NAS_HOST:$NAS_DEPLOY_PATH
 scp_cmd "$PROJECT_ROOT/index" "$PROJECT_ROOT/sync" "$PROJECT_ROOT/refresh" "$PROJECT_ROOT/audit" "$PROJECT_ROOT/fix" "$PROJECT_ROOT/nuke" "$PROJECT_ROOT/analysis" "$PROJECT_ROOT/playlists" "$NAS_USER@$NAS_HOST:$NAS_DEPLOY_PATH/"
 ssh_cmd "chmod +x $NAS_DEPLOY_PATH/index $NAS_DEPLOY_PATH/sync $NAS_DEPLOY_PATH/refresh $NAS_DEPLOY_PATH/audit $NAS_DEPLOY_PATH/fix $NAS_DEPLOY_PATH/nuke $NAS_DEPLOY_PATH/analysis $NAS_DEPLOY_PATH/playlists"
 
+echo "--- Ensuring data dir permissions ---"
+ssh_cmd "mkdir -p $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump && chmod 777 $NAS_DEPLOY_PATH/img $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump"
+
 echo "--- Restarting container ---"
 ssh_cmd "cd $NAS_DEPLOY_PATH && docker compose up -d web"
 

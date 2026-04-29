@@ -1,4 +1,4 @@
-import { validateSession } from '~/server/utils/auth'
+import { validateSession, isSessionStaleForUser } from '~/server/utils/auth'
 import { prisma } from '~/server/utils/prisma'
 
 const SESSION_COOKIE = 'dmp_session'
@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
     return sendRedirect(event, '/login')
   }
 
-  const user = await prisma.user.findUnique({
+  const dbUser = await prisma.user.findUnique({
     where: { id: session.userId },
     select: {
       id: true,
@@ -50,10 +50,12 @@ export default defineEventHandler(async (event) => {
       email: true,
       role: true,
       mustChangePassword: true,
+      passwordHash: true,
     },
   })
 
-  if (!user) {
+  const invalidSession = !dbUser || isSessionStaleForUser(token, dbUser.passwordHash)
+  if (invalidSession) {
     deleteCookie(event, SESSION_COOKIE, { path: '/' })
     if (path.startsWith('/api/')) {
       throw createError({ statusCode: 401, message: 'Unauthorized' })
@@ -61,6 +63,7 @@ export default defineEventHandler(async (event) => {
     return sendRedirect(event, '/login')
   }
 
+  const { passwordHash: _, ...user } = dbUser
   event.context.user = user
 
   if (user.mustChangePassword) {

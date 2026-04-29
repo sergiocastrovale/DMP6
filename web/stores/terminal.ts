@@ -83,6 +83,11 @@ export const useTerminalStore = defineStore('terminal', () => {
     return streamSSE('/api/terminal/run', { command, args, session: resolvedSession })
   }
 
+  async function reconnect(session: string) {
+    currentSession.value = session
+    return streamSSE('/api/terminal/reconnect', { session })
+  }
+
   async function runDownload(
     source: DownloadSource,
     query: string,
@@ -101,9 +106,19 @@ export const useTerminalStore = defineStore('terminal', () => {
     isOpen.value = false
   }
 
-  function stop() {
+  async function stop() {
+    if (currentSession.value) {
+      try {
+        await fetch('/api/terminal/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session: currentSession.value }),
+        })
+      }
+      catch { /* best-effort — abort SSE regardless */ }
+    }
     abortController?.abort()
   }
 
-  return { isOpen, isRunning, lines, exitCode, currentSession, hasBackground, run, runDownload, open, close, stop }
+  return { isOpen, isRunning, lines, exitCode, currentSession, hasBackground, run, reconnect, runDownload, open, close, stop }
 })

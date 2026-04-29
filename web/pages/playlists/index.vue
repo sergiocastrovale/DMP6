@@ -31,25 +31,16 @@ onMounted(() => loadPlaylists())
 
 <template>
   <div class="flex flex-col gap-6">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-zinc-50">
-          <LucideListMusic class="inline size-6 -mt-1 text-amber-500" />
-          Playlists
-        </h1>
-        <p class="mt-1 text-sm text-zinc-500">
-          Your custom playlists
-        </p>
-      </div>
+    <PageTitle :icon="LucideListMusic" text="Playlists" subtext="Your custom playlists">
       <button
         v-if="canCrud"
-        class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-600 transition-colors"
+        class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-amber-600"
         @click="showCreate = true"
       >
         <LucidePlus class="inline size-4 -mt-0.5" />
         New Playlist
       </button>
-    </div>
+    </PageTitle>
 
     <LoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
 

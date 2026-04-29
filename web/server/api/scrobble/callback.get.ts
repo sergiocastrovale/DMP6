@@ -1,7 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { getCachedSettings } from '~/server/utils/settingsCache'
 import { invalidateSettingsCache } from '~/server/utils/settingsCache'
-import { getSession } from '~/server/utils/lastfm'
+import { getLastfmSession } from '~/server/utils/lastfm'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Last.fm not configured' })
   }
 
-  const session = await getSession(token, settings.lastfmApiKey, settings.lastfmSecret)
+  const session = await getLastfmSession(token, settings.lastfmApiKey, settings.lastfmSecret)
   if (!session) {
     throw createError({ statusCode: 400, message: 'Failed to get Last.fm session' })
   }

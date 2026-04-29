@@ -131,16 +131,7 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- Header -->
-    <div>
-      <h1 class="text-2xl font-bold text-zinc-50">
-        <LucideClock class="inline size-6 -mt-1 text-amber-500" />
-        Timeline
-      </h1>
-      <p class="mt-1 text-sm text-zinc-500">
-        Browse your library by decade and year
-      </p>
-    </div>
+    <PageTitle :icon="LucideClock" text="Timeline" subtext="Browse your library by decade and year" />
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">

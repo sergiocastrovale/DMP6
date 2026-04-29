@@ -38,9 +38,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex flex-col gap-4">
-    <!-- Header -->
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold text-zinc-50">Browse</h1>
+    <PageTitle text="Browse">
       <div class="flex items-center gap-2 text-sm text-zinc-500">
         <span>{{ store.mainCount.toLocaleString() }} artists</span>
         <span class="text-zinc-700">|</span>
@@ -66,7 +64,7 @@ onBeforeUnmount(() => {
           </template>
         </Popover>
       </div>
-    </div>
+    </PageTitle>
 
     <!-- Search + controls -->
     <div class="flex flex-wrap items-center gap-3">

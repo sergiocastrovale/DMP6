@@ -46,7 +46,7 @@ export const getAuthUrl = (apiKey: string, callbackUrl: string): string => {
   return `https://www.last.fm/api/auth/?api_key=${encodeURIComponent(apiKey)}&cb=${encodeURIComponent(callbackUrl)}`
 }
 
-export const getSession = async (
+export const getLastfmSession = async (
   token: string,
   apiKey: string,
   secret: string,

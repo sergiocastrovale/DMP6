@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { hashPassword, verifyPassword } from '~/server/utils/password'
+import { createSession } from '~/server/utils/auth'
 
 export default defineEventHandler(async (event) => {
   const user = event.context.user
@@ -25,12 +26,19 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, message: 'Current password incorrect' })
   }
 
+  const newHash = await hashPassword(newPassword)
+
   await prisma.user.update({
     where: { id: user.id },
-    data: {
-      passwordHash: await hashPassword(newPassword),
-      mustChangePassword: false,
-    },
+    data: { passwordHash: newHash, mustChangePassword: false },
+  })
+
+  setCookie(event, 'dmp_session', createSession(user.id, newHash), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 7,
+    path: '/',
   })
 
   return { ok: true }
