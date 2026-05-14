@@ -293,8 +293,9 @@ async fn main() {
 
     // MB ID → DB artist ID: detect duplicate artists resolving to the same MB ID.
     let mut synced_mb_ids: HashMap<String, String> = HashMap::new();
-    // (primary_artist_id, extra_name, extra_match): compound artist components to process.
-    let mut pending_extra_artists: Vec<(String, String, MbArtistMatch)> = Vec::new();
+    // (release_ids, extra_name, extra_match): compound artist components to process.
+    // release_ids are captured before compound artist links are deleted.
+    let mut pending_extra_artists: Vec<(Vec<String>, String, MbArtistMatch)> = Vec::new();
 
     for (i, artist) in artists.iter().enumerate() {
         if !running.load(Ordering::SeqCst) {
@@ -393,9 +394,21 @@ async fn main() {
                         "Compound name — splitting: {}",
                         artist.name
                     ));
-                    pending_extra_artists.push((artist.id.clone(), m.name.clone(), m.clone()));
+                    // Capture release IDs before deleting compound artist links.
+                    let compound_release_ids: Vec<String> = sqlx::query_as::<_, (String,)>(
+                        r#"SELECT "localReleaseId" FROM "LocalReleaseArtist" WHERE "artistId" = $1"#,
+                    )
+                    .bind(&artist.id)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(id,)| id)
+                    .collect();
+
+                    pending_extra_artists.push((compound_release_ids.clone(), m.name.clone(), m.clone()));
                     for (ref name, ref am) in &extra_artists_to_sync {
-                        pending_extra_artists.push((artist.id.clone(), name.clone(), am.clone()));
+                        pending_extra_artists.push((compound_release_ids.clone(), name.clone(), am.clone()));
                     }
                     // Remove compound artist's release/track links so individual
                     // components take over; cleanup_ghost_artists will remove the record.
@@ -407,6 +420,11 @@ async fn main() {
                     .await
                     .ok();
                     sqlx::query(r#"DELETE FROM "TrackArtist" WHERE "artistId" = $1"#)
+                        .bind(&artist.id)
+                        .execute(&pool)
+                        .await
+                        .ok();
+                    sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "artistId" = $1"#)
                         .bind(&artist.id)
                         .execute(&pool)
                         .await
@@ -983,7 +1001,17 @@ async fn main() {
 
         // Queue extra artists (compound name components) for processing after main loop
         for (extra_name, extra_match) in extra_artists_to_sync {
-            pending_extra_artists.push((artist.id.clone(), extra_name, extra_match));
+            let release_ids: Vec<String> = sqlx::query_as::<_, (String,)>(
+                r#"SELECT "localReleaseId" FROM "LocalReleaseArtist" WHERE "artistId" = $1"#,
+            )
+            .bind(&artist.id)
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id,)| id)
+            .collect();
+            pending_extra_artists.push((release_ids, extra_name, extra_match));
         }
     }
 
@@ -1000,7 +1028,7 @@ async fn main() {
         reporter.blank();
     }
 
-    for (primary_artist_id, extra_name, extra_match) in &pending_extra_artists {
+    for (compound_release_ids, extra_name, extra_match) in &pending_extra_artists {
         if !running.load(Ordering::SeqCst) {
             break;
         }
@@ -1026,22 +1054,7 @@ async fn main() {
             }
         }
 
-        // Find local releases of the primary artist where albumArtist mentions this extra artist
-        let escaped_extra_name = extra_name.replace('%', "\\%").replace('_', "\\_");
-        let compound_releases: Vec<(String,)> = sqlx::query_as(
-            r#"SELECT DISTINCT lrt."localReleaseId"
-               FROM "LocalReleaseTrack" lrt
-               JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lrt."localReleaseId"
-               WHERE lra."artistId" = $1
-                 AND lrt."albumArtist" ILIKE '%' || $2 || '%' ESCAPE '\'"#,
-        )
-        .bind(primary_artist_id)
-        .bind(escaped_extra_name.as_str())
-        .fetch_all(&pool)
-        .await
-        .unwrap_or_default();
-
-        if compound_releases.is_empty() {
+        if compound_release_ids.is_empty() {
             continue;
         }
 
@@ -1051,10 +1064,10 @@ async fn main() {
             _ => continue,
         };
 
-        // Link extra artist to compound releases
-        let links: Vec<(String, String)> = compound_releases
+        // Link extra artist to the compound releases captured before deletion
+        let links: Vec<(String, String)> = compound_release_ids
             .iter()
-            .map(|(rel_id,)| (rel_id.clone(), extra_artist_id.clone()))
+            .map(|rel_id| (rel_id.clone(), extra_artist_id.clone()))
             .collect();
         batch_ensure_local_release_artists(&pool, &links).await.ok();
 

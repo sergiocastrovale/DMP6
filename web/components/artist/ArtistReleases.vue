@@ -414,7 +414,7 @@ watch(() => props.releases, () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="flex flex-col gap-4 px-8">
     <Tabs v-if="visibleTabs.length > 0" v-model="activeTab" :tabs="tabItems">
       <template #append>
         <div class="pb-2">
@@ -424,7 +424,7 @@ watch(() => props.releases, () => {
     </Tabs>
 
     <div class="flex flex-wrap items-center gap-3">
-      <ArtistTrackSearch v-model="searchQuery" />
+      <ArtistReleaseSearch v-model="searchQuery" placeholder="Search releases..." />
 
       <Dropdown
         v-model="statusFilter"

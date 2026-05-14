@@ -67,15 +67,6 @@ const statsParts = computed(() => {
 
 <template>
   <div class="relative overflow-hidden rounded-xl">
-    <template v-if="imgUrl">
-      <img
-        :src="imgUrl"
-        :alt="artist.name"
-        class="pointer-events-none absolute right-0 top-0 h-full w-auto min-w-[30%] object-cover object-right opacity-60"
-      />
-      <div class="pointer-events-none absolute inset-0 bg-gradient-to-r from-zinc-950 from-[65%] to-transparent" />
-    </template>
-
     <div class="relative flex flex-col gap-6 px-6 py-8">
       <div class="flex flex-col gap-3">
         <h1 class="text-4xl font-bold tracking-tight text-zinc-50 sm:text-5xl">

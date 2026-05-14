@@ -62,6 +62,17 @@ fn detect_separator(name: &str) -> Option<(&'static str, Vec<String>)> {
         }
     }
 
+    if name.contains(" & ") && name.contains(',') {
+        let parts: Vec<String> = name
+            .split(|c| c == ',' || c == '&')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.len() > 1 {
+            return Some((",&", parts));
+        }
+    }
+
     if name.contains(" & ") {
         let parts: Vec<String> = name.split(" & ").map(|s| s.trim().to_string()).collect();
         if parts.len() > 1 {

@@ -72,7 +72,7 @@ function commitEdit(item: any, col: IssueColumn) {
       <table class="w-full text-sm">
         <thead>
           <tr class="border-b border-zinc-800 text-left">
-            <th class="w-10 px-3 py-2">
+            <th v-if="type !== 'enrichment'" class="w-10 px-3 py-2">
               <input type="checkbox" :checked="allChecked" @change="toggleAll" class="rounded border-zinc-600 bg-zinc-800" />
             </th>
             <th
@@ -97,7 +97,7 @@ function commitEdit(item: any, col: IssueColumn) {
           <!-- Loading skeleton -->
           <template v-if="loading && items.length === 0">
             <tr v-for="n in 5" :key="n" class="border-b border-zinc-800/50">
-              <td class="px-3 py-2.5">
+              <td v-if="type !== 'enrichment'" class="px-3 py-2.5">
                 <div class="h-4 w-4 animate-pulse rounded bg-zinc-800" />
               </td>
               <td v-for="col in columns" :key="col.key" class="px-3 py-2.5">
@@ -108,7 +108,7 @@ function commitEdit(item: any, col: IssueColumn) {
 
           <!-- Empty state -->
           <tr v-else-if="!loading && items.length === 0">
-            <td :colspan="columns.length + 1" class="px-3 py-12 text-center text-zinc-500">
+            <td :colspan="type !== 'enrichment' ? columns.length + 1 : columns.length" class="px-3 py-12 text-center text-zinc-500">
               No issues found
             </td>
           </tr>
@@ -118,9 +118,9 @@ function commitEdit(item: any, col: IssueColumn) {
             v-for="item in items"
             :key="item.id"
             class="border-b border-zinc-800/50 transition-colors hover:bg-zinc-900/30"
-            :class="selected.has(item.id) ? 'bg-blue-950/20' : ''"
+            :class="type !== 'enrichment' && selected.has(item.id) ? 'bg-blue-950/20' : ''"
           >
-            <td class="px-3 py-2">
+            <td v-if="type !== 'enrichment'" class="px-3 py-2">
               <input
                 type="checkbox"
                 :checked="selected.has(item.id)"

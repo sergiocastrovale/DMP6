@@ -33,7 +33,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     for (track_id, current_value, release_id, year) in &rows {
         let (proposed_value, confidence) = find_proposed(pool, track_id, release_id.as_deref(), *year).await?;
 
-        if proposed_value.is_empty() {
+        if proposed_value.is_empty() || proposed_value == *current_value {
             continue;
         }
 

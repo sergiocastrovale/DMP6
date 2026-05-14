@@ -5,6 +5,11 @@ import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import { useTerminalStore } from '~/stores/terminal'
 
+definePageMeta({
+  layout: 'default',
+  layoutClasses: 'p-0',
+})
+
 const route = useRoute()
 const slug = computed(() => route.params.slug as string)
 const terminal = useTerminalStore()
@@ -81,14 +86,13 @@ const playAll = async () => {
       <p class="mt-1 text-sm text-zinc-400">The artist you're looking for doesn't exist.</p>
     </div>
     <div v-else-if="artist" class="flex flex-col gap-8">
-      <div class="flex items-start justify-between gap-4">
-        <ArtistHeader
-          :artist="artist"
-          :releases="releases"
-          :play-disabled="playingAll || !releases.length"
-          class="min-w-0 flex-1"
-          @play-all="playAll"
-        />
+      <ArtistHeader
+        :artist="artist"
+        :releases="releases"
+        :play-disabled="playingAll || !releases.length"
+        class="min-w-0 flex-1"
+        @play-all="playAll"
+      >
         <div class="flex shrink-0 items-center gap-2">
           <ButtonDropdown
             label="Sync"
@@ -101,7 +105,8 @@ const playAll = async () => {
             </template>
           </ButtonDropdown>
         </div>
-      </div>
+      </ArtistHeader>
+      
       <ArtistReleases
         v-model:show-missing="showMissing"
         :slug="artist.slug"

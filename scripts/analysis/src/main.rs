@@ -182,7 +182,7 @@ type SkippedFiles = HashMap<PathBuf, String>;
 enum FileFixStatus {
     NoAutofix,           // autofix didn't run
     Matched,               // all issues for this field were resolved
-    Skipped(String),     // beets attempted but found no confident match
+    Skipped,             // beets attempted but found no confident match
 }
 
 impl FileIssue {
@@ -854,8 +854,8 @@ fn build_groups(
         let fix_status = if diffs.is_none() && skipped_files.is_none() {
             FileFixStatus::NoAutofix
         } else if let Some(sf) = skipped_files {
-            if let Some(reason) = sf.get(&issue.path) {
-                FileFixStatus::Skipped(reason.clone())
+            if sf.contains_key(&issue.path) {
+                FileFixStatus::Skipped
             } else if let (Some(d), Some(fname)) = (diffs, field_name) {
                 if d.get(&issue.path).map_or(false, |fixes| fixes.iter().any(|fix| fix.field == fname)) {
                     FileFixStatus::Matched
@@ -1041,7 +1041,7 @@ fn write_field_panel<W: Write>(
                             encode_text(path), ann_html, popover_html
                         )?;
                     }
-                    FileFixStatus::Skipped(_) => {
+                    FileFixStatus::Skipped => {
                         write!(f, "<li class=\"file-item\">{}{}</li>\n", encode_text(path), ann_html)?;
                     }
                     FileFixStatus::NoAutofix => {

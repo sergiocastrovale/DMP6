@@ -3,7 +3,16 @@ import { Search } from 'lucide-vue-next'
 
 const model = defineModel<string>({ default: '' })
 
+interface Props {
+  placeholder: string
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  placeholder: 'Search releases...',
+})
+
 let searchTimeout: ReturnType<typeof setTimeout>
+
 function handleInput(value: string) {
   clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => {
@@ -17,7 +26,7 @@ function handleInput(value: string) {
     <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
     <input
       type="text"
-      placeholder="Search tracks..."
+      :placeholder="placeholder"
       class="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 pl-8 pr-3 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
       @input="handleInput(($event.target as HTMLInputElement).value)"
     />
