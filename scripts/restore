@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+#
+# DMP database restore. Loads the most recent dump from web/dump/ into local PostgreSQL.
+# Usage:
+#   ./restore              # restore latest dump
+#   ./restore <file.sql.gz> # restore specific dump
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DUMP_DIR="$SCRIPT_DIR/web/dump"
+ENV_FILE="$SCRIPT_DIR/web/.env"
+
+DB_HOST_DEFAULT="localhost"
+DB_PORT_DEFAULT="5432"
+DB_USER_DEFAULT="dmp"
+DB_NAME_DEFAULT="dmp"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+if [ -n "${DATABASE_URL:-}" ]; then
+  DB_HOST=$(echo "$DATABASE_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
+  DB_PORT=$(echo "$DATABASE_URL" | sed -n 's|.*:\([0-9]*\)/.*|\1|p')
+  DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
+  DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
+  DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+else
+  DB_HOST="$DB_HOST_DEFAULT"
+  DB_PORT="$DB_PORT_DEFAULT"
+  DB_USER="$DB_USER_DEFAULT"
+  DB_NAME="$DB_NAME_DEFAULT"
+  DB_PASS=""
+fi
+
+if [ -n "${1:-}" ]; then
+  if [ -f "$1" ]; then
+    DUMP_FILE="$1"
+  elif [ -f "$DUMP_DIR/$1" ]; then
+    DUMP_FILE="$DUMP_DIR/$1"
+  else
+    echo "❌ File not found: $1" >&2
+    exit 1
+  fi
+else
+  DUMP_FILE=$(ls -t "$DUMP_DIR"/*.sql.gz 2>/dev/null | head -1)
+  if [ -z "$DUMP_FILE" ]; then
+    echo "❌ No .sql.gz dumps found in $DUMP_DIR" >&2
+    exit 1
+  fi
+fi
+
+DUMP_BASENAME=$(basename "$DUMP_FILE")
+SIZE_BYTES=$(stat -c%s "$DUMP_FILE" 2>/dev/null || stat -f%z "$DUMP_FILE")
+SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$SIZE_BYTES" 2>/dev/null || echo "${SIZE_BYTES} bytes")
+
+echo
+echo "🔄 Starting database restore..."
+echo "============================================================"
+echo "📁 Dump    : ${DUMP_BASENAME}"
+echo "📊 Size    : ${SIZE_HUMAN}"
+echo "🎯 Target  : ${DB_HOST}:${DB_PORT}/${DB_NAME}"
+echo "⏳ Restoring..."
+
+export PGPASSWORD="$DB_PASS"
+START_TS=$(date +%s)
+
+set +e
+gunzip -c "$DUMP_FILE" | psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -q 2>&1 | tail -5
+RESTORE_EXIT=${PIPESTATUS[1]}
+set -e
+
+if [ "$RESTORE_EXIT" -ne 0 ]; then
+  echo "❌ psql exited with code ${RESTORE_EXIT}" >&2
+  exit $RESTORE_EXIT
+fi
+
+DURATION=$(( $(date +%s) - START_TS ))
+
+echo "============================================================"
+echo "✅ Database restored successfully!"
+echo "📁 Dump    : ${DUMP_BASENAME}"
+echo "🎯 Target  : ${DB_HOST}:${DB_PORT}/${DB_NAME}"
+echo "⏱️  Duration: ${DURATION}s"

@@ -616,7 +616,7 @@ watch(() => props.releases, () => {
                         <span class="truncate" :class="edition.status === 'MISSING' ? 'text-zinc-500' : 'text-zinc-200'">
                           {{ editionDisplayTitle(edition) }}
                         </span>
-                        <span v-if="edition.year" class="text-xs text-zinc-500">{{ edition.year }}</span>
+                        <span v-if="edition.year" class="text-xs">({{ edition.year }})</span>
                       </div>
                       <div class="text-xs" :class="edition.status === 'MISSING' ? 'text-zinc-600' : 'text-zinc-500'">
                         <span v-if="edition.trackCount">{{ edition.trackCount }} tracks</span>
