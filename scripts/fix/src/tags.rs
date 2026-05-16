@@ -59,6 +59,27 @@ pub async fn delete_artist_image(config: &Config, image_file: &str) {
     }
 }
 
+pub fn write_artist_tags(abs_path: &Path, artist: &str, album_artist: &str) -> Result<(), String> {
+    use lofty::prelude::*;
+    use lofty::probe::Probe;
+    use lofty::tag::{ItemKey, ItemValue, TagItem};
+
+    let mut tagged = Probe::open(abs_path)
+        .map_err(|e| e.to_string())?
+        .read()
+        .map_err(|e| e.to_string())?;
+
+    if let Some(tag) = tagged.primary_tag_mut() {
+        tag.set_artist(artist.to_string());
+        tag.insert(TagItem::new(ItemKey::AlbumArtist, ItemValue::Text(album_artist.to_string())));
+        tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
+            .map_err(|e| e.to_string())?;
+    }
+
+    bump_dir_mtime(abs_path);
+    Ok(())
+}
+
 fn bump_dir_mtime(file_path: &Path) {
     if let Some(dir) = file_path.parent() {
         let tmp = dir.join(".fix-touch");

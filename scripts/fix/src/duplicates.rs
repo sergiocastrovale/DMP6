@@ -2,8 +2,9 @@ use colored::Colorize;
 use common::config::Config;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
+use crate::tags;
 
-pub async fn fix(pool: &PgPool, config: &Config) -> Result<(usize, usize), sqlx::Error> {
+pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usize, usize), sqlx::Error> {
     let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
         r#"SELECT i.id, i."artistAId", a.name, i."artistBId", b.name
            FROM "IssueDuplicateArtist" i
@@ -25,7 +26,7 @@ pub async fn fix(pool: &PgPool, config: &Config) -> Result<(usize, usize), sqlx:
     let now = Utc::now().naive_utc();
 
     for (issue_id, artist_a, name_a, artist_b, name_b) in &rows {
-        match merge(pool, config, artist_a, artist_b).await {
+        match merge(pool, config, music_dir, artist_a, name_a, artist_b, name_b).await {
             Ok(()) => {
                 println!("  {} Merged {} → {}", "✓".green(), name_b, name_a);
                 sqlx::query(
@@ -54,9 +55,25 @@ pub async fn fix(pool: &PgPool, config: &Config) -> Result<(usize, usize), sqlx:
     Ok((ok, fail))
 }
 
-async fn merge(pool: &PgPool, config: &Config, artist_a: &str, artist_b: &str) -> Result<(), sqlx::Error> {
-    // For each junction table: delete B's rows that would conflict with A, then move the rest to A.
-    // This avoids the correlated subquery self-reference ambiguity.
+async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, name_a: &str, artist_b: &str, name_b: &str) -> Result<(), sqlx::Error> {
+    let file_paths: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        r#"SELECT t."filePath", t.artist, t."albumArtist"
+           FROM "LocalReleaseTrack" t
+           JOIN "TrackArtist" ta ON ta."trackId" = t.id
+           WHERE ta."artistId" = $1"#,
+    )
+    .bind(artist_b)
+    .fetch_all(pool)
+    .await?;
+
+    for (fp, artist_tag, album_artist_tag) in &file_paths {
+        let abs_path = tags::resolve_path(music_dir, fp);
+        let new_artist = artist_tag.as_deref().unwrap_or(name_b).replace(name_b, name_a);
+        let new_album_artist = album_artist_tag.as_deref().unwrap_or(name_b).replace(name_b, name_a);
+        if let Err(e) = tags::write_artist_tags(&abs_path, &new_artist, &new_album_artist) {
+            println!("  {} {}: {}", "⚠".yellow(), fp, e);
+        }
+    }
 
     sqlx::query(
         r#"DELETE FROM "LocalReleaseArtist"

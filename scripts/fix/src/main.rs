@@ -69,7 +69,7 @@ async fn main() {
 
     if args.duplicates {
         println!("{}", "→ Fixing duplicate artist issues...".cyan().bold());
-        match duplicates::fix(&pool, &config).await {
+        match duplicates::fix(&pool, &config, &music_dir).await {
             Ok((ok, fail)) => println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red()),
             Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
         }

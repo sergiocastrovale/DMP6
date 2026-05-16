@@ -14,8 +14,9 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
                       (SELECT COUNT(*) FROM "TrackArtist" WHERE "artistId" = a2.id)
                FROM "Artist" a1
                JOIN "Artist" a2 ON a1.id < a2.id
-               WHERE LOWER(REGEXP_REPLACE(a1.name, '[^a-zA-Z0-9]', '', 'g')) =
-                     LOWER(REGEXP_REPLACE(a2.name, '[^a-zA-Z0-9]', '', 'g'))"#,
+               WHERE LOWER(REGEXP_REPLACE(a1.name, '[^a-zA-Z0-9\p{L}]', '', 'g')) =
+                     LOWER(REGEXP_REPLACE(a2.name, '[^a-zA-Z0-9\p{L}]', '', 'g'))
+                 AND REGEXP_REPLACE(a1.name, '[^a-zA-Z0-9\p{L}]', '', 'g') <> ''"#,
         )
         .fetch_all(pool)
         .await?;

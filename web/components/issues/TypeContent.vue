@@ -16,7 +16,7 @@ const showReindexButton = ref(false)
 const affectedArtists = ref<string[]>([])
 const hasFixed = ref(false)
 
-const FILE_WRITING_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing']
+const FILE_WRITING_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing', 'duplicates']
 
 onMounted(() => {
   issuesStore.fetchSummary()
@@ -42,6 +42,13 @@ async function fixSelected() {
       const name = item.artist?.name
       if (name) {
         artistNames.add(name)
+      }
+    } else if (props.type === 'duplicates') {
+      if (item.artistA?.name) {
+        artistNames.add(item.artistA.name)
+      }
+      if (item.artistB?.name) {
+        artistNames.add(item.artistB.name)
       }
     }
   }
@@ -124,6 +131,33 @@ const typeLabels: Record<IssueType, string> = {
   enrichment: 'Enrichment Gaps',
 }
 
+const typeDescriptions: Record<IssueType, { detection: string; fix: string }> = {
+  corrupted: {
+    detection: 'Tracks where the album artist tag (TPE2) contains numeric garbage, bitrate markers, or file path fragments instead of an actual artist name.',
+    fix: 'Rewrites the TPE2 tag in the original audio file with the proposed value, then requires a re-index to update the database.',
+  },
+  unsplit: {
+    detection: 'Artists whose names contain separators like "&", "feat.", "vs." — indicating multiple artists stored as a single compound name.',
+    fix: 'Splits the compound name into individual artist tags in the original audio files, then requires a re-index to create separate artist entries.',
+  },
+  orphans: {
+    detection: 'Artists with no linked releases or tracks — either phantom entries with corrupted names (numeric/bitrate garbage) or fully disconnected records.',
+    fix: 'Deletes the orphan artist record directly from the database. No files are modified.',
+  },
+  duplicates: {
+    detection: 'Artist pairs whose names match after normalizing case and stripping punctuation, suggesting they represent the same artist.',
+    fix: 'Rewrites artist and album artist tags in audio files from B to A, then merges all releases, tracks, and links in the database. Requires a re-index afterward.',
+  },
+  missing: {
+    detection: 'Tracks missing one or more required metadata fields: title, artist, album artist, album, or year.',
+    fix: 'Writes the proposed values into the original audio file tags, then requires a re-index to update the database.',
+  },
+  enrichment: {
+    detection: 'Releases missing enrichment data: MusicBrainz link, BPM, mood, AcousticID, Discogs, Bandcamp, or Wikipedia URLs.',
+    fix: 'Enrichment gaps are resolved by re-syncing with MusicBrainz or running external analysis tools. No automatic fix available — use the re-sync button where applicable.',
+  },
+}
+
 async function onEdit(id: string, key: string, value: unknown) {
   await issuesStore.patchIssue(props.type, id, { [key]: value })
 }
@@ -135,9 +169,10 @@ function formatDate(date: string): string {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex items-center justify-between gap-4">
-      <h1 class="text-lg font-semibold text-white">{{ typeLabels[type] }}</h1>
-      <div class="flex items-center gap-2">
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between gap-4">
+        <h1 class="text-lg font-semibold text-white">{{ typeLabels[type] }}</h1>
+        <div class="flex items-center gap-2">
         <UiRefreshButton v-if="showReindexButton" :only="affectedArtists.length ? affectedArtists : undefined" />
         <div class="relative">
           <Search :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
@@ -149,6 +184,11 @@ function formatDate(date: string): string {
           />
         </div>
       </div>
+      </div>
+      <p class="text-sm text-zinc-500">
+        {{ typeDescriptions[type].detection }}
+        <span class="text-zinc-600">Fix:</span> {{ typeDescriptions[type].fix }}
+      </p>
     </div>
 
     <div class="rounded-lg border border-zinc-800 bg-zinc-950">
