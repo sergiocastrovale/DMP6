@@ -1,4 +1,4 @@
-export type IssueStatus = 'DETECTED' | 'PENDING' | 'RESOLVED' | 'FAILED'
+export type IssueStatus = 'DETECTED' | 'PENDING' | 'PENDING_REVERT' | 'RESOLVED' | 'FAILED'
 export type IssueType = 'corrupted' | 'unsplit' | 'orphans' | 'duplicates' | 'missing' | 'enrichment'
 export type Confidence = 'high' | 'medium' | 'low'
 
@@ -76,4 +76,15 @@ export interface IssueEnrichmentGapRow {
   missingFields: EnrichmentField[]
   artist: { name: string; slug: string } | null
   localRelease: { id: string; title: string; year: number | null }
+}
+
+export interface FixHistoryRow {
+  id: string
+  issueType: string
+  issueId: string
+  filePath: string
+  previousState: Record<string, unknown>
+  appliedState: Record<string, unknown>
+  appliedAt: string
+  revertedAt: string | null
 }

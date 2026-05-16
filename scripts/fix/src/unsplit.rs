@@ -1,7 +1,5 @@
 use colored::Colorize;
-use lofty::prelude::*;
-use lofty::probe::Probe;
-use lofty::tag::{ItemKey, ItemValue, TagItem};
+use serde_json::json;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
 use crate::tags;
@@ -27,9 +25,7 @@ pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize), sqlx:
     let now = Utc::now().naive_utc();
 
     for (issue_id, artist_id, compound_name, parts) in &rows {
-        // Primary artist = first proposed part (goes into albumArtist / TPE2)
         let primary = parts.first().map(|s| s.as_str()).unwrap_or(compound_name.as_str());
-        // Full compound value goes into artist / TPE1 so multi-artist is preserved
         let artist_tag = compound_name.as_str();
 
         let file_paths: Vec<(String,)> = sqlx::query_as(
@@ -45,9 +41,30 @@ pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize), sqlx:
         let mut any_fail = false;
         for (fp,) in &file_paths {
             let abs_path = tags::resolve_path(music_dir, fp);
-            if let Err(e) = write_unsplit_tags(&abs_path, primary, artist_tag) {
-                println!("  {} {}: {}", "✗".red(), fp, e);
-                any_fail = true;
+
+            let previous_state = tags::read_tags(&abs_path)
+                .unwrap_or_else(|_| json!({ "artist": compound_name, "albumArtist": compound_name }));
+
+            match tags::write_artist_tags(&abs_path, artist_tag, primary) {
+                Ok(()) => {
+                    let fh_id = cuid2::create_id();
+                    sqlx::query(
+                        r#"INSERT INTO "FixHistory" (id, "issueType", "issueId", "filePath", "previousState", "appliedState", "appliedAt", "createdAt", "updatedAt")
+                           VALUES ($1, 'unsplit', $2, $3, $4, $5, $6, $6, $6)"#,
+                    )
+                    .bind(&fh_id)
+                    .bind(issue_id)
+                    .bind(fp)
+                    .bind(&previous_state)
+                    .bind(json!({ "artist": artist_tag, "albumArtist": primary }))
+                    .bind(now)
+                    .execute(pool)
+                    .await?;
+                }
+                Err(e) => {
+                    println!("  {} {}: {}", "✗".red(), fp, e);
+                    any_fail = true;
+                }
             }
         }
 
@@ -69,29 +86,4 @@ pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize), sqlx:
     }
 
     Ok((ok, fail))
-}
-
-fn write_unsplit_tags(abs_path: &std::path::Path, album_artist: &str, artist: &str) -> Result<(), String> {
-    let mut tagged = Probe::open(abs_path)
-        .map_err(|e| e.to_string())?
-        .read()
-        .map_err(|e| e.to_string())?;
-
-    if let Some(tag) = tagged.primary_tag_mut() {
-        // albumArtist (TPE2) = primary artist only
-        tag.insert(TagItem::new(ItemKey::AlbumArtist, ItemValue::Text(album_artist.to_string())));
-        // artist (TPE1) = compound value with all contributing artists
-        tag.set_artist(artist.to_string());
-        tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
-            .map_err(|e| e.to_string())?;
-    }
-
-    if let Some(dir) = abs_path.parent() {
-        let tmp = dir.join(".fix-touch");
-        if std::fs::File::create(&tmp).is_ok() {
-            let _ = std::fs::remove_file(&tmp);
-        }
-    }
-
-    Ok(())
 }

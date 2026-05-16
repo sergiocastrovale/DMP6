@@ -10,17 +10,25 @@ const issuesStore = useIssuesStore()
 const terminal = useTerminalStore()
 
 const selected = ref<Set<string>>(new Set())
+const selectedResolved = ref<Set<string>>(new Set())
 const searchInput = ref('')
 const searchDebounce = ref<ReturnType<typeof setTimeout>>()
 const showReindexButton = ref(false)
 const affectedArtists = ref<string[]>([])
 const hasFixed = ref(false)
+const hasReverted = ref(false)
 
 const FILE_WRITING_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing', 'duplicates']
+const REVERTABLE_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing']
+
+const activeSubtab = ref<'detected' | 'fixed'>('detected')
 
 onMounted(() => {
   issuesStore.fetchSummary()
   issuesStore.fetchType(props.type, true)
+  if (REVERTABLE_TYPES.includes(props.type)) {
+    issuesStore.fetchResolved(props.type, true)
+  }
 })
 
 watch(searchInput, (q) => {
@@ -61,14 +69,48 @@ async function fixSelected() {
   terminal.open()
 }
 
+async function revertSelected(mode: 'undo' | 'undo-resolved') {
+  const ids = [...selectedResolved.value]
+  if (!ids.length) {
+    return
+  }
+
+  const items = issuesStore.resolvedItems[props.type] ?? []
+  const selectedItems = items.filter((i: any) => selectedResolved.value.has(i.id))
+  const artistNames = new Set<string>()
+  for (const item of selectedItems) {
+    const name = item.artist?.name
+    if (name) {
+      artistNames.add(name)
+    }
+  }
+  affectedArtists.value = [...artistNames]
+
+  selectedResolved.value = new Set()
+  await issuesStore.queueRevert(props.type, ids, mode)
+  hasReverted.value = true
+  terminal.run('./fix', ['--revert', `--${props.type}`, `--mode=${mode}`], `fix`)
+  terminal.open()
+}
+
 watch(
   () => terminal.exitCode,
   (code) => {
-    if (code === 0 && !terminal.isRunning && hasFixed.value) {
-      hasFixed.value = false
-      issuesStore.fetchType(props.type, true)
-      issuesStore.fetchSummary()
-      if (FILE_WRITING_TYPES.includes(props.type)) {
+    if (code === 0 && !terminal.isRunning) {
+      if (hasFixed.value) {
+        hasFixed.value = false
+        issuesStore.fetchType(props.type, true)
+        issuesStore.fetchResolved(props.type, true)
+        issuesStore.fetchSummary()
+        if (FILE_WRITING_TYPES.includes(props.type)) {
+          showReindexButton.value = true
+        }
+      }
+      if (hasReverted.value) {
+        hasReverted.value = false
+        issuesStore.fetchType(props.type, true)
+        issuesStore.fetchResolved(props.type, true)
+        issuesStore.fetchSummary()
         showReindexButton.value = true
       }
     }
@@ -122,6 +164,32 @@ const columns = computed<IssueColumn[]>(() => {
   }
 })
 
+const resolvedColumns = computed<IssueColumn[]>(() => {
+  switch (props.type) {
+    case 'corrupted': return [
+      { key: 'artist.name', label: 'Artist', sortable: false },
+      { key: 'previousValue', label: 'Previous', sortable: false },
+      { key: 'appliedValue', label: 'Applied', sortable: false },
+      { key: 'track.filePath', label: 'File', sortable: false },
+      { key: 'fixedAt', label: 'Fixed At', sortable: false, width: 'w-28' },
+    ]
+    case 'unsplit': return [
+      { key: 'artist.name', label: 'Artist', sortable: false },
+      { key: 'previousValue', label: 'Original Name', sortable: false },
+      { key: 'appliedValue', label: 'Split To', sortable: false },
+      { key: 'fixedAt', label: 'Fixed At', sortable: false, width: 'w-28' },
+    ]
+    case 'missing': return [
+      { key: 'track.title', label: 'Title', sortable: false },
+      { key: 'previousValue', label: 'Previous', sortable: false },
+      { key: 'appliedValue', label: 'Applied', sortable: false },
+      { key: 'track.filePath', label: 'File', sortable: false },
+      { key: 'fixedAt', label: 'Fixed At', sortable: false, width: 'w-28' },
+    ]
+    default: return []
+  }
+})
+
 const typeLabels: Record<IssueType, string> = {
   corrupted: 'Corrupted TPE2',
   unsplit: 'Unsplit Artists',
@@ -165,6 +233,33 @@ async function onEdit(id: string, key: string, value: unknown) {
 function formatDate(date: string): string {
   return new Date(date).toLocaleDateString()
 }
+
+function formatDateTime(date: string): string {
+  return new Date(date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function getHistoryPreviousValue(item: any): string {
+  const history = item.fixHistory?.[0]
+  if (!history) {
+    return '—'
+  }
+  const state = history.previousState as Record<string, unknown>
+  return Object.values(state).filter(Boolean).join(', ') || '(empty)'
+}
+
+function getHistoryAppliedValue(item: any): string {
+  const history = item.fixHistory?.[0]
+  if (!history) {
+    return '—'
+  }
+  const state = history.appliedState as Record<string, unknown>
+  return Object.values(state).filter(Boolean).join(', ') || '(empty)'
+}
+
+function getHistoryDate(item: any): string {
+  const history = item.fixHistory?.[0]
+  return history ? formatDateTime(history.appliedAt) : '—'
+}
 </script>
 
 <template>
@@ -191,7 +286,30 @@ function formatDate(date: string): string {
       </p>
     </div>
 
-    <div class="rounded-lg border border-zinc-800 bg-zinc-950">
+    <div v-if="REVERTABLE_TYPES.includes(type)" class="flex gap-1 border-b border-zinc-800">
+      <button
+        @click="activeSubtab = 'detected'"
+        class="px-4 py-2 text-sm font-medium transition-colors"
+        :class="activeSubtab === 'detected' ? 'border-b-2 border-blue-500 text-white' : 'text-zinc-500 hover:text-zinc-300'"
+      >
+        Detected
+        <span v-if="(issuesStore.total[type] ?? 0) > 0" class="ml-1.5 rounded-full bg-zinc-800 px-1.5 py-0.5 text-xs">
+          {{ issuesStore.total[type] }}
+        </span>
+      </button>
+      <button
+        @click="activeSubtab = 'fixed'"
+        class="px-4 py-2 text-sm font-medium transition-colors"
+        :class="activeSubtab === 'fixed' ? 'border-b-2 border-green-500 text-white' : 'text-zinc-500 hover:text-zinc-300'"
+      >
+        Fixed
+        <span v-if="(issuesStore.resolvedTotal[type] ?? 0) > 0" class="ml-1.5 rounded-full bg-zinc-800 px-1.5 py-0.5 text-xs">
+          {{ issuesStore.resolvedTotal[type] }}
+        </span>
+      </button>
+    </div>
+
+    <div v-if="activeSubtab === 'detected'" class="rounded-lg border border-zinc-800 bg-zinc-950">
       <IssuesIssueTable
         :type="type"
         :columns="columns"
@@ -302,7 +420,7 @@ function formatDate(date: string): string {
           <span v-else class="text-zinc-600">—</span>
         </template>
 
-        <template #cell__resync="{ item }">
+        <template #cell-_resync="{ item }">
           <UiRefreshButton
             v-if="item.missingFields?.includes('mbRelease') && item.artist"
             :only="[item.artist.name]"
@@ -311,12 +429,63 @@ function formatDate(date: string): string {
       </IssuesIssueTable>
     </div>
 
+    <div v-if="activeSubtab === 'fixed' && REVERTABLE_TYPES.includes(type)" class="rounded-lg border border-zinc-800 bg-zinc-950">
+      <IssuesIssueTable
+        :type="type"
+        :columns="resolvedColumns"
+        :items="issuesStore.resolvedItems[type] ?? []"
+        :total="issuesStore.resolvedTotal[type] ?? 0"
+        :page="issuesStore.resolvedPage[type] ?? 1"
+        :page-size="PAGE_SIZE"
+        :loading="issuesStore.resolvedLoading[type] ?? false"
+        :selected="selectedResolved"
+        @update:selected="selectedResolved = $event"
+        @page="issuesStore.setResolvedPage(type, $event)"
+      >
+        <template #cell-artist_name="{ item }">
+          <NuxtLink
+            v-if="item.artist"
+            :to="`/artist/${item.artist.slug}`"
+            class="text-blue-400 hover:underline"
+          >
+            {{ item.artist.name }}
+          </NuxtLink>
+          <span v-else class="text-zinc-600">—</span>
+        </template>
+
+        <template #cell-previousValue="{ item }">
+          <span class="text-xs text-amber-400">{{ getHistoryPreviousValue(item) }}</span>
+        </template>
+
+        <template #cell-appliedValue="{ item }">
+          <span class="text-xs text-green-400">{{ getHistoryAppliedValue(item) }}</span>
+        </template>
+
+        <template #cell-track_filePath="{ item }">
+          <span class="truncate text-xs text-zinc-500" :title="item.track?.filePath">
+            {{ item.track?.filePath?.split('/').slice(-2).join('/') }}
+          </span>
+        </template>
+
+        <template #cell-fixedAt="{ item }">
+          <span class="text-xs text-zinc-500">{{ getHistoryDate(item) }}</span>
+        </template>
+      </IssuesIssueTable>
+    </div>
+
     <IssuesSelectionBar
-      v-if="type !== 'enrichment'"
+      v-if="type !== 'enrichment' && activeSubtab === 'detected'"
       :count="selected.size"
       :type="type"
       :loading="terminal.isRunning"
       @fix="fixSelected"
+    />
+
+    <IssuesRevertSelectionBar
+      v-if="REVERTABLE_TYPES.includes(type) && activeSubtab === 'fixed'"
+      :count="selectedResolved.size"
+      :loading="terminal.isRunning"
+      @revert="revertSelected"
     />
   </div>
 </template>

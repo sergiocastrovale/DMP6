@@ -6,6 +6,8 @@ import type { PaginatedResponse } from '~/types/api'
 const VALID_TYPES = ['corrupted', 'unsplit', 'orphans', 'duplicates', 'missing', 'enrichment'] as const
 type IssueType = typeof VALID_TYPES[number]
 
+const VALID_STATUSES = ['DETECTED', 'PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'] as const
+
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.view')
 
@@ -16,11 +18,32 @@ export default defineEventHandler(async (event) => {
 
   const rawQuery = getQuery(event)
   const { sort, order = 'asc', q } = rawQuery
+  const statusParam = (rawQuery.status as string) || 'DETECTED'
+  const status = VALID_STATUSES.includes(statusParam as any) ? statusParam : 'DETECTED'
   const { page: p, pageSize: ps, skip } = parsePagination(rawQuery, { defaultSize: 50, maxSize: 100 })
 
   const orderDir = order === 'desc' ? 'desc' : 'asc'
 
-  const [items, total] = await fetchType(type, skip, ps, sort as string, orderDir, q as string)
+  const [items, total] = await fetchType(type, skip, ps, sort as string, orderDir, q as string, status)
+
+  if (status === 'RESOLVED' && ['corrupted', 'unsplit', 'missing'].includes(type)) {
+    const issueIds = (items as any[]).map((i: any) => i.id)
+    if (issueIds.length > 0) {
+      const history = await prisma.fixHistory.findMany({
+        where: { issueId: { in: issueIds }, revertedAt: null },
+        orderBy: { appliedAt: 'desc' },
+      })
+      const historyByIssue = new Map<string, typeof history>()
+      for (const h of history) {
+        const arr = historyByIssue.get(h.issueId) || []
+        arr.push(h)
+        historyByIssue.set(h.issueId, arr)
+      }
+      for (const item of items as any[]) {
+        item.fixHistory = historyByIssue.get(item.id) || []
+      }
+    }
+  }
 
   return {
     items,
@@ -38,12 +61,13 @@ async function fetchType(
   sort: string | undefined,
   order: 'asc' | 'desc',
   q: string | undefined,
+  status: string,
 ): Promise<[unknown[], number]> {
   switch (type) {
     case 'corrupted': {
       const where = q
-        ? { OR: [{ currentValue: { contains: q, mode: 'insensitive' as const } }, { proposedValue: { contains: q, mode: 'insensitive' as const } }], status: 'DETECTED' as const }
-        : { status: 'DETECTED' as const }
+        ? { OR: [{ currentValue: { contains: q, mode: 'insensitive' as const } }, { proposedValue: { contains: q, mode: 'insensitive' as const } }], status: status as any }
+        : { status: status as any }
       const orderBy = sort === 'confidence' ? { confidence: order } : sort === 'currentValue' ? { currentValue: order } : { createdAt: order }
       const [raw, total] = await Promise.all([
         prisma.issueCorruptedTpe2.findMany({
@@ -66,7 +90,6 @@ async function fetchType(
         }),
         prisma.issueCorruptedTpe2.count({ where }),
       ])
-      // Flatten nested artist to top-level for simpler template access
       const items = raw.map(item => ({
         ...item,
         artist: item.track?.localRelease?.artists?.[0]?.artist ?? null,
@@ -76,8 +99,8 @@ async function fetchType(
 
     case 'unsplit': {
       const where = q
-        ? { artist: { name: { contains: q, mode: 'insensitive' as const } }, status: 'DETECTED' as const }
-        : { status: 'DETECTED' as const }
+        ? { artist: { name: { contains: q, mode: 'insensitive' as const } }, status: status as any }
+        : { status: status as any }
       const orderBy = sort === 'separator' ? { separator: order } : { createdAt: order }
       const [items, total] = await Promise.all([
         prisma.issueUnsplitArtist.findMany({
@@ -94,8 +117,8 @@ async function fetchType(
 
     case 'orphans': {
       const where = q
-        ? { artist: { name: { contains: q, mode: 'insensitive' as const } }, status: 'DETECTED' as const }
-        : { status: 'DETECTED' as const }
+        ? { artist: { name: { contains: q, mode: 'insensitive' as const } }, status: status as any }
+        : { status: status as any }
       const orderBy = sort === 'reason' ? { reason: order } : sort === 'name' ? { artist: { name: order } } : { createdAt: order }
       const [items, total] = await Promise.all([
         prisma.issueOrphanArtist.findMany({
@@ -112,8 +135,8 @@ async function fetchType(
 
     case 'duplicates': {
       const where = q
-        ? { OR: [{ artistA: { name: { contains: q, mode: 'insensitive' as const } } }, { artistB: { name: { contains: q, mode: 'insensitive' as const } } }], status: 'DETECTED' as const }
-        : { status: 'DETECTED' as const }
+        ? { OR: [{ artistA: { name: { contains: q, mode: 'insensitive' as const } } }, { artistB: { name: { contains: q, mode: 'insensitive' as const } } }], status: status as any }
+        : { status: status as any }
       const [items, total] = await Promise.all([
         prisma.issueDuplicateArtist.findMany({
           where,
@@ -132,8 +155,8 @@ async function fetchType(
 
     case 'missing': {
       const where = q
-        ? { track: { OR: [{ title: { contains: q, mode: 'insensitive' as const } }, { album: { contains: q, mode: 'insensitive' as const } }] }, status: 'DETECTED' as const }
-        : { status: 'DETECTED' as const }
+        ? { track: { OR: [{ title: { contains: q, mode: 'insensitive' as const } }, { album: { contains: q, mode: 'insensitive' as const } }] }, status: status as any }
+        : { status: status as any }
       const [items, total] = await Promise.all([
         prisma.issueMissingMetadata.findMany({
           where,
@@ -151,8 +174,8 @@ async function fetchType(
 
     case 'enrichment': {
       const where = q
-        ? { localRelease: { title: { contains: q, mode: 'insensitive' as const } }, status: 'DETECTED' as const }
-        : { status: 'DETECTED' as const }
+        ? { localRelease: { title: { contains: q, mode: 'insensitive' as const } }, status: status as any }
+        : { status: status as any }
       const orderBy = sort === 'title'
         ? { localRelease: { title: order } }
         : sort === 'year' ? { localRelease: { year: order } }
@@ -176,7 +199,6 @@ async function fetchType(
         }),
         prisma.issueEnrichmentGap.count({ where }),
       ])
-      // Flatten primary artist to top-level
       const mapped = items.map(item => ({
         ...item,
         artist: item.localRelease?.artists?.[0]?.artist ?? null,

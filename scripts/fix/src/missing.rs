@@ -1,7 +1,5 @@
 use colored::Colorize;
-use lofty::prelude::*;
-use lofty::probe::Probe;
-use lofty::tag::{ItemKey, ItemValue, TagItem};
+use serde_json::json;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
 use crate::tags;
@@ -31,9 +29,26 @@ pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize), sqlx:
         let Some(proposed) = proposed_opt else { continue };
         let abs_path = tags::resolve_path(music_dir, file_path);
 
-        match apply_proposed(&abs_path, proposed) {
+        let previous_state = tags::read_tags(&abs_path).unwrap_or_else(|_| json!({}));
+
+        match tags::write_tags_from_json(&abs_path, proposed) {
             Ok(()) => {
                 println!("  {} {}", "✓".green(), file_path);
+
+                let fh_id = cuid2::create_id();
+                sqlx::query(
+                    r#"INSERT INTO "FixHistory" (id, "issueType", "issueId", "filePath", "previousState", "appliedState", "appliedAt", "createdAt", "updatedAt")
+                       VALUES ($1, 'missing', $2, $3, $4, $5, $6, $6, $6)"#,
+                )
+                .bind(&fh_id)
+                .bind(issue_id)
+                .bind(file_path)
+                .bind(&previous_state)
+                .bind(proposed)
+                .bind(now)
+                .execute(pool)
+                .await?;
+
                 sqlx::query(
                     r#"UPDATE "IssueMissingMetadata" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
                 )
@@ -58,40 +73,4 @@ pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize), sqlx:
     }
 
     Ok((ok, fail))
-}
-
-fn apply_proposed(abs_path: &std::path::Path, proposed: &serde_json::Value) -> Result<(), String> {
-    let mut tagged = Probe::open(abs_path)
-        .map_err(|e| e.to_string())?
-        .read()
-        .map_err(|e| e.to_string())?;
-
-    let Some(tag) = tagged.primary_tag_mut() else {
-        return Err("No primary tag found".to_string());
-    };
-
-    if let Some(v) = proposed.get("albumArtist").and_then(|v| v.as_str()) {
-        tag.insert(TagItem::new(ItemKey::AlbumArtist, ItemValue::Text(v.to_string())));
-    }
-    if let Some(v) = proposed.get("artist").and_then(|v| v.as_str()) {
-        tag.set_artist(v.to_string());
-    }
-    if let Some(v) = proposed.get("album").and_then(|v| v.as_str()) {
-        tag.set_album(v.to_string());
-    }
-    if let Some(v) = proposed.get("year").and_then(|v| v.as_u64()) {
-        tag.set_year(v as u32);
-    }
-
-    tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
-        .map_err(|e| e.to_string())?;
-
-    if let Some(dir) = abs_path.parent() {
-        let tmp = dir.join(".fix-touch");
-        if std::fs::File::create(&tmp).is_ok() {
-            let _ = std::fs::remove_file(&tmp);
-        }
-    }
-
-    Ok(())
 }

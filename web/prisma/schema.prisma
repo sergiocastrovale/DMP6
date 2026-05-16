@@ -15,6 +15,7 @@ datasource db {
 enum IssueStatus {
   DETECTED
   PENDING
+  PENDING_REVERT
   RESOLVED
   FAILED
 }
@@ -569,6 +570,23 @@ model IssueEnrichmentGap {
   @@index([status])
   @@index([auditRunId])
   @@index([localReleaseId])
+}
+
+model FixHistory {
+  id            String    @id @default(cuid())
+  issueType     String
+  issueId       String
+  filePath      String    @db.Text
+  previousState Json
+  appliedState  Json
+  appliedAt     DateTime  @default(now())
+  revertedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([issueId])
+  @@index([issueType, revertedAt])
+  @@index([filePath])
 }
 
 // ---------------------------------------------------------------------------

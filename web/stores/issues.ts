@@ -14,6 +14,11 @@ export const useIssuesStore = defineStore('issues', () => {
   const order = ref<Record<string, 'asc' | 'desc'>>({})
   const search = ref<Record<string, string>>({})
 
+  const resolvedItems = ref<Record<string, any[]>>({})
+  const resolvedTotal = ref<Record<string, number>>({})
+  const resolvedPage = ref<Record<string, number>>({})
+  const resolvedLoading = ref<Record<string, boolean>>({})
+
   async function fetchSummary() {
     summaryLoading.value = true
     try {
@@ -48,9 +53,39 @@ export const useIssuesStore = defineStore('issues', () => {
     }
   }
 
+  async function fetchResolved(type: IssueType, reset = false) {
+    if (reset) {
+      resolvedPage.value[type] = 1
+      resolvedItems.value[type] = []
+    }
+    const currentPage = resolvedPage.value[type] ?? 1
+    resolvedLoading.value[type] = true
+
+    try {
+      const res = await $fetch<PaginatedResponse<any>>(`/api/issues/${type}`, {
+        query: {
+          page: currentPage,
+          pageSize: 50,
+          status: 'RESOLVED',
+          sort: sort.value[type],
+          order: order.value[type] ?? 'asc',
+        },
+      })
+      resolvedItems.value[type] = res.items
+      resolvedTotal.value[type] = res.total
+    } finally {
+      resolvedLoading.value[type] = false
+    }
+  }
+
   async function setPage(type: IssueType, p: number) {
     page.value[type] = p
     await fetchType(type)
+  }
+
+  async function setResolvedPage(type: IssueType, p: number) {
+    resolvedPage.value[type] = p
+    await fetchResolved(type)
   }
 
   async function setSort(type: IssueType, key: string) {
@@ -78,6 +113,14 @@ export const useIssuesStore = defineStore('issues', () => {
     return res.queued
   }
 
+  async function queueRevert(type: IssueType, ids: string[], mode: 'undo' | 'undo-resolved') {
+    const res = await $fetch<{ queued: number; mode: string }>(`/api/issues/${type}/queue-revert`, {
+      method: 'POST',
+      body: { ids, mode },
+    })
+    return res.queued
+  }
+
   async function patchIssue(type: IssueType, id: string, body: Record<string, unknown>) {
     await $fetch(`/api/issues/${type}/${id}`, { method: 'PATCH', body })
     const list = items.value[type]
@@ -91,6 +134,8 @@ export const useIssuesStore = defineStore('issues', () => {
   return {
     summary, summaryLoading,
     items, total, page, pageLoading, sort, order, search,
-    fetchSummary, fetchType, setPage, setSort, setSearch, queueIds, patchIssue,
+    resolvedItems, resolvedTotal, resolvedPage, resolvedLoading,
+    fetchSummary, fetchType, fetchResolved, setPage, setResolvedPage,
+    setSort, setSearch, queueIds, queueRevert, patchIssue,
   }
 })

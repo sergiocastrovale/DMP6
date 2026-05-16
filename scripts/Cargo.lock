@@ -1389,6 +1389,7 @@ dependencies = [
  "clap",
  "colored",
  "common",
+ "cuid2",
  "lofty",
  "serde_json",
  "sqlx",

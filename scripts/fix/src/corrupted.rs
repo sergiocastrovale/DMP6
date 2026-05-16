@@ -1,4 +1,5 @@
 use colored::Colorize;
+use serde_json::json;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
 use crate::tags;
@@ -25,9 +26,28 @@ pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize), sqlx:
 
     for (issue_id, proposed, file_path, current) in &rows {
         let abs_path = tags::resolve_path(music_dir, file_path);
+
+        let previous_state = tags::read_tags(&abs_path)
+            .unwrap_or_else(|_| json!({ "albumArtist": current }));
+
         match tags::write_album_artist(&abs_path, proposed) {
             Ok(()) => {
                 println!("  {} {} → {}", "✓".green(), file_path, proposed);
+
+                let fh_id = cuid2::create_id();
+                sqlx::query(
+                    r#"INSERT INTO "FixHistory" (id, "issueType", "issueId", "filePath", "previousState", "appliedState", "appliedAt", "createdAt", "updatedAt")
+                       VALUES ($1, 'corrupted', $2, $3, $4, $5, $6, $6, $6)"#,
+                )
+                .bind(&fh_id)
+                .bind(issue_id)
+                .bind(file_path)
+                .bind(&previous_state)
+                .bind(json!({ "albumArtist": proposed }))
+                .bind(now)
+                .execute(pool)
+                .await?;
+
                 sqlx::query(
                     r#"UPDATE "IssueCorruptedTpe2" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
                 )

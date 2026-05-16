@@ -1,4 +1,5 @@
 use common::config::Config;
+use serde_json::json;
 use std::path::{Path, PathBuf};
 
 pub fn resolve_path(music_dir: &str, file_path: &str) -> PathBuf {
@@ -75,6 +76,72 @@ pub fn write_artist_tags(abs_path: &Path, artist: &str, album_artist: &str) -> R
         tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
             .map_err(|e| e.to_string())?;
     }
+
+    bump_dir_mtime(abs_path);
+    Ok(())
+}
+
+pub fn read_tags(abs_path: &Path) -> Result<serde_json::Value, String> {
+    use lofty::prelude::*;
+    use lofty::probe::Probe;
+    use lofty::tag::ItemKey;
+
+    let tagged = Probe::open(abs_path)
+        .map_err(|e| e.to_string())?
+        .read()
+        .map_err(|e| e.to_string())?;
+
+    let tag = tagged.primary_tag().ok_or_else(|| "No primary tag".to_string())?;
+
+    let artist = tag.artist().map(|s| s.to_string());
+    let album_artist = tag.get_string(&ItemKey::AlbumArtist).map(|s| s.to_string());
+    let album = tag.album().map(|s| s.to_string());
+    let year = tag.year();
+
+    let mut obj = serde_json::Map::new();
+    if let Some(v) = artist {
+        obj.insert("artist".into(), json!(v));
+    }
+    if let Some(v) = album_artist {
+        obj.insert("albumArtist".into(), json!(v));
+    }
+    if let Some(v) = album {
+        obj.insert("album".into(), json!(v));
+    }
+    if let Some(v) = year {
+        obj.insert("year".into(), json!(v));
+    }
+
+    Ok(serde_json::Value::Object(obj))
+}
+
+pub fn write_tags_from_json(abs_path: &Path, values: &serde_json::Value) -> Result<(), String> {
+    use lofty::prelude::*;
+    use lofty::probe::Probe;
+    use lofty::tag::{ItemKey, ItemValue, TagItem};
+
+    let mut tagged = Probe::open(abs_path)
+        .map_err(|e| e.to_string())?
+        .read()
+        .map_err(|e| e.to_string())?;
+
+    let tag = tagged.primary_tag_mut().ok_or_else(|| "No primary tag".to_string())?;
+
+    if let Some(v) = values.get("albumArtist").and_then(|v| v.as_str()) {
+        tag.insert(TagItem::new(ItemKey::AlbumArtist, ItemValue::Text(v.to_string())));
+    }
+    if let Some(v) = values.get("artist").and_then(|v| v.as_str()) {
+        tag.set_artist(v.to_string());
+    }
+    if let Some(v) = values.get("album").and_then(|v| v.as_str()) {
+        tag.set_album(v.to_string());
+    }
+    if let Some(v) = values.get("year").and_then(|v| v.as_u64()) {
+        tag.set_year(v as u32);
+    }
+
+    tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
+        .map_err(|e| e.to_string())?;
 
     bump_dir_mtime(abs_path);
     Ok(())
