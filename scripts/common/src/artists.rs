@@ -31,14 +31,63 @@ pub fn is_special_mb_artist(id: &str, name: &str) -> bool {
     SPECIAL_MB_ARTIST_IDS.contains(&id) || is_special_artist_name(name)
 }
 
+const KNOWN_SINGLE_ARTISTS: &[&str] = &[
+    "simon & garfunkel",
+    "kool & the gang",
+    "hall & oates",
+    "sly & the family stone",
+    "earth, wind & fire",
+    "crosby, stills & nash",
+    "crosby, stills, nash & young",
+    "emerson, lake & palmer",
+    "blood, sweat & tears",
+    "belle & sebastian",
+    "nick cave & the bad seeds",
+    "tom tom club",
+    "echo & the bunnymen",
+    "bob marley & the wailers",
+    "prince & the revolution",
+    "katrina & the waves",
+    "josie & the pussycats",
+    "derek & the dominos",
+    "iggy & the stooges",
+    "joan jett & the blackhearts",
+    "mike & the mechanics",
+    "huey lewis & the news",
+    "the mamas & the papas",
+];
+
+fn split_ignoring_numeric_commas(s: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let chars: Vec<char> = s.chars().collect();
+    for i in 0..chars.len() {
+        if chars[i] == ',' {
+            let before_digit = i > 0 && chars[i - 1].is_ascii_digit();
+            let after_digit = i + 1 < chars.len() && chars[i + 1].is_ascii_digit();
+            if before_digit && after_digit {
+                current.push(',');
+            } else {
+                parts.push(current.trim().to_string());
+                current.clear();
+            }
+        } else {
+            current.push(chars[i]);
+        }
+    }
+    parts.push(current.trim().to_string());
+    parts.into_iter().filter(|s| !s.is_empty()).collect()
+}
+
 /// Split an artist tag into (main_artists, featured_artists).
 ///
 /// Splitting rules:
 /// - Splits on "feat."/"ft."/"featuring" (case-insensitive) to separate featured artists
-/// - Then splits each side by "/" "//" "\" "\\" "|" "||" ";"
+/// - Splits on ", " (comma+space), preserving numeric commas (10,000)
+/// - Splits on " & " (ampersand with spaces)
+/// - Splits on "/" "//" "\" "\\" "|" "||" ";"
 /// - Splits on "vs." / "vs" (unambiguous collaboration marker)
-/// - Does NOT split on "," (preserves "10,000 Maniacs", "Crosby, Stills & Nash")
-/// - Does NOT split on "&" (too ambiguous: "Simon & Garfunkel")
+/// - Respects KNOWN_SINGLE_ARTISTS (bands with , or & in their name)
 pub fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
     static FEAT_RE: OnceLock<Regex> = OnceLock::new();
     let feat_re = FEAT_RE.get_or_init(|| {
@@ -100,7 +149,16 @@ pub fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
     let vs_re = VS_RE.get_or_init(|| Regex::new(r"(?i)\s+vs\.?\s+").unwrap());
 
     let split_part = |s: &str| -> Vec<String> {
-        vs_re.split(s).flat_map(|seg| split_by_chars(seg)).collect()
+        if KNOWN_SINGLE_ARTISTS.iter().any(|k| s.trim().eq_ignore_ascii_case(k)) {
+            return vec![s.trim().to_string()];
+        }
+        split_ignoring_numeric_commas(s)
+            .into_iter()
+            .flat_map(|chunk| chunk.split(" & ").map(|p| p.trim().to_string()).collect::<Vec<_>>())
+            .flat_map(|seg| vs_re.split(&seg).map(|p| p.to_string()).collect::<Vec<_>>())
+            .flat_map(|seg| split_by_chars(&seg))
+            .filter(|p| !p.is_empty())
+            .collect()
     };
 
     let mut main_artists = split_part(&main_part);
@@ -123,4 +181,56 @@ pub fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
     }
 
     (main_artists, featured_artists)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splits_comma_and_ampersand() {
+        let (m, f) = split_artists("R.E.M., Opal, Steve Wynn & 10,000 Maniacs");
+        assert_eq!(m, vec!["R.E.M.", "Opal", "Steve Wynn", "10,000 Maniacs"]);
+        assert!(f.is_empty());
+    }
+
+    #[test]
+    fn preserves_numeric_comma() {
+        let (m, _) = split_artists("10,000 Maniacs");
+        assert_eq!(m, vec!["10,000 Maniacs"]);
+    }
+
+    #[test]
+    fn known_single_preserved() {
+        let (m, _) = split_artists("Crosby, Stills & Nash");
+        assert_eq!(m, vec!["Crosby, Stills & Nash"]);
+
+        let (m, _) = split_artists("Simon & Garfunkel");
+        assert_eq!(m, vec!["Simon & Garfunkel"]);
+
+        let (m, _) = split_artists("Earth, Wind & Fire");
+        assert_eq!(m, vec!["Earth, Wind & Fire"]);
+
+        let (m, _) = split_artists("Nick Cave & The Bad Seeds");
+        assert_eq!(m, vec!["Nick Cave & The Bad Seeds"]);
+    }
+
+    #[test]
+    fn splits_ampersand() {
+        let (m, _) = split_artists("Daft Punk & Pharrell Williams");
+        assert_eq!(m, vec!["Daft Punk", "Pharrell Williams"]);
+    }
+
+    #[test]
+    fn feat_still_works() {
+        let (m, f) = split_artists("Daft Punk feat. Pharrell Williams");
+        assert_eq!(m, vec!["Daft Punk"]);
+        assert_eq!(f, vec!["Pharrell Williams"]);
+    }
+
+    #[test]
+    fn no_separator() {
+        let (m, _) = split_artists("Air");
+        assert_eq!(m, vec!["Air"]);
+    }
 }
