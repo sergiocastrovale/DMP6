@@ -111,8 +111,8 @@ RUN printf '#!/bin/sh\nindex "$@" && sync "$@"\n' > /usr/local/bin/refresh && ch
 # Create mount point directories
 RUN mkdir -p /app/data/img/artists /app/data/img/releases /app/data/dump
 
-# Run as non-root user
-RUN useradd -m -o -u 1000 dmp && chown -R dmp:dmp /app /usr/local/lib/node_modules/prisma
+# Run as non-root user (added to root group for music dir write access)
+RUN useradd -m -o -u 1000 -G root dmp && chown -R dmp:dmp /app /usr/local/lib/node_modules/prisma
 USER dmp
 
 ENV NODE_ENV=production

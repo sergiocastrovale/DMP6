@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { Wrench, HelpCircle } from 'lucide-vue-next'
+import { useTerminalStore } from '~/stores/terminal'
 import type { IssueType } from '~/types/issues'
 
 const props = defineProps<{ count: number; type: IssueType; loading: boolean }>()
 const emit = defineEmits<{ fix: [] }>()
+const terminal = useTerminalStore()
 
 const FILE_WRITING_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing']
 
@@ -41,7 +43,8 @@ const fixDescription = computed(() => {
   >
     <div
       v-if="count > 0"
-      class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between border-t border-zinc-700 bg-zinc-900 px-6 py-3"
+      class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between border-t border-zinc-700 bg-zinc-900 px-6 py-3 transition-all duration-300 lg:left-56"
+      :class="{ 'lg:right-[500px]': terminal.isOpen }"
     >
       <span class="text-sm text-zinc-300">{{ count }} row{{ count !== 1 ? 's' : '' }} selected</span>
       <div class="flex items-center gap-2">

@@ -50,6 +50,9 @@ struct IndexArgs {
     #[arg(long, short, help = "Only process these artist folders (semicolon-separated)")]
     only: Option<String>,
 
+    #[arg(long, help = "Only index these exact folder paths relative to MUSIC_DIR (semicolon-separated)")]
+    folders: Option<String>,
+
     #[arg(long, help = "Re-index all tracks, ignoring change detection")]
     overwrite: bool,
 
@@ -76,7 +79,7 @@ struct IndexArgs {
 }
 
 fn has_filter(args: &IndexArgs) -> bool {
-    args.from.is_some() || args.to.is_some() || args.only.is_some()
+    args.from.is_some() || args.to.is_some() || args.only.is_some() || args.folders.is_some()
 }
 
 #[tokio::main]
@@ -203,14 +206,28 @@ async fn main() {
     let to = args.to.as_deref().unwrap_or("");
     let only = args.only.as_deref().unwrap_or("");
 
-    let mut artist_folders: Vec<String> = std::fs::read_dir(&music_dir)
-        .expect("Cannot read MUSIC_DIR")
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .filter(|name| !name.starts_with('.'))
-        .filter(|name| matches_filter(name, from, to, only))
-        .collect();
+    let target_folders: Option<HashMap<String, Vec<String>>> = args.folders.as_ref().map(|f| {
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        for folder in f.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            if let Some(artist) = folder.split('/').next() {
+                map.entry(artist.to_string()).or_default().push(folder.to_string());
+            }
+        }
+        map
+    });
+
+    let mut artist_folders: Vec<String> = if let Some(ref tf) = target_folders {
+        tf.keys().cloned().collect()
+    } else {
+        std::fs::read_dir(&music_dir)
+            .expect("Cannot read MUSIC_DIR")
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|name| !name.starts_with('.'))
+            .filter(|name| matches_filter(name, from, to, only))
+            .collect()
+    };
 
     artist_folders.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
 
@@ -240,7 +257,9 @@ async fn main() {
     if args.skip_covers {
         reporter.kv("Covers", "skipped");
     }
-    if let Some(ref only) = args.only {
+    if let Some(ref folders) = args.folders {
+        reporter.kv("Folders", folders);
+    } else if let Some(ref only) = args.only {
         reporter.kv("Filter", &format!("only '{}'", only));
     } else if args.from.is_some() || args.to.is_some() {
         reporter.kv(
@@ -302,22 +321,33 @@ async fn main() {
         // -----------------------------------------------------------------
         // Walk all audio files in this folder recursively
         // -----------------------------------------------------------------
-        let paths: Vec<PathBuf> = WalkDir::new(&folder_path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                if e.file_type().is_dir() {
-                    return false;
-                }
-                e.path()
-                    .extension()
-                    .map_or(false, |ext| {
-                        let el = ext.to_string_lossy().to_lowercase();
-                        AUDIO_EXTENSIONS.contains(&el.as_str())
+        let walk_roots: Vec<PathBuf> = if let Some(ref tf) = target_folders {
+            tf.get(folder_name)
+                .map(|subs| subs.iter().map(|s| PathBuf::from(&music_dir).join(s)).collect())
+                .unwrap_or_default()
+        } else {
+            vec![folder_path.clone()]
+        };
+
+        let paths: Vec<PathBuf> = walk_roots.iter()
+            .flat_map(|root| {
+                WalkDir::new(root)
+                    .follow_links(true)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| {
+                        if e.file_type().is_dir() {
+                            return false;
+                        }
+                        e.path()
+                            .extension()
+                            .map_or(false, |ext| {
+                                let el = ext.to_string_lossy().to_lowercase();
+                                AUDIO_EXTENSIONS.contains(&el.as_str())
+                            })
                     })
+                    .map(|e| e.path().to_path_buf())
             })
-            .map(|e| e.path().to_path_buf())
             .collect();
 
         let file_count = paths.len();
@@ -333,7 +363,7 @@ async fn main() {
         // Load existing tracks for change detection
         // -----------------------------------------------------------------
         let folder_prefix = format!("{}/", folder_name);
-        let existing_tracks: HashMap<String, (i64, NaiveDateTime, String)> = if !args.overwrite {
+        let existing_tracks: HashMap<String, (i64, NaiveDateTime, String)> = if !args.overwrite && target_folders.is_none() {
             let rows: Vec<(String, i64, Option<NaiveDateTime>, Option<String>)> = sqlx::query_as(
                 r#"SELECT "filePath", "fileSize", mtime, "contentHash"
                    FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
@@ -910,7 +940,16 @@ async fn main() {
         // -----------------------------------------------------------------
         // Delete tracks that no longer exist on disk
         // -----------------------------------------------------------------
-        let deleted_tracks = delete_removed_tracks(&pool, &folder_prefix, &music_dir).await;
+        let deleted_tracks = if let Some(ref tf) = target_folders {
+            let mut total = 0u64;
+            for sub in tf.get(folder_name.as_str()).unwrap_or(&vec![]) {
+                let prefix = format!("{}/", sub);
+                total += delete_removed_tracks(&pool, &prefix, &music_dir).await;
+            }
+            total
+        } else {
+            delete_removed_tracks(&pool, &folder_prefix, &music_dir).await
+        };
 
         // -----------------------------------------------------------------
         // Update totals + lastIndexedAt

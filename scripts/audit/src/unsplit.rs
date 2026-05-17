@@ -1,4 +1,5 @@
 use cuid2::create_id;
+use regex::Regex;
 use sqlx::PgPool;
 use std::sync::LazyLock;
 
@@ -15,16 +16,39 @@ const KNOWN_SINGLE: &[&str] = &[
     "blood, sweat & tears",
 ];
 
-static RE_FEAT: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?i) feat\. ").unwrap());
-static RE_VS_DOT: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?i) vs\. ").unwrap());
-static RE_VS: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?i) vs ").unwrap());
+static RE_FEAT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i) feat\. ").unwrap());
+static RE_VS_DOT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i) vs\. ").unwrap());
+static RE_VS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i) vs ").unwrap());
 
 fn is_known_single(name: &str) -> bool {
     let lower = name.to_lowercase();
     KNOWN_SINGLE.iter().any(|s| lower == *s)
+}
+
+fn split_ignoring_numeric_commas(name: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let chars: Vec<char> = name.chars().collect();
+
+    for i in 0..chars.len() {
+        if chars[i] == ',' {
+            let before_is_digit = i > 0 && chars[i - 1].is_ascii_digit();
+            let after_is_digit = i + 1 < chars.len() && chars[i + 1].is_ascii_digit();
+            if before_is_digit && after_is_digit {
+                current.push(chars[i]);
+            } else {
+                parts.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push(chars[i]);
+        }
+    }
+    parts.push(current);
+    parts
 }
 
 fn detect_separator(name: &str) -> Option<(&'static str, Vec<String>)> {
@@ -63,12 +87,13 @@ fn detect_separator(name: &str) -> Option<(&'static str, Vec<String>)> {
     }
 
     if name.contains(" & ") && name.contains(',') {
-        let parts: Vec<String> = name
-            .split(|c| c == ',' || c == '&')
+        let parts: Vec<String> = split_ignoring_numeric_commas(name)
+            .into_iter()
+            .flat_map(|chunk| chunk.split(" & ").map(|s| s.to_string()).collect::<Vec<_>>())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        if parts.len() > 1 {
+        if parts.len() > 2 {
             return Some((",&", parts));
         }
     }

@@ -1,10 +1,11 @@
+use std::collections::HashSet;
 use colored::Colorize;
 use common::config::Config;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
-use crate::tags;
+use crate::{folder_from_path, tags};
 
-pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usize, usize), sqlx::Error> {
+pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
     let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
         r#"SELECT i.id, i."artistAId", a.name, i."artistBId", b.name
            FROM "IssueDuplicateArtist" i
@@ -17,17 +18,18 @@ pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usi
 
     if rows.is_empty() {
         println!("  No PENDING duplicate artist issues.");
-        return Ok((0, 0));
+        return Ok((0, 0, HashSet::new()));
     }
 
     println!("  Processing {} issues...", rows.len());
     let mut ok = 0usize;
     let mut fail = 0usize;
+    let mut artists: HashSet<String> = HashSet::new();
     let now = Utc::now().naive_utc();
 
     for (issue_id, artist_a, name_a, artist_b, name_b) in &rows {
         match merge(pool, config, music_dir, artist_a, name_a, artist_b, name_b).await {
-            Ok(()) => {
+            Ok(affected) => {
                 println!("  {} Merged {} → {}", "✓".green(), name_b, name_a);
                 sqlx::query(
                     r#"UPDATE "IssueDuplicateArtist" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
@@ -36,6 +38,7 @@ pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usi
                 .bind(issue_id)
                 .execute(pool)
                 .await?;
+                artists.extend(affected);
                 ok += 1;
             }
             Err(e) => {
@@ -52,10 +55,10 @@ pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usi
         }
     }
 
-    Ok((ok, fail))
+    Ok((ok, fail, artists))
 }
 
-async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, name_a: &str, artist_b: &str, name_b: &str) -> Result<(), sqlx::Error> {
+async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, name_a: &str, artist_b: &str, name_b: &str) -> Result<HashSet<String>, sqlx::Error> {
     let file_paths: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
         r#"SELECT t."filePath", t.artist, t."albumArtist"
            FROM "LocalReleaseTrack" t
@@ -66,12 +69,15 @@ async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, 
     .fetch_all(pool)
     .await?;
 
+    let mut affected: HashSet<String> = HashSet::new();
     for (fp, artist_tag, album_artist_tag) in &file_paths {
         let abs_path = tags::resolve_path(music_dir, fp);
         let new_artist = artist_tag.as_deref().unwrap_or(name_b).replace(name_b, name_a);
         let new_album_artist = album_artist_tag.as_deref().unwrap_or(name_b).replace(name_b, name_a);
         if let Err(e) = tags::write_artist_tags(&abs_path, &new_artist, &new_album_artist) {
             println!("  {} {}: {}", "⚠".yellow(), fp, e);
+        } else if let Some(a) = folder_from_path(fp) {
+            affected.insert(a);
         }
     }
 
@@ -148,5 +154,5 @@ async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, 
         .execute(pool)
         .await?;
 
-    Ok(())
+    Ok(affected)
 }

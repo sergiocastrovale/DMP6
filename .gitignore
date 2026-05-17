@@ -31,8 +31,8 @@ Thumbs.db
 *.dylib
 
 # DB assets
-public/img/releases
-public/img/artists
+**/public/img/releases
+**/public/img/artists
 
 # Reports
 reports/

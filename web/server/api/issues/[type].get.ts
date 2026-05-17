@@ -102,16 +102,27 @@ async function fetchType(
         ? { artist: { name: { contains: q, mode: 'insensitive' as const } }, status: status as any }
         : { status: status as any }
       const orderBy = sort === 'separator' ? { separator: order } : { createdAt: order }
-      const [items, total] = await Promise.all([
+      const [raw, total] = await Promise.all([
         prisma.issueUnsplitArtist.findMany({
           where,
           skip,
           take,
           orderBy,
-          include: { artist: { select: { id: true, name: true, slug: true, totalTracks: true } } },
+          include: {
+            artist: {
+              select: {
+                id: true, name: true, slug: true, totalTracks: true,
+                trackArtists: { take: 1, select: { track: { select: { filePath: true } } } },
+              },
+            },
+          },
         }),
         prisma.issueUnsplitArtist.count({ where }),
       ])
+      const items = raw.map(item => ({
+        ...item,
+        folderPath: item.artist?.trackArtists?.[0]?.track?.filePath ?? null,
+      }))
       return [items, total]
     }
 
@@ -193,6 +204,7 @@ async function fetchType(
                 title: true,
                 year: true,
                 artists: { include: { artist: { select: { name: true, slug: true } } } },
+                tracks: { take: 1, select: { filePath: true } },
               },
             },
           },
@@ -202,6 +214,7 @@ async function fetchType(
       const mapped = items.map(item => ({
         ...item,
         artist: item.localRelease?.artists?.[0]?.artist ?? null,
+        folderPath: item.localRelease?.tracks?.[0]?.filePath ?? null,
       }))
       return [mapped, total]
     }

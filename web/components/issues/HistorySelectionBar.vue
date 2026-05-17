@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { Undo2 } from 'lucide-vue-next'
+import { Trash2, Undo2 } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
 
 defineProps<{ count: number; loading: boolean }>()
-const emit = defineEmits<{ revert: [mode: 'undo' | 'undo-resolved'] }>()
+const emit = defineEmits<{ clear: []; undo: [] }>()
 const terminal = useTerminalStore()
 </script>
 
@@ -25,19 +25,19 @@ const terminal = useTerminalStore()
       <div class="flex items-center gap-3">
         <button
           :disabled="loading"
-          @click="emit('revert', 'undo')"
-          class="flex items-center gap-2 rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+          class="flex items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+          @click="emit('clear')"
         >
-          <Undo2 :size="15" />
-          Undo
+          <Trash2 :size="15" />
+          Clear selected
         </button>
         <button
           :disabled="loading"
-          @click="emit('revert', 'undo-resolved')"
-          class="flex items-center gap-2 rounded border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-700 disabled:opacity-50"
+          class="flex items-center gap-2 rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+          @click="emit('undo')"
         >
           <Undo2 :size="15" />
-          Undo (keep resolved)
+          Undo selected
         </button>
       </div>
     </div>

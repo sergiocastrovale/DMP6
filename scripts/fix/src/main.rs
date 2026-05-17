@@ -6,6 +6,9 @@ mod revert;
 mod tags;
 mod unsplit;
 
+use std::collections::HashSet;
+use std::process::Command;
+
 use clap::Parser;
 use colored::Colorize;
 use common::{config::{apply_db_overrides, load_config}, db::create_pool};
@@ -49,26 +52,40 @@ async fn main() {
     }
 
     let music_dir = config.music_dir.as_deref().unwrap_or("").to_string();
+    let mut affected_folders: HashSet<String> = HashSet::new();
+    let mut had_file_writes = false;
 
     if args.revert {
         if args.corrupted {
             println!("{}", "↩ Reverting corrupted TPE2 fixes...".cyan().bold());
             match revert::revert(&pool, &music_dir, "corrupted", &args.mode).await {
-                Ok((ok, fail)) => println!("  {} reverted, {} failed", ok.to_string().green(), fail.to_string().red()),
+                Ok((ok, fail, artists)) => {
+                    println!("  {} reverted, {} failed", ok.to_string().green(), fail.to_string().red());
+                    affected_folders.extend(artists);
+                    if ok > 0 { had_file_writes = true; }
+                }
                 Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
             }
         }
         if args.unsplit {
             println!("{}", "↩ Reverting unsplit artist fixes...".cyan().bold());
             match revert::revert(&pool, &music_dir, "unsplit", &args.mode).await {
-                Ok((ok, fail)) => println!("  {} reverted, {} failed", ok.to_string().green(), fail.to_string().red()),
+                Ok((ok, fail, artists)) => {
+                    println!("  {} reverted, {} failed", ok.to_string().green(), fail.to_string().red());
+                    affected_folders.extend(artists);
+                    if ok > 0 { had_file_writes = true; }
+                }
                 Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
             }
         }
         if args.missing {
             println!("{}", "↩ Reverting missing metadata fixes...".cyan().bold());
             match revert::revert(&pool, &music_dir, "missing", &args.mode).await {
-                Ok((ok, fail)) => println!("  {} reverted, {} failed", ok.to_string().green(), fail.to_string().red()),
+                Ok((ok, fail, artists)) => {
+                    println!("  {} reverted, {} failed", ok.to_string().green(), fail.to_string().red());
+                    affected_folders.extend(artists);
+                    if ok > 0 { had_file_writes = true; }
+                }
                 Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
             }
         }
@@ -79,7 +96,11 @@ async fn main() {
         if args.corrupted {
             println!("{}", "→ Fixing corrupted TPE2 issues...".cyan().bold());
             match corrupted::fix(&pool, &music_dir).await {
-                Ok((ok, fail)) => println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red()),
+                Ok((ok, fail, artists)) => {
+                    println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red());
+                    affected_folders.extend(artists);
+                    if ok > 0 { had_file_writes = true; }
+                }
                 Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
             }
         }
@@ -87,7 +108,11 @@ async fn main() {
         if args.unsplit {
             println!("{}", "→ Fixing unsplit artist issues...".cyan().bold());
             match unsplit::fix(&pool, &music_dir).await {
-                Ok((ok, fail)) => println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red()),
+                Ok((ok, fail, artists)) => {
+                    println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red());
+                    affected_folders.extend(artists);
+                    if ok > 0 { had_file_writes = true; }
+                }
                 Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
             }
         }
@@ -103,7 +128,11 @@ async fn main() {
         if args.duplicates {
             println!("{}", "→ Fixing duplicate artist issues...".cyan().bold());
             match duplicates::fix(&pool, &config, &music_dir).await {
-                Ok((ok, fail)) => println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red()),
+                Ok((ok, fail, artists)) => {
+                    println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red());
+                    affected_folders.extend(artists);
+                    if ok > 0 { had_file_writes = true; }
+                }
                 Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
             }
         }
@@ -111,9 +140,34 @@ async fn main() {
         if args.missing {
             println!("{}", "→ Fixing missing metadata issues...".cyan().bold());
             match missing::fix(&pool, &music_dir).await {
-                Ok((ok, fail)) => println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red()),
+                Ok((ok, fail, artists)) => {
+                    println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red());
+                    affected_folders.extend(artists);
+                    if ok > 0 { had_file_writes = true; }
+                }
                 Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
             }
+        }
+    }
+
+    if had_file_writes && !affected_folders.is_empty() {
+        let folders = affected_folders.into_iter().collect::<Vec<_>>().join(";");
+        println!("\n{}", "→ Re-indexing affected folders...".cyan().bold());
+        println!("  Folders: {}", folders);
+
+        let exe = std::env::current_exe().ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .map(|d| d.join("index"))
+            .unwrap_or_else(|| std::path::PathBuf::from("./index"));
+
+        let status = Command::new(&exe)
+            .args(["--folders", &folders, "--skip-covers"])
+            .status();
+
+        match status {
+            Ok(s) if s.success() => println!("  {}", "Re-index complete.".green()),
+            Ok(s) => eprintln!("  {} index exited with code {}", "⚠".yellow(), s.code().unwrap_or(-1)),
+            Err(e) => eprintln!("  {} Failed to run index: {}", "✗".red(), e),
         }
     }
 
@@ -122,4 +176,8 @@ async fn main() {
     }
 
     println!("{}", "Done.".green().bold());
+}
+
+pub fn folder_from_path(file_path: &str) -> Option<String> {
+    file_path.rsplit_once('/').map(|(dir, _)| dir.to_string()).filter(|s| !s.is_empty())
 }

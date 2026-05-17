@@ -46,7 +46,7 @@ services:
     ports:
       - "${DMP_PORT:-3000}:3000"
     volumes:
-      - ${MUSIC_DIR}:/music:ro
+      - ${MUSIC_DIR}:/music
       - ${DMP_DATA}/img:/app/data/img
       - ${DMP_DATA}/dump:/app/data/dump
       - ${DOWNLOADS_DIR:-/mnt/SSD/Downloads}:/downloads

@@ -13,12 +13,8 @@ const selected = ref<Set<string>>(new Set())
 const selectedResolved = ref<Set<string>>(new Set())
 const searchInput = ref('')
 const searchDebounce = ref<ReturnType<typeof setTimeout>>()
-const showReindexButton = ref(false)
-const affectedArtists = ref<string[]>([])
-const hasFixed = ref(false)
-const hasReverted = ref(false)
+const awaitingTerminal = ref(false)
 
-const FILE_WRITING_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing', 'duplicates']
 const REVERTABLE_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing']
 
 const activeSubtab = ref<'detected' | 'fixed'>('detected')
@@ -41,30 +37,9 @@ async function fixSelected() {
   if (!ids.length) {
     return
   }
-
-  const items = issuesStore.items[props.type] ?? []
-  const selectedItems = items.filter((i: any) => selected.value.has(i.id))
-  const artistNames = new Set<string>()
-  for (const item of selectedItems) {
-    if (props.type === 'corrupted' || props.type === 'unsplit') {
-      const name = item.artist?.name
-      if (name) {
-        artistNames.add(name)
-      }
-    } else if (props.type === 'duplicates') {
-      if (item.artistA?.name) {
-        artistNames.add(item.artistA.name)
-      }
-      if (item.artistB?.name) {
-        artistNames.add(item.artistB.name)
-      }
-    }
-  }
-  affectedArtists.value = [...artistNames]
-
   selected.value = new Set()
   await issuesStore.queueIds(props.type, ids)
-  hasFixed.value = true
+  awaitingTerminal.value = true
   terminal.run('./fix', [`--${props.type}`], `fix`)
   terminal.open()
 }
@@ -74,21 +49,9 @@ async function revertSelected(mode: 'undo' | 'undo-resolved') {
   if (!ids.length) {
     return
   }
-
-  const items = issuesStore.resolvedItems[props.type] ?? []
-  const selectedItems = items.filter((i: any) => selectedResolved.value.has(i.id))
-  const artistNames = new Set<string>()
-  for (const item of selectedItems) {
-    const name = item.artist?.name
-    if (name) {
-      artistNames.add(name)
-    }
-  }
-  affectedArtists.value = [...artistNames]
-
   selectedResolved.value = new Set()
   await issuesStore.queueRevert(props.type, ids, mode)
-  hasReverted.value = true
+  awaitingTerminal.value = true
   terminal.run('./fix', ['--revert', `--${props.type}`, `--mode=${mode}`], `fix`)
   terminal.open()
 }
@@ -96,23 +59,11 @@ async function revertSelected(mode: 'undo' | 'undo-resolved') {
 watch(
   () => terminal.exitCode,
   (code) => {
-    if (code === 0 && !terminal.isRunning) {
-      if (hasFixed.value) {
-        hasFixed.value = false
-        issuesStore.fetchType(props.type, true)
-        issuesStore.fetchResolved(props.type, true)
-        issuesStore.fetchSummary()
-        if (FILE_WRITING_TYPES.includes(props.type)) {
-          showReindexButton.value = true
-        }
-      }
-      if (hasReverted.value) {
-        hasReverted.value = false
-        issuesStore.fetchType(props.type, true)
-        issuesStore.fetchResolved(props.type, true)
-        issuesStore.fetchSummary()
-        showReindexButton.value = true
-      }
+    if (code === 0 && !terminal.isRunning && awaitingTerminal.value) {
+      awaitingTerminal.value = false
+      issuesStore.fetchType(props.type, true)
+      issuesStore.fetchResolved(props.type, true)
+      issuesStore.fetchSummary()
     }
   },
   { immediate: true },
@@ -127,13 +78,14 @@ const columns = computed<IssueColumn[]>(() => {
       { key: 'currentValue', label: 'Current Value', sortable: true },
       { key: 'proposedValue', label: 'Proposed Fix', sortable: false, editable: true, editKey: 'proposedValue' },
       { key: 'confidence', label: 'Confidence', sortable: true },
-      { key: 'track.filePath', label: 'File', sortable: false },
+      { key: 'folder', label: 'Folder', sortable: false },
     ]
     case 'unsplit': return [
       { key: 'artist.name', label: 'Artist', sortable: false },
       { key: 'artist.totalTracks', label: 'Tracks', sortable: false, width: 'w-16' },
       { key: 'separator', label: 'Separator', sortable: true, width: 'w-20' },
       { key: 'proposedParts', label: 'Proposed Split', sortable: false, editable: false },
+      { key: 'folder', label: 'Folder', sortable: false },
     ]
     case 'orphans': return [
       { key: 'artist.name', label: 'Artist', sortable: false },
@@ -153,12 +105,14 @@ const columns = computed<IssueColumn[]>(() => {
       { key: 'track.album', label: 'Album', sortable: false },
       { key: 'missingFields', label: 'Missing', sortable: false },
       { key: 'proposedValues', label: 'Proposed', sortable: false },
+      { key: 'folder', label: 'Folder', sortable: false },
     ]
     case 'enrichment': return [
       { key: 'artist.name', label: 'Artist', sortable: false },
       { key: 'localRelease.title', label: 'Release', sortable: true },
       { key: 'localRelease.year', label: 'Year', sortable: true, width: 'w-16' },
       { key: 'missingFields', label: 'Missing', sortable: false },
+      { key: 'folder', label: 'Folder', sortable: false },
       { key: '_resync', label: '', sortable: false, width: 'w-24' },
     ]
   }
@@ -170,20 +124,21 @@ const resolvedColumns = computed<IssueColumn[]>(() => {
       { key: 'artist.name', label: 'Artist', sortable: false },
       { key: 'previousValue', label: 'Previous', sortable: false },
       { key: 'appliedValue', label: 'Applied', sortable: false },
-      { key: 'track.filePath', label: 'File', sortable: false },
+      { key: 'folder', label: 'Folder', sortable: false },
       { key: 'fixedAt', label: 'Fixed At', sortable: false, width: 'w-28' },
     ]
     case 'unsplit': return [
       { key: 'artist.name', label: 'Artist', sortable: false },
       { key: 'previousValue', label: 'Original Name', sortable: false },
       { key: 'appliedValue', label: 'Split To', sortable: false },
+      { key: 'folder', label: 'Folder', sortable: false },
       { key: 'fixedAt', label: 'Fixed At', sortable: false, width: 'w-28' },
     ]
     case 'missing': return [
       { key: 'track.title', label: 'Title', sortable: false },
       { key: 'previousValue', label: 'Previous', sortable: false },
       { key: 'appliedValue', label: 'Applied', sortable: false },
-      { key: 'track.filePath', label: 'File', sortable: false },
+      { key: 'folder', label: 'Folder', sortable: false },
       { key: 'fixedAt', label: 'Fixed At', sortable: false, width: 'w-28' },
     ]
     default: return []
@@ -206,7 +161,7 @@ const typeDescriptions: Record<IssueType, { detection: string; fix: string }> = 
   },
   unsplit: {
     detection: 'Artists whose names contain separators like "&", "feat.", "vs." — indicating multiple artists stored as a single compound name.',
-    fix: 'Splits the compound name into individual artist tags in the original audio files, then requires a re-index to create separate artist entries.',
+    fix: 'Sets the album artist tag to the primary (first) artist and keeps the full compound name in the artist tag. After re-index, the system creates separate artist entries linked to shared releases. Example: "Daft Punk & Pharrell Williams" → albumArtist="Daft Punk", artist="Daft Punk & Pharrell Williams".',
   },
   orphans: {
     detection: 'Artists with no linked releases or tracks — either phantom entries with corrupted names (numeric/bitrate garbage) or fully disconnected records.',
@@ -230,6 +185,15 @@ async function onEdit(id: string, key: string, value: unknown) {
   await issuesStore.patchIssue(props.type, id, { [key]: value })
 }
 
+function getFolderPath(item: any): string {
+  const fp = item.track?.filePath || item.folderPath || ''
+  if (!fp) {
+    return '—'
+  }
+  const parts = fp.split('/')
+  return parts.slice(0, -1).join('/')
+}
+
 function formatDate(date: string): string {
   return new Date(date).toLocaleDateString()
 }
@@ -238,22 +202,27 @@ function formatDateTime(date: string): string {
   return new Date(date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function getHistoryPreviousValue(item: any): string {
+function getHistoryPreviousEntries(item: any): { key: string; value: string }[] {
   const history = item.fixHistory?.[0]
   if (!history) {
-    return '—'
+    return []
   }
-  const state = history.previousState as Record<string, unknown>
-  return Object.values(state).filter(Boolean).join(', ') || '(empty)'
+  const prev = history.previousState as Record<string, unknown>
+  const appliedKeys = Object.keys((history.appliedState as Record<string, unknown>) ?? {})
+  return Object.entries(prev)
+    .filter(([k, v]) => v != null && v !== '' && appliedKeys.includes(k))
+    .map(([k, v]) => ({ key: k, value: String(v) }))
 }
 
-function getHistoryAppliedValue(item: any): string {
+function getHistoryAppliedEntries(item: any): { key: string; value: string }[] {
   const history = item.fixHistory?.[0]
   if (!history) {
-    return '—'
+    return []
   }
   const state = history.appliedState as Record<string, unknown>
-  return Object.values(state).filter(Boolean).join(', ') || '(empty)'
+  return Object.entries(state)
+    .filter(([, v]) => v != null && v !== '')
+    .map(([k, v]) => ({ key: k, value: String(v) }))
 }
 
 function getHistoryDate(item: any): string {
@@ -268,7 +237,6 @@ function getHistoryDate(item: any): string {
       <div class="flex items-center justify-between gap-4">
         <h1 class="text-lg font-semibold text-white">{{ typeLabels[type] }}</h1>
         <div class="flex items-center gap-2">
-        <UiRefreshButton v-if="showReindexButton" :only="affectedArtists.length ? affectedArtists : undefined" />
         <div class="relative">
           <Search :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
           <input
@@ -341,9 +309,9 @@ function getHistoryDate(item: any): string {
           <IssuesConfidenceBadge :confidence="item.confidence" />
         </template>
 
-        <template #cell-track_filePath="{ item }">
-          <span class="truncate text-xs text-zinc-500" :title="item.track.filePath">
-            {{ item.track.filePath?.split('/').slice(-2).join('/') }}
+        <template #cell-folder="{ item }">
+          <span class="truncate text-xs text-zinc-500" :title="getFolderPath(item)">
+            {{ getFolderPath(item) }}
           </span>
         </template>
 
@@ -454,16 +422,26 @@ function getHistoryDate(item: any): string {
         </template>
 
         <template #cell-previousValue="{ item }">
-          <span class="text-xs text-amber-400">{{ getHistoryPreviousValue(item) }}</span>
+          <div class="flex flex-col gap-0.5">
+            <span v-for="e in getHistoryPreviousEntries(item)" :key="e.key" class="text-xs text-amber-400">
+              <span class="text-zinc-500">{{ e.key }}:</span> {{ e.value }}
+            </span>
+            <span v-if="!getHistoryPreviousEntries(item).length" class="text-xs text-zinc-600">—</span>
+          </div>
         </template>
 
         <template #cell-appliedValue="{ item }">
-          <span class="text-xs text-green-400">{{ getHistoryAppliedValue(item) }}</span>
+          <div class="flex flex-col gap-0.5">
+            <span v-for="e in getHistoryAppliedEntries(item)" :key="e.key" class="text-xs text-green-400">
+              <span class="text-zinc-500">{{ e.key }}:</span> {{ e.value }}
+            </span>
+            <span v-if="!getHistoryAppliedEntries(item).length" class="text-xs text-zinc-600">—</span>
+          </div>
         </template>
 
-        <template #cell-track_filePath="{ item }">
-          <span class="truncate text-xs text-zinc-500" :title="item.track?.filePath">
-            {{ item.track?.filePath?.split('/').slice(-2).join('/') }}
+        <template #cell-folder="{ item }">
+          <span class="truncate text-xs text-zinc-500" :title="getFolderPath(item)">
+            {{ getFolderPath(item) }}
           </span>
         </template>
 

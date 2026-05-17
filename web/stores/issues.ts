@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { IssueSummary, IssueType } from '~/types/issues'
+import type { FixHistoryRow, HistoryIssueType, IssueSummary, IssueType } from '~/types/issues'
 import type { PaginatedResponse } from '~/types/api'
 
 export const useIssuesStore = defineStore('issues', () => {
@@ -131,11 +131,60 @@ export const useIssuesStore = defineStore('issues', () => {
     }
   }
 
+  const historyItems = ref<Record<string, FixHistoryRow[]>>({})
+  const historyTotal = ref<Record<string, number>>({})
+  const historyPage = ref<Record<string, number>>({})
+  const historyLoading = ref<Record<string, boolean>>({})
+  const historyCounts = ref<{ corrupted: number; unsplit: number; missing: number }>({ corrupted: 0, unsplit: 0, missing: 0 })
+
+  async function fetchHistoryCounts() {
+    const res = await $fetch<{ counts: typeof historyCounts.value; total: number }>('/api/issues/history', { query: { mode: 'counts' } })
+    historyCounts.value = res.counts
+  }
+
+  async function fetchHistory(type: HistoryIssueType, reset = false) {
+    if (reset) {
+      historyPage.value[type] = 1
+      historyItems.value[type] = []
+    }
+    const currentPage = historyPage.value[type] ?? 1
+    historyLoading.value[type] = true
+
+    try {
+      const res = await $fetch<PaginatedResponse<FixHistoryRow>>('/api/issues/history', {
+        query: { type, page: currentPage, pageSize: 50 },
+      })
+      historyItems.value[type] = res.items
+      historyTotal.value[type] = res.total
+    } finally {
+      historyLoading.value[type] = false
+    }
+  }
+
+  async function setHistoryPage(type: HistoryIssueType, p: number) {
+    historyPage.value[type] = p
+    await fetchHistory(type)
+  }
+
+  async function clearHistoryItems(ids: string[]) {
+    await $fetch('/api/issues/history', { method: 'DELETE', body: { ids } })
+  }
+
+  async function undoHistoryItems(ids: string[]) {
+    const res = await $fetch<{ queued: Record<string, number> }>('/api/issues/history-undo', {
+      method: 'POST',
+      body: { ids },
+    })
+    return res.queued
+  }
+
   return {
     summary, summaryLoading,
     items, total, page, pageLoading, sort, order, search,
     resolvedItems, resolvedTotal, resolvedPage, resolvedLoading,
+    historyItems, historyTotal, historyPage, historyLoading, historyCounts,
     fetchSummary, fetchType, fetchResolved, setPage, setResolvedPage,
     setSort, setSearch, queueIds, queueRevert, patchIssue,
+    fetchHistoryCounts, fetchHistory, setHistoryPage, clearHistoryItems, undoHistoryItems,
   }
 })

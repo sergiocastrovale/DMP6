@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Activity, Loader2 } from 'lucide-vue-next'
+import { Activity, ChevronRight, Loader2 } from 'lucide-vue-next'
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { IssueType } from '~/types/issues'
@@ -10,7 +10,12 @@ useHead({ title: 'Issues' })
 const issuesStore = useIssuesStore()
 const terminal = useTerminalStore()
 
-onMounted(() => issuesStore.fetchSummary())
+const historyCount = ref(0)
+
+onMounted(() => {
+  issuesStore.fetchSummary()
+  fetchHistoryCount()
+})
 
 watch(() => terminal.exitCode, (code) => {
   if (code === 0) {
@@ -21,6 +26,11 @@ watch(() => terminal.exitCode, (code) => {
 function runAudit() {
   terminal.run('./audit', [], 'audit')
   terminal.open()
+}
+
+async function fetchHistoryCount() {
+  const res = await $fetch<{ count: number }>('/api/issues/history')
+  historyCount.value = res.count
 }
 
 const typeCards: { key: IssueType; label: string; description: string }[] = [
@@ -62,6 +72,17 @@ function formatRelative(date: string): string {
         </button>
       </PageTitle>
     </template>
+
+    <NuxtLink
+      v-if="historyCount > 0"
+      to="/issues/history"
+      class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 transition-colors hover:border-zinc-700"
+    >
+      <span class="text-sm text-zinc-400">
+        {{ historyCount }} undo record{{ historyCount !== 1 ? 's' : '' }} stored
+      </span>
+      <ChevronRight :size="16" class="text-zinc-600" />
+    </NuxtLink>
 
     <div v-if="!issuesStore.summary && !issuesStore.summaryLoading" class="py-20 text-center text-zinc-500">
       Run an audit to detect metadata issues

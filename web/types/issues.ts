@@ -1,5 +1,6 @@
 export type IssueStatus = 'DETECTED' | 'PENDING' | 'PENDING_REVERT' | 'RESOLVED' | 'FAILED'
 export type IssueType = 'corrupted' | 'unsplit' | 'orphans' | 'duplicates' | 'missing' | 'enrichment'
+export type HistoryIssueType = 'corrupted' | 'unsplit' | 'missing'
 export type Confidence = 'high' | 'medium' | 'low'
 
 export interface AuditRun {
