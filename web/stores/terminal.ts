@@ -118,7 +118,25 @@ export const useTerminalStore = defineStore('terminal', () => {
       catch { /* best-effort — abort SSE regardless */ }
     }
     abortController?.abort()
+    await unlock()
   }
 
-  return { isOpen, isRunning, lines, exitCode, currentSession, hasBackground, run, reconnect, runDownload, open, close, stop }
+  const hasLockError = computed(() =>
+    !isRunning.value
+    && exitCode.value !== null
+    && exitCode.value !== 0
+    && lines.value.some(l => typeof l === 'string' && l.includes('lock held')),
+  )
+
+  async function unlock() {
+    try {
+      await fetch('/api/terminal/unlock', { method: 'POST' })
+      lines.value.push('Lock cleared.')
+    }
+    catch {
+      lines.value.push('Failed to clear lock.')
+    }
+  }
+
+  return { isOpen, isRunning, lines, exitCode, currentSession, hasBackground, hasLockError, run, reconnect, runDownload, open, close, stop, unlock }
 })

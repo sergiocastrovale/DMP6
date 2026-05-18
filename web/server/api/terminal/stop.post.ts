@@ -33,5 +33,16 @@ export default defineEventHandler(async (event) => {
   }
   catch {}
 
+  // Force-clear the DB lock since the process may not clean up in time
+  await prisma.statistics.update({
+    where: { id: 'main' },
+    data: {
+      scanLockedBy: null,
+      scanLockedAt: null,
+      scanPid: null,
+      updatedAt: new Date(),
+    },
+  })
+
   return { ok: true }
 })

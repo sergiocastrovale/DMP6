@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { X, Square, Copy } from 'lucide-vue-next'
+import { X, Square, Copy, LockOpen } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
 
 function copySession(session: string) {
@@ -86,6 +86,14 @@ watch(() => terminal.lines.length, () => {
       >
         <div v-for="(line, i) in terminal.lines" :key="i" class="whitespace-pre-wrap break-all">{{ line }}</div>
         <span v-if="terminal.isRunning" class="mt-1 inline-block h-3.5 w-1.5 animate-pulse bg-amber-500" />
+        <button
+          v-if="terminal.hasLockError"
+          class="mt-3 inline-flex items-center gap-1.5 rounded bg-red-900/50 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/80"
+          @click="terminal.unlock()"
+        >
+          <LockOpen :size="12" />
+          Force unlock
+        </button>
       </div>
     </div>
   </Transition>
