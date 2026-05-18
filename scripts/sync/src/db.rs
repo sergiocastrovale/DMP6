@@ -592,3 +592,18 @@ pub async fn get_local_tracks_for_release(
         .collect())
 }
 
+pub async fn get_track_file_paths_for_release(
+    pool: &PgPool,
+    local_release_id: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT "filePath" FROM "LocalReleaseTrack"
+           WHERE "localReleaseId" = $1
+           ORDER BY "discNumber", "trackNumber""#,
+    )
+    .bind(local_release_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+

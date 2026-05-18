@@ -13,6 +13,7 @@ sqlx = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 reqwest = { workspace = true }
+lofty = { workspace = true }
 image = { workspace = true }
 aws-sdk-s3 = { workspace = true }
 aws-config = { workspace = true }

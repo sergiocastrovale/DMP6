@@ -34,7 +34,7 @@ Without `--web`, the script prints colored, indented progress (folder headers, `
 3. **Change detection** — skip unchanged files (mtime + fileSize), hash-compare changed ones
 4. **Split** album artist and track artist tags into individual artists
 5. **Upsert** Artist, LocalRelease, LocalReleaseTrack, LocalReleaseArtist, TrackRelatedArtist (batch UNNEST)
-6. **Cover art** — extract from embedded tags or folder.jpg, upload to S3 if configured
+6. **Cover art** — extract from embedded tags or folder.jpg, upload to S3 if configured. Extraction logic lives in `common/src/images.rs` (shared with sync)
 7. **Update totals** for this artist's releases and tracks
 8. **Set `lastIndexedAt`** on Artist
 9. **Upsert FolderScan** — stores folder mtime for `--quick` mode

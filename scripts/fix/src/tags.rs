@@ -148,10 +148,5 @@ pub fn write_tags_from_json(abs_path: &Path, values: &serde_json::Value) -> Resu
 }
 
 fn bump_dir_mtime(file_path: &Path) {
-    if let Some(dir) = file_path.parent() {
-        let tmp = dir.join(".fix-touch");
-        if std::fs::File::create(&tmp).is_ok() {
-            let _ = std::fs::remove_file(&tmp);
-        }
-    }
+    common::images::bump_dir_mtime(file_path);
 }

@@ -42,7 +42,7 @@ Without `--web`, the script prints colored, indented progress (artist headers, `
    - Tier 3: Title matching against release groups, pick best release
    - Tier 4: No match — skip gracefully
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
-7. **Download** cover art from Cover Art Archive (release-level first, release-group fallback), resize to 500px
+7. **Cover art** — download from Cover Art Archive (release-level first, release-group fallback), embed into each track's audio file metadata, then extract 200×200 thumbnails from the enriched files using the same pipeline as index (`common/src/images.rs`). Covers persist in file tags so future index runs pick them up naturally
 8. **Set `lastSyncedAt`** on Artist
 
 ## --delete behaviour

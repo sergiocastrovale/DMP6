@@ -848,48 +848,79 @@ async fn main() {
         }
 
         if !releases_for_art.is_empty() {
+            let music_dir = config.music_dir.as_deref().unwrap_or("");
+            let release_img_dir = std::path::PathBuf::from(&config.image_dir).join("releases");
             reporter.step(&format!("Downloading cover art ({} releases)...", releases_for_art.len()));
             let mut art_downloaded = 0u32;
             for (rel_id, rg_id, local_release_id) in &releases_for_art {
                 let art_start = std::time::Instant::now();
-                match download_cover_art(&http_client, rel_id, rg_id, &config.project_root, &s3_client, &config).await {
-                    Ok(true) => {
+                match download_cover_art(&http_client, rel_id, rg_id).await {
+                    Ok(Some(jpeg_bytes)) => {
                         art_downloaded += 1;
-                        let filename = format!("{}.jpg", rg_id);
-                        if config.use_local() {
-                            sqlx::query(
-                                r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                            )
-                            .bind(&filename)
-                            .bind(local_release_id)
-                            .execute(&pool)
-                            .await
-                            .ok();
-                        }
-                        if config.use_s3() {
-                            if let Some(ref public_url) = config.s3_public_url {
-                                let image_url = format!(
-                                    "{}/releases/{}",
-                                    public_url.trim_end_matches('/'),
-                                    &filename
-                                );
-                                sqlx::query(
-                                    r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                                )
-                                .bind(&image_url)
-                                .bind(local_release_id)
-                                .execute(&pool)
-                                .await
-                                .ok();
+
+                        // Embed cover art into each track's audio file metadata
+                        let mut embedded = 0u32;
+                        if !music_dir.is_empty() {
+                            if let Ok(file_paths) = get_track_file_paths_for_release(&pool, local_release_id).await {
+                                for fp in &file_paths {
+                                    let abs_path = std::path::Path::new(music_dir).join(fp);
+                                    match common::images::embed_cover_art(&abs_path, &jpeg_bytes) {
+                                        Ok(true) => { embedded += 1; }
+                                        Ok(false) => {}
+                                        Err(e) => {
+                                            reporter.warn(&format!("Embed art {}: {}", fp, e));
+                                        }
+                                    }
+                                }
+                                if embedded > 0 {
+                                    reporter.info(&format!(
+                                        "      ↳ Embedded cover into {}/{} tracks",
+                                        embedded, file_paths.len()
+                                    ));
+                                }
+
+                                // Extract thumbnail from enriched file (same pipeline as index)
+                                let thumb_path = release_img_dir.join(format!("{}.jpg", local_release_id));
+                                let extracted = file_paths.iter().any(|fp| {
+                                    let abs_path = std::path::Path::new(music_dir).join(fp);
+                                    common::images::extract_cover_art(&abs_path, &thumb_path)
+                                });
+
+                                if extracted {
+                                    if config.use_local() {
+                                        let filename = format!("{}.jpg", local_release_id);
+                                        sqlx::query(
+                                            r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                        )
+                                        .bind(&filename)
+                                        .bind(local_release_id)
+                                        .execute(&pool)
+                                        .await
+                                        .ok();
+                                    }
+                                    if config.use_s3() {
+                                        if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
+                                            (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                                        {
+                                            common::images::upload_release_image_to_s3(
+                                                client, bucket, public_url, &pool, local_release_id, &thumb_path,
+                                            ).await;
+                                            if !config.use_local() {
+                                                std::fs::remove_file(&thumb_path).ok();
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+
                         reporter.info(&format!(
                             "      ↓ {} cover in {:.1}s",
                             rg_id,
                             art_start.elapsed().as_secs_f64()
                         ));
                     }
-                    Ok(false) => {}
+                    Ok(None) => {}
                     Err(e) => reporter.warn(&format!("Cover art {}: {}", rg_id, e)),
                 }
             }

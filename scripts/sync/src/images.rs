@@ -73,20 +73,7 @@ pub async fn download_cover_art(
     client: &Client,
     release_id: &str,
     release_group_id: &str,
-    _project_root: &str,
-    s3_client: &Option<S3Client>,
-    config: &Config,
-) -> Result<bool, String> {
-    let file_id = release_group_id;
-    let s3_key = format!("releases/{}.jpg", file_id);
-    let local_path = PathBuf::from(&config.image_dir)
-        .join("releases")
-        .join(format!("{}.jpg", file_id));
-
-    if config.use_local() && local_path.exists() {
-        return Ok(false);
-    }
-
+) -> Result<Option<Vec<u8>>, String> {
     let urls = [
         format!("https://coverartarchive.org/release/{}/front-500", release_id),
         format!("https://coverartarchive.org/release-group/{}/front-500", release_group_id),
@@ -113,25 +100,14 @@ pub async fn download_cover_art(
 
     let bytes = match bytes_result {
         Some(b) => b,
-        None => return Ok(false),
+        None => return Ok(None),
     };
 
-    let img = match image::load_from_memory(&bytes) {
-        Ok(i) => i,
-        Err(_) => return Ok(false),
-    };
-
-    if config.use_local() || s3_client.is_some() {
-        if let Some(parent) = local_path.parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-        let img = img.resize(500, 500, FilterType::Triangle);
-        img.save(&local_path)
-            .map_err(|e| format!("Save cover: {}", e))?;
-        upload_image(s3_client, &local_path, config, &s3_key).await?;
+    if image::load_from_memory(&bytes).is_err() {
+        return Ok(None);
     }
 
-    Ok(true)
+    Ok(Some(bytes.to_vec()))
 }
 
 // ---------------------------------------------------------------------------
