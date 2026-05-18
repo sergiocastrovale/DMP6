@@ -90,41 +90,56 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ```
 
 ```bash
+# Index & Sync
 ./index                       # Index local files (extract metadata, upsert to DB)
 ./sync                        # MusicBrainz sync (artists where lastIndexedAt > lastSyncedAt)
 ./index && ./sync             # Full workflow
-./index --only "Artist Name"  # Index single artist
-./sync --only "Artist Name"   # Sync single artist
+./refresh                     # Shorthand: ./index && ./sync with same args
+./refresh --only "Name"       # Refresh specific artist
+./refresh --release "clxxx"   # Refresh single release (re-index + re-sync)
+./index --only "Name"         # Index single artist (prefix match)
+./index --only "Name" --exact # Index exact artist (no prefix matching)
 ./index --only "Name" --overwrite  # Force re-index
-./sync --only "Name" --overwrite   # Force re-sync
 ./index --resume              # Continue from last checkpoint
 ./index --quick               # Skip unchanged folders (mtime check)
-./refresh --release "clxxx"   # Refresh single release (re-index + re-sync)
-./refresh --release "clxxx" --overwrite  # Force full re-sync of single release
+./index --folders "Artist/Album"   # Re-index exact folder paths
+./index --release "clxxx"     # Re-index single release by LocalRelease ID
+./index --delete              # Delete local data for matched artists
+./sync --only "Name" --exact  # Sync exact artist
+./sync --only "Name" --overwrite   # Force re-sync
+./sync --release "clxxx"      # Re-sync single release
+./sync --delete               # Delete MB data for matched artists
 ./sync --verbose              # Show skipped MB releases
+
+# Audit & Fix
 ./audit                       # Detect metadata issues → write to DB (all types)
 ./audit --corrupted           # Only detect corrupted TPE2 tags
 ./audit --unsplit             # Only detect unsplit compound artists
 ./audit --orphans             # Only detect orphan artists
 ./audit --duplicates          # Only detect duplicate artists
 ./audit --missing             # Only detect missing metadata fields
-./audit --enrichment          # Only detect enrichment gaps (BPM, mood, AcousticID, MB links, Discogs, Bandcamp, Wikipedia)
+./audit --enrichment          # Only detect enrichment gaps (BPM, mood, AcousticID, etc.)
 ./fix --corrupted             # Apply PENDING corrupted TPE2 fixes (tag writes)
-./fix --unsplit               # Apply PENDING unsplit artist fixes (albumArtist → primary, artist → compound)
+./fix --unsplit               # Apply PENDING unsplit artist fixes
 ./fix --orphans               # Apply PENDING orphan artist fixes (delete from DB)
 ./fix --duplicates            # Apply PENDING duplicate artist fixes (merge B into A)
 ./fix --missing               # Apply PENDING missing metadata fixes (tag writes)
-./refresh                # ./index && ./sync with same args
-./refresh --only="Name"  # Refresh specific artist
-./analysis                    # Metadata quality HTML report → reports/
+./fix --revert --corrupted    # Revert previously applied corrupted fixes
+
+# Destructive
+./delete "Artist Name"        # Delete artist + cascade (exact match, flip-or-delete logic)
+./delete "A;B" --dry-run      # Preview multi-artist deletion
 ./nuke                        # Full DB reset + image deletion
 ./nuke --keep-artist-img      # Full reset but preserve artist images
-./nuke --only="Artist Name"   # Delete one artist + cascade ghost co-artists
-./nuke --only="Name" --dry-run  # Preview what --only would delete
-./playlists      # Generate/update genre playlists
-./playlists --dry-run  # Preview without changes
-./playlists --report   # Show genre → group assignments
-./playlists --group rock # Update single group
+./nuke --only "Artist Name"   # Delete one artist + cascade (always exact match)
+./nuke --only "Name" --dry-run  # Preview what --only would delete
+
+# Other
+./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
+./playlists                   # Generate/update genre playlists
+./playlists --dry-run         # Preview without changes
+./playlists --report          # Show genre → group assignments
+./playlists --group rock      # Update single group
 ```
 See the docs/scripts folder for context on each script.
 

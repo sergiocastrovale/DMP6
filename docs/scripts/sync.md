@@ -1,10 +1,8 @@
 # Scripts: sync
 
-Queries artists where `lastIndexedAt > lastSyncedAt` and `relatedOnly = false`, then syncs each against MusicBrainz. No MUSIC_DIR access — reads entirely from DB and calls MB API.
+Queries artists where `lastIndexedAt > lastSyncedAt` and `relatedOnly = false`, then syncs each against MusicBrainz. Reads from DB and calls MB API. Writes to audio files when embedding downloaded cover art.
 
-Sync skips `relatedOnly=true` artists — those are guests/collaborators identified by the index and don't need MB enrichment.
-
-Run after `./index`, or independently to re-sync without re-indexing.
+Skips `relatedOnly=true` artists — guests/collaborators don't need MB enrichment.
 
 ## Build
 
@@ -16,9 +14,10 @@ cd scripts && cargo build --release -p sync
 
 ```bash
 ./sync                           # Sync all pending artists
-./sync --only="radiohead"        # Single artist
-./sync --from="A" --to="M"       # Letter range
-./sync --release "clxxxxxxx"     # Re-sync a single release by LocalRelease ID
+./sync --only "radiohead"        # Single artist (prefix match)
+./sync --only "Air" --exact      # Exact match (won't catch "Airbag")
+./sync --from "A" --to "M"      # Letter range
+./sync --release "clxxxxxxx"    # Re-sync a single release by LocalRelease ID
 ./sync --overwrite               # Re-sync all (ignores lastSyncedAt)
 ./sync --skip-artist-img         # Skip artist image downloads
 ./sync --skip-release-img        # Skip cover art downloads
@@ -27,67 +26,87 @@ cd scripts && cargo build --release -p sync
 ./sync --web                     # Emit PROGRESS:{json} for the web terminal
 ```
 
-## Output modes
+`--release` cannot combine with `--from`, `--to`, or `--only`.
 
-Without `--web`, the script prints colored, indented progress (artist headers, `→` step lines, `✓` success marks, MusicBrainz rate-limit countdown). With `--web`, it emits `PROGRESS:{json}` lines consumed by the web UI progress bar, plus plain text for the terminal panel. The web UI appends `--web` automatically when invoking scripts.
+## CLI Flags
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--from` / `-f` | String | — | Start letter filter |
+| `--to` / `-t` | String | — | End letter filter |
+| `--only` / `-o` | String | — | Artist filter (semicolon-separated) |
+| `--exact` | bool | false | Exact match for `--only` (no prefix matching) |
+| `--release` | String | — | Re-sync single release by LocalRelease ID |
+| `--overwrite` | bool | false | Re-sync all matched (not just pending) |
+| `--skip-artist-img` | bool | false | Skip artist image download |
+| `--skip-release-img` | bool | false | Skip release cover download |
+| `--delete` | bool | false | Nuke MB data for matched artists, then exit |
+| `--verbose` | bool | false | Log skipped/already-synced releases |
+| `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
+
+## Output Modes
+
+Without `--web`: colored console progress with rate-limit countdown. With `--web`: `PROGRESS:{json}` lines for the web UI. The web UI appends `--web` automatically.
 
 ## Per-Artist Flow
 
 1. **Find MB match** — 5-step algorithm (see below)
-2. **Fetch** artist detail: URLs, genres
+2. **Fetch** artist detail: URLs, genres (top 5 by count), tags
 3. **Download** artist image (Wikidata → Wikipedia → Fanart.tv), resize to 500px
 4. **Fetch** release groups (paginated)
-5. **For each local release** — 4-tier matching:
-   - Tier 1: Direct release lookup via embedded `MUSICBRAINZ_ALBUMID`
-   - Tier 2: Release group lookup via `MUSICBRAINZ_RELEASEGROUPID`, pick best release by track count
-   - Tier 3: Title matching against release groups, pick best release
-   - Tier 4: No match — skip gracefully
+5. **For each local release** — 2-tier matching:
+   - Tier 1: Direct release lookup via embedded `MUSICBRAINZ_ALBUMID` (majority vote across tracks)
+   - Tier 2: Release group browse via `MUSICBRAINZ_RELEASEGROUPID` (or Tier 1 404 fallback)
+   - No MB IDs in tags → marked Unmatched, skipped
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
-7. **Cover art** — download from Cover Art Archive (release-level first, release-group fallback), embed into each track's audio file metadata, then extract 200×200 thumbnails from the enriched files using the same pipeline as index (`common/src/images.rs`). Covers persist in file tags so future index runs pick them up naturally
-8. **Set `lastSyncedAt`** on Artist
+7. **Cover art** — download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
+8. **Set `lastSyncedAt`** on Artist, compute average match score
 
-## --delete behaviour
+Duplicate detection: tracks processed MB IDs across the run. Skips artists that resolve to an already-processed MB artist.
 
-Resets `musicbrainzId`, `averageMatchScore`, and `lastSyncedAt` to NULL on matched artists, unlinks all `MusicBrainzRelease` records, and resets `LocalRelease.matchStatus` to `UNKNOWN`.
+## --delete Behaviour
 
-After `--delete`, re-running `./sync` (without `--overwrite`) automatically re-syncs those artists because `lastSyncedAt IS NULL` satisfies the pending-sync query.
+Resets `musicbrainzId`, `averageMatchScore`, and `lastSyncedAt` to NULL, unlinks `MusicBrainzRelease` records, resets `LocalRelease.matchStatus` to `UNKNOWN`. Re-running `./sync` after this automatically re-syncs those artists.
 
 ## Artist Matching (5-step)
 
 1. Embedded MB artist ID in any track tag → direct lookup
 2. Embedded MB album ID → release-group credits lookup
-3. Name search (phrase-quoted, score ≥ 90, Jaccard ≥ 0.5)
+3. Name search (phrase-quoted, score >= 90, Jaccard >= 0.5)
 4. Raw track artist tag search (when differs from album artist)
 5. Release-group credits search by album title + artist name
 
+If artist already has a MB ID and not overwriting: uses it directly (no API search).
+
+## Release Matching Policy
+
+Strict metadata-wins: only matches via embedded MB IDs in tags. Title fuzzy matching is intentionally disabled. Releases without MB IDs in tags are marked Unmatched. Confidence check: if multiple siblings returned and none match local track count exactly, marks Unmatched.
+
 ## Match Status
 
-| Status | Meaning |
-|--------|---------|
-| `COMPLETE` | All MB tracks matched to local tracks |
-| `INCOMPLETE` | Some MB tracks unmatched |
-| `EXTRA_TRACKS` | More local tracks than MB tracks |
-| `MISSING_TRACKS` | MB has tracks not found locally |
-| `UNSYNCABLE` | No matching release group found |
+| Status | Score | Meaning |
+|--------|-------|---------|
+| `COMPLETE` | 1.0 | All MB tracks matched to local tracks |
+| `EXTRA_TRACKS` | 0.85 | More local tracks than MB tracks |
+| `MISSING_TRACKS` | 0.7 | MB has tracks not found locally |
+| `INCOMPLETE` | 0.5 | Some MB tracks unmatched |
+| `UNSYNCABLE` | — | No matching release group found |
 
 ## Rate Limiting
 
-Adaptive backoff: 1100ms–10s per request, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers. Retries up to 6× on 429/503 with exponential backoff (1s→2s→4s→8s→16s cap).
+Adaptive backoff: 1100ms–10s per request, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers. Retries up to 6x on 429/503 with exponential backoff (1s → 16s cap).
 
 ## Release Deduplication
 
-Index creates one `LocalRelease` per folder — so the same album in two folders (original + compilation) produces separate rows. Sync is what merges them: it links each `LocalRelease.releaseId` → `MusicBrainzRelease.id`. The web UI groups by MB release, so multiple local copies collapse into one card with the MB title, type, and artwork.
-
-Before sync, all local releases appear as separate unmatched cards.
+Index creates one `LocalRelease` per folder. Sync merges them by linking `LocalRelease.releaseId` → `MusicBrainzRelease.id`. The web UI groups by MB release, collapsing multiple local copies into one card.
 
 ## Multi-Edition Handling
 
-Multiple editions of the same album (original, remaster, deluxe) are stored as separate `MusicBrainzRelease` rows. Each row stores:
-- `musicbrainzId` — specific MB release ID (unique per edition)
-- `releaseGroupId` — MB release group ID (shared across editions)
-- `disambiguation` — edition label from MB ("2009 Remaster", "Deluxe Edition")
+Multiple editions (original, remaster, deluxe) stored as separate `MusicBrainzRelease` rows sharing a `releaseGroupId`. Each has its own `musicbrainzId` and `disambiguation` label. Cover art fetched per-release first, falling back to release-group art.
 
-Cover art fetched per-release first, falling back to release-group art.
+## Locking
+
+Named DB lock (`"sync"`). Clears stale locks older than 10 min. SIGTERM/Ctrl-C handlers release the lock; second Ctrl-C force-exits.
 
 ## Running on NAS
 

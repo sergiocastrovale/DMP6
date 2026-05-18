@@ -12,9 +12,29 @@ Issues are detected by `./audit` and queued via the `/issues` web UI (or directl
 ./fix --orphans      # Delete orphan/phantom artists from DB
 ./fix --duplicates   # Merge duplicate artists (B into A)
 ./fix --missing      # Write proposed values for tracks with missing metadata
+./fix --revert --corrupted   # Revert previously applied corrupted fixes
+./fix --revert --unsplit     # Revert previously applied unsplit fixes
+./fix --revert --missing     # Revert previously applied missing fixes
+./fix --revert --mode undo-resolved --corrupted  # Revert but keep RESOLVED status
 ```
 
-All types can be combined in one invocation. Only rows with `status = 'PENDING'` are processed.
+All fix types can be combined in one invocation. Only rows with `status = 'PENDING'` are processed. Exits with error if no type flag given.
+
+## CLI Flags
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--corrupted` | bool | false | Fix corrupted TPE2 issues |
+| `--unsplit` | bool | false | Fix unsplit compound artist issues |
+| `--orphans` | bool | false | Fix orphan artists (delete) |
+| `--duplicates` | bool | false | Fix duplicate artists (merge B into A) |
+| `--missing` | bool | false | Fix missing metadata (tag writes) |
+| `--revert` | bool | false | Revert previously applied fixes instead of fixing |
+| `--mode` | String | `"undo"` | Revert mode: `"undo"` (→DETECTED) or `"undo-resolved"` (stays RESOLVED) |
+
+## Auto Re-index
+
+After tag-writing fixes (corrupted, unsplit, missing), fix automatically invokes the sibling `index` binary with `--folders <affected_folders> --skip-covers` to re-index changed files. Only triggers when file writes actually happened.
 
 ## Fix Logic Per Type
 
@@ -30,14 +50,12 @@ Reads `IssueCorruptedTpe2` rows where `status = 'PENDING'`. For each:
 
 Reads `IssueUnsplitArtist` rows where `status = 'PENDING'`. For each:
 1. Gets all track file paths linked to the compound artist via `LocalReleaseArtist`
-2. For each file: writes `proposedParts[0]` to `albumArtist` (TPE2) — the primary artist only
-3. Writes the full compound artist name to `artist` (TPE1) — preserves the multi-artist credit where it belongs
+2. For each file: writes `proposedParts[0]` to `albumArtist` (TPE2) — primary artist only
+3. Writes the full compound artist name to `artist` (TPE1) — preserves multi-artist credit
 4. Bumps directory mtime
 5. Marks issue `RESOLVED` or `FAILED`
 
-**Why this split:** `albumArtist` (TPE2) is for the album's primary artist — used for grouping/sorting. `artist` (TPE1) is the track-level performing artist list — can be compound.
-
-After `./fix --unsplit`, run `./refresh --only="ArtistName"` to rebuild DB records from the corrected tags.
+**Why this split:** `albumArtist` (TPE2) is for grouping/sorting. `artist` (TPE1) is the track-level performing artist list — can be compound.
 
 ### `--orphans`
 
@@ -45,7 +63,7 @@ Reads `IssueOrphanArtist` rows where `status = 'PENDING'`. For each:
 1. Deletes the artist's local image file (if set)
 2. `DELETE FROM "Artist" WHERE id = $artistId` — cascades to ArtistUrl, junction tables, TrackRelatedArtist
 
-No file tag changes. No re-index needed.
+No file tag changes. Cannot be reverted.
 
 ### `--duplicates`
 
@@ -55,7 +73,7 @@ Reads `IssueDuplicateArtist` rows where `status = 'PENDING'`. For each pair (A =
 3. Deletes B's local image file
 4. `DELETE FROM "Artist" WHERE id = $artistBId`
 
-Artist A's image, MusicBrainz ID, and stats are preserved unchanged.
+Artist A's image, MusicBrainz ID, and stats are preserved. Cannot be reverted.
 
 ### `--missing`
 
@@ -65,18 +83,13 @@ Reads `IssueMissingMetadata` rows where `status = 'PENDING'` and `proposedValues
 3. Bumps directory mtime
 4. Marks `RESOLVED` or `FAILED`
 
-Rows where `proposedValues` is null (title/album with no derivable value) are skipped — manual fix required.
+Rows where `proposedValues` is null (title/album with no derivable value) are skipped.
 
-## Post-Fix Workflow
+## Revert
 
-After fixing tag-writing types (`corrupted`, `unsplit`, `missing`), re-index and re-sync affected artists:
+`--revert` restores original tag values from backup data stored in the issue rows. Only supported for tag-writing types (`corrupted`, `unsplit`, `missing`). Orphans and duplicates cannot be reverted.
 
-```bash
-./refresh --only="Artist1;Artist2"
-# or use the "Refresh" button in the web UI
-```
-
-After `orphans` and `duplicates` (DB-only), no re-index needed — statistics are updated automatically.
+Default mode `"undo"` sets status back to `DETECTED`. Mode `"undo-resolved"` keeps `RESOLVED` status.
 
 ## Build
 

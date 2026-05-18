@@ -17,7 +17,35 @@ Standalone file scanner — reads audio files directly (no DB), detects metadata
 ./analysis /mnt/music --end-quarantine     # Restore quarantined files
 ./analysis /mnt/music --autofix            # Auto-tag with beets
 ./analysis /mnt/music --autofix-dry        # Preview beets changes
+./analysis /mnt/music --output-dir ./out   # Custom report output directory (default: ../../reports)
+./analysis /mnt/music --unc-prefix "\\\\nas" # Windows UNC prefix for file links in report
 ```
+
+## CLI Flags
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `scan_path` | String (positional) | required | Root directory to scan |
+| `--from` | String | — | Only folders from this prefix |
+| `--to` | String | — | Only folders up to this prefix |
+| `--only` | String | — | Only folders starting with this prefix |
+| `--limit` | usize | 0 (all) | Stop after N audio files |
+| `--output-dir` | String | `../../reports` | Report output directory |
+| `--unc-prefix` | String | — | Windows UNC prefix for file links |
+| `--no-report` | bool | false | Scan only, skip HTML report |
+| `--only-critical` | bool | false | Only generate critical + index pages |
+| `--only-mb` | bool | false | Only generate MB + index pages |
+| `--only-discogs` | bool | false | Only generate Discogs + index pages |
+| `--only-issues` | bool | false | Only generate issues + index pages |
+| `--only-ids` | bool | false | Only generate IDs + index pages |
+| `--only-other` | bool | false | Only generate other + index pages |
+| `--quarantine` | bool | false | Move problem files to staging folders |
+| `--quarantine-dry` | bool | false | Preview quarantine moves |
+| `--end-quarantine` | bool | false | Reverse quarantine (restore files) |
+| `--autofix` | bool | false | Auto-tag with beets |
+| `--autofix-dry` | bool | false | Preview beets changes |
+
+Page filters (`--only-*`) can be combined.
 
 ## Report Output
 
