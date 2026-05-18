@@ -551,7 +551,7 @@ async fn main() {
             }
             let release_start = std::time::Instant::now();
             reporter.info(&format!(
-                "[{}/{}] {}",
+                "    [{}/{}] {}",
                 lr_idx + 1,
                 local_release_total,
                 local_release.title,
@@ -595,11 +595,11 @@ async fn main() {
             let mut matched: Option<(String, String, Vec<(MbRelease, Vec<MbTrack>)>, String)> = None; // (release_id, rg_id, releases, type_name)
             if let Some(ref rel_id) = majority_release_id {
                 let api_start = std::time::Instant::now();
-                reporter.info(&format!("      → Tier 1: direct release lookup {}", rel_id));
+                reporter.info(&format!("        → Lookup by album ID {}", rel_id));
                 match mb_api::mb_get_release_by_id(&http_client, rel_id, &mut limiter).await {
                     Ok((release, tracks, rg_id)) => {
                         reporter.info(&format!(
-                            "      ← Tier 1 done in {:.1}s ({} tracks)",
+                            "        ← Found release in {:.1}s ({} tracks)",
                             api_start.elapsed().as_secs_f64(),
                             tracks.len()
                         ));
@@ -611,7 +611,7 @@ async fn main() {
                         matched = Some((rel_id.clone(), rg_id, vec![(release, tracks)], type_name));
                     }
                     Err(e) if e.contains("HTTP 404") => {
-                        reporter.info("      ← Tier 1: 404, trying as release group...");
+                        reporter.info("        ← Album ID not found, trying release group...");
                     }
                     Err(e) if e.contains("unavailable") || e.contains("503") || e.contains("429") => {
                         reporter.warn(&format!("{}: MB unavailable, skipping", local_release.title));
@@ -631,13 +631,13 @@ async fn main() {
                     .or(majority_release_id.as_deref()); // Tier 1 404 fallback
                 if let Some(rg_id) = rg_id_to_try {
                     let api_start = std::time::Instant::now();
-                    reporter.info(&format!("      → Tier 2: release-group lookup {}", rg_id));
+                    reporter.info(&format!("        → Browse release group {} (all editions)", rg_id));
                     match mb_api::mb_get_release_tracks(&http_client, rg_id, &mut limiter).await {
                         Ok(releases) if !releases.is_empty() => {
                             reporter.info(&format!(
-                                "      ← Tier 2 done in {:.1}s ({} releases)",
+                                "        ← Found {} edition(s) in {:.1}s",
+                                releases.len(),
                                 api_start.elapsed().as_secs_f64(),
-                                releases.len()
                             ));
                             let type_name = release_groups.iter()
                                 .find(|rg2| rg2.id == rg_id)
@@ -648,7 +648,7 @@ async fn main() {
                         }
                         Ok(_) => {
                             if args.verbose {
-                                reporter.skip(&format!("{} (no official releases via Tier 2)", local_release.title));
+                                reporter.skip(&format!("{} (no official releases in group)", local_release.title));
                             }
                         }
                         Err(e) if e.contains("unavailable") || e.contains("503") || e.contains("429") => {
@@ -812,7 +812,7 @@ async fn main() {
                 .await
                 .ok();
 
-            if !args.skip_release_img {
+            if !args.skip_release_img && !local_release.has_cover {
                 releases_for_art.push((final_release_id.clone(), rg_id.clone(), local_release.id.clone()));
             }
 
@@ -841,7 +841,7 @@ async fn main() {
             score_count += 1;
             newly_synced_count += 1;
             reporter.info(&format!(
-                "      ✓ {} done in {:.1}s",
+                "        ✓ {} done in {:.1}s",
                 local_release.title,
                 release_start.elapsed().as_secs_f64()
             ));
@@ -877,36 +877,35 @@ async fn main() {
                                         "      ↳ Embedded cover into {}/{} tracks",
                                         embedded, file_paths.len()
                                     ));
-                                }
 
-                                // Extract thumbnail from enriched file (same pipeline as index)
-                                let thumb_path = release_img_dir.join(format!("{}.jpg", local_release_id));
-                                let extracted = file_paths.iter().any(|fp| {
-                                    let abs_path = std::path::Path::new(music_dir).join(fp);
-                                    common::images::extract_cover_art(&abs_path, &thumb_path)
-                                });
+                                    let thumb_path = release_img_dir.join(format!("{}.jpg", local_release_id));
+                                    let extracted = file_paths.iter().any(|fp| {
+                                        let abs_path = std::path::Path::new(music_dir).join(fp);
+                                        common::images::extract_cover_art(&abs_path, &thumb_path)
+                                    });
 
-                                if extracted {
-                                    if config.use_local() {
-                                        let filename = format!("{}.jpg", local_release_id);
-                                        sqlx::query(
-                                            r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                                        )
-                                        .bind(&filename)
-                                        .bind(local_release_id)
-                                        .execute(&pool)
-                                        .await
-                                        .ok();
-                                    }
-                                    if config.use_s3() {
-                                        if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
-                                            (&s3_client, &config.s3_bucket, &config.s3_public_url)
-                                        {
-                                            common::images::upload_release_image_to_s3(
-                                                client, bucket, public_url, &pool, local_release_id, &thumb_path,
-                                            ).await;
-                                            if !config.use_local() {
-                                                std::fs::remove_file(&thumb_path).ok();
+                                    if extracted {
+                                        if config.use_local() {
+                                            let filename = format!("{}.jpg", local_release_id);
+                                            sqlx::query(
+                                                r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                            )
+                                            .bind(&filename)
+                                            .bind(local_release_id)
+                                            .execute(&pool)
+                                            .await
+                                            .ok();
+                                        }
+                                        if config.use_s3() {
+                                            if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
+                                                (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                                            {
+                                                common::images::upload_release_image_to_s3(
+                                                    client, bucket, public_url, &pool, local_release_id, &thumb_path,
+                                                ).await;
+                                                if !config.use_local() {
+                                                    std::fs::remove_file(&thumb_path).ok();
+                                                }
                                             }
                                         }
                                     }

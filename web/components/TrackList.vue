@@ -155,7 +155,8 @@ function hasColumn(key: string) {
           <template v-if="track.artists?.length">
             <span class="text-zinc-500"> Feat.
               <template v-for="(a, i) in track.artists" :key="a.slug">
-                <NuxtLink :to="`/artist/${a.slug}`" class="text-zinc-400 hover:text-amber-500 transition-colors" @click.stop>{{ a.name }}</NuxtLink><template v-if="i < track.artists.length - 1">, </template>
+                <NuxtLink v-if="a.hasPage" :to="`/artist/${a.slug}`" class="text-zinc-400 hover:text-amber-500 transition-colors" @click.stop>{{ a.name }}</NuxtLink>
+                <span v-else class="text-zinc-400">{{ a.name }}</span><template v-if="i < track.artists.length - 1">, </template>
               </template>
             </span>
           </template>

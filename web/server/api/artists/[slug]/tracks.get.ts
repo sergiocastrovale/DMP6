@@ -32,10 +32,22 @@ export default defineEventHandler(async (event) => {
       playCount: true,
       filePath: true,
       localReleaseId: true,
+      trackRelatedArtists: {
+        select: {
+          artist: { select: { name: true, slug: true, relatedOnly: true } },
+        },
+      },
     },
     orderBy: [{ album: 'asc' }, { discNumber: 'asc' }, { trackNumber: 'asc' }],
     take: 2000,
   })
 
-  return tracks
+  return tracks.map(({ trackRelatedArtists, ...t }) => ({
+    ...t,
+    artists: trackRelatedArtists.map(ta => ({
+      name: ta.artist.name,
+      slug: ta.artist.slug,
+      hasPage: !ta.artist.relatedOnly,
+    })),
+  }))
 })

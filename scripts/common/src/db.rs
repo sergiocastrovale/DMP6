@@ -50,6 +50,9 @@ pub async fn ensure_artist_cached(
         return Ok(String::new());
     }
     if let Some(id) = cache.get(&artist_slug) {
+        if !related_only {
+            ensure_artist(pool, name, false).await?;
+        }
         return Ok(id.clone());
     }
     let id = ensure_artist(pool, name, related_only).await?;
