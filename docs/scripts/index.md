@@ -18,6 +18,7 @@ cd scripts && cargo build --release -p index
 ./index --overwrite              # Force re-index (ignore change detection)
 ./index --quick                  # Skip unchanged folders (mtime check)
 ./index --resume                 # Continue from last checkpoint
+./index --release "clxxxxxxx"    # Re-index a single release by LocalRelease ID
 ./index --skip-covers            # Skip cover art extraction
 ./index --threads 4              # Rayon thread count (default 8)
 ./index --web                    # Emit PROGRESS:{json} for the web terminal

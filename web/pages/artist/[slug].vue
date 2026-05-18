@@ -19,12 +19,18 @@ const { data: artist, pending: artistPending, error } = useFetch(() => `/api/art
   key: `artist-${slug.value}`,
 })
 
-const { data: releasesData, pending: releasesPending } = useFetch(() => `/api/artists/${slug.value}/releases`, {
+const { data: releasesData, pending: releasesPending, refresh: refreshReleases } = useFetch(() => `/api/artists/${slug.value}/releases`, {
   key: `artist-releases-${slug.value}`,
   query: { pageSize: 500 },
 })
 
 const releases = computed<UnifiedRelease[]>(() => releasesData.value?.releases ?? [])
+
+watch(() => terminal.isRunning, (running, wasRunning) => {
+  if (wasRunning && !running) {
+    refreshReleases()
+  }
+})
 const showMissing = ref(true)
 const pending = computed(() => artistPending.value || releasesPending.value)
 

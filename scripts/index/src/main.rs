@@ -53,6 +53,9 @@ struct IndexArgs {
     #[arg(long, help = "Only index these exact folder paths relative to MUSIC_DIR (semicolon-separated)")]
     folders: Option<String>,
 
+    #[arg(long, help = "Re-index a single release by its LocalRelease ID")]
+    release: Option<String>,
+
     #[arg(long, help = "Re-index all tracks, ignoring change detection")]
     overwrite: bool,
 
@@ -79,7 +82,7 @@ struct IndexArgs {
 }
 
 fn has_filter(args: &IndexArgs) -> bool {
-    args.from.is_some() || args.to.is_some() || args.only.is_some() || args.folders.is_some()
+    args.from.is_some() || args.to.is_some() || args.only.is_some() || args.folders.is_some() || args.release.is_some()
 }
 
 #[tokio::main]
@@ -91,19 +94,49 @@ async fn main() {
     apply_db_overrides(&mut config, &pool).await;
     let music_dir = config.require_music_dir().to_string();
 
+    if args.release.is_some()
+        && (args.from.is_some() || args.to.is_some() || args.only.is_some() || args.folders.is_some())
+    {
+        eprintln!("Error: --release cannot be combined with --from, --to, --only, or --folders");
+        std::process::exit(1);
+    }
+
+    let resolved_folders_from_release: Option<String> = if let Some(ref release_id) = args.release {
+        let row: Option<(Option<String>,)> = sqlx::query_as(
+            r#"SELECT "folderPath" FROM "LocalRelease" WHERE id = $1"#,
+        )
+        .bind(release_id)
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None);
+
+        match row {
+            Some((Some(folder_path),)) if !folder_path.is_empty() => {
+                Some(folder_path)
+            }
+            _ => {
+                eprintln!("Error: release '{}' not found or has no folderPath", release_id);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+
     // Clear stale locks (held > 10 min = leftover from crash/kill)
     if clear_stale_lock_minutes(&pool, 10).await {
         reporter.warn("Cleared a stale lock.");
     }
 
     let args_str = format!(
-        "from={} to={} only={} overwrite={} quick={} delete={}",
+        "from={} to={} only={} overwrite={} quick={} delete={} release={}",
         args.from.as_deref().unwrap_or(""),
         args.to.as_deref().unwrap_or(""),
         args.only.as_deref().unwrap_or(""),
         args.overwrite,
         args.quick,
         args.delete,
+        args.release.as_deref().unwrap_or(""),
     );
     if let Err(e) = acquire_lock(&pool, "index", std::process::id(), &args_str).await {
         reporter.err(&format!("Cannot start: {}", e));
@@ -206,15 +239,18 @@ async fn main() {
     let to = args.to.as_deref().unwrap_or("");
     let only = args.only.as_deref().unwrap_or("");
 
-    let target_folders: Option<HashMap<String, Vec<String>>> = args.folders.as_ref().map(|f| {
-        let mut map: HashMap<String, Vec<String>> = HashMap::new();
-        for folder in f.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()) {
-            if let Some(artist) = folder.split('/').next() {
-                map.entry(artist.to_string()).or_default().push(folder.to_string());
+    let target_folders: Option<HashMap<String, Vec<String>>> = resolved_folders_from_release
+        .as_ref()
+        .or(args.folders.as_ref())
+        .map(|f| {
+            let mut map: HashMap<String, Vec<String>> = HashMap::new();
+            for folder in f.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                if let Some(artist) = folder.split('/').next() {
+                    map.entry(artist.to_string()).or_default().push(folder.to_string());
+                }
             }
-        }
-        map
-    });
+            map
+        });
 
     let mut artist_folders: Vec<String> = if let Some(ref tf) = target_folders {
         tf.keys().cloned().collect()
@@ -257,7 +293,12 @@ async fn main() {
     if args.skip_covers {
         reporter.kv("Covers", "skipped");
     }
-    if let Some(ref folders) = args.folders {
+    if let Some(ref release_id) = args.release {
+        reporter.kv("Release", release_id);
+        if let Some(ref fp) = resolved_folders_from_release {
+            reporter.kv("Folder", fp);
+        }
+    } else if let Some(ref folders) = args.folders {
         reporter.kv("Folders", folders);
     } else if let Some(ref only) = args.only {
         reporter.kv("Filter", &format!("only '{}'", only));
@@ -363,7 +404,7 @@ async fn main() {
         // Load existing tracks for change detection
         // -----------------------------------------------------------------
         let folder_prefix = format!("{}/", folder_name);
-        let existing_tracks: HashMap<String, (i64, NaiveDateTime, String)> = if !args.overwrite && target_folders.is_none() {
+        let existing_tracks: HashMap<String, (i64, NaiveDateTime, String)> = if !args.overwrite && args.folders.is_none() {
             let rows: Vec<(String, i64, Option<NaiveDateTime>, Option<String>)> = sqlx::query_as(
                 r#"SELECT "filePath", "fileSize", mtime, "contentHash"
                    FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,

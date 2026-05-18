@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Disc3, Download, FolderClosed, Heart, LayoutGrid, LayoutList, Link, ListFilter, Pause, Play } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Disc3, Download, FolderClosed, Heart, Info, LayoutGrid, LayoutList, Link, ListFilter, Pause, Play, RefreshCw } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/components/TrackList.vue'
@@ -52,6 +52,9 @@ const allTracksLoading = ref(false)
 const allTracksLoaded = ref(false)
 const downloadRelease = ref<UnifiedRelease | null>(null)
 const showDownloadDialog = ref(false)
+const infoRelease = ref<UnifiedRelease | null>(null)
+const showInfoDialog = ref(false)
+const infoExtra = ref<{ genres: string[]; bpm: string | null; originalReleaseDate: string | null; country: string | null; label: string | null; isrc: string | null; people: Record<string, string[]> } | null>(null)
 const favoriteReleases = ref<Set<string>>(new Set())
 
 onMounted(() => {
@@ -290,6 +293,23 @@ function editionDisplayTitle(r: UnifiedRelease) {
 function openDownloadDialog(release: UnifiedRelease) {
   downloadRelease.value = release
   showDownloadDialog.value = true
+}
+
+function refreshRelease(edition: UnifiedRelease) {
+  terminal.run('./refresh', ['--release', edition.localReleaseId!, '--overwrite'])
+  terminal.open()
+}
+
+async function openInfoDialog(edition: UnifiedRelease) {
+  infoRelease.value = edition
+  infoExtra.value = null
+  showInfoDialog.value = true
+  if (edition.localReleaseId) {
+    try {
+      infoExtra.value = await $fetch(`/api/releases/${edition.localReleaseId}/info`)
+    }
+    catch { /* ignore */ }
+  }
 }
 
 function toggleGroup(key: string) {
@@ -669,6 +689,26 @@ watch(() => props.releases, () => {
                       <Link :size="14" />
                     </a>
 
+                    <button
+                      v-if="edition.localReleaseId"
+                      type="button"
+                      class="rounded-full p-1.5 text-zinc-600 transition-colors hover:text-zinc-400"
+                      title="Refresh this release"
+                      :disabled="terminal.isRunning"
+                      @click.stop="refreshRelease(edition)"
+                    >
+                      <RefreshCw :size="14" />
+                    </button>
+
+                    <button
+                      type="button"
+                      class="rounded-full p-1.5 text-zinc-600 transition-colors hover:text-zinc-400"
+                      title="Release info"
+                      @click.stop="openInfoDialog(edition)"
+                    >
+                      <Info :size="14" />
+                    </button>
+
                   </div>
 
                   <div v-if="expandedEdition === edition.id && (edition.localReleaseId || edition.localTrackCount > 0)" class="border-t border-zinc-800 px-3 pb-3" @click.stop>
@@ -708,5 +748,94 @@ watch(() => props.releases, () => {
       :artist-name="props.artistName || ''"
       :release-year="downloadRelease.year"
     />
+
+    <Dialog v-model="showInfoDialog" :title="infoRelease?.title ?? 'Release Info'" max-width="md">
+      <template v-if="infoRelease">
+        <dl class="space-y-3 text-sm">
+          <div v-if="infoRelease.folderPath">
+            <dt class="text-xs text-zinc-300">Folder path</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.folderPath }}</dd>
+          </div>
+
+          <div v-if="infoRelease.type">
+            <dt class="text-xs text-zinc-300">Type</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.type }}</dd>
+          </div>
+          <div v-if="infoExtra?.genres?.length">
+            <dt class="text-xs text-zinc-300">Genres</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra.genres.join(', ') }}</dd>
+          </div>
+          <div v-if="infoExtra?.bpm">
+            <dt class="text-xs text-zinc-300">BPM</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra.bpm }}</dd>
+          </div>
+
+          <div v-if="infoRelease.releaseDate || infoExtra?.originalReleaseDate">
+            <dt class="text-xs text-zinc-300">Release date</dt>
+            <dd class="font-mono text-xs text-zinc-400">
+              {{ infoRelease.releaseDate || '—' }}
+              <span v-if="infoExtra?.originalReleaseDate && infoExtra.originalReleaseDate !== infoRelease.releaseDate" class="ml-2 text-zinc-500">(original: {{ infoExtra.originalReleaseDate }})</span>
+            </dd>
+          </div>
+          <div v-if="infoRelease.country || infoExtra?.country">
+            <dt class="text-xs text-zinc-300">Country</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra?.country || infoRelease.country }}</dd>
+          </div>
+          <div v-if="infoExtra?.label">
+            <dt class="text-xs text-zinc-300">Label</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra.label }}</dd>
+          </div>
+          <div v-if="infoRelease.format">
+            <dt class="text-xs text-zinc-300">Format</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.format }}</dd>
+          </div>
+          <div v-if="infoRelease.packaging">
+            <dt class="text-xs text-zinc-300">Packaging</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.packaging }}</dd>
+          </div>
+          <div v-if="infoExtra?.isrc">
+            <dt class="text-xs text-zinc-300">ISRC</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra.isrc }}</dd>
+          </div>
+
+          <div v-if="infoRelease.disambiguation">
+            <dt class="text-xs text-zinc-300">Disambiguation</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.disambiguation }}</dd>
+          </div>
+          <div v-if="infoRelease.editionLabel">
+            <dt class="text-xs text-zinc-300">Edition</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.editionLabel }}</dd>
+          </div>
+          <div v-if="infoRelease.totalPlayCount">
+            <dt class="text-xs text-zinc-300">Total plays</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.totalPlayCount }}</dd>
+          </div>
+          <div v-if="infoRelease.coArtists?.length">
+            <dt class="text-xs text-zinc-300">Co-artists</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.coArtists.map(a => a.name).join(', ') }}</dd>
+          </div>
+
+          <template v-if="infoExtra">
+            <div v-for="(names, role) in infoExtra.people" :key="role">
+              <dt class="text-xs text-zinc-300">{{ role }}</dt>
+              <dd class="font-mono text-xs text-zinc-400">{{ names.join(', ') }}</dd>
+            </div>
+          </template>
+
+          <div v-if="infoRelease.musicbrainzId">
+            <dt class="text-xs text-zinc-300">MusicBrainz release ID</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.musicbrainzId }}</dd>
+          </div>
+          <div v-if="infoRelease.releaseGroupId">
+            <dt class="text-xs text-zinc-300">MusicBrainz release group ID</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.releaseGroupId }}</dd>
+          </div>
+          <div v-if="infoRelease.localReleaseId">
+            <dt class="text-xs text-zinc-300">Local release ID</dt>
+            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.localReleaseId }}</dd>
+          </div>
+        </dl>
+      </template>
+    </Dialog>
   </div>
 </template>

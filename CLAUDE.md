@@ -99,6 +99,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./sync --only "Name" --overwrite   # Force re-sync
 ./index --resume              # Continue from last checkpoint
 ./index --quick               # Skip unchanged folders (mtime check)
+./refresh --release "clxxx"   # Refresh single release (re-index + re-sync)
+./refresh --release "clxxx" --overwrite  # Force full re-sync of single release
 ./sync --verbose              # Show skipped MB releases
 ./audit                       # Detect metadata issues → write to DB (all types)
 ./audit --corrupted           # Only detect corrupted TPE2 tags

@@ -37,6 +37,8 @@ struct SyncArgs {
     to: Option<String>,
     #[arg(long, short)]
     only: Option<String>,
+    #[arg(long, help = "Re-sync a single release by its LocalRelease ID")]
+    release: Option<String>,
     #[arg(long)]
     overwrite: bool,
     #[arg(long)]
@@ -139,6 +141,13 @@ async fn main() {
     let pool = create_pool(&config.database_url).await;
     apply_db_overrides(&mut config, &pool).await;
 
+    if args.release.is_some()
+        && (args.from.is_some() || args.to.is_some() || args.only.is_some())
+    {
+        eprintln!("Error: --release cannot be combined with --from, --to, or --only");
+        std::process::exit(1);
+    }
+
     if clear_stale_lock_minutes(&pool, 10).await {
         reporter.warn("Cleared stale scan lock.");
     }
@@ -148,6 +157,7 @@ async fn main() {
         "from": args.from,
         "to": args.to,
         "only": args.only,
+        "release": args.release,
         "overwrite": args.overwrite,
     });
 
@@ -214,16 +224,22 @@ async fn main() {
         return;
     }
 
+    let target_release_id: Option<String> = args.release.clone();
+
     reporter.header("DMP Sync");
     reporter.kv(
         "Mode",
-        if args.overwrite {
+        if args.release.is_some() {
+            "single release"
+        } else if args.overwrite {
             "overwrite (re-sync all matched)"
         } else {
             "pending (lastIndexedAt > lastSyncedAt)"
         },
     );
-    if let Some(ref only) = args.only {
+    if let Some(ref release_id) = args.release {
+        reporter.kv("Release", release_id);
+    } else if let Some(ref only) = args.only {
         reporter.kv("Filter", &format!("only '{}'", only));
     } else if args.from.is_some() || args.to.is_some() {
         reporter.kv(
@@ -237,7 +253,27 @@ async fn main() {
     }
     reporter.blank();
 
-    let artists: Vec<ArtistSyncRow> = if args.overwrite {
+    let artists: Vec<ArtistSyncRow> = if let Some(ref release_id) = target_release_id {
+        match get_artist_for_release(&pool, release_id).await {
+            Ok(Some(artist)) => {
+                reporter.info(&format!("Release {} → artist: {}", release_id, artist.name));
+                vec![artist]
+            }
+            Ok(None) => {
+                reporter.err(&format!(
+                    "Release '{}' not found or has no non-relatedOnly artist",
+                    release_id
+                ));
+                release_lock(&pool).await;
+                std::process::exit(1);
+            }
+            Err(e) => {
+                reporter.err(&format!("DB error looking up release '{}': {}", release_id, e));
+                release_lock(&pool).await;
+                std::process::exit(1);
+            }
+        }
+    } else if args.overwrite {
         let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
             sqlx::query_as(
                 r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" WHERE "relatedOnly" = false ORDER BY name"#,
@@ -546,6 +582,11 @@ async fn main() {
 
         let local_release_total = local_releases.len();
         for (lr_idx, local_release) in local_releases.iter().enumerate() {
+            if let Some(ref target_id) = target_release_id {
+                if local_release.id != *target_id {
+                    continue;
+                }
+            }
             if local_release.forced_complete {
                 continue;
             }

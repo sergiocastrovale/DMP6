@@ -610,3 +610,30 @@ pub async fn get_track_file_paths_for_release(
     Ok(rows.into_iter().map(|(p,)| p).collect())
 }
 
+pub async fn get_artist_for_release(
+    pool: &PgPool,
+    release_id: &str,
+) -> Result<Option<ArtistSyncRow>, sqlx::Error> {
+    let row: Option<(String, String, String, Option<String>, Option<String>, Option<String>)> =
+        sqlx::query_as(
+            r#"SELECT a.id, a.name, a.slug, a."musicbrainzId", a.image, a."imageUrl"
+               FROM "Artist" a
+               JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
+               WHERE lra."localReleaseId" = $1
+                 AND a."relatedOnly" = false
+               ORDER BY a.name
+               LIMIT 1"#,
+        )
+        .bind(release_id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(row.map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
+        id,
+        name,
+        slug,
+        mb_id,
+        has_image: image.is_some() || image_url.is_some(),
+    }))
+}
+

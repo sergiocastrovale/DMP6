@@ -18,6 +18,7 @@ cd scripts && cargo build --release -p sync
 ./sync                           # Sync all pending artists
 ./sync --only="radiohead"        # Single artist
 ./sync --from="A" --to="M"       # Letter range
+./sync --release "clxxxxxxx"     # Re-sync a single release by LocalRelease ID
 ./sync --overwrite               # Re-sync all (ignores lastSyncedAt)
 ./sync --skip-artist-img         # Skip artist image downloads
 ./sync --skip-release-img        # Skip cover art downloads
