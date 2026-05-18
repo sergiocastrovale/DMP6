@@ -27,3 +27,4 @@ futures = { workspace = true }
 dotenvy = { workspace = true }
 slug = { workspace = true }
 cuid2 = { workspace = true }
+unicode-normalization = { workspace = true }

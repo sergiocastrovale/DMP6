@@ -48,6 +48,7 @@ futures = "0.3"
 num_cpus = "1.16"
 rand = "0.8"
 html-escape = "0.2"
+unicode-normalization = "0.1"
 rust_xlsxwriter = "0.80"
 
 [profile.release]

@@ -1,5 +1,6 @@
 use crate::mb_types::{MbRelease, MbTrack};
 use common::types::TrackMeta;
+use unicode_normalization::UnicodeNormalization;
 
 // ---------------------------------------------------------------------------
 // Title normalisation
@@ -8,7 +9,8 @@ use common::types::TrackMeta;
 pub fn normalize_title(title: &str) -> String {
     title
         .to_lowercase()
-        .chars()
+        .nfd()
+        .filter(|c| !unicode_normalization::char::is_combining_mark(*c))
         .filter(|c| c.is_alphanumeric() || c.is_whitespace())
         .collect::<String>()
         .split_whitespace()
