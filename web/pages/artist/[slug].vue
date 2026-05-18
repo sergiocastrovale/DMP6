@@ -39,13 +39,18 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
   return [
     {
       label: 'Update',
-      description: 'Sync new & changed files',
-      action: () => terminal.run('./refresh', ['--only', name]),
+      description: 'Index & sync new & changed files',
+      action: () => terminal.run('./refresh', ['--only', name, '--exact']),
     },
     {
       label: 'Re-sync',
-      description: 'Nuke & rebuild from scratch',
-      action: () => terminal.run('./refresh', ['--only', name, '--overwrite']),
+      description: 'Reindex & resync with MusicBrainz from scratch.',
+      action: () => terminal.run('./refresh', ['--only', name, '--overwrite', '--exact']),
+    },
+    {
+      label: 'Re-index',
+      description: 'Full reindexing of local files.',
+      action: () => terminal.run('./index', ['--only', name, '--overwrite', '--exact']),
     },
   ]
 })

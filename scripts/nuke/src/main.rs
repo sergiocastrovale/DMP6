@@ -34,7 +34,7 @@ struct Args {
     #[arg(long)]
     keep_artist_img: bool,
 
-    /// Delete only matching artist(s) — semicolon-separated prefix filter
+    /// Delete only matching artist(s) — semicolon-separated, exact match
     #[arg(long)]
     only: Option<String>,
 
@@ -195,7 +195,7 @@ struct OnlyPlan {
     folder_paths: Vec<String>,
 }
 
-async fn build_only_plan(pool: &PgPool, only: &str) -> Result<OnlyPlan, sqlx::Error> {
+async fn build_only_plan(pool: &PgPool, only: &str, exact: bool) -> Result<OnlyPlan, sqlx::Error> {
     let all_artists: Vec<(String, String, String, Option<String>, Option<String>)> =
         sqlx::query_as(
             r#"SELECT id, name, slug, image, "imageUrl" FROM "Artist" ORDER BY name"#,
@@ -205,7 +205,7 @@ async fn build_only_plan(pool: &PgPool, only: &str) -> Result<OnlyPlan, sqlx::Er
 
     let target_ids: HashSet<String> = all_artists
         .iter()
-        .filter(|(_, name, _, _, _)| matches_filter(name, "", "", only))
+        .filter(|(_, name, _, _, _)| matches_filter(name, "", "", only, exact))
         .map(|(id, _, _, _, _)| id.clone())
         .collect();
 
@@ -689,7 +689,7 @@ async fn main() {
             }
         };
 
-        let plan = match build_only_plan(&pool, only).await {
+        let plan = match build_only_plan(&pool, only, true).await {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("Failed to build deletion plan: {}", e);

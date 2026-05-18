@@ -15,6 +15,7 @@ pub async fn nuke_local_artists(
     from: &str,
     to: &str,
     only: &str,
+    exact: bool,
     _project_root: &str,
     s3_client: &Option<S3Client>,
     config: &Config,
@@ -32,7 +33,7 @@ pub async fn nuke_local_artists(
 
     let mut target_ids: Vec<String> = Vec::new();
     for (id, name, _, _) in &artists_with_names {
-        if matches_filter(name, from, to, only) {
+        if matches_filter(name, from, to, only, exact) {
             target_ids.push(id.clone());
         }
     }

@@ -10,6 +10,7 @@ pub async fn nuke_mb_data(
     from: Option<&str>,
     to: Option<&str>,
     only: Option<&str>,
+    exact: bool,
     _project_root: &str,
     s3_client: &Option<S3Client>,
     config: &Config,
@@ -28,6 +29,7 @@ pub async fn nuke_mb_data(
             from.unwrap_or(""),
             to.unwrap_or(""),
             only.unwrap_or(""),
+            exact,
         ) {
             continue;
         }

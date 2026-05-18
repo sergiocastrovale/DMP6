@@ -10,7 +10,7 @@ pub fn normalize_filter(s: &str) -> String {
         .join(" ")
 }
 
-pub fn matches_filter(folder: &str, from: &str, to: &str, only: &str) -> bool {
+pub fn matches_filter(folder: &str, from: &str, to: &str, only: &str, exact: bool) -> bool {
     let folder_norm = normalize_filter(folder);
 
     if !only.is_empty() {
@@ -20,7 +20,11 @@ pub fn matches_filter(folder: &str, from: &str, to: &str, only: &str) -> bool {
                 return false;
             }
             let part_norm = normalize_filter(part);
-            folder_norm.starts_with(&part_norm)
+            if exact {
+                folder_norm == part_norm
+            } else {
+                folder_norm.starts_with(&part_norm)
+            }
         });
     }
 

@@ -95,5 +95,9 @@ const statsParts = computed(() => {
       <DialogGenres v-model="showAllGenres" :genres="artist.genres" />
       <DialogLinks v-model="showAllLinks" :links="artist.urls" />
     </div>
+
+    <div class="absolute right-4 top-4">
+      <slot />
+    </div>
   </div>
 </template>

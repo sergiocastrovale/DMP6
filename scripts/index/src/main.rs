@@ -31,7 +31,10 @@ use std::{
 };
 
 use db::*;
-use deletion::{delete_removed_tracks, detect_deleted_folders, folder_changed};
+use deletion::{
+    delete_empty_releases, delete_orphan_artists, delete_removed_tracks,
+    detect_deleted_folders, folder_changed,
+};
 use images::{extract_cover_art, upload_release_image_to_s3, use_folder_image};
 use metadata::extract_metadata;
 use nuke::nuke_local_artists;
@@ -58,6 +61,9 @@ struct IndexArgs {
 
     #[arg(long, help = "Re-index all tracks, ignoring change detection")]
     overwrite: bool,
+
+    #[arg(long, help = "Exact match for --only (no prefix matching)")]
+    exact: bool,
 
     #[arg(long, help = "Skip cover art extraction")]
     skip_covers: bool,
@@ -189,7 +195,7 @@ async fn main() {
         let to = args.to.as_deref().unwrap_or("");
         let only = args.only.as_deref().unwrap_or("");
         reporter.info("Deleting local data for matched artists...");
-        match nuke_local_artists(&pool, from, to, only, &project_root, &s3_client, &config).await {
+        match nuke_local_artists(&pool, from, to, only, args.exact, &project_root, &s3_client, &config).await {
             Ok(n) => reporter.info(&format!("Deleted {} artist(s).", n)),
             Err(e) => reporter.err(&format!("Delete error: {}", e)),
         }
@@ -261,7 +267,7 @@ async fn main() {
             .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
             .map(|e| e.file_name().to_string_lossy().to_string())
             .filter(|name| !name.starts_with('.'))
-            .filter(|name| matches_filter(name, from, to, only))
+            .filter(|name| matches_filter(name, from, to, only, args.exact))
             .collect()
     };
 
@@ -971,12 +977,23 @@ async fn main() {
             let mut total = 0u64;
             for sub in tf.get(folder_name.as_str()).unwrap_or(&vec![]) {
                 let prefix = format!("{}/", sub);
-                total += delete_removed_tracks(&pool, &prefix, &music_dir).await;
+                total += delete_removed_tracks(&pool, &prefix, &music_dir).await.count;
             }
             total
         } else {
-            delete_removed_tracks(&pool, &folder_prefix, &music_dir).await
+            delete_removed_tracks(&pool, &folder_prefix, &music_dir).await.count
         };
+
+        if deleted_tracks > 0 {
+            let rel_del = delete_empty_releases(&pool, &config).await;
+            let art_del = delete_orphan_artists(&pool, &config).await;
+            if rel_del > 0 || art_del > 0 {
+                reporter.info(&format!(
+                    "Cleaned up {} empty release(s), {} orphan artist(s).",
+                    rel_del, art_del
+                ));
+            }
+        }
 
         // -----------------------------------------------------------------
         // Update totals + lastIndexedAt

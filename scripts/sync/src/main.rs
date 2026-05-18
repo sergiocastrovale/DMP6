@@ -41,6 +41,8 @@ struct SyncArgs {
     release: Option<String>,
     #[arg(long)]
     overwrite: bool,
+    #[arg(long, help = "Exact match for --only (no prefix matching)")]
+    exact: bool,
     #[arg(long)]
     skip_artist_img: bool,
     #[arg(long)]
@@ -211,6 +213,7 @@ async fn main() {
             args.from.as_deref(),
             args.to.as_deref(),
             args.only.as_deref(),
+            args.exact,
             &config.project_root,
             &s3_client,
             &config,
@@ -289,6 +292,7 @@ async fn main() {
                     args.from.as_deref().unwrap_or(""),
                     args.to.as_deref().unwrap_or(""),
                     args.only.as_deref().unwrap_or(""),
+                    args.exact,
                 )
             })
             .map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
