@@ -60,10 +60,12 @@ pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usi
 
 async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, name_a: &str, artist_b: &str, name_b: &str) -> Result<HashSet<String>, sqlx::Error> {
     let file_paths: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
-        r#"SELECT t."filePath", t.artist, t."albumArtist"
+        r#"SELECT DISTINCT t."filePath", t.artist, t."albumArtist"
            FROM "LocalReleaseTrack" t
-           JOIN "TrackArtist" ta ON ta."trackId" = t.id
-           WHERE ta."artistId" = $1"#,
+           LEFT JOIN "LocalRelease" lr ON t."localReleaseId" = lr.id
+           LEFT JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id AND lra."artistId" = $1
+           LEFT JOIN "TrackRelatedArtist" tra ON tra."trackId" = t.id AND tra."artistId" = $1
+           WHERE lra.id IS NOT NULL OR tra.id IS NOT NULL"#,
     )
     .bind(artist_b)
     .fetch_all(pool)
@@ -100,10 +102,10 @@ async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, 
         .await?;
 
     sqlx::query(
-        r#"DELETE FROM "TrackArtist"
+        r#"DELETE FROM "TrackRelatedArtist"
            WHERE "artistId" = $1
-             AND ("trackId", role) IN (
-               SELECT "trackId", role FROM "TrackArtist" WHERE "artistId" = $2
+             AND "trackId" IN (
+               SELECT "trackId" FROM "TrackRelatedArtist" WHERE "artistId" = $2
              )"#,
     )
     .bind(artist_a)
@@ -111,7 +113,7 @@ async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, 
     .execute(pool)
     .await?;
 
-    sqlx::query(r#"UPDATE "TrackArtist" SET "artistId" = $1 WHERE "artistId" = $2"#)
+    sqlx::query(r#"UPDATE "TrackRelatedArtist" SET "artistId" = $1 WHERE "artistId" = $2"#)
         .bind(artist_a)
         .bind(artist_b)
         .execute(pool)

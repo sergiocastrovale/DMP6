@@ -30,12 +30,6 @@ enum ReleaseStatus {
   UNKNOWN
 }
 
-enum TrackArtistRole {
-  PRIMARY
-  ALBUM_ARTIST
-  FEATURED
-}
-
 enum Role {
   VIEWER
   MANAGER
@@ -65,7 +59,8 @@ model Artist {
   localReleases     LocalReleaseArtist[]
   mbReleases        MusicBrainzReleaseArtist[]
   genres            Genre[]              @relation("ArtistGenres")
-  trackArtists      TrackArtist[]        @relation("ArtistTracks")
+  relatedOnly       Boolean              @default(false)
+  trackRelatedArtists TrackRelatedArtist[] @relation("ArtistRelatedTracks")
   unsplitIssues     IssueUnsplitArtist[] @relation("UnsplitArtistIssue")
   orphanIssues      IssueOrphanArtist[]  @relation("OrphanArtistIssue")
   duplicateAIssues  IssueDuplicateArtist[] @relation("DuplicateArtistA")
@@ -76,6 +71,7 @@ model Artist {
   @@index([averageMatchScore])
   @@index([createdAt])
   @@index([name]) // B-tree for ORDER BY name; trigram GIN index for ILIKE added via raw migration
+  @@index([relatedOnly])
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +274,7 @@ model LocalReleaseTrack {
   mbTrack        MusicBrainzReleaseTrack? @relation(fields: [mbTrackId], references: [id])
   favorite       FavoriteTrack?
   playlistTracks PlaylistTrack[]
-  trackArtists     TrackArtist[]            @relation("TrackArtists")
+  trackRelatedArtists TrackRelatedArtist[]  @relation("TrackRelatedArtists")
   corruptedIssues  IssueCorruptedTpe2[]     @relation("CorruptedTrackIssue")
   missingIssues    IssueMissingMetadata[]   @relation("MissingMetadataIssue")
 
@@ -298,22 +294,20 @@ model LocalReleaseTrack {
 }
 
 // ---------------------------------------------------------------------------
-// TrackArtist
+// TrackRelatedArtist
 // ---------------------------------------------------------------------------
 
-model TrackArtist {
+model TrackRelatedArtist {
   id        String            @id @default(cuid())
   trackId   String
   artistId  String
-  role      TrackArtistRole   @default(PRIMARY)
   createdAt DateTime          @default(now())
-  track     LocalReleaseTrack @relation("TrackArtists", fields: [trackId], references: [id], onDelete: Cascade)
-  artist    Artist            @relation("ArtistTracks", fields: [artistId], references: [id], onDelete: Cascade)
+  track     LocalReleaseTrack @relation("TrackRelatedArtists", fields: [trackId], references: [id], onDelete: Cascade)
+  artist    Artist            @relation("ArtistRelatedTracks", fields: [artistId], references: [id], onDelete: Cascade)
 
-  @@unique([trackId, artistId, role])
+  @@unique([trackId, artistId])
   @@index([trackId])
   @@index([artistId])
-  @@index([trackId, role, artistId]) // Composite for WHERE trackId = ? AND role = 'PRIMARY' JOINs
 }
 
 // ---------------------------------------------------------------------------

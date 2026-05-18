@@ -55,7 +55,7 @@ Artists that shouldn't exist:
 |--------|---------|
 | `phantom` | Name matches `^\d{1,3}$` or `@\d{2,3}$` — created by corrupted tags |
 | `no_releases` | No `LocalReleaseArtist` links |
-| `no_tracks` | Has releases but no `TrackArtist` links |
+| `no_links` | No `LocalReleaseArtist` or `TrackRelatedArtist` links |
 
 **Fix:** `./fix --orphans` deletes the artist and any local image file.
 
@@ -67,7 +67,7 @@ Skips pairs where both have distinct MusicBrainz IDs (confirmed different entiti
 
 `artistAId` = canonical (higher track count), `artistBId` = to be merged.
 
-**Fix:** `./fix --duplicates` re-points all junction rows (LocalReleaseArtist, TrackArtist, MusicBrainzReleaseArtist) from B to A, then deletes B and its image.
+**Fix:** `./fix --duplicates` re-points all junction rows (LocalReleaseArtist, TrackRelatedArtist, MusicBrainzReleaseArtist) from B to A, then deletes B and its image.
 
 ### Missing Metadata (`IssueMissingMetadata`)
 

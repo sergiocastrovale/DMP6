@@ -247,14 +247,12 @@ async fn fetch_tracks_for_artists(pool: &PgPool, artist_ids: &[String]) -> Vec<T
     if artist_ids.is_empty() {
         return vec![];
     }
-    // Fetch tracks for artists with PRIMARY or ALBUM_ARTIST role
     let rows: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
         r#"
-        SELECT DISTINCT lrt.id, ta."artistId", lrt."localReleaseId", lrt.genre
+        SELECT DISTINCT lrt.id, lra."artistId", lrt."localReleaseId", lrt.genre
         FROM "LocalReleaseTrack" lrt
-        JOIN "TrackArtist" ta ON ta."trackId" = lrt.id
-        WHERE ta."artistId" = ANY($1)
-          AND ta.role IN ('PRIMARY', 'ALBUM_ARTIST')
+        JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lrt."localReleaseId"
+        WHERE lra."artistId" = ANY($1)
           AND lrt."localReleaseId" IS NOT NULL
           AND lrt.title IS NOT NULL
         "#,

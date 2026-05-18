@@ -280,10 +280,10 @@ async fn build_only_plan(pool: &PgPool, only: &str) -> Result<OnlyPlan, sqlx::Er
         }
     }
 
-    // Also surface artists who appear via TrackArtist on tracks in these releases
+    // Also surface artists who appear via TrackRelatedArtist on tracks in these releases
     if !local_release_ids.is_empty() {
         let rows: Vec<(String,)> = sqlx::query_as(
-            r#"SELECT DISTINCT ta."artistId" FROM "TrackArtist" ta
+            r#"SELECT DISTINCT ta."artistId" FROM "TrackRelatedArtist" ta
                JOIN "LocalReleaseTrack" lrt ON lrt.id = ta."trackId"
                WHERE lrt."localReleaseId" = ANY($1::text[])
                  AND ta."artistId" != ALL($2::text[])"#,
@@ -300,7 +300,7 @@ async fn build_only_plan(pool: &PgPool, only: &str) -> Result<OnlyPlan, sqlx::Er
     // Cascade check: co-artist Y cascades only if ALL three hold:
     //   1. Every LocalReleaseArtist row for Y points into the deletion set
     //   2. Every MusicBrainzReleaseArtist row for Y points into the deletion set
-    //   3. No TrackArtist rows for Y link to tracks in releases outside the deletion set
+    //   3. No TrackRelatedArtist rows for Y link to tracks in releases outside the deletion set
     let mut cascade_ids: HashSet<String> = HashSet::new();
 
     for cand_id in &candidate_ids {
@@ -327,7 +327,7 @@ async fn build_only_plan(pool: &PgPool, only: &str) -> Result<OnlyPlan, sqlx::Er
         // Any tracks in releases outside the deletion set?
         let outside_tracks: i64 = if local_release_ids.is_empty() {
             sqlx::query_as::<_, (i64,)>(
-                r#"SELECT COUNT(*) FROM "TrackArtist" WHERE "artistId" = $1"#,
+                r#"SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = $1"#,
             )
             .bind(cand_id)
             .fetch_one(pool)
@@ -335,7 +335,7 @@ async fn build_only_plan(pool: &PgPool, only: &str) -> Result<OnlyPlan, sqlx::Er
             .0
         } else {
             sqlx::query_as::<_, (i64,)>(
-                r#"SELECT COUNT(*) FROM "TrackArtist" ta
+                r#"SELECT COUNT(*) FROM "TrackRelatedArtist" ta
                    JOIN "LocalReleaseTrack" lrt ON lrt.id = ta."trackId"
                    WHERE ta."artistId" = $1
                      AND lrt."localReleaseId" IS NOT NULL
@@ -525,7 +525,7 @@ async fn execute_only_plan(
     }
 
     // LocalRelease cascades: LocalReleaseTrack, LocalReleaseArtist, FavoriteTrack,
-    //                        PlaylistTrack, TrackArtist
+    //                        PlaylistTrack, TrackRelatedArtist
     // Must delete before MusicBrainzRelease so LocalReleaseTrack.mbTrackId refs are gone first
     if !local_release_ids.is_empty() {
         sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = ANY($1::text[])"#)
@@ -586,11 +586,8 @@ async fn refresh_statistics(pool: &PgPool) {
     sqlx::query(
         r#"UPDATE "Statistics" SET
              artists = (SELECT COUNT(*)::int FROM "Artist"),
-             "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" a
-                WHERE EXISTS (SELECT 1 FROM "TrackArtist" ta WHERE ta."artistId" = a.id)),
-             "relatedArtists" = (SELECT COUNT(*)::int FROM "Artist" a
-                WHERE NOT EXISTS (SELECT 1 FROM "TrackArtist" ta WHERE ta."artistId" = a.id)
-                  AND EXISTS (SELECT 1 FROM "LocalReleaseArtist" lra WHERE lra."artistId" = a.id)),
+             "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" WHERE "relatedOnly" = false),
+             "relatedArtists" = (SELECT COUNT(*)::int FROM "Artist" WHERE "relatedOnly" = true),
              tracks = (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
              releases = (SELECT COUNT(*)::int FROM "LocalRelease"),
              "releasesWithCoverArt" = (SELECT COUNT(*)::int FROM "LocalRelease"
@@ -833,7 +830,7 @@ async fn main() {
         "Playlist",
         "FavoriteTrack",
         "FavoriteRelease",
-        "TrackArtist",
+        "TrackRelatedArtist",
         "LocalReleaseArtist",
         "LocalReleaseTrack",
         "LocalRelease",

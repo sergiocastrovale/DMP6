@@ -12,7 +12,9 @@ export const useAuth = () => {
 
   const loadMe = async () => {
     try {
-      user.value = await $fetch<MeResponse>('/api/auth/me')
+      user.value = await $fetch<MeResponse>('/api/auth/me', {
+        headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined,
+      })
     } catch {
       user.value = null
     }

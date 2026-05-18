@@ -83,49 +83,11 @@ pub fn names_are_similar(a: &str, b: &str) -> bool {
     intersection as f64 / union as f64 >= 0.5
 }
 
-/// Returns true when `artist_name` is a compound name that contains `match_name`
-/// as a component (e.g. "070 Shake & Christine and the Queens" contains "070 Shake").
-pub fn is_likely_compound_of(artist_name: &str, match_name: &str) -> bool {
-    let an = normalize_name(artist_name);
-    let mn = normalize_name(match_name);
-    if an == mn {
-        return false;
-    }
-
-    let lower = artist_name.to_lowercase();
-
-    // Unambiguous compound separators — always indicate multiple artists
-    if lower.contains(" vs ")
-        || lower.contains(" vs. ")
-        || lower.contains(" – ")
-        || lower.contains(" // ")
-        || lower.contains(" | ")
-        || lower.contains(" x ")
-        || artist_name.contains('\\')
-    {
-        return true;
-    }
-
-    // Ambiguous separator: "&" only counts as compound if the match is a proper
-    // subset of the artist name (the artist name has words beyond the match).
-    if lower.contains(" & ") {
-        let an_words: HashSet<&str> = an.split_whitespace().collect();
-        let mn_words: HashSet<&str> = mn.split_whitespace().collect();
-        if mn_words.is_subset(&an_words) && mn_words.len() < an_words.len() {
-            return true;
-        }
-    }
-
-    false
-}
-
 // ---------------------------------------------------------------------------
 // 6-step artist matching
 // ---------------------------------------------------------------------------
 
-/// Returns (primary_match, additional_matches).
-/// Primary is the match for the queried artist name.
-/// Additional are other artists found from credits or compound splitting.
+/// Returns the best MbArtistMatch for the given artist, or None.
 ///
 /// Algorithm:
 ///   1. If Artist.musicbrainzId is already set → direct lookup
@@ -141,7 +103,7 @@ pub async fn find_mb_match_with_fallback(
     artist_name: &str,
     mb_hint_artist_id: Option<&str>,
     limiter: &mut RateLimiter,
-) -> Result<(Option<MbArtistMatch>, Vec<(String, MbArtistMatch)>), String> {
+) -> Result<Option<MbArtistMatch>, String> {
     // Step 1: direct lookup via embedded MUSICBRAINZ_ALBUMARTISTID
     if let Some(mb_aid) = mb_hint_artist_id {
         if SPECIAL_MB_ARTIST_IDS.contains(&mb_aid) {
@@ -150,7 +112,7 @@ pub async fn find_mb_match_with_fallback(
             match mb_lookup_artist(client, mb_aid, limiter).await {
                 Ok(m) if is_special_mb_artist(&m.id, &m.name) => {}
                 Ok(m) => {
-                    return Ok((Some(m), Vec::new()));
+                    return Ok(Some(m));
                 }
                 Err(_) => {}
             }
@@ -189,13 +151,7 @@ pub async fn find_mb_match_with_fallback(
                         names_are_similar(artist_name, &a.name)
                             || a.name.eq_ignore_ascii_case(artist_name)
                     }) {
-                        let primary = matched.clone();
-                        let additional: Vec<(String, MbArtistMatch)> = real_artists
-                            .iter()
-                            .filter(|a| a.id != primary.id)
-                            .map(|a| (a.name.clone(), a.clone()))
-                            .collect();
-                        return Ok((Some(primary), additional));
+                        return Ok(Some(matched.clone()));
                     }
                 }
             }
@@ -205,7 +161,7 @@ pub async fn find_mb_match_with_fallback(
 
     // Step 3: search MB by stored artist name
     if let Some(m) = mb_search_artist(client, artist_name, limiter).await? {
-        return Ok((Some(m), Vec::new()));
+        return Ok(Some(m));
     }
 
     // Fetch distinct (artist_tag, albumArtist_tag, album_title) combos for this artist.
@@ -217,8 +173,8 @@ pub async fn find_mb_match_with_fallback(
                SELECT 1 FROM "LocalReleaseArtist" lra
                WHERE lra."localReleaseId" = lr.id AND lra."artistId" = $1
            ) OR EXISTS (
-               SELECT 1 FROM "TrackArtist" ta
-               WHERE ta."trackId" = lrt.id AND ta."artistId" = $1
+               SELECT 1 FROM "TrackRelatedArtist" tra
+               WHERE tra."trackId" = lrt.id AND tra."artistId" = $1
            )"#,
     )
     .bind(artist_id)
@@ -277,7 +233,6 @@ pub async fn find_mb_match_with_fallback(
     });
 
     // Step 4: try raw tags (excluding artist_name itself) as single artist names
-    let mut early_primary: Option<MbArtistMatch> = None;
     for (tag, _) in &all_tags {
         if tag.eq_ignore_ascii_case(artist_name) {
             continue;
@@ -286,37 +241,23 @@ pub async fn find_mb_match_with_fallback(
             if is_special_mb_artist(&m.id, &m.name) {
                 continue;
             }
-            early_primary = Some(m);
-            break;
+            return Ok(Some(m));
         }
     }
 
     // Step 5: search MB for a release-group by album title + tag,
-    // use the structured artist-credit array to resolve compound names.
+    // use the structured artist-credit array to find the artist.
     for (tag, album_title) in &all_tags {
         if let Some(ref title) = album_title {
-            if let Some(result) =
-                try_release_group_credits(client, title, tag, &early_primary, limiter).await?
+            if let Some(m) =
+                try_release_group_credits(client, title, tag, artist_name, limiter).await?
             {
-                return Ok(result);
+                return Ok(Some(m));
             }
         }
     }
 
-    // Step 6 (last resort): split tags by unambiguous separators only.
-    for (tag, _) in &all_tags {
-        if let Some(result) =
-            try_split_tag(client, tag, artist_name, &early_primary, limiter).await?
-        {
-            return Ok(result);
-        }
-    }
-
-    if early_primary.is_some() {
-        return Ok((early_primary, Vec::new()));
-    }
-
-    Ok((None, Vec::new()))
+    Ok(None)
 }
 
 // ---------------------------------------------------------------------------
@@ -327,9 +268,9 @@ async fn try_release_group_credits(
     client: &Client,
     album_title: &str,
     artist_tag: &str,
-    early_primary: &Option<MbArtistMatch>,
+    artist_name: &str,
     limiter: &mut RateLimiter,
-) -> Result<Option<(Option<MbArtistMatch>, Vec<(String, MbArtistMatch)>)>, String> {
+) -> Result<Option<MbArtistMatch>, String> {
     let credits = mb_search_release_group_credits(client, album_title, artist_tag, limiter)
         .await
         .unwrap_or_default();
@@ -341,116 +282,25 @@ async fn try_release_group_credits(
         return Ok(None);
     }
 
-    // Validate: at least one credit name must be related to the artist_tag.
+    // Find the credit that matches our artist name
+    if let Some(matched) = real_credits.iter().find(|c| {
+        names_are_similar(artist_name, &c.name)
+            || c.name.eq_ignore_ascii_case(artist_name)
+    }) {
+        return Ok(Some(matched.clone()));
+    }
+
+    // Fallback: return first credit if it's related to the tag
     let tag_norm = normalize_name(artist_tag);
     let tag_words: HashSet<&str> = tag_norm.split_whitespace().collect();
-    let any_credit_matches = real_credits.iter().any(|c| {
-        let c_norm = normalize_name(&c.name);
+    if let Some(first) = real_credits.into_iter().next() {
+        let c_norm = normalize_name(&first.name);
         let c_words: HashSet<&str> = c_norm.split_whitespace().collect();
-        c_words.is_subset(&tag_words)
+        if c_words.is_subset(&tag_words)
             || tag_words.is_subset(&c_words)
-            || names_are_similar(artist_tag, &c.name)
-    });
-    if !any_credit_matches {
-        return Ok(None);
-    }
-
-    let mut seen_ids: HashSet<String> = HashSet::new();
-    let mut primary: Option<MbArtistMatch> = None;
-    let mut additional: Vec<(String, MbArtistMatch)> = Vec::new();
-    let mut found_new = false;
-
-    if let Some(ref ep) = early_primary {
-        seen_ids.insert(ep.id.clone());
-        primary = Some(ep.clone());
-    }
-
-    for credit in real_credits {
-        if seen_ids.contains(&credit.id) {
-            continue;
-        }
-        found_new = true;
-        seen_ids.insert(credit.id.clone());
-        if primary.is_none() {
-            primary = Some(credit);
-        } else {
-            additional.push((credit.name.clone(), credit));
-        }
-    }
-
-    if primary.is_some() && (early_primary.is_none() || found_new) {
-        Ok(Some((primary, additional)))
-    } else {
-        Ok(None)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Step 6 helper: split compound tag
-// ---------------------------------------------------------------------------
-
-async fn try_split_tag(
-    client: &Client,
-    tag: &str,
-    artist_name: &str,
-    early_primary: &Option<MbArtistMatch>,
-    limiter: &mut RateLimiter,
-) -> Result<Option<(Option<MbArtistMatch>, Vec<(String, MbArtistMatch)>)>, String> {
-    let mut separators: Vec<&str> = vec![
-        "// ", "//", "\\\\ ", "\\\\", "|| ", "||",
-        " feat. ", " feat ", " vs. ", " vs ", " – ",
-        " / ", " \\ ", "\\", "| ", "|", "; ", ";",
-    ];
-    // Only try ambiguous separators when we have a confirmed anchor artist.
-    if early_primary.is_some() {
-        separators.extend_from_slice(&["/", " & ", ", "]);
-    }
-
-    for sep in &separators {
-        let parts: Vec<&str> = tag
-            .split(sep)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
-        if parts.len() < 2 {
-            continue;
-        }
-        // If artist_name appears as one of the split parts, this tag won't help
-        // us find artist_name's MB match — the other parts are different artists.
-        if parts.iter().any(|p| p.eq_ignore_ascii_case(artist_name)) {
-            continue;
-        }
-
-        let mut primary: Option<MbArtistMatch> = None;
-        let mut additional: Vec<(String, MbArtistMatch)> = Vec::new();
-        let mut seen_ids: HashSet<String> = HashSet::new();
-
-        if let Some(ref ep) = early_primary {
-            seen_ids.insert(ep.id.clone());
-            primary = Some(ep.clone());
-        }
-
-        for part in &parts {
-            if let Some(ref ep) = early_primary {
-                if part.eq_ignore_ascii_case(&ep.name) {
-                    continue;
-                }
-            }
-            if let Some(m) = mb_search_artist(client, part, limiter).await? {
-                if seen_ids.contains(&m.id) {
-                    continue;
-                }
-                seen_ids.insert(m.id.clone());
-                if primary.is_none() {
-                    primary = Some(m);
-                } else {
-                    additional.push((part.to_string(), m));
-                }
-            }
-        }
-
-        if primary.is_some() {
-            return Ok(Some((primary, additional)));
+            || names_are_similar(artist_tag, &first.name)
+        {
+            return Ok(Some(first));
         }
     }
 

@@ -402,7 +402,7 @@ async fn execute_plan(
     }
 
     // LocalRelease delete cascades to LocalReleaseTrack, LocalReleaseArtist, and
-    // (via LocalReleaseTrack) TrackArtist + FavoriteTrack + PlaylistTrack.
+    // (via LocalReleaseTrack) TrackRelatedArtist + FavoriteTrack + PlaylistTrack.
     if !local_release_ids.is_empty() {
         sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = ANY($1::text[])"#)
             .bind(&local_release_ids)
@@ -419,7 +419,7 @@ async fn execute_plan(
             .await?;
     }
 
-    // Artist delete cascades to ArtistUrl, LocalReleaseArtist, MusicBrainzReleaseArtist, TrackArtist.
+    // Artist delete cascades to ArtistUrl, LocalReleaseArtist, MusicBrainzReleaseArtist, TrackRelatedArtist.
     if !artist_ids.is_empty() {
         sqlx::query(r#"DELETE FROM "Artist" WHERE id = ANY($1::text[])"#)
             .bind(&artist_ids)
@@ -458,11 +458,8 @@ async fn refresh_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"UPDATE "Statistics" SET
              artists = (SELECT COUNT(*)::int FROM "Artist"),
-             "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" a
-                WHERE EXISTS (SELECT 1 FROM "TrackArtist" ta WHERE ta."artistId" = a.id)),
-             "relatedArtists" = (SELECT COUNT(*)::int FROM "Artist" a
-                WHERE NOT EXISTS (SELECT 1 FROM "TrackArtist" ta WHERE ta."artistId" = a.id)
-                  AND EXISTS (SELECT 1 FROM "LocalReleaseArtist" lra WHERE lra."artistId" = a.id)),
+             "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" WHERE "relatedOnly" = false),
+             "relatedArtists" = (SELECT COUNT(*)::int FROM "Artist" WHERE "relatedOnly" = true),
              tracks = (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
              releases = (SELECT COUNT(*)::int FROM "LocalRelease"),
              "releasesWithCoverArt" = (SELECT COUNT(*)::int FROM "LocalRelease" WHERE image IS NOT NULL OR "imageUrl" IS NOT NULL),

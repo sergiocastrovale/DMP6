@@ -19,15 +19,16 @@ MusicBrainz tree (canonical):
 
 Local tree (files on disk):
   Artist ←→ LocalReleaseArtist ←→ LocalRelease → LocalReleaseTrack
+  Artist ←→ TrackRelatedArtist ←→ LocalReleaseTrack
 
 Link: LocalRelease.releaseId → MusicBrainzRelease.id
 Link: LocalReleaseTrack.mbTrackId → MusicBrainzReleaseTrack.id
 ```
 
-- Both artist relationships are many-to-many (via junction tables)
-- No compound artists — collaborations split into individual artists, all linked to shared releases
+- `LocalReleaseArtist` = main artists (albumArtist tag owners), many-to-many
+- `TrackRelatedArtist` = related/guest artists (artist tag extras not in albumArtist), many-to-many
+- `Artist.relatedOnly` = true for guests (no own browse page, no MB sync); flips to false when found as albumArtist
 - `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING | UNSYNCABLE | UNKNOWN
-- `TrackArtistRole`: PRIMARY | ALBUM_ARTIST | FEATURED
 - `PlaylistType`: MANUAL | GENRE
 - Releases deduplicated by `groupKey` (unique): `"mb:{mbAlbumId}"` or `"meta:{slugTitle}:{year}:{slugArtist}"`
 

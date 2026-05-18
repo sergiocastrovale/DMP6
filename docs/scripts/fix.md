@@ -29,7 +29,7 @@ Reads `IssueCorruptedTpe2` rows where `status = 'PENDING'`. For each:
 ### `--unsplit`
 
 Reads `IssueUnsplitArtist` rows where `status = 'PENDING'`. For each:
-1. Gets all track file paths linked to the compound artist via `TrackArtist`
+1. Gets all track file paths linked to the compound artist via `LocalReleaseArtist`
 2. For each file: writes `proposedParts[0]` to `albumArtist` (TPE2) — the primary artist only
 3. Writes the full compound artist name to `artist` (TPE1) — preserves the multi-artist credit where it belongs
 4. Bumps directory mtime
@@ -43,14 +43,14 @@ After `./fix --unsplit`, run `./refresh --only="ArtistName"` to rebuild DB recor
 
 Reads `IssueOrphanArtist` rows where `status = 'PENDING'`. For each:
 1. Deletes the artist's local image file (if set)
-2. `DELETE FROM "Artist" WHERE id = $artistId` — cascades to ArtistUrl, junction tables, TrackArtist
+2. `DELETE FROM "Artist" WHERE id = $artistId` — cascades to ArtistUrl, junction tables, TrackRelatedArtist
 
 No file tag changes. No re-index needed.
 
 ### `--duplicates`
 
 Reads `IssueDuplicateArtist` rows where `status = 'PENDING'`. For each pair (A = keep, B = merge):
-1. Re-points `LocalReleaseArtist`, `TrackArtist`, `MusicBrainzReleaseArtist` rows from B to A (skipping conflicts)
+1. Re-points `LocalReleaseArtist`, `TrackRelatedArtist`, `MusicBrainzReleaseArtist` rows from B to A (skipping conflicts)
 2. Deletes remaining B junction rows
 3. Deletes B's local image file
 4. `DELETE FROM "Artist" WHERE id = $artistBId`

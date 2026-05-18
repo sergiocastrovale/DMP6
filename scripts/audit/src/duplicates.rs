@@ -10,8 +10,8 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         sqlx::query_as(
             r#"SELECT a1.id, a2.id,
                       a1."musicbrainzId", a2."musicbrainzId",
-                      (SELECT COUNT(*) FROM "TrackArtist" WHERE "artistId" = a1.id),
-                      (SELECT COUNT(*) FROM "TrackArtist" WHERE "artistId" = a2.id)
+                      (SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = a1.id),
+                      (SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = a2.id)
                FROM "Artist" a1
                JOIN "Artist" a2 ON a1.id < a2.id
                WHERE LOWER(REGEXP_REPLACE(a1.name, '[^[:alnum:]]', '', 'g')) =

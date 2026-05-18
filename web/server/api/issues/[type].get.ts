@@ -112,7 +112,7 @@ async function fetchType(
             artist: {
               select: {
                 id: true, name: true, slug: true, totalTracks: true,
-                trackArtists: { take: 1, select: { track: { select: { filePath: true } } } },
+                localReleases: { take: 1, select: { localRelease: { select: { tracks: { take: 1, select: { filePath: true } } } } } },
               },
             },
           },
@@ -121,7 +121,7 @@ async function fetchType(
       ])
       const items = raw.map(item => ({
         ...item,
-        folderPath: item.artist?.trackArtists?.[0]?.track?.filePath ?? null,
+        folderPath: item.artist?.localReleases?.[0]?.localRelease?.tracks?.[0]?.filePath ?? null,
       }))
       return [items, total]
     }

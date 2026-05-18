@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
   const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genre ?? ''}:s=${sort}:q=${search ?? ''}:min=${minScore ?? ''}:max=${maxScore ?? ''}`
 
   return cachedResponse(cacheKey, 120, async () => {
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { relatedOnly: false }
 
     if (letter) {
       where.slug = { startsWith: letter }

@@ -217,9 +217,9 @@ pub async fn batch_upsert_tracks(
     Ok(rows.into_iter().map(|(id, path)| (path, id)).collect())
 }
 
-pub async fn batch_ensure_track_artists(
+pub async fn batch_ensure_track_related_artists(
     pool: &PgPool,
-    links: &[(String, String, String)],
+    links: &[(String, String)],
 ) -> Result<(), sqlx::Error> {
     if links.is_empty() {
         return Ok(());
@@ -229,29 +229,26 @@ pub async fn batch_ensure_track_artists(
     let mut ids: Vec<String> = Vec::with_capacity(len);
     let mut track_ids: Vec<String> = Vec::with_capacity(len);
     let mut artist_ids: Vec<String> = Vec::with_capacity(len);
-    let mut roles: Vec<String> = Vec::with_capacity(len);
     let now = Utc::now().naive_utc();
     let mut timestamps: Vec<NaiveDateTime> = Vec::with_capacity(len);
 
-    for (tid, aid, role) in links {
+    for (tid, aid) in links {
         ids.push(cuid2::create_id());
         track_ids.push(tid.clone());
         artist_ids.push(aid.clone());
-        roles.push(role.clone());
         timestamps.push(now);
     }
 
     sqlx::query(
-        r#"INSERT INTO "TrackArtist" (id, "trackId", "artistId", role, "createdAt")
-           SELECT id, "trackId", "artistId", role::"TrackArtistRole", "createdAt"
-           FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamp[])
-             AS t(id, "trackId", "artistId", role, "createdAt")
-           ON CONFLICT ("trackId", "artistId", role) DO NOTHING"#,
+        r#"INSERT INTO "TrackRelatedArtist" (id, "trackId", "artistId", "createdAt")
+           SELECT id, "trackId", "artistId", "createdAt"
+           FROM UNNEST($1::text[], $2::text[], $3::text[], $4::timestamp[])
+             AS t(id, "trackId", "artistId", "createdAt")
+           ON CONFLICT ("trackId", "artistId") DO NOTHING"#,
     )
     .bind(&ids)
     .bind(&track_ids)
     .bind(&artist_ids)
-    .bind(&roles)
     .bind(&timestamps)
     .execute(pool)
     .await?;

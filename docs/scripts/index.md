@@ -33,7 +33,7 @@ Without `--web`, the script prints colored, indented progress (folder headers, `
 2. **Extract** metadata in parallel (rayon + lofty), including 3 MusicBrainz tags: `MUSICBRAINZ_ALBUMID` (release), `MUSICBRAINZ_RELEASEGROUPID` (release group), `MUSICBRAINZ_ALBUMARTISTID`
 3. **Change detection** — skip unchanged files (mtime + fileSize), hash-compare changed ones
 4. **Split** album artist and track artist tags into individual artists
-5. **Upsert** Artist, LocalRelease, LocalReleaseTrack, TrackArtist, LocalReleaseArtist (batch UNNEST)
+5. **Upsert** Artist, LocalRelease, LocalReleaseTrack, LocalReleaseArtist, TrackRelatedArtist (batch UNNEST)
 6. **Cover art** — extract from embedded tags or folder.jpg, upload to S3 if configured
 7. **Update totals** for this artist's releases and tracks
 8. **Set `lastIndexedAt`** on Artist
@@ -44,7 +44,11 @@ Without `--web`, the script prints colored, indented progress (folder headers, `
 Releases are deduplicated by `groupKey` (3-tier):
 - With MB release ID: `"mbr:{mbReleaseId}:{folderPath}"` (edition-specific)
 - With MB release group ID: `"mb:{mbReleaseGroupId}:{folderPath}"`
-- Without MB IDs: `"meta:{slugTitle}:{year}:{slugArtist}"`
+- Without MB IDs: `"meta:{slugTitle}:{year}:{slugArtist}:{folderPath}"`
+
+The `folderPath` is always part of the key, so the same album in two folders (e.g. original + compilation) creates separate `LocalRelease` rows. This is intentional — index treats each folder as a distinct physical copy. Deduplication into a single release card happens later in **sync**, which links multiple `LocalRelease` rows to the same `MusicBrainzRelease` via `releaseId`. The web UI then groups by MB release, collapsing duplicates.
+
+Before sync runs, every `LocalRelease` appears as its own unmatched card.
 
 ## Artist Tag Splitting
 
@@ -55,6 +59,21 @@ Releases are deduplicated by `groupKey` (3-tier):
 - Splits on `vs.`/`vs`
 - Does **not** split on `,` (preserves "10,000 Maniacs")
 - Does **not** split on `&` (preserves "Simon & Garfunkel")
+
+## Artist Roles (Main vs Related)
+
+Derived entirely from file metadata during indexing:
+
+- **Main artist** = appears in `albumArtist` tag → `Artist.relatedOnly = false`, linked via `LocalReleaseArtist`
+- **Related artist** = appears in `artist` tag but NOT in `albumArtist` → `Artist.relatedOnly = true`, linked via `TrackRelatedArtist`
+
+Example: albumArtist="Daft Punk", artist="Daft Punk feat. Pharrell Williams, Nile Rodgers"
+- Daft Punk = main artist (owns release, gets browse page, gets MB sync)
+- Pharrell Williams, Nile Rodgers = related (displayed as "with Pharrell Williams, Nile Rodgers" below track title)
+
+If a related artist later appears as albumArtist on another release, `relatedOnly` flips to `false` and they get their own page.
+
+No MusicBrainz guessing, no fuzzy matching — purely tag-derived.
 
 ## Running on NAS
 

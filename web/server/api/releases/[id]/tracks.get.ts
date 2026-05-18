@@ -107,10 +107,9 @@ async function getLocalReleaseTracks(
       mbTrack: {
         select: { id: true, title: true, musicbrainzId: true },
       },
-      trackArtists: {
-        where: { role: { in: ['PRIMARY', 'FEATURED'] } },
+      trackRelatedArtists: {
         select: {
-          artist: { select: { name: true, slug: true } },
+          artist: { select: { name: true, slug: true, relatedOnly: true } },
         },
       },
     },
@@ -121,7 +120,7 @@ async function getLocalReleaseTracks(
   const enrichedTracks: any[] = []
   const matchedMbIds = new Set<string>()
 
-  for (const { trackArtists, mbTrack, ...t } of tracks) {
+  for (const { trackRelatedArtists, mbTrack, ...t } of tracks) {
     let mbTitle: string | null = null
 
     if (mbTracks) {
@@ -162,9 +161,9 @@ async function getLocalReleaseTracks(
 
     enrichedTracks.push({
       ...t,
-      artists: trackArtists
+      artists: trackRelatedArtists
         .filter(ta => !albumArtistSlugs.has(ta.artist.slug))
-        .map(ta => ({ name: ta.artist.name, slug: ta.artist.slug })),
+        .map(ta => ({ name: ta.artist.name, slug: ta.artist.slug, hasPage: !ta.artist.relatedOnly })),
       missing: false,
       mbTitle,
       mbTrackMusicbrainzId: mbTrack?.musicbrainzId || null,

@@ -31,8 +31,9 @@ pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize, HashSe
         let file_paths: Vec<(String,)> = sqlx::query_as(
             r#"SELECT t."filePath"
                FROM "LocalReleaseTrack" t
-               JOIN "TrackArtist" ta ON ta."trackId" = t.id
-               WHERE ta."artistId" = $1"#,
+               JOIN "LocalRelease" lr ON t."localReleaseId" = lr.id
+               JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+               WHERE lra."artistId" = $1"#,
         )
         .bind(artist_id)
         .fetch_all(pool)

@@ -467,7 +467,7 @@ async fn main() {
         let mut folder_skipped: u64 = 0;
         let mut mtime_updates: Vec<(NaiveDateTime, String)> = Vec::new();
         let mut batch_tracks: Vec<_> = Vec::new();
-        let mut pending_links: Vec<(String, String, String)> = Vec::new();
+        let mut pending_related_links: Vec<(String, String)> = Vec::new();
         let mut pending_release_artist_links: HashSet<(String, String)> = HashSet::new();
         let mut folder_artist_ids: HashSet<String> = HashSet::new();
         let mut releases_needing_art: HashMap<String, PathBuf> = HashMap::new();
@@ -576,65 +576,51 @@ async fn main() {
                 .entry(release_id.clone())
                 .or_insert_with(|| folder_path_str.clone());
 
-            // Album-artist → release links
+            // Album-artist → release links (main artists)
+            let album_artist_names_lower: HashSet<String> = main_album_artists
+                .iter()
+                .map(|n| n.to_lowercase())
+                .collect();
+
             if main_album_artists.is_empty() {
                 let fallback = main_track_artists
                     .first()
                     .map(|s| s.as_str())
                     .unwrap_or("Unknown Artist");
-                if let Ok(aid) = ensure_artist_cached(&pool, fallback, &mut artist_cache).await {
+                if let Ok(aid) = ensure_artist_cached(&pool, fallback, &mut artist_cache, false).await {
                     if !aid.is_empty() {
                         pending_release_artist_links.insert((release_id.clone(), aid.clone()));
                         folder_artist_ids.insert(aid.clone());
-                        pending_links.push((fp.clone(), aid, "ALBUM_ARTIST".to_string()));
                     }
                 }
             } else {
                 for aa_name in &main_album_artists {
                     if let Ok(aa_id) =
-                        ensure_artist_cached(&pool, aa_name, &mut artist_cache).await
+                        ensure_artist_cached(&pool, aa_name, &mut artist_cache, false).await
                     {
                         if !aa_id.is_empty() {
                             pending_release_artist_links
                                 .insert((release_id.clone(), aa_id.clone()));
                             folder_artist_ids.insert(aa_id.clone());
-                            pending_links.push((fp.clone(), aa_id, "ALBUM_ARTIST".to_string()));
                         }
                     }
                 }
             }
 
-            // Track-level artist links
-            if main_track_artists.is_empty() {
-                let fallback = main_album_artists
-                    .first()
-                    .map(|s| s.as_str())
-                    .unwrap_or("Unknown Artist");
-                if let Ok(aid) = ensure_artist_cached(&pool, fallback, &mut artist_cache).await {
-                    if !aid.is_empty() {
-                        pending_links.push((fp.clone(), aid, "PRIMARY".to_string()));
-                    }
+            // Track-level related artists (artist tag names NOT in albumArtist)
+            let all_track_names: Vec<String> = main_track_artists
+                .into_iter()
+                .chain(feat_track_artists.into_iter())
+                .collect();
+            for ta_name in &all_track_names {
+                if album_artist_names_lower.contains(&ta_name.to_lowercase()) {
+                    continue;
                 }
-            } else {
-                for ta_name in &main_track_artists {
-                    if let Ok(ta_id) =
-                        ensure_artist_cached(&pool, ta_name, &mut artist_cache).await
-                    {
-                        if !ta_id.is_empty() {
-                            pending_links.push((fp.clone(), ta_id, "PRIMARY".to_string()));
-                        }
-                    }
-                }
-            }
-
-            // Featured artists
-            let all_featured: HashSet<String> = feat_track_artists.into_iter().collect();
-            for feat_name in &all_featured {
-                if let Ok(feat_id) =
-                    ensure_artist_cached(&pool, feat_name, &mut artist_cache).await
+                if let Ok(ta_id) =
+                    ensure_artist_cached(&pool, ta_name, &mut artist_cache, true).await
                 {
-                    if !feat_id.is_empty() {
-                        pending_links.push((fp.clone(), feat_id, "FEATURED".to_string()));
+                    if !ta_id.is_empty() {
+                        pending_related_links.push((fp.clone(), ta_id));
                     }
                 }
             }
@@ -663,13 +649,13 @@ async fn main() {
         if !batch_tracks.is_empty() {
             match batch_upsert_tracks(&pool, &batch_tracks).await {
                 Ok(path_to_id) => {
-                    let resolved: Vec<(String, String, String)> = pending_links
+                    let resolved: Vec<(String, String)> = pending_related_links
                         .into_iter()
-                        .filter_map(|(fp, aid, role)| {
-                            path_to_id.get(&fp).map(|tid| (tid.clone(), aid, role))
+                        .filter_map(|(fp, aid)| {
+                            path_to_id.get(&fp).map(|tid| (tid.clone(), aid))
                         })
                         .collect();
-                    batch_ensure_track_artists(&pool, &resolved).await.ok();
+                    batch_ensure_track_related_artists(&pool, &resolved).await.ok();
                 }
                 Err(e) => {
                     reporter.err(&format!("Batch upsert error for '{}': {}", folder_name, e));
