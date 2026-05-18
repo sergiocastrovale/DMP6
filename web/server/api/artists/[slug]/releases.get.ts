@@ -187,8 +187,10 @@ export default defineEventHandler(async (event) => {
   }
 
   // Catalogue gaps: MB releases in this artist's catalogue that have no LocalRelease.
+  const allowedGapTypes = new Set(['album', 'ep'])
   for (const mbr of mbReleases) {
     if (coveredMbIds.has(mbr.id)) continue
+    if (!allowedGapTypes.has(mbr.type.slug)) continue
     const gapImg = verifyImage(null, null, 'releases')
     releases.push({
       id: mbr.id,

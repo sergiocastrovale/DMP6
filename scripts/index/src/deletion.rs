@@ -12,11 +12,16 @@ pub struct DeletionStats {
     pub artists_deleted: u64,
 }
 
+pub struct TrackDeletionResult {
+    pub count: u64,
+    pub affected_release_ids: Vec<String>,
+}
+
 /// Delete track rows whose filePath no longer exists on disk.
-/// Returns the count deleted.
-pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir: &str) -> u64 {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        r#"SELECT id, "filePath" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
+/// Returns count deleted and which releases were affected.
+pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir: &str) -> TrackDeletionResult {
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        r#"SELECT id, "filePath", "localReleaseId" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
     )
     .bind(format!("{}%", folder_prefix))
     .fetch_all(pool)
@@ -24,29 +29,50 @@ pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir
     .unwrap_or_default();
 
     let base = Path::new(music_dir);
-    let missing: Vec<String> = rows
-        .into_iter()
-        .filter(|(_, path)| !base.join(path).exists())
-        .map(|(id, _)| id)
-        .collect();
+    let mut missing_ids: Vec<String> = Vec::new();
+    let mut release_ids: HashSet<String> = HashSet::new();
 
-    if missing.is_empty() {
-        return 0;
+    for (id, path, release_id) in rows {
+        if !base.join(&path).exists() {
+            missing_ids.push(id);
+            release_ids.insert(release_id);
+        }
     }
 
-    let count = missing.len() as u64;
+    if missing_ids.is_empty() {
+        return TrackDeletionResult { count: 0, affected_release_ids: vec![] };
+    }
+
+    let count = missing_ids.len() as u64;
     sqlx::query(r#"DELETE FROM "LocalReleaseTrack" WHERE id = ANY($1::text[])"#)
-        .bind(&missing)
+        .bind(&missing_ids)
         .execute(pool)
         .await
         .ok();
-    count
+
+    let affected: Vec<String> = release_ids.into_iter().collect();
+
+    // Reset matchStatus so sync recalculates
+    if !affected.is_empty() {
+        sqlx::query(
+            r#"UPDATE "LocalRelease"
+               SET "matchStatus" = 'UNKNOWN'::"ReleaseStatus", "statusReason" = NULL
+               WHERE id = ANY($1::text[])"#,
+        )
+        .bind(&affected)
+        .execute(pool)
+        .await
+        .ok();
+    }
+
+    TrackDeletionResult { count, affected_release_ids: affected }
 }
 
 /// Delete LocalRelease rows that have no tracks left. Cleans images (local + S3) first.
+/// Also deletes orphan MusicBrainzRelease rows that no LocalRelease references anymore.
 pub async fn delete_empty_releases(pool: &PgPool, config: &Config) -> u64 {
-    let ids: Vec<(String,)> = sqlx::query_as(
-        r#"SELECT id FROM "LocalRelease" WHERE id NOT IN (
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        r#"SELECT id, "releaseId" FROM "LocalRelease" WHERE id NOT IN (
                SELECT DISTINCT "localReleaseId" FROM "LocalReleaseTrack"
            )"#,
     )
@@ -54,18 +80,35 @@ pub async fn delete_empty_releases(pool: &PgPool, config: &Config) -> u64 {
     .await
     .unwrap_or_default();
 
-    if ids.is_empty() {
+    if rows.is_empty() {
         return 0;
     }
 
-    let release_ids: Vec<String> = ids.into_iter().map(|(id,)| id).collect();
+    let release_ids: Vec<String> = rows.iter().map(|(id, _)| id.clone()).collect();
+    let mb_release_ids: Vec<String> = rows.iter().filter_map(|(_, mb)| mb.clone()).collect();
+
     delete_release_images(pool, config, &release_ids).await;
 
     let result = sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = ANY($1::text[])"#)
         .bind(&release_ids)
         .execute(pool)
         .await;
-    result.map(|r| r.rows_affected()).unwrap_or(0)
+    let deleted = result.map(|r| r.rows_affected()).unwrap_or(0);
+
+    // Clean up MB releases that no LocalRelease points to anymore
+    if !mb_release_ids.is_empty() {
+        sqlx::query(
+            r#"DELETE FROM "MusicBrainzRelease"
+               WHERE id = ANY($1::text[])
+                 AND id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)"#,
+        )
+        .bind(&mb_release_ids)
+        .execute(pool)
+        .await
+        .ok();
+    }
+
+    deleted
 }
 
 /// Delete Artist rows that have no LocalReleaseArtist links remaining. Cleans images first.
