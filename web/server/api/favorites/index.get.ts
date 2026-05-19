@@ -27,15 +27,6 @@ export default defineEventHandler(async (event) => {
                 take: 1,
                 select: { artist: { select: { id: true, name: true, slug: true } } },
               },
-              type: {
-                select: { name: true },
-              },
-              localReleases: {
-                select: {
-                  id: true, title: true, year: true, image: true, imageUrl: true,
-                },
-                take: 1,
-              },
             },
           },
         },
@@ -45,21 +36,17 @@ export default defineEventHandler(async (event) => {
     ])
     totalReleases = count
     releases = rawReleases.map((fav) => {
-      const localRelease = fav.release.localReleases[0]
-      const img = verifyImage(localRelease?.image, localRelease?.imageUrl, 'releases')
+      const img = verifyImage(fav.release.image, fav.release.imageUrl, 'releases')
       return {
         id: fav.id,
         createdAt: fav.createdAt,
         release: {
-          id: localRelease?.id || fav.release.id,
+          id: fav.release.id,
           title: fav.release.title,
-          releaseType: fav.release.type?.name || null,
-          year: localRelease?.year || fav.release.year,
+          year: fav.release.year,
           image: img.image,
           imageUrl: img.imageUrl,
-          artist: fav.release.artists[0]?.artist
-            ? { id: fav.release.artists[0].artist.id, name: fav.release.artists[0].artist.name, slug: fav.release.artists[0].artist.slug }
-            : null,
+          artist: fav.release.artists[0]?.artist ?? null,
         },
       }
     })

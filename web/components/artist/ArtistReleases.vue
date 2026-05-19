@@ -403,20 +403,20 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
 }
 
 async function toggleFavoriteRelease(release: UnifiedRelease) {
-  if (!release.mbReleaseRowId) {
+  if (!release.localReleaseId) {
     return
   }
-  const mbRowId = release.mbReleaseRowId
-  const isFavorite = favoriteReleases.value.has(release.id)
+  const localId = release.localReleaseId!
+  const isFavorite = favoriteReleases.value.has(localId)
   try {
-    await $fetch(`/api/favorites/releases/${mbRowId}`, {
+    await $fetch(`/api/favorites/releases/${localId}`, {
       method: isFavorite ? 'DELETE' : 'POST',
     })
     if (isFavorite) {
-      favoriteReleases.value.delete(release.id)
+      favoriteReleases.value.delete(localId)
     }
     else {
-      favoriteReleases.value.add(release.id)
+      favoriteReleases.value.add(localId)
     }
   }
   catch { /* ignore */ }
@@ -665,13 +665,13 @@ watch(() => props.releases, () => {
                     </button>
 
                     <button
-                      v-if="edition.isMusicBrainz"
+                      v-if="edition.localReleaseId"
                       type="button"
                       class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-amber-500"
-                      :class="{ 'text-amber-500': favoriteReleases.has(edition.id) }"
+                      :class="{ 'text-amber-500': favoriteReleases.has(edition.localReleaseId!) }"
                       @click.stop="toggleFavoriteRelease(edition)"
                     >
-                      <Heart :size="14" :fill="favoriteReleases.has(edition.id) ? 'currentColor' : 'none'" />
+                      <Heart :size="14" :fill="favoriteReleases.has(edition.localReleaseId!) ? 'currentColor' : 'none'" />
                     </button>
 
                     <a

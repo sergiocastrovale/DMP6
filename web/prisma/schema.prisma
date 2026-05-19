@@ -138,7 +138,6 @@ model MusicBrainzRelease {
   statusReason    String?
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
-  favorite        FavoriteRelease?
   localReleases   LocalRelease[]
   artists         MusicBrainzReleaseArtist[]
   type            ReleaseType             @relation(fields: [typeId], references: [id])
@@ -195,6 +194,7 @@ model LocalRelease {
   release          MusicBrainzRelease? @relation(fields: [releaseId], references: [id])
   tracks           LocalReleaseTrack[]
   enrichmentIssues IssueEnrichmentGap[]
+  favorite         FavoriteRelease?
 
   @@unique([groupKey])
   @@index([releaseId])
@@ -351,11 +351,11 @@ model PlaylistTrack {
 // ---------------------------------------------------------------------------
 
 model FavoriteRelease {
-  id        String             @id @default(cuid())
-  releaseId String             @unique
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-  release   MusicBrainzRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  id        String       @id @default(cuid())
+  releaseId String       @unique
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  release   LocalRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
 
   @@index([releaseId])
 }

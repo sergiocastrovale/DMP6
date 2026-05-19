@@ -4,7 +4,6 @@ export interface FavoriteRelease {
   release: {
     id: string
     title: string
-    releaseType: string | null
     year: number | null
     image: string | null
     imageUrl: string | null

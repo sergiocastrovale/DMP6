@@ -18,24 +18,17 @@ export default defineEventHandler(async (event) => {
             take: 1,
             select: { artist: { select: { id: true, name: true, slug: true } } },
           },
-          type: { select: { name: true } },
-          localReleases: {
-            select: { id: true, title: true, year: true, image: true, imageUrl: true },
-            take: 1,
-          },
         },
       },
     },
   })
 
   return favorites.map((fav) => {
-    const local = fav.release.localReleases[0]
-    const img = verifyImage(local?.image, local?.imageUrl, 'releases')
+    const img = verifyImage(fav.release.image, fav.release.imageUrl, 'releases')
     return {
-      id: local?.id ?? fav.release.id,
-      title: local?.title ?? fav.release.title,
-      releaseType: fav.release.type?.name ?? null,
-      year: local?.year ?? null,
+      id: fav.release.id,
+      title: fav.release.title,
+      year: fav.release.year,
       image: img.image,
       imageUrl: img.imageUrl,
       artist: fav.release.artists[0]?.artist ?? null,
