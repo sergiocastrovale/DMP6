@@ -554,11 +554,11 @@ async fn main() {
             let album_artist_tag = track.album_artist.as_deref().unwrap_or("");
             let track_artist_tag = track.artist.as_deref().unwrap_or("");
 
-            let (main_album_artists, _feat_album_artists) =
+            let main_album_artists =
                 if !album_artist_tag.is_empty() && !is_special_artist_name(album_artist_tag) {
-                    split_artists(album_artist_tag)
+                    vec![album_artist_tag.to_string()]
                 } else {
-                    (Vec::new(), Vec::new())
+                    Vec::new()
                 };
 
             let (main_track_artists, feat_track_artists) = if !track_artist_tag.is_empty() {

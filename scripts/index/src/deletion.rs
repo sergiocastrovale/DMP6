@@ -14,7 +14,6 @@ pub struct DeletionStats {
 
 pub struct TrackDeletionResult {
     pub count: u64,
-    pub affected_release_ids: Vec<String>,
 }
 
 /// Delete track rows whose filePath no longer exists on disk.
@@ -40,7 +39,7 @@ pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir
     }
 
     if missing_ids.is_empty() {
-        return TrackDeletionResult { count: 0, affected_release_ids: vec![] };
+        return TrackDeletionResult { count: 0 };
     }
 
     let count = missing_ids.len() as u64;
@@ -65,7 +64,7 @@ pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir
         .ok();
     }
 
-    TrackDeletionResult { count, affected_release_ids: affected }
+    TrackDeletionResult { count }
 }
 
 /// Delete LocalRelease rows that have no tracks left. Cleans images (local + S3) first.
