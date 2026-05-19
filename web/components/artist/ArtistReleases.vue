@@ -39,6 +39,11 @@ const SORT_OPTIONS = [
   { value: 'plays-desc', label: 'Most played' },
 ] as const
 
+const VIEW_OPTIONS = [
+  { value: 'list', icon: LayoutList, title: 'List view' },
+  { value: 'catalogue', icon: LayoutGrid, title: 'Catalogue view' },
+]
+
 const searchQuery = ref('')
 const statusFilter = ref<string | null>(null)
 const sortKey = ref<string>('year-asc')
@@ -111,6 +116,12 @@ watch(visibleTabs, (tabs) => {
     activeTab.value = tabs[0]!.slug
   }
 }, { immediate: true })
+
+watch(viewMode, (val) => {
+  if (val === 'list') {
+    loadAllTracks()
+  }
+})
 
 const tabFiltered = computed(() => {
   let r = visibleReleases.value.filter(x => bucketSlug(x.typeSlug) === activeTab.value)
@@ -365,10 +376,6 @@ async function loadAllTracks() {
   }
 }
 
-function switchToListView() {
-  viewMode.value = 'list'
-  loadAllTracks()
-}
 
 function buildPlayerTracks(tracks: Track[], startTrack: Track) {
   const playerTracks = tracks.map(t => ({
@@ -491,26 +498,7 @@ watch(() => props.releases, () => {
         <div v-if="sortOpen" class="fixed inset-0 z-10" @click="sortOpen = false" />
       </div>
 
-      <div class="flex items-center rounded-lg border border-zinc-700 bg-zinc-900">
-        <button
-          type="button"
-          class="rounded-l-lg px-2.5 py-1.5 transition-colors"
-          :class="viewMode === 'list' ? 'bg-zinc-700 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50'"
-          title="List view"
-          @click="switchToListView()"
-        >
-          <LayoutList :size="16" />
-        </button>
-        <button
-          type="button"
-          class="rounded-r-lg px-2.5 py-1.5 transition-colors"
-          :class="viewMode === 'catalogue' ? 'bg-zinc-700 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50'"
-          title="Catalogue view"
-          @click="viewMode = 'catalogue'"
-        >
-          <LayoutGrid :size="16" />
-        </button>
-      </div>
+      <ArtistListToggle v-model="viewMode" :options="VIEW_OPTIONS" />
     </div>
 
     <template v-if="viewMode === 'catalogue'">

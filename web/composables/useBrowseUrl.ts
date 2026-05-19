@@ -12,6 +12,7 @@ const params: BrowseFilterParam[] = [
   { key: 'letter', storeKey: 'letterFilter' },
   { key: 'genre', storeKey: 'genreFilter' },
   { key: 'sort', storeKey: 'sortBy', default: 'name' },
+  { key: 'mode', storeKey: 'viewMode', default: 'expanded' },
   { key: 'minScore', storeKey: 'minScore', type: 'number' },
   { key: 'maxScore', storeKey: 'maxScore', type: 'number' },
 ]
@@ -46,6 +47,10 @@ export const useBrowseUrl = () => {
         ;(store as any)[p.storeKey] = p.type === 'number' ? Number(raw) : raw
         hasParams = true
       }
+    }
+
+    if (store.viewMode === 'summarized') {
+      ;(store as any).pageSize = 250
     }
 
     return hasParams

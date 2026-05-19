@@ -19,6 +19,7 @@ export const useBrowseStore = defineStore('browse', () => {
   const sortBy = ref('name')
   const minScore = ref<number | null>(null)
   const maxScore = ref<number | null>(null)
+  const viewMode = ref<'expanded' | 'summarized'>('expanded')
 
   async function fetchArtists(append = false) {
     if (append) {
@@ -102,6 +103,23 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
+  function setViewMode(mode: 'expanded' | 'summarized') {
+    if (viewMode.value === mode) {
+      return
+    }
+    viewMode.value = mode
+    pageSize.value = mode === 'summarized' ? 250 : 48
+    fetchArtists()
+  }
+
+  function setPageSize(size: number) {
+    if (pageSize.value === size) {
+      return
+    }
+    pageSize.value = size
+    fetchArtists()
+  }
+
   function setMinScore(min: number | null) {
     minScore.value = min
     fetchArtists()
@@ -118,6 +136,7 @@ export const useBrowseStore = defineStore('browse', () => {
     mainCount,
     relatedCount,
     page,
+    pageSize,
     hasMore,
     loading,
     loadingMore,
@@ -127,12 +146,15 @@ export const useBrowseStore = defineStore('browse', () => {
     sortBy,
     minScore,
     maxScore,
+    viewMode,
     fetchArtists,
     loadMore,
     setLetterFilter,
     setGenreFilter,
     setSortBy,
     setSearch,
+    setViewMode,
+    setPageSize,
     setScoreRange,
     setMinScore,
     setMaxScore,

@@ -1,11 +1,21 @@
 <script setup lang="ts">
-import { Search } from 'lucide-vue-next'
+import { LayoutGrid, LayoutList, Search } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
 import RelatedArtistsPopover from '~/components/browse/RelatedArtistsPopover.vue'
 
 const store = useBrowseStore()
 const { initFromUrl } = useBrowseUrl()
 const searchInput = ref(store.searchQuery)
+
+const BROWSE_VIEW_OPTIONS = [
+  { value: 'expanded', icon: LayoutGrid, title: 'Grid view' },
+  { value: 'summarized', icon: LayoutList, title: 'List view' },
+]
+
+const browseViewMode = computed({
+  get: () => store.viewMode,
+  set: (val: string) => store.setViewMode(val as 'expanded' | 'summarized'),
+})
 
 let searchTimeout: ReturnType<typeof setTimeout>
 
@@ -64,13 +74,15 @@ onBeforeUnmount(() => {
       <BrowseFilterScore
         :min-score="store.minScore"
         :max-score="store.maxScore"
-        @update:min-score="store.setMinScore"
-        @update:max-score="store.setMaxScore"
+        @update:range="store.setScoreRange"
       />
+      <div class="flex-1" />
+      <ArtistListToggle v-model="browseViewMode" :options="BROWSE_VIEW_OPTIONS" />
     </div>
 
     <BrowseFilterLetter :active="store.letterFilter" @select="handleLetterSelect" />
     
-    <BrowseArtistGrid />
+    <BrowseArtistGrid v-if="browseViewMode === 'expanded'" />
+    <BrowseListSummarized v-else />
   </div>
 </template>
