@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { Loader2, RefreshCw } from 'lucide-vue-next'
+import { Loader2, RefreshCw, Search, HardDriveDownload, Globe } from 'lucide-vue-next'
+import type { Component } from 'vue'
 import type { ButtonDropdownOption } from '~/components/ButtonDropdown.vue'
 import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import { useTerminalStore } from '~/stores/terminal'
+import { scanActions } from '~/helpers/constants'
+
+const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe }
 
 definePageMeta({
   layout: 'default',
@@ -41,48 +45,38 @@ const artistFolders = computed(() => {
   return [...new Set(paths)]
 })
 
+const artistActions: Record<string, (name: string, folders: string[]) => () => Promise<void>> = {
+  'check': (name, folders) => async () => {
+    if (folders.length) {
+      await terminal.run('./index', ['--folders', folders.join(';')])
+    }
+    await terminal.run('./sync', ['--only', name, '--exact'])
+  },
+  'index-sync': (name, folders) => async () => {
+    if (folders.length) {
+      await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
+    }
+    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
+  },
+  'index': (_name, folders) => async () => {
+    if (folders.length) {
+      await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
+    }
+  },
+  'sync': (name) => async () => {
+    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
+  },
+}
+
 const syncOptions = computed<ButtonDropdownOption[]>(() => {
   const name = artist.value?.name ?? ''
   const folders = artistFolders.value
-  const hasFolders = folders.length > 0
-  return [
-    {
-      label: 'Check for changes',
-      description: 'Scan for new & changed files',
-      action: async () => {
-        if (hasFolders) {
-          await terminal.run('./index', ['--folders', folders.join(';')])
-        }
-        await terminal.run('./sync', ['--only', name, '--exact'])
-      },
-    },
-    {
-      label: 'Index & Sync',
-      description: 'Fully re-scan this artist from scratch.',
-      action: async () => {
-        if (hasFolders) {
-          await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
-        }
-        await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
-      },
-    },
-    {
-      label: 'Index only',
-      description: 'Re-index this artist\'s local files.',
-      action: async () => {
-        if (hasFolders) {
-          await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
-        }
-      },
-    },
-    {
-      label: 'Sync only',
-      description: 'Re-sync this artist\'s catalogue against MusicBrainz.',
-      action: async () => {
-        await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
-      },
-    },
-  ]
+  return scanActions.map(s => ({
+    label: s.text,
+    description: s.subtext,
+    icon: scanIcons[s.icon],
+    action: artistActions[s.id]!(name, folders),
+  }))
 })
 
 const playingAll = ref(false)

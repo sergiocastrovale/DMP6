@@ -9,6 +9,8 @@ const recent = ref<SearchRelease[]>([])
 const playlists = ref<PlaylistSummary[]>([])
 const favorites = ref<SearchRelease[]>([])
 
+const isEmpty = computed(() => !loading.value && !latest.value.length && !recent.value.length && !playlists.value.length && !favorites.value.length)
+
 const loadData = async () => {
   loading.value = true
 
@@ -40,6 +42,8 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-12">
+    <FirstScan v-if="isEmpty" />
+    <template v-else>
     <ReleaseGrid
       title="Latest Additions"
       :releases="latest"
@@ -62,5 +66,6 @@ onMounted(() => {
       :loading="loading"
       view-more-link="/favorites"
     />
+    </template>
   </div>
 </template>

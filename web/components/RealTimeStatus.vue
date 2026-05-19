@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import {
-  HardDriveDownload,
-  RefreshCw,
   Loader2,
   CheckCircle2,
-  XCircle,
   Play,
   Square,
   LockOpen,
@@ -112,17 +109,6 @@ async function reconnectSession() {
   }
 }
 
-function runQuickScan() {
-  terminal.run('./index', ['--quick'])
-}
-
-function runFullScan() {
-  terminal.run('./refresh', [])
-}
-
-function runSync() {
-  terminal.run('./sync', [])
-}
 
 function formatRelativeTime(iso: string | null): string {
   if (!iso) return 'Never'
@@ -265,41 +251,7 @@ onUnmounted(() => {
       <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-500">
         Scan Library
       </h3>
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <button
-          :disabled="terminal.isRunning || !!staleLock"
-          class="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
-          @click="runQuickScan"
-        >
-          <HardDriveDownload :size="20" class="shrink-0 text-amber-500" />
-          <div>
-            <p class="text-sm font-medium text-zinc-50">Quick Index</p>
-            <p class="text-xs text-zinc-500">Changed folders only</p>
-          </div>
-        </button>
-        <button
-          :disabled="terminal.isRunning || !!staleLock"
-          class="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
-          @click="runFullScan"
-        >
-          <RefreshCw :size="20" class="shrink-0 text-amber-500" />
-          <div>
-            <p class="text-sm font-medium text-zinc-50">Full Refresh</p>
-            <p class="text-xs text-zinc-500">Index + MusicBrainz sync</p>
-          </div>
-        </button>
-        <button
-          :disabled="terminal.isRunning || !!staleLock"
-          class="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
-          @click="runSync"
-        >
-          <Play :size="20" class="shrink-0 text-amber-500" />
-          <div>
-            <p class="text-sm font-medium text-zinc-50">MusicBrainz Sync</p>
-            <p class="text-xs text-zinc-500">Sync metadata only, no index</p>
-          </div>
-        </button>
-      </div>
+      <ScanActions :disabled="!!staleLock" />
     </div>
 
     <!-- Last Scan Info -->

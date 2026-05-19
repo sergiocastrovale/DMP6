@@ -1,20 +1,16 @@
 <script setup lang="ts">
+import { getScoreRange } from '~/helpers/constants'
+
 const props = defineProps<{
   score: number | null
 }>()
 
 const matchClasses = computed(() => {
-  if (props.score !== null) {
-    if (props.score >= 0.8) {
-      return 'bg-emerald-500/20 text-emerald-400'
-    } else if (props.score >= 0.5) {
-      return 'bg-amber-500/20 text-amber-400'
-    } else {
-      return 'bg-zinc-700 text-zinc-400'
-    }
+  if (props.score === null) {
+    return 'bg-zinc-700 text-zinc-400'
   }
-
-  return 'bg-zinc-700 text-zinc-400'
+  const range = getScoreRange(Math.round(props.score * 100))
+  return `${range.bgColor} ${range.textColor}`
 })
 </script>
 

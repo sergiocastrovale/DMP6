@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import type { Component } from 'vue'
 import { ChevronDown, ChevronUp } from 'lucide-vue-next'
 
 export interface ButtonDropdownOption {
   label: string
   description?: string
+  icon?: Component
   action: () => void
 }
 
@@ -45,11 +47,14 @@ function select(option: ButtonDropdownOption) {
       <button
         v-for="opt in options"
         :key="opt.label"
-        class="flex w-full flex-col rounded px-3 py-2 text-left transition-colors text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
+        class="flex w-full items-start gap-2.5 rounded px-3 py-2 text-left transition-colors text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
         @click="select(opt)"
       >
-        <span class="text-sm">{{ opt.label }}</span>
-        <span v-if="opt.description" class="text-xs text-zinc-500">{{ opt.description }}</span>
+        <component :is="opt.icon" v-if="opt.icon" :size="14" class="mt-0.5 shrink-0 text-zinc-500" />
+        <div class="flex flex-col">
+          <span class="text-sm">{{ opt.label }}</span>
+          <span v-if="opt.description" class="text-xs text-zinc-500">{{ opt.description }}</span>
+        </div>
       </button>
     </div>
 
