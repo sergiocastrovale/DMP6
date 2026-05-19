@@ -203,6 +203,7 @@ async function fetchType(
                 id: true,
                 title: true,
                 year: true,
+                folderPath: true,
                 artists: { include: { artist: { select: { name: true, slug: true } } } },
                 tracks: { take: 1, select: { filePath: true } },
               },

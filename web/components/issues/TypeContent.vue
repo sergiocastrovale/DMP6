@@ -392,6 +392,7 @@ function getHistoryDate(item: any): string {
           <UiRefreshButton
             v-if="item.missingFields?.includes('mbRelease') && item.artist"
             :only="[item.artist.name]"
+            :folders="item.localRelease?.folderPath ? [item.localRelease.folderPath] : undefined"
           />
         </template>
       </IssuesIssueTable>

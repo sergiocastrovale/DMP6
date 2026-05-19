@@ -2,13 +2,18 @@
 import { RefreshCw } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
 
-const props = defineProps<{ only?: string[] }>()
+const props = defineProps<{ only?: string[]; folders?: string[] }>()
 const terminal = useTerminalStore()
 
-function run() {
-  const args = props.only?.length ? ['--only', props.only.join(';')] : []
-  terminal.run('./refresh', args, 'refresh')
+async function run() {
   terminal.open()
+  if (props.folders?.length && props.only?.length) {
+    await terminal.run('./index', ['--folders', props.folders.join(';')], 'refresh')
+    await terminal.run('./sync', ['--only', props.only.join(';')], 'refresh')
+  } else {
+    const args = props.only?.length ? ['--only', props.only.join(';')] : []
+    await terminal.run('./refresh', args, 'refresh')
+  }
 }
 </script>
 

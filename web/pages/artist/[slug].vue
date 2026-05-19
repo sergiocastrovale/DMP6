@@ -34,23 +34,46 @@ watch(() => terminal.isRunning, (running, wasRunning) => {
 const showMissing = ref(true)
 const pending = computed(() => artistPending.value || releasesPending.value)
 
+const artistFolders = computed(() => {
+  const paths = releases.value
+    .filter(r => r.hasLocal && r.folderPath)
+    .map(r => r.folderPath!)
+  return [...new Set(paths)]
+})
+
 const syncOptions = computed<ButtonDropdownOption[]>(() => {
   const name = artist.value?.name ?? ''
+  const folders = artistFolders.value
+  const hasFolders = folders.length > 0
   return [
     {
       label: 'Update',
       description: 'Index & sync new & changed files',
-      action: () => terminal.run('./refresh', ['--only', name, '--exact']),
+      action: async () => {
+        if (hasFolders) {
+          await terminal.run('./index', ['--folders', folders.join(';')])
+        }
+        await terminal.run('./sync', ['--only', name, '--exact'])
+      },
     },
     {
       label: 'Re-sync',
       description: 'Reindex & resync with MusicBrainz from scratch.',
-      action: () => terminal.run('./refresh', ['--only', name, '--overwrite', '--exact']),
+      action: async () => {
+        if (hasFolders) {
+          await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
+        }
+        await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
+      },
     },
     {
       label: 'Re-index',
       description: 'Full reindexing of local files.',
-      action: () => terminal.run('./index', ['--only', name, '--overwrite', '--exact']),
+      action: async () => {
+        if (hasFolders) {
+          await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
+        }
+      },
     },
   ]
 })
