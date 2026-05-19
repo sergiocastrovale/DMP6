@@ -40,14 +40,17 @@ const SORT_OPTIONS = [
 ] as const
 
 const VIEW_OPTIONS = [
-  { value: 'list', icon: LayoutList, title: 'List view' },
   { value: 'catalogue', icon: LayoutGrid, title: 'Catalogue view' },
+  { value: 'list', icon: LayoutList, title: 'List view' },
 ]
+
+const router = useRouter()
 
 const searchQuery = ref('')
 const statusFilter = ref<string | null>(null)
 const sortKey = ref<string>('year-asc')
-const viewMode = ref<'catalogue' | 'list'>('catalogue')
+const initialView = route.query.view === 'list' ? 'list' : 'catalogue'
+const viewMode = ref<'catalogue' | 'list'>(initialView)
 const activeTab = ref<string>('albums')
 const expandedGroup = ref<string | null>(null)
 const expandedEdition = ref<string | null>(null)
@@ -118,10 +121,16 @@ watch(visibleTabs, (tabs) => {
 }, { immediate: true })
 
 watch(viewMode, (val) => {
+  const query = { ...route.query }
   if (val === 'list') {
+    query.view = 'list'
     loadAllTracks()
   }
-})
+  else {
+    delete query.view
+  }
+  router.replace({ query })
+}, { immediate: true })
 
 const tabFiltered = computed(() => {
   let r = visibleReleases.value.filter(x => bucketSlug(x.typeSlug) === activeTab.value)
@@ -272,13 +281,13 @@ const filteredAllTracks = computed(() => {
 })
 
 const listViewColumns: TrackListColumn[] = [
+  { key: 'play' },
   { key: 'release', label: 'Release' },
   { key: 'trackNumber', label: '#' },
   { key: 'title', label: 'Title' },
-  { key: 'status', label: 'Status' },
   { key: 'playCount', label: 'Plays' },
-  { key: 'favorite' },
   { key: 'duration' },
+  { key: 'favorite' },
 ]
 
 const releaseTrackColumns: TrackListColumn[] = [
