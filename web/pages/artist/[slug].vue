@@ -47,8 +47,8 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
   const hasFolders = folders.length > 0
   return [
     {
-      label: 'Update',
-      description: 'Index & sync new & changed files',
+      label: 'Check for changes',
+      description: 'Scan for new & changed files',
       action: async () => {
         if (hasFolders) {
           await terminal.run('./index', ['--folders', folders.join(';')])
@@ -57,8 +57,8 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
       },
     },
     {
-      label: 'Re-sync',
-      description: 'Reindex & resync with MusicBrainz from scratch.',
+      label: 'Index & Sync',
+      description: 'Fully re-scan this artist from scratch.',
       action: async () => {
         if (hasFolders) {
           await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
@@ -67,12 +67,19 @@ const syncOptions = computed<ButtonDropdownOption[]>(() => {
       },
     },
     {
-      label: 'Re-index',
-      description: 'Full reindexing of local files.',
+      label: 'Index only',
+      description: 'Re-index this artist\'s local files.',
       action: async () => {
         if (hasFolders) {
           await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
         }
+      },
+    },
+    {
+      label: 'Sync only',
+      description: 'Re-sync this artist\'s catalogue against MusicBrainz.',
+      action: async () => {
+        await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
       },
     },
   ]
@@ -129,7 +136,7 @@ const playAll = async () => {
       >
         <div class="flex shrink-0 items-center gap-2">
           <ButtonDropdown
-            label="Sync"
+            label="Scan catalogue"
             :options="syncOptions"
             :disabled="terminal.isRunning"
           >
