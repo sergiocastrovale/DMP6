@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use colored::Colorize;
+use common::error_log;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
 use crate::{folder_from_path, tags};
@@ -10,6 +11,7 @@ pub async fn revert(pool: &PgPool, music_dir: &str, issue_type: &str, mode: &str
         "unsplit" => "IssueUnsplitArtist",
         "missing" => "IssueMissingMetadata",
         _ => {
+            error_log::log_warn(&format!("Revert not supported for type: {}", issue_type));
             eprintln!("  Revert not supported for type: {}", issue_type);
             return Ok((0, 0, HashSet::new()));
         }
@@ -19,6 +21,7 @@ pub async fn revert(pool: &PgPool, music_dir: &str, issue_type: &str, mode: &str
         "undo" => "DETECTED",
         "undo-resolved" => "RESOLVED",
         _ => {
+            error_log::log_error(&format!("Unknown revert mode: {} (expected 'undo' or 'undo-resolved')", mode));
             eprintln!("  Unknown revert mode: {} (expected 'undo' or 'undo-resolved')", mode);
             return Ok((0, 0, HashSet::new()));
         }

@@ -2,7 +2,7 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client as S3Client;
 use clap::Parser;
 use colored::*;
-use common::filters::matches_filter;
+use common::{error_log, filters::matches_filter};
 use dotenvy;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -614,6 +614,7 @@ async fn refresh_statistics(pool: &PgPool) {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    error_log::init("nuke");
 
     let env_paths = [PathBuf::from("web/.env"), PathBuf::from("../../web/.env")];
     let mut env_loaded = false;
@@ -636,6 +637,7 @@ async fn main() {
     let database_url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,
         Err(_) => {
+            error_log::log_error("DATABASE_URL not found in web/.env");
             eprintln!("Error: DATABASE_URL not found in web/.env");
             std::process::exit(1);
         }
@@ -684,6 +686,7 @@ async fn main() {
         {
             Ok(p) => p,
             Err(e) => {
+                error_log::log_error(&format!("Failed to connect to database: {}", e));
                 eprintln!("Failed to connect to database: {}", e);
                 std::process::exit(1);
             }
@@ -692,6 +695,7 @@ async fn main() {
         let plan = match build_only_plan(&pool, only, true).await {
             Ok(p) => p,
             Err(e) => {
+                error_log::log_error(&format!("Failed to build deletion plan: {}", e));
                 eprintln!("Failed to build deletion plan: {}", e);
                 std::process::exit(1);
             }
@@ -764,6 +768,7 @@ async fn main() {
                 );
             }
             Err(e) => {
+                error_log::log_error(&e.to_string());
                 eprintln!("  {} Error: {}", "✗".red(), e);
                 std::process::exit(1);
             }
@@ -819,6 +824,7 @@ async fn main() {
     {
         Ok(p) => p,
         Err(e) => {
+            error_log::log_error(&format!("Failed to connect to database: {}", e));
             eprintln!("Failed to connect to database: {}", e);
             std::process::exit(1);
         }
@@ -905,7 +911,7 @@ async fn main() {
                 for prefix in prefixes {
                     match delete_s3_prefix(&s3_client, bucket, prefix).await {
                         Ok(n) => s3_deleted += n,
-                        Err(e) => eprintln!("  {} S3 error ({}): {}", "✗".red(), prefix, e),
+                        Err(e) => { error_log::log_error(&format!("S3 error ({}): {}", prefix, e)); eprintln!("  {} S3 error ({}): {}", "✗".red(), prefix, e); }
                     }
                 }
                 log!("  {} Deleted {} S3 image(s)", "✓".green(), s3_deleted);

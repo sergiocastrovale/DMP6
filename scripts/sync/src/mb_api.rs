@@ -1,3 +1,4 @@
+use common::error_log;
 use reqwest::Client;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::time::sleep;
@@ -131,6 +132,7 @@ pub async fn mb_get(
                 } else {
                     "Rate limited"
                 };
+                error_log::log_warn(&format!("HTTP {} - {} (attempt {}/{})", status, reason, attempt + 1, max_attempts - 1));
                 eprintln!(
                     "      ⚠ HTTP {} - {} - waiting {:.1}s before next attempt ({}/{}) [delay_ms={}]",
                     status,

@@ -1,5 +1,6 @@
 use colored::Colorize;
 use serde_json::Value as JsonValue;
+use crate::error_log;
 
 /// Reports script activity in one of two modes:
 /// - **console** (default): human-friendly colored output with icons and indentation
@@ -143,6 +144,7 @@ impl Reporter {
     }
 
     pub fn warn(&self, msg: &str) {
+        error_log::log_warn(msg);
         if self.web {
             eprintln!("    ! {}", msg);
         } else {
@@ -151,6 +153,7 @@ impl Reporter {
     }
 
     pub fn err(&self, msg: &str) {
+        error_log::log_error(msg);
         if self.web {
             eprintln!("    x {}", msg);
         } else {

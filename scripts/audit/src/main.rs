@@ -49,6 +49,7 @@ impl Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    common::error_log::init("audit");
     let mut config = load_config(None);
     let pool = create_pool(&config.database_url).await;
     apply_db_overrides(&mut config, &pool).await;

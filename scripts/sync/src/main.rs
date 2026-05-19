@@ -138,6 +138,7 @@ fn local_track_to_meta(t: &LocalTrackRow) -> TrackMeta {
 #[tokio::main]
 async fn main() {
     let args = SyncArgs::parse();
+    common::error_log::init("sync");
     let reporter = Reporter::new(args.web);
     let mut config = load_config(None);
     let pool = create_pool(&config.database_url).await;
@@ -146,6 +147,7 @@ async fn main() {
     if args.release.is_some()
         && (args.from.is_some() || args.to.is_some() || args.only.is_some())
     {
+        common::error_log::log_error("--release cannot be combined with --from, --to, or --only");
         eprintln!("Error: --release cannot be combined with --from, --to, or --only");
         std::process::exit(1);
     }

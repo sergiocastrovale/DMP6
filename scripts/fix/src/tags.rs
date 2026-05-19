@@ -1,4 +1,4 @@
-use common::config::Config;
+use common::{config::Config, error_log};
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
@@ -41,6 +41,7 @@ pub async fn delete_artist_image(config: &Config, image_file: &str) {
             .join(image_file);
         if let Err(e) = std::fs::remove_file(&local_path) {
             if e.kind() != std::io::ErrorKind::NotFound {
+                error_log::log_warn(&format!("failed to delete local image {}: {}", local_path.display(), e));
                 eprintln!(
                     "  Warning: failed to delete local image {}: {}",
                     local_path.display(),

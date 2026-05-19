@@ -2714,6 +2714,7 @@ dependencies = [
  "chrono",
  "clap",
  "colored",
+ "common",
  "dotenvy",
  "rand 0.8.6",
  "serde",

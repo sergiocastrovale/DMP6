@@ -2,7 +2,7 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client as S3Client;
 use clap::Parser;
 use colored::*;
-use common::statistics::update_statistics;
+use common::{error_log, statistics::update_statistics};
 use dotenvy;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -572,6 +572,7 @@ async fn execute_plan(
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    error_log::init("delete");
 
     let artist_names: Vec<String> = args
         .artist
@@ -616,6 +617,7 @@ async fn main() {
 
         match matches.len() {
             0 => {
+                error_log::log_error(&format!("No artist found matching '{}'", name));
                 eprintln!("{} No artist found matching '{}'", "✗".red(), name);
                 std::process::exit(1);
             }
@@ -623,6 +625,7 @@ async fn main() {
                 target_ids.push((matches[0].0.clone(), matches[0].1.clone()));
             }
             n => {
+                error_log::log_error(&format!("{} artists match '{}' — ambiguous", n, name));
                 eprintln!("{} {} artists match '{}':", "✗".red(), n, name);
                 for (_id, name, slug) in &matches {
                     eprintln!("    - {} ({})", name, slug.bright_black());
@@ -710,6 +713,7 @@ async fn main() {
                 "✓".green(), local, s3);
         }
         Err(e) => {
+            error_log::log_error(&format!("Database error: {}", e));
             eprintln!("  {} Database error: {}", "✗".red(), e);
             std::process::exit(1);
         }

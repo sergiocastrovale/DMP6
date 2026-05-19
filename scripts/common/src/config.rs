@@ -120,6 +120,7 @@ pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
     .fetch_optional(pool)
     .await
     .unwrap_or_else(|e| {
+        crate::error_log::log_warn(&format!("could not load DB settings overrides: {e}"));
         eprintln!("Warning: could not load DB settings overrides: {e}");
         None
     });

@@ -522,6 +522,7 @@ fn print_report(
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    common::error_log::init("playlists");
 
     println!("DMP Genre Playlists");
     println!("===================");
@@ -564,6 +565,7 @@ async fn main() {
             .filter(|g| g.slug == *group_slug)
             .collect();
         if filtered.is_empty() {
+            common::error_log::log_error(&format!("No genre group found with slug '{}'", group_slug));
             eprintln!(
                 "{} No genre group found with slug '{}'. Available: {}",
                 "✗".red(),

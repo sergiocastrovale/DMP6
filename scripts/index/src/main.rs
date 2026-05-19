@@ -94,6 +94,7 @@ fn has_filter(args: &IndexArgs) -> bool {
 #[tokio::main]
 async fn main() {
     let args = IndexArgs::parse();
+    common::error_log::init("index");
     let reporter = Reporter::new(args.web);
     let mut config = load_config(args.music_dir.as_deref());
     let pool = create_pool(&config.database_url).await;
@@ -103,6 +104,7 @@ async fn main() {
     if args.release.is_some()
         && (args.from.is_some() || args.to.is_some() || args.only.is_some() || args.folders.is_some())
     {
+        common::error_log::log_error("--release cannot be combined with --from, --to, --only, or --folders");
         eprintln!("Error: --release cannot be combined with --from, --to, --only, or --folders");
         std::process::exit(1);
     }
@@ -121,6 +123,7 @@ async fn main() {
                 Some(folder_path)
             }
             _ => {
+                common::error_log::log_error(&format!("release '{}' not found or has no folderPath", release_id));
                 eprintln!("Error: release '{}' not found or has no folderPath", release_id);
                 std::process::exit(1);
             }

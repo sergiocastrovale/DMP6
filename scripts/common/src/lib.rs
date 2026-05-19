@@ -1,4 +1,3 @@
-// Modules populated in Phase 1
 pub mod config;
 pub mod db;
 pub mod slug;
@@ -12,3 +11,4 @@ pub mod totals;
 pub mod statistics;
 pub mod types;
 pub mod images;
+pub mod error_log;

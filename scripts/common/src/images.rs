@@ -214,6 +214,7 @@ pub async fn delete_artist_images(pool: &PgPool, config: &Config, artist_ids: &[
     {
         Ok(r) => r,
         Err(e) => {
+            crate::error_log::log_warn(&format!("artist image lookup failed: {}", e));
             eprintln!("  Warning: artist image lookup failed: {}", e);
             return;
         }
@@ -265,6 +266,7 @@ pub async fn delete_release_images(pool: &PgPool, config: &Config, release_ids: 
     {
         Ok(r) => r,
         Err(e) => {
+            crate::error_log::log_warn(&format!("release image lookup failed: {}", e));
             eprintln!("  Warning: release image lookup failed: {}", e);
             return;
         }

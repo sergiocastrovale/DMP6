@@ -11,7 +11,7 @@ use std::process::Command;
 
 use clap::Parser;
 use colored::Colorize;
-use common::{config::{apply_db_overrides, load_config}, db::create_pool};
+use common::{config::{apply_db_overrides, load_config}, db::create_pool, error_log};
 
 #[derive(Parser, Debug)]
 #[command(name = "fix", about = "Apply fixes for PENDING metadata issues")]
@@ -42,6 +42,7 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    common::error_log::init("fix");
     let mut config = load_config(None);
     let pool = create_pool(&config.database_url).await;
     apply_db_overrides(&mut config, &pool).await;
@@ -64,7 +65,7 @@ async fn main() {
                     affected_folders.extend(artists);
                     if ok > 0 { had_file_writes = true; }
                 }
-                Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
+                Err(e) => { error_log::log_error(&e.to_string()); eprintln!("  {}: {}", "ERROR".red(), e); }
             }
         }
         if args.unsplit {
@@ -75,7 +76,7 @@ async fn main() {
                     affected_folders.extend(artists);
                     if ok > 0 { had_file_writes = true; }
                 }
-                Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
+                Err(e) => { error_log::log_error(&e.to_string()); eprintln!("  {}: {}", "ERROR".red(), e); }
             }
         }
         if args.missing {
@@ -86,10 +87,11 @@ async fn main() {
                     affected_folders.extend(artists);
                     if ok > 0 { had_file_writes = true; }
                 }
-                Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
+                Err(e) => { error_log::log_error(&e.to_string()); eprintln!("  {}: {}", "ERROR".red(), e); }
             }
         }
         if args.orphans || args.duplicates {
+            error_log::log_warn("Revert not supported for orphans or duplicates.");
             eprintln!("{}", "Revert not supported for orphans or duplicates.".yellow());
         }
     } else {
@@ -101,7 +103,7 @@ async fn main() {
                     affected_folders.extend(artists);
                     if ok > 0 { had_file_writes = true; }
                 }
-                Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
+                Err(e) => { error_log::log_error(&e.to_string()); eprintln!("  {}: {}", "ERROR".red(), e); }
             }
         }
 
@@ -113,7 +115,7 @@ async fn main() {
                     affected_folders.extend(artists);
                     if ok > 0 { had_file_writes = true; }
                 }
-                Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
+                Err(e) => { error_log::log_error(&e.to_string()); eprintln!("  {}: {}", "ERROR".red(), e); }
             }
         }
 
@@ -121,7 +123,7 @@ async fn main() {
             println!("{}", "→ Fixing orphan artist issues...".cyan().bold());
             match orphans::fix(&pool, &config).await {
                 Ok((ok, fail)) => println!("  {} resolved, {} failed", ok.to_string().green(), fail.to_string().red()),
-                Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
+                Err(e) => { error_log::log_error(&e.to_string()); eprintln!("  {}: {}", "ERROR".red(), e); }
             }
         }
 
@@ -133,7 +135,7 @@ async fn main() {
                     affected_folders.extend(artists);
                     if ok > 0 { had_file_writes = true; }
                 }
-                Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
+                Err(e) => { error_log::log_error(&e.to_string()); eprintln!("  {}: {}", "ERROR".red(), e); }
             }
         }
 
@@ -145,7 +147,7 @@ async fn main() {
                     affected_folders.extend(artists);
                     if ok > 0 { had_file_writes = true; }
                 }
-                Err(e) => eprintln!("  {}: {}", "ERROR".red(), e),
+                Err(e) => { error_log::log_error(&e.to_string()); eprintln!("  {}: {}", "ERROR".red(), e); }
             }
         }
     }
@@ -166,12 +168,13 @@ async fn main() {
 
         match status {
             Ok(s) if s.success() => println!("  {}", "Re-index complete.".green()),
-            Ok(s) => eprintln!("  {} index exited with code {}", "⚠".yellow(), s.code().unwrap_or(-1)),
-            Err(e) => eprintln!("  {} Failed to run index: {}", "✗".red(), e),
+            Ok(s) => { error_log::log_warn(&format!("index exited with code {}", s.code().unwrap_or(-1))); eprintln!("  {} index exited with code {}", "⚠".yellow(), s.code().unwrap_or(-1)); }
+            Err(e) => { error_log::log_error(&format!("Failed to run index: {}", e)); eprintln!("  {} Failed to run index: {}", "✗".red(), e); }
         }
     }
 
     if let Err(e) = common::statistics::update_statistics(&pool).await {
+        error_log::log_warn(&format!("failed to update statistics: {}", e));
         eprintln!("Warning: failed to update statistics: {}", e);
     }
 
