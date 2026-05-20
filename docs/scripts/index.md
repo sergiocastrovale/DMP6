@@ -17,7 +17,7 @@ cd scripts && cargo build --release -p index
 ./index --only "Air" --exact     # Exact match (won't catch "Airbag")
 ./index --from "A" --to "M"     # Letter range
 ./index --overwrite              # Force re-index (ignore change detection)
-./index --quick                  # Skip unchanged folders (mtime check)
+./index --inspect                # Re-check existing files for metadata changes
 ./index --resume                 # Continue from last checkpoint
 ./index --release "clxxxxxxx"   # Re-index a single release by LocalRelease ID
 ./index --folders "Artist/Album" # Re-index exact folder paths (semicolon-separated)
@@ -41,8 +41,8 @@ cd scripts && cargo build --release -p index
 | `--folders` | String | — | Exact relative folder paths to process |
 | `--release` | String | — | Re-index single release by LocalRelease ID |
 | `--overwrite` | bool | false | Re-index all tracks ignoring change detection |
+| `--inspect` | bool | false | Re-check existing files for metadata changes (size/mtime/hash) |
 | `--skip-covers` | bool | false | Skip cover art extraction |
-| `--quick` | bool | false | Skip folders whose mtime hasn't changed |
 | `--resume` | bool | false | Resume from last checkpoint |
 | `--delete` | bool | false | Nuke local data for matched artists, then exit |
 | `--threads` | usize | 8 | Rayon thread count for parallel extraction |
@@ -58,14 +58,14 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 1. **Walk** folder for audio files (mp3, flac, aac, opus, m4a, ogg) via jwalk
 2. **Extract** metadata in parallel (rayon + lofty), including MB tags: `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_ALBUMARTISTID`
 3. **Pre-scan** — propagate MB release/release-group IDs across tracks sharing same album/year/albumArtist
-4. **Change detection** — skip unchanged files (mtime + fileSize), hash-compare changed ones
+4. **Change detection** — default: skip if filePath exists in DB. `--inspect`: compare size/mtime/hash. `--overwrite`: skip nothing
 5. **Split** albumArtist and artist tags into individual artists
 6. **Upsert** Artist, LocalRelease, LocalReleaseTrack, LocalReleaseArtist, TrackRelatedArtist (batch UNNEST)
 7. **Cover art** — extract from embedded tags or folder.jpg/cover.jpg, upload to S3 if configured
 8. **Delete** tracks no longer on disk
 9. **Update totals** for this artist's releases and tracks
 10. **Set `lastIndexedAt`** on Artist
-11. **Upsert FolderScan** — stores folder mtime for `--quick` mode
+11. **Upsert FolderScan** — stores folder mtime
 
 Post-loop: detects entirely deleted folders (only when unfiltered), safety-net pass re-extracts missing release images.
 

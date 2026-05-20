@@ -168,7 +168,6 @@ pub async fn nuke_local_artists(
     }
 
     // Collect folder paths before deleting, so we can clear FolderScan entries.
-    // This ensures --quick mode re-processes these folders on the next ./index run.
     let folder_paths: Vec<String> = if !release_ids.is_empty() {
         let rows: Vec<(Option<String>,)> = sqlx::query_as(
             r#"SELECT DISTINCT "folderPath" FROM "LocalRelease"
@@ -205,7 +204,7 @@ pub async fn nuke_local_artists(
     .execute(pool)
     .await?;
 
-    // Clear FolderScan entries so --quick mode re-processes these folders
+    // Clear FolderScan entries so re-indexing picks up these folders
     if !folder_paths.is_empty() {
         sqlx::query(r#"DELETE FROM "FolderScan" WHERE "folderPath" = ANY($1::text[])"#)
             .bind(&folder_paths)

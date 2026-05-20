@@ -2,7 +2,7 @@ export const maxGenres = 5
 export const SKELETON_GRID_SIZE = 12
 
 export const scanActions = [
-  { id: 'check', icon: 'Search', text: 'Check for changes', subtext: 'Scan for new & changed files' },
+  { id: 'check', icon: 'Search', text: 'Check for new files', subtext: 'Index new files & sync' },
   { id: 'index-sync', icon: 'RefreshCw', text: 'Index & Sync', subtext: 'Full re-scan from scratch' },
   { id: 'index', icon: 'HardDriveDownload', text: 'Index only', subtext: 'Re-index local files' },
   { id: 'sync', icon: 'Globe', text: 'Sync only', subtext: 'Re-sync catalogue against MusicBrainz' },

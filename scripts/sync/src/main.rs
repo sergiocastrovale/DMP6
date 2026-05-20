@@ -306,14 +306,20 @@ async fn main() {
             })
             .collect()
     } else {
-        get_artists_pending_sync(
-            &pool,
-            args.from.as_deref(),
-            args.to.as_deref(),
-            args.only.as_deref(),
-        )
-        .await
-        .expect("DB query failed")
+        get_artists_pending_sync(&pool)
+            .await
+            .expect("DB query failed")
+            .into_iter()
+            .filter(|a| {
+                matches_filter(
+                    &a.name,
+                    args.from.as_deref().unwrap_or(""),
+                    args.to.as_deref().unwrap_or(""),
+                    args.only.as_deref().unwrap_or(""),
+                    args.exact,
+                )
+            })
+            .collect()
     };
 
     let total = artists.len();

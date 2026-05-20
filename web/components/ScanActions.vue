@@ -18,7 +18,7 @@ const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownl
 
 const globalActions: Record<string, () => Promise<void>> = {
   'check': async () => {
-    await terminal.run('./index', ['--quick'])
+    await terminal.run('./index', [])
     await terminal.run('./sync', [])
   },
   'index-sync': () => terminal.run('./refresh', []),

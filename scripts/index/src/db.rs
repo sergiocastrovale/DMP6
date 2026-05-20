@@ -282,7 +282,6 @@ pub async fn batch_ensure_local_release_artists(
     Ok(())
 }
 
-/// Update mtime-only for unchanged tracks (same size + same hash, different mtime on disk).
 pub async fn batch_update_mtimes(
     pool: &PgPool,
     updates: &[(NaiveDateTime, String)],
@@ -340,17 +339,6 @@ pub async fn upsert_folder_scan(
     .execute(pool)
     .await?;
     Ok(())
-}
-
-/// Load all FolderScan rows into a HashMap<folderPath, mtime>.
-pub async fn load_folder_scans(pool: &PgPool) -> HashMap<String, NaiveDateTime> {
-    let rows: Vec<(String, NaiveDateTime)> = sqlx::query_as(
-        r#"SELECT "folderPath", mtime FROM "FolderScan""#,
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-    rows.into_iter().collect()
 }
 
 pub async fn propagate_mb_artist_id(

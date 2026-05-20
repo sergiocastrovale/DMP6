@@ -449,9 +449,6 @@ pub struct ArtistSyncRow {
 
 pub async fn get_artists_pending_sync(
     pool: &PgPool,
-    from: Option<&str>,
-    to: Option<&str>,
-    only: Option<&str>,
 ) -> Result<Vec<ArtistSyncRow>, sqlx::Error> {
     let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
         sqlx::query_as(
@@ -465,7 +462,7 @@ pub async fn get_artists_pending_sync(
         .fetch_all(pool)
         .await?;
 
-    let artists: Vec<ArtistSyncRow> = rows
+    Ok(rows
         .into_iter()
         .map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
             id,
@@ -474,34 +471,7 @@ pub async fn get_artists_pending_sync(
             mb_id,
             has_image: image.is_some() || image_url.is_some(),
         })
-        .collect();
-
-    let filtered = artists
-        .into_iter()
-        .filter(|a| {
-            if let Some(only) = only {
-                return a.name.to_lowercase() == only.to_lowercase()
-                    || a.slug == only;
-            }
-            let key = a.name.to_lowercase();
-            let first = key.chars().next().unwrap_or('0');
-            if let Some(from) = from {
-                let from_c = from.to_lowercase().chars().next().unwrap_or('a');
-                if first < from_c {
-                    return false;
-                }
-            }
-            if let Some(to) = to {
-                let to_c = to.to_lowercase().chars().next().unwrap_or('z');
-                if first > to_c {
-                    return false;
-                }
-            }
-            true
-        })
-        .collect();
-
-    Ok(filtered)
+        .collect())
 }
 
 // ---------------------------------------------------------------------------

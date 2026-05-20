@@ -101,7 +101,7 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./index --only "Name" --exact # Index exact artist (no prefix matching)
 ./index --only "Name" --overwrite  # Force re-index
 ./index --resume              # Continue from last checkpoint
-./index --quick               # Skip unchanged folders (mtime check)
+./index --inspect             # Re-check existing files for metadata changes
 ./index --folders "Artist/Album"   # Re-index exact folder paths
 ./index --release "clxxx"     # Re-index single release by LocalRelease ID
 ./index --delete              # Delete local data for matched artists
@@ -152,6 +152,10 @@ When browsing reveals artists with bad names (track numbers, paths, garbage):
 3. **Fix**: `./fix --corrupted` / `./fix --unsplit` / `./fix --orphans` etc.
 4. **Refresh**: `./refresh --only="..."` for file-writing fix types
 5. **Iterate**: Re-run audit until clean
+
+### Error Logs
+
+On the NAS, script error logs are at: `docker exec dmp cat /app/errors.log`
 
 ## API Endpoints
 

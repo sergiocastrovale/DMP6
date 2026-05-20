@@ -1,4 +1,3 @@
-use chrono::NaiveDateTime;
 use common::config::Config;
 use common::images::{delete_artist_images, delete_release_images};
 use sqlx::PgPool;
@@ -180,20 +179,4 @@ async fn delete_folder_tracks(pool: &PgPool, folder: &str) -> u64 {
     result.map(|r| r.rows_affected()).unwrap_or(0)
 }
 
-/// Check if a folder's mtime has changed since last scan.
-/// Returns true if the folder is new or modified.
-pub fn folder_changed(
-    folder_path: &Path,
-    known_scans: &std::collections::HashMap<String, NaiveDateTime>,
-    folder_key: &str,
-) -> bool {
-    let Ok(meta) = std::fs::metadata(folder_path) else { return true };
-    let Ok(sys_mtime) = meta.modified() else { return true };
-    let Ok(dur) = sys_mtime.duration_since(std::time::UNIX_EPOCH) else { return true };
-    let Some(disk_mtime) = chrono::DateTime::from_timestamp(dur.as_secs() as i64, 0)
-        .map(|dt| dt.naive_utc()) else { return true };
-    match known_scans.get(folder_key) {
-        Some(cached) => (disk_mtime - *cached).num_seconds().abs() > 1,
-        None => true,
-    }
-}
+

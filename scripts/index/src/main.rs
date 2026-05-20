@@ -33,7 +33,7 @@ use std::{
 use db::*;
 use deletion::{
     delete_empty_releases, delete_orphan_artists, delete_removed_tracks,
-    detect_deleted_folders, folder_changed,
+    detect_deleted_folders,
 };
 use images::{extract_cover_art, upload_release_image_to_s3, use_folder_image};
 use metadata::extract_metadata;
@@ -65,11 +65,11 @@ struct IndexArgs {
     #[arg(long, help = "Exact match for --only (no prefix matching)")]
     exact: bool,
 
+    #[arg(long, help = "Re-check existing files for metadata changes (size/mtime/hash comparison)")]
+    inspect: bool,
+
     #[arg(long, help = "Skip cover art extraction")]
     skip_covers: bool,
-
-    #[arg(long, help = "Skip folders whose directory mtime hasn't changed")]
-    quick: bool,
 
     #[arg(long, help = "Resume from last saved checkpoint")]
     resume: bool,
@@ -138,12 +138,12 @@ async fn main() {
     }
 
     let args_str = format!(
-        "from={} to={} only={} overwrite={} quick={} delete={} release={}",
+        "from={} to={} only={} overwrite={} inspect={} delete={} release={}",
         args.from.as_deref().unwrap_or(""),
         args.to.as_deref().unwrap_or(""),
         args.only.as_deref().unwrap_or(""),
         args.overwrite,
-        args.quick,
+        args.inspect,
         args.delete,
         args.release.as_deref().unwrap_or(""),
     );
@@ -227,12 +227,6 @@ async fn main() {
         rows.into_iter().collect()
     };
 
-    let folder_scans: HashMap<String, NaiveDateTime> = if args.quick {
-        load_folder_scans(&pool).await
-    } else {
-        HashMap::new()
-    };
-
     // -------------------------------------------------------------------------
     // Configure rayon thread pool
     // -------------------------------------------------------------------------
@@ -296,8 +290,8 @@ async fn main() {
     reporter.kv("Threads", &if args.threads > 0 { args.threads.to_string() } else { "8".into() });
     if args.overwrite {
         reporter.kv("Mode", "overwrite");
-    } else if args.quick {
-        reporter.kv("Mode", "quick (skip unchanged folders)");
+    } else if args.inspect {
+        reporter.kv("Mode", "inspect (re-check metadata)");
     }
     if args.skip_covers {
         reporter.kv("Covers", "skipped");
@@ -361,11 +355,6 @@ async fn main() {
 
         let folder_path = PathBuf::from(&music_dir).join(folder_name);
 
-        // Quick mode: skip folder if its mtime hasn't changed
-        if args.quick && !folder_changed(&folder_path, &folder_scans, folder_name) {
-            continue;
-        }
-
         reporter.item("", folder_name, folder_idx + 1, total_folders);
 
         // -----------------------------------------------------------------
@@ -406,14 +395,23 @@ async fn main() {
             save_index_checkpoint(&pool, folder_name).await.ok();
             continue;
         }
-        reporter.step(&format!("Extracting metadata ({} files)...", file_count));
-        total_files += file_count as u64;
-
         // -----------------------------------------------------------------
         // Load existing tracks for change detection
         // -----------------------------------------------------------------
         let folder_prefix = format!("{}/", folder_name);
-        let existing_tracks: HashMap<String, (i64, NaiveDateTime, String)> = if !args.overwrite && args.folders.is_none() {
+        let existing_paths: HashSet<String> = if !args.overwrite && !args.inspect && args.folders.is_none() {
+            let rows: Vec<(String,)> = sqlx::query_as(
+                r#"SELECT "filePath" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
+            )
+            .bind(format!("{}%", folder_prefix))
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default();
+            rows.into_iter().map(|(path,)| path).collect()
+        } else {
+            HashSet::new()
+        };
+        let existing_tracks: HashMap<String, (i64, NaiveDateTime, String)> = if args.inspect && args.folders.is_none() {
             let rows: Vec<(String, i64, Option<NaiveDateTime>, Option<String>)> = sqlx::query_as(
                 r#"SELECT "filePath", "fileSize", mtime, "contentHash"
                    FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
@@ -424,19 +422,47 @@ async fn main() {
             .unwrap_or_default();
             rows.into_iter()
                 .map(|(path, size, mtime, hash)| {
-                    (
-                        path,
-                        (
-                            size,
-                            mtime.unwrap_or_else(|| Utc::now().naive_utc()),
-                            hash.unwrap_or_default(),
-                        ),
-                    )
+                    (path, (size, mtime.unwrap_or_else(|| Utc::now().naive_utc()), hash.unwrap_or_default()))
                 })
                 .collect()
         } else {
             HashMap::new()
         };
+
+        // Default mode: filter out already-indexed paths before extraction
+        let paths: Vec<PathBuf> = if !existing_paths.is_empty() {
+            let music_dir_prefix = format!("{}/", music_dir);
+            paths.into_iter().filter(|p| {
+                let rel = p.to_string_lossy()
+                    .strip_prefix(&music_dir_prefix)
+                    .unwrap_or(&p.to_string_lossy())
+                    .to_string();
+                !existing_paths.contains(&rel)
+            }).collect()
+        } else {
+            paths
+        };
+
+        let file_count_after = paths.len();
+        let pre_skipped = file_count - file_count_after;
+        skipped_total += pre_skipped as u64;
+
+        let mut folder_new: u64 = 0;
+        let mut folder_updated: u64 = 0;
+        let mut folder_skipped: u64 = 0;
+        let mut folder_artist_ids: HashSet<String> = HashSet::new();
+        let mut folder_releases: HashMap<String, String> = HashMap::new();
+
+        if paths.is_empty() {
+            reporter.step(&format!("{} files, all up to date", file_count));
+        } else {
+
+        if pre_skipped > 0 {
+            reporter.step(&format!("Extracting metadata ({} new of {} files)...", file_count_after, file_count));
+        } else {
+            reporter.step(&format!("Extracting metadata ({} files)...", file_count));
+        }
+        total_files += file_count as u64;
 
         // -----------------------------------------------------------------
         // Parallel metadata extraction
@@ -471,11 +497,7 @@ async fn main() {
             reporter.warn(msg);
         }
 
-        if extracted.is_empty() {
-            reporter.sub_step(&format!("{} files, all failed to parse", file_count));
-            save_index_checkpoint(&pool, folder_name).await.ok();
-            continue;
-        }
+        if !extracted.is_empty() {
 
         // -----------------------------------------------------------------
         // Pre-scan: propagate MB IDs within the same logical album
@@ -512,21 +534,18 @@ async fn main() {
         // -----------------------------------------------------------------
         // Change detection + build batch
         // -----------------------------------------------------------------
-        let mut folder_new: u64 = 0;
-        let mut folder_updated: u64 = 0;
-        let mut folder_skipped: u64 = 0;
         let mut mtime_updates: Vec<(NaiveDateTime, String)> = Vec::new();
         let mut batch_tracks: Vec<_> = Vec::new();
         let mut pending_related_links: Vec<(String, String)> = Vec::new();
         let mut pending_release_artist_links: HashSet<(String, String)> = HashSet::new();
-        let mut folder_artist_ids: HashSet<String> = HashSet::new();
         let mut releases_needing_art: HashMap<String, PathBuf> = HashMap::new();
-        let mut folder_releases: HashMap<String, String> = HashMap::new();
         let mut releases_with_art: HashSet<String> = HashSet::new();
 
         for track in &extracted {
-            // Change detection
-            if !args.overwrite {
+            if args.overwrite {
+                new_total += 1;
+                folder_new += 1;
+            } else if args.inspect {
                 if let Some((existing_size, existing_mtime, existing_hash)) =
                     existing_tracks.get(&track.file_path)
                 {
@@ -549,6 +568,10 @@ async fn main() {
                     new_total += 1;
                     folder_new += 1;
                 }
+            } else if existing_paths.contains(&track.file_path) {
+                skipped_total += 1;
+                folder_skipped += 1;
+                continue;
             } else {
                 new_total += 1;
                 folder_new += 1;
@@ -689,9 +712,11 @@ async fn main() {
         }
 
         // -----------------------------------------------------------------
-        // Flush mtime-only updates
+        // Flush mtime-only updates (--inspect mode)
         // -----------------------------------------------------------------
-        batch_update_mtimes(&pool, &mtime_updates).await.ok();
+        if args.inspect {
+            batch_update_mtimes(&pool, &mtime_updates).await.ok();
+        }
 
         // -----------------------------------------------------------------
         // Batch upsert tracks + resolve artist links
@@ -721,41 +746,6 @@ async fn main() {
             batch_ensure_local_release_artists(&pool, &links).await.ok();
         }
 
-        // -----------------------------------------------------------------
-        // Backfill: ensure folder_releases + folder_artist_ids include
-        // tracks that were skipped (unchanged) this run
-        // -----------------------------------------------------------------
-        {
-            let db_releases: Vec<(String, String)> = sqlx::query_as(
-                r#"SELECT DISTINCT lr.id, lr."folderPath"
-                   FROM "LocalRelease" lr
-                   WHERE lr."folderPath" LIKE $1"#,
-            )
-            .bind(format!("{}%", folder_name))
-            .fetch_all(&pool)
-            .await
-            .unwrap_or_default();
-            for (rid, fp) in db_releases {
-                folder_releases.entry(rid).or_insert(fp);
-            }
-
-            let folder_release_ids: Vec<String> = folder_releases.keys().cloned().collect();
-            if !folder_release_ids.is_empty() {
-                let album_artists: Vec<(String,)> = sqlx::query_as(
-                    r#"SELECT DISTINCT lra."artistId"
-                       FROM "LocalReleaseArtist" lra
-                       WHERE lra."localReleaseId" = ANY($1::text[])"#,
-                )
-                .bind(&folder_release_ids)
-                .fetch_all(&pool)
-                .await
-                .unwrap_or_default();
-                for (aid,) in album_artists {
-                    folder_artist_ids.insert(aid);
-                }
-            }
-        }
-
         // Print folder summary — verbose only when something actually changed
         {
             if folder_new > 0 || folder_updated > 0 {
@@ -768,7 +758,6 @@ async fn main() {
             } else if folder_errors > 0 {
                 reporter.warn(&format!("{} errors", folder_errors));
             }
-            // else: nothing changed — step header is sufficient
         }
 
         // -----------------------------------------------------------------
@@ -970,6 +959,43 @@ async fn main() {
             for rid in &releases_with_art {
                 let tmp = release_img_dir.join(format!("{}.jpg", rid));
                 std::fs::remove_file(&tmp).ok();
+            }
+        }
+
+        } // if !extracted.is_empty()
+        } // if !paths.is_empty()
+
+        // -----------------------------------------------------------------
+        // Backfill: load folder_releases + folder_artist_ids from DB
+        // -----------------------------------------------------------------
+        {
+            let db_releases: Vec<(String, String)> = sqlx::query_as(
+                r#"SELECT DISTINCT lr.id, lr."folderPath"
+                   FROM "LocalRelease" lr
+                   WHERE lr."folderPath" LIKE $1"#,
+            )
+            .bind(format!("{}%", folder_name))
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default();
+            for (rid, fp) in db_releases {
+                folder_releases.entry(rid).or_insert(fp);
+            }
+
+            let folder_release_ids: Vec<String> = folder_releases.keys().cloned().collect();
+            if !folder_release_ids.is_empty() {
+                let album_artists: Vec<(String,)> = sqlx::query_as(
+                    r#"SELECT DISTINCT lra."artistId"
+                       FROM "LocalReleaseArtist" lra
+                       WHERE lra."localReleaseId" = ANY($1::text[])"#,
+                )
+                .bind(&folder_release_ids)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+                for (aid,) in album_artists {
+                    folder_artist_ids.insert(aid);
+                }
             }
         }
 

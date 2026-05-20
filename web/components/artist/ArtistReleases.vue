@@ -337,6 +337,12 @@ function toggleGroup(key: string) {
   if (expandedGroup.value !== key) {
     expandedEdition.value = null
   }
+  else {
+    const group = groups.value.find(g => g.key === key)
+    if (group?.releases.length === 1 && (group.releases[0]!.localReleaseId || group.releases[0]!.localTrackCount > 0)) {
+      expandedEdition.value = group.releases[0]!.id
+    }
+  }
 }
 
 function toggleEdition(id: string) {
