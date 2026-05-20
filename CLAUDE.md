@@ -99,7 +99,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./refresh --release "clxxx"   # Refresh single release (re-index + re-sync)
 ./index --only "Name"         # Index single artist (prefix match)
 ./index --only "Name" --exact # Index exact artist (no prefix matching)
-./index --only "Name" --overwrite  # Force re-index
+./index --only "Name" --overwrite  # Force re-index (keeps existing covers)
+./index --only "Name" --overwrite-with-images  # Force re-index + re-extract covers
 ./index --resume              # Continue from last checkpoint
 ./index --inspect             # Re-check existing files for metadata changes
 ./index --folders "Artist/Album"   # Re-index exact folder paths

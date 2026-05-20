@@ -16,7 +16,8 @@ cd scripts && cargo build --release -p index
 ./index --only "radiohead;bjork" # Multiple artists (semicolon-separated)
 ./index --only "Air" --exact     # Exact match (won't catch "Airbag")
 ./index --from "A" --to "M"     # Letter range
-./index --overwrite              # Force re-index (ignore change detection)
+./index --overwrite              # Force re-index (keeps existing covers)
+./index --overwrite-with-images  # Force re-index + re-extract all covers
 ./index --inspect                # Re-check existing files for metadata changes
 ./index --resume                 # Continue from last checkpoint
 ./index --release "clxxxxxxx"   # Re-index a single release by LocalRelease ID
@@ -40,7 +41,8 @@ cd scripts && cargo build --release -p index
 | `--exact` | bool | false | Exact match for `--only` (no prefix matching) |
 | `--folders` | String | — | Exact relative folder paths to process |
 | `--release` | String | — | Re-index single release by LocalRelease ID |
-| `--overwrite` | bool | false | Re-index all tracks ignoring change detection |
+| `--overwrite` | bool | false | Re-index all tracks ignoring change detection (keeps existing covers) |
+| `--overwrite-with-images` | bool | false | Like --overwrite but also deletes and re-extracts all cover art |
 | `--inspect` | bool | false | Re-check existing files for metadata changes (size/mtime/hash) |
 | `--skip-covers` | bool | false | Skip cover art extraction |
 | `--resume` | bool | false | Resume from last checkpoint |
@@ -58,7 +60,7 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 1. **Walk** folder for audio files (mp3, flac, aac, opus, m4a, ogg) via jwalk
 2. **Extract** metadata in parallel (rayon + lofty), including MB tags: `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_ALBUMARTISTID`
 3. **Pre-scan** — propagate MB release/release-group IDs across tracks sharing same album/year/albumArtist
-4. **Change detection** — default: skip if filePath exists in DB. `--inspect`: compare size/mtime/hash. `--overwrite`: skip nothing
+4. **Change detection** — default: skip if filePath exists in DB. `--inspect`: compare size/mtime/hash. `--overwrite`: skip change detection but preserve existing covers. `--overwrite-with-images`: skip everything and re-extract covers
 5. **Split** albumArtist and artist tags into individual artists
 6. **Upsert** Artist, LocalRelease, LocalReleaseTrack, LocalReleaseArtist, TrackRelatedArtist (batch UNNEST)
 7. **Cover art** — extract from embedded tags or folder.jpg/cover.jpg, upload to S3 if configured

@@ -62,6 +62,9 @@ struct IndexArgs {
     #[arg(long, help = "Re-index all tracks, ignoring change detection")]
     overwrite: bool,
 
+    #[arg(long, help = "Re-index all tracks AND re-extract all cover art")]
+    overwrite_with_images: bool,
+
     #[arg(long, help = "Exact match for --only (no prefix matching)")]
     exact: bool,
 
@@ -93,7 +96,10 @@ fn has_filter(args: &IndexArgs) -> bool {
 
 #[tokio::main]
 async fn main() {
-    let args = IndexArgs::parse();
+    let mut args = IndexArgs::parse();
+    if args.overwrite_with_images {
+        args.overwrite = true;
+    }
     common::error_log::init("index");
     let reporter = Reporter::new(args.web);
     let mut config = load_config(args.music_dir.as_deref());
@@ -540,6 +546,7 @@ async fn main() {
         let mut pending_release_artist_links: HashSet<(String, String)> = HashSet::new();
         let mut releases_needing_art: HashMap<String, PathBuf> = HashMap::new();
         let mut releases_with_art: HashSet<String> = HashSet::new();
+        let mut releases_already_have_art: HashSet<String> = HashSet::new();
 
         for track in &extracted {
             if args.overwrite {
@@ -701,10 +708,12 @@ async fn main() {
             // Queue cover art extraction
             if track.has_picture && !args.skip_covers {
                 let out_path = release_img_dir.join(format!("{}.jpg", release_id));
-                if !out_path.exists() {
+                if args.overwrite_with_images || !out_path.exists() {
                     releases_needing_art
                         .entry(release_id.clone())
                         .or_insert_with(|| PathBuf::from(format!("{}/{}", music_dir, &track.file_path)));
+                } else {
+                    releases_already_have_art.insert(release_id.clone());
                 }
             }
 
@@ -769,12 +778,16 @@ async fn main() {
                 releases_needing_art.len()
             ));
             let art_entries: Vec<_> = releases_needing_art.iter().collect();
+            let overwrite_images = args.overwrite_with_images;
             let extracted_covers: Vec<(String, PathBuf, bool)> = art_entries
                 .par_iter()
                 .map(|(release_id, source_path)| {
                     let out_path = release_img_dir.join(format!("{}.jpg", release_id));
-                    if out_path.exists() {
+                    if !overwrite_images && out_path.exists() {
                         return ((*release_id).clone(), out_path, false);
+                    }
+                    if overwrite_images {
+                        std::fs::remove_file(&out_path).ok();
                     }
                     let success = extract_cover_art(source_path, &out_path);
                     ((*release_id).clone(), out_path, success)
@@ -835,7 +848,7 @@ async fn main() {
         if !args.skip_covers {
             let releases_without_art: Vec<(String, String)> = folder_releases
                 .iter()
-                .filter(|(rid, _)| !releases_with_art.contains(*rid))
+                .filter(|(rid, _)| !releases_with_art.contains(*rid) && (args.overwrite_with_images || !releases_already_have_art.contains(*rid)))
                 .map(|(rid, fp)| (rid.clone(), fp.clone()))
                 .collect();
 
@@ -950,8 +963,13 @@ async fn main() {
             }
         }
 
-        if !args.skip_covers && !releases_with_art.is_empty() {
-            reporter.sub_ok(&format!("Extracted {} cover(s)", releases_with_art.len()));
+        if !args.skip_covers {
+            if !releases_with_art.is_empty() {
+                reporter.sub_ok(&format!("Extracted {} cover(s)", releases_with_art.len()));
+            }
+            if !releases_already_have_art.is_empty() {
+                reporter.sub_ok(&format!("{} cover(s) already exist", releases_already_have_art.len()));
+            }
         }
 
         // Clean up temp images in S3-only mode
