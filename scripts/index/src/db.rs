@@ -66,7 +66,7 @@ pub async fn ensure_local_release(
     let now = Utc::now().naive_utc();
     let row: (String,) = sqlx::query_as(
         r#"INSERT INTO "LocalRelease" (id, title, year, "matchStatus", "forcedComplete", "totalPlayCount", "totalDuration", "totalFileSize", "createdAt", "updatedAt", "folderPath", "groupKey")
-           VALUES ($1, $2, $3, 'UNKNOWN', false, 0, 0, 0, $4, $4, $5, $6)
+           VALUES ($1, $2, $3, 'UNMATCHED', false, 0, 0, 0, $4, $4, $5, $6)
            ON CONFLICT ("groupKey") DO UPDATE SET
              year = COALESCE(EXCLUDED.year, "LocalRelease".year),
              "updatedAt" = $4

@@ -66,7 +66,7 @@ Duplicate detection: tracks processed MB IDs across the run. Skips artists that 
 
 ## --delete Behaviour
 
-Resets `musicbrainzId`, `averageMatchScore`, and `lastSyncedAt` to NULL, unlinks `MusicBrainzRelease` records, resets `LocalRelease.matchStatus` to `UNKNOWN`. Re-running `./sync` after this automatically re-syncs those artists.
+Resets `musicbrainzId`, `averageMatchScore`, and `lastSyncedAt` to NULL, unlinks `MusicBrainzRelease` records, resets `LocalRelease.matchStatus` to `UNMATCHED`. Re-running `./sync` after this automatically re-syncs those artists.
 
 ## Artist Matching (5-step)
 
@@ -80,17 +80,30 @@ If artist already has a MB ID and not overwriting: uses it directly (no API sear
 
 ## Release Matching Policy
 
-Strict metadata-wins: only matches via embedded MB IDs in tags. Title fuzzy matching is intentionally disabled. Releases without MB IDs in tags are marked Unmatched. Confidence check: if multiple siblings returned and none match local track count exactly, marks Unmatched.
+Strict metadata-wins: only matches via embedded MB IDs in tags. Title fuzzy matching is intentionally disabled. Releases without MB IDs in tags are marked `UNMATCHED`. Confidence check: if multiple siblings returned and none match local track count exactly, marks `UNMATCHED`.
 
-## Match Status
+## Release Status
 
-| Status | Score | Meaning |
-|--------|-------|---------|
-| `COMPLETE` | 1.0 | All MB tracks matched to local tracks |
-| `EXTRA_TRACKS` | 0.85 | More local tracks than MB tracks |
-| `MISSING_TRACKS` | 0.7 | MB has tracks not found locally |
-| `INCOMPLETE` | 0.5 | Some MB tracks unmatched |
-| `UNSYNCABLE` | — | No matching release group found |
+All statuses in `ReleaseStatus` enum and how they are assigned:
+
+| Status | Score | How assigned | Badge color |
+|--------|-------|--------------|-------------|
+| `COMPLETE` | 1.0 | Sync: all MB tracks matched to local tracks (0 unmatched on both sides) | Green |
+| `EXTRA_TRACKS` | 0.85 | Sync: more local tracks than MB tracks | Blue |
+| `MISSING_TRACKS` | 0.7 | Sync: MB has tracks not found locally | Orange |
+| `INCOMPLETE` | 0.5 | Sync: fallback when some local tracks are unmatched | Amber |
+| `MISSING` | — | API-only: MB release exists in artist catalogue but no local files | Red |
+| `UNKNOWN` | — | Index: track deletion resets matched release for sync recalculation. Release still has `releaseId`. | Gray |
+| `UNMATCHED` | — | Index: new release (no MB match yet). Sync: no MB IDs in tags, or ambiguous match (multiple MB siblings, no exact track-count match). Nuke: unlink from MB. | Beige |
+
+### Status lifecycle
+
+1. **Index creates** a new `LocalRelease` → `UNMATCHED` (no MB link yet)
+2. **Sync matches** release to MB → `COMPLETE`/`EXTRA_TRACKS`/`MISSING_TRACKS`/`INCOMPLETE`
+3. **Sync can't match** (no MB tags or ambiguous) → stays `UNMATCHED`
+4. **Track deletion** on a matched release → `UNKNOWN` (needs sync recalculation, `releaseId` kept)
+5. **Nuke/delete** unlinks from MB → `UNMATCHED` (`releaseId` cleared)
+6. **Re-sync** (`--overwrite`) → re-evaluates, lands on any of the above
 
 ## Rate Limiting
 

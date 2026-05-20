@@ -55,18 +55,18 @@ export const statuses = [
     description: 'MB release not in local catalogue',
     weight: 5,
   },
-  { 
-    value: 'UNSYNCABLE',
-    label: 'Unsyncable',
-    classes: 'bg-zinc-700 text-zinc-400',
-    description: 'No MB ID on local release',
-    weight: 6,
-  },
-  { 
+  {
     value: 'UNKNOWN',
     label: 'Unknown',
     classes: 'bg-zinc-700 text-zinc-400',
     description: 'Has MB ID but not found online',
+    weight: 6,
+  },
+  {
+    value: 'UNMATCHED',
+    label: 'Unmatched',
+    classes: 'bg-amber-200/20 text-amber-200',
+    description: 'Local release not matched to MusicBrainz',
     weight: 7,
   },
 ]

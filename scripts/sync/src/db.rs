@@ -328,7 +328,7 @@ pub async fn mark_local_release_unmatched(
     sqlx::query(
         r#"UPDATE "LocalRelease"
            SET "releaseId" = NULL,
-               "matchStatus" = 'UNKNOWN',
+               "matchStatus" = 'UNMATCHED',
                "updatedAt" = $1
            WHERE id = $2"#,
     )

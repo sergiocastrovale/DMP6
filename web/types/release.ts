@@ -46,8 +46,8 @@ export type ReleaseStatus =
   | 'EXTRA_TRACKS'
   | 'MISSING_TRACKS'
   | 'MISSING'
-  | 'UNSYNCABLE'
   | 'UNKNOWN'
+  | 'UNMATCHED'
 
 export interface ReleaseType {
   id: string

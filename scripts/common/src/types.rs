@@ -32,9 +32,8 @@ pub enum MatchStatus {
     Incomplete,
     ExtraTracks,
     Missing,
-    #[allow(dead_code)]
-    Unsyncable,
     Unknown,
+    Unmatched,
 }
 
 impl MatchStatus {
@@ -44,8 +43,8 @@ impl MatchStatus {
             Self::Incomplete => "INCOMPLETE",
             Self::ExtraTracks => "EXTRA_TRACKS",
             Self::Missing => "MISSING",
-            Self::Unsyncable => "UNSYNCABLE",
             Self::Unknown => "UNKNOWN",
+            Self::Unmatched => "UNMATCHED",
         }
     }
 }

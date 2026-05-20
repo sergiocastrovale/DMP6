@@ -26,8 +26,8 @@ enum ReleaseStatus {
   EXTRA_TRACKS
   MISSING_TRACKS
   MISSING
-  UNSYNCABLE
   UNKNOWN
+  UNMATCHED
 }
 
 enum Role {
@@ -178,7 +178,7 @@ model LocalRelease {
   title           String              @db.VarChar(500)
   year            Int?
   releaseId       String?
-  matchStatus     ReleaseStatus       @default(UNKNOWN)
+  matchStatus     ReleaseStatus       @default(UNMATCHED)
   forcedComplete  Boolean             @default(false)
   folderPath      String?             @db.Text
   groupKey        String              @db.VarChar(500)

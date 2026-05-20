@@ -62,7 +62,7 @@ pub async fn nuke_mb_data(
             sqlx::query(
                 r#"UPDATE "LocalRelease"
                    SET "releaseId" = NULL,
-                       "matchStatus" = 'UNKNOWN'::"ReleaseStatus",
+                       "matchStatus" = 'UNMATCHED'::"ReleaseStatus",
                        "statusReason" = NULL
                    WHERE "releaseId" = $1"#,
             )

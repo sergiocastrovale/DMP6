@@ -119,8 +119,8 @@ const statusConfig: Record<string, { label: string; classes: string }> = {
   INCOMPLETE: { label: 'Incomplete', classes: 'bg-amber-500/20 text-amber-400' },
   EXTRA_TRACKS: { label: 'Extra tracks', classes: 'bg-blue-500/20 text-blue-400' },
   MISSING: { label: 'Missing', classes: 'bg-red-500/20 text-red-400' },
-  UNSYNCABLE: { label: 'Unsyncable', classes: 'bg-zinc-700 text-zinc-400' },
   UNKNOWN: { label: 'Unknown', classes: 'bg-zinc-700 text-zinc-400' },
+  UNMATCHED: { label: 'Unmatched', classes: 'bg-amber-200/20 text-amber-200' },
 }
 
 const showInfoDialog = ref(false)

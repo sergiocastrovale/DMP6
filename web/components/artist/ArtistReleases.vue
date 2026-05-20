@@ -27,7 +27,6 @@ const TAB_BUCKETS = [
   { slug: 'albums', label: 'Albums', match: (t: string) => t === 'album' },
   { slug: 'eps', label: 'EPs', match: (t: string) => t === 'ep' },
   { slug: 'singles', label: 'Singles', match: (t: string) => t === 'single' },
-  { slug: 'unmatched', label: 'Unmatched', match: (t: string) => t === 'unmatched' || t === 'appears-on' },
   { slug: 'other', label: 'Other', match: (_t: string) => true },
 ] as const
 
@@ -99,7 +98,7 @@ const visibleReleases = computed(() => {
 })
 
 const tabCounts = computed(() => {
-  const counts: Record<string, number> = { albums: 0, eps: 0, singles: 0, other: 0, unmatched: 0 }
+  const counts: Record<string, number> = { albums: 0, eps: 0, singles: 0, other: 0 }
   for (const r of visibleReleases.value) {
     counts[bucketSlug(r.typeSlug)]++
   }

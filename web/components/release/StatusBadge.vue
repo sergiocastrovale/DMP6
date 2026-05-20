@@ -13,8 +13,8 @@ const config: Record<ReleaseStatus, { label: string; classes: string }> = {
   EXTRA_TRACKS: { label: 'Extra tracks', classes: 'bg-blue-500/20 text-blue-400' },
   MISSING_TRACKS: { label: 'Missing tracks', classes: 'bg-orange-500/20 text-orange-400' },
   MISSING: { label: 'Missing', classes: 'bg-red-500/20 text-red-400' },
-  UNSYNCABLE: { label: 'Unsyncable', classes: 'bg-zinc-700 text-zinc-400' },
   UNKNOWN: { label: 'Unknown', classes: 'bg-zinc-700 text-zinc-400' },
+  UNMATCHED: { label: 'Unmatched', classes: 'bg-amber-200/20 text-amber-200' },
 }
 
 const cfg = computed(() => config[props.status] || config.UNKNOWN)
