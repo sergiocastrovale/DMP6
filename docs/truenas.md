@@ -1,6 +1,6 @@
 # TrueNAS Setup
 
-Deploy DMP on TrueNAS Scale. Images are built on your dev machine and pushed to the NAS via `./deploy.sh`.
+Deploy DMP on TrueNAS Scale. Images are built on your dev machine and pushed to the NAS via `./deploy`.
 
 ## Prerequisites
 
@@ -88,7 +88,7 @@ ADMIN_PASSWORD=your-password
 ## 5. Deploy
 
 ```bash
-./deploy.sh          # build + transfer + restart
+./deploy         # build + transfer + restart
 ```
 
 ---
@@ -187,7 +187,7 @@ If the NAS reboots mid-index, resume with `./index --resume`.
 ## 10. Updates
 
 ```bash
-./deploy.sh          # rebuild + redeploy
+./deploy        # rebuild + redeploy
 ```
 
 ---
@@ -261,6 +261,6 @@ sudo zfs set atime=off dmp/music
    ```bash
    echo "CLOUDFLARE_TUNNEL_TOKEN=<token>" >> /mnt/SSD/web/dmp/.env
    ```
-4. Redeploy: `./deploy.sh`
+4. Redeploy: `./deploy`
 
 `https://dmp.nrnas.com` will be live once the tunnel connects.

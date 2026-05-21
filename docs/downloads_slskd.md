@@ -12,7 +12,7 @@ slskd runs as a Docker service alongside DMP. Its config/state live in `/mnt/SSD
 /mnt/SSD/Downloads/    # finished downloads land here (shared with dmp)
 ```
 
-The service is defined in [`docker-compose.yml`](../docker-compose.yml) and launches automatically when you run `docker compose up -d` or deploy via `./deploy.sh deploy`. Both `slskd` and `web` mount the same host path at `/downloads`, so DMP can move slskd's finished files into the templated `{artist}/{year} - {album}` folder.
+The service is defined in [`docker-compose.yml`](../docker-compose.yml) and launches automatically when you run `docker compose up -d` or deploy via `./deploy`. Both `slskd` and `web` mount the same host path at `/downloads`, so DMP can move slskd's finished files into the templated `{artist}/{year} - {album}` folder.
 
 ## First-time setup
 
@@ -123,7 +123,7 @@ All of these can also be set in the `Settings` table — DB values override `.en
 slskd is a pre-built image (pulled from Docker Hub), so there's nothing to build. To propagate a `docker-compose.yml` change from your local repo to the NAS, use the existing deploy script:
 
 ```bash
-cd web && ./deploy.sh deploy
+cd web && ./deploy
 ```
 
 This copies `docker-compose.yml` to the NAS and runs `docker compose up -d`, which picks up any slskd changes automatically.

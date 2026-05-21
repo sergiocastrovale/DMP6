@@ -1,7 +1,7 @@
 # Deployment
 
 DMP runs as a Docker container on a NAS (TrueNAS / any Linux host reachable over SSH).
-The `deploy.sh` script builds the image locally, ships it to the NAS, and restarts the stack.
+The `deploy` script builds the image locally, ships it to the NAS, and restarts the stack.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ The `deploy.sh` script builds the image locally, ships it to the NAS, and restar
 ## Quick start
 
 ```bash
-./deploy.sh          # build, transfer, deploy, restart
+./deploy         # build, transfer, deploy, restart
 ```
 
 ## How it works

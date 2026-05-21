@@ -6,7 +6,7 @@ Personal music library web app. Scans local audio files, matches against MusicBr
 
 - **Web**: Nuxt 4 + Vue 3 + TypeScript + Tailwind v4 + Pinia + Prisma + PostgreSQL
 - **Scripts**: Rust CLI tools (`sync`, `analysis`, `nuke`, `audit`, `fix`)
-- **Deployment**: Docker on TrueNAS NAS via `./deploy.sh`
+- **Deployment**: Docker on TrueNAS NAS via `./deploy`
 - **Optional**: Redis cache (ioredis), S3 image storage, Cloudflare Tunnel
 
 ## Data Model
@@ -241,7 +241,7 @@ NAS target: TrueNAS at `192.168.1.241`, data at `/mnt/SSD/web/dmp/`, music at `/
 ## Deployment
 
 ```bash
-./deploy.sh  # Build + transfer + restart
+./deploy  # Build + transfer + restart
 ```
 
 ### Running scripts
