@@ -10,13 +10,13 @@ const { data: settings, refresh } = await useAsyncData('settings-db', () =>
 
 const form = reactive({
   imageStorage: settings.value?.imageStorage ?? '',
-  s3ImageBucket: settings.value?.s3ImageBucket ?? '',
-  s3BackupsBucket: settings.value?.s3BackupsBucket ?? '',
+  storageImageBucket: settings.value?.storageImageBucket ?? '',
+  storageBackupsBucket: settings.value?.storageBackupsBucket ?? '',
   awsRegion: settings.value?.awsRegion ?? '',
   awsAccessKeyId: settings.value?.awsAccessKeyId ?? '',
   awsSecretAccessKey: settings.value?.awsSecretAccessKey ?? '',
-  s3Endpoint: settings.value?.s3Endpoint ?? '',
-  s3PublicUrl: settings.value?.s3PublicUrl ?? '',
+  storageEndpoint: settings.value?.storageEndpoint ?? '',
+  storagePublicUrl: settings.value?.storagePublicUrl ?? '',
 })
 
 const storageOptions = [
@@ -32,13 +32,13 @@ const { saving, saved, error, save } = useFormSave(async () => {
     method: 'PUT',
     body: {
       imageStorage: form.imageStorage || null,
-      s3ImageBucket: form.s3ImageBucket || null,
-      s3BackupsBucket: form.s3BackupsBucket || null,
+      storageImageBucket: form.storageImageBucket || null,
+      storageBackupsBucket: form.storageBackupsBucket || null,
       awsRegion: form.awsRegion || null,
       awsAccessKeyId: form.awsAccessKeyId || null,
       awsSecretAccessKey: form.awsSecretAccessKey || null,
-      s3Endpoint: form.s3Endpoint || null,
-      s3PublicUrl: form.s3PublicUrl || null,
+      storageEndpoint: form.storageEndpoint || null,
+      storagePublicUrl: form.storagePublicUrl || null,
     },
   })
   await refresh()
@@ -63,15 +63,15 @@ const { saving, saved, error, save } = useFormSave(async () => {
       <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400">S3 / Compatible Storage</h2>
       <SettingsField
         label="Image Bucket"
-        description="S3 bucket for release and artist images. Overrides S3_IMAGE_BUCKET."
+        description="S3 bucket for release and artist images. Overrides STORAGE_IMAGE_BUCKET."
         placeholder="my-dmp-images"
-        v-model="form.s3ImageBucket"
+        v-model="form.storageImageBucket"
       />
       <SettingsField
         label="Backups Bucket"
-        description="S3 bucket for backups. Overrides S3_BACKUPS_BUCKET."
+        description="S3 bucket for backups. Overrides STORAGE_BACKUPS_BUCKET."
         placeholder="my-dmp-backups"
-        v-model="form.s3BackupsBucket"
+        v-model="form.storageBackupsBucket"
       />
       <SettingsField
         label="AWS Region"
@@ -94,15 +94,15 @@ const { saving, saved, error, save } = useFormSave(async () => {
       />
       <SettingsField
         label="S3 Endpoint"
-        description="Leave empty for AWS S3. Set for S3-compatible services (Backblaze, MinIO). Overrides S3_ENDPOINT."
+        description="Leave empty for AWS S3. Set for S3-compatible services (Backblaze, MinIO). Overrides STORAGE_ENDPOINT."
         placeholder="https://s3.us-west-001.backblazeb2.com"
-        v-model="form.s3Endpoint"
+        v-model="form.storageEndpoint"
       />
       <SettingsField
         label="Public URL"
-        description="Public base URL for serving S3 images. Overrides S3_PUBLIC_URL."
+        description="Public base URL for serving S3 images. Overrides STORAGE_PUBLIC_URL."
         placeholder="https://your-bucket.s3.us-east-1.amazonaws.com"
-        v-model="form.s3PublicUrl"
+        v-model="form.storagePublicUrl"
       />
     </div>
 

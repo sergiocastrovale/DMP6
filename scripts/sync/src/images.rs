@@ -52,7 +52,7 @@ async fn upload_image(
 ) -> Result<(), String> {
     if config.use_s3() {
         if let Some(ref client) = s3_client {
-            if let Some(ref bucket) = config.s3_bucket {
+            if let Some(ref bucket) = config.storage_bucket {
                 upload_to_s3(client, bucket, s3_key, local_path)
                     .await
                     .map_err(|e| format!("S3 upload failed: {}", e))?;

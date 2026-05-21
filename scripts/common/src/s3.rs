@@ -5,7 +5,7 @@ use crate::config::Config;
 use std::path::Path;
 
 pub async fn create_s3_client(config: &Config) -> Option<S3Client> {
-    if config.s3_bucket.is_none() || config.s3_region.is_none() {
+    if config.storage_bucket.is_none() || config.s3_region.is_none() {
         return None;
     }
 
@@ -24,7 +24,7 @@ pub async fn create_s3_client(config: &Config) -> Option<S3Client> {
     let aws_cfg = aws_cfg.load().await;
     let mut s3_config = aws_sdk_s3::config::Builder::from(&aws_cfg);
 
-    if let Some(ref endpoint) = config.s3_endpoint {
+    if let Some(ref endpoint) = config.storage_endpoint {
         s3_config = s3_config.endpoint_url(endpoint);
     }
 

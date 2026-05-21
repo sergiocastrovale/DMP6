@@ -796,7 +796,7 @@ async fn main() {
 
             if use_s3 {
                 if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
-                    (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                    (&s3_client, &config.storage_bucket, &config.storage_public_url)
                 {
                     let mut uploads = FuturesUnordered::new();
                     for (release_id, out_path, newly_extracted) in &extracted_covers {
@@ -859,7 +859,7 @@ async fn main() {
                 if use_folder_image(&abs_folder, &out_path).is_some() {
                     if use_s3 {
                         if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
-                            (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                            (&s3_client, &config.storage_bucket, &config.storage_public_url)
                         {
                             let s3_key = format!("releases/{}.jpg", release_id);
                             if upload_to_s3(client, bucket, &s3_key, &out_path).await.is_ok() {
@@ -926,7 +926,7 @@ async fn main() {
                         if images::use_artist_folder_image(&folder_path, &out_path) {
                             if use_s3 {
                                 if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
-                                    (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                                    (&s3_client, &config.storage_bucket, &config.storage_public_url)
                                 {
                                     let s3_key = format!("artists/{}.jpg", artist_slug);
                                     if upload_to_s3(client, bucket, &s3_key, &out_path).await.is_ok() {
@@ -1144,7 +1144,7 @@ async fn main() {
                 if got_image {
                     if use_s3 {
                         if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
-                            (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                            (&s3_client, &config.storage_bucket, &config.storage_public_url)
                         {
                             upload_release_image_to_s3(
                                 client, bucket, public_url, &pool, release_id, &out_path,

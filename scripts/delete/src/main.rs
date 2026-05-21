@@ -44,11 +44,11 @@ struct DeleteConfig {
     project_root: String,
     image_dir: String,
     image_storage: String,
-    s3_bucket: Option<String>,
+    storage_bucket: Option<String>,
     s3_region: Option<String>,
     s3_access_key: Option<String>,
     s3_secret_key: Option<String>,
-    s3_endpoint: Option<String>,
+    storage_endpoint: Option<String>,
 }
 
 fn load_config() -> DeleteConfig {
@@ -104,11 +104,11 @@ fn load_config() -> DeleteConfig {
         project_root,
         image_dir,
         image_storage: std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string()),
-        s3_bucket: std::env::var("S3_IMAGE_BUCKET").ok(),
+        storage_bucket: std::env::var("STORAGE_IMAGE_BUCKET").ok(),
         s3_region: std::env::var("AWS_REGION").ok(),
         s3_access_key: std::env::var("AWS_ACCESS_KEY_ID").ok(),
         s3_secret_key: std::env::var("AWS_SECRET_ACCESS_KEY").ok(),
-        s3_endpoint: std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty()),
+        storage_endpoint: std::env::var("STORAGE_ENDPOINT").ok().filter(|s| !s.is_empty()),
     }
 }
 
@@ -117,7 +117,7 @@ fn load_config() -> DeleteConfig {
 // ---------------------------------------------------------------------------
 
 async fn create_s3_client(config: &DeleteConfig) -> Option<S3Client> {
-    if config.s3_bucket.is_none() || config.s3_region.is_none() {
+    if config.storage_bucket.is_none() || config.s3_region.is_none() {
         return None;
     }
 
@@ -136,7 +136,7 @@ async fn create_s3_client(config: &DeleteConfig) -> Option<S3Client> {
     let aws_config = aws_config.load().await;
     let mut s3_config = aws_sdk_s3::config::Builder::from(&aws_config);
 
-    if let Some(ref endpoint) = config.s3_endpoint {
+    if let Some(ref endpoint) = config.storage_endpoint {
         s3_config = s3_config.endpoint_url(endpoint);
     }
 
@@ -409,7 +409,7 @@ async fn execute_plan(
             }
         }
         if use_s3 && has_s3 {
-            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
+            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.storage_bucket) {
                 if let Some(key) = extract_s3_key(action.image_url.as_ref().unwrap()) {
                     delete_from_s3(s3, bucket, &key).await;
                     s3_deleted += 1;
@@ -432,7 +432,7 @@ async fn execute_plan(
             }
         }
         if use_s3 && has_s3 {
-            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
+            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.storage_bucket) {
                 if let Some(key) = extract_s3_key(image_url.as_ref().unwrap()) {
                     delete_from_s3(s3, bucket, &key).await;
                     s3_deleted += 1;

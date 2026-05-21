@@ -236,7 +236,7 @@ Invalidated on track play (`last-played`, `stats`, `artist:{slug}`) and timeline
 
 ## NAS integration (production server)
 
-NAS target: TrueNAS at `192.168.1.241`, data at `/mnt/SSD/web/dmp/`, music at `/mnt/dmp/music/mainstream`.
+NAS target: TrueNAS at `192.168.1.241`, data at `path/to/dmp/`, music at `/mnt/dmp/music/mainstream`.
 
 ## Deployment
 

@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
 
   if (filename.includes('..') || filename.includes('/')) { return }
 
-  const { imageDir, nasUrl } = useRuntimeConfig()
+  const { imageDir, remoteServerUrl } = useRuntimeConfig()
   const filePath = resolve(join(imageDir, type, filename))
   const ext = filename.split('.').pop()?.toLowerCase() || 'jpg'
 
@@ -38,8 +38,8 @@ export default defineEventHandler(async (event) => {
     // Local file missing — proxy from NAS if configured
   }
 
-  if (nasUrl) {
-    return proxyRequest(event, `${nasUrl}/img/${type}/${filename}`)
+  if (remoteServerUrl) {
+    return proxyRequest(event, `${remoteServerUrl}/img/${type}/${filename}`)
   }
 
   throw createError({ statusCode: 404, statusMessage: 'Image not found' })

@@ -48,10 +48,10 @@ struct Args {
 // ---------------------------------------------------------------------------
 
 async fn create_s3_client() -> Option<S3Client> {
-    let s3_bucket = std::env::var("S3_IMAGE_BUCKET").ok();
+    let storage_bucket = std::env::var("STORAGE_IMAGE_BUCKET").ok();
     let s3_region = std::env::var("AWS_REGION").ok();
 
-    if s3_bucket.is_none() || s3_region.is_none() {
+    if storage_bucket.is_none() || s3_region.is_none() {
         return None;
     }
 
@@ -73,7 +73,7 @@ async fn create_s3_client() -> Option<S3Client> {
     let aws_config = aws_config.load().await;
     let mut s3_config = aws_sdk_s3::config::Builder::from(&aws_config);
 
-    if let Some(endpoint) = std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty()) {
+    if let Some(endpoint) = std::env::var("STORAGE_ENDPOINT").ok().filter(|s| !s.is_empty()) {
         s3_config = s3_config.endpoint_url(endpoint);
     }
 
@@ -438,7 +438,7 @@ async fn execute_only_plan(
     image_dir: &str,
     image_storage: &str,
     s3_client: &Option<S3Client>,
-    s3_bucket: &Option<String>,
+    storage_bucket: &Option<String>,
     keep_artist_img: bool,
 ) -> Result<(usize, usize), Box<dyn std::error::Error>> {
     let use_local = image_storage == "local" || image_storage == "both";
@@ -465,7 +465,7 @@ async fn execute_only_plan(
             if use_s3 {
                 if let Some(ref url) = artist.image_url {
                     if !url.is_empty() {
-                        if let (Some(ref s3), Some(ref bucket)) = (s3_client, s3_bucket) {
+                        if let (Some(ref s3), Some(ref bucket)) = (s3_client, storage_bucket) {
                             if let Some(key) = extract_s3_key(url) {
                                 log!("  Deleting S3 artist image: {}", key);
                                 delete_s3_object(s3, bucket, &key).await;
@@ -492,7 +492,7 @@ async fn execute_only_plan(
         if use_s3 {
             if let Some(ref url) = release.image_url {
                 if !url.is_empty() {
-                    if let (Some(ref s3), Some(ref bucket)) = (s3_client, s3_bucket) {
+                    if let (Some(ref s3), Some(ref bucket)) = (s3_client, storage_bucket) {
                         if let Some(key) = extract_s3_key(url) {
                             log!("  Deleting S3 release image: {}", key);
                             delete_s3_object(s3, bucket, &key).await;
@@ -668,7 +668,7 @@ async fn main() {
             .to_string_lossy()
             .to_string()
     });
-    let s3_bucket = std::env::var("S3_IMAGE_BUCKET").ok();
+    let storage_bucket = std::env::var("STORAGE_IMAGE_BUCKET").ok();
 
     // --only mode: selective artist deletion
     if let Some(ref only) = args.only {
@@ -754,7 +754,7 @@ async fn main() {
             &image_dir,
             &image_storage,
             &s3_client,
-            &s3_bucket,
+            &storage_bucket,
             args.keep_artist_img,
         )
         .await
@@ -901,7 +901,7 @@ async fn main() {
     if use_s3 {
         log!("Deleting S3 images...");
         if let Some(s3_client) = create_s3_client().await {
-            if let Some(bucket) = &s3_bucket {
+            if let Some(bucket) = &storage_bucket {
                 let prefixes: Vec<&str> = if args.keep_artist_img {
                     vec!["releases/"]
                 } else {
@@ -916,7 +916,7 @@ async fn main() {
                 }
                 log!("  {} Deleted {} S3 image(s)", "✓".green(), s3_deleted);
             } else {
-                log!("  {} Skipped (S3_IMAGE_BUCKET not set)", "–".bright_black());
+                log!("  {} Skipped (STORAGE_IMAGE_BUCKET not set)", "–".bright_black());
             }
         } else {
             log!("  {} Skipped (S3 credentials not configured)", "–".bright_black());

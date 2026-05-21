@@ -52,7 +52,7 @@ pub async fn delete_artist_image(config: &Config, image_file: &str) {
     }
 
     if config.use_s3() {
-        if let Some(bucket) = &config.s3_bucket {
+        if let Some(bucket) = &config.storage_bucket {
             if let Some(client) = common::s3::create_s3_client(config).await {
                 let key = format!("artists/{}", image_file);
                 common::s3::delete_from_s3(&client, bucket, &key).await;

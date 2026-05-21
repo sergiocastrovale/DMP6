@@ -1,6 +1,6 @@
 # Deployment
 
-DMP runs as a Docker container on a NAS (TrueNAS / any Linux host reachable over SSH).
+DMP runs as a Docker container on any Linux host reachable over SSH (e.g. a NAS).
 The `deploy` script builds the image locally, ships it to the NAS, and restarts the stack.
 
 ## Prerequisites
@@ -36,15 +36,7 @@ These must be set in `web/.env`. The deploy script sources this file.
 | `DATABASE_URL` | PostgreSQL connection string |
 | `MUSIC_DIR` | Path to the music library on the NAS |
 | `DMP_DATA` | NAS path for persistent data (images, Redis, dumps) |
-| `ADMIN_USER` | Login username for the web UI |
-| `ADMIN_PASSWORD` | Login password — quote the value if it contains shell special chars |
-
 Optional vars (image storage, S3, etc.) are documented in `.env` itself.
-
-> **Shell special characters in passwords** — if `ADMIN_PASSWORD` contains `&`, `!`, `$`, backticks, or spaces, wrap the value in double quotes in `.env`:
-> ```
-> ADMIN_PASSWORD="my&p@ssw0rd!"
-> ```
 
 For first-time NAS setup (storage, SSH key, NAS `.env`) see [docs/truenas.md](truenas.md).
 
@@ -63,7 +55,7 @@ The `docker-compose.yml` at the project root defines these services:
 Shell wrappers are deployed alongside `docker-compose.yml`. They invoke binaries inside the container via `docker exec`.
 
 ```bash
-cd /mnt/SSD/web/dmp
+cd path/to/dmp
 ./index --from=a --to=z
 ./sync --only="Artist Name"
 ./audit
@@ -74,12 +66,14 @@ For long-running commands, use tmux on the NAS host:
 
 ```bash
 tmux new -s sync
-cd /mnt/SSD/web/dmp
+cd path/to/dmp
 ./index --from=a --to=z && ./sync --from=a --to=z
 # Ctrl+B, D to detach
 ```
 
 ## Cloudflare Tunnel
+
+If you want to expose the NAS to the web via Cloudflare, you can use a Cloudflared Tunne.
 
 Set `CLOUDFLARE_TUNNEL_TOKEN` in `.env` to your tunnel token. The `cloudflared` container starts after the web container is healthy and keeps the tunnel alive automatically.
 
@@ -87,7 +81,7 @@ Set `CLOUDFLARE_TUNNEL_TOKEN` in `.env` to your tunnel token. The `cloudflared` 
 
 ```bash
 # On the NAS
-cd /mnt/SSD/web/dmp
+cd path/to/dmp
 docker compose ps
 docker compose logs -f web
 docker compose logs -f cloudflared

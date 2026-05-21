@@ -549,7 +549,7 @@ async fn main() {
                         .ok();
                     }
                     if config.use_s3() {
-                        if let Some(ref public_url) = config.s3_public_url {
+                        if let Some(ref public_url) = config.storage_public_url {
                             let image_url = format!(
                                 "{}/artists/{}.jpg",
                                 public_url.trim_end_matches('/'),
@@ -951,7 +951,7 @@ async fn main() {
                                         }
                                         if config.use_s3() {
                                             if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
-                                                (&s3_client, &config.s3_bucket, &config.s3_public_url)
+                                                (&s3_client, &config.storage_bucket, &config.storage_public_url)
                                             {
                                                 common::images::upload_release_image_to_s3(
                                                     client, bucket, public_url, &pool, local_release_id, &thumb_path,

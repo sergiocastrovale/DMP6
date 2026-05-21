@@ -398,13 +398,13 @@ model Settings {
   downloadMinBitrate Int?
   // Storage
   imageStorage       String?
-  s3ImageBucket      String?
-  s3BackupsBucket    String?
-  awsRegion          String?
-  awsAccessKeyId     String?
-  awsSecretAccessKey String?
-  s3Endpoint         String?
-  s3PublicUrl        String?
+  storageImageBucket      String?
+  storageBackupsBucket    String?
+  awsRegion               String?
+  awsAccessKeyId          String?
+  awsSecretAccessKey      String?
+  storageEndpoint         String?
+  storagePublicUrl        String?
   // API Keys
   fanartApiKey       String?
   // Last.fm / Scrobbling

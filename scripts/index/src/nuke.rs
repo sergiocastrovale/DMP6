@@ -134,7 +134,7 @@ pub async fn nuke_local_artists(
             }
         }
         if use_s3 {
-            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
+            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.storage_bucket) {
                 delete_from_s3(s3, bucket, s3_key).await;
                 s3_deleted += 1;
             }
@@ -150,7 +150,7 @@ pub async fn nuke_local_artists(
             }
         }
         if use_s3 {
-            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
+            if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.storage_bucket) {
                 delete_from_s3(s3, bucket, s3_key).await;
                 s3_deleted += 1;
             }

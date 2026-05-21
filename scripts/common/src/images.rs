@@ -229,7 +229,7 @@ pub async fn delete_artist_images(pool: &PgPool, config: &Config, artist_ids: &[
     let use_s3 = config.use_s3();
 
     let s3_ctx = if use_s3 {
-        match (&config.s3_bucket, create_s3_client(config).await) {
+        match (&config.storage_bucket, create_s3_client(config).await) {
             (Some(bucket), Some(client)) => Some((client, bucket.clone())),
             _ => None,
         }
@@ -281,7 +281,7 @@ pub async fn delete_release_images(pool: &PgPool, config: &Config, release_ids: 
     let use_s3 = config.use_s3();
 
     let s3_ctx = if use_s3 {
-        match (&config.s3_bucket, create_s3_client(config).await) {
+        match (&config.storage_bucket, create_s3_client(config).await) {
             (Some(bucket), Some(client)) => Some((client, bucket.clone())),
             _ => None,
         }

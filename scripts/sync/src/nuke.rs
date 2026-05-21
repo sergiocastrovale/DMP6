@@ -52,7 +52,7 @@ pub async fn nuke_mb_data(
             if local_path.exists() {
                 let _ = std::fs::remove_file(&local_path);
             }
-            if let (Some(ref client), Some(ref bucket)) = (s3_client, &config.s3_bucket) {
+            if let (Some(ref client), Some(ref bucket)) = (s3_client, &config.storage_bucket) {
                 delete_from_s3(client, bucket, &format!("releases/{}.jpg", mb_id)).await;
             }
         }

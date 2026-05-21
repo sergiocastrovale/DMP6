@@ -3,13 +3,13 @@ import { prisma } from '~/server/utils/prisma'
 export interface CachedSettings {
   musicDir: string
   imageStorage: string
-  s3ImageBucket: string
-  s3BackupsBucket: string
+  storageImageBucket: string
+  storageBackupsBucket: string
   awsRegion: string
   awsAccessKeyId: string
   awsSecretAccessKey: string
-  s3Endpoint: string
-  s3PublicUrl: string
+  storageEndpoint: string
+  storagePublicUrl: string
   fanartApiKey: string
   lastfmApiKey: string | null
   lastfmSecret: string | null
@@ -26,13 +26,13 @@ function defaults(): CachedSettings {
   return {
     musicDir: process.env.MUSIC_DIR || '',
     imageStorage: process.env.IMAGE_STORAGE || 'local',
-    s3ImageBucket: process.env.S3_IMAGE_BUCKET || '',
-    s3BackupsBucket: process.env.S3_BACKUPS_BUCKET || '',
+    storageImageBucket: process.env.STORAGE_IMAGE_BUCKET || '',
+    storageBackupsBucket: process.env.STORAGE_BACKUPS_BUCKET || '',
     awsRegion: process.env.AWS_REGION || '',
     awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
     awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-    s3Endpoint: process.env.S3_ENDPOINT || '',
-    s3PublicUrl: process.env.S3_PUBLIC_URL || '',
+    storageEndpoint: process.env.STORAGE_ENDPOINT || '',
+    storagePublicUrl: process.env.STORAGE_PUBLIC_URL || '',
     fanartApiKey: process.env.FANART_API_KEY || '',
     lastfmApiKey: process.env.LASTFM_API_KEY || null,
     lastfmSecret: process.env.LASTFM_SECRET || null,
@@ -48,13 +48,13 @@ async function refreshCache(): Promise<void> {
     cache = {
       musicDir: s?.musicDir || d.musicDir,
       imageStorage: s?.imageStorage || d.imageStorage,
-      s3ImageBucket: s?.s3ImageBucket || d.s3ImageBucket,
-      s3BackupsBucket: s?.s3BackupsBucket || d.s3BackupsBucket,
+      storageImageBucket: s?.storageImageBucket || d.storageImageBucket,
+      storageBackupsBucket: s?.storageBackupsBucket || d.storageBackupsBucket,
       awsRegion: s?.awsRegion || d.awsRegion,
       awsAccessKeyId: s?.awsAccessKeyId || d.awsAccessKeyId,
       awsSecretAccessKey: s?.awsSecretAccessKey || d.awsSecretAccessKey,
-      s3Endpoint: s?.s3Endpoint || d.s3Endpoint,
-      s3PublicUrl: s?.s3PublicUrl || d.s3PublicUrl,
+      storageEndpoint: s?.storageEndpoint || d.storageEndpoint,
+      storagePublicUrl: s?.storagePublicUrl || d.storagePublicUrl,
       fanartApiKey: s?.fanartApiKey || d.fanartApiKey,
       lastfmApiKey: s?.lastfmApiKey || d.lastfmApiKey,
       lastfmSecret: s?.lastfmSecret || d.lastfmSecret,

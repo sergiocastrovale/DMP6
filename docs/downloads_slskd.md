@@ -57,7 +57,7 @@ Generate the API key with `openssl rand -hex 32` and paste the output as the `ke
 
 ### 3. Add env vars to NAS `.env`
 
-Append these to `/mnt/SSD/web/dmp/.env`:
+Append these to `path/to/dmp/.env`:
 
 ```
 SLSKD_DATA=/mnt/SSD/slskd
@@ -77,7 +77,7 @@ Notes:
 ### 4. Start slskd
 
 ```bash
-ssh nas "cd /mnt/SSD/web/dmp && docker compose up -d slskd"
+ssh nas "cd path/to/dmp && docker compose up -d slskd"
 ```
 
 slskd auto-restarts on reboot (`restart: unless-stopped` in compose), so this is a one-time command — that's what "daemon" means in a Docker context.
@@ -150,5 +150,5 @@ Results are also sorted by upload speed (fastest first, free-slot peers prioriti
 | View logs | `ssh nas "docker logs -f dmp-slskd"` |
 | Restart | `ssh nas "docker restart dmp-slskd"` |
 | Stop | `ssh nas "docker stop dmp-slskd"` |
-| Update to latest | `ssh nas "docker compose -f /mnt/SSD/web/dmp/docker-compose.yml pull slskd && docker compose -f /mnt/SSD/web/dmp/docker-compose.yml up -d slskd"` |
+| Update to latest | `ssh nas "docker compose -f path/to/dmp/docker-compose.yml pull slskd && docker compose -f path/to/dmp/docker-compose.yml up -d slskd"` |
 | Browse web UI | `http://<nas-ip>:5030` |

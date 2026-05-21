@@ -29,8 +29,8 @@ GRANT ALL PRIVILEGES ON DATABASE dmp TO dmp;
 
 ```bash
 ssh nas
-mkdir -p /mnt/SSD/web/dmp/{img/artists,img/releases,dump,redis}
-chown -R 999:999 /mnt/SSD/web/dmp
+mkdir -p path/to/dmp/{img/artists,img/releases,dump,redis}
+chown -R 999:999 path/to/dmp
 ```
 
 ---
@@ -60,7 +60,7 @@ Set in `web/.env`:
 ```env
 SERVER_HOST=192.168.1.241
 SERVER_USER=Kp
-DEPLOY_PATH=/mnt/SSD/web/dmp
+DEPLOY_PATH=path/to/dmp
 SSH_KEY_PATH=~/.ssh/nas
 ```
 
@@ -69,16 +69,14 @@ SSH_KEY_PATH=~/.ssh/nas
 ## 4. NAS `.env`
 
 ```bash
-ssh nas && nano /mnt/SSD/web/dmp/.env
+ssh nas && nano path/to/dmp/.env
 ```
 
 ```env
 DATABASE_URL=postgresql://dmp:your-password@host.docker.internal:5432/dmp?connection_limit=20&pool_timeout=10
 MUSIC_DIR=/mnt/dmp/music/mainstream
-DMP_DATA=/mnt/SSD/web/dmp
+DMP_DATA=path/to/dmp
 DMP_PORT=3000
-ADMIN_USER=kp
-ADMIN_PASSWORD=your-password
 ```
 
 > Use `host.docker.internal` (not `localhost`) for PostgreSQL — `localhost` resolves to the container itself.
@@ -113,11 +111,11 @@ Access: `http://192.168.1.241:3000`
 ```bash
 # Dev machine
 cd web && pnpm backup   # → dump/YYYY-MM-DD-HH-MM-SS.sql.gz
-scp "dump/$(ls -t dump/ | head -1)" nas:/mnt/SSD/web/dmp/dump/
+scp "dump/$(ls -t dump/ | head -1)" nas:path/to/dmp/dump/
 
 # NAS
 ssh nas
-cd /mnt/SSD/web/dmp
+cd path/to/dmp
 docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "DROP DATABASE IF EXISTS dmp;"
 docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "CREATE DATABASE dmp OWNER dmp;"
 gunzip -c "dump/$(ls -t dump/ | head -1)" | docker exec -i ix-postgres-postgres-1 psql -U dmp -d dmp
@@ -128,7 +126,7 @@ docker restart dmp
 
 ```bash
 ssh nas
-cd /mnt/SSD/web/dmp
+cd path/to/dmp
 ./index && ./sync
 ```
 
@@ -140,7 +138,7 @@ Shell wrappers are deployed to `DEPLOY_PATH`. They run binaries inside the conta
 
 ```bash
 ssh nas
-cd /mnt/SSD/web/dmp
+cd path/to/dmp
 
 ./index                          # extract metadata from files → DB
 ./index --only="Artist Name"     # single artist
@@ -171,7 +169,7 @@ tmux is pre-installed on TrueNAS Scale. Use it to keep syncs running after you d
 ```bash
 ssh nas
 tmux new -s sync
-cd /mnt/SSD/web/dmp
+cd path/to/dmp
 ./index --from=a --to=z && ./sync --from=a --to=z
 ```
 
@@ -236,7 +234,7 @@ Sized for 32 GB RAM. Settings survive container recreation (written to `postgres
 Runs as `dmp-redis` sidecar. If unreachable the app falls through to the DB silently.
 
 ```bash
-mkdir -p /mnt/SSD/web/dmp/redis
+mkdir -p path/to/dmp/redis
 ```
 
 ### ZFS (music dataset)
@@ -259,7 +257,7 @@ sudo zfs set atime=off dmp/music
    - Service: HTTP, URL: `dmp:3000`
 3. Add the token to the NAS `.env`:
    ```bash
-   echo "CLOUDFLARE_TUNNEL_TOKEN=<token>" >> /mnt/SSD/web/dmp/.env
+   echo "CLOUDFLARE_TUNNEL_TOKEN=<token>" >> path/to/dmp/.env
    ```
 4. Redeploy: `./deploy`
 

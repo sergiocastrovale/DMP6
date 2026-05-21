@@ -9,12 +9,12 @@ pub struct Config {
     pub project_root: String,
     pub image_dir: String,
     pub image_storage: String,
-    pub s3_bucket: Option<String>,
+    pub storage_bucket: Option<String>,
     pub s3_region: Option<String>,
     pub s3_access_key: Option<String>,
     pub s3_secret_key: Option<String>,
-    pub s3_endpoint: Option<String>,
-    pub s3_public_url: Option<String>,
+    pub storage_endpoint: Option<String>,
+    pub storage_public_url: Option<String>,
     pub fanart_api_key: Option<String>,
 }
 
@@ -88,12 +88,12 @@ pub fn load_config(music_dir_override: Option<&str>) -> Config {
         project_root,
         image_dir,
         image_storage: std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string()),
-        s3_bucket: std::env::var("S3_IMAGE_BUCKET").ok(),
+        storage_bucket: std::env::var("STORAGE_IMAGE_BUCKET").ok(),
         s3_region: std::env::var("AWS_REGION").ok(),
         s3_access_key: std::env::var("AWS_ACCESS_KEY_ID").ok(),
         s3_secret_key: std::env::var("AWS_SECRET_ACCESS_KEY").ok(),
-        s3_endpoint: std::env::var("S3_ENDPOINT").ok().filter(|s| !s.is_empty()),
-        s3_public_url: std::env::var("S3_PUBLIC_URL").ok(),
+        storage_endpoint: std::env::var("STORAGE_ENDPOINT").ok().filter(|s| !s.is_empty()),
+        storage_public_url: std::env::var("STORAGE_PUBLIC_URL").ok(),
         fanart_api_key: std::env::var("FANART_API_KEY").ok().filter(|s| !s.is_empty()),
     }
 }
@@ -104,16 +104,16 @@ pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
     let row: Option<(
         Option<String>, // musicDir
         Option<String>, // imageStorage
-        Option<String>, // s3ImageBucket
+        Option<String>, // storageImageBucket
         Option<String>, // awsRegion
         Option<String>, // awsAccessKeyId
         Option<String>, // awsSecretAccessKey
-        Option<String>, // s3Endpoint
-        Option<String>, // s3PublicUrl
+        Option<String>, // storageEndpoint
+        Option<String>, // storagePublicUrl
         Option<String>, // fanartApiKey
     )> = sqlx::query_as(
-        r#"SELECT "musicDir", "imageStorage", "s3ImageBucket", "awsRegion",
-                  "awsAccessKeyId", "awsSecretAccessKey", "s3Endpoint", "s3PublicUrl",
+        r#"SELECT "musicDir", "imageStorage", "storageImageBucket", "awsRegion",
+                  "awsAccessKeyId", "awsSecretAccessKey", "storageEndpoint", "storagePublicUrl",
                   "fanartApiKey"
            FROM "Settings" WHERE id = 'main'"#,
     )
@@ -125,17 +125,17 @@ pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
         None
     });
 
-    if let Some((music_dir, image_storage, s3_bucket, s3_region, s3_access_key, s3_secret_key, s3_endpoint, s3_public_url, fanart_api_key)) = row {
+    if let Some((music_dir, image_storage, storage_bucket, s3_region, s3_access_key, s3_secret_key, storage_endpoint, storage_public_url, fanart_api_key)) = row {
         if !config.music_dir_locked {
             if let Some(v) = music_dir { config.music_dir = Some(v); }
         }
         if let Some(v) = image_storage { config.image_storage = v; }
-        if let Some(v) = s3_bucket { config.s3_bucket = Some(v); }
+        if let Some(v) = storage_bucket { config.storage_bucket = Some(v); }
         if let Some(v) = s3_region { config.s3_region = Some(v); }
         if let Some(v) = s3_access_key { config.s3_access_key = Some(v); }
         if let Some(v) = s3_secret_key { config.s3_secret_key = Some(v); }
-        if let Some(v) = s3_endpoint { config.s3_endpoint = Some(v); }
-        if let Some(v) = s3_public_url { config.s3_public_url = Some(v); }
+        if let Some(v) = storage_endpoint { config.storage_endpoint = Some(v); }
+        if let Some(v) = storage_public_url { config.storage_public_url = Some(v); }
         if let Some(v) = fanart_api_key { config.fanart_api_key = Some(v); }
     }
 }

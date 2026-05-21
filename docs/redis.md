@@ -157,7 +157,7 @@ Before the first deploy with Redis, create the data directory:
 
 ```bash
 ssh nas
-mkdir -p /mnt/SSD/web/dmp/redis
+mkdir -p path/to/dmp/redis
 ```
 
 ---
