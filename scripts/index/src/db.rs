@@ -55,6 +55,28 @@ pub fn build_group_key(
     format!("meta:{}:{}:{}:{}", title_slug, yr, artist_slug, folder_path)
 }
 
+pub fn image_key_for_release(
+    mb_release_id: Option<&str>,
+    mb_release_group_id: Option<&str>,
+) -> Option<String> {
+    mb_release_id
+        .filter(|s| !s.is_empty())
+        .or(mb_release_group_id.filter(|s| !s.is_empty()))
+        .map(|s| s.to_string())
+}
+
+pub fn image_key_from_group_key(group_key: &str) -> Option<String> {
+    if let Some(rest) = group_key
+        .strip_prefix("mbr:")
+        .or_else(|| group_key.strip_prefix("mb:"))
+    {
+        if let Some(id) = rest.split(':').next().filter(|s| !s.is_empty()) {
+            return Some(id.to_string());
+        }
+    }
+    None
+}
+
 pub async fn ensure_local_release(
     pool: &PgPool,
     title: &str,

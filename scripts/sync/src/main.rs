@@ -954,7 +954,7 @@ async fn main() {
                                                 (&s3_client, &config.storage_bucket, &config.storage_public_url)
                                             {
                                                 common::images::upload_release_image_to_s3(
-                                                    client, bucket, public_url, &pool, local_release_id, &thumb_path,
+                                                    client, bucket, public_url, &pool, local_release_id, local_release_id, &thumb_path,
                                                 ).await;
                                                 if !config.use_local() {
                                                     std::fs::remove_file(&thumb_path).ok();

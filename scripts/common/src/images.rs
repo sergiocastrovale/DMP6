@@ -2,6 +2,7 @@ use crate::config::Config;
 use crate::s3::{create_s3_client, delete_from_s3, upload_to_s3};
 use aws_sdk_s3::Client as S3Client;
 use image::imageops::FilterType;
+use md5::{Digest, Md5};
 use sqlx::PgPool;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -154,6 +155,17 @@ pub fn use_artist_folder_image(artist_folder: &Path, output_path: &Path) -> bool
 }
 
 // ---------------------------------------------------------------------------
+// Content hashing for deduplication
+// ---------------------------------------------------------------------------
+
+pub fn hash_image_file(path: &Path) -> Option<String> {
+    let bytes = fs::read(path).ok()?;
+    let mut hasher = Md5::new();
+    hasher.update(&bytes);
+    Some(format!("{:x}", hasher.finalize()))
+}
+
+// ---------------------------------------------------------------------------
 // S3 upload helper
 // ---------------------------------------------------------------------------
 
@@ -163,9 +175,10 @@ pub async fn upload_release_image_to_s3(
     public_url: &str,
     pool: &PgPool,
     release_id: &str,
+    image_key: &str,
     file_path: &PathBuf,
 ) -> bool {
-    let s3_key = format!("releases/{}.jpg", release_id);
+    let s3_key = format!("releases/{}.jpg", image_key);
     match upload_to_s3(s3_client, bucket, &s3_key, file_path).await {
         Ok(_) => {
             let image_url = format!("{}/{}", public_url.trim_end_matches('/'), s3_key);
@@ -289,16 +302,25 @@ pub async fn delete_release_images(pool: &PgPool, config: &Config, release_ids: 
         None
     };
 
-    for (id, image, image_url) in rows {
-        if use_local {
-            if let Some(f) = image.as_ref().filter(|s| !s.is_empty()) {
-                let _ = fs::remove_file(release_dir.join(f));
-            }
-        }
-        if let Some((ref client, ref bucket)) = s3_ctx {
-            if image_url.as_ref().map_or(false, |s| !s.is_empty()) {
-                let key = format!("releases/{}.jpg", id);
-                delete_from_s3(client, bucket, &key).await;
+    for (id, image, _image_url) in rows {
+        if let Some(ref f) = image.filter(|s| !s.is_empty()) {
+            let shared: (i64,) = sqlx::query_as(
+                r#"SELECT COUNT(*) FROM "LocalRelease" WHERE image = $1 AND id != $2"#,
+            )
+            .bind(f)
+            .bind(&id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or((0,));
+
+            if shared.0 == 0 {
+                if use_local {
+                    let _ = fs::remove_file(release_dir.join(f));
+                }
+                if let Some((ref client, ref bucket)) = s3_ctx {
+                    let key = format!("releases/{}", f);
+                    delete_from_s3(client, bucket, &key).await;
+                }
             }
         }
     }

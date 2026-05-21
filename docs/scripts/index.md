@@ -63,7 +63,7 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 4. **Change detection** — default: skip if filePath exists in DB. `--inspect`: compare size/mtime/hash. `--overwrite`: skip change detection but preserve existing covers. `--overwrite-with-images`: skip everything and re-extract covers
 5. **Split** albumArtist and artist tags into individual artists
 6. **Upsert** Artist, LocalRelease, LocalReleaseTrack, LocalReleaseArtist, TrackRelatedArtist (batch UNNEST)
-7. **Cover art** — extract from embedded tags or folder.jpg/cover.jpg, upload to S3 if configured
+7. **Cover art** — extract from embedded tags or folder images, content-addressed by MD5 hash (same image bytes = one file, shared across releases)
 8. **Delete** tracks no longer on disk
 9. **Update totals** for this artist's releases and tracks
 10. **Set `lastIndexedAt`** on Artist
@@ -83,6 +83,16 @@ Releases are deduplicated by `groupKey` (3-tier):
 - Without MB IDs: `"meta:{slugTitle}:{year}:{slugArtist}:{folderPath}"`
 
 `folderPath` is always part of the key — same album in two folders creates separate `LocalRelease` rows. Deduplication into a single release card happens in **sync**, which links multiple `LocalRelease` rows to the same `MusicBrainzRelease` via `releaseId`.
+
+## Cover Art Deduplication
+
+Cover images are content-addressed: the filename is the MD5 hash of the image file (`{hash}.jpg`). Multiple `LocalRelease` rows can share the same image — e.g. a 90-disc box set extracts one cover instead of 90.
+
+Two levels of deduplication:
+- **MB ID shortcut**: Releases sharing `mb_release_id` or `mb_release_group_id` with an already-processed release skip extraction entirely and reuse the known content hash
+- **Content hash**: After extraction, if `{hash}.jpg` already exists on disk, the duplicate is discarded
+
+Works with all storage modes (`local`, `s3`, `both`). S3 uploads happen once per unique hash. Shared images are reference-counted on delete — the file is only removed when no `LocalRelease` points to it.
 
 ## Artist Tag Splitting
 

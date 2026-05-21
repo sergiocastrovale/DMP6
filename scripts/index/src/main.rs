@@ -35,7 +35,7 @@ use deletion::{
     delete_empty_releases, delete_orphan_artists, delete_removed_tracks,
     detect_deleted_folders,
 };
-use images::{extract_cover_art, upload_release_image_to_s3, use_folder_image};
+use images::{extract_cover_art, hash_image_file, upload_release_image_to_s3, use_folder_image};
 use metadata::extract_metadata;
 use nuke::nuke_local_artists;
 
@@ -350,6 +350,7 @@ async fn main() {
     let mut skipped_total: u64 = 0;
     let mut error_total: u64 = 0;
     let scanned_folders: HashSet<String> = artist_folders.iter().cloned().collect();
+    let mut mb_id_to_image_hash: HashMap<String, String> = HashMap::new();
 
     // -------------------------------------------------------------------------
     // Main folder loop
@@ -544,9 +545,10 @@ async fn main() {
         let mut batch_tracks: Vec<_> = Vec::new();
         let mut pending_related_links: Vec<(String, String)> = Vec::new();
         let mut pending_release_artist_links: HashSet<(String, String)> = HashSet::new();
-        let mut releases_needing_art: HashMap<String, PathBuf> = HashMap::new();
+        let mut releases_needing_art: HashMap<String, (PathBuf, Option<String>)> = HashMap::new();
         let mut releases_with_art: HashSet<String> = HashSet::new();
         let mut releases_already_have_art: HashSet<String> = HashSet::new();
+        let mut release_to_image_filename: HashMap<String, String> = HashMap::new();
 
         for track in &extracted {
             if args.overwrite {
@@ -705,16 +707,23 @@ async fn main() {
                 }
             }
 
-            // Queue cover art extraction
+            // Queue cover art extraction (content-addressed by image hash)
             if track.has_picture && !args.skip_covers {
-                let out_path = release_img_dir.join(format!("{}.jpg", release_id));
-                if args.overwrite_with_images || !out_path.exists() {
-                    releases_needing_art
-                        .entry(release_id.clone())
-                        .or_insert_with(|| PathBuf::from(format!("{}/{}", music_dir, &track.file_path)));
-                } else {
-                    releases_already_have_art.insert(release_id.clone());
+                let mb_key = image_key_for_release(
+                    effective_release_id,
+                    effective_rg_id,
+                );
+                if let Some(ref mk) = mb_key {
+                    if let Some(existing_filename) = mb_id_to_image_hash.get(mk) {
+                        release_to_image_filename.insert(release_id.clone(), existing_filename.clone());
+                        releases_already_have_art.insert(release_id.clone());
+                        batch_tracks.push((track, release_id));
+                        continue;
+                    }
                 }
+                releases_needing_art
+                    .entry(release_id.clone())
+                    .or_insert_with(|| (PathBuf::from(format!("{}/{}", music_dir, &track.file_path)), mb_key));
             }
 
             batch_tracks.push((track, release_id));
@@ -770,7 +779,7 @@ async fn main() {
         }
 
         // -----------------------------------------------------------------
-        // Cover art: embedded
+        // Cover art: embedded (content-addressed by hash)
         // -----------------------------------------------------------------
         if !args.skip_covers && !releases_needing_art.is_empty() {
             reporter.step(&format!(
@@ -779,28 +788,46 @@ async fn main() {
             ));
             let art_entries: Vec<_> = releases_needing_art.iter().collect();
             let overwrite_images = args.overwrite_with_images;
-            let extracted_covers: Vec<(String, PathBuf, bool)> = art_entries
+            let rid_clone = release_img_dir.clone();
+            let extracted_covers: Vec<(String, Option<String>, String, bool)> = art_entries
                 .par_iter()
-                .map(|(release_id, source_path)| {
-                    let out_path = release_img_dir.join(format!("{}.jpg", release_id));
-                    if !overwrite_images && out_path.exists() {
-                        return ((*release_id).clone(), out_path, false);
-                    }
+                .filter_map(|(release_id, (source_path, mb_key))| {
+                    let temp_path = rid_clone.join(format!("_tmp_{}.jpg", release_id));
                     if overwrite_images {
-                        std::fs::remove_file(&out_path).ok();
+                        std::fs::remove_file(&temp_path).ok();
                     }
-                    let success = extract_cover_art(source_path, &out_path);
-                    ((*release_id).clone(), out_path, success)
+                    if !extract_cover_art(source_path, &temp_path) {
+                        return None;
+                    }
+                    let hash = hash_image_file(&temp_path)?;
+                    let final_name = format!("{}.jpg", hash);
+                    let final_path = rid_clone.join(&final_name);
+                    let newly_written = if final_path.exists() {
+                        std::fs::remove_file(&temp_path).ok();
+                        false
+                    } else {
+                        std::fs::rename(&temp_path, &final_path).is_ok()
+                    };
+                    Some(((*release_id).clone(), mb_key.clone(), hash, newly_written))
                 })
                 .collect();
+
+            for (release_id, mb_key, hash, _) in &extracted_covers {
+                let filename = format!("{}.jpg", hash);
+                release_to_image_filename.insert(release_id.clone(), filename.clone());
+                if let Some(ref mk) = mb_key {
+                    mb_id_to_image_hash.entry(mk.clone()).or_insert_with(|| filename.clone());
+                }
+            }
 
             if use_s3 {
                 if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
                     (&s3_client, &config.storage_bucket, &config.storage_public_url)
                 {
+                    let mut uploaded_hashes: HashSet<String> = HashSet::new();
                     let mut uploads = FuturesUnordered::new();
-                    for (release_id, out_path, newly_extracted) in &extracted_covers {
-                        if !newly_extracted {
+                    for (release_id, _, hash, newly_written) in &extracted_covers {
+                        if !newly_written || !uploaded_hashes.insert(hash.clone()) {
                             continue;
                         }
                         let client = client.clone();
@@ -808,37 +835,47 @@ async fn main() {
                         let public_url = public_url.clone();
                         let pool2 = pool.clone();
                         let rid = release_id.clone();
-                        let p = out_path.clone();
+                        let image_key = hash.clone();
+                        let p = release_img_dir.join(format!("{}.jpg", hash));
                         uploads.push(async move {
-                            upload_release_image_to_s3(&client, &bucket, &public_url, &pool2, &rid, &p).await;
-                            rid
+                            upload_release_image_to_s3(&client, &bucket, &public_url, &pool2, &rid, &image_key, &p).await;
+                            hash.clone()
                         });
                         if uploads.len() >= 8 {
-                            if let Some(rid) = uploads.next().await {
-                                releases_with_art.insert(rid);
-                            }
+                            uploads.next().await;
                         }
                     }
-                    while let Some(rid) = uploads.next().await {
-                        releases_with_art.insert(rid);
-                    }
+                    while uploads.next().await.is_some() {}
                 }
             }
 
-            for (release_id, _out_path, newly_extracted) in &extracted_covers {
-                if !newly_extracted {
+            for (release_id, filename) in &release_to_image_filename {
+                let out_path = release_img_dir.join(filename);
+                if !out_path.exists() && !use_s3 {
                     continue;
                 }
                 if use_local {
-                    let filename = format!("{}.jpg", release_id);
                     sqlx::query(
                         r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
                     )
-                    .bind(&filename)
+                    .bind(filename)
                     .bind(release_id)
                     .execute(&pool)
                     .await
                     .ok();
+                }
+                if use_s3 {
+                    if let Some(ref public_url) = config.storage_public_url {
+                        let image_url = format!("{}/releases/{}", public_url.trim_end_matches('/'), filename);
+                        sqlx::query(
+                            r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                        )
+                        .bind(&image_url)
+                        .bind(release_id)
+                        .execute(&pool)
+                        .await
+                        .ok();
+                    }
                 }
                 releases_with_art.insert(release_id.clone());
             }
@@ -854,15 +891,30 @@ async fn main() {
 
             for (release_id, rel_folder_path) in &releases_without_art {
                 let abs_folder = PathBuf::from(&music_dir).join(rel_folder_path);
-                let out_path = release_img_dir.join(format!("{}.jpg", release_id));
+                let temp_path = release_img_dir.join(format!("_tmp_folder_{}.jpg", release_id));
 
-                if use_folder_image(&abs_folder, &out_path).is_some() {
+                if use_folder_image(&abs_folder, &temp_path).is_some() {
+                    let filename = if let Some(hash) = hash_image_file(&temp_path) {
+                        let name = format!("{}.jpg", hash);
+                        let final_path = release_img_dir.join(&name);
+                        if final_path.exists() {
+                            std::fs::remove_file(&temp_path).ok();
+                        } else {
+                            std::fs::rename(&temp_path, &final_path).ok();
+                        }
+                        name
+                    } else {
+                        std::fs::remove_file(&temp_path).ok();
+                        continue;
+                    };
+
                     if use_s3 {
                         if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
                             (&s3_client, &config.storage_bucket, &config.storage_public_url)
                         {
-                            let s3_key = format!("releases/{}.jpg", release_id);
-                            if upload_to_s3(client, bucket, &s3_key, &out_path).await.is_ok() {
+                            let s3_key = format!("releases/{}", filename);
+                            let final_path = release_img_dir.join(&filename);
+                            if upload_to_s3(client, bucket, &s3_key, &final_path).await.is_ok() {
                                 let image_url = format!(
                                     "{}/{}",
                                     public_url.trim_end_matches('/'),
@@ -880,7 +932,6 @@ async fn main() {
                         }
                     }
                     if use_local {
-                        let filename = format!("{}.jpg", release_id);
                         sqlx::query(
                             r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
                         )
@@ -964,19 +1015,39 @@ async fn main() {
         }
 
         if !args.skip_covers {
-            if !releases_with_art.is_empty() {
-                reporter.sub_ok(&format!("Extracted {} cover(s)", releases_with_art.len()));
+            let newly_extracted = release_to_image_filename.len();
+            let mb_shortcut = releases_already_have_art.iter()
+                .filter(|rid| release_to_image_filename.contains_key(*rid))
+                .count();
+            let hash_deduped = release_to_image_filename.values().collect::<HashSet<_>>().len();
+            let pre_existing = releases_already_have_art.len() - mb_shortcut;
+
+            if newly_extracted > 0 || mb_shortcut > 0 {
+                let mut parts: Vec<String> = Vec::new();
+                if hash_deduped > 0 {
+                    parts.push(format!("{} unique image(s)", hash_deduped));
+                }
+                if newly_extracted > hash_deduped {
+                    parts.push(format!("{} reused via hash", newly_extracted - hash_deduped));
+                }
+                if mb_shortcut > 0 {
+                    parts.push(format!("{} skipped (same MB ID from previous extraction)", mb_shortcut));
+                }
+                reporter.sub_ok(&parts.join(", "));
             }
-            if !releases_already_have_art.is_empty() {
-                reporter.sub_ok(&format!("{} cover(s) already exist", releases_already_have_art.len()));
+            if pre_existing > 0 {
+                reporter.sub_ok(&format!("{} cover(s) already exist", pre_existing));
             }
         }
 
         // Clean up temp images in S3-only mode
         if !use_local && use_s3 {
-            for rid in &releases_with_art {
-                let tmp = release_img_dir.join(format!("{}.jpg", rid));
-                std::fs::remove_file(&tmp).ok();
+            let mut cleaned: HashSet<String> = HashSet::new();
+            for filename in release_to_image_filename.values() {
+                if cleaned.insert(filename.clone()) {
+                    let tmp = release_img_dir.join(filename);
+                    std::fs::remove_file(&tmp).ok();
+                }
             }
         }
 
@@ -1101,8 +1172,8 @@ async fn main() {
     // Post-loop: re-extract missing release covers (safety net)
     // -------------------------------------------------------------------------
     if !shutdown.load(Ordering::SeqCst) && !args.skip_covers {
-        let missing: Vec<(String, String, Option<String>)> = sqlx::query_as(
-            r#"SELECT DISTINCT ON (lr.id) lr.id, lrt."filePath", lr."folderPath"
+        let missing: Vec<(String, String, Option<String>, String)> = sqlx::query_as(
+            r#"SELECT DISTINCT ON (lr.id) lr.id, lrt."filePath", lr."folderPath", lr."groupKey"
                FROM "LocalRelease" lr
                JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
                WHERE (lr.image IS NULL OR lr.image = '')
@@ -1119,41 +1190,90 @@ async fn main() {
                 missing.len()
             ));
             let mut fixed = 0u32;
-            for (release_id, file_path, folder_path) in &missing {
+            for (release_id, file_path, folder_path, group_key) in &missing {
                 if shutdown.load(Ordering::SeqCst) {
                     break;
                 }
-                let out_path = release_img_dir.join(format!("{}.jpg", release_id));
 
-                let mut got_image = out_path.exists();
-                if !got_image {
-                    let full_path = PathBuf::from(&music_dir).join(file_path);
-                    if extract_cover_art(&full_path, &out_path) {
-                        got_image = true;
+                if let Some(ref mk) = image_key_from_group_key(group_key) {
+                    if let Some(existing_filename) = mb_id_to_image_hash.get(mk) {
+                        let existing_path = release_img_dir.join(existing_filename);
+                        if existing_path.exists() || use_s3 {
+                            if use_local {
+                                sqlx::query(
+                                    r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                )
+                                .bind(existing_filename)
+                                .bind(release_id)
+                                .execute(&pool)
+                                .await
+                                .ok();
+                            }
+                            if use_s3 {
+                                if let Some(ref public_url) = config.storage_public_url {
+                                    let image_url = format!("{}/releases/{}", public_url.trim_end_matches('/'), existing_filename);
+                                    sqlx::query(
+                                        r#"UPDATE "LocalRelease" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                    )
+                                    .bind(&image_url)
+                                    .bind(release_id)
+                                    .execute(&pool)
+                                    .await
+                                    .ok();
+                                }
+                            }
+                            fixed += 1;
+                            continue;
+                        }
                     }
+                }
+
+                let temp_path = release_img_dir.join(format!("_tmp_miss_{}.jpg", release_id));
+                let mut got_image = false;
+
+                let full_path = PathBuf::from(&music_dir).join(file_path);
+                if extract_cover_art(&full_path, &temp_path) {
+                    got_image = true;
                 }
                 if !got_image {
                     if let Some(fp) = folder_path {
                         let abs_folder = PathBuf::from(&music_dir).join(fp);
-                        if use_folder_image(&abs_folder, &out_path).is_some() {
+                        if use_folder_image(&abs_folder, &temp_path).is_some() {
                             got_image = true;
                         }
                     }
                 }
 
                 if got_image {
+                    let filename = if let Some(hash) = hash_image_file(&temp_path) {
+                        let name = format!("{}.jpg", hash);
+                        let final_path = release_img_dir.join(&name);
+                        if final_path.exists() {
+                            std::fs::remove_file(&temp_path).ok();
+                        } else {
+                            std::fs::rename(&temp_path, &final_path).ok();
+                        }
+                        if let Some(ref mk) = image_key_from_group_key(group_key) {
+                            mb_id_to_image_hash.entry(mk.clone()).or_insert_with(|| name.clone());
+                        }
+                        name
+                    } else {
+                        std::fs::remove_file(&temp_path).ok();
+                        continue;
+                    };
+
                     if use_s3 {
                         if let (Some(ref client), Some(ref bucket), Some(ref public_url)) =
                             (&s3_client, &config.storage_bucket, &config.storage_public_url)
                         {
+                            let image_key = &filename[..filename.len() - 4]; // strip .jpg
                             upload_release_image_to_s3(
-                                client, bucket, public_url, &pool, release_id, &out_path,
+                                client, bucket, public_url, &pool, release_id, image_key, &release_img_dir.join(&filename),
                             )
                             .await;
                         }
                     }
                     if use_local {
-                        let filename = format!("{}.jpg", release_id);
                         sqlx::query(
                             r#"UPDATE "LocalRelease" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
                         )
@@ -1164,9 +1284,11 @@ async fn main() {
                         .ok();
                     }
                     if !use_local && use_s3 {
-                        std::fs::remove_file(&out_path).ok();
+                        std::fs::remove_file(&release_img_dir.join(&filename)).ok();
                     }
                     fixed += 1;
+                } else {
+                    std::fs::remove_file(&temp_path).ok();
                 }
             }
             if fixed > 0 {

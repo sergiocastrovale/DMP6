@@ -104,9 +104,9 @@ pub async fn nuke_local_artists(
             .bind(artist_id)
             .fetch_all(pool)
             .await?;
-            for (rid, img, img_url) in imgs {
-                if img.is_some() || img_url.is_some() {
-                    release_img_set.insert((img, format!("releases/{}.jpg", rid)));
+            for (_rid, img, _img_url) in imgs {
+                if let Some(ref f) = img.filter(|s| !s.is_empty()) {
+                    release_img_set.insert((Some(f.clone()), format!("releases/{}", f)));
                 }
             }
         }
@@ -142,6 +142,19 @@ pub async fn nuke_local_artists(
     }
 
     for (local_filename, s3_key) in &release_img_set {
+        if let Some(ref f) = local_filename {
+            let shared: (i64,) = sqlx::query_as(
+                r#"SELECT COUNT(*) FROM "LocalRelease" WHERE image = $1 AND id != ALL($2::text[])"#,
+            )
+            .bind(f)
+            .bind(&release_ids)
+            .fetch_one(pool)
+            .await
+            .unwrap_or((0,));
+            if shared.0 > 0 {
+                continue;
+            }
+        }
         if use_local {
             if let Some(f) = local_filename {
                 if fs::remove_file(release_img_dir.join(f)).is_ok() {
@@ -149,7 +162,7 @@ pub async fn nuke_local_artists(
                 }
             }
         }
-        if use_s3 {
+        if use_s3 && !s3_key.is_empty() {
             if let (Some(ref s3), Some(ref bucket)) = (s3_client, &config.storage_bucket) {
                 delete_from_s3(s3, bucket, s3_key).await;
                 s3_deleted += 1;
