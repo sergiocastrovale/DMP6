@@ -9,8 +9,8 @@ const matchClasses = computed(() => {
   if (props.score === null) {
     return 'bg-zinc-700 text-zinc-400'
   }
-  const range = getScoreRange(Math.round(props.score * 100))
-  return `${range.bgColor} ${range.textColor}`
+  const { bgColor, textColor } = getScoreRange(Math.round(props.score * 100))
+  return `${bgColor} ${textColor}`
 })
 </script>
 

@@ -100,17 +100,18 @@ const visibleReleases = computed(() => {
 const tabCounts = computed(() => {
   const counts: Record<string, number> = { albums: 0, eps: 0, singles: 0, other: 0 }
   for (const r of visibleReleases.value) {
-    counts[bucketSlug(r.typeSlug)]++
+    const key = bucketSlug(r.typeSlug)
+    counts[key] = (counts[key] ?? 0) + 1
   }
   return counts
 })
 
-const visibleTabs = computed(() => TAB_BUCKETS.filter(t => tabCounts.value[t.slug] > 0))
+const visibleTabs = computed(() => TAB_BUCKETS.filter(t => (tabCounts.value[t.slug] ?? 0) > 0))
 
 const tabItems = computed(() => visibleTabs.value.map(t => ({
   key: t.slug,
   label: t.label,
-  count: tabCounts.value[t.slug],
+  count: tabCounts.value[t.slug] ?? 0,
 })))
 
 watch(visibleTabs, (tabs) => {
@@ -325,7 +326,7 @@ async function openInfoDialog(edition: UnifiedRelease) {
   showInfoDialog.value = true
   if (edition.localReleaseId) {
     try {
-      infoExtra.value = await $fetch(`/api/releases/${edition.localReleaseId}/info`)
+      infoExtra.value = await $fetch<typeof infoExtra.value>(`/api/releases/${edition.localReleaseId}/info`)
     }
     catch { /* ignore */ }
   }

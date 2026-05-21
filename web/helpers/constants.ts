@@ -17,7 +17,7 @@ export const scoreRanges = [
 ]
 
 export const getScoreRange = (score: number) =>
-  scoreRanges.find(r => score >= r.min && score < r.max) ?? scoreRanges[scoreRanges.length - 1]
+  scoreRanges.find(r => score >= r.min && score < r.max) ?? scoreRanges.at(-1)!
 
 export const statuses = [
   { 

@@ -4,7 +4,7 @@ import { requirePermission } from '~/server/utils/permissions'
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.view')
 
-  const body = await readBody<{ ids?: string[] }>(event).catch(() => ({}))
+  const body = await readBody<{ ids?: string[] }>(event).catch((): { ids?: string[] } => ({}))
   const ids = body?.ids
 
   const where = Array.isArray(ids) && ids.length > 0

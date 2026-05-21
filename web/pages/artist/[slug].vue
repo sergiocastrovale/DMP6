@@ -28,7 +28,7 @@ const { data: releasesData, pending: releasesPending, refresh: refreshReleases }
   query: { pageSize: 500 },
 })
 
-const releases = computed<UnifiedRelease[]>(() => releasesData.value?.releases ?? [])
+const releases = computed(() => (releasesData.value?.releases ?? []) as UnifiedRelease[])
 
 watch(() => terminal.isRunning, (running, wasRunning) => {
   if (wasRunning && !running) {

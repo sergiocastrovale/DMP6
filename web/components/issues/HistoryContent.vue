@@ -163,7 +163,7 @@ async function undoSelected() {
   selected.value = new Set()
   dialogFolder.value = null
 
-  const types = Object.keys(queued).filter((t) => queued[t] > 0) as HistoryIssueType[]
+  const types = Object.keys(queued).filter((t) => (queued[t] ?? 0) > 0) as HistoryIssueType[]
   if (types.length === 0) {
     return
   }
@@ -256,22 +256,22 @@ async function undoSelected() {
               </td>
               <td class="px-3 py-2">
                 <div class="flex flex-col gap-0.5">
-                  <span v-for="e in getStateEntries(g.items[0].previousState, Object.keys(g.items[0].appliedState ?? {}))" :key="e.key" class="text-xs text-amber-400">
+                  <span v-for="e in getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {}))" :key="e.key" class="text-xs text-amber-400">
                     <span class="text-zinc-500">{{ e.key }}:</span> {{ e.value }}
                   </span>
-                  <span v-if="!getStateEntries(g.items[0].previousState, Object.keys(g.items[0].appliedState ?? {})).length" class="text-xs text-zinc-600">—</span>
+                  <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-zinc-600">—</span>
                 </div>
               </td>
               <td class="px-3 py-2">
                 <div class="flex flex-col gap-0.5">
-                  <span v-for="e in getStateEntries(g.items[0].appliedState)" :key="e.key" class="text-xs text-green-400">
+                  <span v-for="e in getStateEntries(g.items[0]!.appliedState)" :key="e.key" class="text-xs text-green-400">
                     <span class="text-zinc-500">{{ e.key }}:</span> {{ e.value }}
                   </span>
-                  <span v-if="!getStateEntries(g.items[0].appliedState).length" class="text-xs text-zinc-600">—</span>
+                  <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-zinc-600">—</span>
                 </div>
               </td>
               <td class="px-3 py-2">
-                <span class="text-xs text-zinc-500">{{ formatDate(g.items[0].appliedAt) }}</span>
+                <span class="text-xs text-zinc-500">{{ formatDate(g.items[0]!.appliedAt) }}</span>
               </td>
             </tr>
           </tbody>
