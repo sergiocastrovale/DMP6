@@ -268,8 +268,8 @@ fn main() {
     });
 
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-    let full_name = format!("mosaic_{}.jpg", timestamp);
-    let preview_name = format!("mosaic_{}_preview.jpg", timestamp);
+    let full_name = format!("mosaic_{}_{}.jpg", timestamp, count);
+    let preview_name = format!("mosaic_{}_{}_preview.jpg", timestamp, count);
     let full_path = PathBuf::from(&args.output_dir).join(&full_name);
     let preview_path = PathBuf::from(&args.output_dir).join(&preview_name);
 

@@ -1,6 +1,6 @@
 import { getMosaicProcess, setMosaicProcess } from '~/server/utils/mosaic'
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (event): Promise<{ ok: boolean; message?: string }> => {
   if (!event.context.user) {
     throw createError({ statusCode: 401, message: 'Unauthorized' })
   }
@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   const { remoteServerUrl } = useRuntimeConfig()
   if (remoteServerUrl) {
     const cookie = getRequestHeader(event, 'cookie') || ''
-    return $fetch(`${remoteServerUrl}/api/labs/mosaic/cancel`, {
+    return $fetch<{ ok: boolean }>(`${remoteServerUrl}/api/labs/mosaic/cancel`, {
       method: 'POST',
       headers: { cookie },
     })

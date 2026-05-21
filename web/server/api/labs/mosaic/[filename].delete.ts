@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
 
   if (remoteServerUrl) {
     const cookie = getRequestHeader(event, 'cookie') || ''
-    return $fetch(`${remoteServerUrl}/api/labs/mosaic/${filename}`, {
+    return $fetch<{ ok: boolean }>(`${remoteServerUrl}/api/labs/mosaic/${filename}`, {
       method: 'DELETE',
       headers: { cookie },
     })

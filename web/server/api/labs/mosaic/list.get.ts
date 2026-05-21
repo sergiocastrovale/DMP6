@@ -6,6 +6,7 @@ export interface MosaicItem {
   previewFilename: string | null
   createdAt: string
   size: number
+  imageCount: number | null
 }
 
 export default defineEventHandler(async (event): Promise<MosaicItem[]> => {
@@ -37,11 +38,15 @@ export default defineEventHandler(async (event): Promise<MosaicItem[]> => {
       const previewFilename = filename.replace('.jpg', '_preview.jpg')
       const hasPreview = existsSync(join(labsDir, previewFilename))
 
+      const countMatch = filename.match(/^mosaic_\d{8}_\d{6}_(\d+)\.jpg$/)
+      const imageCount = countMatch?.[1] ? parseInt(countMatch[1], 10) : null
+
       return {
         filename,
         previewFilename: hasPreview ? previewFilename : null,
         createdAt: stats.mtime.toISOString(),
         size: stats.size,
+        imageCount,
       }
     })
 })

@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, message: 'Mosaic generation already in progress' })
   }
 
-  const body = await readBody<{ mode?: string }>(event).catch(() => ({}))
+  const body = await readBody<{ mode?: string }>(event).catch((): { mode?: string } => ({}))
   const mode = VALID_MODES.includes(body.mode || '') ? body.mode! : 'chronological'
 
   const { remoteServerUrl } = useRuntimeConfig()

@@ -83,8 +83,8 @@ watch(() => mosaic.lastResult, (result) => {
 
 onMounted(async () => {
   await mosaic.loadMosaics()
-  if (mosaic.mosaics.length > 0) {
-    const latest = mosaic.mosaics[0]
+  const latest = mosaic.mosaics[0]
+  if (latest) {
     previewFilename.value = latest.previewFilename || latest.filename
   }
 })
@@ -171,7 +171,9 @@ onMounted(async () => {
           >
             <div>
               <p class="text-sm text-zinc-200">{{ formatDate(item.createdAt) }}</p>
-              <p class="text-xs text-zinc-500">{{ formatSize(item.size) }}</p>
+              <p class="text-xs text-zinc-500">
+                <span v-if="item.imageCount">{{ item.imageCount }} covers · </span>{{ formatSize(item.size) }}
+              </p>
             </div>
             <div class="flex items-center gap-1">
               <button
