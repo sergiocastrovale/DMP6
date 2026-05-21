@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const url = getRequestURL(event)
   const path = url.pathname
 
-  const match = path.match(/^\/img\/(artists|releases)\/(.+)$/)
+  const match = path.match(/^\/img\/(artists|releases|labs)\/(.+)$/)
   if (!match) { return }
 
   const type = match[1]!

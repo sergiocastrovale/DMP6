@@ -12,6 +12,7 @@ import {
   PanelLeft,
   LogOut,
   AlertTriangle,
+  FlaskConical,
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 
@@ -34,6 +35,7 @@ const navItems = computed(() => {
     { to: '/playlists', label: 'Playlists', icon: ListMusic, show: canViewPlaylists.value },
     { to: '/favorites', label: 'Favorites', icon: Heart, show: canViewFavorites.value },
     { to: '/issues', label: 'Issues', icon: AlertTriangle, show: canViewIssues.value },
+    { to: '/labs', label: 'Labs', icon: FlaskConical, show: true },
   ]
   return items.filter((i) => i.show)
 })

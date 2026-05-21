@@ -2382,6 +2382,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mosaic"
+version = "1.0.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "image",
+ "rand 0.8.6",
+ "rayon",
+ "serde_json",
+]
+
+[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

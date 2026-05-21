@@ -1,0 +1,16 @@
+[package]
+name = "mosaic"
+version = "1.0.0"
+edition = "2021"
+
+[[bin]]
+name = "mosaic"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+image = { workspace = true }
+rand = { workspace = true }
+rayon = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }

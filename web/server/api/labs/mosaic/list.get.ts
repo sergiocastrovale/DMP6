@@ -1,0 +1,47 @@
+import { existsSync, readdirSync, statSync } from 'fs'
+import { join, resolve } from 'path'
+
+export interface MosaicItem {
+  filename: string
+  previewFilename: string | null
+  createdAt: string
+  size: number
+}
+
+export default defineEventHandler(async (event): Promise<MosaicItem[]> => {
+  if (!event.context.user) {
+    throw createError({ statusCode: 401, message: 'Unauthorized' })
+  }
+
+  const { imageDir, remoteServerUrl } = useRuntimeConfig()
+
+  if (remoteServerUrl) {
+    const cookie = getRequestHeader(event, 'cookie') || ''
+    return $fetch<MosaicItem[]>(`${remoteServerUrl}/api/labs/mosaic/list`, {
+      headers: { cookie },
+    })
+  }
+
+  const labsDir = join(resolve(imageDir), 'labs')
+
+  if (!existsSync(labsDir)) {
+    return []
+  }
+
+  return readdirSync(labsDir)
+    .filter((f) => f.startsWith('mosaic_') && f.endsWith('.jpg') && !f.includes('_preview'))
+    .sort()
+    .reverse()
+    .map((filename) => {
+      const stats = statSync(join(labsDir, filename))
+      const previewFilename = filename.replace('.jpg', '_preview.jpg')
+      const hasPreview = existsSync(join(labsDir, previewFilename))
+
+      return {
+        filename,
+        previewFilename: hasPreview ? previewFilename : null,
+        createdAt: stats.mtime.toISOString(),
+        size: stats.size,
+      }
+    })
+})

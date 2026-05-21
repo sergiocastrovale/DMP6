@@ -9,6 +9,7 @@ members = [
     "nuke",
     "playlists",
     "delete",
+    "mosaic",
 ]
 resolver = "2"
 
