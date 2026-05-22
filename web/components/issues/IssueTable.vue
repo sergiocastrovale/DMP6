@@ -71,15 +71,15 @@ function commitEdit(item: any, col: IssueColumn) {
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-zinc-800 text-left">
+          <tr class="border-b border-rule text-left">
             <th v-if="type !== 'enrichment'" class="w-10 px-3 py-2">
-              <input type="checkbox" :checked="allChecked" @change="toggleAll" class="rounded border-zinc-600 bg-zinc-800" />
+              <input type="checkbox" :checked="allChecked" @change="toggleAll" class="rounded border-rule bg-bg-2" />
             </th>
             <th
               v-for="col in columns"
               :key="col.key"
-              class="px-3 py-2 text-xs font-medium text-zinc-500"
-              :class="[col.width, col.sortable ? 'cursor-pointer select-none hover:text-zinc-300' : '']"
+              class="px-3 py-2 text-xs font-medium text-ink0"
+              :class="[col.width, col.sortable ? 'cursor-pointer select-none hover:text-ink-2' : '']"
               @click="col.sortable && emit('sort', col.key)"
             >
               <span class="flex items-center gap-1">
@@ -96,19 +96,19 @@ function commitEdit(item: any, col: IssueColumn) {
         <tbody>
           <!-- Loading skeleton -->
           <template v-if="loading && items.length === 0">
-            <tr v-for="n in 5" :key="n" class="border-b border-zinc-800/50">
+            <tr v-for="n in 5" :key="n" class="border-b border-rule/50">
               <td v-if="type !== 'enrichment'" class="px-3 py-2.5">
-                <div class="h-4 w-4 animate-pulse rounded bg-zinc-800" />
+                <div class="h-4 w-4 animate-pulse rounded bg-bg-2" />
               </td>
               <td v-for="col in columns" :key="col.key" class="px-3 py-2.5">
-                <div class="h-4 animate-pulse rounded bg-zinc-800" :class="col.width ?? 'w-32'" />
+                <div class="h-4 animate-pulse rounded bg-bg-2" :class="col.width ?? 'w-32'" />
               </td>
             </tr>
           </template>
 
           <!-- Empty state -->
           <tr v-else-if="!loading && items.length === 0">
-            <td :colspan="type !== 'enrichment' ? columns.length + 1 : columns.length" class="px-3 py-12 text-center text-zinc-500">
+            <td :colspan="type !== 'enrichment' ? columns.length + 1 : columns.length" class="px-3 py-12 text-center text-ink0">
               No issues found
             </td>
           </tr>
@@ -117,7 +117,7 @@ function commitEdit(item: any, col: IssueColumn) {
           <tr
             v-for="item in items"
             :key="item.id"
-            class="border-b border-zinc-800/50 transition-colors hover:bg-zinc-900/30"
+            class="border-b border-rule/50 transition-colors hover:bg-bg-1/30"
             :class="type !== 'enrichment' && selected.has(item.id) ? 'bg-blue-950/20' : ''"
           >
             <td v-if="type !== 'enrichment'" class="px-3 py-2">
@@ -125,13 +125,13 @@ function commitEdit(item: any, col: IssueColumn) {
                 type="checkbox"
                 :checked="selected.has(item.id)"
                 @change="toggleRow(item.id)"
-                class="rounded border-zinc-600 bg-zinc-800"
+                class="rounded border-rule bg-bg-2"
               />
             </td>
             <td
               v-for="col in columns"
               :key="col.key"
-              class="px-3 py-2 text-zinc-300"
+              class="px-3 py-2 text-ink-2"
               :class="col.width"
             >
               <!-- Custom slot: dots in key replaced with underscores in slot name -->
@@ -141,7 +141,7 @@ function commitEdit(item: any, col: IssueColumn) {
                   <input
                     v-if="editingCell !== null && editingCell.id === item.id && editingCell.key === (col.editKey ?? col.key)"
                     v-model="editValue"
-                    class="w-full rounded border border-blue-500 bg-zinc-900 px-2 py-0.5 text-sm outline-none"
+                    class="w-full rounded border border-blue-500 bg-bg-1 px-2 py-0.5 text-sm outline-none"
                     @blur="commitEdit(item, col)"
                     @keydown.enter="commitEdit(item, col)"
                     @keydown.esc="editingCell = null"
@@ -149,7 +149,7 @@ function commitEdit(item: any, col: IssueColumn) {
                   />
                   <span
                     v-else
-                    class="cursor-pointer rounded px-1 py-0.5 hover:bg-zinc-800"
+                    class="cursor-pointer rounded px-1 py-0.5 hover:bg-bg-2"
                     @click="startEdit(item, col)"
                   >
                     {{ getNestedValue(item, col.key) ?? '—' }}
@@ -165,13 +165,13 @@ function commitEdit(item: any, col: IssueColumn) {
     </div>
 
     <!-- Pagination -->
-    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-zinc-800 px-4 py-2 text-xs text-zinc-500">
+    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-rule px-4 py-2 text-xs text-ink0">
       <span>{{ total }} total</span>
       <div class="flex items-center gap-2">
         <button
           :disabled="page <= 1"
           @click="emit('page', page - 1)"
-          class="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40"
+          class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
         >
           Prev
         </button>
@@ -179,7 +179,7 @@ function commitEdit(item: any, col: IssueColumn) {
         <button
           :disabled="page >= totalPages"
           @click="emit('page', page + 1)"
-          class="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40"
+          class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
         >
           Next
         </button>

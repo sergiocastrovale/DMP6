@@ -1,5 +1,5 @@
 export const maxGenres = 5
-export const SKELETON_GRID_SIZE = 12
+export const SKELETON_GRID_SIZE = 10
 
 export const scanActions = [
   { id: 'check', icon: 'Search', text: 'Check for new files', subtext: 'Index new files & sync' },
@@ -12,7 +12,7 @@ export const scoreRanges = [
   { min: 0, max: 20, label: '0% – 20%', color: 'bg-red-500', textColor: 'text-red-400', bgColor: 'bg-red-500/20' },
   { min: 20, max: 40, label: '20% – 40%', color: 'bg-red-400', textColor: 'text-red-300', bgColor: 'bg-red-400/20' },
   { min: 40, max: 60, label: '40% – 60%', color: 'bg-orange-500', textColor: 'text-orange-400', bgColor: 'bg-orange-500/20' },
-  { min: 60, max: 80, label: '60% – 80%', color: 'bg-amber-500', textColor: 'text-amber-400', bgColor: 'bg-amber-500/20' },
+  { min: 60, max: 80, label: '60% – 80%', color: 'bg-accent', textColor: 'text-accent', bgColor: 'bg-accent-soft' },
   { min: 80, max: 100, label: '80% – 100%', color: 'bg-emerald-500', textColor: 'text-emerald-400', bgColor: 'bg-emerald-500/20' },
 ]
 
@@ -44,7 +44,7 @@ export const statuses = [
   { 
     value: 'INCOMPLETE',
     label: 'Incomplete',
-    classes: 'bg-amber-500/20 text-amber-400',
+    classes: 'bg-accent-soft text-accent',
     description: 'Some tracks missing locally',
     weight: 4,
   },
@@ -58,14 +58,14 @@ export const statuses = [
   {
     value: 'UNKNOWN',
     label: 'Unknown',
-    classes: 'bg-zinc-700 text-zinc-400',
+    classes: 'bg-bg-3 text-ink-2',
     description: 'Has MB ID but not found online',
     weight: 6,
   },
   {
     value: 'UNMATCHED',
     label: 'Unmatched',
-    classes: 'bg-amber-200/20 text-amber-200',
+    classes: 'bg-accent-soft text-accent',
     description: 'Local release not matched to MusicBrainz',
     weight: 7,
   },

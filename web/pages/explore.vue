@@ -28,7 +28,7 @@ const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hyb
     <!-- Explore Button -->
     <div class="mt-6 flex justify-center">
       <button
-        class="flex items-center gap-2.5 rounded-xl bg-amber-500 px-8 py-3 text-lg font-bold text-zinc-950 transition-all hover:bg-amber-400 active:scale-95 disabled:opacity-50 disabled:hover:bg-amber-500 disabled:active:scale-100"
+        class="flex items-center gap-2.5 rounded-xl bg-accent px-8 py-3 text-lg font-bold text-accent-ink transition-all hover:bg-accent active:scale-95 disabled:opacity-50 disabled:hover:bg-accent disabled:active:scale-100"
         :disabled="isLoading"
         @click="explore"
       >

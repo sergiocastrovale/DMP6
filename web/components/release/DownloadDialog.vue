@@ -124,7 +124,7 @@ function formatSpeed(bytesPerSec: number): string {
 const formatBadgeClass = (format: string) => {
   if (format === 'FLAC') return 'bg-emerald-500/20 text-emerald-400'
   if (format.includes('MP3') || format === 'MP3 320') return 'bg-blue-500/20 text-blue-400'
-  return 'bg-zinc-500/20 text-zinc-400'
+  return 'bg-ink0/20 text-ink-2'
 }
 </script>
 
@@ -133,17 +133,17 @@ const formatBadgeClass = (format: string) => {
     <!-- Download started confirmation -->
     <div v-if="downloadStarted" class="flex flex-col items-center gap-3 py-8">
       <CheckCircle :size="32" class="text-emerald-500" />
-      <p class="text-sm text-zinc-300">Download started</p>
+      <p class="text-sm text-ink-2">Download started</p>
     </div>
 
     <template v-else>
       <!-- Search controls -->
       <div class="flex flex-wrap items-center gap-2 mb-4">
-        <div class="flex rounded-lg border border-zinc-700 bg-zinc-800 text-sm">
+        <div class="flex rounded-lg border border-rule bg-bg-2 text-sm">
           <button
             v-if="downloads.slskd.connected"
             class="rounded-l-lg px-3 py-1.5 transition-colors"
-            :class="source === 'slskd' ? 'bg-zinc-600 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50'"
+            :class="source === 'slskd' ? 'bg-bg-3 text-ink' : 'text-ink-2 hover:text-ink'"
             @click="source = 'slskd'"
           >
             Soulseek
@@ -152,7 +152,7 @@ const formatBadgeClass = (format: string) => {
             v-if="downloads.hifi.connected"
             class="px-3 py-1.5 transition-colors"
             :class="[
-              source === 'hifi' ? 'bg-zinc-600 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50',
+              source === 'hifi' ? 'bg-bg-3 text-ink' : 'text-ink-2 hover:text-ink',
               !downloads.slskd.connected ? 'rounded-l-lg' : '',
             ]"
             @click="source = 'hifi'"
@@ -162,25 +162,25 @@ const formatBadgeClass = (format: string) => {
           <button
             v-if="downloads.deezer.connected"
             class="rounded-r-lg px-3 py-1.5 transition-colors"
-            :class="source === 'deezer' ? 'bg-zinc-600 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50'"
+            :class="source === 'deezer' ? 'bg-bg-3 text-ink' : 'text-ink-2 hover:text-ink'"
             @click="source = 'deezer'"
           >
             Deezer
           </button>
         </div>
 
-        <div class="flex flex-1 items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5">
-          <Search :size="14" class="shrink-0 text-zinc-500" />
+        <div class="flex flex-1 items-center gap-1.5 rounded-lg border border-rule bg-bg-2 px-3 py-1.5">
+          <Search :size="14" class="shrink-0 text-ink0" />
           <input
             v-model="searchQuery"
-            class="w-full bg-transparent text-sm text-zinc-50 outline-none placeholder:text-zinc-500"
+            class="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink0"
             placeholder="Search query..."
             @keydown.enter="doSearch"
           />
         </div>
 
         <button
-          class="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-700"
+          class="rounded-lg border border-rule bg-bg-2 px-3 py-1.5 text-sm text-ink-2 transition-colors hover:bg-bg-3"
           :disabled="searching"
           @click="doSearch"
         >
@@ -196,15 +196,15 @@ const formatBadgeClass = (format: string) => {
 
       <!-- Searching -->
       <div v-if="searching && results.length === 0" class="flex flex-col items-center gap-3 py-8">
-        <Loader2 :size="24" class="animate-spin text-zinc-500" />
-        <p class="text-sm text-zinc-400">
+        <Loader2 :size="24" class="animate-spin text-ink0" />
+        <p class="text-sm text-ink-2">
           Searching {{ source === 'slskd' ? 'Soulseek' : 'Deezer' }}...
         </p>
       </div>
 
       <!-- Results -->
       <div v-else-if="results.length > 0" class="flex flex-col gap-1">
-        <p v-if="searching" class="mb-2 text-xs text-zinc-500">
+        <p v-if="searching" class="mb-2 text-xs text-ink0">
           <Loader2 :size="12" class="mr-1 inline animate-spin" />
           Still searching... {{ results.length }} results so far
         </p>
@@ -213,7 +213,7 @@ const formatBadgeClass = (format: string) => {
           <div
             v-for="result in results"
             :key="result.id"
-            class="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-800"
+            class="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-bg-2"
           >
             <span
               class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
@@ -223,23 +223,23 @@ const formatBadgeClass = (format: string) => {
             </span>
 
             <div class="min-w-0 flex-1">
-              <div class="truncate text-sm text-zinc-300">
+              <div class="truncate text-sm text-ink-2">
                 {{ result.folderPath.split('/').pop() || result.folderPath }}
               </div>
-              <div class="flex items-center gap-2 text-xs text-zinc-500">
+              <div class="flex items-center gap-2 text-xs text-ink0">
                 <span>{{ result.fileCount }} files</span>
                 <span v-if="result.totalSize">{{ formatSize(result.totalSize) }}</span>
                 <span v-if="result.avgBitrate">{{ result.avgBitrate }}kbps</span>
-                <span v-if="result.source === 'slskd'" class="text-zinc-600">{{ result.username }}</span>
-                <span v-if="result.uploadSpeed" class="text-zinc-600">{{ formatSpeed(result.uploadSpeed) }}</span>
-                <span v-if="result.queueLength" class="text-zinc-600">Q:{{ result.queueLength }}</span>
+                <span v-if="result.source === 'slskd'" class="text-ink-4">{{ result.username }}</span>
+                <span v-if="result.uploadSpeed" class="text-ink-4">{{ formatSpeed(result.uploadSpeed) }}</span>
+                <span v-if="result.queueLength" class="text-ink-4">Q:{{ result.queueLength }}</span>
               </div>
             </div>
 
-            <span class="shrink-0 text-xs font-medium text-zinc-500">{{ result.score }}</span>
+            <span class="shrink-0 text-xs font-medium text-ink0">{{ result.score }}</span>
 
             <button
-              class="shrink-0 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-500 transition-all hover:bg-amber-500/20"
+              class="shrink-0 rounded-lg bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-all hover:bg-accent/20"
               @click="startDownload(result)"
             >
               <Download :size="12" class="mr-1 inline" />
@@ -250,7 +250,7 @@ const formatBadgeClass = (format: string) => {
       </div>
 
       <!-- No results -->
-      <div v-else-if="!searching" class="py-8 text-center text-sm text-zinc-500">
+      <div v-else-if="!searching" class="py-8 text-center text-sm text-ink0">
         No results found. Try adjusting your search query.
       </div>
     </template>

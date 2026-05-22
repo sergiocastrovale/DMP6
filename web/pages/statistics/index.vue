@@ -51,96 +51,96 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <div class="text-zinc-500">Loading...</div>
+      <div class="text-ink0">Loading...</div>
     </div>
 
     <!-- Stats grid -->
     <div v-else-if="stats" class="flex flex-col gap-8">
       <section>
-        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-500">
+        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-ink0">
           Library
         </h2>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          <NuxtLink to="/statistics/artists" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucideUsers class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.mainArtists) }}</p>
-            <p class="text-xs text-zinc-500">Artists</p>
+          <NuxtLink to="/statistics/artists" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucideUsers class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.mainArtists) }}</p>
+            <p class="text-xs text-ink0">Artists</p>
           </NuxtLink>
-          <NuxtLink to="/statistics/artists" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucideUsers class="mb-2 size-5 text-amber-500/60" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.relatedArtists) }}</p>
-            <p class="text-xs text-zinc-500">Related artists</p>
+          <NuxtLink to="/statistics/artists" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucideUsers class="mb-2 size-5 text-accent/60" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.relatedArtists) }}</p>
+            <p class="text-xs text-ink0">Related artists</p>
           </NuxtLink>
-          <NuxtLink to="/statistics/releases" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucideDisc class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.releases) }}</p>
-            <p class="text-xs text-zinc-500">Releases</p>
+          <NuxtLink to="/statistics/releases" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucideDisc class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.releases) }}</p>
+            <p class="text-xs text-ink0">Releases</p>
           </NuxtLink>
-          <NuxtLink to="/statistics/tracks" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucideMusic2 class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.tracks) }}</p>
-            <p class="text-xs text-zinc-500">Tracks</p>
+          <NuxtLink to="/statistics/tracks" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucideMusic2 class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.tracks) }}</p>
+            <p class="text-xs text-ink0">Tracks</p>
           </NuxtLink>
-          <NuxtLink to="/statistics/genres" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucideTag class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.genres) }}</p>
-            <p class="text-xs text-zinc-500">Genres</p>
+          <NuxtLink to="/statistics/genres" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucideTag class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.genres) }}</p>
+            <p class="text-xs text-ink0">Genres</p>
           </NuxtLink>
         </div>
       </section>
 
       <!-- Playback -->
       <section>
-        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-500">
+        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-ink0">
           Playback
         </h2>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <NuxtLink to="/statistics/plays" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucidePlay class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.plays) }}</p>
-            <p class="text-xs text-zinc-500">Total Plays</p>
+          <NuxtLink to="/statistics/plays" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucidePlay class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.plays) }}</p>
+            <p class="text-xs text-ink0">Total Plays</p>
           </NuxtLink>
-          <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-            <LucideClock class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatPlaytime(stats.playtime) }}</p>
-            <p class="text-xs text-zinc-500">Total Playtime</p>
+          <div class="rounded-lg border border-rule bg-bg-1 p-4">
+            <LucideClock class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatPlaytime(stats.playtime) }}</p>
+            <p class="text-xs text-ink0">Total Playtime</p>
           </div>
         </div>
       </section>
 
       <!-- Sync -->
       <section>
-        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-500">
+        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-ink0">
           MusicBrainz Sync
         </h2>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <NuxtLink to="/statistics/artists-synced" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucideRefreshCw class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.artistsSyncedWithMusicbrainz) }}</p>
-            <p class="text-xs text-zinc-500">Artists Synced</p>
+          <NuxtLink to="/statistics/artists-synced" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucideRefreshCw class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.artistsSyncedWithMusicbrainz) }}</p>
+            <p class="text-xs text-ink0">Artists Synced</p>
           </NuxtLink>
-          <NuxtLink to="/statistics/releases-synced" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucideRefreshCw class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.releasesSyncedWithMusicbrainz) }}</p>
-            <p class="text-xs text-zinc-500">Releases Synced</p>
+          <NuxtLink to="/statistics/releases-synced" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucideRefreshCw class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.releasesSyncedWithMusicbrainz) }}</p>
+            <p class="text-xs text-ink0">Releases Synced</p>
           </NuxtLink>
         </div>
       </section>
 
       <section>
-        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-zinc-500">
+        <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-ink0">
           Cover Art
         </h2>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <NuxtLink to="/statistics/artists-with-art" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucideImage class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.artistsWithCoverArt) }}</p>
-            <p class="text-xs text-zinc-500">Artists with photo</p>
+          <NuxtLink to="/statistics/artists-with-art" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucideImage class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.artistsWithCoverArt) }}</p>
+            <p class="text-xs text-ink0">Artists with photo</p>
           </NuxtLink>
-          <NuxtLink to="/statistics/releases-with-art" class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-800">
-            <LucideImage class="mb-2 size-5 text-amber-500" />
-            <p class="text-2xl font-bold text-zinc-50">{{ formatNumber(stats.releasesWithCoverArt) }}</p>
-            <p class="text-xs text-zinc-500">Releases with cover art</p>
+          <NuxtLink to="/statistics/releases-with-art" class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule hover:bg-bg-2">
+            <LucideImage class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.releasesWithCoverArt) }}</p>
+            <p class="text-xs text-ink0">Releases with cover art</p>
           </NuxtLink>
         </div>
       </section>

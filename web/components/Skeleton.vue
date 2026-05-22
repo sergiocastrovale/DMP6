@@ -1,6 +1,6 @@
 <template>
   <div
-    class="animate-pulse rounded-lg bg-zinc-800"
+    class="animate-pulse rounded-lg bg-bg-2"
     :class="props.class"
   />
 </template>

@@ -84,13 +84,13 @@ onMounted(() => loadPlaylist())
 <template>
   <div class="flex flex-col gap-6">
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <div class="text-zinc-500">Loading...</div>
+      <div class="text-ink0">Loading...</div>
     </div>
 
     <div v-else-if="playlist" class="flex flex-col gap-6">
       <div class="flex flex-col gap-6 sm:flex-row sm:items-start">
         <div
-          class="h-48 w-48 flex-shrink-0 overflow-hidden rounded-sm bg-zinc-800"
+          class="h-48 w-48 flex-shrink-0 overflow-hidden rounded-sm bg-bg-2"
           :class="{ 'genre-border': isGenrePlaylist }"
         >
           <PlaylistBlockImageMosaic :images="coverImages" />
@@ -99,27 +99,27 @@ onMounted(() => loadPlaylist())
         <div class="flex flex-1 flex-col gap-4">
           <div>
             <div class="flex items-center gap-2">
-              <p class="text-sm text-zinc-500">Playlist</p>
+              <p class="text-sm text-ink0">Playlist</p>
               <span
                 v-if="isGenrePlaylist"
-                class="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-500"
+                class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent"
               >
                 <LucideSparkles class="size-3" />
                 Auto-generated
               </span>
             </div>
-            <h1 class="text-3xl font-bold text-zinc-50">{{ playlist.name }}</h1>
-            <p v-if="playlist.description" class="mt-2 text-sm text-zinc-400">{{ playlist.description }}</p>
+            <h1 class="text-3xl font-bold text-ink">{{ playlist.name }}</h1>
+            <p v-if="playlist.description" class="mt-2 text-sm text-ink-2">{{ playlist.description }}</p>
           </div>
 
-          <div class="text-sm text-zinc-500">
+          <div class="text-sm text-ink0">
             {{ playlist.tracks.length }} {{ playlist.tracks.length === 1 ? 'track' : 'tracks' }}
           </div>
 
           <div class="flex items-center gap-2">
             <button
               v-if="playlist.tracks.length > 0"
-              class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-600 transition-colors"
+              class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent transition-colors"
               @click="playAll"
             >
               <LucidePlay class="inline size-4 -mt-0.5" fill="currentColor" />
@@ -127,7 +127,7 @@ onMounted(() => loadPlaylist())
             </button>
             <button
               v-if="!isGenrePlaylist"
-              class="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
+              class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-2 hover:bg-bg-2 transition-colors"
               @click="showDeleteConfirm = true"
             >
               <LucideTrash2 class="inline size-4 -mt-0.5" />
@@ -148,10 +148,10 @@ onMounted(() => loadPlaylist())
       />
     </div>
 
-    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-zinc-500">
+    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
       <LucideListMusic class="mb-3 size-12 opacity-50" />
       <p>Playlist not found</p>
-      <NuxtLink to="/playlists" class="mt-4 text-sm text-amber-500 hover:text-amber-600 transition-colors">
+      <NuxtLink to="/playlists" class="mt-4 text-sm text-accent hover:text-accent transition-colors">
         Back to playlists
       </NuxtLink>
     </div>
@@ -162,15 +162,15 @@ onMounted(() => loadPlaylist())
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
         @click.self="showDeleteConfirm = false"
       >
-        <div class="w-full max-w-md rounded-lg bg-zinc-900 p-6 shadow-xl">
-          <h3 class="mb-4 text-lg font-semibold text-zinc-50">Delete Playlist</h3>
-          <p class="mb-6 text-sm text-zinc-400">
+        <div class="w-full max-w-md rounded-lg bg-bg-1 p-6 shadow-xl">
+          <h3 class="mb-4 text-lg font-semibold text-ink">Delete Playlist</h3>
+          <p class="mb-6 text-sm text-ink-2">
             Are you sure you want to delete "{{ playlist?.name }}"? This action cannot be undone.
           </p>
           <div class="flex justify-end gap-2">
             <button
               type="button"
-              class="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
+              class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-2 hover:bg-bg-2 transition-colors"
               @click="showDeleteConfirm = false"
             >
               Cancel

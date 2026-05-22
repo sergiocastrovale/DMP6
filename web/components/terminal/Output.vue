@@ -30,13 +30,13 @@ watch(() => terminal.lines.length, () => {
   >
     <div
       v-if="terminal.isOpen"
-      class="fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-zinc-800 bg-zinc-950 lg:w-[500px]"
+      class="fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-rule bg-bg lg:w-[500px]"
     >
       <!-- Header -->
-      <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-        <span class="text-sm font-medium text-zinc-300">Terminal</span>
+      <div class="flex items-center justify-between border-b border-rule px-4 py-3">
+        <span class="text-sm font-medium text-ink-2">Terminal</span>
         <div class="flex items-center gap-2">
-          <span v-if="terminal.isRunning" class="text-xs text-amber-500">Running...</span>
+          <span v-if="terminal.isRunning" class="text-xs text-accent">Running...</span>
           <span
             v-else-if="terminal.exitCode !== null"
             class="text-xs"
@@ -47,14 +47,14 @@ watch(() => terminal.lines.length, () => {
           <button
             v-if="terminal.isRunning"
             @click="terminal.stop()"
-            class="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-red-400"
+            class="rounded p-1 text-ink-2 hover:bg-bg-2 hover:text-red-400"
             title="Stop process"
           >
             <Square :size="14" />
           </button>
           <button
             @click="terminal.close()"
-            class="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            class="rounded p-1 text-ink-2 hover:bg-bg-2 hover:text-ink"
           >
             <X :size="16" />
           </button>
@@ -64,15 +64,15 @@ watch(() => terminal.lines.length, () => {
       <!-- Tmux hint -->
       <div
         v-if="terminal.currentSession || terminal.isRunning"
-        class="flex items-center gap-2 border-b border-zinc-800 px-4 py-2"
+        class="flex items-center gap-2 border-b border-rule px-4 py-2"
       >
-        <span class="font-mono text-xs text-zinc-500">
+        <span class="font-mono text-xs text-ink0">
           tmux attach-session -t {{ terminal.currentSession ?? '...' }}
         </span>
         <button
           v-if="terminal.currentSession"
           @click="copySession(terminal.currentSession!)"
-          class="rounded p-0.5 text-zinc-600 hover:text-zinc-400"
+          class="rounded p-0.5 text-ink-4 hover:text-ink-2"
           title="Copy"
         >
           <Copy :size="12" />
@@ -82,10 +82,10 @@ watch(() => terminal.lines.length, () => {
       <!-- Output -->
       <div
         ref="scrollContainer"
-        class="flex-1 overflow-y-auto p-4 font-mono text-xs leading-5 text-zinc-300"
+        class="flex-1 overflow-y-auto p-4 font-mono text-xs leading-5 text-ink-2"
       >
         <div v-for="(line, i) in terminal.lines" :key="i" class="whitespace-pre-wrap break-all">{{ line }}</div>
-        <span v-if="terminal.isRunning" class="mt-1 inline-block h-3.5 w-1.5 animate-pulse bg-amber-500" />
+        <span v-if="terminal.isRunning" class="mt-1 inline-block h-3.5 w-1.5 animate-pulse bg-accent" />
         <button
           v-if="terminal.hasLockError"
           class="mt-3 inline-flex items-center gap-1.5 rounded bg-red-900/50 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/80"

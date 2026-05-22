@@ -4,12 +4,12 @@ defineProps<{ label?: string }>()
 </script>
 
 <template>
-  <label class="flex cursor-pointer items-center gap-2 text-sm text-zinc-400 select-none">
+  <label class="flex cursor-pointer items-center gap-2 text-sm text-ink-2 select-none">
     <button
       role="switch"
       :aria-checked="model"
       class="relative h-5 w-9 rounded-full transition-colors"
-      :class="model ? 'bg-amber-500' : 'bg-zinc-700'"
+      :class="model ? 'bg-accent' : 'bg-bg-3'"
       @click="model = !model"
     >
       <span

@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { Home, Library, Compass, Clock, ListMusic, Heart } from 'lucide-vue-next'
-import { usePlayerStore } from '~/stores/player'
 
 const route = useRoute()
-const player = usePlayerStore()
 const { hasPerm } = useAuth()
 
 const canViewPlaylists = hasPerm('playlists.view')
@@ -29,15 +27,14 @@ const isActive = (path: string) => {
 
 <template>
   <nav
-    class="fixed left-0 z-40 flex w-full border-t border-zinc-800 bg-zinc-950 lg:hidden transition-all"
-    :class="player.isVisible ? 'bottom-20' : 'bottom-0'"
+    class="fixed bottom-0 left-0 z-40 flex w-full border-t border-rule bg-bg lg:hidden"
   >
     <NuxtLink
       v-for="item in items"
       :key="item.to"
       :to="item.to"
       class="flex flex-1 flex-col items-center gap-1 py-2 text-xs transition-colors"
-      :class="isActive(item.to) ? 'text-amber-500' : 'text-zinc-500'"
+      :class="isActive(item.to) ? 'text-accent' : 'text-ink-3'"
     >
       <component :is="item.icon" :size="20" />
       <span>{{ item.label }}</span>

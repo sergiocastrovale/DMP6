@@ -40,8 +40,8 @@ const clear = () => {
     <button
       class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors"
       :class="isActive
-        ? 'border-amber-500 bg-amber-500/10 text-amber-400'
-        : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-50'"
+        ? 'border-accent bg-accent/10 text-accent'
+        : 'border-rule bg-bg-1 text-ink-2 hover:text-ink'"
       @click="showDropdown = !showDropdown"
     >
       <SlidersHorizontal :size="12" />
@@ -51,13 +51,13 @@ const clear = () => {
 
     <div
       v-if="showDropdown"
-      class="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-lg"
+      class="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-rule bg-bg-1 p-1 shadow-lg"
     >
       <button
         v-for="range in scoreRanges"
         :key="range.label"
-        class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs transition-colors hover:bg-zinc-800"
-        :class="minScore === range.min && maxScore === range.max ? 'text-amber-400' : 'text-zinc-300'"
+        class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs transition-colors hover:bg-bg-2"
+        :class="minScore === range.min && maxScore === range.max ? 'text-accent' : 'text-ink-2'"
         @click="select(range)"
       >
         <span class="size-2.5 shrink-0 rounded-sm" :class="range.color" />

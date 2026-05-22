@@ -69,12 +69,12 @@ const permLabel = (p: string) => {
 
 <template>
   <div class="max-w-3xl space-y-6">
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400">Role Permissions</h2>
+    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Role Permissions</h2>
 
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-zinc-700 text-left text-xs uppercase tracking-wider text-zinc-500">
+          <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink0">
             <th class="pb-2 pr-4">Permission</th>
             <th v-for="role in roles" :key="role" class="pb-2 px-4 text-center">{{ role.toLowerCase() }}</th>
           </tr>
@@ -83,18 +83,18 @@ const permLabel = (p: string) => {
           <tr
             v-for="perm in allPermissions"
             :key="perm"
-            class="border-b border-zinc-800"
+            class="border-b border-rule"
           >
             <td class="py-2 pr-4">
-              <span class="text-zinc-300">{{ permLabel(perm).feature }}</span>
-              <span class="text-zinc-500">.{{ permLabel(perm).action }}</span>
+              <span class="text-ink-2">{{ permLabel(perm).feature }}</span>
+              <span class="text-ink0">.{{ permLabel(perm).action }}</span>
             </td>
             <td v-for="role in roles" :key="role" class="py-2 px-4 text-center">
               <input
                 type="checkbox"
                 :checked="matrix[role]?.has(perm) ?? false"
                 @change="toggle(role, perm)"
-                class="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer accent-blue-500"
+                class="h-4 w-4 rounded border-rule bg-bg-2 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer accent-blue-500"
               />
             </td>
           </tr>

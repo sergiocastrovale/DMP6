@@ -29,9 +29,9 @@ const statusDesc = (s: string) => statuses.find(x => x.value === s)?.description
       <ReleaseStatusBadge :status="worstStatus" />
     </template>
     <template #content>
-      <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
+      <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
         <template v-if="releases.length === 1">
-          <p class="text-xs text-zinc-400">{{ releases[0]!.statusReason || statusDesc(worstStatus) }}</p>
+          <p class="text-xs text-ink-2">{{ releases[0]!.statusReason || statusDesc(worstStatus) }}</p>
         </template>
         <template v-else>
           <div class="flex flex-col gap-2">
@@ -40,7 +40,7 @@ const statusDesc = (s: string) => statuses.find(x => x.value === s)?.description
               :key="r.id"
               class="flex items-center justify-between gap-2"
             >
-              <span class="truncate text-xs text-zinc-400">{{ editionTitle(r) }}</span>
+              <span class="truncate text-xs text-ink-2">{{ editionTitle(r) }}</span>
               <ReleaseStatusBadge :status="r.status" />
             </div>
           </div>

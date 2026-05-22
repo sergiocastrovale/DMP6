@@ -19,10 +19,10 @@ const options = [
 
 <template>
   <div class="flex items-center gap-2">
-    <ArrowUpDown :size="14" class="text-zinc-500" />
+    <ArrowUpDown :size="14" class="text-ink0" />
     <select
       :value="active"
-      class="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 focus:border-amber-500 focus:outline-none"
+      class="rounded-lg border border-rule bg-bg-1 px-3 py-1.5 text-xs text-ink-2 focus:border-accent focus:outline-none"
       @change="emit('select', ($event.target as HTMLSelectElement).value)"
     >
       <option v-for="opt in options" :key="opt.value" :value="opt.value">

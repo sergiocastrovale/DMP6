@@ -43,23 +43,23 @@ const fixDescription = computed(() => {
   >
     <div
       v-if="count > 0"
-      class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between border-t border-zinc-700 bg-zinc-900 px-6 py-3 transition-all duration-300 lg:left-56"
+      class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between border-t border-rule bg-bg-1 px-6 py-3 transition-all duration-300 lg:left-56"
       :class="{ 'lg:right-[500px]': terminal.isOpen }"
     >
-      <span class="text-sm text-zinc-300">{{ count }} row{{ count !== 1 ? 's' : '' }} selected</span>
+      <span class="text-sm text-ink-2">{{ count }} row{{ count !== 1 ? 's' : '' }} selected</span>
       <div class="flex items-center gap-2">
         <Popover v-if="fixDescription" trigger="hover">
           <template #trigger>
-            <button class="text-zinc-500 transition-colors hover:text-zinc-300">
+            <button class="text-ink0 transition-colors hover:text-ink-2">
               <HelpCircle :size="14" />
             </button>
           </template>
           <template #content>
-            <div class="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-left shadow-xl">
-              <p class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+            <div class="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-lg border border-rule bg-bg-1 p-3 text-left shadow-xl">
+              <p class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-2">
                 {{ fixDescription.title }}
               </p>
-              <p class="text-xs text-zinc-300">{{ fixDescription.body }}</p>
+              <p class="text-xs text-ink-2">{{ fixDescription.body }}</p>
             </div>
           </template>
         </Popover>

@@ -28,8 +28,8 @@ const filtered = computed(() => {
       class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors"
       :class="
         active
-          ? 'border-amber-500 bg-amber-500/10 text-amber-400'
-          : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-50'
+          ? 'border-accent bg-accent/10 text-accent'
+          : 'border-rule bg-bg-1 text-ink-2 hover:text-ink'
       "
       @click="showDropdown = !showDropdown"
     >
@@ -40,24 +40,24 @@ const filtered = computed(() => {
 
     <div
       v-if="showDropdown"
-      class="absolute top-full left-0 z-20 mt-1 w-56 rounded-lg border border-zinc-700 bg-zinc-900 p-2 shadow-lg"
+      class="absolute top-full left-0 z-20 mt-1 w-56 rounded-lg border border-rule bg-bg-1 p-2 shadow-lg"
     >
       <input
         v-model="search"
         type="text"
         placeholder="Filter genres..."
-        class="mb-2 w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-50 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
+        class="mb-2 w-full rounded border border-rule bg-bg-2 px-2 py-1 text-xs text-ink placeholder:text-ink0 focus:border-accent focus:outline-none"
       />
       <div class="max-h-48 overflow-y-auto">
         <button
           v-for="genre in filtered"
           :key="genre.id"
-          class="flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition-colors hover:bg-zinc-800"
-          :class="active === genre.name ? 'text-amber-400' : 'text-zinc-300'"
+          class="flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition-colors hover:bg-bg-2"
+          :class="active === genre.name ? 'text-accent' : 'text-ink-2'"
           @click="emit('select', genre.name); showDropdown = false"
         >
           <span>{{ genre.name }}</span>
-          <span class="text-zinc-500">{{ genre.artistCount }}</span>
+          <span class="text-ink0">{{ genre.artistCount }}</span>
         </button>
       </div>
     </div>

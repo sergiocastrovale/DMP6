@@ -135,7 +135,7 @@ onMounted(() => {
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <div class="text-zinc-500">Loading...</div>
+      <div class="text-ink0">Loading...</div>
     </div>
 
     <template v-else-if="decades.length > 0">
@@ -146,8 +146,8 @@ onMounted(() => {
           :key="d.decade"
           class="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
           :class="selectedDecade === d.decade
-            ? 'bg-amber-500 text-zinc-950'
-            : 'bg-zinc-800 text-zinc-400 hover:text-zinc-50'"
+            ? 'bg-accent text-accent-ink'
+            : 'bg-bg-2 text-ink-2 hover:text-ink'"
           @click="selectDecade(d.decade)"
         >
           {{ d.decade }}s
@@ -160,8 +160,8 @@ onMounted(() => {
         <button
           class="rounded px-3 py-1 text-xs font-medium transition-colors"
           :class="!selectedYear
-            ? 'bg-amber-500 text-zinc-950'
-            : 'bg-zinc-800 text-zinc-400 hover:text-zinc-50'"
+            ? 'bg-accent text-accent-ink'
+            : 'bg-bg-2 text-ink-2 hover:text-ink'"
           @click="selectYear(null)"
         >
           All
@@ -171,8 +171,8 @@ onMounted(() => {
           :key="y.year"
           class="rounded px-3 py-1 text-xs font-medium transition-colors"
           :class="selectedYear === y.year
-            ? 'bg-amber-500 text-zinc-950'
-            : 'bg-zinc-800 text-zinc-400 hover:text-zinc-50'"
+            ? 'bg-accent text-accent-ink'
+            : 'bg-bg-2 text-ink-2 hover:text-ink'"
           @click="selectYear(y.year)"
         >
           {{ y.year }}
@@ -182,13 +182,13 @@ onMounted(() => {
 
       <!-- Loading decade -->
       <div v-if="loadingDecade" class="flex items-center justify-center py-16">
-        <div class="text-zinc-500">Loading...</div>
+        <div class="text-ink0">Loading...</div>
       </div>
 
       <!-- Releases grouped by year -->
       <div v-else-if="decadeData" class="flex flex-col gap-10">
         <div v-for="group in releasesByYear" :key="group.year">
-          <h2 class="mb-4 text-lg font-semibold text-zinc-300">
+          <h2 class="mb-4 text-lg font-semibold text-ink-2">
             {{ group.year || 'Unknown Year' }}
           </h2>
           <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
@@ -197,7 +197,7 @@ onMounted(() => {
               :key="release.id"
               class="group flex flex-col gap-2"
             >
-              <div class="relative aspect-square overflow-hidden rounded-lg bg-zinc-800">
+              <div class="relative aspect-square overflow-hidden rounded-lg bg-bg-2">
                 <img
                   v-if="releaseImage(release)"
                   :src="releaseImage(release)!"
@@ -205,7 +205,7 @@ onMounted(() => {
                   loading="lazy"
                   class="h-full w-full object-cover transition-transform group-hover:scale-105"
                 >
-                <div v-else class="flex h-full w-full items-center justify-center text-zinc-600">
+                <div v-else class="flex h-full w-full items-center justify-center text-ink-4">
                   <LucideMusic class="size-12" />
                 </div>
                 <button
@@ -213,7 +213,7 @@ onMounted(() => {
                   :class="isReleasePlaying(release.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
                   @click="handleReleaseClick(release.id)"
                 >
-                  <div class="rounded-full bg-amber-500 p-3 text-zinc-950 shadow-lg">
+                  <div class="rounded-full bg-accent p-3 text-accent-ink shadow-lg">
                     <LucidePause v-if="isReleasePlaying(release.id)" class="size-6" fill="currentColor" />
                     <LucidePlay v-else class="size-6" fill="currentColor" />
                   </div>
@@ -223,15 +223,15 @@ onMounted(() => {
                 <NuxtLink
                   v-if="release.artist"
                   :to="`/artist/${release.artist.slug}`"
-                  class="line-clamp-1 text-sm font-medium text-zinc-50 hover:text-amber-500 transition-colors"
+                  class="line-clamp-1 text-sm font-medium text-ink hover:text-accent transition-colors"
                 >
                   {{ release.title }}
                 </NuxtLink>
-                <p v-else class="line-clamp-1 text-sm font-medium text-zinc-50">{{ release.title }}</p>
+                <p v-else class="line-clamp-1 text-sm font-medium text-ink">{{ release.title }}</p>
                 <NuxtLink
                   v-if="release.artist"
                   :to="`/artist/${release.artist.slug}`"
-                  class="line-clamp-1 text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
+                  class="line-clamp-1 text-xs text-ink-2 hover:text-ink-2 transition-colors"
                 >
                   {{ release.artist.name }}
                 </NuxtLink>
@@ -243,7 +243,7 @@ onMounted(() => {
         <!-- Load more -->
         <div v-if="decadeData.hasMore" class="flex justify-center py-4">
           <button
-            class="rounded-lg bg-zinc-800 px-6 py-2 text-sm text-zinc-300 hover:bg-zinc-700 transition-colors"
+            class="rounded-lg bg-bg-2 px-6 py-2 text-sm text-ink-2 hover:bg-bg-3 transition-colors"
             :disabled="loadingMore"
             @click="loadMore"
           >
@@ -254,21 +254,21 @@ onMounted(() => {
         <!-- Empty state -->
         <div
           v-if="decadeData.releases.length === 0"
-          class="flex flex-col items-center justify-center py-20 text-center text-zinc-500"
+          class="flex flex-col items-center justify-center py-20 text-center text-ink0"
         >
           <LucideMusic class="mb-3 size-12 opacity-50" />
           <p>No releases in this period</p>
         </div>
 
         <!-- Total count -->
-        <div v-if="decadeData.total > 0" class="text-center text-xs text-zinc-600">
+        <div v-if="decadeData.total > 0" class="text-center text-xs text-ink-4">
           {{ decadeData.total }} {{ decadeData.total === 1 ? 'release' : 'releases' }}
         </div>
       </div>
     </template>
 
     <!-- No data -->
-    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-zinc-500">
+    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
       <LucideClock class="mb-3 size-12 opacity-50" />
       <p>No releases with year information found</p>
     </div>

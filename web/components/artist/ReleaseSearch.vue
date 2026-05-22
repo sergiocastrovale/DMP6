@@ -23,11 +23,11 @@ function handleInput(value: string) {
 
 <template>
   <div class="relative flex-1 sm:max-w-xs">
-    <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+    <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink0" />
     <input
       type="text"
       :placeholder="placeholder"
-      class="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 pl-8 pr-3 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
+      class="h-8 w-full rounded-lg border border-rule bg-bg-1 pl-8 pr-3 text-sm text-ink placeholder:text-ink0 focus:border-accent focus:outline-none"
       @input="handleInput(($event.target as HTMLInputElement).value)"
     />
   </div>

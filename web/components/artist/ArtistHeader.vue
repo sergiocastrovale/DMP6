@@ -69,11 +69,11 @@ const statsParts = computed(() => {
   <div class="relative rounded-xl">
     <div class="relative flex flex-col gap-6 px-6 py-8">
       <div class="flex flex-col gap-3">
-        <h1 class="text-4xl font-bold tracking-tight text-zinc-50 sm:text-5xl">
+        <h1 class="text-4xl font-bold tracking-tight text-ink sm:text-5xl">
           {{ artist.name }}
         </h1>
 
-        <div v-if="statsParts.length" class="text-sm text-zinc-400">
+        <div v-if="statsParts.length" class="text-sm text-ink-2">
           {{ statsParts.join(' · ') }}
         </div>
 
@@ -83,7 +83,7 @@ const statsParts = computed(() => {
           <button
             type="button"
             :disabled="playDisabled"
-            class="mt-2 inline-flex items-center gap-2 rounded-full bg-amber-500 px-5 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+            class="mt-2 inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             @click="emit('playAll')"
           >
             <Play :size="14" fill="currentColor" />

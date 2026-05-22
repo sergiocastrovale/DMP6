@@ -24,6 +24,11 @@ export default defineEventHandler(async (event) => {
             type: { select: { name: true } },
           },
         },
+        tracks: {
+          where: { genre: { not: null } },
+          select: { genre: true },
+          take: 1,
+        },
       },
     })
 
@@ -35,6 +40,7 @@ export default defineEventHandler(async (event) => {
       ...verifyImage(release.image, release.imageUrl, 'releases'),
       lastPlayedAt: release.lastPlayedAt,
       playCount: release.totalPlayCount,
+      genre: release.tracks[0]?.genre || null,
       artist: release.artists[0]?.artist ?? null,
       musicBrainzId: release.release?.id || null,
     }))

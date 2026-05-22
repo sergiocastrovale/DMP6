@@ -12,14 +12,14 @@ const props = defineProps<{
 <template>
   <NuxtLink
     :to="`/artist/${artist.slug}`"
-    class="group flex flex-col gap-2 rounded-lg p-3 transition-colors hover:bg-zinc-900"
+    class="group flex flex-col gap-2 rounded-lg p-3 transition-colors hover:bg-bg-1"
   >
-    <div class="relative aspect-square w-full overflow-hidden rounded-lg bg-zinc-800">
+    <div class="relative aspect-square w-full overflow-hidden rounded-lg bg-bg-2">
       <Cover :artist="artist" />
     </div>
     <div class="min-w-0">
-      <h3 class="truncate text-sm font-medium text-zinc-50">{{ artist.name }}</h3>
-      <div class="flex items-center justify-between gap-2 text-xs text-zinc-400">
+      <h3 class="truncate text-sm font-medium text-ink">{{ artist.name }}</h3>
+      <div class="flex items-center justify-between gap-2 text-xs text-ink-2">
         <TotalTracks :total="artist.totalTracks" />
         <AverageMatchScore :score="artist.averageMatchScore" />
       </div>

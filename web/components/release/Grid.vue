@@ -4,13 +4,13 @@
     class="flex flex-col gap-8"
   >
     <div class="flex items-center justify-between">
-      <h2 class="text-xl font-semibold text-zinc-50">
+      <h2 class="text-xl font-semibold text-ink">
         {{ title }}
       </h2>
       <NuxtLink
         v-if="viewMoreLink"
         :to="viewMoreLink"
-        class="text-sm text-amber-500 hover:text-amber-600 transition-colors"
+        class="text-sm text-accent hover:text-accent transition-colors"
       >
         View all
       </NuxtLink>

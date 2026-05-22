@@ -22,13 +22,13 @@ const labs = [
         v-for="lab in labs"
         :key="lab.to"
         :to="lab.to"
-        class="group rounded-lg border border-zinc-800 bg-zinc-900 p-5 transition-colors hover:border-zinc-700 hover:bg-zinc-800/50"
+        class="group rounded-lg border border-rule bg-bg-1 p-5 transition-colors hover:border-rule hover:bg-bg-2/50"
       >
-        <div class="mb-3 flex size-10 items-center justify-center rounded-lg bg-amber-500/10">
-          <component :is="lab.icon" :size="20" class="text-amber-500" />
+        <div class="mb-3 flex size-10 items-center justify-center rounded-lg bg-accent/10">
+          <component :is="lab.icon" :size="20" class="text-accent" />
         </div>
-        <h2 class="mb-1 text-sm font-semibold text-zinc-50">{{ lab.title }}</h2>
-        <p class="text-xs leading-relaxed text-zinc-400">{{ lab.description }}</p>
+        <h2 class="mb-1 text-sm font-semibold text-ink">{{ lab.title }}</h2>
+        <p class="text-xs leading-relaxed text-ink-2">{{ lab.description }}</p>
       </NuxtLink>
     </div>
   </div>

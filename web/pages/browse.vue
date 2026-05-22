@@ -50,9 +50,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="flex flex-col gap-4">
     <PageTitle text="Browse">
-      <div class="flex items-center gap-2 text-sm text-zinc-500">
+      <div class="flex items-center gap-2 text-sm text-ink0">
         <span>{{ store.mainCount.toLocaleString() }} artists</span>
-        <span class="text-zinc-700">|</span>
+        <span class="text-ink-4">|</span>
         <span>{{ store.relatedCount.toLocaleString() }} related artists</span>
         <RelatedArtistsPopover />
       </div>
@@ -60,12 +60,12 @@ onBeforeUnmount(() => {
 
     <div class="flex flex-wrap items-center gap-3">
       <div class="relative flex-1 sm:max-w-xs">
-        <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink0" />
         <input
           :value="searchInput"
           type="text"
           placeholder="Filter artists..."
-          class="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 pl-8 pr-3 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
+          class="h-8 w-full rounded-lg border border-rule bg-bg-1 pl-8 pr-3 text-sm text-ink placeholder:text-ink0 focus:border-accent focus:outline-none"
           @input="handleSearch(($event.target as HTMLInputElement).value)"
         />
       </div>

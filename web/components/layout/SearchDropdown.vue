@@ -1,102 +1,102 @@
 <template>
   <div
     v-if="results && hasResults"
-    class="absolute left-0 right-0 top-full z-50 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
+    class="absolute left-0 right-0 top-full z-50 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-rule bg-bg-2 shadow-xl"
   >
-    <div v-if="results.artists.length > 0" class="border-b border-zinc-800 p-2">
-      <div class="px-2 py-1 text-xs font-semibold uppercase text-zinc-500">
+    <div v-if="results.artists.length > 0" class="border-b border-rule p-2">
+      <div class="px-2 py-1 text-xs font-semibold uppercase text-ink-3">
         Artists
       </div>
       <NuxtLink
         v-for="artist in results.artists"
         :key="artist.id"
         :to="`/artist/${artist.slug}`"
-        class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800 transition-colors"
+        class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-bg-3 transition-colors"
         @click="emit('select')"
       >
-        <div class="relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
+        <div class="relative size-10 shrink-0 overflow-hidden rounded bg-bg-3">
           <img
             v-if="artistImageUrl(artist)"
             :src="artistImageUrl(artist)!"
             :alt="artist.name"
             class="h-full w-full object-cover"
           >
-          <div v-else class="flex h-full w-full items-center justify-center text-zinc-600">
+          <div v-else class="flex h-full w-full items-center justify-center text-ink-4">
             <LucideUser class="size-5" />
           </div>
         </div>
         <div class="flex-1 overflow-hidden">
-          <p class="truncate text-sm font-medium text-zinc-50">
+          <p class="truncate text-sm font-medium text-ink">
             {{ artist.name }}
           </p>
         </div>
       </NuxtLink>
     </div>
 
-    <div v-if="results.releases.length > 0" class="border-b border-zinc-800 p-2">
-      <div class="px-2 py-1 text-xs font-semibold uppercase text-zinc-500">
+    <div v-if="results.releases.length > 0" class="border-b border-rule p-2">
+      <div class="px-2 py-1 text-xs font-semibold uppercase text-ink-3">
         Releases
       </div>
       <button
         v-for="release in results.releases"
         :key="release.id"
-        class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800 transition-colors text-left"
+        class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-bg-3 transition-colors text-left"
         @click="playRelease(release.id)"
       >
-        <div class="relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
+        <div class="relative size-10 shrink-0 overflow-hidden rounded bg-bg-3">
           <img
             v-if="releaseImageUrl(release)"
             :src="releaseImageUrl(release)!"
             :alt="release.title"
             class="h-full w-full object-cover"
           >
-          <div v-else class="flex h-full w-full items-center justify-center text-zinc-600">
+          <div v-else class="flex h-full w-full items-center justify-center text-ink-4">
             <LucideDisc class="size-5" />
           </div>
         </div>
         <div class="flex-1 overflow-hidden">
-          <p class="truncate text-sm font-medium text-zinc-50">
+          <p class="truncate text-sm font-medium text-ink">
             {{ release.title }}
           </p>
-          <p v-if="release.artist" class="truncate text-xs text-zinc-400">
+          <p v-if="release.artist" class="truncate text-xs text-ink-2">
             {{ release.artist.name }}
-            <span v-if="release.year" class="text-zinc-600">• {{ release.year }}</span>
+            <span v-if="release.year" class="text-ink-4">• {{ release.year }}</span>
           </p>
         </div>
       </button>
     </div>
 
     <div v-if="results.tracks.length > 0" class="p-2">
-      <div class="px-2 py-1 text-xs font-semibold uppercase text-zinc-500">
+      <div class="px-2 py-1 text-xs font-semibold uppercase text-ink-3">
         Tracks
       </div>
       <button
         v-for="track in results.tracks"
         :key="track.id"
-        class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800 transition-colors text-left"
+        class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-bg-3 transition-colors text-left"
         @click="playTrack(track)"
       >
-        <div class="relative size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
+        <div class="relative size-10 shrink-0 overflow-hidden rounded bg-bg-3">
           <img
             v-if="track.release && releaseImageUrl(track.release)"
             :src="releaseImageUrl(track.release)!"
             :alt="track.title"
             class="h-full w-full object-cover"
           >
-          <div v-else class="flex h-full w-full items-center justify-center text-zinc-600">
+          <div v-else class="flex h-full w-full items-center justify-center text-ink-4">
             <LucideMusic class="size-5" />
           </div>
         </div>
         <div class="flex-1 overflow-hidden">
-          <p class="truncate text-sm font-medium text-zinc-50">
+          <p class="truncate text-sm font-medium text-ink">
             {{ track.title }}
           </p>
-          <p v-if="track.release?.artist" class="truncate text-xs text-zinc-400">
+          <p v-if="track.release?.artist" class="truncate text-xs text-ink-2">
             {{ track.release.artist.name }}
-            <span v-if="track.release.title" class="text-zinc-600">• {{ track.release.title }}</span>
+            <span v-if="track.release.title" class="text-ink-4">• {{ track.release.title }}</span>
           </p>
         </div>
-        <span v-if="track.duration" class="text-xs text-zinc-500">
+        <span v-if="track.duration" class="text-xs text-ink-3">
           {{ formatDuration(track.duration) }}
         </span>
       </button>

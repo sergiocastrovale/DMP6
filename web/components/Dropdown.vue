@@ -38,8 +38,8 @@ function select(value: string | null) {
     <button
       class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors"
       :class="modelValue
-        ? 'border-zinc-600 bg-zinc-800 text-zinc-50'
-        : 'border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-50'"
+        ? 'border-rule bg-bg-2 text-ink'
+        : 'border-rule bg-bg-1 text-ink-2 hover:text-ink'"
       @click="open = !open"
     >
       <span v-if="modelValue && selectedClasses" :class="selectedClasses" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
@@ -51,11 +51,11 @@ function select(value: string | null) {
 
     <div
       v-if="open"
-      class="absolute left-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl"
+      class="absolute left-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-rule bg-bg-1 p-1 shadow-xl"
     >
       <button
         class="flex w-full items-center rounded px-3 py-2 text-left text-xs transition-colors"
-        :class="!modelValue ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50'"
+        :class="!modelValue ? 'bg-bg-2 text-ink' : 'text-ink-2 hover:bg-bg-2 hover:text-ink'"
         @click="select(null)"
       >
         All
@@ -64,7 +64,7 @@ function select(value: string | null) {
         v-for="opt in options"
         :key="opt.value"
         class="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs transition-colors"
-        :class="modelValue === opt.value ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50'"
+        :class="modelValue === opt.value ? 'bg-bg-2 text-ink' : 'text-ink-2 hover:bg-bg-2 hover:text-ink'"
         @click="select(opt.value)"
       >
         <span v-if="opt.classes" :class="opt.classes" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium">

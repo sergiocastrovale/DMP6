@@ -23,10 +23,10 @@ const label = computed(() => (segment.value ? LABELS[segment.value] ?? segment.v
 
 <template>
   <nav v-if="segment" class="flex items-center gap-1.5 text-sm">
-    <NuxtLink to="/issues" class="text-zinc-500 transition-colors hover:text-zinc-300">
+    <NuxtLink to="/issues" class="text-ink0 transition-colors hover:text-ink-2">
       Issues
     </NuxtLink>
-    <ChevronRight :size="12" class="text-zinc-700" />
-    <span class="text-zinc-200">{{ label }}</span>
+    <ChevronRight :size="12" class="text-ink-4" />
+    <span class="text-ink">{{ label }}</span>
   </nav>
 </template>

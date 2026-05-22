@@ -2,13 +2,13 @@
   <NuxtLink
     v-if="release.artist"
     :to="`/artist/${release.artist.slug}?release=${toReleaseSlug(release.title)}`"
-    class="line-clamp-1 text-sm font-medium text-zinc-50 hover:text-amber-500 transition-colors"
+    class="line-clamp-1 text-sm font-medium text-ink hover:text-accent transition-colors"
   >
     {{ release.title }}
   </NuxtLink>
   <p
     v-else
-    class="line-clamp-1 text-sm font-medium text-zinc-50"
+    class="line-clamp-1 text-sm font-medium text-ink"
   >
     {{ release.title }}
   </p>

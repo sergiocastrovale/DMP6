@@ -32,7 +32,7 @@ const emit = defineEmits<{
       target="_blank"
       rel="noopener"
       :title="link.type"
-      class="flex items-center justify-center size-8 rounded bg-zinc-800 text-zinc-400 hover:text-zinc-50 transition-colors"
+      class="flex items-center justify-center size-8 rounded bg-bg-2 text-ink-2 hover:text-ink transition-colors"
     >
       <svg
         v-if="getIcon(link.type)"
@@ -48,7 +48,7 @@ const emit = defineEmits<{
     </a>
     <button
       v-if="hasMoreLinks"
-      class="flex items-center justify-center size-8 rounded bg-zinc-800 text-xs text-amber-500 hover:bg-zinc-700 transition-colors"
+      class="flex items-center justify-center size-8 rounded bg-bg-2 text-xs text-accent hover:bg-bg-3 transition-colors"
       title="View all links"
       @click="emit('more')"
     >

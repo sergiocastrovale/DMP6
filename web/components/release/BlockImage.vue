@@ -12,7 +12,7 @@
     >
     <div
       v-else
-      class="flex h-full w-full items-center justify-center text-zinc-600"
+      class="flex h-full w-full items-center justify-center text-ink-4"
     >
       <LucideMusic class="size-12" />
     </div>

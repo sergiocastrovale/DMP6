@@ -58,12 +58,12 @@ async function save() {
   <Dialog :model-value="modelValue" title="New Playlist" max-width="sm" @update:model-value="emit('update:modelValue', $event)">
     <form class="flex flex-col gap-4" @submit.prevent="save">
       <div>
-        <label for="playlist-name" class="mb-1 block text-sm text-zinc-400">Name</label>
+        <label for="playlist-name" class="mb-1 block text-sm text-ink-2">Name</label>
         <input
           id="playlist-name"
           v-model="name"
           type="text"
-          class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-50 placeholder-zinc-500 outline-none focus:border-amber-500 transition-colors"
+          class="w-full rounded-lg border border-rule bg-bg-2 px-3 py-2 text-sm text-ink placeholder-ink-3 outline-none focus:border-accent transition-colors"
           placeholder="My playlist"
           autofocus
         >
@@ -72,14 +72,14 @@ async function save() {
       <div class="flex justify-end gap-2">
         <button
           type="button"
-          class="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
+          class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-2 hover:bg-bg-2 transition-colors"
           @click="emit('update:modelValue', false)"
         >
           Cancel
         </button>
         <button
           type="submit"
-          class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-600 transition-colors disabled:opacity-50"
+          class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent transition-colors disabled:opacity-50"
           :disabled="saving || !name.trim()"
         >
           {{ saving ? 'Creating...' : 'Create' }}

@@ -489,7 +489,7 @@ watch(() => props.releases, () => {
       <div class="relative">
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-50"
+          class="flex items-center gap-1.5 rounded-lg border border-rule bg-bg-1 px-3 py-1.5 text-xs text-ink-2 transition-colors hover:text-ink"
           @click="sortOpen = !sortOpen"
         >
           <ListFilter :size="12" />
@@ -497,14 +497,14 @@ watch(() => props.releases, () => {
         </button>
         <div
           v-if="sortOpen"
-          class="absolute right-0 top-full z-20 mt-1 min-w-[200px] rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl"
+          class="absolute right-0 top-full z-20 mt-1 min-w-[200px] rounded-lg border border-rule bg-bg-1 p-1 shadow-xl"
         >
           <button
             v-for="opt in SORT_OPTIONS"
             :key="opt.value"
             type="button"
             class="flex w-full items-center rounded px-3 py-2 text-left text-xs transition-colors"
-            :class="sortKey === opt.value ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50'"
+            :class="sortKey === opt.value ? 'bg-bg-2 text-ink' : 'text-ink-2 hover:bg-bg-2 hover:text-ink'"
             @click="sortKey = opt.value; sortOpen = false"
           >
             {{ opt.label }}
@@ -522,13 +522,13 @@ watch(() => props.releases, () => {
           v-for="group in sortedGroups"
           :key="group.key"
           :data-group-key="group.key"
-          class="border-b border-zinc-800 last:border-b-0 transition-colors"
-          :class="group.primary.status === 'MISSING' ? '' : 'hover:bg-zinc-800/50'"
+          class="border-b border-rule last:border-b-0 transition-colors"
+          :class="group.primary.status === 'MISSING' ? '' : 'hover:bg-bg-2/50'"
         >
           <div class="group flex cursor-pointer items-center gap-3 p-3" @click="toggleGroup(group.key)">
             <button
               type="button"
-              class="flex size-5 items-center justify-center text-zinc-500"
+              class="flex size-5 items-center justify-center text-ink0"
               @click.stop="toggleGroup(group.key)"
             >
               <ChevronDown v-if="expandedGroup === group.key" :size="14" />
@@ -536,7 +536,7 @@ watch(() => props.releases, () => {
             </button>
 
             <div
-              class="group/cover relative size-10 shrink-0 cursor-pointer overflow-hidden rounded bg-zinc-800"
+              class="group/cover relative size-10 shrink-0 cursor-pointer overflow-hidden rounded bg-bg-2"
               @click.stop="groupHasPlayable(group) && handleGroupPlayClick(group)"
             >
               <img
@@ -546,42 +546,42 @@ watch(() => props.releases, () => {
                 class="size-full object-cover"
                 loading="lazy"
               />
-              <div v-else class="flex size-full items-center justify-center text-zinc-600">
+              <div v-else class="flex size-full items-center justify-center text-ink-4">
                 <Disc3 :size="20" />
               </div>
               <div
                 v-if="groupHasPlayable(group)"
                 class="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover/cover:bg-black/60"
               >
-                <Pause v-if="isGroupPlaying(group)" :size="14" fill="currentColor" class="text-amber-400" />
+                <Pause v-if="isGroupPlaying(group)" :size="14" fill="currentColor" class="text-accent" />
                 <Play
                   v-else
                   :size="14"
                   fill="currentColor"
-                  :class="isGroupCurrent(group) ? 'text-amber-400' : 'text-white/50 group-hover/cover:text-white'"
+                  :class="isGroupCurrent(group) ? 'text-accent' : 'text-white/50 group-hover/cover:text-white'"
                 />
               </div>
             </div>
 
             <div class="min-w-0 flex-1">
               <div class="flex items-baseline gap-2 text-sm">
-                <span class="truncate font-semibold" :class="group.primary.status === 'MISSING' ? 'text-zinc-500' : 'text-zinc-50'">
+                <span class="truncate font-semibold" :class="group.primary.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
                   {{ group.primary.title }}
                 </span>
-                <span v-if="group.primary.year" class="text-xs text-zinc-500">{{ group.primary.year }}</span>
+                <span v-if="group.primary.year" class="text-xs text-ink0">{{ group.primary.year }}</span>
                 <span
                   v-if="group.releases.length > 1"
-                  class="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-500"
+                  class="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent"
                 >{{ group.releases.length }} editions</span>
               </div>
-              <div class="mt-0.5 flex items-center gap-3 text-xs" :class="group.primary.status === 'MISSING' ? 'text-zinc-600' : 'text-zinc-400'">
+              <div class="mt-0.5 flex items-center gap-3 text-xs" :class="group.primary.status === 'MISSING' ? 'text-ink-4' : 'text-ink-2'">
                 <span v-if="group.primary.type">{{ group.primary.type }}</span>
                 <span v-if="group.totalTracks">· {{ group.totalTracks }} tracks</span>
-                <span v-if="group.primary.coArtists?.length" class="text-zinc-500">Feat.
+                <span v-if="group.primary.coArtists?.length" class="text-ink0">Feat.
                   <template v-for="(co, i) in group.primary.coArtists" :key="co.slug">
                     <NuxtLink
                       :to="`/artist/${co.slug}`"
-                      class="text-zinc-400 transition-colors hover:text-amber-500"
+                      class="text-ink-2 transition-colors hover:text-accent"
                       @click.stop
                     >{{ co.name }}</NuxtLink><template v-if="i < group.primary.coArtists.length - 1">, </template>
                   </template>
@@ -595,13 +595,13 @@ watch(() => props.releases, () => {
           </div>
 
           <div v-if="expandedGroup === group.key" @click.stop>
-            <div class="ml-8 border-l-2 border-zinc-800">
+            <div class="ml-8 border-l-2 border-rule">
                 <div
                   v-for="edition in group.releases"
                   :key="edition.id"
                   :data-release-id="edition.id"
-                  class="border-b border-zinc-800 last:border-b-0"
-                  :class="edition.status === 'MISSING' ? '' : 'hover:bg-zinc-800/30'"
+                  class="border-b border-rule last:border-b-0"
+                  :class="edition.status === 'MISSING' ? '' : 'hover:bg-bg-2/30'"
                 >
                   <div
                     class="group/edition flex cursor-pointer items-center gap-3 px-3 py-2.5"
@@ -609,39 +609,39 @@ watch(() => props.releases, () => {
                   >
                     <button
                       type="button"
-                      class="flex size-5 items-center justify-center text-zinc-500"
+                      class="flex size-5 items-center justify-center text-ink0"
                       @click.stop="toggleEdition(edition.id)"
                     >
                       <ChevronDown v-if="expandedEdition === edition.id" :size="14" />
                       <ChevronRight v-else :size="14" />
                     </button>
                     <div
-                      class="group/folder relative flex size-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded border border-zinc-700 text-zinc-500 transition-colors"
-                      :class="isCurrentRelease(edition) ? 'border-amber-500/50 text-amber-500' : 'hover:border-zinc-500'"
+                      class="group/folder relative flex size-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded border border-rule text-ink0 transition-colors"
+                      :class="isCurrentRelease(edition) ? 'border-accent/50 text-accent' : 'hover:border-ink-3'"
                       @click.stop="(edition.localReleaseId || edition.localTrackCount > 0) && handleReleaseClick(edition)"
                     >
                       <FolderClosed :size="14" />
                       <div
                         v-if="edition.localReleaseId || edition.localTrackCount > 0"
-                        class="absolute inset-0 flex items-center justify-center bg-zinc-900/70 transition-colors group-hover/folder:bg-zinc-900/95"
+                        class="absolute inset-0 flex items-center justify-center bg-bg-1/70 transition-colors group-hover/folder:bg-bg-1/95"
                       >
-                        <Pause v-if="isReleasePlaying(edition)" :size="12" fill="currentColor" class="text-amber-500" />
+                        <Pause v-if="isReleasePlaying(edition)" :size="12" fill="currentColor" class="text-accent" />
                         <Play
                           v-else
                           :size="12"
                           fill="currentColor"
-                          :class="isCurrentRelease(edition) ? 'text-amber-500' : 'text-zinc-400 group-hover/folder:text-zinc-100'"
+                          :class="isCurrentRelease(edition) ? 'text-accent' : 'text-ink-2 group-hover/folder:text-ink'"
                         />
                       </div>
                     </div>
                     <div class="min-w-0 flex-1">
                       <div class="flex items-baseline gap-2 text-sm">
-                        <span class="truncate" :class="edition.status === 'MISSING' ? 'text-zinc-500' : 'text-zinc-200'">
+                        <span class="truncate" :class="edition.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
                           {{ editionDisplayTitle(edition) }}
                         </span>
                         <span v-if="edition.year" class="text-xs">({{ edition.year }})</span>
                       </div>
-                      <div class="text-xs" :class="edition.status === 'MISSING' ? 'text-zinc-600' : 'text-zinc-500'">
+                      <div class="text-xs" :class="edition.status === 'MISSING' ? 'text-ink-4' : 'text-ink0'">
                         <span v-if="edition.trackCount">{{ edition.trackCount }} tracks</span>
                         <span v-if="edition.localTrackCount && edition.trackCount !== edition.localTrackCount" class="ml-2">
                           {{ edition.localTrackCount }} local
@@ -654,8 +654,8 @@ watch(() => props.releases, () => {
                         <ReleaseStatusBadge :status="edition.status" />
                       </template>
                       <template #content>
-                        <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
-                          <p class="text-xs text-zinc-400">{{ edition.statusReason || statusDescription(edition.status) }}</p>
+                        <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
+                          <p class="text-xs text-ink-2">{{ edition.statusReason || statusDescription(edition.status) }}</p>
                         </div>
                       </template>
                     </Popover>
@@ -663,7 +663,7 @@ watch(() => props.releases, () => {
                     <button
                       v-if="edition.status === 'MISSING' && downloadsStore.anyConfigured"
                       type="button"
-                      class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-amber-500"
+                      class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent"
                       title="Download this release"
                       @click.stop="openDownloadDialog(edition)"
                     >
@@ -673,8 +673,8 @@ watch(() => props.releases, () => {
                     <button
                       v-if="edition.localReleaseId"
                       type="button"
-                      class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-amber-500"
-                      :class="{ 'text-amber-500': favoriteReleases.has(edition.localReleaseId!) }"
+                      class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent"
+                      :class="{ 'text-accent': favoriteReleases.has(edition.localReleaseId!) }"
                       @click.stop="toggleFavoriteRelease(edition)"
                     >
                       <Heart :size="14" :fill="favoriteReleases.has(edition.localReleaseId!) ? 'currentColor' : 'none'" />
@@ -685,7 +685,7 @@ watch(() => props.releases, () => {
                       :href="`https://musicbrainz.org/release/${edition.musicbrainzId}`"
                       target="_blank"
                       rel="noopener noreferrer"
-                      class="rounded-full p-1.5 text-zinc-600 transition-colors hover:text-zinc-400"
+                      class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
                       title="View on MusicBrainz"
                       @click.stop
                     >
@@ -695,7 +695,7 @@ watch(() => props.releases, () => {
                     <button
                       v-if="edition.localReleaseId"
                       type="button"
-                      class="rounded-full p-1.5 text-zinc-600 transition-colors hover:text-zinc-400"
+                      class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
                       title="Refresh this release"
                       :disabled="terminal.isRunning"
                       @click.stop="refreshRelease(edition)"
@@ -705,7 +705,7 @@ watch(() => props.releases, () => {
 
                     <button
                       type="button"
-                      class="rounded-full p-1.5 text-zinc-600 transition-colors hover:text-zinc-400"
+                      class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
                       title="Release info"
                       @click.stop="openInfoDialog(edition)"
                     >
@@ -714,7 +714,7 @@ watch(() => props.releases, () => {
 
                   </div>
 
-                  <div v-if="expandedEdition === edition.id && (edition.localReleaseId || edition.localTrackCount > 0)" class="border-t border-zinc-800 px-3 pb-3" @click.stop>
+                  <div v-if="expandedEdition === edition.id && (edition.localReleaseId || edition.localTrackCount > 0)" class="border-t border-rule px-3 pb-3" @click.stop>
                     <ReleaseTracksTable :release-id="edition.localReleaseId || edition.mbReleaseRowId || edition.id" :columns="releaseTrackColumns" />
                   </div>
                 </div>
@@ -723,16 +723,16 @@ watch(() => props.releases, () => {
         </div>
       </Table>
 
-      <div v-if="sortedGroups.length === 0" class="py-8 text-center text-sm text-zinc-500">
+      <div v-if="sortedGroups.length === 0" class="py-8 text-center text-sm text-ink0">
         No releases in this category
       </div>
     </template>
 
     <template v-else>
-      <div v-if="allTracksLoading" class="py-8 text-center text-sm text-zinc-500">
+      <div v-if="allTracksLoading" class="py-8 text-center text-sm text-ink0">
         Loading all tracks...
       </div>
-      <div v-else-if="filteredAllTracks.length === 0" class="py-8 text-center text-sm text-zinc-500">
+      <div v-else-if="filteredAllTracks.length === 0" class="py-8 text-center text-sm text-ink0">
         No tracks found
       </div>
       <TrackList
@@ -756,86 +756,86 @@ watch(() => props.releases, () => {
       <template v-if="infoRelease">
         <dl class="space-y-3 text-sm">
           <div v-if="infoRelease.folderPath">
-            <dt class="text-xs text-zinc-300">Folder path</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.folderPath }}</dd>
+            <dt class="text-xs text-ink-2">Folder path</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.folderPath }}</dd>
           </div>
 
           <div v-if="infoRelease.type">
-            <dt class="text-xs text-zinc-300">Type</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.type }}</dd>
+            <dt class="text-xs text-ink-2">Type</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.type }}</dd>
           </div>
           <div v-if="infoExtra?.genres?.length">
-            <dt class="text-xs text-zinc-300">Genres</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra.genres.join(', ') }}</dd>
+            <dt class="text-xs text-ink-2">Genres</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoExtra.genres.join(', ') }}</dd>
           </div>
           <div v-if="infoExtra?.bpm">
-            <dt class="text-xs text-zinc-300">BPM</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra.bpm }}</dd>
+            <dt class="text-xs text-ink-2">BPM</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoExtra.bpm }}</dd>
           </div>
 
           <div v-if="infoRelease.releaseDate || infoExtra?.originalReleaseDate">
-            <dt class="text-xs text-zinc-300">Release date</dt>
-            <dd class="font-mono text-xs text-zinc-400">
+            <dt class="text-xs text-ink-2">Release date</dt>
+            <dd class="font-mono text-xs text-ink-2">
               {{ infoRelease.releaseDate || '—' }}
-              <span v-if="infoExtra?.originalReleaseDate && infoExtra.originalReleaseDate !== infoRelease.releaseDate" class="ml-2 text-zinc-500">(original: {{ infoExtra.originalReleaseDate }})</span>
+              <span v-if="infoExtra?.originalReleaseDate && infoExtra.originalReleaseDate !== infoRelease.releaseDate" class="ml-2 text-ink0">(original: {{ infoExtra.originalReleaseDate }})</span>
             </dd>
           </div>
           <div v-if="infoRelease.country || infoExtra?.country">
-            <dt class="text-xs text-zinc-300">Country</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra?.country || infoRelease.country }}</dd>
+            <dt class="text-xs text-ink-2">Country</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoExtra?.country || infoRelease.country }}</dd>
           </div>
           <div v-if="infoExtra?.label">
-            <dt class="text-xs text-zinc-300">Label</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra.label }}</dd>
+            <dt class="text-xs text-ink-2">Label</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoExtra.label }}</dd>
           </div>
           <div v-if="infoRelease.format">
-            <dt class="text-xs text-zinc-300">Format</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.format }}</dd>
+            <dt class="text-xs text-ink-2">Format</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.format }}</dd>
           </div>
           <div v-if="infoRelease.packaging">
-            <dt class="text-xs text-zinc-300">Packaging</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.packaging }}</dd>
+            <dt class="text-xs text-ink-2">Packaging</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.packaging }}</dd>
           </div>
           <div v-if="infoExtra?.isrc">
-            <dt class="text-xs text-zinc-300">ISRC</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoExtra.isrc }}</dd>
+            <dt class="text-xs text-ink-2">ISRC</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoExtra.isrc }}</dd>
           </div>
 
           <div v-if="infoRelease.disambiguation">
-            <dt class="text-xs text-zinc-300">Disambiguation</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.disambiguation }}</dd>
+            <dt class="text-xs text-ink-2">Disambiguation</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.disambiguation }}</dd>
           </div>
           <div v-if="infoRelease.editionLabel">
-            <dt class="text-xs text-zinc-300">Edition</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.editionLabel }}</dd>
+            <dt class="text-xs text-ink-2">Edition</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.editionLabel }}</dd>
           </div>
           <div v-if="infoRelease.totalPlayCount">
-            <dt class="text-xs text-zinc-300">Total plays</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.totalPlayCount }}</dd>
+            <dt class="text-xs text-ink-2">Total plays</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.totalPlayCount }}</dd>
           </div>
           <div v-if="infoRelease.coArtists?.length">
-            <dt class="text-xs text-zinc-300">Co-artists</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.coArtists.map(a => a.name).join(', ') }}</dd>
+            <dt class="text-xs text-ink-2">Co-artists</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.coArtists.map(a => a.name).join(', ') }}</dd>
           </div>
 
           <template v-if="infoExtra">
             <div v-for="(names, role) in infoExtra.people" :key="role">
-              <dt class="text-xs text-zinc-300">{{ role }}</dt>
-              <dd class="font-mono text-xs text-zinc-400">{{ names.join(', ') }}</dd>
+              <dt class="text-xs text-ink-2">{{ role }}</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ names.join(', ') }}</dd>
             </div>
           </template>
 
           <div v-if="infoRelease.musicbrainzId">
-            <dt class="text-xs text-zinc-300">MusicBrainz release ID</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.musicbrainzId }}</dd>
+            <dt class="text-xs text-ink-2">MusicBrainz release ID</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.musicbrainzId }}</dd>
           </div>
           <div v-if="infoRelease.releaseGroupId">
-            <dt class="text-xs text-zinc-300">MusicBrainz release group ID</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.releaseGroupId }}</dd>
+            <dt class="text-xs text-ink-2">MusicBrainz release group ID</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.releaseGroupId }}</dd>
           </div>
           <div v-if="infoRelease.localReleaseId">
-            <dt class="text-xs text-zinc-300">Local release ID</dt>
-            <dd class="font-mono text-xs text-zinc-400">{{ infoRelease.localReleaseId }}</dd>
+            <dt class="text-xs text-ink-2">Local release ID</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.localReleaseId }}</dd>
           </div>
         </dl>
       </template>

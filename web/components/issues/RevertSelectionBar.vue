@@ -18,15 +18,15 @@ const terminal = useTerminalStore()
   >
     <div
       v-if="count > 0"
-      class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between border-t border-zinc-700 bg-zinc-900 px-6 py-3 transition-all duration-300 lg:left-56"
+      class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between border-t border-rule bg-bg-1 px-6 py-3 transition-all duration-300 lg:left-56"
       :class="{ 'lg:right-[500px]': terminal.isOpen }"
     >
-      <span class="text-sm text-zinc-300">{{ count }} row{{ count !== 1 ? 's' : '' }} selected</span>
+      <span class="text-sm text-ink-2">{{ count }} row{{ count !== 1 ? 's' : '' }} selected</span>
       <div class="flex items-center gap-3">
         <button
           :disabled="loading"
           @click="emit('revert', 'undo')"
-          class="flex items-center gap-2 rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+          class="flex items-center gap-2 rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent disabled:opacity-50"
         >
           <Undo2 :size="15" />
           Undo
@@ -34,7 +34,7 @@ const terminal = useTerminalStore()
         <button
           :disabled="loading"
           @click="emit('revert', 'undo-resolved')"
-          class="flex items-center gap-2 rounded border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-700 disabled:opacity-50"
+          class="flex items-center gap-2 rounded border border-rule bg-bg-2 px-4 py-2 text-sm font-medium text-ink-2 transition-colors hover:bg-bg-3 disabled:opacity-50"
         >
           <Undo2 :size="15" />
           Undo (keep resolved)

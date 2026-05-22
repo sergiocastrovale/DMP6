@@ -177,59 +177,59 @@ async function undoSelected() {
   <div class="flex flex-col gap-4">
     <PageTitle :icon="History" text="Fix History" subtext="Browse and manage applied fix history records" />
 
-    <div class="flex items-center gap-1 border-b border-zinc-800">
+    <div class="flex items-center gap-1 border-b border-rule">
       <button
         v-for="tab in TABS"
         :key="tab.key"
         type="button"
         class="-mb-px flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors"
         :class="activeTab === tab.key
-          ? 'border-b-2 border-amber-500 text-zinc-50'
-          : 'border-b-2 border-transparent text-zinc-400 hover:text-zinc-50'"
+          ? 'border-b-2 border-accent text-ink'
+          : 'border-b-2 border-transparent text-ink-2 hover:text-ink'"
         @click="activeTab = tab.key"
       >
         <span>{{ tab.label }}</span>
         <span
           class="inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
           :class="(issuesStore.historyCounts[tab.key] ?? 0) > 0
-            ? 'bg-amber-900/50 text-amber-400'
-            : 'bg-zinc-800 text-zinc-500'"
+            ? 'bg-accent-soft text-accent'
+            : 'bg-bg-2 text-ink0'"
         >
           {{ issuesStore.historyCounts[tab.key] ?? 0 }}
         </span>
       </button>
     </div>
 
-    <div class="rounded-lg border border-zinc-800 bg-zinc-950">
+    <div class="rounded-lg border border-rule bg-bg">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-zinc-800 text-left">
+            <tr class="border-b border-rule text-left">
               <th class="w-10 px-3 py-2">
-                <input type="checkbox" :checked="allChecked" @change="toggleAll" class="rounded border-zinc-600 bg-zinc-800" />
+                <input type="checkbox" :checked="allChecked" @change="toggleAll" class="rounded border-rule bg-bg-2" />
               </th>
-              <th class="px-3 py-2 text-xs font-medium text-zinc-500">Folder</th>
-              <th class="px-3 py-2 text-xs font-medium text-zinc-500">Previous</th>
-              <th class="px-3 py-2 text-xs font-medium text-zinc-500">Applied</th>
-              <th class="w-32 px-3 py-2 text-xs font-medium text-zinc-500">Applied At</th>
+              <th class="px-3 py-2 text-xs font-medium text-ink0">Folder</th>
+              <th class="px-3 py-2 text-xs font-medium text-ink0">Previous</th>
+              <th class="px-3 py-2 text-xs font-medium text-ink0">Applied</th>
+              <th class="w-32 px-3 py-2 text-xs font-medium text-ink0">Applied At</th>
             </tr>
           </thead>
           <tbody>
             <template v-if="issuesStore.historyLoading[activeTab] && groups.length === 0">
-              <tr v-for="n in 5" :key="n" class="border-b border-zinc-800/50">
-                <td class="px-3 py-2.5"><div class="h-4 w-4 animate-pulse rounded bg-zinc-800" /></td>
-                <td v-for="c in 4" :key="c" class="px-3 py-2.5"><div class="h-4 w-32 animate-pulse rounded bg-zinc-800" /></td>
+              <tr v-for="n in 5" :key="n" class="border-b border-rule/50">
+                <td class="px-3 py-2.5"><div class="h-4 w-4 animate-pulse rounded bg-bg-2" /></td>
+                <td v-for="c in 4" :key="c" class="px-3 py-2.5"><div class="h-4 w-32 animate-pulse rounded bg-bg-2" /></td>
               </tr>
             </template>
 
             <tr v-else-if="!issuesStore.historyLoading[activeTab] && groups.length === 0">
-              <td colspan="5" class="px-3 py-12 text-center text-zinc-500">No history records</td>
+              <td colspan="5" class="px-3 py-12 text-center text-ink0">No history records</td>
             </tr>
 
             <tr
               v-for="g in groups"
               :key="g.folder"
-              class="border-b border-zinc-800/50 transition-colors hover:bg-zinc-900/30"
+              class="border-b border-rule/50 transition-colors hover:bg-bg-1/30"
               :class="isGroupChecked(g) ? 'bg-blue-950/20' : ''"
             >
               <td class="px-3 py-2">
@@ -238,40 +238,40 @@ async function undoSelected() {
                   :checked="isGroupChecked(g)"
                   :indeterminate="isGroupPartial(g)"
                   @change="toggleGroup(g)"
-                  class="rounded border-zinc-600 bg-zinc-800"
+                  class="rounded border-rule bg-bg-2"
                 />
               </td>
               <td class="px-3 py-2">
                 <div class="flex flex-col gap-1">
-                  <span class="truncate text-xs text-zinc-400" :title="g.folder">{{ g.folder }}</span>
+                  <span class="truncate text-xs text-ink-2" :title="g.folder">{{ g.folder }}</span>
                   <button
-                    class="flex w-fit items-center gap-1.5 rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] transition-colors hover:bg-zinc-700"
+                    class="flex w-fit items-center gap-1.5 rounded-full bg-bg-2 px-2 py-0.5 text-[11px] transition-colors hover:bg-bg-3"
                     @click="dialogFolder = g.folder"
                   >
-                    <FileText :size="11" class="text-zinc-400" />
-                    <span class="text-zinc-300">{{ g.items.length }} file{{ g.items.length !== 1 ? 's' : '' }}</span>
+                    <FileText :size="11" class="text-ink-2" />
+                    <span class="text-ink-2">{{ g.items.length }} file{{ g.items.length !== 1 ? 's' : '' }}</span>
                     <span v-if="selectedInGroup(g) > 0" class="text-blue-400">/ {{ selectedInGroup(g) }} selected</span>
                   </button>
                 </div>
               </td>
               <td class="px-3 py-2">
                 <div class="flex flex-col gap-0.5">
-                  <span v-for="e in getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {}))" :key="e.key" class="text-xs text-amber-400">
-                    <span class="text-zinc-500">{{ e.key }}:</span> {{ e.value }}
+                  <span v-for="e in getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {}))" :key="e.key" class="text-xs text-accent">
+                    <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
                   </span>
-                  <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-zinc-600">—</span>
+                  <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-ink-4">—</span>
                 </div>
               </td>
               <td class="px-3 py-2">
                 <div class="flex flex-col gap-0.5">
                   <span v-for="e in getStateEntries(g.items[0]!.appliedState)" :key="e.key" class="text-xs text-green-400">
-                    <span class="text-zinc-500">{{ e.key }}:</span> {{ e.value }}
+                    <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
                   </span>
-                  <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-zinc-600">—</span>
+                  <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-ink-4">—</span>
                 </div>
               </td>
               <td class="px-3 py-2">
-                <span class="text-xs text-zinc-500">{{ formatDate(g.items[0]!.appliedAt) }}</span>
+                <span class="text-xs text-ink0">{{ formatDate(g.items[0]!.appliedAt) }}</span>
               </td>
             </tr>
           </tbody>
@@ -280,20 +280,20 @@ async function undoSelected() {
 
       <div
         v-if="(issuesStore.historyTotal[activeTab] ?? 0) > 50"
-        class="flex items-center justify-between border-t border-zinc-800 px-4 py-2 text-xs text-zinc-500"
+        class="flex items-center justify-between border-t border-rule px-4 py-2 text-xs text-ink0"
       >
         <span>{{ issuesStore.historyTotal[activeTab] }} total</span>
         <div class="flex items-center gap-2">
           <button
             :disabled="(issuesStore.historyPage[activeTab] ?? 1) <= 1"
             @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) - 1)"
-            class="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40"
+            class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
           >Prev</button>
           <span>{{ issuesStore.historyPage[activeTab] ?? 1 }} / {{ Math.ceil((issuesStore.historyTotal[activeTab] ?? 0) / 50) }}</span>
           <button
             :disabled="(issuesStore.historyPage[activeTab] ?? 1) >= Math.ceil((issuesStore.historyTotal[activeTab] ?? 0) / 50)"
             @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) + 1)"
-            class="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40"
+            class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
           >Next</button>
         </div>
       </div>
@@ -304,19 +304,19 @@ async function undoSelected() {
         <div
           v-for="item in dialogGroup.items"
           :key="item.id"
-          class="flex items-center gap-3 border-b border-zinc-800/50 px-1 py-2 last:border-0"
+          class="flex items-center gap-3 border-b border-rule/50 px-1 py-2 last:border-0"
           :class="selected.has(item.id) ? 'bg-blue-950/20' : ''"
         >
           <input
             type="checkbox"
             :checked="selected.has(item.id)"
             @change="toggleFile(item.id)"
-            class="rounded border-zinc-600 bg-zinc-800"
+            class="rounded border-rule bg-bg-2"
           />
-          <span class="flex-1 truncate text-xs text-zinc-300" :title="item.filePath">{{ fileName(item.filePath) }}</span>
+          <span class="flex-1 truncate text-xs text-ink-2" :title="item.filePath">{{ fileName(item.filePath) }}</span>
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getStateEntries(item.appliedState)" :key="e.key" class="text-[11px] text-green-400">
-              <span class="text-zinc-500">{{ e.key }}:</span> {{ e.value }}
+              <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
             </span>
           </div>
         </div>

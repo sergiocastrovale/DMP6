@@ -5,6 +5,7 @@ export interface Release {
   year: number | null
   image: string | null
   imageUrl: string | null
+  genre: string | null
   artist: {
     id: string
     name: string

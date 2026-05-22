@@ -51,7 +51,7 @@ const handleTrackClick = (pt: PlaylistTrack) => {
     >
       <button
         class="flex size-10 flex-shrink-0 items-center justify-center text-sm"
-        :class="isCurrentTrack(pt.track.id) ? 'text-amber-500' : 'text-zinc-500 group-hover:text-amber-500'"
+        :class="isCurrentTrack(pt.track.id) ? 'text-accent' : 'text-ink0 group-hover:text-accent'"
         @click="handleTrackClick(pt)"
       >
         <template v-if="isTrackPlaying(pt.track.id)">
@@ -63,42 +63,42 @@ const handleTrackClick = (pt: PlaylistTrack) => {
         </template>
       </button>
 
-      <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-zinc-800">
+      <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-bg-2">
         <img
           v-if="pt.track.release && releaseImage(pt.track.release)"
           :src="releaseImage(pt.track.release)!"
           :alt="pt.track.title"
           class="h-full w-full object-cover"
         >
-        <div v-else class="flex h-full w-full items-center justify-center text-zinc-600">
+        <div v-else class="flex h-full w-full items-center justify-center text-ink-4">
           <LucideMusic class="size-5" />
         </div>
       </div>
 
       <div class="flex-1 overflow-hidden">
-        <p class="truncate text-sm font-medium" :class="isCurrentTrack(pt.track.id) ? 'text-amber-500' : 'text-zinc-50'">
+        <p class="truncate text-sm font-medium" :class="isCurrentTrack(pt.track.id) ? 'text-accent' : 'text-ink'">
           {{ pt.track.title }}
         </p>
-        <div v-if="pt.track.release" class="flex items-center gap-2 text-xs text-zinc-400">
+        <div v-if="pt.track.release" class="flex items-center gap-2 text-xs text-ink-2">
           <NuxtLink
             v-if="pt.track.release.artist"
             :to="`/artist/${pt.track.release.artist.slug}`"
-            class="hover:text-zinc-300 transition-colors"
+            class="hover:text-ink-2 transition-colors"
           >
             {{ pt.track.release.artist.name }}
           </NuxtLink>
-          <span class="text-zinc-600">&bull;</span>
+          <span class="text-ink-4">&bull;</span>
           <span>{{ pt.track.release.title }}</span>
         </div>
       </div>
 
-      <span class="text-xs text-zinc-500">
+      <span class="text-xs text-ink0">
         {{ formatDuration(pt.track.duration) }}
       </span>
 
       <button
         v-if="!isGenre"
-        class="rounded-full p-1.5 text-zinc-500 hover:text-zinc-50 opacity-0 transition-opacity group-hover:opacity-100"
+        class="rounded-full p-1.5 text-ink0 hover:text-ink opacity-0 transition-opacity group-hover:opacity-100"
         @click="emit('remove', pt.track.id)"
       >
         <LucideX class="size-4" />
@@ -106,7 +106,7 @@ const handleTrackClick = (pt: PlaylistTrack) => {
     </TableRow>
   </Table>
 
-  <div v-else class="flex flex-col items-center justify-center py-20 text-center text-zinc-500">
+  <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
     <LucideMusic class="mb-3 size-12 opacity-50" />
     <p>No tracks in this playlist yet</p>
   </div>

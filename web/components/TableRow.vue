@@ -8,10 +8,10 @@ defineProps<{
 
 <template>
   <div
-    class="border-b border-zinc-800 last:border-b-0 transition-colors"
+    class="border-b border-rule last:border-b-0 transition-colors"
     :class="[
-      active && 'bg-zinc-800/30',
-      (muted || expanded) ? 'cursor-default' : 'hover:bg-zinc-800/50',
+      active && 'bg-bg-2/30',
+      (muted || expanded) ? 'cursor-default' : 'hover:bg-bg-2/50',
     ]"
   >
     <div class="group flex items-center gap-3 p-3">

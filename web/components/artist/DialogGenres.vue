@@ -18,7 +18,7 @@ const emit = defineEmits<{
         v-for="genre in props.genres"
         :key="genre.id"
         :to="{ path: '/browse', query: { genre: genre.name } }"
-        class="rounded-full bg-zinc-800 px-3 py-1 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-amber-400"
+        class="rounded-full bg-bg-2 px-3 py-1 text-sm text-ink-2 transition-colors hover:bg-bg-3 hover:text-accent"
       >
         {{ genre.name }}
       </NuxtLink>

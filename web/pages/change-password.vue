@@ -44,8 +44,8 @@ const handleSubmit = async () => {
   <div class="flex min-h-screen items-center justify-center px-4">
     <div class="w-full max-w-sm">
       <div class="mb-8 text-center">
-        <h1 class="text-3xl font-bold tracking-tight text-amber-500">DMP</h1>
-        <p class="mt-1 text-sm text-zinc-500">Change your password</p>
+        <h1 class="text-3xl font-bold tracking-tight text-accent">DMP</h1>
+        <p class="mt-1 text-sm text-ink0">Change your password</p>
       </div>
 
       <form class="space-y-3" @submit.prevent="handleSubmit">
@@ -54,21 +54,21 @@ const handleSubmit = async () => {
           type="password"
           placeholder="Current password"
           autocomplete="current-password"
-          class="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-colors focus:border-amber-500 focus:outline-none"
+          class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
         />
         <input
           v-model="newPassword"
           type="password"
           placeholder="New password"
           autocomplete="new-password"
-          class="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-colors focus:border-amber-500 focus:outline-none"
+          class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
         />
         <input
           v-model="confirmPassword"
           type="password"
           placeholder="Confirm new password"
           autocomplete="new-password"
-          class="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-50 placeholder-zinc-500 transition-colors focus:border-amber-500 focus:outline-none"
+          class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
         />
 
         <p v-if="error" class="text-center text-sm text-red-400">{{ error }}</p>
@@ -76,7 +76,7 @@ const handleSubmit = async () => {
         <button
           type="submit"
           :disabled="loading"
-          class="w-full rounded-lg bg-amber-500 px-4 py-3 text-sm font-semibold text-zinc-950 transition-colors hover:bg-amber-400 disabled:opacity-50"
+          class="w-full rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent disabled:opacity-50"
         >
           {{ loading ? 'Changing…' : 'Change Password' }}
         </button>

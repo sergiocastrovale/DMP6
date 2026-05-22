@@ -93,18 +93,18 @@ onMounted(async () => {
 <template>
   <div class="grid gap-6 lg:grid-cols-5">
     <div class="flex flex-col gap-6 lg:col-span-3">
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
+      <div class="rounded-lg border border-rule bg-bg-1 p-5">
         <div class="mb-4 flex items-center gap-3">
-          <div class="flex size-10 items-center justify-center rounded-lg bg-amber-500/10">
-            <Grid3x3 :size="20" class="text-amber-500" />
+          <div class="flex size-10 items-center justify-center rounded-lg bg-accent/10">
+            <Grid3x3 :size="20" class="text-accent" />
           </div>
           <div>
-            <h2 class="text-sm font-semibold text-zinc-50">Album Mosaic</h2>
-            <p class="text-xs text-zinc-400">All your album covers in one image</p>
+            <h2 class="text-sm font-semibold text-ink">Album Mosaic</h2>
+            <p class="text-xs text-ink-2">All your album covers in one image</p>
           </div>
         </div>
 
-        <p class="mb-4 text-sm leading-relaxed text-zinc-400">
+        <p class="mb-4 text-sm leading-relaxed text-ink-2">
           Generates a mosaic of every album cover in your library.
           Chronological sorts by release year. Gradient arranges covers by color temperature — cold tones top-left, warm tones bottom-right.
         </p>
@@ -115,7 +115,7 @@ onMounted(async () => {
 
         <button
           v-if="!mosaic.isGenerating"
-          class="flex items-center gap-2 rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-amber-400"
+          class="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink transition-colors hover:bg-accent"
           @click="mosaic.generate(mode)"
         >
           <Play :size="14" />
@@ -132,66 +132,66 @@ onMounted(async () => {
 
         <div v-if="mosaic.isGenerating && mosaic.progress" class="mt-4 space-y-2">
           <div class="flex items-center justify-between text-xs">
-            <span class="text-zinc-400">
+            <span class="text-ink-2">
               Building
-              <span class="text-zinc-200">({{ mosaic.progress.current }}/{{ mosaic.progress.total }} images processed)</span>
+              <span class="text-ink">({{ mosaic.progress.current }}/{{ mosaic.progress.total }} images processed)</span>
             </span>
-            <span class="text-zinc-500">{{ Math.round(progressPercent) }}%</span>
+            <span class="text-ink0">{{ Math.round(progressPercent) }}%</span>
           </div>
-          <div class="h-1.5 w-full rounded-full bg-zinc-800">
+          <div class="h-1.5 w-full rounded-full bg-bg-2">
             <div
-              class="h-1.5 rounded-full bg-amber-500 transition-all duration-300"
+              class="h-1.5 rounded-full bg-accent transition-all duration-300"
               :style="{ width: `${progressPercent}%` }"
             />
           </div>
         </div>
 
-        <div v-if="mosaic.isGenerating && !mosaic.progress" class="mt-4 flex items-center gap-2 text-xs text-zinc-400">
-          <Loader2 :size="14" class="animate-spin text-amber-500" />
+        <div v-if="mosaic.isGenerating && !mosaic.progress" class="mt-4 flex items-center gap-2 text-xs text-ink-2">
+          <Loader2 :size="14" class="animate-spin text-accent" />
           Starting...
         </div>
 
         <p v-if="mosaic.error" class="mt-3 text-xs text-red-400">{{ mosaic.error }}</p>
       </div>
 
-      <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
-        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-500">
+      <div class="rounded-lg border border-rule bg-bg-1 p-5">
+        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink0">
           Mosaic History
         </h3>
 
-        <div v-if="mosaic.mosaics.length === 0" class="text-sm text-zinc-500">
+        <div v-if="mosaic.mosaics.length === 0" class="text-sm text-ink0">
           No mosaics generated yet.
         </div>
 
-        <div v-else class="divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+        <div v-else class="divide-y divide-rule rounded-lg border border-rule">
           <div
             v-for="item in mosaic.mosaics"
             :key="item.filename"
             class="flex items-center justify-between px-4 py-3"
           >
             <div>
-              <p class="text-sm text-zinc-200">{{ formatDate(item.createdAt) }}</p>
-              <p class="text-xs text-zinc-500">
+              <p class="text-sm text-ink">{{ formatDate(item.createdAt) }}</p>
+              <p class="text-xs text-ink0">
                 <span v-if="item.imageCount">{{ item.imageCount }} covers · </span>{{ formatSize(item.size) }}
               </p>
             </div>
             <div class="flex items-center gap-1">
               <button
-                class="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                class="rounded-md p-1.5 text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink"
                 title="View preview"
                 @click="handleView(item)"
               >
                 <Eye :size="14" />
               </button>
               <button
-                class="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-50"
+                class="rounded-md p-1.5 text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink"
                 title="Download full resolution"
                 @click="handleDownload(item.filename)"
               >
                 <Download :size="14" />
               </button>
               <button
-                class="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
+                class="rounded-md p-1.5 text-ink-2 transition-colors hover:bg-bg-2 hover:text-red-400"
                 title="Delete"
                 @click="confirmDelete(item.filename)"
               >
@@ -204,8 +204,8 @@ onMounted(async () => {
     </div>
 
     <div class="lg:col-span-2">
-      <div class="sticky top-20 rounded-lg border border-zinc-800 bg-zinc-900 p-5">
-        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-500">
+      <div class="sticky top-20 rounded-lg border border-rule bg-bg-1 p-5">
+        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink0">
           Preview
         </h3>
 
@@ -217,7 +217,7 @@ onMounted(async () => {
             class="w-full transition-opacity hover:opacity-90"
           />
         </div>
-        <p v-else class="text-sm text-zinc-500">
+        <p v-else class="text-sm text-ink0">
           Click the view button on a mosaic to see its preview here.
         </p>
       </div>
@@ -225,12 +225,12 @@ onMounted(async () => {
   </div>
 
   <Dialog v-model="showDeleteDialog" title="Delete Mosaic">
-    <p class="mb-4 text-sm text-zinc-400">
+    <p class="mb-4 text-sm text-ink-2">
       This will permanently delete this mosaic and its preview. This cannot be undone.
     </p>
     <div class="flex justify-end gap-2">
       <button
-        class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-50"
+        class="rounded-md px-3 py-1.5 text-sm font-medium text-ink-2 transition-colors hover:text-ink"
         @click="showDeleteDialog = false"
       >
         Cancel

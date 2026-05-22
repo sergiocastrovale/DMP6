@@ -9,15 +9,15 @@ const navItems = [
 </script>
 
 <template>
-  <header class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm">
+  <header class="sticky top-0 z-30 border-b border-rule bg-bg/80 backdrop-blur-sm">
     <div class="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 lg:px-8">
-      <NuxtLink to="/" class="flex items-center gap-2 text-zinc-400 transition-colors hover:text-zinc-50">
+      <NuxtLink to="/" class="flex items-center gap-2 text-ink-2 transition-colors hover:text-ink">
         <ArrowLeft :size="18" />
       </NuxtLink>
 
       <div class="flex items-center gap-2">
-        <FlaskConical :size="18" class="text-amber-500" />
-        <span class="text-sm font-semibold text-zinc-50">Labs</span>
+        <FlaskConical :size="18" class="text-accent" />
+        <span class="text-sm font-semibold text-ink">Labs</span>
       </div>
 
       <nav class="ml-4 flex items-center gap-1">
@@ -27,8 +27,8 @@ const navItems = [
           :to="item.to"
           class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
           :class="route.path === item.to
-            ? 'bg-zinc-800 text-amber-500'
-            : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-50'"
+            ? 'bg-bg-2 text-accent'
+            : 'text-ink-2 hover:bg-bg-1 hover:text-ink'"
         >
           {{ item.label }}
         </NuxtLink>

@@ -1,31 +1,41 @@
 <script setup lang="ts">
-import type { SearchRelease } from '~/types/search'
+import type { Release } from '~/types/release'
 import type { PlaylistSummary } from '~/types/playlist'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
 
 const loading = ref(true)
-const latest = ref<SearchRelease[]>([])
-const recent = ref<SearchRelease[]>([])
-const playlists = ref<PlaylistSummary[]>([])
-const favorites = ref<SearchRelease[]>([])
+const viewMode = ref<'grid' | 'list'>('grid')
 
-const isEmpty = computed(() => !loading.value && !latest.value.length && !recent.value.length && !playlists.value.length && !favorites.value.length)
+type Section =
+  | { title: string, type: 'release', items: Ref<Release[]> }
+  | { title: string, type: 'playlist', items: Ref<PlaylistSummary[]> }
+
+const sections: Section[] = [
+  { title: 'Latest Additions', type: 'release', items: ref([]) },
+  { title: 'Recently Played', type: 'release', items: ref([]) },
+  { title: 'Your Playlists', type: 'playlist', items: ref([]) },
+  { title: 'Favorite Releases', type: 'release', items: ref([]) },
+  { title: 'From the Archive', type: 'release', items: ref([]) },
+]
+
+const isEmpty = computed(() =>
+  !loading.value && sections.every((s) => !s.items.value.length),
+)
+
+const endpoints = [
+  `/api/releases/latest?limit=${SKELETON_GRID_SIZE}`,
+  `/api/releases/last-played?limit=${SKELETON_GRID_SIZE}`,
+  `/api/playlists?type=manual&limit=${SKELETON_GRID_SIZE}`,
+  `/api/favorites/releases?limit=${SKELETON_GRID_SIZE}`,
+  `/api/releases/archive?limit=${SKELETON_GRID_SIZE}`,
+]
 
 const loadData = async () => {
   loading.value = true
 
   try {
-    const [latestData, recentlyPlayedData, playlistData, favoritesData] = await Promise.all([
-      $fetch<SearchRelease[]>(`/api/releases/latest?limit=${SKELETON_GRID_SIZE}`),
-      $fetch<SearchRelease[]>(`/api/releases/last-played?limit=${SKELETON_GRID_SIZE}`),
-      $fetch<PlaylistSummary[]>(`/api/playlists?type=manual&limit=${SKELETON_GRID_SIZE}`),
-      $fetch<SearchRelease[]>(`/api/favorites/releases?limit=${SKELETON_GRID_SIZE}`),
-    ])
-
-    latest.value = latestData
-    recent.value = recentlyPlayedData
-    playlists.value = playlistData
-    favorites.value = favoritesData
+    const results = await Promise.all(endpoints.map((url) => $fetch(url)))
+    sections.forEach((s, i) => { s.items.value = results[i] as any })
   }
   catch (error) {
     console.error('Failed to load home page data:', error)
@@ -41,31 +51,35 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-12">
+  <div class="flex flex-col gap-10">
     <FirstScan v-if="isEmpty" />
     <template v-else>
-    <ReleaseGrid
-      title="Latest Additions"
-      :releases="latest"
-      :loading="loading"
-      view-more-link="/browse"
-    />
-    <ReleaseGrid
-      title="Recently Played"
-      :releases="recent"
-      :loading="loading"
-    />
-    <PlaylistGrid
-      :playlists="playlists"
-      :loading="loading"
-      @refresh="loadData"
-    />
-    <ReleaseGrid
-      title="Favorite Releases"
-      :releases="favorites"
-      :loading="loading"
-      view-more-link="/favorites"
-    />
+      <DashboardSubheader v-model="viewMode" />
+
+      <div class="flex flex-col gap-5">
+        <DashboardSection
+          v-for="section in sections"
+          v-show="loading || section.items.value.length"
+          :key="section.title"
+          :title="section.title"
+          :loading="loading"
+          :empty="!section.items.value.length"
+          :view-mode="viewMode"
+        >
+          <template v-if="section.type === 'playlist'">
+            <template v-for="item in (section.items.value as PlaylistSummary[])" :key="item.id">
+              <DashboardPlaylistCard v-if="viewMode === 'grid'" :playlist="item" />
+              <DashboardPlaylistListRow v-else :playlist="item" />
+            </template>
+          </template>
+          <template v-else>
+            <template v-for="item in (section.items.value as Release[])" :key="item.id">
+              <DashboardCard v-if="viewMode === 'grid'" :release="item" />
+              <DashboardListRow v-else :release="item" />
+            </template>
+          </template>
+        </DashboardSection>
+      </div>
     </template>
   </div>
 </template>

@@ -41,11 +41,11 @@ async function cancelDownload(dl: any) {
     <!-- Expanded panel -->
     <div
       v-if="expanded"
-      class="mb-2 w-80 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
+      class="mb-2 w-80 rounded-lg border border-rule bg-bg-1 shadow-xl"
     >
-      <div class="flex items-center justify-between border-b border-zinc-800 px-3 py-2">
-        <span class="text-xs font-medium text-zinc-400">Downloads</span>
-        <button class="text-zinc-500 hover:text-zinc-300 transition-colors" @click="expanded = false">
+      <div class="flex items-center justify-between border-b border-rule px-3 py-2">
+        <span class="text-xs font-medium text-ink-2">Downloads</span>
+        <button class="text-ink0 hover:text-ink-2 transition-colors" @click="expanded = false">
           <X :size="14" />
         </button>
       </div>
@@ -55,15 +55,15 @@ async function cancelDownload(dl: any) {
           :key="dl.id"
           class="flex items-center gap-2 rounded px-2 py-1.5"
         >
-          <Loader2 v-if="stateIcon(dl.state) === 'active'" :size="12" class="shrink-0 animate-spin text-amber-500" />
+          <Loader2 v-if="stateIcon(dl.state) === 'active'" :size="12" class="shrink-0 animate-spin text-accent" />
           <CheckCircle v-else-if="stateIcon(dl.state) === 'completed'" :size="12" class="shrink-0 text-emerald-500" />
           <AlertCircle v-else :size="12" class="shrink-0 text-red-400" />
 
           <div class="min-w-0 flex-1">
-            <div class="truncate text-xs text-zinc-300">
+            <div class="truncate text-xs text-ink-2">
               {{ dl.filename.split('/').pop() || dl.filename }}
             </div>
-            <div class="flex items-center gap-2 text-[10px] text-zinc-500">
+            <div class="flex items-center gap-2 text-[10px] text-ink0">
               <span v-if="dl.percentComplete > 0">{{ Math.round(dl.percentComplete) }}%</span>
               <span v-if="dl.averageSpeed">{{ formatSpeed(dl.averageSpeed) }}</span>
               <span v-if="dl.size">{{ formatSize(dl.bytesTransferred) }}/{{ formatSize(dl.size) }}</span>
@@ -72,7 +72,7 @@ async function cancelDownload(dl: any) {
 
           <button
             v-if="stateIcon(dl.state) === 'active'"
-            class="shrink-0 text-zinc-600 hover:text-red-400 transition-colors"
+            class="shrink-0 text-ink-4 hover:text-red-400 transition-colors"
             title="Cancel"
             @click="cancelDownload(dl)"
           >
@@ -84,10 +84,10 @@ async function cancelDownload(dl: any) {
 
     <!-- Pill button -->
     <button
-      class="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 shadow-lg transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+      class="flex items-center gap-2 rounded-lg border border-rule bg-bg-1 px-3 py-2 text-sm text-ink-2 shadow-lg transition-colors hover:border-ink-4 hover:bg-bg-2"
       @click="expanded = !expanded"
     >
-      <ArrowDownToLine :size="14" class="text-amber-500" />
+      <ArrowDownToLine :size="14" class="text-accent" />
       <span>{{ downloads.activeCount }} downloading</span>
     </button>
   </div>

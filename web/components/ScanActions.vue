@@ -40,14 +40,14 @@ const visibleActions = computed(() => {
       v-for="scan in visibleActions"
       :key="scan.id"
       :disabled="terminal.isRunning || disabled"
-      class="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+      class="flex items-center gap-3 rounded-lg border border-rule bg-bg-1 p-4 text-left transition-colors hover:border-rule hover:bg-bg-2 disabled:cursor-not-allowed disabled:opacity-40"
       @click="globalActions[scan.id]!()"
     >
-      <Loader2 v-if="terminal.isRunning" :size="20" class="shrink-0 animate-spin text-amber-500" />
-      <component :is="scanIcons[scan.icon]" v-else :size="20" class="shrink-0 text-amber-500" />
+      <Loader2 v-if="terminal.isRunning" :size="20" class="shrink-0 animate-spin text-accent" />
+      <component :is="scanIcons[scan.icon]" v-else :size="20" class="shrink-0 text-accent" />
       <div>
-        <p class="text-sm font-medium text-zinc-50">{{ scan.text }}</p>
-        <p class="text-xs text-zinc-500">{{ scan.subtext }}</p>
+        <p class="text-sm font-medium text-ink">{{ scan.text }}</p>
+        <p class="text-xs text-ink0">{{ scan.subtext }}</p>
       </div>
     </button>
   </div>

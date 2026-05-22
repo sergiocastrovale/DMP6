@@ -33,10 +33,10 @@ onUnmounted(() => {
 <template>
   <div>
     <div v-if="store.loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-zinc-500" />
+      <Loader2 :size="24" class="animate-spin text-ink0" />
     </div>
 
-    <div v-else-if="store.artists.length === 0" class="py-20 text-center text-zinc-500">
+    <div v-else-if="store.artists.length === 0" class="py-20 text-center text-ink0">
       No artists found
     </div>
 
@@ -45,9 +45,9 @@ onUnmounted(() => {
         v-for="artist in store.artists"
         :key="artist.id"
         :to="`/artist/${artist.slug}`"
-        class="group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-zinc-900"
+        class="group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-bg-1"
       >
-        <div class="size-10 shrink-0 overflow-hidden rounded bg-zinc-800">
+        <div class="size-10 shrink-0 overflow-hidden rounded bg-bg-2">
           <img
             v-if="artistImage(artist)"
             :src="artistImage(artist)!"
@@ -55,22 +55,22 @@ onUnmounted(() => {
             class="size-full object-cover"
             loading="lazy"
           />
-          <div v-else class="flex size-full items-center justify-center text-sm font-bold text-zinc-600">
+          <div v-else class="flex size-full items-center justify-center text-sm font-bold text-ink-4">
             {{ artist.name.charAt(0).toUpperCase() }}
           </div>
         </div>
         <div class="min-w-0 flex-1">
-          <div class="truncate text-sm font-medium text-zinc-50">{{ artist.name }}</div>
-          <div class="text-xs text-zinc-500">{{ artist.totalTracks.toLocaleString() }} tracks</div>
+          <div class="truncate text-sm font-medium text-ink">{{ artist.name }}</div>
+          <div class="text-xs text-ink0">{{ artist.totalTracks.toLocaleString() }} tracks</div>
         </div>
       </NuxtLink>
     </div>
 
     <div v-if="store.loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" class="animate-spin text-zinc-500" />
+      <Loader2 :size="20" class="animate-spin text-ink0" />
     </div>
 
-    <div v-if="!store.loading && store.artists.length > 0" class="mt-4 text-center text-xs text-zinc-500">
+    <div v-if="!store.loading && store.artists.length > 0" class="mt-4 text-center text-xs text-ink0">
       Showing {{ store.artists.length }} of {{ store.total }} artists
     </div>
   </div>

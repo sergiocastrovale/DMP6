@@ -1,6 +1,6 @@
 <template>
   <div class="group flex flex-col gap-2">
-    <div class="relative aspect-square overflow-hidden rounded-lg bg-zinc-800">
+    <div class="relative aspect-square overflow-hidden rounded-lg bg-bg-2">
       <ReleaseBlockImage :release="release" />
       <ReleaseBlockTogglePlay :release="release" />
     </div>

@@ -25,7 +25,7 @@ const sizeClass = computed(() => {
 </script>
 
 <template>
-  <div :class="sizeClass" class="group relative shrink-0 overflow-hidden rounded-lg bg-zinc-800">
+  <div :class="sizeClass" class="group relative shrink-0 overflow-hidden rounded-lg bg-bg-2">
     <img
       v-if="imgUrl"
       :src="imgUrl"
@@ -33,7 +33,7 @@ const sizeClass = computed(() => {
       class="size-full object-cover"
       loading="lazy"
     />
-    <div v-else class="flex size-full items-center justify-center text-lg font-bold text-zinc-600">
+    <div v-else class="flex size-full items-center justify-center text-lg font-bold text-ink-4">
       <Initial :name="title" />
     </div>
     <button
@@ -41,8 +41,8 @@ const sizeClass = computed(() => {
       :class="playing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
       @click="emit('play')"
     >
-      <Pause v-if="playing" :size="24" class="text-zinc-50" />
-      <Play v-else :size="24" class="text-zinc-50" />
+      <Pause v-if="playing" :size="24" class="text-ink" />
+      <Play v-else :size="24" class="text-ink" />
     </button>
   </div>
 </template>

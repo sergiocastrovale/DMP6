@@ -52,8 +52,8 @@ onMounted(() => {
 <template>
   <button
     v-if="canCrud"
-    class="hidden lg:block text-zinc-400 hover:text-amber-500 transition-colors cursor-pointer"
-    :class="{ 'text-amber-500': isFavorite }"
+    class="hidden lg:block text-ink-2 hover:text-accent transition-colors cursor-pointer"
+    :class="{ 'text-accent': isFavorite }"
     :aria-label="isFavorite ? 'Remove from favorites' : 'Add to favorites'"
     @click="toggleFavorite"
   >

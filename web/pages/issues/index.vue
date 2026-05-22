@@ -76,15 +76,15 @@ function formatRelative(date: string): string {
     <NuxtLink
       v-if="historyCount > 0"
       to="/issues/history"
-      class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 transition-colors hover:border-zinc-700"
+      class="flex items-center justify-between rounded-lg border border-rule bg-bg-1/50 px-4 py-3 transition-colors hover:border-rule"
     >
-      <span class="text-sm text-zinc-400">
+      <span class="text-sm text-ink-2">
         {{ historyCount }} undo record{{ historyCount !== 1 ? 's' : '' }} stored
       </span>
-      <ChevronRight :size="16" class="text-zinc-600" />
+      <ChevronRight :size="16" class="text-ink-4" />
     </NuxtLink>
 
-    <div v-if="!issuesStore.summary && !issuesStore.summaryLoading" class="py-20 text-center text-zinc-500">
+    <div v-if="!issuesStore.summary && !issuesStore.summaryLoading" class="py-20 text-center text-ink0">
       Run an audit to detect metadata issues
     </div>
 
@@ -93,21 +93,21 @@ function formatRelative(date: string): string {
         v-for="card in typeCards"
         :key="card.key"
         :to="`/issues/${card.key}`"
-        class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700"
+        class="rounded-lg border border-rule bg-bg-1 p-4 transition-colors hover:border-rule"
       >
         <div class="flex items-start justify-between">
           <div>
             <p class="font-medium text-white">{{ card.label }}</p>
-            <p class="mt-1 text-xs text-zinc-500">{{ card.description }}</p>
+            <p class="mt-1 text-xs text-ink0">{{ card.description }}</p>
           </div>
           <span
             v-if="issuesStore.summary"
             class="ml-3 shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold"
-            :class="(issuesStore.summary.counts[card.key] ?? 0) > 0 ? 'bg-amber-900/50 text-amber-400' : 'bg-zinc-800 text-zinc-500'"
+            :class="(issuesStore.summary.counts[card.key] ?? 0) > 0 ? 'bg-accent-soft text-accent' : 'bg-bg-2 text-ink0'"
           >
             {{ issuesStore.summary.counts[card.key] ?? 0 }}
           </span>
-          <span v-else-if="issuesStore.summaryLoading" class="ml-3 h-7 w-10 animate-pulse rounded-full bg-zinc-800" />
+          <span v-else-if="issuesStore.summaryLoading" class="ml-3 h-7 w-10 animate-pulse rounded-full bg-bg-2" />
         </div>
       </NuxtLink>
     </div>

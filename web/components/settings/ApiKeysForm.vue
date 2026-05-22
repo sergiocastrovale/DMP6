@@ -21,8 +21,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
 <template>
   <div class="max-w-2xl space-y-6">
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400">Fanart.tv</h2>
+    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Fanart.tv</h2>
       <SettingsField
         label="API Key"
         description="Used by the sync script to fetch artist images. Overrides FANART_API_KEY."

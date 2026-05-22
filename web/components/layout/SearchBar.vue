@@ -35,14 +35,14 @@ watch(query, (newQuery) => {
   performSearch(newQuery)
 })
 
-function clear() {
+const clear = () => {
   query.value = ''
   searchResults.value = null
   showDropdown.value = false
   inputRef.value?.focus()
 }
 
-function hideDropdown() {
+const hideDropdown = () => {
   showDropdown.value = false
 }
 
@@ -53,38 +53,52 @@ const onClickOutside = (e: MouseEvent) => {
   }
 }
 
+const onKeydown = (e: KeyboardEvent) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault()
+    inputRef.value?.focus()
+  }
+}
+
 onMounted(() => {
   document.addEventListener('click', onClickOutside)
+  document.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onClickOutside)
+  document.removeEventListener('keydown', onKeydown)
 })
 </script>
 
 <template>
-  <div class="search-container relative w-full max-w-md">
+  <div class="search-container relative flex-1 min-w-[200px] max-w-[520px] ml-auto max-[1180px]:max-w-[300px]">
     <div class="relative">
-      <Search :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+      <Search :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" />
       <input
         ref="inputRef"
         v-model="query"
         type="text"
         placeholder="Search artists, releases, tracks..."
-        class="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-900 pl-9 pr-8 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+        class="w-full bg-bg-2 border border-rule rounded-lg py-2.5 px-3.5 pl-10 text-ink text-sm placeholder:text-ink-4 outline-none transition focus:bg-bg-1 focus:border-accent focus:shadow-ring-accent"
         @focus="query && (showDropdown = true)"
       />
       <button
         v-if="query"
-        class="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+        class="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink"
         aria-label="Clear search"
         @click="clear"
       >
         <X :size="14" />
       </button>
+      <div
+        v-else
+        class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 font-mono text-[10px] text-ink-4 border border-rule px-1.5 py-0.5 rounded pointer-events-none"
+      >
+        ⌘ K
+      </div>
     </div>
 
-    <!-- Search dropdown -->
     <LayoutSearchDropdown
       v-if="showDropdown"
       :results="searchResults"

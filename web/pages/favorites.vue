@@ -131,7 +131,7 @@ const unfavoriteTrack = async (trackId: string) => {
     <Tabs v-model="activeTab" :tabs="favTabs" />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-zinc-500" />
+      <Loader2 :size="24" class="animate-spin text-ink0" />
     </div>
 
     <div v-else>
@@ -148,7 +148,7 @@ const unfavoriteTrack = async (trackId: string) => {
 
       <div ref="sentinel" class="h-1" />
       <div v-if="loadingMore" class="flex justify-center py-4">
-        <Loader2 :size="20" class="animate-spin text-zinc-500" />
+        <Loader2 :size="20" class="animate-spin text-ink0" />
       </div>
     </div>
   </div>

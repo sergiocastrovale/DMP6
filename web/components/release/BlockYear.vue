@@ -1,7 +1,7 @@
 <template>
   <p
     v-if="release.year"
-    class="text-xs text-zinc-500"
+    class="text-xs text-ink0"
   >
     {{ release.year }}
   </p>

@@ -31,29 +31,29 @@ function select(option: ButtonDropdownOption) {
     <button
       ref="buttonRef"
       :disabled="disabled"
-      class="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-50"
+      class="flex items-center gap-2 rounded-lg border border-rule bg-bg-1 px-3 py-2 text-sm text-ink-2 transition-colors hover:border-ink-4 hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-50"
       @click="open = !open"
     >
       <slot name="icon" />
       <span>{{ label }}</span>
-      <ChevronUp v-if="open" :size="14" class="text-zinc-500" />
-      <ChevronDown v-else :size="14" class="text-zinc-500" />
+      <ChevronUp v-if="open" :size="14" class="text-ink0" />
+      <ChevronDown v-else :size="14" class="text-ink0" />
     </button>
 
     <div
       v-if="open"
-      class="absolute right-0 top-full z-20 mt-1 w-max rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl"
+      class="absolute right-0 top-full z-20 mt-1 w-max rounded-lg border border-rule bg-bg-1 p-1 shadow-xl"
     >
       <button
         v-for="opt in options"
         :key="opt.label"
-        class="flex w-full items-start gap-2.5 rounded px-3 py-2 text-left transition-colors text-zinc-400 hover:bg-zinc-800 hover:text-zinc-50"
+        class="flex w-full items-start gap-2.5 rounded px-3 py-2 text-left transition-colors text-ink-2 hover:bg-bg-2 hover:text-ink"
         @click="select(opt)"
       >
-        <component :is="opt.icon" v-if="opt.icon" :size="14" class="mt-0.5 shrink-0 text-zinc-500" />
+        <component :is="opt.icon" v-if="opt.icon" :size="14" class="mt-0.5 shrink-0 text-ink0" />
         <div class="flex flex-col">
           <span class="text-sm">{{ opt.label }}</span>
-          <span v-if="opt.description" class="text-xs text-zinc-500">{{ opt.description }}</span>
+          <span v-if="opt.description" class="text-xs text-ink0">{{ opt.description }}</span>
         </div>
       </button>
     </div>

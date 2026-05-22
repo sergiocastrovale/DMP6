@@ -12,13 +12,13 @@ const model = defineModel<string | number | null>()
 
 <template>
   <div class="space-y-1.5">
-    <label class="block text-sm font-medium text-zinc-200">{{ label }}</label>
-    <p v-if="description" class="text-xs text-zinc-500">{{ description }}</p>
+    <label class="block text-sm font-medium text-ink">{{ label }}</label>
+    <p v-if="description" class="text-xs text-ink0">{{ description }}</p>
 
     <select
       v-if="type === 'select' && options"
       v-model="model"
-      class="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none"
+      class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
     >
       <option value="">— use env default —</option>
       <option v-for="opt in options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
@@ -29,7 +29,7 @@ const model = defineModel<string | number | null>()
       v-model="model"
       :type="type === 'password' ? 'password' : type === 'number' ? 'number' : 'text'"
       :placeholder="placeholder"
-      class="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+      class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
     />
   </div>
 </template>

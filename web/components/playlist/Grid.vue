@@ -4,12 +4,12 @@
     class="flex flex-col gap-8"
   >
     <div class="flex items-center justify-between">
-      <h2 class="text-xl font-semibold text-zinc-50">
+      <h2 class="text-xl font-semibold text-ink">
         Your Playlists
       </h2>
       <div class="flex items-center gap-2">
         <button
-          class="rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-medium text-zinc-950 hover:bg-amber-600 transition-colors"
+          class="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink hover:bg-accent transition-colors"
           @click="showCreate = true"
         >
           <LucidePlus class="inline size-4 -mt-0.5" />
@@ -17,7 +17,7 @@
         </button>
         <NuxtLink
           to="/playlists"
-          class="text-sm text-amber-500 hover:text-amber-600 transition-colors"
+          class="text-sm text-accent hover:text-accent transition-colors"
         >
           View all
         </NuxtLink>
@@ -38,12 +38,12 @@
 
     <div
       v-else-if="!loading"
-      class="flex flex-col items-center justify-center py-12 text-center text-zinc-500"
+      class="flex flex-col items-center justify-center py-12 text-center text-ink0"
     >
       <LucideListMusic class="mb-3 size-12 opacity-50" />
       <p>No playlists yet</p>
       <button
-        class="mt-4 text-sm text-amber-500 hover:text-amber-600 transition-colors"
+        class="mt-4 text-sm text-accent hover:text-accent transition-colors"
         @click="showCreate = true"
       >
         Create your first playlist

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { DownloadSource } from '~/types/download'
+import { useGlobalStore } from '~/stores/global'
 
 export const useTerminalStore = defineStore('terminal', () => {
   const isOpen = ref(false)
@@ -74,6 +75,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       isRunning.value = false
       currentSession.value = null
       abortController = null
+      useGlobalStore().refresh()
     }
   }
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="overflow-hidden border border-zinc-800">
+  <div class="overflow-hidden border border-rule">
     <table class="w-full text-sm">
       <slot />
     </table>

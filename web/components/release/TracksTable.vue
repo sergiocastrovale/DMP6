@@ -44,13 +44,13 @@ function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
 
 <template>
   <div class="mt-4 mb-1">
-    <div v-if="pending" class="py-4 text-center text-sm text-zinc-500">Loading tracks...</div>
+    <div v-if="pending" class="py-4 text-center text-sm text-ink0">Loading tracks...</div>
     <TrackList
       v-else-if="tracks.length"
       :tracks="tracks"
       :columns="columns"
       :build-player-tracks="buildPlayerTracks"
     />
-    <div v-else class="py-4 text-center text-sm text-zinc-500">No local tracks available</div>
+    <div v-else class="py-4 text-center text-sm text-ink0">No local tracks available</div>
   </div>
 </template>

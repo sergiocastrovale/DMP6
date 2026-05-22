@@ -238,46 +238,46 @@ function getHistoryDate(item: any): string {
         <h1 class="text-lg font-semibold text-white">{{ typeLabels[type] }}</h1>
         <div class="flex items-center gap-2">
         <div class="relative">
-          <Search :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <Search :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink0" />
           <input
             v-model="searchInput"
             type="text"
             placeholder="Search..."
-            class="rounded border border-zinc-700 bg-zinc-900 py-1.5 pl-8 pr-3 text-sm text-zinc-300 outline-none placeholder:text-zinc-600 focus:border-zinc-500"
+            class="rounded border border-rule bg-bg-1 py-1.5 pl-8 pr-3 text-sm text-ink-2 outline-none placeholder:text-ink-4 focus:border-ink-3"
           />
         </div>
       </div>
       </div>
-      <p class="text-sm text-zinc-500">
+      <p class="text-sm text-ink0">
         {{ typeDescriptions[type].detection }}
-        <span class="text-zinc-600">Fix:</span> {{ typeDescriptions[type].fix }}
+        <span class="text-ink-4">Fix:</span> {{ typeDescriptions[type].fix }}
       </p>
     </div>
 
-    <div v-if="REVERTABLE_TYPES.includes(type)" class="flex gap-1 border-b border-zinc-800">
+    <div v-if="REVERTABLE_TYPES.includes(type)" class="flex gap-1 border-b border-rule">
       <button
         @click="activeSubtab = 'detected'"
         class="px-4 py-2 text-sm font-medium transition-colors"
-        :class="activeSubtab === 'detected' ? 'border-b-2 border-blue-500 text-white' : 'text-zinc-500 hover:text-zinc-300'"
+        :class="activeSubtab === 'detected' ? 'border-b-2 border-blue-500 text-white' : 'text-ink0 hover:text-ink-2'"
       >
         Detected
-        <span v-if="(issuesStore.total[type] ?? 0) > 0" class="ml-1.5 rounded-full bg-zinc-800 px-1.5 py-0.5 text-xs">
+        <span v-if="(issuesStore.total[type] ?? 0) > 0" class="ml-1.5 rounded-full bg-bg-2 px-1.5 py-0.5 text-xs">
           {{ issuesStore.total[type] }}
         </span>
       </button>
       <button
         @click="activeSubtab = 'fixed'"
         class="px-4 py-2 text-sm font-medium transition-colors"
-        :class="activeSubtab === 'fixed' ? 'border-b-2 border-green-500 text-white' : 'text-zinc-500 hover:text-zinc-300'"
+        :class="activeSubtab === 'fixed' ? 'border-b-2 border-green-500 text-white' : 'text-ink0 hover:text-ink-2'"
       >
         Fixed
-        <span v-if="(issuesStore.resolvedTotal[type] ?? 0) > 0" class="ml-1.5 rounded-full bg-zinc-800 px-1.5 py-0.5 text-xs">
+        <span v-if="(issuesStore.resolvedTotal[type] ?? 0) > 0" class="ml-1.5 rounded-full bg-bg-2 px-1.5 py-0.5 text-xs">
           {{ issuesStore.resolvedTotal[type] }}
         </span>
       </button>
     </div>
 
-    <div v-if="activeSubtab === 'detected'" class="rounded-lg border border-zinc-800 bg-zinc-950">
+    <div v-if="activeSubtab === 'detected'" class="rounded-lg border border-rule bg-bg">
       <IssuesIssueTable
         :type="type"
         :columns="columns"
@@ -302,7 +302,7 @@ function getHistoryDate(item: any): string {
           >
             {{ item.artist.name }}
           </NuxtLink>
-          <span v-else class="text-zinc-600">—</span>
+          <span v-else class="text-ink-4">—</span>
         </template>
 
         <template #cell-confidence="{ item }">
@@ -310,7 +310,7 @@ function getHistoryDate(item: any): string {
         </template>
 
         <template #cell-folder="{ item }">
-          <span class="truncate text-xs text-zinc-500" :title="getFolderPath(item)">
+          <span class="truncate text-xs text-ink0" :title="getFolderPath(item)">
             {{ getFolderPath(item) }}
           </span>
         </template>
@@ -320,21 +320,21 @@ function getHistoryDate(item: any): string {
             <span
               v-for="part in item.proposedParts"
               :key="part"
-              class="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300"
+              class="rounded bg-bg-2 px-1.5 py-0.5 text-xs text-ink-2"
             >{{ part }}</span>
           </div>
         </template>
 
         <template #cell-reason="{ item }">
-          <span class="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400">{{ item.reason }}</span>
+          <span class="rounded bg-bg-2 px-1.5 py-0.5 text-xs text-ink-2">{{ item.reason }}</span>
         </template>
 
         <template #cell-artist_createdAt="{ item }">
-          <span class="text-xs text-zinc-500">{{ formatDate(item.artist.createdAt) }}</span>
+          <span class="text-xs text-ink0">{{ formatDate(item.artist.createdAt) }}</span>
         </template>
 
         <template #cell-artist_musicbrainzId="{ item }">
-          <span :class="item.artist.musicbrainzId ? 'text-green-500' : 'text-zinc-600'">
+          <span :class="item.artist.musicbrainzId ? 'text-green-500' : 'text-ink-4'">
             {{ item.artist.musicbrainzId ? 'Yes' : 'No' }}
           </span>
         </template>
@@ -374,18 +374,18 @@ function getHistoryDate(item: any): string {
           <span v-if="item.proposedValues" class="text-xs text-green-500">
             {{ Object.keys(item.proposedValues).join(', ') }}
           </span>
-          <span v-else class="text-xs text-zinc-600">manual</span>
+          <span v-else class="text-xs text-ink-4">manual</span>
         </template>
 
         <template #cell-localRelease_title="{ item }">
           <NuxtLink
             v-if="item.localRelease"
             :to="`/artist/${item.artist?.slug}`"
-            class="text-zinc-200 hover:underline"
+            class="text-ink hover:underline"
           >
             {{ item.localRelease.title }}
           </NuxtLink>
-          <span v-else class="text-zinc-600">—</span>
+          <span v-else class="text-ink-4">—</span>
         </template>
 
         <template #cell-_resync="{ item }">
@@ -398,7 +398,7 @@ function getHistoryDate(item: any): string {
       </IssuesIssueTable>
     </div>
 
-    <div v-if="activeSubtab === 'fixed' && REVERTABLE_TYPES.includes(type)" class="rounded-lg border border-zinc-800 bg-zinc-950">
+    <div v-if="activeSubtab === 'fixed' && REVERTABLE_TYPES.includes(type)" class="rounded-lg border border-rule bg-bg">
       <IssuesIssueTable
         :type="type"
         :columns="resolvedColumns"
@@ -419,35 +419,35 @@ function getHistoryDate(item: any): string {
           >
             {{ item.artist.name }}
           </NuxtLink>
-          <span v-else class="text-zinc-600">—</span>
+          <span v-else class="text-ink-4">—</span>
         </template>
 
         <template #cell-previousValue="{ item }">
           <div class="flex flex-col gap-0.5">
-            <span v-for="e in getHistoryPreviousEntries(item)" :key="e.key" class="text-xs text-amber-400">
-              <span class="text-zinc-500">{{ e.key }}:</span> {{ e.value }}
+            <span v-for="e in getHistoryPreviousEntries(item)" :key="e.key" class="text-xs text-accent">
+              <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
             </span>
-            <span v-if="!getHistoryPreviousEntries(item).length" class="text-xs text-zinc-600">—</span>
+            <span v-if="!getHistoryPreviousEntries(item).length" class="text-xs text-ink-4">—</span>
           </div>
         </template>
 
         <template #cell-appliedValue="{ item }">
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getHistoryAppliedEntries(item)" :key="e.key" class="text-xs text-green-400">
-              <span class="text-zinc-500">{{ e.key }}:</span> {{ e.value }}
+              <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
             </span>
-            <span v-if="!getHistoryAppliedEntries(item).length" class="text-xs text-zinc-600">—</span>
+            <span v-if="!getHistoryAppliedEntries(item).length" class="text-xs text-ink-4">—</span>
           </div>
         </template>
 
         <template #cell-folder="{ item }">
-          <span class="truncate text-xs text-zinc-500" :title="getFolderPath(item)">
+          <span class="truncate text-xs text-ink0" :title="getFolderPath(item)">
             {{ getFolderPath(item) }}
           </span>
         </template>
 
         <template #cell-fixedAt="{ item }">
-          <span class="text-xs text-zinc-500">{{ getHistoryDate(item) }}</span>
+          <span class="text-xs text-ink0">{{ getHistoryDate(item) }}</span>
         </template>
       </IssuesIssueTable>
     </div>

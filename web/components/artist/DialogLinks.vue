@@ -25,7 +25,7 @@ function getIcon(type: string) {
       :href="link.url"
       target="_blank"
       rel="noopener"
-      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50 transition-colors"
+      class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-2 hover:bg-bg-2 hover:text-ink transition-colors"
     >
       <svg
         v-if="getIcon(link.type)"

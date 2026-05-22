@@ -1033,10 +1033,10 @@ async fn main() {
                 if mb_shortcut > 0 {
                     parts.push(format!("{} skipped (same MB ID from previous extraction)", mb_shortcut));
                 }
-                reporter.sub_ok(&parts.join(", "));
+                reporter.ok(&parts.join(", "));
             }
             if pre_existing > 0 {
-                reporter.sub_ok(&format!("{} cover(s) already exist", pre_existing));
+                reporter.ok(&format!("{} cover(s) already exist", pre_existing));
             }
         }
 

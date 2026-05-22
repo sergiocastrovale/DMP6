@@ -20,13 +20,13 @@ const emit = defineEmits<{
       v-for="genre in visibleGenres"
       :key="genre.id"
       :to="{ path: '/browse', query: { genre: genre.name } }"
-      class="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-amber-400"
+      class="rounded-full bg-bg-2 px-2.5 py-0.5 text-xs text-ink-2 transition-colors hover:bg-bg-3 hover:text-accent"
     >
       {{ genre.name }}
     </NuxtLink>
     <button
       v-if="hasMoreGenres"
-      class="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs text-amber-500 hover:bg-zinc-700 transition-colors"
+      class="rounded-full bg-bg-2 px-2.5 py-0.5 text-xs text-accent hover:bg-bg-3 transition-colors"
       @click="emit('more')"
     >
       +{{ genres.length - maxGenres }} more

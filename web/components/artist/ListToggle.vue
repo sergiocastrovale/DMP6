@@ -15,14 +15,14 @@ const model = defineModel<string>({ required: true })
 </script>
 
 <template>
-  <div class="flex items-center rounded-lg border border-zinc-700 bg-zinc-900">
+  <div class="flex items-center rounded-lg border border-rule bg-bg-1">
     <button
       v-for="(option, index) in options"
       :key="option.value"
       type="button"
       class="px-2.5 py-1.5 transition-colors"
       :class="[
-        model === option.value ? 'bg-zinc-700 text-zinc-50' : 'text-zinc-400 hover:text-zinc-50',
+        model === option.value ? 'bg-bg-3 text-ink' : 'text-ink-2 hover:text-ink',
         index === 0 ? 'rounded-l-lg' : '',
         index === options.length - 1 ? 'rounded-r-lg' : '',
       ]"

@@ -117,54 +117,54 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <NuxtLink to="/statistics" class="text-zinc-400 hover:text-zinc-50 transition-colors">
+        <NuxtLink to="/statistics" class="text-ink-2 hover:text-ink transition-colors">
           <ArrowLeft :size="20" />
         </NuxtLink>
-        <h1 class="text-2xl font-bold text-zinc-50">{{ config.title }}</h1>
+        <h1 class="text-2xl font-bold text-ink">{{ config.title }}</h1>
       </div>
-      <span class="text-sm text-zinc-500">{{ total.toLocaleString() }} {{ config.label }}</span>
+      <span class="text-sm text-ink0">{{ total.toLocaleString() }} {{ config.label }}</span>
     </div>
 
     <!-- Search -->
     <div class="relative sm:max-w-xs">
-      <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+      <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink0" />
       <input
         :value="searchInput"
         type="text"
         :placeholder="`Search ${config.label}...`"
-        class="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-900 pl-8 pr-3 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
+        class="h-8 w-full rounded-lg border border-rule bg-bg-1 pl-8 pr-3 text-sm text-ink placeholder:text-ink0 focus:border-accent focus:outline-none"
         @input="handleSearch(($event.target as HTMLInputElement).value)"
       />
     </div>
 
     <!-- Showing X of Y -->
-    <div v-if="!loading && items.length > 0 && items.length < total" class="text-xs text-zinc-500">
+    <div v-if="!loading && items.length > 0 && items.length < total" class="text-xs text-ink0">
       Showing {{ items.length.toLocaleString() }} results of {{ total.toLocaleString() }}
     </div>
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-zinc-500" />
+      <Loader2 :size="24" class="animate-spin text-ink0" />
     </div>
 
     <!-- Empty -->
-    <div v-else-if="items.length === 0" class="py-20 text-center text-zinc-500">
+    <div v-else-if="items.length === 0" class="py-20 text-center text-ink0">
       No results found
     </div>
 
     <!-- List -->
-    <div v-else class="overflow-hidden rounded-lg border border-zinc-800">
+    <div v-else class="overflow-hidden rounded-lg border border-rule">
       <div
         v-for="item in items"
         :key="item.id"
-        class="flex items-center gap-3 border-b border-zinc-800/50 px-4 py-2.5 last:border-b-0 transition-colors"
-        :class="isArtistType ? '' : 'hover:bg-zinc-900'"
+        class="flex items-center gap-3 border-b border-rule/50 px-4 py-2.5 last:border-b-0 transition-colors"
+        :class="isArtistType ? '' : 'hover:bg-bg-1'"
       >
         <!-- Artist-type rows: linked name -->
         <template v-if="isArtistType">
           <NuxtLink
             :to="`/artist/${item.slug}`"
-            class="flex-1 truncate text-sm text-zinc-50 hover:text-amber-500 transition-colors"
+            class="flex-1 truncate text-sm text-ink hover:text-accent transition-colors"
           >
             {{ item.name }}
           </NuxtLink>
@@ -175,39 +175,39 @@ onUnmounted(() => {
           <NuxtLink
             v-if="item.artistSlug"
             :to="`/artist/${item.artistSlug}`"
-            class="flex-1 truncate text-sm text-zinc-50 hover:text-amber-500 transition-colors"
+            class="flex-1 truncate text-sm text-ink hover:text-accent transition-colors"
           >
             {{ item.title }}
           </NuxtLink>
-          <span v-else class="flex-1 truncate text-sm text-zinc-50">{{ item.title }}</span>
-          <span v-if="item.artistName" class="hidden shrink-0 text-xs text-zinc-400 md:block">{{ item.artistName }}</span>
-          <span v-if="item.year" class="shrink-0 text-xs tabular-nums text-zinc-500">{{ item.year }}</span>
+          <span v-else class="flex-1 truncate text-sm text-ink">{{ item.title }}</span>
+          <span v-if="item.artistName" class="hidden shrink-0 text-xs text-ink-2 md:block">{{ item.artistName }}</span>
+          <span v-if="item.year" class="shrink-0 text-xs tabular-nums text-ink0">{{ item.year }}</span>
         </template>
 
         <!-- Track-type rows (tracks, no play count) -->
         <template v-else-if="item.title !== undefined && item.playCount === undefined">
-          <span class="flex-1 truncate text-sm text-zinc-50">{{ item.title }}</span>
-          <span v-if="item.artistName" class="hidden shrink-0 text-xs text-zinc-400 md:block">{{ item.artistName }}</span>
+          <span class="flex-1 truncate text-sm text-ink">{{ item.title }}</span>
+          <span v-if="item.artistName" class="hidden shrink-0 text-xs text-ink-2 md:block">{{ item.artistName }}</span>
         </template>
 
         <!-- Plays rows -->
         <template v-else-if="item.playCount !== undefined">
-          <span class="flex-1 truncate text-sm text-zinc-50">{{ item.title }}</span>
-          <span v-if="item.artistName" class="hidden shrink-0 text-xs text-zinc-400 md:block">{{ item.artistName }}</span>
-          <span class="shrink-0 text-xs tabular-nums text-zinc-500">{{ item.playCount?.toLocaleString() }} plays</span>
+          <span class="flex-1 truncate text-sm text-ink">{{ item.title }}</span>
+          <span v-if="item.artistName" class="hidden shrink-0 text-xs text-ink-2 md:block">{{ item.artistName }}</span>
+          <span class="shrink-0 text-xs tabular-nums text-ink0">{{ item.playCount?.toLocaleString() }} plays</span>
         </template>
 
         <!-- Genre rows -->
         <template v-else-if="item.name !== undefined && item.artistCount !== undefined">
-          <span class="flex-1 truncate text-sm text-zinc-50">{{ item.name }}</span>
-          <span class="shrink-0 text-xs text-zinc-500">{{ item.artistCount }} artists</span>
+          <span class="flex-1 truncate text-sm text-ink">{{ item.name }}</span>
+          <span class="shrink-0 text-xs text-ink0">{{ item.artistCount }} artists</span>
         </template>
       </div>
     </div>
 
     <!-- Loading more -->
     <div v-if="loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" class="animate-spin text-zinc-500" />
+      <Loader2 :size="20" class="animate-spin text-ink0" />
     </div>
   </div>
 </template>

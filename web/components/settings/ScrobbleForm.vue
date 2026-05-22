@@ -60,8 +60,8 @@ const disconnect = async () => {
 
 <template>
   <div class="max-w-2xl space-y-6">
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400">Last.fm Scrobbling</h2>
+    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Last.fm Scrobbling</h2>
 
       <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-4 py-3">
         <CheckCircle2 :size="18" class="text-emerald-400 shrink-0" />
@@ -69,21 +69,21 @@ const disconnect = async () => {
           <p class="text-sm text-emerald-300">
             Connected as <span class="font-semibold">{{ connectedUsername }}</span>
           </p>
-          <p class="text-xs text-zinc-500">Tracks are being scrobbled to Last.fm</p>
+          <p class="text-xs text-ink0">Tracks are being scrobbled to Last.fm</p>
         </div>
         <button
           :disabled="disconnecting || !canEdit"
           @click="disconnect"
-          class="flex items-center gap-1.5 rounded bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+          class="flex items-center gap-1.5 rounded bg-bg-2 px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-bg-3 disabled:opacity-50"
         >
           <Unlink :size="12" />
           {{ disconnecting ? 'Disconnecting…' : 'Disconnect' }}
         </button>
       </div>
 
-      <div v-else class="flex items-center gap-3 rounded-lg border border-zinc-700/50 bg-zinc-800/50 px-4 py-3">
-        <AlertCircle :size="18" class="text-zinc-500 shrink-0" />
-        <p class="flex-1 text-sm text-zinc-400">Not connected to Last.fm</p>
+      <div v-else class="flex items-center gap-3 rounded-lg border border-rule/50 bg-bg-2/50 px-4 py-3">
+        <AlertCircle :size="18" class="text-ink0 shrink-0" />
+        <p class="flex-1 text-sm text-ink-2">Not connected to Last.fm</p>
       </div>
 
       <SettingsField
@@ -130,9 +130,9 @@ const disconnect = async () => {
       </div>
     </div>
 
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
-      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400">How it works</h2>
-      <ul class="space-y-1 text-sm text-zinc-400">
+    <div class="rounded-lg border border-rule bg-bg-1 p-6">
+      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-2">How it works</h2>
+      <ul class="space-y-1 text-sm text-ink-2">
         <li>Tracks are scrobbled after 50% played or 4 minutes (whichever first)</li>
         <li>Tracks under 30 seconds are not scrobbled</li>
         <li>"Now Playing" updates immediately when a track starts</li>

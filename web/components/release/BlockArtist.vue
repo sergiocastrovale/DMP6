@@ -2,7 +2,7 @@
   <NuxtLink
     v-if="release.artist"
     :to="`/artist/${release.artist.slug}`"
-    class="line-clamp-1 text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
+    class="line-clamp-1 text-xs text-ink-2 hover:text-ink-2 transition-colors"
   >
     {{ release.artist.name }}
   </NuxtLink>

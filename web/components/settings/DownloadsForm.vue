@@ -38,8 +38,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
 <template>
   <div class="max-w-2xl space-y-6">
     <!-- slskd -->
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400">Soulseek (slskd)</h2>
+    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Soulseek (slskd)</h2>
       <SettingsField
         label="slskd URL"
         description="REST API base URL. Overrides SLSKD_URL."
@@ -56,8 +56,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
     </div>
 
     <!-- Deezer -->
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400">Deezer</h2>
+    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Deezer</h2>
       <SettingsField
         label="ARL Cookie"
         description="Deezer ARL cookie from a logged-in session. Overrides DEEZER_ARL."
@@ -68,8 +68,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
     </div>
 
     <!-- Download settings -->
-    <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400">Download Settings</h2>
+    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Download Settings</h2>
       <SettingsField
         label="Downloads Path"
         description="Directory where downloaded files are saved. Overrides DOWNLOADS_PATH."

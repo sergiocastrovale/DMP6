@@ -28,7 +28,7 @@ const coverImageUrl = (cover: { image: string | null; imageUrl: string | null })
     <div
       v-for="(cover, idx) in covers"
       :key="idx"
-      class="relative overflow-hidden bg-zinc-900"
+      class="relative overflow-hidden bg-bg-1"
     >
       <img
         v-if="coverImageUrl(cover)"
@@ -38,7 +38,7 @@ const coverImageUrl = (cover: { image: string | null; imageUrl: string | null })
       >
       <div
         v-else
-        class="flex h-full w-full items-center justify-center text-zinc-700"
+        class="flex h-full w-full items-center justify-center text-ink-4"
       >
         <LucideMusic class="size-8" />
       </div>
@@ -46,7 +46,7 @@ const coverImageUrl = (cover: { image: string | null; imageUrl: string | null })
   </div>
   <div
     v-else
-    class="flex h-full w-full items-center justify-center text-zinc-600"
+    class="flex h-full w-full items-center justify-center text-ink-4"
   >
     <LucideListMusic class="size-12" />
   </div>
