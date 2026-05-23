@@ -72,7 +72,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="search-container relative flex-1 min-w-[200px] max-w-[520px] ml-auto max-[1180px]:max-w-[300px]">
+  <div class="search-container relative w-full">
     <div class="relative">
       <Search :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" />
       <input

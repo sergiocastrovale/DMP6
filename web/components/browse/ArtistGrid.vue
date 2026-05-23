@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-vue-next'
 import type { Artist } from '~/types/artist'
 
 const store = useBrowseStore()
+const { artistImage } = useImageUrl()
 
 const scrollContainer = ref<HTMLElement>()
 
@@ -39,11 +40,16 @@ onUnmounted(() => {
       No artists found
     </div>
 
-    <div v-else ref="scrollContainer" class="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-      <BrowseArtistCard
+    <div v-else ref="scrollContainer" class="grid grid-cols-2 gap-x-5 gap-y-10 sm:grid-cols-3 lg:grid-cols-[repeat(auto-fill,minmax(130px,200px))] xl:grid-cols-[repeat(auto-fill,minmax(130px,220px))]">
+      <Block
         v-for="artist in store.artists"
         :key="artist.id"
-        :artist="artist as Artist"
+        :id="artist.id"
+        :title="artist.name"
+        :subtitle="`${artist.totalTracks.toLocaleString()} tracks`"
+        :link="`/artist/${artist.slug}`"
+        :image="artistImage(artist as Artist)"
+        :score="(artist as Artist).averageMatchScore"
       />
     </div>
 

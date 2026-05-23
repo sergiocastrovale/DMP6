@@ -16,6 +16,15 @@ DB_NAME_DEFAULT="dmp"
 NAS_DUMP_DIR_DEFAULT="/mnt/SSD/web/dmp/dump"
 NAS_IMG_DIR_DEFAULT="/mnt/SSD/web/dmp/img"
 
+DO_DB=true
+DO_IMG=true
+for arg in "$@"; do
+  case "$arg" in
+    --db-only) DO_IMG=false ;;
+    --img-only) DO_DB=false ;;
+  esac
+done
+
 if [ -f "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1090
@@ -44,68 +53,75 @@ echo "Database: ${DB_NAME}"
 echo "Timestamp: ${TIMESTAMP}"
 echo
 
+DB_SIZE_HUMAN=""
+IMG_SIZE_HUMAN=""
+
 # ─────────────────────────────────────────────────────────────────
 # 1. Database backup (on NAS, then copy locally)
 # ─────────────────────────────────────────────────────────────────
-echo "--- Database backup ---"
-echo "Dumping on NAS → ${NAS_DUMP_DIR}/${DB_FILE}"
+if [ "$DO_DB" = true ]; then
+  echo "--- Database backup ---"
+  echo "Dumping on NAS → ${NAS_DUMP_DIR}/${DB_FILE}"
 
-REMOTE_DUMP_CMD="docker exec -i ${POSTGRES_CONTAINER} pg_dump --no-owner --no-acl --clean --if-exists -U ${DB_USER} ${DB_NAME} | gzip -9 > ${NAS_DUMP_DIR}/${DB_FILE}"
+  REMOTE_DUMP_CMD="docker exec -i ${POSTGRES_CONTAINER} pg_dump --no-owner --no-acl --clean --if-exists -U ${DB_USER} ${DB_NAME} | gzip -9 > ${NAS_DUMP_DIR}/${DB_FILE}"
 
-set +e
-ssh "$SSH_HOST" "$REMOTE_DUMP_CMD"
-SSH_EXIT=$?
-set -e
+  set +e
+  ssh "$SSH_HOST" "$REMOTE_DUMP_CMD"
+  SSH_EXIT=$?
+  set -e
 
-if [ $SSH_EXIT -ne 0 ]; then
-  echo "ERROR: pg_dump failed (exit ${SSH_EXIT})" >&2
-  exit $SSH_EXIT
+  if [ $SSH_EXIT -ne 0 ]; then
+    echo "ERROR: pg_dump failed (exit ${SSH_EXIT})" >&2
+    exit $SSH_EXIT
+  fi
+
+  ssh "$SSH_HOST" "gzip -t ${NAS_DUMP_DIR}/${DB_FILE}"
+  NAS_DB_SIZE=$(ssh "$SSH_HOST" "stat -c%s ${NAS_DUMP_DIR}/${DB_FILE}")
+  if [ "$NAS_DB_SIZE" -lt 1024 ]; then
+    ssh "$SSH_HOST" "rm -f ${NAS_DUMP_DIR}/${DB_FILE}"
+    echo "ERROR: Dump suspiciously small (${NAS_DB_SIZE} bytes)" >&2
+    exit 1
+  fi
+
+  echo "Copying to local → web/dump/${DB_FILE}"
+  scp "${SSH_HOST}:${NAS_DUMP_DIR}/${DB_FILE}" "$DUMP_DIR/${DB_FILE}"
+
+  DB_SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$(stat -c%s "$DUMP_DIR/${DB_FILE}" 2>/dev/null || stat -f%z "$DUMP_DIR/${DB_FILE}")" 2>/dev/null || echo "${NAS_DB_SIZE} bytes")
+  echo "DB backup: ${DB_SIZE_HUMAN}"
+  echo
 fi
-
-ssh "$SSH_HOST" "gzip -t ${NAS_DUMP_DIR}/${DB_FILE}"
-NAS_DB_SIZE=$(ssh "$SSH_HOST" "stat -c%s ${NAS_DUMP_DIR}/${DB_FILE}")
-if [ "$NAS_DB_SIZE" -lt 1024 ]; then
-  ssh "$SSH_HOST" "rm -f ${NAS_DUMP_DIR}/${DB_FILE}"
-  echo "ERROR: Dump suspiciously small (${NAS_DB_SIZE} bytes)" >&2
-  exit 1
-fi
-
-echo "Copying to local → web/dump/${DB_FILE}"
-scp "${SSH_HOST}:${NAS_DUMP_DIR}/${DB_FILE}" "$DUMP_DIR/${DB_FILE}"
-
-DB_SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$(stat -c%s "$DUMP_DIR/${DB_FILE}" 2>/dev/null || stat -f%z "$DUMP_DIR/${DB_FILE}")" 2>/dev/null || echo "${NAS_DB_SIZE} bytes")
-echo "DB backup: ${DB_SIZE_HUMAN}"
-echo
 
 # ─────────────────────────────────────────────────────────────────
 # 2. Image backup (compress on NAS, then copy locally)
 # ─────────────────────────────────────────────────────────────────
-echo "--- Image backup ---"
-echo "Compressing on NAS → ${NAS_DUMP_DIR}/${IMG_FILE}"
+if [ "$DO_IMG" = true ]; then
+  echo "--- Image backup ---"
+  echo "Compressing on NAS → ${NAS_DUMP_DIR}/${IMG_FILE}"
 
-REMOTE_IMG_CMD="tar -cf - -C '${NAS_IMG_DIR}' . | gzip -9 > '${NAS_DUMP_DIR}/${IMG_FILE}'"
+  REMOTE_IMG_CMD="tar -cf - -C '${NAS_IMG_DIR}' . | gzip -9 > '${NAS_DUMP_DIR}/${IMG_FILE}'"
 
-set +e
-ssh "$SSH_HOST" "$REMOTE_IMG_CMD"
-SSH_EXIT=$?
-set -e
+  set +e
+  ssh "$SSH_HOST" "$REMOTE_IMG_CMD"
+  SSH_EXIT=$?
+  set -e
 
-if [ $SSH_EXIT -ne 0 ]; then
-  echo "ERROR: image tar/gzip failed (exit ${SSH_EXIT})" >&2
-  exit $SSH_EXIT
+  if [ $SSH_EXIT -ne 0 ]; then
+    echo "ERROR: image tar/gzip failed (exit ${SSH_EXIT})" >&2
+    exit $SSH_EXIT
+  fi
+
+  ssh "$SSH_HOST" "gzip -t ${NAS_DUMP_DIR}/${IMG_FILE}"
+
+  echo "Copying to local → web/dump/${IMG_FILE}"
+  scp "${SSH_HOST}:${NAS_DUMP_DIR}/${IMG_FILE}" "$DUMP_DIR/${IMG_FILE}"
+
+  IMG_SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$(stat -c%s "$DUMP_DIR/${IMG_FILE}" 2>/dev/null || stat -f%z "$DUMP_DIR/${IMG_FILE}")" 2>/dev/null || echo "unknown")
+  echo "Image backup: ${IMG_SIZE_HUMAN}"
+  echo
 fi
-
-ssh "$SSH_HOST" "gzip -t ${NAS_DUMP_DIR}/${IMG_FILE}"
-
-echo "Copying to local → web/dump/${IMG_FILE}"
-scp "${SSH_HOST}:${NAS_DUMP_DIR}/${IMG_FILE}" "$DUMP_DIR/${IMG_FILE}"
-
-IMG_SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$(stat -c%s "$DUMP_DIR/${IMG_FILE}" 2>/dev/null || stat -f%z "$DUMP_DIR/${IMG_FILE}")" 2>/dev/null || echo "unknown")
-echo "Image backup: ${IMG_SIZE_HUMAN}"
-echo
 
 # ─────────────────────────────────────────────────────────────────
 echo "============================================================"
 echo "Backup complete!"
-echo "  DB  : web/dump/${DB_FILE} (${DB_SIZE_HUMAN})"
-echo "  IMG : web/dump/${IMG_FILE} (${IMG_SIZE_HUMAN})"
+[ -n "$DB_SIZE_HUMAN" ] && echo "  DB  : web/dump/${DB_FILE} (${DB_SIZE_HUMAN})"
+[ -n "$IMG_SIZE_HUMAN" ] && echo "  IMG : web/dump/${IMG_FILE} (${IMG_SIZE_HUMAN})"

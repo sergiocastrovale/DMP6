@@ -5,7 +5,6 @@ defineProps<{
   title: string
   loading: boolean
   empty: boolean
-  viewMode: 'grid' | 'list'
 }>()
 </script>
 
@@ -13,15 +12,9 @@ defineProps<{
   <div>
     <DashboardSectionHeader :title="title" />
     <LoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
-    
-    <template v-else-if="!empty">
-      <div v-if="viewMode === 'grid'" class="grid grid-cols-6 gap-x-5 gap-y-10 max-[1180px]:grid-cols-8 max-[920px]:grid-cols-6 max-[640px]:grid-cols-4">
-        <slot />
-      </div>
 
-      <div v-else class="flex flex-col gap-4">
-        <slot />
-      </div>
-    </template>
+    <div v-else-if="!empty" class="grid grid-cols-2 gap-x-5 gap-y-10 sm:grid-cols-3 lg:grid-cols-[repeat(auto-fill,minmax(130px,200px))] xl:grid-cols-[repeat(auto-fill,minmax(130px,220px))]">
+      <slot />
+    </div>
   </div>
 </template>

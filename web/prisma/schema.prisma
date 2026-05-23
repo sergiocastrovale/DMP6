@@ -430,6 +430,7 @@ model Statistics {
   releasesSyncedWithMusicbrainz       Int       @default(0)
   artistsWithCoverArt                 Int       @default(0)
   releasesWithCoverArt                Int       @default(0)
+  totalFileSize                       BigInt    @default(0)
   lastScanStartedAt                   DateTime?
   lastScanEndedAt                     DateTime?
   lastSyncedArtist                    String?

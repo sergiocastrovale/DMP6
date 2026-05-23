@@ -12,7 +12,7 @@ const terminal = useTerminalStore()
 const { collapsed } = useSidebar()
 
 const gridCols = computed(() =>
-  collapsed.value ? 'grid-cols-[72px_1fr]' : 'grid-cols-[240px_1fr]',
+  collapsed.value ? 'grid-cols-1 lg:grid-cols-[72px_1fr]' : 'grid-cols-1 lg:grid-cols-[240px_1fr]',
 )
 </script>
 
@@ -22,12 +22,18 @@ const gridCols = computed(() =>
       <LayoutSidebar class="hidden lg:flex" />
 
       <div class="flex flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-[500px]': terminal.isOpen }">
-        <div class="sticky top-0 z-30 flex flex-wrap items-center gap-6 border-b border-rule bg-bg px-8 h-18">
-          <LayoutStatistics />
-          <LayoutSearchBar />
+        <div class="sticky top-0 z-30 border-b border-rule bg-bg">
+          <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-18">
+            <div class="order-1 lg:order-none border-b border-rule px-4 py-3 lg:border-0 lg:p-0 lg:flex-1 lg:max-w-[520px] lg:ml-auto">
+              <LayoutSearchBar />
+            </div>
+            <div class="order-2 lg:order-first flex justify-center px-4 py-3 lg:p-0 lg:justify-start">
+              <LayoutStatistics />
+            </div>
+          </div>
         </div>
 
-        <div class="overflow-y-auto flex-1" :class="scrollClass">
+        <div class="overflow-y-auto flex-1 pb-20 lg:pb-0" :class="scrollClass">
           <slot />
         </div>
       </div>

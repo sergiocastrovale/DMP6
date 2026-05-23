@@ -9,7 +9,7 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
              tracks, releases, genres,
              "releasesWithCoverArt", playtime, plays,
              "artistsSyncedWithMusicbrainz", "releasesSyncedWithMusicbrainz",
-             "artistsWithCoverArt",
+             "artistsWithCoverArt", "totalFileSize",
              "lastScanEndedAt", "updatedAt"
            )
            SELECT 'main',
@@ -25,6 +25,7 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
              (SELECT COUNT(*)::int FROM "Artist" WHERE "musicbrainzId" IS NOT NULL),
              (SELECT COUNT(*)::int FROM "MusicBrainzRelease"),
              (SELECT COUNT(*)::int FROM "Artist" WHERE image IS NOT NULL OR "imageUrl" IS NOT NULL),
+             COALESCE((SELECT SUM("fileSize")::bigint FROM "LocalReleaseTrack"), 0),
              $1, $1
            ON CONFLICT (id) DO UPDATE SET
              artists = EXCLUDED.artists,
@@ -39,6 +40,7 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
              "artistsSyncedWithMusicbrainz" = EXCLUDED."artistsSyncedWithMusicbrainz",
              "releasesSyncedWithMusicbrainz" = EXCLUDED."releasesSyncedWithMusicbrainz",
              "artistsWithCoverArt" = EXCLUDED."artistsWithCoverArt",
+             "totalFileSize" = EXCLUDED."totalFileSize",
              "lastScanEndedAt" = EXCLUDED."lastScanEndedAt",
              "updatedAt" = EXCLUDED."updatedAt""#,
     )

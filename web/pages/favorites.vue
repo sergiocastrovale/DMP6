@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { LucideHeart, Loader2 } from 'lucide-vue-next'
+import { LucideHeart, LucideDisc, Loader2 } from 'lucide-vue-next'
 import type { FavoritesResponse, FavoriteRelease, FavoriteTrack } from '~/types/favorites'
 
 const route = useRoute()
 const router = useRouter()
+const { releaseImage } = useImageUrl()
+const { hasPerm } = useAuth()
+const canCrud = hasPerm('favorites.crud')
 
 const loading = ref(true)
 const loadingMore = ref(false)
@@ -135,11 +138,43 @@ const unfavoriteTrack = async (trackId: string) => {
     </div>
 
     <div v-else>
-      <FavoritesReleaseGrid
-        v-if="activeTab === 'releases'"
-        :releases="releases"
-        @unfavorite="unfavoriteRelease"
-      />
+      <div v-if="activeTab === 'releases'">
+        <div
+          v-if="releases.length > 0"
+          class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+        >
+          <Block
+            v-for="fav in releases"
+            :key="fav.id"
+            :id="fav.release.id"
+            :title="fav.release.title"
+            :title-link="`/artist/${fav.release.artist!.slug}?releaseId=${fav.release.id}`"
+            :subtitle="fav.release.artist!.name"
+            :subtitle-link="`/artist/${fav.release.artist!.slug}`"
+            :year="fav.release.year"
+            :image="releaseImage(fav.release)"
+            playable
+            :release-id="fav.release.id"
+            :artist-slug="fav.release.artist!.slug"
+          >
+            <template v-if="canCrud" #overlay>
+              <button
+                class="absolute right-2 top-2 z-10 rounded-full bg-bg-1/90 p-1.5 text-accent opacity-0 transition-opacity group-hover:opacity-100"
+                @click.stop="unfavoriteRelease(fav.release.id)"
+              >
+                <LucideHeart class="size-4" fill="currentColor" />
+              </button>
+            </template>
+          </Block>
+        </div>
+        <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
+          <LucideDisc class="mb-3 size-12 opacity-50" />
+          <p>No favorite releases yet</p>
+          <NuxtLink to="/browse" class="mt-4 text-sm text-accent hover:text-accent transition-colors">
+            Browse releases
+          </NuxtLink>
+        </div>
+      </div>
       <FavoritesTrackTable
         v-if="activeTab === 'tracks'"
         :tracks="tracks"

@@ -29,12 +29,11 @@ const formatCount = (n: number) => n.toLocaleString()
 const navItems = computed(() => {
   const items = [
     { to: '/', label: 'Home', icon: Home, show: true, count: null },
-    { to: '/browse', label: 'Browse', icon: Library, show: true, count: global.stats.releases },
+    { to: '/browse', label: 'Browse', icon: Library, show: true, count: global.stats.artists },
     { to: '/explore', label: 'Explore', icon: Compass, show: true, count: null },
     { to: '/timeline', label: 'Timeline', icon: Clock, show: true, count: null },
     { to: '/playlists', label: 'Playlists', icon: ListMusic, show: canViewPlaylists.value, count: global.stats.playlists },
     { to: '/favorites', label: 'Favorites', icon: Heart, show: canViewFavorites.value, count: global.stats.favorites },
-    { to: '/issues', label: 'Issues', icon: AlertTriangle, show: canViewIssues.value, count: global.stats.issues },
     { to: '/labs', label: 'Labs', icon: FlaskConical, show: true, count: null },
   ]
   return items.filter((i) => i.show)
@@ -109,6 +108,32 @@ const isActive = (path: string) => path === '/' ? route.path === '/' : route.pat
         />
         <BarChart3 :size="20" class="shrink-0" />
         <span v-if="!collapsed">Statistics</span>
+      </NuxtLink>
+      <NuxtLink
+        v-if="canViewIssues"
+        to="/issues"
+        class="relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
+        :class="[
+          isActive('/issues')
+            ? 'bg-accent-soft text-accent'
+            : 'text-ink-2 hover:bg-bg-2 hover:text-ink',
+          collapsed ? 'justify-center px-0' : '',
+        ]"
+      >
+        <span
+          v-if="isActive('/issues')"
+          class="absolute top-2 bottom-2 w-0.5 bg-accent"
+          :class="collapsed ? 'left-0' : 'left-[-14px]'"
+        />
+        <AlertTriangle :size="20" class="shrink-0" />
+        <span v-if="!collapsed" class="flex-1 truncate">Issues</span>
+        <span
+          v-if="!collapsed && global.stats.issues > 0"
+          class="font-mono text-[11px]"
+          :class="isActive('/issues') ? 'text-accent opacity-80' : 'text-ink-4'"
+        >
+          {{ formatCount(global.stats.issues) }}
+        </span>
       </NuxtLink>
       <NuxtLink
         v-if="isAdmin"

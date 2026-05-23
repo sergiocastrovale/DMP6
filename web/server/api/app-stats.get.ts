@@ -22,6 +22,7 @@ export default defineEventHandler(async (event) => {
       releases: stats?.releases ?? 0,
       tracks: stats?.tracks ?? 0,
       playtime: Number(stats?.playtime ?? 0),
+      totalFileSize: Number(stats?.totalFileSize ?? 0),
       playlists,
       favorites,
       issues: corrupted + unsplit + orphans + duplicates + missing + enrichment,

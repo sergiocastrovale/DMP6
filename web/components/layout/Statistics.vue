@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useGlobalStore } from '~/stores/global'
-import { formatNumber } from '~/helpers/functions'
+import { formatNumber, formatFileSize } from '~/helpers/functions'
 
 const global = useGlobalStore()
 
@@ -9,6 +9,7 @@ const stats = computed(() => [
   { label: 'Releases', value: formatNumber(global.stats.releases) },
   { label: 'Tracks', value: formatNumber(global.stats.tracks) },
   { label: 'Playtime', value: `${formatNumber(global.playtimeHours)}h ${global.playtimeMinutes}m` },
+  { label: 'Size', value: formatFileSize(global.stats.totalFileSize) },
 ])
 </script>
 

@@ -5,6 +5,7 @@ interface AppStats {
   releases: number
   tracks: number
   playtime: number
+  totalFileSize: number
   playlists: number
   favorites: number
   issues: number
@@ -15,6 +16,7 @@ const DEFAULT_STATS: AppStats = {
   releases: 0,
   tracks: 0,
   playtime: 0,
+  totalFileSize: 0,
   playlists: 0,
   favorites: 0,
   issues: 0,

@@ -23,6 +23,7 @@ export default defineEventHandler(async (event) => {
         releasesSyncedWithMusicbrainz: 0,
         artistsWithCoverArt: 0,
         releasesWithCoverArt: 0,
+        totalFileSize: 0,
         lastScanStartedAt: null,
         lastScanEndedAt: null,
       }
@@ -41,6 +42,7 @@ export default defineEventHandler(async (event) => {
       releasesSyncedWithMusicbrainz: stats.releasesSyncedWithMusicbrainz,
       artistsWithCoverArt: stats.artistsWithCoverArt,
       releasesWithCoverArt: stats.releasesWithCoverArt,
+      totalFileSize: Number(stats.totalFileSize),
       lastScanStartedAt: stats.lastScanStartedAt?.toISOString() || null,
       lastScanEndedAt: stats.lastScanEndedAt?.toISOString() || null,
     }

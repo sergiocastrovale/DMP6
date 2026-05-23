@@ -430,11 +430,14 @@ async function toggleFavoriteRelease(release: UnifiedRelease) {
 
 async function handleReleaseDeepLink() {
   const targetSlug = route.query.release as string | undefined
-  if (!targetSlug) {
+  const targetId = route.query.releaseId as string | undefined
+  if (!targetSlug && !targetId) {
     return
   }
   await nextTick()
-  const release = props.releases.find(r => toReleaseSlug(r.title) === targetSlug)
+  const release = targetId
+    ? props.releases.find(r => r.localReleaseId === targetId || r.id === targetId)
+    : props.releases.find(r => toReleaseSlug(r.title) === targetSlug)
   if (!release) {
     return
   }
@@ -752,92 +755,98 @@ watch(() => props.releases, () => {
       :release-year="downloadRelease.year"
     />
 
-    <Dialog v-model="showInfoDialog" :title="infoRelease?.title ?? 'Release Info'" max-width="md">
+    <Dialog v-model="showInfoDialog" :title="infoRelease?.title ?? 'Release Info'" max-width="lg">
       <template v-if="infoRelease">
-        <dl class="space-y-3 text-sm">
-          <div v-if="infoRelease.folderPath">
-            <dt class="text-xs text-ink-2">Folder path</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.folderPath }}</dd>
-          </div>
-
-          <div v-if="infoRelease.type">
-            <dt class="text-xs text-ink-2">Type</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.type }}</dd>
-          </div>
-          <div v-if="infoExtra?.genres?.length">
-            <dt class="text-xs text-ink-2">Genres</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoExtra.genres.join(', ') }}</dd>
-          </div>
-          <div v-if="infoExtra?.bpm">
-            <dt class="text-xs text-ink-2">BPM</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoExtra.bpm }}</dd>
-          </div>
-
-          <div v-if="infoRelease.releaseDate || infoExtra?.originalReleaseDate">
-            <dt class="text-xs text-ink-2">Release date</dt>
-            <dd class="font-mono text-xs text-ink-2">
-              {{ infoRelease.releaseDate || '—' }}
-              <span v-if="infoExtra?.originalReleaseDate && infoExtra.originalReleaseDate !== infoRelease.releaseDate" class="ml-2 text-ink0">(original: {{ infoExtra.originalReleaseDate }})</span>
-            </dd>
-          </div>
-          <div v-if="infoRelease.country || infoExtra?.country">
-            <dt class="text-xs text-ink-2">Country</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoExtra?.country || infoRelease.country }}</dd>
-          </div>
-          <div v-if="infoExtra?.label">
-            <dt class="text-xs text-ink-2">Label</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoExtra.label }}</dd>
-          </div>
-          <div v-if="infoRelease.format">
-            <dt class="text-xs text-ink-2">Format</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.format }}</dd>
-          </div>
-          <div v-if="infoRelease.packaging">
-            <dt class="text-xs text-ink-2">Packaging</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.packaging }}</dd>
-          </div>
-          <div v-if="infoExtra?.isrc">
-            <dt class="text-xs text-ink-2">ISRC</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoExtra.isrc }}</dd>
-          </div>
-
-          <div v-if="infoRelease.disambiguation">
-            <dt class="text-xs text-ink-2">Disambiguation</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.disambiguation }}</dd>
-          </div>
-          <div v-if="infoRelease.editionLabel">
-            <dt class="text-xs text-ink-2">Edition</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.editionLabel }}</dd>
-          </div>
-          <div v-if="infoRelease.totalPlayCount">
-            <dt class="text-xs text-ink-2">Total plays</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.totalPlayCount }}</dd>
-          </div>
-          <div v-if="infoRelease.coArtists?.length">
-            <dt class="text-xs text-ink-2">Co-artists</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.coArtists.map(a => a.name).join(', ') }}</dd>
-          </div>
-
-          <template v-if="infoExtra">
-            <div v-for="(names, role) in infoExtra.people" :key="role">
-              <dt class="text-xs text-ink-2">{{ role }}</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ names.join(', ') }}</dd>
+        <div class="flex gap-6">
+          <div class="flex w-44 shrink-0 flex-col gap-3">
+            <div class="aspect-square w-full overflow-hidden rounded-lg bg-bg-2">
+              <img
+                v-if="releaseImage(infoRelease)"
+                :src="releaseImage(infoRelease)!"
+                :alt="infoRelease.title"
+                class="size-full object-cover"
+              />
+              <div v-else class="flex size-full items-center justify-center text-ink-4">
+                <Disc3 :size="32" />
+              </div>
             </div>
-          </template>
+            <div v-if="infoRelease.type || infoRelease.year" class="flex items-center gap-1.5 text-xs text-ink-2">
+              <span v-if="infoRelease.type">{{ infoRelease.type }}</span>
+              <span v-if="infoRelease.type && infoRelease.year">&middot;</span>
+              <span v-if="infoRelease.year">{{ infoRelease.year }}</span>
+            </div>
+            <div v-if="infoRelease.country || infoExtra?.country" class="text-xs text-ink-2">
+              {{ infoExtra?.country || infoRelease.country }}
+            </div>
+            <div v-if="infoExtra?.genres?.length" class="flex flex-wrap gap-1">
+              <span
+                v-for="genre in infoExtra.genres"
+                :key="genre"
+                class="rounded-full bg-bg-2 px-2 py-0.5 text-[11px] text-ink-2"
+              >{{ genre }}</span>
+            </div>
+            <div v-if="infoRelease.totalPlayCount" class="text-[11px] text-ink-4">
+              Played {{ infoRelease.totalPlayCount.toLocaleString() }} times
+            </div>
+          </div>
 
-          <div v-if="infoRelease.musicbrainzId">
-            <dt class="text-xs text-ink-2">MusicBrainz release ID</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.musicbrainzId }}</dd>
-          </div>
-          <div v-if="infoRelease.releaseGroupId">
-            <dt class="text-xs text-ink-2">MusicBrainz release group ID</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.releaseGroupId }}</dd>
-          </div>
-          <div v-if="infoRelease.localReleaseId">
-            <dt class="text-xs text-ink-2">Local release ID</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoRelease.localReleaseId }}</dd>
-          </div>
-        </dl>
+          <dl class="flex-1 space-y-3 text-sm">
+            <div v-if="infoRelease.folderPath">
+              <dt class="text-xs text-ink-2">Folder path</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.folderPath }}</dd>
+            </div>
+            <div v-if="infoExtra?.bpm">
+              <dt class="text-xs text-ink-2">BPM</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoExtra.bpm }}</dd>
+            </div>
+            <div v-if="infoExtra?.label">
+              <dt class="text-xs text-ink-2">Label</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoExtra.label }}</dd>
+            </div>
+            <div v-if="infoRelease.format">
+              <dt class="text-xs text-ink-2">Format</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.format }}</dd>
+            </div>
+            <div v-if="infoRelease.packaging">
+              <dt class="text-xs text-ink-2">Packaging</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.packaging }}</dd>
+            </div>
+            <div v-if="infoRelease.disambiguation">
+              <dt class="text-xs text-ink-2">Disambiguation</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.disambiguation }}</dd>
+            </div>
+            <div v-if="infoRelease.editionLabel">
+              <dt class="text-xs text-ink-2">Edition</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.editionLabel }}</dd>
+            </div>
+            <div v-if="infoRelease.coArtists?.length">
+              <dt class="text-xs text-ink-2">Co-artists</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.coArtists.map(a => a.name).join(', ') }}</dd>
+            </div>
+            <template v-if="infoExtra">
+              <div v-for="(names, role) in infoExtra.people" :key="role">
+                <dt class="text-xs text-ink-2">{{ role }}</dt>
+                <dd class="font-mono text-xs text-ink-2">{{ names.join(', ') }}</dd>
+              </div>
+            </template>
+            <div v-if="infoRelease.musicbrainzId">
+              <dt class="text-xs text-ink-2">MusicBrainz release ID</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.musicbrainzId }}</dd>
+            </div>
+            <div v-if="infoRelease.releaseGroupId">
+              <dt class="text-xs text-ink-2">MusicBrainz release group ID</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.releaseGroupId }}</dd>
+            </div>
+            <div v-if="infoRelease.localReleaseId">
+              <dt class="text-xs text-ink-2">Local release ID</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.localReleaseId }}</dd>
+            </div>
+            <div v-if="infoExtra?.isrc">
+              <dt class="text-xs text-ink-2">ISRC</dt>
+              <dd class="font-mono text-xs text-ink-2">{{ infoExtra.isrc }}</dd>
+            </div>
+          </dl>
+        </div>
       </template>
     </Dialog>
   </div>

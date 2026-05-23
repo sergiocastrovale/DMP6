@@ -3,8 +3,8 @@ import type { Release } from '~/types/release'
 import type { PlaylistSummary } from '~/types/playlist'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
 
+const { releaseImage } = useImageUrl()
 const loading = ref(true)
-const viewMode = ref<'grid' | 'list'>('grid')
 
 type Section =
   | { title: string, type: 'release', items: Ref<Release[]> }
@@ -54,7 +54,7 @@ onMounted(() => {
   <div class="flex flex-col gap-10">
     <FirstScan v-if="isEmpty" />
     <template v-else>
-      <DashboardSubheader v-model="viewMode" />
+      <DashboardSubheader />
 
       <div class="flex flex-col gap-5">
         <DashboardSection
@@ -64,19 +64,30 @@ onMounted(() => {
           :title="section.title"
           :loading="loading"
           :empty="!section.items.value.length"
-          :view-mode="viewMode"
         >
           <template v-if="section.type === 'playlist'">
-            <template v-for="item in (section.items.value as PlaylistSummary[])" :key="item.id">
-              <DashboardPlaylistCard v-if="viewMode === 'grid'" :playlist="item" />
-              <DashboardPlaylistListRow v-else :playlist="item" />
-            </template>
+            <DashboardPlaylistCard
+              v-for="item in (section.items.value as PlaylistSummary[])"
+              :key="item.id"
+              :playlist="item"
+            />
           </template>
           <template v-else>
-            <template v-for="item in (section.items.value as Release[])" :key="item.id">
-              <DashboardCard v-if="viewMode === 'grid'" :release="item" />
-              <DashboardListRow v-else :release="item" />
-            </template>
+            <Block
+              v-for="item in (section.items.value as Release[])"
+              :key="item.id"
+              :id="item.id"
+              :title="item.title"
+              :title-link="`/artist/${item.artist!.slug}?releaseId=${item.id}`"
+              :subtitle="item.artist!.name"
+              :subtitle-link="`/artist/${item.artist!.slug}`"
+              :year="item.year"
+              :genre="item.genre"
+              :image="releaseImage(item)"
+              playable
+              :release-id="item.id"
+              :artist-slug="item.artist!.slug"
+            />
           </template>
         </DashboardSection>
       </div>

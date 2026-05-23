@@ -11,6 +11,7 @@ export interface Statistics {
   releasesSyncedWithMusicbrainz: number
   artistsWithCoverArt: number
   releasesWithCoverArt: number
+  totalFileSize: number
   lastScanStartedAt: string | null
   lastScanEndedAt: string | null
 }

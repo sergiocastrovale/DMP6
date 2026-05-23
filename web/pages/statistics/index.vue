@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { LucideBarChart3, LucideUsers, LucideDisc, LucideMusic2, LucideTag, LucidePlay, LucideClock, LucideRefreshCw, LucideImage } from 'lucide-vue-next'
+import { LucideBarChart3, LucideUsers, LucideDisc, LucideMusic2, LucideTag, LucidePlay, LucideClock, LucideRefreshCw, LucideImage, LucideHardDrive } from 'lucide-vue-next'
 import type { Statistics } from '~/types/stats'
-import { formatNumber, formatPlaytime } from '~/helpers/functions'
+import { formatNumber, formatPlaytime, formatFileSize } from '~/helpers/functions'
 
 definePageMeta({ layout: 'admin' })
 
@@ -86,6 +86,11 @@ onMounted(() => {
             <p class="text-2xl font-bold text-ink">{{ formatNumber(stats.genres) }}</p>
             <p class="text-xs text-ink0">Genres</p>
           </NuxtLink>
+          <div class="rounded-lg border border-rule bg-bg-1 p-4">
+            <LucideHardDrive class="mb-2 size-5 text-accent" />
+            <p class="text-2xl font-bold text-ink">{{ formatFileSize(stats.totalFileSize) }}</p>
+            <p class="text-xs text-ink0">Total Size</p>
+          </div>
         </div>
       </section>
 

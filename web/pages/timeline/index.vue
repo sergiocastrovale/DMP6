@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideClock, LucidePlay, LucidePause, LucideMusic } from 'lucide-vue-next'
+import { LucideClock, LucideMusic } from 'lucide-vue-next'
 
 interface Decade {
   decade: number
@@ -38,7 +38,6 @@ const loadingDecade = ref(false)
 const loadingMore = ref(false)
 
 const { releaseImage } = useImageUrl()
-const { isReleasePlaying, toggleOrPlay: handleReleaseClick } = usePlayRelease()
 
 async function loadDecades() {
   loading.value = true
@@ -192,51 +191,19 @@ onMounted(() => {
             {{ group.year || 'Unknown Year' }}
           </h2>
           <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            <div
+            <Block
               v-for="release in group.releases"
               :key="release.id"
-              class="group flex flex-col gap-2"
-            >
-              <div class="relative aspect-square overflow-hidden rounded-lg bg-bg-2">
-                <img
-                  v-if="releaseImage(release)"
-                  :src="releaseImage(release)!"
-                  :alt="release.title"
-                  loading="lazy"
-                  class="h-full w-full object-cover transition-transform group-hover:scale-105"
-                >
-                <div v-else class="flex h-full w-full items-center justify-center text-ink-4">
-                  <LucideMusic class="size-12" />
-                </div>
-                <button
-                  class="absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity"
-                  :class="isReleasePlaying(release.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
-                  @click="handleReleaseClick(release.id)"
-                >
-                  <div class="rounded-full bg-accent p-3 text-accent-ink shadow-lg">
-                    <LucidePause v-if="isReleasePlaying(release.id)" class="size-6" fill="currentColor" />
-                    <LucidePlay v-else class="size-6" fill="currentColor" />
-                  </div>
-                </button>
-              </div>
-              <div class="flex flex-col gap-0.5">
-                <NuxtLink
-                  v-if="release.artist"
-                  :to="`/artist/${release.artist.slug}`"
-                  class="line-clamp-1 text-sm font-medium text-ink hover:text-accent transition-colors"
-                >
-                  {{ release.title }}
-                </NuxtLink>
-                <p v-else class="line-clamp-1 text-sm font-medium text-ink">{{ release.title }}</p>
-                <NuxtLink
-                  v-if="release.artist"
-                  :to="`/artist/${release.artist.slug}`"
-                  class="line-clamp-1 text-xs text-ink-2 hover:text-ink-2 transition-colors"
-                >
-                  {{ release.artist.name }}
-                </NuxtLink>
-              </div>
-            </div>
+              :id="release.id"
+              :title="release.title"
+              :title-link="`/artist/${release.artist!.slug}?releaseId=${release.id}`"
+              :subtitle="release.artist!.name"
+              :subtitle-link="`/artist/${release.artist!.slug}`"
+              :image="releaseImage(release)"
+              playable
+              :release-id="release.id"
+              :artist-slug="release.artist!.slug"
+            />
           </div>
         </div>
 
