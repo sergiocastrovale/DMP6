@@ -75,12 +75,10 @@ pub fn embed_cover_art(file_path: &Path, jpeg_bytes: &[u8]) -> Result<bool, Stri
         return Ok(false);
     }
 
-    let picture = Picture::new_unchecked(
-        PictureType::CoverFront,
-        Some(MimeType::Jpeg),
-        None,
-        jpeg_bytes.to_vec(),
-    );
+    let picture = Picture::unchecked(jpeg_bytes.to_vec())
+        .pic_type(PictureType::CoverFront)
+        .mime_type(MimeType::Jpeg)
+        .build();
 
     tag.push_picture(picture);
     tag.save_to_path(file_path, WriteOptions::default())

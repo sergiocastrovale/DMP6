@@ -65,10 +65,7 @@ pub fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, Strin
         }
 
         for item in tag.items() {
-            let key = match item.key() {
-                lofty::tag::ItemKey::Unknown(s) => s.to_string(),
-                other => format!("{:?}", other),
-            };
+            let key = format!("{:?}", item.key());
             if let lofty::tag::ItemValue::Text(raw_val) = item.value() {
                 let val = sanitize_tag(raw_val);
                 let key_upper = key.to_uppercase();
@@ -134,7 +131,7 @@ pub fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, Strin
             album = tag.album().map(|s| s.to_string());
         }
         if year.is_none() {
-            year = tag.year().and_then(|y| i32::try_from(y).ok());
+            year = tag.date().map(|d| d.year as i32);
         }
         if genre.is_none() {
             genre = tag.genre().map(|s| s.to_string());

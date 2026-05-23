@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# DMP database backup. Streams a compressed pg_dump from the NAS into web/dump/.
-# See docs/scripts/backup.md for details.
+# DMP backup. Dumps the database and compresses images on the NAS,
+# then copies both archives to the local project (web/dump/).
 #
 set -euo pipefail
 
@@ -9,11 +9,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DUMP_DIR="$SCRIPT_DIR/web/dump"
 ENV_FILE="$SCRIPT_DIR/web/.env"
 
-# Defaults — overridable via web/.env
 SSH_HOST_DEFAULT="nas"
 POSTGRES_CONTAINER_DEFAULT="ix-postgres-postgres-1"
 DB_USER_DEFAULT="dmp"
 DB_NAME_DEFAULT="dmp"
+NAS_DUMP_DIR_DEFAULT="/mnt/SSD/web/dmp/dump"
+NAS_IMG_DIR_DEFAULT="/mnt/SSD/web/dmp/img"
 
 if [ -f "$ENV_FILE" ]; then
   set -a
@@ -26,58 +27,85 @@ SSH_HOST="${NAS_SSH_HOST:-$SSH_HOST_DEFAULT}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-$POSTGRES_CONTAINER_DEFAULT}"
 DB_USER="${BACKUP_DB_USER:-$DB_USER_DEFAULT}"
 DB_NAME="${BACKUP_DB_NAME:-$DB_NAME_DEFAULT}"
+NAS_DUMP_DIR="${NAS_DUMP_DIR:-$NAS_DUMP_DIR_DEFAULT}"
+NAS_IMG_DIR="${NAS_IMG_DIR:-$NAS_IMG_DIR_DEFAULT}"
 
 mkdir -p "$DUMP_DIR"
 
 TIMESTAMP="$(date -u +%Y-%m-%dT%H-%M-%S)"
-OUT_FILE="$DUMP_DIR/${TIMESTAMP}.sql.gz"
+DB_FILE="${TIMESTAMP}.sql.gz"
+IMG_FILE="${TIMESTAMP}_img.tar.gz"
 
 echo
-echo "🗄️  Starting database backup..."
+echo "DMP Backup"
 echo "============================================================"
-echo "📡 Source  : ${SSH_HOST} → ${POSTGRES_CONTAINER}"
-echo "📊 Database: ${DB_NAME}"
-echo "📁 Output  : web/dump/${TIMESTAMP}.sql.gz"
-echo "⏳ Streaming pg_dump | gzip -9 from NAS..."
+echo "Source  : ${SSH_HOST}"
+echo "Database: ${DB_NAME}"
+echo "Timestamp: ${TIMESTAMP}"
+echo
 
-START_TS=$(date +%s)
+# ─────────────────────────────────────────────────────────────────
+# 1. Database backup (on NAS, then copy locally)
+# ─────────────────────────────────────────────────────────────────
+echo "--- Database backup ---"
+echo "Dumping on NAS → ${NAS_DUMP_DIR}/${DB_FILE}"
 
-# pg_dump runs *inside* the NAS postgres container (avoids client/server version
-# mismatches), gzip -9 compresses on the NAS side (less bytes over the wire),
-# and the compressed bytes stream back through SSH straight into the local file.
-# Read-only — pg_dump never modifies the database.
-REMOTE_CMD="docker exec -i ${POSTGRES_CONTAINER} pg_dump --no-owner --no-acl --clean --if-exists -U ${DB_USER} ${DB_NAME} | gzip -9"
+REMOTE_DUMP_CMD="docker exec -i ${POSTGRES_CONTAINER} pg_dump --no-owner --no-acl --clean --if-exists -U ${DB_USER} ${DB_NAME} | gzip -9 > ${NAS_DUMP_DIR}/${DB_FILE}"
 
 set +e
-ssh "$SSH_HOST" "$REMOTE_CMD" > "$OUT_FILE"
+ssh "$SSH_HOST" "$REMOTE_DUMP_CMD"
 SSH_EXIT=$?
 set -e
 
 if [ $SSH_EXIT -ne 0 ]; then
-  rm -f "$OUT_FILE"
-  echo "❌ ssh/pg_dump exited with code ${SSH_EXIT}" >&2
+  echo "ERROR: pg_dump failed (exit ${SSH_EXIT})" >&2
   exit $SSH_EXIT
 fi
 
-# Sanity check: gzip should validate, and the file should be > 1 KB.
-if ! gzip -t "$OUT_FILE" 2>/dev/null; then
-  rm -f "$OUT_FILE"
-  echo "❌ Output file failed gzip integrity check" >&2
+ssh "$SSH_HOST" "gzip -t ${NAS_DUMP_DIR}/${DB_FILE}"
+NAS_DB_SIZE=$(ssh "$SSH_HOST" "stat -c%s ${NAS_DUMP_DIR}/${DB_FILE}")
+if [ "$NAS_DB_SIZE" -lt 1024 ]; then
+  ssh "$SSH_HOST" "rm -f ${NAS_DUMP_DIR}/${DB_FILE}"
+  echo "ERROR: Dump suspiciously small (${NAS_DB_SIZE} bytes)" >&2
   exit 1
 fi
 
-SIZE_BYTES=$(stat -c%s "$OUT_FILE" 2>/dev/null || stat -f%z "$OUT_FILE")
-if [ "$SIZE_BYTES" -lt 1024 ]; then
-  rm -f "$OUT_FILE"
-  echo "❌ Dump suspiciously small (${SIZE_BYTES} bytes) — aborting" >&2
-  exit 1
+echo "Copying to local → web/dump/${DB_FILE}"
+scp "${SSH_HOST}:${NAS_DUMP_DIR}/${DB_FILE}" "$DUMP_DIR/${DB_FILE}"
+
+DB_SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$(stat -c%s "$DUMP_DIR/${DB_FILE}" 2>/dev/null || stat -f%z "$DUMP_DIR/${DB_FILE}")" 2>/dev/null || echo "${NAS_DB_SIZE} bytes")
+echo "DB backup: ${DB_SIZE_HUMAN}"
+echo
+
+# ─────────────────────────────────────────────────────────────────
+# 2. Image backup (compress on NAS, then copy locally)
+# ─────────────────────────────────────────────────────────────────
+echo "--- Image backup ---"
+echo "Compressing on NAS → ${NAS_DUMP_DIR}/${IMG_FILE}"
+
+REMOTE_IMG_CMD="tar -cf - -C '${NAS_IMG_DIR}' . | gzip -9 > '${NAS_DUMP_DIR}/${IMG_FILE}'"
+
+set +e
+ssh "$SSH_HOST" "$REMOTE_IMG_CMD"
+SSH_EXIT=$?
+set -e
+
+if [ $SSH_EXIT -ne 0 ]; then
+  echo "ERROR: image tar/gzip failed (exit ${SSH_EXIT})" >&2
+  exit $SSH_EXIT
 fi
 
-DURATION=$(( $(date +%s) - START_TS ))
-SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$SIZE_BYTES" 2>/dev/null || echo "${SIZE_BYTES} bytes")
+ssh "$SSH_HOST" "gzip -t ${NAS_DUMP_DIR}/${IMG_FILE}"
 
+echo "Copying to local → web/dump/${IMG_FILE}"
+scp "${SSH_HOST}:${NAS_DUMP_DIR}/${IMG_FILE}" "$DUMP_DIR/${IMG_FILE}"
+
+IMG_SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$(stat -c%s "$DUMP_DIR/${IMG_FILE}" 2>/dev/null || stat -f%z "$DUMP_DIR/${IMG_FILE}")" 2>/dev/null || echo "unknown")
+echo "Image backup: ${IMG_SIZE_HUMAN}"
+echo
+
+# ─────────────────────────────────────────────────────────────────
 echo "============================================================"
-echo "✅ Database backup completed successfully!"
-echo "📁 File    : web/dump/${TIMESTAMP}.sql.gz"
-echo "📊 Size    : ${SIZE_HUMAN}"
-echo "⏱️  Duration: ${DURATION}s"
+echo "Backup complete!"
+echo "  DB  : web/dump/${DB_FILE} (${DB_SIZE_HUMAN})"
+echo "  IMG : web/dump/${IMG_FILE} (${IMG_SIZE_HUMAN})"

@@ -10,6 +10,7 @@ members = [
     "playlists",
     "delete",
     "mosaic",
+    "dissect",
 ]
 resolver = "2"
 
@@ -25,7 +26,7 @@ jwalk = "0.8"
 # Parallel CPU work
 rayon = "1.10"
 # Audio tag reading
-lofty = "0.22"
+lofty = "0.24"
 # HTTP client
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # Image processing

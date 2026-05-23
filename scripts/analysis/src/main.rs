@@ -276,9 +276,9 @@ fn collect_tags(tagged_file: &lofty::file::TaggedFile) -> HashMap<String, String
             map.entry("TITLE".to_string())
                 .or_insert_with(|| v.to_string());
         }
-        if let Some(v) = tag.year() {
+        if let Some(v) = tag.date() {
             map.entry("YEAR".to_string())
-                .or_insert_with(|| v.to_string());
+                .or_insert_with(|| v.year.to_string());
         }
         if let Some(v) = tag.genre() {
             map.entry("GENRE".to_string())
@@ -287,13 +287,10 @@ fn collect_tags(tagged_file: &lofty::file::TaggedFile) -> HashMap<String, String
 
         // All custom / raw items
         for item in tag.items() {
-            let key = match item.key() {
-                lofty::tag::ItemKey::Unknown(s) => s.to_uppercase(),
-                other => {
-                    let mut k = format!("{:?}", other);
-                    k.make_ascii_uppercase();
-                    k
-                }
+            let key = {
+                let mut k = format!("{:?}", item.key());
+                k.make_ascii_uppercase();
+                k
             };
             if let lofty::tag::ItemValue::Text(val) = item.value() {
                 map.entry(key).or_insert_with(|| val.clone());

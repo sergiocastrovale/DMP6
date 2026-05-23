@@ -20,9 +20,10 @@ COPY scripts/audit/Cargo.toml audit/Cargo.toml
 COPY scripts/playlists/Cargo.toml playlists/Cargo.toml
 COPY scripts/delete/Cargo.toml delete/Cargo.toml
 COPY scripts/mosaic/Cargo.toml mosaic/Cargo.toml
+COPY scripts/dissect/Cargo.toml dissect/Cargo.toml
 
 # Create dummy src files to pre-build dependencies
-RUN mkdir -p common/src index/src sync/src fix/src analysis/src nuke/src audit/src playlists/src delete/src mosaic/src \
+RUN mkdir -p common/src index/src sync/src fix/src analysis/src nuke/src audit/src playlists/src delete/src mosaic/src dissect/src \
     && echo 'pub mod config; pub mod db; pub mod slug; pub mod filters; pub mod artists; pub mod s3; pub mod progress; pub mod lock; pub mod checkpoint; pub mod totals; pub mod statistics; pub mod types; pub mod images;' > common/src/lib.rs \
     && for m in config db slug filters artists s3 progress lock checkpoint totals statistics types images; do echo '' > common/src/$m.rs; done \
     && echo 'fn main(){}' > index/src/main.rs \
@@ -33,7 +34,8 @@ RUN mkdir -p common/src index/src sync/src fix/src analysis/src nuke/src audit/s
     && echo 'fn main(){}' > audit/src/main.rs \
     && echo 'fn main(){}' > playlists/src/main.rs \
     && echo 'fn main(){}' > delete/src/main.rs \
-    && echo 'fn main(){}' > mosaic/src/main.rs
+    && echo 'fn main(){}' > mosaic/src/main.rs \
+    && echo 'fn main(){}' > dissect/src/main.rs
 
 # Build dependencies only (cached unless Cargo.toml/Cargo.lock changes)
 RUN cargo build --release --workspace 2>/dev/null || true
@@ -49,6 +51,7 @@ COPY scripts/audit/src audit/src
 COPY scripts/playlists/src playlists/src
 COPY scripts/delete/src delete/src
 COPY scripts/mosaic/src mosaic/src
+COPY scripts/dissect/src dissect/src
 
 # Touch source files to invalidate the dummy build
 RUN find . -name '*.rs' -exec touch {} +
@@ -109,6 +112,7 @@ COPY --from=scripts-builder /build/target/release/nuke /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/playlists /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/delete /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/mosaic /usr/local/bin/
+COPY --from=scripts-builder /build/target/release/dissect /usr/local/bin/
 
 # Genre playlist config
 COPY scripts/playlists/genre-groups.json /app/genre-groups.json

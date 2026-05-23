@@ -95,9 +95,9 @@ pub fn read_tags(abs_path: &Path) -> Result<serde_json::Value, String> {
     let tag = tagged.primary_tag().ok_or_else(|| "No primary tag".to_string())?;
 
     let artist = tag.artist().map(|s| s.to_string());
-    let album_artist = tag.get_string(&ItemKey::AlbumArtist).map(|s| s.to_string());
+    let album_artist = tag.get_string(ItemKey::AlbumArtist).map(|s| s.to_string());
     let album = tag.album().map(|s| s.to_string());
-    let year = tag.year();
+    let year = tag.date().map(|d| d.year as u32);
 
     let mut obj = serde_json::Map::new();
     if let Some(v) = artist {
@@ -138,7 +138,8 @@ pub fn write_tags_from_json(abs_path: &Path, values: &serde_json::Value) -> Resu
         tag.set_album(v.to_string());
     }
     if let Some(v) = values.get("year").and_then(|v| v.as_u64()) {
-        tag.set_year(v as u32);
+        use lofty::tag::items::Timestamp;
+        tag.set_date(Timestamp { year: v as u16, month: None, day: None, hour: None, minute: None, second: None });
     }
 
     tag.save_to_path(abs_path, lofty::config::WriteOptions::default())

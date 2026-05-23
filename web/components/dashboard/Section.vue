@@ -13,8 +13,9 @@ defineProps<{
   <div>
     <DashboardSectionHeader :title="title" />
     <LoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
+    
     <template v-else-if="!empty">
-      <div v-if="viewMode === 'grid'" class="grid grid-cols-5 gap-x-8 gap-y-10 max-[1180px]:grid-cols-4 max-[920px]:grid-cols-3 max-[640px]:grid-cols-2">
+      <div v-if="viewMode === 'grid'" class="grid grid-cols-6 gap-x-5 gap-y-10 max-[1180px]:grid-cols-8 max-[920px]:grid-cols-6 max-[640px]:grid-cols-4">
         <slot />
       </div>
 

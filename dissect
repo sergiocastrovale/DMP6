@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BINARY="$SCRIPT_DIR/scripts/target/release/dissect"
+REPORTS_DIR="$SCRIPT_DIR/reports"
+
+if [ ! -f "$BINARY" ] && command -v cargo &>/dev/null; then
+  echo "Binary not found. Building..."
+  (cd "$SCRIPT_DIR/scripts" && cargo build --release -p dissect)
+fi
+
+if [ -f "$BINARY" ]; then
+  mkdir -p "$REPORTS_DIR"
+  exec "$BINARY" "$@"
+fi
+
+# Docker fallback (NAS — binary is inside the running container)
+TTY_FLAG=""; [ -t 0 ] && TTY_FLAG="-it"
+exec docker exec $TTY_FLAG dmp dissect "$@"
