@@ -31,7 +31,7 @@ const maxWidthClass = computed(() => {
   <Teleport to="body">
     <div
       v-if="modelValue"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      class="fixed inset-0 z-[3000] flex items-center justify-center bg-black/60 p-4"
       @click.self="close"
     >
       <div :class="maxWidthClass" class="w-full max-h-[90vh] flex flex-col rounded-xl border border-rule bg-bg-1 shadow-2xl">

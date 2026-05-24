@@ -477,6 +477,8 @@ async fn main() {
                 }
             };
 
+        let country_code = detail.country_code().map(|s| s.to_string());
+
         // Upsert genres from MB genres + tags
         let mut artist_genre_ids: Vec<String> = Vec::new();
         if let Some(ref genres) = detail.genres {
@@ -517,9 +519,10 @@ async fn main() {
             .collect();
         batch_upsert_artist_urls(&pool, &artist.id, &urls).await.ok();
         reporter.sub_ok(&format!(
-            "Saved {} URLs, {} genres",
+            "Saved {} URLs, {} genres{}",
             urls.len(),
-            artist_genre_ids.len()
+            artist_genre_ids.len(),
+            country_code.as_deref().map(|c| format!(", country: {}", c)).unwrap_or_default()
         ));
 
         // 3. Artist image — skip if already present
@@ -989,7 +992,7 @@ async fn main() {
             None
         };
 
-        update_artist_sync_stats(&pool, &artist.id, &mb_artist.id, avg_score)
+        update_artist_sync_stats(&pool, &artist.id, &mb_artist.id, avg_score, country_code.as_deref())
             .await
             .ok();
 

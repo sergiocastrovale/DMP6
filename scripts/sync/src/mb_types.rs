@@ -69,12 +69,29 @@ pub struct MbTrack {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct MbArea {
+    pub name: Option<String>,
+    #[serde(rename = "iso-3166-1-codes")]
+    pub iso_3166_1_codes: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct MbArtistDetail {
     pub id: String,
     pub name: String,
+    pub area: Option<MbArea>,
     pub relations: Option<Vec<MbRelation>>,
     pub genres: Option<Vec<MbGenre>>,
     pub tags: Option<Vec<MbTag>>,
+}
+
+impl MbArtistDetail {
+    pub fn country_code(&self) -> Option<&str> {
+        self.area.as_ref()
+            .and_then(|a| a.iso_3166_1_codes.as_ref())
+            .and_then(|codes| codes.first())
+            .map(|s| s.as_str())
+    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -27,6 +27,7 @@ Link: LocalReleaseTrack.mbTrackId → MusicBrainzReleaseTrack.id
 
 - `LocalReleaseArtist` = main artists (albumArtist tag owners), many-to-many
 - `TrackRelatedArtist` = related/guest artists (artist tag extras not in albumArtist), many-to-many
+- `Artist.country` = ISO 3166-1 alpha-2 code from MusicBrainz area (e.g. "US", "GB"), populated by sync
 - `Artist.relatedOnly` = true for guests (no own browse page, no MB sync); flips to false when found as albumArtist
 - `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING | UNKNOWN | UNMATCHED
 - `PlaylistType`: MANUAL | GENRE
@@ -186,6 +187,9 @@ On the NAS, script error logs are at: `docker exec dmp cat /app/errors.log`
 - `/api/favorites/*` — toggle favorite releases and tracks
 - `/api/auth/login`, `/api/auth/logout` — session auth
 
+### Labs
+- `GET /api/labs/map/countries` — artist country map data (24h cache)
+
 ### Operations
 - `POST /api/terminal/run` — execute shell commands (SSE streaming)
 - `GET /api/health` — health check (public)
@@ -203,6 +207,7 @@ On the NAS, script error logs are at: `docker exec dmp cat /app/errors.log`
 | `/favorites` | Tabbed favorites (releases/tracks) |
 | `/timeline` | Browse by decade/year |
 | `/statistics` | Library stats dashboard |
+| `/labs/map` | World map with album art tiled by artist origin country |
 | `/issues` | Metadata issue overview — run audit, view counts per type |
 | `/issues/[type]` | Per-type issue table — select, edit proposed fixes, queue for fix |
 | `/login` | Auth page |

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Grid3x3 } from 'lucide-vue-next'
+import { Globe, Grid3x3 } from 'lucide-vue-next'
 
 definePageMeta({ layout: 'labs' })
 
@@ -9,6 +9,12 @@ const labs = [
     title: 'Album Mosaic',
     description: 'Generate a giant mosaic from all your album covers, randomly arranged.',
     icon: Grid3x3,
+  },
+  {
+    to: '/labs/map',
+    title: 'World Map',
+    description: 'Album art tiled across a world map by artist origin.',
+    icon: Globe,
   },
 ]
 </script>

@@ -377,6 +377,7 @@ pub async fn update_artist_sync_stats(
     artist_id: &str,
     mb_id: &str,
     avg_score: Option<f64>,
+    country: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     let now = Utc::now().naive_utc();
     sqlx::query(
@@ -384,12 +385,14 @@ pub async fn update_artist_sync_stats(
            SET "musicbrainzId" = $1,
                "averageMatchScore" = $2,
                "lastSyncedAt" = $3,
-               "updatedAt" = $3
-           WHERE id = $4"#,
+               "updatedAt" = $3,
+               "country" = $4
+           WHERE id = $5"#,
     )
     .bind(mb_id)
     .bind(avg_score)
     .bind(now)
+    .bind(country)
     .bind(artist_id)
     .execute(pool)
     .await?;

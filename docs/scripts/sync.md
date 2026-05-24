@@ -4,6 +4,25 @@ Queries artists where `lastIndexedAt > lastSyncedAt` and `relatedOnly = false`, 
 
 Skips `relatedOnly=true` artists — guests/collaborators don't need MB enrichment.
 
+## TL;DR
+
+1. Load config, connect DB, acquire process lock (prevents concurrent runs)
+2. Select artists: `--release` (single), `--overwrite` (all), or default (pending where `lastIndexedAt > lastSyncedAt`)
+3. **Per artist:**
+   - Skip special names (Various Artists, [unknown])
+   - Find on MusicBrainz — use existing MB ID or search API; skip duplicates (same MB ID as previous artist)
+   - Persist MB ID and country code (from MB area ISO 3166-1), fetch artist details (genres, tags, URLs), upsert to DB
+   - Download artist image if missing (Wikidata → Wikipedia → Fanart.tv → local/S3)
+   - Fetch release groups from MB API
+4. **Per release (within artist):**
+   - Skip already-synced unless `--overwrite`
+   - Match via embedded MB IDs: Tier 1 (MUSICBRAINZ_ALBUMID) → Tier 2 (MUSICBRAINZ_RELEASEGROUPID) → no match = UNMATCHED
+   - Compare local vs MB track counts → status: COMPLETE / EXTRA_TRACKS / MISSING_TRACKS / INCOMPLETE
+   - If ambiguous (multiple editions, no exact track-count match) → UNMATCHED
+   - Upsert MB release, link tracks, update local release match status
+5. **Cover art (batched per artist):** download from Cover Art Archive, embed into audio files, extract thumbnail → `img/releases/` (local/S3)
+6. **Cleanup:** update artist sync stats + global statistics, delete orphan MB releases, release lock
+
 ## Build
 
 ```bash
@@ -51,7 +70,7 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
 ## Per-Artist Flow
 
 1. **Find MB match** — 5-step algorithm (see below)
-2. **Fetch** artist detail: URLs, genres (top 5 by count), tags
+2. **Fetch** artist detail: URLs, genres (top 5 by count), tags, country (from `area.iso-3166-1-codes`)
 3. **Download** artist image (Wikidata → Wikipedia → Fanart.tv), resize to 500px
 4. **Fetch** release groups (paginated)
 5. **For each local release** — 2-tier matching:
@@ -60,7 +79,7 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
    - No MB IDs in tags → marked Unmatched, skipped
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
 7. **Cover art** — download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
-8. **Set `lastSyncedAt`** on Artist, compute average match score
+8. **Set `lastSyncedAt`** on Artist, persist country code, compute average match score
 
 Duplicate detection: tracks processed MB IDs across the run. Skips artists that resolve to an already-processed MB artist.
 
