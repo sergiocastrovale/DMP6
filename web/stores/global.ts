@@ -4,22 +4,20 @@ interface AppStats {
   artists: number
   releases: number
   tracks: number
+  genres: number
   playtime: number
-  totalFileSize: number
-  playlists: number
-  favorites: number
-  issues: number
+  totalFileSize: number   
+  totalPlays: number
 }
 
 const DEFAULT_STATS: AppStats = {
   artists: 0,
   releases: 0,
   tracks: 0,
+  genres: 0,
   playtime: 0,
   totalFileSize: 0,
-  playlists: 0,
-  favorites: 0,
-  issues: 0,
+  totalPlays: 0,
 }
 
 export const useGlobalStore = defineStore('global', () => {

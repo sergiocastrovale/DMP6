@@ -74,7 +74,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="search-container relative w-full">
     <div class="relative">
-      <Search :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" />
+      <Search class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" />
       <input
         ref="inputRef"
         v-model="query"

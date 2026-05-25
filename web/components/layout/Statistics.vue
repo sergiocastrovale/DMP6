@@ -8,6 +8,8 @@ const stats = computed(() => [
   { label: 'Artists', value: formatNumber(global.stats.artists) },
   { label: 'Releases', value: formatNumber(global.stats.releases) },
   { label: 'Tracks', value: formatNumber(global.stats.tracks) },
+  { label: 'Genres', value: formatNumber(global.stats.genres) },
+  { label: 'Total Plays', value: formatNumber(global.stats.totalPlays) },
   { label: 'Playtime', value: `${formatNumber(global.playtimeHours)}h ${global.playtimeMinutes}m` },
   { label: 'Size', value: formatFileSize(global.stats.totalFileSize) },
 ])

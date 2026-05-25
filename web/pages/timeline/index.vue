@@ -123,22 +123,47 @@ const releasesByYear = computed(() => {
     .map(([year, releases]) => ({ year, releases }))
 })
 
+const yearCountMap = computed(() => {
+  const map = new Map<number, number>()
+  if (decadeData.value) {
+    for (const y of decadeData.value.years) {
+      map.set(y.year, y.count)
+    }
+  }
+  return map
+})
+
+const loadMoreTrigger = ref<HTMLElement | null>(null)
+
 onMounted(() => {
   loadDecades()
+
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0]?.isIntersecting) {
+      loadMore()
+    }
+  }, { rootMargin: '200px' })
+
+  watch(loadMoreTrigger, (el) => {
+    observer.disconnect()
+    if (el) {
+      observer.observe(el)
+    }
+  })
+
+  onUnmounted(() => observer.disconnect())
 })
 </script>
 
 <template>
   <div class="flex flex-col gap-6">
-    <PageTitle :icon="LucideClock" text="Timeline" subtext="Browse your library by decade and year" />
+    <PageTitle text="Timeline" subtext="Browse your library by decade and year" />
 
-    <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">
       <div class="text-ink0">Loading...</div>
     </div>
 
     <template v-else-if="decades.length > 0">
-      <!-- Decade tabs -->
       <div class="flex flex-wrap gap-2">
         <button
           v-for="d in decades"
@@ -154,7 +179,6 @@ onMounted(() => {
         </button>
       </div>
 
-      <!-- Year sub-navigation -->
       <div v-if="decadeData && decadeData.years.length > 1" class="flex flex-wrap gap-1">
         <button
           class="rounded px-3 py-1 text-xs font-medium transition-colors"
@@ -179,18 +203,24 @@ onMounted(() => {
         </button>
       </div>
 
-      <!-- Loading decade -->
       <div v-if="loadingDecade" class="flex items-center justify-center py-16">
         <div class="text-ink0">Loading...</div>
       </div>
 
-      <!-- Releases grouped by year -->
-      <div v-else-if="decadeData" class="flex flex-col gap-10">
-        <div v-for="group in releasesByYear" :key="group.year">
-          <h2 class="mb-4 text-lg font-semibold text-ink-2">
-            {{ group.year || 'Unknown Year' }}
-          </h2>
-          <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div v-else-if="decadeData" class="relative pl-40 mt-10">
+        <div class="absolute left-[7rem] top-0 bottom-0 w-0.5 bg-accent-soft" />
+
+        <div v-for="group in releasesByYear" :key="group.year" class="relative pb-12">
+          <div class="absolute left-[-12.5rem] top-0 w-[8rem] text-right">
+            <div class="font-display text-3xl font-bold text-ink leading-none">{{ group.year || '????' }}</div>
+            <div class="text-xs font-medium text-ink-3 mt-1">
+              {{ yearCountMap.get(group.year) ?? group.releases.length }} {{ (yearCountMap.get(group.year) ?? group.releases.length) === 1 ? 'release' : 'releases' }}
+            </div>
+          </div>
+
+          <div class="absolute left-[-3.4rem] top-0 size-3.5 rounded-full bg-accent ring-[3px] ring-accent/30" />
+
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             <Block
               v-for="release in group.releases"
               :key="release.id"
@@ -207,18 +237,10 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Load more -->
-        <div v-if="decadeData.hasMore" class="flex justify-center py-4">
-          <button
-            class="rounded-lg bg-bg-2 px-6 py-2 text-sm text-ink-2 hover:bg-bg-3 transition-colors"
-            :disabled="loadingMore"
-            @click="loadMore"
-          >
-            {{ loadingMore ? 'Loading...' : 'Load more' }}
-          </button>
+        <div v-if="decadeData.hasMore" ref="loadMoreTrigger" class="flex justify-center py-4">
+          <span v-if="loadingMore" class="text-sm text-ink-3">Loading...</span>
         </div>
 
-        <!-- Empty state -->
         <div
           v-if="decadeData.releases.length === 0"
           class="flex flex-col items-center justify-center py-20 text-center text-ink0"
@@ -227,14 +249,12 @@ onMounted(() => {
           <p>No releases in this period</p>
         </div>
 
-        <!-- Total count -->
         <div v-if="decadeData.total > 0" class="text-center text-xs text-ink-4">
           {{ decadeData.total }} {{ decadeData.total === 1 ? 'release' : 'releases' }}
         </div>
       </div>
     </template>
 
-    <!-- No data -->
     <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
       <LucideClock class="mb-3 size-12 opacity-50" />
       <p>No releases with year information found</p>

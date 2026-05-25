@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Disc3, Download, FolderClosed, Heart, Info, LayoutGrid, LayoutList, Link, ListFilter, Pause, Play, RefreshCw } from 'lucide-vue-next'
-import type { UnifiedRelease, ReleaseStatus } from '~/types/release'
+import type { UnifiedRelease, ReleaseGroup, ReleaseInfoExtra, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/components/TrackList.vue'
 import type { ButtonDropdownOption } from '~/components/ButtonDropdown.vue'
@@ -17,43 +16,20 @@ const props = defineProps<{
 const showMissing = defineModel<boolean>('showMissing', { default: true })
 
 const route = useRoute()
+const router = useRouter()
 const player = usePlayerStore()
-const { isCurrentRelease: isCurrentReleaseId, isReleasePlaying: isReleasePlayingId, toggleOrPlay } = usePlayRelease()
-const { releaseImage } = useImageUrl()
+const { isCurrentRelease: isCurrentReleaseId, toggleOrPlay } = usePlayRelease()
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
 
-const TAB_BUCKETS = [
-  { slug: 'albums', label: 'Albums', match: (t: string) => t === 'album' },
-  { slug: 'eps', label: 'EPs', match: (t: string) => t === 'ep' },
-  { slug: 'singles', label: 'Singles', match: (t: string) => t === 'single' },
-  { slug: 'other', label: 'Other', match: (_t: string) => true },
-] as const
-
-const SORT_OPTIONS = [
-  { value: 'year-asc', label: 'Year (oldest first)' },
-  { value: 'year-desc', label: 'Year (newest first)' },
-  { value: 'title', label: 'Title' },
-  { value: 'tracks-desc', label: 'Most tracks' },
-  { value: 'plays-desc', label: 'Most played' },
-] as const
-
-const VIEW_OPTIONS = [
-  { value: 'catalogue', icon: LayoutGrid, title: 'Catalogue view' },
-  { value: 'list', icon: LayoutList, title: 'List view' },
-]
-
-const router = useRouter()
-
 const searchQuery = ref('')
-const statusFilter = ref<string | null>(null)
+const typeFilter = ref<string | null>(null)
+const activeStatuses = ref<Set<string>>(new Set(statuses.map(s => s.value)))
 const sortKey = ref<string>('year-asc')
 const initialView = route.query.view === 'list' ? 'list' : 'catalogue'
 const viewMode = ref<'catalogue' | 'list'>(initialView)
-const activeTab = ref<string>('albums')
 const expandedGroup = ref<string | null>(null)
 const expandedEdition = ref<string | null>(null)
-const sortOpen = ref(false)
 const allTracks = ref<Track[]>([])
 const allTracksLoading = ref(false)
 const allTracksLoaded = ref(false)
@@ -61,7 +37,7 @@ const downloadRelease = ref<UnifiedRelease | null>(null)
 const showDownloadDialog = ref(false)
 const infoRelease = ref<UnifiedRelease | null>(null)
 const showInfoDialog = ref(false)
-const infoExtra = ref<{ genres: string[]; bpm: string | null; originalReleaseDate: string | null; country: string | null; label: string | null; isrc: string | null; people: Record<string, string[]> } | null>(null)
+const infoExtra = ref<ReleaseInfoExtra | null>(null)
 const favoriteReleases = ref<Set<string>>(new Set())
 
 onMounted(() => {
@@ -78,93 +54,56 @@ onMounted(async () => {
   catch { /* ignore */ }
 })
 
-function bucketSlug(typeSlug: string) {
-  for (const b of TAB_BUCKETS) {
-    if (b.match(typeSlug)) {
-      return b.slug
-    }
-  }
-  return 'other'
-}
-
-function toReleaseSlug(title: string) {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-}
-
-const visibleReleases = computed(() => {
-  return showMissing.value
+const visibleReleases = computed(() =>
+  showMissing.value
     ? props.releases
-    : props.releases.filter(r => r.status !== 'MISSING')
-})
+    : props.releases.filter(r => r.status !== 'MISSING'),
+)
 
-const tabCounts = computed(() => {
-  const counts: Record<string, number> = { albums: 0, eps: 0, singles: 0, other: 0 }
+const statusCounts = computed(() => {
+  const counts: Record<string, number> = {}
   for (const r of visibleReleases.value) {
-    const key = bucketSlug(r.typeSlug)
-    counts[key] = (counts[key] ?? 0) + 1
+    counts[r.status] = (counts[r.status] || 0) + 1
   }
   return counts
 })
 
-const visibleTabs = computed(() => TAB_BUCKETS.filter(t => (tabCounts.value[t.slug] ?? 0) > 0))
+const filteredReleases = computed(() => {
+  let r = visibleReleases.value
 
-const tabItems = computed(() => visibleTabs.value.map(t => ({
-  key: t.slug,
-  label: t.label,
-  count: tabCounts.value[t.slug] ?? 0,
-})))
+  if (activeStatuses.value.size < statuses.length) {
+    r = r.filter(x => activeStatuses.value.has(x.status))
+  }
 
-watch(visibleTabs, (tabs) => {
-  if (tabs.length && !tabs.find(t => t.slug === activeTab.value)) {
-    activeTab.value = tabs[0]!.slug
+  if (typeFilter.value) {
+    if (typeFilter.value === 'other') {
+      r = r.filter(x => !['album', 'ep', 'single'].includes(x.typeSlug))
+    } else {
+      r = r.filter(x => x.typeSlug === typeFilter.value)
+    }
   }
-}, { immediate: true })
 
-watch(viewMode, (val) => {
-  const query = { ...route.query }
-  if (val === 'list') {
-    query.view = 'list'
-    loadAllTracks()
-  }
-  else {
-    delete query.view
-  }
-  router.replace({ query })
-}, { immediate: true })
-
-const tabFiltered = computed(() => {
-  let r = visibleReleases.value.filter(x => bucketSlug(x.typeSlug) === activeTab.value)
-  if (statusFilter.value) {
-    r = r.filter(x => x.status === statusFilter.value)
-  }
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
-    r = r.filter(x => x.title.toLowerCase().includes(q) || (x.disambiguation || '').toLowerCase().includes(q) || (x.editionLabel || '').toLowerCase().includes(q))
+    r = r.filter(x =>
+      x.title.toLowerCase().includes(q)
+      || (x.disambiguation || '').toLowerCase().includes(q)
+      || (x.editionLabel || '').toLowerCase().includes(q),
+    )
   }
   return r
 })
-
-type ReleaseGroup = {
-  key: string
-  releases: UnifiedRelease[]
-  primary: UnifiedRelease
-  totalTracks: number
-  totalLocalTracks: number
-  totalPlayCount: number
-  earliest: string
-}
 
 const dateKey = (r: UnifiedRelease) => r.releaseDate || (r.year ? `${r.year}-00-00` : '9999-99-99')
 
 const groups = computed<ReleaseGroup[]>(() => {
   const buckets = new Map<string, UnifiedRelease[]>()
-  for (const r of tabFiltered.value) {
+  for (const r of filteredReleases.value) {
     const key = r.releaseGroupId || `solo:${r.id}`
     const arr = buckets.get(key)
     if (arr) {
       arr.push(r)
-    }
-    else {
+    } else {
       buckets.set(key, [r])
     }
   }
@@ -201,10 +140,10 @@ const sortedGroups = computed<ReleaseGroup[]>(() => {
   return arr
 })
 
-const missingReleasesInTab = computed(() => tabFiltered.value.filter(r => r.status === 'MISSING'))
+const missingReleasesVisible = computed(() => filteredReleases.value.filter(r => r.status === 'MISSING'))
 
 const downloadAllOptions = computed<ButtonDropdownOption[]>(() => {
-  const missing = missingReleasesInTab.value
+  const missing = missingReleasesVisible.value
   if (missing.length === 0) {
     return []
   }
@@ -261,10 +200,10 @@ const releaseMap = computed(() => {
 
 const filteredAllTracks = computed(() => {
   let tracks = allTracks.value
-  if (statusFilter.value) {
+  if (activeStatuses.value.size < statuses.length) {
     const matchingReleaseIds = new Set(
       props.releases
-        .filter(r => r.status === statusFilter.value && r.localReleaseId)
+        .filter(r => activeStatuses.value.has(r.status) && r.localReleaseId)
         .map(r => r.localReleaseId),
     )
     tracks = tracks.filter(t => t.localReleaseId && matchingReleaseIds.has(t.localReleaseId))
@@ -290,24 +229,19 @@ const listViewColumns: TrackListColumn[] = [
   { key: 'favorite' },
 ]
 
-const releaseTrackColumns: TrackListColumn[] = [
-  { key: 'trackNumber', label: '#' },
-  { key: 'title', label: 'Title' },
-  { key: 'playCount', label: 'Plays' },
-  { key: 'duration' },
-  { key: 'favorite' },
-]
+watch(viewMode, (val) => {
+  const query = { ...route.query }
+  if (val === 'list') {
+    query.view = 'list'
+    loadAllTracks()
+  } else {
+    delete query.view
+  }
+  router.replace({ query })
+}, { immediate: true })
 
-function statusDescription(status: string) {
-  return statuses.find(s => s.value === status)?.description ?? ''
-}
-
-function editionLabel(r: UnifiedRelease) {
-  return r.disambiguation || r.editionLabel || null
-}
-
-function editionDisplayTitle(r: UnifiedRelease) {
-  return editionLabel(r) || 'Original release'
+function toReleaseSlug(title: string) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
 function openDownloadDialog(release: UnifiedRelease) {
@@ -326,7 +260,7 @@ async function openInfoDialog(edition: UnifiedRelease) {
   showInfoDialog.value = true
   if (edition.localReleaseId) {
     try {
-      infoExtra.value = await $fetch<typeof infoExtra.value>(`/api/releases/${edition.localReleaseId}/info`)
+      infoExtra.value = await $fetch<ReleaseInfoExtra>(`/api/releases/${edition.localReleaseId}/info`)
     }
     catch { /* ignore */ }
   }
@@ -336,8 +270,7 @@ function toggleGroup(key: string) {
   expandedGroup.value = expandedGroup.value === key ? null : key
   if (expandedGroup.value !== key) {
     expandedEdition.value = null
-  }
-  else {
+  } else {
     const group = groups.value.find(g => g.key === key)
     if (group?.releases.length === 1 && (group.releases[0]!.localReleaseId || group.releases[0]!.localTrackCount > 0)) {
       expandedEdition.value = group.releases[0]!.id
@@ -350,28 +283,14 @@ function toggleEdition(id: string) {
 }
 
 const getReleaseId = (r: UnifiedRelease) => r.localReleaseId || r.id
-const isCurrentRelease = (r: UnifiedRelease) => isCurrentReleaseId(getReleaseId(r))
-const isReleasePlaying = (r: UnifiedRelease) => isReleasePlayingId(getReleaseId(r))
 const handleReleaseClick = (r: UnifiedRelease) => toggleOrPlay(getReleaseId(r), props.slug)
 
 function handleGroupPlayClick(group: ReleaseGroup) {
-  const current = group.releases.find(r => isCurrentRelease(r))
+  const current = group.releases.find(r => isCurrentReleaseId(getReleaseId(r)))
   const target = current
     || group.releases.find(r => r.localReleaseId || r.localTrackCount > 0)
     || group.primary
   toggleOrPlay(getReleaseId(target), props.slug)
-}
-
-function isGroupCurrent(group: ReleaseGroup) {
-  return group.releases.some(r => isCurrentRelease(r))
-}
-
-function isGroupPlaying(group: ReleaseGroup) {
-  return group.releases.some(r => isReleasePlaying(r))
-}
-
-function groupHasPlayable(group: ReleaseGroup) {
-  return group.releases.some(r => r.localReleaseId || r.localTrackCount > 0)
 }
 
 let allTracksSlug = ''
@@ -390,7 +309,6 @@ async function loadAllTracks() {
     allTracksLoading.value = false
   }
 }
-
 
 function buildPlayerTracks(tracks: Track[], startTrack: Track) {
   const playerTracks = tracks.map(t => ({
@@ -420,8 +338,7 @@ async function toggleFavoriteRelease(release: UnifiedRelease) {
     })
     if (isFavorite) {
       favoriteReleases.value.delete(localId)
-    }
-    else {
+    } else {
       favoriteReleases.value.add(localId)
     }
   }
@@ -441,7 +358,6 @@ async function handleReleaseDeepLink() {
   if (!release) {
     return
   }
-  activeTab.value = bucketSlug(release.typeSlug)
   await nextTick()
   const groupKey = release.releaseGroupId || `solo:${release.id}`
   expandedGroup.value = groupKey
@@ -460,274 +376,48 @@ watch(() => props.releases, () => {
 
 <template>
   <div class="flex flex-col gap-4 px-8">
-    <Tabs v-if="visibleTabs.length > 0" v-model="activeTab" :tabs="tabItems">
-      <template #append>
-        <div class="pb-2">
-          <Switch v-model="showMissing" label="Show missing" />
-        </div>
-      </template>
-    </Tabs>
+    <ArtistStatusChips v-model:active-statuses="activeStatuses" :status-counts="statusCounts" />
 
-    <div class="flex flex-wrap items-center gap-3">
-      <ArtistReleaseSearch v-model="searchQuery" placeholder="Search releases..." />
-
-      <Dropdown
-        v-model="statusFilter"
-        :options="statuses"
-        placeholder="Status"
-      />
-
-      <ButtonDropdown
-        v-if="downloadsStore.anyConfigured && missingReleasesInTab.length > 0 && showMissing"
-        label="Download missing"
-        :options="downloadAllOptions"
-      >
-        <template #icon>
-          <Download :size="14" />
-        </template>
-      </ButtonDropdown>
-
-      <div class="flex-1" />
-
-      <div class="relative">
-        <button
-          type="button"
-          class="flex items-center gap-1.5 rounded-lg border border-rule bg-bg-1 px-3 py-1.5 text-xs text-ink-2 transition-colors hover:text-ink"
-          @click="sortOpen = !sortOpen"
-        >
-          <ListFilter :size="12" />
-          <span>Sort</span>
-        </button>
-        <div
-          v-if="sortOpen"
-          class="absolute right-0 top-full z-20 mt-1 min-w-[200px] rounded-lg border border-rule bg-bg-1 p-1 shadow-xl"
-        >
-          <button
-            v-for="opt in SORT_OPTIONS"
-            :key="opt.value"
-            type="button"
-            class="flex w-full items-center rounded px-3 py-2 text-left text-xs transition-colors"
-            :class="sortKey === opt.value ? 'bg-bg-2 text-ink' : 'text-ink-2 hover:bg-bg-2 hover:text-ink'"
-            @click="sortKey = opt.value; sortOpen = false"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-        <div v-if="sortOpen" class="fixed inset-0 z-10" @click="sortOpen = false" />
-      </div>
-
-      <ArtistListToggle v-model="viewMode" :options="VIEW_OPTIONS" />
-    </div>
+    <ArtistReleaseFilterBar
+      v-model:search-query="searchQuery"
+      v-model:type-filter="typeFilter"
+      v-model:show-missing="showMissing"
+      v-model:sort-key="sortKey"
+      v-model:view-mode="viewMode"
+      :download-options="downloadAllOptions"
+      :show-download="downloadsStore.anyConfigured && missingReleasesVisible.length > 0 && showMissing"
+    />
 
     <template v-if="viewMode === 'catalogue'">
       <Table>
-        <div
+        <ArtistReleaseGroupRow
           v-for="group in sortedGroups"
           :key="group.key"
-          :data-group-key="group.key"
-          class="border-b border-rule last:border-b-0 transition-colors"
-          :class="group.primary.status === 'MISSING' ? '' : 'hover:bg-bg-2/50'"
+          :group="group"
+          :expanded="expandedGroup === group.key"
+          :slug="slug"
+          @toggle="toggleGroup(group.key)"
+          @play="handleGroupPlayClick(group)"
         >
-          <div class="group flex cursor-pointer items-center gap-3 p-3" @click="toggleGroup(group.key)">
-            <button
-              type="button"
-              class="flex size-5 items-center justify-center text-ink0"
-              @click.stop="toggleGroup(group.key)"
-            >
-              <ChevronDown v-if="expandedGroup === group.key" :size="14" />
-              <ChevronRight v-else :size="14" />
-            </button>
-
-            <div
-              class="group/cover relative size-10 shrink-0 cursor-pointer overflow-hidden rounded bg-bg-2"
-              @click.stop="groupHasPlayable(group) && handleGroupPlayClick(group)"
-            >
-              <img
-                v-if="releaseImage(group.primary)"
-                :src="releaseImage(group.primary)!"
-                :alt="group.primary.title"
-                class="size-full object-cover"
-                loading="lazy"
-              />
-              <div v-else class="flex size-full items-center justify-center text-ink-4">
-                <Disc3 :size="20" />
-              </div>
-              <div
-                v-if="groupHasPlayable(group)"
-                class="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover/cover:bg-black/60"
-              >
-                <Pause v-if="isGroupPlaying(group)" :size="14" fill="currentColor" class="text-accent" />
-                <Play
-                  v-else
-                  :size="14"
-                  fill="currentColor"
-                  :class="isGroupCurrent(group) ? 'text-accent' : 'text-white/50 group-hover/cover:text-white'"
-                />
-              </div>
-            </div>
-
-            <div class="min-w-0 flex-1">
-              <div class="flex items-baseline gap-2 text-sm">
-                <span class="truncate font-semibold" :class="group.primary.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
-                  {{ group.primary.title }}
-                </span>
-                <span v-if="group.primary.year" class="text-xs text-ink0">{{ group.primary.year }}</span>
-                <span
-                  v-if="group.releases.length > 1"
-                  class="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent"
-                >{{ group.releases.length }} editions</span>
-              </div>
-              <div class="mt-0.5 flex items-center gap-3 text-xs" :class="group.primary.status === 'MISSING' ? 'text-ink-4' : 'text-ink-2'">
-                <span v-if="group.primary.type">{{ group.primary.type }}</span>
-                <span v-if="group.totalTracks">· {{ group.totalTracks }} tracks</span>
-                <span v-if="group.primary.coArtists?.length" class="text-ink0">Feat.
-                  <template v-for="(co, i) in group.primary.coArtists" :key="co.slug">
-                    <NuxtLink
-                      :to="`/artist/${co.slug}`"
-                      class="text-ink-2 transition-colors hover:text-accent"
-                      @click.stop
-                    >{{ co.name }}</NuxtLink><template v-if="i < group.primary.coArtists.length - 1">, </template>
-                  </template>
-                </span>
-                <span v-if="group.totalPlayCount">· {{ group.totalPlayCount.toLocaleString() }} plays</span>
-              </div>
-            </div>
-
-            <ReleaseStatusMulti :releases="group.releases" />
-
-          </div>
-
-          <div v-if="expandedGroup === group.key" @click.stop>
-            <div class="ml-8 border-l-2 border-rule">
-                <div
-                  v-for="edition in group.releases"
-                  :key="edition.id"
-                  :data-release-id="edition.id"
-                  class="border-b border-rule last:border-b-0"
-                  :class="edition.status === 'MISSING' ? '' : 'hover:bg-bg-2/30'"
-                >
-                  <div
-                    class="group/edition flex cursor-pointer items-center gap-3 px-3 py-2.5"
-                    @click="toggleEdition(edition.id)"
-                  >
-                    <button
-                      type="button"
-                      class="flex size-5 items-center justify-center text-ink0"
-                      @click.stop="toggleEdition(edition.id)"
-                    >
-                      <ChevronDown v-if="expandedEdition === edition.id" :size="14" />
-                      <ChevronRight v-else :size="14" />
-                    </button>
-                    <div
-                      class="group/folder relative flex size-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded border border-rule text-ink0 transition-colors"
-                      :class="isCurrentRelease(edition) ? 'border-accent/50 text-accent' : 'hover:border-ink-3'"
-                      @click.stop="(edition.localReleaseId || edition.localTrackCount > 0) && handleReleaseClick(edition)"
-                    >
-                      <FolderClosed :size="14" />
-                      <div
-                        v-if="edition.localReleaseId || edition.localTrackCount > 0"
-                        class="absolute inset-0 flex items-center justify-center bg-bg-1/70 transition-colors group-hover/folder:bg-bg-1/95"
-                      >
-                        <Pause v-if="isReleasePlaying(edition)" :size="12" fill="currentColor" class="text-accent" />
-                        <Play
-                          v-else
-                          :size="12"
-                          fill="currentColor"
-                          :class="isCurrentRelease(edition) ? 'text-accent' : 'text-ink-2 group-hover/folder:text-ink'"
-                        />
-                      </div>
-                    </div>
-                    <div class="min-w-0 flex-1">
-                      <div class="flex items-baseline gap-2 text-sm">
-                        <span class="truncate" :class="edition.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
-                          {{ editionDisplayTitle(edition) }}
-                        </span>
-                        <span v-if="edition.year" class="text-xs">({{ edition.year }})</span>
-                      </div>
-                      <div class="text-xs" :class="edition.status === 'MISSING' ? 'text-ink-4' : 'text-ink0'">
-                        <span v-if="edition.trackCount">{{ edition.trackCount }} tracks</span>
-                        <span v-if="edition.localTrackCount && edition.trackCount !== edition.localTrackCount" class="ml-2">
-                          {{ edition.localTrackCount }} local
-                        </span>
-                      </div>
-                    </div>
-
-                    <Popover trigger="hover">
-                      <template #trigger>
-                        <ReleaseStatusBadge :status="edition.status" />
-                      </template>
-                      <template #content>
-                        <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
-                          <p class="text-xs text-ink-2">{{ edition.statusReason || statusDescription(edition.status) }}</p>
-                        </div>
-                      </template>
-                    </Popover>
-
-                    <button
-                      v-if="edition.status === 'MISSING' && downloadsStore.anyConfigured"
-                      type="button"
-                      class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent"
-                      title="Download this release"
-                      @click.stop="openDownloadDialog(edition)"
-                    >
-                      <Download :size="14" />
-                    </button>
-
-                    <button
-                      v-if="edition.localReleaseId"
-                      type="button"
-                      class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent"
-                      :class="{ 'text-accent': favoriteReleases.has(edition.localReleaseId!) }"
-                      @click.stop="toggleFavoriteRelease(edition)"
-                    >
-                      <Heart :size="14" :fill="favoriteReleases.has(edition.localReleaseId!) ? 'currentColor' : 'none'" />
-                    </button>
-
-                    <a
-                      v-if="edition.musicbrainzId"
-                      :href="`https://musicbrainz.org/release/${edition.musicbrainzId}`"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
-                      title="View on MusicBrainz"
-                      @click.stop
-                    >
-                      <Link :size="14" />
-                    </a>
-
-                    <button
-                      v-if="edition.localReleaseId"
-                      type="button"
-                      class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
-                      title="Refresh this release"
-                      :disabled="terminal.isRunning"
-                      @click.stop="refreshRelease(edition)"
-                    >
-                      <RefreshCw :size="14" />
-                    </button>
-
-                    <button
-                      type="button"
-                      class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
-                      title="Release info"
-                      @click.stop="openInfoDialog(edition)"
-                    >
-                      <Info :size="14" />
-                    </button>
-
-                  </div>
-
-                  <div v-if="expandedEdition === edition.id && (edition.localReleaseId || edition.localTrackCount > 0)" class="border-t border-rule px-3 pb-3" @click.stop>
-                    <ReleaseTracksTable :release-id="edition.localReleaseId || edition.mbReleaseRowId || edition.id" :columns="releaseTrackColumns" />
-                  </div>
-                </div>
-            </div>
-          </div>
-        </div>
+          <ArtistReleaseEditionRow
+            v-for="edition in group.releases"
+            :key="edition.id"
+            :edition="edition"
+            :expanded="expandedEdition === edition.id"
+            :is-favorite="!!edition.localReleaseId && favoriteReleases.has(edition.localReleaseId)"
+            :slug="slug"
+            @toggle="toggleEdition(edition.id)"
+            @play="handleReleaseClick(edition)"
+            @download="openDownloadDialog(edition)"
+            @toggle-favorite="toggleFavoriteRelease(edition)"
+            @refresh="refreshRelease(edition)"
+            @info="openInfoDialog(edition)"
+          />
+        </ArtistReleaseGroupRow>
       </Table>
 
       <div v-if="sortedGroups.length === 0" class="py-8 text-center text-sm text-ink0">
-        No releases in this category
+        No releases match your filters
       </div>
     </template>
 
@@ -755,99 +445,6 @@ watch(() => props.releases, () => {
       :release-year="downloadRelease.year"
     />
 
-    <Dialog v-model="showInfoDialog" :title="infoRelease?.title ?? 'Release Info'" max-width="lg">
-      <template v-if="infoRelease">
-        <div class="flex gap-6">
-          <div class="flex w-44 shrink-0 flex-col gap-3">
-            <div class="aspect-square w-full overflow-hidden rounded-lg bg-bg-2">
-              <img
-                v-if="releaseImage(infoRelease)"
-                :src="releaseImage(infoRelease)!"
-                :alt="infoRelease.title"
-                class="size-full object-cover"
-              />
-              <div v-else class="flex size-full items-center justify-center text-ink-4">
-                <Disc3 :size="32" />
-              </div>
-            </div>
-            <div v-if="infoRelease.type || infoRelease.year" class="flex items-center gap-1.5 text-xs text-ink-2">
-              <span v-if="infoRelease.type">{{ infoRelease.type }}</span>
-              <span v-if="infoRelease.type && infoRelease.year">&middot;</span>
-              <span v-if="infoRelease.year">{{ infoRelease.year }}</span>
-            </div>
-            <div v-if="infoRelease.country || infoExtra?.country" class="text-xs text-ink-2">
-              {{ infoExtra?.country || infoRelease.country }}
-            </div>
-            <div v-if="infoExtra?.genres?.length" class="flex flex-wrap gap-1">
-              <span
-                v-for="genre in infoExtra.genres"
-                :key="genre"
-                class="rounded-full bg-bg-2 px-2 py-0.5 text-[11px] text-ink-2"
-              >{{ genre }}</span>
-            </div>
-            <div v-if="infoRelease.totalPlayCount" class="text-[11px] text-ink-4">
-              Played {{ infoRelease.totalPlayCount.toLocaleString() }} times
-            </div>
-          </div>
-
-          <dl class="flex-1 space-y-3 text-sm">
-            <div v-if="infoRelease.folderPath">
-              <dt class="text-xs text-ink-2">Folder path</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.folderPath }}</dd>
-            </div>
-            <div v-if="infoExtra?.bpm">
-              <dt class="text-xs text-ink-2">BPM</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoExtra.bpm }}</dd>
-            </div>
-            <div v-if="infoExtra?.label">
-              <dt class="text-xs text-ink-2">Label</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoExtra.label }}</dd>
-            </div>
-            <div v-if="infoRelease.format">
-              <dt class="text-xs text-ink-2">Format</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.format }}</dd>
-            </div>
-            <div v-if="infoRelease.packaging">
-              <dt class="text-xs text-ink-2">Packaging</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.packaging }}</dd>
-            </div>
-            <div v-if="infoRelease.disambiguation">
-              <dt class="text-xs text-ink-2">Disambiguation</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.disambiguation }}</dd>
-            </div>
-            <div v-if="infoRelease.editionLabel">
-              <dt class="text-xs text-ink-2">Edition</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.editionLabel }}</dd>
-            </div>
-            <div v-if="infoRelease.coArtists?.length">
-              <dt class="text-xs text-ink-2">Co-artists</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.coArtists.map(a => a.name).join(', ') }}</dd>
-            </div>
-            <template v-if="infoExtra">
-              <div v-for="(names, role) in infoExtra.people" :key="role">
-                <dt class="text-xs text-ink-2">{{ role }}</dt>
-                <dd class="font-mono text-xs text-ink-2">{{ names.join(', ') }}</dd>
-              </div>
-            </template>
-            <div v-if="infoRelease.musicbrainzId">
-              <dt class="text-xs text-ink-2">MusicBrainz release ID</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.musicbrainzId }}</dd>
-            </div>
-            <div v-if="infoRelease.releaseGroupId">
-              <dt class="text-xs text-ink-2">MusicBrainz release group ID</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.releaseGroupId }}</dd>
-            </div>
-            <div v-if="infoRelease.localReleaseId">
-              <dt class="text-xs text-ink-2">Local release ID</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoRelease.localReleaseId }}</dd>
-            </div>
-            <div v-if="infoExtra?.isrc">
-              <dt class="text-xs text-ink-2">ISRC</dt>
-              <dd class="font-mono text-xs text-ink-2">{{ infoExtra.isrc }}</dd>
-            </div>
-          </dl>
-        </div>
-      </template>
-    </Dialog>
+    <ArtistReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />
   </div>
 </template>

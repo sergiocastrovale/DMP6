@@ -55,3 +55,23 @@ export interface ReleaseType {
   name: string
   slug: string
 }
+
+export interface ReleaseGroup {
+  key: string
+  releases: UnifiedRelease[]
+  primary: UnifiedRelease
+  totalTracks: number
+  totalLocalTracks: number
+  totalPlayCount: number
+  earliest: string
+}
+
+export interface ReleaseInfoExtra {
+  genres: string[]
+  bpm: string | null
+  originalReleaseDate: string | null
+  country: string | null
+  label: string | null
+  isrc: string | null
+  people: Record<string, string[]>
+}
