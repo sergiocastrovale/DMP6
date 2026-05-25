@@ -40,7 +40,7 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
       </button>
 
       <div
-        class="group/cover relative size-10 shrink-0 cursor-pointer overflow-hidden rounded bg-bg-2"
+        class="group/cover relative size-15 shrink-0 cursor-pointer bg-bg-2"
         @click.stop="hasPlayable && emit('play')"
       >
         <img
@@ -51,28 +51,27 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
           loading="lazy"
         />
         <div v-else class="flex size-full items-center justify-center text-ink-4">
-          <Disc3 :size="20" />
+          <Disc3 :size="24" />
         </div>
         <div
           v-if="hasPlayable"
           class="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover/cover:bg-black/60"
         >
-          <Pause v-if="isGroupPlaying" :size="14" fill="currentColor" class="text-accent" />
+          <Pause v-if="isGroupPlaying" :size="16" fill="currentColor" class="text-accent" />
           <Play
             v-else
-            :size="14"
+            :size="16"
             fill="currentColor"
             :class="isGroupCurrent ? 'text-accent' : 'text-white/50 group-hover/cover:text-white'"
           />
         </div>
       </div>
 
-      <div class="min-w-0 flex-1">
+      <div class="min-w-0 flex-1 ml-1">
         <div class="flex items-baseline gap-2 text-sm">
-          <span class="truncate font-semibold" :class="group.primary.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
+          <span class="truncate text-lg font-medium" :class="group.primary.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
             {{ group.primary.title }}
           </span>
-          <span v-if="group.primary.year" class="text-xs text-ink0">{{ group.primary.year }}</span>
           <span
             v-if="group.releases.length > 1"
             class="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent"
@@ -80,6 +79,7 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
         </div>
         <div class="mt-0.5 flex items-center gap-3 text-xs" :class="group.primary.status === 'MISSING' ? 'text-ink-4' : 'text-ink-2'">
           <span v-if="group.primary.type">{{ group.primary.type }}</span>
+          <span v-if="group.primary.year">· {{ group.primary.year }}</span>
           <span v-if="group.totalTracks">· {{ group.totalTracks }} tracks</span>
           <span v-if="group.primary.coArtists?.length" class="text-ink0">Feat.
             <template v-for="(co, i) in group.primary.coArtists" :key="co.slug">

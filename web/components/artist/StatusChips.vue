@@ -24,6 +24,20 @@ const toggle = (value: string) => {
   activeStatuses.value = next
 }
 
+const helpOpen = ref(false)
+const helpButton = ref<HTMLElement | null>(null)
+
+const helpStyle = computed(() => {
+  if (!helpButton.value) {
+    return {}
+  }
+  const rect = helpButton.value.getBoundingClientRect()
+  return {
+    top: `${rect.bottom + 4}px`,
+    left: `${Math.max(8, rect.right - 360)}px`,
+  }
+})
+
 </script>
 
 <template>
@@ -44,17 +58,25 @@ const toggle = (value: string) => {
       {{ s.label }} {{ statusCounts[s.value] }}
     </button>
 
-    <Popover trigger="hover">
-      <template #trigger>
-        <button class="text-ink0 transition-colors hover:text-ink-2">
-          <HelpCircle :size="14" />
-        </button>
-      </template>
-      <template #content>
-        <div class="absolute right-0 top-full z-20 mt-1 w-[360px] rounded-lg border border-rule bg-bg-1 p-3 text-left shadow-xl">
+    <div
+      class="relative"
+      @mouseenter="helpOpen = true"
+      @mouseleave="helpOpen = false"
+    >
+      <button ref="helpButton" class="text-ink0 transition-colors hover:text-ink-2">
+        <HelpCircle :size="14" />
+      </button>
+      <Teleport to="body">
+        <div
+          v-if="helpOpen"
+          class="fixed z-[600] w-[360px] rounded-lg border border-rule bg-bg-1 p-3 text-left shadow-xl"
+          :style="helpStyle"
+          @mouseenter="helpOpen = true"
+          @mouseleave="helpOpen = false"
+        >
           <table class="text-xs">
             <tr v-for="s in statuses" :key="s.value" class="border-b border-rule last:border-b-0">
-              <td class="whitespace-nowrap py-3 px-2">
+              <td class="whitespace-nowrap px-2 py-3">
                 <span class="inline-flex items-center gap-2">
                   <span class="size-1.5 shrink-0 rounded-full" :class="dotColors[s.value]" />
                   <span class="font-medium text-ink">{{ s.label }}</span>
@@ -64,7 +86,7 @@ const toggle = (value: string) => {
             </tr>
           </table>
         </div>
-      </template>
-    </Popover>
+      </Teleport>
+    </div>
   </div>
 </template>

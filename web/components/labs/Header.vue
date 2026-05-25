@@ -5,6 +5,10 @@ const route = useRoute()
 
 const navItems = [
   { to: '/labs/mosaic', label: 'Mosaic' },
+  { to: '/labs/map', label: 'Map' },
+  { to: '/labs/genome', label: 'Genome' },
+  { to: '/labs/decades', label: 'Decades' },
+  { to: '/labs/network', label: 'Network' },
 ]
 </script>
 

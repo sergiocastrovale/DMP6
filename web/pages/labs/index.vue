@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Globe, Grid3x3 } from 'lucide-vue-next'
+import { Globe, Grid3x3, Dna, Clock, Network } from 'lucide-vue-next'
 
 definePageMeta({ layout: 'labs' })
 
@@ -15,6 +15,24 @@ const labs = [
     title: 'World Map',
     description: 'Album art tiled across a world map by artist origin.',
     icon: Globe,
+  },
+  {
+    to: '/labs/genome',
+    title: 'Genre Genome',
+    description: 'Interactive force graph showing genre relationships through shared artists.',
+    icon: Dna,
+  },
+  {
+    to: '/labs/decades',
+    title: 'Decade DNA',
+    description: 'Radar charts comparing your collection across decades — genres, quality, diversity.',
+    icon: Clock,
+  },
+  {
+    to: '/labs/network',
+    title: 'Artist Network',
+    description: 'Collaboration graph showing artist connections through shared tracks.',
+    icon: Network,
   },
 ]
 </script>
