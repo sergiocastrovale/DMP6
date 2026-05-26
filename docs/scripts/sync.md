@@ -1,13 +1,13 @@
 # Scripts: sync
 
-Queries artists where `lastIndexedAt > lastSyncedAt` and `relatedOnly = false`, then syncs each against MusicBrainz. Reads from DB and calls MB API. Writes to audio files when embedding downloaded cover art.
+Queries pending artists (`lastIndexedAt > lastSyncedAt`) and syncs each against MusicBrainz. Uses a run hash for resumability — interrupted runs skip already-processed artists. Reads from DB and calls MB API. Writes to audio files when embedding downloaded cover art.
 
 Skips `relatedOnly=true` artists — guests/collaborators don't need MB enrichment.
 
 ## TL;DR
 
 1. Load config, connect DB, acquire process lock (prevents concurrent runs)
-2. Select artists: `--release` (single), `--overwrite` (all), or default (pending where `lastIndexedAt > lastSyncedAt`)
+2. Select artists: `--release` (single), `--overwrite` (all), or default (pending where `lastIndexedAt > lastSyncedAt`). Skip artists already processed in current run (matching `syncHash`)
 3. **Per artist:**
    - Skip special names (Various Artists, [unknown])
    - Find on MusicBrainz — use existing MB ID or search API; skip duplicates (same MB ID as previous artist)
@@ -80,6 +80,7 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
 7. **Cover art** — download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
 8. **Set `lastSyncedAt`** on Artist, persist country code, compute average match score
+9. **Stamp run hash** on Artist for resumability
 
 Duplicate detection: tracks processed MB IDs across the run. Skips artists that resolve to an already-processed MB artist.
 
@@ -136,9 +137,11 @@ Index creates one `LocalRelease` per folder. Sync merges them by linking `LocalR
 
 Multiple editions (original, remaster, deluxe) stored as separate `MusicBrainzRelease` rows sharing a `releaseGroupId`. Each has its own `musicbrainzId` and `disambiguation` label. Cover art fetched per-release first, falling back to release-group art.
 
-## Locking
+## Locking & Resumability
 
 Named DB lock (`"sync"`). Clears stale locks older than 10 min. SIGTERM/Ctrl-C handlers release the lock; second Ctrl-C force-exits.
+
+Run hash stored in `Settings.syncRunHash`. On restart, artists already processed (matching `Artist.syncHash`) are skipped. Hash cleared on completion. `--overwrite` generates a new hash. `--release` bypasses hash.
 
 ## Running on NAS
 

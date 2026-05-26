@@ -12,3 +12,4 @@ pub mod statistics;
 pub mod types;
 pub mod images;
 pub mod error_log;
+pub mod run_hash;

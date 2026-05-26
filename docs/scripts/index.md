@@ -1,6 +1,6 @@
 # Scripts: index
 
-Walks MUSIC_DIR, extracts metadata from audio files, and upserts the local DB tree. Sets `lastIndexedAt` on each processed artist, which triggers `sync` to re-sync on the next run.
+Walks MUSIC_DIR, extracts metadata from audio files, and upserts the local DB tree. Sets `lastIndexedAt` on artists only when data actually changes (new/updated/deleted tracks). Uses a run hash for resumability — interrupted runs continue from where they left off.
 
 ## Build
 
@@ -66,14 +66,17 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 7. **Cover art** — extract from embedded tags or folder images, content-addressed by MD5 hash (same image bytes = one file, shared across releases)
 8. **Delete** tracks no longer on disk
 9. **Update totals** for this artist's releases and tracks
-10. **Set `lastIndexedAt`** on Artist
-11. **Upsert FolderScan** — stores folder mtime
+10. **Set `lastIndexedAt`** on Artist (only if new/updated/deleted tracks in folder)
+11. **Stamp run hash** on FolderScan for resumability
+12. **Upsert FolderScan** — stores folder mtime
 
 Post-loop: detects entirely deleted folders (only when unfiltered), safety-net pass re-extracts missing release images.
 
-## Locking
+## Locking & Resumability
 
 Acquires a named DB lock (`"index"`). Clears stale locks older than 10 minutes. SIGTERM/Ctrl-C handlers release the lock on shutdown; second Ctrl-C force-exits. Checkpoint saved per-folder for `--resume`.
+
+Run hash stored in `Settings.indexRunHash`. On restart, folders already processed (matching hash in `FolderScan`) are skipped entirely. Hash cleared on completion. `--overwrite` generates a new hash. Targeted ops (`--release`, `--folders`) bypass hash.
 
 ## Release Grouping
 

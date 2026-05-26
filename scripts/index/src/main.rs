@@ -14,6 +14,7 @@ use common::{
     filters::matches_filter,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
     progress::Reporter,
+    run_hash::{clear_run_hash, get_run_hash, new_run_hash, set_run_hash},
     s3::{create_s3_client, upload_to_s3},
     statistics::update_statistics,
     totals::{update_artist_totals_for_artist, update_release_totals_for_artist},
@@ -213,6 +214,39 @@ async fn main() {
     }
 
     // -------------------------------------------------------------------------
+    // Run hash for resumability
+    // -------------------------------------------------------------------------
+    let is_targeted = args.release.is_some() || args.folders.is_some();
+    let run_hash: Option<String> = if is_targeted {
+        None
+    } else if args.overwrite || args.overwrite_with_images {
+        let h = new_run_hash();
+        set_run_hash(&pool, "indexRunHash", &h).await;
+        Some(h)
+    } else {
+        match get_run_hash(&pool, "indexRunHash").await {
+            Some(h) => {
+                reporter.info(&format!("Resuming run (hash: {})", &h[..8]));
+                Some(h)
+            }
+            None => {
+                let h = new_run_hash();
+                set_run_hash(&pool, "indexRunHash", &h).await;
+                Some(h)
+            }
+        }
+    };
+
+    let already_indexed: HashSet<String> = if let Some(ref h) = run_hash {
+        load_indexed_folders(&pool, h).await
+    } else {
+        HashSet::new()
+    };
+    if !already_indexed.is_empty() {
+        reporter.info(&format!("Skipping {} already-processed folder(s)", already_indexed.len()));
+    }
+
+    // -------------------------------------------------------------------------
     // Pre-load caches
     // -------------------------------------------------------------------------
     let mut artist_cache: HashMap<String, String> = {
@@ -360,6 +394,10 @@ async fn main() {
             break;
         }
 
+        if already_indexed.contains(folder_name.as_str()) {
+            continue;
+        }
+
         let folder_path = PathBuf::from(&music_dir).join(folder_name);
 
         reporter.item("", folder_name, folder_idx + 1, total_folders);
@@ -399,6 +437,9 @@ async fn main() {
         let file_count = paths.len();
         if file_count == 0 {
             reporter.sub_step("0 files");
+            if let Some(ref h) = run_hash {
+                stamp_folder_index_hash(&pool, folder_name, h).await;
+            }
             save_index_checkpoint(&pool, folder_name).await.ok();
             continue;
         }
@@ -1123,10 +1164,12 @@ async fn main() {
         }
 
         let artist_ids_vec: Vec<String> = folder_artist_ids.into_iter().collect();
-        update_last_indexed_at(&pool, &artist_ids_vec).await.ok();
+        if folder_new > 0 || folder_updated > 0 || deleted_tracks > 0 {
+            update_last_indexed_at(&pool, &artist_ids_vec).await.ok();
+        }
 
         // -----------------------------------------------------------------
-        // Upsert FolderScan + save checkpoint
+        // Upsert FolderScan + save checkpoint + stamp run hash
         // -----------------------------------------------------------------
         if let Ok(meta) = std::fs::metadata(&folder_path) {
             if let Ok(sys_mtime) = meta.modified() {
@@ -1139,6 +1182,9 @@ async fn main() {
                     }
                 }
             }
+        }
+        if let Some(ref h) = run_hash {
+            stamp_folder_index_hash(&pool, folder_name, h).await;
         }
         save_index_checkpoint(&pool, folder_name).await.ok();
         update_statistics(&pool).await.ok();
@@ -1322,5 +1368,8 @@ async fn main() {
 
     clear_index_checkpoint(&pool).await.ok();
     update_statistics(&pool).await.ok();
+    if run_hash.is_some() && !shutdown.load(Ordering::SeqCst) {
+        clear_run_hash(&pool, "indexRunHash").await;
+    }
     release_lock(&pool).await;
 }

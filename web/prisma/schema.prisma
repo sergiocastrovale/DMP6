@@ -60,6 +60,7 @@ model Artist {
   mbReleases        MusicBrainzReleaseArtist[]
   genres            Genre[]              @relation("ArtistGenres")
   country           String?              @db.VarChar(2)
+  syncHash          String?
   relatedOnly       Boolean              @default(false)
   trackRelatedArtists TrackRelatedArtist[] @relation("ArtistRelatedTracks")
   unsplitIssues     IssueUnsplitArtist[] @relation("UnsplitArtistIssue")
@@ -409,6 +410,9 @@ model Settings {
   storagePublicUrl        String?
   // API Keys
   fanartApiKey       String?
+  // Run hashes (resumability)
+  indexRunHash       String?
+  syncRunHash        String?
   // Last.fm / Scrobbling
   lastfmApiKey       String?
   lastfmSecret       String?
@@ -452,6 +456,7 @@ model Statistics {
 model FolderScan {
   folderPath  String   @id
   mtime       DateTime
+  indexHash   String?
 }
 
 // ---------------------------------------------------------------------------

@@ -406,3 +406,34 @@ pub async fn propagate_mb_artist_id(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Run-hash resumability
+// ---------------------------------------------------------------------------
+
+pub async fn load_indexed_folders(
+    pool: &PgPool,
+    hash: &str,
+) -> std::collections::HashSet<String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT "folderPath" FROM "FolderScan" WHERE "indexHash" = $1"#,
+    )
+    .bind(hash)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter().map(|(p,)| p).collect()
+}
+
+pub async fn stamp_folder_index_hash(pool: &PgPool, folder_path: &str, hash: &str) {
+    sqlx::query(
+        r#"INSERT INTO "FolderScan" ("folderPath", mtime, "indexHash")
+           VALUES ($1, NOW(), $2)
+           ON CONFLICT ("folderPath") DO UPDATE SET "indexHash" = $2"#,
+    )
+    .bind(folder_path)
+    .bind(hash)
+    .execute(pool)
+    .await
+    .ok();
+}
+

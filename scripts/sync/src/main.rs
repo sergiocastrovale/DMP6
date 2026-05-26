@@ -5,10 +5,11 @@ use common::filters::matches_filter;
 use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
 use common::progress::Reporter;
 use common::s3::create_s3_client;
+use common::run_hash::{clear_run_hash, get_run_hash, new_run_hash, set_run_hash};
 use common::statistics::update_statistics;
 use common::types::TrackMeta;
 use reqwest::Client;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -231,6 +232,36 @@ async fn main() {
 
     let target_release_id: Option<String> = args.release.clone();
 
+    let is_targeted = args.release.is_some();
+    let run_hash: Option<String> = if is_targeted {
+        None
+    } else if args.overwrite {
+        let h = new_run_hash();
+        set_run_hash(&pool, "syncRunHash", &h).await;
+        Some(h)
+    } else {
+        match get_run_hash(&pool, "syncRunHash").await {
+            Some(h) => {
+                reporter.info(&format!("Resuming run (hash: {})", &h[..8]));
+                Some(h)
+            }
+            None => {
+                let h = new_run_hash();
+                set_run_hash(&pool, "syncRunHash", &h).await;
+                Some(h)
+            }
+        }
+    };
+
+    let already_synced: HashSet<String> = if let Some(ref h) = run_hash {
+        load_synced_artist_ids(&pool, h).await
+    } else {
+        HashSet::new()
+    };
+    if !already_synced.is_empty() {
+        reporter.info(&format!("Skipping {} already-processed artist(s)", already_synced.len()));
+    }
+
     reporter.header("DMP Sync");
     reporter.kv(
         "Mode",
@@ -342,10 +373,17 @@ async fn main() {
             break;
         }
 
+        if already_synced.contains(&artist.id) {
+            continue;
+        }
+
         // Skip special artists (Various Artists, [unknown], etc.)
         if is_special_artist_name(&artist.name) {
             reporter.item("", &artist.name, i + 1, total);
             reporter.skip("Special artist — skipped");
+            if let Some(ref h) = run_hash {
+                stamp_sync_hash(&pool, &artist.id, h).await;
+            }
             continue;
         }
 
@@ -363,6 +401,9 @@ async fn main() {
         if local_releases.is_empty() {
             reporter.skip("No local releases — skipped");
             reporter.sync_progress(&artist.name, i + 1, total, "skipped");
+            if let Some(ref h) = run_hash {
+                stamp_sync_hash(&pool, &artist.id, h).await;
+            }
             continue;
         }
 
@@ -438,6 +479,9 @@ async fn main() {
                 .execute(&pool)
                 .await
                 .ok();
+                if let Some(ref h) = run_hash {
+                    stamp_sync_hash(&pool, &artist.id, h).await;
+                }
                 continue;
             }
         };
@@ -449,6 +493,9 @@ async fn main() {
                     "Same MB ID as another artist — skipping duplicate"
                 ));
                 reporter.sync_progress(&artist.name, i + 1, total, "done");
+                if let Some(ref h) = run_hash {
+                    stamp_sync_hash(&pool, &artist.id, h).await;
+                }
                 continue;
             }
         }
@@ -996,6 +1043,13 @@ async fn main() {
             .await
             .ok();
 
+        let is_total_failure = score_count == 0 && release_failures > 0;
+        if !is_total_failure {
+            if let Some(ref h) = run_hash {
+                stamp_sync_hash(&pool, &artist.id, h).await;
+            }
+        }
+
         if score_count > 0 && release_failures == 0 {
             if newly_synced_count > 0 {
                 reporter.ok(&format!("Synced {} release(s)", newly_synced_count));
@@ -1031,6 +1085,9 @@ async fn main() {
         }
     }
     update_statistics(&pool).await.ok();
+    if run_hash.is_some() && running.load(Ordering::SeqCst) {
+        clear_run_hash(&pool, "syncRunHash").await;
+    }
     release_lock(&pool).await;
 
     let elapsed = start_time.elapsed();

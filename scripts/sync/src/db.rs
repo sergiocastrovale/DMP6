@@ -610,3 +610,30 @@ pub async fn get_artist_for_release(
     }))
 }
 
+// ---------------------------------------------------------------------------
+// Run-hash resumability
+// ---------------------------------------------------------------------------
+
+pub async fn load_synced_artist_ids(
+    pool: &PgPool,
+    hash: &str,
+) -> std::collections::HashSet<String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT id FROM "Artist" WHERE "syncHash" = $1"#,
+    )
+    .bind(hash)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter().map(|(id,)| id).collect()
+}
+
+pub async fn stamp_sync_hash(pool: &PgPool, artist_id: &str, hash: &str) {
+    sqlx::query(r#"UPDATE "Artist" SET "syncHash" = $1 WHERE id = $2"#)
+        .bind(hash)
+        .bind(artist_id)
+        .execute(pool)
+        .await
+        .ok();
+}
+
