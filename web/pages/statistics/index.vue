@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage } from 'lucide-vue-next'
+import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideSearch } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 const NuxtLink = resolveComponent('NuxtLink')
@@ -61,6 +61,18 @@ const sections = computed<StatSection[]>(() => {
       items: [
         { label: 'Artists with photo', value: formatNumber(s.artistsWithCoverArt), link: '/statistics/artists-with-art' },
         { label: 'Releases with cover art', value: formatNumber(s.releasesWithCoverArt), link: '/statistics/releases-with-art' },
+      ],
+    },
+    {
+      title: 'Curation',
+      icon: LucideSearch,
+      items: [
+        { label: 'Unmatched releases', value: formatNumber(s.unmatchedReleases), link: '/statistics/unmatched' },
+        { label: 'Incomplete releases', value: formatNumber(s.incompleteReleases), link: '/statistics/incomplete' },
+        { label: 'Low bitrate tracks', value: formatNumber(s.lowBitrateTracks), link: '/statistics/bitrate' },
+        { label: 'Single-release artists', value: formatNumber(s.singleReleaseArtists), link: '/statistics/single-release' },
+        { label: 'Shortest releases', value: 'Browse', link: '/statistics/shortest' },
+        { label: 'Missing cover art', value: formatNumber(s.missingArtReleases), link: '/statistics/missing-art' },
       ],
     },
   ]

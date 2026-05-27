@@ -14,4 +14,9 @@ export interface Statistics {
   totalFileSize: number
   lastScanStartedAt: string | null
   lastScanEndedAt: string | null
+  unmatchedReleases: number
+  incompleteReleases: number
+  lowBitrateTracks: number
+  singleReleaseArtists: number
+  missingArtReleases: number
 }
