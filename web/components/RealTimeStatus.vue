@@ -7,6 +7,7 @@ import {
   LockOpen,
 } from 'lucide-vue-next'
 import type { ScanStatus } from '~/server/api/scan/status.get'
+import { formatDate } from '~/helpers/functions'
 import { useTerminalStore } from '~/stores/terminal'
 
 const terminal = useTerminalStore()
@@ -122,16 +123,6 @@ function formatRelativeTime(iso: string | null): string {
   return `${days}d ago`
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return 'Never'
-  return new Date(iso).toLocaleDateString('pt-PT', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 onMounted(() => {
   fetchStatus()

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Grid3x3, Loader2, Download, Eye, Trash2, Play, Square } from 'lucide-vue-next'
+import { formatDate } from '~/helpers/functions'
 import { useMosaicStore } from '~/stores/mosaic'
 
 definePageMeta({ layout: 'labs' })
@@ -28,15 +29,6 @@ const progressPercent = computed(() => {
   if (!mosaic.progress) { return 0 }
   return Math.min(100, (mosaic.progress.current / Math.max(1, mosaic.progress.total)) * 100)
 })
-
-const formatDate = (iso: string): string =>
-  new Date(iso).toLocaleDateString('pt-PT', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 
 const formatSize = (bytes: number): string =>
   bytes >= 1_048_576

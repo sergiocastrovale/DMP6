@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Search, ArrowLeft, Loader2 } from 'lucide-vue-next'
+import { formatFileSize } from '~/helpers/functions'
 
 definePageMeta({ layout: 'admin' })
 
@@ -13,6 +14,7 @@ interface StatItem {
   artistSlug?: string | null
   playCount?: number
   artistCount?: number
+  totalSize?: number
 }
 
 const CONFIGS: Record<string, { title: string; label: string }> = {
@@ -21,6 +23,7 @@ const CONFIGS: Record<string, { title: string; label: string }> = {
   'tracks': { title: 'Tracks', label: 'tracks' },
   'genres': { title: 'Genres', label: 'genres' },
   'plays': { title: 'Played Tracks', label: 'tracks' },
+  'size': { title: 'Disk Space by Artist', label: 'artists' },
   'artists-synced': { title: 'Artists Synced', label: 'artists' },
   'releases-synced': { title: 'Releases Synced', label: 'releases' },
   'artists-with-art': { title: 'Artists with Photo', label: 'artists' },
@@ -97,6 +100,7 @@ function handleScroll() {
 const isArtistType = computed(() =>
   ['artists', 'artists-synced', 'artists-with-art'].includes(type.value),
 )
+const isSizeType = computed(() => type.value === 'size')
 
 onMounted(() => {
   if (!config.value) {
@@ -160,8 +164,19 @@ onUnmounted(() => {
         class="flex items-center gap-3 border-b border-rule/50 px-4 py-2.5 last:border-b-0 transition-colors"
         :class="isArtistType ? '' : 'hover:bg-bg-1'"
       >
+        <!-- Size rows: artist name + total size -->
+        <template v-if="isSizeType">
+          <NuxtLink
+            :to="`/artist/${item.slug}`"
+            class="flex-1 truncate text-sm text-ink hover:text-accent transition-colors"
+          >
+            {{ item.name }}
+          </NuxtLink>
+          <span class="shrink-0 text-xs tabular-nums text-ink0">{{ formatFileSize(item.totalSize ?? 0) }}</span>
+        </template>
+
         <!-- Artist-type rows: linked name -->
-        <template v-if="isArtistType">
+        <template v-else-if="isArtistType">
           <NuxtLink
             :to="`/artist/${item.slug}`"
             class="flex-1 truncate text-sm text-ink hover:text-accent transition-colors"

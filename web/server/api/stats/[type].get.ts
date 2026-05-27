@@ -2,7 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { parsePagination } from '~/server/utils/pagination'
 
 const VALID_TYPES = new Set([
-  'artists', 'releases', 'tracks', 'genres', 'plays',
+  'artists', 'releases', 'tracks', 'genres', 'plays', 'size',
   'artists-synced', 'releases-synced',
   'artists-with-art', 'releases-with-art',
 ])
@@ -30,6 +30,8 @@ export default defineEventHandler(async (event) => {
       return queryGenres(search, skip, pageSize, page)
     case 'plays':
       return queryPlays(search, skip, pageSize, page)
+    case 'size':
+      return querySize(search, skip, pageSize, page)
     case 'releases-synced':
       return queryReleasesSynced(search, skip, pageSize, page)
     default:
@@ -183,6 +185,53 @@ async function queryPlays(search: string, skip: number, pageSize: number, page: 
       title: t.title,
       artistName: t.artist,
       playCount: t.playCount,
+    })),
+    total,
+    page,
+    pageSize,
+    hasMore: skip + pageSize < total,
+  }
+}
+
+async function querySize(search: string, skip: number, pageSize: number, page: number) {
+  const searchClause = search ? `AND a."name" ILIKE '%' || $1 || '%'` : ''
+  const params = search ? [search] : []
+
+  const countResult = await prisma.$queryRawUnsafe<[{ count: bigint }]>(`
+    SELECT COUNT(*)::bigint AS count FROM (
+      SELECT a.id
+      FROM "Artist" a
+      JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
+      JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
+      JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
+      WHERE lrt."fileSize" IS NOT NULL ${searchClause}
+      GROUP BY a.id
+    ) sub
+  `, ...params)
+
+  const total = Number(countResult[0].count)
+
+  const offsetParam = search ? '$2' : '$1'
+  const limitParam = search ? '$3' : '$2'
+
+  const rows = await prisma.$queryRawUnsafe<{ id: string; name: string; slug: string; totalSize: bigint }[]>(`
+    SELECT a.id, a."name", a."slug", SUM(lrt."fileSize") AS "totalSize"
+    FROM "Artist" a
+    JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
+    JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
+    JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
+    WHERE lrt."fileSize" IS NOT NULL ${searchClause}
+    GROUP BY a.id, a."name", a."slug"
+    ORDER BY "totalSize" DESC
+    OFFSET ${offsetParam} LIMIT ${limitParam}
+  `, ...params, skip, pageSize)
+
+  return {
+    items: rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      totalSize: Number(r.totalSize),
     })),
     total,
     page,
