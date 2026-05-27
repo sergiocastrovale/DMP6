@@ -50,6 +50,7 @@ Response (cached 24h in Redis):
 - **MB pseudo-codes** (`XW` worldwide, `XE` Europe): no matching SVG country, silently ignored
 - **No country on artist**: artist won't appear on map. Coverage stat shown in header
 - **Tiny countries**: SVG paths exist but very small at map scale
+- **Excluded countries**: `AQ` (Antarctica) and `GL` (Greenland) removed from GeoJSON source
 
 ## Refreshing Data
 

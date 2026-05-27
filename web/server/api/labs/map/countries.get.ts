@@ -22,26 +22,33 @@ export default defineEventHandler(async (event) => {
 
   return cachedResponse<Record<string, MapCountry>>('map:countries', 86400, async () => {
     const rows = await prisma.$queryRaw<CountryRow[]>`
-      WITH one_per_artist AS (
-        SELECT DISTINCT ON (a.id)
-          a.id as artist_id,
+      WITH candidates AS (
+        SELECT
           a.country,
           lr.image,
-          lr."imageUrl"
+          lr."imageUrl",
+          ROW_NUMBER() OVER (
+            PARTITION BY a.country, COALESCE(lr.image, lr."imageUrl")
+            ORDER BY lr."createdAt" DESC
+          ) as rn
         FROM "Artist" a
         JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
         JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
         WHERE a.country IS NOT NULL
           AND a."relatedOnly" = false
           AND (lr.image IS NOT NULL OR lr."imageUrl" IS NOT NULL)
-        ORDER BY a.id, lr."createdAt" DESC
+      ),
+      unique_images AS (
+        SELECT country, image, "imageUrl"
+        FROM candidates
+        WHERE rn = 1
       )
       SELECT
         country,
         COUNT(*)::text as artist_count,
         (array_agg(image) FILTER (WHERE image IS NOT NULL))[:50] as images,
         (array_agg("imageUrl") FILTER (WHERE "imageUrl" IS NOT NULL))[:50] as image_urls
-      FROM one_per_artist
+      FROM unique_images
       GROUP BY country
       ORDER BY COUNT(*) DESC
     `
