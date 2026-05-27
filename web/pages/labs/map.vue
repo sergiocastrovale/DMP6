@@ -53,8 +53,7 @@ const tooltipData = computed(() => {
     : { name: tooltip.value.code, count: 0 }
 })
 
-const TILE_SIZE = 50
-const TILE_RENDER_SIZE = 100
+const CELL_PX = 100
 
 const loadImage = (src: string): Promise<HTMLImageElement> =>
   new Promise((res, rej) => {
@@ -65,7 +64,9 @@ const loadImage = (src: string): Promise<HTMLImageElement> =>
     img.src = src
   })
 
-const generateTexture = async (entry: MapCountry): Promise<{ dataUrl: string; tileW: number; tileH: number } | null> => {
+interface TextureEntry { dataUrl: string; cols: number; rows: number }
+
+const generateTexture = async (entry: MapCountry): Promise<TextureEntry | null> => {
   const urls: string[] = []
   for (const img of entry.images) {
     const url = resolveImage(img.image, img.imageUrl, 'releases')
@@ -79,9 +80,10 @@ const generateTexture = async (entry: MapCountry): Promise<{ dataUrl: string; ti
 
   const cols = Math.ceil(Math.sqrt(urls.length))
   const rows = Math.ceil(urls.length / cols)
+
   const canvas = document.createElement('canvas')
-  canvas.width = cols * TILE_RENDER_SIZE
-  canvas.height = rows * TILE_RENDER_SIZE
+  canvas.width = cols * CELL_PX
+  canvas.height = rows * CELL_PX
   const ctx = canvas.getContext('2d')!
 
   const loaded = await Promise.allSettled(urls.map(loadImage))
@@ -90,18 +92,17 @@ const generateTexture = async (entry: MapCountry): Promise<{ dataUrl: string; ti
     if (result.status === 'fulfilled') {
       const col = idx % cols
       const row = Math.floor(idx / cols)
-      ctx.drawImage(result.value, col * TILE_RENDER_SIZE, row * TILE_RENDER_SIZE, TILE_RENDER_SIZE, TILE_RENDER_SIZE)
+      ctx.drawImage(result.value, col * CELL_PX, row * CELL_PX, CELL_PX, CELL_PX)
     }
     idx++
   }
 
-  return { dataUrl: canvas.toDataURL('image/png'), tileW: cols * TILE_SIZE, tileH: rows * TILE_SIZE }
+  return { dataUrl: canvas.toDataURL('image/png'), cols, rows }
 }
 
-const textureData = ref<Record<string, { dataUrl: string; tileW: number; tileH: number }>>({})
-const initialBboxWidths = new Map<string, number>()
+const textureData = ref<Record<string, TextureEntry>>({})
 
-const applyPatternFill = (layer: Path, code: string, tex: { dataUrl: string; tileW: number; tileH: number }) => {
+const applyPatternFill = (layer: Path, code: string, tex: TextureEntry) => {
   if (!map || !geoLayer) {
     return
   }
@@ -117,12 +118,22 @@ const applyPatternFill = (layer: Path, code: string, tex: { dataUrl: string; til
   }
 
   const bbox = pathEl.getBBox()
-  if (!initialBboxWidths.has(code)) {
-    initialBboxWidths.set(code, bbox.width)
+  if (bbox.width === 0 || bbox.height === 0) {
+    return
   }
-  const scale = bbox.width / initialBboxWidths.get(code)!
-  const scaledW = tex.tileW * scale
-  const scaledH = tex.tileH * scale
+
+  const canvasAR = tex.cols / tex.rows
+  const bboxAR = bbox.width / bbox.height
+  let imgW: number, imgH: number
+  if (canvasAR > bboxAR) {
+    imgH = bbox.height
+    imgW = imgH * canvasAR
+  } else {
+    imgW = bbox.width
+    imgH = imgW / canvasAR
+  }
+  const imgX = (bbox.width - imgW) / 2
+  const imgY = (bbox.height - imgH) / 2
 
   let defs = svg.querySelector('defs')
   if (!defs) {
@@ -142,21 +153,15 @@ const applyPatternFill = (layer: Path, code: string, tex: { dataUrl: string; til
   pattern.setAttribute('y', String(bbox.y))
   pattern.setAttribute('width', String(bbox.width))
   pattern.setAttribute('height', String(bbox.height))
-  pattern.innerHTML = `<image href="${tex.dataUrl}" x="0" y="0" width="${scaledW}" height="${scaledH}" />`
+  pattern.innerHTML = `<image href="${tex.dataUrl}" x="${imgX}" y="${imgY}" width="${imgW}" height="${imgH}" />`
+
+  const opts = (layer as any).options
+  opts.fillColor = `url(#${patId})`
+  opts.fill = true
+  opts.fillOpacity = 1
 
   pathEl.setAttribute('fill', `url(#${patId})`)
   pathEl.setAttribute('fill-opacity', '1')
-}
-
-const restorePatternFill = (code: string, layer: Path) => {
-  if (!textureData.value[code]) {
-    return
-  }
-  const pathEl = layer.getElement()
-  if (pathEl) {
-    pathEl.setAttribute('fill', `url(#pat-${code})`)
-    pathEl.setAttribute('fill-opacity', '1')
-  }
 }
 
 const applyAllPatterns = () => {
@@ -257,11 +262,11 @@ onMounted(async () => {
     center: [20, 0],
     zoom: 2,
     minZoom: 2,
-    maxZoom: 4,
+    maxZoom: 5,
     maxBounds: [[-85, -180], [85, 180]],
     maxBoundsViscosity: 1.0,
-    zoomSnap: 0.25,
-    zoomDelta: 0.25,
+    zoomSnap: 1,
+    zoomDelta: 1,
     attributionControl: false,
     preferCanvas: false,
   })
@@ -287,8 +292,7 @@ onMounted(async () => {
 
       layer.on('mouseover', (e: any) => {
         tooltip.value = { x: e.originalEvent.clientX, y: e.originalEvent.clientY, code }
-        ;(layer as Path).setStyle({ color: 'oklch(0.82 0.25 92)', weight: 2, opacity: 1 })
-        restorePatternFill(code, layer as Path)
+        ;(layer as Path).setStyle({ color: 'oklch(0.82 0.25 92)', weight: 2 })
       })
       layer.on('mousemove', (e: any) => {
         if (tooltip.value) {
@@ -298,8 +302,7 @@ onMounted(async () => {
       })
       layer.on('mouseout', () => {
         tooltip.value = null
-        ;(layer as Path).setStyle(getStyle(feature))
-        restorePatternFill(code, layer as Path)
+        ;(layer as Path).setStyle({ color: 'white', weight: 0.8 })
       })
       layer.on('click', () => {
         openCountryDialog(code)
@@ -327,7 +330,6 @@ onUnmounted(() => {
   map = null
   geoLayer = null
   layersByCode.clear()
-  initialBboxWidths.clear()
 })
 </script>
 

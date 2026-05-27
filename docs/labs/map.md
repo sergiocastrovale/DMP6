@@ -27,7 +27,7 @@ Response (cached 24h in Redis):
 }
 ```
 
-- Images capped at 50 per country
+- Images capped at 200 per country
 - Joins: Artist → LocalReleaseArtist → LocalRelease
 - Filters: `country IS NOT NULL`, `relatedOnly = false`, has image
 
@@ -35,10 +35,10 @@ Response (cached 24h in Redis):
 
 - **Map engine**: Leaflet.js with SVG renderer, no tile layer (dark background)
 - **GeoJSON source**: Natural Earth 110m simplified boundaries in `web/assets/world-geojson.ts` (~276KB)
-- **Zoom**: Smooth scroll/pinch zoom, 25% steps, range 2x–6x, pan constrained to world bounds
+- **Zoom**: Discrete scroll/pinch zoom, 4 levels (2x–5x), pan constrained to world bounds
 - **Country contours**: White, thicker for countries with data
-- **Tile generation**: Offscreen `<canvas>` per country, images drawn in grid, converted to `dataURL`, injected as SVG `<pattern>` fill into Leaflet's SVG renderer
-- **Tile sizing**: 1 image = 40px, 50 images = 5px (linear scale)
+- **Tile generation**: Offscreen `<canvas>` per country, covers in square grid (`ceil(sqrt(N))`), converted to `dataURL`, applied as `userSpaceOnUse` SVG `<pattern>` centered within country bbox. Fixed cover size (COVER_SVG px) across all countries, scales with zoom
+- **Tile sizing**: All covers same size (10 SVG px at base zoom). Up to 200 images per country. No repetition — each cover once
 - **One cover per artist**: API picks one random release cover per artist (not all releases)
 - **Batching**: 5 countries processed concurrently to avoid overwhelming image loads
 - **Progressive**: Map outlines render immediately, fills appear as textures complete

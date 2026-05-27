@@ -46,8 +46,8 @@ export default defineEventHandler(async (event) => {
       SELECT
         country,
         COUNT(*)::text as artist_count,
-        (array_agg(image) FILTER (WHERE image IS NOT NULL))[:50] as images,
-        (array_agg("imageUrl") FILTER (WHERE "imageUrl" IS NOT NULL))[:50] as image_urls
+        (array_agg(image) FILTER (WHERE image IS NOT NULL))[:150] as images,
+        (array_agg("imageUrl") FILTER (WHERE "imageUrl" IS NOT NULL))[:150] as image_urls
       FROM unique_images
       GROUP BY country
       ORDER BY COUNT(*) DESC
@@ -70,7 +70,7 @@ export default defineEventHandler(async (event) => {
       result[row.country] = {
         name: COUNTRY_NAMES[row.country] ?? row.country,
         count: parseInt(row.artist_count, 10),
-        images: verified.slice(0, 50),
+        images: verified.slice(0, 150),
       }
     }
 
