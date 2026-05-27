@@ -320,6 +320,7 @@ model TrackRelatedArtist {
 enum PlaylistType {
   MANUAL
   GENRE
+  REGION
 }
 
 model Playlist {
@@ -330,6 +331,7 @@ model Playlist {
   image       String?
   type        PlaylistType    @default(MANUAL)
   genreGroup  String?         @unique
+  regionGroup String?         @unique
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   tracks      PlaylistTrack[]

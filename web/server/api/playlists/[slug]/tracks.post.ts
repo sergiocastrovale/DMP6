@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (playlist.type === 'GENRE') {
+  if (playlist.type !== 'MANUAL') {
     throw createError({
       statusCode: 403,
       statusMessage: 'Cannot add tracks to generated playlists',

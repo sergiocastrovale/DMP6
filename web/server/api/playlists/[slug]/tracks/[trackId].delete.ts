@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (playlist.type === 'GENRE') {
+  if (playlist.type !== 'MANUAL') {
     throw createError({
       statusCode: 403,
       statusMessage: 'Cannot remove tracks from generated playlists',

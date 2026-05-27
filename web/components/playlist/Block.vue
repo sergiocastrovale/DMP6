@@ -3,10 +3,10 @@
     :to="`/playlists/${playlist.slug}`"
     class="group flex flex-col gap-2"
   >
-    <div :class="playlist.type === 'GENRE' ? 'genre-border' : ''">
+    <div :class="playlist.type !== 'MANUAL' ? 'genre-border' : ''">
       <div
         class="relative aspect-square overflow-hidden bg-bg-2"
-        :class="playlist.type === 'GENRE' ? 'rounded-sm' : 'rounded-lg'"
+        :class="playlist.type !== 'MANUAL' ? 'rounded-sm' : 'rounded-lg'"
       >
         <PlaylistBlockImageMosaic :images="playlist.coverImages" />
         <PlaylistBlockTogglePlay :playlist="playlist" />

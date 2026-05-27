@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles } from 'lucide-vue-next'
+import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles, LucideGlobe } from 'lucide-vue-next'
 import type { PlaylistDetail, PlaylistTrack } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
 
@@ -16,6 +16,8 @@ const playerStore = usePlayerStore()
 const { releaseImage } = useImageUrl()
 
 const isGenrePlaylist = computed(() => playlist.value?.type === 'GENRE')
+const isRegionPlaylist = computed(() => playlist.value?.type === 'REGION')
+const isGenerated = computed(() => playlist.value?.type !== 'MANUAL')
 
 const coverImages = computed(() => {
   if (!playlist.value) { return [] }
@@ -91,7 +93,7 @@ onMounted(() => loadPlaylist())
       <div class="flex flex-col gap-6 sm:flex-row sm:items-start">
         <div
           class="h-48 w-48 flex-shrink-0 overflow-hidden rounded-sm bg-bg-2"
-          :class="{ 'genre-border': isGenrePlaylist }"
+          :class="{ 'genre-border': isGenerated }"
         >
           <PlaylistBlockImageMosaic :images="coverImages" />
         </div>
@@ -101,10 +103,11 @@ onMounted(() => loadPlaylist())
             <div class="flex items-center gap-2">
               <p class="text-sm text-ink0">Playlist</p>
               <span
-                v-if="isGenrePlaylist"
+                v-if="isGenerated"
                 class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent"
               >
-                <LucideSparkles class="size-3" />
+                <LucideGlobe v-if="isRegionPlaylist" class="size-3" />
+                <LucideSparkles v-else class="size-3" />
                 Auto-generated
               </span>
             </div>
@@ -126,16 +129,25 @@ onMounted(() => loadPlaylist())
               Play All
             </button>
             <button
-              v-if="!isGenrePlaylist"
+              v-if="!isGenerated"
               class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-2 hover:bg-bg-2 transition-colors"
               @click="showDeleteConfirm = true"
             >
               <LucideTrash2 class="inline size-4 -mt-0.5" />
               Delete
             </button>
-            <template v-if="isGenrePlaylist">
+            <template v-if="isGenerated">
               <PlaylistRegenerateButton />
-              <PlaylistGenreInfoPopover />
+              <PlaylistGeneratedPopover
+                v-if="isGenrePlaylist"
+                title="How genre playlists work"
+                text="Each playlist groups related genres under a single theme. Tracks are pulled from your library based on MusicBrainz genre tags and update whenever you run Regenerate."
+              />
+              <PlaylistGeneratedPopover
+                v-if="isRegionPlaylist"
+                title="How region playlists work"
+                text="Each playlist groups artists by their country of origin as listed in MusicBrainz. Tracks update whenever you run Regenerate."
+              />
             </template>
           </div>
         </div>
@@ -143,7 +155,7 @@ onMounted(() => loadPlaylist())
 
       <PlaylistTrackTable
         :tracks="playlist.tracks"
-        :is-genre="isGenrePlaylist"
+        :is-genre="isGenerated"
         @remove="removeTrack"
       />
     </div>

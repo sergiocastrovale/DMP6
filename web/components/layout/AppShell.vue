@@ -2,12 +2,6 @@
 import { Loader2, Terminal } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
 
-withDefaults(defineProps<{
-  scrollClass?: string
-}>(), {
-  scrollClass: 'px-6 py-6 lg:px-8',
-})
-
 const terminal = useTerminalStore()
 const { collapsed } = useSidebar()
 
@@ -28,7 +22,7 @@ const gridCols = computed(() =>
           </div>
         </div>
 
-        <div class="overflow-y-auto flex-1 pb-20 lg:pb-0" :class="scrollClass">
+        <div class="overflow-y-auto flex-1 px-6 py-6 lg:px-8">
           <slot />
         </div>
       </div>

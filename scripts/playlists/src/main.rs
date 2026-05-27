@@ -12,7 +12,7 @@ use std::path::PathBuf;
 // ---------------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
-#[command(name = "playlists", about = "Generate genre-based playlists from MusicBrainz genres")]
+#[command(name = "playlists", about = "Generate genre-based and region-based playlists")]
 struct Args {
     /// Dry run - show what would be created without writing to DB
     #[arg(long)]
@@ -29,6 +29,14 @@ struct Args {
     /// Path to custom genre-groups.json config file
     #[arg(long)]
     config: Option<String>,
+
+    /// Skip genre playlists
+    #[arg(long)]
+    no_genres: bool,
+
+    /// Skip region playlists
+    #[arg(long)]
+    no_regions: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -50,6 +58,21 @@ struct GenreGroup {
     roots: Vec<String>,
     includes: Vec<String>,
     excludes: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct RegionConfig {
+    max_tracks: usize,
+    max_per_release: usize,
+    groups: Vec<RegionGroup>,
+}
+
+#[derive(Deserialize, Debug)]
+struct RegionGroup {
+    name: String,
+    slug: String,
+    description: String,
+    countries: Vec<String>,
 }
 
 struct AppConfig {
@@ -119,6 +142,40 @@ fn load_genre_config(custom_path: Option<&str>) -> GenreConfig {
 
     panic!(
         "genre-groups.json not found. Tried: {:?}",
+        config_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
+    );
+}
+
+fn load_region_config() -> RegionConfig {
+    let config_paths = vec![
+        PathBuf::from("scripts/playlists/region-groups.json"),
+        PathBuf::from("region-groups.json"),
+        PathBuf::from("../../scripts/playlists/region-groups.json"),
+    ];
+
+    for path in &config_paths {
+        if path.exists() {
+            let content = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
+            return serde_json::from_str(&content)
+                .unwrap_or_else(|e| panic!("Failed to parse {}: {}", path.display(), e));
+        }
+    }
+
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let path = exe_dir.join("../../region-groups.json");
+            if path.exists() {
+                let content = std::fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
+                return serde_json::from_str(&content)
+                    .unwrap_or_else(|e| panic!("Failed to parse {}: {}", path.display(), e));
+            }
+        }
+    }
+
+    panic!(
+        "region-groups.json not found. Tried: {:?}",
         config_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
     );
 }
@@ -269,6 +326,113 @@ async fn fetch_tracks_for_artists(pool: &PgPool, artist_ids: &[String]) -> Vec<T
             local_release_id,
         })
         .collect()
+}
+
+async fn fetch_tracks_for_countries(pool: &PgPool, country_codes: &[String]) -> Vec<TrackCandidate> {
+    if country_codes.is_empty() {
+        return vec![];
+    }
+    let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT lrt.id, lra."artistId", lrt."localReleaseId"
+        FROM "LocalReleaseTrack" lrt
+        JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lrt."localReleaseId"
+        JOIN "Artist" a ON a.id = lra."artistId"
+        WHERE a.country = ANY($1)
+          AND a."relatedOnly" = false
+          AND lrt."localReleaseId" IS NOT NULL
+          AND lrt.title IS NOT NULL
+        "#,
+    )
+    .bind(country_codes)
+    .fetch_all(pool)
+    .await
+    .expect("Failed to fetch tracks for countries");
+
+    rows.into_iter()
+        .map(|(track_id, artist_id, local_release_id)| TrackCandidate {
+            track_id,
+            artist_id,
+            local_release_id,
+        })
+        .collect()
+}
+
+async fn upsert_region_playlist(
+    pool: &PgPool,
+    group: &RegionGroup,
+    track_ids: &[String],
+) -> Result<(), sqlx::Error> {
+    let playlist_slug = format!("region-{}", group.slug);
+
+    let existing: Option<(String,)> = sqlx::query_as(
+        r#"SELECT id FROM "Playlist" WHERE "regionGroup" = $1"#,
+    )
+    .bind(&group.slug)
+    .fetch_optional(pool)
+    .await?;
+
+    let playlist_id = if let Some((id,)) = existing {
+        sqlx::query(
+            r#"UPDATE "Playlist" SET name = $1, slug = $2, description = $3, "updatedAt" = NOW() WHERE id = $4"#,
+        )
+        .bind(&group.name)
+        .bind(&playlist_slug)
+        .bind(&group.description)
+        .bind(&id)
+        .execute(pool)
+        .await?;
+        id
+    } else {
+        let id = generate_cuid();
+        sqlx::query(
+            r#"INSERT INTO "Playlist" (id, name, slug, description, type, "regionGroup", "createdAt", "updatedAt")
+               VALUES ($1, $2, $3, $4, 'REGION', $5, NOW(), NOW())"#,
+        )
+        .bind(&id)
+        .bind(&group.name)
+        .bind(&playlist_slug)
+        .bind(&group.description)
+        .bind(&group.slug)
+        .execute(pool)
+        .await?;
+        id
+    };
+
+    sqlx::query(r#"DELETE FROM "PlaylistTrack" WHERE "playlistId" = $1"#)
+        .bind(&playlist_id)
+        .execute(pool)
+        .await?;
+
+    if !track_ids.is_empty() {
+        let mut ids = Vec::with_capacity(track_ids.len());
+        let mut positions = Vec::with_capacity(track_ids.len());
+        let mut playlist_ids = Vec::with_capacity(track_ids.len());
+        let mut t_ids = Vec::with_capacity(track_ids.len());
+
+        for (i, track_id) in track_ids.iter().enumerate() {
+            ids.push(generate_cuid());
+            positions.push((i + 1) as i32);
+            playlist_ids.push(playlist_id.clone());
+            t_ids.push(track_id.clone());
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO "PlaylistTrack" (id, position, "playlistId", "trackId", "createdAt")
+            SELECT * FROM UNNEST($1::text[], $2::int[], $3::text[], $4::text[], $5::timestamp[])
+            "#,
+        )
+        .bind(&ids)
+        .bind(&positions)
+        .bind(&playlist_ids)
+        .bind(&t_ids)
+        .bind(&vec![Utc::now().naive_utc(); track_ids.len()])
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
 }
 
 async fn upsert_playlist(
@@ -432,6 +596,53 @@ fn select_tracks(
     selected
 }
 
+fn select_region_tracks(
+    tracks: Vec<TrackCandidate>,
+    config: &RegionConfig,
+) -> Vec<String> {
+    let artist_scores: HashMap<String, f64> = tracks
+        .iter()
+        .map(|t| (t.artist_id.clone(), 1.0))
+        .collect();
+
+    let mut candidates: Vec<ScoredTrack> = tracks
+        .into_iter()
+        .map(|t| ScoredTrack {
+            track_id: t.track_id,
+            release_id: t.local_release_id,
+            score: *artist_scores.get(&t.artist_id).unwrap_or(&1.0),
+        })
+        .collect();
+
+    candidates.sort_by(|a, b| {
+        a.track_id.cmp(&b.track_id)
+            .then(b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    candidates.dedup_by(|a, b| a.track_id == b.track_id);
+
+    use rand::seq::SliceRandom;
+    candidates.shuffle(&mut rand::thread_rng());
+
+    let mut release_counts: HashMap<String, usize> = HashMap::new();
+    let mut selected = Vec::new();
+
+    for track in candidates {
+        if selected.len() >= config.max_tracks {
+            break;
+        }
+        if let Some(ref release_id) = track.release_id {
+            let count = release_counts.entry(release_id.clone()).or_insert(0);
+            if *count >= config.max_per_release {
+                continue;
+            }
+            *count += 1;
+        }
+        selected.push(track.track_id);
+    }
+
+    selected
+}
+
 // ---------------------------------------------------------------------------
 // Report Mode
 // ---------------------------------------------------------------------------
@@ -537,12 +748,13 @@ async fn main() {
     // Load config
     let app_config = load_env();
     let genre_config = load_genre_config(args.config.as_deref());
+    let region_config = load_region_config();
 
     println!(
-        "Config: {} groups, max {} tracks/playlist, max {} tracks/release",
+        "Config: {} genre groups, {} region groups, max {} tracks/playlist",
         genre_config.groups.len(),
+        region_config.groups.len(),
         genre_config.max_tracks,
-        genre_config.max_per_release
     );
     println!();
 
@@ -565,18 +777,31 @@ async fn main() {
             .filter(|g| g.slug == *group_slug)
             .collect();
         if filtered.is_empty() {
-            common::error_log::log_error(&format!("No genre group found with slug '{}'", group_slug));
-            eprintln!(
-                "{} No genre group found with slug '{}'. Available: {}",
-                "✗".red(),
-                group_slug,
-                genre_config.groups.iter().map(|g| g.slug.as_str()).collect::<Vec<_>>().join(", ")
-            );
-            std::process::exit(1);
+            // Also check region groups
+            let region_match = region_config.groups.iter().any(|g| g.slug == *group_slug);
+            if !region_match {
+                let all_slugs: Vec<&str> = genre_config.groups.iter().map(|g| g.slug.as_str())
+                    .chain(region_config.groups.iter().map(|g| g.slug.as_str()))
+                    .collect();
+                common::error_log::log_error(&format!("No group found with slug '{}'", group_slug));
+                eprintln!(
+                    "{} No group found with slug '{}'. Available: {}",
+                    "✗".red(),
+                    group_slug,
+                    all_slugs.join(", ")
+                );
+                std::process::exit(1);
+            }
         }
         filtered
     } else {
         genre_config.groups.iter().collect()
+    };
+
+    let region_groups: Vec<&RegionGroup> = if let Some(ref group_slug) = args.group {
+        region_config.groups.iter().filter(|g| g.slug == *group_slug).collect()
+    } else {
+        region_config.groups.iter().collect()
     };
 
     // Report mode: just show assignments and exit
@@ -591,101 +816,154 @@ async fn main() {
 
     println!();
 
-    // Process each genre group
     let mut total_playlists = 0;
     let mut total_tracks = 0;
 
-    for group in &groups {
-        print!("  {} {}... ", "●".cyan(), group.name.bold());
+    // --- Genre playlists ---
+    if !args.no_genres && !groups.is_empty() {
+        println!("  {} {}", "▸".bright_black(), "Genre Playlists".bold());
+        println!();
 
-        // 1. Match genres
-        let genre_matches: Vec<GenreMatch> = all_genres
-            .iter()
-            .filter_map(|(id, name)| {
-                match_genre(name, group).map(|weight| GenreMatch {
-                    genre_id: id.clone(),
-                    genre_name: name.clone(),
-                    weight,
+        for group in &groups {
+            print!("  {} {}... ", "●".cyan(), group.name.bold());
+
+            let genre_matches: Vec<GenreMatch> = all_genres
+                .iter()
+                .filter_map(|(id, name)| {
+                    match_genre(name, group).map(|weight| GenreMatch {
+                        genre_id: id.clone(),
+                        genre_name: name.clone(),
+                        weight,
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        if genre_matches.is_empty() {
-            println!("{} no matching genres", "○".bright_black());
-            continue;
-        }
+            if genre_matches.is_empty() {
+                println!("{} no matching genres", "○".bright_black());
+                continue;
+            }
 
-        // 2. Build genre_id → weight map
-        let genre_weights: HashMap<String, f64> = genre_matches
-            .iter()
-            .map(|m| (m.genre_id.clone(), m.weight))
-            .collect();
+            let genre_weights: HashMap<String, f64> = genre_matches
+                .iter()
+                .map(|m| (m.genre_id.clone(), m.weight))
+                .collect();
 
-        // 3. Fetch artist-genre links for matching genres
-        let genre_ids: Vec<String> = genre_matches.iter().map(|m| m.genre_id.clone()).collect();
-        let artist_links = fetch_artist_genre_links(&pool, &genre_ids).await;
+            let genre_ids: Vec<String> = genre_matches.iter().map(|m| m.genre_id.clone()).collect();
+            let artist_links = fetch_artist_genre_links(&pool, &genre_ids).await;
 
-        if artist_links.is_empty() {
-            println!("{} no artists with matching genres", "○".bright_black());
-            continue;
-        }
+            if artist_links.is_empty() {
+                println!("{} no artists with matching genres", "○".bright_black());
+                continue;
+            }
 
-        // 4. Score artists (max weight across matching genres)
-        let mut artist_scores: HashMap<String, f64> = HashMap::new();
-        for (artist_id, genre_id) in &artist_links {
-            if let Some(&weight) = genre_weights.get(genre_id) {
-                let entry = artist_scores.entry(artist_id.clone()).or_insert(0.0);
-                if weight > *entry {
-                    *entry = weight;
+            let mut artist_scores: HashMap<String, f64> = HashMap::new();
+            for (artist_id, genre_id) in &artist_links {
+                if let Some(&weight) = genre_weights.get(genre_id) {
+                    let entry = artist_scores.entry(artist_id.clone()).or_insert(0.0);
+                    if weight > *entry {
+                        *entry = weight;
+                    }
+                }
+            }
+
+            let artist_ids: Vec<String> = artist_scores.keys().cloned().collect();
+            let tracks = fetch_tracks_for_artists(&pool, &artist_ids).await;
+
+            if tracks.is_empty() {
+                println!("{} no tracks found", "○".bright_black());
+                continue;
+            }
+
+            let selected = select_tracks(tracks, &artist_scores, &genre_config);
+
+            if selected.len() < 10 {
+                println!(
+                    "{} only {} tracks (min 10 required, skipping)",
+                    "○".bright_black(),
+                    selected.len()
+                );
+                continue;
+            }
+
+            if args.dry_run {
+                println!(
+                    "{} {} genres, {} artists, {} tracks (dry run)",
+                    "○".cyan(),
+                    genre_matches.len(),
+                    artist_scores.len(),
+                    selected.len()
+                );
+            } else {
+                match upsert_playlist(&pool, group, &selected).await {
+                    Ok(_) => {
+                        println!(
+                            "{} {} genres, {} artists, {} tracks",
+                            "✓".green(),
+                            genre_matches.len(),
+                            artist_scores.len(),
+                            selected.len()
+                        );
+                        total_playlists += 1;
+                        total_tracks += selected.len();
+                    }
+                    Err(e) => {
+                        println!("{} failed: {}", "✗".red(), e);
+                    }
                 }
             }
         }
+    }
 
-        // 5. Fetch tracks for scored artists
-        let artist_ids: Vec<String> = artist_scores.keys().cloned().collect();
-        let tracks = fetch_tracks_for_artists(&pool, &artist_ids).await;
+    // --- Region playlists ---
+    if !args.no_regions && !region_groups.is_empty() {
+        println!();
+        println!("  {} {}", "▸".bright_black(), "Region Playlists".bold());
+        println!();
 
-        if tracks.is_empty() {
-            println!("{} no tracks found", "○".bright_black());
-            continue;
-        }
+        for group in &region_groups {
+            print!("  {} {}... ", "●".magenta(), group.name.bold());
 
-        // 6. Select top tracks, shuffled
-        let selected = select_tracks(tracks, &artist_scores, &genre_config);
+            let countries: Vec<String> = group.countries.iter().map(|c| c.clone()).collect();
+            let tracks = fetch_tracks_for_countries(&pool, &countries).await;
 
-        if selected.len() < 10 {
-            println!(
-                "{} only {} tracks (min 10 required, skipping)",
-                "○".bright_black(),
-                selected.len()
-            );
-            continue;
-        }
+            if tracks.is_empty() {
+                println!("{} no tracks found", "○".bright_black());
+                continue;
+            }
 
-        // 7. Upsert playlist
-        if args.dry_run {
-            println!(
-                "{} {} genres, {} artists, {} tracks (dry run)",
-                "○".cyan(),
-                genre_matches.len(),
-                artist_scores.len(),
-                selected.len()
-            );
-        } else {
-            match upsert_playlist(&pool, group, &selected).await {
-                Ok(_) => {
-                    println!(
-                        "{} {} genres, {} artists, {} tracks",
-                        "✓".green(),
-                        genre_matches.len(),
-                        artist_scores.len(),
-                        selected.len()
-                    );
-                    total_playlists += 1;
-                    total_tracks += selected.len();
-                }
-                Err(e) => {
-                    println!("{} failed: {}", "✗".red(), e);
+            let selected = select_region_tracks(tracks, &region_config);
+
+            if selected.len() < 10 {
+                println!(
+                    "{} only {} tracks (min 10 required, skipping)",
+                    "○".bright_black(),
+                    selected.len()
+                );
+                continue;
+            }
+
+            if args.dry_run {
+                println!(
+                    "{} {} countries, {} tracks (dry run)",
+                    "○".magenta(),
+                    group.countries.len(),
+                    selected.len()
+                );
+            } else {
+                match upsert_region_playlist(&pool, group, &selected).await {
+                    Ok(_) => {
+                        println!(
+                            "{} {} countries, {} tracks",
+                            "✓".green(),
+                            group.countries.len(),
+                            selected.len()
+                        );
+                        total_playlists += 1;
+                        total_tracks += selected.len();
+                    }
+                    Err(e) => {
+                        println!("{} failed: {}", "✗".red(), e);
+                    }
                 }
             }
         }
@@ -696,7 +974,9 @@ async fn main() {
     println!("════════════════════════════════════════════════════════════");
     println!();
     if args.dry_run {
-        println!("{} {} group(s) would be updated", "Dry run:".cyan().bold(), groups.len());
+        let total_groups = if args.no_genres { 0 } else { groups.len() }
+            + if args.no_regions { 0 } else { region_groups.len() };
+        println!("{} {} group(s) would be updated", "Dry run:".cyan().bold(), total_groups);
     } else {
         println!(
             "{} {} playlist(s) updated with {} total tracks",

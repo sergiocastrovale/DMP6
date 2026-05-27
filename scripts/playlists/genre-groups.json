@@ -75,11 +75,19 @@
       "excludes": []
     },
     {
-      "name": "Prog",
-      "slug": "prog",
-      "description": "Progressive and complex music",
-      "roots": ["progressive", "prog"],
-      "includes": ["art rock", "krautrock", "zeuhl", "canterbury scene", "math rock", "post-rock", "space rock", "progressive rock", "psychedelic rock", "progressive metal"],
+      "name": "Prog Rock",
+      "slug": "prog-rock",
+      "description": "Classic and modern progressive rock",
+      "roots": ["progressive rock", "prog rock"],
+      "includes": ["art rock", "krautrock", "zeuhl", "canterbury scene", "space rock", "psychedelic rock", "symphonic prog", "neo-prog", "neo prog", "neo-progressive rock", "crossover prog", "eclectic prog", "retro prog", "proto-prog", "rock progressivo italiano", "rock progresivo italiano", "progressive folk", "progressive pop", "progressive funk rock"],
+      "excludes": ["progressive metal", "progressive metalcore", "progressive death metal", "progressive deathcore", "progressive black metal", "progressive doom metal", "progressive thrash metal", "progressive groove metal", "progressive power metal"]
+    },
+    {
+      "name": "Prog Metal",
+      "slug": "prog-metal",
+      "description": "Progressive metal, djent, and technical heavy music",
+      "roots": ["progressive metal"],
+      "includes": ["djent", "math rock", "mathcore", "progressive metalcore", "progressive death metal", "progressive deathcore", "progressive black metal", "progressive doom metal", "progressive thrash metal", "progressive groove metal", "progressive power metal", "melodic progressive death metal", "extreme progressive metal", "technical prog metal", "avant-prog", "heavy prog", "brutal prog"],
       "excludes": []
     },
     {
@@ -121,6 +129,134 @@
       "roots": ["punk"],
       "includes": ["hardcore", "oi!", "d-beat", "crust", "screamo"],
       "excludes": ["steampunk", "cyberpunk"]
+    },
+    {
+      "name": "Blues",
+      "slug": "blues",
+      "description": "Blues across all eras and regional styles",
+      "roots": ["blues"],
+      "includes": ["boogie-woogie", "zydeco", "jump blues"],
+      "excludes": ["blues rock"]
+    },
+    {
+      "name": "Experimental",
+      "slug": "experimental",
+      "description": "Experimental, avant-garde, and noise music",
+      "roots": ["experimental", "avant-garde"],
+      "includes": ["noise", "noise rock", "free improvisation", "musique concrète", "sound art", "sound collage", "glitch", "electroacoustic"],
+      "excludes": ["experimental rock"]
+    },
+    {
+      "name": "Industrial",
+      "slug": "industrial",
+      "description": "Industrial and dark electronic music",
+      "roots": ["industrial"],
+      "includes": ["ebm", "electro-industrial", "aggrotech", "dark electro", "post-industrial", "power electronics", "neofolk", "martial industrial"],
+      "excludes": []
+    },
+    {
+      "name": "Reggae & Dub",
+      "slug": "reggae-dub",
+      "description": "Reggae, dub, ska, and Caribbean music",
+      "roots": ["reggae", "dub", "ska"],
+      "includes": ["roots reggae", "dancehall", "rocksteady", "lovers rock", "ragga", "2 tone", "skinhead reggae"],
+      "excludes": ["dub techno", "dubstep"]
+    },
+    {
+      "name": "Ambient",
+      "slug": "ambient",
+      "description": "Ambient, drone, and atmospheric music",
+      "roots": ["ambient"],
+      "includes": ["drone", "new age", "space music", "dark ambient", "ambient dub", "ambient house", "ambient techno"],
+      "excludes": []
+    },
+    {
+      "name": "Gothic & Darkwave",
+      "slug": "gothic-darkwave",
+      "description": "Gothic rock, darkwave, and ethereal music",
+      "roots": ["gothic", "goth", "darkwave"],
+      "includes": ["dark wave", "deathrock", "coldwave", "ethereal wave", "batcave", "ethereal", "neoclassical darkwave"],
+      "excludes": ["gothic metal"]
+    },
+    {
+      "name": "Latin",
+      "slug": "latin",
+      "description": "Latin, Brazilian, and Afro-Caribbean music",
+      "roots": ["latin"],
+      "includes": ["mpb", "samba", "bossa nova", "salsa", "cumbia", "reggaeton", "bachata", "tango", "afro-cuban", "tropicália", "forró", "merengue", "bolero", "son cubano", "latin jazz"],
+      "excludes": []
+    },
+    {
+      "name": "Psychedelic",
+      "slug": "psychedelic",
+      "description": "Psychedelic music across all forms",
+      "roots": ["psychedelic", "psych"],
+      "includes": ["neo-psychedelia", "acid rock", "space rock", "heavy psych", "freakbeat", "raga rock", "krautrock", "psytrance"],
+      "excludes": []
+    },
+    {
+      "name": "Stoner & Doom",
+      "slug": "stoner-doom",
+      "description": "Stoner rock, doom metal, and sludge",
+      "roots": ["stoner", "doom"],
+      "includes": ["sludge metal", "heavy psych", "drone metal", "funeral doom", "death-doom", "stoner metal", "desert rock"],
+      "excludes": []
+    },
+    {
+      "name": "Country",
+      "slug": "country",
+      "description": "Country music across all subgenres",
+      "roots": ["country"],
+      "includes": ["bluegrass", "honky-tonk", "outlaw country", "alt-country", "americana", "western swing", "country blues", "country rock", "country pop", "contemporary country", "red dirt", "texas country", "bakersfield sound", "nashville sound"],
+      "excludes": []
+    },
+    {
+      "name": "Garage & Lo-Fi",
+      "slug": "garage-lofi",
+      "description": "Raw garage rock and lo-fi music",
+      "roots": ["garage", "lo-fi", "lofi"],
+      "includes": ["surf rock", "garage punk", "garage rock", "lo-fi indie", "surf punk", "frat rock", "freakbeat"],
+      "excludes": ["uk garage", "lo-fi hip hop"]
+    },
+    {
+      "name": "Soundtrack",
+      "slug": "soundtrack",
+      "description": "Film scores, soundtracks, and composed media music",
+      "roots": ["soundtrack", "film score"],
+      "includes": ["film soundtrack", "video game music", "television music", "musical theatre", "film composer"],
+      "excludes": []
+    },
+    {
+      "name": "World & Afrobeat",
+      "slug": "world-afrobeat",
+      "description": "World music, Afrobeat, and global traditions",
+      "roots": ["world", "afrobeat", "afrobeats"],
+      "includes": ["african", "west african", "arabic", "celtic", "worldbeat", "world fusion", "afro house", "highlife", "mbalax", "afro-beat", "desert blues", "gnawa", "griot", "ethio-jazz", "fado", "flamenco", "klezmer", "gamelan", "qawwali"],
+      "excludes": ["world & country"]
+    },
+    {
+      "name": "Nu Metal & Rap Rock",
+      "slug": "nu-metal",
+      "description": "Nu metal, rap rock, and 2000s crossover",
+      "roots": ["nu metal", "nu-metal", "rap rock", "rap metal"],
+      "includes": ["pop rap", "rapcore", "funk metal"],
+      "excludes": []
+    },
+    {
+      "name": "Old School",
+      "slug": "old-school",
+      "description": "Classic 1940s–1960s pop, doo-wop, and early rock and roll",
+      "roots": ["oldies"],
+      "includes": ["traditional pop", "standards", "doo-wop", "rock and roll", "rock & roll", "rockabilly", "crooner", "tin pan alley", "yé-yé", "yèyè", "adult standards", "vocal jazz", "1940s", "1950s", "1960s", "girl group", "skiffle", "rhythm & blues"],
+      "excludes": []
+    },
+    {
+      "name": "Big Band",
+      "slug": "big-band",
+      "description": "Big band, swing, and brass-driven jazz",
+      "roots": ["big band"],
+      "includes": ["swing", "dixieland", "brass band", "jazz orchestra", "jump blues", "jive"],
+      "excludes": ["western swing", "electro swing"]
     }
   ]
 }

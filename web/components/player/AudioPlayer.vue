@@ -61,7 +61,7 @@ async function loadPlaylists() {
         ? $fetch<string[]>(`/api/tracks/${player.currentTrack.id}/playlists`)
         : Promise.resolve([]),
     ])
-    playlists.value = all.filter((p: any) => p.type !== 'GENRE')
+    playlists.value = all.filter((p: any) => p.type === 'MANUAL')
     trackPlaylistSlugs.value = new Set(slugs)
   }
   catch (error) {

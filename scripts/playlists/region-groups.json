@@ -1,0 +1,78 @@
+{
+  "max_tracks": 500,
+  "max_per_release": 3,
+  "groups": [
+    {
+      "name": "East Asia",
+      "slug": "east-asia",
+      "description": "Music from Japan, South Korea, China, Taiwan, and Hong Kong",
+      "countries": ["JP", "KR", "CN", "TW", "HK"]
+    },
+    {
+      "name": "South & Southeast Asia",
+      "slug": "south-southeast-asia",
+      "description": "Music from India, Thailand, Indonesia, Philippines, Malaysia, Singapore, and Nepal",
+      "countries": ["IN", "TH", "ID", "PH", "MY", "SG", "NP"]
+    },
+    {
+      "name": "West & Central Asia",
+      "slug": "west-central-asia",
+      "description": "Music from Iran, Iraq, Turkey, Armenia, Georgia, Azerbaijan, Kazakhstan, Lebanon, Saudi Arabia, and Bahrain",
+      "countries": ["IR", "IQ", "TR", "AM", "GE", "AZ", "KZ", "LB", "SA", "BH"]
+    },
+    {
+      "name": "West Africa",
+      "slug": "west-africa",
+      "description": "Music from Mali, Nigeria, Senegal, Niger, Ghana, Guinea, Benin, and Cameroon",
+      "countries": ["ML", "NG", "SN", "NE", "GH", "GN", "BJ", "CM"]
+    },
+    {
+      "name": "East & Southern Africa",
+      "slug": "east-southern-africa",
+      "description": "Music from South Africa, Ethiopia, Tanzania, Zimbabwe, Angola, Congo, and Namibia",
+      "countries": ["ZA", "ET", "TZ", "ZW", "AO", "CD", "NA"]
+    },
+    {
+      "name": "North Africa",
+      "slug": "north-africa",
+      "description": "Music from Algeria, Tunisia, Morocco, and Egypt",
+      "countries": ["DZ", "TN", "MA", "EG"]
+    },
+    {
+      "name": "Brazil",
+      "slug": "brazil",
+      "description": "Music from Brazil",
+      "countries": ["BR"]
+    },
+    {
+      "name": "Southern Cone",
+      "slug": "southern-cone",
+      "description": "Music from Argentina, Chile, Paraguay, and Uruguay",
+      "countries": ["AR", "CL", "PY", "UY"]
+    },
+    {
+      "name": "Andean & Caribbean South America",
+      "slug": "andean-caribbean-sa",
+      "description": "Music from Colombia, Venezuela, Peru, Guyana, and Ecuador",
+      "countries": ["CO", "VE", "PE", "GY"]
+    },
+    {
+      "name": "Central America & Caribbean",
+      "slug": "central-america-caribbean",
+      "description": "Music from Jamaica, Cuba, Mexico, Puerto Rico, Panama, Dominican Republic, Grenada, El Salvador, Bermuda, and US Virgin Islands",
+      "countries": ["JM", "CU", "MX", "PR", "PA", "DO", "GD", "SV", "BM", "VI"]
+    },
+    {
+      "name": "Portugal",
+      "slug": "portugal",
+      "description": "Music from Portugal",
+      "countries": ["PT"]
+    },
+    {
+      "name": "United Kingdom",
+      "slug": "united-kingdom",
+      "description": "Music from the United Kingdom",
+      "countries": ["GB"]
+    }
+  ]
+}

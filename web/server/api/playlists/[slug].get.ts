@@ -53,6 +53,7 @@ export default defineEventHandler(async (event) => {
     description: playlist.description,
     type: playlist.type,
     genreGroup: playlist.genreGroup,
+    regionGroup: playlist.regionGroup,
     createdAt: playlist.createdAt,
     updatedAt: playlist.updatedAt,
     tracks: playlist.tracks.map(pt => ({
