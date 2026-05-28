@@ -1218,17 +1218,58 @@ async fn main() {
     // Post-loop: re-extract missing release covers (safety net)
     // -------------------------------------------------------------------------
     if !shutdown.load(Ordering::SeqCst) && !args.skip_covers {
-        let missing: Vec<(String, String, Option<String>, String)> = sqlx::query_as(
-            r#"SELECT DISTINCT ON (lr.id) lr.id, lrt."filePath", lr."folderPath", lr."groupKey"
-               FROM "LocalRelease" lr
-               JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
-               WHERE (lr.image IS NULL OR lr.image = '')
-                 AND (lr."imageUrl" IS NULL OR lr."imageUrl" = '')
-               ORDER BY lr.id, lrt."trackNumber" NULLS LAST, lrt."filePath""#,
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap_or_default();
+        let has_filter = args.only.is_some() || args.from.is_some() || args.to.is_some();
+        let missing: Vec<(String, String, Option<String>, String)> = if has_filter {
+            let filtered_names: Vec<String> = sqlx::query_as::<_, (String,)>(
+                r#"SELECT name FROM "Artist" WHERE "relatedOnly" = false ORDER BY name"#,
+            )
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(n,)| n)
+            .filter(|name| {
+                matches_filter(
+                    name,
+                    args.from.as_deref().unwrap_or(""),
+                    args.to.as_deref().unwrap_or(""),
+                    args.only.as_deref().unwrap_or(""),
+                    args.exact,
+                )
+            })
+            .collect();
+            if filtered_names.is_empty() {
+                Vec::new()
+            } else {
+                sqlx::query_as(
+                    r#"SELECT DISTINCT ON (lr.id) lr.id, lrt."filePath", lr."folderPath", lr."groupKey"
+                       FROM "LocalRelease" lr
+                       JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
+                       JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+                       JOIN "Artist" a ON a.id = lra."artistId"
+                       WHERE (lr.image IS NULL OR lr.image = '')
+                         AND (lr."imageUrl" IS NULL OR lr."imageUrl" = '')
+                         AND a.name = ANY($1)
+                       ORDER BY lr.id, lrt."trackNumber" NULLS LAST, lrt."filePath""#,
+                )
+                .bind(&filtered_names)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default()
+            }
+        } else {
+            sqlx::query_as(
+                r#"SELECT DISTINCT ON (lr.id) lr.id, lrt."filePath", lr."folderPath", lr."groupKey"
+                   FROM "LocalRelease" lr
+                   JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
+                   WHERE (lr.image IS NULL OR lr.image = '')
+                     AND (lr."imageUrl" IS NULL OR lr."imageUrl" = '')
+                   ORDER BY lr.id, lrt."trackNumber" NULLS LAST, lrt."filePath""#,
+            )
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default()
+        };
 
         if !missing.is_empty() {
             reporter.step(&format!(
