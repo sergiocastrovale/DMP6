@@ -454,6 +454,16 @@ pub async fn delete_empty_mb_releases(pool: &PgPool) -> Result<u64, sqlx::Error>
     Ok(result.rows_affected())
 }
 
+pub async fn delete_empty_local_releases(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"DELETE FROM "LocalRelease"
+           WHERE id NOT IN (SELECT DISTINCT "localReleaseId" FROM "LocalReleaseTrack")"#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 pub async fn delete_missing_releases_for_artist(
     pool: &PgPool,
     artist_id: &str,

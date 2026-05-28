@@ -142,7 +142,7 @@ pub async fn fill_catalogue_gaps(
         total_gaps += gap_count;
 
         if gap_count > 0 {
-            reporter.ok(&format!("{} gap(s)", gap_count));
+            reporter.ok(&format!("{} missing release(s) appended to catalogue", gap_count));
         } else if verbose {
             reporter.skip("No gaps");
         }

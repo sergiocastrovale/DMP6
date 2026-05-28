@@ -1143,15 +1143,13 @@ async fn main() {
             delete_removed_tracks(&pool, &folder_prefix, &music_dir).await.count
         };
 
-        if deleted_tracks > 0 {
-            let rel_del = delete_empty_releases(&pool, &config).await;
-            let art_del = delete_orphan_artists(&pool, &config).await;
-            if rel_del > 0 || art_del > 0 {
-                reporter.info(&format!(
-                    "Cleaned up {} empty release(s), {} orphan artist(s).",
-                    rel_del, art_del
-                ));
-            }
+        let rel_del = delete_empty_releases(&pool, &config).await;
+        let art_del = delete_orphan_artists(&pool, &config).await;
+        if rel_del > 0 || art_del > 0 {
+            reporter.info(&format!(
+                "Cleaned up {} empty release(s), {} orphan artist(s).",
+                rel_del, art_del
+            ));
         }
 
         // -----------------------------------------------------------------
@@ -1405,6 +1403,15 @@ async fn main() {
         let mut parts = vec![format!("{} up to date", skipped_total)];
         if error_total > 0 { parts.push(format!("{} errors", error_total)); }
         reporter.info(&format!("  {}", parts.join(" | ")));
+    }
+
+    let rel_del = delete_empty_releases(&pool, &config).await;
+    let art_del = delete_orphan_artists(&pool, &config).await;
+    if rel_del > 0 || art_del > 0 {
+        reporter.info(&format!(
+            "Final cleanup: {} empty release(s), {} orphan artist(s).",
+            rel_del, art_del
+        ));
     }
 
     clear_index_checkpoint(&pool).await.ok();

@@ -1045,8 +1045,8 @@ async fn main() {
                     gap_count += 1;
                 }
             }
-            if gap_count > 0 && args.verbose {
-                reporter.info(&format!("    {} catalogue gap(s) recorded", gap_count));
+            if gap_count > 0 {
+                reporter.ok(&format!("{} missing release(s) appended to catalogue", gap_count));
             }
         }
 
@@ -1179,6 +1179,11 @@ async fn main() {
 
     }
 
+    if let Ok(n) = delete_empty_local_releases(&pool).await {
+        if n > 0 {
+            reporter.info(&format!("Cleaned up {} empty local release(s)", n));
+        }
+    }
     if let Ok(n) = delete_empty_mb_releases(&pool).await {
         if n > 0 {
             reporter.info(&format!("Cleaned up {} empty MB release(s)", n));
