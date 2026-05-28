@@ -33,8 +33,8 @@ use std::{
 
 use db::*;
 use deletion::{
-    delete_empty_releases, delete_orphan_artists, delete_removed_tracks,
-    detect_deleted_folders,
+    delete_empty_releases, delete_orphan_artists, delete_orphaned_mb_releases,
+    delete_removed_tracks, detect_deleted_folders,
 };
 use images::{extract_cover_art, hash_image_file, upload_release_image_to_s3, use_folder_image};
 use metadata::extract_metadata;
@@ -1144,11 +1144,12 @@ async fn main() {
         };
 
         let rel_del = delete_empty_releases(&pool, &config).await;
+        let mb_del = delete_orphaned_mb_releases(&pool).await;
         let art_del = delete_orphan_artists(&pool, &config).await;
-        if rel_del > 0 || art_del > 0 {
+        if rel_del > 0 || mb_del > 0 || art_del > 0 {
             reporter.info(&format!(
-                "Cleaned up {} empty release(s), {} orphan artist(s).",
-                rel_del, art_del
+                "Cleaned up {} empty release(s), {} orphaned MB release(s), {} orphan artist(s).",
+                rel_del, mb_del, art_del
             ));
         }
 
@@ -1406,11 +1407,12 @@ async fn main() {
     }
 
     let rel_del = delete_empty_releases(&pool, &config).await;
+    let mb_del = delete_orphaned_mb_releases(&pool).await;
     let art_del = delete_orphan_artists(&pool, &config).await;
-    if rel_del > 0 || art_del > 0 {
+    if rel_del > 0 || mb_del > 0 || art_del > 0 {
         reporter.info(&format!(
-            "Final cleanup: {} empty release(s), {} orphan artist(s).",
-            rel_del, art_del
+            "Final cleanup: {} empty release(s), {} orphaned MB release(s), {} orphan artist(s).",
+            rel_del, mb_del, art_del
         ));
     }
 

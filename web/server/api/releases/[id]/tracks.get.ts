@@ -43,6 +43,38 @@ export default defineEventHandler(async (event) => {
     return getLocalReleaseTracks(localReleaseId, mbRelease?.tracks)
   }
 
+  if (mbRelease) {
+    return {
+      release: {
+        id: mbRelease.id,
+        title: mbRelease.title,
+        image: null,
+        imageUrl: null,
+        artistName: 'Unknown',
+        artistSlug: '',
+      },
+      tracks: (mbRelease.tracks ?? []).map(mbt => ({
+        id: mbt.id,
+        title: mbt.title,
+        artist: null,
+        albumArtist: null,
+        album: null,
+        year: null,
+        genre: null,
+        duration: mbt.durationMs ? Math.round(mbt.durationMs / 1000) : null,
+        trackNumber: mbt.position,
+        discNumber: mbt.discNumber,
+        playCount: 0,
+        filePath: '',
+        localReleaseId: null,
+        artists: [],
+        missing: true,
+        mbTitle: null,
+        mbTrackMusicbrainzId: mbt.musicbrainzId || null,
+      })),
+    }
+  }
+
   // Try as LocalRelease — also fetch its MB release tracks if linked.
   const localRelease = await prisma.localRelease.findUnique({
     where: { id },

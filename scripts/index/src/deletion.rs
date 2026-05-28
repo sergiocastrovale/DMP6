@@ -109,6 +109,17 @@ pub async fn delete_empty_releases(pool: &PgPool, config: &Config) -> u64 {
     deleted
 }
 
+pub async fn delete_orphaned_mb_releases(pool: &PgPool) -> u64 {
+    let result = sqlx::query(
+        r#"DELETE FROM "MusicBrainzRelease"
+           WHERE id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)
+             AND status != 'MISSING'"#,
+    )
+    .execute(pool)
+    .await;
+    result.map(|r| r.rows_affected()).unwrap_or(0)
+}
+
 /// Delete Artist rows that have no LocalReleaseArtist links remaining. Cleans images first.
 pub async fn delete_orphan_artists(pool: &PgPool, config: &Config) -> u64 {
     let ids: Vec<(String,)> = sqlx::query_as(
