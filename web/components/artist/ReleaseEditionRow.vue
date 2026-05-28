@@ -52,10 +52,12 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
     :class="edition.status === 'MISSING' ? '' : 'hover:bg-bg-2/30'"
   >
     <div
-      class="group/edition flex cursor-pointer items-center gap-3 px-3 py-2.5"
-      @click="emit('toggle')"
+      class="group/edition flex items-center gap-3 px-3 py-2.5"
+      :class="hasPlayable ? 'cursor-pointer' : ''"
+      @click="hasPlayable && emit('toggle')"
     >
       <button
+        v-if="hasPlayable"
         type="button"
         class="flex size-5 items-center justify-center text-ink0"
         @click.stop="emit('toggle')"
@@ -63,6 +65,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         <ChevronDown v-if="expanded" :size="14" />
         <ChevronRight v-else :size="14" />
       </button>
+      <div v-else class="size-5" />
 
       <div
         class="group/folder relative flex size-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded border border-rule text-ink0 transition-colors"

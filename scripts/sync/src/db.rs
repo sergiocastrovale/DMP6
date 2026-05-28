@@ -491,6 +491,25 @@ pub async fn get_covered_release_group_ids(
     rows.into_iter().map(|(id,)| id).collect()
 }
 
+pub async fn get_missing_release_group_ids_for_artist(
+    pool: &PgPool,
+    artist_id: &str,
+) -> HashSet<String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT DISTINCT mbr."releaseGroupId"
+           FROM "MusicBrainzRelease" mbr
+           JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mbr.id
+           WHERE mra."artistId" = $1
+             AND mbr.status = 'MISSING'
+             AND mbr."releaseGroupId" IS NOT NULL"#,
+    )
+    .bind(artist_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter().map(|(id,)| id).collect()
+}
+
 // ---------------------------------------------------------------------------
 // Get artists pending sync (lastIndexedAt > lastSyncedAt OR never synced)
 // ---------------------------------------------------------------------------

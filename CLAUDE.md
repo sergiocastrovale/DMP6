@@ -112,6 +112,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./sync --release "clxxx"      # Re-sync single release
 ./sync --delete               # Delete MB data for matched artists
 ./sync --verbose              # Show skipped MB releases
+./sync --catalogue-gaps       # Fast pass: populate MISSING catalogue entries (1 API/artist)
+./sync --catalogue-gaps --overwrite  # Re-fetch all MISSING entries from scratch
 
 # Audit & Fix
 ./audit                       # Detect metadata issues → write to DB (all types)

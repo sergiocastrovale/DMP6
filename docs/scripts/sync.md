@@ -44,6 +44,7 @@ cd scripts && cargo build --release -p sync
 ./sync --delete                  # Delete MB data for matched artists, then exit
 ./sync --catalogue-gaps          # Fast pass: populate MISSING catalogue entries only (1 API call/artist)
 ./sync --catalogue-gaps --only x # Gaps for specific artist
+./sync --catalogue-gaps --overwrite # Re-fetch all MISSING entries from scratch
 ./sync --web                     # Emit PROGRESS:{json} for the web terminal
 ```
 
@@ -95,14 +96,16 @@ Fast path for populating MISSING MusicBrainzRelease entries without re-running t
 1. Use existing `musicbrainzId` from DB (no search/lookup)
 2. Fetch release groups from MB API (sole API call)
 3. Query existing artist genres from DB (no API call)
-4. Delete stale MISSING entries, query covered release group IDs
+4. If `--overwrite`, delete stale MISSING entries first; otherwise skip release groups that already have MISSING entries
 5. Create MISSING entries for uncovered Album/EP release groups + link genres
 
 **Skips entirely:** artist search, artist detail fetch, URL upsert, artist image, local release matching, cover art download.
 
+**Skip logic:** Without `--overwrite`, existing MISSING releases are preserved and only new gaps are added. With `--overwrite`, all MISSING releases are deleted and re-created from scratch.
+
 **Performance:** ~1.1s per artist (rate limit). 500 artists ≈ 9 minutes vs ~7 days for full sync.
 
-Cannot combine with `--release`, `--overwrite`, or `--delete`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--web`/`--verbose`.
+Cannot combine with `--release` or `--delete`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`/`--web`/`--verbose`.
 
 ## --delete Behaviour
 

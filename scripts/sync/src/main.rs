@@ -157,12 +157,12 @@ async fn main() {
     }
 
     if args.catalogue_gaps
-        && (args.release.is_some() || args.overwrite || args.delete)
+        && (args.release.is_some() || args.delete)
     {
         common::error_log::log_error(
-            "--catalogue-gaps cannot be combined with --release, --overwrite, or --delete",
+            "--catalogue-gaps cannot be combined with --release or --delete",
         );
-        eprintln!("Error: --catalogue-gaps cannot be combined with --release, --overwrite, or --delete");
+        eprintln!("Error: --catalogue-gaps cannot be combined with --release or --delete");
         std::process::exit(1);
     }
 
@@ -246,6 +246,9 @@ async fn main() {
     if args.catalogue_gaps {
         reporter.header("DMP Sync — Catalogue Gaps");
         reporter.kv("Mode", "catalogue-gaps (MISSING entries only, 1 API call/artist)");
+        if args.overwrite {
+            reporter.kv("Overwrite", "yes");
+        }
         if let Some(ref only) = args.only {
             reporter.kv("Filter", &format!("only '{}'", only));
         } else if args.from.is_some() || args.to.is_some() {
@@ -270,6 +273,7 @@ async fn main() {
             args.to.as_deref(),
             args.only.as_deref(),
             args.exact,
+            args.overwrite,
             args.verbose,
         )
         .await

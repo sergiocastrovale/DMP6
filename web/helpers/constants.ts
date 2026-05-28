@@ -6,6 +6,7 @@ export const scanActions = [
   { id: 'index-sync', icon: 'RefreshCw', text: 'Index & Sync', subtext: 'Full re-scan from scratch' },
   { id: 'index', icon: 'HardDriveDownload', text: 'Index only', subtext: 'Re-index local files' },
   { id: 'sync', icon: 'Globe', text: 'Sync only', subtext: 'Re-sync catalogue against MusicBrainz' },
+  { id: 'catalogue-gaps', icon: 'ListChecks', text: 'Catalogue gaps', subtext: 'Find missing releases in local catalogue' },
 ] as const
 
 export const scoreRanges = [

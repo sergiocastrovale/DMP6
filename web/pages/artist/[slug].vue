@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, RefreshCw, Search, HardDriveDownload, Globe } from 'lucide-vue-next'
+import { Loader2, RefreshCw, Search, HardDriveDownload, Globe, ListChecks } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type { ButtonDropdownOption } from '~/types/ui'
 import type { Artist } from '~/types/artist'
@@ -8,7 +8,7 @@ import type { Track } from '~/types/track'
 import { useTerminalStore } from '~/stores/terminal'
 import { scanActions } from '~/helpers/constants'
 
-const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe }
+const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe, ListChecks }
 
 definePageMeta({
   layout: 'default',
@@ -66,6 +66,9 @@ const artistActions: Record<string, (name: string, folders: string[]) => () => P
   },
   'sync': (name) => async () => {
     await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
+  },
+  'catalogue-gaps': (name) => async () => {
+    await terminal.run('./sync', ['--only', name, '--exact', '--catalogue-gaps'])
   },
 }
 

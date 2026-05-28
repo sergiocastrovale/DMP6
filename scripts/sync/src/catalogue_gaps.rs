@@ -19,6 +19,7 @@ pub async fn fill_catalogue_gaps(
     to: Option<&str>,
     only: Option<&str>,
     exact: bool,
+    overwrite: bool,
     verbose: bool,
 ) -> Result<(u32, u32), String> {
     let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
@@ -95,8 +96,14 @@ pub async fn fill_catalogue_gaps(
         }
 
         let artist_genre_ids = get_artist_genre_ids(pool, artist_id).await;
-        delete_missing_releases_for_artist(pool, artist_id).await.ok();
-        let covered_rg_ids = get_covered_release_group_ids(pool, artist_id).await;
+        if overwrite {
+            delete_missing_releases_for_artist(pool, artist_id).await.ok();
+        }
+        let mut covered_rg_ids = get_covered_release_group_ids(pool, artist_id).await;
+        if !overwrite {
+            let existing_missing = get_missing_release_group_ids_for_artist(pool, artist_id).await;
+            covered_rg_ids.extend(existing_missing);
+        }
 
         let mut gap_count = 0u32;
         for rg in &release_groups {
