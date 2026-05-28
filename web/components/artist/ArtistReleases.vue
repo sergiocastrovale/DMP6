@@ -344,6 +344,8 @@ async function toggleFavoriteRelease(release: UnifiedRelease) {
   catch { /* ignore */ }
 }
 
+const selectedTrackId = ref<string | null>(null)
+
 async function handleReleaseDeepLink() {
   const targetSlug = route.query.release as string | undefined
   const targetId = route.query.releaseId as string | undefined
@@ -361,6 +363,7 @@ async function handleReleaseDeepLink() {
   const groupKey = release.releaseGroupId || `solo:${release.id}`
   expandedGroup.value = groupKey
   expandedEdition.value = release.id
+  selectedTrackId.value = (route.query.trackId as string) || null
   await nextTick()
   document.querySelector(`[data-group-key="${groupKey}"]`)
     ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -405,6 +408,7 @@ watch(() => props.releases, () => {
             :expanded="expandedEdition === edition.id"
             :is-favorite="!!edition.localReleaseId && favoriteReleases.has(edition.localReleaseId)"
             :slug="slug"
+            :selected-track-id="expandedEdition === edition.id ? selectedTrackId : null"
             @toggle="toggleEdition(edition.id)"
             @play="handleReleaseClick(edition)"
             @download="openDownloadDialog(edition)"

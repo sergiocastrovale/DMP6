@@ -11,6 +11,7 @@ const props = defineProps<{
   expanded: boolean
   isFavorite: boolean
   slug: string
+  selectedTrackId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -166,6 +167,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
       <ReleaseTracksTable
         :release-id="edition.localReleaseId || edition.mbReleaseRowId || edition.id"
         :columns="releaseTrackColumns"
+        :selected-track-id="selectedTrackId"
       />
     </div>
   </div>

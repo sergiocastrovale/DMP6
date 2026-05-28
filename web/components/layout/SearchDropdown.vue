@@ -37,11 +37,12 @@
       <div class="px-2 py-1 text-xs font-semibold uppercase text-ink-3">
         Releases
       </div>
-      <button
+      <NuxtLink
         v-for="release in results.releases"
         :key="release.id"
+        :to="release.artist ? `/artist/${release.artist.slug}?releaseId=${release.id}` : '#'"
         class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-bg-3 transition-colors text-left"
-        @click="playRelease(release.id)"
+        @click="emit('select')"
       >
         <div class="relative size-10 shrink-0 overflow-hidden rounded bg-bg-3">
           <img
@@ -63,18 +64,19 @@
             <span v-if="release.year" class="text-ink-4">• {{ release.year }}</span>
           </p>
         </div>
-      </button>
+      </NuxtLink>
     </div>
 
     <div v-if="results.tracks.length > 0" class="p-2">
       <div class="px-2 py-1 text-xs font-semibold uppercase text-ink-3">
         Tracks
       </div>
-      <button
+      <NuxtLink
         v-for="track in results.tracks"
         :key="track.id"
+        :to="track.release?.artist ? `/artist/${track.release.artist.slug}?releaseId=${track.release.id}&trackId=${track.id}` : '#'"
         class="flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-bg-3 transition-colors text-left"
-        @click="playTrack(track)"
+        @click="emit('select')"
       >
         <div class="relative size-10 shrink-0 overflow-hidden rounded bg-bg-3">
           <img
@@ -99,14 +101,14 @@
         <span v-if="track.duration" class="text-xs text-ink-3">
           {{ formatDuration(track.duration) }}
         </span>
-      </button>
+      </NuxtLink>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { LucideUser, LucideDisc, LucideMusic } from 'lucide-vue-next'
-import type { SearchResults, SearchTrack } from '~/types/search'
+import type { SearchResults } from '~/types/search'
 import { formatDuration } from '~/helpers/functions'
 
 interface Props {
@@ -119,8 +121,6 @@ const emit = defineEmits<{
 }>()
 
 const { artistImage, releaseImage } = useImageUrl()
-const playerStore = usePlayerStore()
-const { playRelease: playReleaseById } = usePlayRelease()
 
 const hasResults = computed(() => {
   if (!props.results)
@@ -136,26 +136,5 @@ function artistImageUrl(artist: any) {
 
 function releaseImageUrl(release: any) {
   return releaseImage(release)
-}
-
-
-const playRelease = async (releaseId: string) => {
-  await playReleaseById(releaseId)
-  emit('select')
-}
-
-const playTrack = (track: SearchTrack) => {
-  playerStore.setQueue([{
-    id: track.id,
-    title: track.title || 'Unknown',
-    artist: track.release?.artist?.name || 'Unknown',
-    album: track.release?.title || 'Unknown',
-    duration: track.duration || 0,
-    artistSlug: track.release?.artist?.slug || null,
-    releaseImage: track.release?.image || null,
-    releaseImageUrl: track.release?.imageUrl || null,
-    localReleaseId: track.release?.id || null,
-  }])
-  emit('select')
 }
 </script>

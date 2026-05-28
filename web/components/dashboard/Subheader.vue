@@ -24,12 +24,13 @@ const ctas: [string, string][] = [
   ['It\'s been a while since ', ', hasn\'t it?'],
 ]
 
-const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]!
+const pick = <T>(arr: T[], seed: number): T => arr[seed % arr.length]!
 
-const greeting = pick(greetings)
+const seed = useState('dashboard-seed', () => Math.floor(Math.random() * 1000))
+const greeting = pick(greetings, seed.value)
 
 const { data: randomArtist } = await useFetch('/api/artists/random')
-const [ctaBefore, ctaAfter] = randomArtist.value ? pick(ctas) : ['', '']
+const [ctaBefore, ctaAfter] = randomArtist.value ? pick(ctas, seed.value + 1) : ['', '']
 </script>
 
 <template>

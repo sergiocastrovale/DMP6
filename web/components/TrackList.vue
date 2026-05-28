@@ -35,6 +35,7 @@ const props = withDefaults(defineProps<{
   columns?: TrackListColumn[]
   releaseMap?: Record<string, { title: string; status: ReleaseStatus; image: string | null; imageUrl: string | null }>
   buildPlayerTracks?: (tracks: Track[], startTrack: Track) => void
+  selectedTrackId?: string | null
 }>(), {
   columns: () => [
     { key: 'trackNumber', label: '#' },
@@ -164,6 +165,7 @@ const formatFileSize = (bytes: number) => {
         :key="track.id"
         :active="isCurrentTrack(track.id)"
         :muted="track.missing"
+        :highlight="track.id === selectedTrackId"
         @click="handleTrackClick(track)"
       >
         <td v-if="hasColumn('play')" class="w-10 py-2 pl-4 text-center">

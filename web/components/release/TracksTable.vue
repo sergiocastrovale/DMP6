@@ -6,6 +6,7 @@ import { usePlayerStore } from '~/stores/player'
 const props = withDefaults(defineProps<{
   releaseId: string
   columns?: TrackListColumn[]
+  selectedTrackId?: string | null
 }>(), {
   columns: () => [
     { key: 'trackNumber', label: '#' },
@@ -50,6 +51,7 @@ function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
       :tracks="tracks"
       :columns="columns"
       :build-player-tracks="buildPlayerTracks"
+      :selected-track-id="selectedTrackId"
     />
     <div v-else class="py-4 text-center text-sm text-ink0">No local tracks available</div>
   </div>
