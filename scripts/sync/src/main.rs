@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+mod catalogue_gaps;
 mod db;
 mod images;
 mod mb_api;
@@ -50,6 +51,8 @@ struct SyncArgs {
     skip_release_img: bool,
     #[arg(long)]
     delete: bool,
+    #[arg(long, help = "Fast pass: populate MISSING catalogue entries only (1 API call/artist)")]
+    catalogue_gaps: bool,
     #[arg(long)]
     verbose: bool,
     /// Emit PROGRESS:{json} lines and plain output for the web terminal.
@@ -153,6 +156,16 @@ async fn main() {
         std::process::exit(1);
     }
 
+    if args.catalogue_gaps
+        && (args.release.is_some() || args.overwrite || args.delete)
+    {
+        common::error_log::log_error(
+            "--catalogue-gaps cannot be combined with --release, --overwrite, or --delete",
+        );
+        eprintln!("Error: --catalogue-gaps cannot be combined with --release, --overwrite, or --delete");
+        std::process::exit(1);
+    }
+
     if clear_stale_lock_minutes(&pool, 10).await {
         reporter.warn("Cleared stale scan lock.");
     }
@@ -225,6 +238,51 @@ async fn main() {
         {
             Ok(n) => reporter.info(&format!("Nuked MB data for {} artists.", n)),
             Err(e) => reporter.err(&format!("Nuke error: {}", e)),
+        }
+        release_lock(&pool).await;
+        return;
+    }
+
+    if args.catalogue_gaps {
+        reporter.header("DMP Sync — Catalogue Gaps");
+        reporter.kv("Mode", "catalogue-gaps (MISSING entries only, 1 API call/artist)");
+        if let Some(ref only) = args.only {
+            reporter.kv("Filter", &format!("only '{}'", only));
+        } else if args.from.is_some() || args.to.is_some() {
+            reporter.kv(
+                "Filter",
+                &format!(
+                    "{} to {}",
+                    args.from.as_deref().unwrap_or(""),
+                    args.to.as_deref().unwrap_or("")
+                ),
+            );
+        }
+        reporter.blank();
+
+        match catalogue_gaps::fill_catalogue_gaps(
+            &pool,
+            &http_client,
+            &mut limiter,
+            &reporter,
+            &running,
+            args.from.as_deref(),
+            args.to.as_deref(),
+            args.only.as_deref(),
+            args.exact,
+            args.verbose,
+        )
+        .await
+        {
+            Ok((artists, gaps)) => {
+                update_statistics(&pool).await.ok();
+                reporter.blank();
+                reporter.done(&format!(
+                    "Catalogue gaps complete: {} artist(s) processed, {} gap(s) recorded",
+                    artists, gaps
+                ));
+            }
+            Err(e) => reporter.err(&format!("Catalogue gaps error: {}", e)),
         }
         release_lock(&pool).await;
         return;
@@ -948,6 +1006,44 @@ async fn main() {
                 local_release.title,
                 release_start.elapsed().as_secs_f64()
             ));
+        }
+
+        // Catalogue gaps: persist MISSING entries for MB release groups without local releases
+        if !release_groups.is_empty() && !is_targeted {
+            delete_missing_releases_for_artist(&pool, &artist.id).await.ok();
+            let covered_rg_ids = get_covered_release_group_ids(&pool, &artist.id).await;
+            let mut gap_count = 0u32;
+            for rg in &release_groups {
+                if covered_rg_ids.contains(&rg.id) {
+                    continue;
+                }
+                let type_name = rg.primary_type.as_deref().unwrap_or("Other");
+                if type_name != "Album" && type_name != "EP" {
+                    continue;
+                }
+                let type_id = match ensure_release_type_cached(&pool, type_name, &mut release_type_cache).await {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
+                let year = rg.first_release_date.as_deref()
+                    .and_then(|d| d.split('-').next())
+                    .and_then(|y| y.parse::<i32>().ok());
+                let extras = MbReleaseExtras {
+                    release_date: rg.first_release_date.as_deref(),
+                    ..Default::default()
+                };
+                if let Ok(mb_db_id) = upsert_mb_release(
+                    &pool, &rg.id, &rg.id, &rg.title, year, &type_id,
+                    "MISSING", None, None, &extras,
+                ).await {
+                    ensure_mb_release_artist_link(&pool, &mb_db_id, &artist.id).await.ok();
+                    batch_link_release_genres(&pool, &mb_db_id, &artist_genre_ids).await.ok();
+                    gap_count += 1;
+                }
+            }
+            if gap_count > 0 && args.verbose {
+                reporter.info(&format!("    {} catalogue gap(s) recorded", gap_count));
+            }
         }
 
         if !releases_for_art.is_empty() {

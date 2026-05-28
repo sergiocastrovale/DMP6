@@ -1,7 +1,7 @@
 use chrono::{NaiveDateTime, Utc};
 use slug::slugify;
 use sqlx::PgPool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // ---------------------------------------------------------------------------
 // ReleaseType
@@ -257,6 +257,20 @@ pub async fn batch_link_artist_genres(
     Ok(())
 }
 
+pub async fn get_artist_genre_ids(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Vec<String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT "B" FROM "_ArtistGenres" WHERE "A" = $1"#,
+    )
+    .bind(artist_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter().map(|(id,)| id).collect()
+}
+
 // ---------------------------------------------------------------------------
 // Artist URL upsert
 // ---------------------------------------------------------------------------
@@ -431,11 +445,49 @@ pub async fn delete_empty_mb_releases(pool: &PgPool) -> Result<u64, sqlx::Error>
     let result = sqlx::query(
         r#"DELETE FROM "MusicBrainzRelease"
            WHERE id NOT IN (SELECT DISTINCT "releaseId" FROM "MusicBrainzReleaseTrack")
-             AND id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)"#,
+             AND id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)
+             AND status != 'MISSING'"#,
     )
     .execute(pool)
     .await?;
     Ok(result.rows_affected())
+}
+
+pub async fn delete_missing_releases_for_artist(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"DELETE FROM "MusicBrainzRelease"
+           WHERE status = 'MISSING'
+             AND id IN (
+               SELECT "releaseId" FROM "MusicBrainzReleaseArtist"
+               WHERE "artistId" = $1
+             )"#,
+    )
+    .bind(artist_id)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+pub async fn get_covered_release_group_ids(
+    pool: &PgPool,
+    artist_id: &str,
+) -> HashSet<String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT DISTINCT mbr."releaseGroupId"
+           FROM "MusicBrainzRelease" mbr
+           JOIN "LocalRelease" lr ON lr."releaseId" = mbr.id
+           JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+           WHERE lra."artistId" = $1
+             AND mbr."releaseGroupId" IS NOT NULL"#,
+    )
+    .bind(artist_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter().map(|(id,)| id).collect()
 }
 
 // ---------------------------------------------------------------------------

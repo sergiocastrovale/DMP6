@@ -42,6 +42,8 @@ cd scripts && cargo build --release -p sync
 ./sync --skip-release-img        # Skip cover art downloads
 ./sync --verbose                 # Show skipped MB releases
 ./sync --delete                  # Delete MB data for matched artists, then exit
+./sync --catalogue-gaps          # Fast pass: populate MISSING catalogue entries only (1 API call/artist)
+./sync --catalogue-gaps --only x # Gaps for specific artist
 ./sync --web                     # Emit PROGRESS:{json} for the web terminal
 ```
 
@@ -60,6 +62,7 @@ cd scripts && cargo build --release -p sync
 | `--skip-artist-img` | bool | false | Skip artist image download |
 | `--skip-release-img` | bool | false | Skip release cover download |
 | `--delete` | bool | false | Nuke MB data for matched artists, then exit |
+| `--catalogue-gaps` | bool | false | Fast pass: only populate MISSING catalogue entries (1 API call/artist) |
 | `--verbose` | bool | false | Log skipped/already-synced releases |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 
@@ -83,6 +86,23 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
 9. **Stamp run hash** on Artist for resumability
 
 Duplicate detection: tracks processed MB IDs across the run. Skips artists that resolve to an already-processed MB artist.
+
+## --catalogue-gaps Behaviour
+
+Fast path for populating MISSING MusicBrainzRelease entries without re-running the full sync. Requires artists to already have `musicbrainzId` in DB (from a previous full sync).
+
+**Per artist (1 API call):**
+1. Use existing `musicbrainzId` from DB (no search/lookup)
+2. Fetch release groups from MB API (sole API call)
+3. Query existing artist genres from DB (no API call)
+4. Delete stale MISSING entries, query covered release group IDs
+5. Create MISSING entries for uncovered Album/EP release groups + link genres
+
+**Skips entirely:** artist search, artist detail fetch, URL upsert, artist image, local release matching, cover art download.
+
+**Performance:** ~1.1s per artist (rate limit). 500 artists ≈ 9 minutes vs ~7 days for full sync.
+
+Cannot combine with `--release`, `--overwrite`, or `--delete`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--web`/`--verbose`.
 
 ## --delete Behaviour
 
