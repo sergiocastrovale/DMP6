@@ -113,6 +113,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./sync --delete               # Delete MB data for matched artists
 ./sync --verbose              # Show skipped MB releases
 ./sync --skip-mb-tags        # Skip writing MB IDs back to audio file tags
+./sync --only-write-mb-to-files          # Backfill MB IDs from DB into file tags (no API calls)
+./sync --only-write-mb-to-files --only x # Backfill for specific artist
 ./sync --catalogue-gaps       # Fast pass: populate MISSING catalogue entries (1 API/artist)
 ./sync --catalogue-gaps --overwrite  # Re-fetch all MISSING entries from scratch
 

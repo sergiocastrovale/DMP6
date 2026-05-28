@@ -11,6 +11,14 @@ pub fn write_mb_ids(
     release_group_id: Option<&str>,
     track_id: Option<&str>,
 ) -> Result<bool, String> {
+    if album_artist_id.is_none()
+        && album_id.is_none()
+        && release_group_id.is_none()
+        && track_id.is_none()
+    {
+        return Ok(false);
+    }
+
     let original_mtime = std::fs::metadata(abs_path)
         .and_then(|m| m.modified())
         .map_err(|e| format!("cannot stat {}: {}", abs_path.display(), e))?;
@@ -40,8 +48,7 @@ pub fn write_mb_ids(
     let mut needs_write = false;
     for (key, desired) in pairs {
         if let Some(val) = desired {
-            let existing = tag.get_string(key.clone());
-            if existing != Some(val) {
+            if tag.get_string(key.clone()).is_none() {
                 tag.insert(TagItem::new(
                     key.clone(),
                     ItemValue::Text(val.to_string()),

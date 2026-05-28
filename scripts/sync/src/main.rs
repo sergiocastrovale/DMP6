@@ -51,6 +51,8 @@ struct SyncArgs {
     skip_release_img: bool,
     #[arg(long, help = "Skip writing MusicBrainz IDs back to audio file tags")]
     skip_mb_tags: bool,
+    #[arg(long, help = "Write DB-known MB IDs to file tags (no API calls), then exit")]
+    only_write_mb_to_files: bool,
     #[arg(long)]
     delete: bool,
     #[arg(long, help = "Fast pass: populate MISSING catalogue entries only (1 API call/artist)")]
@@ -165,6 +167,16 @@ async fn main() {
             "--catalogue-gaps cannot be combined with --release or --delete",
         );
         eprintln!("Error: --catalogue-gaps cannot be combined with --release or --delete");
+        std::process::exit(1);
+    }
+
+    if args.only_write_mb_to_files
+        && (args.release.is_some() || args.delete || args.catalogue_gaps)
+    {
+        common::error_log::log_error(
+            "--only-write-mb-to-files cannot be combined with --release, --delete, or --catalogue-gaps",
+        );
+        eprintln!("Error: --only-write-mb-to-files cannot be combined with --release, --delete, or --catalogue-gaps");
         std::process::exit(1);
     }
 
@@ -290,6 +302,104 @@ async fn main() {
             }
             Err(e) => reporter.err(&format!("Catalogue gaps error: {}", e)),
         }
+        release_lock(&pool).await;
+        return;
+    }
+
+    if args.only_write_mb_to_files {
+        let music_dir = config.music_dir.as_deref().unwrap_or("");
+        if music_dir.is_empty() {
+            reporter.err("No music_dir configured — cannot write to files");
+            release_lock(&pool).await;
+            std::process::exit(1);
+        }
+
+        reporter.header("DMP Sync — Write MB IDs to Files");
+
+        let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+            r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist"
+               WHERE "relatedOnly" = false AND "musicbrainzId" IS NOT NULL
+               ORDER BY name"#,
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("DB query failed");
+
+        let artists: Vec<(String, String, Option<String>)> = rows
+            .into_iter()
+            .filter(|(_, name, _, _)| {
+                matches_filter(
+                    name,
+                    args.from.as_deref().unwrap_or(""),
+                    args.to.as_deref().unwrap_or(""),
+                    args.only.as_deref().unwrap_or(""),
+                    args.exact,
+                )
+            })
+            .map(|(id, name, _, mb_id)| (id, name, mb_id))
+            .collect();
+
+        let total = artists.len();
+        reporter.info(&format!("{} artist(s) with MB IDs", total));
+        reporter.blank();
+
+        let mut total_written = 0u32;
+        let mut total_tracks = 0u32;
+
+        for (i, (artist_id, artist_name, artist_mb_id)) in artists.iter().enumerate() {
+            let mb_artist_id = match artist_mb_id {
+                Some(id) => id,
+                None => continue,
+            };
+
+            let tracks = match get_tracks_with_mb_ids_for_artist(&pool, artist_id).await {
+                Ok(t) => t,
+                Err(e) => {
+                    reporter.err(&format!("{}: DB error: {}", artist_name, e));
+                    continue;
+                }
+            };
+
+            if tracks.is_empty() {
+                continue;
+            }
+
+            let mut written = 0u32;
+            for track in &tracks {
+                let abs_path = std::path::Path::new(music_dir).join(&track.file_path);
+                if !abs_path.exists() {
+                    continue;
+                }
+                match common::tags::write_mb_ids(
+                    &abs_path,
+                    Some(mb_artist_id),
+                    Some(&track.mb_release_id),
+                    Some(&track.mb_release_group_id),
+                    track.mb_track_id.as_deref(),
+                ) {
+                    Ok(true) => { written += 1; }
+                    Ok(false) => {}
+                    Err(e) => {
+                        reporter.warn(&format!("{}: {}", track.file_path, e));
+                    }
+                }
+            }
+
+            if written > 0 {
+                reporter.ok(&format!(
+                    "[{}/{}] {} — wrote {}/{} tracks",
+                    i + 1, total, artist_name, written, tracks.len()
+                ));
+                total_written += written;
+            }
+            total_tracks += tracks.len() as u32;
+        }
+
+        reporter.blank();
+        reporter.done(&format!(
+            "Wrote MB IDs to {} / {} tracks across {} artists",
+            total_written, total_tracks, total
+        ));
         release_lock(&pool).await;
         return;
     }
@@ -1230,9 +1340,9 @@ async fn main() {
             reporter.info(&format!("Cleaned up {} empty local release(s)", n));
         }
     }
-    if let Ok(n) = delete_empty_mb_releases(&pool).await {
+    if let Ok(n) = delete_orphaned_mb_releases(&pool).await {
         if n > 0 {
-            reporter.info(&format!("Cleaned up {} empty MB release(s)", n));
+            reporter.info(&format!("Cleaned up {} orphaned MB release(s)", n));
         }
     }
     update_statistics(&pool).await.ok();

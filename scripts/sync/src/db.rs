@@ -439,14 +439,13 @@ pub async fn batch_link_release_genres(
 }
 
 // ---------------------------------------------------------------------------
-// Cleanup: delete MusicBrainzRelease rows with no tracks and no local match
+// Cleanup: delete MusicBrainzRelease rows no LocalRelease points to
 // ---------------------------------------------------------------------------
 
-pub async fn delete_empty_mb_releases(pool: &PgPool) -> Result<u64, sqlx::Error> {
+pub async fn delete_orphaned_mb_releases(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         r#"DELETE FROM "MusicBrainzRelease"
-           WHERE id NOT IN (SELECT DISTINCT "releaseId" FROM "MusicBrainzReleaseTrack")
-             AND id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)
+           WHERE id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)
              AND status != 'MISSING'"#,
     )
     .execute(pool)
@@ -663,6 +662,43 @@ pub async fn get_track_file_paths_for_release(
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+
+pub struct TrackMbIds {
+    pub file_path: String,
+    pub mb_release_id: String,
+    pub mb_release_group_id: String,
+    pub mb_track_id: Option<String>,
+}
+
+pub async fn get_tracks_with_mb_ids_for_artist(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Result<Vec<TrackMbIds>, sqlx::Error> {
+    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        r#"SELECT lrt."filePath", mbr."musicbrainzId", mbr."releaseGroupId",
+                  mbrt."musicbrainzId"
+           FROM "LocalReleaseTrack" lrt
+           JOIN "LocalRelease" lr ON lrt."localReleaseId" = lr.id
+           JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+           JOIN "MusicBrainzRelease" mbr ON lr."releaseId" = mbr.id
+           LEFT JOIN "MusicBrainzReleaseTrack" mbrt ON lrt."mbTrackId" = mbrt.id
+           WHERE lra."artistId" = $1
+             AND lr."releaseId" IS NOT NULL"#,
+    )
+    .bind(artist_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(file_path, mb_release_id, mb_release_group_id, mb_track_id)| TrackMbIds {
+            file_path,
+            mb_release_id,
+            mb_release_group_id,
+            mb_track_id,
+        })
+        .collect())
 }
 
 pub async fn get_track_id_file_paths_for_release(

@@ -46,6 +46,8 @@ cd scripts && cargo build --release -p sync
 ./sync --catalogue-gaps --only x # Gaps for specific artist
 ./sync --catalogue-gaps --overwrite # Re-fetch all MISSING entries from scratch
 ./sync --skip-mb-tags            # Skip writing MB IDs back to file tags
+./sync --only-write-mb-to-files  # Backfill DB-known MB IDs into file tags (no API calls)
+./sync --only-write-mb-to-files --only "radiohead"  # Backfill specific artist
 ./sync --web                     # Emit PROGRESS:{json} for the web terminal
 ```
 
@@ -66,6 +68,7 @@ cd scripts && cargo build --release -p sync
 | `--delete` | bool | false | Nuke MB data for matched artists, then exit |
 | `--catalogue-gaps` | bool | false | Fast pass: only populate MISSING catalogue entries (1 API call/artist) |
 | `--skip-mb-tags` | bool | false | Skip writing found MB IDs back into audio file tags |
+| `--only-write-mb-to-files` | bool | false | Backfill DB-known MB IDs into file tags (no API calls), then exit |
 | `--verbose` | bool | false | Log skipped/already-synced releases |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 
@@ -109,6 +112,16 @@ Fast path for populating MISSING MusicBrainzRelease entries without re-running t
 **Performance:** ~1.1s per artist (rate limit). 500 artists ≈ 9 minutes vs ~7 days for full sync.
 
 Cannot combine with `--release` or `--delete`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`/`--web`/`--verbose`.
+
+## --only-write-mb-to-files Behaviour
+
+Writes DB-known MB IDs back into audio file tags. No API calls — reads entirely from DB. Only fills in **absent** tags; never overwrites existing file values. Preserves file mtime to avoid triggering re-index.
+
+**Per artist:** queries all matched tracks (joined through LocalRelease → MusicBrainzRelease → MusicBrainzReleaseTrack), writes missing `MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, and `MUSICBRAINZ_TRACKID` tags.
+
+**Use case:** backfill tags after a full sync so files become source of truth. Run once after initial sync to persist all found MB IDs into files.
+
+Cannot combine with `--release`, `--delete`, or `--catalogue-gaps`. Compatible with `--from`/`--to`/`--only`/`--exact`.
 
 ## --delete Behaviour
 
