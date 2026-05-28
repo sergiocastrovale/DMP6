@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export interface DropdownOption {
+interface DropdownOption {
   value: string
   label: string
   classes?: string

@@ -1,4 +1,4 @@
-import type { DownloadSource, ActiveDownload, DownloadStatus, SearchResult, SearchResultFile } from '~/types/download'
+import type { DownloadSource, ActiveDownload, DownloadStatus, DownloadSearchResult, DownloadSearchResultFile } from '~/types/download'
 import {
   checkSlskdConnection,
   slskdSearch,
@@ -47,9 +47,9 @@ export async function searchSlskd(query: string, timeout?: number): Promise<stri
   return slskdSearch(query, timeout)
 }
 
-export async function getSlskdResults(searchId: string, allowedFormats?: string, minBitrate?: number): Promise<SearchResult[]> {
+export async function getSlskdResults(searchId: string, allowedFormats?: string, minBitrate?: number): Promise<DownloadSearchResult[]> {
   const responses = await getSlskdSearchResults(searchId)
-  const results: SearchResult[] = []
+  const results: DownloadSearchResult[] = []
 
   const formatSet = allowedFormats
     ? new Set(allowedFormats.split(',').map(f => f.trim().toLowerCase()))
@@ -138,9 +138,9 @@ export async function getSlskdResults(searchId: string, allowedFormats?: string,
   return results
 }
 
-export async function searchDeezer(query: string): Promise<SearchResult[]> {
+export async function searchDeezer(query: string): Promise<DownloadSearchResult[]> {
   const albums = await deezerSearchAlbum(query)
-  const results: SearchResult[] = []
+  const results: DownloadSearchResult[] = []
 
   for (const album of albums) {
     results.push({
@@ -163,7 +163,7 @@ export async function searchDeezer(query: string): Promise<SearchResult[]> {
   return results
 }
 
-export async function searchHifi(query: string, artist?: string): Promise<SearchResult[]> {
+export async function searchHifi(query: string, artist?: string): Promise<DownloadSearchResult[]> {
   const tracks = await hifiSearchAlbum(query, artist)
   if (tracks.length === 0) return []
 
@@ -176,7 +176,7 @@ export async function searchHifi(query: string, artist?: string): Promise<Search
     albumMap.set(key, existing)
   }
 
-  const results: SearchResult[] = []
+  const results: DownloadSearchResult[] = []
   for (const [album, albumTracks] of albumMap) {
     results.push({
       id: `hifi:${albumTracks[0]!.id}`,

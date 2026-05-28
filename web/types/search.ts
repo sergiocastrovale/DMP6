@@ -1,43 +1,11 @@
-export interface SearchArtist {
-  id: string
-  name: string
-  slug: string
-  image: string | null
-  imageUrl: string | null
-}
+import type { ArtistSummary, TrackInContext } from './common'
+import type { Release } from './release'
 
-export interface SearchRelease {
-  id: string
-  title: string
-  releaseType: string | null
-  year: number | null
-  image: string | null
-  imageUrl: string | null
-  artist: {
-    id: string
-    name: string
-    slug: string
-  } | null
-}
+export type SearchArtist = ArtistSummary
 
-export interface SearchTrack {
-  id: string
-  title: string
-  trackNumber: number | null
-  duration: number | null
-  release: {
-    id: string
-    title: string
-    year: number | null
-    image: string | null
-    imageUrl: string | null
-    artist: {
-      id: string
-      name: string
-      slug: string
-    } | null
-  } | null
-}
+export type SearchRelease = Omit<Release, 'genre'>
+
+export type SearchTrack = TrackInContext
 
 export interface SearchResults {
   artists: SearchArtist[]

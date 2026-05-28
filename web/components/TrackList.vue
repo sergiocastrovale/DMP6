@@ -2,6 +2,7 @@
 import { Play, Pause, Heart, AlertTriangle, ExternalLink, Info, Link } from 'lucide-vue-next'
 import type { Track } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
+import type { TrackListColumn } from '~/types/ui'
 import { usePlayerStore } from '~/stores/player'
 import { formatDuration } from '~/helpers/functions'
 
@@ -27,11 +28,6 @@ interface TrackInfo {
   key: string | null
   replayGain: string | null
   encoder: string | null
-}
-
-export interface TrackListColumn {
-  key: 'play' | 'release' | 'trackNumber' | 'title' | 'artist' | 'status' | 'playCount' | 'favorite' | 'duration'
-  label?: string
 }
 
 const props = withDefaults(defineProps<{

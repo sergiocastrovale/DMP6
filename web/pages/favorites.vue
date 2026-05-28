@@ -21,9 +21,6 @@ const trackPage = ref(1)
 const activeTab = ref<'releases' | 'tracks'>((route.query.tab as 'releases' | 'tracks') || 'releases')
 const PAGE_SIZE = 50
 
-const sentinel = ref<HTMLElement>()
-let observer: IntersectionObserver | null = null
-
 const fetchReleases = async (page: number) => {
   const data = await $fetch<FavoritesResponse>('/api/favorites', {
     query: { type: 'releases', page, pageSize: PAGE_SIZE },
@@ -69,18 +66,7 @@ onMounted(async () => {
   finally {
     loading.value = false
   }
-
-  nextTick(() => {
-    observer = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting && !loadingMore.value) {
-        loadMore()
-      }
-    }, { rootMargin: '400px' })
-    if (sentinel.value) { observer.observe(sentinel.value) }
-  })
 })
-
-onUnmounted(() => observer?.disconnect())
 
 const loadMore = async () => {
   if (loadingMore.value) { return }
@@ -181,7 +167,7 @@ const unfavoriteTrack = async (trackId: string) => {
         @unfavorite="unfavoriteTrack"
       />
 
-      <div ref="sentinel" class="h-1" />
+      <InfiniteScroll @load="loadMore" />
       <div v-if="loadingMore" class="flex justify-center py-4">
         <Loader2 :size="20" class="animate-spin text-ink0" />
       </div>

@@ -6,7 +6,7 @@ import {
   Square,
   LockOpen,
 } from 'lucide-vue-next'
-import type { ScanStatus } from '~/server/api/scan/status.get'
+import type { ScanStatus } from '~/types/scan'
 import { formatDate } from '~/helpers/functions'
 import { useTerminalStore } from '~/stores/terminal'
 

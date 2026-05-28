@@ -1,25 +1,5 @@
 import { Prisma } from '@prisma/client'
-
-export interface NetworkNode {
-  id: string
-  name: string
-  slug: string
-  trackCount: number
-  isMain: boolean
-  isFocus: boolean
-}
-
-export interface NetworkLink {
-  source: string
-  target: string
-  sharedTracks: number
-  tracks: { id: string; title: string }[]
-}
-
-export interface NetworkGraph {
-  nodes: NetworkNode[]
-  links: NetworkLink[]
-}
+import type { NetworkGraph, NetworkNode, NetworkLink } from '~/types/labs'
 
 interface FullPairRow {
   main_artist_id: string

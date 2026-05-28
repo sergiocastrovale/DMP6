@@ -13,7 +13,7 @@ import { scaleLinear, scaleSqrt } from 'd3-scale'
 import { select } from 'd3-selection'
 import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
-import type { GenomeGraph } from '~/server/api/labs/genome/graph.get'
+import type { GenomeGraph } from '~/types/labs'
 
 definePageMeta({ layout: 'labs' })
 
@@ -240,13 +240,6 @@ const loadMoreArtists = () => {
   }
 }
 
-const onDialogScroll = (e: Event) => {
-  const el = e.target as HTMLElement
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
-    loadMoreArtists()
-  }
-}
-
 watch(filteredGraph, () => {
   nextTick(renderGraph)
 })
@@ -362,7 +355,7 @@ onUnmounted(() => {
     :title="dialogGenre ? `${dialogGenre.name} (${dialogGenre.count})` : ''"
     max-width="lg"
   >
-    <div @scroll="onDialogScroll" class="-mx-6 -my-4 max-h-[70vh] overflow-y-auto px-6 py-4">
+    <div class="-mx-6 -my-4 max-h-[70vh] overflow-y-auto px-6 py-4">
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
         <Block
           v-for="artist in dialogArtists"
@@ -373,6 +366,7 @@ onUnmounted(() => {
           :link="`/artist/${artist.slug}`"
         />
       </div>
+      <InfiniteScroll margin="100px" @load="loadMoreArtists" />
       <div v-if="dialogLoading" class="py-6 text-center text-sm text-ink-2">
         Loading...
       </div>

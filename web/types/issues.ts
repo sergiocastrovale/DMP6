@@ -1,7 +1,14 @@
+import type { ArtistRef } from './common'
+
 export type IssueStatus = 'DETECTED' | 'PENDING' | 'PENDING_REVERT' | 'RESOLVED' | 'FAILED'
 export type IssueType = 'corrupted' | 'unsplit' | 'orphans' | 'duplicates' | 'missing' | 'enrichment'
-export type HistoryIssueType = 'corrupted' | 'unsplit' | 'missing'
+export type HistoryIssueType = Extract<IssueType, 'corrupted' | 'unsplit' | 'missing'>
 export type Confidence = 'high' | 'medium' | 'low'
+
+interface IssueRowBase {
+  id: string
+  status: IssueStatus
+}
 
 export interface AuditRun {
   id: string
@@ -15,9 +22,7 @@ export interface IssueSummary {
   counts: Record<IssueType, number>
 }
 
-export interface IssueCorruptedTpe2Row {
-  id: string
-  status: IssueStatus
+export interface IssueCorruptedTPE2Row extends IssueRowBase {
   currentValue: string
   proposedValue: string
   confidence: Confidence
@@ -30,31 +35,23 @@ export interface IssueCorruptedTpe2Row {
   }
 }
 
-export interface IssueUnsplitArtistRow {
-  id: string
-  status: IssueStatus
+export interface IssueUnsplitArtistRow extends IssueRowBase {
   separator: string
   proposedParts: string[]
-  artist: { id: string; name: string; slug: string; totalTracks: number }
+  artist: ArtistRef & { totalTracks: number }
 }
 
-export interface IssueOrphanArtistRow {
-  id: string
-  status: IssueStatus
+export interface IssueOrphanArtistRow extends IssueRowBase {
   reason: string
-  artist: { id: string; name: string; slug: string; createdAt: string; musicbrainzId: string | null }
+  artist: ArtistRef & { createdAt: string; musicbrainzId: string | null }
 }
 
-export interface IssueDuplicateArtistRow {
-  id: string
-  status: IssueStatus
-  artistA: { id: string; name: string; slug: string; totalTracks: number }
-  artistB: { id: string; name: string; slug: string; totalTracks: number }
+export interface IssueDuplicateArtistRow extends IssueRowBase {
+  artistA: ArtistRef & { totalTracks: number }
+  artistB: ArtistRef & { totalTracks: number }
 }
 
-export interface IssueMissingMetadataRow {
-  id: string
-  status: IssueStatus
+export interface IssueMissingMetadataRow extends IssueRowBase {
   missingFields: string[]
   proposedValues: Record<string, unknown> | null
   track: { id: string; filePath: string; title: string | null; album: string | null; artist: string | null }
@@ -71,9 +68,7 @@ export interface IssueColumn {
 
 export type EnrichmentField = 'bpm' | 'mood' | 'acousticId' | 'mbRelease' | 'discogs' | 'bandcamp' | 'wikipedia'
 
-export interface IssueEnrichmentGapRow {
-  id: string
-  status: IssueStatus
+export interface IssueEnrichmentGapRow extends IssueRowBase {
   missingFields: EnrichmentField[]
   artist: { name: string; slug: string } | null
   localRelease: { id: string; title: string; year: number | null }

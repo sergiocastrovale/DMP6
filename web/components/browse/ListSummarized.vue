@@ -5,29 +5,6 @@ import { useBrowseStore } from '~/stores/browse'
 const store = useBrowseStore()
 const { artistImage } = useImageUrl()
 
-const handleScroll = () => {
-  const { scrollTop, scrollHeight, clientHeight } = document.documentElement
-  const pct = (scrollTop + clientHeight) / scrollHeight
-
-  if (pct > 0.75) {
-    store.loadMore()
-  }
-}
-
-watch(() => store.loadingMore, (val, prev) => {
-  if (prev && !val) {
-    nextTick(() => handleScroll())
-  }
-})
-
-onMounted(() => {
-  window.addEventListener('scroll', handleScroll)
-  nextTick(() => handleScroll())
-})
-
-onUnmounted(() => {
-  window.removeEventListener('scroll', handleScroll)
-})
 </script>
 
 <template>
@@ -65,6 +42,8 @@ onUnmounted(() => {
         </div>
       </NuxtLink>
     </div>
+
+    <InfiniteScroll @load="store.loadMore()" />
 
     <div v-if="store.loadingMore" class="flex items-center justify-center py-8">
       <Loader2 :size="20" class="animate-spin text-ink0" />

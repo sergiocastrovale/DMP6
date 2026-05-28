@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Track } from '~/types/track'
-import type { TrackListColumn } from '~/components/TrackList.vue'
+import type { TrackListColumn } from '~/types/ui'
 import { usePlayerStore } from '~/stores/player'
 
 const props = withDefaults(defineProps<{

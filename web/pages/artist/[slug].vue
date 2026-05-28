@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Loader2, RefreshCw, Search, HardDriveDownload, Globe } from 'lucide-vue-next'
 import type { Component } from 'vue'
-import type { ButtonDropdownOption } from '~/components/ButtonDropdown.vue'
+import type { ButtonDropdownOption } from '~/types/ui'
+import type { Artist } from '~/types/artist'
 import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import { useTerminalStore } from '~/stores/terminal'
@@ -19,7 +20,7 @@ const slug = computed(() => route.params.slug as string)
 const terminal = useTerminalStore()
 const player = usePlayerStore()
 
-const { data: artist, pending: artistPending, error } = useFetch(() => `/api/artists/${slug.value}`, {
+const { data: artist, pending: artistPending, error } = useFetch<Artist>(() => `/api/artists/${slug.value}`, {
   key: `artist-${slug.value}`,
 })
 

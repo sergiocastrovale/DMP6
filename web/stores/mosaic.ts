@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { MosaicItem } from '~/server/api/labs/mosaic/list.get'
+import type { MosaicItem } from '~/types/labs'
 
 interface MosaicProgress {
   current: number

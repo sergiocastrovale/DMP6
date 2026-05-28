@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Download, LayoutGrid, LayoutList, ListFilter } from 'lucide-vue-next'
-import type { ButtonDropdownOption } from '~/components/ButtonDropdown.vue'
+import type { ButtonDropdownOption } from '~/types/ui'
 
 defineProps<{
   downloadOptions: ButtonDropdownOption[]

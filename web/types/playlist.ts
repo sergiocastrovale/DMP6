@@ -1,13 +1,18 @@
-export interface PlaylistSummary {
+import type { TrackInContext, PlaylistType } from './common'
+
+interface PlaylistBase {
   id: string
   name: string
   slug: string
   description: string | null
-  type: 'MANUAL' | 'GENRE' | 'REGION'
+  type: PlaylistType
   genreGroup: string | null
   regionGroup: string | null
   createdAt: Date
   updatedAt: Date
+}
+
+export interface PlaylistSummary extends PlaylistBase {
   trackCount: number
   coverImages: Array<{
     image: string | null
@@ -19,35 +24,9 @@ export interface PlaylistTrack {
   id: string
   position: number
   addedAt: Date
-  track: {
-    id: string
-    title: string
-    trackNumber: number | null
-    duration: number | null
-    release: {
-      id: string
-      title: string
-      year: number | null
-      image: string | null
-      imageUrl: string | null
-      artist: {
-        id: string
-        name: string
-        slug: string
-      } | null
-    } | null
-  }
+  track: TrackInContext
 }
 
-export interface PlaylistDetail {
-  id: string
-  name: string
-  slug: string
-  description: string | null
-  type: 'MANUAL' | 'GENRE' | 'REGION'
-  genreGroup: string | null
-  regionGroup: string | null
-  createdAt: Date
-  updatedAt: Date
+export interface PlaylistDetail extends PlaylistBase {
   tracks: PlaylistTrack[]
 }

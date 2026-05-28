@@ -1,33 +1,6 @@
 <script setup lang="ts">
 import { LucideClock, LucideMusic } from 'lucide-vue-next'
-
-interface Decade {
-  decade: number
-  count: number
-}
-
-interface YearCount {
-  year: number
-  count: number
-}
-
-interface TimelineRelease {
-  id: string
-  title: string
-  releaseType: string | null
-  year: number | null
-  image: string | null
-  imageUrl: string | null
-  artist: { id: string; name: string; slug: string } | null
-}
-
-interface DecadeResponse {
-  releases: TimelineRelease[]
-  total: number
-  page: number
-  hasMore: boolean
-  years: YearCount[]
-}
+import type { Decade, DecadeResponse, TimelineRelease } from '~/types/timeline'
 
 const loading = ref(true)
 const decades = ref<Decade[]>([])
@@ -133,25 +106,8 @@ const yearCountMap = computed(() => {
   return map
 })
 
-const loadMoreTrigger = ref<HTMLElement | null>(null)
-
 onMounted(() => {
   loadDecades()
-
-  const observer = new IntersectionObserver((entries) => {
-    if (entries[0]?.isIntersecting) {
-      loadMore()
-    }
-  }, { rootMargin: '200px' })
-
-  watch(loadMoreTrigger, (el) => {
-    observer.disconnect()
-    if (el) {
-      observer.observe(el)
-    }
-  })
-
-  onUnmounted(() => observer.disconnect())
 })
 </script>
 
@@ -237,7 +193,8 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-if="decadeData.hasMore" ref="loadMoreTrigger" class="flex justify-center py-4">
+        <div v-if="decadeData.hasMore" class="flex justify-center py-4">
+          <InfiniteScroll margin="200px" @load="loadMore" />
           <span v-if="loadingMore" class="text-sm text-ink-3">Loading...</span>
         </div>
 

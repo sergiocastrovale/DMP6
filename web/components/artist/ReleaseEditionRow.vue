@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronRight, Download, FolderClosed, Heart, Info, Link, Pause, Play, RefreshCw } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
-import type { TrackListColumn } from '~/components/TrackList.vue'
+import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'

@@ -10,7 +10,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js'
-import type { DecadeStats } from '~/server/api/labs/decades/stats.get'
+import type { DecadeStats } from '~/types/labs'
 
 Chart.register(RadarController, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 

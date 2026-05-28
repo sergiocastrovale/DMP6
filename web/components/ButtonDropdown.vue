@@ -1,13 +1,6 @@
 <script setup lang="ts">
-import type { Component } from 'vue'
 import { ChevronDown, ChevronUp } from 'lucide-vue-next'
-
-export interface ButtonDropdownOption {
-  label: string
-  description?: string
-  icon?: Component
-  action: () => void
-}
+import type { ButtonDropdownOption } from '~/types/ui'
 
 defineProps<{
   label: string

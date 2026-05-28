@@ -1,14 +1,5 @@
 import { defineStore } from 'pinia'
-
-interface AppStats {
-  artists: number
-  releases: number
-  tracks: number
-  genres: number
-  playtime: number
-  totalFileSize: number   
-  totalPlays: number
-}
+import type { AppStats } from '~/types/stats'
 
 const DEFAULT_STATS: AppStats = {
   artists: 0,
@@ -18,6 +9,9 @@ const DEFAULT_STATS: AppStats = {
   playtime: 0,
   totalFileSize: 0,
   totalPlays: 0,
+  playlists: 0,
+  favorites: 0,
+  issues: 0,
 }
 
 export const useGlobalStore = defineStore('global', () => {

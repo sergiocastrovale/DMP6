@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Map as LeafletMap, GeoJSON as LeafletGeoJSON, Path, Layer } from 'leaflet'
 import type { Feature } from 'geojson'
-import type { MapCountry } from '~/server/api/labs/map/countries.get'
+import type { MapCountry } from '~/types/labs'
 
 definePageMeta({ layout: false })
 
@@ -242,13 +242,6 @@ const loadMoreArtists = () => {
   }
 }
 
-const onDialogScroll = (e: Event) => {
-  const el = e.target as HTMLElement
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
-    loadMoreArtists()
-  }
-}
-
 onMounted(async () => {
   if (!mapContainer.value) {
     return
@@ -394,7 +387,7 @@ onUnmounted(() => {
       :title="dialogCountry ? `${dialogCountry.name} (${dialogCountry.count})` : ''"
       max-width="lg"
     >
-      <div @scroll="onDialogScroll" class="-mx-6 -my-4 max-h-[70vh] overflow-y-auto px-6 py-4">
+      <div class="-mx-6 -my-4 max-h-[70vh] overflow-y-auto px-6 py-4">
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           <Block
             v-for="artist in dialogArtists"
@@ -405,6 +398,7 @@ onUnmounted(() => {
             :link="`/artist/${artist.slug}`"
           />
         </div>
+        <InfiniteScroll margin="100px" @load="loadMoreArtists" />
         <div v-if="dialogLoading" class="py-6 text-center text-sm text-ink-2">
           Loading...
         </div>

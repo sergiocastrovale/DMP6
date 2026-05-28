@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Loader2, Download, CheckCircle, AlertCircle, Search } from 'lucide-vue-next'
-import type { DownloadSource, SearchResult } from '~/types/download'
+import type { DownloadSource, DownloadSearchResult } from '~/types/download'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 
@@ -25,7 +25,7 @@ const source = ref<DownloadSource>(
       : 'deezer',
 )
 const searching = ref(false)
-const results = ref<SearchResult[]>([])
+const results = ref<DownloadSearchResult[]>([])
 const downloadStarted = ref(false)
 const downloadError = ref('')
 const slskdSearchId = ref<string | null>(null)
@@ -98,7 +98,7 @@ async function doSearch() {
   }
 }
 
-function startDownload(result: SearchResult) {
+function startDownload(result: DownloadSearchResult) {
   // Close dialog and open terminal panel with SSE stream
   stopPolling()
   emit('update:modelValue', false)

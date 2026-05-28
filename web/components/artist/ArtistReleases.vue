@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { UnifiedRelease, ReleaseGroup, ReleaseInfoExtra, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
-import type { TrackListColumn } from '~/components/TrackList.vue'
-import type { ButtonDropdownOption } from '~/components/ButtonDropdown.vue'
+import type { TrackListColumn, ButtonDropdownOption } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'

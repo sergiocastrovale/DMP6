@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Search, ArrowLeft, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-vue-next'
 
-export interface StatColumn {
+interface StatColumn {
   key: string
   label: string
   sortable?: boolean
@@ -83,9 +83,8 @@ const fetchItems = async (append = false) => {
   }
 }
 
-const handleScroll = () => {
-  const { scrollTop, scrollHeight, clientHeight } = document.documentElement
-  if ((scrollTop + clientHeight) / scrollHeight > 0.75 && !loadingMore.value && hasMore.value) {
+const loadMore = () => {
+  if (!loadingMore.value && hasMore.value) {
     page.value++
     fetchItems(true)
   }
@@ -93,11 +92,6 @@ const handleScroll = () => {
 
 onMounted(() => {
   fetchItems()
-  window.addEventListener('scroll', handleScroll)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('scroll', handleScroll)
 })
 </script>
 
@@ -173,6 +167,8 @@ onUnmounted(() => {
         </tbody>
       </table>
     </div>
+
+    <InfiniteScroll @load="loadMore" />
 
     <div v-if="loadingMore" class="flex items-center justify-center py-8">
       <Loader2 :size="20" class="animate-spin text-ink0" />

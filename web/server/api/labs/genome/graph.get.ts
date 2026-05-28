@@ -1,20 +1,4 @@
-
-interface GenomeNode {
-  id: string
-  name: string
-  artistCount: number
-}
-
-interface GenomeLink {
-  source: string
-  target: string
-  weight: number
-}
-
-export interface GenomeGraph {
-  nodes: GenomeNode[]
-  links: GenomeLink[]
-}
+import type { GenomeGraph, GenomeNode, GenomeLink } from '~/types/labs'
 
 export default defineEventHandler(async (): Promise<GenomeGraph> => {
   const genres = await prisma.genre.findMany({

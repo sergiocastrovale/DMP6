@@ -1,3 +1,16 @@
+export interface AppStats {
+  artists: number
+  releases: number
+  tracks: number
+  genres: number
+  playtime: number
+  totalFileSize: number
+  totalPlays: number
+  playlists: number
+  favorites: number
+  issues: number
+}
+
 export interface Statistics {
   artists: number
   mainArtists: number

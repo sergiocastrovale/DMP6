@@ -6,28 +6,6 @@ import type { Artist } from '~/types/artist'
 const store = useBrowseStore()
 const { artistImage } = useImageUrl()
 
-const scrollContainer = ref<HTMLElement>()
-
-function handleScroll() {
-  if (!scrollContainer.value) { 
-    return
-  }
-
-  const { scrollTop, scrollHeight, clientHeight } = document.documentElement
-  const pct = (scrollTop + clientHeight) / scrollHeight
-  
-  if (pct > 0.75) {
-    store.loadMore()
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('scroll', handleScroll)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('scroll', handleScroll)
-})
 </script>
 
 <template>
@@ -52,6 +30,8 @@ onUnmounted(() => {
         :score="(artist as Artist).averageMatchScore"
       />
     </div>
+
+    <InfiniteScroll @load="store.loadMore()" />
 
     <div v-if="store.loadingMore" class="flex items-center justify-center py-8">
       <Loader2 :size="20" class="animate-spin text-ink0" />

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Disc3, RefreshCw, HardDriveDownload, Loader2, Square, LockOpen } from 'lucide-vue-next'
-import type { ScanStatus } from '~/server/api/scan/status.get'
+import type { ScanStatus } from '~/types/scan'
 import { useTerminalStore } from '~/stores/terminal'
 
 const terminal = useTerminalStore()

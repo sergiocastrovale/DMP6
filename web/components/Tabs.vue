@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export interface TabItem {
+interface TabItem {
   key: string
   label: string
   href?: string

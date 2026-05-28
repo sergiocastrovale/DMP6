@@ -1,13 +1,4 @@
-export interface DecadeStats {
-  decade: string
-  releaseCount: number
-  trackCount: number
-  artistCount: number
-  avgDuration: number
-  avgBitrate: number
-  topGenres: { name: string; count: number }[]
-  totalPlayCount: number
-}
+import type { DecadeStats } from '~/types/labs'
 
 interface DecadeRow {
   decade: number

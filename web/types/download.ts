@@ -1,11 +1,11 @@
 export type DownloadSource = 'slskd' | 'deezer' | 'hifi'
 
-export interface SearchResult {
+export interface DownloadSearchResult {
   id: string
   source: DownloadSource
   username: string
   folderPath: string
-  files: SearchResultFile[]
+  files: DownloadSearchResultFile[]
   fileCount: number
   totalSize: number
   format: string
@@ -16,7 +16,7 @@ export interface SearchResult {
   uploadSpeed?: number
 }
 
-export interface SearchResultFile {
+export interface DownloadSearchResultFile {
   filename: string
   size: number
   bitRate?: number
@@ -41,8 +41,4 @@ export interface DownloadSourceStatus {
   error?: string
 }
 
-export interface DownloadStatus {
-  slskd: DownloadSourceStatus
-  deezer: DownloadSourceStatus
-  hifi: DownloadSourceStatus
-}
+export type DownloadStatus = Record<DownloadSource, DownloadSourceStatus>

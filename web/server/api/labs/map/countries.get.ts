@@ -1,18 +1,13 @@
 import { cachedResponse } from '~/server/utils/cache'
 import { COUNTRY_NAMES } from '~/server/utils/countries'
 import { verifyImage } from '~/server/utils/images'
+import type { MapCountry } from '~/types/labs'
 
 interface CountryRow {
   country: string
   artist_count: string
   images: string[] | null
   image_urls: string[] | null
-}
-
-export interface MapCountry {
-  name: string
-  count: number
-  images: { image: string | null; imageUrl: string | null }[]
 }
 
 export default defineEventHandler(async (event) => {

@@ -1,39 +1,20 @@
-import type { UnifiedRelease } from './release'
+import type { ArtistSummary } from './common'
 
-export interface Artist {
-  id: string
-  name: string
-  slug: string
-  image: string | null
-  imageUrl: string | null
-  musicbrainzId: string | null
+export type RelatedArtist = ArtistSummary
+
+export interface ArtistListItem extends ArtistSummary {
   averageMatchScore: number | null
   totalPlayCount: number
   totalTracks: number
+}
+
+export interface Artist extends ArtistListItem {
+  musicbrainzId: string | null
   totalFileSize: bigint | number | string
   lastSyncedAt: string | null
   genres: Genre[]
   urls: ArtistUrl[]
   relatedArtists?: RelatedArtist[]
-}
-
-export interface RelatedArtist {
-  id: string
-  name: string
-  slug: string
-  image: string | null
-  imageUrl: string | null
-}
-
-export interface ArtistListItem {
-  id: string
-  name: string
-  slug: string
-  image: string | null
-  imageUrl: string | null
-  averageMatchScore: number | null
-  totalPlayCount: number
-  totalTracks: number
 }
 
 export interface ArtistUrl {
@@ -45,16 +26,4 @@ export interface ArtistUrl {
 export interface Genre {
   id: string
   name: string
-}
-
-export interface ArtistDetail extends Artist {
-  releases: UnifiedRelease[]
-  localReleases: LocalReleaseBasic[]
-}
-
-export interface LocalReleaseBasic {
-  id: string
-  title: string
-  year: number | null
-  releaseId: string | null
 }

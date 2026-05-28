@@ -1,13 +1,6 @@
 import { existsSync, readdirSync, statSync } from 'fs'
 import { join, resolve } from 'path'
-
-export interface MosaicItem {
-  filename: string
-  previewFilename: string | null
-  createdAt: string
-  size: number
-  imageCount: number | null
-}
+import type { MosaicItem } from '~/types/labs'
 
 export default defineEventHandler(async (event): Promise<MosaicItem[]> => {
   if (!event.context.user) {

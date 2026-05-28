@@ -13,7 +13,7 @@ import { scaleLinear, scaleSqrt } from 'd3-scale'
 import { select } from 'd3-selection'
 import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
-import type { NetworkGraph } from '~/server/api/labs/network/graph.get'
+import type { NetworkGraph } from '~/types/labs'
 
 definePageMeta({ layout: 'labs' })
 
@@ -34,6 +34,7 @@ interface GraphLink extends SimulationLinkDatum<GraphNode> {
 const searchQuery = ref('')
 const searchResults = ref<{ id: string; name: string; slug: string }[]>([])
 const searchOpen = ref(false)
+const blurSearch = () => setTimeout(() => { searchOpen.value = false }, 200)
 const selectedArtist = ref<{ id: string; name: string } | null>(null)
 const loading = ref(true)
 const graphData = ref<NetworkGraph | null>(null)
@@ -338,7 +339,7 @@ onUnmounted(() => {
               placeholder="Search artist..."
               class="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-2"
               @focus="searchOpen = true"
-              @blur="setTimeout(() => searchOpen = false, 200)"
+              @blur="blurSearch"
             />
             <button
               v-if="selectedArtist"

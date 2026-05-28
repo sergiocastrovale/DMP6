@@ -1,16 +1,9 @@
-export interface Release {
-  id: string
-  title: string
+import type { ArtistRef, ReleaseRef } from './common'
+
+export interface Release extends ReleaseRef {
   releaseType: string | null
-  year: number | null
-  image: string | null
-  imageUrl: string | null
   genre: string | null
-  artist: {
-    id: string
-    name: string
-    slug: string
-  } | null
+  artist: ArtistRef | null
 }
 export interface UnifiedRelease {
   id: string
@@ -49,12 +42,6 @@ export type ReleaseStatus =
   | 'MISSING'
   | 'UNKNOWN'
   | 'UNMATCHED'
-
-export interface ReleaseType {
-  id: string
-  name: string
-  slug: string
-}
 
 export interface ReleaseGroup {
   key: string
