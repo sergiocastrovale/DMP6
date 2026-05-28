@@ -1,6 +1,6 @@
 # Scripts: sync
 
-Queries pending artists (`lastIndexedAt > lastSyncedAt`) and syncs each against MusicBrainz. Uses a run hash for resumability — interrupted runs skip already-processed artists. Reads from DB and calls MB API. Writes to audio files when embedding downloaded cover art.
+Queries pending artists (`lastIndexedAt > lastSyncedAt`) and syncs each against MusicBrainz. Uses a run hash for resumability — interrupted runs skip already-processed artists. Reads from DB and calls MB API. Writes found MB IDs back to audio file tags (preserving mtime to avoid re-index) and embeds downloaded cover art.
 
 Skips `relatedOnly=true` artists — guests/collaborators don't need MB enrichment.
 
@@ -45,6 +45,7 @@ cd scripts && cargo build --release -p sync
 ./sync --catalogue-gaps          # Fast pass: populate MISSING catalogue entries only (1 API call/artist)
 ./sync --catalogue-gaps --only x # Gaps for specific artist
 ./sync --catalogue-gaps --overwrite # Re-fetch all MISSING entries from scratch
+./sync --skip-mb-tags            # Skip writing MB IDs back to file tags
 ./sync --web                     # Emit PROGRESS:{json} for the web terminal
 ```
 
@@ -64,6 +65,7 @@ cd scripts && cargo build --release -p sync
 | `--skip-release-img` | bool | false | Skip release cover download |
 | `--delete` | bool | false | Nuke MB data for matched artists, then exit |
 | `--catalogue-gaps` | bool | false | Fast pass: only populate MISSING catalogue entries (1 API call/artist) |
+| `--skip-mb-tags` | bool | false | Skip writing found MB IDs back into audio file tags |
 | `--verbose` | bool | false | Log skipped/already-synced releases |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 
@@ -82,9 +84,10 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
    - Tier 2: Release group browse via `MUSICBRAINZ_RELEASEGROUPID` (or Tier 1 404 fallback)
    - No MB IDs in tags → marked Unmatched, skipped
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
-7. **Cover art** — download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
-8. **Set `lastSyncedAt`** on Artist, persist country code, compute average match score
-9. **Stamp run hash** on Artist for resumability
+7. **Write MB IDs** back to audio file tags (`MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_TRACKID`) — only writes tags that differ, preserves file mtime to avoid triggering re-index. Skipped with `--skip-mb-tags`
+8. **Cover art** — download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
+9. **Set `lastSyncedAt`** on Artist, persist country code, compute average match score
+10. **Stamp run hash** on Artist for resumability
 
 Duplicate detection: tracks processed MB IDs across the run. Skips artists that resolve to an already-processed MB artist.
 
@@ -124,6 +127,8 @@ If artist already has a MB ID and not overwriting: uses it directly (no API sear
 ## Release Matching Policy
 
 Strict metadata-wins: only matches via embedded MB IDs in tags. Title fuzzy matching is intentionally disabled. Releases without MB IDs in tags are marked `UNMATCHED`. Confidence check: if multiple siblings returned and none match local track count exactly, marks `UNMATCHED`.
+
+Found MB IDs are written back to file tags after matching, so future syncs (or DB rebuilds) can skip expensive MB searches. The writeback preserves file mtime to avoid triggering re-index.
 
 ## Release Status
 

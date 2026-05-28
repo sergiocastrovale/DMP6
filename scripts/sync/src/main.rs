@@ -49,6 +49,8 @@ struct SyncArgs {
     skip_artist_img: bool,
     #[arg(long)]
     skip_release_img: bool,
+    #[arg(long, help = "Skip writing MusicBrainz IDs back to audio file tags")]
+    skip_mb_tags: bool,
     #[arg(long)]
     delete: bool,
     #[arg(long, help = "Fast pass: populate MISSING catalogue entries only (1 API call/artist)")]
@@ -976,6 +978,50 @@ async fn main() {
             batch_link_release_genres(&pool, &mb_db_id, &artist_genre_ids)
                 .await
                 .ok();
+
+            if !args.skip_mb_tags {
+                let music_dir = config.music_dir.as_deref().unwrap_or("");
+                if !music_dir.is_empty() {
+                    let mut local_to_mb_track: HashMap<&str, &str> = HashMap::new();
+                    for (mb_track, local_id_opt) in &status_check.matched_mb_tracks {
+                        if let Some(local_id) = local_id_opt {
+                            local_to_mb_track.insert(local_id.as_str(), mb_track.id.as_str());
+                        }
+                    }
+
+                    if let Ok(id_paths) = get_track_id_file_paths_for_release(&pool, &local_release.id).await {
+                        let mut tags_written = 0u32;
+                        for (track_id, rel_path) in &id_paths {
+                            let abs_path = std::path::Path::new(music_dir).join(rel_path);
+                            if !abs_path.exists() {
+                                continue;
+                            }
+                            let mb_track_id = local_to_mb_track.get(track_id.as_str()).copied();
+                            match common::tags::write_mb_ids(
+                                &abs_path,
+                                Some(&mb_artist.id),
+                                Some(&final_release_id),
+                                Some(&rg_id),
+                                mb_track_id,
+                            ) {
+                                Ok(true) => { tags_written += 1; }
+                                Ok(false) => {}
+                                Err(e) => {
+                                    if args.verbose {
+                                        reporter.warn(&format!("MB tag write {}: {}", rel_path, e));
+                                    }
+                                }
+                            }
+                        }
+                        if tags_written > 0 {
+                            reporter.info(&format!(
+                                "        ↳ Wrote MB IDs to {}/{} tracks",
+                                tags_written, id_paths.len()
+                            ));
+                        }
+                    }
+                }
+            }
 
             if !args.skip_release_img && !local_release.has_cover {
                 releases_for_art.push((final_release_id.clone(), rg_id.clone(), local_release.id.clone()));
