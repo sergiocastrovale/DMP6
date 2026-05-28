@@ -1,4 +1,5 @@
 use chrono::Utc;
+use common::filters::sanitize_mb_id;
 use common::types::TrackMeta;
 use lofty::config::{ParseOptions, ParsingMode};
 use lofty::prelude::*;
@@ -95,30 +96,21 @@ pub fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, Strin
                         || key_upper == "MUSICBRAINZ ALBUM ID"
                         || key_upper == "MUSICBRAINZALBUMID")
                 {
-                    let trimmed = val.trim();
-                    if !trimmed.is_empty() && trimmed.len() >= 32 {
-                        mb_release_id = Some(trimmed.to_string());
-                    }
+                    mb_release_id = sanitize_mb_id(&val);
                 }
                 if mb_release_group_id.is_none()
                     && (key_upper == "MUSICBRAINZ_RELEASEGROUPID"
                         || key_upper == "MUSICBRAINZ RELEASE GROUP ID"
                         || key_upper.contains("MUSICBRAINZRELEASEGROUPID"))
                 {
-                    let trimmed = val.trim();
-                    if !trimmed.is_empty() && trimmed.len() >= 32 {
-                        mb_release_group_id = Some(trimmed.to_string());
-                    }
+                    mb_release_group_id = sanitize_mb_id(&val);
                 }
                 if mb_album_artist_id.is_none()
                     && (key_upper == "MUSICBRAINZ_ALBUMARTISTID"
                         || key_upper == "MUSICBRAINZ ALBUM ARTIST ID"
                         || key_upper.contains("MUSICBRAINZALBUMARTISTID"))
                 {
-                    let trimmed = val.trim();
-                    if !trimmed.is_empty() && trimmed.len() >= 32 {
-                        mb_album_artist_id = Some(trimmed.to_string());
-                    }
+                    mb_album_artist_id = sanitize_mb_id(&val);
                 }
                 all_tags.insert(key, val.clone());
             }

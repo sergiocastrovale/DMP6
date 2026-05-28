@@ -1,4 +1,4 @@
-use common::filters::matches_filter;
+use common::filters::{matches_filter, sanitize_mb_id};
 use common::progress::Reporter;
 use reqwest::Client;
 use sqlx::PgPool;
@@ -45,7 +45,7 @@ pub async fn fill_catalogue_gaps(
             )
         })
         .filter_map(|(id, name, slug, mb_id)| {
-            mb_id.map(|mb| (id, name, slug, mb))
+            mb_id.and_then(|raw| sanitize_mb_id(&raw)).map(|mb| (id, name, slug, mb))
         })
         .collect();
 

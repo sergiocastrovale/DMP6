@@ -1,3 +1,20 @@
+use regex::Regex;
+use std::sync::LazyLock;
+
+static UUID_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}").unwrap()
+});
+
+pub fn sanitize_mb_id(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    UUID_RE
+        .find(trimmed)
+        .map(|m| m.as_str().to_lowercase())
+}
+
 /// Normalize a name for filter comparison: lowercase, strip non-alphanumeric, collapse whitespace.
 /// Ensures "A.A. Bondy" matches "AA Bondy", "070-shake" matches "070 Shake", etc.
 pub fn normalize_filter(s: &str) -> String {

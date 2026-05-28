@@ -1,7 +1,7 @@
 use clap::Parser;
 use common::config::{apply_db_overrides, load_config};
 use common::db::create_pool;
-use common::filters::matches_filter;
+use common::filters::{matches_filter, sanitize_mb_id};
 use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
 use common::progress::Reporter;
 use common::s3::create_s3_client;
@@ -37,7 +37,7 @@ struct SyncArgs {
     from: Option<String>,
     #[arg(long, short)]
     to: Option<String>,
-    #[arg(long, short)]
+    #[arg(long, short, help = "Only sync these artists (semicolon-separated)")]
     only: Option<String>,
     #[arg(long, help = "Re-sync a single release by its LocalRelease ID")]
     release: Option<String>,
@@ -390,7 +390,7 @@ async fn main() {
                 id,
                 name,
                 slug,
-                mb_id,
+                mb_id: mb_id.as_deref().and_then(sanitize_mb_id),
                 has_image: image.is_some() || image_url.is_some(),
             })
             .collect()

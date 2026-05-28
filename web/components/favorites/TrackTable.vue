@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideHeart, LucideMusic, LucidePlay, LucidePause } from 'lucide-vue-next'
+import { LucideHeart, LucideMusic } from 'lucide-vue-next'
 import type { FavoriteTrack } from '~/types/favorites'
 import { formatDuration } from '~/helpers/functions'
 
@@ -49,14 +49,12 @@ const handleTrackClick = (fav: FavoriteTrack) => {
       :key="fav.id"
       :active="isCurrentTrack(fav.track.id)"
     >
-      <button
-        class="flex size-10 shrink-0 items-center justify-center text-sm"
-        :class="isCurrentTrack(fav.track.id) ? 'text-accent' : 'text-ink0 group-hover:text-accent'"
+      <PlayerPlayPauseButton
+        :playing="isTrackPlaying(fav.track.id)"
+        size="sm"
+        :class="isCurrentTrack(fav.track.id) ? 'text-accent' : 'text-ink0'"
         @click="handleTrackClick(fav)"
-      >
-        <LucidePause v-if="isTrackPlaying(fav.track.id)" :size="16" fill="currentColor" />
-        <LucidePlay v-else :size="16" fill="currentColor" />
-      </button>
+      />
 
       <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-bg-2">
         <img

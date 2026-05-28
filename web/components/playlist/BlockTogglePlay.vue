@@ -1,16 +1,14 @@
 <template>
-  <button
+  <div
     class="absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity"
     :class="isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
     @click.prevent="handleClick"
   >
-    <LucidePause v-if="isPlaying" class="size-6" fill="currentColor" />
-    <LucidePlay v-else class="size-6" fill="currentColor" />
-  </button>
+    <PlayerPlayPauseButton :playing="isPlaying" size="lg" class="text-white group-hover:bg-accent group-hover:text-accent-ink group-hover:scale-105" />
+  </div>
 </template>
 
 <script setup lang="ts">
-import { LucidePlay, LucidePause } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
 

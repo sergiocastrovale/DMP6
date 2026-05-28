@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Play, Pause } from 'lucide-vue-next'
 import Initial from '~/components/artist/Initial.vue'
 
 const props = defineProps<{
@@ -36,13 +35,12 @@ const sizeClass = computed(() => {
     <div v-else class="flex size-full items-center justify-center text-lg font-bold text-ink-4">
       <Initial :name="title" />
     </div>
-    <button
+    <div
       class="absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity"
       :class="playing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
       @click="emit('play')"
     >
-      <Pause v-if="playing" :size="24" class="text-ink" />
-      <Play v-else :size="24" class="text-ink" />
-    </button>
+      <PlayerPlayPauseButton :playing="playing" size="lg" class="text-white group-hover:bg-accent group-hover:text-accent-ink group-hover:scale-105" />
+    </div>
   </div>
 </template>

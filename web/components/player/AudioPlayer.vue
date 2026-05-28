@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import {
-  Play,
-  Pause,
   SkipBack,
   SkipForward,
   Shuffle,
@@ -168,14 +166,12 @@ const progressPct = computed(() =>
             <SkipBack :size="20" />
           </button>
 
-          <button
-            class="flex size-11 items-center justify-center rounded-full bg-ink text-accent-ink hover:scale-105 transition-transform"
-            :aria-label="player.isPlaying ? 'Pause' : 'Play'"
+          <PlayerPlayPauseButton
+            :playing="player.isPlaying"
+            size="lg"
+            class="bg-accent text-accent-ink"
             @click="player.togglePlay()"
-          >
-            <Pause v-if="player.isPlaying" :size="20" />
-            <Play v-else :size="20" class="ml-0.5" />
-          </button>
+          />
 
           <button class="text-ink-2 hover:text-ink transition-colors" aria-label="Next track" @click="player.next()">
             <SkipForward :size="20" />

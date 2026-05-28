@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, Pause, Heart, AlertTriangle, ExternalLink, Info, Link } from 'lucide-vue-next'
+import { Heart, AlertTriangle, ExternalLink, Info, Link } from 'lucide-vue-next'
 import type { Track } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
@@ -170,10 +170,11 @@ const formatFileSize = (bytes: number) => {
       >
         <td v-if="hasColumn('play')" class="w-10 py-2 pl-4 text-center">
           <template v-if="!track.missing">
-            <button :class="isCurrentTrack(track.id) ? 'text-accent' : 'text-ink0 group-hover:text-accent'">
-              <Pause v-if="isTrackPlaying(track.id)" :size="14" fill="currentColor" />
-              <Play v-else :size="14" fill="currentColor" />
-            </button>
+            <PlayerPlayPauseButton
+              :playing="isTrackPlaying(track.id)"
+              size="sm"
+              :class="isCurrentTrack(track.id) ? 'text-accent' : 'text-ink0'"
+            />
           </template>
         </td>
         <td v-if="hasColumn('release')" class="py-2 pl-4 text-ink-2 text-xs truncate max-w-50">
@@ -187,10 +188,11 @@ const formatFileSize = (bytes: number) => {
             {{ track.trackNumber || '-' }}
           </template>
           <template v-else>
-            <button :class="isCurrentTrack(track.id) ? 'text-accent' : 'text-ink0 group-hover:text-accent'">
-              <Pause v-if="isTrackPlaying(track.id)" :size="14" fill="currentColor" />
-              <Play v-else :size="14" fill="currentColor" />
-            </button>
+            <PlayerPlayPauseButton
+              :playing="isTrackPlaying(track.id)"
+              size="sm"
+              :class="isCurrentTrack(track.id) ? 'text-accent' : 'text-ink0'"
+            />
           </template>
         </td>
         <td v-if="hasColumn('title')" class="py-2 pl-3" :class="[isCurrentTrack(track.id) ? 'text-accent' : 'text-ink', track.missing && 'line-through text-ink0']">

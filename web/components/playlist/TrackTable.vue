@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucidePlay, LucidePause, LucideMusic, LucideX } from 'lucide-vue-next'
+import { LucideMusic, LucideX } from 'lucide-vue-next'
 import type { PlaylistTrack } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
 import { formatDuration } from '~/helpers/functions'
@@ -49,19 +49,12 @@ const handleTrackClick = (pt: PlaylistTrack) => {
       :key="pt.id"
       :active="isCurrentTrack(pt.track.id)"
     >
-      <button
-        class="flex size-10 flex-shrink-0 items-center justify-center text-sm"
-        :class="isCurrentTrack(pt.track.id) ? 'text-accent' : 'text-ink0 group-hover:text-accent'"
+      <PlayerPlayPauseButton
+        :playing="isTrackPlaying(pt.track.id)"
+        size="sm"
+        :class="isCurrentTrack(pt.track.id) ? 'text-accent' : 'text-ink0'"
         @click="handleTrackClick(pt)"
-      >
-        <template v-if="isTrackPlaying(pt.track.id)">
-          <LucidePause class="size-4" fill="currentColor" />
-        </template>
-        <template v-else>
-          <span class="group-hover:hidden">{{ idx + 1 }}</span>
-          <LucidePlay class="hidden size-4 group-hover:block" fill="currentColor" />
-        </template>
-      </button>
+      />
 
       <div class="relative size-10 flex-shrink-0 overflow-hidden rounded bg-bg-2">
         <img

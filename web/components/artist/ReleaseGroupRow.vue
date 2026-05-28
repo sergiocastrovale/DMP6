@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Disc3, Pause, Play } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Disc3 } from 'lucide-vue-next'
 import type { ReleaseGroup } from '~/types/release'
 
 const props = defineProps<{
@@ -57,12 +57,11 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
           v-if="hasPlayable"
           class="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover/cover:bg-black/60"
         >
-          <Pause v-if="isGroupPlaying" :size="16" fill="currentColor" class="text-accent" />
-          <Play
-            v-else
-            :size="16"
-            fill="currentColor"
-            :class="isGroupCurrent ? 'text-accent' : 'text-white/50 group-hover/cover:text-white'"
+          <PlayerPlayPauseButton
+            :playing="isGroupPlaying"
+            size="sm"
+            class="group-hover/cover:bg-accent group-hover/cover:text-accent-ink group-hover/cover:scale-105"
+            :class="isGroupPlaying || isGroupCurrent ? 'text-accent' : 'text-white/50 group-hover/cover:text-white'"
           />
         </div>
       </div>

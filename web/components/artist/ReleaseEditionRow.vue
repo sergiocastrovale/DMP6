@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Download, FolderClosed, Heart, Info, Link, Pause, Play, RefreshCw } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Download, FolderClosed, Heart, Info, Link, RefreshCw } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
@@ -74,12 +74,11 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           v-if="hasPlayable"
           class="absolute inset-0 flex items-center justify-center bg-bg-1/70 transition-colors group-hover/folder:bg-bg-1/95"
         >
-          <Pause v-if="isPlaying" :size="12" fill="currentColor" class="text-accent" />
-          <Play
-            v-else
-            :size="12"
-            fill="currentColor"
-            :class="isCurrent ? 'text-accent' : 'text-ink-2 group-hover/folder:text-ink'"
+          <PlayerPlayPauseButton
+            :playing="isPlaying"
+            size="sm"
+            class="!size-8 group-hover/folder:bg-accent group-hover/folder:text-accent-ink group-hover/folder:scale-105"
+            :class="isPlaying || isCurrent ? 'text-accent' : 'text-ink-2 group-hover/folder:text-ink'"
           />
         </div>
       </div>

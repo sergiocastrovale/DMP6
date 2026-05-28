@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use common::filters::sanitize_mb_id;
 use sqlx::PgPool;
 
 use crate::mb_api::*;
@@ -105,11 +106,11 @@ pub async fn find_mb_match_with_fallback(
     limiter: &mut RateLimiter,
 ) -> Result<Option<MbArtistMatch>, String> {
     // Step 1: direct lookup via embedded MUSICBRAINZ_ALBUMARTISTID
-    if let Some(mb_aid) = mb_hint_artist_id {
-        if SPECIAL_MB_ARTIST_IDS.contains(&mb_aid) {
+    if let Some(mb_aid) = mb_hint_artist_id.and_then(sanitize_mb_id) {
+        if SPECIAL_MB_ARTIST_IDS.contains(&mb_aid.as_str()) {
             // skip
         } else {
-            match mb_lookup_artist(client, mb_aid, limiter).await {
+            match mb_lookup_artist(client, &mb_aid, limiter).await {
                 Ok(m) if is_special_mb_artist(&m.id, &m.name) => {}
                 Ok(m) => {
                     return Ok(Some(m));
@@ -137,7 +138,8 @@ pub async fn find_mb_match_with_fallback(
     .await
     .ok()
     .flatten()
-    .map(|(id,)| id);
+    .map(|(id,)| id)
+    .and_then(|raw| sanitize_mb_id(&raw));
 
     if let Some(ref mb_rid) = mb_rg_id_hint {
         match mb_lookup_release_group_artist(client, mb_rid, limiter).await {

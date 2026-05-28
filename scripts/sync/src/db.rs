@@ -1,4 +1,5 @@
 use chrono::{NaiveDateTime, Utc};
+use common::filters::sanitize_mb_id;
 use slug::slugify;
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
@@ -523,7 +524,7 @@ pub async fn get_artists_pending_sync(
             id,
             name,
             slug,
-            mb_id,
+            mb_id: mb_id.as_deref().and_then(sanitize_mb_id),
             has_image: image.is_some() || image_url.is_some(),
         })
         .collect())
