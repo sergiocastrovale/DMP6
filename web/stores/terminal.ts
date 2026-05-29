@@ -59,10 +59,21 @@ export const useTerminalStore = defineStore('terminal', () => {
           if (eventType === 'done') {
             exitCode.value = parseInt(data) || 0
           } else if (data) {
+            let text: string
             try {
-              lines.value.push(JSON.parse(data))
+              text = JSON.parse(data)
             } catch {
-              lines.value.push(data)
+              text = data
+            }
+            if (typeof text === 'string' && text.startsWith('\r')) {
+              const cleaned = text.slice(1)
+              if (lines.value.length > 0 && lines.value[lines.value.length - 1]!.startsWith('\r')) {
+                lines.value[lines.value.length - 1] = '\r' + cleaned
+              } else {
+                lines.value.push('\r' + cleaned)
+              }
+            } else {
+              lines.value.push(text)
             }
           }
         }
@@ -117,7 +128,7 @@ export const useTerminalStore = defineStore('terminal', () => {
           body: JSON.stringify({ session: currentSession.value }),
         })
       }
-      catch { /* best-effort — abort SSE regardless */ }
+      catch { /* best-effort - abort SSE regardless */ }
     }
     abortController?.abort()
     await unlock()

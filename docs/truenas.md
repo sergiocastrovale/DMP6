@@ -79,7 +79,7 @@ DMP_DATA=path/to/dmp
 DMP_PORT=3000
 ```
 
-> Use `host.docker.internal` (not `localhost`) for PostgreSQL — `localhost` resolves to the container itself.
+> Use `host.docker.internal` (not `localhost`) for PostgreSQL - `localhost` resolves to the container itself.
 
 ---
 
@@ -106,7 +106,7 @@ Access: `http://192.168.1.241:3000`
 
 ## 7. Initial Data Load
 
-**Option A — Restore a backup:**
+**Option A - Restore a backup:**
 
 ```bash
 # Dev machine
@@ -122,7 +122,7 @@ gunzip -c "dump/$(ls -t dump/ | head -1)" | docker exec -i ix-postgres-postgres-
 docker restart dmp
 ```
 
-**Option B — Fresh index + sync** (takes several hours on a large library):
+**Option B - Fresh index + sync** (takes several hours on a large library):
 
 ```bash
 ssh nas
@@ -157,7 +157,7 @@ cd path/to/dmp
 ./audit                          # detect metadata issues → DB
 ./fix --corrupted                # apply pending fixes
 ./analysis                       # metadata quality HTML report
-./nuke                           # DESTRUCTIVE — full DB reset
+./nuke                           # DESTRUCTIVE - full DB reset
 ```
 
 ---
@@ -173,7 +173,7 @@ cd path/to/dmp
 ./index --from=a --to=z && ./sync --from=a --to=z
 ```
 
-- **Detach**: `Ctrl+B` then `D` — session keeps running
+- **Detach**: `Ctrl+B` then `D` - session keeps running
 - **Reattach**: `tmux attach -t sync`
 - **List sessions**: `tmux ls`
 - **Kill session**: `tmux kill-session -t sync`

@@ -1,6 +1,6 @@
 # Scripts: nuke
 
-Truncates all database tables and deletes all image files. **Destructive** — requires typing `y` to confirm.
+Truncates all database tables and deletes all image files. **Destructive** - requires typing `y` to confirm.
 
 ## Usage
 
@@ -19,7 +19,7 @@ Truncates all database tables and deletes all image files. **Destructive** — r
 |---|---|---|---|
 | `--y` | bool | false | Skip confirmation prompt |
 | `--keep-artist-img` | bool | false | Preserve artist images (local + S3) |
-| `--only` | String | — | Delete only matching artist(s), semicolon-separated, **always exact match** |
+| `--only` | String | - | Delete only matching artist(s), semicolon-separated, **always exact match** |
 | `--dry-run` | bool | false | Preview without making any changes |
 
 ## Full Wipe
@@ -28,7 +28,7 @@ Truncates all tables (cascading, 21 tables) and deletes every `.jpg` under `web/
 
 ## `--only` (Selective Delete)
 
-Deletes matching artists and their entire catalogue. Uses **exact match** (no prefix matching) — "Air" won't catch "Airbag".
+Deletes matching artists and their entire catalogue. Uses **exact match** (no prefix matching) - "Air" won't catch "Airbag".
 
 **What gets deleted:**
 

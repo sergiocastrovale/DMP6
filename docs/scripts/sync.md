@@ -1,8 +1,8 @@
 # Scripts: sync
 
-Queries pending artists (`lastIndexedAt > lastSyncedAt`) and syncs each against MusicBrainz. Uses a run hash for resumability — interrupted runs skip already-processed artists. Reads from DB and calls MB API. Writes found MB IDs back to audio file tags (preserving mtime to avoid re-index) and embeds downloaded cover art.
+Queries pending artists (`lastIndexedAt > lastSyncedAt`) and syncs each against MusicBrainz. Uses a run hash for resumability - interrupted runs skip already-processed artists. Reads from DB and calls MB API. Writes found MB IDs back to audio file tags (preserving mtime to avoid re-index) and embeds downloaded cover art.
 
-Skips `relatedOnly=true` artists — guests/collaborators don't need MB enrichment.
+Skips `relatedOnly=true` artists - guests/collaborators don't need MB enrichment.
 
 ## TL;DR
 
@@ -10,7 +10,7 @@ Skips `relatedOnly=true` artists — guests/collaborators don't need MB enrichme
 2. Select artists: `--release` (single), `--overwrite` (all), or default (pending where `lastIndexedAt > lastSyncedAt`). Skip artists already processed in current run (matching `syncHash`)
 3. **Per artist:**
    - Skip special names (Various Artists, [unknown])
-   - Find on MusicBrainz — use existing MB ID or search API; skip duplicates (same MB ID as previous artist)
+   - Find on MusicBrainz - use existing MB ID or search API; skip duplicates (same MB ID as previous artist)
    - Persist MB ID and country code (from MB area ISO 3166-1), fetch artist details (genres, tags, URLs), upsert to DB
    - Download artist image if missing (Wikidata → Wikipedia → Fanart.tv → local/S3)
    - Fetch release groups from MB API
@@ -57,11 +57,11 @@ cd scripts && cargo build --release -p sync
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--from` / `-f` | String | — | Start letter filter |
-| `--to` / `-t` | String | — | End letter filter |
-| `--only` / `-o` | String | — | Artist filter (semicolon-separated) |
+| `--from` / `-f` | String | - | Start letter filter |
+| `--to` / `-t` | String | - | End letter filter |
+| `--only` / `-o` | String | - | Artist filter (semicolon-separated) |
 | `--exact` | bool | false | Exact match for `--only` (no prefix matching) |
-| `--release` | String | — | Re-sync single release by LocalRelease ID |
+| `--release` | String | - | Re-sync single release by LocalRelease ID |
 | `--overwrite` | bool | false | Re-sync all matched (not just pending) |
 | `--skip-artist-img` | bool | false | Skip artist image download |
 | `--skip-release-img` | bool | false | Skip release cover download |
@@ -78,17 +78,17 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
 
 ## Per-Artist Flow
 
-1. **Find MB match** — 5-step algorithm (see below)
+1. **Find MB match** - 5-step algorithm (see below)
 2. **Fetch** artist detail: URLs, genres (top 5 by count), tags, country (from `area.iso-3166-1-codes`)
 3. **Download** artist image (Wikidata → Wikipedia → Fanart.tv), resize to 500px
 4. **Fetch** release groups (paginated)
-5. **For each local release** — 2-tier matching:
+5. **For each local release** - 2-tier matching:
    - Tier 1: Direct release lookup via embedded `MUSICBRAINZ_ALBUMID` (majority vote across tracks)
    - Tier 2: Release group browse via `MUSICBRAINZ_RELEASEGROUPID` (or Tier 1 404 fallback)
    - No MB IDs in tags → marked Unmatched, skipped
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
-7. **Write MB IDs** back to audio file tags (`MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_TRACKID`) — only writes tags that differ, preserves file mtime to avoid triggering re-index. Skipped with `--skip-mb-tags`
-8. **Cover art** — download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
+7. **Write MB IDs** back to audio file tags (`MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_TRACKID`) - only writes tags that differ, preserves file mtime to avoid triggering re-index. Skipped with `--skip-mb-tags`
+8. **Cover art** - download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
 9. **Set `lastSyncedAt`** on Artist, persist country code, compute average match score
 10. **Stamp run hash** on Artist for resumability
 
@@ -115,7 +115,7 @@ Cannot combine with `--release` or `--delete`. Compatible with `--from`/`--to`/`
 
 ## --only-write-mb-to-files Behaviour
 
-Writes DB-known MB IDs back into audio file tags. No API calls — reads entirely from DB. Only fills in **absent** tags; never overwrites existing file values. Preserves file mtime to avoid triggering re-index.
+Writes DB-known MB IDs back into audio file tags. No API calls - reads entirely from DB. Only fills in **absent** tags; never overwrites existing file values. Preserves file mtime to avoid triggering re-index.
 
 **Per artist:** queries all matched tracks (joined through LocalRelease → MusicBrainzRelease → MusicBrainzReleaseTrack), writes missing `MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, and `MUSICBRAINZ_TRACKID` tags.
 
@@ -153,9 +153,9 @@ All statuses in `ReleaseStatus` enum and how they are assigned:
 | `EXTRA_TRACKS` | 0.85 | Sync: more local tracks than MB tracks | Blue |
 | `MISSING_TRACKS` | 0.7 | Sync: MB has tracks not found locally | Orange |
 | `INCOMPLETE` | 0.5 | Sync: fallback when some local tracks are unmatched | Amber |
-| `MISSING` | — | API-only: MB release exists in artist catalogue but no local files | Red |
-| `UNKNOWN` | — | Index: track deletion resets matched release for sync recalculation. Release still has `releaseId`. | Gray |
-| `UNMATCHED` | — | Index: new release (no MB match yet). Sync: no MB IDs in tags, or ambiguous match (multiple MB siblings, no exact track-count match). Nuke: unlink from MB. | Beige |
+| `MISSING` | - | API-only: MB release exists in artist catalogue but no local files | Red |
+| `UNKNOWN` | - | Index: track deletion resets matched release for sync recalculation. Release still has `releaseId`. | Gray |
+| `UNMATCHED` | - | Index: new release (no MB match yet). Sync: no MB IDs in tags, or ambiguous match (multiple MB siblings, no exact track-count match). Nuke: unlink from MB. | Beige |
 
 ### Status lifecycle
 

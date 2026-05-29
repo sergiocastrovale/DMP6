@@ -22,10 +22,10 @@ Two fields added to the `Playlist` model:
 
 ## API Behaviour
 
-- `GET /api/playlists` and `GET /api/playlists/[slug]` — return `type` and `genreGroup` fields
-- `POST /api/playlists/[slug]/tracks` — returns **403** for `GENRE` playlists
-- `DELETE /api/playlists/[slug]/tracks/[trackId]` — returns **403** for `GENRE` playlists
-- `DELETE /api/playlists/[slug]` — allowed (script recreates on next run)
+- `GET /api/playlists` and `GET /api/playlists/[slug]` - return `type` and `genreGroup` fields
+- `POST /api/playlists/[slug]/tracks` - returns **403** for `GENRE` playlists
+- `DELETE /api/playlists/[slug]/tracks/[trackId]` - returns **403** for `GENRE` playlists
+- `DELETE /api/playlists/[slug]` - allowed (script recreates on next run)
 
 ## UI
 
@@ -55,9 +55,9 @@ For genre playlists:
 
 Genre groups are defined in `scripts/playlists/genre-groups.json`. Each group has:
 
-- `roots` — keywords for automatic matching (e.g., `["rock"]` catches "classic rock", "hard rock", etc.)
-- `includes` — genres that don't contain the keyword but belong (e.g., "grunge" in rock)
-- `excludes` — genres that match the keyword but shouldn't be included
+- `roots` - keywords for automatic matching (e.g., `["rock"]` catches "classic rock", "hard rock", etc.)
+- `includes` - genres that don't contain the keyword but belong (e.g., "grunge" in rock)
+- `excludes` - genres that match the keyword but shouldn't be included
 
 Run `./playlists --report` to see all genre assignments and unmatched genres.
 

@@ -98,7 +98,7 @@ onMounted(async () => {
 
         <p class="mb-4 text-sm leading-relaxed text-ink-2">
           Generates a mosaic of every album cover in your library.
-          Chronological sorts by release year. Gradient arranges covers by color temperature — cold tones top-left, warm tones bottom-right.
+          Chronological sorts by release year. Gradient arranges covers by color temperature - cold tones top-left, warm tones bottom-right.
         </p>
 
         <div class="mb-4">

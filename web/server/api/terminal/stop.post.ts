@@ -24,7 +24,7 @@ export default defineEventHandler(async (event) => {
       process.kill(stats.scanPid, 'SIGTERM')
     }
   }
-  catch { /* pid already dead — fine */ }
+  catch { /* pid already dead - fine */ }
 
   // For all commands: Ctrl+C to the tmux pane's foreground process group.
   // Also acts as belt-and-suspenders for lock-holding commands.

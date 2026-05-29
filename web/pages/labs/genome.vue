@@ -271,7 +271,7 @@ onUnmounted(() => {
         </div>
 
         <p class="mb-4 text-sm leading-relaxed text-ink-2">
-          Each node is a genre. Lines connect genres that share artists — thicker lines mean more artists in common. Drag nodes to rearrange. Click a genre to see its artists.
+          Each node is a genre. Lines connect genres that share artists - thicker lines mean more artists in common. Drag nodes to rearrange. Click a genre to see its artists.
         </p>
 
         <div class="space-y-4">

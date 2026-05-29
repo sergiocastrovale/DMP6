@@ -25,7 +25,7 @@ const fixDescription = computed(() => {
   if (props.type === 'duplicates') {
     return {
       title: 'Merges records in database only',
-      body: 'Merges artist B into artist A in the database — all releases and tracks are re-assigned to A, then B is deleted. No audio files are touched.',
+      body: 'Merges artist B into artist A in the database - all releases and tracks are re-assigned to A, then B is deleted. No audio files are touched.',
     }
   }
   return null

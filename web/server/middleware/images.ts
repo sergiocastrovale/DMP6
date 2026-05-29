@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
     return sendStream(event, createReadStream(filePath))
   }
   catch {
-    // Local file missing — proxy from NAS if configured
+    // Local file missing - proxy from NAS if configured
   }
 
   if (remoteServerUrl) {

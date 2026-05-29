@@ -1,6 +1,6 @@
 # Scripts: analysis
 
-Standalone file scanner — reads audio files directly (no DB), detects metadata gaps, generates a multi-page HTML report. Optionally quarantines bad files or auto-fixes with beets.
+Standalone file scanner - reads audio files directly (no DB), detects metadata gaps, generates a multi-page HTML report. Optionally quarantines bad files or auto-fixes with beets.
 
 ## Usage
 
@@ -26,12 +26,12 @@ Standalone file scanner — reads audio files directly (no DB), detects metadata
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `scan_path` | String (positional) | required | Root directory to scan |
-| `--from` | String | — | Only folders from this prefix |
-| `--to` | String | — | Only folders up to this prefix |
-| `--only` | String | — | Only folders starting with this prefix |
+| `--from` | String | - | Only folders from this prefix |
+| `--to` | String | - | Only folders up to this prefix |
+| `--only` | String | - | Only folders starting with this prefix |
 | `--limit` | usize | 0 (all) | Stop after N audio files |
 | `--output-dir` | String | `../../reports` | Report output directory |
-| `--unc-prefix` | String | — | Windows UNC prefix for file links |
+| `--unc-prefix` | String | - | Windows UNC prefix for file links |
 | `--no-report` | bool | false | Scan only, skip HTML report |
 | `--only-critical` | bool | false | Only generate critical + index pages |
 | `--only-mb` | bool | false | Only generate MB + index pages |
@@ -67,12 +67,12 @@ Pages split into 20-artist chunks with pagination. `index.html` and `issues.html
 
 ## Phases
 
-1. **Walk** — collect audio files (mp3/flac/m4a/opus/aac/ogg), count per folder
-2. **Scan** — parallel metadata extraction via rayon + lofty
-3. **Filter** — keep files with at least one issue
-4. **Auto-fix** (optional) — `beet import -C -w -q` per album directory, temp library
-5. **Quarantine** (optional) — move files to `__QUARANTINE`, `__NEEDS_REVIEW`, `__UNREADABLE`, `__AUTOFIXED`
-6. **Report** — generate HTML pages with search, sort, subtabs
+1. **Walk** - collect audio files (mp3/flac/m4a/opus/aac/ogg), count per folder
+2. **Scan** - parallel metadata extraction via rayon + lofty
+3. **Filter** - keep files with at least one issue
+4. **Auto-fix** (optional) - `beet import -C -w -q` per album directory, temp library
+5. **Quarantine** (optional) - move files to `__QUARANTINE`, `__NEEDS_REVIEW`, `__UNREADABLE`, `__AUTOFIXED`
+6. **Report** - generate HTML pages with search, sort, subtabs
 
 ## What Gets Checked
 
@@ -86,10 +86,10 @@ Pages split into 20-artist chunks with pagination. `index.html` and `issues.html
 
 ## Quarantine
 
-- `__QUARANTINE` — files with issues (multi-file folders)
-- `__NEEDS_REVIEW` — files with issues (lone file in folder)
-- `__UNREADABLE` — files that couldn't be parsed
-- `__AUTOFIXED` — files fixed by beets (when `--autofix --quarantine`)
+- `__QUARANTINE` - files with issues (multi-file folders)
+- `__NEEDS_REVIEW` - files with issues (lone file in folder)
+- `__UNREADABLE` - files that couldn't be parsed
+- `__AUTOFIXED` - files fixed by beets (when `--autofix --quarantine`)
 
 `--end-quarantine` reverses all moves.
 

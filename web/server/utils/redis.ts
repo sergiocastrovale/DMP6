@@ -9,7 +9,7 @@ if (process.env.REDIS_URL) {
     enableOfflineQueue: false,
     connectTimeout: 2000,
   })
-  _redis.on('error', () => { /* silently ignore — app works without Redis */ })
+  _redis.on('error', () => { /* silently ignore - app works without Redis */ })
 }
 
 export const redis = _redis

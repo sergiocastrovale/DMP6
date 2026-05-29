@@ -37,7 +37,7 @@ The web terminal (`/issues/[type]` page) runs `./fix` automatically when you cli
 
 **File-writing types** (corrupted, unsplit, missing): after `./fix`, the changed tags need to be re-read into the DB. The UI shows a "Refresh" button scoped to the affected artists after the terminal exits with code 0.
 
-**Enrichment**: has no automated fix and no SelectionBar. Per-row "Re-sync" button appears only for releases where `mbRelease` is a missing field (triggers `./refresh --only="Artist Name"`). Other enrichment gaps (BPM, mood, etc.) require external tools — see the `enrichment-gaps` skill.
+**Enrichment**: has no automated fix and no SelectionBar. Per-row "Re-sync" button appears only for releases where `mbRelease` is a missing field (triggers `./refresh --only="Artist Name"`). Other enrichment gaps (BPM, mood, etc.) require external tools - see the `enrichment-gaps` skill.
 
 ---
 
@@ -46,17 +46,17 @@ The web terminal (`/issues/[type]` page) runs `./fix` automatically when you cli
 ### Corrupted TPE2
 
 Patterns flagged as corrupted:
-- `^\d{1,3}$` — purely numeric 1-3 digits (track numbers)
-- `^\d{1,3}\s*-\s*\S` — track-number prefix (e.g. `05 - Title`)
-- `@\d{2,3}$` — bitrate marker (e.g. `Artist @320`)
-- `albumArtist = year::text` — year leaked into TPE2
+- `^\d{1,3}$` - purely numeric 1-3 digits (track numbers)
+- `^\d{1,3}\s*-\s*\S` - track-number prefix (e.g. `05 - Title`)
+- `@\d{2,3}$` - bitrate marker (e.g. `Artist @320`)
+- `albumArtist = year::text` - year leaked into TPE2
 - Full path strings (detected by length + path-like chars)
 
 Proposed fix is derived by majority vote of non-corrupt peers in the same release, then linked artists, then TPE1 consensus. Confidence: high ≥ 3 peers, medium ≥ 1, low = none.
 
 ### Unsplit Artists
 
-Only these separators trigger detection (by design — `&` is too ambiguous without MB validation):
+Only these separators trigger detection (by design - `&` is too ambiguous without MB validation):
 - ` feat. ` (space-padded, dot-terminated only)
 - ` vs ` (space-padded)
 - ` vs. ` (space-padded, dot-terminated)
@@ -64,15 +64,15 @@ Only these separators trigger detection (by design — `&` is too ambiguous with
 - ` / ` (space-padded slash)
 - `; ` (semicolon-space)
 
-`ft.`, `featuring`, `feat` (no dot), `ft` — **not** detected. If you see these in artist names, they need manual handling or a regex extension in `scripts/audit/src/unsplit.rs`.
+`ft.`, `featuring`, `feat` (no dot), `ft` - **not** detected. If you see these in artist names, they need manual handling or a regex extension in `scripts/audit/src/unsplit.rs`.
 
 ### Orphans
 
-Only two reasons (by design — `no_tracks` was removed as it caused false positives for MB-credited artists):
-- `phantom` — artist name matches `^\d{1,3}$` or `@\d{2,3}$`
-- `no_releases` — absent from **all three** junction tables: `LocalReleaseArtist`, `TrackArtist`, AND `MusicBrainzReleaseArtist`
+Only two reasons (by design - `no_tracks` was removed as it caused false positives for MB-credited artists):
+- `phantom` - artist name matches `^\d{1,3}$` or `@\d{2,3}$`
+- `no_releases` - absent from **all three** junction tables: `LocalReleaseArtist`, `TrackArtist`, AND `MusicBrainzReleaseArtist`
 
-An artist with `LocalReleaseArtist` rows but no `TrackArtist` rows is **not** an orphan — that's a valid MB-credited artist without file-level tags.
+An artist with `LocalReleaseArtist` rows but no `TrackArtist` rows is **not** an orphan - that's a valid MB-credited artist without file-level tags.
 
 ### Duplicates
 
@@ -93,7 +93,7 @@ PENDING   →  (./fix runs)  →  RESOLVED  or  FAILED
 
 The UI only shows `DETECTED` rows. `RESOLVED`/`FAILED` rows are hidden. After `./fix` completes, `issuesStore.fetchType()` is called automatically (watch on `terminal.exitCode`), which refreshes the table.
 
-The watch has a `hasFixed` guard — it only triggers a refresh when a fix was actually queued in this session, not on stale exit codes from previous terminal runs.
+The watch has a `hasFixed` guard - it only triggers a refresh when a fix was actually queued in this session, not on stale exit codes from previous terminal runs.
 
 ---
 
@@ -138,29 +138,29 @@ UPDATE "IssueCorruptedTpe2" SET status = 'PENDING' WHERE status = 'DETECTED';
 | Detection logic | `scripts/audit/src/{type}.rs` |
 | Fix logic | `scripts/fix/src/{type}.rs` |
 | Tag writes | `scripts/fix/src/tags.rs` |
-| Image deletion | `dmp_fix::tags::delete_artist_image(config, filename)` — uses `config.project_root` + S3 |
+| Image deletion | `dmp_fix::tags::delete_artist_image(config, filename)` - uses `config.project_root` + S3 |
 | API list endpoint | `web/server/api/issues/[type].get.ts` |
 | API queue endpoint | `web/server/api/issues/[type]/queue.post.ts` |
 | API patch endpoint | `web/server/api/issues/[type]/[id].patch.ts` |
 | Summary counts | `web/server/api/issues/summary.get.ts` |
 | Store | `web/stores/issues.ts` |
-| Types | `web/types/issues.ts` — `IssueType`, `EnrichmentField`, row interfaces |
+| Types | `web/types/issues.ts` - `IssueType`, `EnrichmentField`, row interfaces |
 | Per-type page | `web/pages/issues/[type].vue` |
 | Table component | `web/components/issues/IssueTable.vue` |
-| Slot names | Keys transformed via `.replace(/[^a-zA-Z0-9]/g, '_')` — e.g. `artist.name` → `cell-artist_name` |
+| Slot names | Keys transformed via `.replace(/[^a-zA-Z0-9]/g, '_')` - e.g. `artist.name` → `cell-artist_name` |
 
 ---
 
 ## DB Tables
 
 ```
-AuditRun              — one row per ./audit invocation, tracks counts
-IssueCorruptedTpe2    — corrupted albumArtist tags; links to LocalReleaseTrack
-IssueUnsplitArtist    — compound artist names; links to Artist
-IssueOrphanArtist     — phantom/unreachable artists; links to Artist
-IssueDuplicateArtist  — normalized-name collisions; links to Artist (A=keep, B=merge)
-IssueMissingMetadata  — tracks missing core fields; links to LocalReleaseTrack
-IssueEnrichmentGap    — releases missing enrichment fields; links to LocalRelease
+AuditRun              - one row per ./audit invocation, tracks counts
+IssueCorruptedTpe2    - corrupted albumArtist tags; links to LocalReleaseTrack
+IssueUnsplitArtist    - compound artist names; links to Artist
+IssueOrphanArtist     - phantom/unreachable artists; links to Artist
+IssueDuplicateArtist  - normalized-name collisions; links to Artist (A=keep, B=merge)
+IssueMissingMetadata  - tracks missing core fields; links to LocalReleaseTrack
+IssueEnrichmentGap    - releases missing enrichment fields; links to LocalRelease
 ```
 
 All have `status IssueStatus` (DETECTED/PENDING/RESOLVED/FAILED) and cascade-delete from AuditRun.
@@ -172,4 +172,4 @@ All have `status IssueStatus` (DETECTED/PENDING/RESOLVED/FAILED) and cascade-del
 - **Re-audit overwrites**: each `./audit --{type}` deletes all existing rows of that type and reinserts fresh. PENDING rows from a previous audit that haven't been fixed yet are lost. Fix before re-auditing, or don't re-audit that type selectively.
 - **Enrichment no-fix**: there is no `./fix --enrichment`. Enrichment gaps are informational only, except `mbRelease` which is addressed by re-syncing.
 - **Tmux required**: the in-app terminal uses tmux sessions. If tmux is not installed, `./audit` and `./fix` via the web UI will fail with a clear error message. Run manually from CLI instead.
-- **Duplicate merge unique violations**: if artist B has overlapping releases with artist A in `LocalReleaseArtist`, the merge deletes the B duplicates first then updates the remainder — safe against unique constraint violations.
+- **Duplicate merge unique violations**: if artist B has overlapping releases with artist A in `LocalReleaseArtist`, the merge deletes the B duplicates first then updates the remainder - safe against unique constraint violations.

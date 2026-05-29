@@ -84,7 +84,7 @@ watch(() => terminal.lines.length, () => {
         ref="scrollContainer"
         class="flex-1 overflow-y-auto p-4 font-mono text-xs leading-5 text-ink-2"
       >
-        <div v-for="(line, i) in terminal.lines" :key="i" class="whitespace-pre-wrap break-all">{{ line }}</div>
+        <div v-for="(line, i) in terminal.lines" :key="i" class="whitespace-pre-wrap break-all">{{ typeof line === 'string' && line.startsWith('\r') ? line.slice(1) : line }}</div>
         <span v-if="terminal.isRunning" class="mt-1 inline-block h-3.5 w-1.5 animate-pulse bg-accent" />
         <button
           v-if="terminal.hasLockError"

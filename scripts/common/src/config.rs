@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 pub struct Config {
     pub music_dir: Option<String>,
-    /// true when music_dir came from a CLI arg — DB override must not replace it.
+    /// true when music_dir came from a CLI arg - DB override must not replace it.
     pub music_dir_locked: bool,
     pub database_url: String,
     pub project_root: String,
@@ -19,7 +19,7 @@ pub struct Config {
 }
 
 impl Config {
-    /// Returns music_dir or panics — used by index which requires it.
+    /// Returns music_dir or panics - used by index which requires it.
     pub fn require_music_dir(&self) -> &str {
         self.music_dir.as_deref().expect("MUSIC_DIR not set. Pass as argument or set in web/.env")
     }
@@ -99,7 +99,7 @@ pub fn load_config(music_dir_override: Option<&str>) -> Config {
 }
 
 /// Override env-loaded config fields with values from the DB Settings row.
-/// Call this after creating the pool. Errors are soft — logs a warning and continues.
+/// Call this after creating the pool. Errors are soft - logs a warning and continues.
 pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
     let row: Option<(
         Option<String>, // musicDir

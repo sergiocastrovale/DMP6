@@ -25,7 +25,7 @@ const labs = [
   {
     to: '/labs/decades',
     title: 'Decade DNA',
-    description: 'Radar charts comparing your collection across decades — genres, quality, diversity.',
+    description: 'Radar charts comparing your collection across decades - genres, quality, diversity.',
     icon: Clock,
   },
   {

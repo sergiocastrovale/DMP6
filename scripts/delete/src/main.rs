@@ -395,7 +395,7 @@ async fn execute_plan(
     let mut local_deleted = 0usize;
     let mut s3_deleted = 0usize;
 
-    // Artist images — delete for ALL fates (flipped artists lose their image too)
+    // Artist images - delete for ALL fates (flipped artists lose their image too)
     for action in &plan.artist_actions {
         let has_local = action.image.as_ref().map_or(false, |s| !s.is_empty());
         let has_s3 = action.image_url.as_ref().map_or(false, |s| !s.is_empty());
@@ -441,7 +441,7 @@ async fn execute_plan(
         }
     }
 
-    // DB — all in a transaction
+    // DB - all in a transaction
     let mut tx = pool.begin().await?;
 
     let all_artist_ids: Vec<String> = plan.artist_actions.iter().map(|a| a.id.clone()).collect();
@@ -625,7 +625,7 @@ async fn main() {
                 target_ids.push((matches[0].0.clone(), matches[0].1.clone()));
             }
             n => {
-                error_log::log_error(&format!("{} artists match '{}' — ambiguous", n, name));
+                error_log::log_error(&format!("{} artists match '{}' - ambiguous", n, name));
                 eprintln!("{} {} artists match '{}':", "✗".red(), n, name);
                 for (_id, name, slug) in &matches {
                     eprintln!("    - {} ({})", name, slug.bright_black());
@@ -670,7 +670,7 @@ async fn main() {
             println!("    {} {}  {}",
                 "•".bright_black(),
                 a.name.bright_white(),
-                format!("({}) {} — featured on {} track(s) by other artists", a.slug, tag, a.surviving_track_count).bright_black());
+                format!("({}) {} - featured on {} track(s) by other artists", a.slug, tag, a.surviving_track_count).bright_black());
         }
     }
 
@@ -685,7 +685,7 @@ async fn main() {
     }
 
     if args.dry_run {
-        println!("{} (dry run — no changes made)", "✓".green());
+        println!("{} (dry run - no changes made)", "✓".green());
         return;
     }
 

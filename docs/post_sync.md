@@ -54,7 +54,7 @@ Re-run the audit and verify counts drop:
 
 ```bash
 ./audit
-# Check /issues — all counts should be 0 or near-0
+# Check /issues - all counts should be 0 or near-0
 ```
 
 Repeat from Phase 1 if new issues surface.
@@ -64,10 +64,10 @@ Repeat from Phase 1 if new issues surface.
 | Command | What it does |
 |---------|-------------|
 | "run the routine" | Full Phase 1–3 |
-| "check errors" | Phase 1 — analyse errors.log |
-| "fix the errors" | Phase 1 — apply encoding fixes |
-| "run audit" / "detect issues" | Phase 2 — `./audit` |
-| "fix issues" | Phase 2 — `./fix --{type}` for pending rows |
+| "check errors" | Phase 1 - analyse errors.log |
+| "fix the errors" | Phase 1 - apply encoding fixes |
+| "run audit" / "detect issues" | Phase 2 - `./audit` |
+| "fix issues" | Phase 2 - `./fix --{type}` for pending rows |
 | "fix corrupted tags" | `./fix --corrupted` |
 | "fix compound artists" | `./fix --unsplit` |
 | "clean up orphans" | `./fix --orphans` |

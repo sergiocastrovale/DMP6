@@ -1,4 +1,4 @@
-# Downloads — Soulseek (slskd)
+# Downloads - Soulseek (slskd)
 
 ## How it's set up on the NAS
 
@@ -80,7 +80,7 @@ Notes:
 ssh nas "cd path/to/dmp && docker compose up -d slskd"
 ```
 
-slskd auto-restarts on reboot (`restart: unless-stopped` in compose), so this is a one-time command — that's what "daemon" means in a Docker context.
+slskd auto-restarts on reboot (`restart: unless-stopped` in compose), so this is a one-time command - that's what "daemon" means in a Docker context.
 
 ### 5. Verify
 
@@ -97,7 +97,7 @@ ssh nas "docker logs dmp-slskd 2>&1 | tail -10"
 # Expected: "Logged in to the Soulseek server as <username>"
 ```
 
-Open `http://<nas-ip>:5030` in a browser — you should see the slskd web UI.
+Open `http://<nas-ip>:5030` in a browser - you should see the slskd web UI.
 
 > **Port forwarding**: For Soulseek to work well, port `50300` should be reachable from the internet. Set up port forwarding on your router (forward `50300` to the NAS IP). Without it, downloads still work but are slower and less reliable.
 
@@ -116,7 +116,7 @@ DOWNLOAD_FORMATS=flac,mp3
 DOWNLOAD_MIN_BITRATE=320
 ```
 
-All of these can also be set in the `Settings` table — DB values override `.env`.
+All of these can also be set in the `Settings` table - DB values override `.env`.
 
 ## Deploying changes
 
@@ -136,7 +136,7 @@ For bulk downloads, use the "Download missing" button at the top of the releases
 
 ## Where files end up
 
-slskd writes files to its own `directories.downloads` (set to `/downloads` inside the container, backed by `${DOWNLOADS_DIR:-/mnt/SSD/Downloads}` on the host). After slskd finishes a transfer, DMP detects completion and **moves** the files into the templated artist/album folder inside the same `/downloads` volume — see [features_downloader.md](features_downloader.md#where-files-go) for details.
+slskd writes files to its own `directories.downloads` (set to `/downloads` inside the container, backed by `${DOWNLOADS_DIR:-/mnt/SSD/Downloads}` on the host). After slskd finishes a transfer, DMP detects completion and **moves** the files into the templated artist/album folder inside the same `/downloads` volume - see [features_downloader.md](features_downloader.md#where-files-go) for details.
 
 The move only works because `docker-compose.yml` mounts the same host directory into both `slskd` and `web`. If you ever split them onto separate volumes, the move step silently no-ops and files remain in slskd's flat structure.
 

@@ -198,7 +198,7 @@ async fn main() {
         std::process::exit(1);
     }
 
-    // SIGTERM / Ctrl-C handler — release lock before exiting
+    // SIGTERM / Ctrl-C handler - release lock before exiting
     let running = Arc::new(AtomicBool::new(true));
     {
         let running = running.clone();
@@ -206,7 +206,7 @@ async fn main() {
         tokio::spawn(async move {
             tokio::signal::ctrl_c().await.ok();
             running.store(false, Ordering::SeqCst);
-            eprintln!("\nShutdown requested — finishing current artist...");
+            eprintln!("\nShutdown requested - finishing current artist...");
             tokio::signal::ctrl_c().await.ok();
             release_lock(&pool2).await;
             std::process::exit(1);
@@ -258,7 +258,7 @@ async fn main() {
     }
 
     if args.catalogue_gaps {
-        reporter.header("DMP Sync — Catalogue Gaps");
+        reporter.header("DMP Sync - Catalogue Gaps");
         reporter.kv("Mode", "catalogue-gaps (MISSING entries only, 1 API call/artist)");
         if args.overwrite {
             reporter.kv("Overwrite", "yes");
@@ -309,12 +309,12 @@ async fn main() {
     if args.only_write_mb_to_files {
         let music_dir = config.music_dir.as_deref().unwrap_or("");
         if music_dir.is_empty() {
-            reporter.err("No music_dir configured — cannot write to files");
+            reporter.err("No music_dir configured - cannot write to files");
             release_lock(&pool).await;
             std::process::exit(1);
         }
 
-        reporter.header("DMP Sync — Write MB IDs to Files");
+        reporter.header("DMP Sync - Write MB IDs to Files");
 
         let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
             r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist"
@@ -387,7 +387,7 @@ async fn main() {
 
             if written > 0 {
                 reporter.ok(&format!(
-                    "[{}/{}] {} — wrote {}/{} tracks",
+                    "[{}/{}] {} - wrote {}/{} tracks",
                     i + 1, total, artist_name, written, tracks.len()
                 ));
                 total_written += written;
@@ -554,7 +554,7 @@ async fn main() {
         // Skip special artists (Various Artists, [unknown], etc.)
         if is_special_artist_name(&artist.name) {
             reporter.item("", &artist.name, i + 1, total);
-            reporter.skip("Special artist — skipped");
+            reporter.skip("Special artist - skipped");
             if let Some(ref h) = run_hash {
                 stamp_sync_hash(&pool, &artist.id, h).await;
             }
@@ -573,7 +573,7 @@ async fn main() {
         };
 
         if local_releases.is_empty() {
-            reporter.skip("No local releases — skipped");
+            reporter.skip("No local releases - skipped");
             reporter.sync_progress(&artist.name, i + 1, total, "skipped");
             if let Some(ref h) = run_hash {
                 stamp_sync_hash(&pool, &artist.id, h).await;
@@ -664,7 +664,7 @@ async fn main() {
         if let Some(prev_id) = synced_mb_ids.get(&mb_artist.id) {
             if prev_id != &artist.id {
                 reporter.skip(&format!(
-                    "Same MB ID as another artist — skipping duplicate"
+                    "Same MB ID as another artist - skipping duplicate"
                 ));
                 reporter.sync_progress(&artist.name, i + 1, total, "done");
                 if let Some(ref h) = run_hash {
@@ -746,7 +746,7 @@ async fn main() {
             country_code.as_deref().map(|c| format!(", country: {}", c)).unwrap_or_default()
         ));
 
-        // 3. Artist image — skip if already present
+        // 3. Artist image - skip if already present
         if !args.skip_artist_img && !artist.has_image {
             reporter.sub_step("Downloading artist image...");
             let img_result = download_artist_image(
@@ -949,7 +949,7 @@ async fn main() {
                 None => {
                     mark_local_release_unmatched(&pool, &local_release.id).await.ok();
                     if args.verbose {
-                        reporter.skip(&format!("{} (no MB metadata in tags — left Unmatched)", local_release.title));
+                        reporter.skip(&format!("{} (no MB metadata in tags - left Unmatched)", local_release.title));
                     }
                     continue;
                 }
@@ -989,7 +989,7 @@ async fn main() {
             if !status_check.is_confident {
                 mark_local_release_unmatched(&pool, &local_release.id).await.ok();
                 reporter.skip(&format!(
-                    "{} ({} MB siblings, no exact track-count match — left Unmatched)",
+                    "{} ({} MB siblings, no exact track-count match - left Unmatched)",
                     local_release.title,
                     mb_release_tracks.len()
                 ));
@@ -1151,7 +1151,7 @@ async fn main() {
                     status::ReleaseStatus::Incomplete => "Incomplete",
                 };
                 reporter.sub_ok(&format!(
-                    "{} — {} ({} local / {} MB tracks)",
+                    "{} - {} ({} local / {} MB tracks)",
                     local_release.title,
                     status_label,
                     local_tracks.len(),
@@ -1370,7 +1370,7 @@ async fn main() {
         reporter.blank();
         reporter.info("  Failed artists:");
         for (name, reason) in &failed_artists {
-            reporter.err(&format!("    {} — {}", name, reason));
+            reporter.err(&format!("    {} - {}", name, reason));
         }
     }
 }

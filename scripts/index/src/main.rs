@@ -159,7 +159,7 @@ async fn main() {
         std::process::exit(1);
     }
 
-    // SIGTERM / Ctrl-C handler — release lock before exiting
+    // SIGTERM / Ctrl-C handler - release lock before exiting
     let shutdown = Arc::new(AtomicBool::new(false));
     {
         let shutdown = shutdown.clone();
@@ -167,7 +167,7 @@ async fn main() {
         tokio::spawn(async move {
             tokio::signal::ctrl_c().await.ok();
             shutdown.store(true, Ordering::SeqCst);
-            eprintln!("\nShutdown requested — finishing current folder...");
+            eprintln!("\nShutdown requested - finishing current folder...");
             // Wait for second Ctrl-C → force exit after releasing lock
             tokio::signal::ctrl_c().await.ok();
             release_lock(&pool).await;
@@ -805,7 +805,7 @@ async fn main() {
             batch_ensure_local_release_artists(&pool, &links).await.ok();
         }
 
-        // Print folder summary — verbose only when something actually changed
+        // Print folder summary - verbose only when something actually changed
         {
             if folder_new > 0 || folder_updated > 0 {
                 let mut parts = vec![format!("{} files", file_count)];

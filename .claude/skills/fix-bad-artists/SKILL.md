@@ -1,12 +1,12 @@
 ---
 name: fix-bad-artists
-description: Fix wrong artist pages — read screenshots from problems/, diagnose via DB, queue fixes via audit+fix, resync
+description: Fix wrong artist pages - read screenshots from problems/, diagnose via DB, queue fixes via audit+fix, resync
 user-invocable: true
 ---
 
 # Fix Bad Artists
 
-Fix artist pages that show wrong names — corrupted TPE2 tags (track numbers, paths, years, garbage) and compound artists that should be split (`&`, `/`, `feat.`).
+Fix artist pages that show wrong names - corrupted TPE2 tags (track numbers, paths, years, garbage) and compound artists that should be split (`&`, `/`, `feat.`).
 
 Use the `./audit` + `./fix` Rust pipeline, not Python scripts (those have been deleted).
 
@@ -20,7 +20,7 @@ The sync script creates one `Artist` record per unique `albumArtist` (TPE2) valu
 
 ### Unsplit compound artists
 
-The sync script's `split_artists()` intentionally never splits on `&` (too ambiguous — "Simon & Garfunkel") and only splits `/` with surrounding spaces ("AC/DC" is safe). So compound artists like "Jeff Beck & Eric Clapton" persist as a single artist entry.
+The sync script's `split_artists()` intentionally never splits on `&` (too ambiguous - "Simon & Garfunkel") and only splits `/` with surrounding spaces ("AC/DC" is safe). So compound artists like "Jeff Beck & Eric Clapton" persist as a single artist entry.
 
 The fix for both: write the correct TPE2 value back to the file and resync with `--overwrite`.
 
@@ -47,9 +47,9 @@ Read all images from the `problems/` folder (or whatever path the user provides)
 - Group by problem type (numeric name, track-number prefix, path string, compound artist, etc.)
 
 Numeric names that are **legitimately real artists** and must not be touched:
-- `"2002"` — Pamela and Randy Copus (new age project; ~378 tracks in library)
-- `"3"` — Keith Emerson band (3 Emerson, Berry & Palmer)
-- `"213"` — Snoop Dogg/Warren G/Nate Dogg group
+- `"2002"` - Pamela and Randy Copus (new age project; ~378 tracks in library)
+- `"3"` - Keith Emerson band (3 Emerson, Berry & Palmer)
+- `"213"` - Snoop Dogg/Warren G/Nate Dogg group
 
 ---
 
@@ -67,9 +67,9 @@ ORDER BY t."filePath";
 ```
 
 **What to look for:**
-- `albumArtist` column — the corrupted TPE2 value. If it equals the artist name, you've found the source
-- `artist` (TPE1) column — often has the correct artist; use this as a correction signal
-- `filePath` — identifies which folder/album the files belong to
+- `albumArtist` column - the corrupted TPE2 value. If it equals the artist name, you've found the source
+- `artist` (TPE1) column - often has the correct artist; use this as a correction signal
+- `filePath` - identifies which folder/album the files belong to
 
 **Categories:**
 - **Tag corruption**: albumArtist is a track number, year, path, or garbage → `./audit --corrupted` + `./fix --corrupted`
@@ -88,7 +88,7 @@ ORDER BY t."filePath";
 ./audit               # detect all types at once
 ```
 
-Review detected issues in the `/issues` UI — inspect proposed fixes, edit if needed, select rows and click "Fix Selected". Or from CLI after setting rows to PENDING via Prisma Studio:
+Review detected issues in the `/issues` UI - inspect proposed fixes, edit if needed, select rows and click "Fix Selected". Or from CLI after setting rows to PENDING via Prisma Studio:
 
 ```bash
 ./fix --corrupted      # write corrected albumArtist tags to files
@@ -154,7 +154,7 @@ SELECT name FROM "Artist" WHERE name LIKE '% & %' OR name LIKE '% / %' ORDER BY 
 
 ## Key Principles
 
-- **DB is source of truth** — derive corrections from DB signals. Never use filesystem paths or hardcoded folder names.
-- **MusicBrainz validates** — audit checks proposed corrections against MB before writing issues.
-- **Iterate** — one fix pass often reveals more issues; keep running until clean.
-- **NAS access** — music files are on the NAS (`SERVER_HOST` in `.env`), not mounted locally. Tag fixes run on the NAS via Docker.
+- **DB is source of truth** - derive corrections from DB signals. Never use filesystem paths or hardcoded folder names.
+- **MusicBrainz validates** - audit checks proposed corrections against MB before writing issues.
+- **Iterate** - one fix pass often reveals more issues; keep running until clean.
+- **NAS access** - music files are on the NAS (`SERVER_HOST` in `.env`), not mounted locally. Tag fixes run on the NAS via Docker.

@@ -12,6 +12,6 @@ if [ -f "$BINARY" ]; then
   exec "$BINARY" "$@"
 fi
 
-# Docker fallback (NAS — binary is inside the running container)
+# Docker fallback (NAS - binary is inside the running container)
 TTY_FLAG=""; [ -t 0 ] && TTY_FLAG="-it"
 exec docker exec $TTY_FLAG dmp playlists "$@"

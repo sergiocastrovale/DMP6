@@ -131,7 +131,7 @@ struct NavCounts {
 struct FileIssue {
     path: PathBuf,
     file_size: u64,
-    // Missing field flags — true means MISSING / BAD
+    // Missing field flags - true means MISSING / BAD
     // Critical
     missing_artist: bool,
     missing_title: bool,
@@ -2428,7 +2428,7 @@ fn main() {
 
     // Lock-free accumulation via rayon fold/reduce.
     // Each thread builds its own local (issues, tag_keys, file_type_counts, total_size, error_count, unreadable_paths)
-    // and they are merged at the end — no Mutex contention in the hot path.
+    // and they are merged at the end - no Mutex contention in the hot path.
     type ScanAcc = (Vec<FileIssue>, HashSet<String>, HashMap<String, u64>, u64, u64, Vec<(PathBuf, String)>);
 
     let (results, _all_tag_keys, file_type_counts, total_size, error_count, unreadable_paths): ScanAcc = paths
@@ -2459,7 +2459,7 @@ fn main() {
                     Err(err) => {
                         acc.4 += 1;
                         acc.5.push((p.clone(), err.clone()));
-                        eprintln!("  UNREADABLE: {} — {}", p.display(), err);
+                        eprintln!("  UNREADABLE: {} - {}", p.display(), err);
                     }
                 }
                 acc

@@ -259,7 +259,7 @@ async function undoSelected() {
                   <span v-for="e in getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {}))" :key="e.key" class="text-xs text-accent">
                     <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
                   </span>
-                  <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-ink-4">—</span>
+                  <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-ink-4">-</span>
                 </div>
               </td>
               <td class="px-3 py-2">
@@ -267,7 +267,7 @@ async function undoSelected() {
                   <span v-for="e in getStateEntries(g.items[0]!.appliedState)" :key="e.key" class="text-xs text-green-400">
                     <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
                   </span>
-                  <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-ink-4">—</span>
+                  <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-ink-4">-</span>
                 </div>
               </td>
               <td class="px-3 py-2">

@@ -61,7 +61,7 @@ pub struct StatusCheck {
     // - Tier 1 (single release returned): always true.
     // - Tier 2 (release group with multiple siblings): true only when exactly one sibling
     //   has a track count equal to the local folder's track count.
-    // When false, callers must NOT bind LocalRelease.releaseId — leave Unmatched.
+    // When false, callers must NOT bind LocalRelease.releaseId - leave Unmatched.
     pub is_confident: bool,
 }
 

@@ -78,13 +78,13 @@ return a ? b : c
 
 - **Images**: Always use `useImageUrl()` composable to resolve artist/release images
 - **Types**: All TypeScript definitions in `web/types/`
-- **No scripts code in web app** — scripts are separate Rust binaries located in /scripts
-- **Metadata is source of truth** — never use filesystem paths/folder names for artist, album, year or any other information
-- **MusicBrainz IDs are definitive** — when embedded MB IDs exist in tags, use them directly without re-verification
+- **No scripts code in web app** - scripts are separate Rust binaries located in /scripts
+- **Metadata is source of truth** - never use filesystem paths/folder names for artist, album, year or any other information
+- **MusicBrainz IDs are definitive** - when embedded MB IDs exist in tags, use them directly without re-verification
 
 ## Scripts
 
-Shell wrappers at project root. Each uses a pre-built release binary — **rebuild after code changes**:
+Shell wrappers at project root. Each uses a pre-built release binary - **rebuild after code changes**:
 
 ```bash
 cd scripts && cargo build --release    # Must rebuild manually!
@@ -154,8 +154,8 @@ See the docs/scripts folder for context on each script.
 
 When browsing reveals artists with bad names (track numbers, paths, garbage):
 
-1. **Detect**: `./audit` — writes issues to DB
-2. **Review**: `/issues` in the web UI — inspect and queue fixes
+1. **Detect**: `./audit` - writes issues to DB
+2. **Review**: `/issues` in the web UI - inspect and queue fixes
 3. **Fix**: `./fix --corrupted` / `./fix --unsplit` / `./fix --orphans` etc.
 4. **Refresh**: `./refresh --only="..."` for file-writing fix types
 5. **Iterate**: Re-run audit until clean
@@ -167,37 +167,37 @@ On the NAS, script error logs are at: `docker exec dmp cat /app/errors.log`
 ## API Endpoints
 
 ### Core
-- `GET /api/artists` — paginated list with filters (letter, genre, search, score, sort)
-- `GET /api/artists/[slug]` — artist detail with genres, URLs, stats
-- `GET /api/artists/[slug]/releases` — all releases (unified MB + local)
-- `GET /api/artists/[slug]/tracks` — all tracks
-- `GET /api/releases/[id]/tracks` — tracks in a release (merges local + MB missing)
+- `GET /api/artists` - paginated list with filters (letter, genre, search, score, sort)
+- `GET /api/artists/[slug]` - artist detail with genres, URLs, stats
+- `GET /api/artists/[slug]/releases` - all releases (unified MB + local)
+- `GET /api/artists/[slug]/tracks` - all tracks
+- `GET /api/releases/[id]/tracks` - tracks in a release (merges local + MB missing)
 
 ### Playback
-- `GET /api/audio/[id]` — stream audio with HTTP range support + ETag
-- `POST /api/tracks/[id]/play` — increment playCount
-- `POST /api/tracks/explore` — 4-slider scoring (energy/era/familiarity/sound)
-- `GET /api/tracks/random-batch` — random tracks for catalogue shuffle
+- `GET /api/audio/[id]` - stream audio with HTTP range support + ETag
+- `POST /api/tracks/[id]/play` - increment playCount
+- `POST /api/tracks/explore` - 4-slider scoring (energy/era/familiarity/sound)
+- `GET /api/tracks/random-batch` - random tracks for catalogue shuffle
 
 ### Library
-- `GET /api/releases/latest` — recently added
-- `GET /api/releases/last-played` — recently played
-- `GET /api/search` — full-text across artists/releases/tracks
-- `GET /api/timeline/decades` — decade grouping
-- `GET /api/genres` — all genres with counts
-- `GET /api/stats` — library statistics
+- `GET /api/releases/latest` - recently added
+- `GET /api/releases/last-played` - recently played
+- `GET /api/search` - full-text across artists/releases/tracks
+- `GET /api/timeline/decades` - decade grouping
+- `GET /api/genres` - all genres with counts
+- `GET /api/stats` - library statistics
 
 ### CRUD
-- `/api/playlists/*` — CRUD for playlists and playlist tracks
-- `/api/favorites/*` — toggle favorite releases and tracks
-- `/api/auth/login`, `/api/auth/logout` — session auth
+- `/api/playlists/*` - CRUD for playlists and playlist tracks
+- `/api/favorites/*` - toggle favorite releases and tracks
+- `/api/auth/login`, `/api/auth/logout` - session auth
 
 ### Labs
-- `GET /api/labs/map/countries` — artist country map data (24h cache)
+- `GET /api/labs/map/countries` - artist country map data (24h cache)
 
 ### Operations
-- `POST /api/terminal/run` — execute shell commands (SSE streaming)
-- `GET /api/health` — health check (public)
+- `POST /api/terminal/run` - execute shell commands (SSE streaming)
+- `GET /api/health` - health check (public)
 
 ## Pages
 
@@ -213,18 +213,18 @@ On the NAS, script error logs are at: `docker exec dmp cat /app/errors.log`
 | `/timeline` | Browse by decade/year |
 | `/statistics` | Library stats dashboard |
 | `/labs/map` | World map with album art tiled by artist origin country |
-| `/issues` | Metadata issue overview — run audit, view counts per type |
-| `/issues/[type]` | Per-type issue table — select, edit proposed fixes, queue for fix |
+| `/issues` | Metadata issue overview - run audit, view counts per type |
+| `/issues/[type]` | Per-type issue table - select, edit proposed fixes, queue for fix |
 | `/login` | Auth page |
 
 ## Player Store
 
 The player (`stores/player.ts`) supports 5 shuffle modes:
-- `off` — sequential playback
-- `release` — shuffle within current release
-- `artist` — shuffle within current artist
-- `catalogue` — random tracks from entire library (prefetched buffer)
-- `explorer` — score-based discovery using 4 sliders
+- `off` - sequential playback
+- `release` - shuffle within current release
+- `artist` - shuffle within current artist
+- `catalogue` - random tracks from entire library (prefetched buffer)
+- `explorer` - score-based discovery using 4 sliders
 
 State persisted to localStorage (queue capped at 200 tracks).
 

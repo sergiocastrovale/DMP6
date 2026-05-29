@@ -169,7 +169,7 @@ impl Reporter {
         }
     }
 
-    /// Transient in-place line (carriage-return). No-op in web mode — we don't
+    /// Transient in-place line (carriage-return). No-op in web mode - we don't
     /// want ANSI control codes in the web terminal, so we just skip it.
     pub fn transient(&self, msg: &str) {
         if !self.web {

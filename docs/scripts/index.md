@@ -1,6 +1,6 @@
 # Scripts: index
 
-Walks MUSIC_DIR, extracts metadata from audio files, and upserts the local DB tree. Sets `lastIndexedAt` on artists only when data actually changes (new/updated/deleted tracks). Uses a run hash for resumability — interrupted runs continue from where they left off.
+Walks MUSIC_DIR, extracts metadata from audio files, and upserts the local DB tree. Sets `lastIndexedAt` on artists only when data actually changes (new/updated/deleted tracks). Uses a run hash for resumability - interrupted runs continue from where they left off.
 
 ## Build
 
@@ -35,12 +35,12 @@ cd scripts && cargo build --release -p index
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--from` / `-f` | String | — | Start letter filter |
-| `--to` / `-t` | String | — | End letter filter |
-| `--only` / `-o` | String | — | Semicolon-separated artist folder prefixes |
+| `--from` / `-f` | String | - | Start letter filter |
+| `--to` / `-t` | String | - | End letter filter |
+| `--only` / `-o` | String | - | Semicolon-separated artist folder prefixes |
 | `--exact` | bool | false | Exact match for `--only` (no prefix matching) |
-| `--folders` | String | — | Exact relative folder paths to process |
-| `--release` | String | — | Re-index single release by LocalRelease ID |
+| `--folders` | String | - | Exact relative folder paths to process |
+| `--release` | String | - | Re-index single release by LocalRelease ID |
 | `--overwrite` | bool | false | Re-index all tracks ignoring change detection (keeps existing covers) |
 | `--overwrite-with-images` | bool | false | Like --overwrite but also deletes and re-extracts all cover art |
 | `--inspect` | bool | false | Re-check existing files for metadata changes (size/mtime/hash) |
@@ -48,7 +48,7 @@ cd scripts && cargo build --release -p index
 | `--resume` | bool | false | Resume from last checkpoint |
 | `--delete` | bool | false | Nuke local data for matched artists, then exit |
 | `--threads` | usize | 8 | Rayon thread count for parallel extraction |
-| `--music-dir` | String | — | Override MUSIC_DIR from env |
+| `--music-dir` | String | - | Override MUSIC_DIR from env |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 
 ## Output Modes
@@ -59,16 +59,16 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 
 1. **Walk** folder for audio files (mp3, flac, aac, opus, m4a, ogg) via jwalk
 2. **Extract** metadata in parallel (rayon + lofty), including MB tags: `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_ALBUMARTISTID`
-3. **Pre-scan** — propagate MB release/release-group IDs across tracks sharing same album/year/albumArtist
-4. **Change detection** — default: skip if filePath exists in DB. `--inspect`: compare size/mtime/hash. `--overwrite`: skip change detection but preserve existing covers. `--overwrite-with-images`: skip everything and re-extract covers
+3. **Pre-scan** - propagate MB release/release-group IDs across tracks sharing same album/year/albumArtist
+4. **Change detection** - default: skip if filePath exists in DB. `--inspect`: compare size/mtime/hash. `--overwrite`: skip change detection but preserve existing covers. `--overwrite-with-images`: skip everything and re-extract covers
 5. **Split** albumArtist and artist tags into individual artists
 6. **Upsert** Artist, LocalRelease, LocalReleaseTrack, LocalReleaseArtist, TrackRelatedArtist (batch UNNEST)
-7. **Cover art** — extract from embedded tags or folder images, content-addressed by MD5 hash (same image bytes = one file, shared across releases)
+7. **Cover art** - extract from embedded tags or folder images, content-addressed by MD5 hash (same image bytes = one file, shared across releases)
 8. **Delete** tracks no longer on disk
 9. **Update totals** for this artist's releases and tracks
 10. **Set `lastIndexedAt`** on Artist (only if new/updated/deleted tracks in folder)
 11. **Stamp run hash** on FolderScan for resumability
-12. **Upsert FolderScan** — stores folder mtime
+12. **Upsert FolderScan** - stores folder mtime
 
 Post-loop: detects entirely deleted folders (only when unfiltered), safety-net pass re-extracts missing release images.
 
@@ -85,24 +85,24 @@ Releases are deduplicated by `groupKey` (3-tier):
 - With MB release group ID: `"mb:{mbReleaseGroupId}:{folderPath}"`
 - Without MB IDs: `"meta:{slugTitle}:{year}:{slugArtist}:{folderPath}"`
 
-`folderPath` is always part of the key — same album in two folders creates separate `LocalRelease` rows. Deduplication into a single release card happens in **sync**, which links multiple `LocalRelease` rows to the same `MusicBrainzRelease` via `releaseId`.
+`folderPath` is always part of the key - same album in two folders creates separate `LocalRelease` rows. Deduplication into a single release card happens in **sync**, which links multiple `LocalRelease` rows to the same `MusicBrainzRelease` via `releaseId`.
 
 ## Cover Art Deduplication
 
-Cover images are content-addressed: the filename is the MD5 hash of the image file (`{hash}.jpg`). Multiple `LocalRelease` rows can share the same image — e.g. a 90-disc box set extracts one cover instead of 90.
+Cover images are content-addressed: the filename is the MD5 hash of the image file (`{hash}.jpg`). Multiple `LocalRelease` rows can share the same image - e.g. a 90-disc box set extracts one cover instead of 90.
 
 Two levels of deduplication:
 - **MB ID shortcut**: Releases sharing `mb_release_id` or `mb_release_group_id` with an already-processed release skip extraction entirely and reuse the known content hash
 - **Content hash**: After extraction, if `{hash}.jpg` already exists on disk, the duplicate is discarded
 
-Works with all storage modes (`local`, `s3`, `both`). S3 uploads happen once per unique hash. Shared images are reference-counted on delete — the file is only removed when no `LocalRelease` points to it.
+Works with all storage modes (`local`, `s3`, `both`). S3 uploads happen once per unique hash. Shared images are reference-counted on delete - the file is only removed when no `LocalRelease` points to it.
 
 ## Artist Tag Splitting
 
 `split_artists()` in `common/src/artists.rs`:
 - Splits on `feat.`/`ft.`/`featuring` → featured artists
-- Splits on `//` `\\` `||` `;` `|` — unambiguous separators
-- Splits on ` / ` ` \ ` (space-surrounded only — preserves AC/DC)
+- Splits on `//` `\\` `||` `;` `|` - unambiguous separators
+- Splits on ` / ` ` \ ` (space-surrounded only - preserves AC/DC)
 - Splits on `vs.`/`vs`
 - Does **not** split on `,` or `&` (preserves "10,000 Maniacs", "Simon & Garfunkel")
 

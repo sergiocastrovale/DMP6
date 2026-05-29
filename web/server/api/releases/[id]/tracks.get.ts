@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Try as LocalRelease — also fetch its MB release tracks if linked.
+  // Try as LocalRelease - also fetch its MB release tracks if linked.
   const localRelease = await prisma.localRelease.findUnique({
     where: { id },
     select: {

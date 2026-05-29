@@ -269,7 +269,7 @@ fn main() {
         legend.write_string_with_format(legend_row, 1, ErrorType::DbError.sheet_name(), &cell_fmt).ok();
         legend.write_string_with_format(legend_row, 2, ErrorType::DbError.description(), &cell_fmt).ok();
         legend.write_number_with_format(legend_row, 3, db_errors.len() as f64, &num_fmt).ok();
-        legend.write_string_with_format(legend_row, 4, "—", &num_fmt).ok();
+        legend.write_string_with_format(legend_row, 4, "-", &num_fmt).ok();
     }
 
     for (error_type, rows) in &by_type {

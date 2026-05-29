@@ -30,7 +30,7 @@ pub async fn acquire_lock(
     match result {
         Ok(r) if r.rows_affected() == 1 => Ok(()),
         _ => {
-            // Lock held — read who has it
+            // Lock held - read who has it
             let holder: Option<(Option<String>, Option<i32>)> = sqlx::query_as(
                 r#"SELECT "scanLockedBy", "scanPid" FROM "Statistics" WHERE id = 'main'"#,
             )

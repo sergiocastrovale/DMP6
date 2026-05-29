@@ -98,12 +98,12 @@ async function streamSlskdDownload(
 
     const responses = await getSlskdSearchResults(searchId)
     if (responses.length === 0) {
-      send(`  Polling... (${pollCount}/${maxPolls}) — no responses yet`)
+      send(`\r  Polling... (${pollCount}/${maxPolls}) - no responses yet`)
       continue
     }
 
     const results = processSlskdResponses(responses, allowedFormats, minBitrate)
-    send(`  Polling... (${pollCount}/${maxPolls}) — ${results.length} results from ${responses.length} peers`)
+    send(`\r  Polling... (${pollCount}/${maxPolls}) - ${results.length} results from ${responses.length} peers`)
 
     if (results.length > 0) {
       bestResult = results[0]
@@ -134,7 +134,7 @@ async function streamSlskdDownload(
     size: f.size,
   })))
 
-  send(`Download queued — ${bestResult.fileCount} files`)
+  send(`Download queued - ${bestResult.fileCount} files`)
 
   console.log(`[slskd move] gate: artistName=${JSON.stringify(artistName)} albumTitle=${JSON.stringify(albumTitle)} year=${JSON.stringify(year)} downloadsPath=${downloadsPath} dirTemplate=${JSON.stringify(dirTemplate)}`)
   if (artistName && albumTitle) {
@@ -151,7 +151,7 @@ async function streamSlskdDownload(
     })
   }
   else {
-    console.log(`[slskd move] SKIPPED — missing artistName or albumTitle`)
+    console.log(`[slskd move] SKIPPED - missing artistName or albumTitle`)
   }
 
   let completed = false
@@ -168,7 +168,7 @@ async function streamSlskdDownload(
     const relevant = transfers.filter(t => t.username === bestResult.username)
 
     if (relevant.length === 0 && monitorCount > 3) {
-      send(`  Downloads no longer visible in slskd — may have completed`)
+      send(`  Downloads no longer visible in slskd - may have completed`)
       break
     }
 
@@ -182,7 +182,7 @@ async function streamSlskdDownload(
         if (isSlskdFailed(t.state)) { return sum }
         return sum + (t.percentComplete || 0)
       }, 0) / relevant.length
-      const line = `  Progress: ${succeeded.length}/${relevant.length} files complete (${Math.round(totalProgress)}%)`
+      const line = `\r  Progress: ${succeeded.length}/${relevant.length} files complete (${Math.round(totalProgress)}%)`
       if (line !== lastProgressLine) {
         send(line)
         lastProgressLine = line
@@ -198,10 +198,10 @@ async function streamSlskdDownload(
       completed = true
       send('')
       if (failed.length > 0) {
-        send(`Download finished — ${succeeded.length}/${relevant.length} succeeded, ${failed.length} failed`)
+        send(`Download finished - ${succeeded.length}/${relevant.length} succeeded, ${failed.length} failed`)
       }
       else {
-        send(`Download complete — ${succeeded.length} files`)
+        send(`Download complete - ${succeeded.length} files`)
       }
       send(`${albumTitle || bestResult.folderPath.split('/').pop() || query} downloaded to ${downloadsPath}.`)
     }

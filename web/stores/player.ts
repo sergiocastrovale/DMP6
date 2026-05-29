@@ -15,12 +15,12 @@ export const usePlayerStore = defineStore('player', () => {
   const shuffleMode = ref<ShuffleMode>('off')
   const history = ref<string[]>([])
   const explorerParams = ref<ExploreParams | null>(null)
-  // Track IDs played during the current explorer session — used for deduplication
+  // Track IDs played during the current explorer session - used for deduplication
   const explorerHistory = ref<string[]>([])
-  // Explorer session state — drives the /explore page reactively
+  // Explorer session state - drives the /explore page reactively
   const explorerCurrentTrack = ref<PlayerTrack | null>(null)
   const explorerSessionHistory = ref<PlayerTrack[]>([])
-  // Pre-fetched tracks for catalogue shuffle — eliminates per-song network latency
+  // Pre-fetched tracks for catalogue shuffle - eliminates per-song network latency
   const catalogueBuffer = ref<PlayerTrack[]>([])
   let catalogueBufferFetching = false
   const currentPlaylistSlug = ref<string | null>(null)
@@ -179,7 +179,7 @@ export const usePlayerStore = defineStore('player', () => {
     catch { return null }
   }
 
-  // Called from the Explore page button — fetches next track, updates session state, plays it
+  // Called from the Explore page button - fetches next track, updates session state, plays it
   async function pickExplorerTrack(params: ExploreParams): Promise<void> {
     if (explorerCurrentTrack.value) {
       explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
@@ -243,7 +243,7 @@ export const usePlayerStore = defineStore('player', () => {
       return
     }
 
-    // No queue — fall back to a random track
+    // No queue - fall back to a random track
     if (queue.value.length === 0) {
       try {
         const track = await $fetch<PlayerTrack>('/api/tracks/random')
@@ -296,7 +296,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function cycleShuffleMode() {
-    // Explorer mode is toggled off directly — not part of the normal cycle
+    // Explorer mode is toggled off directly - not part of the normal cycle
     if (shuffleMode.value === 'explorer') {
       shuffleMode.value = 'off'
       explorerParams.value = null

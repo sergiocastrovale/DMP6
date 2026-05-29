@@ -14,7 +14,7 @@ Shell wrappers at the project root (`./sync`, `./analysis`, etc.) auto-build the
 | `fix/` | `fix` | Apply PENDING issue fixes (tag writes + DB ops) | [docs/scripts/audit.md](../docs/scripts/audit.md) |
 | `analysis/` | `analysis` | Metadata quality scanner, generates HTML reports | [docs/scripts/analysis.md](../docs/scripts/analysis.md) |
 | `nuke/` | `nuke` | Full or partial database reset | [docs/scripts/nuke.md](../docs/scripts/nuke.md) |
-| `playlists/` | `playlists` | Auto-generate genre playlists | — |
+| `playlists/` | `playlists` | Auto-generate genre playlists | - |
 | `delete/` | `delete` | Permanently delete a single artist + cascade | [docs/scripts/delete.md](../docs/scripts/delete.md) |
 
 Build the full workspace:

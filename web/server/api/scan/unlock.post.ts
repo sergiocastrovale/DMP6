@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
     try {
       process.kill(stats.scanPid, 'SIGTERM')
     }
-    catch { /* pid already dead — that's fine */ }
+    catch { /* pid already dead - that's fine */ }
   }
 
   await prisma.statistics.update({

@@ -276,7 +276,7 @@ function scoreEnergy(meta: Record<string, string | number> | null, genre: GenreS
     }
     moodScore = dims.length > 0 ? dims.reduce((a, b) => a + b, 0) / dims.length : 0.5
   } else {
-    // Genre fallback for mood — uses same genre.energy signal as BPM fallback
+    // Genre fallback for mood - uses same genre.energy signal as BPM fallback
     // but with reduced confidence since this is a second use of the same signal
     if (genre.energy !== null) {
       const sliderEnergy = (slider / 9) * 100

@@ -210,8 +210,8 @@ onUnmounted(() => {
         <p class="text-xs text-ink0">
           <span class="text-ink-2">{{ staleLock.lockedBy }}</span>
           (pid {{ staleLock.pid }})
-          <template v-if="staleLock.sessionName"> — reconnect to view output</template>
-          <template v-else> — process may have died without releasing the lock</template>
+          <template v-if="staleLock.sessionName"> - reconnect to view output</template>
+          <template v-else> - process may have died without releasing the lock</template>
         </p>
       </div>
       <div class="flex items-center gap-2">

@@ -2,7 +2,7 @@
 
 Scans the database for metadata issues and persists them in typed issue tables. Each run wipes and repopulates all detected rows, linked to a new `AuditRun` record.
 
-The results drive the `/issues` web UI — run audit first, then review and fix from the browser.
+The results drive the `/issues` web UI - run audit first, then review and fix from the browser.
 
 ## Usage
 
@@ -20,14 +20,14 @@ The results drive the `/issues` web UI — run audit first, then review and fix 
 
 ### Corrupted TPE2 (`IssueCorruptedTpe2`)
 
-Tracks where `albumArtist` is clearly garbage — track numbers, years, file paths, or bitrate markers leaked into the TPE2 field.
+Tracks where `albumArtist` is clearly garbage - track numbers, years, file paths, or bitrate markers leaked into the TPE2 field.
 
 Detection patterns:
-- `^\d{1,3}$` — bare track number (`"02"`, `"14"`)
-- `^\d{1,3}\s*-\s*\S` — track-number prefix (`"05 - Something"`)
-- `@\d{2,3}$` — bitrate suffix (`"Artist @320"`)
-- `%lbumArtist/` — broken field-name prefix
-- `albumArtist == year` — year leaked from another field
+- `^\d{1,3}$` - bare track number (`"02"`, `"14"`)
+- `^\d{1,3}\s*-\s*\S` - track-number prefix (`"05 - Something"`)
+- `@\d{2,3}$` - bitrate suffix (`"Artist @320"`)
+- `%lbumArtist/` - broken field-name prefix
+- `albumArtist == year` - year leaked from another field
 
 For each detected track, the proposed fix is derived from peer tracks in the same release (majority vote). Confidence: `high` (≥ 3 peers), `medium` (1–2 peers), `low` (TPE1 fallback).
 
@@ -53,7 +53,7 @@ Artists that shouldn't exist:
 
 | Reason | Meaning |
 |--------|---------|
-| `phantom` | Name matches `^\d{1,3}$` or `@\d{2,3}$` — created by corrupted tags |
+| `phantom` | Name matches `^\d{1,3}$` or `@\d{2,3}$` - created by corrupted tags |
 | `no_releases` | No `LocalReleaseArtist` links |
 | `no_links` | No `LocalReleaseArtist` or `TrackRelatedArtist` links |
 
@@ -61,7 +61,7 @@ Artists that shouldn't exist:
 
 ### Duplicate Artists (`IssueDuplicateArtist`)
 
-Pairs of artists whose names normalize to the same string (stripping non-alphanumeric) — caused by spelling differences or unicode variants.
+Pairs of artists whose names normalize to the same string (stripping non-alphanumeric) - caused by spelling differences or unicode variants.
 
 Skips pairs where both have distinct MusicBrainz IDs (confirmed different entities).
 
@@ -85,8 +85,8 @@ Tracks with NULL or empty `title`, `artist`, `albumArtist`, `album`, or `year`.
 
 ```bash
 ./audit                          # Detect all issues, write to DB
-# Open /issues in browser — review, edit proposed values, select rows
-# Click "Fix Selected" per type — queues rows as PENDING, runs ./fix --{type}
+# Open /issues in browser - review, edit proposed values, select rows
+# Click "Fix Selected" per type - queues rows as PENDING, runs ./fix --{type}
 # After fix completes: click "Refresh" for affected artists
 ./audit                          # Re-run to verify
 ```

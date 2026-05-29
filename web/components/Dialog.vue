@@ -3,6 +3,7 @@ const props = withDefaults(defineProps<{
   modelValue: boolean
   title: string
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+  subtitle?: string
 }>(), {
   maxWidth: 'lg',
 })
@@ -35,19 +36,22 @@ const maxWidthClass = computed(() => {
   <Teleport to="body">
     <div
       v-if="modelValue"
-      class="fixed inset-0 z-[3000] flex items-center justify-center bg-black/60 p-4"
+      class="fixed inset-0 z-3000 flex items-center justify-center bg-black/60 p-4"
       @click.self="close"
     >
       <div :class="maxWidthClass" class="w-full max-h-[80vh] flex flex-col rounded-xl border border-rule bg-bg-1 shadow-2xl">
-        <div class="flex items-center justify-between border-b border-rule px-6 py-4">
-          <h2 class="text-lg font-semibold text-ink">{{ title }}</h2>
-          <button class="text-ink-2 hover:text-ink transition-colors" @click="close">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>        
+        <div class="border-b border-rule px-7 py-5">
+          <div class="flex items-center justify-between">
+            <h2 class="block w-full text-lg font-semibold text-ink">{{ title }}</h2>
+            <button class="text-ink-2 hover:text-ink transition-colors cursor-pointer" @click="close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <h3 v-if="subtitle" class="text-sm text-ink-2">{{ subtitle }}</h3>
+        </div>
         <div class="flex-1 overflow-y-auto px-6 py-4">
           <slot />
         </div>

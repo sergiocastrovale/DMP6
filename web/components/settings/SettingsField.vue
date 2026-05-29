@@ -20,7 +20,7 @@ const model = defineModel<string | number | null>()
       v-model="model"
       class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
     >
-      <option value="">— use env default —</option>
+      <option value="">- use env default -</option>
       <option v-for="opt in options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
     </select>
 

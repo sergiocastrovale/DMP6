@@ -451,7 +451,7 @@ model Statistics {
 }
 
 // ---------------------------------------------------------------------------
-// FolderScan — per-folder mtime cache for quick-mode change detection
+// FolderScan - per-folder mtime cache for quick-mode change detection
 // ---------------------------------------------------------------------------
 
 model FolderScan {
@@ -461,7 +461,7 @@ model FolderScan {
 }
 
 // ---------------------------------------------------------------------------
-// Audit — issue detection and fix tracking
+// Audit - issue detection and fix tracking
 // ---------------------------------------------------------------------------
 
 model AuditRun {

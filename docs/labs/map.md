@@ -10,7 +10,7 @@ World map where each country is filled with a mosaic of album cover art from art
 
 ## API
 
-`GET /api/labs/map/countries` — requires auth.
+`GET /api/labs/map/countries` - requires auth.
 
 Response (cached 24h in Redis):
 
@@ -38,7 +38,7 @@ Response (cached 24h in Redis):
 - **Zoom**: Discrete scroll/pinch zoom, 4 levels (2x–5x), pan constrained to world bounds
 - **Country contours**: White, thicker for countries with data
 - **Tile generation**: Offscreen `<canvas>` per country, covers in square grid (`ceil(sqrt(N))`), converted to `dataURL`, applied as `userSpaceOnUse` SVG `<pattern>` centered within country bbox. Fixed cover size (COVER_SVG px) across all countries, scales with zoom
-- **Tile sizing**: All covers same size (10 SVG px at base zoom). Up to 200 images per country. No repetition — each cover once
+- **Tile sizing**: All covers same size (10 SVG px at base zoom). Up to 200 images per country. No repetition - each cover once
 - **One cover per artist**: API picks one random release cover per artist (not all releases)
 - **Batching**: 5 countries processed concurrently to avoid overwhelming image loads
 - **Progressive**: Map outlines render immediately, fills appear as textures complete

@@ -152,11 +152,11 @@ function commitEdit(item: any, col: IssueColumn) {
                     class="cursor-pointer rounded px-1 py-0.5 hover:bg-bg-2"
                     @click="startEdit(item, col)"
                   >
-                    {{ getNestedValue(item, col.key) ?? '—' }}
+                    {{ getNestedValue(item, col.key) ?? '-' }}
                   </span>
                 </template>
                 <!-- Plain value -->
-                <span v-else class="truncate">{{ getNestedValue(item, col.key) ?? '—' }}</span>
+                <span v-else class="truncate">{{ getNestedValue(item, col.key) ?? '-' }}</span>
               </slot>
             </td>
           </tr>

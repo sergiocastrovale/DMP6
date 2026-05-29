@@ -34,7 +34,7 @@ struct Args {
     #[arg(long)]
     keep_artist_img: bool,
 
-    /// Delete only matching artist(s) — semicolon-separated, exact match
+    /// Delete only matching artist(s) - semicolon-separated, exact match
     #[arg(long)]
     only: Option<String>,
 
@@ -570,7 +570,7 @@ async fn execute_only_plan(
 
     tx.commit().await?;
 
-    // FolderScan cleanup (outside transaction — non-critical)
+    // FolderScan cleanup (outside transaction - non-critical)
     if !plan.folder_paths.is_empty() {
         sqlx::query(r#"DELETE FROM "FolderScan" WHERE "folderPath" = ANY($1::text[])"#)
             .bind(&plan.folder_paths)
@@ -728,7 +728,7 @@ async fn main() {
         log!();
 
         if args.dry_run {
-            log!("{} (dry run — no changes made)", "✓".green());
+            log!("{} (dry run - no changes made)", "✓".green());
             return;
         }
 
@@ -801,7 +801,7 @@ async fn main() {
     log!();
 
     if args.dry_run {
-        log!("(dry run — no changes made)");
+        log!("(dry run - no changes made)");
         return;
     }
 

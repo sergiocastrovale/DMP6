@@ -33,7 +33,7 @@ export default defineEventHandler(async () => {
 
   const raw = rows[0]!
 
-  // Fetch release image data — single PK lookup, instant
+  // Fetch release image data - single PK lookup, instant
   const release = raw.localReleaseId
     ? await prisma.localRelease.findUnique({
         where: { id: raw.localReleaseId },

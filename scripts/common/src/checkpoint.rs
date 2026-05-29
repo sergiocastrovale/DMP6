@@ -2,7 +2,7 @@ use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 
 // ---------------------------------------------------------------------------
-// Index checkpoint — lastIndexedFolder
+// Index checkpoint - lastIndexedFolder
 // ---------------------------------------------------------------------------
 
 pub async fn save_index_checkpoint(pool: &PgPool, folder: &str) -> Result<(), sqlx::Error> {
@@ -35,7 +35,7 @@ pub async fn clear_index_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {
 }
 
 // ---------------------------------------------------------------------------
-// Sync checkpoint — lastSyncedArtist + lastSyncArgs
+// Sync checkpoint - lastSyncedArtist + lastSyncArgs
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Default, Clone)]

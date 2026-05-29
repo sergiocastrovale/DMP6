@@ -168,13 +168,13 @@ For 2 million tracks with ~26 images:
 
 ## Image Deletion
 
-Image cleanup is always synchronous — every deletion path removes the local file and the S3 object **before** deleting the DB row. There is no queue, no trigger, no background worker: if a row is gone, its images are gone too.
+Image cleanup is always synchronous - every deletion path removes the local file and the S3 object **before** deleting the DB row. There is no queue, no trigger, no background worker: if a row is gone, its images are gone too.
 
 ### Deletion paths
 
 | Trigger | Handler |
 |---|---|
-| Full DB reset | `./nuke` — wipes all local + S3 images, then truncates tables |
+| Full DB reset | `./nuke` - wipes all local + S3 images, then truncates tables |
 | `./nuke --only="Artist"` | Removes that artist's images + cascaded orphan artist/release images |
 | `./index` (folder removed from disk) | `detect_deleted_folders` calls `delete_release_images` / `delete_artist_images` before deleting empty releases and orphan artists |
 | `./sync` (ghost artists) | `cleanup_ghost_artists` calls `delete_artist_images` before the DB delete |
@@ -185,7 +185,7 @@ Image cleanup is always synchronous — every deletion path removes the local fi
 
 Both helpers live in [`scripts/common/src/images.rs`](../scripts/common/src/images.rs):
 
-- `delete_artist_images(pool, config, artist_ids)` — looks up `slug`, `image`, `imageUrl` and deletes `web/public/img/artists/{image}` + S3 key `artists/{slug}.jpg`
-- `delete_release_images(pool, config, release_ids)` — looks up `image`, `imageUrl` and deletes `web/public/img/releases/{image}` + S3 key `releases/{id}.jpg`
+- `delete_artist_images(pool, config, artist_ids)` - looks up `slug`, `image`, `imageUrl` and deletes `web/public/img/artists/{image}` + S3 key `artists/{slug}.jpg`
+- `delete_release_images(pool, config, release_ids)` - looks up `image`, `imageUrl` and deletes `web/public/img/releases/{image}` + S3 key `releases/{id}.jpg`
 
 Both respect `IMAGE_STORAGE` (local / s3 / both) and are safe to call with an empty slice.

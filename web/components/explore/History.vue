@@ -30,7 +30,7 @@ const emit = defineEmits<{
         <Play :size="14" class="shrink-0 text-ink0" />
         <span class="min-w-0 flex-1 truncate text-sm text-ink-2">
           {{ track.title }}
-          <span class="text-ink0"> — {{ track.artist }}</span>
+          <span class="text-ink0"> - {{ track.artist }}</span>
         </span>
         <span v-if="track.duration" class="shrink-0 text-xs tabular-nums text-ink-4">
           {{ formatDuration(track.duration) }}

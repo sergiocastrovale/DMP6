@@ -46,7 +46,7 @@ function getShuffleTooltip() {
     release: 'Shuffle: Release',
     artist: 'Shuffle: Artist',
     catalogue: 'Shuffle: Catalogue',
-    explorer: 'Explorer mode — click to turn off',
+    explorer: 'Explorer mode - click to turn off',
   }
   return labels[player.shuffleMode]
 }

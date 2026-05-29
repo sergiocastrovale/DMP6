@@ -4,7 +4,7 @@ DMP can download missing releases directly from the artist page via [Soulseek](d
 
 ## How it works
 
-Each release on an artist page that isn't in your library shows a download icon. Clicking it opens a dialog where you search Soulseek and review results. A second button at the top — "Download missing" — lets you grab every missing release in the current view in one go.
+Each release on an artist page that isn't in your library shows a download icon. Clicking it opens a dialog where you search Soulseek and review results. A second button at the top - "Download missing" - lets you grab every missing release in the current view in one go.
 
 Downloads run in the background and show live progress in the side panel (same one used by the Sync command).
 
@@ -22,7 +22,7 @@ DOWNLOADS_PATH/
 
 slskd owns its downloads directory, so DMP waits for each transfer to complete and then **moves** the files into the templated folder. This assumes slskd's download directory is reachable under `DOWNLOADS_PATH` (in the default docker-compose setup both containers share `/downloads`). If slskd stores files on a volume DMP can't see, the move step silently no-ops and files stay where slskd put them.
 
-DMP does **not** automatically move anything into your music library — that's a manual step:
+DMP does **not** automatically move anything into your music library - that's a manual step:
 
 1. Download lands in `DOWNLOADS_PATH/<templated folder>`
 2. You move it into `MUSIC_DIR` (with proper folder structure)

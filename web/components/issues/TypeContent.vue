@@ -157,11 +157,11 @@ const typeDescriptions: Record<IssueType, { detection: string; fix: string }> = 
     fix: 'Rewrites the TPE2 tag in the original audio file with the proposed value, then requires a re-index to update the database.',
   },
   unsplit: {
-    detection: 'Artists whose names contain separators like "&", "feat.", "vs." — indicating multiple artists stored as a single compound name.',
+    detection: 'Artists whose names contain separators like "&", "feat.", "vs." - indicating multiple artists stored as a single compound name.',
     fix: 'Sets the album artist tag to the primary (first) artist and keeps the full compound name in the artist tag. After re-index, the system creates separate artist entries linked to shared releases. Example: "Daft Punk & Pharrell Williams" → albumArtist="Daft Punk", artist="Daft Punk & Pharrell Williams".',
   },
   orphans: {
-    detection: 'Artists with no linked releases or tracks — either phantom entries with corrupted names (numeric/bitrate garbage) or fully disconnected records.',
+    detection: 'Artists with no linked releases or tracks - either phantom entries with corrupted names (numeric/bitrate garbage) or fully disconnected records.',
     fix: 'Deletes the orphan artist record directly from the database. No files are modified.',
   },
   duplicates: {
@@ -174,7 +174,7 @@ const typeDescriptions: Record<IssueType, { detection: string; fix: string }> = 
   },
   enrichment: {
     detection: 'Releases missing enrichment data: MusicBrainz link, BPM, mood, AcousticID, Discogs, Bandcamp, or Wikipedia URLs.',
-    fix: 'Enrichment gaps are resolved by re-syncing with MusicBrainz or running external analysis tools. No automatic fix available — use the re-sync button where applicable.',
+    fix: 'Enrichment gaps are resolved by re-syncing with MusicBrainz or running external analysis tools. No automatic fix available - use the re-sync button where applicable.',
   },
 }
 
@@ -185,7 +185,7 @@ async function onEdit(id: string, key: string, value: unknown) {
 function getFolderPath(item: any): string {
   const fp = item.track?.filePath || item.folderPath || ''
   if (!fp) {
-    return '—'
+    return '-'
   }
   const parts = fp.split('/')
   return parts.slice(0, -1).join('/')
@@ -224,7 +224,7 @@ function getHistoryAppliedEntries(item: any): { key: string; value: string }[] {
 
 function getHistoryDate(item: any): string {
   const history = item.fixHistory?.[0]
-  return history ? formatDateTime(history.appliedAt) : '—'
+  return history ? formatDateTime(history.appliedAt) : '-'
 }
 </script>
 
@@ -295,7 +295,7 @@ function getHistoryDate(item: any): string {
           >
             {{ item.artist.name }}
           </NuxtLink>
-          <span v-else class="text-ink-4">—</span>
+          <span v-else class="text-ink-4">-</span>
         </template>
 
         <template #cell-confidence="{ item }">
@@ -378,7 +378,7 @@ function getHistoryDate(item: any): string {
           >
             {{ item.localRelease.title }}
           </NuxtLink>
-          <span v-else class="text-ink-4">—</span>
+          <span v-else class="text-ink-4">-</span>
         </template>
 
         <template #cell-_resync="{ item }">
@@ -412,7 +412,7 @@ function getHistoryDate(item: any): string {
           >
             {{ item.artist.name }}
           </NuxtLink>
-          <span v-else class="text-ink-4">—</span>
+          <span v-else class="text-ink-4">-</span>
         </template>
 
         <template #cell-previousValue="{ item }">
@@ -420,7 +420,7 @@ function getHistoryDate(item: any): string {
             <span v-for="e in getHistoryPreviousEntries(item)" :key="e.key" class="text-xs text-accent">
               <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
             </span>
-            <span v-if="!getHistoryPreviousEntries(item).length" class="text-xs text-ink-4">—</span>
+            <span v-if="!getHistoryPreviousEntries(item).length" class="text-xs text-ink-4">-</span>
           </div>
         </template>
 
@@ -429,7 +429,7 @@ function getHistoryDate(item: any): string {
             <span v-for="e in getHistoryAppliedEntries(item)" :key="e.key" class="text-xs text-green-400">
               <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
             </span>
-            <span v-if="!getHistoryAppliedEntries(item).length" class="text-xs text-ink-4">—</span>
+            <span v-if="!getHistoryAppliedEntries(item).length" class="text-xs text-ink-4">-</span>
           </div>
         </template>
 

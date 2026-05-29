@@ -50,18 +50,18 @@ Reads `IssueCorruptedTpe2` rows where `status = 'PENDING'`. For each:
 
 Reads `IssueUnsplitArtist` rows where `status = 'PENDING'`. For each:
 1. Gets all track file paths linked to the compound artist via `LocalReleaseArtist`
-2. For each file: writes `proposedParts[0]` to `albumArtist` (TPE2) — primary artist only
-3. Writes the full compound artist name to `artist` (TPE1) — preserves multi-artist credit
+2. For each file: writes `proposedParts[0]` to `albumArtist` (TPE2) - primary artist only
+3. Writes the full compound artist name to `artist` (TPE1) - preserves multi-artist credit
 4. Bumps directory mtime
 5. Marks issue `RESOLVED` or `FAILED`
 
-**Why this split:** `albumArtist` (TPE2) is for grouping/sorting. `artist` (TPE1) is the track-level performing artist list — can be compound.
+**Why this split:** `albumArtist` (TPE2) is for grouping/sorting. `artist` (TPE1) is the track-level performing artist list - can be compound.
 
 ### `--orphans`
 
 Reads `IssueOrphanArtist` rows where `status = 'PENDING'`. For each:
 1. Deletes the artist's local image file (if set)
-2. `DELETE FROM "Artist" WHERE id = $artistId` — cascades to ArtistUrl, junction tables, TrackRelatedArtist
+2. `DELETE FROM "Artist" WHERE id = $artistId` - cascades to ArtistUrl, junction tables, TrackRelatedArtist
 
 No file tag changes. Cannot be reverted.
 

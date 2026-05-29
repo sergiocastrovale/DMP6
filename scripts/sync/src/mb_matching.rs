@@ -121,7 +121,7 @@ pub async fn find_mb_match_with_fallback(
     }
 
     // Step 2: lookup via first available mbReleaseGroupId → release group artist credits
-    // Only use mbReleaseGroupId here — mbReleaseId is a release (not group) and would 404
+    // Only use mbReleaseGroupId here - mbReleaseId is a release (not group) and would 404
     let mb_rg_id_hint: Option<String> = sqlx::query_as::<_, (String,)>(
         r#"SELECT DISTINCT lrt."mbReleaseGroupId"
            FROM "LocalReleaseTrack" lrt

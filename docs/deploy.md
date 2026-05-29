@@ -7,7 +7,7 @@ The `deploy` script builds the image locally, ships it to the NAS, and restarts 
 
 - Docker running locally (for builds)
 - SSH key access to the NAS (`SSH_KEY_PATH` in `.env`)
-- `.env` filled out — see [Required env vars](#required-env-vars)
+- `.env` filled out - see [Required env vars](#required-env-vars)
 
 ## Quick start
 
@@ -17,11 +17,11 @@ The `deploy` script builds the image locally, ships it to the NAS, and restarts 
 
 ## How it works
 
-1. **Build** — runs `docker build` locally, producing a single `dmp:latest` image (Rust scripts + Nuxt app).
-2. **Pack & transfer** — saves the image to `/tmp/dmp-image.tar.gz`, SCPs to the NAS.
-3. **Load** — runs `docker load` on the NAS, then deletes the archive.
-4. **Deploy** — copies `docker-compose.yml` to `DEPLOY_PATH` on the NAS, runs `docker compose up -d web`.
-5. **Schema** — runs `prisma db push` inside the container to apply any schema changes.
+1. **Build** - runs `docker build` locally, producing a single `dmp:latest` image (Rust scripts + Nuxt app).
+2. **Pack & transfer** - saves the image to `/tmp/dmp-image.tar.gz`, SCPs to the NAS.
+3. **Load** - runs `docker load` on the NAS, then deletes the archive.
+4. **Deploy** - copies `docker-compose.yml` to `DEPLOY_PATH` on the NAS, runs `docker compose up -d web`.
+5. **Schema** - runs `prisma db push` inside the container to apply any schema changes.
 
 ## Required env vars
 
@@ -46,9 +46,9 @@ The `docker-compose.yml` at the project root defines these services:
 
 | Service | Description |
 |---|---|
-| `dmp` | Nuxt app + Rust scripts — serves the UI/API on port `DMP_PORT` (default 3000) |
+| `dmp` | Nuxt app + Rust scripts - serves the UI/API on port `DMP_PORT` (default 3000) |
 | `dmp-redis` | Redis cache (512 MB LRU) |
-| `dmp-cloudflared` | Cloudflare Tunnel — exposes the app publicly without port-forwarding |
+| `dmp-cloudflared` | Cloudflare Tunnel - exposes the app publicly without port-forwarding |
 
 ## Running scripts on the NAS
 

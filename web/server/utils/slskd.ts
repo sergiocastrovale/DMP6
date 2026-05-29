@@ -265,10 +265,10 @@ export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<v
       t.username === args.username && expected.has(basename(t.filename.replace(/\\/g, '/'))),
     )
     // If slskd no longer lists the transfer, consider it done.
-    if (ours.length === 0) { log('transfers no longer listed — proceeding to move'); break }
+    if (ours.length === 0) { log('transfers no longer listed - proceeding to move'); break }
 
     const stillActive = ours.some(t => !isSlskdTerminal(t.state))
-    if (!stillActive) { log('all transfers reached terminal state — proceeding to move'); break }
+    if (!stillActive) { log('all transfers reached terminal state - proceeding to move'); break }
   }
 
   // Small grace period for slskd to finalize file writes before we scan.
@@ -285,7 +285,7 @@ export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<v
   const found = await findFilesByBasename(args.downloadsPath, expected, 10)
   log(`found ${found.length}/${expected.size} files under ${args.downloadsPath}`)
   if (found.length === 0) {
-    log(`no files matched — slskd may be writing elsewhere or basenames changed. Expected: ${Array.from(expected).slice(0, 3).join(', ')}${expected.size > 3 ? '…' : ''}`)
+    log(`no files matched - slskd may be writing elsewhere or basenames changed. Expected: ${Array.from(expected).slice(0, 3).join(', ')}${expected.size > 3 ? '…' : ''}`)
     return
   }
 

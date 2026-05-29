@@ -1,6 +1,6 @@
 # Scripts: delete
 
-Permanently deletes an artist's catalogue (local + MB), images, and any co-artists whose entire catalogue falls within the deletion set. Smarter than `nuke --only` — artists featured on other artists' tracks are **flipped to `relatedOnly`** instead of deleted.
+Permanently deletes an artist's catalogue (local + MB), images, and any co-artists whose entire catalogue falls within the deletion set. Smarter than `nuke --only` - artists featured on other artists' tracks are **flipped to `relatedOnly`** instead of deleted.
 
 ## Usage
 
@@ -25,8 +25,8 @@ Artist lookup uses **case-insensitive exact match** (SQL `LOWER(name) = LOWER($1
 
 Each artist gets one of two outcomes:
 
-- **FullDelete** — no surviving track credits outside the deletion set. Artist row deleted entirely.
-- **FlipRelatedOnly** — artist appears as `TrackRelatedArtist` on tracks by other artists outside the deletion set. Flipped to `relatedOnly = true`, all stats/MB data/images cleared, but the artist row survives so existing track credits remain valid.
+- **FullDelete** - no surviving track credits outside the deletion set. Artist row deleted entirely.
+- **FlipRelatedOnly** - artist appears as `TrackRelatedArtist` on tracks by other artists outside the deletion set. Flipped to `relatedOnly = true`, all stats/MB data/images cleared, but the artist row survives so existing track credits remain valid.
 
 This is the key difference from `nuke --only`, which always fully deletes.
 

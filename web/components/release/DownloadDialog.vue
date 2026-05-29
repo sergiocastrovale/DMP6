@@ -31,6 +31,7 @@ const sortKey = ref<string>('uploadSpeed')
 const sortDir = ref<'asc' | 'desc'>('desc')
 
 const dialogTitle = computed(() => `Searching for "${props.releaseTitle}" by ${props.artistName}...`)
+const dialogSubtitle = computed(() => 'Using Soulseek via slskd')
 
 const columns = [
   { key: 'format', label: 'Quality', sortable: true },
@@ -144,7 +145,7 @@ const folderName = (path: string) => path.split('/').pop() || path
 </script>
 
 <template>
-  <Dialog :model-value="modelValue" :title="dialogTitle" max-width="2xl" @update:model-value="emit('update:modelValue', $event)">
+  <Dialog :model-value="modelValue" :title="dialogTitle" :subtitle="dialogSubtitle" max-width="2xl" @update:model-value="emit('update:modelValue', $event)">
     <div v-if="downloadStarted" class="flex flex-col items-center gap-3 py-8">
       <CheckCircle :size="32" class="text-emerald-500" />
       <p class="text-sm text-ink-2">Download started</p>
@@ -216,6 +217,7 @@ const folderName = (path: string) => path.split('/').pop() || path
                 :key="result.id"
                 class="cursor-pointer border-b border-rule last:border-0 transition-colors hover:bg-accent/5 hover:border-accent/20"
                 @click="startDownload(result)"
+                :title="`Download ${folderName(result.folderPath)}`"
               >
                 <td class="px-3 py-2">
                   <div
@@ -239,11 +241,11 @@ const folderName = (path: string) => path.split('/').pop() || path
                 </td>
 
                 <td class="px-3 py-2 text-right text-sm text-ink-2">
-                  {{ result.totalSize ? formatFileSize(result.totalSize) : '—' }}
+                  {{ result.totalSize ? formatFileSize(result.totalSize) : '-' }}
                 </td>
 
                 <td class="pl-3 pr-4 py-2 text-right text-sm text-ink-2">
-                  {{ result.uploadSpeed ? formatSpeed(result.uploadSpeed) : '—' }}
+                  {{ result.uploadSpeed ? formatSpeed(result.uploadSpeed) : '-' }}
                 </td>
               </tr>
             </tbody>
