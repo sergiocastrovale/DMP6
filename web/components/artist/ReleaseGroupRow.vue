@@ -1,22 +1,33 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Disc3 } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Disc3, Download, Info, Link, RefreshCw } from 'lucide-vue-next'
 import type { ReleaseGroup } from '~/types/release'
+import { useDownloadsStore } from '~/stores/downloads'
+import { useTerminalStore } from '~/stores/terminal'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   group: ReleaseGroup
   expanded: boolean
   slug: string
-}>()
+  singleEdition?: boolean
+}>(), {
+  singleEdition: false,
+})
 
 const emit = defineEmits<{
   toggle: []
   play: []
+  download: []
+  refresh: []
+  info: []
 }>()
 
 const { releaseImage } = useImageUrl()
 const { isCurrentRelease: isCurrentReleaseId, isReleasePlaying: isReleasePlayingId } = usePlayRelease()
+const downloadsStore = useDownloadsStore()
+const terminal = useTerminalStore()
 
 const getReleaseId = (r: typeof props.group.primary) => r.localReleaseId || r.id
+const edition = computed(() => props.group.primary)
 
 const isGroupCurrent = computed(() => props.group.releases.some(r => isCurrentReleaseId(getReleaseId(r))))
 const isGroupPlaying = computed(() => props.group.releases.some(r => isReleasePlayingId(getReleaseId(r))))
@@ -27,20 +38,26 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
   <div
     :data-group-key="group.key"
     class="border-b border-rule transition-colors last:border-b-0"
-    :class="group.primary.status === 'MISSING' ? '' : 'hover:bg-bg-2/50'"
+    :class="group.primary.status === 'MISSING' ? 'bg-red-500/3' : 'hover:bg-bg-2/50'"
   >
-    <div class="group flex cursor-pointer items-center gap-3 p-3" @click="emit('toggle')">
+    <div
+      class="group flex items-stretch gap-3 px-3"
+      :class="hasPlayable ? 'cursor-pointer' : ''"
+      @click="hasPlayable && emit('toggle')"
+    >
       <button
+        v-if="hasPlayable"
         type="button"
-        class="flex size-5 items-center justify-center text-ink0"
+        class="flex size-5 shrink-0 items-center justify-center self-center text-ink0"
         @click.stop="emit('toggle')"
       >
         <ChevronDown v-if="expanded" :size="14" />
         <ChevronRight v-else :size="14" />
       </button>
+      <div v-else class="size-5 self-center" />
 
       <div
-        class="group/cover relative size-15 shrink-0 cursor-pointer bg-bg-2"
+        class="group/cover relative my-3 size-15 shrink-0 cursor-pointer self-center bg-bg-2"
         @click.stop="hasPlayable && emit('play')"
       >
         <img
@@ -66,7 +83,7 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
         </div>
       </div>
 
-      <div class="min-w-0 flex-1 ml-1">
+      <div class="min-w-0 flex-1 self-center ml-1">
         <div class="flex items-baseline gap-2 text-sm">
           <span class="truncate text-lg font-medium" :class="group.primary.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
             {{ group.primary.title }}
@@ -76,11 +93,11 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
             class="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent"
           >{{ group.releases.length }} editions</span>
         </div>
-        <div class="mt-0.5 flex items-center gap-3 text-xs" :class="group.primary.status === 'MISSING' ? 'text-ink-4' : 'text-ink-2'">
+        <div class="mt-0.5 flex items-center gap-3 text-xs text-ink-2">
           <span v-if="group.primary.type">{{ group.primary.type }}</span>
-          <span v-if="group.primary.year">· {{ group.primary.year }}</span>
-          <span v-if="group.totalTracks">· {{ group.totalTracks }} tracks</span>
-          <span v-if="group.primary.coArtists?.length" class="text-ink0">Feat.
+          <span v-if="group.primary.year">{{ group.primary.year }}</span>
+          <span v-if="group.totalTracks">{{ group.totalTracks }} tracks</span>
+          <span v-if="group.primary.coArtists?.length" class="text-ink-1">Feat.
             <template v-for="(co, i) in group.primary.coArtists" :key="co.slug">
               <NuxtLink
                 :to="`/artist/${co.slug}`"
@@ -93,7 +110,55 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
         </div>
       </div>
 
-      <ReleaseStatusMulti :releases="group.releases" />
+      <div class="flex w-24 shrink-0 items-center justify-center">
+        <ReleaseStatusMulti :releases="group.releases" />
+      </div>
+
+      <div class="flex w-32 shrink-0 items-center justify-end gap-0.5 px-3">
+        <template v-if="singleEdition">
+          <button
+            v-if="edition.status === 'MISSING' && downloadsStore.slskd.connected"
+            type="button"
+            class="rounded-full p-1.5 text-ink transition-colors hover:text-accent cursor-pointer"
+            title="Download this release"
+            @click.stop="emit('download')"
+          >
+            <Download :size="14" />
+          </button>
+
+          <a
+            v-if="edition.musicbrainzId"
+            :href="`https://musicbrainz.org/release/${edition.musicbrainzId}`"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="rounded-full p-1.5 text-ink transition-colors hover:text-accent cursor-pointer"
+            title="View on MusicBrainz"
+            @click.stop
+          >
+            <Link :size="14" />
+          </a>
+
+          <button
+            v-if="edition.localReleaseId"
+            type="button"
+            class="rounded-full p-1.5 text-ink transition-colors hover:text-accent cursor-pointer"
+            title="Refresh this release"
+            :disabled="terminal.isRunning"
+            @click.stop="emit('refresh')"
+          >
+            <RefreshCw :size="14" />
+          </button>
+
+          <button
+            type="button"
+            class="rounded-full p-1.5 text-ink transition-colors hover:text-accent cursor-pointer"
+            title="Release info"
+            @click.stop="emit('info')"
+          >
+            <Info :size="14" />
+          </button>
+        </template>
+      </div>
     </div>
 
     <div v-if="expanded" @click.stop>

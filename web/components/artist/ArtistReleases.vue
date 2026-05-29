@@ -241,11 +241,6 @@ function toggleGroup(key: string) {
   expandedGroup.value = expandedGroup.value === key ? null : key
   if (expandedGroup.value !== key) {
     expandedEdition.value = null
-  } else {
-    const group = groups.value.find(g => g.key === key)
-    if (group?.releases.length === 1 && (group.releases[0]!.localReleaseId || group.releases[0]!.localTrackCount > 0)) {
-      expandedEdition.value = group.releases[0]!.id
-    }
   }
 }
 
@@ -370,24 +365,38 @@ watch(() => props.releases, () => {
           :group="group"
           :expanded="expandedGroup === group.key"
           :slug="slug"
+          :single-edition="group.releases.length === 1"
           @toggle="toggleGroup(group.key)"
           @play="handleGroupPlayClick(group)"
+          @download="openDownloadDialog(group.primary)"
+          @refresh="refreshRelease(group.primary)"
+          @info="openInfoDialog(group.primary)"
         >
-          <ArtistReleaseEditionRow
-            v-for="edition in group.releases"
-            :key="edition.id"
-            :edition="edition"
-            :expanded="expandedEdition === edition.id"
-            :is-favorite="!!edition.localReleaseId && favoriteReleases.has(edition.localReleaseId)"
-            :slug="slug"
-            :selected-track-id="expandedEdition === edition.id ? selectedTrackId : null"
-            @toggle="toggleEdition(edition.id)"
-            @play="handleReleaseClick(edition)"
-            @download="openDownloadDialog(edition)"
-            @toggle-favorite="toggleFavoriteRelease(edition)"
-            @refresh="refreshRelease(edition)"
-            @info="openInfoDialog(edition)"
-          />
+          <template v-if="group.releases.length === 1">
+            <div v-if="group.primary.localReleaseId || group.primary.localTrackCount > 0" class="border-t border-rule px-3 pb-3">
+              <ReleaseTracksTable
+                :release-id="group.primary.localReleaseId || group.primary.mbReleaseRowId || group.primary.id"
+                :selected-track-id="selectedTrackId"
+              />
+            </div>
+          </template>
+          <template v-else>
+            <ArtistReleaseEditionRow
+              v-for="edition in group.releases"
+              :key="edition.id"
+              :edition="edition"
+              :expanded="expandedEdition === edition.id"
+              :is-favorite="!!edition.localReleaseId && favoriteReleases.has(edition.localReleaseId)"
+              :slug="slug"
+              :selected-track-id="expandedEdition === edition.id ? selectedTrackId : null"
+              @toggle="toggleEdition(edition.id)"
+              @play="handleReleaseClick(edition)"
+              @download="openDownloadDialog(edition)"
+              @toggle-favorite="toggleFavoriteRelease(edition)"
+              @refresh="refreshRelease(edition)"
+              @info="openInfoDialog(edition)"
+            />
+          </template>
         </ArtistReleaseGroupRow>
       </Table>
 
