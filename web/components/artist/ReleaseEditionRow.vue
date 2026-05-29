@@ -113,7 +113,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
       </Popover>
 
       <button
-        v-if="edition.status === 'MISSING' && downloadsStore.anyConfigured"
+        v-if="edition.status === 'MISSING' && downloadsStore.slskd.connected"
         type="button"
         class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent"
         title="Download this release"

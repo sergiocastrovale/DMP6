@@ -11,7 +11,6 @@ export default defineEventHandler(async (event) => {
     musicDir: body.musicDir ?? undefined,
     slskdUrl: body.slskdUrl ?? undefined,
     slskdApiKey: body.slskdApiKey ?? undefined,
-    deezerArl: body.deezerArl ?? undefined,
     downloadsPath: body.downloadsPath ?? undefined,
     downloadDirTemplate: body.downloadDirTemplate ?? undefined,
     downloadFormats: body.downloadFormats ?? undefined,

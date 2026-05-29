@@ -45,3 +45,9 @@ export const formatFileSize = (bytes: number): string => {
   const value = bytes / Math.pow(1024, i)
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
 }
+
+export const formatSpeed = (bytesPerSec: number): string => {
+  if (!bytesPerSec) { return '' }
+  if (bytesPerSec >= 1_048_576) { return `${(bytesPerSec / 1_048_576).toFixed(1)} MB/s` }
+  return `${(bytesPerSec / 1024).toFixed(0)} KB/s`
+}

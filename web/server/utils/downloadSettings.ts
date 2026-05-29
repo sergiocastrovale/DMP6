@@ -7,7 +7,6 @@ import { prisma } from '~/server/utils/prisma'
 export interface ResolvedDownloadSettings {
   slskdUrl: string
   slskdApiKey: string
-  deezerArl: string
   downloadFormats: string
   downloadMinBitrate: number | null
   downloadsPath: string
@@ -25,7 +24,6 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
   return {
     slskdUrl: settings?.slskdUrl || process.env.SLSKD_URL || '',
     slskdApiKey: settings?.slskdApiKey || process.env.SLSKD_API_KEY || '',
-    deezerArl: settings?.deezerArl || process.env.DEEZER_ARL || '',
     downloadFormats: settings?.downloadFormats || process.env.DOWNLOAD_FORMATS || '',
     downloadMinBitrate: Number.isFinite(parsedBitrate) ? parsedBitrate : null,
     downloadsPath: settings?.downloadsPath || process.env.DOWNLOADS_PATH || '',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search, ArrowLeft, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-vue-next'
+import { ArrowLeft, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-vue-next'
 
 interface StatColumn {
   key: string
@@ -27,22 +27,15 @@ const page = ref(1)
 const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
-const searchInput = ref('')
 const searchQuery = ref('')
 const sortKey = ref(props.defaultSort)
 const sortOrder = ref<'asc' | 'desc'>(props.defaultOrder)
 
-let searchTimeout: ReturnType<typeof setTimeout>
-
 const handleSearch = (value: string) => {
-  searchInput.value = value
-  clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(() => {
-    searchQuery.value = value
-    page.value = 1
-    items.value = []
-    fetchItems()
-  }, 300)
+  searchQuery.value = value
+  page.value = 1
+  items.value = []
+  fetchItems()
 }
 
 const toggleSort = (col: StatColumn) => {
@@ -107,16 +100,13 @@ onMounted(() => {
       <span class="text-sm text-ink0">{{ total.toLocaleString() }} {{ label }}</span>
     </div>
 
-    <div class="relative sm:max-w-xs">
-      <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink0" />
-      <input
-        :value="searchInput"
-        type="text"
-        :placeholder="`Search ${label}...`"
-        class="h-8 w-full rounded-lg border border-rule bg-bg-1 pl-8 pr-3 text-sm text-ink placeholder:text-ink0 focus:border-accent focus:outline-none"
-        @input="handleSearch(($event.target as HTMLInputElement).value)"
-      />
-    </div>
+    <SearchInput
+      :model-value="searchQuery"
+      :placeholder="`Search ${label}...`"
+      :debounce="300"
+      wrapper-class="sm:max-w-xs"
+      @update:model-value="handleSearch"
+    />
 
     <div v-if="!loading && items.length > 0 && items.length < total" class="text-xs text-ink0">
       Showing {{ items.length.toLocaleString() }} of {{ total.toLocaleString() }}

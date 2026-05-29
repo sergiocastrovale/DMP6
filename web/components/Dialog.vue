@@ -2,9 +2,9 @@
 const props = withDefaults(defineProps<{
   modelValue: boolean
   title: string
-  maxWidth?: 'sm' | 'md' | 'lg'
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
 }>(), {
-  maxWidth: 'md',
+  maxWidth: 'lg',
 })
 
 const emit = defineEmits<{
@@ -21,8 +21,12 @@ const maxWidthClass = computed(() => {
       return 'max-w-sm'
     case 'lg': 
       return 'max-w-2xl'
+    case 'xl':
+      return 'max-w-3xl'
+    case '2xl':
+      return 'max-w-4xl'
     default: 
-      return 'max-w-md'
+      return 'max-w-lg'
   }
 })
 </script>
@@ -34,7 +38,7 @@ const maxWidthClass = computed(() => {
       class="fixed inset-0 z-[3000] flex items-center justify-center bg-black/60 p-4"
       @click.self="close"
     >
-      <div :class="maxWidthClass" class="w-full max-h-[90vh] flex flex-col rounded-xl border border-rule bg-bg-1 shadow-2xl">
+      <div :class="maxWidthClass" class="w-full max-h-[80vh] flex flex-col rounded-xl border border-rule bg-bg-1 shadow-2xl">
         <div class="flex items-center justify-between border-b border-rule px-6 py-4">
           <h2 class="text-lg font-semibold text-ink">{{ title }}</h2>
           <button class="text-ink-2 hover:text-ink transition-colors" @click="close">

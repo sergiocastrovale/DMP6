@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Search } from 'lucide-vue-next'
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { IssueColumn, IssueType } from '~/types/issues'
@@ -12,7 +11,6 @@ const terminal = useTerminalStore()
 const selected = ref<Set<string>>(new Set())
 const selectedResolved = ref<Set<string>>(new Set())
 const searchInput = ref('')
-const searchDebounce = ref<ReturnType<typeof setTimeout>>()
 const awaitingTerminal = ref(false)
 
 const REVERTABLE_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing']
@@ -28,8 +26,7 @@ onMounted(() => {
 })
 
 watch(searchInput, (q) => {
-  clearTimeout(searchDebounce.value)
-  searchDebounce.value = setTimeout(() => issuesStore.setSearch(props.type, q), 350)
+  issuesStore.setSearch(props.type, q)
 })
 
 async function fixSelected() {
@@ -237,15 +234,11 @@ function getHistoryDate(item: any): string {
       <div class="flex items-center justify-between gap-4">
         <h1 class="text-lg font-semibold text-white">{{ typeLabels[type] }}</h1>
         <div class="flex items-center gap-2">
-        <div class="relative">
-          <Search :size="14" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink0" />
-          <input
-            v-model="searchInput"
-            type="text"
-            placeholder="Search..."
-            class="rounded border border-rule bg-bg-1 py-1.5 pl-8 pr-3 text-sm text-ink-2 outline-none placeholder:text-ink-4 focus:border-ink-3"
-          />
-        </div>
+        <SearchInput
+          v-model="searchInput"
+          placeholder="Search..."
+          :debounce="350"
+        />
       </div>
       </div>
       <p class="text-sm text-ink0">

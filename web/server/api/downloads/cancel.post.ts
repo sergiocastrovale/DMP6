@@ -1,16 +1,14 @@
-import type { DownloadSource } from '~/types/download'
 import { cancelDownloadBySource } from '~/server/utils/downloads'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { source, username, id } = body as {
-    source: DownloadSource
+  const { username, id } = body as {
     username: string
     id: string
   }
 
-  if (!source || !id) throw createError({ statusCode: 400, message: 'source and id are required' })
+  if (!id) { throw createError({ statusCode: 400, message: 'id is required' }) }
 
-  await cancelDownloadBySource(source, username || '', id)
+  await cancelDownloadBySource(username || '', id)
   return { success: true }
 })

@@ -1,4 +1,3 @@
-import type { DownloadSource } from '~/types/download'
 import { startDownload } from '~/server/utils/downloads'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 
@@ -10,21 +9,16 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event)
-  const { source, username, files, deezerAlbumId, albumTitle, artistName, year } = body as {
-    source: DownloadSource
+  const { username, files, albumTitle, artistName, year } = body as {
     username?: string
     files?: { filename: string; size: number }[]
-    deezerAlbumId?: string
     albumTitle?: string
     artistName?: string
     year?: number | null
   }
 
-  if (!source) throw createError({ statusCode: 400, message: 'source is required' })
-
   return startDownload(
-    source,
-    { username, files, deezerAlbumId, albumTitle, artistName, year },
+    { username, files, albumTitle, artistName, year },
     downloadsPath,
     downloadDirTemplate,
   )

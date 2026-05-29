@@ -143,48 +143,20 @@ const missingReleasesVisible = computed(() => filteredReleases.value.filter(r =>
 
 const downloadAllOptions = computed<ButtonDropdownOption[]>(() => {
   const missing = missingReleasesVisible.value
-  if (missing.length === 0) {
+  if (missing.length === 0 || !downloadsStore.slskd.connected) {
     return []
   }
   const artist = props.artistName || ''
-  const opts: ButtonDropdownOption[] = []
-  if (downloadsStore.slskd.connected) {
-    opts.push({
-      label: `Soulseek (${missing.length})`,
-      description: `Search & download ${missing.length} missing releases`,
-      action: () => {
-        const first = missing[0]
-        if (first) {
-          terminal.runDownload('slskd', `${artist} ${first.title}`, first.title, artist, first.year)
-        }
-      },
-    })
-  }
-  if (downloadsStore.hifi.connected) {
-    opts.push({
-      label: `HiFi (${missing.length})`,
-      description: 'Free FLAC lossless — no account needed',
-      action: () => {
-        const first = missing[0]
-        if (first) {
-          terminal.runDownload('hifi', `${artist} ${first.title}`, first.title, artist, first.year)
-        }
-      },
-    })
-  }
-  if (downloadsStore.deezer.connected) {
-    opts.push({
-      label: `Deezer (${missing.length})`,
-      description: `Download ${missing.length} missing releases from Deezer`,
-      action: () => {
-        const first = missing[0]
-        if (first) {
-          terminal.runDownload('deezer', `${artist} ${first.title}`, first.title, artist, first.year)
-        }
-      },
-    })
-  }
-  return opts
+  return [{
+    label: `Soulseek (${missing.length})`,
+    description: `Search & download ${missing.length} missing releases`,
+    action: () => {
+      const first = missing[0]
+      if (first) {
+        terminal.runDownload('slskd', `${artist} ${first.title}`, first.title, artist, first.year)
+      }
+    },
+  }]
 })
 
 const releaseMap = computed(() => {
@@ -387,7 +359,7 @@ watch(() => props.releases, () => {
       v-model:sort-key="sortKey"
       v-model:view-mode="viewMode"
       :download-options="downloadAllOptions"
-      :show-download="downloadsStore.anyConfigured && missingReleasesVisible.length > 0 && showMissing"
+      :show-download="downloadsStore.slskd.connected && missingReleasesVisible.length > 0 && showMissing"
     />
 
     <template v-if="viewMode === 'catalogue'">

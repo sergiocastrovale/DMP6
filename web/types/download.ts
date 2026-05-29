@@ -1,4 +1,4 @@
-export type DownloadSource = 'slskd' | 'deezer' | 'hifi'
+export type DownloadSource = 'slskd'
 
 export interface DownloadSearchResult {
   id: string
@@ -40,5 +40,3 @@ export interface DownloadSourceStatus {
   connected: boolean
   error?: string
 }
-
-export type DownloadStatus = Record<DownloadSource, DownloadSourceStatus>

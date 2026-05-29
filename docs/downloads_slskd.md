@@ -136,7 +136,7 @@ For bulk downloads, use the "Download missing" button at the top of the releases
 
 ## Where files end up
 
-slskd writes files to its own `directories.downloads` (set to `/downloads` inside the container, backed by `${DOWNLOADS_DIR:-/mnt/SSD/Downloads}` on the host). After slskd finishes a transfer, DMP detects completion and **moves** the files into the templated artist/album folder inside the same `/downloads` volume — same layout as HiFi and Deezer (see [features_downloader.md](features_downloader.md#where-files-go)).
+slskd writes files to its own `directories.downloads` (set to `/downloads` inside the container, backed by `${DOWNLOADS_DIR:-/mnt/SSD/Downloads}` on the host). After slskd finishes a transfer, DMP detects completion and **moves** the files into the templated artist/album folder inside the same `/downloads` volume — see [features_downloader.md](features_downloader.md#where-files-go) for details.
 
 The move only works because `docker-compose.yml` mounts the same host directory into both `slskd` and `web`. If you ever split them onto separate volumes, the move step silently no-ops and files remain in slskd's flat structure.
 

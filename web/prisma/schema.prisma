@@ -396,7 +396,6 @@ model Settings {
   // Downloads
   slskdUrl           String?
   slskdApiKey        String?
-  deezerArl          String?
   downloadsPath      String?
   downloadDirTemplate String?
   downloadFormats    String?

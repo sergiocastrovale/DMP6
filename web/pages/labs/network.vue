@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Network, Search, X } from 'lucide-vue-next'
+import { Loader2, Network } from 'lucide-vue-next'
 import {
   forceSimulation,
   forceLink,
@@ -45,7 +45,6 @@ const tooltip = ref<{ x: number; y: number; name: string; tracks: number; isMain
 const linkTooltip = ref<{ x: number; y: number; source: string; target: string; shared: number; tracks: string[] } | null>(null)
 
 let simulation: ReturnType<typeof forceSimulation<GraphNode>> | null = null
-let searchDebounce: ReturnType<typeof setTimeout> | null = null
 
 const doSearch = async (q: string) => {
   if (q.length < 2) {
@@ -61,14 +60,11 @@ const doSearch = async (q: string) => {
 }
 
 watch(searchQuery, (val) => {
-  if (searchDebounce) {
-    clearTimeout(searchDebounce)
-  }
   if (val.length < 2) {
     searchResults.value = []
     return
   }
-  searchDebounce = setTimeout(() => doSearch(val), 250)
+  doSearch(val)
 })
 
 const selectArtist = async (artist: { id: string; name: string }) => {
@@ -81,7 +77,6 @@ const selectArtist = async (artist: { id: string; name: string }) => {
 
 const clearSearch = async () => {
   selectedArtist.value = null
-  searchQuery.value = ''
   searchResults.value = []
   await loadGraph()
 }
@@ -330,40 +325,32 @@ onUnmounted(() => {
           Artists connected by shared tracks. Search to focus on one artist's collaborations. Click any node to explore its network.
         </p>
 
-        <div class="relative">
-          <div class="flex items-center gap-2 rounded-md border border-rule bg-bg-2 px-3 py-2">
-            <Search :size="14" class="shrink-0 text-ink-2" />
-            <input
-              v-model="searchQuery"
-              type="text"
-              placeholder="Search artist..."
-              class="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-2"
-              @focus="searchOpen = true"
-              @blur="blurSearch"
-            />
-            <button
-              v-if="selectedArtist"
-              class="shrink-0 text-ink-2 transition-colors hover:text-ink"
-              @click="clearSearch"
+        <SearchInput
+          v-model="searchQuery"
+          placeholder="Search artist..."
+          size="md"
+          clearable
+          :debounce="250"
+          @focus="searchOpen = true"
+          @blur="blurSearch"
+          @clear="clearSearch"
+        >
+          <template #results>
+            <div
+              v-if="searchOpen && searchResults.length > 0"
+              class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-rule bg-bg-1 shadow-lg"
             >
-              <X :size="14" />
-            </button>
-          </div>
-
-          <div
-            v-if="searchOpen && searchResults.length > 0"
-            class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-rule bg-bg-1 shadow-lg"
-          >
-            <button
-              v-for="result in searchResults"
-              :key="result.id"
-              class="w-full px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-bg-2"
-              @mousedown.prevent="selectArtist(result)"
-            >
-              {{ result.name }}
-            </button>
-          </div>
-        </div>
+              <button
+                v-for="result in searchResults"
+                :key="result.id"
+                class="w-full px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-bg-2"
+                @mousedown.prevent="selectArtist(result)"
+              >
+                {{ result.name }}
+              </button>
+            </div>
+          </template>
+        </SearchInput>
 
         <div v-if="!selectedArtist" class="mt-4">
           <label class="mb-1 block text-xs font-medium text-ink-2">

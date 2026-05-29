@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LayoutGrid, LayoutList, Search } from 'lucide-vue-next'
+import { LayoutGrid, LayoutList } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
 import RelatedArtistsPopover from '~/components/browse/RelatedArtistsPopover.vue'
 
@@ -17,14 +17,9 @@ const browseViewMode = computed({
   set: (val: string) => store.setViewMode(val as 'expanded' | 'summarized'),
 })
 
-let searchTimeout: ReturnType<typeof setTimeout>
-
-function handleSearch(value: string) {
+const handleSearch = (value: string) => {
   searchInput.value = value
-  clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(() => {
-    store.setSearch(value)
-  }, 300)
+  store.setSearch(value)
 }
 
 function handleLetterSelect(letter: string | null) {
@@ -42,9 +37,6 @@ onMounted(() => {
   }
 })
 
-onBeforeUnmount(() => {
-  clearTimeout(searchTimeout)
-})
 </script>
 
 <template>
@@ -59,16 +51,13 @@ onBeforeUnmount(() => {
     </PageTitle>
 
     <div class="flex flex-wrap items-center gap-3">
-      <div class="relative flex-1 sm:max-w-xs">
-        <Search :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-ink0" />
-        <input
-          :value="searchInput"
-          type="text"
-          placeholder="Filter artists..."
-          class="h-8 w-full rounded-lg border border-rule bg-bg-1 pl-8 pr-3 text-sm text-ink placeholder:text-ink0 focus:border-accent focus:outline-none"
-          @input="handleSearch(($event.target as HTMLInputElement).value)"
-        />
-      </div>
+      <SearchInput
+        :model-value="searchInput"
+        placeholder="Filter artists..."
+        :debounce="300"
+        wrapper-class="flex-1 sm:max-w-xs"
+        @update:model-value="handleSearch"
+      />
       <BrowseFilterSort :active="store.sortBy" @select="store.setSortBy" />
       <BrowseFilterGenre :active="store.genreFilter" @select="store.setGenreFilter" />
       <BrowseFilterScore

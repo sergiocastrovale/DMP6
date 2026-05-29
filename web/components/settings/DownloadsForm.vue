@@ -11,7 +11,6 @@ const { data: settings, refresh } = await useAsyncData('settings-db', () =>
 const form = reactive({
   slskdUrl: settings.value?.slskdUrl ?? '',
   slskdApiKey: settings.value?.slskdApiKey ?? '',
-  deezerArl: settings.value?.deezerArl ?? '',
   downloadsPath: settings.value?.downloadsPath ?? '',
   downloadDirTemplate: settings.value?.downloadDirTemplate ?? '',
   downloadFormats: settings.value?.downloadFormats ?? '',
@@ -24,7 +23,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
     body: {
       slskdUrl: form.slskdUrl || null,
       slskdApiKey: form.slskdApiKey || null,
-      deezerArl: form.deezerArl || null,
       downloadsPath: form.downloadsPath || null,
       downloadDirTemplate: form.downloadDirTemplate || null,
       downloadFormats: form.downloadFormats || null,
@@ -52,18 +50,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
         type="password"
         placeholder="••••••••"
         v-model="form.slskdApiKey"
-      />
-    </div>
-
-    <!-- Deezer -->
-    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Deezer</h2>
-      <SettingsField
-        label="ARL Cookie"
-        description="Deezer ARL cookie from a logged-in session. Overrides DEEZER_ARL."
-        type="password"
-        placeholder="••••••••"
-        v-model="form.deezerArl"
       />
     </div>
 

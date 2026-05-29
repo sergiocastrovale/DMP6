@@ -43,6 +43,4 @@ const gridCols = computed(() =>
     <Terminal :size="14" />
     <span>Terminal running</span>
   </button>
-
-  <DownloadsIndicator />
 </template>
