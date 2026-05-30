@@ -667,6 +667,13 @@ async fn main() {
                     "Same MB ID as another artist - skipping duplicate"
                 ));
                 reporter.sync_progress(&artist.name, i + 1, total, "done");
+                let now = chrono::Utc::now().naive_utc();
+                sqlx::query(r#"UPDATE "Artist" SET "lastSyncedAt" = $1, "updatedAt" = $1 WHERE id = $2"#)
+                    .bind(now)
+                    .bind(&artist.id)
+                    .execute(&pool)
+                    .await
+                    .ok();
                 if let Some(ref h) = run_hash {
                     stamp_sync_hash(&pool, &artist.id, h).await;
                 }
