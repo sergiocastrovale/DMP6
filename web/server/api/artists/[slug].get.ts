@@ -30,6 +30,11 @@ export default defineEventHandler(async (event) => {
 
     if (!artist) throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
 
+    const connectedStats = await prisma.artist.aggregate({
+      where: { primaryArtistId: artist.id },
+      _sum: { totalPlayCount: true, totalTracks: true, totalFileSize: true },
+    })
+
     const relatedArtists = await prisma.$queryRaw<Array<{
       id: string
       name: string
@@ -57,9 +62,9 @@ export default defineEventHandler(async (event) => {
       imageUrl: img.imageUrl,
       musicbrainzId: artist.musicbrainzId,
       averageMatchScore: artist.averageMatchScore,
-      totalPlayCount: artist.totalPlayCount,
-      totalTracks: artist.totalTracks,
-      totalFileSize: artist.totalFileSize?.toString() || '0',
+      totalPlayCount: artist.totalPlayCount + (connectedStats._sum.totalPlayCount || 0),
+      totalTracks: artist.totalTracks + (connectedStats._sum.totalTracks || 0),
+      totalFileSize: ((artist.totalFileSize || BigInt(0)) + (connectedStats._sum.totalFileSize || BigInt(0))).toString(),
       lastSyncedAt: artist.lastSyncedAt,
       genres: artist.genres,
       urls: artist.urls,

@@ -4,13 +4,13 @@ export default defineEventHandler(async () => {
   const rows = await prisma.$queryRaw<{ name: string, slug: string }[]>`
     SELECT name, slug
     FROM "Artist" TABLESAMPLE BERNOULLI(1)
-    WHERE "relatedOnly" = false
+    WHERE "relatedOnly" = false AND "primaryArtistId" IS NULL
     LIMIT 1
   `
 
   if (rows.length === 0) {
     const fallback = await prisma.artist.findFirst({
-      where: { relatedOnly: false },
+      where: { relatedOnly: false, primaryArtistId: null },
       select: { name: true, slug: true },
     })
     return fallback

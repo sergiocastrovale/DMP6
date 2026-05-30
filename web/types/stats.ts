@@ -32,4 +32,5 @@ export interface Statistics {
   lowBitrateTracks: number
   singleReleaseArtists: number
   missingArtReleases: number
+  linkedArtists: number
 }

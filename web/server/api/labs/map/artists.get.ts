@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
   const where = {
     country,
     relatedOnly: false,
+    primaryArtistId: null,
   }
 
   const [items, total] = await Promise.all([

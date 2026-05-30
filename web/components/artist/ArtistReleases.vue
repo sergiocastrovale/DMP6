@@ -5,6 +5,7 @@ import type { TrackListColumn, ButtonDropdownOption } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'
+import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 
 const props = defineProps<{
   slug: string
@@ -12,19 +13,19 @@ const props = defineProps<{
   releases: UnifiedRelease[]
 }>()
 
-const showMissing = defineModel<boolean>('showMissing', { default: true })
-
 const route = useRoute()
 const router = useRouter()
 const player = usePlayerStore()
 const { isCurrentRelease: isCurrentReleaseId, toggleOrPlay } = usePlayRelease()
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
+const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
 
-const searchQuery = ref('')
-const typeFilter = ref<string | null>(null)
-const activeStatuses = ref<Set<string>>(new Set(statuses.map(s => s.value)))
-const sortKey = ref<string>('year-asc')
+const {
+  showMissing, showLinked, searchQuery, typeFilter, activeStatuses, sortKey,
+  hasLinkedReleases, statusCounts, filteredReleases, groups,
+} = catalogue
+
 const initialView = route.query.view === 'list' ? 'list' : 'catalogue'
 const viewMode = ref<'catalogue' | 'list'>(initialView)
 const expandedGroup = ref<string | null>(null)
@@ -53,70 +54,6 @@ onMounted(async () => {
   catch { /* ignore */ }
 })
 
-const visibleReleases = computed(() =>
-  showMissing.value
-    ? props.releases
-    : props.releases.filter(r => r.status !== 'MISSING'),
-)
-
-const statusCounts = computed(() => {
-  const counts: Record<string, number> = {}
-  for (const r of visibleReleases.value) {
-    counts[r.status] = (counts[r.status] || 0) + 1
-  }
-  return counts
-})
-
-const filteredReleases = computed(() => {
-  let r = visibleReleases.value
-
-  if (activeStatuses.value.size < statuses.length) {
-    r = r.filter(x => activeStatuses.value.has(x.status))
-  }
-
-  if (typeFilter.value) {
-    if (typeFilter.value === 'other') {
-      r = r.filter(x => !['album', 'ep', 'single'].includes(x.typeSlug))
-    } else {
-      r = r.filter(x => x.typeSlug === typeFilter.value)
-    }
-  }
-
-  if (searchQuery.value) {
-    const q = searchQuery.value.toLowerCase()
-    r = r.filter(x =>
-      x.title.toLowerCase().includes(q)
-      || (x.disambiguation || '').toLowerCase().includes(q)
-      || (x.editionLabel || '').toLowerCase().includes(q),
-    )
-  }
-  return r
-})
-
-const dateKey = (r: UnifiedRelease) => r.releaseDate || (r.year ? `${r.year}-00-00` : '9999-99-99')
-
-const groups = computed<ReleaseGroup[]>(() => {
-  const buckets = new Map<string, UnifiedRelease[]>()
-  for (const r of filteredReleases.value) {
-    const key = r.releaseGroupId || `solo:${r.id}`
-    const arr = buckets.get(key)
-    if (arr) {
-      arr.push(r)
-    } else {
-      buckets.set(key, [r])
-    }
-  }
-  const out: ReleaseGroup[] = []
-  for (const [key, items] of buckets.entries()) {
-    items.sort((a, b) => dateKey(a).localeCompare(dateKey(b)))
-    const primary = items[0]!
-    const totalTracks = items.reduce((s, r) => s + (r.trackCount || 0), 0)
-    const totalLocalTracks = items.reduce((s, r) => s + (r.localTrackCount || 0), 0)
-    const totalPlayCount = items.reduce((s, r) => s + (r.totalPlayCount || 0), 0)
-    out.push({ key, releases: items, primary, totalTracks, totalLocalTracks, totalPlayCount, earliest: dateKey(primary) })
-  }
-  return out
-})
 
 const sortedGroups = computed<ReleaseGroup[]>(() => {
   const arr = [...groups.value]
@@ -348,10 +285,6 @@ watch(() => props.releases, () => {
     <ArtistStatusChips v-model:active-statuses="activeStatuses" :status-counts="statusCounts" />
 
     <ArtistReleaseFilterBar
-      v-model:search-query="searchQuery"
-      v-model:type-filter="typeFilter"
-      v-model:show-missing="showMissing"
-      v-model:sort-key="sortKey"
       v-model:view-mode="viewMode"
       :download-options="downloadAllOptions"
       :show-download="downloadsStore.slskd.connected && missingReleasesVisible.length > 0 && showMissing"

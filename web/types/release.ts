@@ -32,6 +32,7 @@ export interface UnifiedRelease {
   folderPath: string | null
   coArtists?: { name: string; slug: string }[]
   statusReason?: string | null
+  connectedArtistName?: string | null
 }
 
 export type ReleaseStatus =

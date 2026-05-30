@@ -151,6 +151,12 @@ async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, 
         }
     }
 
+    sqlx::query(r#"UPDATE "Artist" SET "primaryArtistId" = $1 WHERE "primaryArtistId" = $2"#)
+        .bind(artist_a)
+        .bind(artist_b)
+        .execute(pool)
+        .await?;
+
     sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#)
         .bind(artist_b)
         .execute(pool)

@@ -340,6 +340,7 @@ async fn fetch_tracks_for_countries(pool: &PgPool, country_codes: &[String]) -> 
         JOIN "Artist" a ON a.id = lra."artistId"
         WHERE a.country = ANY($1)
           AND a."relatedOnly" = false
+          AND a."primaryArtistId" IS NULL
           AND lrt."localReleaseId" IS NOT NULL
           AND lrt.title IS NOT NULL
         "#,

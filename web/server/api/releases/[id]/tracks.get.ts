@@ -112,7 +112,7 @@ async function getLocalReleaseTracks(
       title: true,
       image: true,
       imageUrl: true,
-      artists: { select: { artist: { select: { name: true, slug: true } } } },
+      artists: { select: { artist: { select: { name: true, slug: true, primaryArtistId: true, primaryArtist: { select: { name: true, slug: true } } } } } },
     },
   })
 
@@ -246,8 +246,8 @@ async function getLocalReleaseTracks(
           title: release.title,
           image: releaseImg!.image,
           imageUrl: releaseImg!.imageUrl,
-          artistName: release.artists[0]?.artist?.name ?? 'Unknown',
-          artistSlug: release.artists[0]?.artist?.slug ?? '',
+          artistName: release.artists[0]?.artist?.primaryArtist?.name ?? release.artists[0]?.artist?.name ?? 'Unknown',
+          artistSlug: release.artists[0]?.artist?.primaryArtist?.slug ?? release.artists[0]?.artist?.slug ?? '',
         }
       : null,
     tracks: enrichedTracks,

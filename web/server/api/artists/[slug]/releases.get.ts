@@ -16,8 +16,15 @@ export default defineEventHandler(async (event) => {
 
   if (!artist) throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
 
+  const connectedArtists = await prisma.artist.findMany({
+    where: { primaryArtistId: artist.id },
+    select: { id: true, name: true, slug: true },
+  })
+  const allArtistIds = [artist.id, ...connectedArtists.map(a => a.id)]
+  const connectedArtistById = new Map(connectedArtists.map(a => [a.id, a]))
+
   const mbReleaseLinks = await prisma.musicBrainzReleaseArtist.findMany({
-    where: { artistId: artist.id },
+    where: { artistId: { in: allArtistIds } },
     select: {
       release: {
         select: {
@@ -45,10 +52,17 @@ export default defineEventHandler(async (event) => {
 
   // Get all local releases for this artist (via LocalReleaseArtist junction)
   const releaseLinks = await prisma.localReleaseArtist.findMany({
-    where: { artistId: artist.id },
-    select: { localReleaseId: true },
+    where: { artistId: { in: allArtistIds } },
+    select: { localReleaseId: true, artistId: true },
   })
   const releaseIds = [...new Set(releaseLinks.map(l => l.localReleaseId))]
+  const connectedArtistByRelease = new Map<string, string>()
+  for (const link of releaseLinks) {
+    const ca = connectedArtistById.get(link.artistId)
+    if (ca) {
+      connectedArtistByRelease.set(link.localReleaseId, ca.name)
+    }
+  }
 
   const localReleases = await prisma.localRelease.findMany({
     where: { id: { in: releaseIds } },
@@ -72,12 +86,13 @@ export default defineEventHandler(async (event) => {
     orderBy: [{ year: 'asc' }, { title: 'asc' }],
   })
 
-  // Build co-artist map: for each local release, list other artists (excluding current)
+  // Build co-artist map: for each local release, list other artists (excluding current + connected)
+  const connectedSlugs = new Set(connectedArtists.map(a => a.slug))
   const coArtistMap = new Map<string, { name: string; slug: string }[]>()
   for (const lr of localReleases) {
     const others = lr.artists
       .map(a => a.artist)
-      .filter(a => a.slug !== slug)
+      .filter(a => a.slug !== slug && !connectedSlugs.has(a.slug))
     if (others.length > 0) {
       coArtistMap.set(lr.id, others)
     }
@@ -110,6 +125,7 @@ export default defineEventHandler(async (event) => {
     folderPath: string | null
     coArtists?: { name: string; slug: string }[]
     statusReason?: string | null
+    connectedArtistName?: string | null
   }
 
   const releases: ReleaseCard[] = []
@@ -145,6 +161,7 @@ export default defineEventHandler(async (event) => {
         localReleaseId: lr.id,
         folderPath: lr.folderPath,
         coArtists: coArtistMap.get(lr.id),
+        connectedArtistName: connectedArtistByRelease.get(lr.id),
       })
       continue
     }
@@ -183,6 +200,7 @@ export default defineEventHandler(async (event) => {
       folderPath: lr.folderPath,
       coArtists: coArtistMap.get(lr.id),
       statusReason: mbr.statusReason,
+      connectedArtistName: connectedArtistByRelease.get(lr.id),
     })
   }
 
@@ -278,6 +296,7 @@ export default defineEventHandler(async (event) => {
       folderPath: lr.folderPath,
       coArtists: coArtistMap.get(lr.id),
       statusReason: mbr?.statusReason ?? null,
+      connectedArtistName: connectedArtistByRelease.get(lr.id),
     })
   }
 

@@ -636,6 +636,32 @@ async fn main() {
         }
     }
 
+    // Expand targets: include connected (linked) artists
+    let mut connected_ids: Vec<(String, String)> = Vec::new();
+    for (tid, _) in &target_ids {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT id, name FROM "Artist" WHERE "primaryArtistId" = $1"#,
+        )
+        .bind(tid)
+        .fetch_all(&pool)
+        .await
+        .expect("Failed to query connected artists");
+        for (id, name) in rows {
+            connected_ids.push((id, name));
+        }
+    }
+    if !connected_ids.is_empty() {
+        println!(
+            "Linked artists : {} (will be deleted with primary)",
+            connected_ids.len().to_string().bright_white()
+        );
+        for (_, name) in &connected_ids {
+            println!("    {} {}", "•".bright_black(), name.bright_white());
+        }
+        println!();
+        target_ids.extend(connected_ids);
+    }
+
     let plan = build_plan(&pool, &target_ids)
         .await
         .expect("Failed to build deletion plan");

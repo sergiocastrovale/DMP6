@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { Play } from 'lucide-vue-next'
 import type { Artist } from '~/types/artist'
-import type { UnifiedRelease } from '~/types/release'
 import DialogLinks from '~/components/artist/DialogLinks.vue'
 import DialogGenres from '~/components/artist/DialogGenres.vue'
 import Genres from '~/components/artist/Genres.vue'
+import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 
 const props = defineProps<{
   artist: Artist
-  releases: UnifiedRelease[]
   playDisabled?: boolean
 }>()
 
@@ -17,51 +16,28 @@ const emit = defineEmits<{
 }>()
 
 const { artistImage } = useImageUrl()
+const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
 
 const showAllGenres = ref(false)
 const showAllLinks = ref(false)
 
 const imgUrl = computed(() => artistImage(props.artist))
 
-const groupCounts = computed(() => {
-  const seen = new Map<string, string>()
-  for (const r of props.releases) {
-    const key = r.releaseGroupId || `solo:${r.id}`
-    if (!seen.has(key)) {
-      seen.set(key, r.typeSlug)
-    }
-  }
-  const counts = { albums: 0, eps: 0, singles: 0 }
-  for (const t of seen.values()) {
-    if (t === 'album') {
-      counts.albums++
-    }
-    else if (t === 'ep') {
-      counts.eps++
-    }
-    else if (t === 'single') {
-      counts.singles++
-    }
-  }
-  return counts
-})
-
-const statsParts = computed(() => {
+const statsLine = computed(() => {
+  const v = catalogue.visibleCounts.value
+  const t = catalogue.totalCounts.value
   const parts: string[] = []
-  if (props.artist.totalTracks) {
-    parts.push(`${props.artist.totalTracks.toLocaleString()} tracks`)
+  parts.push(`Showing ${v.total} of ${t.total} releases`)
+  if (v.albums) {
+    parts.push(`${v.albums} ${v.albums === 1 ? 'album' : 'albums'}`)
   }
-  const c = groupCounts.value
-  if (c.albums) {
-    parts.push(`${c.albums} ${c.albums === 1 ? 'album' : 'albums'}`)
+  if (v.eps) {
+    parts.push(`${v.eps} ${v.eps === 1 ? 'EP' : 'EPs'}`)
   }
-  if (c.eps) {
-    parts.push(`${c.eps} ${c.eps === 1 ? 'EP' : 'EPs'}`)
+  if (v.singles) {
+    parts.push(`${v.singles} ${v.singles === 1 ? 'single' : 'singles'}`)
   }
-  if (c.singles) {
-    parts.push(`${c.singles} ${c.singles === 1 ? 'single' : 'singles'}`)
-  }
-  return parts
+  return parts.join(' · ')
 })
 </script>
 
@@ -73,8 +49,8 @@ const statsParts = computed(() => {
           {{ artist.name }}
         </h1>
 
-        <div v-if="statsParts.length" class="text-sm text-ink-2">
-          {{ statsParts.join(' · ') }}
+        <div v-if="statsLine" class="text-sm text-ink-2">
+          {{ statsLine }}
         </div>
 
         <Genres :genres="artist.genres" @more="showAllGenres = true" />

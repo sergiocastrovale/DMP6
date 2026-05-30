@@ -23,12 +23,14 @@ Local tree (files on disk):
 
 Link: LocalRelease.releaseId → MusicBrainzRelease.id
 Link: LocalReleaseTrack.mbTrackId → MusicBrainzReleaseTrack.id
+Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
 ```
 
 - `LocalReleaseArtist` = main artists (albumArtist tag owners), many-to-many
 - `TrackRelatedArtist` = related/guest artists (artist tag extras not in albumArtist), many-to-many
 - `Artist.country` = ISO 3166-1 alpha-2 code from MusicBrainz area (e.g. "US", "GB"), populated by sync
 - `Artist.relatedOnly` = true for guests (no own browse page, no MB sync); flips to false when found as albumArtist
+- `Artist.primaryArtistId` = FK to canonical Artist when this artist shares an MB ID with another; connected artist hidden from browse, catalogue aggregated on primary's page
 - `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING | UNKNOWN | UNMATCHED
 - `PlaylistType`: MANUAL | GENRE
 - Releases deduplicated by `groupKey` (unique): `"mb:{mbAlbumId}"` or `"meta:{slugTitle}:{year}:{slugArtist}"`
@@ -205,7 +207,7 @@ On the NAS, script error logs are at: `docker exec dmp cat /app/errors.log`
 |-------|---------|
 | `/` | Dashboard: latest, recently played, playlists, favorites |
 | `/browse` | Artist grid with letter/genre/score filters, infinite scroll |
-| `/artist/[slug]` | Artist detail: header, releases, sync controls |
+| `/artist/[slug]` | Artist detail: header, releases (aggregated from connected artists), sync controls |
 | `/explore` | 4-slider music discovery (energy/era/familiarity/sound) |
 | `/playlists` | Playlist library |
 | `/playlists/[slug]` | Single playlist with tracks |

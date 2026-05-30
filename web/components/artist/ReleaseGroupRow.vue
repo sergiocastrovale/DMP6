@@ -29,6 +29,10 @@ const terminal = useTerminalStore()
 const getReleaseId = (r: typeof props.group.primary) => r.localReleaseId || r.id
 const edition = computed(() => props.group.primary)
 
+const connectedArtistNames = computed(() => {
+  const names = new Set(props.group.releases.map(r => r.connectedArtistName).filter(Boolean) as string[])
+  return [...names]
+})
 const isGroupCurrent = computed(() => props.group.releases.some(r => isCurrentReleaseId(getReleaseId(r))))
 const isGroupPlaying = computed(() => props.group.releases.some(r => isReleasePlayingId(getReleaseId(r))))
 const hasPlayable = computed(() => props.group.releases.some(r => r.localReleaseId || r.localTrackCount > 0))
@@ -105,6 +109,10 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
                 @click.stop
               >{{ co.name }}</NuxtLink><template v-if="i < group.primary.coArtists!.length - 1">, </template>
             </template>
+          </span>
+          <span v-if="connectedArtistNames.length" class="flex items-center gap-1 text-ink-1 italic" :title="`Originally credited to: ${connectedArtistNames.join(', ')}`">
+            <Info :size="12" />
+            <span>as {{ connectedArtistNames.join(', ') }}</span>
           </span>
           <span v-if="group.totalPlayCount">· {{ group.totalPlayCount.toLocaleString() }} plays</span>
         </div>

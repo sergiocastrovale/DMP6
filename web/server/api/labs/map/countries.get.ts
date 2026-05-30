@@ -31,6 +31,7 @@ export default defineEventHandler(async (event) => {
         JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
         WHERE a.country IS NOT NULL
           AND a."relatedOnly" = false
+          AND a."primaryArtistId" IS NULL
           AND (lr.image IS NOT NULL OR lr."imageUrl" IS NOT NULL)
       ),
       unique_images AS (

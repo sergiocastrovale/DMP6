@@ -21,6 +21,8 @@ export default defineEventHandler(async (event) => {
           contains: searchQuery,
           mode: 'insensitive',
         },
+        relatedOnly: false,
+        primaryArtistId: null,
       },
       select: {
         id: true,

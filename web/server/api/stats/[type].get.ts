@@ -357,7 +357,7 @@ async function querySingleRelease(search: string, skip: number, pageSize: number
       SELECT a.id
       FROM "Artist" a
       JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
-      WHERE a."relatedOnly" = false ${searchClause}
+      WHERE a."relatedOnly" = false AND a."primaryArtistId" IS NULL ${searchClause}
       GROUP BY a.id
       HAVING COUNT(DISTINCT lra."localReleaseId") = 1
     ) sub

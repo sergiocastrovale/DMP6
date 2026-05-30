@@ -123,7 +123,8 @@ pub async fn delete_orphaned_mb_releases(pool: &PgPool) -> u64 {
 /// Delete Artist rows that have no LocalReleaseArtist links remaining. Cleans images first.
 pub async fn delete_orphan_artists(pool: &PgPool, config: &Config) -> u64 {
     let ids: Vec<(String,)> = sqlx::query_as(
-        r#"SELECT id FROM "Artist" WHERE id NOT IN (
+        r#"SELECT id FROM "Artist" WHERE "primaryArtistId" IS NULL
+           AND id NOT IN (
                SELECT DISTINCT "artistId" FROM "LocalReleaseArtist"
            ) AND id NOT IN (
                SELECT DISTINCT "artistId" FROM "MusicBrainzReleaseArtist"

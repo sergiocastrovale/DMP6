@@ -7,10 +7,9 @@ defineProps<{
   showDownload: boolean
 }>()
 
-const searchQuery = defineModel<string>('searchQuery', { default: '' })
-const typeFilter = defineModel<string | null>('typeFilter', { default: null })
-const showMissing = defineModel<boolean>('showMissing', { default: true })
-const sortKey = defineModel<string>('sortKey', { default: 'year-asc' })
+const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
+const { searchQuery, typeFilter, showMissing, showLinked, sortKey, hasLinkedReleases } = catalogue
+
 const viewMode = defineModel<'catalogue' | 'list'>('viewMode', { default: 'catalogue' })
 
 const TYPE_OPTIONS = [
@@ -47,6 +46,7 @@ const sortOpen = ref(false)
     />
 
     <Switch v-model="showMissing" label="Show missing" />
+    <Switch v-if="hasLinkedReleases" v-model="showLinked" label="Show linked" />
 
     <ButtonDropdown
       v-if="showDownload"

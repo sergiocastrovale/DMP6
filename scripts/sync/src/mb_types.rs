@@ -22,7 +22,7 @@ pub struct MbReleaseGroupList {
     pub release_group_count: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct MbReleaseGroup {
     pub id: String,
     pub title: String,

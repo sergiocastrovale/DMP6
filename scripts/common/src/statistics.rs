@@ -14,7 +14,7 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
            )
            SELECT 'main',
              (SELECT COUNT(*)::int FROM "Artist"),
-             (SELECT COUNT(*)::int FROM "Artist" WHERE "relatedOnly" = false),
+             (SELECT COUNT(*)::int FROM "Artist" WHERE "relatedOnly" = false AND "primaryArtistId" IS NULL),
              (SELECT COUNT(*)::int FROM "Artist" WHERE "relatedOnly" = true),
              (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
              (SELECT COUNT(*)::int FROM "LocalRelease"),
@@ -22,9 +22,9 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
              (SELECT COUNT(*)::int FROM "LocalRelease" WHERE image IS NOT NULL OR "imageUrl" IS NOT NULL),
              COALESCE((SELECT SUM(duration)::bigint FROM "LocalReleaseTrack"), 0),
              COALESCE((SELECT SUM("playCount")::bigint FROM "LocalReleaseTrack"), 0),
-             (SELECT COUNT(*)::int FROM "Artist" WHERE "musicbrainzId" IS NOT NULL),
+             (SELECT COUNT(*)::int FROM "Artist" WHERE "musicbrainzId" IS NOT NULL AND "primaryArtistId" IS NULL),
              (SELECT COUNT(*)::int FROM "MusicBrainzRelease"),
-             (SELECT COUNT(*)::int FROM "Artist" WHERE image IS NOT NULL OR "imageUrl" IS NOT NULL),
+             (SELECT COUNT(*)::int FROM "Artist" WHERE (image IS NOT NULL OR "imageUrl" IS NOT NULL) AND "primaryArtistId" IS NULL),
              COALESCE((SELECT SUM("fileSize")::bigint FROM "LocalReleaseTrack"), 0),
              $1, $1
            ON CONFLICT (id) DO UPDATE SET

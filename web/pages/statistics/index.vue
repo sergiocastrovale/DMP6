@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideSearch } from 'lucide-vue-next'
+import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideSearch, Info } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 const NuxtLink = resolveComponent('NuxtLink')
@@ -15,6 +15,7 @@ interface StatItem {
   label: string
   value: string
   link?: string
+  info?: string
 }
 
 interface StatSection {
@@ -32,7 +33,8 @@ const sections = computed<StatSection[]>(() => {
       icon: LucideLibrary,
       items: [
         { label: 'Artists', value: formatNumber(s.mainArtists), link: '/statistics/artists' },
-        { label: 'Related artists', value: formatNumber(s.relatedArtists), link: '/statistics/artists' },
+        { label: 'Related artists', value: formatNumber(s.relatedArtists), link: '/statistics/artists', info: 'Guest or contributing artists that appear in track tags but don\'t own any albums. They have no browse page.' },
+        { label: 'Linked artists', value: formatNumber(s.linkedArtists), info: 'Artists that share a MusicBrainz ID with another artist (e.g. "Artist A & B" → "Artist A"). Their catalogue is aggregated on the primary artist\'s page.' },
         { label: 'Releases', value: formatNumber(s.releases), link: '/statistics/releases' },
         { label: 'Tracks', value: formatNumber(s.tracks), link: '/statistics/tracks' },
         { label: 'Genres', value: formatNumber(s.genres), link: '/statistics/genres' },
@@ -123,7 +125,19 @@ onMounted(() => {
             class="flex items-baseline justify-between px-2 py-1"
             :class="item.link ? 'rounded transition-colors hover:bg-bg-2' : ''"
           >
-            <span class="text-sm text-ink0">{{ item.label }}</span>
+            <span class="flex items-center gap-1 text-sm text-ink0">
+              {{ item.label }}
+              <Popover v-if="item.info" trigger="hover">
+                <template #trigger>
+                  <Info :size="13" class="text-ink0/50 transition-colors hover:text-accent" />
+                </template>
+                <template #content>
+                  <div class="absolute left-0 top-full z-20 mt-1 w-64 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
+                    <p class="text-xs text-ink-2">{{ item.info }}</p>
+                  </div>
+                </template>
+              </Popover>
+            </span>
             <span class="text-lg font-bold text-ink">{{ item.value }}</span>
           </component>
         </div>

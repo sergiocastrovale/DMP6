@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
 
   return cachedResponse('stats', 300, async () => {
-    const [stats, unmatchedReleases, incompleteReleases, lowBitrateTracks, singleReleaseResult, missingArtReleases] = await Promise.all([
+    const [stats, unmatchedReleases, incompleteReleases, lowBitrateTracks, singleReleaseResult, missingArtReleases, linkedArtists] = await Promise.all([
       prisma.statistics.findUnique({ where: { id: 'main' } }),
       prisma.localRelease.count({ where: { matchStatus: 'UNMATCHED' } }),
       prisma.localRelease.count({ where: { matchStatus: { in: ['INCOMPLETE', 'MISSING_TRACKS'] } } }),
@@ -15,12 +15,13 @@ export default defineEventHandler(async (event) => {
           SELECT lra."artistId"
           FROM "LocalReleaseArtist" lra
           JOIN "Artist" a ON a.id = lra."artistId"
-          WHERE a."relatedOnly" = false
+          WHERE a."relatedOnly" = false AND a."primaryArtistId" IS NULL
           GROUP BY lra."artistId"
           HAVING COUNT(DISTINCT lra."localReleaseId") = 1
         ) sub
       `),
       prisma.localRelease.count({ where: { image: null, imageUrl: null } }),
+      prisma.artist.count({ where: { primaryArtistId: { not: null } } }),
     ])
 
     const curation = {
@@ -29,6 +30,7 @@ export default defineEventHandler(async (event) => {
       lowBitrateTracks,
       singleReleaseArtists: Number(singleReleaseResult[0].count),
       missingArtReleases,
+      linkedArtists,
     }
 
     if (!stats) {
@@ -49,6 +51,7 @@ export default defineEventHandler(async (event) => {
         lastScanStartedAt: null,
         lastScanEndedAt: null,
         ...curation,
+        linkedArtists: 0,
       }
     }
 

@@ -30,13 +30,15 @@ const { data: releasesData, pending: releasesPending, refresh: refreshReleases }
 })
 
 const releases = computed(() => (releasesData.value?.releases ?? []) as UnifiedRelease[])
+const catalogue = useArtistCatalogue(releases)
+provide('catalogue', catalogue)
 
 watch(() => terminal.isRunning, (running, wasRunning) => {
   if (wasRunning && !running) {
     refreshReleases()
   }
 })
-const showMissing = ref(true)
+
 const pending = computed(() => artistPending.value || releasesPending.value)
 
 const artistFolders = computed(() => {
@@ -127,7 +129,6 @@ const playAll = async () => {
     <div v-else-if="artist" class="flex flex-col gap-8">
       <ArtistHeader
         :artist="artist"
-        :releases="releases"
         :play-disabled="playingAll || !releases.length"
         class="min-w-0 flex-1"
         @play-all="playAll"
@@ -145,9 +146,8 @@ const playAll = async () => {
           </ButtonDropdown>
         </div>
       </ArtistHeader>
-      
+
       <ArtistReleases
-        v-model:show-missing="showMissing"
         :slug="artist.slug"
         :artist-name="artist.name"
         :releases="releases"

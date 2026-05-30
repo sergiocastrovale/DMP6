@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use cuid2::create_id;
 use sqlx::PgPool;
 
@@ -24,10 +25,24 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let mut inserted = 0usize;
     let now = chrono::Utc::now().naive_utc();
 
+    let linked_pairs: HashSet<(String, String)> = {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT id, "primaryArtistId" FROM "Artist" WHERE "primaryArtistId" IS NOT NULL"#,
+        )
+        .fetch_all(pool)
+        .await?;
+        rows.into_iter().map(|(child, parent)| {
+            if child < parent { (child, parent) } else { (parent, child) }
+        }).collect()
+    };
+
     for (id1, id2, mb1, mb2, tracks1, tracks2) in &rows {
         if let (Some(m1), Some(m2)) = (mb1, mb2) {
             if m1 != m2 { continue; }
         }
+
+        let pair_key = if id1 < id2 { (id1.clone(), id2.clone()) } else { (id2.clone(), id1.clone()) };
+        if linked_pairs.contains(&pair_key) { continue; }
 
         let (artist_a, artist_b) = if tracks1 >= tracks2 {
             (id1.as_str(), id2.as_str())

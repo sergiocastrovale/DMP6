@@ -308,6 +308,40 @@ async fn main() {
             .collect()
     };
 
+    // Expand with connected (linked) artists' folders when filtering
+    let is_filtered = !only.is_empty() || !from.is_empty() || !to.is_empty();
+    if is_filtered && !artist_folders.is_empty() && target_folders.is_none() {
+        let folder_names = artist_folders.clone();
+        let connected_folders: Vec<(String,)> = sqlx::query_as(
+            r#"SELECT DISTINCT SPLIT_PART(lr."folderPath", '/', 1)
+               FROM "Artist" ca
+               JOIN "Artist" pa ON ca."primaryArtistId" = pa.id
+               JOIN "LocalReleaseArtist" lra ON lra."artistId" = ca.id
+               JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
+               WHERE pa.name = ANY($1::text[])
+                 AND lr."folderPath" IS NOT NULL"#,
+        )
+        .bind(&folder_names)
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default();
+
+        let existing: HashSet<String> = artist_folders.iter().cloned().collect();
+        let mut added = 0usize;
+        for (folder,) in connected_folders {
+            if !folder.is_empty() && !existing.contains(&folder) {
+                let folder_path = std::path::Path::new(&music_dir).join(&folder);
+                if folder_path.is_dir() {
+                    artist_folders.push(folder);
+                    added += 1;
+                }
+            }
+        }
+        if added > 0 {
+            reporter.info(&format!("Including {} linked artist folder(s)", added));
+        }
+    }
+
     artist_folders.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
 
     // Resume: skip folders before the checkpoint
@@ -553,13 +587,13 @@ async fn main() {
         let mb_release_id_by_meta: HashMap<(String, i32, String), String> = {
             let mut map: HashMap<(String, i32, String), String> = HashMap::new();
             for track in &extracted {
-                if let Some(ref id) = track.mb_release_id {
+                if let Some(clean) = track.mb_release_id.as_deref().and_then(common::filters::sanitize_mb_id) {
                     let key = (
                         track.album.as_deref().unwrap_or("").to_lowercase(),
                         track.year.unwrap_or(0),
                         track.album_artist.as_deref().unwrap_or("").to_lowercase(),
                     );
-                    map.entry(key).or_insert_with(|| id.clone());
+                    map.entry(key).or_insert(clean);
                 }
             }
             map
@@ -567,13 +601,13 @@ async fn main() {
         let mb_release_group_id_by_meta: HashMap<(String, i32, String), String> = {
             let mut map: HashMap<(String, i32, String), String> = HashMap::new();
             for track in &extracted {
-                if let Some(ref id) = track.mb_release_group_id {
+                if let Some(clean) = track.mb_release_group_id.as_deref().and_then(common::filters::sanitize_mb_id) {
                     let key = (
                         track.album.as_deref().unwrap_or("").to_lowercase(),
                         track.year.unwrap_or(0),
                         track.album_artist.as_deref().unwrap_or("").to_lowercase(),
                     );
-                    map.entry(key).or_insert_with(|| id.clone());
+                    map.entry(key).or_insert(clean);
                 }
             }
             map
@@ -660,10 +694,12 @@ async fn main() {
                 track.year.unwrap_or(0),
                 track.album_artist.as_deref().unwrap_or("").to_lowercase(),
             );
-            let effective_release_id = track.mb_release_id.as_deref().or_else(|| {
+            let sanitized_release_id = track.mb_release_id.as_deref().and_then(common::filters::sanitize_mb_id);
+            let sanitized_rg_id = track.mb_release_group_id.as_deref().and_then(common::filters::sanitize_mb_id);
+            let effective_release_id = sanitized_release_id.as_deref().or_else(|| {
                 mb_release_id_by_meta.get(&meta_key).map(|s| s.as_str())
             });
-            let effective_rg_id = track.mb_release_group_id.as_deref().or_else(|| {
+            let effective_rg_id = sanitized_rg_id.as_deref().or_else(|| {
                 mb_release_group_id_by_meta.get(&meta_key).map(|s| s.as_str())
             });
 

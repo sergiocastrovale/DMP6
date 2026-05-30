@@ -67,6 +67,9 @@ model Artist {
   orphanIssues      IssueOrphanArtist[]  @relation("OrphanArtistIssue")
   duplicateAIssues  IssueDuplicateArtist[] @relation("DuplicateArtistA")
   duplicateBIssues  IssueDuplicateArtist[] @relation("DuplicateArtistB")
+  primaryArtistId   String?
+  primaryArtist     Artist?              @relation("ArtistPrimary", fields: [primaryArtistId], references: [id], onDelete: SetNull)
+  connectedArtists  Artist[]             @relation("ArtistPrimary")
 
   @@index([musicbrainzId])
   @@index([totalPlayCount])
@@ -75,6 +78,7 @@ model Artist {
   @@index([name]) // B-tree for ORDER BY name; trigram GIN index for ILIKE added via raw migration
   @@index([country])
   @@index([relatedOnly])
+  @@index([primaryArtistId])
 }
 
 // ---------------------------------------------------------------------------

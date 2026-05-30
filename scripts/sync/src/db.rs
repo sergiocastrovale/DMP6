@@ -272,6 +272,27 @@ pub async fn get_artist_genre_ids(
     rows.into_iter().map(|(id,)| id).collect()
 }
 
+pub async fn cleanup_empty_connected_artists(
+    pool: &PgPool,
+    mb_id: &str,
+    exclude_id: &str,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"DELETE FROM "Artist"
+           WHERE "musicbrainzId" = $1
+             AND id != $2
+             AND "primaryArtistId" IS NOT NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM "LocalReleaseArtist" WHERE "artistId" = "Artist".id
+             )"#,
+    )
+    .bind(mb_id)
+    .bind(exclude_id)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 // ---------------------------------------------------------------------------
 // Artist URL upsert
 // ---------------------------------------------------------------------------

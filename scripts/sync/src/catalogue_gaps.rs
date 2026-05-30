@@ -26,6 +26,7 @@ pub async fn fill_catalogue_gaps(
         r#"SELECT id, name, slug, "musicbrainzId"
            FROM "Artist"
            WHERE "relatedOnly" = false
+             AND "primaryArtistId" IS NULL
              AND "musicbrainzId" IS NOT NULL
              AND "musicbrainzId" != ''
            ORDER BY name"#,
