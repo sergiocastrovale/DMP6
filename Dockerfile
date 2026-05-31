@@ -117,8 +117,9 @@ COPY --from=scripts-builder /build/target/release/dissect /usr/local/bin/
 # Genre playlist config
 COPY scripts/playlists/genre-groups.json /app/genre-groups.json
 
-# refresh = index + sync (shell wrapper)
-RUN printf '#!/bin/sh\nindex "$@" && sync "$@"\n' > /usr/local/bin/refresh && chmod +x /usr/local/bin/refresh
+# refresh = index + sync (shell wrapper with artist ID piping)
+COPY refresh /usr/local/bin/refresh
+RUN chmod +x /usr/local/bin/refresh
 
 # Create mount point directories
 RUN mkdir -p /app/data/img/artists /app/data/img/releases /app/data/img/labs /app/data/dump
@@ -131,6 +132,7 @@ ENV NODE_ENV=production
 ENV NUXT_HOST=0.0.0.0
 ENV PORT=3000
 ENV PROJECT_ROOT=/app
+ENV SCRIPTS_DIR=/usr/local/bin
 
 EXPOSE 3000
 

@@ -57,6 +57,8 @@ struct SyncArgs {
     delete: bool,
     #[arg(long, help = "Fast pass: populate MISSING catalogue entries only (1 API call/artist)")]
     catalogue_gaps: bool,
+    #[arg(long, help = "Read artist IDs from file (one per line, used by refresh)")]
+    artist_ids: Option<String>,
     #[arg(long)]
     verbose: bool,
     /// Emit PROGRESS:{json} lines and plain output for the web terminal.
@@ -441,6 +443,8 @@ async fn main() {
         "Mode",
         if args.release.is_some() {
             "single release"
+        } else if args.artist_ids.is_some() {
+            "artist IDs from file"
         } else if args.overwrite {
             "overwrite (re-sync all matched)"
         } else {
@@ -449,6 +453,8 @@ async fn main() {
     );
     if let Some(ref release_id) = args.release {
         reporter.kv("Release", release_id);
+    } else if let Some(ref path) = args.artist_ids {
+        reporter.kv("Artist IDs file", path);
     } else if let Some(ref only) = args.only {
         reporter.kv("Filter", &format!("only '{}'", only));
     } else if args.from.is_some() || args.to.is_some() {
@@ -482,6 +488,31 @@ async fn main() {
                 release_lock(&pool).await;
                 std::process::exit(1);
             }
+        }
+    } else if let Some(ref ids_path) = args.artist_ids {
+        let content = std::fs::read_to_string(ids_path)
+            .unwrap_or_else(|e| panic!("Failed to read artist IDs file '{}': {}", ids_path, e));
+        let ids: Vec<String> = content.lines().filter(|l| !l.is_empty()).map(|l| l.to_string()).collect();
+        if ids.is_empty() {
+            vec![]
+        } else {
+            let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
+                sqlx::query_as(
+                    r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" WHERE id = ANY($1::text[])"#,
+                )
+                .bind(&ids)
+                .fetch_all(&pool)
+                .await
+                .expect("DB query failed");
+            rows.into_iter()
+                .map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
+                    id,
+                    name,
+                    slug,
+                    mb_id: mb_id.as_deref().and_then(sanitize_mb_id),
+                    has_image: image.is_some() || image_url.is_some(),
+                })
+                .collect()
         }
     } else if args.overwrite {
         let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
@@ -528,7 +559,7 @@ async fn main() {
     };
 
     // Expand with connected (linked) artists when filtering
-    let has_filter = args.only.is_some() || args.from.is_some() || args.to.is_some();
+    let has_filter = args.only.is_some() || args.from.is_some() || args.to.is_some() || args.artist_ids.is_some();
     if has_filter && !artists.is_empty() {
         let primary_ids: Vec<String> = artists.iter().map(|a| a.id.clone()).collect();
         let connected: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =

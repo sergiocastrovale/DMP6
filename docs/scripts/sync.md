@@ -71,6 +71,7 @@ cd scripts && cargo build --release -p sync
 | `--only-write-mb-to-files` | bool | false | Backfill DB-known MB IDs into file tags (no API calls), then exit |
 | `--verbose` | bool | false | Log skipped/already-synced releases |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
+| `--artist-ids` | String | - | Read artist IDs from file (one per line, used by refresh) |
 
 ## Output Modes
 

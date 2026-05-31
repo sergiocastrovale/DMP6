@@ -275,6 +275,10 @@ const formatFileSize = (bytes: number) => {
   <Dialog v-model="showInfoDialog" :title="infoTrack?.title ?? 'Track Info'" max-width="md">
     <template v-if="infoTrack">
       <dl class="space-y-3 text-sm">
+        <div>
+          <dt class="text-xs text-ink-2">Track ID</dt>
+          <dd class="font-mono text-xs text-ink-2">{{ infoTrack.id }}</dd>
+        </div>
         <div v-if="infoTrack.filePath">
           <dt class="text-xs text-ink-2">File path</dt>
           <dd class="font-mono text-xs text-ink-2 break-all">{{ infoTrack.filePath }}</dd>

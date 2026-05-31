@@ -97,8 +97,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./index                       # Index local files (extract metadata, upsert to DB)
 ./sync                        # MusicBrainz sync (artists where lastIndexedAt > lastSyncedAt)
 ./index && ./sync             # Full workflow
-./refresh                     # Shorthand: ./index && ./sync with same args
-./refresh --only "Name"       # Refresh specific artist
+./refresh                     # Shorthand: index all + sync all pending
+./refresh --only "Name"       # Refresh specific artist (pipes artist IDs from index to sync)
 ./refresh --release "clxxx"   # Refresh single release (re-index + re-sync)
 ./index --only "Name"         # Index single artist (prefix match)
 ./index --only "Name" --exact # Index exact artist (no prefix matching)
@@ -109,6 +109,7 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./index --folders "Artist/Album"   # Re-index exact folder paths
 ./index --release "clxxx"     # Re-index single release by LocalRelease ID
 ./index --delete              # Delete local data for matched artists
+./index --emit-artist-ids f   # Write processed artist IDs to file (used by refresh)
 ./sync --only "Name" --exact  # Sync exact artist
 ./sync --only "Name" --overwrite   # Force re-sync
 ./sync --release "clxxx"      # Re-sync single release
@@ -119,6 +120,7 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./sync --only-write-mb-to-files --only x # Backfill for specific artist
 ./sync --catalogue-gaps       # Fast pass: populate MISSING catalogue entries (1 API/artist)
 ./sync --catalogue-gaps --overwrite  # Re-fetch all MISSING entries from scratch
+./sync --artist-ids file      # Sync artists by ID file, one per line (used by refresh)
 
 # Audit & Fix
 ./audit                       # Detect metadata issues → write to DB (all types)

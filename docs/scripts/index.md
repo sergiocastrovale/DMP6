@@ -50,6 +50,7 @@ cd scripts && cargo build --release -p index
 | `--threads` | usize | 8 | Rayon thread count for parallel extraction |
 | `--music-dir` | String | - | Override MUSIC_DIR from env |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
+| `--emit-artist-ids` | String | - | Write processed artist IDs to file (one per line, used by refresh) |
 
 ## Output Modes
 

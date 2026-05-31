@@ -48,6 +48,10 @@ const { releaseImage } = useImageUrl()
         </div>
 
         <dl class="flex-1 space-y-3 text-sm">
+          <div>
+            <dt class="text-xs text-ink-2">Release ID</dt>
+            <dd class="font-mono text-xs text-ink-2">{{ release.id }}</dd>
+          </div>
           <div v-if="release.folderPath">
             <dt class="text-xs text-ink-2">Folder path</dt>
             <dd class="font-mono text-xs text-ink-2">{{ release.folderPath }}</dd>

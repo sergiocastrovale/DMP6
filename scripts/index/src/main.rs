@@ -89,6 +89,9 @@ struct IndexArgs {
 
     #[arg(long, help = "Emit PROGRESS:{json} lines for the web terminal (default: pretty console)")]
     web: bool,
+
+    #[arg(long, help = "Write processed artist IDs to file (one per line, used by refresh)")]
+    emit_artist_ids: Option<String>,
 }
 
 fn has_filter(args: &IndexArgs) -> bool {
@@ -419,6 +422,7 @@ async fn main() {
     let mut error_total: u64 = 0;
     let scanned_folders: HashSet<String> = artist_folders.iter().cloned().collect();
     let mut mb_id_to_image_hash: HashMap<String, String> = HashMap::new();
+    let mut all_artist_ids: HashSet<String> = HashSet::new();
 
     // -------------------------------------------------------------------------
     // Main folder loop
@@ -1198,6 +1202,7 @@ async fn main() {
             propagate_mb_artist_id(&pool, aid).await.ok();
         }
 
+        all_artist_ids.extend(folder_artist_ids.iter().cloned());
         let artist_ids_vec: Vec<String> = folder_artist_ids.into_iter().collect();
         if folder_new > 0 || folder_updated > 0 || deleted_tracks > 0 {
             update_last_indexed_at(&pool, &artist_ids_vec).await.ok();
@@ -1450,6 +1455,13 @@ async fn main() {
             "Final cleanup: {} empty release(s), {} orphaned MB release(s), {} orphan artist(s).",
             rel_del, mb_del, art_del
         ));
+    }
+
+    if let Some(ref path) = args.emit_artist_ids {
+        let content = all_artist_ids.iter().cloned().collect::<Vec<_>>().join("\n");
+        if let Err(e) = std::fs::write(path, content) {
+            reporter.err(&format!("Failed to write artist IDs to {}: {}", path, e));
+        }
     }
 
     clear_index_checkpoint(&pool).await.ok();

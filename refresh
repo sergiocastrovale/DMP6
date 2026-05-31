@@ -1,4 +1,50 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+resolve_bin() {
+  local name="$1"
+  local script_dir="$2"
+  if [ -x "$script_dir/$name" ]; then
+    echo "$script_dir/$name"
+  else
+    command -v "$name"
+  fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-"$SCRIPT_DIR/index" "$@" && "$SCRIPT_DIR/sync" "$@"
+INDEX_BIN=$(resolve_bin index "$SCRIPT_DIR")
+SYNC_BIN=$(resolve_bin sync "$SCRIPT_DIR")
+
+HAS_SCOPE=false
+for arg in "$@"; do
+  case "$arg" in
+    --only=*|--only|-o|--from=*|--from|-f|--to=*|--to|-t|--folders=*|--folders) HAS_SCOPE=true ;;
+  esac
+done
+
+if $HAS_SCOPE; then
+  IDS_FILE=$(mktemp /tmp/dmp-refresh-XXXXXX)
+  trap 'rm -f "$IDS_FILE"' EXIT
+
+  "$INDEX_BIN" "$@" --emit-artist-ids "$IDS_FILE"
+
+  SYNC_ARGS=()
+  SKIP_NEXT=false
+  for arg in "$@"; do
+    if $SKIP_NEXT; then SKIP_NEXT=false; continue; fi
+    case "$arg" in
+      --only=*|--from=*|--to=*|--folders=*) ;;
+      --only|-o|--from|-f|--to|-t|--folders) SKIP_NEXT=true ;;
+      --exact) ;;
+      *) SYNC_ARGS+=("$arg") ;;
+    esac
+  done
+
+  if [ -s "$IDS_FILE" ]; then
+    "$SYNC_BIN" "${SYNC_ARGS[@]}" --artist-ids "$IDS_FILE"
+  else
+    echo "No artists to sync."
+  fi
+else
+  "$INDEX_BIN" "$@" && "$SYNC_BIN" "$@"
+fi
