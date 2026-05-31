@@ -26,17 +26,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const { imageDir } = useRuntimeConfig()
-  const workDir = process.env.PROJECT_ROOT || process.cwd()
+  const workDir = process.env.PROJECT_ROOT!
+  const scriptsDir = process.env.SCRIPTS_DIR || workDir
   const absImageDir = resolve(imageDir)
   const sourceDir = join(absImageDir, 'releases')
   const outputDir = join(absImageDir, 'labs')
 
-  const candidates = [
-    join(workDir, 'mosaic'),
-    join(workDir, '..', 'mosaic'),
-    'mosaic',
-  ]
-  const binaryPath = candidates.find((p) => p === 'mosaic' || existsSync(p))!
+  const binaryPath = join(scriptsDir, 'mosaic')
 
   const releases = await prisma.$queryRaw<{ image: string; year: number | null }[]>`
     SELECT DISTINCT ON (

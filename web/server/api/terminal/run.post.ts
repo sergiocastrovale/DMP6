@@ -63,8 +63,10 @@ export default defineEventHandler(async (event) => {
     await requirePermission(event, perm)
   }
 
-  const binary = command
-  const workDir = process.env.PROJECT_ROOT || '/app'
+  const workDir = process.env.PROJECT_ROOT!
+  const scriptsDir = process.env.SCRIPTS_DIR || workDir
+  const binaryName = command.replace(/^\.\//, '')
+  const binary = `${scriptsDir}/${binaryName}`
 
   if (WEB_MODE_COMMANDS.has(command) && !args.includes('--web')) {
     args = [...args, '--web']
