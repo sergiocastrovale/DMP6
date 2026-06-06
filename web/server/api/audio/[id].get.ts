@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { getCachedSettings } from '~/server/utils/settingsCache'
 import { requirePermission } from '~/server/utils/permissions'
+import { buildEtag, mimeForFile, parseRangeHeader } from '~/server/utils/audioRange'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'play.view')
@@ -37,7 +38,7 @@ export default defineEventHandler(async (event) => {
   const fileSize = stat.size
 
   // ETag + Cache-Control: audio files are immutable at a given ID
-  const etag = `"${stat.size}-${stat.mtimeMs}"`
+  const etag = buildEtag(stat.size, stat.mtimeMs)
   setResponseHeader(event, 'ETag', etag)
   setResponseHeader(event, 'Cache-Control', 'public, max-age=86400, immutable')
 
@@ -47,26 +48,11 @@ export default defineEventHandler(async (event) => {
     return ''
   }
 
-  const ext = filePath.split('.').pop()?.toLowerCase() || 'mp3'
-  const mimeTypes: Record<string, string> = {
-    mp3: 'audio/mpeg',
-    flac: 'audio/flac',
-    m4a: 'audio/mp4',
-    aac: 'audio/aac',
-    ogg: 'audio/ogg',
-    opus: 'audio/opus',
-    wav: 'audio/wav',
-  }
-  const contentType = mimeTypes[ext] || 'audio/mpeg'
+  const contentType = mimeForFile(filePath)
+  const range = parseRangeHeader(getRequestHeader(event, 'range'), fileSize)
 
-  const rangeHeader = getRequestHeader(event, 'range')
-
-  if (rangeHeader) {
-    const parts = rangeHeader.replace(/bytes=/, '').split('-')
-    const start = parseInt(parts[0]!, 10)
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
-    const chunkSize = end - start + 1
-
+  if (range) {
+    const { start, end, chunkSize } = range
     setResponseStatus(event, 206)
     setResponseHeaders(event, {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,

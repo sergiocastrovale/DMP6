@@ -1,0 +1,72 @@
+name: web-tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm exec nuxi typecheck
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: dmp
+          POSTGRES_PASSWORD: dmp
+          POSTGRES_DB: dmp_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://dmp:dmp@localhost:5432/dmp_test
+      MUSIC_DIR: /tmp/music
+      NODE_ENV: production
+      BASE_URL: http://localhost:3000
+      TEST_USER: admin
+      TEST_PASS: admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: mkdir -p /tmp/music
+      - run: pnpm db:generate
+      - run: pnpm db:push
+      - run: pnpm db:seed
+      # Seed creates admin/admin with mustChangePassword=true (blocks the API). Clear it for tests.
+      - run: node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.user.updateMany({where:{username:'admin'},data:{mustChangePassword:false}}).then(()=>p.\$disconnect())"
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report

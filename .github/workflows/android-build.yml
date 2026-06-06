@@ -1,0 +1,53 @@
+name: android-build
+
+# Builds an installable APK pointing at a chosen HTTPS origin. Run once per variant:
+#   - public  -> Cloudflare Tunnel domain
+#   - tailnet -> https://<host>.<tailnet>.ts.net
+# Set server_url to that origin. See docs/pwa_networking.md.
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: HTTPS origin the app loads (server.url)
+        required: true
+      app_id:
+        description: Android applicationId
+        required: false
+        default: net.dmp.app
+      variant_name:
+        description: Artifact label (e.g. public, tailnet)
+        required: false
+        default: public
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      MOBILE_SERVER_URL: ${{ inputs.server_url }}
+      MOBILE_APP_ID: ${{ inputs.app_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: android-actions/setup-android@v3
+
+      - name: Scaffold + build APK
+        working-directory: mobile
+        run: |
+          pnpm install
+          npx cap add android
+          node scripts/apply-android-overrides.mjs
+          cd android && ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmp-${{ inputs.variant_name }}-apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk

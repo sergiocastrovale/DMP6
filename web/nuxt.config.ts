@@ -6,9 +6,66 @@ export default defineNuxtConfig({
 
   modules: [
     '@pinia/nuxt',
+    '@vite-pwa/nuxt',
   ],
   vite: {
     plugins: [tailwindcss() as any],
+  },
+
+  pwa: {
+    registerType: 'autoUpdate',
+    manifest: {
+      name: 'DMP',
+      short_name: 'DMP',
+      description: 'Personal music library',
+      theme_color: '#000000',
+      background_color: '#000000',
+      display: 'standalone',
+      orientation: 'portrait',
+      start_url: '/',
+      scope: '/',
+      icons: [
+        { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+        { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+        { src: '/maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+    },
+    workbox: {
+      // SSR + cookie auth: navigations MUST hit the server (login redirect, per-user HTML).
+      // No app-shell fallback, and never precache HTML.
+      navigateFallback: undefined,
+      globPatterns: ['**/*.{js,css,woff2}'],
+      runtimeCaching: [
+        {
+          // Never cache the API: auth-protected, mutating, and audio is Range/206 (corrupts seeking).
+          urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+          handler: 'NetworkOnly',
+        },
+        {
+          // Album/artist artwork is immutable - safe to cache.
+          urlPattern: ({ url }) => url.pathname.startsWith('/img/'),
+          handler: 'CacheFirst',
+          options: {
+            cacheName: 'dmp-images',
+            expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 30 },
+          },
+        },
+        {
+          urlPattern: ({ url }) => url.origin === 'https://fonts.googleapis.com' || url.origin === 'https://fonts.gstatic.com',
+          handler: 'CacheFirst',
+          options: {
+            cacheName: 'dmp-fonts',
+            expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+          },
+        },
+      ],
+    },
+    client: {
+      installPrompt: true,
+    },
+    devOptions: {
+      enabled: false,
+    },
   },
 
   css: ['~/assets/css/main.css'],

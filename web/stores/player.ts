@@ -29,6 +29,29 @@ export const usePlayerStore = defineStore('player', () => {
   let scrobbleStartTime = 0
   let scrobbled = false
 
+  const { resolve } = useImageUrl()
+  const nativeBridge = useNativeBridge()
+
+  const media = createMediaSession({
+    isPlaying: () => isPlaying.value,
+    currentTime: () => currentTime.value,
+    duration: () => duration.value,
+    play: () => { if (!isPlaying.value) togglePlay() },
+    pause: () => { if (isPlaying.value) togglePlay() },
+    next: () => { next() },
+    previous: () => { previous() },
+    seek: (time: number) => { seek(time) },
+  })
+
+  function trackMeta(track: PlayerTrack): MediaSessionTrackMeta {
+    return {
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      artwork: resolve(track.releaseImage, track.releaseImageUrl, 'releases'),
+    }
+  }
+
   function checkScrobble() {
     if (scrobbled || !currentTrack.value) return
     const dur = duration.value
@@ -49,6 +72,7 @@ export const usePlayerStore = defineStore('player', () => {
       audio.addEventListener('timeupdate', () => {
         currentTime.value = audio!.currentTime
         checkScrobble()
+        media.updatePosition()
       })
       audio.addEventListener('loadedmetadata', () => {
         duration.value = audio!.duration
@@ -58,8 +82,10 @@ export const usePlayerStore = defineStore('player', () => {
       })
       audio.addEventListener('error', () => {
         isPlaying.value = false
+        media.setPlaybackState('paused')
       })
       audio.volume = isMuted.value ? 0 : volume.value
+      media.registerHandlers()
     }
     return audio!
   }
@@ -72,6 +98,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
     currentTrack.value = track
     isVisible.value = true
+    media.setMetadata(trackMeta(track))
 
     // Set queue if provided
     if (newQueue) {
@@ -83,9 +110,12 @@ export const usePlayerStore = defineStore('player', () => {
     a.load()
     scrobbled = false
     scrobbleStartTime = Date.now()
+    media.resetPositionThrottle()
     try {
       await a.play()
       isPlaying.value = true
+      media.setPlaybackState('playing')
+      nativeBridge.startPlaybackService(`${track.artist} - ${track.title}`)
       $fetch(`/api/tracks/${track.id}/play`, { method: 'POST' }).catch(() => {})
       $fetch('/api/scrobble/now-playing', {
         method: 'POST',
@@ -94,6 +124,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
     catch {
       isPlaying.value = false
+      media.setPlaybackState('paused')
     }
   }
 
@@ -103,9 +134,13 @@ export const usePlayerStore = defineStore('player', () => {
     if (isPlaying.value) {
       a.pause()
       isPlaying.value = false
+      media.setPlaybackState('paused')
     }
     else {
-      a.play().then(() => { isPlaying.value = true }).catch(() => {})
+      a.play().then(() => {
+        isPlaying.value = true
+        media.setPlaybackState('playing')
+      }).catch(() => {})
     }
   }
 
@@ -135,6 +170,8 @@ export const usePlayerStore = defineStore('player', () => {
     a.pause()
     isPlaying.value = false
     isVisible.value = false
+    media.setPlaybackState('paused')
+    nativeBridge.stopPlaybackService()
   }
 
   function setQueue(tracks: PlayerTrack[], startTrack?: PlayerTrack) {
@@ -399,6 +436,8 @@ export const usePlayerStore = defineStore('player', () => {
           if (track) {
             currentTrack.value = track
             isVisible.value = true
+            media.setMetadata(trackMeta(track))
+            media.setPlaybackState('paused')
             // Restore position but don't auto-play
             if (state.currentTime && state.currentTime > 0) {
               const a = getAudio()
