@@ -166,7 +166,7 @@ When browsing reveals artists with bad names (track numbers, paths, garbage):
 
 ### Error Logs
 
-On the NAS, script error logs are at: `docker exec dmp cat /app/errors.log`
+On the NAS, script error logs are at: `sudo docker exec dmp cat /app/errors.log`
 
 ## API Endpoints
 

@@ -95,8 +95,8 @@ DMP_PORT=3000
 
 ```bash
 ssh nas
-docker ps
-docker inspect --format='{{.State.Health.Status}}' dmp
+sudo docker ps
+sudo docker inspect --format='{{.State.Health.Status}}' dmp
 curl http://localhost:3000/api/health
 ```
 
@@ -116,10 +116,10 @@ scp "dump/$(ls -t dump/ | head -1)" nas:path/to/dmp/dump/
 # NAS
 ssh nas
 cd path/to/dmp
-docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "DROP DATABASE IF EXISTS dmp;"
-docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "CREATE DATABASE dmp OWNER dmp;"
-gunzip -c "dump/$(ls -t dump/ | head -1)" | docker exec -i ix-postgres-postgres-1 psql -U dmp -d dmp
-docker restart dmp
+sudo docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "DROP DATABASE IF EXISTS dmp;"
+sudo docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "CREATE DATABASE dmp OWNER dmp;"
+gunzip -c "dump/$(ls -t dump/ | head -1)" | sudo docker exec -i ix-postgres-postgres-1 psql -U dmp -d dmp
+sudo docker restart dmp
 ```
 
 **Option B - Fresh index + sync** (takes several hours on a large library):
@@ -193,9 +193,9 @@ If the NAS reboots mid-index, resume with `./index --resume`.
 ## 11. Monitoring
 
 ```bash
-docker logs -f dmp
-docker stats dmp
-docker restart dmp
+sudo docker logs -f dmp
+sudo docker stats dmp
+sudo docker restart dmp
 ```
 
 ---
@@ -222,9 +222,9 @@ for setting in \
   "max_parallel_workers_per_gather = 4" \
   "max_connections = 50"
 do
-  docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -c "ALTER SYSTEM SET $setting;"
+  sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -c "ALTER SYSTEM SET $setting;"
 done
-docker restart ix-postgres-postgres-1
+sudo docker restart ix-postgres-postgres-1
 ```
 
 Sized for 32 GB RAM. Settings survive container recreation (written to `postgresql.auto.conf`).

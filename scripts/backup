@@ -63,7 +63,7 @@ if [ "$DO_DB" = true ]; then
   echo "--- Database backup ---"
   echo "Dumping on NAS → ${NAS_DUMP_DIR}/${DB_FILE}"
 
-  REMOTE_DUMP_CMD="docker exec -i ${POSTGRES_CONTAINER} pg_dump --no-owner --no-acl --clean --if-exists -U ${DB_USER} ${DB_NAME} | gzip -9 > ${NAS_DUMP_DIR}/${DB_FILE}"
+  REMOTE_DUMP_CMD="set -o pipefail; sudo docker exec -i ${POSTGRES_CONTAINER} pg_dump --no-owner --no-acl --clean --if-exists -U ${DB_USER} ${DB_NAME} | gzip -9 > ${NAS_DUMP_DIR}/${DB_FILE}"
 
   set +e
   ssh "$SSH_HOST" "$REMOTE_DUMP_CMD"

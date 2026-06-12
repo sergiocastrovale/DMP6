@@ -42,7 +42,7 @@ echo "--- Transferring to NAS ---"
 scp_cmd "$ARCHIVE" "$NAS_USER@$NAS_HOST:/tmp/dmp-image.tar.gz"
 
 echo "--- Loading image on NAS ---"
-ssh_cmd "docker load < /tmp/dmp-image.tar.gz && rm /tmp/dmp-image.tar.gz"
+ssh_cmd "sudo docker load < /tmp/dmp-image.tar.gz && rm /tmp/dmp-image.tar.gz"
 rm "$ARCHIVE"
 echo ""
 
@@ -57,14 +57,14 @@ echo "--- Ensuring data dir permissions ---"
 ssh_cmd "mkdir -p $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump && chmod 777 $NAS_DEPLOY_PATH/img $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump"
 
 echo "--- Restarting container ---"
-ssh_cmd "cd $NAS_DEPLOY_PATH && docker compose up -d web"
+ssh_cmd "cd $NAS_DEPLOY_PATH && sudo docker compose up -d web"
 
 echo "--- Applying DB schema ---"
-ssh_cmd "cd $NAS_DEPLOY_PATH && sleep 3 && docker compose exec -T web prisma db push --schema=prisma/schema.prisma --accept-data-loss 2>&1 || true"
+ssh_cmd "cd $NAS_DEPLOY_PATH && sleep 3 && sudo docker compose exec -T web prisma db push --schema=prisma/schema.prisma --accept-data-loss 2>&1 || true"
 
 # Clean up old images (after restart so the old image is no longer in use)
 echo "--- Cleaning up old images ---"
-ssh_cmd "docker image prune -f 2>/dev/null || true"
+ssh_cmd "sudo docker image prune -f 2>/dev/null || true"
 echo ""
 
 echo "=== Done ==="

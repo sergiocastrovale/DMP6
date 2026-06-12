@@ -119,9 +119,9 @@ After `REFRESH MATERIALIZED VIEW CONCURRENTLY dmp_timeline`, all timeline keys a
 If you need to force-clear all DMP cache keys (e.g. after a full re-index), run on the NAS:
 
 ```bash
-docker exec dmp-redis redis-cli KEYS "dmp:*" | xargs docker exec -i dmp-redis redis-cli DEL
+sudo docker exec dmp-redis redis-cli KEYS "dmp:*" | xargs sudo docker exec -i dmp-redis redis-cli DEL
 # or wipe everything:
-docker exec dmp-redis redis-cli FLUSHDB
+sudo docker exec dmp-redis redis-cli FLUSHDB
 ```
 
 ---

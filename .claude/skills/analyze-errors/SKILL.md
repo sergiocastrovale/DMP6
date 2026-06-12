@@ -12,7 +12,7 @@ Fetch and analyze error logs from the NAS Docker container. Groups errors by cat
 
 ## Steps
 
-1. **Fetch log**: `ssh nas "docker exec dmp cat /app/errors.log"`
+1. **Fetch log**: `ssh nas "sudo docker exec dmp cat /app/errors.log"`
 2. **Identify last session**: Find the most recent contiguous block of log entries (gap > 2 hours = new session boundary)
 3. **Categorize errors** into these known types:
 

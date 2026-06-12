@@ -188,5 +188,5 @@ Run hash stored in `Settings.syncRunHash`. On restart, artists already processed
 ## Running on NAS
 
 ```bash
-docker exec dmp sync --from=e --to=fz
+sudo docker exec dmp sync --from=e --to=fz
 ```

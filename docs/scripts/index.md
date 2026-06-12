@@ -119,5 +119,5 @@ If a related artist later appears as albumArtist on another release, `relatedOnl
 ## Running on NAS
 
 ```bash
-docker exec dmp index --from=e --to=fz
+sudo docker exec dmp index --from=e --to=fz
 ```

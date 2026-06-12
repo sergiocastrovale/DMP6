@@ -82,7 +82,7 @@ Set `CLOUDFLARE_TUNNEL_TOKEN` in `.env` to your tunnel token. The `cloudflared` 
 ```bash
 # On the NAS
 cd path/to/dmp
-docker compose ps
-docker compose logs -f web
-docker compose logs -f cloudflared
+sudo docker compose ps
+sudo docker compose logs -f web
+sudo docker compose logs -f cloudflared
 ```

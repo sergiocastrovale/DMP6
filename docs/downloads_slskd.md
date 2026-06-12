@@ -77,7 +77,7 @@ Notes:
 ### 4. Start slskd
 
 ```bash
-ssh nas "cd path/to/dmp && docker compose up -d slskd"
+ssh nas "cd path/to/dmp && sudo docker compose up -d slskd"
 ```
 
 slskd auto-restarts on reboot (`restart: unless-stopped` in compose), so this is a one-time command - that's what "daemon" means in a Docker context.
@@ -86,14 +86,14 @@ slskd auto-restarts on reboot (`restart: unless-stopped` in compose), so this is
 
 ```bash
 # Check the container is healthy
-ssh nas "docker ps | grep dmp-slskd"
+ssh nas "sudo docker ps | grep dmp-slskd"
 
 # Test the REST API
 ssh nas "curl -s -H 'X-API-Key: YOUR_KEY' http://localhost:5030/api/v0/server"
 # Expected: {"state":"Connected, LoggedIn","isConnected":true,...}
 
 # Check slskd logs for successful login
-ssh nas "docker logs dmp-slskd 2>&1 | tail -10"
+ssh nas "sudo docker logs dmp-slskd 2>&1 | tail -10"
 # Expected: "Logged in to the Soulseek server as <username>"
 ```
 
@@ -146,9 +146,9 @@ Results are also sorted by upload speed (fastest first, free-slot peers prioriti
 
 | Task | Command |
 |------|---------|
-| Check status | `ssh nas "docker ps \| grep dmp-slskd"` |
-| View logs | `ssh nas "docker logs -f dmp-slskd"` |
-| Restart | `ssh nas "docker restart dmp-slskd"` |
-| Stop | `ssh nas "docker stop dmp-slskd"` |
-| Update to latest | `ssh nas "docker compose -f path/to/dmp/docker-compose.yml pull slskd && docker compose -f path/to/dmp/docker-compose.yml up -d slskd"` |
+| Check status | `ssh nas "sudo docker ps \| grep dmp-slskd"` |
+| View logs | `ssh nas "sudo docker logs -f dmp-slskd"` |
+| Restart | `ssh nas "sudo docker restart dmp-slskd"` |
+| Stop | `ssh nas "sudo docker stop dmp-slskd"` |
+| Update to latest | `ssh nas "sudo docker compose -f path/to/dmp/docker-compose.yml pull slskd && sudo docker compose -f path/to/dmp/docker-compose.yml up -d slskd"` |
 | Browse web UI | `http://<nas-ip>:5030` |
