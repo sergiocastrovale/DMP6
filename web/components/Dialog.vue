@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { X } from 'lucide-vue-next'
+
 const props = withDefaults(defineProps<{
   modelValue: boolean
   title: string
@@ -43,12 +45,7 @@ const maxWidthClass = computed(() => {
         <div class="border-b border-rule px-7 py-5">
           <div class="flex items-center justify-between">
             <h2 class="block w-full text-lg font-semibold text-ink">{{ title }}</h2>
-            <button class="text-ink-2 hover:text-ink transition-colors cursor-pointer" @click="close">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+            <UiButton variant="ghost" icon-only :icon="X" aria-label="Close" @click="close" />
           </div>
           <h3 v-if="subtitle" class="text-sm text-ink-2">{{ subtitle }}</h3>
         </div>

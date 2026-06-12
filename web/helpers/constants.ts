@@ -1,5 +1,6 @@
 export const maxGenres = 5
 export const SKELETON_GRID_SIZE = 10
+export const SESSION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
 
 export const scanActions = [
   { id: 'check', icon: 'Search', text: 'Check for new files', subtext: 'Index new files & sync' },

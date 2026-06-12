@@ -156,9 +156,9 @@ const unfavoriteTrack = async (trackId: string) => {
         <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
           <LucideDisc class="mb-3 size-12 opacity-50" />
           <p>No favorite releases yet</p>
-          <NuxtLink to="/browse" class="mt-4 text-sm text-accent hover:text-accent transition-colors">
+          <UiButton variant="secondary" size="sm" to="/browse" class="mt-4">
             Browse releases
-          </NuxtLink>
+          </UiButton>
         </div>
       </div>
       <FavoritesTrackTable

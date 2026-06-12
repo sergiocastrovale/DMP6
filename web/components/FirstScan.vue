@@ -86,14 +86,15 @@ onMounted(fetchStatus)
           </div>
         </button>
 
-        <button
+        <UiButton
           v-if="terminal.isRunning"
-          class="flex items-center justify-center gap-1.5 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
+          variant="danger"
+          size="sm"
+          :icon="Square"
           @click="terminal.stop()"
         >
-          <Square :size="12" />
           Stop
-        </button>
+        </UiButton>
 
         <div
           v-if="staleLock"

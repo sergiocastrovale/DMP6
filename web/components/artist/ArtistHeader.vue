@@ -56,15 +56,9 @@ const statsLine = computed(() => {
         <Genres :genres="artist.genres" @more="showAllGenres = true" />
 
         <div>
-          <button
-            type="button"
-            :disabled="playDisabled"
-            class="mt-2 inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-            @click="emit('playAll')"
-          >
-            <Play :size="14" fill="currentColor" />
-            <span>Play all</span>
-          </button>
+          <UiButton class="mt-2" :icon="Play" icon-class="fill-current" :disabled="playDisabled" @click="emit('playAll')">
+            Play all
+          </UiButton>
         </div>
       </div>
 

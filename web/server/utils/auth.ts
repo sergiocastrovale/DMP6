@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
 
-const TTL = 7 * 24 * 60 * 60 * 1000
+const TTL = SESSION_MAX_AGE_SECONDS * 1000
 const SECRET = process.env.SESSION_SECRET ?? 'dmp-insecure-dev-secret'
 
 type Payload = { userId: number; exp: number; ph: string }

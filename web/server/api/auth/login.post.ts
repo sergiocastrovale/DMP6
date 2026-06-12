@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { createSession } from '~/server/utils/auth'
+import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
 import { verifyPassword } from '~/server/utils/password'
 
 export default defineEventHandler(async (event) => {
@@ -26,7 +27,7 @@ export default defineEventHandler(async (event) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: SESSION_MAX_AGE_SECONDS,
     path: '/',
   })
 

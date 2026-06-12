@@ -65,20 +65,12 @@ async function create() {
         />
       </div>
       <div class="flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-2 hover:bg-bg-2 transition-colors"
-          @click="show = false"
-        >
+        <UiButton variant="ghost" @click="show = false">
           Cancel
-        </button>
-        <button
-          type="submit"
-          class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent transition-colors disabled:opacity-50"
-          :disabled="creating || !name.trim()"
-        >
-          {{ creating ? 'Creating...' : 'Create' }}
-        </button>
+        </UiButton>
+        <UiButton type="submit" :loading="creating" :disabled="!name.trim()">
+          Create
+        </UiButton>
       </div>
     </form>
   </Dialog>

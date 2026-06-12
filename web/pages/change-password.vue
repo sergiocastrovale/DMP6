@@ -73,13 +73,9 @@ const handleSubmit = async () => {
 
         <p v-if="error" class="text-center text-sm text-red-400">{{ error }}</p>
 
-        <button
-          type="submit"
-          :disabled="loading"
-          class="w-full rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent disabled:opacity-50"
-        >
-          {{ loading ? 'Changing…' : 'Change Password' }}
-        </button>
+        <UiButton type="submit" block :loading="loading">
+          Change Password
+        </UiButton>
       </form>
     </div>
   </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Activity, ChevronRight, Loader2 } from 'lucide-vue-next'
+import { Activity, ChevronRight } from 'lucide-vue-next'
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { IssueType } from '~/types/issues'
@@ -61,15 +61,9 @@ function formatRelative(date: string): string {
           ? `Last audit: ${formatRelative(issuesStore.summary.lastAudit.startedAt)}`
           : (!issuesStore.summaryLoading ? 'No audit has been run yet' : undefined)"
       >
-        <button
-          :disabled="terminal.isRunning"
-          class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-          @click="runAudit"
-        >
-          <Loader2 v-if="terminal.isRunning" :size="15" class="animate-spin" />
-          <Activity v-else :size="15" />
+        <UiButton :icon="Activity" :loading="terminal.isRunning" @click="runAudit">
           Run Audit
-        </button>
+        </UiButton>
       </PageTitle>
     </template>
 

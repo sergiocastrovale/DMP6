@@ -23,22 +23,12 @@ const terminal = useTerminalStore()
     >
       <span class="text-sm text-ink-2">{{ count }} row{{ count !== 1 ? 's' : '' }} selected</span>
       <div class="flex items-center gap-3">
-        <button
-          :disabled="loading"
-          @click="emit('revert', 'undo')"
-          class="flex items-center gap-2 rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent disabled:opacity-50"
-        >
-          <Undo2 :size="15" />
+        <UiButton :icon="Undo2" :loading="loading" @click="emit('revert', 'undo')">
           Undo
-        </button>
-        <button
-          :disabled="loading"
-          @click="emit('revert', 'undo-resolved')"
-          class="flex items-center gap-2 rounded border border-rule bg-bg-2 px-4 py-2 text-sm font-medium text-ink-2 transition-colors hover:bg-bg-3 disabled:opacity-50"
-        >
-          <Undo2 :size="15" />
+        </UiButton>
+        <UiButton variant="secondary" :icon="Undo2" :loading="loading" @click="emit('revert', 'undo-resolved')">
           Undo (keep resolved)
-        </button>
+        </UiButton>
       </div>
     </div>
   </Transition>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Compass, Play, RefreshCw } from 'lucide-vue-next'
+import { Compass, Play } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 
 useHead({ title: 'Explore' })
@@ -27,15 +27,9 @@ const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hyb
 
     <!-- Explore Button -->
     <div class="mt-6 flex justify-center">
-      <button
-        class="flex items-center gap-2.5 rounded-xl bg-accent px-8 py-3 text-lg font-bold text-accent-ink transition-all hover:bg-accent active:scale-95 disabled:opacity-50 disabled:hover:bg-accent disabled:active:scale-100"
-        :disabled="isLoading"
-        @click="explore"
-      >
-        <Play v-if="!isLoading" :size="22" class="fill-current" />
-        <RefreshCw v-else :size="22" class="animate-spin" />
-        {{ isLoading ? 'Finding...' : 'Explore' }}
-      </button>
+      <UiButton size="lg" :icon="Play" icon-class="fill-current" :loading="isLoading" @click="explore">
+        Explore
+      </UiButton>
     </div>
 
     <!-- Error -->

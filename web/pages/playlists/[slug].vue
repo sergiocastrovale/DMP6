@@ -163,9 +163,9 @@ onMounted(() => loadPlaylist())
     <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
       <LucideListMusic class="mb-3 size-12 opacity-50" />
       <p>Playlist not found</p>
-      <NuxtLink to="/playlists" class="mt-4 text-sm text-accent hover:text-accent transition-colors">
+      <UiButton variant="secondary" size="sm" to="/playlists" class="mt-4">
         Back to playlists
-      </NuxtLink>
+      </UiButton>
     </div>
 
     <Teleport to="body">

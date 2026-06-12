@@ -8,8 +8,10 @@ const loading = ref(false)
 
 const { login } = useAuth()
 
-async function handleSubmit() {
-  if (!username.value || !password.value) return
+const canSubmit = computed(() => !!username.value && !!password.value && !loading.value)
+
+const handleSubmit = async () => {
+  if (!canSubmit.value) return
   error.value = ''
   loading.value = true
   try {
@@ -56,13 +58,9 @@ async function handleSubmit() {
           {{ error }}
         </p>
 
-        <button
-          type="submit"
-          :disabled="loading"
-          class="w-full rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent disabled:opacity-50"
-        >
-          {{ loading ? 'Signing in…' : 'Sign in' }}
-        </button>
+        <UiButton type="submit" block :loading="loading" :disabled="!canSubmit">
+          Sign in
+        </UiButton>
       </form>
     </div>
   </div>
