@@ -23,6 +23,7 @@ export default defineEventHandler(async (event) => {
         totalTracks: true,
         totalFileSize: true,
         lastSyncedAt: true,
+        monitored: true,
         genres: { select: { id: true, name: true } },
         urls: { select: { id: true, type: true, url: true } },
       },
@@ -66,6 +67,7 @@ export default defineEventHandler(async (event) => {
       totalTracks: artist.totalTracks + (connectedStats._sum.totalTracks || 0),
       totalFileSize: ((artist.totalFileSize || BigInt(0)) + (connectedStats._sum.totalFileSize || BigInt(0))).toString(),
       lastSyncedAt: artist.lastSyncedAt,
+      monitored: artist.monitored,
       genres: artist.genres,
       urls: artist.urls,
       relatedArtists: relatedArtists.map(a => ({

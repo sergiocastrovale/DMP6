@@ -360,6 +360,7 @@ watch(() => props.releases, () => {
       :release-title="downloadRelease.title"
       :artist-name="props.artistName || ''"
       :release-year="downloadRelease.year"
+      :mb-release-row-id="downloadRelease.mbReleaseRowId"
     />
 
     <ArtistReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />

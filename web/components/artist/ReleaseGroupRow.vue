@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Disc3, Download, Info, Link, RefreshCw } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Disc3, Download, Info, Link, Loader2, PackageCheck, RefreshCw } from 'lucide-vue-next'
 import type { ReleaseGroup } from '~/types/release'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
+import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
 const props = withDefaults(defineProps<{
   group: ReleaseGroup
@@ -28,6 +29,14 @@ const terminal = useTerminalStore()
 
 const getReleaseId = (r: typeof props.group.primary) => r.localReleaseId || r.id
 const edition = computed(() => props.group.primary)
+
+// Acquisition pipeline state (see docs/feature_monitoring.md)
+const isDownloading = computed(() => edition.value.downloadState === 'DOWNLOADING')
+const isEnriching = computed(() => edition.value.downloadState === 'ENRICHING')
+const isDownloaded = computed(() => edition.value.downloadState === 'PENDING' || edition.value.downloadState === 'APPROVED')
+const downloadFailed = computed(() => edition.value.downloadState === 'FAILED')
+const isAbandoned = computed(() => edition.value.downloadState === 'ABANDONED')
+const verifyDownload = () => navigateTo(`/downloads?highlight=${edition.value.downloadedReleaseId}`)
 
 const connectedArtistNames = computed(() => {
   const names = new Set(props.group.releases.map(r => r.connectedArtistName).filter(Boolean) as string[])
@@ -124,11 +133,30 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
 
       <div class="flex w-32 shrink-0 items-center justify-end gap-0.5 px-3">
         <template v-if="singleEdition">
+          <span
+            v-if="isDownloading"
+            class="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-400"
+            title="dmp is downloading this release from Soulseek"
+          >
+            <Loader2 :size="12" class="animate-spin" /> Downloading
+          </span>
+
           <button
-            v-if="edition.status === 'MISSING' && downloadsStore.slskd.connected"
+            v-else-if="isDownloaded"
             type="button"
-            class="rounded-full p-1.5 text-ink transition-colors hover:text-accent cursor-pointer"
-            title="Download this release"
+            class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20 cursor-pointer"
+            title="Downloaded - verify and approve it on the Downloads page"
+            @click.stop="verifyDownload"
+          >
+            <PackageCheck :size="12" /> Verify download
+          </button>
+
+          <button
+            v-else-if="edition.status === 'MISSING' && downloadsStore.slskd.connected"
+            type="button"
+            class="rounded-full p-1.5 transition-colors hover:text-accent cursor-pointer"
+            :class="downloadFailed ? 'text-red-400' : isAbandoned ? 'text-ink-4' : 'text-ink'"
+            :title="isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
             @click.stop="emit('download')"
           >
             <Download :size="14" />
@@ -168,6 +196,12 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
         </template>
       </div>
     </div>
+
+    <DownloadProgress
+      v-if="isDownloading || isEnriching"
+      :percent="edition.downloadPercent ?? 0"
+      :status="edition.downloadState ?? undefined"
+    />
 
     <div v-if="expanded" @click.stop>
       <div class="ml-8 border-l-2 border-rule">

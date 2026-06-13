@@ -126,6 +126,8 @@ export default defineEventHandler(async (event) => {
     coArtists?: { name: string; slug: string }[]
     statusReason?: string | null
     connectedArtistName?: string | null
+    downloadState?: string | null
+    downloadedReleaseId?: string | null
   }
 
   const releases: ReleaseCard[] = []
@@ -304,6 +306,32 @@ export default defineEventHandler(async (event) => {
   const total = releases.length
   const start = (page - 1) * pageSize
   const paged = releases.slice(start, start + pageSize)
+
+  // Attach in-flight download state (acquisition pipeline) for the paged cards.
+  // PROMOTED/REJECTED are excluded on purpose: promoted shows as a real local release,
+  // rejected reverts to plain MISSING.
+  const pagedMbIds = paged.map(r => r.mbReleaseRowId).filter((v): v is string => !!v)
+  if (pagedMbIds.length > 0) {
+    const dls = await prisma.downloadedRelease.findMany({
+      where: {
+        mbReleaseId: { in: pagedMbIds },
+        status: { in: ['DOWNLOADING', 'PENDING', 'APPROVED', 'FAILED', 'ABANDONED'] },
+      },
+      select: { id: true, mbReleaseId: true, status: true, updatedAt: true },
+      orderBy: { updatedAt: 'desc' },
+    })
+    const dlByMb = new Map<string, { id: string; status: string }>()
+    for (const d of dls) {
+      if (d.mbReleaseId && !dlByMb.has(d.mbReleaseId)) dlByMb.set(d.mbReleaseId, { id: d.id, status: d.status })
+    }
+    for (const r of paged) {
+      const d = r.mbReleaseRowId ? dlByMb.get(r.mbReleaseRowId) : undefined
+      if (d) {
+        r.downloadState = d.status
+        r.downloadedReleaseId = d.id
+      }
+    }
+  }
 
   return {
     releases: paged,

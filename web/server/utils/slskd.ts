@@ -1,6 +1,7 @@
 import { readdir, mkdir, rename, rmdir, copyFile, unlink } from 'node:fs/promises'
 import { basename, join, dirname, sep } from 'node:path'
 import { resolveDownloadSettings, resolveDownloadDir } from '~/server/utils/downloadSettings'
+import { transcodeDirToMp3320 } from '~/server/utils/transcode'
 
 interface SlskdConfig {
   url: string
@@ -247,7 +248,12 @@ interface SlskdMoveArgs {
   year: number | null
 }
 
-export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<void> {
+export interface SlskdMoveResult {
+  targetDir: string
+  movedCount: number
+}
+
+export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<SlskdMoveResult> {
   const log = (msg: string) => console.log(`[slskd move] ${msg}`)
   const expected = new Set(args.files.map(f => basename(f.replace(/\\/g, '/'))))
   const deadline = Date.now() + 30 * 60 * 1000 // 30 minutes
@@ -271,22 +277,29 @@ export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<v
     if (!stillActive) { log('all transfers reached terminal state - proceeding to move'); break }
   }
 
-  // Small grace period for slskd to finalize file writes before we scan.
-  await new Promise(r => setTimeout(r, 3000))
+  return relocateDownloadedFiles(args)
+}
+
+/**
+ * Move this download's files (located by basename under downloadsPath) into the templated
+ * Artist/Album folder and normalize to MP3-320. Assumes the transfer is already finished —
+ * does NOT wait. Used by the reconciler, which gates on slskd transfer state itself.
+ */
+export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<SlskdMoveResult> {
+  const log = (msg: string) => console.log(`[slskd move] ${msg}`)
+  const expected = new Set(args.files.map(f => basename(f.replace(/\\/g, '/'))))
 
   const targetDir = join(
     args.downloadsPath,
     resolveDownloadDir(args.dirTemplate, args.artistName, args.albumTitle, args.year),
   )
   await mkdir(targetDir, { recursive: true })
-  log(`target: ${targetDir}`)
 
   // Locate files under downloadsPath by basename and move them.
   const found = await findFilesByBasename(args.downloadsPath, expected, 10)
-  log(`found ${found.length}/${expected.size} files under ${args.downloadsPath}`)
+  log(`found ${found.length}/${expected.size} files under ${args.downloadsPath} -> ${targetDir}`)
   if (found.length === 0) {
-    log(`no files matched - slskd may be writing elsewhere or basenames changed. Expected: ${Array.from(expected).slice(0, 3).join(', ')}${expected.size > 3 ? '…' : ''}`)
-    return
+    return { targetDir, movedCount: 0 }
   }
 
   const movedFromDirs = new Set<string>()
@@ -294,7 +307,7 @@ export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<v
 
   for (const srcPath of found) {
     const destPath = join(targetDir, basename(srcPath))
-    if (srcPath === destPath) continue
+    if (srcPath === destPath) { movedCount++; continue } // already in place
     try {
       await rename(srcPath, destPath)
       movedFromDirs.add(dirname(srcPath))
@@ -324,6 +337,11 @@ export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<v
   for (const dir of movedFromDirs) {
     await removeEmptyDirsUp(dir, args.downloadsPath)
   }
+
+  // Normalize everything in the target folder to MP3-320 (keeps existing mp3s as-is).
+  await transcodeDirToMp3320(targetDir).catch(e => log(`transcode failed: ${e.message}`))
+
+  return { targetDir, movedCount }
 }
 
 async function findFilesByBasename(

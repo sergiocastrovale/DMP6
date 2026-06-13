@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Loader2, RefreshCw, Search, HardDriveDownload, Globe, ListChecks } from 'lucide-vue-next'
+import { Loader2, RefreshCw, Search, HardDriveDownload, Globe, ListChecks, Radar } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type { ButtonDropdownOption } from '~/types/ui'
 import type { Artist } from '~/types/artist'
 import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
+import type { DownloadedReleaseStatus } from '~/types/download'
 import { useTerminalStore } from '~/stores/terminal'
 import { scanActions } from '~/helpers/constants'
 
@@ -29,9 +30,74 @@ const { data: releasesData, pending: releasesPending, refresh: refreshReleases }
   query: { pageSize: 500 },
 })
 
-const releases = computed(() => (releasesData.value?.releases ?? []) as UnifiedRelease[])
+// --- Per-release download status (acquisition pipeline), polled while the page is open ---
+type DlStatusItem = { mbReleaseId: string | null; status: string; downloadedReleaseId: string; percent: number; bytesTransferred: number; totalBytes: number }
+type DlStatusValue = { status: string; downloadedReleaseId: string; percent: number; bytesTransferred: number; totalBytes: number }
+const dlStatusMap = ref<Map<string, DlStatusValue>>(new Map())
+let dlPoll: ReturnType<typeof setInterval> | null = null
+
+const fetchDownloadStatus = async () => {
+  try {
+    const data = await $fetch<{ items: DlStatusItem[] }>(`/api/artists/${slug.value}/download-status`)
+    const next = new Map<string, DlStatusValue>()
+    for (const i of data.items) {
+      if (i.mbReleaseId) next.set(i.mbReleaseId, { status: i.status, downloadedReleaseId: i.downloadedReleaseId, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes })
+    }
+    // An item that was pending/approved and is now gone was promoted (or rejected) ->
+    // refresh the release list so the card flips to its final form.
+    for (const [mbId, prev] of dlStatusMap.value) {
+      if ((prev.status === 'PENDING' || prev.status === 'APPROVED') && !next.has(mbId)) {
+        refreshReleases()
+        break
+      }
+    }
+    dlStatusMap.value = next
+  }
+  catch { /* ignore */ }
+}
+
+onMounted(() => {
+  fetchDownloadStatus()
+  dlPoll = setInterval(fetchDownloadStatus, 2000)
+})
+onUnmounted(() => { if (dlPoll) clearInterval(dlPoll) })
+
+const releases = computed(() => {
+  const base = (releasesData.value?.releases ?? []) as UnifiedRelease[]
+  if (dlStatusMap.value.size === 0) return base
+  return base.map((r) => {
+    const dl = r.mbReleaseRowId ? dlStatusMap.value.get(r.mbReleaseRowId) : undefined
+    return dl ? { ...r, downloadState: dl.status, downloadedReleaseId: dl.downloadedReleaseId, downloadPercent: dl.percent } : r
+  })
+})
+
+// In-flight acquisitions (download/enrich phase) for the header aggregate bar.
+const dlInFlight = computed(() =>
+  [...dlStatusMap.value.values()]
+    .filter(d => d.status === 'DOWNLOADING' || d.status === 'ENRICHING')
+    .map(d => ({ status: d.status as DownloadedReleaseStatus, percent: d.percent, bytesTransferred: d.bytesTransferred, totalBytes: d.totalBytes })),
+)
 const catalogue = useArtistCatalogue(releases)
 provide('catalogue', catalogue)
+
+// --- Monitor toggle (Lidarr-style auto-download of missing releases) ---
+const monitorBusy = ref(false)
+const toggleMonitor = async () => {
+  if (!artist.value || monitorBusy.value) return
+  monitorBusy.value = true
+  const target = !artist.value.monitored
+  artist.value.monitored = target // optimistic
+  try {
+    await $fetch(`/api/artists/${slug.value}`, { method: 'PATCH', body: { monitored: target } })
+    if (target) fetchDownloadStatus() // kick fired server-side; surface rows ASAP
+  }
+  catch {
+    artist.value.monitored = !target // revert
+  }
+  finally {
+    monitorBusy.value = false
+  }
+}
 
 watch(() => terminal.isRunning, (running, wasRunning) => {
   if (wasRunning && !running) {
@@ -130,10 +196,23 @@ const playAll = async () => {
       <ArtistHeader
         :artist="artist"
         :play-disabled="playingAll || !releases.length"
+        :active-downloads="dlInFlight"
         class="min-w-0 flex-1"
         @play-all="playAll"
       >
         <div class="flex shrink-0 items-center gap-2">
+          <UiButton
+            :variant="artist.monitored ? 'primary' : 'secondary'"
+            size="sm"
+            :icon="Radar"
+            :loading="monitorBusy"
+            :title="artist.monitored
+              ? 'Monitoring: missing releases are downloaded automatically. Click to stop.'
+              : 'Start monitoring: auto-download missing releases into the approval queue.'"
+            @click="toggleMonitor"
+          >
+            Monitor {{ artist.monitored ? 'ON' : 'OFF' }}
+          </UiButton>
           <ButtonDropdown
             label="Scan catalogue"
             :options="syncOptions"

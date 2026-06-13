@@ -12,6 +12,7 @@ export interface Artist extends ArtistListItem {
   musicbrainzId: string | null
   totalFileSize: bigint | number | string
   lastSyncedAt: string | null
+  monitored?: boolean
   genres: Genre[]
   urls: ArtistUrl[]
   relatedArtists?: RelatedArtist[]

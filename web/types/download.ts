@@ -40,3 +40,34 @@ export interface DownloadSourceStatus {
   connected: boolean
   error?: string
 }
+
+export type DownloadedReleaseStatus =
+  | 'DOWNLOADING' | 'ENRICHING' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'PROMOTED' | 'FAILED' | 'ABANDONED'
+
+export interface DownloadedReleaseItem {
+  id: string
+  artist: string | null
+  artistSlug: string | null
+  title: string
+  year: number | null
+  source: string
+  slskUsername: string | null
+  quality: string | null
+  status: DownloadedReleaseStatus
+  attempts?: number
+  error: string | null
+  stagingPath: string | null
+  createdAt: string
+  updatedAt: string
+  percent: number
+  bytesTransferred: number
+  totalBytes: number
+}
+
+// Minimal per-release progress shape consumed by DownloadProgress.vue (aggregate mode).
+export interface ReleaseProgress {
+  status: DownloadedReleaseStatus
+  percent: number
+  bytesTransferred?: number
+  totalBytes?: number
+}

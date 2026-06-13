@@ -100,7 +100,8 @@ COPY --from=web-builder /build/prisma/schema.prisma prisma/schema.prisma
 RUN npm install -g prisma@6
 
 # tmux for persistent terminal sessions + ca-certificates for HTTPS (MusicBrainz, S3)
-RUN apt-get update && apt-get install -y --no-install-recommends tmux ca-certificates && rm -rf /var/lib/apt/lists/*
+# ffmpeg to normalize Soulseek downloads to MP3-320 (see docs/feature_monitoring.md)
+RUN apt-get update && apt-get install -y --no-install-recommends tmux ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Rust script binaries
 COPY --from=scripts-builder /build/target/release/index /usr/local/bin/

@@ -4,11 +4,14 @@ import type { Artist } from '~/types/artist'
 import DialogLinks from '~/components/artist/DialogLinks.vue'
 import DialogGenres from '~/components/artist/DialogGenres.vue'
 import Genres from '~/components/artist/Genres.vue'
+import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
+import type { ReleaseProgress } from '~/types/download'
 
 const props = defineProps<{
   artist: Artist
   playDisabled?: boolean
+  activeDownloads?: ReleaseProgress[]
 }>()
 
 const emit = defineEmits<{
@@ -52,6 +55,8 @@ const statsLine = computed(() => {
         <div v-if="statsLine" class="text-sm text-ink-2">
           {{ statsLine }}
         </div>
+
+        <DownloadProgress v-if="activeDownloads?.length" :items="activeDownloads" class="max-w-md" />
 
         <Genres :genres="artist.genres" @more="showAllGenres = true" />
 

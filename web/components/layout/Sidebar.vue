@@ -12,6 +12,7 @@ import {
   LogOut,
   AlertTriangle,
   FlaskConical,
+  DownloadCloud,
 } from 'lucide-vue-next'
 import { useGlobalStore } from '~/stores/global'
 
@@ -23,6 +24,7 @@ const { collapsed, toggle } = useSidebar()
 const canViewIssues = hasPerm('issues.view')
 const canViewPlaylists = hasPerm('playlists.view')
 const canViewFavorites = hasPerm('favorites.view')
+const canViewDownloads = hasPerm('sync.view')
 
 const formatCount = (n: number) => n.toLocaleString()
 
@@ -34,6 +36,7 @@ const navItems = computed(() => {
     { to: '/timeline', label: 'Timeline', icon: Clock, show: true, count: null },
     { to: '/playlists', label: 'Playlists', icon: ListMusic, show: canViewPlaylists.value, count: global.stats.playlists },
     { to: '/favorites', label: 'Favorites', icon: Heart, show: canViewFavorites.value, count: global.stats.favorites },
+    { to: '/downloads', label: 'Downloads', icon: DownloadCloud, show: canViewDownloads.value, count: null },
     { to: '/labs', label: 'Labs', icon: FlaskConical, show: true, count: null },
   ]
   return items.filter((i) => i.show)

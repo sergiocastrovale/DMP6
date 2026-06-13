@@ -33,6 +33,9 @@ export interface UnifiedRelease {
   coArtists?: { name: string; slug: string }[]
   statusReason?: string | null
   connectedArtistName?: string | null
+  downloadState?: string | null
+  downloadedReleaseId?: string | null
+  downloadPercent?: number | null
 }
 
 export type ReleaseStatus =

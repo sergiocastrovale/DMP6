@@ -10,10 +10,12 @@ const props = defineProps<{
   releaseTitle: string
   artistName: string
   releaseYear?: number | null
+  mbReleaseRowId?: string | null
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  'started': []
 }>()
 
 const downloads = useDownloadsStore()
@@ -123,8 +125,34 @@ const doSearch = async () => {
   }
 }
 
-const startDownload = (result: DownloadSearchResult) => {
+const startDownload = async (result: DownloadSearchResult) => {
   stopPolling()
+  // With release context, honor the user's pick and record it in the approval queue.
+  if (props.mbReleaseRowId) {
+    try {
+      await $fetch('/api/downloads/start', {
+        method: 'POST',
+        body: {
+          username: result.username,
+          files: result.files.map(f => ({ filename: f.filename, size: f.size })),
+          albumTitle: props.releaseTitle,
+          artistName: props.artistName,
+          year: props.releaseYear ?? null,
+          mbReleaseRowId: props.mbReleaseRowId,
+          format: result.format,
+          avgBitrate: result.avgBitrate,
+        },
+      })
+      downloadStarted.value = true
+      emit('started')
+      setTimeout(() => emit('update:modelValue', false), 1200)
+    }
+    catch (e: any) {
+      downloadError.value = e.data?.message || e.message || 'Download failed to start'
+    }
+    return
+  }
+  // Legacy path (no release context): stream endpoint auto-picks the best result.
   emit('update:modelValue', false)
   terminal.runDownload('slskd', searchQuery.value, props.releaseTitle, props.artistName, props.releaseYear ?? null)
 }

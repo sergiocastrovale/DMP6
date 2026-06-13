@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Download, FolderClosed, Heart, Info, Link, RefreshCw } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Download, FolderClosed, Heart, Info, Link, Loader2, PackageCheck, RefreshCw } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'
+import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
 const props = defineProps<{
   edition: UnifiedRelease
@@ -43,6 +44,13 @@ const hasPlayable = computed(() => !!props.edition.localReleaseId || props.editi
 const editionDisplayTitle = computed(() => props.edition.disambiguation || props.edition.editionLabel || 'Original release')
 
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
+
+// Acquisition pipeline state (see docs/feature_monitoring.md)
+const isDownloading = computed(() => props.edition.downloadState === 'DOWNLOADING')
+const isDownloaded = computed(() => props.edition.downloadState === 'PENDING' || props.edition.downloadState === 'APPROVED')
+const downloadFailed = computed(() => props.edition.downloadState === 'FAILED')
+const isAbandoned = computed(() => props.edition.downloadState === 'ABANDONED')
+const verifyDownload = () => navigateTo(`/downloads?highlight=${props.edition.downloadedReleaseId}`)
 </script>
 
 <template>
@@ -112,11 +120,30 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         </template>
       </Popover>
 
+      <span
+        v-if="isDownloading"
+        class="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-400"
+        title="dmp is downloading this release from Soulseek"
+      >
+        <Loader2 :size="12" class="animate-spin" /> Downloading
+      </span>
+
       <button
-        v-if="edition.status === 'MISSING' && downloadsStore.slskd.connected"
+        v-else-if="isDownloaded"
         type="button"
-        class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent"
-        title="Download this release"
+        class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20"
+        title="Downloaded - verify and approve it on the Downloads page"
+        @click.stop="verifyDownload"
+      >
+        <PackageCheck :size="12" /> Verify download
+      </button>
+
+      <button
+        v-else-if="edition.status === 'MISSING' && downloadsStore.slskd.connected"
+        type="button"
+        class="rounded-full p-1.5 transition-colors hover:text-accent"
+        :class="downloadFailed ? 'text-red-400' : isAbandoned ? 'text-ink-4' : 'text-ink0'"
+        :title="isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
         @click.stop="emit('download')"
       >
         <Download :size="14" />
@@ -164,6 +191,12 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         <Info :size="14" />
       </button>
     </div>
+
+    <DownloadProgress
+      v-if="edition.downloadState === 'DOWNLOADING' || edition.downloadState === 'ENRICHING'"
+      :percent="edition.downloadPercent ?? 0"
+      :status="edition.downloadState"
+    />
 
     <div v-if="expanded && hasPlayable" class="border-t border-rule px-3 pb-3" @click.stop>
       <ReleaseTracksTable

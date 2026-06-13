@@ -58,10 +58,12 @@ model Artist {
   urls              ArtistUrl[]          @relation("ArtistUrls")
   localReleases     LocalReleaseArtist[]
   mbReleases        MusicBrainzReleaseArtist[]
+  downloadedReleases DownloadedRelease[]
   genres            Genre[]              @relation("ArtistGenres")
   country           String?              @db.VarChar(2)
   syncHash          String?
   relatedOnly       Boolean              @default(false)
+  monitored         Boolean              @default(false)
   trackRelatedArtists TrackRelatedArtist[] @relation("ArtistRelatedTracks")
   unsplitIssues     IssueUnsplitArtist[] @relation("UnsplitArtistIssue")
   orphanIssues      IssueOrphanArtist[]  @relation("OrphanArtistIssue")
@@ -78,6 +80,7 @@ model Artist {
   @@index([name]) // B-tree for ORDER BY name; trigram GIN index for ILIKE added via raw migration
   @@index([country])
   @@index([relatedOnly])
+  @@index([monitored])
   @@index([primaryArtistId])
 }
 
@@ -197,17 +200,20 @@ model LocalRelease {
   lastPlayedAt    DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
+  downloadedFrom   String?             // null = pristine library; 'slskd' = acquired via Soulseek
   artists          LocalReleaseArtist[]
   release          MusicBrainzRelease? @relation(fields: [releaseId], references: [id])
   tracks           LocalReleaseTrack[]
   enrichmentIssues IssueEnrichmentGap[]
   favorite         FavoriteRelease?
+  downloadedRelease DownloadedRelease?
 
   @@unique([groupKey])
   @@index([releaseId])
   @@index([year])
   @@index([createdAt])
   @@index([lastPlayedAt])
+  @@index([downloadedFrom])
   @@index([title]) // B-tree for ORDER BY title; trigram GIN index for ILIKE added via raw migration
 }
 
@@ -404,6 +410,16 @@ model Settings {
   downloadDirTemplate String?
   downloadFormats    String?
   downloadMinBitrate Int?
+  requireApprovalForDownloads Boolean @default(false)
+  // Monitoring (all override the matching env var; null = use env/default)
+  monitorEnabled      Boolean?
+  monitorIntervalMin  Int?
+  monitorCap          Int?
+  monitorGapsHours    Int?
+  monitorRetryHours   Int?
+  noProgressSec       Int?
+  maxDownloadAttempts Int?
+  songkongEnabled     Boolean? // enrich downloads with SongKong before layout; null = env/default
   // Storage
   imageStorage       String?
   storageImageBucket      String?
@@ -425,6 +441,54 @@ model Settings {
   lastfmUsername      String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// DownloadedRelease — Soulseek acquisitions pending approval / promoted
+// ---------------------------------------------------------------------------
+
+enum DownloadSource {
+  SLSKD
+}
+
+enum DownloadStatus {
+  DOWNLOADING
+  ENRICHING
+  PENDING
+  APPROVED
+  REJECTED
+  PROMOTED
+  FAILED
+  ABANDONED
+}
+
+model DownloadedRelease {
+  id             String         @id @default(cuid())
+  artistId       String?
+  mbReleaseId    String?        // MusicBrainzRelease.id this fills (the MISSING target)
+  releaseGroupId String?        // MB release-group id (denormalized)
+  title          String         @db.VarChar(500)
+  year           Int?
+  source         DownloadSource @default(SLSKD)
+  slskUsername   String?
+  quality        String?        // source format/bitrate, e.g. "MP3 320"
+  files          Json?          // [{filename,size}] queued from slskd — lets the reconciler finalize
+  stagingPath    String?        @db.Text // folder under DOWNLOADS_PATH
+  status         DownloadStatus @default(PENDING)
+  attempts       Int            @default(0) // failed/no-result attempts; >= max -> ABANDONED
+  bytesTransferred BigInt       @default(0) // progress watermark for no-progress death
+  lastProgressAt DateTime?      // last time bytes increased
+  error          String?        @db.Text
+  localReleaseId String?        @unique // set on promote
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  artist         Artist?        @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  localRelease   LocalRelease?  @relation(fields: [localReleaseId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([artistId])
+  @@index([mbReleaseId])
+  @@index([createdAt])
 }
 
 model Statistics {
