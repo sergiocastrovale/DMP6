@@ -11,9 +11,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'monitored (boolean) required' })
   }
 
-  // Only real (non related-only) artists are monitorable.
+  // Only real artists: skip related-only and junk/compound (';'-named) artists, which would
+  // otherwise dump thousands of bogus MISSING entries into the download queue.
   const { count } = await prisma.artist.updateMany({
-    where: { relatedOnly: false },
+    where: body.monitored
+      ? { relatedOnly: false, name: { not: { contains: ';' } } }
+      : {}, // un-monitor: clear everyone
     data: { monitored: body.monitored },
   })
 

@@ -13,6 +13,7 @@ export interface ResolvedDownloadSettings {
   downloadDirTemplate: string
   downloadsApprovedPath: string
   autoApproveDownloads: boolean
+  autoMergeDownloads: boolean
 }
 
 export const DEFAULT_DOWNLOAD_DIR_TEMPLATE = '{artist}/{year} - {album}'
@@ -26,6 +27,8 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
   const downloadsPath = settings?.downloadsPath || process.env.DOWNLOADS_PATH || ''
   const autoApprove = settings?.autoApproveDownloads
     ?? (process.env.AUTO_APPROVE_DOWNLOADS ? process.env.AUTO_APPROVE_DOWNLOADS !== 'false' : true)
+  const autoMerge = settings?.autoMergeDownloads
+    ?? (process.env.AUTO_MERGE === 'true' || process.env.AUTO_MERGE === '1')
 
   return {
     slskdUrl: settings?.slskdUrl || process.env.SLSKD_URL || '',
@@ -40,6 +43,7 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
       || process.env.DOWNLOADS_APPROVED_FOLDER
       || (downloadsPath ? `${downloadsPath.replace(/\/+$/, '')}/_approved` : ''),
     autoApproveDownloads: autoApprove,
+    autoMergeDownloads: autoMerge,
   }
 }
 

@@ -1,4 +1,4 @@
-import { runGapsCycle, reconcileDownloads } from '~/server/utils/monitorLoop'
+import { runGapsCycle, runAutoMergeCycle, reconcileDownloads } from '~/server/utils/monitorLoop'
 import { topUpDownloads } from '~/server/utils/autoDownload'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 
@@ -24,5 +24,6 @@ export default defineNitroPlugin(() => {
     // Fire-and-forget; each self-throttles + self-guards against overlap.
     topUpDownloads().catch(e => console.error(`[monitor] topUp error: ${e?.message || e}`))
     runGapsCycle().catch(e => console.error(`[monitor] gaps error: ${e?.message || e}`))
+    runAutoMergeCycle().catch(e => console.error(`[monitor] auto-merge error: ${e?.message || e}`))
   }, tickSec * 1000)
 })

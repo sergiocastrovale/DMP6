@@ -1,3 +1,4 @@
+import { statfs } from 'node:fs/promises'
 import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
@@ -66,56 +67,83 @@ interface MissingPick {
 }
 
 let lastTopUpAt = 0
+let topUpRunning = false
+
+/** GB free under a path; -1 if unavailable (don't block on stat errors). */
+async function freeGb(path: string): Promise<number> {
+  try {
+    const s = await statfs(path)
+    return (Number(s.bavail) * Number(s.bsize)) / 1e9
+  }
+  catch { return -1 }
+}
+
+// Artist-first random pick: choose random monitored, non-junk artists (indexed) and take one eligible
+// MISSING album/EP each. Avoids a full random sort over the entire MISSING pool every tick at 19K.
+async function pickCandidates(slots: number, cooldown: Date): Promise<MissingPick[]> {
+  const artists = await prisma.$queryRaw<{ id: string; name: string }[]>(Prisma.sql`
+    SELECT a.id, a.name FROM "Artist" a
+    WHERE a.monitored = true AND a."relatedOnly" = false AND a.name NOT LIKE '%;%'
+    ORDER BY random() LIMIT ${slots * 4}
+  `)
+  const picks: MissingPick[] = []
+  for (const a of artists) {
+    if (picks.length >= slots) break
+    const rel = await prisma.$queryRaw<MissingPick[]>(Prisma.sql`
+      SELECT mr.id, mr.title, mr.year, mr."releaseGroupId",
+             ${a.id} AS "artistId", ${a.name} AS "artistName"
+      FROM "MusicBrainzRelease" mr
+      JOIN "ReleaseType" rt ON rt.id = mr."typeId" AND rt.slug IN ('album', 'ep')
+      JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mr.id AND mra."artistId" = ${a.id}
+      WHERE mr.status = 'MISSING'
+        AND NOT EXISTS (
+          SELECT 1 FROM "DownloadedRelease" dr
+          WHERE dr."mbReleaseId" = mr.id
+            AND (dr.status IN ('DOWNLOADING', 'ENRICHING', 'PENDING', 'APPROVED', 'PROMOTED', 'ABANDONED')
+                 OR (dr.status = 'FAILED' AND dr."updatedAt" > ${cooldown}))
+        )
+      ORDER BY random() LIMIT 1
+    `)
+    if (rel[0]) picks.push(rel[0])
+  }
+  return picks
+}
 
 /**
  * Trickle worker (Search-Sniper style) for always-on, 19K-scale acquisition. Keeps at most
- * `maxConcurrentDownloads` active slskd transfers; each run tops up by randomly picking a few MISSING
- * album/EP releases of monitored artists (fair across the whole catalogue, not alphabetical), skipping
- * anything already handled or recently FAILED. Creates each row as DOWNLOADING before searching so the
- * next run/tick excludes it. Bounded + throttled so it never floods Soulseek regardless of pool size.
+ * `maxConcurrentDownloads` active slskd transfers; each run tops up by picking a few eligible MISSING
+ * album/EP releases of random monitored artists, skipping handled / recently-failed. Creates each row
+ * DOWNLOADING before searching so the next tick excludes it. Run-guarded + throttled + disk-gated.
  */
 export async function topUpDownloads(): Promise<void> {
+  if (topUpRunning) return
   const settings = await resolveDownloadSettings()
   if (!settings.downloadsPath) return
   const mon = await resolveMonitorSettings()
 
   if (Date.now() - lastTopUpAt < Math.max(5, mon.searchIntervalSec) * 1000) return
+
+  // Disk guard: stop grabbing if the downloads volume is nearly full.
+  const free = await freeGb(settings.downloadsPath)
+  if (free >= 0 && free < mon.downloadsMinFreeGb) {
+    if (Date.now() - lastTopUpAt > 600_000) console.log(`[monitor] topUp paused: only ${free.toFixed(1)}GB free`)
+    lastTopUpAt = Date.now()
+    return
+  }
+
+  topUpRunning = true
   lastTopUpAt = Date.now()
+  try {
+    const maxConc = Math.max(1, mon.maxConcurrentDownloads)
+    const inFlight = await prisma.downloadedRelease.count({ where: { status: 'DOWNLOADING' } })
+    const slots = Math.min(maxConc - inFlight, Math.max(1, mon.searchPicksPerInterval))
+    if (slots <= 0) return
 
-  const maxConc = Math.max(1, mon.maxConcurrentDownloads)
-  const inFlight = await prisma.downloadedRelease.count({ where: { status: 'DOWNLOADING' } })
-  const slots = Math.min(maxConc - inFlight, Math.max(1, mon.searchPicksPerInterval))
-  if (slots <= 0) return
+    const cooldown = new Date(Date.now() - mon.monitorRetryHours * 3_600_000)
+    const picks = await pickCandidates(slots, cooldown)
+    if (picks.length === 0) return
 
-  const cooldown = new Date(Date.now() - mon.monitorRetryHours * 3_600_000)
-  // Random fair pick across all monitored artists' MISSING album/EP releases, excluding any already
-  // in-flight/terminal or FAILED-within-cooldown.
-  const picks = await prisma.$queryRaw<MissingPick[]>(Prisma.sql`
-    SELECT mr.id, mr.title, mr.year, mr."releaseGroupId",
-           a.id   AS "artistId",
-           a.name AS "artistName"
-    FROM "MusicBrainzRelease" mr
-    JOIN "ReleaseType" rt ON rt.id = mr."typeId" AND rt.slug IN ('album', 'ep')
-    JOIN LATERAL (
-      SELECT ar.id, ar.name
-      FROM "MusicBrainzReleaseArtist" mra
-      JOIN "Artist" ar ON ar.id = mra."artistId"
-      WHERE mra."releaseId" = mr.id AND ar.monitored = true
-      LIMIT 1
-    ) a ON true
-    WHERE mr.status = 'MISSING'
-      AND NOT EXISTS (
-        SELECT 1 FROM "DownloadedRelease" dr
-        WHERE dr."mbReleaseId" = mr.id
-          AND (dr.status IN ('DOWNLOADING', 'ENRICHING', 'PENDING', 'APPROVED', 'PROMOTED', 'ABANDONED')
-               OR (dr.status = 'FAILED' AND dr."updatedAt" > ${cooldown}))
-      )
-    ORDER BY random()
-    LIMIT ${slots}
-  `)
-  if (picks.length === 0) return
-
-  const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
+    const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
   for (const p of picks) {
     // Reuse a past-cooldown FAILED row if present (carry its attempt count), else create fresh.
     const prior = await prisma.downloadedRelease.findFirst({
@@ -150,14 +178,18 @@ export async function topUpDownloads(): Promise<void> {
       await failNoResult(row.id, prior?.attempts ?? 0, maxAttempts, 'no Soulseek result found')
       continue
     }
-    await acquireRelease({
-      result: best,
-      artistId: p.artistId,
-      artistName: p.artistName,
-      albumTitle: p.title,
-      year: p.year,
-      mbReleaseId: p.id,
-      releaseGroupId: p.releaseGroupId,
-    }, row.id)
+      await acquireRelease({
+        result: best,
+        artistId: p.artistId,
+        artistName: p.artistName,
+        albumTitle: p.title,
+        year: p.year,
+        mbReleaseId: p.id,
+        releaseGroupId: p.releaseGroupId,
+      }, row.id)
+    }
+  }
+  finally {
+    topUpRunning = false
   }
 }

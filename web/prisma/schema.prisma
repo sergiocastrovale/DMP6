@@ -425,6 +425,7 @@ model Settings {
   // Always-on downloader (null = use env/default)
   downloadsApprovedPath  String?  // approved releases staged here before merge into MUSIC_DIR
   autoApproveDownloads   Boolean? // auto-move finished downloads to the approved folder (default true)
+  autoMergeDownloads     Boolean? // auto-merge approved downloads into the library (default false)
   maxConcurrentDownloads Int?     // cap on simultaneous active slskd transfers (default 5)
   searchPicksPerInterval Int?     // missing releases queued per worker tick (default 3)
   searchIntervalSec      Int?     // min seconds between download top-up runs (default 60)

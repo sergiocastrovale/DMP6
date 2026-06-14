@@ -70,18 +70,36 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 | `DOWNLOAD_FORMATS` | `flac,mp3` | Accepted source formats |
 | `DOWNLOAD_MIN_BITRATE` | — | kbps minimum |
 | `AUTO_APPROVE_DOWNLOADS` | `true` | Auto-move finished downloads to the approved folder (else manual Approve) |
+| `AUTO_MERGE` | `false` | Auto-merge approved releases into the library (off = manual Merge gate) |
 | `MAX_CONCURRENT_DOWNLOADS` | `5` | Cap on simultaneous active slskd transfers |
 | `SEARCH_PICKS_PER_INTERVAL` | `3` | MISSING releases searched per top-up |
 | `SEARCH_INTERVAL_SEC` | `60` | Min seconds between top-up runs (throttle) |
 | `GAPS_PICKS_PER_RUN` | `20` | Monitored artists catalogue-refreshed per gap run |
 | `GAPS_INTERVAL_MIN` | `5` | Minutes between catalogue-gap runs |
 | `MONITOR_RETRY_HOURS` | `12` | Cooldown before retrying a FAILED release |
-| `NO_PROGRESS_SEC` | `60` | Kill a transfer with no byte progress for this long |
+| `NO_PROGRESS_SEC` | `300` | Kill a transfer with no byte progress for this long (lower abandons slow peers) |
 | `MAX_DOWNLOAD_ATTEMPTS` | `3` | Attempts before a release is ABANDONED |
+| `DOWNLOADS_MIN_FREE_GB` | `5` | Pause new downloads when the downloads volume drops below this |
+| `SESSION_SECRET` | — | **Set this** — unset falls back to a public hardcoded dev secret (forgeable sessions) |
 | `SONGKONG_ENABLED` | `false` | Run SongKong enrichment before the layout transform |
 | `SONGKONG_MAX_WAIT_MIN` | `30` | If SongKong never reports done within this, proceed unenriched |
 
 slskd-specific config: [downloads_slskd.md](downloads_slskd.md).
+
+## Scaling & self-management notes
+
+- **Headless & bounded**: download/transcode/enrich/auto-approve run with no UI, capped concurrency,
+  throttled trickle, random fairness, and a global in-process lock that serializes all Rust
+  `index`/`sync`/`catalogue-gaps` runs (so merges and the gaps worker never collide). Survives restarts.
+- **Merge is the one manual step** (unless `AUTO_MERGE=true`). "Merge all" is batched — one `index`
+  pass + one `sync` per artist — so a large backlog merges cheaply.
+- **slskd ↔ dmp permissions**: slskd writes downloads as its own uid. Give slskd + dmp a **shared gid
+  with group-write** (slskd `PUID/PGID` + `UMASK=002`) on the downloads volume, or dmp can copy the
+  files into place but can't delete the slskd-owned source — they finalize fine (resilient move) but
+  orphan source copies accumulate until perms are aligned.
+- **Junk/compound artists** (names containing `;`) are excluded from monitor-all, the trickle worker,
+  and the gaps worker — they carry thousands of bogus MISSING entries.
+- **Disk guard**: top-ups pause when free space < `DOWNLOADS_MIN_FREE_GB`.
 
 ---
 
@@ -149,7 +167,7 @@ ssh nas 'sudo sh /mnt/SSD/web/dmp/dmp-songkong-scan.sh /music/x; echo exit=$?' #
 ssh nas 'sudo sh /mnt/SSD/web/dmp/dmp-songkong-scan.sh "/downloads/SOME ALBUM"' # → "Songs saved", "Completed", exit=0
 
 # 4. live flow — trigger a download, watch it walk the pipeline
-ssh nas 'sudo docker logs -f dmp'                                  # reconcile: → ENRICHING / → PENDING
+ssh nas 'sudo docker logs -f dmp'                                  # reconcile: → ENRICHING / → ready (APPROVED)
 ssh nas 'ls /mnt/SSD/Downloads/.dmp-songkong/{spool,done}'         # spool appears, then done marker
 ssh nas 'tail -f /tmp/dmp-songkong-drain.log'                      # SongKong runs
 ```

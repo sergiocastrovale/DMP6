@@ -29,6 +29,7 @@ const triState = (v: boolean | null | undefined): 'default' | 'on' | 'off' =>
 const enabledChoice = ref(triState(form.monitorEnabled))
 const songkongChoice = ref(triState(settings.value?.songkongEnabled))
 const autoApproveChoice = ref(triState(settings.value?.autoApproveDownloads))
+const autoMergeChoice = ref(triState(settings.value?.autoMergeDownloads))
 
 const toNull = (v: string) => v === '' ? null : Number(v)
 const fromChoice = (c: 'default' | 'on' | 'off') => c === 'default' ? null : c === 'on'
@@ -40,6 +41,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
       monitorEnabled: fromChoice(enabledChoice.value),
       songkongEnabled: fromChoice(songkongChoice.value),
       autoApproveDownloads: fromChoice(autoApproveChoice.value),
+      autoMergeDownloads: fromChoice(autoMergeChoice.value),
       maxConcurrentDownloads: toNull(form.maxConcurrentDownloads),
       searchPicksPerInterval: toNull(form.searchPicksPerInterval),
       searchIntervalSec: toNull(form.searchIntervalSec),
@@ -152,6 +154,22 @@ const { saving, saved, error, save } = useFormSave(async () => {
           class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
         >
           <option value="default">- use env default (AUTO_APPROVE_DOWNLOADS) -</option>
+          <option value="on">On</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="block text-sm font-medium text-ink">Auto-merge into library</label>
+        <p class="text-xs text-ink0">
+          When on, approved downloads are merged into the music library automatically (no manual
+          “Merge”). Off by default — merging stays a manual gate. (AUTO_MERGE)
+        </p>
+        <select
+          v-model="autoMergeChoice"
+          class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
+        >
+          <option value="default">- use env default (AUTO_MERGE) -</option>
           <option value="on">On</option>
           <option value="off">Off</option>
         </select>

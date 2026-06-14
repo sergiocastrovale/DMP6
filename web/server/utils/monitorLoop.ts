@@ -7,7 +7,8 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { resolveSongkongEnabled, songkongDirs, songkongMaxWaitMin } from '~/server/utils/songkongSettings'
 import { transformToLibraryLayout } from '~/server/utils/layout'
-import { approveDownloadedRelease } from '~/server/utils/promote'
+import { approveDownloadedRelease, mergeManyDownloadedReleases } from '~/server/utils/promote'
+import { runExclusive } from '~/server/utils/scriptLock'
 import {
   getSlskdActiveDownloads,
   isSlskdTerminal,
@@ -21,6 +22,8 @@ const log = (msg: string) => console.log(`[monitor] ${msg}`)
 
 let gapsCycleRunning = false
 let lastGapsRunAt = 0
+let autoMergeRunning = false
+let lastAutoMergeAt = 0
 let reconcileRunning = false
 const finalizing = new Set<string>()
 
@@ -246,39 +249,65 @@ export async function runGapsCycle(): Promise<void> {
   lastGapsRunAt = Date.now()
   try {
     const batch = await prisma.artist.findMany({
-      where: { monitored: true, musicbrainzId: { not: null } },
+      // Skip junk/compound (';'-named) artists — they'd dump thousands of bogus MISSING entries.
+      where: { monitored: true, musicbrainzId: { not: null }, name: { not: { contains: ';' } } },
       select: { id: true, name: true },
       orderBy: { lastGapsCheckedAt: { sort: 'asc', nulls: 'first' } },
       take: Math.max(1, mon.gapsPicksPerRun),
     })
     if (batch.length === 0) return
 
-    // ';' is the --only separator; skip any name containing it to avoid splitting wrong.
-    const usable = batch.filter(a => !a.name.includes(';'))
-    if (usable.length > 0) {
-      const root = process.env.PROJECT_ROOT || process.cwd()
-      const binary = join(process.env.SCRIPTS_DIR || root, 'sync')
-      try {
-        await execFileAsync(binary, ['--catalogue-gaps', '--only', usable.map(a => a.name).join(';'), '--exact'], {
-          cwd: root,
-          maxBuffer: 1024 * 1024 * 64,
-        })
-      }
-      catch (e: any) {
-        log(`gaps batch failed: ${String(e?.message || e).split('\n')[0]}`)
-      }
+    const root = process.env.PROJECT_ROOT || process.cwd()
+    const binary = join(process.env.SCRIPTS_DIR || root, 'sync')
+    try {
+      // Serialized against merges/other script runs so it never hits the binaries' exclusive lock.
+      await runExclusive(() => execFileAsync(
+        binary, ['--catalogue-gaps', '--only', batch.map(a => a.name).join(';'), '--exact'],
+        { cwd: root, maxBuffer: 1024 * 1024 * 64 },
+      ))
     }
-    // Advance the round-robin even on failure so we don't stick on the same artists.
+    catch (e: any) {
+      log(`gaps batch failed (will retry): ${String(e?.message || e).split('\n')[0]}`)
+      return // do NOT stamp — let these artists be re-picked next run
+    }
+    // Stamp only on success so a transient failure doesn't skip artists for a whole cycle.
     await prisma.artist.updateMany({
       where: { id: { in: batch.map(a => a.id) } },
       data: { lastGapsCheckedAt: new Date() },
     })
-    log(`gaps: refreshed ${usable.length}/${batch.length} artist(s)`)
+    log(`gaps: refreshed ${batch.length} artist(s)`)
   }
   catch (e: any) {
     log(`gaps cycle failed: ${e?.message || e}`)
   }
   finally {
     gapsCycleRunning = false
+  }
+}
+
+/**
+ * Optional hands-off merge: when `autoMergeDownloads` is enabled, batch-merge APPROVED downloads into
+ * the library. Ships OFF (merge stays a manual gate by default). Throttled + guarded.
+ */
+export async function runAutoMergeCycle(): Promise<void> {
+  if (autoMergeRunning) return
+  const { autoMergeDownloads } = await resolveDownloadSettings()
+  if (!autoMergeDownloads) return
+  if (Date.now() - lastAutoMergeAt < 120_000) return
+  autoMergeRunning = true
+  lastAutoMergeAt = Date.now()
+  try {
+    const ids = (await prisma.downloadedRelease.findMany({
+      where: { status: 'APPROVED' }, select: { id: true }, take: 50,
+    })).map(r => r.id)
+    if (ids.length === 0) return
+    const { merged } = await mergeManyDownloadedReleases(ids)
+    if (merged) log(`auto-merge: ${merged} -> PROMOTED`)
+  }
+  catch (e: any) {
+    log(`auto-merge failed: ${e?.message || e}`)
+  }
+  finally {
+    autoMergeRunning = false
   }
 }

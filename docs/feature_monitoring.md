@@ -62,6 +62,12 @@ The download cap + reconcile form a control loop: finished/killed transfers free
 refills. Fairness at 19K comes from random selection + round-robin gap refresh, so load stays flat
 regardless of pool size.
 
+**Reliability at scale:** all Rust `index`/`sync`/`catalogue-gaps` runs go through one in-process lock
+(`runExclusive`), so the gaps worker and merges never collide on the binaries' exclusive DB lock.
+Junk/compound artists (names with `;`) are excluded everywhere. The relocate step finalizes even when
+slskd-owned source files can't be deleted (align slskd↔dmp gid + `UMASK=002` to clean those up).
+Optional `AUTO_MERGE` (default off) batch-merges approved releases hands-off.
+
 ### Settings → Monitoring tab (live, DB overrides env)
 Editable at **Settings → Monitoring**; DB value overrides env, changes apply **without restart** (read
 live each tick). Blank a field to fall back to env.
@@ -75,8 +81,10 @@ live each tick). Blank a field to fall back to env.
 | Gap picks per run | `GAPS_PICKS_PER_RUN` | 20 | artists catalogue-refreshed per gap run |
 | Gap interval (min) | `GAPS_INTERVAL_MIN` | 5 | between catalogue-gap runs |
 | Auto-approve | `AUTO_APPROVE_DOWNLOADS` | true | finished → approved folder automatically |
+| Auto-merge | `AUTO_MERGE` | false | approved → library automatically (off = manual merge gate) |
 | Failed retry cooldown (h) | `MONITOR_RETRY_HOURS` | 12 | wait before retrying a FAILED release |
-| No-progress timeout (s) | `NO_PROGRESS_SEC` | 60 | kill a download with no byte progress |
+| No-progress timeout (s) | `NO_PROGRESS_SEC` | 300 | kill a download with no byte progress (lower abandons slow peers) |
+| Min free space (GB) | `DOWNLOADS_MIN_FREE_GB` | 5 | pause top-ups when the downloads volume is below this |
 | Max attempts | `MAX_DOWNLOAD_ATTEMPTS` | 3 | attempts before ABANDONED |
 | Base tick (s) | `RECONCILE_SEC` | 5 | reconcile cadence (**env only**, needs restart) |
 

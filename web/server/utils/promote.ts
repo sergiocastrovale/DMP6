@@ -4,6 +4,7 @@ import { mkdir, readdir, rename, copyFile, unlink, rm, rmdir } from 'node:fs/pro
 import { join, basename, dirname, relative, sep } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
+import { runExclusive } from '~/server/utils/scriptLock'
 
 const execFileAsync = promisify(execFile)
 
@@ -11,12 +12,15 @@ function musicDir(): string {
   return process.env.MUSIC_DIR || process.env.NUXT_MUSIC_DIR || ''
 }
 
-/** Run the Rust reconciler binary the same way the terminal endpoint resolves it. */
+/**
+ * Run the Rust reconciler binary, serialized against every other script run in this process so it
+ * never hits the binaries' exclusive DB lock (which hard-exits on contention).
+ */
 async function runReconciler(name: 'index' | 'sync', args: string[]): Promise<void> {
   const root = process.env.PROJECT_ROOT || process.cwd()
   const scriptsDir = process.env.SCRIPTS_DIR || root
   const binary = join(scriptsDir, name)
-  await execFileAsync(binary, args, { cwd: root, maxBuffer: 1024 * 1024 * 64 })
+  await runExclusive(() => execFileAsync(binary, args, { cwd: root, maxBuffer: 1024 * 1024 * 64 }))
 }
 
 async function moveDir(src: string, dest: string): Promise<void> {
@@ -69,47 +73,86 @@ export async function approveDownloadedRelease(id: string): Promise<void> {
   await prisma.downloadedRelease.update({ where: { id }, data: { status: 'APPROVED', stagingPath: dest } })
 }
 
+type MergeRow = { id: string; stagingPath: string | null; mbReleaseId: string | null; artist: { name: string } | null }
+
+// Move one approved release into MUSIC_DIR (idempotent: skip if already there) and return its rel path.
+async function moveIntoLibrary(row: MergeRow, music: string, approvedPath: string): Promise<string> {
+  if (row.stagingPath!.startsWith(music + sep) || row.stagingPath === music) {
+    return relUnder(music, row.stagingPath!) // already merged on disk; just (re)index in place
+  }
+  const rel = relUnder(approvedPath, row.stagingPath!)
+  await moveDir(row.stagingPath!, join(music, rel))
+  return rel
+}
+
+// Stamp provenance + PROMOTED for one merged release.
+async function stampMerged(row: MergeRow, music: string, rel: string): Promise<string | null> {
+  const lr = await prisma.localRelease.findFirst({
+    where: row.mbReleaseId ? { releaseId: row.mbReleaseId } : { folderPath: { contains: basename(join(music, rel)) } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  })
+  if (lr) await prisma.localRelease.update({ where: { id: lr.id }, data: { downloadedFrom: 'slskd' } })
+  await prisma.downloadedRelease.update({
+    where: { id: row.id },
+    data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: lr?.id ?? null },
+  })
+  return lr?.id ?? null
+}
+
 /**
- * Merge an APPROVED download into the library: move APPROVED folder → MUSIC_DIR, reconcile
- * (index + sync), stamp provenance, mark PROMOTED.
+ * Merge one APPROVED download into the library: move APPROVED → MUSIC_DIR (idempotent), reconcile
+ * (index + sync, serialized), stamp provenance, mark PROMOTED.
  */
 export async function mergeDownloadedRelease(id: string): Promise<{ localReleaseId: string | null }> {
-  const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: true } })
+  const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: { select: { name: true } } } })
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
   if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing to merge' })
 
   const music = musicDir()
   if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
-
   const { downloadsApprovedPath } = await resolveDownloadSettings()
-  const rel = relUnder(downloadsApprovedPath, row.stagingPath)
-  const dest = join(music, rel)
 
-  await moveDir(row.stagingPath, dest)
-
-  // Reconcile just this folder/artist so it enters the normal release tables.
+  const rel = await moveIntoLibrary(row, music, downloadsApprovedPath)
   await runReconciler('index', ['--folders', rel])
-  if (row.artist?.name) {
-    await runReconciler('sync', ['--only', row.artist.name, '--exact']).catch(() => {})
-  }
+  if (row.artist?.name) await runReconciler('sync', ['--only', row.artist.name, '--exact']).catch(() => {})
+  return { localReleaseId: await stampMerged(row, music, rel) }
+}
 
-  // Stamp provenance: the new LocalRelease should now be linked to the MISSING MB release.
-  const lr = await prisma.localRelease.findFirst({
-    where: row.mbReleaseId
-      ? { releaseId: row.mbReleaseId }
-      : { folderPath: { contains: basename(dest) } },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true },
-  })
-  if (lr) {
-    await prisma.localRelease.update({ where: { id: lr.id }, data: { downloadedFrom: 'slskd' } })
-  }
-  await prisma.downloadedRelease.update({
-    where: { id },
-    data: { status: 'PROMOTED', localReleaseId: lr?.id ?? null },
+/**
+ * Batched merge of many APPROVED downloads: move them all, then ONE index pass over all folders and
+ * ONE sync per distinct artist (deduped) — far cheaper than per-release index+full-artist-sync, and
+ * the whole thing runs serialized so it can't collide with the gaps worker on the Rust lock.
+ */
+export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merged: number }> {
+  const music = musicDir()
+  if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
+  const { downloadsApprovedPath } = await resolveDownloadSettings()
+
+  const rows = await prisma.downloadedRelease.findMany({
+    where: { id: { in: ids }, status: 'APPROVED' },
+    include: { artist: { select: { name: true } } },
   })
 
-  return { localReleaseId: lr?.id ?? null }
+  const moved: { row: MergeRow; rel: string }[] = []
+  for (const row of rows) {
+    if (!row.stagingPath) continue
+    try { moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsApprovedPath) }) }
+    catch (e: any) { console.log(`[merge] move failed ${row.title}: ${e?.message || e}`) }
+  }
+  if (moved.length === 0) return { merged: 0 }
+
+  // One index over all folders (--folders is ';'-separated); skip paths containing ';'.
+  const safeRels = moved.map(m => m.rel).filter(r => !r.includes(';'))
+  if (safeRels.length) await runReconciler('index', ['--folders', safeRels.join(';')])
+  for (const m of moved.filter(m => m.rel.includes(';'))) await runReconciler('index', ['--folders', m.rel])
+
+  // One sync per distinct artist.
+  const artists = [...new Set(moved.map(m => m.row.artist?.name).filter(Boolean) as string[])]
+  for (const name of artists) await runReconciler('sync', ['--only', name, '--exact']).catch(() => {})
+
+  for (const m of moved) await stampMerged(m.row, music, m.rel)
+  return { merged: moved.length }
 }
 
 /** Reject a staged download: always remove the staged folder from disk AND delete the row. */

@@ -17,6 +17,7 @@ export interface ResolvedMonitorSettings {
   searchIntervalSec: number
   gapsPicksPerRun: number
   gapsIntervalMin: number
+  downloadsMinFreeGb: number
 }
 
 function envInt(name: string, def: number): number {
@@ -36,12 +37,13 @@ export async function resolveMonitorSettings(): Promise<ResolvedMonitorSettings>
     monitorCap: s?.monitorCap ?? envInt('MONITOR_CAP', 10),
     monitorGapsHours: s?.monitorGapsHours ?? envInt('MONITOR_GAPS_HOURS', 24),
     monitorRetryHours: s?.monitorRetryHours ?? envInt('MONITOR_RETRY_HOURS', 12),
-    noProgressSec: s?.noProgressSec ?? envInt('NO_PROGRESS_SEC', 60),
+    noProgressSec: s?.noProgressSec ?? envInt('NO_PROGRESS_SEC', 300),
     maxDownloadAttempts: s?.maxDownloadAttempts ?? envInt('MAX_DOWNLOAD_ATTEMPTS', 3),
     maxConcurrentDownloads: s?.maxConcurrentDownloads ?? envInt('MAX_CONCURRENT_DOWNLOADS', 5),
     searchPicksPerInterval: s?.searchPicksPerInterval ?? envInt('SEARCH_PICKS_PER_INTERVAL', 3),
     searchIntervalSec: s?.searchIntervalSec ?? envInt('SEARCH_INTERVAL_SEC', 60),
     gapsPicksPerRun: s?.gapsPicksPerRun ?? envInt('GAPS_PICKS_PER_RUN', 20),
     gapsIntervalMin: s?.gapsIntervalMin ?? envInt('GAPS_INTERVAL_MIN', 5),
+    downloadsMinFreeGb: envInt('DOWNLOADS_MIN_FREE_GB', 5),
   }
 }

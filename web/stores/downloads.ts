@@ -97,9 +97,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     await fetchQueue()
   }
   const mergeAll = async (ids: string[]) => {
-    for (const id of ids) {
-      await $fetch(`/api/downloads/merge/${id}`, { method: 'POST' }).catch(() => {})
-    }
+    await $fetch('/api/downloads/merge-all', { method: 'POST', body: { ids } })
     await fetchQueue()
   }
 

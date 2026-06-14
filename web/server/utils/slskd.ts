@@ -318,12 +318,15 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
       if (e?.code === 'EACCES' || e?.code === 'EXDEV' || e?.code === 'EPERM') {
         try {
           await copyFile(srcPath, destPath)
-          await unlink(srcPath)
-          movedFromDirs.add(dirname(srcPath))
+          // The copy is what matters: the file is now in the target. slskd writes sources as its own
+          // uid, so unlink can fail (EACCES) — count it moved anyway and leave the orphan source for
+          // the periodic prune sweep. Failing here would wrongly mark the whole release as failed.
+          await unlink(srcPath).then(() => movedFromDirs.add(dirname(srcPath)),
+            (e3: any) => log(`copied but could not remove source ${srcPath}: ${e3.message}`))
           movedCount++
         }
         catch (e2: any) {
-          log(`failed to copy+unlink ${srcPath} -> ${destPath}: ${e2.message}`)
+          log(`failed to copy ${srcPath} -> ${destPath}: ${e2.message}`)
         }
       }
       else {

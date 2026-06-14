@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
     // Always-on downloader knobs
     downloadsApprovedPath: body.downloadsApprovedPath ?? undefined,
     autoApproveDownloads: typeof body.autoApproveDownloads === 'boolean' ? body.autoApproveDownloads : body.autoApproveDownloads === null ? null : undefined,
+    autoMergeDownloads: typeof body.autoMergeDownloads === 'boolean' ? body.autoMergeDownloads : body.autoMergeDownloads === null ? null : undefined,
     maxConcurrentDownloads: body.maxConcurrentDownloads !== undefined ? (body.maxConcurrentDownloads === null || body.maxConcurrentDownloads === '' ? null : Number(body.maxConcurrentDownloads)) : undefined,
     searchPicksPerInterval: body.searchPicksPerInterval !== undefined ? (body.searchPicksPerInterval === null || body.searchPicksPerInterval === '' ? null : Number(body.searchPicksPerInterval)) : undefined,
     searchIntervalSec: body.searchIntervalSec !== undefined ? (body.searchIntervalSec === null || body.searchIntervalSec === '' ? null : Number(body.searchIntervalSec)) : undefined,
