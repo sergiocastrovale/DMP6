@@ -40,6 +40,10 @@ services:
     container_name: dmp
     hostname: dmp-web
     restart: unless-stopped
+    # Join the shared downloads group (gid 568) so dmp can delete slskd-owned source files
+    # during the post-download move — keeps DOWNLOADS_PATH fully self-cleaning (no orphan copies).
+    group_add:
+      - "568"
     depends_on:
       redis:
         condition: service_healthy

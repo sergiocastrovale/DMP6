@@ -52,7 +52,7 @@ export async function transcodeDirToMp3320(dir: string): Promise<{ converted: nu
       ], { maxBuffer: 1024 * 1024 * 16 })
       await rename(part, out)
       // remove the source (unless it shared the .mp3 name, which can't happen here)
-      if (src !== out) await unlink(src).catch(() => {})
+      if (src !== out) await unlink(src).catch(e => log(`could not delete source ${basename(src)}: ${e.message}`))
       converted++
     }
     catch (e: any) {
