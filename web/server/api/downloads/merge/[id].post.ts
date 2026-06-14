@@ -1,5 +1,5 @@
 import { requirePermission } from '~/server/utils/permissions'
-import { approveDownloadedRelease } from '~/server/utils/promote'
+import { mergeDownloadedRelease } from '~/server/utils/promote'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'sync.view')
@@ -7,6 +7,6 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, message: 'id required' })
 
-  await approveDownloadedRelease(id)
-  return { success: true }
+  const { localReleaseId } = await mergeDownloadedRelease(id)
+  return { success: true, localReleaseId }
 })

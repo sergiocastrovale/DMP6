@@ -88,7 +88,7 @@ const toggleMonitor = async () => {
   const target = !artist.value.monitored
   artist.value.monitored = target // optimistic
   try {
-    await $fetch(`/api/artists/${slug.value}`, { method: 'PATCH', body: { monitored: target } })
+    await $fetch<unknown, string>(`/api/artists/${slug.value}`, { method: 'PATCH', body: { monitored: target } })
     if (target) fetchDownloadStatus() // kick fired server-side; surface rows ASAP
   }
   catch {

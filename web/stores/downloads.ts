@@ -8,8 +8,10 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   // Approval queue (DownloadedRelease rows)
   const queueActive = ref<DownloadedReleaseItem[]>([])
+  const queueReady = ref<DownloadedReleaseItem[]>([])
   const queueHistory = ref<DownloadedReleaseItem[]>([])
   const pendingCount = computed(() => queueActive.value.filter(i => i.status === 'PENDING').length)
+  const readyCount = computed(() => queueReady.value.length)
 
   let pollInterval: ReturnType<typeof setInterval> | null = null
 
@@ -53,8 +55,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   const fetchQueue = async () => {
     try {
-      const data = await $fetch<{ active: DownloadedReleaseItem[]; history: DownloadedReleaseItem[] }>('/api/downloads/queue')
+      const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; history: DownloadedReleaseItem[] }>('/api/downloads/queue')
       queueActive.value = data.active
+      queueReady.value = data.ready
       queueHistory.value = data.history
     }
     catch { /* ignore */ }
@@ -70,14 +73,38 @@ export const useDownloadsStore = defineStore('downloads', () => {
     await fetchQueue()
   }
 
-  const scanMissing = async (limit = 10, artistId?: string) => {
-    const res = await $fetch<{ scanned: number; queued: number; skipped: number; noResult: number; queuedTitles: string[] }>(
-      '/api/downloads/scan-missing',
-      { method: 'POST', body: { limit, artistId } },
-    )
+  const retry = async (id: string) => {
+    await $fetch(`/api/downloads/retry/${id}`, { method: 'POST' })
     await fetchQueue()
-    return res
   }
+
+  const merge = async (id: string) => {
+    await $fetch(`/api/downloads/merge/${id}`, { method: 'POST' })
+    await fetchQueue()
+  }
+
+  // Bulk: sequential (merge/reject are heavy); one failure doesn't abort the rest.
+  const approveAll = async (ids: string[]) => {
+    for (const id of ids) {
+      await $fetch(`/api/downloads/approve/${id}`, { method: 'POST' }).catch(() => {})
+    }
+    await fetchQueue()
+  }
+  const rejectAll = async (ids: string[]) => {
+    for (const id of ids) {
+      await $fetch(`/api/downloads/reject/${id}`, { method: 'POST' }).catch(() => {})
+    }
+    await fetchQueue()
+  }
+  const mergeAll = async (ids: string[]) => {
+    for (const id of ids) {
+      await $fetch(`/api/downloads/merge/${id}`, { method: 'POST' }).catch(() => {})
+    }
+    await fetchQueue()
+  }
+
+  const monitorAll = async (monitored: boolean) =>
+    $fetch<{ monitored: boolean; count: number }>('/api/artists/monitor-all', { method: 'POST', body: { monitored } })
 
   return {
     slskd,
@@ -89,11 +116,18 @@ export const useDownloadsStore = defineStore('downloads', () => {
     startPolling,
     stopPolling,
     queueActive,
+    queueReady,
     queueHistory,
     pendingCount,
+    readyCount,
     fetchQueue,
     approve,
     reject,
-    scanMissing,
+    retry,
+    merge,
+    approveAll,
+    rejectAll,
+    mergeAll,
+    monitorAll,
   }
 })

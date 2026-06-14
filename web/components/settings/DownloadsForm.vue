@@ -15,7 +15,7 @@ const form = reactive({
   downloadDirTemplate: settings.value?.downloadDirTemplate ?? '',
   downloadFormats: settings.value?.downloadFormats ?? '',
   downloadMinBitrate: settings.value?.downloadMinBitrate ?? '',
-  requireApprovalForDownloads: settings.value?.requireApprovalForDownloads ?? false,
+  downloadsApprovedPath: settings.value?.downloadsApprovedPath ?? '',
 })
 
 const { saving, saved, error, save } = useFormSave(async () => {
@@ -28,7 +28,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
       downloadDirTemplate: form.downloadDirTemplate || null,
       downloadFormats: form.downloadFormats || null,
       downloadMinBitrate: form.downloadMinBitrate ? Number(form.downloadMinBitrate) : null,
-      requireApprovalForDownloads: form.requireApprovalForDownloads,
+      downloadsApprovedPath: form.downloadsApprovedPath || null,
     },
   })
   await refresh()
@@ -83,16 +83,12 @@ const { saving, saved, error, save } = useFormSave(async () => {
         placeholder="320"
         v-model="form.downloadMinBitrate"
       />
-      <div class="pt-1">
-        <Switch
-          v-model="form.requireApprovalForDownloads"
-          label="Require approval before adding downloads to the library"
-        />
-        <p class="mt-1 text-xs text-ink-2">
-          When on, Soulseek downloads land in the approval queue (Downloads page) and are only
-          moved into the library after you approve them.
-        </p>
-      </div>
+      <SettingsField
+        label="Approved Folder"
+        description="Approved releases are staged here until merged into the library. Overrides DOWNLOADS_APPROVED_FOLDER (default {downloads}/_approved)."
+        placeholder="/path/to/downloads/_approved"
+        v-model="form.downloadsApprovedPath"
+      />
     </div>
 
     <div class="flex items-center gap-3">

@@ -350,9 +350,9 @@ async function findFilesByBasename(
   maxDepth: number,
 ): Promise<string[]> {
   const results: string[] = []
-  const skipDirs = new Set<string>()
-  // Skip walking into the root's top-level dirs that look like other artist folders we've written.
-  // Instead, we just DFS everything under root up to maxDepth.
+  // Internal subtrees under the downloads root that must never be scanned as transfer sources:
+  // the approved/merge staging area and the SongKong spool/state dir.
+  const skipNames = new Set(['_approved', '.dmp-songkong'])
 
   async function walk(dir: string, depth: number) {
     if (depth > maxDepth) return
@@ -368,7 +368,7 @@ async function findFilesByBasename(
       if (e.isFile && names.has(e.name)) {
         results.push(full)
       }
-      else if (e.isDir && !skipDirs.has(full)) {
+      else if (e.isDir && !skipNames.has(e.name)) {
         await walk(full, depth + 1)
       }
     }

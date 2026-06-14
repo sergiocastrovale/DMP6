@@ -4,34 +4,59 @@ Download missing releases from an artist page via [Soulseek](downloads_slskd.md)
 
 ## How it works
 
-- Each not-in-library release on an artist page shows a download icon → dialog to search Soulseek and pick a result. "Download missing" grabs every missing release in the current view.
-- Downloads run in the background (live progress in the side panel) and land in an **approval queue** (`/downloads`). Approve to promote into the library.
+DMP runs an **always-on, headless acquisition pipeline** (no web UI needed — it lives in a Nitro
+server plugin and survives restarts, state in the DB). Monitor artists (one click "Monitor all" for
+the whole ~19K catalogue), and DMP continuously fills their missing albums/EPs from Soulseek,
+transcodes, enriches, and stages them for a final merge.
 
-## Pipeline
+Three independent, self-throttled background workers (base tick `RECONCILE_SEC`, default 5s):
+- **reconcile** — finalize/fail in-flight downloads; auto-approve finished ones (every tick).
+- **topUpDownloads** (Search-Sniper) — keeps up to `MAX_CONCURRENT_DOWNLOADS` active transfers;
+  each `SEARCH_INTERVAL_SEC` it randomly picks `SEARCH_PICKS_PER_INTERVAL` MISSING album/EP releases of
+  monitored artists (fair across the whole catalogue, skipping handled / recently-failed), searches
+  Soulseek, enqueues. Bounded + throttled, so 19K artists never floods slskd.
+- **runGapsCycle** — every `GAPS_INTERVAL_MIN`, refresh the MusicBrainz catalogue of `GAPS_PICKS_PER_RUN`
+  monitored artists (oldest-checked first, round-robin) so **newly released albums surface as MISSING**
+  and get picked up automatically. Cycles the whole catalogue over a few days, MB-rate-friendly.
 
-A finished transfer is driven by the reconcile loop (server plugin, ticks every `RECONCILE_SEC`s) through these statuses:
+Manual single grabs still work from an artist page (download icon → dialog), and "Force retry" on the
+Downloads page re-queues a failed one immediately.
+
+## Pipeline & folders
 
 ```
-DOWNLOADING → ENRICHING → PENDING → (approve) → PROMOTED
+DOWNLOADING → ENRICHING → PENDING ─(auto-approve, default)─→ APPROVED ─(merge / merge all)─→ PROMOTED
+                              └─(auto-approve off)→ manual Approve → APPROVED
 ```
 
-1. **Move** — slskd owns its download dir; DMP waits for the transfer, then moves files into a staging folder under `DOWNLOADS_PATH` from `DOWNLOAD_DIR_TEMPLATE` (`{artist}/{year} - {album}`). Requires slskd's downloads to be reachable under `DOWNLOADS_PATH` (default: both containers share `/downloads`), else the move no-ops.
-2. **Transcode + rename** — every audio file → MP3-320 (existing MP3s kept), renamed `NN. Track Title.mp3` from its track/title tags.
-3. **Enrich** (optional, SongKong) — AcoustID / MusicBrainz IDs / genres / cover art written into tags. Row sits in `ENRICHING`. See [SongKong setup](#songkong-setup).
-4. **Transform** — DMP reads the (enriched) tags + the MusicBrainz album type and lays the release out as:
-
+Three folders:
 ```
-DOWNLOADS_PATH/
-└── Radiohead/
-    └── Album/                  ← MusicBrainz release type
-        └── 2007 - In Rainbows/
-            ├── 01. 15 Step.mp3
-            └── CD 01/…         ← multi-disc only: tracks nest under CD 01/, CD 02/, …
+DOWNLOADS_PATH/…              staging: transfer → transcode → enrich → layout      (in progress)
+DOWNLOADS_APPROVED_FOLDER/…   approved, "Ready to merge"                            (awaiting merge)
+MUSIC_DIR/…                   merged into the library (index + sync run)            (live)
 ```
 
-5. **PENDING** — ready for approval. On approval DMP moves the staged folder into `MUSIC_DIR` (same `{artist}/{type}/{year} - {album}` layout) and runs `index` + `sync`.
+Steps:
+1. **Move** — slskd owns its dir; DMP waits for the transfer, then moves files into a staging folder
+   under `DOWNLOADS_PATH` (`DOWNLOAD_DIR_TEMPLATE`). Needs slskd's downloads reachable under
+   `DOWNLOADS_PATH` (default: both containers share `/downloads`), else the move no-ops.
+2. **Transcode + rename** — every audio file → MP3-320 (existing MP3s kept), renamed `NN. Track Title.mp3`.
+3. **Enrich** (optional, SongKong) — tags get AcoustID/MBID/genres/cover art. Row sits in `ENRICHING`.
+4. **Transform** — DMP lays it out by MusicBrainz album type:
+   `{artist}/{type}/{year} - {album}/NN. Title.mp3` (multi-disc nests under `CD 01/`, `CD 02/`…).
+5. **Approve** — auto (default) or manual: moves the release into `DOWNLOADS_APPROVED_FOLDER`
+   (status `APPROVED`, shows in the **Ready to merge** tab). No library write yet.
+6. **Merge** — manual **Merge** / **Merge all**: moves `APPROVED_FOLDER → MUSIC_DIR` (same layout) +
+   runs `index` + `sync` + stamps provenance → `PROMOTED`. This is the only required human step.
 
-The folder transform is done by **DMP**, not SongKong — only DMP knows the MusicBrainz album type for the `{type}` folder. SongKong is enrich-only (must never rename/move).
+The folder transform is **DMP's** (it knows the MB album type); SongKong is enrich-only (never rename/move).
+
+## Downloads page (`/downloads`)
+
+Tabs: **Pending approval** (manual-approve mode) · **Ready to merge** (approved, with Merge / Merge all)
+· **Downloading** (live % bars) · **Failed** (Force retry / Reject, icon actions) · **History**.
+Header has **Monitor all / Monitor none** (bulk toggle the whole catalogue). Per-row **Info** opens the
+release dialog (folder path, format, IDs). Reject always deletes the files + row.
 
 ## Settings
 
@@ -40,11 +65,21 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 | Env var | Default | Meaning |
 |---------|---------|---------|
 | `DOWNLOADS_PATH` | — | Staging root (container view, e.g. `/downloads`) |
-| `DOWNLOAD_DIR_TEMPLATE` | `{artist}/{year} - {album}` | Initial staging layout. `{artist}` `{album}` `{year}` (year drops with its ` - ` padding if unknown); `/` nests folders, each segment sanitized |
+| `DOWNLOADS_APPROVED_FOLDER` | `{DOWNLOADS_PATH}/_approved` | Approved releases staged here until merged |
+| `DOWNLOAD_DIR_TEMPLATE` | `{artist}/{year} - {album}` | Initial staging layout. `{artist}` `{album}` `{year}`; `/` nests, each segment sanitized |
 | `DOWNLOAD_FORMATS` | `flac,mp3` | Accepted source formats |
 | `DOWNLOAD_MIN_BITRATE` | — | kbps minimum |
+| `AUTO_APPROVE_DOWNLOADS` | `true` | Auto-move finished downloads to the approved folder (else manual Approve) |
+| `MAX_CONCURRENT_DOWNLOADS` | `5` | Cap on simultaneous active slskd transfers |
+| `SEARCH_PICKS_PER_INTERVAL` | `3` | MISSING releases searched per top-up |
+| `SEARCH_INTERVAL_SEC` | `60` | Min seconds between top-up runs (throttle) |
+| `GAPS_PICKS_PER_RUN` | `20` | Monitored artists catalogue-refreshed per gap run |
+| `GAPS_INTERVAL_MIN` | `5` | Minutes between catalogue-gap runs |
+| `MONITOR_RETRY_HOURS` | `12` | Cooldown before retrying a FAILED release |
+| `NO_PROGRESS_SEC` | `60` | Kill a transfer with no byte progress for this long |
+| `MAX_DOWNLOAD_ATTEMPTS` | `3` | Attempts before a release is ABANDONED |
 | `SONGKONG_ENABLED` | `false` | Run SongKong enrichment before the layout transform |
-| `SONGKONG_MAX_WAIT_MIN` | `30` | If SongKong never reports done within this, promote unenriched (never strand) |
+| `SONGKONG_MAX_WAIT_MIN` | `30` | If SongKong never reports done within this, proceed unenriched |
 
 slskd-specific config: [downloads_slskd.md](downloads_slskd.md).
 

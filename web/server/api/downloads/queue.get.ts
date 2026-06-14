@@ -7,11 +7,16 @@ import { computeDownloadPercent } from '~/server/utils/downloadProgress'
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'sync.view')
 
-  const [active, history] = await Promise.all([
+  const [active, ready, history] = await Promise.all([
     prisma.downloadedRelease.findMany({
       where: { status: { in: ['DOWNLOADING', 'ENRICHING', 'PENDING', 'FAILED', 'ABANDONED'] } },
       include: { artist: { select: { name: true, slug: true } } },
       orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    }),
+    prisma.downloadedRelease.findMany({
+      where: { status: 'APPROVED' }, // approved, in the approved folder, ready to merge
+      include: { artist: { select: { name: true, slug: true } } },
+      orderBy: { updatedAt: 'desc' },
     }),
     prisma.downloadedRelease.findMany({
       where: { status: { in: ['PROMOTED', 'REJECTED'] } },
@@ -20,6 +25,16 @@ export default defineEventHandler(async (event) => {
       take: 50,
     }),
   ])
+
+  // Resolve the MB release type per row for the info dialog (no FK relation -> batch lookup).
+  const mbIds = [...new Set([...active, ...ready, ...history].map(r => r.mbReleaseId).filter(Boolean) as string[])]
+  const mbReleases = mbIds.length
+    ? await prisma.musicBrainzRelease.findMany({
+        where: { id: { in: mbIds } },
+        select: { id: true, type: { select: { name: true } } },
+      })
+    : []
+  const typeById = new Map(mbReleases.map(m => [m.id, m.type?.name ?? null]))
 
   const shape = (r: typeof active[number]) => ({
     id: r.id,
@@ -34,10 +49,14 @@ export default defineEventHandler(async (event) => {
     attempts: r.attempts,
     error: r.error,
     stagingPath: r.stagingPath,
+    mbReleaseId: r.mbReleaseId,
+    releaseGroupId: r.releaseGroupId,
+    localReleaseId: r.localReleaseId,
+    releaseType: r.mbReleaseId ? typeById.get(r.mbReleaseId) ?? null : null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     ...computeDownloadPercent(r),
   })
 
-  return { active: active.map(shape), history: history.map(shape) }
+  return { active: active.map(shape), ready: ready.map(shape), history: history.map(shape) }
 })

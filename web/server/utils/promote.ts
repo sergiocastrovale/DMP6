@@ -40,28 +40,51 @@ async function moveDir(src: string, dest: string): Promise<void> {
   await rmdir(src).catch(() => {})
 }
 
+/** Relative layout path under a root; falls back to the folder basename if outside the root. */
+function relUnder(root: string, full: string): string {
+  const rel = root ? relative(root, full) : ''
+  return !rel || rel.startsWith('..') ? basename(full) : rel
+}
+
 /**
- * Approve & promote a staged download into the real library:
- *   move STAGING → MUSIC_DIR, reconcile (index + sync), stamp provenance.
+ * Approve a finished download: move it from the staging area into the APPROVED folder (awaiting
+ * merge). No library write yet. Same relative layout is preserved so merge can mirror it into MUSIC_DIR.
  */
-export async function promoteDownloadedRelease(id: string): Promise<{ localReleaseId: string | null }> {
-  const row = await prisma.downloadedRelease.findUnique({
-    where: { id },
-    include: { artist: true },
-  })
+export async function approveDownloadedRelease(id: string): Promise<void> {
+  const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
-  if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing staged to promote' })
+  if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing staged to approve' })
+
+  const { downloadsPath, downloadsApprovedPath } = await resolveDownloadSettings()
+  if (!downloadsApprovedPath) throw createError({ statusCode: 503, message: 'DOWNLOADS_APPROVED_FOLDER not configured' })
+
+  // Already in the approved folder? just flag it.
+  if (row.stagingPath.startsWith(downloadsApprovedPath + sep) || row.stagingPath === downloadsApprovedPath) {
+    await prisma.downloadedRelease.update({ where: { id }, data: { status: 'APPROVED' } })
+    return
+  }
+
+  const dest = join(downloadsApprovedPath, relUnder(downloadsPath, row.stagingPath))
+  await moveDir(row.stagingPath, dest)
+  await prisma.downloadedRelease.update({ where: { id }, data: { status: 'APPROVED', stagingPath: dest } })
+}
+
+/**
+ * Merge an APPROVED download into the library: move APPROVED folder → MUSIC_DIR, reconcile
+ * (index + sync), stamp provenance, mark PROMOTED.
+ */
+export async function mergeDownloadedRelease(id: string): Promise<{ localReleaseId: string | null }> {
+  const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: true } })
+  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+  if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing to merge' })
 
   const music = musicDir()
   if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
 
-  const { downloadsPath } = await resolveDownloadSettings()
-  // Preserve the same relative layout (Artist/Year - Album) under the library root.
-  let rel = downloadsPath ? relative(downloadsPath, row.stagingPath) : ''
-  if (!rel || rel.startsWith('..')) rel = basename(row.stagingPath)
+  const { downloadsApprovedPath } = await resolveDownloadSettings()
+  const rel = relUnder(downloadsApprovedPath, row.stagingPath)
   const dest = join(music, rel)
 
-  await prisma.downloadedRelease.update({ where: { id }, data: { status: 'APPROVED' } })
   await moveDir(row.stagingPath, dest)
 
   // Reconcile just this folder/artist so it enters the normal release tables.
@@ -89,17 +112,18 @@ export async function promoteDownloadedRelease(id: string): Promise<{ localRelea
   return { localReleaseId: lr?.id ?? null }
 }
 
-/** Reject a staged download: delete the staged files and mark REJECTED. */
+/** Reject a staged download: always remove the staged folder from disk AND delete the row. */
 export async function rejectDownloadedRelease(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
 
   if (row.stagingPath) {
-    const { downloadsPath } = await resolveDownloadSettings()
-    // Safety: only delete inside the configured downloads/staging root.
-    if (!downloadsPath || row.stagingPath.startsWith(downloadsPath + sep) || row.stagingPath === downloadsPath) {
+    const { downloadsPath, downloadsApprovedPath } = await resolveDownloadSettings()
+    // Safety: only delete inside the configured downloads/staging or approved roots.
+    const inside = (root: string) => root && (row.stagingPath!.startsWith(root + sep) || row.stagingPath === root)
+    if (!downloadsPath || inside(downloadsPath) || inside(downloadsApprovedPath)) {
       await rm(row.stagingPath, { recursive: true, force: true }).catch(() => {})
     }
   }
-  await prisma.downloadedRelease.update({ where: { id }, data: { status: 'REJECTED' } })
+  await prisma.downloadedRelease.delete({ where: { id } })
 }

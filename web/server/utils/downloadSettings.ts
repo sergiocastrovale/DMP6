@@ -11,6 +11,8 @@ export interface ResolvedDownloadSettings {
   downloadMinBitrate: number | null
   downloadsPath: string
   downloadDirTemplate: string
+  downloadsApprovedPath: string
+  autoApproveDownloads: boolean
 }
 
 export const DEFAULT_DOWNLOAD_DIR_TEMPLATE = '{artist}/{year} - {album}'
@@ -21,15 +23,23 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
   const parsedBitrate = settings?.downloadMinBitrate
     ?? (process.env.DOWNLOAD_MIN_BITRATE ? parseInt(process.env.DOWNLOAD_MIN_BITRATE, 10) : null)
 
+  const downloadsPath = settings?.downloadsPath || process.env.DOWNLOADS_PATH || ''
+  const autoApprove = settings?.autoApproveDownloads
+    ?? (process.env.AUTO_APPROVE_DOWNLOADS ? process.env.AUTO_APPROVE_DOWNLOADS !== 'false' : true)
+
   return {
     slskdUrl: settings?.slskdUrl || process.env.SLSKD_URL || '',
     slskdApiKey: settings?.slskdApiKey || process.env.SLSKD_API_KEY || '',
     downloadFormats: settings?.downloadFormats || process.env.DOWNLOAD_FORMATS || '',
     downloadMinBitrate: Number.isFinite(parsedBitrate) ? parsedBitrate : null,
-    downloadsPath: settings?.downloadsPath || process.env.DOWNLOADS_PATH || '',
+    downloadsPath,
     downloadDirTemplate: settings?.downloadDirTemplate
       || process.env.DOWNLOAD_DIR_TEMPLATE
       || DEFAULT_DOWNLOAD_DIR_TEMPLATE,
+    downloadsApprovedPath: settings?.downloadsApprovedPath
+      || process.env.DOWNLOADS_APPROVED_FOLDER
+      || (downloadsPath ? `${downloadsPath.replace(/\/+$/, '')}/_approved` : ''),
+    autoApproveDownloads: autoApprove,
   }
 }
 

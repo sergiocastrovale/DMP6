@@ -8,74 +8,73 @@ track's origin is always known (pristine vs Soulseek-sourced). Artists can be **
 ## Pipeline
 
 ```
-MusicBrainz catalogue ─► (missing?) ─► slskd search + download ─► transcode MP3-320 ─► STAGING
-   ─► DownloadedRelease(PENDING) ─► [user approves] ─► move into MUSIC_DIR ─► index + sync
-   ─► LocalRelease.downloadedFrom = 'slskd'
-        ▲                                                     artist page shows each hop live:
-        └── monitored artists feed this loop automatically    MISSING → Downloading → Verify download
+MusicBrainz catalogue ─► (missing?) ─► slskd search+download ─► MP3-320 ─► enrich ─► layout ─► STAGING
+   ─► DownloadedRelease ─(auto-approve, default)─► APPROVED (approved folder, "Ready to merge")
+   ─► [user merges] ─► move into MUSIC_DIR ─► index + sync ─► LocalRelease.downloadedFrom = 'slskd'
+        ▲
+        └── monitored artists feed this loop automatically, headless (no web UI needed)
 ```
 
-Nothing is auto-merged. The human approval gate is the trust boundary, because Soulseek results
-are not fully trusted (mislabels, wrong rips, bad quality).
+Designed to run **always-on at full-catalogue scale** (~19K artists): bounded concurrency, throttled
+trickle search, random fairness. The **merge** step is the human gate (Soulseek results aren't fully
+trusted); approval can be automatic, but nothing enters the library until you merge.
 
 ## Steps
 
-1. **Detect missing.** `./sync --catalogue-gaps` compares each artist's MusicBrainz discography to
-   what's on disk and marks `MusicBrainzRelease.status = MISSING` (in the catalogue, not local).
-   Run on a schedule (cron) — this is the "monitoring".
-
-2. **Auto-download.** `POST /api/downloads/scan-missing` iterates MISSING albums/EPs, **skips**
-   anything already local or already queued (a non-rejected `DownloadedRelease`), then runs the
-   existing slsk flow: search → best-result pick → enqueue. Capped per run to avoid storms. Can
-   also run on a schedule.
-
-3. **Transcode + stage.** When a download completes, its files are moved to
-   `DOWNLOADS_PATH/<artist>/<year> - <album>/` and normalized to **MP3 CBR 320** with `ffmpeg`
-   (existing ≤320 MP3s are left untouched; tags + cover preserved). A `DownloadedRelease` row is
-   written with `status = PENDING`, the Soulseek username, and the source quality.
-
-4. **Approve.** The `/downloads` page lists PENDING items grouped by artist/release with the
-   staged files for preview. The user **approves** or **rejects** (reject deletes the staged
-   files). An optional global setting `requireApprovalForDownloads` makes *all* downloads — even
-   manual per-release ones — pass through this queue.
-
-5. **Promote.** On approval the staged folder is moved `STAGING → MUSIC_DIR` (the `mainstream`
-   library). The reconciler runs **scoped to that folder/artist** (`./index --folders …` then
-   `./sync --only …`), creating the normal `LocalRelease` / `LocalReleaseTrack` rows. The web layer
-   then stamps `LocalRelease.downloadedFrom = 'slskd'`, links the `DownloadedRelease`, and sets its
-   `status = PROMOTED`.
+1. **Detect missing.** The catalogue-gap worker runs `sync --catalogue-gaps` on a rotating batch of
+   monitored artists, marking `MusicBrainzRelease.status = MISSING`. New releases surface continuously.
+2. **Auto-download.** `topUpDownloads` keeps `MAX_CONCURRENT_DOWNLOADS` active transfers, randomly
+   picking MISSING albums/EPs of monitored artists (skips handled / recently-failed), search → enqueue.
+3. **Transcode + enrich + layout.** On completion: move to `DOWNLOADS_PATH`, MP3-320, rename
+   `NN. Title.mp3`, optional SongKong enrich, then lay out `{artist}/{type}/{year} - {album}/…`.
+4. **Approve.** Auto (default, `AUTO_APPROVE_DOWNLOADS`) or manual: the release moves into
+   `DOWNLOADS_APPROVED_FOLDER` and shows in the **Ready to merge** tab (`status = APPROVED`).
+5. **Merge.** **Merge** / **Merge all** moves `APPROVED_FOLDER → MUSIC_DIR`, runs `./index --folders …`
+   + `./sync --only …`, stamps `LocalRelease.downloadedFrom = 'slskd'`, sets `status = PROMOTED`.
+   Reject anywhere deletes the staged files + the row.
 
 ## Data model
 
 - **`DownloadedRelease`** — one row per acquisition. Tracks the MISSING target (`mbReleaseId` /
   `releaseGroupId`), `artistId`, `source` (`SLSKD`), `slskUsername`, `quality`, `stagingPath`,
-  `status` (`PENDING | APPROVED | REJECTED | PROMOTED | FAILED`), and `localReleaseId` once
-  promoted. This is the full audit trail.
+  `status` (`DOWNLOADING | ENRICHING | PENDING | APPROVED | PROMOTED | FAILED | ABANDONED`; APPROVED =
+  in the approved folder/Ready-to-merge, PROMOTED = merged into the library), and `localReleaseId`
+  once merged. Reject deletes the row. This is the full audit trail.
 - **`LocalRelease.downloadedFrom`** — `NULL` for pristine library files, `'slskd'` for acquired.
   The fast provenance signal used across the UI/queries.
 
-## Per-artist monitoring
+## Monitoring & the three workers
 
-Lidarr-style: toggle **Monitor** on an artist page (next to "Scan catalogue") and dmp keeps that
-artist complete automatically. Persisted as `Artist.monitored`.
+Toggle **Monitor** on an artist page, or **Monitor all / Monitor none** on `/downloads` to flip the
+whole catalogue in one `updateMany`. Persisted as `Artist.monitored`. Everything runs headless in the
+Nitro server plugin `server/plugins/monitor.ts` (web container) — no browser needed.
 
-Two background loops (Nitro server plugin `server/plugins/monitor.ts`, in the web container):
+One base tick (`RECONCILE_SEC`, default 5s) fires three **independent, self-guarded, self-throttled**
+workers (none awaited together, so a slow search can't block finalization):
 
-| Loop | Default cadence | What it does |
-|------|-----------------|--------------|
-| Downloads | every 15 min | up to `MONITOR_CAP` (10) MISSING albums/EPs across monitored artists → Soulseek acquire → approval queue |
-| Catalogue | every 24 h | `sync --catalogue-gaps --only <artist> --exact` per monitored artist → discovers newly released albums as MISSING |
+| Worker | Pacing | What it does |
+|--------|--------|--------------|
+| `reconcileDownloads` | every tick | finalize/fail in-flight downloads; auto-approve finished ones |
+| `topUpDownloads` | every `SEARCH_INTERVAL_SEC` (60s) | keep ≤ `MAX_CONCURRENT_DOWNLOADS` (5) transfers; randomly pick `SEARCH_PICKS_PER_INTERVAL` (3) MISSING album/EP of monitored artists → search → enqueue |
+| `runGapsCycle` | every `GAPS_INTERVAL_MIN` (5m) | refresh `GAPS_PICKS_PER_RUN` (20) monitored artists' MB catalogue (oldest `lastGapsCheckedAt` first) so new releases become MISSING |
+
+The download cap + reconcile form a control loop: finished/killed transfers free slots → next top-up
+refills. Fairness at 19K comes from random selection + round-robin gap refresh, so load stays flat
+regardless of pool size.
 
 ### Settings → Monitoring tab (live, DB overrides env)
-Every knob is editable at **Settings → Monitoring**; a DB value overrides the env default, and
-changes apply **without a restart** (read live each tick). Blank a field to fall back to env.
+Editable at **Settings → Monitoring**; DB value overrides env, changes apply **without restart** (read
+live each tick). Blank a field to fall back to env.
 
 | Setting | Env | Default | Meaning |
 |---------|-----|---------|---------|
-| Monitoring on/off | `MONITOR_ENABLED` | true | master switch for both loops |
-| Download interval (min) | `MONITOR_INTERVAL_MIN` | 15 | download-cycle cadence |
-| Per-cycle cap | `MONITOR_CAP` | 10 | max releases queued per cycle |
-| Catalogue refresh (h) | `MONITOR_GAPS_HOURS` | 24 | MB catalogue refresh cadence |
+| Monitoring on/off | `MONITOR_ENABLED` | true | master switch for the workers |
+| Max concurrent downloads | `MAX_CONCURRENT_DOWNLOADS` | 5 | simultaneous active transfers |
+| Search picks per interval | `SEARCH_PICKS_PER_INTERVAL` | 3 | new MISSING searched per top-up |
+| Search interval (s) | `SEARCH_INTERVAL_SEC` | 60 | min between top-up runs |
+| Gap picks per run | `GAPS_PICKS_PER_RUN` | 20 | artists catalogue-refreshed per gap run |
+| Gap interval (min) | `GAPS_INTERVAL_MIN` | 5 | between catalogue-gap runs |
+| Auto-approve | `AUTO_APPROVE_DOWNLOADS` | true | finished → approved folder automatically |
 | Failed retry cooldown (h) | `MONITOR_RETRY_HOURS` | 12 | wait before retrying a FAILED release |
 | No-progress timeout (s) | `NO_PROGRESS_SEC` | 60 | kill a download with no byte progress |
 | Max attempts | `MAX_DOWNLOAD_ATTEMPTS` | 3 | attempts before ABANDONED |
@@ -86,10 +85,10 @@ changes apply **without a restart** (read live each tick). Blank a field to fall
 Derived from `DownloadedRelease` — never duplicated into the release tables:
 
 ```
-MISSING ─► Downloading… ─► Downloaded (pending approval) ─► [approve] ─► normal complete release
-               │                    │                          (promote + index/sync)
+MISSING ─► Downloading… ─► (enriching) ─► Ready to merge (APPROVED) ─► [merge] ─► complete release
+               │                                                          (move + index/sync)
                ├ FAILED (retry after cooldown) ──┴ [reject] ─► back to MISSING
-               └ ABANDONED (gave up after N attempts; auto-retry stops, manual still allowed)
+               └ ABANDONED (gave up after N attempts; auto-retry stops, Force retry still works)
 ```
 
 ### Liveness guarantees (reconciler)
@@ -127,10 +126,14 @@ Set via the Settings UI (DB) or `.env` (DB wins, env is fallback):
 |---------|---------|
 | `SLSKD_URL`, `SLSKD_API_KEY` | slskd connection |
 | `DOWNLOADS_PATH` | staging area (NOT the library) |
+| `DOWNLOADS_APPROVED_FOLDER` | approved releases await merge here (default `{DOWNLOADS_PATH}/_approved`) |
 | `MUSIC_DIR` | the real library (`mainstream`) |
-| `DOWNLOAD_DIR_TEMPLATE` | staged/promoted folder layout, e.g. `{artist}/{year} - {album}` |
+| `DOWNLOAD_DIR_TEMPLATE` | initial staging layout, e.g. `{artist}/{year} - {album}` |
 | `DOWNLOAD_FORMATS`, `DOWNLOAD_MIN_BITRATE` | search filters |
-| `requireApprovalForDownloads` | route all downloads through the approval queue |
+| `AUTO_APPROVE_DOWNLOADS` | auto-move finished downloads to the approved folder (else manual approve) |
+
+See [features_downloader.md](features_downloader.md) for the full env table, the Downloads-page tabs,
+and SongKong setup.
 
 ## Safety
 

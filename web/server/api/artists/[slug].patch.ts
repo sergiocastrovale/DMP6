@@ -1,8 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { invalidateCache } from '~/server/utils/cache'
 import { requirePermission } from '~/server/utils/permissions'
-import { scanMissingAndDownload } from '~/server/utils/autoDownload'
-import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'sync.view')
@@ -23,14 +21,7 @@ export default defineEventHandler(async (event) => {
 
   await invalidateCache(`artist:${slug}`)
 
-  // Turning monitoring ON kicks an immediate scan for this artist (fire-and-forget);
-  // the periodic loop takes over from there.
-  if (artist.monitored) {
-    const mon = await resolveMonitorSettings()
-    scanMissingAndDownload({ limit: mon.monitorCap, artistId: artist.id })
-      .then(r => console.log(`[monitor] kick ${artist.name}: scanned ${r.scanned} | queued ${r.queued} | skipped ${r.skipped} | no result ${r.noResult}`))
-      .catch(e => console.error(`[monitor] kick ${artist.name} failed: ${e?.message || e}`))
-  }
-
+  // No per-artist kick: the global trickle worker (topUpDownloads) covers all monitored artists
+  // uniformly, throttled + concurrency-capped, so toggling many can't flood Soulseek.
   return { monitored: artist.monitored }
 })

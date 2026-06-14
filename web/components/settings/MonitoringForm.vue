@@ -12,35 +12,39 @@ const { data: settings, refresh } = await useAsyncData('settings-monitoring', ()
 const num = (v: any) => (v ?? '') === '' ? '' : String(v)
 const form = reactive({
   monitorEnabled: settings.value?.monitorEnabled ?? null as boolean | null,
-  monitorIntervalMin: num(settings.value?.monitorIntervalMin),
-  monitorCap: num(settings.value?.monitorCap),
-  monitorGapsHours: num(settings.value?.monitorGapsHours),
+  maxConcurrentDownloads: num(settings.value?.maxConcurrentDownloads),
+  searchPicksPerInterval: num(settings.value?.searchPicksPerInterval),
+  searchIntervalSec: num(settings.value?.searchIntervalSec),
+  gapsPicksPerRun: num(settings.value?.gapsPicksPerRun),
+  gapsIntervalMin: num(settings.value?.gapsIntervalMin),
   monitorRetryHours: num(settings.value?.monitorRetryHours),
   noProgressSec: num(settings.value?.noProgressSec),
   maxDownloadAttempts: num(settings.value?.maxDownloadAttempts),
 })
 
-// Tri-state enabled: default (env) / on / off
-const enabledChoice = ref<'default' | 'on' | 'off'>(
-  form.monitorEnabled === null || form.monitorEnabled === undefined ? 'default' : form.monitorEnabled ? 'on' : 'off',
-)
-const songkongChoice = ref<'default' | 'on' | 'off'>(
-  settings.value?.songkongEnabled === null || settings.value?.songkongEnabled === undefined
-    ? 'default'
-    : settings.value.songkongEnabled ? 'on' : 'off',
-)
+const triState = (v: boolean | null | undefined): 'default' | 'on' | 'off' =>
+  v === null || v === undefined ? 'default' : v ? 'on' : 'off'
+
+// Tri-state: default (env) / on / off
+const enabledChoice = ref(triState(form.monitorEnabled))
+const songkongChoice = ref(triState(settings.value?.songkongEnabled))
+const autoApproveChoice = ref(triState(settings.value?.autoApproveDownloads))
 
 const toNull = (v: string) => v === '' ? null : Number(v)
+const fromChoice = (c: 'default' | 'on' | 'off') => c === 'default' ? null : c === 'on'
 
 const { saving, saved, error, save } = useFormSave(async () => {
   await $fetch('/api/settings', {
     method: 'PUT',
     body: {
-      monitorEnabled: enabledChoice.value === 'default' ? null : enabledChoice.value === 'on',
-      songkongEnabled: songkongChoice.value === 'default' ? null : songkongChoice.value === 'on',
-      monitorIntervalMin: toNull(form.monitorIntervalMin),
-      monitorCap: toNull(form.monitorCap),
-      monitorGapsHours: toNull(form.monitorGapsHours),
+      monitorEnabled: fromChoice(enabledChoice.value),
+      songkongEnabled: fromChoice(songkongChoice.value),
+      autoApproveDownloads: fromChoice(autoApproveChoice.value),
+      maxConcurrentDownloads: toNull(form.maxConcurrentDownloads),
+      searchPicksPerInterval: toNull(form.searchPicksPerInterval),
+      searchIntervalSec: toNull(form.searchIntervalSec),
+      gapsPicksPerRun: toNull(form.gapsPicksPerRun),
+      gapsIntervalMin: toNull(form.gapsIntervalMin),
       monitorRetryHours: toNull(form.monitorRetryHours),
       noProgressSec: toNull(form.noProgressSec),
       maxDownloadAttempts: toNull(form.maxDownloadAttempts),
@@ -73,22 +77,34 @@ const { saving, saved, error, save } = useFormSave(async () => {
       </div>
 
       <SettingsField
-        label="Download interval (minutes)"
-        description="How often the download cycle runs. Default 15. (MONITOR_INTERVAL_MIN)"
-        type="number" placeholder="15"
-        v-model="form.monitorIntervalMin"
+        label="Max concurrent downloads"
+        description="Cap on simultaneous active Soulseek transfers. The worker tops up to this. Default 5. (MAX_CONCURRENT_DOWNLOADS)"
+        type="number" placeholder="5"
+        v-model="form.maxConcurrentDownloads"
       />
       <SettingsField
-        label="Per-cycle cap"
-        description="Max releases queued per download cycle. Default 10. (MONITOR_CAP)"
-        type="number" placeholder="10"
-        v-model="form.monitorCap"
+        label="Search picks per interval"
+        description="How many new missing releases the worker searches each top-up. Default 3. (SEARCH_PICKS_PER_INTERVAL)"
+        type="number" placeholder="3"
+        v-model="form.searchPicksPerInterval"
       />
       <SettingsField
-        label="Catalogue refresh (hours)"
-        description="How often monitored artists' MusicBrainz catalogue is refreshed for new releases. Default 24. (MONITOR_GAPS_HOURS)"
-        type="number" placeholder="24"
-        v-model="form.monitorGapsHours"
+        label="Search interval (seconds)"
+        description="Minimum seconds between download top-up runs (throttle). Default 60. (SEARCH_INTERVAL_SEC)"
+        type="number" placeholder="60"
+        v-model="form.searchIntervalSec"
+      />
+      <SettingsField
+        label="Catalogue-gap picks per run"
+        description="Monitored artists whose MusicBrainz catalogue is refreshed each gap run (round-robin). Default 20. (GAPS_PICKS_PER_RUN)"
+        type="number" placeholder="20"
+        v-model="form.gapsPicksPerRun"
+      />
+      <SettingsField
+        label="Catalogue-gap interval (minutes)"
+        description="Minutes between catalogue-gap runs. Default 5. (GAPS_INTERVAL_MIN)"
+        type="number" placeholder="5"
+        v-model="form.gapsIntervalMin"
       />
       <SettingsField
         label="Failed retry cooldown (hours)"
@@ -120,6 +136,22 @@ const { saving, saved, error, save } = useFormSave(async () => {
           class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
         >
           <option value="default">- use env default (SONGKONG_ENABLED) -</option>
+          <option value="on">On</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+
+      <div class="space-y-1.5">
+        <label class="block text-sm font-medium text-ink">Auto-approve downloads</label>
+        <p class="text-xs text-ink0">
+          When on, finished downloads auto-move to the approved folder (“Ready to merge”) with no
+          manual approval — only merge stays manual. Off = approve each one yourself. (AUTO_APPROVE_DOWNLOADS)
+        </p>
+        <select
+          v-model="autoApproveChoice"
+          class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
+        >
+          <option value="default">- use env default (AUTO_APPROVE_DOWNLOADS) -</option>
           <option value="on">On</option>
           <option value="off">Off</option>
         </select>

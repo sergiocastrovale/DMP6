@@ -64,6 +64,7 @@ model Artist {
   syncHash          String?
   relatedOnly       Boolean              @default(false)
   monitored         Boolean              @default(false)
+  lastGapsCheckedAt DateTime?            // last catalogue-gap refresh (round-robin fairness at scale)
   trackRelatedArtists TrackRelatedArtist[] @relation("ArtistRelatedTracks")
   unsplitIssues     IssueUnsplitArtist[] @relation("UnsplitArtistIssue")
   orphanIssues      IssueOrphanArtist[]  @relation("OrphanArtistIssue")
@@ -80,6 +81,7 @@ model Artist {
   @@index([name]) // B-tree for ORDER BY name; trigram GIN index for ILIKE added via raw migration
   @@index([country])
   @@index([relatedOnly])
+  @@index([monitored, lastGapsCheckedAt])
   @@index([monitored])
   @@index([primaryArtistId])
 }
@@ -420,6 +422,14 @@ model Settings {
   noProgressSec       Int?
   maxDownloadAttempts Int?
   songkongEnabled     Boolean? // enrich downloads with SongKong before layout; null = env/default
+  // Always-on downloader (null = use env/default)
+  downloadsApprovedPath  String?  // approved releases staged here before merge into MUSIC_DIR
+  autoApproveDownloads   Boolean? // auto-move finished downloads to the approved folder (default true)
+  maxConcurrentDownloads Int?     // cap on simultaneous active slskd transfers (default 5)
+  searchPicksPerInterval Int?     // missing releases queued per worker tick (default 3)
+  searchIntervalSec      Int?     // min seconds between download top-up runs (default 60)
+  gapsPicksPerRun        Int?     // monitored artists refreshed per catalogue-gap run (default 20)
+  gapsIntervalMin        Int?     // minutes between catalogue-gap runs (default 5)
   // Storage
   imageStorage       String?
   storageImageBucket      String?

@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { Check, X, Loader2, AlertCircle, Ban } from 'lucide-vue-next'
+import { Check, X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
 
 const props = defineProps<{
   items: DownloadedReleaseItem[]
   busyId?: string | null
   showActions?: boolean
+  showApprove?: boolean
+  showRetry?: boolean
+  showMerge?: boolean
   highlightId?: string | null
 }>()
 
@@ -28,6 +31,9 @@ watch(
 const emit = defineEmits<{
   approve: [id: string]
   reject: [id: string]
+  retry: [id: string]
+  merge: [id: string]
+  info: [id: string]
 }>()
 
 const statusClass = (s: string) => ({
@@ -57,7 +63,7 @@ const statusLabel = (it: DownloadedReleaseItem) =>
           <th class="px-4 py-2 font-medium">Release</th>
           <th class="px-4 py-2 font-medium">Source</th>
           <th class="px-4 py-2 font-medium">Status</th>
-          <th v-if="showActions" class="px-4 py-2 font-medium text-right">Actions</th>
+          <th class="px-4 py-2 font-medium text-right">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -94,27 +100,64 @@ const statusLabel = (it: DownloadedReleaseItem) =>
               <span class="text-xs text-ink-3">{{ it.percent }}%</span>
             </div>
           </td>
-          <td v-if="showActions" class="px-4 py-2.5">
-            <div class="flex items-center justify-end gap-2">
-              <UiButton
-                size="sm"
-                variant="primary"
-                :icon="Check"
-                :loading="busyId === it.id"
+          <td class="px-4 py-2.5">
+            <div class="flex items-center justify-end gap-1">
+              <button
+                type="button"
+                class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
+                title="Info"
+                aria-label="Info"
+                @click="emit('info', it.id)"
+              >
+                <Info :size="14" />
+              </button>
+              <button
+                v-if="showActions && showRetry"
+                type="button"
+                class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent disabled:opacity-40 disabled:pointer-events-none"
+                title="Force retry"
+                aria-label="Force retry"
+                :disabled="busyId != null && busyId !== it.id"
+                @click="emit('retry', it.id)"
+              >
+                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
+                <RotateCw v-else :size="14" />
+              </button>
+              <button
+                v-if="showMerge"
+                type="button"
+                class="rounded-full p-1.5 text-emerald-400 transition-colors hover:text-emerald-300 disabled:opacity-40 disabled:pointer-events-none"
+                title="Merge into library"
+                aria-label="Merge"
+                :disabled="busyId != null && busyId !== it.id"
+                @click="emit('merge', it.id)"
+              >
+                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
+                <FolderInput v-else :size="14" />
+              </button>
+              <button
+                v-if="showApprove"
+                type="button"
+                class="rounded-full p-1.5 text-emerald-400 transition-colors hover:text-emerald-300 disabled:opacity-40 disabled:pointer-events-none"
+                title="Approve"
+                aria-label="Approve"
                 :disabled="it.status !== 'PENDING' || (busyId != null && busyId !== it.id)"
                 @click="emit('approve', it.id)"
               >
-                Approve
-              </UiButton>
-              <UiButton
-                size="sm"
-                variant="danger"
-                :icon="X"
+                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
+                <Check v-else :size="14" />
+              </button>
+              <button
+                v-if="showActions"
+                type="button"
+                class="rounded-full p-1.5 text-red-400 transition-colors hover:text-red-300 disabled:opacity-40 disabled:pointer-events-none"
+                title="Reject"
+                aria-label="Reject"
                 :disabled="busyId != null || it.status === 'DOWNLOADING'"
                 @click="emit('reject', it.id)"
               >
-                Reject
-              </UiButton>
+                <X :size="14" />
+              </button>
             </div>
           </td>
         </tr>

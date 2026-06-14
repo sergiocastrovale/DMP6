@@ -3,11 +3,11 @@ import { promisify } from 'node:util'
 import { mkdir, writeFile, rm, access } from 'node:fs/promises'
 import { join, basename } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
-import { scanMissingAndDownload } from '~/server/utils/autoDownload'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { resolveSongkongEnabled, songkongDirs, songkongMaxWaitMin } from '~/server/utils/songkongSettings'
 import { transformToLibraryLayout } from '~/server/utils/layout'
+import { approveDownloadedRelease } from '~/server/utils/promote'
 import {
   getSlskdActiveDownloads,
   isSlskdTerminal,
@@ -19,8 +19,8 @@ const execFileAsync = promisify(execFile)
 
 const log = (msg: string) => console.log(`[monitor] ${msg}`)
 
-let downloadCycleRunning = false
 let gapsCycleRunning = false
+let lastGapsRunAt = 0
 let reconcileRunning = false
 const finalizing = new Set<string>()
 
@@ -128,12 +128,9 @@ export async function reconcileDownloads(): Promise<void> {
           }
           else {
             const releaseRoot = await transformToLibraryLayout(row.id, res.targetDir)
-            await prisma.downloadedRelease.update({
-              where: { id: row.id },
-              data: { status: 'PENDING', stagingPath: releaseRoot, error: null },
-            })
+            await settleFinished(row.id, releaseRoot, null)
             finalized++
-            log(`reconcile: ${row.title} -> PENDING (${res.movedCount} files)`)
+            log(`reconcile: ${row.title} -> ready (${res.movedCount} files)`)
           }
         }
         else {
@@ -156,6 +153,16 @@ export async function reconcileDownloads(): Promise<void> {
   }
   finally {
     reconcileRunning = false
+  }
+}
+
+// Mark a finished download PENDING (ready for approval); if auto-approve is on, immediately move it
+// to the approved folder (APPROVED, "Ready to merge") so the pipeline is hands-off to the merge gate.
+async function settleFinished(id: string, stagingPath: string, error: string | null): Promise<void> {
+  await prisma.downloadedRelease.update({ where: { id }, data: { status: 'PENDING', stagingPath, error } })
+  const { autoApproveDownloads } = await resolveDownloadSettings()
+  if (autoApproveDownloads) {
+    await approveDownloadedRelease(id).catch(e => log(`auto-approve failed for ${id}: ${e?.message || e}`))
   }
 }
 
@@ -208,18 +215,11 @@ async function drainEnriching(
     finalizing.add(row.id)
     try {
       const releaseRoot = await withTimeout(transformToLibraryLayout(row.id, row.stagingPath), 5 * 60_000)
-      await prisma.downloadedRelease.update({
-        where: { id: row.id },
-        data: {
-          status: 'PENDING',
-          stagingPath: releaseRoot,
-          error: enriched ? null : 'SongKong enrichment timed out; promoted without enrichment',
-        },
-      })
+      await settleFinished(row.id, releaseRoot, enriched ? null : 'SongKong enrichment timed out; merged without enrichment')
       await rm(join(dirs.spool, row.id), { force: true }).catch(() => {})
       await rm(join(dirs.done, row.id), { force: true }).catch(() => {})
       done++
-      log(`reconcile: ${row.title} -> PENDING (${enriched ? 'enriched' : 'enrich timed out'})`)
+      log(`reconcile: ${row.title} -> ready (${enriched ? 'enriched' : 'enrich timed out'})`)
     }
     catch (e: any) {
       log(`reconcile: ${row.title} layout transform failed: ${String(e?.message || e).slice(0, 300)}`)
@@ -232,58 +232,48 @@ async function drainEnriching(
 }
 
 /**
- * Fast loop: attempt Soulseek downloads for MISSING releases of monitored artists.
- * Each acquisition lands in the approval queue (DownloadedRelease).
- */
-export async function runMonitorCycle(cap: number): Promise<void> {
-  if (downloadCycleRunning) { log('download cycle still running, skip'); return }
-  downloadCycleRunning = true
-  try {
-    const monitored = await prisma.artist.count({ where: { monitored: true } })
-    if (monitored === 0) { log('download cycle: no monitored artists'); return }
-    const res = await scanMissingAndDownload({ limit: cap, monitoredOnly: true })
-    log(`download cycle: ${monitored} monitored artists | scanned ${res.scanned} missing | queued ${res.queued} | skipped ${res.skipped} | no result ${res.noResult}`)
-  }
-  catch (e: any) {
-    log(`download cycle failed: ${e?.message || e}`)
-  }
-  finally {
-    downloadCycleRunning = false
-  }
-}
-
-/**
- * Slow loop: refresh the MusicBrainz catalogue of every monitored artist so newly released
- * albums show up as MISSING (then the fast loop picks them up). 1 MB API call per artist.
+ * Catalogue-gap trickle: refresh a small round-robin batch of monitored artists' MusicBrainz
+ * catalogue each run (oldest lastGapsCheckedAt first) so new releases surface as MISSING — which the
+ * download worker then grabs. One `sync --catalogue-gaps --only "A;B;..." --exact` spawn per batch
+ * (--only is semicolon-separated). Self-throttled (gapsIntervalMin) + guarded; scales to 19K by
+ * cycling everyone through over a configurable window instead of one giant 24h burst.
  */
 export async function runGapsCycle(): Promise<void> {
-  if (gapsCycleRunning) { log('gaps cycle still running, skip'); return }
+  if (gapsCycleRunning) return
+  const mon = await resolveMonitorSettings()
+  if (Date.now() - lastGapsRunAt < Math.max(1, mon.gapsIntervalMin) * 60_000) return
   gapsCycleRunning = true
+  lastGapsRunAt = Date.now()
   try {
-    const artists = await prisma.artist.findMany({
+    const batch = await prisma.artist.findMany({
       where: { monitored: true, musicbrainzId: { not: null } },
-      select: { name: true },
-      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+      orderBy: { lastGapsCheckedAt: { sort: 'asc', nulls: 'first' } },
+      take: Math.max(1, mon.gapsPicksPerRun),
     })
-    if (artists.length === 0) return
-    log(`gaps cycle: refreshing catalogue for ${artists.length} monitored artist(s)`)
+    if (batch.length === 0) return
 
-    const root = process.env.PROJECT_ROOT || process.cwd()
-    const scriptsDir = process.env.SCRIPTS_DIR || root
-    const binary = join(scriptsDir, 'sync')
-
-    for (const a of artists) {
+    // ';' is the --only separator; skip any name containing it to avoid splitting wrong.
+    const usable = batch.filter(a => !a.name.includes(';'))
+    if (usable.length > 0) {
+      const root = process.env.PROJECT_ROOT || process.cwd()
+      const binary = join(process.env.SCRIPTS_DIR || root, 'sync')
       try {
-        await execFileAsync(binary, ['--catalogue-gaps', '--only', a.name, '--exact'], {
+        await execFileAsync(binary, ['--catalogue-gaps', '--only', usable.map(a => a.name).join(';'), '--exact'], {
           cwd: root,
-          maxBuffer: 1024 * 1024 * 32,
+          maxBuffer: 1024 * 1024 * 64,
         })
       }
       catch (e: any) {
-        log(`gaps cycle: ${a.name} failed: ${String(e?.message || e).split('\n')[0]}`)
+        log(`gaps batch failed: ${String(e?.message || e).split('\n')[0]}`)
       }
     }
-    log('gaps cycle done')
+    // Advance the round-robin even on failure so we don't stick on the same artists.
+    await prisma.artist.updateMany({
+      where: { id: { in: batch.map(a => a.id) } },
+      data: { lastGapsCheckedAt: new Date() },
+    })
+    log(`gaps: refreshed ${usable.length}/${batch.length} artist(s)`)
   }
   catch (e: any) {
     log(`gaps cycle failed: ${e?.message || e}`)

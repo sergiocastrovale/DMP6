@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
@@ -12,119 +13,151 @@ async function failNoResult(rowId: string, attempts: number, maxAttempts: number
   }).catch(() => {})
 }
 
-export interface ScanMissingResult {
-  scanned: number
-  queued: number
-  skipped: number
-  noResult: number
-  queuedTitles: string[]
-}
-
 /**
- * Find releases that are in the MusicBrainz catalogue but missing locally and queue Soulseek
- * downloads for them (each lands in the approval queue as a DownloadedRelease). Capped per run.
+ * Force an immediate re-download of a FAILED/ABANDONED release, bypassing the retry cooldown and the
+ * per-cycle cap entirely. Flips the row to DOWNLOADING synchronously (so it leaves the Failed tab at
+ * once), then runs a fresh Soulseek search + acquire detached. `files: []` parks it in the reconcile
+ * loop's "not yet enqueued" grace window so it can't be failed before the search completes.
  */
-export async function scanMissingAndDownload(
-  opts: { limit?: number; artistId?: string; monitoredOnly?: boolean } = {},
-): Promise<ScanMissingResult> {
-  const settings = await resolveDownloadSettings()
-  if (!settings.downloadsPath) {
-    throw createError({ statusCode: 503, message: 'DOWNLOADS_PATH not configured' })
-  }
-  const mon = await resolveMonitorSettings()
-  const limit = opts.limit ?? mon.monitorCap
-  const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
+export async function forceRetryDownload(id: string): Promise<void> {
+  const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: true } })
+  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+  if (!row.artist?.name) throw createError({ statusCode: 409, message: 'download has no artist' })
 
-  const artistFilter = {
-    ...(opts.artistId ? { artistId: opts.artistId } : {}),
-    ...(opts.monitoredOnly ? { artist: { monitored: true } } : {}),
-  }
-  const missing = await prisma.musicBrainzRelease.findMany({
-    where: {
-      status: 'MISSING',
-      type: { slug: { in: ['album', 'ep'] } },
-      ...(Object.keys(artistFilter).length ? { artists: { some: artistFilter } } : {}),
-    },
-    include: { artists: { include: { artist: true } } },
-    orderBy: { createdAt: 'asc' },
+  await prisma.downloadedRelease.update({
+    where: { id },
+    data: { status: 'DOWNLOADING', attempts: 0, error: null, bytesTransferred: BigInt(0), lastProgressAt: new Date(), slskUsername: null, files: [] },
   })
 
-  const result: ScanMissingResult = {
-    scanned: missing.length, queued: 0, skipped: 0, noResult: 0, queuedTitles: [],
-  }
+  const artistName = row.artist.name
+  ;(async () => {
+    const settings = await resolveDownloadSettings()
+    const best = await findBestSlskdResult(
+      `${artistName} ${row.title}`.trim(),
+      settings.downloadFormats || undefined,
+      settings.downloadMinBitrate ?? undefined,
+    ).catch(() => null)
+    if (!best) {
+      await prisma.downloadedRelease.update({
+        where: { id },
+        data: { status: 'FAILED', attempts: 1, error: 'no Soulseek result found (force retry)' },
+      }).catch(() => {})
+      return
+    }
+    await acquireRelease({
+      result: best,
+      artistId: row.artistId,
+      artistName,
+      albumTitle: row.title,
+      year: row.year,
+      mbReleaseId: row.mbReleaseId,
+      releaseGroupId: row.releaseGroupId,
+    }, row.id)
+  })().catch(e => console.error(`[retry] ${row.title}: ${e?.message || e}`))
+}
 
-  for (const mb of missing) {
-    if (result.queued >= limit) break
+interface MissingPick {
+  id: string
+  title: string
+  year: number | null
+  releaseGroupId: string | null
+  artistId: string
+  artistName: string
+}
 
-    // Skip anything already being handled, or permanently given up on (ABANDONED).
-    const existing = await prisma.downloadedRelease.findFirst({
-      where: { mbReleaseId: mb.id, status: { in: ['DOWNLOADING', 'PENDING', 'APPROVED', 'PROMOTED', 'ABANDONED'] } },
-      select: { id: true },
+let lastTopUpAt = 0
+
+/**
+ * Trickle worker (Search-Sniper style) for always-on, 19K-scale acquisition. Keeps at most
+ * `maxConcurrentDownloads` active slskd transfers; each run tops up by randomly picking a few MISSING
+ * album/EP releases of monitored artists (fair across the whole catalogue, not alphabetical), skipping
+ * anything already handled or recently FAILED. Creates each row as DOWNLOADING before searching so the
+ * next run/tick excludes it. Bounded + throttled so it never floods Soulseek regardless of pool size.
+ */
+export async function topUpDownloads(): Promise<void> {
+  const settings = await resolveDownloadSettings()
+  if (!settings.downloadsPath) return
+  const mon = await resolveMonitorSettings()
+
+  if (Date.now() - lastTopUpAt < Math.max(5, mon.searchIntervalSec) * 1000) return
+  lastTopUpAt = Date.now()
+
+  const maxConc = Math.max(1, mon.maxConcurrentDownloads)
+  const inFlight = await prisma.downloadedRelease.count({ where: { status: 'DOWNLOADING' } })
+  const slots = Math.min(maxConc - inFlight, Math.max(1, mon.searchPicksPerInterval))
+  if (slots <= 0) return
+
+  const cooldown = new Date(Date.now() - mon.monitorRetryHours * 3_600_000)
+  // Random fair pick across all monitored artists' MISSING album/EP releases, excluding any already
+  // in-flight/terminal or FAILED-within-cooldown.
+  const picks = await prisma.$queryRaw<MissingPick[]>(Prisma.sql`
+    SELECT mr.id, mr.title, mr.year, mr."releaseGroupId",
+           a.id   AS "artistId",
+           a.name AS "artistName"
+    FROM "MusicBrainzRelease" mr
+    JOIN "ReleaseType" rt ON rt.id = mr."typeId" AND rt.slug IN ('album', 'ep')
+    JOIN LATERAL (
+      SELECT ar.id, ar.name
+      FROM "MusicBrainzReleaseArtist" mra
+      JOIN "Artist" ar ON ar.id = mra."artistId"
+      WHERE mra."releaseId" = mr.id AND ar.monitored = true
+      LIMIT 1
+    ) a ON true
+    WHERE mr.status = 'MISSING'
+      AND NOT EXISTS (
+        SELECT 1 FROM "DownloadedRelease" dr
+        WHERE dr."mbReleaseId" = mr.id
+          AND (dr.status IN ('DOWNLOADING', 'ENRICHING', 'PENDING', 'APPROVED', 'PROMOTED', 'ABANDONED')
+               OR (dr.status = 'FAILED' AND dr."updatedAt" > ${cooldown}))
+      )
+    ORDER BY random()
+    LIMIT ${slots}
+  `)
+  if (picks.length === 0) return
+
+  const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
+  for (const p of picks) {
+    // Reuse a past-cooldown FAILED row if present (carry its attempt count), else create fresh.
+    const prior = await prisma.downloadedRelease.findFirst({
+      where: { mbReleaseId: p.id, status: 'FAILED' },
+      select: { id: true, attempts: true },
     })
-    if (existing) { result.skipped++; continue }
-
-    const artist = mb.artists[0]?.artist
-    if (!artist) { result.skipped++; continue }
-
-    // Retry backoff: don't re-attempt a recently-failed release (avoids hammering Soulseek
-    // for releases it simply doesn't have). Reuse the row only after the cooldown.
-    const cooldownAgo = new Date(Date.now() - mon.monitorRetryHours * 3_600_000)
-    const prevFailed = await prisma.downloadedRelease.findFirst({
-      where: { mbReleaseId: mb.id, status: 'FAILED' },
-      select: { id: true, updatedAt: true, attempts: true },
-    })
-    if (prevFailed && prevFailed.updatedAt > cooldownAgo) { result.skipped++; continue }
-    const carriedAttempts = prevFailed?.attempts ?? 0
-    const pendingData = {
-      artistId: artist.id,
-      mbReleaseId: mb.id,
-      releaseGroupId: mb.releaseGroupId ?? null,
-      title: mb.title,
-      year: mb.year ?? null,
+    const data = {
+      artistId: p.artistId,
+      mbReleaseId: p.id,
+      releaseGroupId: p.releaseGroupId,
+      title: p.title,
+      year: p.year,
       source: 'SLSKD' as const,
       status: 'DOWNLOADING' as const,
       error: null,
       slskUsername: null,
       quality: null,
+      files: [] as Prisma.InputJsonValue,
       bytesTransferred: BigInt(0),
       lastProgressAt: new Date(),
     }
-    const row = prevFailed
-      ? await prisma.downloadedRelease.update({ where: { id: prevFailed.id }, data: pendingData })
-      : await prisma.downloadedRelease.create({ data: pendingData })
+    const row = prior
+      ? await prisma.downloadedRelease.update({ where: { id: prior.id }, data })
+      : await prisma.downloadedRelease.create({ data })
 
-    const query = `${artist.name} ${mb.title}`.trim()
-    let best = null
-    try {
-      best = await findBestSlskdResult(
-        query,
-        settings.downloadFormats || undefined,
-        settings.downloadMinBitrate ?? undefined,
-      )
-    }
-    catch (e: any) {
-      await failNoResult(row.id, carriedAttempts, maxAttempts, String(e?.message || e).slice(0, 500))
-      result.noResult++
-      continue
-    }
+    const best = await findBestSlskdResult(
+      `${p.artistName} ${p.title}`.trim(),
+      settings.downloadFormats || undefined,
+      settings.downloadMinBitrate ?? undefined,
+    ).catch(() => null)
     if (!best) {
-      await failNoResult(row.id, carriedAttempts, maxAttempts, 'no Soulseek result found')
-      result.noResult++
+      await failNoResult(row.id, prior?.attempts ?? 0, maxAttempts, 'no Soulseek result found')
       continue
     }
-
     await acquireRelease({
       result: best,
-      artistId: artist.id,
-      artistName: artist.name,
-      albumTitle: mb.title,
-      year: mb.year ?? null,
-      mbReleaseId: mb.id,
-      releaseGroupId: mb.releaseGroupId ?? null,
+      artistId: p.artistId,
+      artistName: p.artistName,
+      albumTitle: p.title,
+      year: p.year,
+      mbReleaseId: p.id,
+      releaseGroupId: p.releaseGroupId,
     }, row.id)
-    result.queued++
-    result.queuedTitles.push(`${artist.name} - ${mb.title}`)
   }
-
-  return result
 }

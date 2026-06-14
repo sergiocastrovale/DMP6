@@ -57,6 +57,10 @@ export interface DownloadedReleaseItem {
   attempts?: number
   error: string | null
   stagingPath: string | null
+  mbReleaseId: string | null
+  releaseGroupId: string | null
+  localReleaseId: string | null
+  releaseType: string | null
   createdAt: string
   updatedAt: string
   percent: number

@@ -1,46 +1,28 @@
-import { runMonitorCycle, runGapsCycle, reconcileDownloads } from '~/server/utils/monitorLoop'
+import { runGapsCycle, reconcileDownloads } from '~/server/utils/monitorLoop'
+import { topUpDownloads } from '~/server/utils/autoDownload'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 
-// Per-artist monitoring (see docs/feature_monitoring.md). One base tick drives everything:
-//  - reconcile every tick: finalize/fail in-flight downloads ASAP (progress-driven)
-//  - download cycle every monitorIntervalMin: grab missing releases of monitored artists
-//  - catalogue gaps every monitorGapsHours: surface newly-released albums as MISSING
-// Cadences/caps are read live from settings each tick, so the Settings → Monitoring tab
-// applies without a restart. Only the base tick (RECONCILE_SEC) is fixed at boot.
+// Always-on, headless acquisition (see docs/feature_monitoring.md). One base tick fires three
+// INDEPENDENT, self-guarded, self-throttled workers (none awaited together, so a slow Soulseek
+// search can never block finalization):
+//   - reconcileDownloads: finalize/fail in-flight downloads + auto-approve (every tick)
+//   - topUpDownloads:     trickle new MISSING grabs, concurrency-capped (throttled internally)
+//   - runGapsCycle:       round-robin catalogue refresh so new releases surface as MISSING
+// Each worker has its own running-guard + interval gate, so they self-pace; only the base tick
+// (RECONCILE_SEC) is fixed at boot. No web UI needed — runs as long as the container is up.
 export default defineNitroPlugin(() => {
   const tickSec = Math.max(2, Number(process.env.RECONCILE_SEC) || 5)
   console.log(`[monitor] enabled: base tick ${tickSec}s; cadences/caps from Settings (DB overrides env)`)
 
-  // First periodic cycles run after a full interval; immediate per-artist kicks come from the
-  // Monitor toggle (PATCH /api/artists/[slug]). Gaps wait a full gaps-interval.
-  let lastDownloadAt = Date.now()
-  let lastGapsAt = Date.now()
-  let ticking = false
-
   setInterval(async () => {
-    if (ticking) return
-    ticking = true
-    try {
-      await reconcileDownloads()
+    // Always reconcile (cheap, bounded, internally guarded).
+    reconcileDownloads().catch(e => console.error(`[monitor] reconcile error: ${e?.message || e}`))
 
-      const mon = await resolveMonitorSettings()
-      if (!mon.monitorEnabled) return
+    const mon = await resolveMonitorSettings().catch(() => null)
+    if (!mon?.monitorEnabled) return
 
-      const now = Date.now()
-      if (now - lastDownloadAt >= mon.monitorIntervalMin * 60_000) {
-        lastDownloadAt = now
-        await runMonitorCycle(mon.monitorCap)
-      }
-      if (now - lastGapsAt >= mon.monitorGapsHours * 3_600_000) {
-        lastGapsAt = now
-        await runGapsCycle()
-      }
-    }
-    catch (e: any) {
-      console.error(`[monitor] tick error: ${e?.message || e}`)
-    }
-    finally {
-      ticking = false
-    }
+    // Fire-and-forget; each self-throttles + self-guards against overlap.
+    topUpDownloads().catch(e => console.error(`[monitor] topUp error: ${e?.message || e}`))
+    runGapsCycle().catch(e => console.error(`[monitor] gaps error: ${e?.message || e}`))
   }, tickSec * 1000)
 })
