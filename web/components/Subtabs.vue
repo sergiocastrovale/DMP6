@@ -20,7 +20,7 @@ const active = defineModel<string>()
       :key="tab.key"
       type="button"
       class="px-4 py-2 text-sm font-medium transition-colors"
-      :class="active === tab.key ? `border-b-2 ${tab.activeColor || 'border-accent'} text-white` : 'text-ink0 hover:text-ink-2'"
+      :class="active === tab.key ? `border-b-2 ${tab.activeColor || 'border-blue-500'} text-white` : 'text-ink-3 hover:text-ink-2'"
       @click="active = tab.key"
     >
       {{ tab.label }}

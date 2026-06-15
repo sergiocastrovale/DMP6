@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { History, FileText } from 'lucide-vue-next'
+import { FileText } from 'lucide-vue-next'
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { FixHistoryRow, HistoryIssueType } from '~/types/issues'
@@ -175,7 +175,7 @@ async function undoSelected() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <PageTitle :icon="History" text="Fix History" subtext="Browse and manage applied fix history records" />
+    <PageTitle text="Fix History" />
 
     <div class="flex items-center gap-1 border-b border-rule">
       <button

@@ -55,7 +55,6 @@ function formatRelative(date: string): string {
   <IssuesShell>
     <template #header>
       <PageTitle
-        :icon="Activity"
         text="Metadata Issues"
         :subtext="issuesStore.summary?.lastAudit
           ? `Last audit: ${formatRelative(issuesStore.summary.lastAudit.startedAt)}`

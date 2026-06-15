@@ -10,7 +10,7 @@ const sub = ref('PROMOTED')
 const search = ref('')
 
 const counts = computed(() => {
-  const c: Record<string, number> = { APPROVED: 0, PROMOTED: 0, ABANDONED: 0, REJECTED: 0 }
+  const c: Record<string, number> = { PROMOTED: 0, ABANDONED: 0, REJECTED: 0 }
   for (const i of queueHistory.value) {
     if (i.status in c) { c[i.status] = (c[i.status] ?? 0) + 1 }
   }
@@ -18,7 +18,6 @@ const counts = computed(() => {
 })
 const tabs = computed(() => [
   { key: 'PROMOTED', label: 'Promoted', count: counts.value.PROMOTED },
-  { key: 'APPROVED', label: 'Approved', count: counts.value.APPROVED },
   { key: 'REJECTED', label: 'Rejected', count: counts.value.REJECTED },
   { key: 'ABANDONED', label: 'Abandoned', count: counts.value.ABANDONED },
 ])
@@ -40,10 +39,11 @@ watch(queueHistory, () => {
 
 <template>
   <div class="flex flex-col gap-4">
-    <div class="flex items-center justify-between gap-4">
-      <Subtabs v-model="sub" :tabs="tabs" />
+    <div class="flex items-center justify-end">
       <SearchInput v-model="search" placeholder="Search history…" />
     </div>
+
+    <Subtabs v-model="sub" :tabs="tabs" />
 
     <DownloadsApprovalQueue
       :items="items"

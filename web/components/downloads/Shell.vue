@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { Radar, CircleStop, Pause, Play, AlertTriangle, DownloadCloud } from 'lucide-vue-next'
+import { Radar, CircleStop, Pause, Play, AlertTriangle } from 'lucide-vue-next'
 import type { TabItem } from '~/types/ui'
 
 const store = useDownloadsStore()
@@ -82,11 +82,12 @@ onUnmounted(() => { if (poll) { clearInterval(poll) } })
   <TabShell :breadcrumb-root="breadcrumbRoot" :breadcrumb-labels="breadcrumbLabels" :tabs="tabs">
     <template #header>
       <div class="flex flex-col gap-4">
-        <PageTitle
-          :icon="DownloadCloud"
-          text="Downloads"
-          subtext="Automatic Soulseek acquisitions for monitored artists. Approved releases wait in “Ready to merge” until you merge them into the library."
-        >
+        <PageTitle text="Downloads" />
+
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-sm text-ink-2">
+            Monitoring <span class="font-semibold text-ink">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
+          </span>
           <div class="flex items-center gap-2">
             <UiButton
               size="sm"
@@ -104,11 +105,7 @@ onUnmounted(() => { if (poll) { clearInterval(poll) } })
               Monitor none
             </UiButton>
           </div>
-        </PageTitle>
-
-        <span class="text-sm text-ink-2">
-          Monitoring <span class="font-semibold text-ink">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
-        </span>
+        </div>
 
         <div
           v-if="paused"
