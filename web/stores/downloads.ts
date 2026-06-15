@@ -101,6 +101,11 @@ export const useDownloadsStore = defineStore('downloads', () => {
     await fetchQueue()
   }
 
+  const cancel = async (id: string) => {
+    await $fetch(`/api/downloads/cancel/${id}`, { method: 'POST' })
+    await fetchQueue()
+  }
+
   const merge = async (id: string) => {
     await $fetch(`/api/downloads/merge/${id}`, { method: 'POST' })
     await fetchQueue()
@@ -150,6 +155,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     approve,
     reject,
     retry,
+    cancel,
     merge,
     approveAll,
     rejectAll,

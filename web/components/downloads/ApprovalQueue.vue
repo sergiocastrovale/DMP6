@@ -9,6 +9,7 @@ const props = defineProps<{
   showApprove?: boolean
   showRetry?: boolean
   showMerge?: boolean
+  showCancel?: boolean
   highlightId?: string | null
 }>()
 
@@ -33,6 +34,7 @@ const emit = defineEmits<{
   reject: [id: string]
   retry: [id: string]
   merge: [id: string]
+  cancel: [id: string]
   info: [id: string]
 }>()
 
@@ -146,6 +148,18 @@ const statusLabel = (it: DownloadedReleaseItem) =>
               >
                 <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
                 <Check v-else :size="14" />
+              </button>
+              <button
+                v-if="showCancel && (it.status === 'DOWNLOADING' || it.status === 'ENRICHING')"
+                type="button"
+                class="rounded-full p-1.5 text-red-400 transition-colors hover:text-red-300 disabled:opacity-40 disabled:pointer-events-none"
+                title="Cancel download"
+                aria-label="Cancel download"
+                :disabled="busyId != null && busyId !== it.id"
+                @click="emit('cancel', it.id)"
+              >
+                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
+                <X v-else :size="14" />
               </button>
               <button
                 v-if="showActions"

@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { Trash2 } from 'lucide-vue-next'
 
-defineProps<{
+const props = defineProps<{
   modelValue: boolean
   title?: string | null
+  heading?: string
+  verb?: string
+  confirmLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -11,27 +14,31 @@ const emit = defineEmits<{
   confirm: []
 }>()
 
+const heading = computed(() => props.heading ?? 'Reject download')
+const verb = computed(() => props.verb ?? 'Reject')
+const confirmLabel = computed(() => props.confirmLabel ?? 'Reject & delete')
+
 const close = () => emit('update:modelValue', false)
 </script>
 
 <template>
   <Dialog
     :model-value="modelValue"
-    title="Reject download"
+    :title="heading"
     max-width="sm"
     @update:model-value="emit('update:modelValue', $event)"
   >
     <div class="space-y-5">
       <p class="text-sm text-ink-2">
-        Reject <span v-if="title" class="text-ink">“{{ title }}”</span><span v-else>this download</span>?
-        The downloaded files will be deleted from disk and the entry removed.
+        {{ verb }} <span v-if="title" class="text-ink">“{{ title }}”</span><span v-else>this download</span>?
+        The downloaded files will be deleted from disk.
       </p>
       <div class="flex justify-end gap-2">
         <UiButton variant="ghost" @click="close">
           Cancel
         </UiButton>
         <UiButton variant="danger" :icon="Trash2" @click="emit('confirm')">
-          Reject & delete
+          {{ confirmLabel }}
         </UiButton>
       </div>
     </div>

@@ -35,6 +35,8 @@ const allTracksLoading = ref(false)
 const allTracksLoaded = ref(false)
 const downloadRelease = ref<UnifiedRelease | null>(null)
 const showDownloadDialog = ref(false)
+const cancelRelease = ref<UnifiedRelease | null>(null)
+const showCancelDialog = ref(false)
 const infoRelease = ref<UnifiedRelease | null>(null)
 const showInfoDialog = ref(false)
 const infoExtra = ref<ReleaseInfoExtra | null>(null)
@@ -155,6 +157,21 @@ function toReleaseSlug(title: string) {
 function openDownloadDialog(release: UnifiedRelease) {
   downloadRelease.value = release
   showDownloadDialog.value = true
+}
+
+function openCancelDialog(release: UnifiedRelease) {
+  cancelRelease.value = release
+  showCancelDialog.value = true
+}
+
+async function confirmCancelDownload() {
+  showCancelDialog.value = false
+  const id = cancelRelease.value?.downloadedReleaseId
+  cancelRelease.value = null
+  if (!id) {
+    return
+  }
+  await downloadsStore.cancel(id)
 }
 
 function refreshRelease(edition: UnifiedRelease) {
@@ -302,6 +319,7 @@ watch(() => props.releases, () => {
           @toggle="toggleGroup(group.key)"
           @play="handleGroupPlayClick(group)"
           @download="openDownloadDialog(group.primary)"
+          @cancel="openCancelDialog(group.primary)"
           @refresh="refreshRelease(group.primary)"
           @info="openInfoDialog(group.primary)"
         >
@@ -325,6 +343,7 @@ watch(() => props.releases, () => {
               @toggle="toggleEdition(edition.id)"
               @play="handleReleaseClick(edition)"
               @download="openDownloadDialog(edition)"
+              @cancel="openCancelDialog(edition)"
               @toggle-favorite="toggleFavoriteRelease(edition)"
               @refresh="refreshRelease(edition)"
               @info="openInfoDialog(edition)"
@@ -364,5 +383,14 @@ watch(() => props.releases, () => {
     />
 
     <ArtistReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />
+
+    <DownloadsRejectDialog
+      v-model="showCancelDialog"
+      :title="cancelRelease?.title ?? null"
+      heading="Cancel download"
+      verb="Cancel the download of"
+      confirm-label="Cancel & delete"
+      @confirm="confirmCancelDownload"
+    />
   </div>
 </template>

@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
+import { getSlskdActiveDownloads, cancelSlskdDownload } from '~/server/utils/slskd'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { monitorLog } from '~/server/utils/monitorLog'
 
@@ -175,40 +176,64 @@ export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merg
   return { merged: moved.length }
 }
 
+// slskd filenames can use backslash separators (Windows peers) — normalize before basename.
+const baseName = (f: string) => basename(f.replace(/\\/g, '/'))
+
+// Delete the staged folder from disk, but only inside the configured downloads/staging or approved
+// roots (safety) — used by both reject and cancel.
+async function purgeStagedFiles(stagingPath: string | null): Promise<void> {
+  if (!stagingPath) return
+  const { downloadsPath, downloadsApprovedPath } = await resolveDownloadSettings()
+  const inside = (root: string) => root && (stagingPath.startsWith(root + sep) || stagingPath === root)
+  if (!downloadsPath || inside(downloadsPath) || inside(downloadsApprovedPath)) {
+    await rm(stagingPath, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 /**
- * Reject a staged download (FAILED or APPROVED/ready-to-merge — identical outcome). Removes the staged
- * folder from disk and counts the reject against the shared `attempts` cap (MAX_DOWNLOAD_ATTEMPTS):
+ * Count a reject/cancel against the shared `attempts` cap (MAX_DOWNLOAD_ATTEMPTS) and clear the staged
+ * files reference:
  *   - below the cap -> back to FAILED (re-pickable after the retry cooldown), so the auto-downloader
  *     can fetch it again (a different source may be good).
- *   - at/above the cap -> REJECTED, a terminal tombstone excluded from pickCandidates, so it's never
- *     auto-fetched again.
+ *   - at/above the cap -> REJECTED, a terminal tombstone excluded from pickCandidates, never re-fetched.
  * The counter accumulates across the whole download→approve→reject lifecycle, so the try/approve/reject
  * churn is bounded by N. A manual download from the artist page resets the cap (deliberate override).
  */
-export async function rejectDownloadedRelease(id: string): Promise<void> {
-  const row = await prisma.downloadedRelease.findUnique({ where: { id } })
-  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
-
-  if (row.stagingPath) {
-    const { downloadsPath, downloadsApprovedPath } = await resolveDownloadSettings()
-    // Safety: only delete inside the configured downloads/staging or approved roots.
-    const inside = (root: string) => root && (row.stagingPath!.startsWith(root + sep) || row.stagingPath === root)
-    if (!downloadsPath || inside(downloadsPath) || inside(downloadsApprovedPath)) {
-      await rm(row.stagingPath, { recursive: true, force: true }).catch(() => {})
-    }
-  }
-
+async function applyRejectionCap(row: { id: string; attempts: number }, reason: string): Promise<void> {
   const { maxDownloadAttempts } = await resolveMonitorSettings()
   const attempts = (row.attempts ?? 0) + 1
   const terminal = attempts >= Math.max(1, maxDownloadAttempts)
   await prisma.downloadedRelease.update({
-    where: { id },
-    data: {
-      status: terminal ? 'REJECTED' : 'FAILED',
-      attempts,
-      error: 'rejected by user',
-      stagingPath: null,
-      files: Prisma.JsonNull,
-    },
+    where: { id: row.id },
+    data: { status: terminal ? 'REJECTED' : 'FAILED', attempts, error: reason, stagingPath: null, files: Prisma.JsonNull },
   })
+}
+
+/** Reject a staged download (FAILED or APPROVED/ready-to-merge — identical outcome). */
+export async function rejectDownloadedRelease(id: string): Promise<void> {
+  const row = await prisma.downloadedRelease.findUnique({ where: { id } })
+  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+  await purgeStagedFiles(row.stagingPath)
+  await applyRejectionCap(row, 'rejected by user')
+}
+
+/**
+ * Cancel an in-flight download (DOWNLOADING/ENRICHING): kill the live slskd transfers and remove all of
+ * its files, then count it against the same attempts cap as reject (below cap -> FAILED/re-downloadable,
+ * at cap -> REJECTED/terminal). Same N-bounded outcome as FAILED/APPROVED rejection.
+ */
+export async function cancelDownloadedRelease(id: string): Promise<void> {
+  const row = await prisma.downloadedRelease.findUnique({ where: { id } })
+  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+
+  const files = (row.files as Array<{ filename: string }> | null) ?? []
+  if (row.slskUsername && files.length) {
+    const transfers = await getSlskdActiveDownloads().catch(() => [])
+    const expected = new Set(files.map(f => baseName(String(f.filename))))
+    const ours = transfers.filter(t => t.username === row.slskUsername && expected.has(baseName(t.filename)))
+    // remove=true tells slskd to delete the (partial) file as it cancels the transfer.
+    for (const t of ours) await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})
+  }
+  await purgeStagedFiles(row.stagingPath)
+  await applyRejectionCap(row, 'cancelled by user')
 }

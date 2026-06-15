@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Download, FolderClosed, Heart, Info, Link, Loader2, PackageCheck, RefreshCw } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Download, FolderClosed, Heart, Info, Link, Loader2, PackageCheck, RefreshCw, X } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
@@ -22,6 +22,7 @@ const emit = defineEmits<{
   toggleFavorite: []
   refresh: []
   info: []
+  cancel: []
 }>()
 
 const { isCurrentRelease: isCurrentReleaseId, isReleasePlaying: isReleasePlayingId } = usePlayRelease()
@@ -47,6 +48,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
 
 // Acquisition pipeline state (see docs/feature_monitoring.md)
 const isDownloading = computed(() => props.edition.downloadState === 'DOWNLOADING')
+const isEnriching = computed(() => props.edition.downloadState === 'ENRICHING')
 const isDownloaded = computed(() => props.edition.downloadState === 'PENDING' || props.edition.downloadState === 'APPROVED')
 const downloadFailed = computed(() => props.edition.downloadState === 'FAILED')
 const isAbandoned = computed(() => props.edition.downloadState === 'ABANDONED')
@@ -127,6 +129,16 @@ const verifyDownload = () => navigateTo(`/downloads?highlight=${props.edition.do
       >
         <Loader2 :size="12" class="animate-spin" /> Downloading
       </span>
+
+      <button
+        v-if="isDownloading || isEnriching"
+        type="button"
+        class="rounded-full p-1.5 text-ink0 transition-colors hover:text-red-400"
+        title="Cancel download and delete its files"
+        @click.stop="emit('cancel')"
+      >
+        <X :size="14" />
+      </button>
 
       <button
         v-else-if="isDownloaded"

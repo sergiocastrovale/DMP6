@@ -103,6 +103,24 @@ const retry = async (id: string) => {
   catch (e: any) { actionMsg.value = e?.data?.message || e?.message || 'Retry failed' }
   finally { busyId.value = null }
 }
+
+const cancelId = ref<string | null>(null)
+const cancelOpen = ref(false)
+const cancelTitle = computed(() => queueActive.value.find(i => i.id === cancelId.value)?.title ?? null)
+
+const cancel = (id: string) => {
+  cancelId.value = id
+  cancelOpen.value = true
+}
+const confirmCancel = async () => {
+  const id = cancelId.value
+  cancelOpen.value = false
+  if (!id) return
+  busyId.value = id
+  try { await store.cancel(id) }
+  catch (e: any) { actionMsg.value = e?.data?.message || e?.message || 'Cancel failed' }
+  finally { busyId.value = null; cancelId.value = null }
+}
 const merge = async (id: string) => {
   busyId.value = id
   try { await store.merge(id) }
@@ -293,7 +311,9 @@ const tabs = computed(() => [
       :items="downloading"
       :busy-id="busyId"
       :show-actions="false"
+      :show-cancel="true"
       :highlight-id="highlightId"
+      @cancel="cancel"
       @info="openInfo"
     />
 
@@ -327,6 +347,14 @@ const tabs = computed(() => [
     </div>
 
     <DownloadsRejectDialog v-model="rejectOpen" :title="rejectTitle" @confirm="confirmReject" />
+    <DownloadsRejectDialog
+      v-model="cancelOpen"
+      :title="cancelTitle"
+      heading="Cancel download"
+      verb="Cancel the download of"
+      confirm-label="Cancel & delete"
+      @confirm="confirmCancel"
+    />
     <DownloadsRejectDialog
       v-model="rejectAllOpen"
       :title="`all ${failed.length} failed download${failed.length === 1 ? '' : 's'}`"

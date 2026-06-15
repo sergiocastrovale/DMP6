@@ -33,8 +33,10 @@ trusted); approval can be automatic, but nothing enters the library until you me
    + `./sync --only …`, stamps `LocalRelease.downloadedFrom = 'slskd'`, sets `status = PROMOTED`.
    Reject anywhere (FAILED or APPROVED — identical) deletes the staged files and counts against the
    shared attempt cap: below `MAX_DOWNLOAD_ATTEMPTS` it goes back to FAILED (re-downloadable after the
-   cooldown); at the cap it becomes `REJECTED` (terminal, never auto-re-queued). Manual download from
-   the artist page resets the cap.
+   cooldown); at the cap it becomes `REJECTED` (terminal, never auto-re-queued). **Cancel** (the X on a
+   DOWNLOADING/ENRICHING row, on `/downloads` and the artist page) kills the live slskd transfer, deletes
+   its partial files, and counts against the **same** cap — identical outcome to a reject. Manual
+   download from the artist page resets the cap.
 
 ## Data model
 
@@ -122,10 +124,10 @@ finalization — it reads slskd's real transfer state, so a refresh/poll always 
 - **Completed → PENDING** within one tick (~5 s); UI moves it Downloading→Pending and updates counts.
 - **Attempt cap**: each failed/no-result attempt increments `attempts`; at `maxDownloadAttempts`
   (default 3, `MAX_DOWNLOAD_ATTEMPTS`, DB-overridable) the release becomes **ABANDONED** and is never
-  auto-retried, so impossible downloads can't starve the thousands of others. Reject counts toward the
-  same `attempts` cap (FAILED below it, REJECTED at it), so the whole try/approve/reject churn is
-  bounded by N — a release the user keeps rejecting stops being re-downloaded after N. A manual Download
-  from the UI resets the cap.
+  auto-retried, so impossible downloads can't starve the thousands of others. Reject **and cancel** both
+  count toward the same `attempts` cap (FAILED below it, REJECTED at it), so the whole
+  try/approve/reject/cancel churn is bounded by N — a release the user keeps rejecting or cancelling
+  stops being re-downloaded after N. A manual Download from the UI resets the cap.
 
 - The artist page polls a lightweight `GET /api/artists/<slug>/download-status` (5 s) and merges
   the state into the release cards; badges update without reload.
