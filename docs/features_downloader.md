@@ -56,10 +56,16 @@ The folder transform is **DMP's** (it knows the MB album type); SongKong is enri
 
 ## Downloads page (`/downloads`)
 
-Tabs: **Pending approval** (manual-approve mode) · **Ready to merge** (approved, with Merge / Merge all)
-· **Downloading** (live % bars) · **Failed** (Force retry / Reject, icon actions) · **History**.
-Header has **Monitor all / Monitor none** (bulk toggle the whole catalogue). Per-row **Info** opens the
-release dialog (folder path, format, IDs). Reject always deletes the files + row.
+Tabs: **Monitoring** (first; paginated artist list with search + per-artist Turn on/off and a live
+"Monitoring x/y" counter) · **Pending approval** (manual-approve mode) · **Ready to merge** (approved,
+with Merge / Merge all) · **Downloading** (live % bars) · **Failed** (Force retry / Reject, icon
+actions) · **History** (read-only, subtabs per terminal status: Promoted / Approved / Rejected /
+Abandoned).
+Header has **Monitor all / Monitor none** (bulk toggle the whole catalogue; Monitor all goes active
+only when every artist is monitored). Per-row **Info** opens the release dialog (folder path, format,
+IDs). **Reject** deletes the staged files but keeps the row as a terminal `REJECTED` tombstone, so it's
+never auto-re-queued; re-download it manually from the artist page. `MAX_DOWNLOAD_ATTEMPTS` (default 3)
+caps the automatic try→fail loop (→ `ABANDONED`), and that cap now survives rejects too.
 
 ## Settings
 

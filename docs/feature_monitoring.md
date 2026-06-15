@@ -31,15 +31,17 @@ trusted); approval can be automatic, but nothing enters the library until you me
    `DOWNLOADS_APPROVED_FOLDER` and shows in the **Ready to merge** tab (`status = APPROVED`).
 5. **Merge.** **Merge** / **Merge all** moves `APPROVED_FOLDER → MUSIC_DIR`, runs `./index --folders …`
    + `./sync --only …`, stamps `LocalRelease.downloadedFrom = 'slskd'`, sets `status = PROMOTED`.
-   Reject anywhere deletes the staged files + the row.
+   Reject anywhere deletes the staged files and marks the row `REJECTED` (a terminal tombstone, so the
+   release is never auto-re-queued; re-download manually from the artist page to override).
 
 ## Data model
 
 - **`DownloadedRelease`** — one row per acquisition. Tracks the MISSING target (`mbReleaseId` /
   `releaseGroupId`), `artistId`, `source` (`SLSKD`), `slskUsername`, `quality`, `stagingPath`,
-  `status` (`DOWNLOADING | ENRICHING | PENDING | APPROVED | PROMOTED | FAILED | ABANDONED`; APPROVED =
-  in the approved folder/Ready-to-merge, PROMOTED = merged into the library), and `localReleaseId`
-  once merged. Reject deletes the row. This is the full audit trail.
+  `status` (`DOWNLOADING | ENRICHING | PENDING | APPROVED | REJECTED | PROMOTED | FAILED | ABANDONED`;
+  APPROVED = in the approved folder/Ready-to-merge, PROMOTED = merged into the library, REJECTED =
+  user-rejected terminal tombstone), and `localReleaseId` once merged. Reject keeps the row (status
+  REJECTED) so it's never auto-re-queued. This is the full audit trail.
 - **`LocalRelease.downloadedFrom`** — `NULL` for pristine library files, `'slskd'` for acquired.
   The fast provenance signal used across the UI/queries.
 
@@ -104,7 +106,7 @@ Derived from `DownloadedRelease` — never duplicated into the release tables:
 ```
 MISSING ─► Downloading… ─► (enriching) ─► Ready to merge (APPROVED) ─► [merge] ─► complete release
                │                                                          (move + index/sync)
-               ├ FAILED (retry after cooldown) ──┴ [reject] ─► back to MISSING
+               ├ FAILED (retry after cooldown) ──┴ [reject] ─► REJECTED (terminal; manual download re-acquires)
                └ ABANDONED (gave up after N attempts; auto-retry stops, Force retry still works)
 ```
 
@@ -115,8 +117,10 @@ finalization — it reads slskd's real transfer state, so a refresh/poll always 
   Dead "Queued, Remotely" grabs die in ~1 min instead of clogging the queue.
 - **Completed → PENDING** within one tick (~5 s); UI moves it Downloading→Pending and updates counts.
 - **Attempt cap**: each failed/no-result attempt increments `attempts`; at `maxDownloadAttempts`
-  (default 3) the release becomes **ABANDONED** and is never auto-retried — so impossible
-  downloads can't starve the thousands of others. A manual Download from the UI resets the cap.
+  (default 3, `MAX_DOWNLOAD_ATTEMPTS`, DB-overridable) the release becomes **ABANDONED** and is never
+  auto-retried, so impossible downloads can't starve the thousands of others. Reject no longer resets
+  this (the row is kept as REJECTED, excluded from auto-pick), so the cap holds across the
+  try→fail→reject cycle. A manual Download from the UI resets the cap.
 
 - The artist page polls a lightweight `GET /api/artists/<slug>/download-status` (5 s) and merges
   the state into the release cards; badges update without reload.

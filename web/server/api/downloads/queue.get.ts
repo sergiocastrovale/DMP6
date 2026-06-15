@@ -6,7 +6,7 @@ import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getPauseState, freeGb } from '~/server/utils/pauseState'
 
 // Returns the approval queue: active acquisitions (downloading / awaiting approval / failed)
-// plus a slice of recent history (promoted / rejected).
+// plus a slice of recent history (approved / promoted / abandoned / rejected, for the History subtabs).
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'sync.view')
 
@@ -22,10 +22,10 @@ export default defineEventHandler(async (event) => {
       orderBy: { updatedAt: 'desc' },
     }),
     prisma.downloadedRelease.findMany({
-      where: { status: { in: ['PROMOTED', 'REJECTED'] } },
+      where: { status: { in: ['APPROVED', 'PROMOTED', 'ABANDONED', 'REJECTED'] } },
       include: { artist: { select: { name: true, slug: true } } },
       orderBy: { updatedAt: 'desc' },
-      take: 50,
+      take: 200,
     }),
   ])
 

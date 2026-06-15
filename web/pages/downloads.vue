@@ -24,7 +24,7 @@ watch([queueActive, queueReady, queueHistory], () => {
   highlightApplied = true
   if (inActive) tab.value = inActive.status === 'PENDING' ? 'pending' : (inActive.status === 'FAILED' || inActive.status === 'ABANDONED') ? 'failed' : 'downloading'
   else if (inReady) tab.value = 'merge'
-  else tab.value = 'history'
+  else if (inHistory) { tab.value = 'history'; historySub.value = inHistory.status }
   setTimeout(() => { highlightId.value = null }, 4000)
 }, { immediate: true })
 const actionMsg = ref<string | null>(null)
@@ -36,6 +36,22 @@ const downloadProgressItems = computed(() => downloading.value.map(i => ({
 })))
 const failed = computed(() => queueActive.value.filter(i => i.status === 'FAILED' || i.status === 'ABANDONED'))
 const ready = computed(() => queueReady.value)
+
+const historySub = ref('PROMOTED')
+const historyCounts = computed(() => {
+  const counts: Record<string, number> = { APPROVED: 0, PROMOTED: 0, ABANDONED: 0, REJECTED: 0 }
+  for (const i of queueHistory.value) {
+    if (i.status in counts) { counts[i.status] = (counts[i.status] ?? 0) + 1 }
+  }
+  return counts
+})
+const historyTabs = computed(() => [
+  { key: 'PROMOTED', label: 'Promoted', count: historyCounts.value.PROMOTED },
+  { key: 'APPROVED', label: 'Approved', count: historyCounts.value.APPROVED },
+  { key: 'REJECTED', label: 'Rejected', count: historyCounts.value.REJECTED },
+  { key: 'ABANDONED', label: 'Abandoned', count: historyCounts.value.ABANDONED },
+])
+const historyItems = computed(() => queueHistory.value.filter(i => i.status === historySub.value))
 
 const monitoredArtists = ref(0)
 const totalArtists = ref(0)
@@ -300,13 +316,15 @@ const tabs = computed(() => [
       />
     </div>
 
-    <DownloadsApprovalQueue
-      v-else
-      :items="queueHistory"
-      :show-actions="false"
-      :highlight-id="highlightId"
-      @info="openInfo"
-    />
+    <div v-else class="space-y-3">
+      <Tabs v-model="historySub" :tabs="historyTabs" />
+      <DownloadsApprovalQueue
+        :items="historyItems"
+        :show-actions="false"
+        :highlight-id="highlightId"
+        @info="openInfo"
+      />
+    </div>
 
     <DownloadsRejectDialog v-model="rejectOpen" :title="rejectTitle" @confirm="confirmReject" />
     <DownloadsRejectDialog

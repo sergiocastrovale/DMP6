@@ -91,7 +91,7 @@ async function pickCandidates(slots: number, cooldown: Date): Promise<MissingPic
         AND NOT EXISTS (
           SELECT 1 FROM "DownloadedRelease" dr
           WHERE dr."mbReleaseId" = mr.id
-            AND (dr.status IN ('DOWNLOADING', 'ENRICHING', 'PENDING', 'APPROVED', 'PROMOTED', 'ABANDONED')
+            AND (dr.status IN ('DOWNLOADING', 'ENRICHING', 'PENDING', 'APPROVED', 'PROMOTED', 'ABANDONED', 'REJECTED')
                  OR (dr.status = 'FAILED' AND dr."updatedAt" > ${cooldown}))
         )
       ORDER BY random() LIMIT 1

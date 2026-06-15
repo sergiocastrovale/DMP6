@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdir, readdir, rename, copyFile, unlink, rm, rmdir } from 'node:fs/promises'
 import { join, basename, dirname, relative, sep } from 'node:path'
+import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { runExclusive } from '~/server/utils/scriptLock'
@@ -165,7 +166,13 @@ export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merg
   return { merged: moved.length }
 }
 
-/** Reject a staged download: always remove the staged folder from disk AND delete the row. */
+/**
+ * Reject a staged download: remove the staged folder from disk, then mark the row REJECTED (keep it
+ * as a terminal tombstone) instead of deleting it. Deleting reset the release to fresh MISSING, so the
+ * auto-picker re-queued it forever (try→fail→reject→requeue→fail). REJECTED is excluded from
+ * pickCandidates, so it's never auto-fetched again; a manual download from the artist page reuses the
+ * row and resets the attempt cap. Preserves the full audit trail + the 3-attempt cap across rejects.
+ */
 export async function rejectDownloadedRelease(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
@@ -178,5 +185,8 @@ export async function rejectDownloadedRelease(id: string): Promise<void> {
       await rm(row.stagingPath, { recursive: true, force: true }).catch(() => {})
     }
   }
-  await prisma.downloadedRelease.delete({ where: { id } })
+  await prisma.downloadedRelease.update({
+    where: { id },
+    data: { status: 'REJECTED', stagingPath: null, files: Prisma.JsonNull },
+  })
 }
