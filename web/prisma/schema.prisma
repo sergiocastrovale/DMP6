@@ -431,6 +431,8 @@ model Settings {
   searchIntervalSec      Int?     // min seconds between download top-up runs (default 60)
   gapsPicksPerRun        Int?     // monitored artists refreshed per catalogue-gap run (default 20)
   gapsIntervalMin        Int?     // minutes between catalogue-gap runs (default 5)
+  downloadsPaused        Boolean  @default(false) // global halt: no new queue/search/gaps/auto-merge
+  downloadsPausedReason  String?  // why paused: 'manual' | 'disk-full' | null
   // Storage
   imageStorage       String?
   storageImageBucket      String?

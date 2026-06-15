@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Trash2, FolderInput, Radar } from 'lucide-vue-next'
+import { Check, Trash2, FolderInput, Radar, CircleStop, Pause, Play, AlertTriangle } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import type { DownloadedReleaseItem } from '~/types/download'
 
@@ -7,9 +7,9 @@ useHead({ title: 'Downloads' })
 
 const route = useRoute()
 const store = useDownloadsStore()
-const { queueActive, queueReady, queueHistory, pendingCount, readyCount } = storeToRefs(store)
+const { queueActive, queueReady, queueHistory, pendingCount, readyCount, paused, pausedReason, freeGb, minFreeGb } = storeToRefs(store)
 
-const tab = ref<'pending' | 'merge' | 'downloading' | 'failed' | 'history'>('pending')
+const tab = ref<'monitoring' | 'pending' | 'merge' | 'downloading' | 'failed' | 'history'>('monitoring')
 const busyId = ref<string | null>(null)
 const highlightId = ref<string | null>((route.query.highlight as string) || null)
 
@@ -37,9 +37,22 @@ const downloadProgressItems = computed(() => downloading.value.map(i => ({
 const failed = computed(() => queueActive.value.filter(i => i.status === 'FAILED' || i.status === 'ABANDONED'))
 const ready = computed(() => queueReady.value)
 
+const monitoredArtists = ref(0)
+const totalArtists = ref(0)
+const allMonitored = computed(() => totalArtists.value > 0 && monitoredArtists.value >= totalArtists.value)
+const fetchMonitorCounts = async () => {
+  try {
+    const r = await $fetch<{ total: number; monitoredCount: number }>('/api/artists/monitoring', { query: { pageSize: 1 } })
+    monitoredArtists.value = r.monitoredCount
+    totalArtists.value = r.total
+  }
+  catch { /* ignore */ }
+}
+
 let poll: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
   store.fetchQueue()
+  fetchMonitorCounts()
   poll = setInterval(() => store.fetchQueue(), 2000)
 })
 onUnmounted(() => { if (poll) clearInterval(poll) })
@@ -87,9 +100,19 @@ const monitorAll = async (on: boolean) => {
   try {
     const r = await store.monitorAll(on)
     actionMsg.value = `${on ? 'Monitoring' : 'Stopped monitoring'} ${r.count} artists`
+    await fetchMonitorCounts()
   }
   catch (e: any) { actionMsg.value = e?.data?.message || e?.message || 'Monitor-all failed' }
   finally { monitorBusy.value = false }
+}
+
+const pauseBusy = ref(false)
+const togglePause = async () => {
+  pauseBusy.value = true
+  actionMsg.value = null
+  const err = await store.setPaused(!paused.value)
+  if (err) actionMsg.value = err
+  pauseBusy.value = false
 }
 
 const bulkBusy = ref(false)
@@ -137,6 +160,7 @@ const infoRelease = computed<UnifiedRelease | null>(() => {
 })
 
 const tabs = computed(() => [
+  { key: 'monitoring', label: 'Monitoring' },
   { key: 'pending', label: `Pending approval (${pendingCount.value})` },
   { key: 'merge', label: `Ready to merge (${readyCount.value})` },
   { key: 'downloading', label: `Downloading (${downloading.value.length})` },
@@ -155,14 +179,41 @@ const tabs = computed(() => [
           “Ready to merge” until you merge them into the library.
         </p>
       </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <span class="text-sm text-ink-2">
+        Monitoring <span class="font-semibold text-ink">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
+      </span>
       <div class="flex items-center gap-2">
-        <UiButton size="sm" variant="primary" :icon="Radar" :loading="monitorBusy" @click="monitorAll(true)">
+        <UiButton
+          size="sm"
+          :variant="paused ? 'primary' : 'secondary'"
+          :icon="paused ? Play : Pause"
+          :loading="pauseBusy"
+          @click="togglePause"
+        >
+          {{ paused ? 'Continue all downloads' : 'Pause all downloads' }}
+        </UiButton>
+        <UiButton size="sm" :variant="allMonitored ? 'primary' : 'secondary'" :icon="Radar" :loading="monitorBusy" @click="monitorAll(true)">
           Monitor all
         </UiButton>
-        <UiButton size="sm" variant="secondary" :loading="monitorBusy" @click="monitorAll(false)">
+        <UiButton size="sm" variant="secondary" :icon="CircleStop" :loading="monitorBusy" @click="monitorAll(false)">
           Monitor none
         </UiButton>
       </div>
+    </div>
+
+    <div
+      v-if="paused"
+      class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
+      :class="pausedReason === 'disk-full' ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-300'"
+    >
+      <AlertTriangle :size="15" />
+      <span v-if="pausedReason === 'disk-full'">
+        Downloads auto-paused — disk full ({{ freeGb }} GB free, need {{ minFreeGb }} GB). Free space, then Continue.
+      </span>
+      <span v-else>All downloads paused. New downloads, catalogue scans and auto-merge are halted until you continue.</span>
     </div>
 
     <p v-if="actionMsg" class="rounded-lg border border-rule bg-bg-1 px-4 py-2 text-sm text-ink-2">
@@ -183,7 +234,9 @@ const tabs = computed(() => [
       </button>
     </div>
 
-    <div v-if="tab === 'pending'" class="space-y-3">
+    <DownloadsMonitoringTab v-if="tab === 'monitoring'" />
+
+    <div v-else-if="tab === 'pending'" class="space-y-3">
       <div v-if="pending.length" class="flex justify-end">
         <UiButton size="sm" variant="primary" :icon="Check" :loading="bulkBusy" @click="approveAll">
           Approve all ({{ pending.length }})

@@ -1,6 +1,9 @@
 import { requirePermission } from '~/server/utils/permissions'
 import { prisma } from '~/server/utils/prisma'
 import { computeDownloadPercent } from '~/server/utils/downloadProgress'
+import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
+import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
+import { getPauseState, freeGb } from '~/server/utils/pauseState'
 
 // Returns the approval queue: active acquisitions (downloading / awaiting approval / failed)
 // plus a slice of recent history (promoted / rejected).
@@ -58,5 +61,18 @@ export default defineEventHandler(async (event) => {
     ...computeDownloadPercent(r),
   })
 
-  return { active: active.map(shape), ready: ready.map(shape), history: history.map(shape) }
+  const { paused, reason } = await getPauseState()
+  const { downloadsPath } = await resolveDownloadSettings()
+  const { downloadsMinFreeGb } = await resolveMonitorSettings()
+  const free = await freeGb(downloadsPath)
+
+  return {
+    active: active.map(shape),
+    ready: ready.map(shape),
+    history: history.map(shape),
+    paused,
+    pausedReason: reason,
+    freeGb: free >= 0 ? Math.round(free * 10) / 10 : null,
+    minFreeGb: downloadsMinFreeGb,
+  }
 })

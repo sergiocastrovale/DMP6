@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { access, readdir, rename, unlink } from 'node:fs/promises'
 import { join, dirname, extname, basename } from 'node:path'
+import { monitorLog } from '~/server/utils/monitorLog'
 
 const execFileAsync = promisify(execFile)
 
@@ -27,7 +28,8 @@ export const sanitize = (s: string) => s
  * Returns the number of files converted. ffmpeg/ffprobe must be on PATH.
  */
 export async function transcodeDirToMp3320(dir: string): Promise<{ converted: number; failed: number }> {
-  const log = (msg: string) => console.log(`[transcode] ${msg}`)
+  const log = (msg: string) => monitorLog('notice', `transcode: ${msg}`)
+  const warn = (msg: string) => monitorLog('warn', `transcode: ${msg}`)
   let converted = 0
   let failed = 0
 
@@ -52,20 +54,20 @@ export async function transcodeDirToMp3320(dir: string): Promise<{ converted: nu
       ], { maxBuffer: 1024 * 1024 * 16 })
       await rename(part, out)
       // remove the source (unless it shared the .mp3 name, which can't happen here)
-      if (src !== out) await unlink(src).catch(e => log(`could not delete source ${basename(src)}: ${e.message}`))
+      if (src !== out) await unlink(src).catch(e => warn(`could not delete source ${basename(src)}: ${e.message}`))
       converted++
     }
     catch (e: any) {
       failed++
       await unlink(part).catch(() => {})
-      log(`failed ${basename(src)}: ${e.message?.split('\n')[0] || e}`)
+      warn(`failed ${basename(src)}: ${e.message?.split('\n')[0] || e}`)
     }
   }
 
   // Rename every mp3 to `NN. Track Title.mp3` from its tags.
   const mp3s = (await collectAudioFiles(dir)).filter(f => ext(f) === 'mp3')
   for (const file of mp3s) {
-    await renameFromTags(file).catch(e => log(`rename failed ${basename(file)}: ${e.message || e}`))
+    await renameFromTags(file).catch(e => warn(`rename failed ${basename(file)}: ${e.message || e}`))
   }
 
   if (converted || failed) log(`${dir}: converted ${converted}, failed ${failed}`)
@@ -77,11 +79,12 @@ export interface AudioTags {
   title?: string
   disc?: string
   discTotal?: string
+  year?: string
 }
 
-/** Read track/disc/title tags via ffprobe (checks both format and stream tags). */
+/** Read track/disc/title/year tags via ffprobe (checks both format and stream tags). */
 export async function probeTags(file: string): Promise<AudioTags> {
-  const keys = 'track,tracknumber,title,disc,discnumber,disctotal,totaldiscs'
+  const keys = 'track,tracknumber,title,disc,discnumber,disctotal,totaldiscs,date,year,originalyear,originaldate'
   const { stdout } = await execFileAsync('ffprobe', [
     '-v', 'quiet',
     '-show_entries', `format_tags=${keys}:stream_tags=${keys}`,
@@ -99,11 +102,13 @@ export async function probeTags(file: string): Promise<AudioTags> {
     }
     return undefined
   }
+  const yearRaw = pick('date', 'year', 'originalyear', 'originaldate')
   return {
     track: pick('track', 'tracknumber'),
     title: pick('title'),
     disc: pick('disc', 'discnumber'),
     discTotal: pick('disctotal', 'totaldiscs'),
+    year: yearRaw?.match(/\d{4}/)?.[0], // first 4-digit year from "2007" / "2007-11-20" / etc.
   }
 }
 

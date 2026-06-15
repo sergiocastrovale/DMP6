@@ -196,6 +196,7 @@ If the NAS reboots mid-index, resume with `./index --resume`.
 sudo docker logs -f dmp
 sudo docker stats dmp
 sudo docker restart dmp
+sudo docker exec dmp tail -f /app/monitor.log   # downloader/monitoring errors, warnings, notices
 ```
 
 ---

@@ -3,8 +3,9 @@ import { join, dirname, basename, sep } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { collectAudioFiles, ext, probeTags, sanitize, type AudioTags } from '~/server/utils/transcode'
+import { monitorLog } from '~/server/utils/monitorLog'
 
-const log = (msg: string) => console.log(`[layout] ${msg}`)
+const log = (msg: string) => monitorLog('notice', `layout: ${msg}`)
 
 /** Leading integer of a tag like "1" or "1/12"; NaN-safe. */
 const parseLeadingInt = (s?: string): number => {
@@ -90,19 +91,21 @@ export const transformToLibraryLayout = async (
   const { downloadsPath } = await resolveDownloadSettings()
   if (!downloadsPath) throw new Error('DOWNLOADS_PATH not configured')
 
-  const artist = sanitize(row.artist?.name || '') || 'Unknown Artist'
-  const type = sanitize(await resolveAlbumType(row.mbReleaseId, row.releaseGroupId)) || 'Album'
-  const album = sanitize(row.title) || 'Unknown Album'
-  const albumDir = row.year ? `${row.year} - ${album}` : album
-  const releaseRoot = join(downloadsPath, artist, type, albumDir)
-
-  // Pass 1: probe every track so we know whether this is a multi-disc set.
+  // Pass 1: probe every track (multi-disc detection + year fallback).
   const files = (await collectAudioFiles(stagingDir)).filter(f => ext(f) === 'mp3')
   const probed = await Promise.all(files.map(async f => ({ file: f, tags: await probeTags(f) })))
   const discTotal = probed.reduce(
     (max, p) => Math.max(max, parseLeadingInt(p.tags.discTotal), parseLeadingInt(p.tags.disc)),
     1,
   )
+
+  const artist = sanitize(row.artist?.name || '') || 'Unknown Artist'
+  const type = sanitize(await resolveAlbumType(row.mbReleaseId, row.releaseGroupId)) || 'Album'
+  const album = sanitize(row.title) || 'Unknown Album'
+  // Year from the matched MB release; fall back to the (enriched) file tags when MB has none.
+  const year = row.year ?? (parseLeadingInt(probed.find(p => p.tags.year)?.tags.year) || null)
+  const albumDir = year ? `${year} - ${album}` : album
+  const releaseRoot = join(downloadsPath, artist, type, albumDir)
 
   // Pass 2: move each file into its destination.
   let moved = 0
@@ -115,7 +118,7 @@ export const transformToLibraryLayout = async (
       moved++
     }
     catch (e: any) {
-      log(`failed to move ${basename(file)}: ${e?.message || e}`)
+      monitorLog('warn', `layout: failed to move ${basename(file)}: ${e?.message || e}`)
     }
   }
 

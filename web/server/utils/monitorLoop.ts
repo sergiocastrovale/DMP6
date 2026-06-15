@@ -9,6 +9,8 @@ import { resolveSongkongEnabled, songkongDirs, songkongMaxWaitMin } from '~/serv
 import { transformToLibraryLayout } from '~/server/utils/layout'
 import { approveDownloadedRelease, mergeManyDownloadedReleases } from '~/server/utils/promote'
 import { runExclusive } from '~/server/utils/scriptLock'
+import { isDownloadsPaused } from '~/server/utils/pauseState'
+import { monitorLog } from '~/server/utils/monitorLog'
 import {
   getSlskdActiveDownloads,
   isSlskdTerminal,
@@ -18,7 +20,9 @@ import {
 
 const execFileAsync = promisify(execFile)
 
-const log = (msg: string) => console.log(`[monitor] ${msg}`)
+const log = (msg: string) => monitorLog('notice', msg)
+const logWarn = (msg: string) => monitorLog('warn', msg)
+const logErr = (msg: string) => monitorLog('error', msg)
 
 let gapsCycleRunning = false
 let lastGapsRunAt = 0
@@ -98,7 +102,7 @@ export async function reconcileDownloads(): Promise<void> {
           for (const t of ours) await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})
           await failAttempt(row, maxAttempts, `no progress for ${mon.noProgressSec}s`)
           failed++
-          log(`reconcile: ${row.title} stalled -> ${row.attempts + 1 >= maxAttempts ? 'ABANDONED' : 'FAILED'}`)
+          logWarn(`reconcile: ${row.title} stalled -> ${row.attempts + 1 >= maxAttempts ? 'ABANDONED' : 'FAILED'}`)
         }
         continue
       }
@@ -152,7 +156,7 @@ export async function reconcileDownloads(): Promise<void> {
     if (failed || finalized) log(`reconcile done: ${finalized} -> PENDING, ${failed} -> FAILED/ABANDONED`)
   }
   catch (e: any) {
-    log(`reconcile failed: ${e?.message || e}`)
+    logErr(`reconcile failed: ${e?.message || e}`)
   }
   finally {
     reconcileRunning = false
@@ -165,7 +169,7 @@ async function settleFinished(id: string, stagingPath: string, error: string | n
   await prisma.downloadedRelease.update({ where: { id }, data: { status: 'PENDING', stagingPath, error } })
   const { autoApproveDownloads } = await resolveDownloadSettings()
   if (autoApproveDownloads) {
-    await approveDownloadedRelease(id).catch(e => log(`auto-approve failed for ${id}: ${e?.message || e}`))
+    await approveDownloadedRelease(id).catch(e => logErr(`auto-approve failed for ${id}: ${e?.message || e}`))
   }
 }
 
@@ -224,7 +228,7 @@ async function drainEnriching(
       log(`reconcile: ${row.title} -> ready (${enriched ? 'enriched' : 'enrich timed out'})`)
     }
     catch (e: any) {
-      log(`reconcile: ${row.title} layout transform failed: ${String(e?.message || e).slice(0, 300)}`)
+      logErr(`reconcile: ${row.title} layout transform failed: ${String(e?.message || e).slice(0, 300)}`)
     }
     finally {
       finalizing.delete(row.id)
@@ -242,14 +246,20 @@ async function drainEnriching(
  */
 export async function runGapsCycle(): Promise<void> {
   if (gapsCycleRunning) return
+  if (await isDownloadsPaused()) return
   const mon = await resolveMonitorSettings()
   if (Date.now() - lastGapsRunAt < Math.max(1, mon.gapsIntervalMin) * 60_000) return
   gapsCycleRunning = true
   lastGapsRunAt = Date.now()
   try {
     const batch = await prisma.artist.findMany({
-      // Skip junk/compound (';'-named) artists — they'd dump thousands of bogus MISSING entries.
-      where: { monitored: true, musicbrainzId: { not: null }, name: { not: { contains: ';' } } },
+      // Skip compound/junk artists: ';' splits the --only arg; '/' is a path separator in Rust.
+      where: {
+        monitored: true,
+        musicbrainzId: { not: null },
+        name: { not: { contains: ';' } },
+        AND: { name: { not: { contains: '/' } } },
+      },
       select: { id: true, name: true },
       orderBy: { lastGapsCheckedAt: { sort: 'asc', nulls: 'first' } },
       take: Math.max(1, mon.gapsPicksPerRun),
@@ -266,10 +276,17 @@ export async function runGapsCycle(): Promise<void> {
       ))
     }
     catch (e: any) {
-      log(`gaps batch failed (will retry): ${String(e?.message || e).split('\n')[0]}`)
-      return // do NOT stamp — let these artists be re-picked next run
+      const stderr = String(e?.stderr || '').trim()
+      logWarn(`gaps batch failed: ${String(e?.message || e).split('\n')[0]}${stderr ? ` — ${stderr.split('\n')[0]}` : ''}`)
+      // Stamp even on failure: without this, null-lastGapsCheckedAt artists always win the
+      // orderBy and re-loop every tick. Stamping lets the rest of the catalogue cycle through;
+      // these artists will be re-picked naturally after the full round-robin completes.
+      await prisma.artist.updateMany({
+        where: { id: { in: batch.map(a => a.id) } },
+        data: { lastGapsCheckedAt: new Date() },
+      })
+      return
     }
-    // Stamp only on success so a transient failure doesn't skip artists for a whole cycle.
     await prisma.artist.updateMany({
       where: { id: { in: batch.map(a => a.id) } },
       data: { lastGapsCheckedAt: new Date() },
@@ -277,7 +294,7 @@ export async function runGapsCycle(): Promise<void> {
     log(`gaps: refreshed ${batch.length} artist(s)`)
   }
   catch (e: any) {
-    log(`gaps cycle failed: ${e?.message || e}`)
+    logErr(`gaps cycle failed: ${e?.message || e}`)
   }
   finally {
     gapsCycleRunning = false
@@ -290,6 +307,7 @@ export async function runGapsCycle(): Promise<void> {
  */
 export async function runAutoMergeCycle(): Promise<void> {
   if (autoMergeRunning) return
+  if (await isDownloadsPaused()) return
   const { autoMergeDownloads } = await resolveDownloadSettings()
   if (!autoMergeDownloads) return
   if (Date.now() - lastAutoMergeAt < 120_000) return
@@ -304,7 +322,7 @@ export async function runAutoMergeCycle(): Promise<void> {
     if (merged) log(`auto-merge: ${merged} -> PROMOTED`)
   }
   catch (e: any) {
-    log(`auto-merge failed: ${e?.message || e}`)
+    logErr(`auto-merge failed: ${e?.message || e}`)
   }
   finally {
     autoMergeRunning = false

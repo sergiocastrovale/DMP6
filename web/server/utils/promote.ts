@@ -5,6 +5,7 @@ import { join, basename, dirname, relative, sep } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { runExclusive } from '~/server/utils/scriptLock'
+import { monitorLog } from '~/server/utils/monitorLog'
 
 const execFileAsync = promisify(execFile)
 
@@ -147,7 +148,7 @@ export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merg
   for (const row of rows) {
     if (!row.stagingPath) continue
     try { moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsApprovedPath) }) }
-    catch (e: any) { console.log(`[merge] move failed ${row.title}: ${e?.message || e}`) }
+    catch (e: any) { monitorLog('error', `merge: move failed ${row.title}: ${e?.message || e}`) }
   }
   if (moved.length === 0) return { merged: 0 }
 

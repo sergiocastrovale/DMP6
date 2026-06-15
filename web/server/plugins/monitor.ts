@@ -1,6 +1,9 @@
 import { runGapsCycle, runAutoMergeCycle, reconcileDownloads } from '~/server/utils/monitorLoop'
 import { topUpDownloads } from '~/server/utils/autoDownload'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
+import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
+import { enforceDiskGuard } from '~/server/utils/pauseState'
+import { monitorLog } from '~/server/utils/monitorLog'
 
 // Always-on, headless acquisition (see docs/feature_monitoring.md). One base tick fires three
 // INDEPENDENT, self-guarded, self-throttled workers (none awaited together, so a slow Soulseek
@@ -12,18 +15,24 @@ import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 // (RECONCILE_SEC) is fixed at boot. No web UI needed — runs as long as the container is up.
 export default defineNitroPlugin(() => {
   const tickSec = Math.max(2, Number(process.env.RECONCILE_SEC) || 5)
-  console.log(`[monitor] enabled: base tick ${tickSec}s; cadences/caps from Settings (DB overrides env)`)
+  monitorLog('notice', `enabled: base tick ${tickSec}s; cadences/caps from Settings (DB overrides env)`)
 
   setInterval(async () => {
     // Always reconcile (cheap, bounded, internally guarded).
-    reconcileDownloads().catch(e => console.error(`[monitor] reconcile error: ${e?.message || e}`))
+    reconcileDownloads().catch(e => monitorLog('error', `reconcile error: ${e?.message || e}`))
 
     const mon = await resolveMonitorSettings().catch(() => null)
     if (!mon?.monitorEnabled) return
 
+    // Disk-full → auto-pause. When paused (manual or disk-full), skip all NEW automated work;
+    // reconcile above still finalizes in-flight downloads and can free space.
+    const { downloadsPath } = await resolveDownloadSettings()
+    const paused = await enforceDiskGuard(downloadsPath, mon.downloadsMinFreeGb).catch(() => false)
+    if (paused) return
+
     // Fire-and-forget; each self-throttles + self-guards against overlap.
-    topUpDownloads().catch(e => console.error(`[monitor] topUp error: ${e?.message || e}`))
-    runGapsCycle().catch(e => console.error(`[monitor] gaps error: ${e?.message || e}`))
-    runAutoMergeCycle().catch(e => console.error(`[monitor] auto-merge error: ${e?.message || e}`))
+    topUpDownloads().catch(e => monitorLog('error', `topUp error: ${e?.message || e}`))
+    runGapsCycle().catch(e => monitorLog('error', `gaps error: ${e?.message || e}`))
+    runAutoMergeCycle().catch(e => monitorLog('error', `auto-merge error: ${e?.message || e}`))
   }, tickSec * 1000)
 })

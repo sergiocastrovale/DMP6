@@ -7,7 +7,7 @@ set -u
 STATE="/mnt/SSD/Downloads/.dmp-songkong"
 SPOOL="$STATE/spool"
 DONE="$STATE/done"
-SCAN="$(dirname "$0")/dmp-songkong-scan.sh"
+SCAN="$(dirname "$0")/songkong-scan.sh"
 
 exec 9>"$STATE/drain.lock"
 flock -n 9 || exit 0

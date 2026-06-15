@@ -45,9 +45,12 @@ trusted); approval can be automatic, but nothing enters the library until you me
 
 ## Monitoring & the three workers
 
-Toggle **Monitor** on an artist page, or **Monitor all / Monitor none** on `/downloads` to flip the
-whole catalogue in one `updateMany`. Persisted as `Artist.monitored`. Everything runs headless in the
-Nitro server plugin `server/plugins/monitor.ts` (web container) — no browser needed.
+Toggle **Monitor** on an artist page, or use the **Monitoring** tab (first tab) on `/downloads`:
+a paginated, name-searchable list of every artist (50/page, infinite scroll) with a per-artist
+**Turn on / Turn off** action and a live "Monitoring x/y artists" counter. The header also has
+**Monitor all / Monitor none** to flip the whole catalogue in one `updateMany` (Monitor all shows its
+active/yellow state only when *every* artist is monitored). Persisted as `Artist.monitored`. Everything
+runs headless in the Nitro server plugin `server/plugins/monitor.ts` (web container) — no browser needed.
 
 One base tick (`RECONCILE_SEC`, default 5s) fires three **independent, self-guarded, self-throttled**
 workers (none awaited together, so a slow search can't block finalization):
@@ -66,7 +69,13 @@ regardless of pool size.
 (`runExclusive`), so the gaps worker and merges never collide on the binaries' exclusive DB lock.
 Junk/compound artists (names with `;`) are excluded everywhere. The relocate step finalizes even when
 slskd-owned source files can't be deleted (align slskd↔dmp gid + `UMASK=002` to clean those up).
-Optional `AUTO_MERGE` (default off) batch-merges approved releases hands-off.
+Optional `AUTO_MERGE` (default off) batch-merges approved releases hands-off via a fourth worker
+(`runAutoMergeCycle`).
+
+**Logging:** every monitoring error, warning and notice goes through one sink
+(`server/utils/monitorLog.ts`) → appended to `monitor.log` at the project root and mirrored to
+stdout, all in the fixed format `[{timestamp}][{level}] {message}` (`level` = `error | warn | notice`).
+Tail it with `tail -f monitor.log` (or, on the NAS, `sudo docker exec dmp tail -f /app/monitor.log`).
 
 ### Settings → Monitoring tab (live, DB overrides env)
 Editable at **Settings → Monitoring**; DB value overrides env, changes apply **without restart** (read

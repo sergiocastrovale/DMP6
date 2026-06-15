@@ -4,7 +4,7 @@ import { prisma } from '~/server/utils/prisma'
 /**
  * SongKong enrichment runs OUTSIDE the dmp container (no docker socket): the dmp container can't
  * invoke the dedicated SongKong instance, so it drops a spool file into a shared directory under
- * DOWNLOADS_PATH and a host cron drainer (dmp-songkong-drain.sh) runs SongKong, then writes a
+ * DOWNLOADS_PATH and a host cron drainer (scripts/monitor/songkong-drain.sh) runs SongKong, then writes a
  * `done/<id>` marker the reconcile loop polls for. All paths here are the dmp container's view.
  */
 export const SONGKONG_DIR_NAME = '.dmp-songkong'

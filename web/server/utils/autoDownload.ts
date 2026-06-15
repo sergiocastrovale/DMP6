@@ -1,9 +1,10 @@
-import { statfs } from 'node:fs/promises'
 import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { findBestSlskdResult, acquireRelease } from '~/server/utils/acquire'
+import { isDownloadsPaused } from '~/server/utils/pauseState'
+import { monitorLog } from '~/server/utils/monitorLog'
 
 // Mark a no-result/search-error attempt: bump attempts, abandon at the cap.
 async function failNoResult(rowId: string, attempts: number, maxAttempts: number, error: string) {
@@ -54,7 +55,7 @@ export async function forceRetryDownload(id: string): Promise<void> {
       mbReleaseId: row.mbReleaseId,
       releaseGroupId: row.releaseGroupId,
     }, row.id)
-  })().catch(e => console.error(`[retry] ${row.title}: ${e?.message || e}`))
+  })().catch(e => monitorLog('error', `force-retry ${row.title}: ${e?.message || e}`))
 }
 
 interface MissingPick {
@@ -68,15 +69,6 @@ interface MissingPick {
 
 let lastTopUpAt = 0
 let topUpRunning = false
-
-/** GB free under a path; -1 if unavailable (don't block on stat errors). */
-async function freeGb(path: string): Promise<number> {
-  try {
-    const s = await statfs(path)
-    return (Number(s.bavail) * Number(s.bsize)) / 1e9
-  }
-  catch { return -1 }
-}
 
 // Artist-first random pick: choose random monitored, non-junk artists (indexed) and take one eligible
 // MISSING album/EP each. Avoids a full random sort over the entire MISSING pool every tick at 19K.
@@ -122,14 +114,7 @@ export async function topUpDownloads(): Promise<void> {
   const mon = await resolveMonitorSettings()
 
   if (Date.now() - lastTopUpAt < Math.max(5, mon.searchIntervalSec) * 1000) return
-
-  // Disk guard: stop grabbing if the downloads volume is nearly full.
-  const free = await freeGb(settings.downloadsPath)
-  if (free >= 0 && free < mon.downloadsMinFreeGb) {
-    if (Date.now() - lastTopUpAt > 600_000) console.log(`[monitor] topUp paused: only ${free.toFixed(1)}GB free`)
-    lastTopUpAt = Date.now()
-    return
-  }
+  if (await isDownloadsPaused()) return // global pause (manual or disk-full); see pauseState.ts
 
   topUpRunning = true
   lastTopUpAt = Date.now()

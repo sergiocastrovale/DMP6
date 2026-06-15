@@ -2,6 +2,7 @@ import { readdir, mkdir, rename, rmdir, copyFile, unlink } from 'node:fs/promise
 import { basename, join, dirname, sep } from 'node:path'
 import { resolveDownloadSettings, resolveDownloadDir } from '~/server/utils/downloadSettings'
 import { transcodeDirToMp3320 } from '~/server/utils/transcode'
+import { monitorLog } from '~/server/utils/monitorLog'
 
 interface SlskdConfig {
   url: string
@@ -254,7 +255,7 @@ export interface SlskdMoveResult {
 }
 
 export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<SlskdMoveResult> {
-  const log = (msg: string) => console.log(`[slskd move] ${msg}`)
+  const log = (msg: string) => monitorLog('notice', `slskd move: ${msg}`)
   const expected = new Set(args.files.map(f => basename(f.replace(/\\/g, '/'))))
   const deadline = Date.now() + 30 * 60 * 1000 // 30 minutes
 
@@ -286,7 +287,7 @@ export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<S
  * does NOT wait. Used by the reconciler, which gates on slskd transfer state itself.
  */
 export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<SlskdMoveResult> {
-  const log = (msg: string) => console.log(`[slskd move] ${msg}`)
+  const log = (msg: string) => monitorLog('notice', `slskd move: ${msg}`)
   const expected = new Set(args.files.map(f => basename(f.replace(/\\/g, '/'))))
 
   const targetDir = join(
@@ -322,15 +323,15 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
           // uid, so unlink can fail (EACCES) — count it moved anyway and leave the orphan source for
           // the periodic prune sweep. Failing here would wrongly mark the whole release as failed.
           await unlink(srcPath).then(() => movedFromDirs.add(dirname(srcPath)),
-            (e3: any) => log(`copied but could not remove source ${srcPath}: ${e3.message}`))
+            (e3: any) => monitorLog('warn', `slskd move: copied but could not remove source ${srcPath}: ${e3.message}`))
           movedCount++
         }
         catch (e2: any) {
-          log(`failed to copy ${srcPath} -> ${destPath}: ${e2.message}`)
+          monitorLog('warn', `slskd move: failed to copy ${srcPath} -> ${destPath}: ${e2.message}`)
         }
       }
       else {
-        log(`failed to move ${srcPath} -> ${destPath}: ${e.message}`)
+        monitorLog('warn', `slskd move: failed to move ${srcPath} -> ${destPath}: ${e.message}`)
       }
     }
   }
@@ -342,7 +343,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   }
 
   // Normalize everything in the target folder to MP3-320 (keeps existing mp3s as-is).
-  await transcodeDirToMp3320(targetDir).catch(e => log(`transcode failed: ${e.message}`))
+  await transcodeDirToMp3320(targetDir).catch(e => monitorLog('warn', `slskd move: transcode failed: ${e.message}`))
 
   return { targetDir, movedCount }
 }

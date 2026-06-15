@@ -1,68 +1,75 @@
 # Downloads - Soulseek (slskd)
 
-## How it's set up on the NAS
+## Architecture (important)
 
-slskd runs as a Docker service alongside DMP. Its config/state live in `/mnt/SSD/slskd/`; downloads go to a separate dataset at `/mnt/SSD/Downloads/` that's shared with the web container:
+slskd is **NOT** part of DMP's `docker-compose.yml`. It's a **shared instance** that belongs to the
+media-automation stack (Prowlarr · Lidarr · slskd · qBittorrent), all running **inside gluetun's
+network namespace** (behind the VPN). DMP only talks to it over HTTP via `SLSKD_URL`.
 
 ```
-/mnt/SSD/slskd/
-├── config/slskd.yml   # slskd configuration
-└── data/              # internal state (database, logs)
-
-/mnt/SSD/Downloads/    # finished downloads land here (shared with dmp)
+gluetun netns (VPN)                         DMP compose (host network)
+┌─────────────────────────────┐            ┌──────────────────────────┐
+│ Lidarr · Prowlarr · qbit     │            │ dmp (web) · redis        │
+│ slskd  :5030  ───────────────┼──HTTP──────┤ SLSKD_URL=…:5030         │
+│   writes → /downloads/dmp    │            │ DOWNLOADS_PATH=          │
+└──────────────┬──────────────┘            │   /mnt/SSD/Downloads/dmp │
+               │ both mount the host         └──────────────────────────┘
+               ▼ Downloads dataset
+        /mnt/SSD/Downloads   (gid 568, group-writable, setgid)
 ```
 
-The service is defined in [`docker-compose.yml`](../docker-compose.yml) and launches automatically when you run `docker compose up -d` or deploy via `./deploy`. Both `slskd` and `web` mount the same host path at `/downloads`, so DMP can move slskd's finished files into the templated `{artist}/{year} - {album}` folder.
+- slskd mounts the host `/mnt/SSD/Downloads` at `/downloads`; its `directories.downloads` is set to
+  **`/downloads/dmp`** so DMP's acquisitions land in the `dmp/` subfolder (the DMP downloads root).
+- DMP's `web` container **identity-mounts** the same host dataset (`/mnt/SSD/Downloads:/mnt/SSD/Downloads`),
+  so `DOWNLOADS_PATH=/mnt/SSD/Downloads/dmp` is a **real host path** — identical in `.env`, the Settings
+  DB, and the container. slskd writes to `/downloads/dmp` = the same host dir `/mnt/SSD/Downloads/dmp`,
+  which is why DMP can move/transcode the finished files in place.
+- Don't add a second slskd to DMP's compose — it collides on port 5030 with the shared one.
+
+See `~/web/nas-media-docs/lidarr-stack.md` for the full media-stack setup (gluetun, user `0:568`,
+`SLSKD_UMASK=0002`, the `microwavez` Soulseek account, gid-568 permissions).
 
 ## First-time setup
 
-If slskd is already running on your NAS, skip to [Configuring DMP](#configuring-dmp).
+If the media stack's slskd is already running (it usually is), skip to [Configuring DMP](#configuring-dmp)
+— you only need its URL + API key. Set up slskd from scratch **only on a fresh NAS without the stack**.
 
-### 1. Create the folders
+### 1. slskd config
 
-Create the slskd config/data tree and the shared Downloads dataset. On TrueNAS, the `Downloads` dataset should already exist (create it in the UI: `SSD → Add Dataset → Downloads`). Then fix ownership so slskd can write to it:
-
-```bash
-ssh nas "sudo mkdir -p /mnt/SSD/slskd/{config,data} && sudo chown -R Kp:Kp /mnt/SSD/slskd"
-ssh nas "sudo chown -R Kp:Kp /mnt/SSD/Downloads"
-```
-
-### 2. Write the config file
-
-Create `/mnt/SSD/slskd/config/slskd.yml` on the NAS:
+slskd config/state live at `/mnt/SSD/slskd/{config,data}`. The relevant DMP setting in
+`/mnt/SSD/slskd/config/slskd.yml`:
 
 ```yaml
 soulseek:
   username: your_soulseek_username
   password: your_soulseek_password
   listen_port: 50300
-  description: DMP
+  description: slskd
 
 directories:
-  downloads: /downloads
-
-shares:
-  directories: []
+  downloads: /downloads/dmp        # DMP's downloads root (slskd mounts /mnt/SSD/Downloads -> /downloads)
 
 web:
   port: 5030
   authentication:
     api_keys:
       dmp:
-        key: generate-a-long-random-string-here
+        key: generate-a-long-random-string-here   # openssl rand -hex 32
         role: administrator
 ```
 
-Generate the API key with `openssl rand -hex 32` and paste the output as the `key:` value.
+slskd runs `user: "0:568"` + `SLSKD_UMASK=0002` so everything it writes is group-568-writable — that's
+what lets the dmp container (joined to gid 568 via `group_add` in compose) delete slskd-owned source
+files during the post-download move. See the permissions note in `lidarr-stack.md`.
 
-### 3. Add env vars to NAS `.env`
+### 2. DMP env vars (NAS `.env`)
 
-Append these to `path/to/dmp/.env`:
+In `path/to/dmp/.env` (the DMP deploy `.env`, **not** slskd's):
 
 ```
-SLSKD_DATA=/mnt/SSD/slskd
-DOWNLOADS_DIR=/mnt/SSD/Downloads     # host path, shared between slskd and web containers
-SLSKD_URL=http://dmp-slskd:5030
+DOWNLOADS_DIR=/mnt/SSD/Downloads        # host dataset, identity-mounted into the web container
+DOWNLOADS_PATH=/mnt/SSD/Downloads/dmp   # DMP downloads root (the dmp/ subfolder)
+SLSKD_URL=http://192.168.1.241:5030     # the shared slskd, published on gluetun
 SLSKD_API_KEY=the-same-api-key-from-slskd.yml
 DOWNLOAD_DIR_TEMPLATE='{artist}/{year} - {album}'
 DOWNLOAD_FORMATS=flac,mp3
@@ -70,42 +77,37 @@ DOWNLOAD_MIN_BITRATE=320
 ```
 
 Notes:
-- `SLSKD_URL` uses the docker hostname `dmp-slskd` because the DMP web container and slskd share the same docker network.
-- `DOWNLOADS_DIR` is the *host* path that gets mounted into both containers at `/downloads`. Inside the web container, DMP sees it as `/downloads` (set automatically as `DOWNLOADS_PATH` by `docker-compose.yml`). You don't need to set `DOWNLOADS_PATH` yourself on the NAS.
-- The default `DOWNLOADS_DIR` in `docker-compose.yml` is already `/mnt/SSD/Downloads`, so this line is only needed if you want a different path.
+- `SLSKD_URL` points at slskd's published port on the NAS host (`192.168.1.241:5030`). slskd lives in
+  gluetun's netns, not on DMP's docker network, so the docker-internal default
+  (`http://host.docker.internal:5030`, paired with `extra_hosts: host-gateway`) also works from the
+  web container — set the explicit host IP to be unambiguous.
+- `DOWNLOADS_DIR` is the host dataset; compose identity-mounts it. `DOWNLOADS_PATH` is the `dmp/`
+  subfolder and must match slskd's `directories.downloads` once translated through slskd's
+  `/mnt/SSD/Downloads -> /downloads` mount (`/downloads/dmp` == `/mnt/SSD/Downloads/dmp`).
+- All download settings can also live in the `Settings` table — DB values override `.env`.
 
-### 4. Start slskd
-
-```bash
-ssh nas "cd path/to/dmp && sudo docker compose up -d slskd"
-```
-
-slskd auto-restarts on reboot (`restart: unless-stopped` in compose), so this is a one-time command - that's what "daemon" means in a Docker context.
-
-### 5. Verify
+### 3. Verify
 
 ```bash
-# Check the container is healthy
-ssh nas "sudo docker ps | grep dmp-slskd"
-
-# Test the REST API
+# REST API reachable + logged in to Soulseek
 ssh nas "curl -s -H 'X-API-Key: YOUR_KEY' http://localhost:5030/api/v0/server"
 # Expected: {"state":"Connected, LoggedIn","isConnected":true,...}
 
-# Check slskd logs for successful login
-ssh nas "sudo docker logs dmp-slskd 2>&1 | tail -10"
-# Expected: "Logged in to the Soulseek server as <username>"
+# slskd container (managed by the media stack, in gluetun's netns)
+ssh nas "sudo docker logs slskd 2>&1 | tail -10"   # "Logged in to the Soulseek server as <username>"
 ```
 
-Open `http://<nas-ip>:5030` in a browser - you should see the slskd web UI.
+Open `http://<nas-ip>:5030` for the slskd web UI.
 
-> **Port forwarding**: For Soulseek to work well, port `50300` should be reachable from the internet. Set up port forwarding on your router (forward `50300` to the NAS IP). Without it, downloads still work but are slower and less reliable.
+> **Port forwarding**: for Soulseek to perform well, forward `50300` to the NAS (gluetun handles this
+> when the VPN provider supports port forwarding). Without it, downloads still work but are slower.
 
 ## Configuring DMP
 
-For the deployed DMP on the NAS, the env vars in step 3 above are all you need.
+For the deployed DMP on the NAS, the env vars above are all you need.
 
-For **local dev** (`pnpm dev` on your workstation), add these to `web/.env`:
+For **local dev** (`pnpm dev` on your workstation), point at the NAS's slskd and use a local downloads
+folder, in `web/.env`:
 
 ```
 DOWNLOADS_PATH=/local/path/to/downloads
@@ -116,39 +118,35 @@ DOWNLOAD_FORMATS=flac,mp3
 DOWNLOAD_MIN_BITRATE=320
 ```
 
-All of these can also be set in the `Settings` table - DB values override `.env`.
-
-## Deploying changes
-
-slskd is a pre-built image (pulled from Docker Hub), so there's nothing to build. To propagate a `docker-compose.yml` change from your local repo to the NAS, use the existing deploy script:
-
-```bash
-cd web && ./deploy
-```
-
-This copies `docker-compose.yml` to the NAS and runs `docker compose up -d`, which picks up any slskd changes automatically.
+All of these can also be set in the `Settings` table — DB values override `.env`.
 
 ## Using it in DMP
 
-On an artist page, missing releases show a download icon. Click it → pick **Soulseek** → DMP searches Soulseek peers, picks the best result automatically, and queues it with slskd. Progress streams into the side panel.
-
-For bulk downloads, use the "Download missing" button at the top of the releases list.
+On an artist page, missing releases show a download icon. Click it → DMP searches Soulseek peers, picks
+the best result automatically, and queues it with slskd. For always-on, hands-off acquisition across all
+monitored artists, see [features_downloader.md](features_downloader.md) and
+[feature_monitoring.md](feature_monitoring.md) — the background workers drive the same slskd API.
 
 ## Where files end up
 
-slskd writes files to its own `directories.downloads` (set to `/downloads` inside the container, backed by `${DOWNLOADS_DIR:-/mnt/SSD/Downloads}` on the host). After slskd finishes a transfer, DMP detects completion and **moves** the files into the templated artist/album folder inside the same `/downloads` volume - see [features_downloader.md](features_downloader.md#where-files-go) for details.
+slskd writes to its `directories.downloads` (`/downloads/dmp` in the container = `/mnt/SSD/Downloads/dmp`
+on the host). When a transfer finishes, DMP's reconcile loop detects completion and **moves** the files
+into the templated `{artist}/{year} - {album}` folder inside the same `dmp/` root, transcoding to
+MP3-320 — see [features_downloader.md](features_downloader.md#where-files-go).
 
-The move only works because `docker-compose.yml` mounts the same host directory into both `slskd` and `web`. If you ever split them onto separate volumes, the move step silently no-ops and files remain in slskd's flat structure.
-
-Results are also sorted by upload speed (fastest first, free-slot peers prioritized) when you pick manually from the dialog.
+The move works because the web container identity-mounts `/mnt/SSD/Downloads` and slskd writes into the
+same host dataset. If you ever point slskd at a dataset DMP can't see, the move silently no-ops and files
+remain in slskd's flat structure.
 
 ## Everyday maintenance
 
+slskd is owned by the media stack, **not** DMP's `./deploy`. Manage it with the stack's compose (see
+`lidarr-stack.md`); from DMP's side you only ever read its API.
+
 | Task | Command |
 |------|---------|
-| Check status | `ssh nas "sudo docker ps \| grep dmp-slskd"` |
-| View logs | `ssh nas "sudo docker logs -f dmp-slskd"` |
-| Restart | `ssh nas "sudo docker restart dmp-slskd"` |
-| Stop | `ssh nas "sudo docker stop dmp-slskd"` |
-| Update to latest | `ssh nas "sudo docker compose -f path/to/dmp/docker-compose.yml pull slskd && sudo docker compose -f path/to/dmp/docker-compose.yml up -d slskd"` |
+| Check status | `ssh nas "sudo docker ps \| grep slskd"` |
+| View logs | `ssh nas "sudo docker logs -f slskd"` |
+| Restart | `ssh nas "sudo docker restart slskd"` |
+| API health | `ssh nas "curl -s -H 'X-API-Key: KEY' http://localhost:5030/api/v0/server"` |
 | Browse web UI | `http://<nas-ip>:5030` |

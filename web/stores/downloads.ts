@@ -13,6 +13,12 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const pendingCount = computed(() => queueActive.value.filter(i => i.status === 'PENDING').length)
   const readyCount = computed(() => queueReady.value.length)
 
+  // Global pause state (DB-backed; auto-set on disk-full).
+  const paused = ref(false)
+  const pausedReason = ref<string | null>(null)
+  const freeGb = ref<number | null>(null)
+  const minFreeGb = ref<number | null>(null)
+
   let pollInterval: ReturnType<typeof setInterval> | null = null
 
   const activeCount = computed(() =>
@@ -55,12 +61,29 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   const fetchQueue = async () => {
     try {
-      const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; history: DownloadedReleaseItem[] }>('/api/downloads/queue')
+      const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; history: DownloadedReleaseItem[]; paused: boolean; pausedReason: string | null; freeGb: number | null; minFreeGb: number | null }>('/api/downloads/queue')
       queueActive.value = data.active
       queueReady.value = data.ready
       queueHistory.value = data.history
+      paused.value = data.paused
+      pausedReason.value = data.pausedReason
+      freeGb.value = data.freeGb
+      minFreeGb.value = data.minFreeGb
     }
     catch { /* ignore */ }
+  }
+
+  // Returns null on success, or an error message (e.g. disk still full on resume).
+  const setPaused = async (next: boolean): Promise<string | null> => {
+    try {
+      await $fetch('/api/downloads/pause', { method: 'POST', body: { paused: next } })
+      await fetchQueue()
+      return null
+    }
+    catch (e: any) {
+      await fetchQueue()
+      return e?.data?.message || e?.message || 'Failed to update pause state'
+    }
   }
 
   const approve = async (id: string) => {
@@ -118,6 +141,11 @@ export const useDownloadsStore = defineStore('downloads', () => {
     queueHistory,
     pendingCount,
     readyCount,
+    paused,
+    pausedReason,
+    freeGb,
+    minFreeGb,
+    setPaused,
     fetchQueue,
     approve,
     reject,
