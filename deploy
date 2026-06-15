@@ -53,13 +53,14 @@ scp_cmd "$PROJECT_ROOT/docker-compose.yml" "$NAS_USER@$NAS_HOST:$NAS_DEPLOY_PATH
 scp_cmd "$PROJECT_ROOT/index" "$PROJECT_ROOT/sync" "$PROJECT_ROOT/refresh" "$PROJECT_ROOT/audit" "$PROJECT_ROOT/fix" "$PROJECT_ROOT/nuke" "$PROJECT_ROOT/analysis" "$PROJECT_ROOT/playlists" "$PROJECT_ROOT/delete" "$PROJECT_ROOT/dissect" "$PROJECT_ROOT/dmp-songkong-scan.sh" "$PROJECT_ROOT/dmp-songkong-drain.sh" "$NAS_USER@$NAS_HOST:$NAS_DEPLOY_PATH/"
 ssh_cmd "chmod +x $NAS_DEPLOY_PATH/index $NAS_DEPLOY_PATH/sync $NAS_DEPLOY_PATH/refresh $NAS_DEPLOY_PATH/audit $NAS_DEPLOY_PATH/fix $NAS_DEPLOY_PATH/nuke $NAS_DEPLOY_PATH/analysis $NAS_DEPLOY_PATH/playlists $NAS_DEPLOY_PATH/delete $NAS_DEPLOY_PATH/dissect $NAS_DEPLOY_PATH/dmp-songkong-scan.sh $NAS_DEPLOY_PATH/dmp-songkong-drain.sh"
 
+DL_ROOT="${DOWNLOADS_DIR:-/mnt/SSD/Downloads}"
+
 echo "--- Ensuring SongKong spool dirs ---"
-SONGKONG_STATE="${DOWNLOADS_DIR:-/mnt/SSD/Downloads}/.dmp-songkong"
+SONGKONG_STATE="$DL_ROOT/.dmp-songkong"
 ssh_cmd "sudo mkdir -p $SONGKONG_STATE/spool $SONGKONG_STATE/done && sudo chmod -R 777 $SONGKONG_STATE && sudo touch $SONGKONG_STATE/scan.lock $SONGKONG_STATE/drain.lock && sudo chmod 666 $SONGKONG_STATE/scan.lock $SONGKONG_STATE/drain.lock"
 
-echo "--- Ensuring approved-downloads dir ---"
-APPROVED_DIR="${DOWNLOADS_APPROVED_FOLDER_HOST:-${DOWNLOADS_DIR:-/mnt/SSD/Downloads}/_approved}"
-ssh_cmd "sudo mkdir -p $APPROVED_DIR && sudo chmod 777 $APPROVED_DIR"
+echo "--- Ensuring downloads dir (gid 568, setgid so slskd+dmp share) ---"
+ssh_cmd "sudo mkdir -p '$DL_ROOT/dmp/_approved' && sudo chown -R :568 '$DL_ROOT/dmp' && sudo chmod -R 2775 '$DL_ROOT/dmp'"
 
 echo "--- Ensuring data dir permissions ---"
 ssh_cmd "mkdir -p $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump && chmod 777 $NAS_DEPLOY_PATH/img $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump"

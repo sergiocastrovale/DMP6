@@ -80,7 +80,16 @@ async function moveIntoLibrary(row: MergeRow, music: string, approvedPath: strin
   if (row.stagingPath!.startsWith(music + sep) || row.stagingPath === music) {
     return relUnder(music, row.stagingPath!) // already merged on disk; just (re)index in place
   }
-  const rel = relUnder(approvedPath, row.stagingPath!)
+  // Guard: the staged path MUST live under the configured approved folder. If not, the environment
+  // is misconfigured (e.g. merging from a dev instance against the shared DB) — fail loudly instead
+  // of silently basename-falling-back and writing to the wrong place under MUSIC_DIR.
+  if (!row.stagingPath!.startsWith(approvedPath + sep) && row.stagingPath !== approvedPath) {
+    throw createError({
+      statusCode: 409,
+      message: `staged path "${row.stagingPath}" is not under the approved folder "${approvedPath}" — run merge where the files live (the NAS), not a dev instance`,
+    })
+  }
+  const rel = relative(approvedPath, row.stagingPath!)
   await moveDir(row.stagingPath!, join(music, rel))
   return rel
 }

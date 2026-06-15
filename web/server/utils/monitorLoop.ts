@@ -53,7 +53,7 @@ export async function reconcileDownloads(): Promise<void> {
     const enrichRows = rows.filter(r => r.status === 'ENRICHING')
     const downloadingRows = rows.filter(r => r.status === 'DOWNLOADING')
     if (enrichRows.length > 0) {
-      finalized += await drainEnriching(enrichRows, settings.downloadsPath)
+      finalized += await drainEnriching(enrichRows)
     }
     if (downloadingRows.length === 0) {
       if (failed || finalized) log(`reconcile done: ${finalized} -> PENDING, ${failed} -> FAILED/ABANDONED`)
@@ -120,7 +120,7 @@ export async function reconcileDownloads(): Promise<void> {
         if (res.movedCount > 0) {
           if (await resolveSongkongEnabled()) {
             // Hand off to SongKong (host cron drainer) for enrichment before the layout transform.
-            const dirs = songkongDirs(settings.downloadsPath)
+            const dirs = songkongDirs()
             await mkdir(dirs.spool, { recursive: true })
             await writeFile(join(dirs.spool, row.id), `${res.targetDir}\n`)
             await prisma.downloadedRelease.update({
@@ -203,9 +203,8 @@ async function failAttempt(
  */
 async function drainEnriching(
   rows: Array<{ id: string; title: string; stagingPath: string | null; updatedAt: Date }>,
-  downloadsPath: string,
 ): Promise<number> {
-  const dirs = songkongDirs(downloadsPath)
+  const dirs = songkongDirs()
   const maxWaitMs = songkongMaxWaitMin() * 60_000
   let done = 0
   for (const row of rows) {

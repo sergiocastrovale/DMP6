@@ -1,7 +1,10 @@
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { slskdSearch, deleteSlskdSearch, startSlskdDownload } from '~/server/utils/slskd'
 import { getSlskdResults } from '~/server/utils/downloads'
+import { sanitize } from '~/server/utils/transcode'
 import type { DownloadSearchResult } from '~/types/download'
 
 function sleep(ms: number) {
@@ -85,6 +88,10 @@ export async function acquireRelease(params: AcquireParams, existingRowId?: stri
   const row = existingRowId
     ? await prisma.downloadedRelease.update({ where: { id: existingRowId }, data })
     : await prisma.downloadedRelease.create({ data })
+
+  // Create the artist parent folder up-front so in-flight downloads are legible on disk
+  // (e.g. /…/dmp/Air/ appears as soon as we enqueue, before files land).
+  await mkdir(join(downloadsPath, sanitize(params.artistName) || 'Unknown Artist'), { recursive: true }).catch(() => {})
 
   await startSlskdDownload(params.result.username, files)
 

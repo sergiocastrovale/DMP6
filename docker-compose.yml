@@ -12,17 +12,10 @@ services:
       timeout: 5s
       retries: 3
 
-  slskd:
-    image: slskd/slskd:latest
-    container_name: dmp-slskd
-    restart: unless-stopped
-    ports:
-      - "5030:5030"
-      - "50300:50300"
-    volumes:
-      - ${SLSKD_DATA:-/mnt/SSD/slskd}/config:/app
-      - ${SLSKD_DATA:-/mnt/SSD/slskd}/data:/app/data
-      - ${DOWNLOADS_DIR:-/mnt/SSD/Downloads}:/downloads
+  # NOTE: slskd is NOT defined here. dmp talks to the existing slskd (shared with Lidarr, running in
+  # gluetun's netns) via SLSKD_URL (host :5030). Its download dir must be set to /downloads/dmp in that
+  # slskd's own slskd.yml (it mounts /mnt/SSD/Downloads -> /downloads). Don't add a second slskd here —
+  # it collides on port 5030.
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -53,7 +46,9 @@ services:
       - ${MUSIC_DIR}:/music
       - ${DMP_DATA}/img:/app/data/img
       - ${DMP_DATA}/dump:/app/data/dump
-      - ${DOWNLOADS_DIR:-/mnt/SSD/Downloads}:/downloads
+      # Identity mount: container path == host path, so DOWNLOADS_PATH is a real path everywhere
+      # and the host-path SongKong scripts line up with the container's view.
+      - ${DOWNLOADS_DIR:-/mnt/SSD/Downloads}:${DOWNLOADS_DIR:-/mnt/SSD/Downloads}
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@dmp-redis:6379
@@ -74,16 +69,17 @@ services:
       - NUXT_STORAGE_PUBLIC_URL=${STORAGE_PUBLIC_URL:-}
       - NUXT_PUBLIC_IMAGE_STORAGE=${IMAGE_STORAGE:-local}
       - NUXT_PUBLIC_STORAGE_PUBLIC_URL=${STORAGE_PUBLIC_URL:-}
-      - DOWNLOADS_PATH=/downloads
+      - DOWNLOADS_PATH=${DOWNLOADS_PATH:-/mnt/SSD/Downloads/dmp}
       - DOWNLOAD_DIR_TEMPLATE=${DOWNLOAD_DIR_TEMPLATE:-{artist}/{year} - {album}}
-      - SLSKD_URL=${SLSKD_URL:-http://dmp-slskd:5030}
+      - SLSKD_URL=${SLSKD_URL:-http://host.docker.internal:5030}
       - SLSKD_API_KEY=${SLSKD_API_KEY:-}
       - DEEZER_ARL=${DEEZER_ARL:-}
       - DOWNLOAD_FORMATS=${DOWNLOAD_FORMATS:-flac,mp3}
       - DOWNLOAD_MIN_BITRATE=${DOWNLOAD_MIN_BITRATE:-}
       - SONGKONG_ENABLED=${SONGKONG_ENABLED:-false}
       - SONGKONG_MAX_WAIT_MIN=${SONGKONG_MAX_WAIT_MIN:-30}
-      - DOWNLOADS_APPROVED_FOLDER=${DOWNLOADS_APPROVED_FOLDER:-/downloads/_approved}
+      - DOWNLOADS_APPROVED_FOLDER=${DOWNLOADS_APPROVED_FOLDER:-/mnt/SSD/Downloads/dmp/_approved}
+      - SONGKONG_STATE_DIR=${SONGKONG_STATE_DIR:-/mnt/SSD/Downloads/.dmp-songkong}
       - AUTO_APPROVE_DOWNLOADS=${AUTO_APPROVE_DOWNLOADS:-true}
       - AUTO_MERGE=${AUTO_MERGE:-false}
       - MAX_CONCURRENT_DOWNLOADS=${MAX_CONCURRENT_DOWNLOADS:-5}

@@ -9,9 +9,13 @@ import { prisma } from '~/server/utils/prisma'
  */
 export const SONGKONG_DIR_NAME = '.dmp-songkong'
 
-/** Resolve the spool/done directories under the configured downloads path (container view). */
-export const songkongDirs = (downloadsPath: string) => {
-  const root = join(downloadsPath, SONGKONG_DIR_NAME)
+/**
+ * Spool/done dir lives at the downloads VOLUME root (not under DOWNLOADS_PATH), so it stays put when
+ * the download subfolder changes and matches the host cron scripts' fixed path. Override with
+ * SONGKONG_STATE_DIR; defaults to /mnt/SSD/Downloads/.dmp-songkong (identity-mounted = same in-container).
+ */
+export const songkongDirs = () => {
+  const root = process.env.SONGKONG_STATE_DIR || `/mnt/SSD/Downloads/${SONGKONG_DIR_NAME}`
   return { root, spool: join(root, 'spool'), done: join(root, 'done') }
 }
 

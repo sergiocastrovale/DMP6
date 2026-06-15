@@ -29,17 +29,20 @@ DOWNLOADING → ENRICHING → PENDING ─(auto-approve, default)─→ APPROVED 
                               └─(auto-approve off)→ manual Approve → APPROVED
 ```
 
-Three folders:
+Two roots, three logical areas (downloads root holds only `dmp/`, `.dmp-songkong/`, `SHARED/`):
 ```
-DOWNLOADS_PATH/…              staging: transfer → transcode → enrich → layout      (in progress)
-DOWNLOADS_APPROVED_FOLDER/…   approved, "Ready to merge"                            (awaiting merge)
-MUSIC_DIR/…                   merged into the library (index + sync run)            (live)
+DOWNLOADS_PATH = /mnt/SSD/Downloads/dmp        staging + _approved subfolder (transient)
+  /mnt/SSD/Downloads/dmp/{artist}/…            in-progress: transfer → transcode → enrich → layout
+  /mnt/SSD/Downloads/dmp/_approved/…           approved, "Ready to merge" (awaiting merge)
+MUSIC_DIR = /mnt/dmp/music/mainstream (/music) merged into the library (index + sync run)   (live)
 ```
 
 Steps:
+0. **Artist folder up-front** — when a download is enqueued, DMP creates `DOWNLOADS_PATH/{artist}/`
+   immediately, so in-flight work is legible on disk before files land.
 1. **Move** — slskd owns its dir; DMP waits for the transfer, then moves files into a staging folder
-   under `DOWNLOADS_PATH` (`DOWNLOAD_DIR_TEMPLATE`). Needs slskd's downloads reachable under
-   `DOWNLOADS_PATH` (default: both containers share `/downloads`), else the move no-ops.
+   under `DOWNLOADS_PATH` (`DOWNLOAD_DIR_TEMPLATE`). slskd + dmp share the same real path
+   (`/mnt/SSD/Downloads` is identity-mounted into both), so the move is local.
 2. **Transcode + rename** — every audio file → MP3-320 (existing MP3s kept), renamed `NN. Track Title.mp3`.
 3. **Enrich** (optional, SongKong) — tags get AcoustID/MBID/genres/cover art. Row sits in `ENRICHING`.
 4. **Transform** — DMP lays it out by MusicBrainz album type:
@@ -64,8 +67,10 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 
 | Env var | Default | Meaning |
 |---------|---------|---------|
-| `DOWNLOADS_PATH` | — | Staging root (container view, e.g. `/downloads`) |
+| `DOWNLOADS_PATH` | `/mnt/SSD/Downloads/dmp` | Download/staging root (real path, identity-mounted) |
+| `DOWNLOADS_DIR` | `/mnt/SSD/Downloads` | Host downloads volume, identity-mounted into web+slskd |
 | `DOWNLOADS_APPROVED_FOLDER` | `{DOWNLOADS_PATH}/_approved` | Approved releases staged here until merged |
+| `SONGKONG_STATE_DIR` | `/mnt/SSD/Downloads/.dmp-songkong` | SongKong spool/done dir (host cron ↔ dmp) |
 | `DOWNLOAD_DIR_TEMPLATE` | `{artist}/{year} - {album}` | Initial staging layout. `{artist}` `{album}` `{year}`; `/` nests, each segment sanitized |
 | `DOWNLOAD_FORMATS` | `flac,mp3` | Accepted source formats |
 | `DOWNLOAD_MIN_BITRATE` | — | kbps minimum |
@@ -85,6 +90,50 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 | `SONGKONG_MAX_WAIT_MIN` | `30` | If SongKong never reports done within this, proceed unenriched |
 
 slskd-specific config: [downloads_slskd.md](downloads_slskd.md).
+
+## Set up on a fresh NAS (copy-paste)
+
+Assumes TrueNAS, shared apps group **gid 568**, downloads on `/mnt/SSD/Downloads`, collection on
+`/mnt/dmp/music/mainstream`. Adjust paths per NAS.
+
+**1. Paths & permissions** — the downloads volume is shared by slskd (writes as its uid) and dmp
+(moves/deletes), so they need a common group with group-write:
+```bash
+ssh nas '
+  sudo mkdir -p /mnt/SSD/Downloads/dmp/_approved /mnt/SSD/Downloads/.dmp-songkong/spool /mnt/SSD/Downloads/.dmp-songkong/done
+  sudo chown -R :568 /mnt/SSD/Downloads/dmp /mnt/SSD/Downloads/.dmp-songkong
+  sudo chmod -R 2775 /mnt/SSD/Downloads/dmp          # setgid: new files inherit gid 568
+  sudo chmod -R 0777 /mnt/SSD/Downloads/.dmp-songkong
+  sudo touch /mnt/SSD/Downloads/.dmp-songkong/{scan,drain}.lock
+  sudo chmod 666 /mnt/SSD/Downloads/.dmp-songkong/{scan,drain}.lock'
+```
+
+**2. docker-compose.yml** (already in repo) — both `web` and `slskd`:
+- identity-mount downloads: `- /mnt/SSD/Downloads:/mnt/SSD/Downloads` (host path == container path).
+- `web`: mount collection `- /mnt/dmp/music/mainstream:/music`; **`group_add: ["568"]`** (so dmp can
+  delete slskd-owned source files); `MUSIC_DIR=/music`; `DOWNLOADS_PATH=/mnt/SSD/Downloads/dmp`.
+- `slskd`: `environment: UMASK=0002` (group-writable downloads).
+
+**3. slskd** — `/mnt/SSD/slskd/config/slskd.yml`:
+```yaml
+directories:
+  downloads: /mnt/SSD/Downloads/dmp
+```
+
+**4. Env** — set in `web/.env` (and the Settings DB, DB wins): `DOWNLOADS_PATH=/mnt/SSD/Downloads/dmp`,
+`SESSION_SECRET=<random>` (mandatory — else sessions are forgeable), plus any non-default knobs from
+the table above. Leave `MUSIC_DIR` per environment (NAS `/music`, local dev your own path).
+
+**5. Deploy + enable**:
+```bash
+./deploy                                          # builds, db push, precreates dirs, restarts web
+# SongKong drainer cron (every 2 min) — see docs/downloads_songkong section below
+# then in the app: Settings → Downloads/Monitoring, or Downloads page → "Monitor all"
+```
+
+**6. Collection writes** — merges add new folders under `/mnt/dmp/music/mainstream`; dmp (uid 1000,
+gid 1001 + 568) can create them. Overwriting a *pre-existing* release owned by another user can `EPERM`
+— but truly-missing releases create fresh dmp-owned folders, so normal merges work.
 
 ## Scaling & self-management notes
 
