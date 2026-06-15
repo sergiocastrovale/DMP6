@@ -1,5 +1,5 @@
 import { readdir, mkdir, rename, rmdir, copyFile, unlink } from 'node:fs/promises'
-import { basename, join, dirname, sep } from 'node:path'
+import { basename, join, dirname, sep, extname } from 'node:path'
 import { resolveDownloadSettings, resolveDownloadDir } from '~/server/utils/downloadSettings'
 import { transcodeDirToMp3320 } from '~/server/utils/transcode'
 import { monitorLog } from '~/server/utils/monitorLog'
@@ -307,7 +307,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   let movedCount = 0
 
   for (const srcPath of found) {
-    const destPath = join(targetDir, basename(srcPath))
+    const destPath = join(targetDir, stripSlskdSuffix(basename(srcPath)))
     if (srcPath === destPath) { movedCount++; continue } // already in place
     try {
       await rename(srcPath, destPath)
@@ -348,12 +348,24 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   return { targetDir, movedCount }
 }
 
+/**
+ * slskd appends a collision token `_<18-or-more digits>` before the extension when a same-named
+ * file already exists in its download dir (e.g. `01. Stone_639171186044183498.flac`). Strip it so
+ * basename matching and the final library filename stay clean.
+ */
+const stripSlskdSuffix = (name: string): string => {
+  const e = extname(name)
+  return name.slice(0, name.length - e.length).replace(/_\d{6,}$/, '') + e
+}
+
 async function findFilesByBasename(
   root: string,
   names: Set<string>,
   maxDepth: number,
 ): Promise<string[]> {
   const results: string[] = []
+  // Match on the suffix-stripped basename so slskd collision tokens don't defeat the lookup.
+  const wanted = new Set([...names].map(stripSlskdSuffix))
   // Internal subtrees under the downloads root that must never be scanned as transfer sources:
   // the approved/merge staging area and the SongKong spool/state dir.
   const skipNames = new Set(['_approved', '.dmp-songkong'])
@@ -369,7 +381,7 @@ async function findFilesByBasename(
 
     for (const e of entries) {
       const full = join(dir, e.name)
-      if (e.isFile && names.has(e.name)) {
+      if (e.isFile && wanted.has(stripSlskdSuffix(e.name))) {
         results.push(full)
       }
       else if (e.isDir && !skipNames.has(e.name)) {
@@ -380,6 +392,35 @@ async function findFilesByBasename(
 
   await walk(root, 0)
   return results
+}
+
+/**
+ * Delete this download's source files (located by basename under downloadsPath) and prune the
+ * now-empty directories they sat in. Called when a download is given up on: in dmp's no-resume
+ * model those bytes can never be reused and only clutter the downloads root.
+ */
+export async function purgeDownloadedSourceFiles(downloadsPath: string, files: string[]): Promise<number> {
+  const expected = new Set(files.map(f => basename(f.replace(/\\/g, '/'))))
+  if (expected.size === 0) { return 0 }
+
+  const found = await findFilesByBasename(downloadsPath, expected, 10)
+  const fromDirs = new Set<string>()
+  let removed = 0
+  for (const srcPath of found) {
+    try {
+      await unlink(srcPath)
+      fromDirs.add(dirname(srcPath))
+      removed++
+    }
+    catch (e: any) {
+      monitorLog('warn', `slskd purge: failed to delete ${srcPath}: ${e.message}`)
+    }
+  }
+  for (const dir of fromDirs) {
+    await removeEmptyDirsUp(dir, downloadsPath)
+  }
+  if (removed > 0) { monitorLog('notice', `slskd purge: deleted ${removed} source file(s) under ${downloadsPath}`) }
+  return removed
 }
 
 async function removeEmptyDirsUp(startDir: string, stopAt: string): Promise<void> {

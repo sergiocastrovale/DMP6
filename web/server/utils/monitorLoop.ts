@@ -16,6 +16,7 @@ import {
   isSlskdTerminal,
   cancelSlskdDownload,
   relocateDownloadedFiles,
+  purgeDownloadedSourceFiles,
 } from '~/server/utils/slskd'
 
 const execFileAsync = promisify(execFile)
@@ -88,6 +89,7 @@ export async function reconcileDownloads(): Promise<void> {
       const active = ours.some(t => !isSlskdTerminal(t.state))
 
       // Goal 1: a download that isn't moving must die. Track the byte watermark.
+      let stalled = false
       if (active) {
         const bytes = ours.reduce((s, t) => s + (t.bytesTransferred || 0), 0)
         const prevBytes = Number(row.bytesTransferred || 0)
@@ -97,17 +99,17 @@ export async function reconcileDownloads(): Promise<void> {
             where: { id: row.id },
             data: { bytesTransferred: BigInt(bytes), lastProgressAt: new Date() },
           }).catch(() => {})
+          continue
         }
-        else if (Date.now() - lastProgress > noProgressMs) {
-          for (const t of ours) await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})
-          await failAttempt(row, maxAttempts, `no progress for ${mon.noProgressSec}s`)
-          failed++
-          logWarn(`reconcile: ${row.title} stalled -> ${row.attempts + 1 >= maxAttempts ? 'ABANDONED' : 'FAILED'}`)
-        }
-        continue
+        if (Date.now() - lastProgress <= noProgressMs) { continue } // still within the no-progress grace window
+        // Stalled: cancel the stuck transfers, then fall through to finalize so any siblings that DID
+        // complete are still captured into the library before we give up on the rest.
+        for (const t of ours) await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})
+        stalled = true
       }
 
-      // No active transfer: finished (terminal) or slskd dropped it. Finalize.
+      // Reached here: every transfer is terminal (finished/dropped) or we just cancelled a stall.
+      // Finalize — relocate whatever landed; only give up if nothing usable is on disk.
       finalizing.add(row.id)
       try {
         if (!row.artist?.name) { await failAttempt(row, maxAttempts, 'missing artist'); failed++; continue }
@@ -141,12 +143,16 @@ export async function reconcileDownloads(): Promise<void> {
           }
         }
         else {
-          await failAttempt(row, maxAttempts, 'no files landed in the staging folder', res.targetDir)
+          const reason = stalled ? `no progress for ${mon.noProgressSec}s` : 'no files landed in the staging folder'
+          await failAttempt(row, maxAttempts, reason, res.targetDir)
+          // Nothing usable landed — purge whatever stray/partial source files exist for this download.
+          await purgeDownloadedSourceFiles(settings.downloadsPath, files.map(f => String(f.filename))).catch(() => {})
           failed++
         }
       }
       catch (e: any) {
         await failAttempt(row, maxAttempts, String(e?.message || e).slice(0, 500))
+        await purgeDownloadedSourceFiles(settings.downloadsPath, files.map(f => String(f.filename))).catch(() => {})
         failed++
       }
       finally {
