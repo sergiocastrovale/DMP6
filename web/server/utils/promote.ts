@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdir, readdir, rename, copyFile, unlink, rm, rmdir } from 'node:fs/promises'
+import { mkdir, readdir, rename, copyFile, unlink, rm, rmdir, access } from 'node:fs/promises'
 import { join, basename, dirname, relative, sep } from 'node:path'
 import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
+import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { monitorLog } from '~/server/utils/monitorLog'
 
@@ -91,6 +92,14 @@ async function moveIntoLibrary(row: MergeRow, music: string, approvedPath: strin
       message: `staged path "${row.stagingPath}" is not under the approved folder "${approvedPath}" — run merge where the files live (the NAS), not a dev instance`,
     })
   }
+  // The staged folder must physically exist here. On a dev instance the NAS downloads volume isn't
+  // mounted, so the path is valid but absent -> fail clearly instead of a raw ENOENT 500.
+  await access(row.stagingPath!).catch(() => {
+    throw createError({
+      statusCode: 409,
+      message: `staged files not found at "${row.stagingPath}" — run merge on the NAS where the downloads volume is mounted, not a dev instance`,
+    })
+  })
   const rel = relative(approvedPath, row.stagingPath!)
   await moveDir(row.stagingPath!, join(music, rel))
   return rel
@@ -167,11 +176,14 @@ export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merg
 }
 
 /**
- * Reject a staged download: remove the staged folder from disk, then mark the row REJECTED (keep it
- * as a terminal tombstone) instead of deleting it. Deleting reset the release to fresh MISSING, so the
- * auto-picker re-queued it forever (try→fail→reject→requeue→fail). REJECTED is excluded from
- * pickCandidates, so it's never auto-fetched again; a manual download from the artist page reuses the
- * row and resets the attempt cap. Preserves the full audit trail + the 3-attempt cap across rejects.
+ * Reject a staged download (FAILED or APPROVED/ready-to-merge — identical outcome). Removes the staged
+ * folder from disk and counts the reject against the shared `attempts` cap (MAX_DOWNLOAD_ATTEMPTS):
+ *   - below the cap -> back to FAILED (re-pickable after the retry cooldown), so the auto-downloader
+ *     can fetch it again (a different source may be good).
+ *   - at/above the cap -> REJECTED, a terminal tombstone excluded from pickCandidates, so it's never
+ *     auto-fetched again.
+ * The counter accumulates across the whole download→approve→reject lifecycle, so the try/approve/reject
+ * churn is bounded by N. A manual download from the artist page resets the cap (deliberate override).
  */
 export async function rejectDownloadedRelease(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
@@ -185,8 +197,18 @@ export async function rejectDownloadedRelease(id: string): Promise<void> {
       await rm(row.stagingPath, { recursive: true, force: true }).catch(() => {})
     }
   }
+
+  const { maxDownloadAttempts } = await resolveMonitorSettings()
+  const attempts = (row.attempts ?? 0) + 1
+  const terminal = attempts >= Math.max(1, maxDownloadAttempts)
   await prisma.downloadedRelease.update({
     where: { id },
-    data: { status: 'REJECTED', stagingPath: null, files: Prisma.JsonNull },
+    data: {
+      status: terminal ? 'REJECTED' : 'FAILED',
+      attempts,
+      error: 'rejected by user',
+      stagingPath: null,
+      files: Prisma.JsonNull,
+    },
   })
 }

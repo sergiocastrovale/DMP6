@@ -63,9 +63,10 @@ actions) · **History** (read-only, subtabs per terminal status: Promoted / Appr
 Abandoned).
 Header has **Monitor all / Monitor none** (bulk toggle the whole catalogue; Monitor all goes active
 only when every artist is monitored). Per-row **Info** opens the release dialog (folder path, format,
-IDs). **Reject** deletes the staged files but keeps the row as a terminal `REJECTED` tombstone, so it's
-never auto-re-queued; re-download it manually from the artist page. `MAX_DOWNLOAD_ATTEMPTS` (default 3)
-caps the automatic try→fail loop (→ `ABANDONED`), and that cap now survives rejects too.
+IDs). **Reject** (FAILED or ready-to-merge — same outcome) deletes the staged files and counts toward
+`MAX_DOWNLOAD_ATTEMPTS` (default 3): below the cap it returns to FAILED (re-downloadable), at the cap it
+becomes terminal `REJECTED` (never auto-re-queued). So the whole try/approve/reject churn is bounded by
+N; re-download manually from the artist page to reset.
 
 ## Settings
 
