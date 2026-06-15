@@ -1,3 +1,35 @@
+import type { DownloadedReleaseItem } from '~/types/download'
+
+export const filterQueue = (items: DownloadedReleaseItem[], query: string): DownloadedReleaseItem[] => {
+  const q = query.trim().toLowerCase()
+  if (!q) {
+    return items
+  }
+  return items.filter(i =>
+    (i.artist ?? '').toLowerCase().includes(q)
+    || i.title.toLowerCase().includes(q)
+    || String(i.year ?? '').includes(q),
+  )
+}
+
+// Maps a release's download state to the /downloads subpage that lists it (for "Verify download").
+export const downloadSubpage = (state?: string | null): string => {
+  switch (state) {
+    case 'PENDING':
+      return '/downloads/pending'
+    case 'APPROVED':
+      return '/downloads/merge'
+    case 'FAILED':
+    case 'ABANDONED':
+      return '/downloads/failed'
+    case 'PROMOTED':
+    case 'REJECTED':
+      return '/downloads/history'
+    default:
+      return '/downloads/downloading'
+  }
+}
+
 export const formatDuration = (seconds: number | null): string => {
   if (!seconds || !isFinite(seconds)) { return '0:00' }
   const m = Math.floor(seconds / 60)

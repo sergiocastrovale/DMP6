@@ -13,6 +13,17 @@ const historyTotal = computed(() =>
   (issuesStore.historyCounts.missing ?? 0)
 )
 
+const breadcrumbRoot = { label: 'Issues', to: '/issues' }
+const breadcrumbLabels: Record<string, string> = {
+  corrupted: 'Corrupted TPE2',
+  unsplit: 'Unsplit Artists',
+  orphans: 'Orphans',
+  duplicates: 'Duplicates',
+  missing: 'Missing Metadata',
+  enrichment: 'Enrichment',
+  history: 'Fix History',
+}
+
 const tabs = computed(() => [
   { key: 'overview', label: 'Overview', href: '/issues' },
   { key: 'corrupted', label: 'Corrupted TPE2', href: '/issues/corrupted', count: issuesStore.summary?.counts.corrupted, countHighlight: true },
@@ -26,10 +37,10 @@ const tabs = computed(() => [
 </script>
 
 <template>
-  <div class="flex flex-col gap-6 pb-24">
-    <slot name="header" />
-    <IssuesBreadcrumbs />
-    <Tabs :tabs="tabs" />
+  <TabShell :breadcrumb-root="breadcrumbRoot" :breadcrumb-labels="breadcrumbLabels" :tabs="tabs">
+    <template #header>
+      <slot name="header" />
+    </template>
     <slot />
-  </div>
+  </TabShell>
 </template>

@@ -1,11 +1,5 @@
 <script setup lang="ts">
-interface TabItem {
-  key: string
-  label: string
-  href?: string
-  count?: number
-  countHighlight?: boolean
-}
+import type { TabItem } from '~/types/ui'
 
 defineProps<{
   tabs: TabItem[]

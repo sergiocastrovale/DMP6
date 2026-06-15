@@ -1,5 +1,13 @@
 import type { Component } from 'vue'
 
+export interface TabItem {
+  key: string
+  label: string
+  href?: string
+  count?: number
+  countHighlight?: boolean
+}
+
 export interface ButtonDropdownOption {
   label: string
   description?: string

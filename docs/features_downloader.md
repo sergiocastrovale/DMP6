@@ -56,12 +56,16 @@ The folder transform is **DMP's** (it knows the MB album type); SongKong is enri
 
 ## Downloads page (`/downloads`)
 
-Tabs: **Monitoring** (first; paginated artist list with search + per-artist Turn on/off and a live
-"Monitoring x/y" counter) · **Pending approval** (manual-approve mode) · **Ready to merge** (approved,
-with Merge / Merge all) · **Downloading** (live % bars) · **Failed** (Force retry / Reject, icon
-actions) · **History** (read-only, subtabs per terminal status: Promoted / Approved / Rejected /
-Abandoned).
-Header has **Monitor all / Monitor none** (bulk toggle the whole catalogue; Monitor all goes active
+Each tab is its **own page** (mirrors `/issues`: slim pages + a shared `DownloadsShell` =
+breadcrumbs + tab bar + persistent header; chrome is the generic `components/TabShell.vue` +
+`components/Breadcrumbs.vue`, shared with `/issues`). Tabs: **Monitoring** (`/downloads`, root;
+paginated artist list with search + per-artist Turn on/off and a live "Monitoring x/y" counter) ·
+**Pending approval** (`/downloads/pending`, manual-approve mode) · **Ready to merge**
+(`/downloads/merge`, approved, with Merge / Merge all) · **Downloading** (`/downloads/downloading`,
+live % bars + Cancel) · **Failed** (`/downloads/failed`, Force retry / Reject, icon actions) ·
+**History** (`/downloads/history`, read-only, subtabs per terminal status: Promoted / Approved /
+Rejected / Abandoned). Every queue page has its own client-side search box.
+The persistent header (every page) has **Pause all** and **Monitor all / Monitor none** (bulk toggle the whole catalogue; Monitor all goes active
 only when every artist is monitored). Per-row **Info** opens the release dialog (folder path, format,
 IDs). **Reject** (FAILED or ready-to-merge — same outcome) deletes the staged files and counts toward
 `MAX_DOWNLOAD_ATTEMPTS` (default 3): below the cap it returns to FAILED (re-downloadable), at the cap it

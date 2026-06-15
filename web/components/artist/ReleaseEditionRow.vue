@@ -5,6 +5,7 @@ import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'
+import { downloadSubpage } from '~/helpers/functions'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
 const props = defineProps<{
@@ -52,7 +53,7 @@ const isEnriching = computed(() => props.edition.downloadState === 'ENRICHING')
 const isDownloaded = computed(() => props.edition.downloadState === 'PENDING' || props.edition.downloadState === 'APPROVED')
 const downloadFailed = computed(() => props.edition.downloadState === 'FAILED')
 const isAbandoned = computed(() => props.edition.downloadState === 'ABANDONED')
-const verifyDownload = () => navigateTo(`/downloads?highlight=${props.edition.downloadedReleaseId}`)
+const verifyDownload = () => navigateTo(`${downloadSubpage(props.edition.downloadState)}?highlight=${props.edition.downloadedReleaseId}`)
 </script>
 
 <template>

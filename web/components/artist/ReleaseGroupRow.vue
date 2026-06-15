@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Disc3, Download, Info, Link, Loader2, Packag
 import type { ReleaseGroup } from '~/types/release'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
+import { downloadSubpage } from '~/helpers/functions'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
 const props = withDefaults(defineProps<{
@@ -37,7 +38,7 @@ const isEnriching = computed(() => edition.value.downloadState === 'ENRICHING')
 const isDownloaded = computed(() => edition.value.downloadState === 'PENDING' || edition.value.downloadState === 'APPROVED')
 const downloadFailed = computed(() => edition.value.downloadState === 'FAILED')
 const isAbandoned = computed(() => edition.value.downloadState === 'ABANDONED')
-const verifyDownload = () => navigateTo(`/downloads?highlight=${edition.value.downloadedReleaseId}`)
+const verifyDownload = () => navigateTo(`${downloadSubpage(edition.value.downloadState)}?highlight=${edition.value.downloadedReleaseId}`)
 
 const connectedArtistNames = computed(() => {
   const names = new Set(props.group.releases.map(r => r.connectedArtistName).filter(Boolean) as string[])
