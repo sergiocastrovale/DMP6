@@ -90,13 +90,26 @@ const statusLabel = (it: DownloadedReleaseItem) =>
             <template v-if="it.slskUsername"> · {{ it.slskUsername }}</template>
           </td>
           <td class="px-4 py-2.5">
-            <span class="inline-flex items-center gap-1.5" :class="statusClass(it.status)">
+            <Popover v-if="it.error" trigger="hover">
+              <template #trigger>
+                <span class="inline-flex cursor-help items-center gap-1.5" :class="statusClass(it.status)">
+                  <AlertCircle v-if="it.status === 'FAILED'" :size="13" />
+                  <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
+                  {{ statusLabel(it) }}
+                </span>
+              </template>
+              <template #content>
+                <div class="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
+                  <p class="text-xs text-ink-2">{{ it.error }}</p>
+                </div>
+              </template>
+            </Popover>
+            <span v-else class="inline-flex items-center gap-1.5" :class="statusClass(it.status)">
               <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" class="animate-spin" />
               <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
               <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
               {{ statusLabel(it) }}
             </span>
-            <span v-if="it.error" class="ml-1 text-xs text-red-400/80" :title="it.error">!</span>
             <div v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" class="mt-1.5 flex items-center gap-2">
               <DownloadsDownloadProgress :percent="it.percent" :status="it.status" class="w-32" />
               <span class="text-xs text-ink-3">{{ it.percent }}%</span>

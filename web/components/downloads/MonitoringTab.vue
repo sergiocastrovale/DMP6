@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { Loader2, Radar } from 'lucide-vue-next'
+import { Loader2, Radar, HelpCircle } from 'lucide-vue-next'
 
 interface ArtistRow {
   id: string
   name: string
   slug: string
   monitored: boolean
+  missingReleases: number
+  totalReleases: number
 }
 
 const search = ref('')
@@ -102,8 +104,26 @@ onMounted(() => fetchItems())
         <thead>
           <tr class="border-b border-rule bg-bg-1">
             <th class="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">Artist</th>
-            <th class="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-ink-3">Status</th>
-            <th class="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-ink-3">Action</th>
+            <th class="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-ink-3">Missing / MB total</th>
+            <th class="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-ink-3">
+              <div class="flex items-center justify-end gap-1.5">
+                <span>Monitoring</span>
+                <Popover trigger="hover">
+                  <template #trigger>
+                    <HelpCircle :size="13" class="cursor-help text-ink-4" />
+                  </template>
+                  <template #content>
+                    <div class="absolute right-0 top-full z-20 mt-1 w-72 rounded-lg border border-rule bg-bg-1 p-3 text-left shadow-xl">
+                      <p class="text-xs font-normal normal-case tracking-normal text-ink-2">
+                        Monitoring an artist lets dmp automatically search Soulseek for the releases
+                        missing from your library and download them in the background. Approved
+                        downloads wait in “Ready to merge” until you merge them in.
+                      </p>
+                    </div>
+                  </template>
+                </Popover>
+              </div>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -117,24 +137,27 @@ onMounted(() => fetchItems())
                 {{ artist.name }}
               </NuxtLink>
             </td>
-            <td class="px-4 py-2.5 text-right">
-              <span
-                class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="artist.monitored ? 'bg-accent/15 text-accent' : 'bg-bg-2 text-ink-3'"
-              >
-                <Radar v-if="artist.monitored" :size="11" />
-                {{ artist.monitored ? 'Monitored' : 'Not monitored' }}
-              </span>
+            <td class="px-4 py-2.5 text-right text-sm tabular-nums">
+              <template v-if="artist.totalReleases > 0">
+                <span :class="artist.missingReleases > 0 ? 'font-medium text-amber-400' : 'text-ink-3'">{{ artist.missingReleases }}</span>
+                <span class="text-ink-4"> / {{ artist.totalReleases }}</span>
+              </template>
+              <span v-else class="text-ink-4">—</span>
             </td>
             <td class="px-4 py-2.5 text-right">
-              <UiButton
-                size="sm"
-                :variant="artist.monitored ? 'secondary' : 'primary'"
-                :loading="busyIds.has(artist.id)"
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                :class="artist.monitored
+                  ? 'border-amber-500/40 bg-amber-500/15 text-amber-400 hover:bg-amber-500/25'
+                  : 'border-rule bg-bg-1 text-ink-2 hover:border-ink-4 hover:bg-bg-2 hover:text-ink'"
+                :disabled="busyIds.has(artist.id)"
                 @click="toggleMonitor(artist)"
               >
-                {{ artist.monitored ? 'Turn off' : 'Turn on' }}
-              </UiButton>
+                <Loader2 v-if="busyIds.has(artist.id)" :size="13" class="animate-spin" />
+                <Radar v-else-if="artist.monitored" :size="13" />
+                {{ artist.monitored ? 'ON' : 'OFF' }}
+              </button>
             </td>
           </tr>
         </tbody>

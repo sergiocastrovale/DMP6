@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdir, readdir, rename, copyFile, unlink, rm, rmdir, access } from 'node:fs/promises'
+import { mkdir, readdir, rename, unlink, rm, rmdir, access } from 'node:fs/promises'
+import { createReadStream, createWriteStream } from 'node:fs'
+import { pipeline } from 'node:stream/promises'
 import { join, basename, dirname, relative, sep } from 'node:path'
 import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
@@ -36,14 +38,16 @@ async function moveDir(src: string, dest: string): Promise<void> {
   catch (e: any) {
     if (!['EXDEV', 'EACCES', 'EPERM', 'ENOTEMPTY'].includes(e?.code)) throw e
   }
-  // Cross-device / permission fallback: copy file-by-file then remove the source tree.
+  // Cross-device / permission fallback: copy file-by-file then remove the source tree. Use a streamed
+  // read/write copy (NOT fs.copyFile) because copyFile uses the copy_file_range syscall, which returns
+  // EPERM across distinct ZFS datasets on TrueNAS (staging on /mnt/SSD → library on /mnt/dmp).
   await mkdir(dest, { recursive: true })
   const entries = await readdir(src, { withFileTypes: true })
   for (const ent of entries) {
     const from = join(src, ent.name)
     const to = join(dest, ent.name)
     if (ent.isDirectory()) await moveDir(from, to)
-    else { await copyFile(from, to); await unlink(from).catch(() => {}) }
+    else { await pipeline(createReadStream(from), createWriteStream(to)); await unlink(from).catch(() => {}) }
   }
   await rmdir(src).catch(() => {})
 }

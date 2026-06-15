@@ -1,9 +1,3 @@
 <script setup lang="ts">
-useHead({ title: 'Downloads · Monitoring' })
+definePageMeta({ redirect: '/downloads/monitoring' })
 </script>
-
-<template>
-  <DownloadsShell>
-    <DownloadsMonitoringTab />
-  </DownloadsShell>
-</template>

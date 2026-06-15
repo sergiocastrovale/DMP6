@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import type { TabItem } from '~/types/ui'
 import { filterQueue } from '~/helpers/functions'
 
 const { store, openInfo, showInfo, infoRelease } = useDownloadQueueActions()
@@ -17,7 +16,7 @@ const counts = computed(() => {
   }
   return c
 })
-const tabs = computed<TabItem[]>(() => [
+const tabs = computed(() => [
   { key: 'PROMOTED', label: 'Promoted', count: counts.value.PROMOTED },
   { key: 'APPROVED', label: 'Approved', count: counts.value.APPROVED },
   { key: 'REJECTED', label: 'Rejected', count: counts.value.REJECTED },
@@ -42,7 +41,7 @@ watch(queueHistory, () => {
 <template>
   <div class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-4">
-      <Tabs v-model="sub" :tabs="tabs" />
+      <Subtabs v-model="sub" :tabs="tabs" />
       <SearchInput v-model="search" placeholder="Search history…" />
     </div>
 

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { parsePagination } from '~/server/utils/pagination'
@@ -26,8 +27,27 @@ export default defineEventHandler(async (event) => {
     prisma.artist.count({ where: { relatedOnly: false, primaryArtistId: null, monitored: true } }),
   ])
 
+  const ids = items.map(i => i.id)
+  const releaseCounts = ids.length
+    ? await prisma.$queryRaw<Array<{ artistId: string; total: bigint; missing: bigint }>>`
+        SELECT mra."artistId",
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE mr.status = 'MISSING') AS missing
+        FROM "MusicBrainzReleaseArtist" mra
+        JOIN "MusicBrainzRelease" mr ON mr.id = mra."releaseId"
+        WHERE mra."artistId" IN (${Prisma.join(ids)})
+        GROUP BY mra."artistId"
+      `
+    : []
+
+  const countsById = new Map(releaseCounts.map(r => [r.artistId, { total: Number(r.total), missing: Number(r.missing) }]))
+
   return {
-    items,
+    items: items.map(i => ({
+      ...i,
+      totalReleases: countsById.get(i.id)?.total ?? 0,
+      missingReleases: countsById.get(i.id)?.missing ?? 0,
+    })),
     total,
     monitoredCount,
     page,

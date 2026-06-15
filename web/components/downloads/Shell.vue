@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { Radar, CircleStop, Pause, Play, AlertTriangle } from 'lucide-vue-next'
+import { Radar, CircleStop, Pause, Play, AlertTriangle, DownloadCloud } from 'lucide-vue-next'
 import type { TabItem } from '~/types/ui'
 
 const store = useDownloadsStore()
@@ -28,6 +28,7 @@ const fetchMonitorCounts = async () => {
 
 const breadcrumbRoot = { label: 'Downloads', to: '/downloads' }
 const breadcrumbLabels: Record<string, string> = {
+  monitoring: 'Monitoring',
   pending: 'Pending approval',
   merge: 'Ready to merge',
   downloading: 'Downloading',
@@ -36,7 +37,7 @@ const breadcrumbLabels: Record<string, string> = {
 }
 
 const tabs = computed<TabItem[]>(() => [
-  { key: 'monitoring', label: 'Monitoring', href: '/downloads' },
+  { key: 'monitoring', label: 'Monitoring', href: '/downloads/monitoring' },
   { key: 'pending', label: 'Pending approval', href: '/downloads/pending', count: pendingCount.value, countHighlight: true },
   { key: 'merge', label: 'Ready to merge', href: '/downloads/merge', count: readyCount.value, countHighlight: true },
   { key: 'downloading', label: 'Downloading', href: '/downloads/downloading', count: downloading.value.length, countHighlight: true },
@@ -78,62 +79,57 @@ onUnmounted(() => { if (poll) { clearInterval(poll) } })
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl p-6">
-    <TabShell :breadcrumb-root="breadcrumbRoot" :breadcrumb-labels="breadcrumbLabels" :tabs="tabs">
-      <template #header>
-        <div class="flex flex-col gap-4">
-          <div>
-            <h1 class="text-lg font-semibold text-ink">Downloads</h1>
-            <p class="text-sm text-ink-3">
-              Automatic Soulseek acquisitions for monitored artists. Approved releases wait in
-              “Ready to merge” until you merge them into the library.
-            </p>
+  <TabShell :breadcrumb-root="breadcrumbRoot" :breadcrumb-labels="breadcrumbLabels" :tabs="tabs">
+    <template #header>
+      <div class="flex flex-col gap-4">
+        <PageTitle
+          :icon="DownloadCloud"
+          text="Downloads"
+          subtext="Automatic Soulseek acquisitions for monitored artists. Approved releases wait in “Ready to merge” until you merge them into the library."
+        >
+          <div class="flex items-center gap-2">
+            <UiButton
+              size="sm"
+              :variant="paused ? 'primary' : 'secondary'"
+              :icon="paused ? Play : Pause"
+              :loading="pauseBusy"
+              @click="togglePause"
+            >
+              {{ paused ? 'Continue all downloads' : 'Pause all downloads' }}
+            </UiButton>
+            <UiButton size="sm" :variant="allMonitored ? 'primary' : 'secondary'" :icon="Radar" :loading="monitorBusy" @click="monitorAll(true)">
+              Monitor all
+            </UiButton>
+            <UiButton size="sm" variant="secondary" :icon="CircleStop" :loading="monitorBusy" @click="monitorAll(false)">
+              Monitor none
+            </UiButton>
           </div>
+        </PageTitle>
 
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <span class="text-sm text-ink-2">
-              Monitoring <span class="font-semibold text-ink">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
-            </span>
-            <div class="flex items-center gap-2">
-              <UiButton
-                size="sm"
-                :variant="paused ? 'primary' : 'secondary'"
-                :icon="paused ? Play : Pause"
-                :loading="pauseBusy"
-                @click="togglePause"
-              >
-                {{ paused ? 'Continue all downloads' : 'Pause all downloads' }}
-              </UiButton>
-              <UiButton size="sm" :variant="allMonitored ? 'primary' : 'secondary'" :icon="Radar" :loading="monitorBusy" @click="monitorAll(true)">
-                Monitor all
-              </UiButton>
-              <UiButton size="sm" variant="secondary" :icon="CircleStop" :loading="monitorBusy" @click="monitorAll(false)">
-                Monitor none
-              </UiButton>
-            </div>
-          </div>
+        <span class="text-sm text-ink-2">
+          Monitoring <span class="font-semibold text-ink">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
+        </span>
 
-          <div
-            v-if="paused"
-            class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
-            :class="pausedReason === 'disk-full' ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-300'"
-          >
-            <AlertTriangle :size="15" />
-            <span v-if="pausedReason === 'disk-full'">
-              Downloads auto-paused — disk full ({{ freeGb }} GB free, need {{ minFreeGb }} GB). Free space, then Continue.
-            </span>
-            <span v-else>All downloads paused. New downloads, catalogue scans and auto-merge are halted until you continue.</span>
-          </div>
-
-          <p v-if="actionMsg" class="rounded-lg border border-rule bg-bg-1 px-4 py-2 text-sm text-ink-2">
-            {{ actionMsg }}
-          </p>
-
-          <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-lg border border-rule bg-bg-1 px-4 py-3" />
+        <div
+          v-if="paused"
+          class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
+          :class="pausedReason === 'disk-full' ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-300'"
+        >
+          <AlertTriangle :size="15" />
+          <span v-if="pausedReason === 'disk-full'">
+            Downloads auto-paused — disk full ({{ freeGb }} GB free, need {{ minFreeGb }} GB). Free space, then Continue.
+          </span>
+          <span v-else>All downloads paused. New downloads, catalogue scans and auto-merge are halted until you continue.</span>
         </div>
-      </template>
 
-      <slot />
-    </TabShell>
-  </div>
+        <p v-if="actionMsg" class="rounded-lg border border-rule bg-bg-1 px-4 py-2 text-sm text-ink-2">
+          {{ actionMsg }}
+        </p>
+
+        <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-lg border border-rule bg-bg-1 px-4 py-3" />
+      </div>
+    </template>
+
+    <slot />
+  </TabShell>
 </template>

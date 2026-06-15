@@ -17,6 +17,11 @@ const REVERTABLE_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing']
 
 const activeSubtab = ref<'detected' | 'fixed'>('detected')
 
+const subtabs = computed(() => [
+  { key: 'detected', label: 'Detected', count: issuesStore.total[props.type] ?? 0, activeColor: 'border-blue-500' },
+  { key: 'fixed', label: 'Fixed', count: issuesStore.resolvedTotal[props.type] ?? 0, activeColor: 'border-green-500' },
+])
+
 onMounted(() => {
   issuesStore.fetchSummary()
   issuesStore.fetchType(props.type, true)
@@ -247,28 +252,7 @@ function getHistoryDate(item: any): string {
       </p>
     </div>
 
-    <div v-if="REVERTABLE_TYPES.includes(type)" class="flex gap-1 border-b border-rule">
-      <button
-        @click="activeSubtab = 'detected'"
-        class="px-4 py-2 text-sm font-medium transition-colors"
-        :class="activeSubtab === 'detected' ? 'border-b-2 border-blue-500 text-white' : 'text-ink0 hover:text-ink-2'"
-      >
-        Detected
-        <span v-if="(issuesStore.total[type] ?? 0) > 0" class="ml-1.5 rounded-full bg-bg-2 px-1.5 py-0.5 text-xs">
-          {{ issuesStore.total[type] }}
-        </span>
-      </button>
-      <button
-        @click="activeSubtab = 'fixed'"
-        class="px-4 py-2 text-sm font-medium transition-colors"
-        :class="activeSubtab === 'fixed' ? 'border-b-2 border-green-500 text-white' : 'text-ink0 hover:text-ink-2'"
-      >
-        Fixed
-        <span v-if="(issuesStore.resolvedTotal[type] ?? 0) > 0" class="ml-1.5 rounded-full bg-bg-2 px-1.5 py-0.5 text-xs">
-          {{ issuesStore.resolvedTotal[type] }}
-        </span>
-      </button>
-    </div>
+    <Subtabs v-if="REVERTABLE_TYPES.includes(type)" v-model="activeSubtab" :tabs="subtabs" />
 
     <div v-if="activeSubtab === 'detected'" class="rounded-lg border border-rule bg-bg">
       <IssuesIssueTable
