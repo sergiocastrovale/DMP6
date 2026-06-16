@@ -19,6 +19,8 @@ const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
 const busyIds = ref(new Set<string>())
+const showMonitored = ref(true)
+const showComplete = ref(false)
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 const onSearch = (val: string) => {
@@ -31,11 +33,22 @@ const onSearch = (val: string) => {
   }, 300)
 }
 
+watch([showMonitored, showComplete], () => {
+  page.value = 1
+  items.value = []
+  fetchItems()
+})
+
 const fetchItems = async (append = false) => {
   append ? (loadingMore.value = true) : (loading.value = true)
   try {
     const data = await $fetch<{ items: ArtistRow[]; total: number; monitoredCount: number; hasMore: boolean }>('/api/artists/monitoring', {
-      query: { page: page.value, search: search.value || undefined },
+      query: {
+        page: page.value,
+        search: search.value || undefined,
+        showMonitored: showMonitored.value,
+        showComplete: showComplete.value,
+      },
     })
     items.value = append ? [...items.value, ...data.items] : data.items
     total.value = data.total
@@ -86,9 +99,13 @@ onMounted(() => fetchItems())
         wrapper-class="sm:max-w-xs"
         @update:model-value="onSearch"
       />
-      <span class="shrink-0 text-sm text-ink-3">
-        {{ monitoredCount.toLocaleString() }} / {{ total.toLocaleString() }} monitored
-      </span>
+      <div class="flex items-center gap-4">
+        <Switch v-model="showMonitored" label="Show monitored" />
+        <Switch v-model="showComplete" label="Show complete" />
+        <span class="shrink-0 text-sm text-ink-3">
+          {{ monitoredCount.toLocaleString() }} / {{ total.toLocaleString() }} monitored
+        </span>
+      </div>
     </div>
 
     <div v-if="loading" class="flex justify-center py-16">
