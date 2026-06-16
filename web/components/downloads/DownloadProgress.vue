@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ReleaseProgress } from '~/types/download'
+import { formatFileSize } from '~/helpers/functions'
 
 const props = defineProps<{
   items?: ReleaseProgress[] // aggregate mode: a batch of in-flight releases
@@ -20,18 +21,27 @@ const statusVariant = (status?: string) => ({
 const aggregate = computed(() => props.items != null)
 
 const total = computed(() => props.items?.length ?? 0)
-const done = computed(() =>
-  (props.items ?? []).filter(i => i.percent >= 100 || i.status === 'ENRICHING').length,
-)
+const overallBytes = computed(() => {
+  const items = props.items ?? []
+  const totalBytes = items.reduce((s, i) => s + (i.totalBytes ?? 0), 0)
+  const moved = items.reduce((s, i) => s + (i.bytesTransferred ?? 0), 0)
+  return { totalBytes, moved }
+})
 const overallPercent = computed(() => {
   const items = props.items ?? []
-  if (items.length === 0) return 0
-  const totalBytes = items.reduce((s, i) => s + (i.totalBytes ?? 0), 0)
+  if (items.length === 0) { return 0 }
+  const { totalBytes, moved } = overallBytes.value
   if (totalBytes > 0) {
-    const moved = items.reduce((s, i) => s + (i.bytesTransferred ?? 0), 0)
     return Math.min(100, Math.round((moved / totalBytes) * 100))
   }
   return Math.round(items.reduce((s, i) => s + i.percent, 0) / items.length)
+})
+
+const aggregateLabel = computed(() => {
+  const n = total.value
+  const base = `Downloading ${n} release${n !== 1 ? 's' : ''}`
+  const { totalBytes, moved } = overallBytes.value
+  return totalBytes > 0 ? `${base} — ${formatFileSize(moved)} / ${formatFileSize(totalBytes)}` : `${base}…`
 })
 
 const single = computed(() => ({
@@ -45,7 +55,7 @@ const single = computed(() => ({
 
   <UiLoadingPanel
     v-else-if="total > 0"
-    :label="`Downloading ${done} of ${total} release${total === 1 ? '' : 's'}…`"
+    :label="aggregateLabel"
     :percent="overallPercent"
     variant="accent"
     size="md"

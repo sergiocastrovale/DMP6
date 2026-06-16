@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
+import { useIntervalFn } from '@vueuse/core'
 import { FolderInput } from 'lucide-vue-next'
 import { filterQueue } from '~/helpers/functions'
+
+type MergeStep = 'moving' | 'indexing' | 'syncing'
+type ProgressMap = Record<string, { step: MergeStep; title: string }>
+
+const STEPS: MergeStep[] = ['moving', 'indexing', 'syncing']
+const STEP_LABELS: Record<MergeStep, (title: string) => string> = {
+  moving: title => `Moving "${title}" to library…`,
+  indexing: title => `Indexing "${title}"…`,
+  syncing: title => `Syncing "${title}"…`,
+}
 
 const {
   store, busyId, busyIds, actionMsg, merge, mergeMany, reject, rejectOpen, rejectTitle, confirmReject,
@@ -36,7 +47,53 @@ const mergeAll = async () => {
 }
 
 const mergeTotal = ref(0)
-const mergedSoFar = computed(() => mergeTotal.value - busyIds.value.size)
+const mergeProgressMap = ref<ProgressMap>({})
+
+const { pause: stopPoll, resume: startPoll } = useIntervalFn(async () => {
+  if (!busyIds.value.size) {
+    mergeProgressMap.value = {}
+    stopPoll()
+    return
+  }
+  try {
+    mergeProgressMap.value = await $fetch<ProgressMap>('/api/downloads/merge-progress')
+  }
+  catch { /* ignore */ }
+}, 600, { immediate: false })
+
+watch(() => busyIds.value.size, (size) => {
+  if (size > 0) {
+    startPoll()
+  }
+  else {
+    stopPoll()
+    mergeProgressMap.value = {}
+  }
+})
+
+const stepIndex = (step: MergeStep) => STEPS.indexOf(step)
+
+const mergeLabel = computed(() => {
+  const entries = Object.values(mergeProgressMap.value)
+  if (!entries.length) {
+    return null
+  }
+  const highest = entries.reduce((a, b) => stepIndex(a.step) >= stepIndex(b.step) ? a : b)
+  return STEP_LABELS[highest.step](highest.title)
+})
+
+const mergePercent = computed(() => {
+  const total = mergeTotal.value * 3
+  if (!total) {
+    return 0
+  }
+  const doneItems = mergeTotal.value - busyIds.value.size
+  const doneSteps = doneItems * 3
+  const inFlightSteps = Object.values(mergeProgressMap.value)
+    .reduce((sum, p) => sum + stepIndex(p.step), 0)
+  return Math.round(Math.min((doneSteps + inFlightSteps) / total * 100, 99))
+})
+
 const mergeSelected = async () => {
   const ids = [...selected.value]
   if (!ids.length) {
@@ -45,6 +102,7 @@ const mergeSelected = async () => {
   selected.value = new Set()
   mergeTotal.value = ids.length
   await mergeMany(ids)
+  mergeTotal.value = 0
 }
 </script>
 
@@ -61,9 +119,9 @@ const mergeSelected = async () => {
     </div>
 
     <UiLoadingPanel
-      v-if="busyIds.size > 0 && mergeTotal > 0"
-      :label="`Merging ${mergedSoFar} of ${mergeTotal}…`"
-      :percent="Math.round((mergedSoFar / mergeTotal) * 100)"
+      v-if="busyIds.size > 0"
+      :label="mergeLabel ?? `Merging ${busyIds.size} release${busyIds.size !== 1 ? 's' : ''}…`"
+      :percent="mergePercent"
       variant="success"
     />
 

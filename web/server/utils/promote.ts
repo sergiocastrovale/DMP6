@@ -11,6 +11,7 @@ import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getSlskdActiveDownloads, cancelSlskdDownload } from '~/server/utils/slskd'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { monitorLog } from '~/server/utils/monitorLog'
+import { setMergeProgress, clearMergeProgress } from '~/server/utils/mergeProgress'
 
 const execFileAsync = promisify(execFile)
 
@@ -209,9 +210,19 @@ export async function mergeDownloadedRelease(id: string): Promise<{ localRelease
   const { downloadsReadyPath } = await resolveDownloadSettings()
 
   const { maxDownloadAttempts } = await resolveMonitorSettings()
-  const rel = await moveIntoLibrary(row, music, downloadsReadyPath)
-  await runReconciler('index', ['--folders', rel])
-  return { localReleaseId: await stampMerged(row, music, rel, maxDownloadAttempts) }
+  const title = row.title ?? '?'
+  try {
+    setMergeProgress(id, { step: 'moving', title })
+    const rel = await moveIntoLibrary(row, music, downloadsReadyPath)
+    setMergeProgress(id, { step: 'indexing', title })
+    await runReconciler('index', ['--folders', rel])
+    setMergeProgress(id, { step: 'syncing', title })
+    const localReleaseId = await stampMerged(row, music, rel, maxDownloadAttempts)
+    return { localReleaseId }
+  }
+  finally {
+    clearMergeProgress(id)
+  }
 }
 
 /**
