@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { UnifiedRelease, ReleaseGroup, ReleaseInfoExtra, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
-import type { TrackListColumn, ButtonDropdownOption } from '~/types/ui'
+import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'
@@ -22,7 +22,7 @@ const terminal = useTerminalStore()
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
 
 const {
-  showMissing, showLinked, searchQuery, typeFilter, activeStatuses, sortKey,
+  showLinked, searchQuery, typeFilter, activeStatuses, sortKey,
   hasLinkedReleases, statusCounts, filteredReleases, groups,
 } = catalogue
 
@@ -33,8 +33,6 @@ const expandedEdition = ref<string | null>(null)
 const allTracks = ref<Track[]>([])
 const allTracksLoading = ref(false)
 const allTracksLoaded = ref(false)
-const downloadRelease = ref<UnifiedRelease | null>(null)
-const showDownloadDialog = ref(false)
 const cancelRelease = ref<UnifiedRelease | null>(null)
 const showCancelDialog = ref(false)
 const infoRelease = ref<UnifiedRelease | null>(null)
@@ -76,26 +74,6 @@ const sortedGroups = computed<ReleaseGroup[]>(() => {
       arr.sort((a, b) => a.earliest.localeCompare(b.earliest))
   }
   return arr
-})
-
-const missingReleasesVisible = computed(() => filteredReleases.value.filter(r => r.status === 'MISSING'))
-
-const downloadAllOptions = computed<ButtonDropdownOption[]>(() => {
-  const missing = missingReleasesVisible.value
-  if (missing.length === 0 || !downloadsStore.slskd.connected) {
-    return []
-  }
-  const artist = props.artistName || ''
-  return [{
-    label: `Soulseek (${missing.length})`,
-    description: `Search & download ${missing.length} missing releases`,
-    action: () => {
-      const first = missing[0]
-      if (first) {
-        terminal.runDownload('slskd', `${artist} ${first.title}`, first.title, artist, first.year)
-      }
-    },
-  }]
 })
 
 const releaseMap = computed(() => {
@@ -154,9 +132,14 @@ function toReleaseSlug(title: string) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
-function openDownloadDialog(release: UnifiedRelease) {
-  downloadRelease.value = release
-  showDownloadDialog.value = true
+const acquireRelease = async (release: UnifiedRelease) => {
+  if (!release.mbReleaseRowId) {
+    return
+  }
+  try {
+    await $fetch('/api/downloads/acquire', { method: 'POST', body: { mbReleaseRowId: release.mbReleaseRowId } })
+  }
+  catch { /* ignore */ }
 }
 
 function openCancelDialog(release: UnifiedRelease) {
@@ -301,11 +284,7 @@ watch(() => props.releases, () => {
   <div class="flex flex-col gap-4 px-8">
     <ArtistStatusChips v-model:active-statuses="activeStatuses" :status-counts="statusCounts" />
 
-    <ArtistReleaseFilterBar
-      v-model:view-mode="viewMode"
-      :download-options="downloadAllOptions"
-      :show-download="downloadsStore.slskd.connected && missingReleasesVisible.length > 0 && showMissing"
-    />
+    <ArtistReleaseFilterBar v-model:view-mode="viewMode" />
 
     <template v-if="viewMode === 'catalogue'">
       <Table>
@@ -318,7 +297,7 @@ watch(() => props.releases, () => {
           :single-edition="group.releases.length === 1"
           @toggle="toggleGroup(group.key)"
           @play="handleGroupPlayClick(group)"
-          @download="openDownloadDialog(group.primary)"
+          @download="acquireRelease(group.primary)"
           @cancel="openCancelDialog(group.primary)"
           @refresh="refreshRelease(group.primary)"
           @info="openInfoDialog(group.primary)"
@@ -342,7 +321,7 @@ watch(() => props.releases, () => {
               :selected-track-id="expandedEdition === edition.id ? selectedTrackId : null"
               @toggle="toggleEdition(edition.id)"
               @play="handleReleaseClick(edition)"
-              @download="openDownloadDialog(edition)"
+              @download="acquireRelease(edition)"
               @cancel="openCancelDialog(edition)"
               @toggle-favorite="toggleFavoriteRelease(edition)"
               @refresh="refreshRelease(edition)"
@@ -372,15 +351,6 @@ watch(() => props.releases, () => {
         :build-player-tracks="buildPlayerTracks"
       />
     </template>
-
-    <ReleaseDownloadDialog
-      v-if="showDownloadDialog && downloadRelease"
-      v-model="showDownloadDialog"
-      :release-title="downloadRelease.title"
-      :artist-name="props.artistName || ''"
-      :release-year="downloadRelease.year"
-      :mb-release-row-id="downloadRelease.mbReleaseRowId"
-    />
 
     <ArtistReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />
 

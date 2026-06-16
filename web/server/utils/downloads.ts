@@ -1,16 +1,12 @@
-import type { DownloadSource, ActiveDownload, DownloadSearchResult, DownloadSearchResultFile } from '~/types/download'
+import type { ActiveDownload, DownloadSearchResult } from '~/types/download'
 import {
   checkSlskdConnection,
-  slskdSearch,
   getSlskdSearchResults,
-  deleteSlskdSearch,
-  startSlskdDownload,
   getSlskdActiveDownloads,
   cancelSlskdDownload,
   isAudioFile,
   detectFormat,
   scoreSlskdResult,
-  moveSlskdFilesOnCompletion,
 } from '~/server/utils/slskd'
 
 export async function getDownloadStatus() {
@@ -22,10 +18,6 @@ export async function getDownloadStatus() {
 }
 
 // --- Search ---
-
-export async function searchSlskd(query: string, timeout?: number): Promise<string> {
-  return slskdSearch(query, timeout)
-}
 
 export async function getSlskdResults(searchId: string, allowedFormats?: string, minBitrate?: number): Promise<DownloadSearchResult[]> {
   const responses = await getSlskdSearchResults(searchId)
@@ -114,35 +106,6 @@ export async function getSlskdResults(searchId: string, allowedFormats?: string,
 }
 
 // --- Downloads ---
-
-export async function startDownload(
-  params: {
-    username?: string
-    files?: { filename: string; size: number }[]
-    albumTitle?: string
-    artistName?: string
-    year?: number | null
-  },
-  downloadsPath: string,
-  dirTemplate: string,
-): Promise<{ success: boolean }> {
-  if (!params.username || !params.files?.length) {
-    throw createError({ statusCode: 400, message: 'username and files required' })
-  }
-  await startSlskdDownload(params.username, params.files)
-  if (params.artistName && params.albumTitle) {
-    moveSlskdFilesOnCompletion({
-      username: params.username,
-      files: params.files.map(f => f.filename),
-      downloadsPath,
-      dirTemplate,
-      artistName: params.artistName,
-      albumTitle: params.albumTitle,
-      year: params.year ?? null,
-    }).catch(e => console.error('[slskd move]', e.message))
-  }
-  return { success: true }
-}
 
 export async function getAllActiveDownloads(): Promise<ActiveDownload[]> {
   const slskdTransfers = await getSlskdActiveDownloads().catch(() => [])

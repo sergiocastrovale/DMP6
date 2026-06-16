@@ -12,8 +12,8 @@ function sleep(ms: number) {
 }
 
 /**
- * Run a Soulseek search and return the highest-scoring result (or null). Mirrors the
- * poll/early-exit heuristics of the manual stream endpoint.
+ * Run a Soulseek search and return the highest-scoring result (or null), polling with
+ * an early exit once a strong (FLAC/high-score) or sufficient set of results arrives.
  */
 export async function findBestSlskdResult(
   query: string,
@@ -40,8 +40,8 @@ export async function findBestSlskdResult(
   return best
 }
 
-// Only the fields acquireRelease actually needs — lets manual (dialog-picked) downloads,
-// which know just the peer + files, route through the same recording path.
+// Only the fields acquireRelease actually needs — a result that knows just the peer + files
+// can route through the same recording path as a full search hit.
 export type AcquireResult = Pick<DownloadSearchResult, 'username' | 'files'> &
   Partial<Pick<DownloadSearchResult, 'format' | 'avgBitrate'>>
 

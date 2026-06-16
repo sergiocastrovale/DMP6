@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import { Download, LayoutGrid, LayoutList, ListFilter } from 'lucide-vue-next'
-import type { ButtonDropdownOption } from '~/types/ui'
-
-defineProps<{
-  downloadOptions: ButtonDropdownOption[]
-  showDownload: boolean
-}>()
+import { LayoutGrid, LayoutList, ListFilter } from 'lucide-vue-next'
 
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
 const { searchQuery, typeFilter, showMissing, showLinked, sortKey, hasLinkedReleases } = catalogue
@@ -47,16 +41,6 @@ const sortOpen = ref(false)
 
     <Switch v-model="showMissing" label="Show missing" />
     <Switch v-if="hasLinkedReleases" v-model="showLinked" label="Show linked" />
-
-    <ButtonDropdown
-      v-if="showDownload"
-      label="Download missing"
-      :options="downloadOptions"
-    >
-      <template #icon>
-        <Download :size="14" />
-      </template>
-    </ButtonDropdown>
 
     <div class="flex-1" />
 

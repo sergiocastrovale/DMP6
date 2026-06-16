@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import type { DownloadSource } from '~/types/download'
 import { useGlobalStore } from '~/stores/global'
 
 export const useTerminalStore = defineStore('terminal', () => {
@@ -101,16 +100,6 @@ export const useTerminalStore = defineStore('terminal', () => {
     return streamSSE('/api/terminal/reconnect', { session })
   }
 
-  async function runDownload(
-    source: DownloadSource,
-    query: string,
-    albumTitle?: string,
-    artistName?: string,
-    year?: number | null,
-  ) {
-    return streamSSE('/api/downloads/stream', { source, query, albumTitle, artistName, year })
-  }
-
   function open() {
     isOpen.value = true
   }
@@ -151,5 +140,5 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
 
-  return { isOpen, isRunning, lines, exitCode, currentSession, hasBackground, hasLockError, run, reconnect, runDownload, open, close, stop, unlock }
+  return { isOpen, isRunning, lines, exitCode, currentSession, hasBackground, hasLockError, run, reconnect, open, close, stop, unlock }
 })
