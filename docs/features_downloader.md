@@ -89,7 +89,8 @@ Each tab is its **own page** (mirrors `/issues`: slim pages + a shared `Download
 breadcrumbs + tab bar + persistent header; chrome is the generic `components/TabShell.vue` +
 `components/Breadcrumbs.vue`, shared with `/issues`). Tabs: **Monitoring** (`/downloads`, root;
 paginated artist list with search + per-artist Turn on/off and a live "Monitoring x/y" counter) ·
-**Ready to merge** (`/downloads/merge`, READY, with Merge / Merge all) · **Downloading** (`/downloads/downloading`,
+**Ready to merge** (`/downloads/merge`, READY, with Merge / Merge all; the artist page deep-links here
+via an **Awaiting merge** pill → `?highlight=<id>`, hiding the MISSING badge while acquiring) · **Downloading** (`/downloads/downloading`,
 live % bars + Cancel) · **Failed** (`/downloads/failed`, Force retry / Reject, icon actions) ·
 **Unavailable** (`/downloads/unavailable`, no Soulseek source found yet — not a failure, sinks in
 priority and auto-retries; Force retry boosts it back to the front) · **History**

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Download, FolderClosed, Heart, Info, Link, Loader2, PackageCheck, RefreshCw, X } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Download, FolderClosed, GitMerge, Heart, Info, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
@@ -50,7 +50,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
 // Acquisition pipeline state (see docs/feature_monitoring.md)
 const isDownloading = computed(() => props.edition.downloadState === 'DOWNLOADING')
 const isEnriching = computed(() => props.edition.downloadState === 'ENRICHING')
-const isDownloaded = computed(() => props.edition.downloadState === 'READY')
+const isAwaitingMerge = computed(() => props.edition.downloadState === 'READY')
 const downloadFailed = computed(() => props.edition.downloadState === 'FAILED')
 const isAbandoned = computed(() => props.edition.downloadState === 'ABANDONED')
 const verifyDownload = () => navigateTo(`${downloadSubpage(props.edition.downloadState)}?highlight=${props.edition.downloadedReleaseId}`)
@@ -112,7 +112,7 @@ const verifyDownload = () => navigateTo(`${downloadSubpage(props.edition.downloa
         </div>
       </div>
 
-      <Popover trigger="hover">
+      <Popover v-if="!(isDownloading || isEnriching || isAwaitingMerge)" trigger="hover">
         <template #trigger>
           <ReleaseStatusBadge :status="edition.status" />
         </template>
@@ -142,13 +142,13 @@ const verifyDownload = () => navigateTo(`${downloadSubpage(props.edition.downloa
       </button>
 
       <button
-        v-else-if="isDownloaded"
+        v-else-if="isAwaitingMerge"
         type="button"
         class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20"
-        title="Downloaded - verify and merge it on the Downloads page"
+        title="Awaiting merge - review & merge on the Downloads page"
         @click.stop="verifyDownload"
       >
-        <PackageCheck :size="12" /> Verify download
+        <GitMerge :size="12" /> Awaiting merge
       </button>
 
       <button

@@ -150,8 +150,12 @@ finalization — it reads slskd's real transfer state, so a refresh/poll always 
 
 - The artist page polls a lightweight `GET /api/artists/<slug>/download-status` (5 s) and merges
   the state into the release cards; badges update without reload.
-- **Downloaded** rows show a **Verify download** action → `/downloads?highlight=<id>` (right tab
-  auto-selected, row scrolled into view and highlighted).
+- While a release is acquiring (`DOWNLOADING` / `ENRICHING` / `READY`) the MISSING status badge is
+  hidden so the acquisition pill takes its slot: MISSING → blue **Downloading** pill → amber
+  **Awaiting merge** pill (the `READY` state, shown with a `GitMerge` icon — UI label only, the DB
+  status stays `READY`).
+- **Awaiting-merge** rows (`READY`) show an **Awaiting merge** action → `/downloads/merge?highlight=<id>`
+  (merge tab, row scrolled into view and highlighted via `useHighlightId`).
 - Merging promotes the files into the library; the artist page detects the transition and
   refreshes, so the release renders like any other complete release (`downloadedFrom='slskd'`).
 - Manual downloads (per-release dialog) honor the result you pick and go through the same queue —
