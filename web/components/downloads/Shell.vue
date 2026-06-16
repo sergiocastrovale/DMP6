@@ -4,7 +4,7 @@ import { Radar, CircleStop, Pause, Play, AlertTriangle } from 'lucide-vue-next'
 import type { TabItem } from '~/types/ui'
 
 const store = useDownloadsStore()
-const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb } = storeToRefs(store)
+const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
 
@@ -73,8 +73,12 @@ let poll: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
   store.fetchQueue()
   store.checkStatus()
+  store.fetchMergeProgress()
   fetchMonitorCounts()
-  poll = setInterval(() => store.fetchQueue(), 2000)
+  poll = setInterval(() => {
+    store.fetchQueue()
+    store.fetchMergeProgress()
+  }, 2000)
 })
 onUnmounted(() => { if (poll) { clearInterval(poll) } })
 </script>
@@ -125,6 +129,14 @@ onUnmounted(() => { if (poll) { clearInterval(poll) } })
         </p>
 
         <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-lg border border-rule bg-bg-1 px-4 py-3" />
+
+        <UiLoadingPanel
+          v-if="mergeActive"
+          :label="mergeLabel ?? `Merging ${mergingIds.size} release${mergingIds.size !== 1 ? 's' : ''}…`"
+          :percent="mergePercent"
+          variant="success"
+          class="rounded-lg border border-rule bg-bg-1 px-4 py-3"
+        />
       </div>
     </template>
 

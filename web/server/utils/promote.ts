@@ -85,6 +85,7 @@ export async function moveToReady(id: string): Promise<void> {
 
 type MergeRow = {
   id: string
+  title: string
   stagingPath: string | null
   mbReleaseId: string | null
   attempts: number
@@ -241,23 +242,33 @@ export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merg
   })
 
   const moved: { row: MergeRow; rel: string }[] = []
-  for (const row of rows) {
-    if (!row.stagingPath) continue
-    try { moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsReadyPath) }) }
-    catch (e: any) { monitorLog('error', `merge: move failed ${row.title}: ${e?.message || e}`) }
+  try {
+    for (const row of rows) {
+      if (!row.stagingPath) continue
+      setMergeProgress(row.id, { step: 'moving', title: row.title })
+      try { moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsReadyPath) }) }
+      catch (e: any) { monitorLog('error', `merge: move failed ${row.title}: ${e?.message || e}`); clearMergeProgress(row.id) }
+    }
+    if (moved.length === 0) return { merged: 0 }
+
+    // One index over all folders (--folders is ';'-separated); skip paths containing ';'.
+    for (const m of moved) setMergeProgress(m.row.id, { step: 'indexing', title: m.row.title })
+    const safeRels = moved.map(m => m.rel).filter(r => !r.includes(';'))
+    if (safeRels.length) await runReconciler('index', ['--folders', safeRels.join(';')])
+    for (const m of moved.filter(m => m.rel.includes(';'))) await runReconciler('index', ['--folders', m.rel])
+
+    // Per-release targeted validate-or-invalidate (each runs its own `sync --release`, never a
+    // destructive per-artist sync). Matched releases are kept + PROMOTED; unmatched go INVALID.
+    const { maxDownloadAttempts } = await resolveMonitorSettings()
+    for (const m of moved) {
+      setMergeProgress(m.row.id, { step: 'syncing', title: m.row.title })
+      await stampMerged(m.row, music, m.rel, maxDownloadAttempts)
+    }
+    return { merged: moved.length }
   }
-  if (moved.length === 0) return { merged: 0 }
-
-  // One index over all folders (--folders is ';'-separated); skip paths containing ';'.
-  const safeRels = moved.map(m => m.rel).filter(r => !r.includes(';'))
-  if (safeRels.length) await runReconciler('index', ['--folders', safeRels.join(';')])
-  for (const m of moved.filter(m => m.rel.includes(';'))) await runReconciler('index', ['--folders', m.rel])
-
-  // Per-release targeted validate-or-invalidate (each runs its own `sync --release`, never a
-  // destructive per-artist sync). Matched releases are kept + PROMOTED; unmatched go INVALID.
-  const { maxDownloadAttempts } = await resolveMonitorSettings()
-  for (const m of moved) await stampMerged(m.row, music, m.rel, maxDownloadAttempts)
-  return { merged: moved.length }
+  finally {
+    for (const m of moved) clearMergeProgress(m.row.id)
+  }
 }
 
 // slskd filenames can use backslash separators (Windows peers) — normalize before basename.

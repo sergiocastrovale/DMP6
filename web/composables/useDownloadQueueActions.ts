@@ -9,8 +9,11 @@ export const useDownloadQueueActions = () => {
   const { queueActive, queueReady, queueHistory } = storeToRefs(store)
 
   const busyId = ref<string | null>(null)
-  const busyIds = ref<Set<string>>(new Set())
   const actionMsg = ref<string | null>(null)
+
+  // Merge in-flight tracking + concurrency now live in the store (so the progress panel survives tab
+  // switches + refresh). The composable just surfaces them.
+  const { mergingIds: busyIds } = storeToRefs(store)
 
   const run = async (id: string, fn: () => Promise<unknown>, failMsg: string) => {
     busyId.value = id
@@ -25,25 +28,9 @@ export const useDownloadQueueActions = () => {
     }
   }
 
-  // Concurrent variant (merge only) — multiple ids can be in flight at once.
-  const runConcurrent = async (id: string, fn: () => Promise<unknown>, failMsg: string) => {
-    busyIds.value = new Set(busyIds.value).add(id)
-    try {
-      await fn()
-    }
-    catch (e: any) {
-      actionMsg.value = e?.data?.message || e?.message || failMsg
-    }
-    finally {
-      const next = new Set(busyIds.value)
-      next.delete(id)
-      busyIds.value = next
-    }
-  }
-
   const retry = (id: string) => run(id, () => store.retry(id), 'Retry failed')
-  const merge = (id: string) => runConcurrent(id, () => store.merge(id), 'Merge failed')
-  const mergeMany = (ids: string[]) => Promise.all(ids.map(id => merge(id)))
+  const merge = (id: string) => store.merge(id).catch((e: any) => { actionMsg.value = e?.data?.message || e?.message || 'Merge failed' })
+  const mergeMany = (ids: string[]) => store.mergeSelected(ids)
 
   const findItem = (id: string | null) =>
     queueActive.value.find(i => i.id === id)
