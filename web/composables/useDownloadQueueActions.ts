@@ -9,6 +9,7 @@ export const useDownloadQueueActions = () => {
   const { queueActive, queueReady, queueHistory } = storeToRefs(store)
 
   const busyId = ref<string | null>(null)
+  const busyIds = ref<Set<string>>(new Set())
   const actionMsg = ref<string | null>(null)
 
   const run = async (id: string, fn: () => Promise<unknown>, failMsg: string) => {
@@ -24,8 +25,25 @@ export const useDownloadQueueActions = () => {
     }
   }
 
+  // Concurrent variant (merge only) — multiple ids can be in flight at once.
+  const runConcurrent = async (id: string, fn: () => Promise<unknown>, failMsg: string) => {
+    busyIds.value = new Set(busyIds.value).add(id)
+    try {
+      await fn()
+    }
+    catch (e: any) {
+      actionMsg.value = e?.data?.message || e?.message || failMsg
+    }
+    finally {
+      const next = new Set(busyIds.value)
+      next.delete(id)
+      busyIds.value = next
+    }
+  }
+
   const retry = (id: string) => run(id, () => store.retry(id), 'Retry failed')
-  const merge = (id: string) => run(id, () => store.merge(id), 'Merge failed')
+  const merge = (id: string) => runConcurrent(id, () => store.merge(id), 'Merge failed')
+  const mergeMany = (ids: string[]) => Promise.all(ids.map(id => merge(id)))
 
   const findItem = (id: string | null) =>
     queueActive.value.find(i => i.id === id)
@@ -98,9 +116,11 @@ export const useDownloadQueueActions = () => {
   return {
     store,
     busyId,
+    busyIds,
     actionMsg,
     retry,
     merge,
+    mergeMany,
     reject,
     rejectId,
     rejectOpen,

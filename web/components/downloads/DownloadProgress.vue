@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Loader2 } from 'lucide-vue-next'
 import type { ReleaseProgress } from '~/types/download'
 
 const props = defineProps<{
@@ -8,15 +7,15 @@ const props = defineProps<{
   status?: string // single mode: one release's status
 }>()
 
-const barColor = (status?: string) => ({
-  DOWNLOADING: 'bg-accent',
-  ENRICHING: 'bg-violet-400',
-  READY: 'bg-emerald-400',
-  PROMOTED: 'bg-emerald-400',
-  FAILED: 'bg-red-400',
-  ABANDONED: 'bg-red-400',
-  REJECTED: 'bg-ink-3',
-}[status ?? 'DOWNLOADING'] || 'bg-accent')
+const statusVariant = (status?: string) => ({
+  DOWNLOADING: 'accent',
+  ENRICHING: 'violet',
+  READY: 'success',
+  PROMOTED: 'success',
+  FAILED: 'danger',
+  ABANDONED: 'danger',
+  REJECTED: 'neutral',
+}[status ?? 'DOWNLOADING'] || 'accent') as 'accent' | 'success' | 'violet' | 'danger' | 'neutral'
 
 const aggregate = computed(() => props.items != null)
 
@@ -37,32 +36,18 @@ const overallPercent = computed(() => {
 
 const single = computed(() => ({
   percent: Math.max(0, Math.min(100, props.percent ?? 0)),
-  color: barColor(props.status),
+  variant: statusVariant(props.status),
 }))
 </script>
 
 <template>
-  <div v-if="!aggregate" class="h-1 w-full overflow-hidden rounded-full bg-bg-2">
-    <div
-      class="h-full rounded-full transition-all duration-300"
-      :class="single.color"
-      :style="{ width: `${single.percent}%` }"
-    />
-  </div>
+  <UiLoadingPanel v-if="!aggregate" :percent="single.percent" :variant="single.variant" size="sm" />
 
-  <div v-else-if="total > 0" class="space-y-1.5">
-    <div class="flex items-center justify-between text-xs">
-      <span class="flex items-center gap-1.5 text-ink-2">
-        <Loader2 :size="13" class="animate-spin" />
-        Downloading {{ done }} of {{ total }} release{{ total === 1 ? '' : 's' }}…
-      </span>
-      <span class="text-ink0">{{ overallPercent }}%</span>
-    </div>
-    <div class="h-1.5 w-full overflow-hidden rounded-full bg-bg-2">
-      <div
-        class="h-1.5 rounded-full bg-accent transition-all duration-300"
-        :style="{ width: `${overallPercent}%` }"
-      />
-    </div>
-  </div>
+  <UiLoadingPanel
+    v-else-if="total > 0"
+    :label="`Downloading ${done} of ${total} release${total === 1 ? '' : 's'}…`"
+    :percent="overallPercent"
+    variant="accent"
+    size="md"
+  />
 </template>

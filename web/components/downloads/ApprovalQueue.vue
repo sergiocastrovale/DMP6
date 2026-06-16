@@ -2,15 +2,21 @@
 import { X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   items: DownloadedReleaseItem[]
   busyId?: string | null
+  busyIds?: Set<string>
   showActions?: boolean
   showRetry?: boolean
   showMerge?: boolean
   showCancel?: boolean
   highlightId?: string | null
-}>()
+  selectable?: boolean
+  selected?: Set<string>
+}>(), {
+  busyIds: () => new Set(),
+  selected: () => new Set(),
+})
 
 // Scroll the highlighted row into view once it renders.
 const rowEls = new Map<string, HTMLElement>()
@@ -34,7 +40,34 @@ const emit = defineEmits<{
   merge: [id: string]
   cancel: [id: string]
   info: [id: string]
+  'update:selected': [Set<string>]
 }>()
+
+const allChecked = computed(() =>
+  props.items.length > 0 && props.items.every(i => props.selected.has(i.id)),
+)
+
+const toggleAll = () => {
+  const next = new Set(props.selected)
+  if (allChecked.value) {
+    props.items.forEach(i => next.delete(i.id))
+  }
+  else {
+    props.items.forEach(i => next.add(i.id))
+  }
+  emit('update:selected', next)
+}
+
+const toggleRow = (id: string) => {
+  const next = new Set(props.selected)
+  if (next.has(id)) {
+    next.delete(id)
+  }
+  else {
+    next.add(id)
+  }
+  emit('update:selected', next)
+}
 
 const statusClass = (s: string) => ({
   DOWNLOADING: 'text-blue-400',
@@ -70,6 +103,9 @@ const statusLabel = (it: DownloadedReleaseItem) => {
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink-3">
+          <th v-if="selectable" class="w-10 px-4 py-2">
+            <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" />
+          </th>
           <th class="px-4 py-2 font-medium">Artist</th>
           <th class="px-4 py-2 font-medium">Release</th>
           <th class="px-4 py-2 font-medium">Type</th>
@@ -84,8 +120,16 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           :key="it.id"
           :ref="el => setRowEl(it.id, el)"
           class="border-b border-rule/50 transition-colors last:border-0"
-          :class="highlightId === it.id ? 'bg-accent/10 ring-2 ring-inset ring-accent/60' : ''"
+          :class="highlightId === it.id ? 'bg-accent/10 ring-2 ring-inset ring-accent/60' : selected.has(it.id) ? 'bg-blue-950/20' : ''"
         >
+          <td v-if="selectable" class="px-4 py-2">
+            <input
+              type="checkbox"
+              :checked="selected.has(it.id)"
+              class="rounded border-rule bg-bg-2"
+              @change="toggleRow(it.id)"
+            />
+          </td>
           <td class="px-4 py-2.5 text-ink">
             <NuxtLink v-if="it.artistSlug" :to="`/artist/${it.artistSlug}`" class="hover:underline">
               {{ it.artist || '—' }}
@@ -161,10 +205,10 @@ const statusLabel = (it: DownloadedReleaseItem) => {
                 class="rounded-full p-1.5 text-emerald-400 transition-colors hover:text-emerald-300 disabled:opacity-40 disabled:pointer-events-none"
                 title="Merge into library"
                 aria-label="Merge"
-                :disabled="busyId != null && busyId !== it.id"
+                :disabled="busyIds.has(it.id)"
                 @click="emit('merge', it.id)"
               >
-                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
+                <Loader2 v-if="busyIds.has(it.id)" :size="14" class="animate-spin" />
                 <FolderInput v-else :size="14" />
               </button>
               <button
