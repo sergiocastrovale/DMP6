@@ -315,7 +315,7 @@ export default defineEventHandler(async (event) => {
     const dls = await prisma.downloadedRelease.findMany({
       where: {
         mbReleaseId: { in: pagedMbIds },
-        status: { in: ['DOWNLOADING', 'PENDING', 'APPROVED', 'FAILED', 'ABANDONED'] },
+        status: { in: ['DOWNLOADING', 'ENRICHING', 'READY', 'FAILED', 'ABANDONED'] },
       },
       select: { id: true, mbReleaseId: true, status: true, updatedAt: true },
       orderBy: { updatedAt: 'desc' },

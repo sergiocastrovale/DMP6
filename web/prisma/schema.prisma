@@ -412,7 +412,6 @@ model Settings {
   downloadDirTemplate String?
   downloadFormats    String?
   downloadMinBitrate Int?
-  requireApprovalForDownloads Boolean @default(false)
   // Monitoring (all override the matching env var; null = use env/default)
   monitorEnabled      Boolean?
   monitorIntervalMin  Int?
@@ -423,9 +422,7 @@ model Settings {
   maxDownloadAttempts Int?
   songkongEnabled     Boolean? // enrich downloads with SongKong before layout; null = env/default
   // Always-on downloader (null = use env/default)
-  downloadsApprovedPath  String?  // approved releases staged here before merge into MUSIC_DIR
-  autoApproveDownloads   Boolean? // auto-move finished downloads to the approved folder (default true)
-  autoMergeDownloads     Boolean? // auto-merge approved downloads into the library (default false)
+  autoMergeDownloads     Boolean? // auto-merge ready downloads into the library (default false)
   maxConcurrentDownloads Int?     // cap on simultaneous active slskd transfers (default 5)
   searchPicksPerInterval Int?     // missing releases queued per worker tick (default 3)
   searchIntervalSec      Int?     // min seconds between download top-up runs (default 60)
@@ -457,7 +454,7 @@ model Settings {
 }
 
 // ---------------------------------------------------------------------------
-// DownloadedRelease — Soulseek acquisitions pending approval / promoted
+// DownloadedRelease — Soulseek acquisitions ready to merge / promoted
 // ---------------------------------------------------------------------------
 
 enum DownloadSource {
@@ -467,8 +464,7 @@ enum DownloadSource {
 enum DownloadStatus {
   DOWNLOADING
   ENRICHING
-  PENDING
-  APPROVED
+  READY
   REJECTED
   PROMOTED
   FAILED
@@ -489,7 +485,7 @@ model DownloadedRelease {
   quality        String?        // source format/bitrate, e.g. "MP3 320"
   files          Json?          // [{filename,size}] queued from slskd — lets the reconciler finalize
   stagingPath    String?        @db.Text // folder under DOWNLOADS_PATH
-  status         DownloadStatus @default(PENDING)
+  status         DownloadStatus @default(READY)
   attempts       Int            @default(0) // failed/no-result attempts; >= max -> ABANDONED (download-fail path only)
   priority       Int            @default(10) // 10 = freshest/highest; decremented per failure, floor 0; drives retry order
   bytesTransferred BigInt       @default(0) // progress watermark for no-progress death

@@ -11,8 +11,7 @@ const props = defineProps<{
 const barColor = (status?: string) => ({
   DOWNLOADING: 'bg-accent',
   ENRICHING: 'bg-violet-400',
-  PENDING: 'bg-emerald-400',
-  APPROVED: 'bg-emerald-400',
+  READY: 'bg-emerald-400',
   PROMOTED: 'bg-emerald-400',
   FAILED: 'bg-red-400',
   ABANDONED: 'bg-red-400',

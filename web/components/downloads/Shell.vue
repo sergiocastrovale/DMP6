@@ -4,7 +4,7 @@ import { Radar, CircleStop, Pause, Play, AlertTriangle } from 'lucide-vue-next'
 import type { TabItem } from '~/types/ui'
 
 const store = useDownloadsStore()
-const { queueActive, pendingCount, readyCount, paused, pausedReason, freeGb, minFreeGb } = storeToRefs(store)
+const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
 
@@ -30,7 +30,6 @@ const fetchMonitorCounts = async () => {
 const breadcrumbRoot = { label: 'Downloads', to: '/downloads' }
 const breadcrumbLabels: Record<string, string> = {
   monitoring: 'Monitoring',
-  pending: 'Pending approval',
   merge: 'Ready to merge',
   downloading: 'Downloading',
   failed: 'Failed',
@@ -40,7 +39,6 @@ const breadcrumbLabels: Record<string, string> = {
 
 const tabs = computed<TabItem[]>(() => [
   { key: 'monitoring', label: 'Monitoring', href: '/downloads/monitoring' },
-  { key: 'pending', label: 'Pending approval', href: '/downloads/pending', count: pendingCount.value, countHighlight: true },
   { key: 'merge', label: 'Ready to merge', href: '/downloads/merge', count: readyCount.value, countHighlight: true },
   { key: 'downloading', label: 'Downloading', href: '/downloads/downloading', count: downloading.value.length, countHighlight: true },
   { key: 'failed', label: 'Failed', href: '/downloads/failed', count: failed.value.length, countHighlight: true },

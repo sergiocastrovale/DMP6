@@ -15,7 +15,6 @@ const form = reactive({
   downloadDirTemplate: settings.value?.downloadDirTemplate ?? '',
   downloadFormats: settings.value?.downloadFormats ?? '',
   downloadMinBitrate: settings.value?.downloadMinBitrate ?? '',
-  downloadsApprovedPath: settings.value?.downloadsApprovedPath ?? '',
 })
 
 const { saving, saved, error, save } = useFormSave(async () => {
@@ -28,7 +27,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
       downloadDirTemplate: form.downloadDirTemplate || null,
       downloadFormats: form.downloadFormats || null,
       downloadMinBitrate: form.downloadMinBitrate ? Number(form.downloadMinBitrate) : null,
-      downloadsApprovedPath: form.downloadsApprovedPath || null,
     },
   })
   await refresh()
@@ -82,12 +80,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
         type="number"
         placeholder="320"
         v-model="form.downloadMinBitrate"
-      />
-      <SettingsField
-        label="Approved Folder"
-        description="Approved releases are staged here until merged into the library. Overrides DOWNLOADS_APPROVED_FOLDER (default {downloads}/_approved)."
-        placeholder="/path/to/downloads/_approved"
-        v-model="form.downloadsApprovedPath"
       />
     </div>
 

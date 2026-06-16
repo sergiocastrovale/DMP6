@@ -367,8 +367,8 @@ async function findFilesByBasename(
   // Match on the suffix-stripped basename so slskd collision tokens don't defeat the lookup.
   const wanted = new Set([...names].map(stripSlskdSuffix))
   // Internal subtrees under the downloads root that must never be scanned as transfer sources:
-  // the approved/merge staging area and the SongKong spool/state dir.
-  const skipNames = new Set(['_approved', '.dmp-songkong'])
+  // the ready/merge staging area and the SongKong spool/state dir.
+  const skipNames = new Set(['_ready', '.dmp-songkong'])
 
   async function walk(dir: string, depth: number) {
     if (depth > maxDepth) return

@@ -59,26 +59,27 @@ function relUnder(root: string, full: string): string {
 }
 
 /**
- * Approve a finished download: move it from the staging area into the APPROVED folder (awaiting
- * merge). No library write yet. Same relative layout is preserved so merge can mirror it into MUSIC_DIR.
+ * Finalize a finished download: move it from the staging area into the `_ready` folder and mark it
+ * READY (awaiting manual merge). No library write yet. Same relative layout is preserved so merge can
+ * mirror it into MUSIC_DIR. This is the automatic, hands-off step — there is no approval gate.
  */
-export async function approveDownloadedRelease(id: string): Promise<void> {
+export async function moveToReady(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
-  if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing staged to approve' })
+  if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing staged' })
 
-  const { downloadsPath, downloadsApprovedPath } = await resolveDownloadSettings()
-  if (!downloadsApprovedPath) throw createError({ statusCode: 503, message: 'DOWNLOADS_APPROVED_FOLDER not configured' })
+  const { downloadsPath, downloadsReadyPath } = await resolveDownloadSettings()
+  if (!downloadsReadyPath) throw createError({ statusCode: 503, message: 'DOWNLOADS_PATH not configured' })
 
-  // Already in the approved folder? just flag it.
-  if (row.stagingPath.startsWith(downloadsApprovedPath + sep) || row.stagingPath === downloadsApprovedPath) {
-    await prisma.downloadedRelease.update({ where: { id }, data: { status: 'APPROVED' } })
+  // Already in the ready folder? just flag it.
+  if (row.stagingPath.startsWith(downloadsReadyPath + sep) || row.stagingPath === downloadsReadyPath) {
+    await prisma.downloadedRelease.update({ where: { id }, data: { status: 'READY' } })
     return
   }
 
-  const dest = join(downloadsApprovedPath, relUnder(downloadsPath, row.stagingPath))
+  const dest = join(downloadsReadyPath, relUnder(downloadsPath, row.stagingPath))
   await moveDir(row.stagingPath, dest)
-  await prisma.downloadedRelease.update({ where: { id }, data: { status: 'APPROVED', stagingPath: dest } })
+  await prisma.downloadedRelease.update({ where: { id }, data: { status: 'READY', stagingPath: dest } })
 }
 
 type MergeRow = {
@@ -103,18 +104,18 @@ async function purgeLibraryFolder(music: string, rel: string): Promise<void> {
   }
 }
 
-// Move one approved release into MUSIC_DIR (idempotent: skip if already there) and return its rel path.
-async function moveIntoLibrary(row: MergeRow, music: string, approvedPath: string): Promise<string> {
+// Move one ready release into MUSIC_DIR (idempotent: skip if already there) and return its rel path.
+async function moveIntoLibrary(row: MergeRow, music: string, readyPath: string): Promise<string> {
   if (row.stagingPath!.startsWith(music + sep) || row.stagingPath === music) {
     return relUnder(music, row.stagingPath!) // already merged on disk; just (re)index in place
   }
-  // Guard: the staged path MUST live under the configured approved folder. If not, the environment
-  // is misconfigured (e.g. merging from a dev instance against the shared DB) — fail loudly instead
-  // of silently basename-falling-back and writing to the wrong place under MUSIC_DIR.
-  if (!row.stagingPath!.startsWith(approvedPath + sep) && row.stagingPath !== approvedPath) {
+  // Guard: the staged path MUST live under the ready folder. If not, the environment is misconfigured
+  // (e.g. merging from a dev instance against the shared DB) — fail loudly instead of silently
+  // basename-falling-back and writing to the wrong place under MUSIC_DIR.
+  if (!row.stagingPath!.startsWith(readyPath + sep) && row.stagingPath !== readyPath) {
     throw createError({
       statusCode: 409,
-      message: `staged path "${row.stagingPath}" is not under the approved folder "${approvedPath}" — run merge where the files live (the NAS), not a dev instance`,
+      message: `staged path "${row.stagingPath}" is not under the ready folder "${readyPath}" — run merge where the files live (the NAS), not a dev instance`,
     })
   }
   // The staged folder must physically exist here. On a dev instance the NAS downloads volume isn't
@@ -125,7 +126,7 @@ async function moveIntoLibrary(row: MergeRow, music: string, approvedPath: strin
       message: `staged files not found at "${row.stagingPath}" — run merge on the NAS where the downloads volume is mounted, not a dev instance`,
     })
   })
-  const rel = relative(approvedPath, row.stagingPath!)
+  const rel = relative(readyPath, row.stagingPath!)
   await moveDir(row.stagingPath!, join(music, rel))
   return rel
 }
@@ -195,7 +196,7 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
 }
 
 /**
- * Merge one APPROVED download into the library: move APPROVED → MUSIC_DIR (idempotent), reconcile
+ * Merge one READY download into the library: move READY → MUSIC_DIR (idempotent), reconcile
  * (index + sync, serialized), stamp provenance, mark PROMOTED.
  */
 export async function mergeDownloadedRelease(id: string): Promise<{ localReleaseId: string | null }> {
@@ -205,33 +206,33 @@ export async function mergeDownloadedRelease(id: string): Promise<{ localRelease
 
   const music = musicDir()
   if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
-  const { downloadsApprovedPath } = await resolveDownloadSettings()
+  const { downloadsReadyPath } = await resolveDownloadSettings()
 
   const { maxDownloadAttempts } = await resolveMonitorSettings()
-  const rel = await moveIntoLibrary(row, music, downloadsApprovedPath)
+  const rel = await moveIntoLibrary(row, music, downloadsReadyPath)
   await runReconciler('index', ['--folders', rel])
   return { localReleaseId: await stampMerged(row, music, rel, maxDownloadAttempts) }
 }
 
 /**
- * Batched merge of many APPROVED downloads: move them all, then ONE index pass over all folders and
+ * Batched merge of many READY downloads: move them all, then ONE index pass over all folders and
  * ONE sync per distinct artist (deduped) — far cheaper than per-release index+full-artist-sync, and
  * the whole thing runs serialized so it can't collide with the gaps worker on the Rust lock.
  */
 export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merged: number }> {
   const music = musicDir()
   if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
-  const { downloadsApprovedPath } = await resolveDownloadSettings()
+  const { downloadsReadyPath } = await resolveDownloadSettings()
 
   const rows = await prisma.downloadedRelease.findMany({
-    where: { id: { in: ids }, status: 'APPROVED' },
+    where: { id: { in: ids }, status: 'READY' },
     include: { artist: { select: { name: true } } },
   })
 
   const moved: { row: MergeRow; rel: string }[] = []
   for (const row of rows) {
     if (!row.stagingPath) continue
-    try { moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsApprovedPath) }) }
+    try { moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsReadyPath) }) }
     catch (e: any) { monitorLog('error', `merge: move failed ${row.title}: ${e?.message || e}`) }
   }
   if (moved.length === 0) return { merged: 0 }
@@ -251,13 +252,13 @@ export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merg
 // slskd filenames can use backslash separators (Windows peers) — normalize before basename.
 const baseName = (f: string) => basename(f.replace(/\\/g, '/'))
 
-// Delete the staged folder from disk, but only inside the configured downloads/staging or approved
+// Delete the staged folder from disk, but only inside the configured downloads/staging or ready
 // roots (safety) — used by both reject and cancel.
 async function purgeStagedFiles(stagingPath: string | null): Promise<void> {
   if (!stagingPath) return
-  const { downloadsPath, downloadsApprovedPath } = await resolveDownloadSettings()
+  const { downloadsPath, downloadsReadyPath } = await resolveDownloadSettings()
   const inside = (root: string) => root && (stagingPath.startsWith(root + sep) || stagingPath === root)
-  if (!downloadsPath || inside(downloadsPath) || inside(downloadsApprovedPath)) {
+  if (!downloadsPath || inside(downloadsPath) || inside(downloadsReadyPath)) {
     await rm(stagingPath, { recursive: true, force: true }).catch(() => {})
   }
 }
@@ -268,7 +269,7 @@ async function purgeStagedFiles(stagingPath: string | null): Promise<void> {
  *   - below the cap -> back to FAILED (re-pickable after the retry cooldown), so the auto-downloader
  *     can fetch it again (a different source may be good).
  *   - at/above the cap -> REJECTED, a terminal tombstone excluded from pickCandidates, never re-fetched.
- * The counter accumulates across the whole download→approve→reject lifecycle, so the try/approve/reject
+ * The counter accumulates across the whole download→ready→reject lifecycle, so the try/ready/reject
  * churn is bounded by N. A manual download from the artist page resets the cap (deliberate override).
  */
 async function applyRejectionCap(row: { id: string; attempts: number }, reason: string): Promise<void> {
@@ -281,7 +282,7 @@ async function applyRejectionCap(row: { id: string; attempts: number }, reason: 
   })
 }
 
-/** Reject a staged download (FAILED or APPROVED/ready-to-merge — identical outcome). */
+/** Reject a staged download (FAILED or READY/ready-to-merge — identical outcome). */
 export async function rejectDownloadedRelease(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
@@ -292,7 +293,7 @@ export async function rejectDownloadedRelease(id: string): Promise<void> {
 /**
  * Cancel an in-flight download (DOWNLOADING/ENRICHING): kill the live slskd transfers and remove all of
  * its files, then count it against the same attempts cap as reject (below cap -> FAILED/re-downloadable,
- * at cap -> REJECTED/terminal). Same N-bounded outcome as FAILED/APPROVED rejection.
+ * at cap -> REJECTED/terminal). Same N-bounded outcome as FAILED/READY rejection.
  */
 export async function cancelDownloadedRelease(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })

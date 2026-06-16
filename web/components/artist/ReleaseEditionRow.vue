@@ -50,7 +50,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
 // Acquisition pipeline state (see docs/feature_monitoring.md)
 const isDownloading = computed(() => props.edition.downloadState === 'DOWNLOADING')
 const isEnriching = computed(() => props.edition.downloadState === 'ENRICHING')
-const isDownloaded = computed(() => props.edition.downloadState === 'PENDING' || props.edition.downloadState === 'APPROVED')
+const isDownloaded = computed(() => props.edition.downloadState === 'READY')
 const downloadFailed = computed(() => props.edition.downloadState === 'FAILED')
 const isAbandoned = computed(() => props.edition.downloadState === 'ABANDONED')
 const verifyDownload = () => navigateTo(`${downloadSubpage(props.edition.downloadState)}?highlight=${props.edition.downloadedReleaseId}`)
@@ -145,7 +145,7 @@ const verifyDownload = () => navigateTo(`${downloadSubpage(props.edition.downloa
         v-else-if="isDownloaded"
         type="button"
         class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20"
-        title="Downloaded - verify and approve it on the Downloads page"
+        title="Downloaded - verify and merge it on the Downloads page"
         @click.stop="verifyDownload"
       >
         <PackageCheck :size="12" /> Verify download

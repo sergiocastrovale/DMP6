@@ -43,10 +43,10 @@ const fetchDownloadStatus = async () => {
     for (const i of data.items) {
       if (i.mbReleaseId) next.set(i.mbReleaseId, { status: i.status, downloadedReleaseId: i.downloadedReleaseId, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes })
     }
-    // An item that was pending/approved and is now gone was promoted (or rejected) ->
+    // An item that was ready and is now gone was promoted (or rejected) ->
     // refresh the release list so the card flips to its final form.
     for (const [mbId, prev] of dlStatusMap.value) {
-      if ((prev.status === 'PENDING' || prev.status === 'APPROVED') && !next.has(mbId)) {
+      if (prev.status === 'READY' && !next.has(mbId)) {
         refreshReleases()
         break
       }

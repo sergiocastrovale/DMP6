@@ -7,7 +7,7 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { resolveSongkongEnabled, songkongDirs, songkongMaxWaitMin } from '~/server/utils/songkongSettings'
 import { transformToLibraryLayout } from '~/server/utils/layout'
-import { approveDownloadedRelease, mergeManyDownloadedReleases } from '~/server/utils/promote'
+import { moveToReady, mergeManyDownloadedReleases } from '~/server/utils/promote'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
@@ -37,7 +37,7 @@ const baseName = (f: string) => basename(f.replace(/\\/g, '/'))
 /**
  * Drive DOWNLOADING rows to their terminal state by checking slskd's actual transfer state —
  * the single owner of finalization. Idempotent, survives restarts, self-heals stuck rows.
- *  - transfers finished (or already gone) -> move + transcode -> PENDING (or FAILED if nothing landed)
+ *  - transfers finished (or already gone) -> move + transcode -> READY (or FAILED if nothing landed)
  *  - transfers still active but older than the hard timeout -> cancel + FAILED
  * Runs frequently (server plugin) so a refresh/poll always reflects reality.
  */
@@ -61,7 +61,7 @@ export async function reconcileDownloads(): Promise<void> {
       finalized += await drainEnriching(enrichRows)
     }
     if (downloadingRows.length === 0) {
-      if (failed || finalized) log(`reconcile done: ${finalized} -> PENDING, ${failed} -> FAILED/ABANDONED`)
+      if (failed || finalized) log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)
       return
     }
     const mon = await resolveMonitorSettings()
@@ -159,7 +159,7 @@ export async function reconcileDownloads(): Promise<void> {
         finalizing.delete(row.id)
       }
     }
-    if (failed || finalized) log(`reconcile done: ${finalized} -> PENDING, ${failed} -> FAILED/ABANDONED`)
+    if (failed || finalized) log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)
   }
   catch (e: any) {
     logErr(`reconcile failed: ${e?.message || e}`)
@@ -169,14 +169,12 @@ export async function reconcileDownloads(): Promise<void> {
   }
 }
 
-// Mark a finished download PENDING (ready for approval); if auto-approve is on, immediately move it
-// to the approved folder (APPROVED, "Ready to merge") so the pipeline is hands-off to the merge gate.
+// Finalize a finished download: record the staged layout, then automatically move it into the
+// `_ready` folder and mark it READY ("Ready to merge"). No approval gate — the only manual step left
+// is the merge into MUSIC_DIR.
 async function settleFinished(id: string, stagingPath: string, error: string | null): Promise<void> {
-  await prisma.downloadedRelease.update({ where: { id }, data: { status: 'PENDING', stagingPath, error } })
-  const { autoApproveDownloads } = await resolveDownloadSettings()
-  if (autoApproveDownloads) {
-    await approveDownloadedRelease(id).catch(e => logErr(`auto-approve failed for ${id}: ${e?.message || e}`))
-  }
+  await prisma.downloadedRelease.update({ where: { id }, data: { stagingPath, error } })
+  await moveToReady(id).catch(e => logErr(`move-to-ready failed for ${id}: ${e?.message || e}`))
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -208,10 +206,10 @@ async function failAttempt(
 }
 
 /**
- * Drive ENRICHING rows to PENDING. A row stays ENRICHING until the host SongKong drainer writes a
+ * Drive ENRICHING rows to READY. A row stays ENRICHING until the host SongKong drainer writes a
  * `done/<id>` marker, then we run the library-layout transform. If the marker never appears within
  * the max-wait window (drainer down / SongKong stuck), we promote unenriched rather than strand the
- * download. File-based + idempotent, so it survives restarts. Returns rows finalized to PENDING.
+ * download. File-based + idempotent, so it survives restarts. Returns rows finalized to READY.
  */
 async function drainEnriching(
   rows: Array<{ id: string; title: string; stagingPath: string | null; updatedAt: Date }>,
@@ -310,7 +308,7 @@ export async function runGapsCycle(): Promise<void> {
 }
 
 /**
- * Optional hands-off merge: when `autoMergeDownloads` is enabled, batch-merge APPROVED downloads into
+ * Optional hands-off merge: when `autoMergeDownloads` is enabled, batch-merge READY downloads into
  * the library. Ships OFF (merge stays a manual gate by default). Throttled + guarded.
  */
 export async function runAutoMergeCycle(): Promise<void> {
@@ -323,7 +321,7 @@ export async function runAutoMergeCycle(): Promise<void> {
   lastAutoMergeAt = Date.now()
   try {
     const ids = (await prisma.downloadedRelease.findMany({
-      where: { status: 'APPROVED' }, select: { id: true }, take: 50,
+      where: { status: 'READY' }, select: { id: true }, take: 50,
     })).map(r => r.id)
     if (ids.length === 0) return
     const { merged } = await mergeManyDownloadedReleases(ids)

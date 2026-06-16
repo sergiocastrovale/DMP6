@@ -10,7 +10,7 @@ the whole ~19K catalogue), and DMP continuously fills their missing albums/EPs f
 transcodes, enriches, and stages them for a final merge.
 
 Three independent, self-throttled background workers (base tick `RECONCILE_SEC`, default 5s):
-- **reconcile** — finalize/fail in-flight downloads; auto-approve finished ones (every tick).
+- **reconcile** — finalize/fail in-flight downloads; finished ones auto-land in `_ready` (every tick).
 - **topUpDownloads** (Search-Sniper) — keeps up to `MAX_CONCURRENT_DOWNLOADS` active transfers;
   each `SEARCH_INTERVAL_SEC` it picks `SEARCH_PICKS_PER_INTERVAL` releases from two pools: **fresh**
   (a MISSING album/EP of a monitored artist never yet attempted — random, fair across the whole
@@ -27,9 +27,12 @@ Downloads page re-queues a failed one immediately.
 ## Pipeline & folders
 
 ```
-DOWNLOADING → ENRICHING → PENDING ─(auto-approve, default)─→ APPROVED ─(merge / merge all)─┬─(MB-matched)──→ PROMOTED
-                              └─(auto-approve off)→ manual Approve → APPROVED               └─(unmatched)──→ INVALID
+DOWNLOADING → ENRICHING → READY ─(manual merge / merge all)─┬─(MB-matched)──→ PROMOTED
+                                                            └─(unmatched)──→ INVALID
 ```
+
+Finished downloads land in the `_ready` folder automatically (`status = READY`) — there is no
+approval step. The only required human action is the merge.
 
 **Merge is a validity gate.** A download is only kept if MusicBrainz can identify it. On merge DMP
 reconciles the moved files with a **targeted `sync --release <localReleaseId>`** (non-destructive — it
@@ -55,9 +58,9 @@ or silently dropped, just deprioritized. "Force retry" (Failed/Unavailable tabs)
 
 Two roots, three logical areas (downloads root holds only `dmp/`, `.dmp-songkong/`, `SHARED/`):
 ```
-DOWNLOADS_PATH = /mnt/SSD/Downloads/dmp        staging + _approved subfolder (transient)
+DOWNLOADS_PATH = /mnt/SSD/Downloads/dmp        staging + _ready subfolder (transient)
   /mnt/SSD/Downloads/dmp/{artist}/…            in-progress: transfer → transcode → enrich → layout
-  /mnt/SSD/Downloads/dmp/_approved/…           approved, "Ready to merge" (awaiting merge)
+  /mnt/SSD/Downloads/dmp/_ready/…              READY, "Ready to merge" (awaiting merge)
 MUSIC_DIR = /mnt/dmp/music/mainstream (/music) merged into the library (index + sync run)   (live)
 ```
 
@@ -71,9 +74,9 @@ Steps:
 3. **Enrich** (optional, SongKong) — tags get AcoustID/MBID/genres/cover art. Row sits in `ENRICHING`.
 4. **Transform** — DMP lays it out by MusicBrainz album type:
    `{artist}/{type}/{year} - {album}/NN. Title.mp3` (multi-disc nests under `CD 01/`, `CD 02/`…).
-5. **Approve** — auto (default) or manual: moves the release into `DOWNLOADS_APPROVED_FOLDER`
-   (status `APPROVED`, shows in the **Ready to merge** tab). No library write yet.
-6. **Merge** — manual **Merge** / **Merge all**: moves `APPROVED_FOLDER → MUSIC_DIR` (same layout),
+5. **Ready** — automatic: moves the release into the derived `{DOWNLOADS_PATH}/_ready` folder
+   (status `READY`, shows in the **Ready to merge** tab). No library write yet, no approval gate.
+6. **Merge** — manual **Merge** / **Merge all**: moves `_ready → MUSIC_DIR` (same layout),
    runs `index --folders` then the targeted `sync --release <id>` validity gate (above) → `PROMOTED`
    if MB-matched, else the files are discarded and the download goes `INVALID`. The only required human
    step.
@@ -86,8 +89,7 @@ Each tab is its **own page** (mirrors `/issues`: slim pages + a shared `Download
 breadcrumbs + tab bar + persistent header; chrome is the generic `components/TabShell.vue` +
 `components/Breadcrumbs.vue`, shared with `/issues`). Tabs: **Monitoring** (`/downloads`, root;
 paginated artist list with search + per-artist Turn on/off and a live "Monitoring x/y" counter) ·
-**Pending approval** (`/downloads/pending`, manual-approve mode) · **Ready to merge**
-(`/downloads/merge`, approved, with Merge / Merge all) · **Downloading** (`/downloads/downloading`,
+**Ready to merge** (`/downloads/merge`, READY, with Merge / Merge all) · **Downloading** (`/downloads/downloading`,
 live % bars + Cancel) · **Failed** (`/downloads/failed`, Force retry / Reject, icon actions) ·
 **Unavailable** (`/downloads/unavailable`, no Soulseek source found yet — not a failure, sinks in
 priority and auto-retries; Force retry boosts it back to the front) · **History**
@@ -110,15 +112,13 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 |---------|---------|---------|
 | `DOWNLOADS_PATH` | `/mnt/SSD/Downloads/dmp` | Download/staging root (real path, identity-mounted) |
 | `DOWNLOADS_DIR` | `/mnt/SSD/Downloads` | Host downloads volume, identity-mounted into web+slskd |
-| `DOWNLOADS_APPROVED_FOLDER` | `{DOWNLOADS_PATH}/_approved` | Approved releases staged here until merged |
 | `SONGKONG_STATE_DIR` | `/mnt/SSD/Downloads/.dmp-songkong` | SongKong spool/done dir (host cron ↔ dmp) |
 | `DOWNLOAD_DIR_TEMPLATE` | `{artist}/{year} - {album}` | Initial staging layout. `{artist}` `{album}` `{year}`; `/` nests, each segment sanitized |
 | `DOWNLOAD_FORMATS` | `flac,mp3` | Accepted source formats |
 | `DOWNLOAD_MIN_BITRATE` | — | kbps minimum |
 | `MONITOR_ENABLED` | `true` | Master switch for the background workers (trickle + gaps + auto-merge) |
-| `RECONCILE_SEC` | `5` | Base tick: finalize/auto-approve in-flight downloads (env only, needs restart) |
-| `AUTO_APPROVE_DOWNLOADS` | `true` | Auto-move finished downloads to the approved folder (else manual Approve) |
-| `AUTO_MERGE` | `false` | Auto-merge approved releases into the library (off = manual Merge gate) |
+| `RECONCILE_SEC` | `5` | Base tick: finalize in-flight downloads to READY (env only, needs restart) |
+| `AUTO_MERGE` | `false` | Auto-merge READY releases into the library (off = manual Merge gate) |
 | `MAX_CONCURRENT_DOWNLOADS` | `5` | Cap on simultaneous active slskd transfers |
 | `SEARCH_PICKS_PER_INTERVAL` | `3` | MISSING releases searched per top-up |
 | `SEARCH_INTERVAL_SEC` | `60` | Min seconds between top-up runs (throttle) |
@@ -142,7 +142,7 @@ Assumes TrueNAS, shared apps group **gid 568**, downloads on `/mnt/SSD/Downloads
 (moves/deletes), so they need a common group with group-write:
 ```bash
 ssh nas '
-  sudo mkdir -p /mnt/SSD/Downloads/dmp/_approved /mnt/SSD/Downloads/.dmp-songkong/spool /mnt/SSD/Downloads/.dmp-songkong/done
+  sudo mkdir -p /mnt/SSD/Downloads/dmp/_ready /mnt/SSD/Downloads/.dmp-songkong/spool /mnt/SSD/Downloads/.dmp-songkong/done
   sudo chown -R :568 /mnt/SSD/Downloads/dmp /mnt/SSD/Downloads/.dmp-songkong
   sudo chmod -R 2775 /mnt/SSD/Downloads/dmp          # setgid: new files inherit gid 568
   sudo chmod -R 0777 /mnt/SSD/Downloads/.dmp-songkong
@@ -179,7 +179,7 @@ gid 1001 + 568) can create them. Overwriting a *pre-existing* release owned by a
 
 ## Scaling & self-management notes
 
-- **Headless & bounded**: download/transcode/enrich/auto-approve run with no UI, capped concurrency,
+- **Headless & bounded**: download/transcode/enrich/finalize-to-ready run with no UI, capped concurrency,
   throttled trickle, random fairness, and a global in-process lock that serializes all Rust
   `index`/`sync`/`catalogue-gaps` runs (so merges and the gaps worker never collide). Survives restarts.
 - **Merge is the one manual step** (unless `AUTO_MERGE=true`). "Merge all" is batched — one `index`
@@ -268,7 +268,7 @@ ssh nas 'sudo sh /mnt/SSD/web/dmp/scripts/monitor/songkong-scan.sh /music/x; ech
 ssh nas 'sudo sh /mnt/SSD/web/dmp/scripts/monitor/songkong-scan.sh "/downloads/SOME ALBUM"' # → "Songs saved", "Completed", exit=0
 
 # 4. live flow — trigger a download, watch it walk the pipeline
-ssh nas 'sudo docker logs -f dmp'                                  # reconcile: → ENRICHING / → ready (APPROVED)
+ssh nas 'sudo docker logs -f dmp'                                  # reconcile: → ENRICHING / → READY
 ssh nas 'ls /mnt/SSD/Downloads/.dmp-songkong/{spool,done}'         # spool appears, then done marker
 ssh nas 'tail -f /tmp/songkong-drain.log'                          # SongKong runs
 ```

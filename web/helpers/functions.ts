@@ -15,9 +15,7 @@ export const filterQueue = (items: DownloadedReleaseItem[], query: string): Down
 // Maps a release's download state to the /downloads subpage that lists it (for "Verify download").
 export const downloadSubpage = (state?: string | null): string => {
   switch (state) {
-    case 'PENDING':
-      return '/downloads/pending'
-    case 'APPROVED':
+    case 'READY':
       return '/downloads/merge'
     case 'FAILED':
     case 'ABANDONED':

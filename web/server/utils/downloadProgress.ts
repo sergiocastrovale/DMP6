@@ -8,7 +8,7 @@ export interface DownloadProgressFields {
 
 // Statuses where the transfer is finished (download complete) -> bar is full.
 const COMPLETED: ReadonlySet<DownloadStatus> = new Set<DownloadStatus>([
-  'ENRICHING', 'PENDING', 'APPROVED', 'PROMOTED',
+  'ENRICHING', 'READY', 'PROMOTED',
 ])
 
 /**

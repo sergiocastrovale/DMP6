@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { Check, X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX } from 'lucide-vue-next'
+import { X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
 
 const props = defineProps<{
   items: DownloadedReleaseItem[]
   busyId?: string | null
   showActions?: boolean
-  showApprove?: boolean
   showRetry?: boolean
   showMerge?: boolean
   showCancel?: boolean
@@ -30,7 +29,6 @@ watch(
 )
 
 const emit = defineEmits<{
-  approve: [id: string]
   reject: [id: string]
   retry: [id: string]
   merge: [id: string]
@@ -41,14 +39,13 @@ const emit = defineEmits<{
 const statusClass = (s: string) => ({
   DOWNLOADING: 'text-blue-400',
   ENRICHING: 'text-violet-400',
-  PENDING: 'text-amber-400',
+  READY: 'text-emerald-400',
   PROMOTED: 'text-emerald-400',
   REJECTED: 'text-ink-3',
   FAILED: 'text-red-400',
   ABANDONED: 'text-ink-3',
   UNAVAILABLE: 'text-ink-3',
   INVALID: 'text-ink-3',
-  APPROVED: 'text-emerald-400',
 }[s] || 'text-ink-2')
 
 const statusLabel = (it: DownloadedReleaseItem) => {
@@ -75,6 +72,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
         <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink-3">
           <th class="px-4 py-2 font-medium">Artist</th>
           <th class="px-4 py-2 font-medium">Release</th>
+          <th class="px-4 py-2 font-medium">Type</th>
           <th class="px-4 py-2 font-medium">Source</th>
           <th class="px-4 py-2 font-medium">Status</th>
           <th class="px-4 py-2 font-medium text-right">Actions</th>
@@ -96,6 +94,9 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           </td>
           <td class="px-4 py-2.5 text-ink-2">
             {{ it.title }}<span v-if="it.year" class="text-ink-3"> ({{ it.year }})</span>
+          </td>
+          <td class="px-4 py-2.5 text-ink-3">
+            {{ it.releaseType || '—' }}
           </td>
           <td class="px-4 py-2.5 text-ink-3">
             {{ it.source }}<template v-if="it.quality"> · {{ it.quality }}</template>
@@ -165,18 +166,6 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               >
                 <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
                 <FolderInput v-else :size="14" />
-              </button>
-              <button
-                v-if="showApprove"
-                type="button"
-                class="rounded-full p-1.5 text-emerald-400 transition-colors hover:text-emerald-300 disabled:opacity-40 disabled:pointer-events-none"
-                title="Approve"
-                aria-label="Approve"
-                :disabled="it.status !== 'PENDING' || (busyId != null && busyId !== it.id)"
-                @click="emit('approve', it.id)"
-              >
-                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
-                <Check v-else :size="14" />
               </button>
               <button
                 v-if="showCancel && (it.status === 'DOWNLOADING' || it.status === 'ENRICHING')"

@@ -4,7 +4,7 @@ import { Trash2 } from 'lucide-vue-next'
 import { filterQueue } from '~/helpers/functions'
 
 const {
-  store, busyId, actionMsg, approve, retry, reject, rejectOpen, rejectTitle, confirmReject,
+  store, busyId, actionMsg, retry, reject, rejectOpen, rejectTitle, confirmReject,
   openInfo, showInfo, infoRelease,
 } = useDownloadQueueActions()
 const { queueActive } = storeToRefs(store)
@@ -40,7 +40,6 @@ const confirmRejectAll = async () => {
       :show-actions="true"
       :show-retry="true"
       :highlight-id="highlightId"
-      @approve="approve"
       @reject="reject"
       @retry="retry"
       @info="openInfo"

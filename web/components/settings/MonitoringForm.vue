@@ -28,7 +28,6 @@ const triState = (v: boolean | null | undefined): 'default' | 'on' | 'off' =>
 // Tri-state: default (env) / on / off
 const enabledChoice = ref(triState(form.monitorEnabled))
 const songkongChoice = ref(triState(settings.value?.songkongEnabled))
-const autoApproveChoice = ref(triState(settings.value?.autoApproveDownloads))
 const autoMergeChoice = ref(triState(settings.value?.autoMergeDownloads))
 
 const toNull = (v: string) => v === '' ? null : Number(v)
@@ -40,7 +39,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
     body: {
       monitorEnabled: fromChoice(enabledChoice.value),
       songkongEnabled: fromChoice(songkongChoice.value),
-      autoApproveDownloads: fromChoice(autoApproveChoice.value),
       autoMergeDownloads: fromChoice(autoMergeChoice.value),
       maxConcurrentDownloads: toNull(form.maxConcurrentDownloads),
       searchPicksPerInterval: toNull(form.searchPicksPerInterval),
@@ -144,25 +142,9 @@ const { saving, saved, error, save } = useFormSave(async () => {
       </div>
 
       <div class="space-y-1.5">
-        <label class="block text-sm font-medium text-ink">Auto-approve downloads</label>
-        <p class="text-xs text-ink0">
-          When on, finished downloads auto-move to the approved folder (“Ready to merge”) with no
-          manual approval — only merge stays manual. Off = approve each one yourself. (AUTO_APPROVE_DOWNLOADS)
-        </p>
-        <select
-          v-model="autoApproveChoice"
-          class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
-        >
-          <option value="default">- use env default (AUTO_APPROVE_DOWNLOADS) -</option>
-          <option value="on">On</option>
-          <option value="off">Off</option>
-        </select>
-      </div>
-
-      <div class="space-y-1.5">
         <label class="block text-sm font-medium text-ink">Auto-merge into library</label>
         <p class="text-xs text-ink0">
-          When on, approved downloads are merged into the music library automatically (no manual
+          When on, ready downloads are merged into the music library automatically (no manual
           “Merge”). Off by default — merging stays a manual gate. (AUTO_MERGE)
         </p>
         <select

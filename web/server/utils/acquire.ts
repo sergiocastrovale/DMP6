@@ -58,7 +58,7 @@ export interface AcquireParams {
 /**
  * Create (or reuse) a DownloadedRelease (status DOWNLOADING) and enqueue the slskd transfer.
  * The persisted `files` list lets the reconciler (server/utils/monitorLoop.ts) finalize the
- * download — move + transcode to MP3-320 → PENDING/FAILED — independent of any in-memory state,
+ * download — move + transcode to MP3-320 → READY/FAILED — independent of any in-memory state,
  * so it survives restarts and self-heals on every poll.
  * Pass `existingRowId` to reuse a pre-created row.
  */

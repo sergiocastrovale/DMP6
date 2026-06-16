@@ -15,7 +15,6 @@ export default defineEventHandler(async (event) => {
     downloadDirTemplate: body.downloadDirTemplate ?? undefined,
     downloadFormats: body.downloadFormats ?? undefined,
     downloadMinBitrate: body.downloadMinBitrate != null ? Number(body.downloadMinBitrate) || null : undefined,
-    requireApprovalForDownloads: typeof body.requireApprovalForDownloads === 'boolean' ? body.requireApprovalForDownloads : undefined,
     // Monitoring knobs (null clears the override -> env/default)
     monitorEnabled: typeof body.monitorEnabled === 'boolean' ? body.monitorEnabled : body.monitorEnabled === null ? null : undefined,
     monitorIntervalMin: body.monitorIntervalMin !== undefined ? (body.monitorIntervalMin === null || body.monitorIntervalMin === '' ? null : Number(body.monitorIntervalMin)) : undefined,
@@ -26,8 +25,6 @@ export default defineEventHandler(async (event) => {
     maxDownloadAttempts: body.maxDownloadAttempts !== undefined ? (body.maxDownloadAttempts === null || body.maxDownloadAttempts === '' ? null : Number(body.maxDownloadAttempts)) : undefined,
     songkongEnabled: typeof body.songkongEnabled === 'boolean' ? body.songkongEnabled : body.songkongEnabled === null ? null : undefined,
     // Always-on downloader knobs
-    downloadsApprovedPath: body.downloadsApprovedPath ?? undefined,
-    autoApproveDownloads: typeof body.autoApproveDownloads === 'boolean' ? body.autoApproveDownloads : body.autoApproveDownloads === null ? null : undefined,
     autoMergeDownloads: typeof body.autoMergeDownloads === 'boolean' ? body.autoMergeDownloads : body.autoMergeDownloads === null ? null : undefined,
     maxConcurrentDownloads: body.maxConcurrentDownloads !== undefined ? (body.maxConcurrentDownloads === null || body.maxConcurrentDownloads === '' ? null : Number(body.maxConcurrentDownloads)) : undefined,
     searchPicksPerInterval: body.searchPicksPerInterval !== undefined ? (body.searchPicksPerInterval === null || body.searchPicksPerInterval === '' ? null : Number(body.searchPicksPerInterval)) : undefined,

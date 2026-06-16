@@ -24,7 +24,6 @@ export const useDownloadQueueActions = () => {
     }
   }
 
-  const approve = (id: string) => run(id, () => store.approve(id), 'Approve failed')
   const retry = (id: string) => run(id, () => store.retry(id), 'Retry failed')
   const merge = (id: string) => run(id, () => store.merge(id), 'Merge failed')
 
@@ -100,7 +99,6 @@ export const useDownloadQueueActions = () => {
     store,
     busyId,
     actionMsg,
-    approve,
     retry,
     merge,
     reject,

@@ -6,11 +6,10 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const activeDownloads = ref<ActiveDownload[]>([])
   const statusChecked = ref(false)
 
-  // Approval queue (DownloadedRelease rows)
+  // Download queue (DownloadedRelease rows)
   const queueActive = ref<DownloadedReleaseItem[]>([])
   const queueReady = ref<DownloadedReleaseItem[]>([])
   const queueHistory = ref<DownloadedReleaseItem[]>([])
-  const pendingCount = computed(() => queueActive.value.filter(i => i.status === 'PENDING').length)
   const readyCount = computed(() => queueReady.value.length)
 
   // Global pause state (DB-backed; auto-set on disk-full).
@@ -86,11 +85,6 @@ export const useDownloadsStore = defineStore('downloads', () => {
     }
   }
 
-  const approve = async (id: string) => {
-    await $fetch(`/api/downloads/approve/${id}`, { method: 'POST' })
-    await fetchQueue()
-  }
-
   const reject = async (id: string) => {
     await $fetch(`/api/downloads/reject/${id}`, { method: 'POST' })
     await fetchQueue()
@@ -112,12 +106,6 @@ export const useDownloadsStore = defineStore('downloads', () => {
   }
 
   // Bulk: sequential (merge/reject are heavy); one failure doesn't abort the rest.
-  const approveAll = async (ids: string[]) => {
-    for (const id of ids) {
-      await $fetch(`/api/downloads/approve/${id}`, { method: 'POST' }).catch(() => {})
-    }
-    await fetchQueue()
-  }
   const rejectAll = async (ids: string[]) => {
     for (const id of ids) {
       await $fetch(`/api/downloads/reject/${id}`, { method: 'POST' }).catch(() => {})
@@ -144,7 +132,6 @@ export const useDownloadsStore = defineStore('downloads', () => {
     queueActive,
     queueReady,
     queueHistory,
-    pendingCount,
     readyCount,
     paused,
     pausedReason,
@@ -152,12 +139,10 @@ export const useDownloadsStore = defineStore('downloads', () => {
     minFreeGb,
     setPaused,
     fetchQueue,
-    approve,
     reject,
     retry,
     cancel,
     merge,
-    approveAll,
     rejectAll,
     mergeAll,
     monitorAll,

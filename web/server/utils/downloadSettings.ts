@@ -11,8 +11,7 @@ export interface ResolvedDownloadSettings {
   downloadMinBitrate: number | null
   downloadsPath: string
   downloadDirTemplate: string
-  downloadsApprovedPath: string
-  autoApproveDownloads: boolean
+  downloadsReadyPath: string
   autoMergeDownloads: boolean
 }
 
@@ -25,8 +24,6 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
     ?? (process.env.DOWNLOAD_MIN_BITRATE ? parseInt(process.env.DOWNLOAD_MIN_BITRATE, 10) : null)
 
   const downloadsPath = settings?.downloadsPath || process.env.DOWNLOADS_PATH || ''
-  const autoApprove = settings?.autoApproveDownloads
-    ?? (process.env.AUTO_APPROVE_DOWNLOADS ? process.env.AUTO_APPROVE_DOWNLOADS !== 'false' : true)
   const autoMerge = settings?.autoMergeDownloads
     ?? (process.env.AUTO_MERGE === 'true' || process.env.AUTO_MERGE === '1')
 
@@ -39,10 +36,8 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
     downloadDirTemplate: settings?.downloadDirTemplate
       || process.env.DOWNLOAD_DIR_TEMPLATE
       || DEFAULT_DOWNLOAD_DIR_TEMPLATE,
-    downloadsApprovedPath: settings?.downloadsApprovedPath
-      || process.env.DOWNLOADS_APPROVED_FOLDER
-      || (downloadsPath ? `${downloadsPath.replace(/\/+$/, '')}/_approved` : ''),
-    autoApproveDownloads: autoApprove,
+    // Derived, non-configurable: finished downloads auto-land here awaiting manual merge.
+    downloadsReadyPath: downloadsPath ? `${downloadsPath.replace(/\/+$/, '')}/_ready` : '',
     autoMergeDownloads: autoMerge,
   }
 }

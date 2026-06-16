@@ -18,9 +18,9 @@ export default defineEventHandler(async (event) => {
   })
   if (!mb) throw createError({ statusCode: 404, message: 'release not found' })
 
-  // Already in flight / awaiting approval / promoted? Don't double-grab.
+  // Already in flight / ready to merge / promoted? Don't double-grab.
   const existing = await prisma.downloadedRelease.findFirst({
-    where: { mbReleaseId: mb.id, status: { in: ['DOWNLOADING', 'PENDING', 'APPROVED', 'PROMOTED'] } },
+    where: { mbReleaseId: mb.id, status: { in: ['DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] } },
     select: { id: true, status: true },
   })
   if (existing) return { id: existing.id, status: existing.status, alreadyQueued: true }

@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const items = await prisma.downloadedRelease.findMany({
     where: {
       artistId: artist.id,
-      status: { in: ['DOWNLOADING', 'ENRICHING', 'PENDING', 'APPROVED', 'FAILED', 'ABANDONED'] },
+      status: { in: ['DOWNLOADING', 'ENRICHING', 'READY', 'FAILED', 'ABANDONED'] },
     },
     select: { id: true, mbReleaseId: true, status: true, files: true, bytesTransferred: true },
     orderBy: { updatedAt: 'desc' },

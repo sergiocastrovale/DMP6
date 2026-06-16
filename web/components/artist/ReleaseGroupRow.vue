@@ -35,7 +35,7 @@ const edition = computed(() => props.group.primary)
 // Acquisition pipeline state (see docs/feature_monitoring.md)
 const isDownloading = computed(() => edition.value.downloadState === 'DOWNLOADING')
 const isEnriching = computed(() => edition.value.downloadState === 'ENRICHING')
-const isDownloaded = computed(() => edition.value.downloadState === 'PENDING' || edition.value.downloadState === 'APPROVED')
+const isDownloaded = computed(() => edition.value.downloadState === 'READY')
 const downloadFailed = computed(() => edition.value.downloadState === 'FAILED')
 const isAbandoned = computed(() => edition.value.downloadState === 'ABANDONED')
 const verifyDownload = () => navigateTo(`${downloadSubpage(edition.value.downloadState)}?highlight=${edition.value.downloadedReleaseId}`)
@@ -157,7 +157,7 @@ const hasPlayable = computed(() => props.group.releases.some(r => r.localRelease
             v-else-if="isDownloaded"
             type="button"
             class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20 cursor-pointer"
-            title="Downloaded - verify and approve it on the Downloads page"
+            title="Downloaded - verify and merge it on the Downloads page"
             @click.stop="verifyDownload"
           >
             <PackageCheck :size="12" /> Verify download

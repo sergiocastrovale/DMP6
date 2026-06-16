@@ -5,24 +5,24 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getPauseState, freeGb } from '~/server/utils/pauseState'
 
-// Returns the approval queue: active acquisitions (downloading / awaiting approval / failed)
-// plus a slice of recent history (approved / promoted / abandoned / rejected, for the History subtabs).
+// Returns the download queue: active acquisitions (downloading / enriching / failed) plus the ready
+// slice and a slice of recent history (promoted / abandoned / rejected / invalid, for the History subtabs).
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'sync.view')
 
   const [active, ready, history] = await Promise.all([
     prisma.downloadedRelease.findMany({
-      where: { status: { in: ['DOWNLOADING', 'ENRICHING', 'PENDING', 'FAILED', 'ABANDONED', 'UNAVAILABLE'] } },
+      where: { status: { in: ['DOWNLOADING', 'ENRICHING', 'FAILED', 'ABANDONED', 'UNAVAILABLE'] } },
       include: { artist: { select: { name: true, slug: true } } },
       orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
     }),
     prisma.downloadedRelease.findMany({
-      where: { status: 'APPROVED' }, // approved, in the approved folder, ready to merge
+      where: { status: 'READY' }, // in the ready folder, awaiting manual merge
       include: { artist: { select: { name: true, slug: true } } },
       orderBy: { updatedAt: 'desc' },
     }),
     prisma.downloadedRelease.findMany({
-      where: { status: { in: ['APPROVED', 'PROMOTED', 'ABANDONED', 'REJECTED', 'INVALID'] } },
+      where: { status: { in: ['PROMOTED', 'ABANDONED', 'REJECTED', 'INVALID'] } },
       include: { artist: { select: { name: true, slug: true } } },
       orderBy: { updatedAt: 'desc' },
       take: 200,
