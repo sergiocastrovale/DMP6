@@ -473,6 +473,8 @@ enum DownloadStatus {
   PROMOTED
   FAILED
   ABANDONED
+  UNAVAILABLE
+  INVALID
 }
 
 model DownloadedRelease {
@@ -488,7 +490,8 @@ model DownloadedRelease {
   files          Json?          // [{filename,size}] queued from slskd — lets the reconciler finalize
   stagingPath    String?        @db.Text // folder under DOWNLOADS_PATH
   status         DownloadStatus @default(PENDING)
-  attempts       Int            @default(0) // failed/no-result attempts; >= max -> ABANDONED
+  attempts       Int            @default(0) // failed/no-result attempts; >= max -> ABANDONED (download-fail path only)
+  priority       Int            @default(10) // 10 = freshest/highest; decremented per failure, floor 0; drives retry order
   bytesTransferred BigInt       @default(0) // progress watermark for no-progress death
   lastProgressAt DateTime?      // last time bytes increased
   error          String?        @db.Text
@@ -499,6 +502,7 @@ model DownloadedRelease {
   localRelease   LocalRelease?  @relation(fields: [localReleaseId], references: [id], onDelete: SetNull)
 
   @@index([status])
+  @@index([status, priority])
   @@index([artistId])
   @@index([mbReleaseId])
   @@index([createdAt])

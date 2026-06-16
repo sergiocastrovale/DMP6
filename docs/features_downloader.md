@@ -12,9 +12,11 @@ transcodes, enriches, and stages them for a final merge.
 Three independent, self-throttled background workers (base tick `RECONCILE_SEC`, default 5s):
 - **reconcile** — finalize/fail in-flight downloads; auto-approve finished ones (every tick).
 - **topUpDownloads** (Search-Sniper) — keeps up to `MAX_CONCURRENT_DOWNLOADS` active transfers;
-  each `SEARCH_INTERVAL_SEC` it randomly picks `SEARCH_PICKS_PER_INTERVAL` MISSING album/EP releases of
-  monitored artists (fair across the whole catalogue, skipping handled / recently-failed), searches
-  Soulseek, enqueues. Bounded + throttled, so 19K artists never floods slskd.
+  each `SEARCH_INTERVAL_SEC` it picks `SEARCH_PICKS_PER_INTERVAL` releases from two pools: **fresh**
+  (a MISSING album/EP of a monitored artist never yet attempted — random, fair across the whole
+  catalogue) and **retry** (a previously-attempted release ordered by `priority` DESC, at least one
+  slot reserved per tick so deprioritized releases keep trickling even while fresh candidates are
+  abundant). Searches Soulseek, enqueues. Bounded + throttled, so 19K artists never floods slskd.
 - **runGapsCycle** — every `GAPS_INTERVAL_MIN`, refresh the MusicBrainz catalogue of `GAPS_PICKS_PER_RUN`
   monitored artists (oldest-checked first, round-robin) so **newly released albums surface as MISSING**
   and get picked up automatically. Cycles the whole catalogue over a few days, MB-rate-friendly.
@@ -25,9 +27,31 @@ Downloads page re-queues a failed one immediately.
 ## Pipeline & folders
 
 ```
-DOWNLOADING → ENRICHING → PENDING ─(auto-approve, default)─→ APPROVED ─(merge / merge all)─→ PROMOTED
-                              └─(auto-approve off)→ manual Approve → APPROVED
+DOWNLOADING → ENRICHING → PENDING ─(auto-approve, default)─→ APPROVED ─(merge / merge all)─┬─(MB-matched)──→ PROMOTED
+                              └─(auto-approve off)→ manual Approve → APPROVED               └─(unmatched)──→ INVALID
 ```
+
+**Merge is a validity gate.** A download is only kept if MusicBrainz can identify it. On merge DMP
+reconciles the moved files with a **targeted `sync --release <localReleaseId>`** (non-destructive — it
+never touches sibling MISSING placeholders, unlike a per-artist `sync --only`). The matcher links a
+release purely via embedded MB tags (`MUSICBRAINZ_ALBUMID` / `MUSICBRAINZ_RELEASEGROUPID`; fuzzy title
+matching is disabled), so:
+- **Matched** → real edition + tracks + computed status; `LocalRelease.downloadedFrom='slskd'`,
+  download → `PROMOTED`, and the now-owned MISSING **group placeholder** is deleted (so the picker
+  can't re-pick it — this is what previously caused merged releases to re-download forever).
+- **Unmatched** (untagged / unidentifiable) → the files are **meaningless**: the merged folder + its
+  `LocalRelease` are deleted, the download → `INVALID` (`attempts+1`, `priority-1`). The group stays
+  MISSING so the trickle worker retries it later hoping a properly-tagged copy surfaces; bounded by
+  `MAX_DOWNLOAD_ATTEMPTS` → `ABANDONED`. INVALID is retryable (in `pickRetry`) but shown terminal in
+  History → Invalid.
+
+**No Soulseek result ≠ failure.** A search miss never counts toward `MAX_DOWNLOAD_ATTEMPTS` — the
+release goes `UNAVAILABLE` instead of `FAILED`/`ABANDONED`, and its `priority` (starts at 10, the max)
+drops by one. Real download failures (found, then stalled/no files) still decrement `priority` too,
+but keep the existing hard `ABANDONED` cap. The top-up picker orders its retry pool by `priority` DESC,
+so repeatedly-unavailable releases sink and get re-tried only as room frees up — they're never stuck
+or silently dropped, just deprioritized. "Force retry" (Failed/Unavailable tabs) resets `priority` to
+10, a full boost back to the front of the queue.
 
 Two roots, three logical areas (downloads root holds only `dmp/`, `.dmp-songkong/`, `SHARED/`):
 ```
@@ -49,8 +73,10 @@ Steps:
    `{artist}/{type}/{year} - {album}/NN. Title.mp3` (multi-disc nests under `CD 01/`, `CD 02/`…).
 5. **Approve** — auto (default) or manual: moves the release into `DOWNLOADS_APPROVED_FOLDER`
    (status `APPROVED`, shows in the **Ready to merge** tab). No library write yet.
-6. **Merge** — manual **Merge** / **Merge all**: moves `APPROVED_FOLDER → MUSIC_DIR` (same layout) +
-   runs `index` + `sync` + stamps provenance → `PROMOTED`. This is the only required human step.
+6. **Merge** — manual **Merge** / **Merge all**: moves `APPROVED_FOLDER → MUSIC_DIR` (same layout),
+   runs `index --folders` then the targeted `sync --release <id>` validity gate (above) → `PROMOTED`
+   if MB-matched, else the files are discarded and the download goes `INVALID`. The only required human
+   step.
 
 The folder transform is **DMP's** (it knows the MB album type); SongKong is enrich-only (never rename/move).
 
@@ -63,14 +89,18 @@ paginated artist list with search + per-artist Turn on/off and a live "Monitorin
 **Pending approval** (`/downloads/pending`, manual-approve mode) · **Ready to merge**
 (`/downloads/merge`, approved, with Merge / Merge all) · **Downloading** (`/downloads/downloading`,
 live % bars + Cancel) · **Failed** (`/downloads/failed`, Force retry / Reject, icon actions) ·
-**History** (`/downloads/history`, read-only, subtabs per terminal status: Promoted / Approved /
-Rejected / Abandoned). Every queue page has its own client-side search box.
+**Unavailable** (`/downloads/unavailable`, no Soulseek source found yet — not a failure, sinks in
+priority and auto-retries; Force retry boosts it back to the front) · **History**
+(`/downloads/history`, read-only, subtabs per terminal status: Promoted / Rejected / Abandoned /
+Invalid). Every queue page has its own client-side search box. Failed/Unavailable rows show the
+attempt count ("unavailable (N tries)" / "gave up (N tries)").
 The persistent header (every page) has **Pause all** and **Monitor all / Monitor none** (bulk toggle the whole catalogue; Monitor all goes active
 only when every artist is monitored). Per-row **Info** opens the release dialog (folder path, format,
-IDs). **Reject** (FAILED or ready-to-merge — same outcome) deletes the staged files and counts toward
-`MAX_DOWNLOAD_ATTEMPTS` (default 3): below the cap it returns to FAILED (re-downloadable), at the cap it
-becomes terminal `REJECTED` (never auto-re-queued). So the whole try/approve/reject churn is bounded by
-N; re-download manually from the artist page to reset.
+IDs). **Reject** (FAILED, Unavailable, or ready-to-merge — same outcome) deletes the staged files and, for a
+download that was actually found-then-failed, counts toward `MAX_DOWNLOAD_ATTEMPTS` (default 3): below
+the cap it returns to FAILED (re-downloadable), at the cap it becomes terminal `REJECTED` (never
+auto-re-queued). Search misses (`UNAVAILABLE`) never count toward this cap — only `priority` decrements.
+So the failed-download churn is bounded by N; re-download manually from the artist page to reset.
 
 ## Settings
 
@@ -94,7 +124,6 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 | `SEARCH_INTERVAL_SEC` | `60` | Min seconds between top-up runs (throttle) |
 | `GAPS_PICKS_PER_RUN` | `20` | Monitored artists catalogue-refreshed per gap run |
 | `GAPS_INTERVAL_MIN` | `5` | Minutes between catalogue-gap runs |
-| `MONITOR_RETRY_HOURS` | `12` | Cooldown before retrying a FAILED release |
 | `NO_PROGRESS_SEC` | `300` | Kill a transfer with no byte progress for this long (lower abandons slow peers) |
 | `MAX_DOWNLOAD_ATTEMPTS` | `3` | Attempts before a release is ABANDONED |
 | `DOWNLOADS_MIN_FREE_GB` | `5` | Pause new downloads when the downloads volume drops below this |
@@ -154,7 +183,11 @@ gid 1001 + 568) can create them. Overwriting a *pre-existing* release owned by a
   throttled trickle, random fairness, and a global in-process lock that serializes all Rust
   `index`/`sync`/`catalogue-gaps` runs (so merges and the gaps worker never collide). Survives restarts.
 - **Merge is the one manual step** (unless `AUTO_MERGE=true`). "Merge all" is batched — one `index`
-  pass + one `sync` per artist — so a large backlog merges cheaply.
+  pass over every folder, then a per-release targeted `sync --release <id>` validity gate (never the
+  old destructive per-artist `sync --only`, which deleted+recreated all the artist's MISSING
+  placeholders and caused merged releases to be re-downloaded forever). The standalone `./sync`
+  catalogue-gaps path also guards against this: `delete_missing_releases_for_artist` won't drop a
+  MISSING placeholder still referenced by a `DownloadedRelease`.
 - **slskd ↔ dmp permissions**: slskd writes downloads as its own uid. Give slskd + dmp a **shared gid
   with group-write** (slskd `PUID/PGID` + `UMASK=002`) on the downloads volume, or dmp can copy the
   files into place but can't delete the slskd-owned source — they finalize fine (resilient move) but

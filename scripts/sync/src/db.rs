@@ -484,6 +484,9 @@ pub async fn delete_empty_local_releases(pool: &PgPool) -> Result<u64, sqlx::Err
     Ok(result.rows_affected())
 }
 
+// Never delete a MISSING placeholder that a DownloadedRelease still points at (any status) — the
+// web app's auto-downloader keys its dedup/retry logic off that row's id, so dropping it orphans the
+// queue entry and lets the trickle worker re-fetch the same release as if it were brand new.
 pub async fn delete_missing_releases_for_artist(
     pool: &PgPool,
     artist_id: &str,
@@ -494,6 +497,9 @@ pub async fn delete_missing_releases_for_artist(
              AND id IN (
                SELECT "releaseId" FROM "MusicBrainzReleaseArtist"
                WHERE "artistId" = $1
+             )
+             AND id NOT IN (
+               SELECT "mbReleaseId" FROM "DownloadedRelease" WHERE "mbReleaseId" IS NOT NULL
              )"#,
     )
     .bind(artist_id)

@@ -22,8 +22,11 @@ export const downloadSubpage = (state?: string | null): string => {
     case 'FAILED':
     case 'ABANDONED':
       return '/downloads/failed'
+    case 'UNAVAILABLE':
+      return '/downloads/unavailable'
     case 'PROMOTED':
     case 'REJECTED':
+    case 'INVALID':
       return '/downloads/history'
     default:
       return '/downloads/downloading'

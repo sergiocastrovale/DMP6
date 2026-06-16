@@ -10,7 +10,7 @@ const sub = ref('PROMOTED')
 const search = ref('')
 
 const counts = computed(() => {
-  const c: Record<string, number> = { PROMOTED: 0, ABANDONED: 0, REJECTED: 0 }
+  const c: Record<string, number> = { PROMOTED: 0, ABANDONED: 0, REJECTED: 0, INVALID: 0 }
   for (const i of queueHistory.value) {
     if (i.status in c) { c[i.status] = (c[i.status] ?? 0) + 1 }
   }
@@ -20,6 +20,7 @@ const tabs = computed(() => [
   { key: 'PROMOTED', label: 'Promoted', count: counts.value.PROMOTED },
   { key: 'REJECTED', label: 'Rejected', count: counts.value.REJECTED },
   { key: 'ABANDONED', label: 'Abandoned', count: counts.value.ABANDONED },
+  { key: 'INVALID', label: 'Invalid', count: counts.value.INVALID },
 ])
 const items = computed(() => filterQueue(queueHistory.value.filter(i => i.status === sub.value), search.value))
 

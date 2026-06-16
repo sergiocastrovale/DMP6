@@ -10,6 +10,7 @@ const actionMsg = ref<string | null>(null)
 
 const downloading = computed(() => queueActive.value.filter(i => i.status === 'DOWNLOADING' || i.status === 'ENRICHING'))
 const failed = computed(() => queueActive.value.filter(i => i.status === 'FAILED' || i.status === 'ABANDONED'))
+const unavailable = computed(() => queueActive.value.filter(i => i.status === 'UNAVAILABLE'))
 const downloadProgressItems = computed(() => downloading.value.map(i => ({
   status: i.status, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes,
 })))
@@ -33,6 +34,7 @@ const breadcrumbLabels: Record<string, string> = {
   merge: 'Ready to merge',
   downloading: 'Downloading',
   failed: 'Failed',
+  unavailable: 'Unavailable',
   history: 'History',
 }
 
@@ -42,6 +44,7 @@ const tabs = computed<TabItem[]>(() => [
   { key: 'merge', label: 'Ready to merge', href: '/downloads/merge', count: readyCount.value, countHighlight: true },
   { key: 'downloading', label: 'Downloading', href: '/downloads/downloading', count: downloading.value.length, countHighlight: true },
   { key: 'failed', label: 'Failed', href: '/downloads/failed', count: failed.value.length, countHighlight: true },
+  { key: 'unavailable', label: 'Unavailable', href: '/downloads/unavailable', count: unavailable.value.length, countHighlight: true },
   { key: 'history', label: 'History', href: '/downloads/history' },
 ])
 

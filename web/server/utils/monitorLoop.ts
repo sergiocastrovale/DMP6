@@ -186,9 +186,10 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ])
 }
 
-// Increment the attempt counter; after maxAttempts give up permanently (ABANDONED).
+// Increment the attempt counter; after maxAttempts give up permanently (ABANDONED). Also lowers
+// priority (floor 0) so a repeatedly-failing download sinks behind fresher candidates on retry.
 async function failAttempt(
-  row: { id: string; attempts: number },
+  row: { id: string; attempts: number; priority?: number },
   maxAttempts: number,
   error: string,
   stagingPath?: string,
@@ -198,6 +199,7 @@ async function failAttempt(
     where: { id: row.id },
     data: {
       attempts,
+      priority: Math.max(0, (row.priority ?? 10) - 1),
       status: attempts >= maxAttempts ? 'ABANDONED' : 'FAILED',
       error,
       ...(stagingPath ? { stagingPath } : {}),

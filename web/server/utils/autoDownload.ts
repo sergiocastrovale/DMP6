@@ -6,12 +6,13 @@ import { findBestSlskdResult, acquireRelease } from '~/server/utils/acquire'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
 
-// Mark a no-result/search-error attempt: bump attempts, abandon at the cap.
-async function failNoResult(rowId: string, attempts: number, maxAttempts: number, error: string) {
-  const next = attempts + 1
+// Mark a search-miss: slskd had no result. NOT a failure — never abandons. Bumps the tries counter
+// (shown in the UI) and lowers priority (floor 0) so the release sinks behind fresher candidates and
+// is retried later. Status -> UNAVAILABLE (its own queue tab, distinct from real download failures).
+async function failNoResult(rowId: string, attempts: number, priority: number, error: string) {
   await prisma.downloadedRelease.update({
     where: { id: rowId },
-    data: { attempts: next, status: next >= maxAttempts ? 'ABANDONED' : 'FAILED', error },
+    data: { attempts: attempts + 1, priority: Math.max(0, priority - 1), status: 'UNAVAILABLE', error },
   }).catch(() => {})
 }
 
@@ -28,7 +29,7 @@ export async function forceRetryDownload(id: string): Promise<void> {
 
   await prisma.downloadedRelease.update({
     where: { id },
-    data: { status: 'DOWNLOADING', attempts: 0, error: null, bytesTransferred: BigInt(0), lastProgressAt: new Date(), slskUsername: null, files: [] },
+    data: { status: 'DOWNLOADING', attempts: 0, priority: 10, error: null, bytesTransferred: BigInt(0), lastProgressAt: new Date(), slskUsername: null, files: [] },
   })
 
   const artistName = row.artist.name
@@ -42,7 +43,7 @@ export async function forceRetryDownload(id: string): Promise<void> {
     if (!best) {
       await prisma.downloadedRelease.update({
         where: { id },
-        data: { status: 'FAILED', attempts: 1, error: 'no Soulseek result found (force retry)' },
+        data: { status: 'UNAVAILABLE', attempts: 1, priority: 9, error: 'no Soulseek result (search miss)' },
       }).catch(() => {})
       return
     }
@@ -65,14 +66,18 @@ interface MissingPick {
   releaseGroupId: string | null
   artistId: string
   artistName: string
+  rowId: string | null     // existing DownloadedRelease row (retry pool); null = fresh, create one
+  attempts: number         // carried from the existing row (0 for fresh)
+  priority: number         // carried from the existing row (10 for fresh)
 }
 
 let lastTopUpAt = 0
 let topUpRunning = false
 
-// Artist-first random pick: choose random monitored, non-junk artists (indexed) and take one eligible
-// MISSING album/EP each. Avoids a full random sort over the entire MISSING pool every tick at 19K.
-async function pickCandidates(slots: number, cooldown: Date): Promise<MissingPick[]> {
+// Fresh pool: random monitored, non-junk artists (indexed), one never-tried MISSING album/EP each
+// (no DownloadedRelease row exists yet -> implicit priority 10). Avoids a full random sort over the
+// whole MISSING pool every tick at 19K.
+async function pickFresh(slots: number): Promise<MissingPick[]> {
   const artists = await prisma.$queryRaw<{ id: string; name: string }[]>(Prisma.sql`
     SELECT a.id, a.name FROM "Artist" a
     WHERE a.monitored = true AND a."relatedOnly" = false AND a.name NOT LIKE '%;%'
@@ -83,22 +88,45 @@ async function pickCandidates(slots: number, cooldown: Date): Promise<MissingPic
     if (picks.length >= slots) break
     const rel = await prisma.$queryRaw<MissingPick[]>(Prisma.sql`
       SELECT mr.id, mr.title, mr.year, mr."releaseGroupId",
-             ${a.id} AS "artistId", ${a.name} AS "artistName"
+             ${a.id} AS "artistId", ${a.name} AS "artistName",
+             NULL::text AS "rowId", 0 AS attempts, 10 AS priority
       FROM "MusicBrainzRelease" mr
       JOIN "ReleaseType" rt ON rt.id = mr."typeId" AND rt.slug IN ('album', 'ep')
       JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mr.id AND mra."artistId" = ${a.id}
       WHERE mr.status = 'MISSING'
-        AND NOT EXISTS (
-          SELECT 1 FROM "DownloadedRelease" dr
-          WHERE dr."mbReleaseId" = mr.id
-            AND (dr.status IN ('DOWNLOADING', 'ENRICHING', 'PENDING', 'APPROVED', 'PROMOTED', 'ABANDONED', 'REJECTED')
-                 OR (dr.status = 'FAILED' AND dr."updatedAt" > ${cooldown}))
-        )
+        AND NOT EXISTS (SELECT 1 FROM "DownloadedRelease" dr WHERE dr."mbReleaseId" = mr.id)
       ORDER BY random() LIMIT 1
     `)
     if (rel[0]) picks.push(rel[0])
   }
   return picks
+}
+
+// Retry pool: already-tried releases still MISSING — UNAVAILABLE (search miss) or FAILED (download
+// died below the cap). Ordered by priority DESC so the least-failed retry first; random within tier.
+// ABANDONED/REJECTED are terminal and excluded.
+async function pickRetry(slots: number): Promise<MissingPick[]> {
+  return prisma.$queryRaw<MissingPick[]>(Prisma.sql`
+    SELECT mr.id, mr.title, mr.year, mr."releaseGroupId",
+           a.id AS "artistId", a.name AS "artistName",
+           dr.id AS "rowId", dr.attempts AS attempts, dr.priority AS priority
+    FROM "DownloadedRelease" dr
+    JOIN "MusicBrainzRelease" mr ON mr.id = dr."mbReleaseId" AND mr.status = 'MISSING'
+    JOIN "Artist" a ON a.id = dr."artistId" AND a.monitored = true AND a."relatedOnly" = false AND a.name NOT LIKE '%;%'
+    WHERE dr.status IN ('UNAVAILABLE', 'FAILED', 'INVALID')
+    ORDER BY dr.priority DESC, random() LIMIT ${slots}
+  `)
+}
+
+// Fill `slots` fresh-first (deprioritized retries yield to fresh candidates), but always reserve at
+// least one slot for the retry pool when it has candidates so sunk items keep trickling. Each pool
+// fills the other's shortfall. As MISSING is exhausted into rows, fresh thins and retries take over.
+async function pickCandidates(slots: number): Promise<MissingPick[]> {
+  const reservedRetry = Math.min(slots, 1)
+  const fresh = await pickFresh(slots - reservedRetry)
+  const remaining = slots - fresh.length
+  const retry = remaining > 0 ? await pickRetry(remaining) : []
+  return [...fresh, ...retry]
 }
 
 /**
@@ -124,17 +152,11 @@ export async function topUpDownloads(): Promise<void> {
     const slots = Math.min(maxConc - inFlight, Math.max(1, mon.searchPicksPerInterval))
     if (slots <= 0) return
 
-    const cooldown = new Date(Date.now() - mon.monitorRetryHours * 3_600_000)
-    const picks = await pickCandidates(slots, cooldown)
+    const picks = await pickCandidates(slots)
     if (picks.length === 0) return
 
-    const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
   for (const p of picks) {
-    // Reuse a past-cooldown FAILED row if present (carry its attempt count), else create fresh.
-    const prior = await prisma.downloadedRelease.findFirst({
-      where: { mbReleaseId: p.id, status: 'FAILED' },
-      select: { id: true, attempts: true },
-    })
+    // Retry-pool picks carry their existing row (and attempts/priority); fresh picks create a new one.
     const data = {
       artistId: p.artistId,
       mbReleaseId: p.id,
@@ -150,8 +172,8 @@ export async function topUpDownloads(): Promise<void> {
       bytesTransferred: BigInt(0),
       lastProgressAt: new Date(),
     }
-    const row = prior
-      ? await prisma.downloadedRelease.update({ where: { id: prior.id }, data })
+    const row = p.rowId
+      ? await prisma.downloadedRelease.update({ where: { id: p.rowId }, data })
       : await prisma.downloadedRelease.create({ data })
 
     const best = await findBestSlskdResult(
@@ -160,7 +182,7 @@ export async function topUpDownloads(): Promise<void> {
       settings.downloadMinBitrate ?? undefined,
     ).catch(() => null)
     if (!best) {
-      await failNoResult(row.id, prior?.attempts ?? 0, maxAttempts, 'no Soulseek result found')
+      await failNoResult(row.id, p.attempts, p.priority, 'no Soulseek result (search miss)')
       continue
     }
       await acquireRelease({

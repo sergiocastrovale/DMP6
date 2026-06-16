@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
 
   const [active, ready, history] = await Promise.all([
     prisma.downloadedRelease.findMany({
-      where: { status: { in: ['DOWNLOADING', 'ENRICHING', 'PENDING', 'FAILED', 'ABANDONED'] } },
+      where: { status: { in: ['DOWNLOADING', 'ENRICHING', 'PENDING', 'FAILED', 'ABANDONED', 'UNAVAILABLE'] } },
       include: { artist: { select: { name: true, slug: true } } },
       orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
     }),
@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
       orderBy: { updatedAt: 'desc' },
     }),
     prisma.downloadedRelease.findMany({
-      where: { status: { in: ['APPROVED', 'PROMOTED', 'ABANDONED', 'REJECTED'] } },
+      where: { status: { in: ['APPROVED', 'PROMOTED', 'ABANDONED', 'REJECTED', 'INVALID'] } },
       include: { artist: { select: { name: true, slug: true } } },
       orderBy: { updatedAt: 'desc' },
       take: 200,
@@ -50,6 +50,7 @@ export default defineEventHandler(async (event) => {
     quality: r.quality,
     status: r.status,
     attempts: r.attempts,
+    priority: r.priority,
     error: r.error,
     stagingPath: r.stagingPath,
     mbReleaseId: r.mbReleaseId,

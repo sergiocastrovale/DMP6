@@ -67,7 +67,7 @@ FROM node:20-bookworm AS web-builder
 WORKDIR /build
 
 # Enable pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 # Copy dependency files first (Docker layer caching)
 COPY web/package.json web/pnpm-lock.yaml ./

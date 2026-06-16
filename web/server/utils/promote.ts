@@ -81,7 +81,27 @@ export async function approveDownloadedRelease(id: string): Promise<void> {
   await prisma.downloadedRelease.update({ where: { id }, data: { status: 'APPROVED', stagingPath: dest } })
 }
 
-type MergeRow = { id: string; stagingPath: string | null; mbReleaseId: string | null; artist: { name: string } | null }
+type MergeRow = {
+  id: string
+  stagingPath: string | null
+  mbReleaseId: string | null
+  attempts: number
+  priority: number
+  artist: { name: string } | null
+}
+
+// Trailing disc subfolder (cd1 / disc 2 / disk3) — LocalRelease.folderPath is the rel path with this stripped.
+const DISC_SEGMENT_RE = /[/\\](?:cd|disc|disk)\s*\d+\s*$/i
+const stripDiscSegment = (rel: string): string => rel.replace(DISC_SEGMENT_RE, '')
+
+// Delete a merged folder from disk, but only when it actually lives under MUSIC_DIR (safety guard).
+async function purgeLibraryFolder(music: string, rel: string): Promise<void> {
+  if (!music || !rel) return
+  const full = join(music, rel)
+  if (full.startsWith(music + sep)) {
+    await rm(full, { recursive: true, force: true }).catch(() => {})
+  }
+}
 
 // Move one approved release into MUSIC_DIR (idempotent: skip if already there) and return its rel path.
 async function moveIntoLibrary(row: MergeRow, music: string, approvedPath: string): Promise<string> {
@@ -110,19 +130,68 @@ async function moveIntoLibrary(row: MergeRow, music: string, approvedPath: strin
   return rel
 }
 
-// Stamp provenance + PROMOTED for one merged release.
-async function stampMerged(row: MergeRow, music: string, rel: string): Promise<string | null> {
+/**
+ * Validate one merged release against MusicBrainz, then keep it (matched) or discard it (INVALID).
+ * The match result is the validity gate:
+ *   - `index --folders` already created the LocalRelease from the moved files;
+ *   - `sync --release <id>` (targeted, so it SKIPS the destructive per-artist catalogue-gaps
+ *     delete+recreate) tries to link it to a real MB edition via embedded MB tags and fetch the real
+ *     tracks/status, setting LocalRelease.releaseId;
+ *   - matched (releaseId set) -> stamp provenance, PROMOTED, retire the now-owned group placeholder;
+ *   - unmatched (releaseId NULL) -> files have no MB identity -> delete folder + LocalRelease (cascade),
+ *     mark the download INVALID (retryable until the attempts cap, then ABANDONED) so the trickle
+ *     worker can hope a properly-tagged copy surfaces.
+ * Returns the kept LocalRelease id, or null when invalidated.
+ */
+async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloadAttempts: number): Promise<string | null> {
+  const stripped = stripDiscSegment(rel)
   const lr = await prisma.localRelease.findFirst({
-    where: row.mbReleaseId ? { releaseId: row.mbReleaseId } : { folderPath: { contains: basename(join(music, rel)) } },
+    where: { OR: [{ folderPath: rel }, { folderPath: stripped }, { folderPath: { startsWith: stripped } }] },
     orderBy: { createdAt: 'desc' },
     select: { id: true },
   })
-  if (lr) await prisma.localRelease.update({ where: { id: lr.id }, data: { downloadedFrom: 'slskd' } })
+
+  // Targeted reconcile of just this release (non-destructive: never touches sibling MISSING placeholders).
+  if (lr) await runReconciler('sync', ['--release', lr.id]).catch(() => {})
+
+  const reloaded = lr
+    ? await prisma.localRelease.findUnique({ where: { id: lr.id }, select: { id: true, releaseId: true } })
+    : null
+
+  if (reloaded?.releaseId) {
+    await prisma.$transaction([
+      prisma.localRelease.update({ where: { id: reloaded.id }, data: { downloadedFrom: 'slskd' } }),
+      prisma.downloadedRelease.update({
+        where: { id: row.id },
+        data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: reloaded.id },
+      }),
+      // Retire the group placeholder we downloaded against — it's now owned on disk, so it must stop
+      // being a pickable MISSING row (otherwise the re-download loop comes straight back).
+      ...(row.mbReleaseId
+        ? [prisma.musicBrainzRelease.deleteMany({ where: { id: row.mbReleaseId, status: 'MISSING' } })]
+        : []),
+    ])
+    return reloaded.id
+  }
+
+  // Unmatched: the merged files carry no MusicBrainz identity -> they're meaningless. Discard them.
+  await purgeLibraryFolder(music, rel)
+  if (lr) await prisma.localRelease.delete({ where: { id: lr.id } }).catch(() => {})
+  const attempts = (row.attempts ?? 0) + 1
+  const abandoned = attempts >= Math.max(1, maxDownloadAttempts)
   await prisma.downloadedRelease.update({
     where: { id: row.id },
-    data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: lr?.id ?? null },
+    data: {
+      status: abandoned ? 'ABANDONED' : 'INVALID',
+      attempts,
+      priority: Math.max(0, (row.priority ?? 0) - 1),
+      error: 'no MusicBrainz identity after enrichment',
+      stagingPath: null,
+      files: Prisma.JsonNull,
+    },
   })
-  return lr?.id ?? null
+  monitorLog('warn', `merge: "${row.artist?.name ?? '?'} - ?" has no MusicBrainz identity -> ${abandoned ? 'ABANDONED' : 'INVALID'}`)
+  return null
 }
 
 /**
@@ -138,10 +207,10 @@ export async function mergeDownloadedRelease(id: string): Promise<{ localRelease
   if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
   const { downloadsApprovedPath } = await resolveDownloadSettings()
 
+  const { maxDownloadAttempts } = await resolveMonitorSettings()
   const rel = await moveIntoLibrary(row, music, downloadsApprovedPath)
   await runReconciler('index', ['--folders', rel])
-  if (row.artist?.name) await runReconciler('sync', ['--only', row.artist.name, '--exact']).catch(() => {})
-  return { localReleaseId: await stampMerged(row, music, rel) }
+  return { localReleaseId: await stampMerged(row, music, rel, maxDownloadAttempts) }
 }
 
 /**
@@ -172,11 +241,10 @@ export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merg
   if (safeRels.length) await runReconciler('index', ['--folders', safeRels.join(';')])
   for (const m of moved.filter(m => m.rel.includes(';'))) await runReconciler('index', ['--folders', m.rel])
 
-  // One sync per distinct artist.
-  const artists = [...new Set(moved.map(m => m.row.artist?.name).filter(Boolean) as string[])]
-  for (const name of artists) await runReconciler('sync', ['--only', name, '--exact']).catch(() => {})
-
-  for (const m of moved) await stampMerged(m.row, music, m.rel)
+  // Per-release targeted validate-or-invalidate (each runs its own `sync --release`, never a
+  // destructive per-artist sync). Matched releases are kept + PROMOTED; unmatched go INVALID.
+  const { maxDownloadAttempts } = await resolveMonitorSettings()
+  for (const m of moved) await stampMerged(m.row, music, m.rel, maxDownloadAttempts)
   return { merged: moved.length }
 }
 

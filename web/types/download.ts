@@ -42,7 +42,7 @@ export interface DownloadSourceStatus {
 }
 
 export type DownloadedReleaseStatus =
-  | 'DOWNLOADING' | 'ENRICHING' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'PROMOTED' | 'FAILED' | 'ABANDONED'
+  | 'DOWNLOADING' | 'ENRICHING' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'PROMOTED' | 'FAILED' | 'ABANDONED' | 'UNAVAILABLE' | 'INVALID'
 
 export interface DownloadedReleaseItem {
   id: string
@@ -55,6 +55,7 @@ export interface DownloadedReleaseItem {
   quality: string | null
   status: DownloadedReleaseStatus
   attempts?: number
+  priority?: number
   error: string | null
   stagingPath: string | null
   mbReleaseId: string | null

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput } from 'lucide-vue-next'
+import { Check, X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
 
 const props = defineProps<{
@@ -46,11 +46,23 @@ const statusClass = (s: string) => ({
   REJECTED: 'text-ink-3',
   FAILED: 'text-red-400',
   ABANDONED: 'text-ink-3',
+  UNAVAILABLE: 'text-ink-3',
+  INVALID: 'text-ink-3',
   APPROVED: 'text-emerald-400',
 }[s] || 'text-ink-2')
 
-const statusLabel = (it: DownloadedReleaseItem) =>
-  it.status === 'ABANDONED' ? `gave up${it.attempts ? ` (${it.attempts} tries)` : ''}` : it.status.toLowerCase()
+const statusLabel = (it: DownloadedReleaseItem) => {
+  if (it.status === 'ABANDONED') {
+    return `gave up${it.attempts ? ` (${it.attempts} tries)` : ''}`
+  }
+  if (it.status === 'UNAVAILABLE') {
+    return `unavailable${it.attempts ? ` (${it.attempts} tries)` : ''}`
+  }
+  if (it.status === 'INVALID') {
+    return `invalid${it.attempts ? ` (${it.attempts} tries)` : ''}`
+  }
+  return it.status.toLowerCase()
+}
 </script>
 
 <template>
@@ -95,6 +107,8 @@ const statusLabel = (it: DownloadedReleaseItem) =>
                 <span class="inline-flex cursor-help items-center gap-1.5" :class="statusClass(it.status)">
                   <AlertCircle v-if="it.status === 'FAILED'" :size="13" />
                   <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
+                  <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />
+                  <FileX v-else-if="it.status === 'INVALID'" :size="13" />
                   {{ statusLabel(it) }}
                 </span>
               </template>
@@ -108,6 +122,8 @@ const statusLabel = (it: DownloadedReleaseItem) =>
               <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" class="animate-spin" />
               <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
               <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
+              <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />
+              <FileX v-else-if="it.status === 'INVALID'" :size="13" />
               {{ statusLabel(it) }}
             </span>
             <div v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" class="mt-1.5 flex items-center gap-2">
