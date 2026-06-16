@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
+import { formatDate } from '~/helpers/functions'
 
 const props = withDefaults(defineProps<{
   items: DownloadedReleaseItem[]
@@ -111,6 +112,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           <th class="px-4 py-2 font-medium">Type</th>
           <th class="px-4 py-2 font-medium">Source</th>
           <th class="px-4 py-2 font-medium">Status</th>
+          <th class="px-4 py-2 font-medium">Updated</th>
           <th class="px-4 py-2 font-medium text-right">Actions</th>
         </tr>
       </thead>
@@ -175,6 +177,9 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               <DownloadsDownloadProgress :percent="it.percent" :status="it.status" class="w-32" />
               <span class="text-xs text-ink-3">{{ it.percent }}%</span>
             </div>
+          </td>
+          <td class="px-4 py-2.5 whitespace-nowrap text-ink-3">
+            {{ formatDate(it.updatedAt) }}
           </td>
           <td class="px-4 py-2.5">
             <div class="flex items-center justify-end gap-1">
