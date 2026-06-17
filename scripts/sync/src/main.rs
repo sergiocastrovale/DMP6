@@ -295,6 +295,11 @@ async fn main() {
         .await
         {
             Ok((artists, gaps)) => {
+                if let Ok(n) = db::retire_owned_missing_placeholders(&pool).await {
+                    if n > 0 {
+                        reporter.info(&format!("Retired {} owned MISSING placeholder(s)", n));
+                    }
+                }
                 update_statistics(&pool).await.ok();
                 reporter.blank();
                 reporter.done(&format!(
@@ -1473,6 +1478,11 @@ async fn main() {
     if let Ok(n) = delete_orphaned_mb_releases(&pool).await {
         if n > 0 {
             reporter.info(&format!("Cleaned up {} orphaned MB release(s)", n));
+        }
+    }
+    if let Ok(n) = db::retire_owned_missing_placeholders(&pool).await {
+        if n > 0 {
+            reporter.info(&format!("Retired {} owned MISSING placeholder(s)", n));
         }
     }
     update_statistics(&pool).await.ok();

@@ -181,6 +181,31 @@ pub async fn delete_mb_tracks_for_release(pool: &PgPool, release_id: &str) -> Re
     Ok(())
 }
 
+/// Retire stale catalogue-gap placeholders: a MISSING release whose `musicbrainzId` == its
+/// `releaseGroupId` is a release-group stub created by `--catalogue-gaps`. Once that group is owned
+/// (some sibling release is no longer MISSING), the stub is garbage and shows up as a phantom "MISSING
+/// edition" next to the real one. Delete those — but never one a LocalRelease actually points at.
+/// Returns the number removed. Cheap, indexed; safe to run at the end of every sync.
+pub async fn retire_owned_missing_placeholders(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query(
+        r#"
+        DELETE FROM "MusicBrainzRelease" m
+        WHERE m.status = 'MISSING'
+          AND m."musicbrainzId" = m."releaseGroupId"
+          AND EXISTS (
+            SELECT 1 FROM "MusicBrainzRelease" o
+            WHERE o."releaseGroupId" = m."releaseGroupId" AND o.id <> m.id AND o.status <> 'MISSING'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id
+          )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
 pub struct MbTrackRow {
     pub title: String,
     pub position: Option<i32>,
