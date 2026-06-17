@@ -1,4 +1,26 @@
-export type DownloadSource = 'slskd'
+export type DownloadSource = 'slskd' | 'rutracker'
+
+// A torrent search hit normalized from Prowlarr's Torznab feed.
+export interface TorrentResult {
+  title: string
+  size: number
+  seeders: number
+  leechers: number
+  // What we hand to qBittorrent: a magnet link or a Prowlarr-proxied .torrent download URL.
+  downloadUrl: string
+  infoHash: string | null
+  indexer: string
+  // crude quality/format guess derived from the title (FLAC > MP3 > unknown)
+  format: string
+}
+
+// One DownloadSourceConfig row (the /downloads header switches + retry policy).
+export interface DownloadSourceConfigItem {
+  name: 'SLSKD' | 'RUTRACKER'
+  url: string | null
+  retry: boolean
+  enabled: boolean
+}
 
 export interface DownloadSearchResult {
   id: string
@@ -52,6 +74,7 @@ export interface DownloadedReleaseItem {
   year: number | null
   source: string
   slskUsername: string | null
+  torrentHash: string | null
   quality: string | null
   status: DownloadedReleaseStatus
   attempts?: number

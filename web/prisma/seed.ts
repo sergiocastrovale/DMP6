@@ -55,6 +55,20 @@ const main = async () => {
     }
   }
   console.log('Default permission matrix seeded')
+
+  // Download sources: RuTracker (no retry on miss, tried first) + Soulseek (retry, fallback).
+  const sources: { name: string; retry: boolean; url: string | null }[] = [
+    { name: 'RUTRACKER', retry: false, url: 'https://rutracker.org' },
+    { name: 'SLSKD', retry: true, url: null },
+  ]
+  for (const s of sources) {
+    await prisma.downloadSourceConfig.upsert({
+      where: { name: s.name },
+      create: { name: s.name, retry: s.retry, url: s.url, enabled: true },
+      update: {},
+    })
+  }
+  console.log('Download sources seeded')
 }
 
 main()

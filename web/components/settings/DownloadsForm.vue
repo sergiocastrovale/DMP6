@@ -15,6 +15,13 @@ const form = reactive({
   downloadDirTemplate: settings.value?.downloadDirTemplate ?? '',
   downloadFormats: settings.value?.downloadFormats ?? '',
   downloadMinBitrate: settings.value?.downloadMinBitrate ?? '',
+  prowlarrUrl: settings.value?.prowlarrUrl ?? '',
+  prowlarrApiKey: settings.value?.prowlarrApiKey ?? '',
+  prowlarrIndexerId: settings.value?.prowlarrIndexerId ?? '',
+  qbittorrentUrl: settings.value?.qbittorrentUrl ?? '',
+  qbittorrentUser: settings.value?.qbittorrentUser ?? '',
+  qbittorrentPass: settings.value?.qbittorrentPass ?? '',
+  qbittorrentSavePath: settings.value?.qbittorrentSavePath ?? '',
 })
 
 const { saving, saved, error, save } = useFormSave(async () => {
@@ -27,6 +34,13 @@ const { saving, saved, error, save } = useFormSave(async () => {
       downloadDirTemplate: form.downloadDirTemplate || null,
       downloadFormats: form.downloadFormats || null,
       downloadMinBitrate: form.downloadMinBitrate ? Number(form.downloadMinBitrate) : null,
+      prowlarrUrl: form.prowlarrUrl || null,
+      prowlarrApiKey: form.prowlarrApiKey || null,
+      prowlarrIndexerId: form.prowlarrIndexerId || null,
+      qbittorrentUrl: form.qbittorrentUrl || null,
+      qbittorrentUser: form.qbittorrentUser || null,
+      qbittorrentPass: form.qbittorrentPass || null,
+      qbittorrentSavePath: form.qbittorrentSavePath || null,
     },
   })
   await refresh()
@@ -50,6 +64,60 @@ const { saving, saved, error, save } = useFormSave(async () => {
         type="password"
         placeholder="••••••••"
         v-model="form.slskdApiKey"
+      />
+    </div>
+
+    <!-- RuTracker: Prowlarr (search) -->
+    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">RuTracker — Prowlarr (search)</h2>
+      <p class="text-xs text-ink0">RuTracker is searched through Prowlarr (the RT login lives in Prowlarr, like Lidarr). When RuTracker is enabled it's tried first; Soulseek is the fallback.</p>
+      <SettingsField
+        label="Prowlarr URL"
+        description="Prowlarr base URL. Overrides PROWLARR_URL."
+        placeholder="http://localhost:9696"
+        v-model="form.prowlarrUrl"
+      />
+      <SettingsField
+        label="Prowlarr API Key"
+        description="Settings → General → Security in Prowlarr. Overrides PROWLARR_API_KEY."
+        type="password"
+        placeholder="••••••••"
+        v-model="form.prowlarrApiKey"
+      />
+      <SettingsField
+        label="Indexer ID (optional)"
+        description="Restrict searches to a single Prowlarr indexer id (the RuTracker indexer). Blank = all. Overrides PROWLARR_INDEXER_ID."
+        placeholder="e.g. 5"
+        v-model="form.prowlarrIndexerId"
+      />
+    </div>
+
+    <!-- RuTracker: qBittorrent (download) -->
+    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">RuTracker — qBittorrent (download)</h2>
+      <SettingsField
+        label="qBittorrent URL"
+        description="WebUI base URL. Overrides QBITTORRENT_URL."
+        placeholder="http://localhost:8080"
+        v-model="form.qbittorrentUrl"
+      />
+      <SettingsField
+        label="qBittorrent Username"
+        description="WebUI username. Overrides QBITTORRENT_USER."
+        v-model="form.qbittorrentUser"
+      />
+      <SettingsField
+        label="qBittorrent Password"
+        description="WebUI password. Overrides QBITTORRENT_PASS."
+        type="password"
+        placeholder="••••••••"
+        v-model="form.qbittorrentPass"
+      />
+      <SettingsField
+        label="Save Path (optional)"
+        description="qBittorrent-side path that maps to {Downloads Path}/_torrents on the shared volume. Only set this if qBittorrent mounts the volume at a different prefix. Overrides QBITTORRENT_SAVE_PATH."
+        placeholder="/downloads/dmp/_torrents"
+        v-model="form.qbittorrentSavePath"
       />
     </div>
 

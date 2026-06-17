@@ -412,6 +412,14 @@ model Settings {
   downloadDirTemplate String?
   downloadFormats    String?
   downloadMinBitrate Int?
+  // RuTracker via Prowlarr (search) + qBittorrent (download); null = use env/default
+  prowlarrUrl         String?
+  prowlarrApiKey      String?
+  prowlarrIndexerId   String? // optional: restrict Prowlarr search to this indexer id (the RT indexer)
+  qbittorrentUrl      String?
+  qbittorrentUser     String?
+  qbittorrentPass     String?
+  qbittorrentSavePath String? // qBit-side save prefix that maps to DOWNLOADS_PATH/_torrents on the shared mount
   // Monitoring (all override the matching env var; null = use env/default)
   monitorEnabled      Boolean?
   monitorIntervalMin  Int?
@@ -459,6 +467,25 @@ model Settings {
 
 enum DownloadSource {
   SLSKD
+  RUTRACKER
+}
+
+// Per-source config + on/off toggle, surfaced by the /downloads header switches.
+// Seeded with one row per DownloadSource enum value.
+//   retry=false => on a search miss, never search this source again for that release
+//                  (recorded in DownloadedRelease.triedSources).
+//   url         => informational base (e.g. the RuTracker forum URL for UI links); optional.
+// Model name avoids the DownloadSource enum clash; table is `DownloadSources`.
+model DownloadSourceConfig {
+  id        String   @id @default(cuid())
+  name      String   @unique // matches a DownloadSource enum value: 'SLSKD' | 'RUTRACKER'
+  url       String?
+  retry     Boolean  @default(true)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("DownloadSources")
 }
 
 enum DownloadStatus {
@@ -481,7 +508,10 @@ model DownloadedRelease {
   title          String         @db.VarChar(500)
   year           Int?
   source         DownloadSource @default(SLSKD)
+  triedSources   DownloadSource[] @default([]) // sources searched-and-missed whose retry=false; never re-searched
   slskUsername   String?
+  torrentHash    String?        // qBittorrent infohash (shared by sibling rows extracted from one pack)
+  torrentFolder  String?        @db.Text // this release's folder inside the torrent (what relocate grabs)
   quality        String?        // source format/bitrate, e.g. "MP3 320"
   files          Json?          // [{filename,size}] queued from slskd — lets the reconciler finalize
   stagingPath    String?        @db.Text // folder under DOWNLOADS_PATH

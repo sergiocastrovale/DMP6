@@ -247,6 +247,9 @@ interface SlskdMoveArgs {
   artistName: string
   albumTitle: string
   year: number | null
+  // Where to look for the source files. Defaults to downloadsPath (slsk). Torrents pass the specific
+  // album folder under DOWNLOADS_PATH/_torrents so basename matching can't collide across a pack.
+  scanRoot?: string
 }
 
 export interface SlskdMoveResult {
@@ -296,9 +299,10 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   )
   await mkdir(targetDir, { recursive: true })
 
-  // Locate files under downloadsPath by basename and move them.
-  const found = await findFilesByBasename(args.downloadsPath, expected, 10)
-  log(`found ${found.length}/${expected.size} files under ${args.downloadsPath} -> ${targetDir}`)
+  // Locate files by basename (under scanRoot when given, else the downloads root) and move them.
+  const scanRoot = args.scanRoot || args.downloadsPath
+  const found = await findFilesByBasename(scanRoot, expected, 10)
+  log(`found ${found.length}/${expected.size} files under ${scanRoot} -> ${targetDir}`)
   if (found.length === 0) {
     return { targetDir, movedCount: 0 }
   }
@@ -366,9 +370,10 @@ async function findFilesByBasename(
   const results: string[] = []
   // Match on the suffix-stripped basename so slskd collision tokens don't defeat the lookup.
   const wanted = new Set([...names].map(stripSlskdSuffix))
-  // Internal subtrees under the downloads root that must never be scanned as transfer sources:
-  // the ready/merge staging area and the SongKong spool/state dir.
-  const skipNames = new Set(['_ready', '.dmp-songkong'])
+  // Internal subtrees under the downloads root that must never be scanned as slsk transfer sources:
+  // the ready/merge staging area, the SongKong spool/state dir, and qBittorrent's torrent data
+  // (torrent relocation passes the specific album folder as scanRoot, so this skip only affects slsk).
+  const skipNames = new Set(['_ready', '.dmp-songkong', '_torrents'])
 
   async function walk(dir: string, depth: number) {
     if (depth > maxDepth) return

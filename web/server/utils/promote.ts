@@ -9,6 +9,7 @@ import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getSlskdActiveDownloads, cancelSlskdDownload } from '~/server/utils/slskd'
+import { deleteTorrent } from '~/server/utils/qbittorrent'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { monitorLog } from '~/server/utils/monitorLog'
 import { setMergeProgress, clearMergeProgress } from '~/server/utils/mergeProgress'
@@ -158,15 +159,21 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
   if (lr) await runReconciler('sync', ['--release', lr.id]).catch(() => {})
 
   const reloaded = lr
-    ? await prisma.localRelease.findUnique({ where: { id: lr.id }, select: { id: true, releaseId: true } })
+    ? await prisma.localRelease.findUnique({ where: { id: lr.id }, select: { id: true, releaseId: true, matchStatus: true, forcedComplete: true } })
     : null
 
-  if (reloaded?.releaseId) {
+  // Keep only an exact match: every MusicBrainz track present and no extras (matchStatus COMPLETE).
+  // forcedComplete is the manual "treat as complete" escape hatch — honour it. Anything else (partial,
+  // extra-tracks, or no MB identity at all) is discarded and left to retry for a better copy.
+  const matched = !!reloaded?.releaseId
+  const complete = matched && (reloaded!.forcedComplete || reloaded!.matchStatus === 'COMPLETE')
+
+  if (complete) {
     await prisma.$transaction([
-      prisma.localRelease.update({ where: { id: reloaded.id }, data: { downloadedFrom: 'slskd' } }),
+      prisma.localRelease.update({ where: { id: reloaded!.id }, data: { downloadedFrom: 'slskd' } }),
       prisma.downloadedRelease.update({
         where: { id: row.id },
-        data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: reloaded.id },
+        data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: reloaded!.id },
       }),
       // Retire the group placeholder we downloaded against — it's now owned on disk, so it must stop
       // being a pickable MISSING row (otherwise the re-download loop comes straight back).
@@ -174,10 +181,21 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
         ? [prisma.musicBrainzRelease.deleteMany({ where: { id: row.mbReleaseId, status: 'MISSING' } })]
         : []),
     ])
-    return reloaded.id
+    return reloaded!.id
   }
 
-  // Unmatched: the merged files carry no MusicBrainz identity -> they're meaningless. Discard them.
+  // Discard: either no MusicBrainz identity, or matched but not an exact track-count match. Either way the
+  // files are unusable for the library. Remove them and bump the attempt cap so a complete copy can still
+  // surface later (the MISSING placeholder is deliberately NOT retired here).
+  let reason = 'no MusicBrainz identity after enrichment'
+  if (matched) {
+    const [expected, present] = await Promise.all([
+      prisma.musicBrainzReleaseTrack.count({ where: { releaseId: reloaded!.releaseId! } }),
+      prisma.localReleaseTrack.count({ where: { localReleaseId: reloaded!.id } }),
+    ])
+    reason = `incomplete: ${present}/${expected} tracks (${reloaded!.matchStatus})`
+  }
+
   await purgeLibraryFolder(music, rel)
   if (lr) await prisma.localRelease.delete({ where: { id: lr.id } }).catch(() => {})
   const attempts = (row.attempts ?? 0) + 1
@@ -188,12 +206,12 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
       status: abandoned ? 'ABANDONED' : 'INVALID',
       attempts,
       priority: Math.max(0, (row.priority ?? 0) - 1),
-      error: 'no MusicBrainz identity after enrichment',
+      error: reason,
       stagingPath: null,
       files: Prisma.JsonNull,
     },
   })
-  monitorLog('warn', `merge: "${row.artist?.name ?? '?'} - ?" has no MusicBrainz identity -> ${abandoned ? 'ABANDONED' : 'INVALID'}`)
+  monitorLog('warn', `merge: "${row.artist?.name ?? '?'} - ${row.title}" ${reason} -> ${abandoned ? 'ABANDONED' : 'INVALID'}`)
   return null
 }
 
@@ -322,7 +340,14 @@ export async function cancelDownloadedRelease(id: string): Promise<void> {
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
 
   const files = (row.files as Array<{ filename: string }> | null) ?? []
-  if (row.slskUsername && files.length) {
+  if (row.source === 'RUTRACKER' && row.torrentHash) {
+    // Delete the torrent + its data, but only if no other album from the same pack still needs it.
+    const siblings = await prisma.downloadedRelease.count({
+      where: { torrentHash: row.torrentHash, status: { in: ['DOWNLOADING', 'ENRICHING'] }, id: { not: row.id } },
+    })
+    if (siblings === 0) await deleteTorrent(row.torrentHash, true)
+  }
+  else if (row.slskUsername && files.length) {
     const transfers = await getSlskdActiveDownloads().catch(() => [])
     const expected = new Set(files.map(f => baseName(String(f.filename))))
     const ours = transfers.filter(t => t.username === row.slskUsername && expected.has(baseName(t.filename)))

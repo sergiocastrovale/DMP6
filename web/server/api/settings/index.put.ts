@@ -15,6 +15,14 @@ export default defineEventHandler(async (event) => {
     downloadDirTemplate: body.downloadDirTemplate ?? undefined,
     downloadFormats: body.downloadFormats ?? undefined,
     downloadMinBitrate: body.downloadMinBitrate != null ? Number(body.downloadMinBitrate) || null : undefined,
+    // RuTracker via Prowlarr (search) + qBittorrent (download)
+    prowlarrUrl: body.prowlarrUrl ?? undefined,
+    prowlarrApiKey: body.prowlarrApiKey ?? undefined,
+    prowlarrIndexerId: body.prowlarrIndexerId ?? undefined,
+    qbittorrentUrl: body.qbittorrentUrl ?? undefined,
+    qbittorrentUser: body.qbittorrentUser ?? undefined,
+    qbittorrentPass: body.qbittorrentPass ?? undefined,
+    qbittorrentSavePath: body.qbittorrentSavePath ?? undefined,
     // Monitoring knobs (null clears the override -> env/default)
     monitorEnabled: typeof body.monitorEnabled === 'boolean' ? body.monitorEnabled : body.monitorEnabled === null ? null : undefined,
     monitorIntervalMin: body.monitorIntervalMin !== undefined ? (body.monitorIntervalMin === null || body.monitorIntervalMin === '' ? null : Number(body.monitorIntervalMin)) : undefined,

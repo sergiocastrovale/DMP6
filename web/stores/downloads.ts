@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { ActiveDownload, DownloadSourceStatus, DownloadedReleaseItem } from '~/types/download'
+import type { ActiveDownload, DownloadSourceStatus, DownloadSourceConfigItem, DownloadedReleaseItem } from '~/types/download'
 
 type MergeStep = 'moving' | 'indexing' | 'syncing'
 type MergeProgressMap = Record<string, { step: MergeStep; title: string }>
@@ -13,8 +13,13 @@ const MERGE_STEP_LABELS: Record<MergeStep, (title: string) => string> = {
 
 export const useDownloadsStore = defineStore('downloads', () => {
   const slskd = ref<DownloadSourceStatus>({ configured: false, connected: false })
+  const prowlarr = ref<DownloadSourceStatus>({ configured: false, connected: false })
+  const qbittorrent = ref<DownloadSourceStatus>({ configured: false, connected: false })
   const activeDownloads = ref<ActiveDownload[]>([])
   const statusChecked = ref(false)
+
+  // DownloadSources config (the header on/off switches: RuTracker + Soulseek).
+  const sources = ref<DownloadSourceConfigItem[]>([])
 
   // Download queue (DownloadedRelease rows)
   const queueActive = ref<DownloadedReleaseItem[]>([])
@@ -81,13 +86,31 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   const checkStatus = async () => {
     try {
-      const data = await $fetch<{ slskd: DownloadSourceStatus }>('/api/downloads/status')
+      const data = await $fetch<{ slskd: DownloadSourceStatus; prowlarr: DownloadSourceStatus; qbittorrent: DownloadSourceStatus }>('/api/downloads/status')
       slskd.value = data.slskd
+      prowlarr.value = data.prowlarr
+      qbittorrent.value = data.qbittorrent
       statusChecked.value = true
     }
     catch {
       statusChecked.value = true
     }
+  }
+
+  const fetchSources = async () => {
+    try {
+      const data = await $fetch<{ sources: DownloadSourceConfigItem[] }>('/api/downloads/sources')
+      sources.value = data.sources
+    }
+    catch { /* ignore */ }
+  }
+
+  // Flip a source's on/off switch. RuTracker takes priority; Soulseek is the fallback.
+  const toggleSource = async (name: 'RUTRACKER' | 'SLSKD', enabled: boolean) => {
+    const data = await $fetch<{ sources: DownloadSourceConfigItem[] }>('/api/downloads/sources', {
+      method: 'PUT', body: { name, enabled },
+    })
+    sources.value = data.sources
   }
 
   const fetchActive = async () => {
@@ -220,6 +243,11 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   return {
     slskd,
+    prowlarr,
+    qbittorrent,
+    sources,
+    fetchSources,
+    toggleSource,
     activeDownloads,
     statusChecked,
     activeCount,

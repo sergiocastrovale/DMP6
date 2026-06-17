@@ -18,6 +18,12 @@ import {
   relocateDownloadedFiles,
   purgeDownloadedSourceFiles,
 } from '~/server/utils/slskd'
+import {
+  getTorrentInfo,
+  deleteTorrent,
+  isQbitComplete,
+  isQbitErrored,
+} from '~/server/utils/qbittorrent'
 
 const execFileAsync = promisify(execFile)
 
@@ -30,6 +36,7 @@ let lastGapsRunAt = 0
 let autoMergeRunning = false
 let lastAutoMergeAt = 0
 let reconcileRunning = false
+let torrentReconcileRunning = false
 const finalizing = new Set<string>()
 
 const baseName = (f: string) => basename(f.replace(/\\/g, '/'))
@@ -48,7 +55,7 @@ export async function reconcileDownloads(): Promise<void> {
   let finalized = 0
   try {
     const rows = await prisma.downloadedRelease.findMany({
-      where: { status: { in: ['DOWNLOADING', 'ENRICHING'] } },
+      where: { status: { in: ['DOWNLOADING', 'ENRICHING'] }, source: 'SLSKD' },
       include: { artist: { select: { name: true } } },
     })
     if (rows.length === 0) return
@@ -241,6 +248,136 @@ async function drainEnriching(
     }
   }
   return done
+}
+
+/**
+ * Torrent counterpart of reconcileDownloads for `source='RUTRACKER'` rows (downloaded via qBittorrent).
+ * Rows are grouped by `torrentHash` because one torrent (a discography pack) can fill several albums at
+ * once. For each torrent:
+ *  - track byte progress; no progress past the grace window -> delete torrent + fail the group;
+ *  - errored in qBittorrent -> delete + fail;
+ *  - selected files complete -> relocate each album's folder into staging (-> READY or ENRICHING),
+ *    then delete the torrent + its data (we've moved out everything we wanted — nothing should linger).
+ * ENRICHING rows drain through the same SongKong path as slsk (source-agnostic). Idempotent + guarded.
+ */
+export async function reconcileTorrentDownloads(): Promise<void> {
+  if (torrentReconcileRunning) return
+  torrentReconcileRunning = true
+  try {
+    const rows = await prisma.downloadedRelease.findMany({
+      where: { status: { in: ['DOWNLOADING', 'ENRICHING'] }, source: 'RUTRACKER' },
+      include: { artist: { select: { name: true } } },
+    })
+    if (rows.length === 0) return
+
+    const settings = await resolveDownloadSettings()
+    if (!settings.downloadsTorrentsPath) return
+
+    // ENRICHING rows finalize identically to slsk (keyed on stagingPath, source-agnostic).
+    const enrichRows = rows.filter(r => r.status === 'ENRICHING')
+    if (enrichRows.length > 0) await drainEnriching(enrichRows)
+
+    const dlRows = rows.filter(r => r.status === 'DOWNLOADING' && r.torrentHash)
+    if (dlRows.length === 0) return
+
+    const mon = await resolveMonitorSettings()
+    const noProgressMs = Math.max(15, mon.noProgressSec) * 1000
+    const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
+
+    const byHash = new Map<string, typeof dlRows>()
+    for (const r of dlRows) {
+      const list = byHash.get(r.torrentHash!) || []
+      list.push(r)
+      byHash.set(r.torrentHash!, list)
+    }
+
+    const infos = await withTimeout(getTorrentInfo([...byHash.keys()]), 15_000).catch(() => [])
+    const infoByHash = new Map(infos.map(i => [i.hash.toLowerCase(), i]))
+    log(`torrent reconcile: ${dlRows.length} downloading across ${byHash.size} torrent(s)`)
+
+    for (const [hash, group] of byHash) {
+      const info = infoByHash.get(hash.toLowerCase())
+      if (!info) {
+        for (const r of group) await failAttempt(r, maxAttempts, 'torrent no longer in qBittorrent')
+        continue
+      }
+      if (isQbitErrored(info)) {
+        await deleteTorrent(hash, true)
+        for (const r of group) await failAttempt(r, maxAttempts, `qBittorrent error: ${info.state}`)
+        continue
+      }
+
+      if (!isQbitComplete(info)) {
+        const head = group[0]!
+        const bytes = info.downloaded || 0
+        const watermark = Number(head.bytesTransferred || 0)
+        const lastProgress = (head.lastProgressAt ?? head.updatedAt).getTime()
+        if (bytes > watermark) {
+          await prisma.downloadedRelease.updateMany({
+            where: { torrentHash: hash, status: 'DOWNLOADING' },
+            data: { bytesTransferred: BigInt(bytes), lastProgressAt: new Date() },
+          }).catch(() => {})
+          continue
+        }
+        if (Date.now() - lastProgress <= noProgressMs) continue
+        await deleteTorrent(hash, true)
+        for (const r of group) await failAttempt(r, maxAttempts, `no progress for ${mon.noProgressSec}s`)
+        continue
+      }
+
+      // Complete: relocate every matched album folder, then delete the torrent + its data.
+      let finalized = 0
+      for (const r of group) {
+        if (finalizing.has(r.id)) continue
+        if (!r.artist?.name || !r.torrentFolder) { await failAttempt(r, maxAttempts, 'missing artist or torrent folder'); continue }
+        finalizing.add(r.id)
+        try {
+          const files = (r.files as Array<{ filename: string; size: number }> | null) ?? []
+          const res = await withTimeout(relocateDownloadedFiles({
+            username: '',
+            files: files.map(f => String(f.filename)),
+            downloadsPath: settings.downloadsPath,
+            scanRoot: join(settings.downloadsTorrentsPath, r.torrentFolder),
+            dirTemplate: settings.downloadDirTemplate,
+            artistName: r.artist.name,
+            albumTitle: r.title,
+            year: r.year ?? null,
+          }), 5 * 60_000)
+          if (res.movedCount > 0) {
+            if (await resolveSongkongEnabled()) {
+              const dirs = songkongDirs()
+              await mkdir(dirs.spool, { recursive: true })
+              await writeFile(join(dirs.spool, r.id), `${res.targetDir}\n`)
+              await prisma.downloadedRelease.update({ where: { id: r.id }, data: { status: 'ENRICHING', stagingPath: res.targetDir, error: null } })
+            }
+            else {
+              const releaseRoot = await transformToLibraryLayout(r.id, res.targetDir)
+              await settleFinished(r.id, releaseRoot, null)
+              finalized++
+            }
+          }
+          else {
+            await failAttempt(r, maxAttempts, 'no files landed from torrent', res.targetDir)
+          }
+        }
+        catch (e: any) {
+          await failAttempt(r, maxAttempts, String(e?.message || e).slice(0, 500))
+        }
+        finally {
+          finalizing.delete(r.id)
+        }
+      }
+      // Everything we wanted has been relocated out; the torrent is no longer needed.
+      await deleteTorrent(hash, true)
+      if (finalized) log(`torrent reconcile: ${finalized} -> ready (hash ${hash.slice(0, 8)})`)
+    }
+  }
+  catch (e: any) {
+    logErr(`torrent reconcile failed: ${e?.message || e}`)
+  }
+  finally {
+    torrentReconcileRunning = false
+  }
 }
 
 /**

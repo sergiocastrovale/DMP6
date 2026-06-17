@@ -47,6 +47,7 @@ export default defineEventHandler(async (event) => {
     year: r.year,
     source: r.source,
     slskUsername: r.slskUsername,
+    torrentHash: r.torrentHash,
     quality: r.quality,
     status: r.status,
     attempts: r.attempts,

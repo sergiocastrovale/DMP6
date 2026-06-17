@@ -20,6 +20,13 @@ Designed to run **always-on at full-catalogue scale** (~19K artists): bounded co
 trickle search, random fairness. The **merge** step is the only human gate (Soulseek results aren't
 fully trusted) — everything up to READY is automatic; nothing enters the library until you merge.
 
+> **Two sources.** Acquisition can use **RuTracker** (via Prowlarr + qBittorrent) in addition to
+> Soulseek. When both are enabled RuTracker is tried first and Soulseek is the fallback; the
+> `/downloads` header **Sources** switches toggle each. Routing is driven by the existing `priority`
+> field (fresh picks → RuTracker at priority 10; an RT miss is recorded in `triedSources`, drops the
+> release to priority 5, and falls through to Soulseek). Everything below stays the same regardless of
+> source. See [feature_rutracker.md](feature_rutracker.md).
+
 ## Steps
 
 1. **Detect missing.** The catalogue-gap worker runs `sync --catalogue-gaps` on a rotating batch of
@@ -176,6 +183,8 @@ Set via the Settings UI (DB) or `.env` (DB wins, env is fallback):
 | Setting | Purpose |
 |---------|---------|
 | `SLSKD_URL`, `SLSKD_API_KEY` | slskd connection |
+| `PROWLARR_URL`, `PROWLARR_API_KEY`, `PROWLARR_INDEXER_ID` | RuTracker search (see [feature_rutracker.md](feature_rutracker.md)) |
+| `QBITTORRENT_URL`, `QBITTORRENT_USER`, `QBITTORRENT_PASS`, `QBITTORRENT_SAVE_PATH` | RuTracker torrent download |
 | `DOWNLOADS_PATH` | staging area (NOT the library); READY downloads auto-land in its derived `_ready` subfolder |
 | `MUSIC_DIR` | the real library (`mainstream`) |
 | `DOWNLOAD_DIR_TEMPLATE` | initial staging layout, e.g. `{artist}/{year} - {album}` |

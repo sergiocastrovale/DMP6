@@ -2,6 +2,12 @@
 
 Download missing releases from an artist page via [Soulseek](downloads_slskd.md) (slskd), auto-transcode to MP3-320, optionally enrich with SongKong, and file into a Lidarr-style library layout. This doc is the **full rebuild guide** — everything needed to stand the feature up on a fresh NAS.
 
+> A second source, **RuTracker** (via Prowlarr + qBittorrent), can run alongside Soulseek and is tried
+> first when enabled (Soulseek is the fallback). It can fill a whole discography pack's missing albums
+> in one grab. Toggle both via the `/downloads` header **Sources** switches. See
+> [feature_rutracker.md](feature_rutracker.md) for setup (`PROWLARR_*` / `QBITTORRENT_*` env or
+> Settings → Downloads).
+
 ## How it works
 
 DMP runs an **always-on, headless acquisition pipeline** (no web UI needed — it lives in a Nitro

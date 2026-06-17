@@ -12,10 +12,23 @@ export interface ResolvedDownloadSettings {
   downloadsPath: string
   downloadDirTemplate: string
   downloadsReadyPath: string
+  downloadsTorrentsPath: string
   autoMergeDownloads: boolean
+  // RuTracker via Prowlarr (search) + qBittorrent (download)
+  prowlarrUrl: string
+  prowlarrApiKey: string
+  prowlarrIndexerId: string
+  qbittorrentUrl: string
+  qbittorrentUser: string
+  qbittorrentPass: string
+  qbittorrentSavePath: string
 }
 
 export const DEFAULT_DOWNLOAD_DIR_TEMPLATE = '{artist}/{year} - {album}'
+
+// Subfolder under DOWNLOADS_PATH where qBittorrent saves torrents (dmp side of the shared mount).
+// Excluded from the slsk relocate scan, alongside _ready / .dmp-songkong.
+export const TORRENTS_SUBDIR = '_torrents'
 
 export async function resolveDownloadSettings(): Promise<ResolvedDownloadSettings> {
   const settings = await prisma.settings.findUnique({ where: { id: 'main' } })
@@ -26,6 +39,7 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
   const downloadsPath = settings?.downloadsPath || process.env.DOWNLOADS_PATH || ''
   const autoMerge = settings?.autoMergeDownloads
     ?? (process.env.AUTO_MERGE === 'true' || process.env.AUTO_MERGE === '1')
+  const cleanDownloads = downloadsPath.replace(/\/+$/, '')
 
   return {
     slskdUrl: settings?.slskdUrl || process.env.SLSKD_URL || '',
@@ -37,8 +51,21 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
       || process.env.DOWNLOAD_DIR_TEMPLATE
       || DEFAULT_DOWNLOAD_DIR_TEMPLATE,
     // Derived, non-configurable: finished downloads auto-land here awaiting manual merge.
-    downloadsReadyPath: downloadsPath ? `${downloadsPath.replace(/\/+$/, '')}/_ready` : '',
+    downloadsReadyPath: downloadsPath ? `${cleanDownloads}/_ready` : '',
+    // Derived (dmp side): where qBittorrent's torrent data lands on the shared mount.
+    downloadsTorrentsPath: downloadsPath ? `${cleanDownloads}/${TORRENTS_SUBDIR}` : '',
     autoMergeDownloads: autoMerge,
+    prowlarrUrl: settings?.prowlarrUrl || process.env.PROWLARR_URL || '',
+    prowlarrApiKey: settings?.prowlarrApiKey || process.env.PROWLARR_API_KEY || '',
+    prowlarrIndexerId: settings?.prowlarrIndexerId || process.env.PROWLARR_INDEXER_ID || '',
+    qbittorrentUrl: settings?.qbittorrentUrl || process.env.QBITTORRENT_URL || '',
+    qbittorrentUser: settings?.qbittorrentUser || process.env.QBITTORRENT_USER || '',
+    qbittorrentPass: settings?.qbittorrentPass || process.env.QBITTORRENT_PASS || '',
+    // qBit-side save prefix; defaults to the dmp-side path (works when both share the host folder
+    // at the same container path). Override when qBit mounts the volume at a different prefix.
+    qbittorrentSavePath: settings?.qbittorrentSavePath
+      || process.env.QBITTORRENT_SAVE_PATH
+      || (downloadsPath ? `${cleanDownloads}/${TORRENTS_SUBDIR}` : ''),
   }
 }
 

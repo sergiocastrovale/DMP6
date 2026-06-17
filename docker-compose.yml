@@ -73,6 +73,14 @@ services:
       - DOWNLOAD_DIR_TEMPLATE=${DOWNLOAD_DIR_TEMPLATE:-{artist}/{year} - {album}}
       - SLSKD_URL=${SLSKD_URL:-http://host.docker.internal:5030}
       - SLSKD_API_KEY=${SLSKD_API_KEY:-}
+      # RuTracker via Prowlarr (search) + qBittorrent (download). Credentials in Settings -> Downloads.
+      - PROWLARR_URL=${PROWLARR_URL:-}
+      - PROWLARR_API_KEY=${PROWLARR_API_KEY:-}
+      - PROWLARR_INDEXER_ID=${PROWLARR_INDEXER_ID:-}
+      - QBITTORRENT_URL=${QBITTORRENT_URL:-}
+      - QBITTORRENT_USER=${QBITTORRENT_USER:-}
+      - QBITTORRENT_PASS=${QBITTORRENT_PASS:-}
+      - QBITTORRENT_SAVE_PATH=${QBITTORRENT_SAVE_PATH:-}
       - DEEZER_ARL=${DEEZER_ARL:-}
       - DOWNLOAD_FORMATS=${DOWNLOAD_FORMATS:-flac,mp3}
       - DOWNLOAD_MIN_BITRATE=${DOWNLOAD_MIN_BITRATE:-}

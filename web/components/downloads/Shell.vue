@@ -112,6 +112,8 @@ onUnmounted(() => { if (poll) { clearInterval(poll) } })
           </div>
         </div>
 
+        <DownloadsDownloadSources />
+
         <div
           v-if="paused"
           class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
