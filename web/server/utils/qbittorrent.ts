@@ -34,10 +34,12 @@ async function login(config: QbitConfig): Promise<string> {
   if (!res.ok) throw createError({ statusCode: res.status, message: `qBittorrent login failed: ${res.status}` })
   const text = await res.text().catch(() => '')
   if (text.trim() === 'Fails.') throw createError({ statusCode: 403, message: 'qBittorrent login rejected (bad credentials)' })
-  const setCookie = res.headers.get('set-cookie') || ''
-  const sid = /SID=([^;]+)/.exec(setCookie)?.[1]
-  if (!sid) throw createError({ statusCode: 502, message: 'qBittorrent did not return a session cookie' })
-  return `SID=${sid}`
+  // The session cookie name varies by build/version: classic `SID`, newer `QBT_SID_<port>`. Capture
+  // whatever name=value pair qBittorrent set rather than matching a fixed name.
+  const raw = (res.headers.getSetCookie?.()[0]) || res.headers.get('set-cookie') || ''
+  const pair = raw.split(';')[0]?.trim() || ''
+  if (!pair.includes('=')) throw createError({ statusCode: 502, message: 'qBittorrent did not return a session cookie' })
+  return pair
 }
 
 async function getCookie(config: QbitConfig): Promise<string> {
