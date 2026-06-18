@@ -21,7 +21,7 @@ async function failNoResult(rowId: string, attempts: number, priority: number, e
 // Mark a RuTracker miss: no torrent contained the release. RT has retry=false, so we record it in
 // triedSources (never search RT for this release again) and drop the release into the Soulseek priority
 // band so the next pick falls through to slsk. Status UNAVAILABLE keeps it in the retry pool.
-async function failRtMiss(rowId: string, attempts: number, error: string) {
+export async function failRtMiss(rowId: string, attempts: number, error: string) {
   await prisma.downloadedRelease.update({
     where: { id: rowId },
     data: {
@@ -34,7 +34,7 @@ async function failRtMiss(rowId: string, attempts: number, error: string) {
   }).catch(() => {})
 }
 
-interface AcquireParamsLite {
+export interface AcquireParamsLite {
   artistId: string
   artistName: string
   albumTitle: string
@@ -45,7 +45,7 @@ interface AcquireParamsLite {
 
 // Run the source-appropriate acquire for an already-created DOWNLOADING row. Returns true on a hit
 // (transfer/torrent enqueued), false on a search miss (caller records the miss per source).
-async function routeAcquire(
+export async function routeAcquire(
   src: 'RUTRACKER' | 'SLSKD',
   p: AcquireParamsLite,
   rowId: string,

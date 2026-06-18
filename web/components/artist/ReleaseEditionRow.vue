@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Download, FolderClosed, GitMerge, Heart, Info, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Disc3, Download, GitMerge, Heart, Info, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
@@ -26,6 +26,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
+const { releaseImage } = useImageUrl()
 const { isCurrentRelease: isCurrentReleaseId, isReleasePlaying: isReleasePlayingId } = usePlayRelease()
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
@@ -43,11 +44,8 @@ const isCurrent = computed(() => isCurrentReleaseId(getReleaseId.value))
 const isPlaying = computed(() => isReleasePlayingId(getReleaseId.value))
 const hasPlayable = computed(() => !!props.edition.localReleaseId || props.edition.localTrackCount > 0)
 
-const editionDisplayTitle = computed(() => props.edition.disambiguation || props.edition.editionLabel || 'Original release')
-
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
 
-// Acquisition pipeline state (see docs/feature_monitoring.md)
 const isDownloading = computed(() => props.edition.downloadState === 'DOWNLOADING')
 const isEnriching = computed(() => props.edition.downloadState === 'ENRICHING')
 const isAwaitingMerge = computed(() => props.edition.downloadState === 'READY')
@@ -63,150 +61,162 @@ const verifyDownload = () => navigateTo(`${downloadSubpage(props.edition.downloa
     :class="edition.status === 'MISSING' ? '' : 'hover:bg-bg-2/30'"
   >
     <div
-      class="group/edition flex items-center gap-3 px-3 py-2.5"
+      class="group/edition flex items-stretch gap-3 px-3"
       :class="hasPlayable ? 'cursor-pointer' : ''"
       @click="hasPlayable && emit('toggle')"
     >
       <button
         v-if="hasPlayable"
         type="button"
-        class="flex size-5 items-center justify-center text-ink0"
+        class="flex size-5 shrink-0 items-center justify-center self-center text-ink-2"
         @click.stop="emit('toggle')"
       >
         <ChevronDown v-if="expanded" :size="14" />
         <ChevronRight v-else :size="14" />
       </button>
-      <div v-else class="size-5" />
+      <div v-else class="size-5 self-center" />
 
       <div
-        class="group/folder relative flex size-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded border border-rule text-ink0 transition-colors"
-        :class="isCurrent ? 'border-accent/50 text-accent' : 'hover:border-ink-3'"
+        class="group/cover relative my-3 size-15 shrink-0 self-center bg-bg-2"
+        :class="hasPlayable ? 'cursor-pointer' : ''"
         @click.stop="hasPlayable && emit('play')"
       >
-        <FolderClosed :size="14" />
+        <img
+          v-if="releaseImage(edition)"
+          :src="releaseImage(edition)!"
+          :alt="edition.title"
+          class="size-full object-cover"
+          loading="lazy"
+        />
+        <div v-else class="flex size-full items-center justify-center text-ink-4">
+          <Disc3 :size="24" />
+        </div>
         <div
           v-if="hasPlayable"
-          class="absolute inset-0 flex items-center justify-center bg-bg-1/70 transition-colors group-hover/folder:bg-bg-1/95"
+          class="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover/cover:bg-black/60"
         >
           <PlayerPlayPauseButton
             :playing="isPlaying"
             size="sm"
-            class="!size-8 group-hover/folder:bg-accent group-hover/folder:text-accent-ink group-hover/folder:scale-105"
-            :class="isPlaying || isCurrent ? 'text-accent' : 'text-ink-2 group-hover/folder:text-ink'"
+            class="group-hover/cover:bg-accent group-hover/cover:text-accent-ink group-hover/cover:scale-105"
+            :class="isPlaying || isCurrent ? 'text-accent' : 'text-white/50 group-hover/cover:text-white'"
           />
         </div>
       </div>
 
-      <div class="min-w-0 flex-1">
-        <div class="flex items-baseline gap-2 text-sm">
-          <span class="truncate" :class="edition.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
-            {{ editionDisplayTitle }}
-          </span>
-          <span v-if="edition.year" class="text-xs">({{ edition.year }})</span>
-        </div>
-        <div class="text-xs" :class="edition.status === 'MISSING' ? 'text-ink-4' : 'text-ink0'">
+      <div class="min-w-0 flex-1 self-center ml-1">
+        <span class="truncate text-lg font-medium" :class="edition.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
+          {{ edition.title }}
+        </span>
+        <div class="mt-0.5 flex items-center gap-3 text-xs text-ink-2">
+          <span v-if="edition.disambiguation || edition.editionLabel">{{ edition.disambiguation || edition.editionLabel }}</span>
+          <span v-if="edition.type">{{ edition.type }}</span>
+          <span v-if="edition.year">{{ edition.year }}</span>
           <span v-if="edition.trackCount">{{ edition.trackCount }} tracks</span>
-          <span v-if="edition.localTrackCount && edition.trackCount !== edition.localTrackCount" class="ml-2">
-            {{ edition.localTrackCount }} local
-          </span>
+          <span v-if="edition.totalPlayCount">· {{ edition.totalPlayCount.toLocaleString() }} plays</span>
         </div>
       </div>
 
-      <Popover v-if="!(isDownloading || isEnriching || isAwaitingMerge)" trigger="hover">
-        <template #trigger>
-          <ReleaseStatusBadge :status="edition.status" />
-        </template>
-        <template #content>
-          <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
-            <p class="text-xs text-ink-2">{{ edition.statusReason || statusDescription(edition.status) }}</p>
-          </div>
-        </template>
-      </Popover>
+      <div class="flex w-24 shrink-0 items-center justify-center">
+        <Popover v-if="!(isDownloading || isEnriching || isAwaitingMerge)" trigger="hover">
+          <template #trigger>
+            <ReleaseStatusBadge :status="edition.status" />
+          </template>
+          <template #content>
+            <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
+              <p class="text-xs text-ink-2">{{ edition.statusReason || statusDescription(edition.status) }}</p>
+            </div>
+          </template>
+        </Popover>
+      </div>
 
-      <span
-        v-if="isDownloading"
-        class="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-400"
-        title="dmp is downloading this release from Soulseek"
-      >
-        <Loader2 :size="12" class="animate-spin" /> Downloading
-      </span>
+      <div class="flex w-32 shrink-0 items-center justify-end gap-0.5 px-3">
+        <span
+          v-if="isDownloading"
+          class="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-400"
+          title="dmp is downloading this release from Soulseek"
+        >
+          <Loader2 :size="12" class="animate-spin" /> Downloading
+        </span>
 
-      <button
-        v-if="isDownloading || isEnriching"
-        type="button"
-        class="rounded-full p-1.5 text-ink0 transition-colors hover:text-red-400"
-        title="Cancel download and delete its files"
-        @click.stop="emit('cancel')"
-      >
-        <X :size="14" />
-      </button>
+        <button
+          v-if="isDownloading || isEnriching"
+          type="button"
+          class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-red-400 cursor-pointer"
+          title="Cancel download and delete its files"
+          @click.stop="emit('cancel')"
+        >
+          <X :size="14" />
+        </button>
 
-      <button
-        v-else-if="isAwaitingMerge"
-        type="button"
-        class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20"
-        title="Awaiting merge - review & merge on the Downloads page"
-        @click.stop="verifyDownload"
-      >
-        <GitMerge :size="12" /> Awaiting merge
-      </button>
+        <button
+          v-else-if="isAwaitingMerge"
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20 cursor-pointer"
+          title="Awaiting merge - review & merge on the Downloads page"
+          @click.stop="verifyDownload"
+        >
+          <GitMerge :size="12" /> Awaiting merge
+        </button>
 
-      <button
-        v-else-if="edition.status === 'MISSING' && downloadsStore.slskd.connected"
-        type="button"
-        class="rounded-full p-1.5 transition-colors hover:text-accent"
-        :class="downloadFailed ? 'text-red-400' : isAbandoned ? 'text-ink-4' : 'text-ink0'"
-        :title="isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
-        @click.stop="emit('download')"
-      >
-        <Download :size="14" />
-      </button>
+        <button
+          v-else-if="edition.status === 'MISSING' && downloadsStore.sourceEnabled"
+          type="button"
+          class="rounded-full p-1.5 transition-colors hover:text-accent cursor-pointer"
+          :class="downloadFailed ? 'text-red-400' : isAbandoned ? 'text-ink-4' : 'text-ink-3'"
+          :title="isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
+          @click.stop="emit('download')"
+        >
+          <Download :size="14" />
+        </button>
 
-      <button
-        v-if="edition.localReleaseId"
-        type="button"
-        class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent"
-        :class="{ 'text-accent': isFavorite }"
-        @click.stop="emit('toggleFavorite')"
-      >
-        <Heart :size="14" :fill="isFavorite ? 'currentColor' : 'none'" />
-      </button>
+        <button
+          v-if="edition.localReleaseId"
+          type="button"
+          class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
+          :class="{ 'text-accent': isFavorite }"
+          title="Toggle favorite"
+          @click.stop="emit('toggleFavorite')"
+        >
+          <Heart :size="14" :fill="isFavorite ? 'currentColor' : 'none'" />
+        </button>
 
-      <a
-        v-if="edition.musicbrainzId"
-        :href="`https://musicbrainz.org/release/${edition.musicbrainzId}`"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
-        title="View on MusicBrainz"
-        @click.stop
-      >
-        <Link :size="14" />
-      </a>
+        <a
+          v-if="edition.musicbrainzId"
+          :href="`https://musicbrainz.org/release/${edition.musicbrainzId}`"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
+          title="View on MusicBrainz"
+          @click.stop
+        >
+          <Link :size="14" />
+        </a>
 
-      <button
-        v-if="edition.localReleaseId"
-        type="button"
-        class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
-        title="Refresh this release"
-        :disabled="terminal.isRunning"
-        @click.stop="emit('refresh')"
-      >
-        <RefreshCw :size="14" />
-      </button>
+        <button
+          v-if="edition.localReleaseId"
+          type="button"
+          class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
+          title="Refresh this release"
+          :disabled="terminal.isRunning"
+          @click.stop="emit('refresh')"
+        >
+          <RefreshCw :size="14" />
+        </button>
 
-      <button
-        type="button"
-        class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
-        title="Release info"
-        @click.stop="emit('info')"
-      >
-        <Info :size="14" />
-      </button>
+        <button
+          type="button"
+          class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
+          title="Release info"
+          @click.stop="emit('info')"
+        >
+          <Info :size="14" />
+        </button>
+      </div>
     </div>
 
     <DownloadProgress
-      v-if="edition.downloadState === 'DOWNLOADING' || edition.downloadState === 'ENRICHING'"
+      v-if="isDownloading || isEnriching"
       :percent="edition.downloadPercent ?? 0"
       :status="edition.downloadState"
     />

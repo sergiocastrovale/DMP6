@@ -20,6 +20,8 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   // DownloadSources config (the header on/off switches: RuTracker + Soulseek).
   const sources = ref<DownloadSourceConfigItem[]>([])
+  // Any source enabled => a manual download can be queued (gates the per-release Download button).
+  const sourceEnabled = computed(() => sources.value.some(s => s.enabled))
 
   // Download queue (DownloadedRelease rows)
   const queueActive = ref<DownloadedReleaseItem[]>([])
@@ -246,6 +248,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     prowlarr,
     qbittorrent,
     sources,
+    sourceEnabled,
     fetchSources,
     toggleSource,
     activeDownloads,

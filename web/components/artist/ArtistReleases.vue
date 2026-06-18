@@ -42,6 +42,7 @@ const favoriteReleases = ref<Set<string>>(new Set())
 
 onMounted(() => {
   downloadsStore.checkStatus()
+  downloadsStore.fetchSources()
 })
 
 onMounted(async () => {
@@ -181,6 +182,7 @@ function toggleGroup(key: string) {
   }
 }
 
+
 function toggleEdition(id: string) {
   expandedEdition.value = expandedEdition.value === id ? null : id
 }
@@ -287,7 +289,7 @@ watch(() => props.releases, () => {
     <ArtistReleaseFilterBar v-model:view-mode="viewMode" />
 
     <template v-if="viewMode === 'catalogue'">
-      <Table>
+      <div>
         <ArtistReleaseGroupRow
           v-for="group in sortedGroups"
           :key="group.key"
@@ -329,7 +331,7 @@ watch(() => props.releases, () => {
             />
           </template>
         </ArtistReleaseGroupRow>
-      </Table>
+      </div>
 
       <div v-if="sortedGroups.length === 0" class="py-8 text-center text-sm text-ink0">
         No releases match your filters
