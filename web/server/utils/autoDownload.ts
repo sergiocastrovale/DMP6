@@ -4,7 +4,7 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { findBestSlskdResult, acquireRelease } from '~/server/utils/acquire'
 import { acquireTorrentRelease } from '~/server/utils/acquireTorrent'
-import { getDownloadSources, chooseSource, SLSK_PRIORITY } from '~/server/utils/downloadSources'
+import { getDownloadSources, chooseSource, SLSK_PRIORITY, rtBudgetAvailable, consumeRtBudget } from '~/server/utils/downloadSources'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
 
@@ -53,6 +53,8 @@ async function routeAcquire(
   minBitrate: number | null,
 ): Promise<boolean> {
   if (src === 'RUTRACKER') {
+    // One Prowlarr /search per call — spend a unit of the daily RuTracker budget up-front.
+    await consumeRtBudget()
     const res = await acquireTorrentRelease(p, rowId).catch(() => null)
     return !!res
   }
@@ -87,7 +89,7 @@ export async function forceRetryDownload(id: string): Promise<void> {
   // Route by source, honouring triedSources (a no-retry RuTracker miss is never re-tried even on a
   // force retry). Resets priority to 10 but keeps triedSources, so RT stays excluded once exhausted.
   const configs = await getDownloadSources()
-  const src = chooseSource(10, row.triedSources, configs)
+  const src = chooseSource(10, row.triedSources, configs, await rtBudgetAvailable())
 
   await prisma.downloadedRelease.update({
     where: { id },
@@ -223,8 +225,10 @@ export async function topUpDownloads(): Promise<void> {
     const configs = await getDownloadSources()
 
   for (const p of picks) {
-    // Route by source: RuTracker first (priority band 10), Soulseek fallback. Skip if nothing eligible.
-    const src = chooseSource(p.priority, p.triedSources, configs)
+    // Route by source: RuTracker first (while it has daily budget), Soulseek fallback. Re-check the
+    // budget per pick since each RT search spends a unit. Skip if nothing eligible.
+    const rtOk = await rtBudgetAvailable()
+    const src = chooseSource(p.priority, p.triedSources, configs, rtOk)
     if (!src) continue
 
     // Retry-pool picks carry their existing row (and attempts/priority); fresh picks create a new one.

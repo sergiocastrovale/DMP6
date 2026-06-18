@@ -75,6 +75,19 @@ monitor naturally "drains RuTracker first, Soulseek later". A Soulseek miss decr
 before. **Force retry** resets priority to 10 but keeps `triedSources`, so an exhausted RT source is
 never re-searched even on a manual retry.
 
+### Daily search budget
+
+RuTracker's Prowlarr indexer caps searches per day (default **25**). dmp enforces its own budget
+(`RT_SEARCHES_PER_DAY`, default **20**) so it stays under the cap — otherwise the monitor's trickle
+(~3 searches/min) exhausts the quota in minutes and every search returns an empty (rate-limited) result.
+The budget is a rolling 24h window persisted on the `DownloadSources` RUTRACKER row
+(`budgetUsed` / `budgetWindowStart`); each `acquireTorrentRelease` spends one unit
+(`consumeRtBudget`). When the budget is spent, `chooseSource` skips RuTracker **without** marking it
+tried (it wasn't really searched) — the release falls through to Soulseek if enabled, otherwise it
+waits for the window to roll over. Raise the budget only after raising the Prowlarr indexer's query
+limit (and mind RuTracker's own server-side limits). At 19K-catalogue scale Soulseek stays the
+workhorse; RuTracker is a slow, prioritized trickle.
+
 The `/downloads` header **Sources** switches (`components/downloads/DownloadSources.vue`) toggle
 `DownloadSources.enabled` per source and show each source's live connection status (RuTracker needs
 both Prowlarr + qBittorrent connected; Soulseek needs slskd). The queue tables badge each row with its
