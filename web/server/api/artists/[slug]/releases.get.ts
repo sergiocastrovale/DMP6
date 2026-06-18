@@ -207,8 +207,11 @@ export default defineEventHandler(async (event) => {
   }
 
   // Catalogue gaps: MB releases in this artist's catalogue that have no LocalRelease.
+  // Iterate the de-duplicated map: a release credited to several connected artists appears once per
+  // credit in mbReleases, which would otherwise emit one identical MISSING card per credit (phantom
+  // "editions"). mbById is keyed by release id, so each release is considered exactly once.
   const allowedGapTypes = new Set(['album', 'ep'])
-  for (const mbr of mbReleases) {
+  for (const mbr of mbById.values()) {
     if (coveredMbIds.has(mbr.id)) continue
     if (!allowedGapTypes.has(mbr.type.slug)) continue
     const gapImg = verifyImage(null, null, 'releases')
