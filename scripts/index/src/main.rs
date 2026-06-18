@@ -1257,7 +1257,7 @@ async fn main() {
     // -------------------------------------------------------------------------
     // Post-loop: re-extract missing release covers (safety net)
     // -------------------------------------------------------------------------
-    if !shutdown.load(Ordering::SeqCst) && !args.skip_covers {
+    if !shutdown.load(Ordering::SeqCst) && !args.skip_covers && !is_targeted {
         let has_filter = args.only.is_some() || args.from.is_some() || args.to.is_some();
         let missing: Vec<(String, String, Option<String>, String)> = if has_filter {
             let filtered_names: Vec<String> = sqlx::query_as::<_, (String,)>(

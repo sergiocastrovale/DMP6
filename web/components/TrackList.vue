@@ -231,10 +231,11 @@ const formatFileSize = (bytes: number) => {
         <td v-if="hasColumn('playCount')" class="py-2 pr-3 text-center tabular-nums text-ink0">{{ track.playCount ?? 0 }}</td>
         <td v-if="hasColumn('duration')" class="py-2 pr-4 text-center tabular-nums text-ink0" :class="track.missing && 'line-through'">{{ formatDuration(track.duration) }}</td>
         <td v-if="hasColumn('favorite')" class="py-2 pr-4 text-center">
-          <div class="flex items-center justify-center gap-1">
+          <div class="flex items-center justify-center gap-0.5">
             <button
-              class="text-ink0 transition-colors hover:text-accent"
+              class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
               :class="{ 'text-accent': favoriteTracks.has(track.id) }"
+              title="Toggle favorite"
               @click.stop="toggleFavorite(track.id)"
             >
               <Heart :size="14" :fill="favoriteTracks.has(track.id) ? 'currentColor' : 'none'" />
@@ -244,27 +245,27 @@ const formatFileSize = (bytes: number) => {
               :href="`https://musicbrainz.org/recording/${track.mbTrackMusicbrainzId}`"
               target="_blank"
               rel="noopener noreferrer"
-              class="rounded-full p-0.5 text-ink-4 transition-colors hover:text-ink-2"
+              class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
               title="View recording on MusicBrainz"
               @click.stop
             >
-              <ExternalLink :size="12" />
+              <ExternalLink :size="14" />
             </a>
             <a
               v-if="releaseMap?.[track.localReleaseId || ''] && track.localReleaseId"
               :href="`/artist/${$route.params.slug}?release=${(releaseMap[track.localReleaseId]?.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`"
-              class="rounded-full p-0.5 text-ink-4 transition-colors hover:text-ink-2"
+              class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
               title="Go to release"
               @click.stop
             >
-              <Link :size="12" />
+              <Link :size="14" />
             </a>
             <button
-              class="rounded-full p-0.5 text-ink-4 transition-colors hover:text-ink-2"
+              class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
               title="Track info"
               @click.stop="openInfoDialog(track)"
             >
-              <Info :size="12" />
+              <Info :size="14" />
             </button>
           </div>
         </td>

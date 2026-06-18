@@ -16,7 +16,7 @@ const props = defineProps<{
 const route = useRoute()
 const router = useRouter()
 const player = usePlayerStore()
-const { isCurrentRelease: isCurrentReleaseId, toggleOrPlay } = usePlayRelease()
+const { toggleOrPlay } = usePlayRelease()
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
@@ -190,14 +190,6 @@ function toggleEdition(id: string) {
 const getReleaseId = (r: UnifiedRelease) => r.localReleaseId || r.id
 const handleReleaseClick = (r: UnifiedRelease) => toggleOrPlay(getReleaseId(r), props.slug)
 
-function handleGroupPlayClick(group: ReleaseGroup) {
-  const current = group.releases.find(r => isCurrentReleaseId(getReleaseId(r)))
-  const target = current
-    || group.releases.find(r => r.localReleaseId || r.localTrackCount > 0)
-    || group.primary
-  toggleOrPlay(getReleaseId(target), props.slug)
-}
-
 let allTracksSlug = ''
 async function loadAllTracks() {
   if (allTracksLoaded.value && allTracksSlug === props.slug) {
@@ -294,43 +286,20 @@ watch(() => props.releases, () => {
           v-for="group in sortedGroups"
           :key="group.key"
           :group="group"
-          :expanded="expandedGroup === group.key"
           :slug="slug"
-          :single-edition="group.releases.length === 1"
-          @toggle="toggleGroup(group.key)"
-          @play="handleGroupPlayClick(group)"
-          @download="acquireRelease(group.primary)"
-          @cancel="openCancelDialog(group.primary)"
-          @refresh="refreshRelease(group.primary)"
-          @info="openInfoDialog(group.primary)"
-        >
-          <template v-if="group.releases.length === 1">
-            <div v-if="group.primary.localReleaseId || group.primary.localTrackCount > 0" class="border-t border-rule px-3 pb-3">
-              <ReleaseTracksTable
-                :release-id="group.primary.localReleaseId || group.primary.mbReleaseRowId || group.primary.id"
-                :selected-track-id="selectedTrackId"
-              />
-            </div>
-          </template>
-          <template v-else>
-            <ArtistReleaseEditionRow
-              v-for="edition in group.releases"
-              :key="edition.id"
-              :edition="edition"
-              :expanded="expandedEdition === edition.id"
-              :is-favorite="!!edition.localReleaseId && favoriteReleases.has(edition.localReleaseId)"
-              :slug="slug"
-              :selected-track-id="expandedEdition === edition.id ? selectedTrackId : null"
-              @toggle="toggleEdition(edition.id)"
-              @play="handleReleaseClick(edition)"
-              @download="acquireRelease(edition)"
-              @cancel="openCancelDialog(edition)"
-              @toggle-favorite="toggleFavoriteRelease(edition)"
-              @refresh="refreshRelease(edition)"
-              @info="openInfoDialog(edition)"
-            />
-          </template>
-        </ArtistReleaseGroupRow>
+          :expanded-group="expandedGroup"
+          :expanded-edition="expandedEdition"
+          :favorite-releases="favoriteReleases"
+          :selected-track-id="selectedTrackId"
+          @toggle-group="toggleGroup"
+          @toggle-edition="toggleEdition"
+          @play="handleReleaseClick"
+          @download="acquireRelease"
+          @cancel="openCancelDialog"
+          @toggle-favorite="toggleFavoriteRelease"
+          @refresh="refreshRelease"
+          @info="openInfoDialog"
+        />
       </div>
 
       <div v-if="sortedGroups.length === 0" class="py-8 text-center text-sm text-ink0">
