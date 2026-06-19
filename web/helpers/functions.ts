@@ -96,6 +96,18 @@ export const formatDate = (iso: string | null): string => {
   })
 }
 
+// Compact "x ago" relative time for recent events ("just now", "5m ago", "3h ago", "2d ago").
+export const timeAgo = (iso: string | null): string => {
+  if (!iso) { return '' }
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+  if (secs < 60) { return 'just now' }
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) { return `${mins}m ago` }
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) { return `${hours}h ago` }
+  return `${Math.floor(hours / 24)}d ago`
+}
+
 export const formatFileSize = (bytes: number): string => {
   if (!bytes || bytes <= 0) { return '0 B' }
   const units = ['B', 'KB', 'MB', 'GB', 'TB']

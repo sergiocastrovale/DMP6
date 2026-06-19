@@ -4,7 +4,8 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { findBestSlskdResult, acquireRelease } from '~/server/utils/acquire'
 import { acquireTorrentRelease } from '~/server/utils/acquireTorrent'
-import { getDownloadSources, chooseSource, SLSK_PRIORITY, rtBudgetAvailable, consumeRtBudget } from '~/server/utils/downloadSources'
+import { getDownloadSources, chooseSource, RT_PRIORITY, SLSK_PRIORITY, rtBudgetAvailable, consumeRtBudget, exhaustRtBudget } from '~/server/utils/downloadSources'
+import { prowlarrRtLimited } from '~/server/utils/prowlarr'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
 
@@ -31,6 +32,17 @@ export async function failRtMiss(rowId: string, attempts: number, error: string)
       triedSources: { push: 'RUTRACKER' },
       error,
     },
+  }).catch(() => {})
+}
+
+// The RuTracker search was REFUSED by Prowlarr's daily-cap, not a real no-match: revert the row to a
+// retryable state WITHOUT recording RuTracker in triedSources (so it's searched on RT again once the
+// cap resets) and WITHOUT bumping attempts. Keep it in the RT priority band. The caller has already
+// flagged the budget spent, so it falls through to Soulseek meanwhile if that source is enabled.
+async function revertRtLimited(rowId: string) {
+  await prisma.downloadedRelease.update({
+    where: { id: rowId },
+    data: { priority: RT_PRIORITY, status: 'UNAVAILABLE', error: 'RuTracker daily query limit reached' },
   }).catch(() => {})
 }
 
@@ -160,6 +172,7 @@ async function pickFresh(slots: number): Promise<MissingPick[]> {
       JOIN "ReleaseType" rt ON rt.id = mr."typeId" AND rt.slug IN ('album', 'ep')
       JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mr.id AND mra."artistId" = ${a.id}
       WHERE mr.status = 'MISSING'
+        AND mr.year IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM "DownloadedRelease" dr WHERE dr."mbReleaseId" = mr.id)
       ORDER BY random() LIMIT 1
     `)
@@ -178,7 +191,7 @@ async function pickRetry(slots: number): Promise<MissingPick[]> {
            dr.id AS "rowId", dr.attempts AS attempts, dr.priority AS priority,
            dr."triedSources" AS "triedSources"
     FROM "DownloadedRelease" dr
-    JOIN "MusicBrainzRelease" mr ON mr.id = dr."mbReleaseId" AND mr.status = 'MISSING'
+    JOIN "MusicBrainzRelease" mr ON mr.id = dr."mbReleaseId" AND mr.status = 'MISSING' AND mr.year IS NOT NULL
     JOIN "Artist" a ON a.id = dr."artistId" AND a.monitored = true AND a."relatedOnly" = false AND a.name NOT LIKE '%;%'
     WHERE dr.status IN ('UNAVAILABLE', 'FAILED', 'INVALID')
     ORDER BY dr.priority DESC, random() LIMIT ${slots}
@@ -257,9 +270,19 @@ export async function topUpDownloads(): Promise<void> {
     }
     const hit = await routeAcquire(src, params, row.id, settings.downloadFormats, settings.downloadMinBitrate)
     if (!hit) {
-      src === 'RUTRACKER'
-        ? await failRtMiss(row.id, p.attempts, 'no RuTracker match (search miss)')
-        : await failNoResult(row.id, p.attempts, p.priority, 'no Soulseek result (search miss)')
+      if (src === 'RUTRACKER' && await prowlarrRtLimited()) {
+        // Refused by Prowlarr's shared 25/day cap, not a real miss: stop wasting RT searches today and
+        // keep the release retryable on RT. Surfaces in the /downloads Recent issues panel.
+        await exhaustRtBudget()
+        await revertRtLimited(row.id)
+        monitorLog('warn', 'RuTracker daily query limit reached (shared with Lidarr) — backing off until reset')
+      }
+      else if (src === 'RUTRACKER') {
+        await failRtMiss(row.id, p.attempts, 'no RuTracker match (search miss)')
+      }
+      else {
+        await failNoResult(row.id, p.attempts, p.priority, 'no Soulseek result (search miss)')
+      }
     }
   }
   }

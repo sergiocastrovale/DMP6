@@ -64,6 +64,24 @@ export async function checkProwlarrConnection(): Promise<{ ok: boolean; error?: 
   }
 }
 
+/**
+ * Did the RuTracker indexer just refuse a query because its daily limit is spent? Prowlarr enforces
+ * RuTracker's hard 25-queries/24h cap (shared across every app pointed at it — Lidarr + dmp) and, when
+ * exceeded, returns an EMPTY search result while logging the reason. We can't tell that apart from a
+ * genuine no-match via the /search response, so we peek at the recent Prowlarr log instead. Reading the
+ * log is NOT a search — it doesn't consume the cap. Returns false on any error (treat as a normal miss).
+ */
+export async function prowlarrRtLimited(): Promise<boolean> {
+  try {
+    const response = await prowlarrFetch('/log?page=1&pageSize=10&sortKey=time&sortDirection=descending')
+    const data = (await response.json().catch(() => null)) as { records?: Array<{ message?: string }> } | null
+    return (data?.records ?? []).some(r => /exceeding the maximum query limit/i.test(r.message ?? ''))
+  }
+  catch {
+    return false
+  }
+}
+
 const guessFormat = (title: string): string => {
   const t = title.toLowerCase()
   if (/\b(flac|lossless|ape|wav|alac)\b/.test(t)) return 'FLAC'

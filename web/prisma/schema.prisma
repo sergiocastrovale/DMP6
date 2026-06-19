@@ -729,3 +729,14 @@ model RolePermission {
   @@unique([role, permission])
   @@index([role])
 }
+
+// Capped log of background monitor-loop issues (warn/error), persisted so any instance's UI can show
+// them (the loop runs on one primary instance, the DB is shared). Pruned by age in the base tick.
+model MonitorEvent {
+  id        String   @id @default(cuid())
+  level     String
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

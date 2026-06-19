@@ -68,6 +68,20 @@ function relUnder(root: string, full: string): string {
 export async function moveToReady(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+
+  // Erroneous release (no MusicBrainz year — can't lay it out as `YYYY - title`): never promote to
+  // _ready. Purge the staged files and drop it into the Failed list. Safety net for anything that got
+  // past the pick gate (in-flight at deploy, ENRICHING/torrent finalize).
+  if (row.year == null) {
+    await purgeStagedFiles(row.stagingPath)
+    await prisma.downloadedRelease.update({
+      where: { id },
+      data: { status: 'FAILED', error: 'no MusicBrainz year — erroneous release', stagingPath: null },
+    })
+    monitorLog('warn', `merge: "${row.title}" has no MusicBrainz year — erroneous, sent to Failed`)
+    return
+  }
+
   if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing staged' })
 
   const { downloadsPath, downloadsReadyPath } = await resolveDownloadSettings()

@@ -420,10 +420,19 @@ export async function runGapsCycle(): Promise<void> {
     }
     catch (e: any) {
       const stderr = String(e?.stderr || '').trim()
-      logWarn(`gaps batch failed: ${String(e?.message || e).split('\n')[0]}${stderr ? ` — ${stderr.split('\n')[0]}` : ''}`)
-      // Stamp even on failure: without this, null-lastGapsCheckedAt artists always win the
-      // orderBy and re-loop every tick. Stamping lets the rest of the catalogue cycle through;
-      // these artists will be re-picked naturally after the full round-robin completes.
+      const detail = `${String(e?.message || e).split('\n')[0]}${stderr ? ` — ${stderr.split('\n')[0]}` : ''}`
+      // Lock contention = another script (a merge here, or a manual ./index/./sync run outside this
+      // process) held the Rust DB lock. Nothing was actually checked, so DON'T stamp — leave these
+      // artists at the front of the round-robin so the very next tick retries them once the lock frees.
+      const lockHeld = /lock held|Cannot start/i.test(`${e?.message || ''} ${stderr}`)
+      if (lockHeld) {
+        logWarn(`gaps batch skipped (lock busy), will retry: ${detail}`)
+        return
+      }
+      logWarn(`gaps batch failed: ${detail}`)
+      // Genuine failure: stamp anyway, else null-lastGapsCheckedAt artists always win the orderBy and
+      // re-loop every tick. Stamping lets the rest of the catalogue cycle through; these artists get
+      // re-picked naturally after the full round-robin completes.
       await prisma.artist.updateMany({
         where: { id: { in: batch.map(a => a.id) } },
         data: { lastGapsCheckedAt: new Date() },

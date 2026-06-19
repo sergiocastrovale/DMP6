@@ -21,6 +21,19 @@ export default defineEventHandler(async (event) => {
   })
   if (!mb) throw createError({ statusCode: 404, message: 'release not found' })
 
+  // No MusicBrainz year = erroneous release (can't lay it out as `YYYY - title`). Discard it: record a
+  // FAILED row (reusing any prior one) so it shows in the Failed list, and never grab it.
+  if (mb.year == null) {
+    const errored = await prisma.downloadedRelease.findFirst({ where: { mbReleaseId: mb.id }, select: { id: true } })
+    const data = { status: 'FAILED' as const, error: 'no MusicBrainz year — erroneous release', stagingPath: null }
+    const row = errored
+      ? await prisma.downloadedRelease.update({ where: { id: errored.id }, data })
+      : await prisma.downloadedRelease.create({
+        data: { ...data, artistId: mb.artists[0]?.artist?.id ?? '', mbReleaseId: mb.id, releaseGroupId: mb.releaseGroupId ?? null, title: mb.title, year: null },
+      }).catch(() => null)
+    return { id: row?.id ?? null, status: 'NO_YEAR' as const }
+  }
+
   // Already in flight / ready to merge / promoted? Don't double-grab.
   const existing = await prisma.downloadedRelease.findFirst({
     where: { mbReleaseId: mb.id, status: { in: ['DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] } },

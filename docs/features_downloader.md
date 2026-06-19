@@ -15,6 +15,15 @@ server plugin and survives restarts, state in the DB). Monitor artists (one clic
 the whole ~19K catalogue), and DMP continuously fills their missing albums/EPs from Soulseek,
 transcodes, enriches, and stages them for a final merge.
 
+> **Only ONE instance runs the loop.** The plugin starts the background workers only when
+> `MONITOR_PRIMARY=true` (per-instance, **env-only** — never the shared-DB `MONITOR_ENABLED`). The
+> NAS/prod compose sets it; the NAS is the single primary. Any other instance pointed at the same
+> shared DB (e.g. a local dev server) stays **UI-only** and does no acquisition. Required because the
+> Rust `index`/`sync` binaries share one exclusive DB lock and the in-process serializer (`runExclusive`)
+> only orders spawns *within one process* — two instances both running the loop would collide on that
+> lock (e.g. a merge's `index` vs. another instance's `catalogue-gaps`). Dev opts in by setting
+> `MONITOR_PRIMARY=true` locally only when it should drive the downloader.
+
 Three independent, self-throttled background workers (base tick `RECONCILE_SEC`, default 5s):
 - **reconcile** — finalize/fail in-flight downloads; finished ones auto-land in `_ready` (every tick).
 - **topUpDownloads** (Search-Sniper) — keeps up to `MAX_CONCURRENT_DOWNLOADS` active transfers;
@@ -123,7 +132,8 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 | `DOWNLOAD_DIR_TEMPLATE` | `{artist}/{year} - {album}` | Initial staging layout. `{artist}` `{album}` `{year}`; `/` nests, each segment sanitized |
 | `DOWNLOAD_FORMATS` | `flac,mp3` | Accepted source formats |
 | `DOWNLOAD_MIN_BITRATE` | — | kbps minimum |
-| `MONITOR_ENABLED` | `true` | Master switch for the background workers (trickle + gaps + auto-merge) |
+| `MONITOR_ENABLED` | `true` | Master switch for the background workers (trickle + gaps + auto-merge), shared via DB |
+| `MONITOR_PRIMARY` | `false` | **Per-instance, env only.** Only the instance with this `=true` runs the loop; everything else pointed at the shared DB is UI-only. Set on the NAS compose; leave unset on dev |
 | `RECONCILE_SEC` | `5` | Base tick: finalize in-flight downloads to READY (env only, needs restart) |
 | `AUTO_MERGE` | `false` | Auto-merge READY releases into the library (off = manual Merge gate) |
 | `MAX_CONCURRENT_DOWNLOADS` | `5` | Cap on simultaneous active slskd transfers |
@@ -187,8 +197,18 @@ gid 1001 + 568) can create them. Overwriting a *pre-existing* release owned by a
 ## Scaling & self-management notes
 
 - **Headless & bounded**: download/transcode/enrich/finalize-to-ready run with no UI, capped concurrency,
-  throttled trickle, random fairness, and a global in-process lock that serializes all Rust
-  `index`/`sync`/`catalogue-gaps` runs (so merges and the gaps worker never collide). Survives restarts.
+  throttled trickle, random fairness. An in-process lock (`runExclusive`) serializes all Rust
+  `index`/`sync`/`catalogue-gaps` runs **within the primary instance** so merges and the gaps worker
+  never collide. Survives restarts.
+- **Single primary, cross-instance safety**: the loop only runs where `MONITOR_PRIMARY=true` (see "How
+  it works"), so a dev server on the shared DB can't race the NAS on the Rust DB lock. The remaining
+  cross-process case — a **manual** terminal `./index`/`./sync`/`./refresh` on the NAS racing the gaps
+  tick — is handled gracefully: on lock contention the gaps batch logs + **skips without stamping
+  `lastGapsCheckedAt`**, so those artists stay at the front of the round-robin and retry next tick
+  (no silently-dropped catalogue check).
+- **Background issues are surfaced**: monitor-loop `warn`/`error` lines are persisted to a `MonitorEvent`
+  table (shared DB, pruned >7d) and shown in a **"Recent issues"** panel on the Monitoring tab
+  (`/downloads`) — so a failed gaps/merge no longer fails silently. API: `GET /api/downloads/monitor-events`.
 - **Merge is the one manual step** (unless `AUTO_MERGE=true`). "Merge all" is batched — one `index`
   pass over every folder, then a per-release targeted `sync --release <id>` validity gate (never the
   old destructive per-artist `sync --only`, which deleted+recreated all the artist's MISSING

@@ -79,6 +79,34 @@ export async function rtBudgetAvailable(): Promise<boolean> {
   return (await rtBudgetRemaining()) > 0
 }
 
+// Force the RuTracker budget to spent for the rest of the current 24h window. Called when Prowlarr
+// reports its shared (Lidarr + dmp) per-indexer query cap is exceeded — there's no point spending more
+// dmp searches on guaranteed-refused queries. Both the poll gate (rtBudgetAvailable -> false) and the
+// router (chooseSource with rtBudgetOk=false -> Soulseek) react immediately; it self-clears when the
+// window rolls.
+export async function exhaustRtBudget(): Promise<void> {
+  await prisma.downloadSourceConfig.update({
+    where: { name: 'RUTRACKER' },
+    data: { budgetUsed: RT_DAILY_BUDGET, budgetWindowStart: new Date() },
+  }).catch(() => {})
+}
+
+/**
+ * Is there any source that could actually produce a download right now? Gates the trickle + gaps
+ * workers so they don't poll/spam on a fixed interval when nothing can come of it:
+ *   - Soulseek enabled            -> yes (unlimited).
+ *   - RuTracker enabled + budget  -> yes.
+ *   - otherwise (no source, or RuTracker-only with its daily cap spent) -> no.
+ * Re-evaluated every tick, so it auto-resumes when a switch is flipped on or the RT window rolls.
+ */
+export async function downloadWorkPossible(): Promise<boolean> {
+  const configs = await getDownloadSources()
+  if (find(configs, 'SLSKD')?.enabled) return true
+  const rt = find(configs, 'RUTRACKER')
+  if (rt?.enabled && await rtBudgetAvailable()) return true
+  return false
+}
+
 // Consume one RuTracker search, rolling the window if it has elapsed. Call right before a Prowlarr search.
 export async function consumeRtBudget(): Promise<void> {
   const row = await prisma.downloadSourceConfig.findUnique({ where: { name: 'RUTRACKER' } }).catch(() => null)

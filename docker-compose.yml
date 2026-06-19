@@ -53,6 +53,9 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@dmp-redis:6379
       - MUSIC_DIR=/music
+      # This is the primary instance: it alone runs the background monitor loop. A dev server pointed at
+      # the same shared DB must NOT set this, or the two collide on the Rust scripts' exclusive DB lock.
+      - MONITOR_PRIMARY=true
       - IMAGE_STORAGE=${IMAGE_STORAGE:-local}
       - IMAGE_DIR=/app/data/img
       - BACKUP_STORAGE=${BACKUP_STORAGE:-local}
