@@ -107,6 +107,36 @@ export async function downloadWorkPossible(): Promise<boolean> {
   return false
 }
 
+export interface AcquisitionStatus {
+  canAcquire: boolean
+  rt: { enabled: boolean; used: number; limit: number; remaining: number; resetsAt: string | null }
+  slsk: { enabled: boolean }
+}
+
+// Snapshot of why acquisition is (or isn't) running, for the /downloads idle banner. Mirrors the gate
+// the monitor plugin uses (downloadWorkPossible) plus the RuTracker daily-budget detail.
+export async function getAcquisitionStatus(): Promise<AcquisitionStatus> {
+  const configs = await getDownloadSources()
+  const rt = find(configs, 'RUTRACKER')
+  const slsk = find(configs, 'SLSKD')
+  const row = await prisma.downloadSourceConfig.findUnique({ where: { name: 'RUTRACKER' } }).catch(() => null)
+  const start = row?.budgetWindowStart?.getTime() ?? 0
+  const windowActive = !!start && Date.now() - start < DAY_MS
+  const remaining = await rtBudgetRemaining()
+  const used = RT_DAILY_BUDGET - remaining
+  const resetsAt = windowActive ? new Date(start + DAY_MS).toISOString() : null
+
+  const rtEnabled = !!rt?.enabled
+  const slskEnabled = !!slsk?.enabled
+  const canAcquire = slskEnabled || (rtEnabled && remaining > 0)
+
+  return {
+    canAcquire,
+    rt: { enabled: rtEnabled, used, limit: RT_DAILY_BUDGET, remaining, resetsAt },
+    slsk: { enabled: slskEnabled },
+  }
+}
+
 // Consume one RuTracker search, rolling the window if it has elapsed. Call right before a Prowlarr search.
 export async function consumeRtBudget(): Promise<void> {
   const row = await prisma.downloadSourceConfig.findUnique({ where: { name: 'RUTRACKER' } }).catch(() => null)

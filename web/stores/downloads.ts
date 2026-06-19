@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { ActiveDownload, DownloadSourceStatus, DownloadSourceConfigItem, DownloadedReleaseItem } from '~/types/download'
+import type { ActiveDownload, DownloadSourceStatus, DownloadSourceConfigItem, DownloadedReleaseItem, Acquisition } from '~/types/download'
 
 type MergeStep = 'moving' | 'indexing' | 'syncing'
 type MergeProgressMap = Record<string, { step: MergeStep; title: string }>
@@ -34,6 +34,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const pausedReason = ref<string | null>(null)
   const freeGb = ref<number | null>(null)
   const minFreeGb = ref<number | null>(null)
+
+  // Why background acquisition is/ isn't running (RuTracker budget, source switches) — for the idle banner.
+  const acquisition = ref<Acquisition | null>(null)
 
   // Merge progress (server-driven, so it persists across tab switches + page refresh).
   const mergeProgress = ref<MergeProgressMap>({})
@@ -79,6 +82,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
   })
 
   let pollInterval: ReturnType<typeof setInterval> | null = null
+  let mergePollTimer: ReturnType<typeof setInterval> | null = null
 
   const activeCount = computed(() =>
     activeDownloads.value.filter(d =>
@@ -138,7 +142,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   const fetchQueue = async () => {
     try {
-      const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; history: DownloadedReleaseItem[]; paused: boolean; pausedReason: string | null; freeGb: number | null; minFreeGb: number | null }>('/api/downloads/queue')
+      const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; history: DownloadedReleaseItem[]; paused: boolean; pausedReason: string | null; freeGb: number | null; minFreeGb: number | null; acquisition: Acquisition }>('/api/downloads/queue')
       queueActive.value = data.active
       queueReady.value = data.ready
       queueHistory.value = data.history
@@ -146,6 +150,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
       pausedReason.value = data.pausedReason
       freeGb.value = data.freeGb
       minFreeGb.value = data.minFreeGb
+      acquisition.value = data.acquisition
     }
     catch { /* ignore */ }
   }
@@ -193,9 +198,32 @@ export const useDownloadsStore = defineStore('downloads', () => {
     }
   }
 
+  const stopMergePolling = () => {
+    if (mergePollTimer) {
+      clearInterval(mergePollTimer)
+      mergePollTimer = null
+    }
+  }
+
+  // Demand-driven: poll merge-progress ONLY while a merge is actually in flight, then stop. Idempotent.
+  // Avoids the endless idle merge-progress requests — nothing polls until a merge starts (or one is
+  // already running on load), and it self-stops one tick after the merge finishes.
+  const startMergePolling = () => {
+    if (mergePollTimer) {
+      return
+    }
+    mergePollTimer = setInterval(async () => {
+      await fetchMergeProgress()
+      if (!mergeActive.value) {
+        stopMergePolling()
+      }
+    }, 2000)
+  }
+
   // Concurrent: many merges can be in flight at once, each tracked independently.
   const merge = async (id: string) => {
     mergeInitiated.value = new Set(mergeInitiated.value).add(id)
+    startMergePolling()
     try {
       await $fetch(`/api/downloads/merge/${id}`, { method: 'POST' })
     }
@@ -230,6 +258,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const mergeAll = async (ids: string[]) => {
     mergeTotal.value = ids.length
     mergeBatchRunning.value = true // keep panel visible through the poll-lag windows
+    startMergePolling()
     try {
       await $fetch('/api/downloads/merge-all', { method: 'POST', body: { ids } })
     }
@@ -273,6 +302,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     pausedReason,
     freeGb,
     minFreeGb,
+    acquisition,
     setPaused,
     fetchQueue,
     reject,
@@ -290,5 +320,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     mergePercent,
     mergeSelected,
     fetchMergeProgress,
+    startMergePolling,
+    stopMergePolling,
   }
 })

@@ -99,3 +99,10 @@ export interface ReleaseProgress {
   bytesTransferred?: number
   totalBytes?: number
 }
+
+// Why the background acquisition workers are (or aren't) running — drives the /downloads idle banner.
+export interface Acquisition {
+  canAcquire: boolean
+  rt: { enabled: boolean; used: number; limit: number; remaining: number; resetsAt: string | null }
+  slsk: { enabled: boolean }
+}

@@ -4,6 +4,7 @@ import { computeDownloadPercent } from '~/server/utils/downloadProgress'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getPauseState, freeGb } from '~/server/utils/pauseState'
+import { getAcquisitionStatus } from '~/server/utils/downloadSources'
 
 // Returns the download queue: active acquisitions (downloading / enriching / failed) plus the ready
 // slice and a slice of recent history (promoted / abandoned / rejected / invalid, for the History subtabs).
@@ -67,6 +68,7 @@ export default defineEventHandler(async (event) => {
   const { downloadsPath } = await resolveDownloadSettings()
   const { downloadsMinFreeGb } = await resolveMonitorSettings()
   const free = await freeGb(downloadsPath)
+  const acquisition = await getAcquisitionStatus()
 
   return {
     active: active.map(shape),
@@ -76,5 +78,6 @@ export default defineEventHandler(async (event) => {
     pausedReason: reason,
     freeGb: free >= 0 ? Math.round(free * 10) / 10 : null,
     minFreeGb: downloadsMinFreeGb,
+    acquisition,
   }
 })
