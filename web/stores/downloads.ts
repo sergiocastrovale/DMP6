@@ -173,7 +173,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   const stopQueuePolling = () => {
     if (queuePollTimer) {
-      clearInterval(queuePollTimer)
+      clearTimeout(queuePollTimer)
       queuePollTimer = null
     }
   }
@@ -182,12 +182,16 @@ export const useDownloadsStore = defineStore('downloads', () => {
     if (queuePollTimer) {
       return
     }
-    queuePollTimer = setInterval(async () => {
+    const tick = async () => {
       await fetchQueue()
-      if (!queuePollNeeded.value) {
-        stopQueuePolling()
+      if (queuePollNeeded.value) {
+        queuePollTimer = setTimeout(tick, 2000)
       }
-    }, 2000)
+      else {
+        queuePollTimer = null
+      }
+    }
+    queuePollTimer = setTimeout(tick, 2000)
   }
 
   const ensureQueuePolling = () => {
@@ -241,7 +245,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   const stopMergePolling = () => {
     if (mergePollTimer) {
-      clearInterval(mergePollTimer)
+      clearTimeout(mergePollTimer)
       mergePollTimer = null
     }
   }
@@ -253,12 +257,16 @@ export const useDownloadsStore = defineStore('downloads', () => {
     if (mergePollTimer) {
       return
     }
-    mergePollTimer = setInterval(async () => {
+    const tick = async () => {
       await fetchMergeProgress()
-      if (!mergeActive.value) {
-        stopMergePolling()
+      if (mergeActive.value) {
+        mergePollTimer = setTimeout(tick, 2000)
       }
-    }, 2000)
+      else {
+        mergePollTimer = null
+      }
+    }
+    mergePollTimer = setTimeout(tick, 2000)
   }
 
   // Concurrent: many merges can be in flight at once, each tracked independently.

@@ -14,6 +14,7 @@ import { monitorLog } from '~/server/utils/monitorLog'
 import {
   getSlskdActiveDownloads,
   isSlskdTerminal,
+  isSlskdFailed,
   cancelSlskdDownload,
   relocateDownloadedFiles,
   purgeDownloadedSourceFiles,
@@ -94,6 +95,18 @@ export async function reconcileDownloads(): Promise<void> {
       const expected = new Set(files.map(f => baseName(String(f.filename))))
       const ours = transfers.filter(t => t.username === row.slskUsername && expected.has(baseName(t.filename)))
       const active = ours.some(t => !isSlskdTerminal(t.state))
+
+      // Peer disconnected mid-download: slskd flips the transfer(s) to a failed terminal state
+      // (Errored / TimedOut / Cancelled / Rejected). One drop kills the whole peer, so treat ANY
+      // failed transfer as a dead download — cancel stragglers, fail + purge immediately. No grace
+      // wait, no partial-sibling promotion: a fresh retry re-fetches the lot.
+      if (ours.some(t => isSlskdFailed(t.state))) {
+        for (const t of ours) { await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {}) }
+        await failAttempt(row, maxAttempts, 'slskd transfer failed (peer disconnected)')
+        await purgeDownloadedSourceFiles(settings.downloadsPath, files.map(f => String(f.filename))).catch(() => {})
+        failed++
+        continue
+      }
 
       // Goal 1: a download that isn't moving must die. Track the byte watermark.
       let stalled = false

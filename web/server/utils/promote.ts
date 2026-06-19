@@ -379,7 +379,7 @@ export async function cleanupReadyDownloads(): Promise<{ removed: number; checke
   }
   if (orphans.length) {
     await prisma.downloadedRelease.deleteMany({ where: { id: { in: orphans } } })
-    monitorLog('warn', `cleanup: removed ${orphans.length} ready-to-merge row(s) with missing staged files`)
+    monitorLog('notice', `cleanup: removed ${orphans.length} ready-to-merge row(s) with missing staged files`)
   }
   return { removed: orphans.length, checked: rows.length }
 }
