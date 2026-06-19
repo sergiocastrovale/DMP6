@@ -1,9 +1,23 @@
 <script setup lang="ts">
-import { FolderInput } from 'lucide-vue-next'
+import type { Component } from 'vue'
 import { useTerminalStore } from '~/stores/terminal'
 
-const props = defineProps<{ count: number; loading: boolean }>()
-const emit = defineEmits<{ merge: [] }>()
+interface BarAction {
+  key: string
+  label: string
+  icon?: Component
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+}
+
+const props = withDefaults(defineProps<{
+  count: number
+  loading?: boolean
+  actions: BarAction[]
+}>(), {
+  loading: false,
+})
+
+const emit = defineEmits<{ action: [key: string] }>()
 const terminal = useTerminalStore()
 </script>
 
@@ -22,9 +36,18 @@ const terminal = useTerminalStore()
       :class="{ 'lg:right-[500px]': terminal.isOpen }"
     >
       <span class="text-sm text-ink-2">{{ props.count }} row{{ props.count !== 1 ? 's' : '' }} selected</span>
-      <UiButton :icon="FolderInput" :loading="props.loading" @click="emit('merge')">
-        Merge Selected
-      </UiButton>
+      <div class="flex items-center gap-2">
+        <UiButton
+          v-for="action in props.actions"
+          :key="action.key"
+          :icon="action.icon"
+          :variant="action.variant ?? 'primary'"
+          :loading="props.loading"
+          @click="emit('action', action.key)"
+        >
+          {{ action.label }}
+        </UiButton>
+      </div>
     </div>
   </Transition>
 </template>

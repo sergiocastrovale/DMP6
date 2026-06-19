@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Radar, HelpCircle } from 'lucide-vue-next'
+import { Loader2, Radar, CircleStop, EyeOff, HelpCircle } from 'lucide-vue-next'
 
 interface ArtistRow {
   id: string
@@ -9,6 +9,9 @@ interface ArtistRow {
   missingReleases: number
   totalReleases: number
 }
+
+const store = useDownloadsStore()
+const toast = useToastStore()
 
 const search = ref('')
 const page = ref(1)
@@ -21,6 +24,35 @@ const loadingMore = ref(false)
 const busyIds = ref(new Set<string>())
 const showMonitored = ref(true)
 const showComplete = ref(false)
+
+const selected = ref<Set<string>>(new Set())
+const bulkBusy = ref(false)
+const pendingMonitor = ref<boolean | null>(null)
+const confirmOpen = ref(false)
+
+const monitorAllBusy = ref(false)
+const monitorAll = async (on: boolean) => {
+  monitorAllBusy.value = true
+  try {
+    const r = await store.monitorAll(on)
+    page.value = 1
+    items.value = []
+    selected.value = new Set()
+    await fetchItems()
+    toast.success(`${on ? 'Monitoring' : 'Stopped monitoring'} ${r.count} artist${r.count === 1 ? '' : 's'}`)
+  }
+  catch (e: any) {
+    toast.error(e?.data?.message || e?.message || 'Monitor-all failed')
+  }
+  finally {
+    monitorAllBusy.value = false
+  }
+}
+
+const bulkActions = [
+  { key: 'monitor', label: 'Monitor selected', icon: Radar, variant: 'primary' as const },
+  { key: 'unmonitor', label: 'Unmonitor selected', icon: EyeOff, variant: 'secondary' as const },
+]
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 const onSearch = (val: string) => {
@@ -86,11 +118,83 @@ const toggleMonitor = async (artist: ArtistRow) => {
   }
 }
 
+const allMonitored = computed(() => total.value > 0 && monitoredCount.value >= total.value)
+const allChecked = computed(() => items.value.length > 0 && items.value.every(a => selected.value.has(a.id)))
+const selectedRows = computed(() => items.value.filter(a => selected.value.has(a.id)))
+
+// Already-in-the-target-state rows are filtered out: "Monitor selected" only touches unmonitored rows,
+// "Unmonitor selected" only touches monitored ones.
+const pendingTargets = computed(() =>
+  pendingMonitor.value === null ? [] : selectedRows.value.filter(a => a.monitored !== pendingMonitor.value),
+)
+const confirmLabel = computed(() => (pendingMonitor.value ? 'Monitor' : 'Unmonitor'))
+const confirmMessage = computed(() => {
+  const n = pendingTargets.value.length
+  const verb = pendingMonitor.value ? 'monitor' : 'unmonitor'
+  return `${verb.charAt(0).toUpperCase()}${verb.slice(1)} ${n} artist${n === 1 ? '' : 's'}?`
+})
+
+const toggleAll = () => {
+  const next = new Set(selected.value)
+  allChecked.value ? items.value.forEach(a => next.delete(a.id)) : items.value.forEach(a => next.add(a.id))
+  selected.value = next
+}
+const toggleRow = (id: string) => {
+  const next = new Set(selected.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  selected.value = next
+}
+
+const onBulkAction = (key: string) => {
+  pendingMonitor.value = key === 'monitor'
+  if (!pendingTargets.value.length) {
+    toast.info(`No selected artist to ${pendingMonitor.value ? 'monitor' : 'unmonitor'}`)
+    return
+  }
+  confirmOpen.value = true
+}
+
+const confirmBulk = async () => {
+  const monitor = pendingMonitor.value
+  const ids = pendingTargets.value.map(a => a.id)
+  confirmOpen.value = false
+  if (monitor === null || !ids.length) {
+    return
+  }
+  bulkBusy.value = true
+  try {
+    await $fetch('/api/artists/monitor-selected', { method: 'POST', body: { ids, monitored: monitor } })
+    items.value.forEach((a) => {
+      if (ids.includes(a.id)) {
+        a.monitored = monitor
+      }
+    })
+    monitoredCount.value += monitor ? ids.length : -ids.length
+    selected.value = new Set()
+    toast.success(`${monitor ? 'Monitoring' : 'Unmonitored'} ${ids.length} artist${ids.length === 1 ? '' : 's'}`)
+  }
+  catch (e: any) {
+    toast.error(e?.data?.message || e?.message || 'Bulk monitor failed')
+  }
+  finally {
+    bulkBusy.value = false
+  }
+}
+
 onMounted(() => fetchItems())
 </script>
 
 <template>
   <div class="space-y-4">
+    <div class="flex items-center gap-2">
+      <UiButton size="sm" :variant="allMonitored ? 'primary' : 'secondary'" :icon="Radar" :loading="monitorAllBusy" @click="monitorAll(true)">
+        Monitor all
+      </UiButton>
+      <UiButton size="sm" variant="secondary" :icon="CircleStop" :loading="monitorAllBusy" @click="monitorAll(false)">
+        Monitor none
+      </UiButton>
+    </div>
+
     <div class="flex items-center justify-between gap-3">
       <SearchInput
         model-value=""
@@ -120,6 +224,9 @@ onMounted(() => fetchItems())
       <table class="w-full">
         <thead>
           <tr class="border-b border-rule bg-bg-1">
+            <th class="w-10 px-4 py-2 text-left">
+              <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" />
+            </th>
             <th class="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">Artist</th>
             <th class="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-ink-3">Missing / MB total</th>
             <th class="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-ink-3">
@@ -148,7 +255,16 @@ onMounted(() => fetchItems())
             v-for="artist in items"
             :key="artist.id"
             class="border-b border-rule/50 last:border-b-0 transition-colors hover:bg-bg-1"
+            :class="selected.has(artist.id) ? 'bg-blue-950/20' : ''"
           >
+            <td class="px-4 py-2.5">
+              <input
+                type="checkbox"
+                :checked="selected.has(artist.id)"
+                class="rounded border-rule bg-bg-2"
+                @change="toggleRow(artist.id)"
+              />
+            </td>
             <td class="px-4 py-2.5">
               <NuxtLink :to="`/artist/${artist.slug}`" class="text-sm text-ink transition-colors hover:text-accent">
                 {{ artist.name }}
@@ -186,5 +302,20 @@ onMounted(() => fetchItems())
     <div v-if="loadingMore" class="flex justify-center py-6">
       <Loader2 :size="20" class="animate-spin text-ink-3" />
     </div>
+
+    <ConfirmDialog
+      v-model="confirmOpen"
+      title="Update monitoring"
+      :message="confirmMessage"
+      :confirm-label="confirmLabel"
+      :icon="pendingMonitor ? Radar : EyeOff"
+      @confirm="confirmBulk"
+    />
+    <DownloadsSelectionBar
+      :count="selected.size"
+      :loading="bulkBusy"
+      :actions="bulkActions"
+      @action="onBulkAction"
+    />
   </div>
 </template>

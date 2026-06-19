@@ -4,7 +4,8 @@ import { Trash2 } from 'lucide-vue-next'
 import { filterQueue } from '~/helpers/functions'
 
 const {
-  store, busyId, actionMsg, retry, reject, rejectOpen, rejectTitle, confirmReject,
+  store, busyId, retry, reject, rejectOpen, rejectTitle, confirmReject,
+  bulkBusy, bulkRejectIds, bulkRejectOpen, askBulkReject, confirmBulkReject,
   openInfo, showInfo, infoRelease,
 } = useDownloadQueueActions()
 const { queueActive } = storeToRefs(store)
@@ -14,22 +15,28 @@ const search = ref('')
 const failed = computed(() => queueActive.value.filter(i => i.status === 'FAILED' || i.status === 'ABANDONED'))
 const items = computed(() => filterQueue(failed.value, search.value))
 
-const bulkBusy = ref(false)
-const rejectAllOpen = ref(false)
-const confirmRejectAll = async () => {
-  rejectAllOpen.value = false
-  bulkBusy.value = true
-  try { await store.rejectAll(failed.value.map(i => i.id)) }
-  catch (e: any) { actionMsg.value = e?.data?.message || e?.message || 'Reject all failed' }
-  finally { bulkBusy.value = false }
+const selected = ref<Set<string>>(new Set())
+
+const bulkActions = [
+  { key: 'reject', label: 'Reject selected', icon: Trash2, variant: 'danger' as const },
+]
+const onBulkAction = () => {
+  const ids = [...selected.value]
+  if (!ids.length) {
+    return
+  }
+  selected.value = new Set()
+  askBulkReject(ids)
 }
+
+const rejectAll = () => askBulkReject(failed.value.map(i => i.id))
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-4">
       <SearchInput v-model="search" placeholder="Search failed…" />
-      <UiButton v-if="failed.length" size="sm" variant="danger" :icon="Trash2" :loading="bulkBusy" @click="rejectAllOpen = true">
+      <UiButton v-if="failed.length" size="sm" variant="danger" :icon="Trash2" :loading="bulkBusy" @click="rejectAll">
         Reject all ({{ failed.length }})
       </UiButton>
     </div>
@@ -40,6 +47,9 @@ const confirmRejectAll = async () => {
       :show-actions="true"
       :show-retry="true"
       :highlight-id="highlightId"
+      selectable
+      :selected="selected"
+      @update:selected="selected = $event"
       @reject="reject"
       @retry="retry"
       @info="openInfo"
@@ -47,10 +57,16 @@ const confirmRejectAll = async () => {
 
     <DownloadsRejectDialog v-model="rejectOpen" :title="rejectTitle" @confirm="confirmReject" />
     <DownloadsRejectDialog
-      v-model="rejectAllOpen"
-      :title="`all ${failed.length} failed download${failed.length === 1 ? '' : 's'}`"
-      @confirm="confirmRejectAll"
+      v-model="bulkRejectOpen"
+      :title="`${bulkRejectIds.length} failed download${bulkRejectIds.length === 1 ? '' : 's'}`"
+      @confirm="confirmBulkReject"
     />
     <ArtistReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
+    <DownloadsSelectionBar
+      :count="selected.size"
+      :loading="bulkBusy"
+      :actions="bulkActions"
+      @action="onBulkAction"
+    />
   </div>
 </template>

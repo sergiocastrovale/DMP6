@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { Radar, CircleStop, Pause, Play, AlertTriangle } from 'lucide-vue-next'
+import { Brush, Pause, Play, AlertTriangle } from 'lucide-vue-next'
 import type { TabItem } from '~/types/ui'
 
 const store = useDownloadsStore()
+const toast = useToastStore()
 const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
@@ -17,7 +18,6 @@ const downloadProgressItems = computed(() => downloading.value.map(i => ({
 
 const monitoredArtists = ref(0)
 const totalArtists = ref(0)
-const allMonitored = computed(() => totalArtists.value > 0 && monitoredArtists.value >= totalArtists.value)
 const fetchMonitorCounts = async () => {
   try {
     const r = await $fetch<{ total: number; monitoredCount: number }>('/api/artists/monitoring', { query: { pageSize: 1 } })
@@ -46,16 +46,17 @@ const tabs = computed<TabItem[]>(() => [
   { key: 'history', label: 'History', href: '/downloads/history' },
 ])
 
-const monitorBusy = ref(false)
-const monitorAll = async (on: boolean) => {
-  monitorBusy.value = true
+const cleanupBusy = ref(false)
+const cleanup = async () => {
+  cleanupBusy.value = true
   try {
-    const r = await store.monitorAll(on)
-    actionMsg.value = `${on ? 'Monitoring' : 'Stopped monitoring'} ${r.count} artists`
-    await fetchMonitorCounts()
+    const r = await store.cleanupReady()
+    toast.success(r.removed
+      ? `Removed ${r.removed} orphaned release${r.removed === 1 ? '' : 's'} (checked ${r.checked})`
+      : `No orphans — all ${r.checked} ready release${r.checked === 1 ? '' : 's'} have their files`)
   }
-  catch (e: any) { actionMsg.value = e?.data?.message || e?.message || 'Monitor-all failed' }
-  finally { monitorBusy.value = false }
+  catch (e: any) { toast.error(e?.data?.message || e?.message || 'Cleanup failed') }
+  finally { cleanupBusy.value = false }
 }
 
 const pauseBusy = ref(false)
@@ -103,11 +104,8 @@ onUnmounted(() => { if (poll) { clearInterval(poll) } })
             >
               {{ paused ? 'Continue all downloads' : 'Pause all downloads' }}
             </UiButton>
-            <UiButton size="sm" :variant="allMonitored ? 'primary' : 'secondary'" :icon="Radar" :loading="monitorBusy" @click="monitorAll(true)">
-              Monitor all
-            </UiButton>
-            <UiButton size="sm" variant="secondary" :icon="CircleStop" :loading="monitorBusy" @click="monitorAll(false)">
-              Monitor none
+            <UiButton size="sm" variant="secondary" :icon="Brush" :loading="cleanupBusy" @click="cleanup">
+              Cleanup
             </UiButton>
           </div>
         </div>

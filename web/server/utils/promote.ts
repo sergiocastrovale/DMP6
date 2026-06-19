@@ -121,12 +121,14 @@ async function moveIntoLibrary(row: MergeRow, music: string, readyPath: string):
       message: `staged path "${row.stagingPath}" is not under the ready folder "${readyPath}" — run merge where the files live (the NAS), not a dev instance`,
     })
   }
-  // The staged folder must physically exist here. On a dev instance the NAS downloads volume isn't
-  // mounted, so the path is valid but absent -> fail clearly instead of a raw ENOENT 500.
+  // The staged folder must physically exist here. Two ways it can be absent: the files were already
+  // moved/cleaned up out of _ready (orphaned READY row — merge can never succeed, reject it), or this is
+  // a dev instance without the NAS downloads volume mounted. We can't tell them apart from access() alone,
+  // so surface both and point at the fix instead of a raw ENOENT 500.
   await access(row.stagingPath!).catch(() => {
     throw createError({
       statusCode: 409,
-      message: `staged files not found at "${row.stagingPath}" — run merge on the NAS where the downloads volume is mounted, not a dev instance`,
+      message: `Staged files not found at "${row.stagingPath}". They were already moved/cleaned up, or the downloads volume isn't mounted here (dev instance). If the files are gone, reject this download.`,
     })
   })
   const rel = relative(readyPath, row.stagingPath!)
@@ -328,6 +330,44 @@ export async function rejectDownloadedRelease(id: string): Promise<void> {
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
   await purgeStagedFiles(row.stagingPath)
   await applyRejectionCap(row, 'rejected by user')
+}
+
+/**
+ * Sweep the ready-to-merge queue for orphans: rows whose staged files no longer exist on disk (moved,
+ * cleaned up, or never landed). Such rows can never be merged — delete them outright.
+ *
+ * Safety guard: this MUST run where the downloads volume is mounted (the NAS). If the ready root itself
+ * is absent we're a dev instance without the volume — we can't distinguish "files gone" from "volume not
+ * mounted", so we bail without touching anything rather than nuking the whole queue.
+ */
+export async function cleanupReadyDownloads(): Promise<{ removed: number; checked: number }> {
+  const { downloadsReadyPath } = await resolveDownloadSettings()
+  if (downloadsReadyPath) {
+    const mounted = await access(downloadsReadyPath).then(() => true).catch(() => false)
+    if (!mounted) {
+      throw createError({
+        statusCode: 409,
+        message: `Downloads volume not mounted here ("${downloadsReadyPath}" absent) — run Cleanup on the NAS, not a dev instance.`,
+      })
+    }
+  }
+
+  const rows = await prisma.downloadedRelease.findMany({
+    where: { status: 'READY', stagingPath: { not: null } },
+    select: { id: true, stagingPath: true },
+  })
+  const orphans: string[] = []
+  for (const row of rows) {
+    const exists = await access(row.stagingPath!).then(() => true).catch(() => false)
+    if (!exists) {
+      orphans.push(row.id)
+    }
+  }
+  if (orphans.length) {
+    await prisma.downloadedRelease.deleteMany({ where: { id: { in: orphans } } })
+    monitorLog('warn', `cleanup: removed ${orphans.length} ready-to-merge row(s) with missing staged files`)
+  }
+  return { removed: orphans.length, checked: rows.length }
 }
 
 /**

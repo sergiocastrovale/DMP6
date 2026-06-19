@@ -6,6 +6,7 @@ import type { UnifiedRelease } from '~/types/release'
 // Thin wrappers over the downloads store so content components stay slim.
 export const useDownloadQueueActions = () => {
   const store = useDownloadsStore()
+  const toast = useToastStore()
   const { queueActive, queueReady, queueHistory } = storeToRefs(store)
 
   const busyId = ref<string | null>(null)
@@ -22,6 +23,7 @@ export const useDownloadQueueActions = () => {
     }
     catch (e: any) {
       actionMsg.value = e?.data?.message || e?.message || failMsg
+      toast.error(actionMsg.value!)
     }
     finally {
       busyId.value = null
@@ -29,7 +31,10 @@ export const useDownloadQueueActions = () => {
   }
 
   const retry = (id: string) => run(id, () => store.retry(id), 'Retry failed')
-  const merge = (id: string) => store.merge(id).catch((e: any) => { actionMsg.value = e?.data?.message || e?.message || 'Merge failed' })
+  const merge = (id: string) => store.merge(id).catch((e: any) => {
+    actionMsg.value = e?.data?.message || e?.message || 'Merge failed'
+    toast.error(actionMsg.value!)
+  })
   const mergeMany = (ids: string[]) => store.mergeSelected(ids)
 
   const findItem = (id: string | null) =>
@@ -54,6 +59,57 @@ export const useDownloadQueueActions = () => {
       return
     }
     await run(id, () => store.reject(id), 'Reject failed')
+  }
+
+  // Bulk reject dialog (Failed / Unavailable / Ready-to-merge multi-select)
+  const bulkBusy = ref(false)
+  const bulkRejectIds = ref<string[]>([])
+  const bulkRejectOpen = ref(false)
+  const askBulkReject = (ids: string[]) => {
+    if (!ids.length) {
+      return
+    }
+    bulkRejectIds.value = ids
+    bulkRejectOpen.value = true
+  }
+  const confirmBulkReject = async () => {
+    const ids = bulkRejectIds.value
+    bulkRejectOpen.value = false
+    bulkRejectIds.value = []
+    if (!ids.length) {
+      return
+    }
+    bulkBusy.value = true
+    try {
+      await store.rejectAll(ids)
+      toast.success(`Rejected ${ids.length} download${ids.length === 1 ? '' : 's'}`)
+    }
+    catch (e: any) {
+      toast.error(e?.data?.message || e?.message || 'Reject failed')
+    }
+    finally {
+      bulkBusy.value = false
+    }
+  }
+
+  // Bulk merge dialog (Ready-to-merge multi-select) — merge is slow, so confirm first.
+  const bulkMergeIds = ref<string[]>([])
+  const bulkMergeOpen = ref(false)
+  const askBulkMerge = (ids: string[]) => {
+    if (!ids.length) {
+      return
+    }
+    bulkMergeIds.value = ids
+    bulkMergeOpen.value = true
+  }
+  const confirmBulkMerge = async () => {
+    const ids = bulkMergeIds.value
+    bulkMergeOpen.value = false
+    bulkMergeIds.value = []
+    if (!ids.length) {
+      return
+    }
+    await mergeMany(ids)
   }
 
   // Cancel dialog
@@ -113,6 +169,15 @@ export const useDownloadQueueActions = () => {
     rejectOpen,
     rejectTitle,
     confirmReject,
+    bulkBusy,
+    bulkRejectIds,
+    bulkRejectOpen,
+    askBulkReject,
+    confirmBulkReject,
+    bulkMergeIds,
+    bulkMergeOpen,
+    askBulkMerge,
+    confirmBulkMerge,
     cancel,
     cancelId,
     cancelOpen,
