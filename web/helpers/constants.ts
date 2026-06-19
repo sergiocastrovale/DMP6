@@ -2,6 +2,16 @@ export const maxGenres = 5
 export const SKELETON_GRID_SIZE = 10
 export const SESSION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
 
+// Friendly labels for the terminal/progress panel, keyed by the running command (or stream label).
+export const commandLabels: Record<string, string> = {
+  './index': 'Indexing library…',
+  './sync': 'Syncing with MusicBrainz…',
+  './refresh': 'Refreshing library…',
+  './audit': 'Auditing metadata…',
+  './fix': 'Applying fixes…',
+  './playlists': 'Generating playlists…',
+}
+
 export const scanActions = [
   { id: 'check', icon: 'Search', text: 'Check for new files', subtext: 'Index new files & sync' },
   { id: 'index-sync', icon: 'RefreshCw', text: 'Index & Sync', subtext: 'Full re-scan from scratch' },

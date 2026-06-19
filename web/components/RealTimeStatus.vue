@@ -7,10 +7,11 @@ import {
   LockOpen,
 } from 'lucide-vue-next'
 import type { ScanStatus } from '~/types/scan'
-import { formatDate } from '~/helpers/functions'
+import { formatDate, parseProgress } from '~/helpers/functions'
 import { useTerminalStore } from '~/stores/terminal'
 
 const terminal = useTerminalStore()
+const settings = useSettingsStore()
 
 const status = ref<ScanStatus | null>(null)
 const loading = ref(true)
@@ -53,26 +54,7 @@ watch(() => terminal.isRunning, (running) => {
   }
 })
 
-interface ScanProgress {
-  phase: 'index' | 'sync'
-  folder?: string
-  artist?: string
-  current: number
-  total: number
-}
-
-const progress = computed<ScanProgress | null>(() => {
-  for (let i = terminal.lines.length - 1; i >= 0; i--) {
-    const line = terminal.lines[i]
-    if (typeof line === 'string' && line.startsWith('PROGRESS:')) {
-      try {
-        return JSON.parse(line.slice(9))
-      }
-      catch { /* ignore malformed */ }
-    }
-  }
-  return null
-})
+const progress = computed(() => parseProgress(terminal.lines))
 
 const staleLock = computed(() =>
   !terminal.isRunning && status.value?.isRunning ? status.value : null,
@@ -151,7 +133,7 @@ onUnmounted(() => {
             <p class="text-sm font-medium text-ink">
               {{ terminal.isRunning ? 'Scan in progress' : 'Idle' }}
             </p>
-            <p v-if="terminal.isRunning" class="text-xs text-ink0">
+            <p v-if="terminal.isRunning && settings.showTerminal" class="text-xs text-ink0">
               Check the terminal for live output
             </p>
             <p v-else-if="status" class="text-xs text-ink0">
@@ -188,7 +170,7 @@ onUnmounted(() => {
 
       <!-- Terminal preview when running -->
       <div
-        v-if="terminal.isRunning && terminal.lines.length > 0"
+        v-if="terminal.isRunning && terminal.lines.length > 0 && settings.showTerminal"
         class="mt-4 max-h-24 overflow-hidden rounded border border-rule bg-bg p-3 font-mono text-xs leading-5 text-ink-2 cursor-pointer"
         @click="terminal.open()"
       >

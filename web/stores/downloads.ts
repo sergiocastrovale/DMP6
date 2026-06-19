@@ -1,4 +1,6 @@
 import { defineStore } from 'pinia'
+import { useSettingsStore } from '~/stores/settings'
+import { useTerminalStore } from '~/stores/terminal'
 import type { ActiveDownload, DownloadSourceStatus, DownloadSourceConfigItem, DownloadedReleaseItem, Acquisition } from '~/types/download'
 
 type MergeStep = 'moving' | 'indexing' | 'syncing'
@@ -269,8 +271,25 @@ export const useDownloadsStore = defineStore('downloads', () => {
     mergePollTimer = setTimeout(tick, 2000)
   }
 
+  // showTerminal=true routes merges through the terminal sidebar (one SSE stream per batch) instead of
+  // the merge-progress panel; the merge-progress map is still updated server-side but nothing polls it.
+  const mergeViaTerminal = async (ids: string[]) => {
+    if (!ids.length) {
+      return
+    }
+    try {
+      await useTerminalStore().runStream('/api/downloads/merge-stream', { ids }, 'merge', 'Merging…')
+    }
+    finally {
+      await fetchQueue()
+    }
+  }
+
   // Concurrent: many merges can be in flight at once, each tracked independently.
   const merge = async (id: string) => {
+    if (useSettingsStore().showTerminal) {
+      return mergeViaTerminal([id])
+    }
     mergeInitiated.value = new Set(mergeInitiated.value).add(id)
     startMergePolling()
     try {
@@ -287,6 +306,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const mergeSelected = async (ids: string[]) => {
     if (!ids.length) {
       return
+    }
+    if (useSettingsStore().showTerminal) {
+      return mergeViaTerminal(ids)
     }
     mergeTotal.value = ids.length
     try {
@@ -305,6 +327,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
     await fetchQueue()
   }
   const mergeAll = async (ids: string[]) => {
+    if (useSettingsStore().showTerminal) {
+      return mergeViaTerminal(ids)
+    }
     mergeTotal.value = ids.length
     mergeBatchRunning.value = true // keep panel visible through the poll-lag windows
     startMergePolling()

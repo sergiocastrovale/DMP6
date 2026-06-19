@@ -1,3 +1,11 @@
+export interface ScanProgress {
+  phase: 'index' | 'sync'
+  folder?: string
+  artist?: string
+  current: number
+  total: number
+}
+
 export interface ScanStatus {
   isRunning: boolean
   lockedBy: string | null

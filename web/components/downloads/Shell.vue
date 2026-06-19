@@ -4,6 +4,7 @@ import { Brush, Pause, Play, AlertTriangle } from 'lucide-vue-next'
 import type { TabItem } from '~/types/ui'
 
 const store = useDownloadsStore()
+const settings = useSettingsStore()
 const toast = useToastStore()
 const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds, acquisition } = storeToRefs(store)
 
@@ -147,7 +148,7 @@ onUnmounted(() => {
         <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-lg border border-rule bg-bg-1 px-4 py-3" />
 
         <UiLoadingPanel
-          v-if="mergeActive"
+          v-if="mergeActive && !settings.showTerminal"
           :label="mergeLabel ?? `Merging ${mergingIds.size} release${mergingIds.size !== 1 ? 's' : ''}…`"
           :percent="mergePercent"
           variant="success"

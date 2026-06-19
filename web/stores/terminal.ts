@@ -7,6 +7,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   const lines = ref<string[]>([])
   const exitCode = ref<number | null>(null)
   const currentSession = ref<string | null>(null)
+  const currentCommand = ref<string | null>(null)
 
   const hasBackground = computed(() => isRunning.value && !isOpen.value)
 
@@ -84,6 +85,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     } finally {
       isRunning.value = false
       currentSession.value = null
+      currentCommand.value = null
       abortController = null
       useGlobalStore().refresh()
     }
@@ -92,12 +94,20 @@ export const useTerminalStore = defineStore('terminal', () => {
   async function run(command: string, args: string[], session?: string) {
     const resolvedSession = session ?? `dmp-${command.replace('./', '')}`
     currentSession.value = resolvedSession
+    currentCommand.value = command
     return streamSSE('/api/terminal/run', { command, args, session: resolvedSession })
   }
 
   async function reconnect(session: string) {
     currentSession.value = session
     return streamSSE('/api/terminal/reconnect', { session })
+  }
+
+  // Generic SSE streamer for non-script operations (e.g. merge) that want their output in the terminal.
+  async function runStream(url: string, body: Record<string, any>, session: string, label: string) {
+    currentSession.value = session
+    currentCommand.value = label
+    return streamSSE(url, body)
   }
 
   function open() {
@@ -140,5 +150,5 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
 
-  return { isOpen, isRunning, lines, exitCode, currentSession, hasBackground, hasLockError, run, reconnect, open, close, stop, unlock }
+  return { isOpen, isRunning, lines, exitCode, currentSession, currentCommand, hasBackground, hasLockError, run, runStream, reconnect, open, close, stop, unlock }
 })

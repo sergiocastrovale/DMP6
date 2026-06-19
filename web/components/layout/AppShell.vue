@@ -3,6 +3,7 @@ import { Loader2, Terminal } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
 
 const terminal = useTerminalStore()
+const settings = useSettingsStore()
 const { collapsed } = useSidebar()
 
 const gridCols = computed(() =>
@@ -15,7 +16,7 @@ const gridCols = computed(() =>
     <div :class="['grid flex-1 overflow-hidden transition-all duration-200', gridCols]">
       <LayoutSidebar class="hidden lg:flex" />
 
-      <div class="flex flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-[500px]': terminal.isOpen }">
+      <div class="flex flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-[500px]': terminal.isOpen && settings.showTerminal }">
         <div class="sticky top-0 z-30 border-b border-rule bg-bg">
           <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-18">
             <LayoutSearchBar />
@@ -32,10 +33,11 @@ const gridCols = computed(() =>
   </div>
 
   <LayoutMobileNav />
-  <TerminalOutput />
+  <TerminalOutput v-if="settings.showTerminal" />
+  <TerminalProgress />
 
   <button
-    v-if="terminal.hasBackground"
+    v-if="terminal.hasBackground && settings.showTerminal"
     class="fixed bottom-24 right-4 z-50 flex items-center gap-2 rounded-lg border border-rule bg-bg-2 px-3 py-2 text-sm text-ink-2 shadow-lg transition-colors hover:border-ink-4 hover:bg-bg-3"
     @click="terminal.open()"
   >

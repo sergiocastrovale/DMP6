@@ -235,7 +235,7 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
  * Merge one READY download into the library: move READY → MUSIC_DIR (idempotent), reconcile
  * (index + sync, serialized), stamp provenance, mark PROMOTED.
  */
-export async function mergeDownloadedRelease(id: string): Promise<{ localReleaseId: string | null }> {
+export async function mergeDownloadedRelease(id: string, emit?: (line: string) => void): Promise<{ localReleaseId: string | null }> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: { select: { name: true } } } })
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
   if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing to merge' })
@@ -248,11 +248,15 @@ export async function mergeDownloadedRelease(id: string): Promise<{ localRelease
   const title = row.title ?? '?'
   try {
     setMergeProgress(id, { step: 'moving', title })
+    emit?.(`Moving "${title}" to library…`)
     const rel = await moveIntoLibrary(row, music, downloadsReadyPath)
     setMergeProgress(id, { step: 'indexing', title })
+    emit?.(`Indexing "${title}"…`)
     await runReconciler('index', ['--folders', rel])
     setMergeProgress(id, { step: 'syncing', title })
+    emit?.(`Syncing "${title}"…`)
     const localReleaseId = await stampMerged(row, music, rel, maxDownloadAttempts)
+    emit?.(`✓ Merged "${title}"`)
     return { localReleaseId }
   }
   finally {
@@ -265,7 +269,7 @@ export async function mergeDownloadedRelease(id: string): Promise<{ localRelease
  * ONE sync per distinct artist (deduped) — far cheaper than per-release index+full-artist-sync, and
  * the whole thing runs serialized so it can't collide with the gaps worker on the Rust lock.
  */
-export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merged: number }> {
+export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: string) => void): Promise<{ merged: number }> {
   const music = musicDir()
   if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
   const { downloadsReadyPath } = await resolveDownloadSettings()
@@ -280,13 +284,15 @@ export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merg
     for (const row of rows) {
       if (!row.stagingPath) continue
       setMergeProgress(row.id, { step: 'moving', title: row.title })
+      emit?.(`Moving "${row.title}" to library…`)
       try { moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsReadyPath) }) }
-      catch (e: any) { monitorLog('error', `merge: move failed ${row.title}: ${e?.message || e}`); clearMergeProgress(row.id) }
+      catch (e: any) { monitorLog('error', `merge: move failed ${row.title}: ${e?.message || e}`); clearMergeProgress(row.id); emit?.(`✗ Move failed "${row.title}": ${e?.message || e}`) }
     }
     if (moved.length === 0) return { merged: 0 }
 
     // One index over all folders (--folders is ';'-separated); skip paths containing ';'.
     for (const m of moved) setMergeProgress(m.row.id, { step: 'indexing', title: m.row.title })
+    emit?.(`Indexing ${moved.length} release${moved.length === 1 ? '' : 's'}…`)
     const safeRels = moved.map(m => m.rel).filter(r => !r.includes(';'))
     if (safeRels.length) await runReconciler('index', ['--folders', safeRels.join(';')])
     for (const m of moved.filter(m => m.rel.includes(';'))) await runReconciler('index', ['--folders', m.rel])
@@ -296,8 +302,10 @@ export async function mergeManyDownloadedReleases(ids: string[]): Promise<{ merg
     const { maxDownloadAttempts } = await resolveMonitorSettings()
     for (const m of moved) {
       setMergeProgress(m.row.id, { step: 'syncing', title: m.row.title })
+      emit?.(`Syncing "${m.row.title}"…`)
       await stampMerged(m.row, music, m.rel, maxDownloadAttempts)
     }
+    emit?.(`✓ Merged ${moved.length} release${moved.length === 1 ? '' : 's'}`)
     return { merged: moved.length }
   }
   finally {

@@ -8,14 +8,18 @@ const { data: settings, refresh } = await useAsyncData('settings-db', () =>
   $fetch<Record<string, any>>('/api/settings'),
 )
 
+const settingsStore = useSettingsStore()
+
 const musicDir = ref(settings.value?.musicDir ?? '')
+const showTerminal = ref(settingsStore.showTerminal)
 
 const { saving, saved, error, save } = useFormSave(async () => {
   await $fetch('/api/settings', {
     method: 'PUT',
-    body: { musicDir: musicDir.value || null },
+    body: { musicDir: musicDir.value || null, showTerminal: showTerminal.value },
   })
   await refresh()
+  await settingsStore.load()
 })
 </script>
 
@@ -30,6 +34,14 @@ const { saving, saved, error, save } = useFormSave(async () => {
         placeholder="/path/to/your/music"
         v-model="musicDir"
       />
+
+      <div class="space-y-1.5">
+        <Switch v-model="showTerminal" label="Show terminal sidebar" />
+        <p class="text-xs text-ink0">
+          Stream raw output in the terminal sidebar for scans, fixes and merges. When off, a compact progress
+          panel is shown instead. Overrides the SHOW_TERMINAL env var.
+        </p>
+      </div>
 
       <div class="flex items-center gap-3 pt-2">
         <button

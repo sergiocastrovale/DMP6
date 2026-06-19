@@ -52,6 +52,7 @@ export default defineEventHandler(async (event) => {
     lastfmSecret: body.lastfmSecret ?? undefined,
     lastfmSessionKey: body.lastfmSessionKey ?? undefined,
     lastfmUsername: body.lastfmUsername ?? undefined,
+    showTerminal: typeof body.showTerminal === 'boolean' ? body.showTerminal : body.showTerminal === null ? null : undefined,
   }
 
   // Remove undefined keys

@@ -1,4 +1,20 @@
 import type { DownloadedReleaseItem } from '~/types/download'
+import type { ScanProgress } from '~/types/scan'
+
+// Scan the terminal output backwards for the latest structured `PROGRESS:{json}` line emitted by the
+// index/sync/refresh scripts (--web mode). Returns null when no structured progress is present.
+export const parseProgress = (lines: string[]): ScanProgress | null => {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    if (typeof line === 'string' && line.startsWith('PROGRESS:')) {
+      try {
+        return JSON.parse(line.slice(9))
+      }
+      catch { /* ignore malformed */ }
+    }
+  }
+  return null
+}
 
 export const filterQueue = (items: DownloadedReleaseItem[], query: string): DownloadedReleaseItem[] => {
   const q = query.trim().toLowerCase()
