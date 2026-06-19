@@ -437,27 +437,86 @@ pub async fn update_artist_sync_stats(
     pool: &PgPool,
     artist_id: &str,
     mb_id: &str,
-    avg_score: Option<f64>,
     country: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     let now = Utc::now().naive_utc();
     sqlx::query(
         r#"UPDATE "Artist"
            SET "musicbrainzId" = $1,
-               "averageMatchScore" = $2,
-               "lastSyncedAt" = $3,
-               "updatedAt" = $3,
-               "country" = $4
-           WHERE id = $5"#,
+               "lastSyncedAt" = $2,
+               "updatedAt" = $2,
+               "country" = $3
+           WHERE id = $4"#,
     )
     .bind(mb_id)
-    .bind(avg_score)
     .bind(now)
     .bind(country)
     .bind(artist_id)
     .execute(pool)
     .await?;
     Ok(())
+}
+
+// Match score = catalogue completeness: owned album/EP releases / total album/EP catalogue. A release the
+// artist owns (matched to a non-MISSING MusicBrainzRelease) counts as 1, a MISSING gap as 0. NULL when the
+// artist has no album/EP catalogue. Pure SQL over the MB catalogue — no track/file scan, no API calls.
+pub async fn recompute_artist_match_score(pool: &PgPool, artist_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"UPDATE "Artist" a
+           SET "averageMatchScore" = sub.score, "updatedAt" = NOW()
+           FROM (
+             SELECT CASE WHEN COUNT(*) = 0 THEN NULL
+                         ELSE COUNT(*) FILTER (WHERE mr.status::text <> 'MISSING')::float8 / COUNT(*)
+                    END AS score
+             FROM "MusicBrainzReleaseArtist" mra
+             JOIN "MusicBrainzRelease" mr ON mr.id = mra."releaseId"
+             JOIN "ReleaseType" rt ON rt.id = mr."typeId"
+             WHERE mra."artistId" = $1 AND rt.slug IN ('album', 'ep')
+           ) sub
+           WHERE a.id = $1"#,
+    )
+    .bind(artist_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+// Set-based backfill of recompute_artist_match_score for every artist. Returns the count of artists with an
+// album/EP catalogue that got a score; artists without one are reset to NULL. Runs in seconds.
+pub async fn recompute_all_match_scores(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let scored = sqlx::query(
+        r#"UPDATE "Artist" a
+           SET "averageMatchScore" = sub.score, "updatedAt" = NOW()
+           FROM (
+             SELECT mra."artistId" AS aid,
+                    COUNT(*) FILTER (WHERE mr.status::text <> 'MISSING')::float8 / COUNT(*) AS score
+             FROM "MusicBrainzReleaseArtist" mra
+             JOIN "MusicBrainzRelease" mr ON mr.id = mra."releaseId"
+             JOIN "ReleaseType" rt ON rt.id = mr."typeId"
+             WHERE rt.slug IN ('album', 'ep')
+             GROUP BY mra."artistId"
+           ) sub
+           WHERE a.id = sub.aid"#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"UPDATE "Artist" a
+           SET "averageMatchScore" = NULL, "updatedAt" = NOW()
+           WHERE a."averageMatchScore" IS NOT NULL
+             AND NOT EXISTS (
+               SELECT 1
+               FROM "MusicBrainzReleaseArtist" mra
+               JOIN "MusicBrainzRelease" mr ON mr.id = mra."releaseId"
+               JOIN "ReleaseType" rt ON rt.id = mr."typeId"
+               WHERE mra."artistId" = a.id AND rt.slug IN ('album', 'ep')
+             )"#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(scored.rows_affected())
 }
 
 // ---------------------------------------------------------------------------

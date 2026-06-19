@@ -57,6 +57,8 @@ struct SyncArgs {
     delete: bool,
     #[arg(long, help = "Fast pass: populate MISSING catalogue entries only (1 API call/artist)")]
     catalogue_gaps: bool,
+    #[arg(long, help = "Recompute averageMatchScore for all artists from the catalogue (pure SQL, no API), then exit")]
+    recompute_scores: bool,
     #[arg(long, help = "Read artist IDs from file (one per line, used by refresh)")]
     artist_ids: Option<String>,
     #[arg(long)]
@@ -153,6 +155,17 @@ async fn main() {
     let mut config = load_config(None);
     let pool = create_pool(&config.database_url).await;
     apply_db_overrides(&mut config, &pool).await;
+
+    // Standalone maintenance pass: recompute catalogue-completeness scores for every artist. No lock, no
+    // API — just a couple of set-based UPDATEs over the MB catalogue tables.
+    if args.recompute_scores {
+        reporter.header("DMP Sync - Recompute Match Scores");
+        match recompute_all_match_scores(&pool).await {
+            Ok(n) => reporter.done(&format!("Recomputed match scores ({} artist(s) with catalogue)", n)),
+            Err(e) => reporter.err(&format!("Recompute error: {}", e)),
+        }
+        return;
+    }
 
     if args.release.is_some()
         && (args.from.is_some() || args.to.is_some() || args.only.is_some())
@@ -927,8 +940,7 @@ async fn main() {
             rgs
         };
 
-        let mut score_sum = 0f64;
-        let mut score_count = 0u32;
+        let mut processed_count = 0u32;
         let mut newly_synced_count = 0u32;
         let mut release_failures = 0u32;
         let mut releases_for_art: Vec<(String, String, String)> = Vec::new();
@@ -960,15 +972,7 @@ async fn main() {
                     batch_link_release_genres(&pool, existing_mb_db_id, &artist_genre_ids)
                         .await
                         .ok();
-                    let score = match local_release.match_status.as_deref() {
-                        Some("COMPLETE") => 1.0,
-                        Some("EXTRA_TRACKS") => 0.85,
-                        Some("MISSING_TRACKS") => 0.7,
-                        Some("INCOMPLETE") => 0.5,
-                        _ => 0.5,
-                    };
-                    score_sum += score;
-                    score_count += 1;
+                    processed_count += 1;
                     if args.verbose {
                         reporter.skip(&format!("{} (already synced)", local_release.title));
                     }
@@ -1254,12 +1258,6 @@ async fn main() {
                 releases_for_art.push((final_release_id.clone(), rg_id.clone(), local_release.id.clone()));
             }
 
-            let score = match status_check.status {
-                status::ReleaseStatus::Complete => 1.0,
-                status::ReleaseStatus::ExtraTracks => 0.85,
-                status::ReleaseStatus::MissingTracks => 0.7,
-                status::ReleaseStatus::Incomplete => 0.5,
-            };
             if args.verbose {
                 let status_label = match status_check.status {
                     status::ReleaseStatus::Complete => "Complete",
@@ -1275,8 +1273,7 @@ async fn main() {
                     best_tracks.len(),
                 ));
             }
-            score_sum += score;
-            score_count += 1;
+            processed_count += 1;
             newly_synced_count += 1;
             reporter.info(&format!(
                 "        ✓ {} done in {:.1}s",
@@ -1406,12 +1403,6 @@ async fn main() {
 
         reporter.clear_transient();
 
-        let avg_score = if score_count > 0 {
-            Some(score_sum / score_count as f64)
-        } else {
-            None
-        };
-
         if is_duplicate {
             let now = chrono::Utc::now().naive_utc();
             sqlx::query(r#"UPDATE "Artist" SET "lastSyncedAt" = $1, "updatedAt" = $1 WHERE id = $2"#)
@@ -1421,9 +1412,11 @@ async fn main() {
                 .await
                 .ok();
         } else {
-            update_artist_sync_stats(&pool, &artist.id, &mb_artist.id, avg_score, country_code.as_deref())
+            update_artist_sync_stats(&pool, &artist.id, &mb_artist.id, country_code.as_deref())
                 .await
                 .ok();
+            // Recompute catalogue-completeness now that this artist's MISSING gaps have been (re)written.
+            recompute_artist_match_score(&pool, &artist.id).await.ok();
         }
 
         if !is_targeted {
@@ -1434,21 +1427,21 @@ async fn main() {
             }
         }
 
-        let is_total_failure = score_count == 0 && release_failures > 0;
+        let is_total_failure = processed_count == 0 && release_failures > 0;
         if !is_total_failure {
             if let Some(ref h) = run_hash {
                 stamp_sync_hash(&pool, &artist.id, h).await;
             }
         }
 
-        if score_count > 0 && release_failures == 0 {
+        if processed_count > 0 && release_failures == 0 {
             if newly_synced_count > 0 {
                 reporter.ok(&format!("Synced {} release(s)", newly_synced_count));
             } else {
-                reporter.skip(&format!("{} release(s) up to date", score_count));
+                reporter.skip(&format!("{} release(s) up to date", processed_count));
             }
             total_synced += 1;
-        } else if score_count > 0 {
+        } else if processed_count > 0 {
             reporter.warn(&format!(
                 "{} release(s) synced, {} failed",
                 newly_synced_count, release_failures
