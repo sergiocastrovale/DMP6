@@ -48,6 +48,16 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const mergingIds = computed(() => new Set([...mergeInitiated.value, ...Object.keys(mergeProgress.value)]))
   const mergeActive = computed(() => mergingIds.value.size > 0 || mergeBatchRunning.value)
 
+  // Is there anything live to watch? Downloads finalizing (reconcile runs even while paused), a merge in
+  // flight, or acquisition able to spawn new downloads any tick. When NONE of these hold there's nothing
+  // to refresh, so the queue poll stops entirely (no point hammering /queue while idle/paused).
+  const hasInFlight = computed(() =>
+    queueActive.value.some(i => i.status === 'DOWNLOADING' || i.status === 'ENRICHING'),
+  )
+  const queuePollNeeded = computed(() =>
+    hasInFlight.value || mergeActive.value || (!paused.value && !!acquisition.value?.canAcquire),
+  )
+
   // In-flight item count: the per-row/selected path knows it precisely; the batched path relies on the
   // server map, falling back to "nothing done yet" during the poll-lag windows at start/end.
   const mergeInFlightCount = computed(() => {
@@ -83,6 +93,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   let pollInterval: ReturnType<typeof setInterval> | null = null
   let mergePollTimer: ReturnType<typeof setInterval> | null = null
+  let queuePollTimer: ReturnType<typeof setInterval> | null = null
 
   const activeCount = computed(() =>
     activeDownloads.value.filter(d =>
@@ -117,6 +128,8 @@ export const useDownloadsStore = defineStore('downloads', () => {
       method: 'PUT', body: { name, enabled },
     })
     sources.value = data.sources
+    // Enabling a source can make acquisition possible again -> refresh + (re)start the live poll.
+    await fetchQueue()
   }
 
   const fetchActive = async () => {
@@ -153,6 +166,34 @@ export const useDownloadsStore = defineStore('downloads', () => {
       acquisition.value = data.acquisition
     }
     catch { /* ignore */ }
+    // Self-manage the live poll: spin it up whenever there's work to watch (a fresh download/merge just
+    // appeared, a source got enabled, etc). The loop tick stops itself once nothing is in flight.
+    ensureQueuePolling()
+  }
+
+  const stopQueuePolling = () => {
+    if (queuePollTimer) {
+      clearInterval(queuePollTimer)
+      queuePollTimer = null
+    }
+  }
+
+  const startQueuePolling = () => {
+    if (queuePollTimer) {
+      return
+    }
+    queuePollTimer = setInterval(async () => {
+      await fetchQueue()
+      if (!queuePollNeeded.value) {
+        stopQueuePolling()
+      }
+    }, 2000)
+  }
+
+  const ensureQueuePolling = () => {
+    if (queuePollNeeded.value) {
+      startQueuePolling()
+    }
   }
 
   // Returns null on success, or an error message (e.g. disk still full on resume).
@@ -322,5 +363,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     fetchMergeProgress,
     startMergePolling,
     stopMergePolling,
+    startQueuePolling,
+    stopQueuePolling,
   }
 })

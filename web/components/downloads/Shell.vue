@@ -106,11 +106,13 @@ const togglePause = async () => {
   pauseBusy.value = false
 }
 
-let poll: ReturnType<typeof setInterval> | null = null
 onMounted(async () => {
-  store.fetchQueue()
   store.checkStatus()
   fetchMonitorCounts()
+  // One-shot queue read: fetchQueue self-starts the live poll only if there's work to watch (in-flight
+  // downloads, or acquisition possible). When idle/paused it stays off until a source is enabled or the
+  // page is reloaded — no endless /queue hammering.
+  store.fetchQueue()
   // One-shot merge-progress read: only start the merge poll loop if a merge is already running
   // server-side (e.g. after a refresh mid-merge). Otherwise nothing polls merge-progress until the
   // user starts a merge.
@@ -118,11 +120,9 @@ onMounted(async () => {
   if (store.mergeActive) {
     store.startMergePolling()
   }
-  // Queue keeps polling for live download/idle state; merge-progress is demand-driven in the store.
-  poll = setInterval(() => store.fetchQueue(), 2000)
 })
 onUnmounted(() => {
-  if (poll) { clearInterval(poll) }
+  store.stopQueuePolling()
   store.stopMergePolling()
 })
 </script>
