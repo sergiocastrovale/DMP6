@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Loader2, Radar, CircleStop, EyeOff, HelpCircle } from 'lucide-vue-next'
+import { Loader2, Radar, CircleStop, EyeOff, HelpCircle, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
+import type { SortDir } from '~/helpers/functions'
 
 interface ArtistRow {
   id: string
@@ -23,7 +24,10 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const busyIds = ref(new Set<string>())
 const showMonitored = ref(true)
-const showComplete = ref(false)
+const showUnmonitored = ref(true)
+
+const sortKey = ref<'name' | 'missingReleases' | 'totalReleases' | 'monitored'>('name')
+const sortDir = ref<SortDir>('asc')
 
 const selected = ref<Set<string>>(new Set())
 const bulkBusy = ref(false)
@@ -65,11 +69,21 @@ const onSearch = (val: string) => {
   }, 300)
 }
 
-watch([showMonitored, showComplete], () => {
+watch([showMonitored, showUnmonitored, sortKey, sortDir], () => {
   page.value = 1
   items.value = []
   fetchItems()
 })
+
+const onSort = (key: string) => {
+  if (sortKey.value === key) {
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  }
+  else {
+    sortKey.value = key as typeof sortKey.value
+    sortDir.value = 'asc'
+  }
+}
 
 const fetchItems = async (append = false) => {
   append ? (loadingMore.value = true) : (loading.value = true)
@@ -79,7 +93,9 @@ const fetchItems = async (append = false) => {
         page: page.value,
         search: search.value || undefined,
         showMonitored: showMonitored.value,
-        showComplete: showComplete.value,
+        showUnmonitored: showUnmonitored.value,
+        sort: sortKey.value,
+        dir: sortDir.value,
       },
     })
     items.value = append ? [...items.value, ...data.items] : data.items
@@ -205,7 +221,7 @@ onMounted(() => fetchItems())
       />
       <div class="flex items-center gap-4">
         <Switch v-model="showMonitored" label="Show monitored" />
-        <Switch v-model="showComplete" label="Show complete" />
+        <Switch v-model="showUnmonitored" label="Show unmonitored" />
         <span class="shrink-0 text-sm text-ink-3">
           {{ monitoredCount.toLocaleString() }} / {{ total.toLocaleString() }} monitored
         </span>
@@ -223,15 +239,27 @@ onMounted(() => fetchItems())
     <div v-else class="overflow-x-auto rounded-lg border border-rule">
       <table class="w-full">
         <thead>
-          <tr class="border-b border-rule bg-bg-1">
+          <tr class="border-b border-rule bg-bg-1 text-xs font-semibold uppercase tracking-wider text-ink-3">
             <th class="w-10 px-4 py-2 text-left">
               <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" />
             </th>
-            <th class="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wider text-ink-3">Artist</th>
-            <th class="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-ink-3">Missing / MB total</th>
-            <th class="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wider text-ink-3">
+            <SortableTh label="Artist" sort-key="name" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+            <SortableTh label="Missing / MB total" sort-key="missingReleases" align="right" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+            <th class="px-4 py-2 text-right font-semibold">
               <div class="flex items-center justify-end gap-1.5">
-                <span>Monitoring</span>
+                <button
+                  type="button"
+                  class="inline-flex flex-row-reverse items-center gap-1 transition-colors hover:text-ink-2"
+                  :class="sortKey === 'monitored' ? 'text-ink-2' : ''"
+                  @click="onSort('monitored')"
+                >
+                  Monitoring
+                  <component
+                    :is="sortKey === 'monitored' ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown"
+                    :size="12"
+                    :class="sortKey === 'monitored' ? 'opacity-100' : 'opacity-40'"
+                  />
+                </button>
                 <Popover trigger="hover">
                   <template #trigger>
                     <HelpCircle :size="13" class="cursor-help text-ink-4" />

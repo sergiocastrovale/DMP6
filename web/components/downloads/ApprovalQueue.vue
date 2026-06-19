@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX, Magnet, Waves } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
-import { formatDate } from '~/helpers/functions'
+import type { SortDir } from '~/helpers/functions'
+import { formatDate, sortItems } from '~/helpers/functions'
 
 // Friendly source label + icon, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
 const sourceMeta = (s: string) =>
@@ -49,6 +50,35 @@ const emit = defineEmits<{
   info: [id: string]
   'update:selected': [Set<string>]
 }>()
+
+// Client-side column sort (the queue is fully loaded in the store, so no server round-trip needed).
+const sortKey = ref<string | null>(null)
+const sortDir = ref<SortDir>('asc')
+
+const sortAccessors: Record<string, (i: DownloadedReleaseItem) => string | number | null | undefined> = {
+  artist: i => i.artist,
+  title: i => i.title,
+  releaseType: i => i.releaseType,
+  source: i => i.source,
+  status: i => i.status,
+  updatedAt: i => i.updatedAt,
+}
+
+const onSort = (key: string) => {
+  if (sortKey.value === key) {
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  }
+  else {
+    sortKey.value = key
+    sortDir.value = 'asc'
+  }
+}
+
+const sortedItems = computed(() =>
+  sortKey.value && sortAccessors[sortKey.value]
+    ? sortItems(props.items, sortAccessors[sortKey.value]!, sortDir.value)
+    : props.items,
+)
 
 const allChecked = computed(() =>
   props.items.length > 0 && props.items.every(i => props.selected.has(i.id)),
@@ -113,18 +143,18 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           <th v-if="selectable" class="w-10 px-4 py-2">
             <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" />
           </th>
-          <th class="px-4 py-2 font-medium">Artist</th>
-          <th class="px-4 py-2 font-medium">Release</th>
-          <th class="px-4 py-2 font-medium">Type</th>
-          <th class="px-4 py-2 font-medium">Source</th>
-          <th class="px-4 py-2 font-medium">Status</th>
-          <th class="px-4 py-2 font-medium">Updated</th>
+          <SortableTh label="Artist" sort-key="artist" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+          <SortableTh label="Release" sort-key="title" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+          <SortableTh label="Type" sort-key="releaseType" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+          <SortableTh label="Source" sort-key="source" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+          <SortableTh label="Status" sort-key="status" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+          <SortableTh label="Updated" sort-key="updatedAt" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
           <th class="px-4 py-2 font-medium text-right">Actions</th>
         </tr>
       </thead>
       <tbody>
         <tr
-          v-for="it in items"
+          v-for="it in sortedItems"
           :key="it.id"
           :ref="el => setRowEl(it.id, el)"
           class="border-b border-rule/50 transition-colors last:border-0"

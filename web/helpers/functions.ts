@@ -12,6 +12,31 @@ export const filterQueue = (items: DownloadedReleaseItem[], query: string): Down
   )
 }
 
+export type SortDir = 'asc' | 'desc'
+
+// Generic client-side sort: nulls always sink to the bottom, numbers compare numerically, everything
+// else by locale string. Returns a new array (never mutates the input).
+export const sortItems = <T>(items: T[], accessor: (item: T) => string | number | null | undefined, dir: SortDir): T[] => {
+  const out = [...items].sort((a, b) => {
+    const av = accessor(a)
+    const bv = accessor(b)
+    if (av == null && bv == null) {
+      return 0
+    }
+    if (av == null) {
+      return 1
+    }
+    if (bv == null) {
+      return -1
+    }
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return av - bv
+    }
+    return String(av).localeCompare(String(bv))
+  })
+  return dir === 'desc' ? out.reverse() : out
+}
+
 // Maps a release's download state to the /downloads subpage that lists it (for "Verify download").
 export const downloadSubpage = (state?: string | null): string => {
   switch (state) {

@@ -10,19 +10,33 @@ export default defineEventHandler(async (event) => {
   const { page, pageSize } = parsePagination(query, { defaultSize: 50, maxSize: 100 })
   const search = (query.search as string)?.trim() || null
   const showMonitored = query.showMonitored !== 'false'
-  const showComplete = query.showComplete === 'true'
+  const showUnmonitored = query.showUnmonitored !== 'false'
 
   const conditions = [Prisma.sql`a."relatedOnly" = false`, Prisma.sql`a."primaryArtistId" IS NULL`]
   if (search) {
     conditions.push(Prisma.sql`a.name ILIKE ${`%${search}%`}`)
   }
-  if (!showMonitored) {
+  // Two independent toggles over the full list: monitored-only, unmonitored-only, both, or neither (empty).
+  if (showMonitored && !showUnmonitored) {
+    conditions.push(Prisma.sql`a.monitored = true`)
+  }
+  else if (!showMonitored && showUnmonitored) {
     conditions.push(Prisma.sql`a.monitored = false`)
   }
-  if (!showComplete) {
-    conditions.push(Prisma.sql`NOT (COALESCE(c.total, 0) > 0 AND COALESCE(c.missing, 0) = 0)`)
+  else if (!showMonitored && !showUnmonitored) {
+    conditions.push(Prisma.sql`false`)
   }
   const whereClause = Prisma.join(conditions, ' AND ')
+
+  const sortColumns: Record<string, Prisma.Sql> = {
+    name: Prisma.sql`a.slug`,
+    missingReleases: Prisma.sql`COALESCE(c.missing, 0)`,
+    totalReleases: Prisma.sql`COALESCE(c.total, 0)`,
+    monitored: Prisma.sql`a.monitored`,
+  }
+  const sortKey = typeof query.sort === 'string' && query.sort in sortColumns ? query.sort : 'name'
+  const orderCol = sortColumns[sortKey]!
+  const orderDir = query.dir === 'desc' ? Prisma.raw('DESC') : Prisma.raw('ASC')
 
   const monitoredCount = await prisma.artist.count({ where: { relatedOnly: false, primaryArtistId: null, monitored: true } })
 
@@ -50,7 +64,7 @@ export default defineEventHandler(async (event) => {
     FROM "Artist" a
     LEFT JOIN counts c ON c."artistId" = a.id
     WHERE ${whereClause}
-    ORDER BY a.slug ASC
+    ORDER BY ${orderCol} ${orderDir}, a.slug ASC
     LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
   `
 
