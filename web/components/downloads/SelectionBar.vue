@@ -43,6 +43,7 @@ const terminal = useTerminalStore()
           :icon="action.icon"
           :variant="action.variant ?? 'primary'"
           :loading="props.loading"
+          :title="action.label"
           @click="emit('action', action.key)"
         >
           {{ action.label }}

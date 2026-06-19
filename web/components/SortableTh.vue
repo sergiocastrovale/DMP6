@@ -24,6 +24,7 @@ const icon = computed(() => (active.value ? (props.dir === 'asc' ? ChevronUp : C
       type="button"
       class="inline-flex items-center gap-1 transition-colors hover:text-ink-2"
       :class="[active ? 'text-ink-2' : '', align === 'right' ? 'flex-row-reverse' : '']"
+      :title="`Sort by ${label}`"
       @click="emit('sort', sortKey)"
     >
       {{ label }}

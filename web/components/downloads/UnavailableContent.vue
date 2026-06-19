@@ -41,7 +41,7 @@ const rejectAll = () => askBulkReject(unavailable.value.map(i => i.id))
 
     <div class="flex items-center justify-between gap-4">
       <SearchInput v-model="search" placeholder="Search unavailable…" />
-      <UiButton v-if="unavailable.length" size="sm" variant="danger" :icon="Trash2" :loading="bulkBusy" @click="rejectAll">
+      <UiButton v-if="unavailable.length" size="sm" variant="danger" :icon="Trash2" :loading="bulkBusy" title="Reject all unavailable downloads" @click="rejectAll">
         Reject all ({{ unavailable.length }})
       </UiButton>
     </div>

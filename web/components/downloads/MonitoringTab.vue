@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Radar, CircleStop, EyeOff, HelpCircle, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle, CircleAlert, RefreshCw } from 'lucide-vue-next'
+import { Loader2, Radar, EyeOff, HelpCircle, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle, CircleAlert, RefreshCw } from 'lucide-vue-next'
 import { timeAgo, type SortDir } from '~/helpers/functions'
 
 interface ArtistRow {
@@ -55,25 +55,6 @@ const selected = ref<Set<string>>(new Set())
 const bulkBusy = ref(false)
 const pendingMonitor = ref<boolean | null>(null)
 const confirmOpen = ref(false)
-
-const monitorAllBusy = ref(false)
-const monitorAll = async (on: boolean) => {
-  monitorAllBusy.value = true
-  try {
-    const r = await store.monitorAll(on)
-    page.value = 1
-    items.value = []
-    selected.value = new Set()
-    await fetchItems()
-    toast.success(`${on ? 'Monitoring' : 'Stopped monitoring'} ${r.count} artist${r.count === 1 ? '' : 's'}`)
-  }
-  catch (e: any) {
-    toast.error(e?.data?.message || e?.message || 'Monitor-all failed')
-  }
-  finally {
-    monitorAllBusy.value = false
-  }
-}
 
 const bulkActions = [
   { key: 'monitor', label: 'Monitor selected', icon: Radar, variant: 'primary' as const },
@@ -156,7 +137,6 @@ const toggleMonitor = async (artist: ArtistRow) => {
   }
 }
 
-const allMonitored = computed(() => total.value > 0 && monitoredCount.value >= total.value)
 const allChecked = computed(() => items.value.length > 0 && items.value.every(a => selected.value.has(a.id)))
 const selectedRows = computed(() => items.value.filter(a => selected.value.has(a.id)))
 
@@ -227,19 +207,11 @@ onMounted(() => {
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center gap-2">
-      <UiButton size="sm" :variant="allMonitored ? 'primary' : 'secondary'" :icon="Radar" :loading="monitorAllBusy" @click="monitorAll(true)">
-        Monitor all
-      </UiButton>
-      <UiButton size="sm" variant="secondary" :icon="CircleStop" :loading="monitorAllBusy" @click="monitorAll(false)">
-        Monitor none
-      </UiButton>
-    </div>
-
     <div v-if="events.length" class="rounded-lg border border-rule">
       <button
         type="button"
         class="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors hover:bg-bg-1"
+        :title="eventsOpen ? 'Collapse recent issues' : 'Expand recent issues'"
         @click="eventsOpen = !eventsOpen"
       >
         <span class="flex items-center gap-2 text-sm font-medium text-ink-2">
@@ -248,7 +220,7 @@ onMounted(() => {
           <span class="rounded-full bg-bg-2 px-2 py-0.5 text-xs tabular-nums text-ink-3">{{ events.length }}</span>
         </span>
         <span class="flex items-center gap-2">
-          <RefreshCw :size="14" :class="['text-ink-4 transition-colors hover:text-ink-2', eventsLoading ? 'animate-spin' : '']" @click.stop="fetchEvents" />
+          <RefreshCw :size="14" title="Refresh issues" :class="['text-ink-4 transition-colors hover:text-ink-2', eventsLoading ? 'animate-spin' : '']" @click.stop="fetchEvents" />
           <component :is="eventsOpen ? ChevronUp : ChevronDown" :size="16" class="text-ink-4" />
         </span>
       </button>
@@ -295,7 +267,7 @@ onMounted(() => {
         <thead>
           <tr class="border-b border-rule bg-bg-1 text-xs font-semibold uppercase tracking-wider text-ink-3">
             <th class="w-10 px-4 py-2 text-left">
-              <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" />
+              <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" title="Select all rows" @change="toggleAll" />
             </th>
             <SortableTh label="Artist" sort-key="name" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
             <SortableTh label="Missing / MB total" sort-key="missingReleases" align="right" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
@@ -305,6 +277,7 @@ onMounted(() => {
                   type="button"
                   class="inline-flex flex-row-reverse items-center gap-1 transition-colors hover:text-ink-2"
                   :class="sortKey === 'monitored' ? 'text-ink-2' : ''"
+                  title="Sort by monitoring"
                   @click="onSort('monitored')"
                 >
                   Monitoring
@@ -344,6 +317,7 @@ onMounted(() => {
                 type="checkbox"
                 :checked="selected.has(artist.id)"
                 class="rounded border-rule bg-bg-2"
+                :title="`Select ${artist.name}`"
                 @change="toggleRow(artist.id)"
               />
             </td>
@@ -367,6 +341,7 @@ onMounted(() => {
                   ? 'border-amber-500/40 bg-amber-500/15 text-amber-400 hover:bg-amber-500/25'
                   : 'border-rule bg-bg-1 text-ink-2 hover:border-ink-4 hover:bg-bg-2 hover:text-ink'"
                 :disabled="busyIds.has(artist.id)"
+                :title="artist.monitored ? `Stop monitoring ${artist.name}` : `Monitor ${artist.name}`"
                 @click="toggleMonitor(artist)"
               >
                 <Loader2 v-if="busyIds.has(artist.id)" :size="13" class="animate-spin" />

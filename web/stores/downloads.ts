@@ -310,9 +310,6 @@ export const useDownloadsStore = defineStore('downloads', () => {
     }
   }
 
-  const monitorAll = async (monitored: boolean) =>
-    $fetch<{ monitored: boolean; count: number }>('/api/artists/monitor-all', { method: 'POST', body: { monitored } })
-
   // Sweep ready-to-merge orphans (staged files gone) — deletes those rows server-side.
   const cleanupReady = async () => {
     const r = await $fetch<{ removed: number; checked: number }>('/api/downloads/cleanup', { method: 'POST' })
@@ -352,7 +349,6 @@ export const useDownloadsStore = defineStore('downloads', () => {
     merge,
     rejectAll,
     mergeAll,
-    monitorAll,
     cleanupReady,
     mergeProgress,
     mergingIds,

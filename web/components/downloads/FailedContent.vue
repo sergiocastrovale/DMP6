@@ -36,7 +36,7 @@ const rejectAll = () => askBulkReject(failed.value.map(i => i.id))
   <div class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-4">
       <SearchInput v-model="search" placeholder="Search failed…" />
-      <UiButton v-if="failed.length" size="sm" variant="danger" :icon="Trash2" :loading="bulkBusy" @click="rejectAll">
+      <UiButton v-if="failed.length" size="sm" variant="danger" :icon="Trash2" :loading="bulkBusy" title="Reject all failed downloads" @click="rejectAll">
         Reject all ({{ failed.length }})
       </UiButton>
     </div>

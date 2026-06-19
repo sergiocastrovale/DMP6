@@ -60,7 +60,7 @@ const onBulkAction = (key: string) => {
         <SearchInput v-model="search" placeholder="Search ready to merge…" />
         <Dropdown :options="artistOptions" v-model="selectedArtist" placeholder="All artists" />
       </div>
-      <UiButton v-if="queueReady.length" size="sm" variant="primary" :icon="FolderInput" :loading="mergeActive" @click="mergeAll">
+      <UiButton v-if="queueReady.length" size="sm" variant="primary" :icon="FolderInput" :loading="mergeActive" title="Merge all ready releases into the library" @click="mergeAll">
         Merge all ({{ queueReady.length }})
       </UiButton>
     </div>

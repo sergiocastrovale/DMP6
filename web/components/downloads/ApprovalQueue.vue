@@ -1,14 +1,11 @@
 <script setup lang="ts">
-import { X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX, Magnet, Waves } from 'lucide-vue-next'
+import { X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { SortDir } from '~/helpers/functions'
 import { formatDate, sortItems } from '~/helpers/functions'
 
-// Friendly source label + icon, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
-const sourceMeta = (s: string) =>
-  s === 'RUTRACKER'
-    ? { label: 'RuTracker', icon: Magnet }
-    : { label: 'Soulseek', icon: Waves }
+// Friendly source label, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
+const sourceLabel = (s: string) => s === 'RUTRACKER' ? 'RuTracker' : 'Soulseek'
 
 const props = withDefaults(defineProps<{
   items: DownloadedReleaseItem[]
@@ -182,8 +179,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           </td>
           <td class="px-4 py-2.5 text-ink-3">
             <span class="inline-flex items-center gap-1.5">
-              <component :is="sourceMeta(it.source).icon" :size="13" />
-              {{ sourceMeta(it.source).label }}
+              {{ sourceLabel(it.source) }}
             </span>
             <template v-if="it.quality"> · {{ it.quality }}</template>
             <template v-if="it.slskUsername"> · {{ it.slskUsername }}</template>
