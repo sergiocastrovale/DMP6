@@ -28,6 +28,8 @@ const onBulkAction = () => {
   selected.value = new Set()
   askBulkReject(ids)
 }
+
+const rejectAll = () => askBulkReject(unavailable.value.map(i => i.id))
 </script>
 
 <template>
@@ -37,8 +39,11 @@ const onBulkAction = () => {
       automatically when slots free up. Force a retry to push one back to the front of the queue.
     </p>
 
-    <div class="flex items-center justify-end">
+    <div class="flex items-center justify-between gap-4">
       <SearchInput v-model="search" placeholder="Search unavailable…" />
+      <UiButton v-if="unavailable.length" size="sm" variant="danger" :icon="Trash2" :loading="bulkBusy" @click="rejectAll">
+        Reject all ({{ unavailable.length }})
+      </UiButton>
     </div>
 
     <DownloadsApprovalQueue

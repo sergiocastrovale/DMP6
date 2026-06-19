@@ -15,6 +15,16 @@ import { monitorLog } from '~/server/utils/monitorLog'
 // Each worker has its own running-guard + interval gate, so they self-pace; only the base tick
 // (RECONCILE_SEC) is fixed at boot. No web UI needed — runs as long as the container is up.
 export default defineNitroPlugin(() => {
+  // Per-instance, env-ONLY gate (the DB `monitorEnabled` is shared across instances, so it can't pick
+  // a primary). Only the instance with MONITOR_PRIMARY=true runs background acquisition; every other
+  // instance (e.g. a dev server pointed at the same DB) is UI-only. Without this, two instances both
+  // spawn index/sync and collide on the Rust binaries' exclusive DB lock — runExclusive only serializes
+  // within one process.
+  if (process.env.MONITOR_PRIMARY !== 'true') {
+    monitorLog('notice', 'monitor loop disabled (MONITOR_PRIMARY not set) — UI-only instance')
+    return
+  }
+
   const tickSec = Math.max(2, Number(process.env.RECONCILE_SEC) || 5)
   monitorLog('notice', `enabled: base tick ${tickSec}s; cadences/caps from Settings (DB overrides env)`)
 
