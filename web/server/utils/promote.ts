@@ -135,17 +135,24 @@ async function moveIntoLibrary(row: MergeRow, music: string, readyPath: string):
       message: `staged path "${row.stagingPath}" is not under the ready folder "${readyPath}" — run merge where the files live (the NAS), not a dev instance`,
     })
   }
-  // The staged folder must physically exist here. Two ways it can be absent: the files were already
-  // moved/cleaned up out of _ready (orphaned READY row — merge can never succeed, reject it), or this is
-  // a dev instance without the NAS downloads volume mounted. We can't tell them apart from access() alone,
-  // so surface both and point at the fix instead of a raw ENOENT 500.
-  await access(row.stagingPath!).catch(() => {
+  const rel = relative(readyPath, row.stagingPath!)
+  // The staged folder must physically exist here. If it's gone there are three possibilities:
+  //   1. Interrupted merge — the files were already moved into the library (e.g. the container was
+  //      recreated mid-merge by ./deploy, after moveDir but before the row was stamped). The library
+  //      copy is present, so recover by finishing the merge against it (re-index + re-stamp).
+  //   2. Truly gone (cleaned up / never landed) — nothing to merge, surface 409 so it can be rejected.
+  //   3. Dev instance without the NAS downloads volume mounted — same 409, points at the real fix.
+  const stagedExists = await access(row.stagingPath!).then(() => true).catch(() => false)
+  if (!stagedExists) {
+    const libExists = await access(join(music, rel)).then(() => true).catch(() => false)
+    if (libExists) {
+      return rel // already moved by an interrupted merge — re-index/re-stamp in place
+    }
     throw createError({
       statusCode: 409,
       message: `Staged files not found at "${row.stagingPath}". They were already moved/cleaned up, or the downloads volume isn't mounted here (dev instance). If the files are gone, reject this download.`,
     })
-  })
-  const rel = relative(readyPath, row.stagingPath!)
+  }
   await moveDir(row.stagingPath!, join(music, rel))
   return rel
 }
