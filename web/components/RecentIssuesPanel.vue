@@ -22,9 +22,11 @@ const props = withDefaults(defineProps<{
 const events = ref<IssueEvent[]>([])
 const open = ref(false)
 const loading = ref(false)
+const spinning = ref(false)
 
 const fetchEvents = async () => {
   loading.value = true
+  spinning.value = true
   try {
     const data = await $fetch<{ items: IssueEvent[] }>(props.endpoint, { query: { limit: props.limit } })
     events.value = data.items
@@ -32,6 +34,8 @@ const fetchEvents = async () => {
   catch { /* ignore */ }
   finally {
     loading.value = false
+    // Keep the spin visible for at least 600ms so fast responses still feel responsive.
+    setTimeout(() => { spinning.value = false }, 600)
   }
 }
 
@@ -53,7 +57,9 @@ defineExpose({ fetchEvents })
         <span class="rounded-full bg-bg-2 px-2 py-0.5 text-xs tabular-nums text-ink-3">{{ events.length }}</span>
       </span>
       <span class="flex items-center gap-2">
-        <RefreshCw :size="14" title="Refresh issues" :class="['text-ink-4 transition-colors hover:text-ink-2', loading ? 'animate-spin' : '']" @click.stop="fetchEvents" />
+        <button type="button" title="Refresh issues" class="rounded p-0.5 text-ink-4 transition-colors hover:text-ink-2 cursor-pointer" @click.stop="fetchEvents">
+          <RefreshCw :size="14" :class="spinning ? 'animate-spin' : ''" />
+        </button>
         <component :is="open ? ChevronUp : ChevronDown" :size="16" class="text-ink-4" />
       </span>
     </button>

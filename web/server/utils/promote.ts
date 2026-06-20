@@ -192,18 +192,35 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
   const complete = matched && (reloaded!.forcedComplete || reloaded!.matchStatus === 'COMPLETE')
 
   if (complete) {
-    await prisma.$transaction([
-      prisma.localRelease.update({ where: { id: reloaded!.id }, data: { downloadedFrom: 'slskd' } }),
-      prisma.downloadedRelease.update({
-        where: { id: row.id },
-        data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: reloaded!.id },
-      }),
-      // Retire the group placeholder we downloaded against — it's now owned on disk, so it must stop
-      // being a pickable MISSING row (otherwise the re-download loop comes straight back).
-      ...(row.mbReleaseId
-        ? [prisma.musicBrainzRelease.deleteMany({ where: { id: row.mbReleaseId, status: 'MISSING' } })]
-        : []),
-    ])
+    try {
+      await prisma.$transaction([
+        prisma.localRelease.update({ where: { id: reloaded!.id }, data: { downloadedFrom: 'slskd' } }),
+        prisma.downloadedRelease.update({
+          where: { id: row.id },
+          data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: reloaded!.id },
+        }),
+        // Retire the group placeholder we downloaded against — it's now owned on disk, so it must stop
+        // being a pickable MISSING row (otherwise the re-download loop comes straight back).
+        ...(row.mbReleaseId
+          ? [prisma.musicBrainzRelease.deleteMany({ where: { id: row.mbReleaseId, status: 'MISSING' } })]
+          : []),
+      ])
+    }
+    catch (e: any) {
+      // P2002: another DownloadedRelease already owns this LocalRelease (duplicate download of the
+      // same release, or a re-merge of a previously-promoted row). The library copy is fine — just
+      // mark this row PROMOTED without the localReleaseId link so it leaves the ready queue.
+      if (e?.code === 'P2002' && e?.meta?.target?.includes?.('localReleaseId')) {
+        await prisma.downloadedRelease.update({
+          where: { id: row.id },
+          data: { status: 'PROMOTED', stagingPath: join(music, rel) },
+        })
+        monitorLog('notice', `merge: "${row.artist?.name ?? '?'} - ${row.title}" already owned by another download row — promoted without link`)
+      }
+      else {
+        throw e
+      }
+    }
     return { id: reloaded!.id, error: null }
   }
 
