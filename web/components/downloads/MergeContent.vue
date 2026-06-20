@@ -31,7 +31,13 @@ watch(selectedArtist, (artist) => {
 })
 
 const mergeAll = async () => {
-  try { await store.mergeAll(queueReady.value.map(i => i.id)) }
+  try {
+    const result = await store.mergeAll(queueReady.value.map(i => i.id))
+    if (result?.errors?.length) {
+      const n = result.errors.length
+      toast.error(`${n} release${n === 1 ? '' : 's'} failed to merge`)
+    }
+  }
   catch (e: any) {
     actionMsg.value = e?.data?.message || e?.message || 'Merge all failed'
     toast.error(actionMsg.value!)

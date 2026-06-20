@@ -326,15 +326,16 @@ export const useDownloadsStore = defineStore('downloads', () => {
     }
     await fetchQueue()
   }
-  const mergeAll = async (ids: string[]) => {
+  const mergeAll = async (ids: string[]): Promise<{ merged: number; errors: string[] }> => {
     if (useSettingsStore().showTerminal) {
-      return mergeViaTerminal(ids)
+      await mergeViaTerminal(ids)
+      return { merged: 0, errors: [] }
     }
     mergeTotal.value = ids.length
     mergeBatchRunning.value = true // keep panel visible through the poll-lag windows
     startMergePolling()
     try {
-      await $fetch('/api/downloads/merge-all', { method: 'POST', body: { ids } })
+      return await $fetch<{ merged: number; errors: string[] }>('/api/downloads/merge-all', { method: 'POST', body: { ids } })
     }
     finally {
       mergeBatchRunning.value = false

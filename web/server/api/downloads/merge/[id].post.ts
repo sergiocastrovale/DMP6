@@ -7,6 +7,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, message: 'id required' })
 
-  const { localReleaseId } = await mergeDownloadedRelease(id)
+  const { localReleaseId, error } = await mergeDownloadedRelease(id)
+  if (!localReleaseId && error) throw createError({ statusCode: 422, message: error })
   return { success: true, localReleaseId }
 })

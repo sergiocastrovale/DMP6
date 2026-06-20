@@ -31,6 +31,7 @@ export default defineEventHandler(async (event) => {
     if (!merged) {
       send('No releases merged.')
     }
+    // errors are already emitted line-by-line via send() during the run
     res.write(`event: done\ndata: 0\n\n`)
   }
   catch (e: any) {

@@ -161,9 +161,9 @@ async function moveIntoLibrary(row: MergeRow, music: string, readyPath: string):
  *   - unmatched (releaseId NULL) -> files have no MB identity -> delete folder + LocalRelease (cascade),
  *     mark the download INVALID (retryable until the attempts cap, then ABANDONED) so the trickle
  *     worker can hope a properly-tagged copy surfaces.
- * Returns the kept LocalRelease id, or null when invalidated.
+ * Returns { id: localReleaseId, error: null } on success, { id: null, error: reason } when invalidated.
  */
-async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloadAttempts: number): Promise<string | null> {
+async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloadAttempts: number): Promise<{ id: string | null; error: string | null }> {
   const stripped = stripDiscSegment(rel)
   const lr = await prisma.localRelease.findFirst({
     where: { OR: [{ folderPath: rel }, { folderPath: stripped }, { folderPath: { startsWith: stripped } }] },
@@ -197,7 +197,7 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
         ? [prisma.musicBrainzRelease.deleteMany({ where: { id: row.mbReleaseId, status: 'MISSING' } })]
         : []),
     ])
-    return reloaded!.id
+    return { id: reloaded!.id, error: null }
   }
 
   // Discard: either no MusicBrainz identity, or matched but not an exact track-count match. Either way the
@@ -228,14 +228,14 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
     },
   })
   monitorLog('warn', `merge: "${row.artist?.name ?? '?'} - ${row.title}" ${reason} -> ${abandoned ? 'ABANDONED' : 'INVALID'}`)
-  return null
+  return { id: null, error: reason }
 }
 
 /**
  * Merge one READY download into the library: move READY → MUSIC_DIR (idempotent), reconcile
  * (index + sync, serialized), stamp provenance, mark PROMOTED.
  */
-export async function mergeDownloadedRelease(id: string, emit?: (line: string) => void): Promise<{ localReleaseId: string | null }> {
+export async function mergeDownloadedRelease(id: string, emit?: (line: string) => void): Promise<{ localReleaseId: string | null; error: string | null }> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: { select: { name: true } } } })
   if (!row) throw createError({ statusCode: 404, message: 'download not found' })
   if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing to merge' })
@@ -255,9 +255,14 @@ export async function mergeDownloadedRelease(id: string, emit?: (line: string) =
     await runReconciler('index', ['--folders', rel])
     setMergeProgress(id, { step: 'syncing', title })
     emit?.(`Syncing "${title}"…`)
-    const localReleaseId = await stampMerged(row, music, rel, maxDownloadAttempts)
-    emit?.(`✓ Merged "${title}"`)
-    return { localReleaseId }
+    const { id: localReleaseId, error } = await stampMerged(row, music, rel, maxDownloadAttempts)
+    if (localReleaseId) {
+      emit?.(`✓ Merged "${title}"`)
+    }
+    else {
+      emit?.(`✗ "${title}" invalidated: ${error}`)
+    }
+    return { localReleaseId, error }
   }
   finally {
     clearMergeProgress(id)
@@ -269,7 +274,7 @@ export async function mergeDownloadedRelease(id: string, emit?: (line: string) =
  * ONE sync per distinct artist (deduped) — far cheaper than per-release index+full-artist-sync, and
  * the whole thing runs serialized so it can't collide with the gaps worker on the Rust lock.
  */
-export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: string) => void): Promise<{ merged: number }> {
+export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: string) => void): Promise<{ merged: number; errors: string[] }> {
   const music = musicDir()
   if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
   const { downloadsReadyPath } = await resolveDownloadSettings()
@@ -279,16 +284,33 @@ export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: s
     include: { artist: { select: { name: true } } },
   })
 
+  const errors: string[] = []
   const moved: { row: MergeRow; rel: string }[] = []
   try {
     for (const row of rows) {
-      if (!row.stagingPath) continue
+      if (!row.stagingPath) {
+        const msg = `"${row.title}" has no staging path — skipped`
+        errors.push(msg)
+        emit?.(`✗ ${msg}`)
+        clearMergeProgress(row.id)
+        continue
+      }
       setMergeProgress(row.id, { step: 'moving', title: row.title })
       emit?.(`Moving "${row.title}" to library…`)
-      try { moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsReadyPath) }) }
-      catch (e: any) { monitorLog('error', `merge: move failed ${row.title}: ${e?.message || e}`); clearMergeProgress(row.id); emit?.(`✗ Move failed "${row.title}": ${e?.message || e}`) }
+      try {
+        moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsReadyPath) })
+      }
+      catch (e: any) {
+        const msg = `Move failed "${row.title}": ${e?.message || e}`
+        monitorLog('error', `merge: ${msg}`)
+        clearMergeProgress(row.id)
+        errors.push(msg)
+        emit?.(`✗ ${msg}`)
+      }
     }
-    if (moved.length === 0) return { merged: 0 }
+    if (moved.length === 0) {
+      return { merged: 0, errors }
+    }
 
     // One index over all folders (--folders is ';'-separated); skip paths containing ';'.
     for (const m of moved) setMergeProgress(m.row.id, { step: 'indexing', title: m.row.title })
@@ -300,13 +322,23 @@ export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: s
     // Per-release targeted validate-or-invalidate (each runs its own `sync --release`, never a
     // destructive per-artist sync). Matched releases are kept + PROMOTED; unmatched go INVALID.
     const { maxDownloadAttempts } = await resolveMonitorSettings()
+    let promoted = 0
     for (const m of moved) {
       setMergeProgress(m.row.id, { step: 'syncing', title: m.row.title })
       emit?.(`Syncing "${m.row.title}"…`)
-      await stampMerged(m.row, music, m.rel, maxDownloadAttempts)
+      const { id: localReleaseId, error } = await stampMerged(m.row, music, m.rel, maxDownloadAttempts)
+      if (localReleaseId) {
+        promoted++
+        emit?.(`✓ "${m.row.title}"`)
+      }
+      else {
+        const msg = `"${m.row.title}" invalidated: ${error}`
+        errors.push(msg)
+        emit?.(`✗ ${msg}`)
+      }
     }
-    emit?.(`✓ Merged ${moved.length} release${moved.length === 1 ? '' : 's'}`)
-    return { merged: moved.length }
+    if (promoted > 0) emit?.(`✓ Merged ${promoted} release${promoted === 1 ? '' : 's'}`)
+    return { merged: promoted, errors }
   }
   finally {
     for (const m of moved) clearMergeProgress(m.row.id)
