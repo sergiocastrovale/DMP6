@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Loader2, Radar, EyeOff, HelpCircle, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle, CircleAlert, RefreshCw } from 'lucide-vue-next'
-import { timeAgo, type SortDir } from '~/helpers/functions'
+import { Loader2, Radar, EyeOff, HelpCircle, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
+import { type SortDir } from '~/helpers/functions'
 
 interface ArtistRow {
   id: string
@@ -9,13 +9,6 @@ interface ArtistRow {
   monitored: boolean
   missingReleases: number
   totalReleases: number
-}
-
-interface MonitorEvent {
-  id: string
-  level: 'warn' | 'error'
-  message: string
-  createdAt: string
 }
 
 const store = useDownloadsStore()
@@ -32,21 +25,6 @@ const loadingMore = ref(false)
 const busyIds = ref(new Set<string>())
 const showMonitored = ref(true)
 const showUnmonitored = ref(true)
-
-const events = ref<MonitorEvent[]>([])
-const eventsOpen = ref(false)
-const eventsLoading = ref(false)
-const fetchEvents = async () => {
-  eventsLoading.value = true
-  try {
-    const data = await $fetch<{ items: MonitorEvent[] }>('/api/downloads/monitor-events')
-    events.value = data.items
-  }
-  catch { /* ignore */ }
-  finally {
-    eventsLoading.value = false
-  }
-}
 
 const sortKey = ref<'name' | 'missingReleases' | 'totalReleases' | 'monitored'>('name')
 const sortDir = ref<SortDir>('asc')
@@ -201,42 +179,11 @@ const confirmBulk = async () => {
 
 onMounted(() => {
   fetchItems()
-  fetchEvents()
 })
 </script>
 
 <template>
   <div class="space-y-4">
-    <div v-if="events.length" class="rounded-lg border border-rule">
-      <button
-        type="button"
-        class="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors hover:bg-bg-1"
-        :title="eventsOpen ? 'Collapse recent issues' : 'Expand recent issues'"
-        @click="eventsOpen = !eventsOpen"
-      >
-        <span class="flex items-center gap-2 text-sm font-medium text-ink-2">
-          <AlertTriangle :size="15" class="text-amber-400" />
-          Recent issues
-          <span class="rounded-full bg-bg-2 px-2 py-0.5 text-xs tabular-nums text-ink-3">{{ events.length }}</span>
-        </span>
-        <span class="flex items-center gap-2">
-          <RefreshCw :size="14" title="Refresh issues" :class="['text-ink-4 transition-colors hover:text-ink-2', eventsLoading ? 'animate-spin' : '']" @click.stop="fetchEvents" />
-          <component :is="eventsOpen ? ChevronUp : ChevronDown" :size="16" class="text-ink-4" />
-        </span>
-      </button>
-      <ul v-if="eventsOpen" class="divide-y divide-rule/50 border-t border-rule">
-        <li v-for="ev in events" :key="ev.id" class="flex items-start gap-2.5 px-4 py-2 text-sm">
-          <component
-            :is="ev.level === 'error' ? CircleAlert : AlertTriangle"
-            :size="15"
-            :class="['mt-0.5 shrink-0', ev.level === 'error' ? 'text-red-400' : 'text-amber-400']"
-          />
-          <span class="min-w-0 flex-1 break-words text-ink-2">{{ ev.message }}</span>
-          <span class="shrink-0 whitespace-nowrap text-xs text-ink-4">{{ timeAgo(ev.createdAt) }}</span>
-        </li>
-      </ul>
-    </div>
-
     <div class="flex items-center justify-between gap-3">
       <SearchInput
         model-value=""

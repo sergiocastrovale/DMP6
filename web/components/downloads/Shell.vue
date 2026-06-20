@@ -9,6 +9,13 @@ const toast = useToastStore()
 const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds, acquisition } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
+const issuesPanel = ref<{ fetchEvents: () => Promise<void> } | null>(null)
+
+watch(mergeActive, (active, was) => {
+  if (was && !active) {
+    issuesPanel.value?.fetchEvents()
+  }
+})
 
 const rtBudgetLabel = computed(() => {
   const a = acquisition.value
@@ -140,6 +147,8 @@ onUnmounted(() => {
         </div>
 
         <DownloadsAcquisitionIdleBanner />
+
+        <RecentIssuesPanel ref="issuesPanel" />
 
         <p v-if="actionMsg" class="rounded-lg border border-rule bg-bg-1 px-4 py-2 text-sm text-ink-2">
           {{ actionMsg }}
