@@ -303,20 +303,14 @@ export const useDownloadsStore = defineStore('downloads', () => {
     }
   }
 
+  // Multi-select merge: route through the batched merge-all endpoint (one index pass + one sync per
+  // distinct artist) instead of fanning out N individual merge/[id] calls (N index+sync spawns,
+  // serialized on the same Rust DB lock — far slower for no benefit).
   const mergeSelected = async (ids: string[]) => {
     if (!ids.length) {
       return
     }
-    if (useSettingsStore().showTerminal) {
-      return mergeViaTerminal(ids)
-    }
-    mergeTotal.value = ids.length
-    try {
-      await Promise.all(ids.map(id => merge(id)))
-    }
-    finally {
-      mergeTotal.value = 0
-    }
+    await mergeAll(ids)
   }
 
   // Bulk: sequential (merge/reject are heavy); one failure doesn't abort the rest.

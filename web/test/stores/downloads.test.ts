@@ -162,6 +162,24 @@ describe('useDownloadsStore - actions', () => {
     expect(result).toEqual({ merged: 1, errors: ['release X: no MB match'] })
   })
 
+  it('mergeSelected batches through merge-all instead of one merge/:id call per release', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/downloads/merge-all') return Promise.resolve({ merged: 2, errors: [] })
+      return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
+    })
+    const store = useDownloadsStore()
+    await store.mergeSelected(['a', 'b', 'c'])
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/merge-all', expect.objectContaining({ method: 'POST', body: { ids: ['a', 'b', 'c'] } }))
+    const individualMergeCalls = fetchMock.mock.calls.filter(c => /^\/api\/downloads\/merge\//.test(String(c[0])))
+    expect(individualMergeCalls).toHaveLength(0)
+  })
+
+  it('mergeSelected is a no-op for an empty selection', async () => {
+    const store = useDownloadsStore()
+    await store.mergeSelected([])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('rejectAll continues past a single failure and still refreshes the queue once', async () => {
     let calls = 0
     fetchMock.mockImplementation((url: string) => {
