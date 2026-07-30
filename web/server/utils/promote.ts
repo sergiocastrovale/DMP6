@@ -417,6 +417,32 @@ export async function rejectDownloadedRelease(id: string): Promise<void> {
 }
 
 /**
+ * GC terminal `DownloadedRelease` rows (UNAVAILABLE/FAILED/INVALID/ABANDONED/REJECTED) that no longer
+ * serve any purpose: their release (matched by the stable releaseGroupId, falling back to the volatile
+ * mbReleaseId only for legacy rows predating that column) is no longer MISSING — either it was
+ * fulfilled by another download, or the MusicBrainzRelease/group is gone entirely. Both pickFresh and
+ * pickRetry only ever consider MISSING releases, so such a row can no longer influence acquisition
+ * either way; keeping it around only bloats the table and every /downloads queue poll (see
+ * docs/downloader_issues.md #3, #8). Pure DB operation — no filesystem dependency, safe on any instance.
+ */
+export async function sweepDanglingDownloads(): Promise<{ removed: number }> {
+  const removed = await prisma.$executeRaw`
+    DELETE FROM "DownloadedRelease" dr
+    WHERE dr.status IN ('UNAVAILABLE', 'FAILED', 'INVALID', 'ABANDONED', 'REJECTED')
+      AND NOT EXISTS (
+        SELECT 1 FROM "MusicBrainzRelease" mr
+        WHERE mr.status = 'MISSING'
+          AND (
+            (dr."releaseGroupId" IS NOT NULL AND mr."releaseGroupId" = dr."releaseGroupId")
+            OR (dr."releaseGroupId" IS NULL AND mr.id = dr."mbReleaseId")
+          )
+      )
+  `
+  if (removed > 0) monitorLog('notice', `cleanup: swept ${removed} dangling/terminal download row(s) (release no longer MISSING)`)
+  return { removed: Number(removed) }
+}
+
+/**
  * Sweep the ready-to-merge queue for orphans: rows whose staged files no longer exist on disk (moved,
  * cleaned up, or never landed). Such rows can never be merged — delete them outright.
  *

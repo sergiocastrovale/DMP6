@@ -64,9 +64,10 @@ const cleanup = async () => {
   cleanupBusy.value = true
   try {
     const r = await store.cleanupReady()
-    toast.success(r.removed
-      ? `Removed ${r.removed} orphaned release${r.removed === 1 ? '' : 's'} (checked ${r.checked})`
-      : `No orphans — all ${r.checked} ready release${r.checked === 1 ? '' : 's'} have their files`)
+    const parts = []
+    if (r.removed) parts.push(`${r.removed} orphaned ready release${r.removed === 1 ? '' : 's'}`)
+    if (r.danglingRemoved) parts.push(`${r.danglingRemoved} stale download row${r.danglingRemoved === 1 ? '' : 's'}`)
+    toast.success(parts.length ? `Removed ${parts.join(' + ')}` : `No orphans — all ${r.checked} ready release${r.checked === 1 ? '' : 's'} have their files`)
   }
   catch (e: any) { toast.error(e?.data?.message || e?.message || 'Cleanup failed') }
   finally { cleanupBusy.value = false }

@@ -344,9 +344,10 @@ export const useDownloadsStore = defineStore('downloads', () => {
     }
   }
 
-  // Sweep ready-to-merge orphans (staged files gone) — deletes those rows server-side.
+  // Sweep ready-to-merge orphans (staged files gone) + dangling/terminal rows whose release is no
+  // longer MISSING — deletes those rows server-side.
   const cleanupReady = async () => {
-    const r = await $fetch<{ removed: number; checked: number }>('/api/downloads/cleanup', { method: 'POST' })
+    const r = await $fetch<{ removed: number; checked: number; danglingRemoved: number }>('/api/downloads/cleanup', { method: 'POST' })
     await fetchQueue()
     return r
   }

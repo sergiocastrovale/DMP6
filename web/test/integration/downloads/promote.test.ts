@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
-import { makeDownloadedRelease } from '../../../test/factories'
+import { makeDownloadedRelease, makeMbRelease } from '../../../test/factories'
 
 const deleteTorrentMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('~/server/utils/qbittorrent', () => ({
@@ -103,5 +103,63 @@ describe('promote.ts (real Postgres)', () => {
     const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
     expect(after.status).toBe('FAILED')
     expect(after.attempts).toBe(1)
+  })
+
+  describe('sweepDanglingDownloads', () => {
+    it('deletes a terminal row once its release group is no longer MISSING (fulfilled or gone)', async () => {
+      const { sweepDanglingDownloads } = await import('../../../server/utils/promote')
+      const complete = await makeMbRelease(prisma, { releaseGroupId: 'rg-fulfilled', status: 'COMPLETE' })
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'UNAVAILABLE', mbReleaseId: 'dead-cuid', releaseGroupId: complete.releaseGroupId,
+      })
+
+      const { removed } = await sweepDanglingDownloads()
+
+      expect(removed).toBe(1)
+      expect(await prisma.downloadedRelease.findUnique({ where: { id: dl.id } })).toBeNull()
+    })
+
+    it('keeps a terminal row whose release group is still MISSING (still the dedup guard)', async () => {
+      const { sweepDanglingDownloads } = await import('../../../server/utils/promote')
+      const missing = await makeMbRelease(prisma, { releaseGroupId: 'rg-still-missing', status: 'MISSING' })
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'REJECTED', mbReleaseId: 'dead-cuid', releaseGroupId: missing.releaseGroupId,
+      })
+
+      const { removed } = await sweepDanglingDownloads()
+
+      expect(removed).toBe(0)
+      expect(await prisma.downloadedRelease.findUnique({ where: { id: dl.id } })).not.toBeNull()
+    })
+
+    it('never touches non-terminal rows (DOWNLOADING/ENRICHING/READY/PROMOTED)', async () => {
+      const { sweepDanglingDownloads } = await import('../../../server/utils/promote')
+      const complete = await makeMbRelease(prisma, { releaseGroupId: 'rg-inflight', status: 'COMPLETE' })
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'DOWNLOADING', mbReleaseId: 'some-id', releaseGroupId: complete.releaseGroupId,
+      })
+
+      const { removed } = await sweepDanglingDownloads()
+
+      expect(removed).toBe(0)
+      expect(await prisma.downloadedRelease.findUnique({ where: { id: dl.id } })).not.toBeNull()
+    })
+
+    it('legacy rows with no releaseGroupId fall back to matching by the (possibly dead) mbReleaseId', async () => {
+      const { sweepDanglingDownloads } = await import('../../../server/utils/promote')
+      const missing = await makeMbRelease(prisma, { releaseGroupId: null, status: 'MISSING' })
+      const stillNeeded = await makeDownloadedRelease(prisma, {
+        status: 'FAILED', mbReleaseId: missing.id, releaseGroupId: null,
+      })
+      const trulyDangling = await makeDownloadedRelease(prisma, {
+        status: 'FAILED', mbReleaseId: 'no-such-release-anymore', releaseGroupId: null,
+      })
+
+      const { removed } = await sweepDanglingDownloads()
+
+      expect(removed).toBe(1)
+      expect(await prisma.downloadedRelease.findUnique({ where: { id: stillNeeded.id } })).not.toBeNull()
+      expect(await prisma.downloadedRelease.findUnique({ where: { id: trulyDangling.id } })).toBeNull()
+    })
   })
 })
