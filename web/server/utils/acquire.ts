@@ -5,27 +5,47 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { slskdSearch, deleteSlskdSearch, startSlskdDownload } from '~/server/utils/slskd'
 import { getSlskdResults } from '~/server/utils/downloads'
 import { sanitize } from '~/server/utils/transcode'
+import { normalizeTitle } from '~/server/utils/torrentMatch'
 import type { DownloadSearchResult } from '~/types/download'
 
 function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms))
 }
 
+// A free-text "artist album" search returns whatever a peer happens to have shared under that query —
+// including completely unrelated folders (score is format/bitrate/speed only, never a title check). Reject
+// candidates whose folder name has no meaningful overlap with the requested album title before scoring,
+// so a high-bitrate wrong-album result can't outscore/replace a real (or simply absent) match.
+export function albumFolderMatches(folderPath: string, albumTitle: string): boolean {
+  const folder = normalizeTitle(folderPath.replace(/\\/g, '/').split('/').pop() || folderPath)
+  const wanted = normalizeTitle(albumTitle)
+  if (!wanted) return true // nothing to compare against — don't block on an empty title
+  if (folder.includes(wanted) || wanted.includes(folder)) return true
+  // Fall back to majority word overlap for near-matches (edition/remaster suffixes, minor reordering).
+  const words = wanted.split(' ').filter(w => w.length >= 4)
+  if (words.length === 0) return folder.includes(wanted)
+  const hits = words.filter(w => folder.includes(w)).length
+  return hits / words.length >= 0.6
+}
+
 /**
- * Run a Soulseek search and return the highest-scoring result (or null), polling with
- * an early exit once a strong (FLAC/high-score) or sufficient set of results arrives.
+ * Run a Soulseek search and return the highest-scoring result whose folder plausibly matches the
+ * requested album (or null), polling with an early exit once a strong (FLAC/high-score) or sufficient
+ * set of results arrives.
  */
 export async function findBestSlskdResult(
-  query: string,
+  artistName: string,
+  albumTitle: string,
   allowedFormats?: string,
   minBitrate?: number,
 ): Promise<DownloadSearchResult | null> {
-  const searchId = await slskdSearch(query)
+  const searchId = await slskdSearch(`${artistName} ${albumTitle}`.trim())
   let best: DownloadSearchResult | null = null
   try {
     for (let i = 0; i < 15; i++) {
       await sleep(2000)
-      const results = await getSlskdResults(searchId, allowedFormats, minBitrate)
+      const results = (await getSlskdResults(searchId, allowedFormats, minBitrate))
+        .filter(r => albumFolderMatches(r.folderPath, albumTitle))
       const top = [...results].sort((a, b) => b.score - a.score)[0]
       if (top) {
         best = top

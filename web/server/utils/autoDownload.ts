@@ -71,7 +71,7 @@ export async function routeAcquire(
     return !!res
   }
   const best = await findBestSlskdResult(
-    `${p.artistName} ${p.albumTitle}`.trim(), formats || undefined, minBitrate ?? undefined,
+    p.artistName, p.albumTitle, formats || undefined, minBitrate ?? undefined,
   ).catch(() => null)
   if (!best) return false
   await acquireRelease({
