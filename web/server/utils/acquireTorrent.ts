@@ -27,14 +27,18 @@ export interface TorrentAcquireParams {
   releaseGroupId: string | null
 }
 
-// MISSING album/EP releases for this artist — candidates to fill from a pack in one grab.
+// MISSING album/EP releases for this artist — candidates to fill from a pack in one grab. At most one
+// edition per release group: sync/catalogue-gaps normally write one MISSING row per group, but a stray
+// duplicate (race, manual data fix) must not let a torrent match + fill the same album twice.
 async function missingReleasesForArtist(artistId: string): Promise<MatchableRelease[]> {
   return prisma.$queryRaw<MatchableRelease[]>(Prisma.sql`
-    SELECT mr.id, mr.title, mr.year, mr."releaseGroupId"
+    SELECT DISTINCT ON (COALESCE(mr."releaseGroupId", mr.id))
+           mr.id, mr.title, mr.year, mr."releaseGroupId"
     FROM "MusicBrainzRelease" mr
     JOIN "ReleaseType" rt ON rt.id = mr."typeId" AND rt.slug IN ('album', 'ep')
     JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mr.id AND mra."artistId" = ${artistId}
     WHERE mr.status = 'MISSING'
+    ORDER BY COALESCE(mr."releaseGroupId", mr.id), mr."updatedAt" DESC
   `)
 }
 

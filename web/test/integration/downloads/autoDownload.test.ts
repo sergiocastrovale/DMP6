@@ -105,4 +105,37 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
       expect(rows[0]!.attempts).toBe(3)
     }
   })
+
+  it('never picks a sibling MISSING edition of a release group already being acquired', async () => {
+    const { topUpDownloads } = await import('../../../server/utils/autoDownload')
+
+    const artist = await makeArtist(prisma, { monitored: true })
+    const releaseGroupId = 'rg-shared-by-two-editions'
+    // Two distinct MusicBrainzRelease editions (different ids/musicbrainzIds) of the SAME release group
+    // — e.g. a regular vs. deluxe edition, both surfaced as MISSING.
+    const editionA = await makeMbRelease(prisma, { releaseGroupId, status: 'MISSING', title: 'Album (Edition A)' })
+    const editionB = await makeMbRelease(prisma, { releaseGroupId, status: 'MISSING', title: 'Album (Edition B)' })
+    await prisma.musicBrainzReleaseArtist.createMany({
+      data: [
+        { releaseId: editionA.id, artistId: artist.id },
+        { releaseId: editionB.id, artistId: artist.id },
+      ],
+    })
+    // Edition A is already being acquired.
+    await makeDownloadedRelease(prisma, {
+      artistId: artist.id,
+      mbReleaseId: editionA.id,
+      releaseGroupId,
+      title: editionA.title,
+      year: editionA.year,
+      status: 'DOWNLOADING',
+    })
+
+    await topUpDownloads()
+
+    // pickFresh must not additionally grab Edition B — the group already has an active row.
+    const rows = await prisma.downloadedRelease.findMany({ where: { artistId: artist.id } })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.mbReleaseId).toBe(editionA.id)
+  })
 })
