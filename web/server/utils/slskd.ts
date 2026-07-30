@@ -1,4 +1,4 @@
-import { readdir, mkdir, rename, rmdir, copyFile, unlink } from 'node:fs/promises'
+import { readdir, mkdir, rename, rmdir, copyFile, unlink, stat } from 'node:fs/promises'
 import { basename, join, dirname, sep, extname } from 'node:path'
 import { resolveDownloadSettings, resolveDownloadDir } from '~/server/utils/downloadSettings'
 import { transcodeDirToMp3320 } from '~/server/utils/transcode'
@@ -241,7 +241,7 @@ export function scoreSlskdResult(
 
 interface SlskdMoveArgs {
   username: string
-  files: string[] // remote filenames as queued
+  files: { filename: string; size: number }[] // remote filenames + sizes as queued
   downloadsPath: string
   dirTemplate: string
   artistName: string
@@ -259,7 +259,7 @@ export interface SlskdMoveResult {
 
 export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<SlskdMoveResult> {
   const log = (msg: string) => monitorLog('notice', `slskd move: ${msg}`)
-  const expected = new Set(args.files.map(f => basename(f.replace(/\\/g, '/'))))
+  const expected = new Set(args.files.map(f => basename(f.filename.replace(/\\/g, '/'))))
   const deadline = Date.now() + 30 * 60 * 1000 // 30 minutes
 
   log(`scheduled: ${args.username} / ${args.artistName} / ${args.albumTitle} (${expected.size} files)`)
@@ -285,13 +285,18 @@ export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<S
 }
 
 /**
- * Move this download's files (located by basename under downloadsPath) into the templated
+ * Move this download's files (located by basename+size under downloadsPath) into the templated
  * Artist/Album folder and normalize to MP3-320. Assumes the transfer is already finished —
  * does NOT wait. Used by the reconciler, which gates on slskd transfer state itself.
  */
 export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<SlskdMoveResult> {
   const log = (msg: string) => monitorLog('notice', `slskd move: ${msg}`)
-  const expected = new Set(args.files.map(f => basename(f.replace(/\\/g, '/'))))
+  // slskd writes all downloads flat under one shared root (no per-transfer subfolder to scope a scan
+  // to — see docs/downloads_slskd.md), so two concurrent downloads can share a same-named track. Match
+  // on basename AND exact byte size (from the queued search result) to avoid one download's finalize
+  // capturing a same-named file that belongs to a different, still-in-flight download.
+  const expected = new Map<string, number>()
+  for (const f of args.files) expected.set(basename(f.filename.replace(/\\/g, '/')), f.size)
 
   const targetDir = join(
     args.downloadsPath,
@@ -299,7 +304,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   )
   await mkdir(targetDir, { recursive: true })
 
-  // Locate files by basename (under scanRoot when given, else the downloads root) and move them.
+  // Locate files by basename+size (under scanRoot when given, else the downloads root) and move them.
   const scanRoot = args.scanRoot || args.downloadsPath
   const found = await findFilesByBasename(scanRoot, expected, 10)
   log(`found ${found.length}/${expected.size} files under ${scanRoot} -> ${targetDir}`)
@@ -362,14 +367,20 @@ export const stripSlskdSuffix = (name: string): string => {
   return name.slice(0, name.length - e.length).replace(/_\d{6,}$/, '') + e
 }
 
+// `names` maps a suffix-stripped basename to its expected byte size. When a size is known (> 0), a
+// same-named file on disk must match it exactly to count as a hit — this is the only signal available
+// to tell apart two concurrent downloads that happen to share a track filename, since slskd writes
+// every transfer flat under one shared root with no per-transfer subfolder (see
+// docs/downloads_slskd.md). A size of 0/unknown falls back to name-only matching (legacy rows / sizes
+// slskd didn't report).
 async function findFilesByBasename(
   root: string,
-  names: Set<string>,
+  names: Map<string, number>,
   maxDepth: number,
 ): Promise<string[]> {
   const results: string[] = []
   // Match on the suffix-stripped basename so slskd collision tokens don't defeat the lookup.
-  const wanted = new Set([...names].map(stripSlskdSuffix))
+  const wanted = new Map([...names].map(([name, size]) => [stripSlskdSuffix(name), size]))
   // Internal subtrees under the downloads root that must never be scanned as slsk transfer sources:
   // the ready/merge staging area, the SongKong spool/state dir, and qBittorrent's torrent data
   // (torrent relocation passes the specific album folder as scanRoot, so this skip only affects slsk).
@@ -387,6 +398,11 @@ async function findFilesByBasename(
     for (const e of entries) {
       const full = join(dir, e.name)
       if (e.isFile && wanted.has(stripSlskdSuffix(e.name))) {
+        const expectedSize = wanted.get(stripSlskdSuffix(e.name))!
+        if (expectedSize > 0) {
+          const actualSize = await stat(full).then(s => s.size).catch(() => -1)
+          if (actualSize !== expectedSize) continue // same name, wrong file — belongs to another transfer
+        }
         results.push(full)
       }
       else if (e.isDir && !skipNames.has(e.name)) {
@@ -400,12 +416,13 @@ async function findFilesByBasename(
 }
 
 /**
- * Delete this download's source files (located by basename under downloadsPath) and prune the
+ * Delete this download's source files (located by basename+size under downloadsPath) and prune the
  * now-empty directories they sat in. Called when a download is given up on: in dmp's no-resume
  * model those bytes can never be reused and only clutter the downloads root.
  */
-export async function purgeDownloadedSourceFiles(downloadsPath: string, files: string[]): Promise<number> {
-  const expected = new Set(files.map(f => basename(f.replace(/\\/g, '/'))))
+export async function purgeDownloadedSourceFiles(downloadsPath: string, files: { filename: string; size: number }[]): Promise<number> {
+  const expected = new Map<string, number>()
+  for (const f of files) expected.set(basename(f.filename.replace(/\\/g, '/')), f.size)
   if (expected.size === 0) { return 0 }
 
   const found = await findFilesByBasename(downloadsPath, expected, 10)

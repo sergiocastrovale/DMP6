@@ -103,7 +103,7 @@ export async function reconcileDownloads(): Promise<void> {
       if (ours.some(t => isSlskdFailed(t.state))) {
         for (const t of ours) { await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {}) }
         await failAttempt(row, maxAttempts, 'slskd transfer failed (peer disconnected)')
-        await purgeDownloadedSourceFiles(settings.downloadsPath, files.map(f => String(f.filename))).catch(() => {})
+        await purgeDownloadedSourceFiles(settings.downloadsPath, files).catch(() => {})
         failed++
         continue
       }
@@ -136,7 +136,7 @@ export async function reconcileDownloads(): Promise<void> {
         // Bounded so one slow transfer/transcode can't wedge the whole reconcile loop.
         const res = await withTimeout(relocateDownloadedFiles({
           username: row.slskUsername!,
-          files: files.map(f => String(f.filename)),
+          files,
           downloadsPath: settings.downloadsPath,
           dirTemplate: settings.downloadDirTemplate,
           artistName: row.artist.name,
@@ -166,13 +166,13 @@ export async function reconcileDownloads(): Promise<void> {
           const reason = stalled ? `no progress for ${mon.noProgressSec}s` : 'no files landed in the staging folder'
           await failAttempt(row, maxAttempts, reason, res.targetDir)
           // Nothing usable landed — purge whatever stray/partial source files exist for this download.
-          await purgeDownloadedSourceFiles(settings.downloadsPath, files.map(f => String(f.filename))).catch(() => {})
+          await purgeDownloadedSourceFiles(settings.downloadsPath, files).catch(() => {})
           failed++
         }
       }
       catch (e: any) {
         await failAttempt(row, maxAttempts, String(e?.message || e).slice(0, 500))
-        await purgeDownloadedSourceFiles(settings.downloadsPath, files.map(f => String(f.filename))).catch(() => {})
+        await purgeDownloadedSourceFiles(settings.downloadsPath, files).catch(() => {})
         failed++
       }
       finally {
@@ -375,7 +375,7 @@ export async function reconcileTorrentDownloads(): Promise<void> {
           const files = (r.files as Array<{ filename: string; size: number }> | null) ?? []
           const res = await withTimeout(relocateDownloadedFiles({
             username: '',
-            files: files.map(f => String(f.filename)),
+            files,
             downloadsPath: settings.downloadsPath,
             scanRoot: join(settings.downloadsTorrentsPath, r.torrentFolder),
             dirTemplate: settings.downloadDirTemplate,

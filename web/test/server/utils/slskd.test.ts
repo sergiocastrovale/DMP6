@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   detectFormat,
   isAudioFile,
   isSlskdFailed,
   isSlskdSucceeded,
   isSlskdTerminal,
+  relocateDownloadedFiles,
   scoreSlskdResult,
   stripSlskdSuffix,
 } from '../../../server/utils/slskd'
@@ -74,6 +78,61 @@ describe('detectFormat', () => {
 
   it('uppercases unknown extensions', () => {
     expect(detectFormat('x.wav')).toBe('WAV')
+  })
+})
+
+describe('relocateDownloadedFiles: basename collisions across concurrent downloads', () => {
+  const roots: string[] = []
+  afterEach(async () => {
+    await Promise.all(roots.splice(0).map(r => rm(r, { recursive: true, force: true })))
+  })
+
+  it('matches on basename AND size, so a same-named file from a different in-flight download is left untouched', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dmp-slskd-test-'))
+    roots.push(root)
+
+    // Two concurrent "downloads" (slskd writes everything flat, per docs/downloads_slskd.md) that
+    // happen to share a track basename but are genuinely different files/sizes.
+    const otherDownloadDir = join(root, 'peerA')
+    const ourDownloadDir = join(root, 'peerB')
+    await mkdir(otherDownloadDir, { recursive: true })
+    await mkdir(ourDownloadDir, { recursive: true })
+    await writeFile(join(otherDownloadDir, 'Track.mp3'), 'x'.repeat(500)) // belongs to another download
+    await writeFile(join(ourDownloadDir, 'Track.mp3'), 'y'.repeat(999)) // ours
+
+    const res = await relocateDownloadedFiles({
+      username: 'peerB',
+      files: [{ filename: 'Track.mp3', size: 999 }], // only OUR expected size
+      downloadsPath: root,
+      dirTemplate: '{artist}/{year} - {album}',
+      artistName: 'Test Artist',
+      albumTitle: 'Test Album',
+      year: 2020,
+    })
+
+    expect(res.movedCount).toBe(1)
+    const dest = join(root, 'Test Artist', '2020 - Test Album', 'Track.mp3')
+    expect((await readFile(dest, 'utf8')).length).toBe(999) // ours, not the 500-byte impostor
+    // The other download's file must be left in place, untouched.
+    expect((await readFile(join(otherDownloadDir, 'Track.mp3'), 'utf8')).length).toBe(500)
+  })
+
+  it('falls back to name-only matching when size is unknown (0) — legacy behavior preserved', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dmp-slskd-test-'))
+    roots.push(root)
+    await writeFile(join(root, 'Track.mp3'), 'z'.repeat(42))
+
+    const res = await relocateDownloadedFiles({
+      username: 'peer1',
+      files: [{ filename: 'Track.mp3', size: 0 }],
+      downloadsPath: root,
+      dirTemplate: '{artist}/{year} - {album}',
+      artistName: 'Test Artist',
+      albumTitle: 'Test Album',
+      year: 2021,
+    })
+
+    expect(res.movedCount).toBe(1)
   })
 })
 
