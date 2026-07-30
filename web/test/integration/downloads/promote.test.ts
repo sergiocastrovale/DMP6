@@ -105,6 +105,41 @@ describe('promote.ts (real Postgres)', () => {
     expect(after.attempts).toBe(1)
   })
 
+  describe('forceRejectDownloadedReleases (bulk "Reject all")', () => {
+    it('goes straight to REJECTED regardless of the attempts cap — unlike the single-row reject, it never cycles back to FAILED', async () => {
+      const { forceRejectDownloadedReleases } = await import('../../../server/utils/promote')
+      // Default maxDownloadAttempts is 3; attempts=0 is nowhere near the cap, so the soft single-row
+      // reject would just bounce this back to FAILED (the reported bug: "Reject all" looked like a
+      // no-op because most rows never crossed the cap in one call).
+      const rows = await Promise.all(
+        Array.from({ length: 5 }, () => makeDownloadedRelease(prisma, { status: 'FAILED', attempts: 0 })),
+      )
+
+      const { rejected } = await forceRejectDownloadedReleases(rows.map(r => r.id))
+
+      expect(rejected).toBe(5)
+      const after = await prisma.downloadedRelease.findMany({ where: { id: { in: rows.map(r => r.id) } } })
+      expect(after.every(r => r.status === 'REJECTED')).toBe(true)
+    })
+
+    it('purges staged files for READY rows included in the bulk reject', async () => {
+      const { forceRejectDownloadedReleases } = await import('../../../server/utils/promote')
+      const missingRoot = `/tmp/dmp-test-missing-${randomUUID()}`
+      await prisma.settings.upsert({
+        where: { id: 'main' },
+        create: { id: 'main', downloadsPath: missingRoot },
+        update: { downloadsPath: missingRoot },
+      })
+      const dl = await makeDownloadedRelease(prisma, { status: 'READY', stagingPath: `${missingRoot}/_ready/Some Artist/2020 - Album` })
+
+      await forceRejectDownloadedReleases([dl.id])
+
+      const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
+      expect(after.status).toBe('REJECTED')
+      expect(after.stagingPath).toBeNull()
+    })
+  })
+
   describe('sweepDanglingDownloads', () => {
     it('deletes a terminal row once its release group is no longer MISSING (fulfilled or gone)', async () => {
       const { sweepDanglingDownloads } = await import('../../../server/utils/promote')

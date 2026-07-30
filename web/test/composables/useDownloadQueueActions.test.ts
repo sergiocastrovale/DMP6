@@ -53,7 +53,7 @@ describe('useDownloadQueueActions', () => {
 
   it('confirmBulkReject rejects all and reports success count via toast (no throw on partial failure)', async () => {
     const store = useDownloadsStore()
-    const rejectAllSpy = vi.spyOn(store, 'rejectAll').mockResolvedValue(undefined)
+    const rejectAllSpy = vi.spyOn(store, 'rejectAll').mockResolvedValue(2)
     const actions = useDownloadQueueActions()
     actions.askBulkReject(['a', 'b'])
     await actions.confirmBulkReject()

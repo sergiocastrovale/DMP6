@@ -417,6 +417,25 @@ export async function rejectDownloadedRelease(id: string): Promise<void> {
 }
 
 /**
+ * Bulk "Reject all"/"Reject selected": unlike the single-row reject (which is a soft, cap-counted
+ * miss so the auto-downloader can retry with a different source), an explicit bulk reject is the user
+ * telling us they never want these back — go straight to the terminal REJECTED state, bypassing the
+ * attempts cap. Without this, rejecting a batch of FAILED rows with attempts still below the cap just
+ * cycles them back to FAILED (attempts+1) and the list looks completely unchanged.
+ */
+export async function forceRejectDownloadedReleases(ids: string[]): Promise<{ rejected: number }> {
+  const rows = await prisma.downloadedRelease.findMany({ where: { id: { in: ids } } })
+  for (const row of rows) {
+    await purgeStagedFiles(row.stagingPath)
+  }
+  const result = await prisma.downloadedRelease.updateMany({
+    where: { id: { in: ids } },
+    data: { status: 'REJECTED', error: 'rejected by user', stagingPath: null, files: Prisma.JsonNull },
+  })
+  return { rejected: result.count }
+}
+
+/**
  * GC terminal `DownloadedRelease` rows (UNAVAILABLE/FAILED/INVALID/ABANDONED/REJECTED) that no longer
  * serve any purpose: their release (matched by the stable releaseGroupId, falling back to the volatile
  * mbReleaseId only for legacy rows predating that column) is no longer MISSING — either it was

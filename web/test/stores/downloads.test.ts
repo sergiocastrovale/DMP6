@@ -180,18 +180,24 @@ describe('useDownloadsStore - actions', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('rejectAll continues past a single failure and still refreshes the queue once', async () => {
-    let calls = 0
+  it('rejectAll batches through reject-all (not one reject/:id call per release) and refreshes the queue once', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url.startsWith('/api/downloads/reject/')) {
-        calls++
-        return calls === 1 ? Promise.reject(new Error('fail')) : Promise.resolve({})
-      }
+      if (url === '/api/downloads/reject-all') return Promise.resolve({ rejected: 2 })
       return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     })
     const store = useDownloadsStore()
-    await store.rejectAll(['a', 'b'])
-    expect(calls).toBe(2)
+    const rejected = await store.rejectAll(['a', 'b'])
+    expect(rejected).toBe(2)
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/reject-all', expect.objectContaining({ method: 'POST', body: { ids: ['a', 'b'] } }))
+    const individualRejectCalls = fetchMock.mock.calls.filter(c => /^\/api\/downloads\/reject\//.test(String(c[0])))
+    expect(individualRejectCalls).toHaveLength(0)
+  })
+
+  it('rejectAll is a no-op for an empty selection', async () => {
+    const store = useDownloadsStore()
+    const rejected = await store.rejectAll([])
+    expect(rejected).toBe(0)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

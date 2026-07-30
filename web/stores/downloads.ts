@@ -313,12 +313,15 @@ export const useDownloadsStore = defineStore('downloads', () => {
     await mergeAll(ids)
   }
 
-  // Bulk: sequential (merge/reject are heavy); one failure doesn't abort the rest.
-  const rejectAll = async (ids: string[]) => {
-    for (const id of ids) {
-      await $fetch(`/api/downloads/reject/${id}`, { method: 'POST' }).catch(() => {})
+  // Bulk reject: always terminal (REJECTED) via the batch endpoint — see
+  // forceRejectDownloadedReleases. The single-row reject() above stays soft/cap-counted.
+  const rejectAll = async (ids: string[]): Promise<number> => {
+    if (!ids.length) {
+      return 0
     }
+    const { rejected } = await $fetch<{ rejected: number }>('/api/downloads/reject-all', { method: 'POST', body: { ids } })
     await fetchQueue()
+    return rejected
   }
   const mergeAll = async (ids: string[]): Promise<{ merged: number; errors: string[] }> => {
     if (useSettingsStore().showTerminal) {

@@ -81,8 +81,8 @@ export const useDownloadQueueActions = () => {
     }
     bulkBusy.value = true
     try {
-      await store.rejectAll(ids)
-      toast.success(`Rejected ${ids.length} download${ids.length === 1 ? '' : 's'}`)
+      const rejected = await store.rejectAll(ids)
+      toast.success(`Rejected ${rejected} download${rejected === 1 ? '' : 's'}`)
     }
     catch (e: any) {
       toast.error(e?.data?.message || e?.message || 'Reject failed')
