@@ -5,6 +5,9 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getPauseState, freeGb } from '~/server/utils/pauseState'
 import { getAcquisitionStatus } from '~/server/utils/downloadSources'
+import { fetchActiveQueueRows } from '~/server/utils/downloadQueue'
+
+const artistSelect = { artist: { select: { name: true, slug: true } } } as const
 
 // Returns the download queue: active acquisitions (downloading / enriching / failed) plus the ready
 // slice and a slice of recent history (promoted / abandoned / rejected / invalid, for the History subtabs).
@@ -12,19 +15,15 @@ export default defineEventHandler(async (event) => {
   await requirePermission(event, 'sync.view')
 
   const [active, ready, history] = await Promise.all([
-    prisma.downloadedRelease.findMany({
-      where: { status: { in: ['DOWNLOADING', 'ENRICHING', 'FAILED', 'ABANDONED', 'UNAVAILABLE'] } },
-      include: { artist: { select: { name: true, slug: true } } },
-      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-    }),
+    fetchActiveQueueRows(),
     prisma.downloadedRelease.findMany({
       where: { status: 'READY' }, // in the ready folder, awaiting manual merge
-      include: { artist: { select: { name: true, slug: true } } },
+      include: artistSelect,
       orderBy: { updatedAt: 'desc' },
     }),
     prisma.downloadedRelease.findMany({
       where: { status: { in: ['PROMOTED', 'ABANDONED', 'REJECTED', 'INVALID'] } },
-      include: { artist: { select: { name: true, slug: true } } },
+      include: artistSelect,
       orderBy: { updatedAt: 'desc' },
       take: 200,
     }),
