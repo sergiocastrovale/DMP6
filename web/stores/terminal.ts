@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { useGlobalStore } from '~/stores/global'
+import { appendTerminalLine, parseDoneExitCode, parseSseEvents } from '~/helpers/sse'
 
 export const useTerminalStore = defineStore('terminal', () => {
   const isOpen = ref(false)
@@ -44,20 +45,12 @@ export const useTerminalStore = defineStore('terminal', () => {
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
-        const parts = buffer.split('\n\n')
-        buffer = parts.pop()!
+        const { events, remainder } = parseSseEvents(buffer)
+        buffer = remainder
 
-        for (const part of parts) {
-          let eventType = 'message'
-          let data = ''
-
-          for (const line of part.split('\n')) {
-            if (line.startsWith('event: ')) eventType = line.slice(7)
-            else if (line.startsWith('data: ')) data = line.slice(6)
-          }
-
+        for (const { event: eventType, data } of events) {
           if (eventType === 'done') {
-            exitCode.value = parseInt(data) || 0
+            exitCode.value = parseDoneExitCode(data)
           } else if (data) {
             let text: string
             try {
@@ -65,13 +58,8 @@ export const useTerminalStore = defineStore('terminal', () => {
             } catch {
               text = data
             }
-            if (typeof text === 'string' && text.startsWith('\r')) {
-              const cleaned = text.slice(1)
-              if (lines.value.length > 0 && lines.value[lines.value.length - 1]!.startsWith('\r')) {
-                lines.value[lines.value.length - 1] = '\r' + cleaned
-              } else {
-                lines.value.push('\r' + cleaned)
-              }
+            if (typeof text === 'string') {
+              appendTerminalLine(lines.value, text)
             } else {
               lines.value.push(text)
             }

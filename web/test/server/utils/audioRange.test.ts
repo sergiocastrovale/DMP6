@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildEtag, mimeForFile, parseRangeHeader } from '../server/utils/audioRange'
+import { buildEtag, mimeForFile, parseRangeHeader } from '../../../server/utils/audioRange'
 
 describe('mimeForFile', () => {
   it('maps known audio extensions', () => {

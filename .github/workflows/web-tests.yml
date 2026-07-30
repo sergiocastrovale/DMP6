@@ -23,7 +23,14 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+      # `integration` project boots its own ephemeral Postgres via testcontainers (docker is
+      # preinstalled on ubuntu-latest runners) - no postgres service needed for this job.
+      - run: pnpm test:unit -- --coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: web/coverage
       - run: pnpm exec nuxi typecheck
 
   e2e:

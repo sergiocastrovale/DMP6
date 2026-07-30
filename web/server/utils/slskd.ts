@@ -357,7 +357,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
  * file already exists in its download dir (e.g. `01. Stone_639171186044183498.flac`). Strip it so
  * basename matching and the final library filename stay clean.
  */
-const stripSlskdSuffix = (name: string): string => {
+export const stripSlskdSuffix = (name: string): string => {
   const e = extname(name)
   return name.slice(0, name.length - e.length).replace(/_\d{6,}$/, '') + e
 }

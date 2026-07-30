@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { MosaicItem } from '~/types/labs'
+import { parseSseEvents } from '~/helpers/sse'
 
 interface MosaicProgress {
   current: number
@@ -51,18 +52,10 @@ export const useMosaicStore = defineStore('mosaic', () => {
         if (done) { break }
 
         buffer += decoder.decode(value, { stream: true })
-        const parts = buffer.split('\n\n')
-        buffer = parts.pop()!
+        const { events, remainder } = parseSseEvents(buffer)
+        buffer = remainder
 
-        for (const part of parts) {
-          let eventType = 'message'
-          let data = ''
-
-          for (const line of part.split('\n')) {
-            if (line.startsWith('event: ')) { eventType = line.slice(7) }
-            else if (line.startsWith('data: ')) { data = line.slice(6) }
-          }
-
+        for (const { event: eventType, data } of events) {
           if (eventType === 'progress') {
             try { progress.value = JSON.parse(data) } catch {}
           } else if (eventType === 'result') {

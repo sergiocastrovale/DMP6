@@ -84,6 +84,13 @@ return a ? b : c
 - **Metadata is source of truth** - never use filesystem paths/folder names for artist, album, year or any other information
 - **MusicBrainz IDs are definitive** - when embedded MB IDs exist in tags, use them directly without re-verification
 
+### Testing
+
+- Every code change must consider tests. Before a change is done: run the relevant suite (`pnpm test:unit`, plus `pnpm test:e2e` for UI/flow changes). If touched code has no test, add one; if an existing test is now wrong or deprecated, update it in the same change. A behavior change that doesn't touch its tests is incomplete.
+- Tests live under `web/test/**/*.test.ts` (unit/integration, mirror the source path) and `web/e2e/**/*.spec.ts` (e2e). Runners: `vitest` + `@nuxt/test-utils` (unit), Playwright against the prod build (e2e). Full architecture and conventions: `web/docs/PLAN_tests.md`.
+- New pure logic goes in an importable helper/util (relative-imported) with a unit test - don't bury testable logic inside store closures or route handlers (extraction pattern: `server/utils/audioRange.ts`).
+- Rust script changes still require `cd scripts && cargo build --release`; web changes require the touched test suite to pass before commit/deploy.
+
 ## Scripts
 
 Shell wrappers at project root. Each uses a pre-built release binary - **rebuild after code changes**:

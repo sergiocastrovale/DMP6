@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { useDebounceFn } from '@vueuse/core'
 import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState } from '~/types/player'
+import { nextIndexWrap, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
 
 export const usePlayerStore = defineStore('player', () => { 
   const currentTrack = ref<PlayerTrack | null>(null)
@@ -54,16 +55,12 @@ export const usePlayerStore = defineStore('player', () => {
 
   function checkScrobble() {
     if (scrobbled || !currentTrack.value) return
-    const dur = duration.value
-    const cur = currentTime.value
-    if (dur < 30) return
-    if (cur > dur * 0.5 || cur > 240) {
-      scrobbled = true
-      $fetch('/api/scrobble/scrobble', {
-        method: 'POST',
-        body: { trackId: currentTrack.value.id, timestamp: scrobbleStartTime },
-      }).catch(() => {})
-    }
+    if (!shouldScrobble({ duration: duration.value, currentTime: currentTime.value })) return
+    scrobbled = true
+    $fetch('/api/scrobble/scrobble', {
+      method: 'POST',
+      body: { trackId: currentTrack.value.id, timestamp: scrobbleStartTime },
+    }).catch(() => {})
   }
 
   function getAudio(): HTMLAudioElement {
@@ -93,8 +90,7 @@ export const usePlayerStore = defineStore('player', () => {
   async function playTrack(track: PlayerTrack, newQueue?: PlayerTrack[]) {
     const a = getAudio()
     if (currentTrack.value?.id) {
-      history.value.push(currentTrack.value.id)
-      if (history.value.length > 50) history.value.shift()
+      pushCapped(history.value, currentTrack.value.id, 50)
     }
     currentTrack.value = track
     isVisible.value = true
@@ -219,8 +215,7 @@ export const usePlayerStore = defineStore('player', () => {
   // Called from the Explore page button - fetches next track, updates session state, plays it
   async function pickExplorerTrack(params: ExploreParams): Promise<void> {
     if (explorerCurrentTrack.value) {
-      explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
-      if (explorerSessionHistory.value.length > 200) explorerSessionHistory.value.length = 200
+      unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, 200)
     }
     explorerParams.value = params
     shuffleMode.value = 'explorer'
@@ -229,16 +224,14 @@ export const usePlayerStore = defineStore('player', () => {
     if (!track) return
 
     explorerCurrentTrack.value = track
-    explorerHistory.value.push(track.id)
-    if (explorerHistory.value.length > 50) explorerHistory.value.shift()
+    pushCapped(explorerHistory.value, track.id, 50)
     playTrack(track)
   }
 
   // Called when replaying a history track from the Explore page
   function setExplorerTrack(track: PlayerTrack, params: ExploreParams): void {
     if (explorerCurrentTrack.value && explorerCurrentTrack.value.id !== track.id) {
-      explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
-      if (explorerSessionHistory.value.length > 200) explorerSessionHistory.value.length = 200
+      unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, 200)
     }
     explorerCurrentTrack.value = track
     explorerParams.value = params
@@ -251,14 +244,12 @@ export const usePlayerStore = defineStore('player', () => {
     if (shuffleMode.value === 'explorer') {
       if (!explorerParams.value) return
       if (explorerCurrentTrack.value) {
-        explorerSessionHistory.value.unshift(explorerCurrentTrack.value)
-        if (explorerSessionHistory.value.length > 200) explorerSessionHistory.value.length = 200
+        unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, 200)
       }
       const track = await fetchExplorerTrack(explorerParams.value)
       if (track) {
         explorerCurrentTrack.value = track
-        explorerHistory.value.push(track.id)
-        if (explorerHistory.value.length > 50) explorerHistory.value.shift()
+        pushCapped(explorerHistory.value, track.id, 50)
         playTrack(track)
       }
       return
@@ -291,12 +282,9 @@ export const usePlayerStore = defineStore('player', () => {
     }
 
     const idx = queue.value.findIndex(t => t.id === currentTrack.value?.id)
-    const nextIdx = idx + 1
-    if (nextIdx < queue.value.length) {
+    const nextIdx = nextIndexWrap(queue.value.length, idx)
+    if (nextIdx !== null) {
       playTrack(queue.value[nextIdx]!)
-    }
-    else if (queue.value.length > 0) {
-      playTrack(queue.value[0]!)
     }
   }
 
@@ -410,14 +398,6 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
 
-  function shuffleArray<T>(arr: T[]): T[] {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[arr[i], arr[j]] = [arr[j]!, arr[i]!]
-    }
-    return arr
-  }
-
   // Persist state
   if (import.meta.client) {
     const saved = localStorage.getItem('dmp-player')
@@ -451,8 +431,6 @@ export const usePlayerStore = defineStore('player', () => {
       catch { /* ignore corrupt state */ }
     }
 
-    const QUEUE_PERSIST_CAP = 200
-
     const saveState = useDebounceFn(() => {
       const state: PersistedPlayerState = {
         trackId: currentTrack.value?.id ?? null,
@@ -460,8 +438,8 @@ export const usePlayerStore = defineStore('player', () => {
         volume: volume.value,
         isMuted: isMuted.value,
         shuffleMode: shuffleMode.value,
-        queue: queue.value.slice(-QUEUE_PERSIST_CAP),
-        originalQueue: originalQueue.value.slice(-QUEUE_PERSIST_CAP),
+        queue: sliceForPersist(queue.value, QUEUE_PERSIST_CAP),
+        originalQueue: sliceForPersist(originalQueue.value, QUEUE_PERSIST_CAP),
         explorerParams: explorerParams.value,
       }
       localStorage.setItem('dmp-player', JSON.stringify(state))

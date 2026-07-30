@@ -1,6 +1,12 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
+import {
+  buildAppearsOnCards,
+  buildCoArtistMap,
+  buildConnectedArtistByRelease,
+  buildLocalAndGapCards,
+} from '~/server/utils/releaseAggregation'
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
@@ -56,13 +62,7 @@ export default defineEventHandler(async (event) => {
     select: { localReleaseId: true, artistId: true },
   })
   const releaseIds = [...new Set(releaseLinks.map(l => l.localReleaseId))]
-  const connectedArtistByRelease = new Map<string, string>()
-  for (const link of releaseLinks) {
-    const ca = connectedArtistById.get(link.artistId)
-    if (ca) {
-      connectedArtistByRelease.set(link.localReleaseId, ca.name)
-    }
-  }
+  const connectedArtistByRelease = buildConnectedArtistByRelease(releaseLinks, connectedArtistById)
 
   const localReleases = await prisma.localRelease.findMany({
     where: { id: { in: releaseIds } },
@@ -88,161 +88,15 @@ export default defineEventHandler(async (event) => {
 
   // Build co-artist map: for each local release, list other artists (excluding current + connected)
   const connectedSlugs = new Set(connectedArtists.map(a => a.slug))
-  const coArtistMap = new Map<string, { name: string; slug: string }[]>()
-  for (const lr of localReleases) {
-    const others = lr.artists
-      .map(a => a.artist)
-      .filter(a => a.slug !== slug && !connectedSlugs.has(a.slug))
-    if (others.length > 0) {
-      coArtistMap.set(lr.id, others)
-    }
-  }
+  const coArtistMap = buildCoArtistMap(localReleases, slug, connectedSlugs)
 
-  type ReleaseCard = {
-    id: string
-    title: string
-    year: number | null
-    type: string
-    typeSlug: string
-    mbReleaseRowId: string | null
-    musicbrainzId: string | null
-    releaseGroupId: string | null
-    disambiguation: string | null
-    editionLabel: string | null
-    releaseDate: string | null
-    packaging: string | null
-    country: string | null
-    format: string | null
-    status: string
-    image: string | null
-    imageUrl: string | null
-    trackCount: number
-    totalPlayCount: number
-    localTrackCount: number
-    isMusicBrainz: boolean
-    hasLocal: boolean
-    localReleaseId: string | null
-    folderPath: string | null
-    coArtists?: { name: string; slug: string }[]
-    statusReason?: string | null
-    connectedArtistName?: string | null
-    downloadState?: string | null
-    downloadedReleaseId?: string | null
-  }
-
-  const releases: ReleaseCard[] = []
-  const coveredMbIds = new Set<string>()
-  const appearsOnLocal: typeof localReleases = []
-
-  for (const lr of localReleases) {
-    const localImg = verifyImage(lr.image, lr.imageUrl, 'releases')
-    if (!lr.releaseId) {
-      releases.push({
-        id: lr.id,
-        title: lr.title,
-        year: lr.year,
-        type: 'Album',
-        typeSlug: 'album',
-        mbReleaseRowId: null,
-        musicbrainzId: null,
-        releaseGroupId: null,
-        disambiguation: null,
-        editionLabel: null,
-        releaseDate: null,
-        packaging: null,
-        country: null,
-        format: null,
-        status: lr.matchStatus,
-        image: localImg.image,
-        imageUrl: localImg.imageUrl,
-        trackCount: 0,
-        totalPlayCount: lr.totalPlayCount,
-        localTrackCount: lr.tracks.length,
-        isMusicBrainz: false,
-        hasLocal: true,
-        localReleaseId: lr.id,
-        folderPath: lr.folderPath,
-        coArtists: coArtistMap.get(lr.id),
-        connectedArtistName: connectedArtistByRelease.get(lr.id),
-      })
-      continue
-    }
-
-    const mbr = mbById.get(lr.releaseId)
-    if (!mbr) {
-      appearsOnLocal.push(lr)
-      continue
-    }
-
-    coveredMbIds.add(mbr.id)
-    releases.push({
-      id: lr.id,
-      title: mbr.title,
-      year: mbr.year,
-      type: mbr.type.name,
-      typeSlug: mbr.type.slug,
-      mbReleaseRowId: mbr.id,
-      musicbrainzId: mbr.musicbrainzId,
-      releaseGroupId: mbr.releaseGroupId ?? null,
-      disambiguation: mbr.disambiguation ?? null,
-      editionLabel: mbr.editionLabel ?? null,
-      releaseDate: mbr.releaseDate ?? null,
-      packaging: mbr.packaging ?? null,
-      country: mbr.country ?? null,
-      format: mbr.format ?? null,
-      status: mbr.status,
-      image: localImg.image,
-      imageUrl: localImg.imageUrl,
-      trackCount: mbr.tracks.length,
-      totalPlayCount: lr.totalPlayCount,
-      localTrackCount: lr.tracks.length,
-      isMusicBrainz: true,
-      hasLocal: true,
-      localReleaseId: lr.id,
-      folderPath: lr.folderPath,
-      coArtists: coArtistMap.get(lr.id),
-      statusReason: mbr.statusReason,
-      connectedArtistName: connectedArtistByRelease.get(lr.id),
-    })
-  }
-
-  // Catalogue gaps: MB releases in this artist's catalogue that have no LocalRelease.
-  // Iterate the de-duplicated map: a release credited to several connected artists appears once per
-  // credit in mbReleases, which would otherwise emit one identical MISSING card per credit (phantom
-  // "editions"). mbById is keyed by release id, so each release is considered exactly once.
-  const allowedGapTypes = new Set(['album', 'ep'])
-  for (const mbr of mbById.values()) {
-    if (coveredMbIds.has(mbr.id)) continue
-    if (!allowedGapTypes.has(mbr.type.slug)) continue
-    const gapImg = verifyImage(null, null, 'releases')
-    releases.push({
-      id: mbr.id,
-      title: mbr.title,
-      year: mbr.year,
-      type: mbr.type.name,
-      typeSlug: mbr.type.slug,
-      mbReleaseRowId: mbr.id,
-      musicbrainzId: mbr.musicbrainzId,
-      releaseGroupId: mbr.releaseGroupId ?? null,
-      disambiguation: mbr.disambiguation ?? null,
-      editionLabel: mbr.editionLabel ?? null,
-      releaseDate: mbr.releaseDate ?? null,
-      packaging: mbr.packaging ?? null,
-      country: mbr.country ?? null,
-      format: mbr.format ?? null,
-      status: mbr.status,
-      image: gapImg.image,
-      imageUrl: gapImg.imageUrl,
-      trackCount: mbr.tracks.length,
-      totalPlayCount: 0,
-      localTrackCount: 0,
-      isMusicBrainz: true,
-      hasLocal: false,
-      localReleaseId: null,
-      folderPath: null,
-      statusReason: mbr.statusReason,
-    })
-  }
+  const { cards: localAndGapCards, appearsOnLocal } = buildLocalAndGapCards({
+    localReleases,
+    mbById,
+    coArtistMap,
+    connectedArtistByRelease,
+    resolveImage: verifyImage,
+  })
 
   // Appears-On: LocalReleases whose MB release is NOT in this artist's catalogue.
   // Fetch those MB rows so the cards get real type/year/status/trackCount.
@@ -269,41 +123,17 @@ export default defineEventHandler(async (event) => {
       },
     })
     : []
-  const appearsOnMbMap = new Map(appearsOnMbReleases.map(r => [r.id, r]))
+  const appearsOnMbById = new Map(appearsOnMbReleases.map(r => [r.id, r]))
 
-  for (const lr of appearsOnLocal) {
-    const mbr = appearsOnMbMap.get(lr.releaseId!)
-    const appearsOnImg = verifyImage(lr.image, lr.imageUrl, 'releases')
-    releases.push({
-      id: lr.id,
-      title: mbr?.title ?? lr.title,
-      year: mbr?.year ?? lr.year,
-      type: mbr ? mbr.type.name : 'Album',
-      typeSlug: mbr ? mbr.type.slug : 'album',
-      mbReleaseRowId: mbr?.id ?? null,
-      musicbrainzId: mbr?.musicbrainzId ?? null,
-      releaseGroupId: mbr?.releaseGroupId ?? null,
-      disambiguation: mbr?.disambiguation ?? null,
-      editionLabel: mbr?.editionLabel ?? null,
-      releaseDate: mbr?.releaseDate ?? null,
-      packaging: mbr?.packaging ?? null,
-      country: mbr?.country ?? null,
-      format: mbr?.format ?? null,
-      status: mbr?.status ?? lr.matchStatus,
-      image: appearsOnImg.image,
-      imageUrl: appearsOnImg.imageUrl,
-      trackCount: mbr?.tracks.length ?? 0,
-      totalPlayCount: lr.totalPlayCount,
-      localTrackCount: lr.tracks.length,
-      isMusicBrainz: !!mbr,
-      hasLocal: true,
-      localReleaseId: lr.id,
-      folderPath: lr.folderPath,
-      coArtists: coArtistMap.get(lr.id),
-      statusReason: mbr?.statusReason ?? null,
-      connectedArtistName: connectedArtistByRelease.get(lr.id),
-    })
-  }
+  const appearsOnCards = buildAppearsOnCards({
+    appearsOnLocal,
+    appearsOnMbById,
+    coArtistMap,
+    connectedArtistByRelease,
+    resolveImage: verifyImage,
+  })
+
+  const releases = [...localAndGapCards, ...appearsOnCards]
 
   // Paginate the unified list
   const total = releases.length

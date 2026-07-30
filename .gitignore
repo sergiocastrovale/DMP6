@@ -37,3 +37,9 @@ Thumbs.db
 # Reports
 reports/
 web/dump
+
+# Test artifacts
+web/coverage/
+web/test-results/
+web/playwright-report/
+web/e2e/.auth/

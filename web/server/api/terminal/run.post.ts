@@ -1,32 +1,16 @@
 import { spawn, execSync } from 'child_process'
 import fs from 'fs'
 import { requirePermission, requireRole } from '~/server/utils/permissions'
-import type { PermissionKey } from '~/server/utils/permissions'
-
-const ALLOWED_COMMANDS = [
-  './index', './sync', './analysis', './nuke',
-  './playlists', './audit', './fix', './refresh',
-]
-
-const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
-  './index': 'sync.view',
-  './sync': 'sync.view',
-  './refresh': 'sync.view',
-  './analysis': 'sync.view',
-  './playlists': 'sync.view',
-  './audit': 'issues.view',
-  './fix': 'issues.view',
-  './nuke': 'ADMIN',
-}
-
-const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/
-
-// Commands that support the --web flag (structured PROGRESS:{json} output)
-const WEB_MODE_COMMANDS = new Set(['./index', './sync', './refresh'])
-
-function stripAnsi(str: string): string {
-  return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')
-}
+import {
+  buildCommandLine,
+  buildScript,
+  isAllowedCommand,
+  isValidSessionName,
+  parseExitLine,
+  permissionForCommand,
+  stripAnsi,
+  withWebFlag,
+} from '~/server/utils/terminalCommand'
 
 function tmuxAvailable(): boolean {
   try {
@@ -45,17 +29,20 @@ export default defineEventHandler(async (event) => {
     session: string
   }>(event)
   const { command, session } = body
-  let args = body.args ?? []
 
-  if (!ALLOWED_COMMANDS.includes(command)) {
+  if (!isAllowedCommand(command)) {
     throw createError({ statusCode: 400, message: `Command not allowed: ${command}` })
   }
 
-  if (!session || !SESSION_NAME_RE.test(session)) {
+  if (!isValidSessionName(session)) {
     throw createError({ statusCode: 400, message: 'Session name required' })
   }
 
-  const perm = COMMAND_PERM[command]
+  if (body.args !== undefined && !Array.isArray(body.args)) {
+    throw createError({ statusCode: 400, message: 'args must be an array' })
+  }
+
+  const perm = permissionForCommand(command)
   if (perm === 'ADMIN') {
     requireRole(event, 'ADMIN')
   }
@@ -68,9 +55,7 @@ export default defineEventHandler(async (event) => {
   const binaryName = command.replace(/^\.\//, '')
   const binary = `${scriptsDir}/${binaryName}`
 
-  if (WEB_MODE_COMMANDS.has(command) && !args.includes('--web')) {
-    args = [...args, '--web']
-  }
+  const args = withWebFlag(command, body.args ?? [])
 
   setResponseHeaders(event, {
     'Content-Type': 'text/event-stream',
@@ -96,14 +81,8 @@ export default defineEventHandler(async (event) => {
 
   const logFile = `/tmp/dmp-${session}.log`
   const scriptFile = `/tmp/dmp-${session}.sh`
-  const safeArgs = args.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')
-  const fullCmd = safeArgs ? `${binary} ${safeArgs}` : binary
-
-  const script = `#!/bin/bash
-cd "${workDir}"
-${fullCmd} 2>&1 | tee "${logFile}"
-echo "DMP_EXIT:$?" >> "${logFile}"
-`
+  const fullCmd = buildCommandLine(binary, args)
+  const script = buildScript(workDir, fullCmd, logFile)
   fs.writeFileSync(scriptFile, script, { mode: 0o755 })
   fs.writeFileSync(logFile, '')
 
@@ -133,11 +112,11 @@ echo "DMP_EXIT:$?" >> "${logFile}"
       const text = stripAnsi(chunk.toString())
       for (const line of text.split('\n')) {
         if (!line) continue
-        if (line.startsWith('DMP_EXIT:')) {
+        const exitCode = parseExitLine(line)
+        if (exitCode !== null) {
           if (!done) {
             done = true
-            const code = parseInt(line.slice(9)) || 0
-            finish(code)
+            finish(exitCode)
           }
           return
         }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createMediaSession, type MediaSessionControls } from '../composables/useMediaSession'
+import { createMediaSession, type MediaSessionControls } from '../../../composables/useMediaSession'
 
 class FakeMediaMetadata {
   title?: string
