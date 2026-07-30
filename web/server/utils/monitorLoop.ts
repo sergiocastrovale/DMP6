@@ -63,21 +63,21 @@ export async function reconcileDownloads(): Promise<void> {
 
     const settings = await resolveDownloadSettings()
     if (!settings.downloadsPath) return
+    const mon = await resolveMonitorSettings()
+    const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
     const enrichRows = rows.filter(r => r.status === 'ENRICHING')
     const downloadingRows = rows.filter(r => r.status === 'DOWNLOADING')
     if (enrichRows.length > 0) {
-      finalized += await drainEnriching(enrichRows)
+      finalized += await drainEnriching(enrichRows, maxAttempts)
     }
     if (downloadingRows.length === 0) {
       if (failed || finalized) log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)
       return
     }
-    const mon = await resolveMonitorSettings()
     const transfers = await withTimeout(getSlskdActiveDownloads(), 15_000).catch(() => [])
 
     const ORPHAN_MIN = 3                              // file-less row stuck this long = restart orphan
     const noProgressMs = Math.max(15, mon.noProgressSec) * 1000
-    const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
     log(`reconcile: ${downloadingRows.length} downloading, ${transfers.length} slskd transfers`)
 
     for (const row of downloadingRows) {
@@ -192,9 +192,30 @@ export async function reconcileDownloads(): Promise<void> {
 // Finalize a finished download: record the staged layout, then automatically move it into the
 // `_ready` folder and mark it READY ("Ready to merge"). No approval gate — the only manual step left
 // is the merge into MUSIC_DIR.
+//
+// If moveToReady throws, the files already landed successfully at `stagingPath` — only the last hop
+// into `_ready` failed (permissions, disk, misconfig). Previously this error was swallowed and the row
+// was left stranded at its current status (DOWNLOADING/ENRICHING) forever, silently re-entering the
+// same finalize path every tick. Route it through the normal attempts-cap machinery instead, keeping
+// stagingPath intact (the folder is good — never purge it here) so it surfaces in Failed instead of
+// vanishing from view.
 async function settleFinished(id: string, stagingPath: string, error: string | null): Promise<void> {
   await prisma.downloadedRelease.update({ where: { id }, data: { stagingPath, error } })
-  await moveToReady(id).catch(e => logErr(`move-to-ready failed for ${id}: ${e?.message || e}`))
+  try {
+    await moveToReady(id)
+  }
+  catch (e: any) {
+    const row = await prisma.downloadedRelease.findUnique({ where: { id }, select: { attempts: true, priority: true } })
+    const { maxDownloadAttempts } = await resolveMonitorSettings()
+    const msg = `move-to-ready failed (files safe at ${stagingPath}): ${e?.message || e}`
+    logErr(`settleFinished ${id}: ${msg}`)
+    await failAttempt(
+      { id, attempts: row?.attempts ?? 0, priority: row?.priority ?? 10 },
+      Math.max(1, maxDownloadAttempts),
+      msg,
+      stagingPath,
+    )
+  }
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -232,7 +253,8 @@ async function failAttempt(
  * download. File-based + idempotent, so it survives restarts. Returns rows finalized to READY.
  */
 async function drainEnriching(
-  rows: Array<{ id: string; title: string; stagingPath: string | null; updatedAt: Date }>,
+  rows: Array<{ id: string; title: string; stagingPath: string | null; updatedAt: Date; attempts: number; priority: number }>,
+  maxAttempts: number,
 ): Promise<number> {
   const dirs = songkongDirs()
   const maxWaitMs = songkongMaxWaitMin() * 60_000
@@ -254,7 +276,11 @@ async function drainEnriching(
       log(`reconcile: ${row.title} -> ready (${enriched ? 'enriched' : 'enrich timed out'})`)
     }
     catch (e: any) {
-      logErr(`reconcile: ${row.title} layout transform failed: ${String(e?.message || e).slice(0, 300)}`)
+      const msg = `layout transform failed: ${String(e?.message || e).slice(0, 300)}`
+      logErr(`reconcile: ${row.title} ${msg}`)
+      // Route through the attempts cap instead of leaving the row ENRICHING forever — once timedOut
+      // flips true this branch would otherwise re-enter (and re-fail) every single tick, uncapped.
+      await failAttempt(row, maxAttempts, msg)
     }
     finally {
       finalizing.delete(row.id)
@@ -286,16 +312,17 @@ export async function reconcileTorrentDownloads(): Promise<void> {
     const settings = await resolveDownloadSettings()
     if (!settings.downloadsTorrentsPath) return
 
+    const mon = await resolveMonitorSettings()
+    const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
+
     // ENRICHING rows finalize identically to slsk (keyed on stagingPath, source-agnostic).
     const enrichRows = rows.filter(r => r.status === 'ENRICHING')
-    if (enrichRows.length > 0) await drainEnriching(enrichRows)
+    if (enrichRows.length > 0) await drainEnriching(enrichRows, maxAttempts)
 
     const dlRows = rows.filter(r => r.status === 'DOWNLOADING' && r.torrentHash)
     if (dlRows.length === 0) return
 
-    const mon = await resolveMonitorSettings()
     const noProgressMs = Math.max(15, mon.noProgressSec) * 1000
-    const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
 
     const byHash = new Map<string, typeof dlRows>()
     for (const r of dlRows) {
