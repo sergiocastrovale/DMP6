@@ -98,7 +98,17 @@ export async function reconcileDownloads(): Promise<void> {
       if (failed || finalized) log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)
       return
     }
-    const transfers = await withTimeout(getSlskdActiveDownloads(), 15_000).catch(() => [])
+    // Distinguish "slskd unreachable" from "genuinely no active transfers" — swallowing the fetch error
+    // into an empty array would make every DOWNLOADING row look like its transfer already finished
+    // (ours=[] -> active=false -> falls straight into finalize/fail), prematurely failing live downloads
+    // during a transient slskd outage instead of just waiting for the next tick.
+    let transfersUnknown = false
+    const transfers = await withTimeout(getSlskdActiveDownloads(), 15_000).catch(() => { transfersUnknown = true; return [] })
+    if (transfersUnknown) {
+      logWarn(`reconcile: slskd unreachable — skipping finalize for ${downloadingRows.length} downloading row(s) this tick`)
+      if (failed || finalized) log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)
+      return
+    }
 
     const ORPHAN_MIN = 3                              // file-less row stuck this long = restart orphan
     const noProgressMs = Math.max(15, mon.noProgressSec) * 1000

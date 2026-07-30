@@ -2,8 +2,9 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
 import { makeArtist, makeDownloadedRelease } from '../../../test/factories'
 
+const getSlskdActiveDownloadsMock = vi.fn().mockResolvedValue([])
 vi.mock('~/server/utils/slskd', () => ({
-  getSlskdActiveDownloads: vi.fn().mockResolvedValue([]),
+  getSlskdActiveDownloads: (...args: unknown[]) => getSlskdActiveDownloadsMock(...args),
   isSlskdTerminal: vi.fn().mockReturnValue(true),
   isSlskdFailed: vi.fn().mockReturnValue(false),
   cancelSlskdDownload: vi.fn().mockResolvedValue(undefined),
@@ -30,6 +31,7 @@ describe('monitorLoop.ts reconcileDownloads: settleFinished failure handling (re
   beforeEach(async () => {
     await resetDb()
     moveToReadyMock.mockClear()
+    getSlskdActiveDownloadsMock.mockReset().mockResolvedValue([])
     await prisma.settings.upsert({
       where: { id: 'main' },
       create: { id: 'main', downloadsPath: '/tmp/dmp-test-downloads' },
@@ -64,5 +66,27 @@ describe('monitorLoop.ts reconcileDownloads: settleFinished failure handling (re
     expect(after.error).toMatch(/move-to-ready failed/)
     // The relocated+transformed folder is real and good — it must stay referenced, never nulled/purged.
     expect(after.stagingPath).toBe('/fake/release/root')
+  })
+
+  it('a slskd fetch failure does NOT get treated as "no active transfers" — live DOWNLOADING rows are left untouched, not prematurely failed', async () => {
+    const { reconcileDownloads } = await import('../../../server/utils/monitorLoop')
+    getSlskdActiveDownloadsMock.mockReset().mockRejectedValue(new Error('ECONNREFUSED simulated'))
+
+    const artist = await makeArtist(prisma)
+    const dl = await makeDownloadedRelease(prisma, {
+      artistId: artist.id,
+      source: 'SLSKD',
+      status: 'DOWNLOADING',
+      slskUsername: 'peer1',
+      files: [{ filename: 'track01.flac', size: 123 }],
+      attempts: 0,
+      priority: 10,
+    })
+
+    await reconcileDownloads()
+
+    const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
+    expect(after.status).toBe('DOWNLOADING') // untouched — not FAILED/ABANDONED off a fetch error
+    expect(after.attempts).toBe(0)
   })
 })
