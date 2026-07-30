@@ -33,3 +33,25 @@ export const songkongMaxWaitMin = (): number => {
   const env = Number(process.env.SONGKONG_MAX_WAIT_MIN)
   return Number.isFinite(env) && env > 0 ? env : 30
 }
+
+// Well under songkongMaxWaitMin's 30min default: if the oldest ENRICHING row has waited at least this
+// long with no successful drain (a `done/<id>` marker) observed in the same window, the host cron
+// drainer is presumably down/backed up rather than merely busy. Used to stop spooling NEW completions
+// into ENRICHING (they'd otherwise each sit the full max-wait before self-promoting unenriched) — see
+// docs/downloader_issues.md #9.
+export const SONGKONG_STALE_AFTER_MIN = 10
+
+export interface SongkongHealthInput {
+  enrichingRows: { updatedAt: Date }[] // rows currently ENRICHING
+  lastDrainedAt: Date | null // last time any row was observed successfully enriched
+  now?: Date
+}
+
+/** Pure predicate — no DB/FS access — so the staleness rule is independently testable. */
+export const isSongkongStalled = ({ enrichingRows, lastDrainedAt, now = new Date() }: SongkongHealthInput): boolean => {
+  if (enrichingRows.length === 0) return false // nothing waiting - can't be backed up
+  const oldestAgeMin = Math.max(...enrichingRows.map(r => (now.getTime() - r.updatedAt.getTime()) / 60_000))
+  if (oldestAgeMin < SONGKONG_STALE_AFTER_MIN) return false // still within normal turnaround grace
+  const sinceLastDrainMin = lastDrainedAt ? (now.getTime() - lastDrainedAt.getTime()) / 60_000 : Infinity
+  return sinceLastDrainMin >= SONGKONG_STALE_AFTER_MIN
+}

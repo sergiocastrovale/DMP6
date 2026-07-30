@@ -5,7 +5,7 @@ import { join, basename } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
-import { resolveSongkongEnabled, songkongDirs, songkongMaxWaitMin } from '~/server/utils/songkongSettings'
+import { resolveSongkongEnabled, songkongDirs, songkongMaxWaitMin, isSongkongStalled, SONGKONG_STALE_AFTER_MIN } from '~/server/utils/songkongSettings'
 import { transformToLibraryLayout } from '~/server/utils/layout'
 import { moveToReady, mergeManyDownloadedReleases } from '~/server/utils/promote'
 import { runExclusive } from '~/server/utils/scriptLock'
@@ -39,6 +39,30 @@ let lastAutoMergeAt = 0
 let reconcileRunning = false
 let torrentReconcileRunning = false
 const finalizing = new Set<string>()
+
+// SongKong drainer liveness (see songkongSettings.ts): updated whenever a row is observed actually
+// enriched (not just timed out), and read before spooling any NEW completion into ENRICHING.
+let lastSongkongDrainAt: Date | null = null
+let songkongStalledLogged = false
+
+/**
+ * Is the SongKong drainer presumably down/backed up right now? If so, callers should skip spooling new
+ * completions into ENRICHING (send them straight to READY instead) rather than let them each sit the
+ * full max-wait window before self-promoting unenriched, one at a time.
+ */
+async function songkongBacklogStalled(): Promise<boolean> {
+  const rows = await prisma.downloadedRelease.findMany({ where: { status: 'ENRICHING' }, select: { updatedAt: true } })
+  const stalled = isSongkongStalled({ enrichingRows: rows, lastDrainedAt: lastSongkongDrainAt })
+  if (stalled && !songkongStalledLogged) {
+    songkongStalledLogged = true
+    logWarn(`SongKong drainer appears stalled — ${rows.length} row(s) ENRICHING with no completion in the last ${SONGKONG_STALE_AFTER_MIN}min; new completions will skip enrichment until it recovers`)
+  }
+  else if (!stalled && songkongStalledLogged) {
+    songkongStalledLogged = false
+    log('SongKong drainer resumed')
+  }
+  return stalled
+}
 
 const baseName = (f: string) => basename(f.replace(/\\/g, '/'))
 
@@ -144,7 +168,7 @@ export async function reconcileDownloads(): Promise<void> {
           year: row.year ?? null,
         }), 5 * 60_000)
         if (res.movedCount > 0) {
-          if (await resolveSongkongEnabled()) {
+          if (await resolveSongkongEnabled() && !(await songkongBacklogStalled())) {
             // Hand off to SongKong (host cron drainer) for enrichment before the layout transform.
             const dirs = songkongDirs()
             await mkdir(dirs.spool, { recursive: true })
@@ -266,6 +290,8 @@ async function drainEnriching(
     const timedOut = Date.now() - row.updatedAt.getTime() > maxWaitMs
     if (!enriched && !timedOut) continue
 
+    if (enriched) lastSongkongDrainAt = new Date() // the drainer is alive and producing output
+
     finalizing.add(row.id)
     try {
       const releaseRoot = await withTimeout(transformToLibraryLayout(row.id, row.stagingPath), 5 * 60_000)
@@ -384,7 +410,7 @@ export async function reconcileTorrentDownloads(): Promise<void> {
             year: r.year ?? null,
           }), 5 * 60_000)
           if (res.movedCount > 0) {
-            if (await resolveSongkongEnabled()) {
+            if (await resolveSongkongEnabled() && !(await songkongBacklogStalled())) {
               const dirs = songkongDirs()
               await mkdir(dirs.spool, { recursive: true })
               await writeFile(join(dirs.spool, r.id), `${res.targetDir}\n`)
