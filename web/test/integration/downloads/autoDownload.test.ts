@@ -74,4 +74,35 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
     expect(freshRows).toHaveLength(1)
     expect(freshRows[0]!.mbReleaseId).toBe(freshMbRelease.id)
   })
+
+  it('a REJECTED/ABANDONED release is never resurrected by the trickle worker even after its MusicBrainzRelease id churns', async () => {
+    const { topUpDownloads } = await import('../../../server/utils/autoDownload')
+
+    for (const terminalStatus of ['REJECTED', 'ABANDONED'] as const) {
+      const artist = await makeArtist(prisma, { monitored: true })
+      const releaseGroupId = `rg-${terminalStatus.toLowerCase()}`
+      const currentMbRelease = await makeMbRelease(prisma, { releaseGroupId, status: 'MISSING' })
+      await prisma.musicBrainzReleaseArtist.create({
+        data: { releaseId: currentMbRelease.id, artistId: artist.id },
+      })
+      // The user rejected (or the cap abandoned) this release under an OLD, now-dead mbReleaseId; sync
+      // has since deleted+recreated the MISSING placeholder with a fresh cuid.
+      await makeDownloadedRelease(prisma, {
+        artistId: artist.id,
+        mbReleaseId: 'dead-cuid-no-longer-exists',
+        releaseGroupId,
+        title: currentMbRelease.title,
+        year: currentMbRelease.year,
+        status: terminalStatus,
+        attempts: 3,
+      })
+
+      await topUpDownloads()
+
+      const rows = await prisma.downloadedRelease.findMany({ where: { artistId: artist.id } })
+      expect(rows, `${terminalStatus} row must not be duplicated/resurrected`).toHaveLength(1)
+      expect(rows[0]!.status).toBe(terminalStatus)
+      expect(rows[0]!.attempts).toBe(3)
+    }
+  })
 })
