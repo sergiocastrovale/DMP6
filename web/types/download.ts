@@ -105,4 +105,8 @@ export interface Acquisition {
   canAcquire: boolean
   rt: { enabled: boolean; used: number; limit: number; remaining: number; resetsAt: string | null }
   slsk: { enabled: boolean }
+  // MISSING album/EP releases (of monitored artists) MusicBrainz gave no release date for — the
+  // trickle worker requires a year to lay a release out as `YYYY - title`, so these are permanently
+  // unacquirable and otherwise invisible. See docs/downloader_issues.md #15.
+  noYearMissing: number
 }

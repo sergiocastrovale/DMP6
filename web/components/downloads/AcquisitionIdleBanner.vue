@@ -46,4 +46,11 @@ const idleMessage = computed(() => {
     <PauseCircle :size="15" />
     <span>{{ idleMessage }} Background searching is paused until a source is available.</span>
   </div>
+  <div
+    v-if="acquisition?.noYearMissing"
+    class="flex items-center gap-2 rounded-lg border border-slate-500/40 bg-slate-500/10 px-4 py-2 text-sm text-slate-300"
+  >
+    <PauseCircle :size="15" />
+    <span>{{ acquisition.noYearMissing }} release{{ acquisition.noYearMissing === 1 ? '' : 's' }} have no MusicBrainz release date and can never be auto-acquired.</span>
+  </div>
 </template>
