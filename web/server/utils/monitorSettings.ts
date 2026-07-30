@@ -9,7 +9,7 @@ export interface ResolvedMonitorSettings {
   monitorIntervalMin: number
   monitorCap: number
   monitorGapsHours: number
-  monitorRetryHours: number
+  retryCooldownDays: number
   noProgressSec: number
   maxDownloadAttempts: number
   maxConcurrentDownloads: number
@@ -36,7 +36,7 @@ export async function resolveMonitorSettings(): Promise<ResolvedMonitorSettings>
     monitorIntervalMin: s?.monitorIntervalMin ?? envInt('MONITOR_INTERVAL_MIN', 15),
     monitorCap: s?.monitorCap ?? envInt('MONITOR_CAP', 10),
     monitorGapsHours: s?.monitorGapsHours ?? envInt('MONITOR_GAPS_HOURS', 24),
-    monitorRetryHours: s?.monitorRetryHours ?? envInt('MONITOR_RETRY_HOURS', 12),
+    retryCooldownDays: s?.retryCooldownDays ?? envInt('RETRY_COOLDOWN_DAYS', 7),
     noProgressSec: s?.noProgressSec ?? envInt('NO_PROGRESS_SEC', 300),
     maxDownloadAttempts: s?.maxDownloadAttempts ?? envInt('MAX_DOWNLOAD_ATTEMPTS', 3),
     maxConcurrentDownloads: s?.maxConcurrentDownloads ?? envInt('MAX_CONCURRENT_DOWNLOADS', 5),

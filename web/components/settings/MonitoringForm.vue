@@ -17,7 +17,7 @@ const form = reactive({
   searchIntervalSec: num(settings.value?.searchIntervalSec),
   gapsPicksPerRun: num(settings.value?.gapsPicksPerRun),
   gapsIntervalMin: num(settings.value?.gapsIntervalMin),
-  monitorRetryHours: num(settings.value?.monitorRetryHours),
+  retryCooldownDays: num(settings.value?.retryCooldownDays),
   noProgressSec: num(settings.value?.noProgressSec),
   maxDownloadAttempts: num(settings.value?.maxDownloadAttempts),
 })
@@ -45,7 +45,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
       searchIntervalSec: toNull(form.searchIntervalSec),
       gapsPicksPerRun: toNull(form.gapsPicksPerRun),
       gapsIntervalMin: toNull(form.gapsIntervalMin),
-      monitorRetryHours: toNull(form.monitorRetryHours),
+      retryCooldownDays: toNull(form.retryCooldownDays),
       noProgressSec: toNull(form.noProgressSec),
       maxDownloadAttempts: toNull(form.maxDownloadAttempts),
     },
@@ -111,10 +111,10 @@ const { saving, saved, error, save } = useFormSave(async () => {
         v-model="form.gapsIntervalMin"
       />
       <SettingsField
-        label="Failed retry cooldown (hours)"
-        description="Wait this long before retrying a failed release. Default 12. (MONITOR_RETRY_HOURS)"
-        type="number" placeholder="12"
-        v-model="form.monitorRetryHours"
+        label="Retry cooldown (days)"
+        description="Wait this many days before retrying a FAILED/UNAVAILABLE/INVALID release. Default 7. (RETRY_COOLDOWN_DAYS)"
+        type="number" placeholder="7"
+        v-model="form.retryCooldownDays"
       />
       <SettingsField
         label="No-progress timeout (seconds)"

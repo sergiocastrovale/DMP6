@@ -185,10 +185,14 @@ async function pickFresh(slots: number): Promise<MissingPick[]> {
   return picks
 }
 
-// Retry pool: already-tried releases still MISSING — UNAVAILABLE (search miss) or FAILED (download
-// died below the cap). Ordered by priority DESC so the least-failed retry first; random within tier.
+// Retry pool: already-tried releases still MISSING — UNAVAILABLE (search miss), FAILED (download
+// died below the cap), or INVALID (merged but didn't match MusicBrainz). Gated by `cooldownDays`
+// (Settings.retryCooldownDays / RETRY_COOLDOWN_DAYS, default 7): a row is only eligible once
+// `updatedAt` — bumped by every status-changing update (failAttempt, applyRejectionCap, the
+// enrichment/merge paths) — is at least that old, so the same miss isn't re-searched every tick.
+// Ordered by priority DESC so the least-failed retry first; random within tier.
 // ABANDONED/REJECTED are terminal and excluded.
-async function pickRetry(slots: number): Promise<MissingPick[]> {
+async function pickRetry(slots: number, cooldownDays: number): Promise<MissingPick[]> {
   // Join on the stable releaseGroupId first (survives the MB release row being deleted + recreated
   // with a fresh cuid by sync/catalogue-gaps); fall back to the volatile mbReleaseId only for legacy
   // rows predating that column being populated. DISTINCT ON dr.id guards against a fan-out if more
@@ -205,6 +209,7 @@ async function pickRetry(slots: number): Promise<MissingPick[]> {
         OR (dr."releaseGroupId" IS NULL AND mr.id = dr."mbReleaseId")
       ) AND mr.status = 'MISSING' AND mr.year IS NOT NULL
       WHERE dr.status IN ('UNAVAILABLE', 'FAILED', 'INVALID')
+        AND dr."updatedAt" <= now() - make_interval(days => ${Math.max(0, cooldownDays)}::int)
       ORDER BY dr.id, mr."updatedAt" DESC
     )
     SELECT m.id, m.title, m.year, m."releaseGroupId",
@@ -219,11 +224,11 @@ async function pickRetry(slots: number): Promise<MissingPick[]> {
 // Fill `slots` fresh-first (deprioritized retries yield to fresh candidates), but always reserve at
 // least one slot for the retry pool when it has candidates so sunk items keep trickling. Each pool
 // fills the other's shortfall. As MISSING is exhausted into rows, fresh thins and retries take over.
-async function pickCandidates(slots: number): Promise<MissingPick[]> {
+async function pickCandidates(slots: number, cooldownDays: number): Promise<MissingPick[]> {
   const reservedRetry = Math.min(slots, 1)
   const fresh = await pickFresh(slots - reservedRetry)
   const remaining = slots - fresh.length
-  const retry = remaining > 0 ? await pickRetry(remaining) : []
+  const retry = remaining > 0 ? await pickRetry(remaining, cooldownDays) : []
   return [...fresh, ...retry]
 }
 
@@ -250,7 +255,7 @@ export async function topUpDownloads(): Promise<void> {
     const slots = Math.min(maxConc - inFlight, Math.max(1, mon.searchPicksPerInterval))
     if (slots <= 0) return
 
-    const picks = await pickCandidates(slots)
+    const picks = await pickCandidates(slots, mon.retryCooldownDays)
     if (picks.length === 0) return
 
     const configs = await getDownloadSources()

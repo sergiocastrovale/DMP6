@@ -425,7 +425,7 @@ model Settings {
   monitorIntervalMin  Int?
   monitorCap          Int?
   monitorGapsHours    Int?
-  monitorRetryHours   Int?
+  retryCooldownDays   Int? // days to wait before retrying a FAILED/UNAVAILABLE/INVALID release; null = env/default
   noProgressSec       Int?
   maxDownloadAttempts Int?
   songkongEnabled     Boolean? // enrich downloads with SongKong before layout; null = env/default

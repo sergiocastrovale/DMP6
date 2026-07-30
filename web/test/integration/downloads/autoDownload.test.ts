@@ -20,7 +20,10 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
     // first (within the same 60s search interval) — reset the module so each test gets a fresh worker.
     vi.resetModules()
     // Isolate the picker to Soulseek only, so source routing doesn't depend on RuTracker/Prowlarr.
+    // DownloadSourceConfig is a preserved table (not wiped by resetDb), so explicitly set BOTH —
+    // an earlier test in this file may have left SLSKD disabled (e.g. the "no source eligible" case).
     await prisma.downloadSourceConfig.update({ where: { name: 'RUTRACKER' }, data: { enabled: false } })
+    await prisma.downloadSourceConfig.update({ where: { name: 'SLSKD' }, data: { enabled: true } })
     await prisma.settings.upsert({
       where: { id: 'main' },
       create: { id: 'main', downloadsPath: '/tmp/dmp-test-downloads' },
@@ -59,6 +62,7 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
         status: retryStatus,
         attempts: 1,
         priority: 5, // SLSK band, so RuTracker (disabled anyway) never contends for it
+        updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // past the default retryCooldownDays
       })
 
       // An unrelated fresh MISSING release for a different artist, never attempted before — should still
@@ -163,5 +167,78 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
 
     const rows = await prisma.downloadedRelease.findMany({ where: { artistId: artist.id } })
     expect(rows).toHaveLength(0)
+  })
+})
+
+describe('autoDownload.ts pickRetry: retryCooldownDays gate (real Postgres)', () => {
+  beforeEach(async () => {
+    await resetDb()
+    vi.resetModules()
+    // DownloadSourceConfig is a preserved table (not wiped by resetDb) — explicitly set BOTH, since
+    // an earlier test file/describe may have left SLSKD disabled.
+    await prisma.downloadSourceConfig.update({ where: { name: 'RUTRACKER' }, data: { enabled: false } })
+    await prisma.downloadSourceConfig.update({ where: { name: 'SLSKD' }, data: { enabled: true } })
+    await prisma.settings.upsert({
+      where: { id: 'main' },
+      create: { id: 'main', downloadsPath: '/tmp/dmp-test-downloads' },
+      update: { downloadsPath: '/tmp/dmp-test-downloads' },
+    })
+  })
+
+  afterAll(async () => {
+    await prisma.$disconnect()
+  })
+
+  // One artist+release+row per status, each isolated to its own releaseGroupId so pickFresh/pickRetry
+  // never cross-interfere between cases.
+  const seedRetryCandidate = async (status: 'FAILED' | 'UNAVAILABLE' | 'INVALID', updatedAt: Date) => {
+    const artist = await makeArtist(prisma, { monitored: true })
+    const releaseGroupId = `rg-cooldown-${status.toLowerCase()}`
+    const mb = await makeMbRelease(prisma, { releaseGroupId, status: 'MISSING' })
+    await prisma.musicBrainzReleaseArtist.create({ data: { releaseId: mb.id, artistId: artist.id } })
+    const row = await makeDownloadedRelease(prisma, {
+      artistId: artist.id, mbReleaseId: mb.id, releaseGroupId, title: mb.title, year: mb.year,
+      status, attempts: 1, priority: 10, updatedAt,
+    })
+    return { artist, mb, row }
+  }
+
+  it('a FAILED/UNAVAILABLE/INVALID row still within the cooldown window (default 7 days) is left untouched', async () => {
+    const { topUpDownloads } = await import('../../../server/utils/autoDownload')
+
+    // Seeded sequentially — concurrent inserts race on makeReleaseType's upsert('Album').
+    const seeds = [
+      await seedRetryCandidate('FAILED', new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)),
+      await seedRetryCandidate('UNAVAILABLE', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)),
+      await seedRetryCandidate('INVALID', new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)),
+    ]
+
+    await topUpDownloads()
+
+    for (const { artist, row } of seeds) {
+      const rows = await prisma.downloadedRelease.findMany({ where: { artistId: artist.id } })
+      expect(rows, `${row.status} row within cooldown must not be re-picked`).toHaveLength(1)
+      expect(rows[0]!.attempts).toBe(1) // unchanged
+      expect(rows[0]!.status).toBe(row.status) // unchanged
+    }
+  })
+
+  it('a FAILED/UNAVAILABLE/INVALID row past the cooldown window is re-picked (retried)', async () => {
+    const { topUpDownloads } = await import('../../../server/utils/autoDownload')
+
+    const seeds = [
+      await seedRetryCandidate('FAILED', new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)),
+      await seedRetryCandidate('UNAVAILABLE', new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)),
+      await seedRetryCandidate('INVALID', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
+    ]
+
+    await topUpDownloads()
+
+    for (const { artist, row } of seeds) {
+      const rows = await prisma.downloadedRelease.findMany({ where: { artistId: artist.id } })
+      expect(rows, `${row.status} row past cooldown must be reused, not duplicated`).toHaveLength(1)
+      expect(rows[0]!.id).toBe(row.id)
+      expect(rows[0]!.attempts).toBe(2) // incremented: it was actually retried
+    }
   })
 })

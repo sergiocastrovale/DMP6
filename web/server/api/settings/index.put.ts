@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
     monitorIntervalMin: body.monitorIntervalMin !== undefined ? (body.monitorIntervalMin === null || body.monitorIntervalMin === '' ? null : Number(body.monitorIntervalMin)) : undefined,
     monitorCap: body.monitorCap !== undefined ? (body.monitorCap === null || body.monitorCap === '' ? null : Number(body.monitorCap)) : undefined,
     monitorGapsHours: body.monitorGapsHours !== undefined ? (body.monitorGapsHours === null || body.monitorGapsHours === '' ? null : Number(body.monitorGapsHours)) : undefined,
-    monitorRetryHours: body.monitorRetryHours !== undefined ? (body.monitorRetryHours === null || body.monitorRetryHours === '' ? null : Number(body.monitorRetryHours)) : undefined,
+    retryCooldownDays: body.retryCooldownDays !== undefined ? (body.retryCooldownDays === null || body.retryCooldownDays === '' ? null : Number(body.retryCooldownDays)) : undefined,
     noProgressSec: body.noProgressSec !== undefined ? (body.noProgressSec === null || body.noProgressSec === '' ? null : Number(body.noProgressSec)) : undefined,
     maxDownloadAttempts: body.maxDownloadAttempts !== undefined ? (body.maxDownloadAttempts === null || body.maxDownloadAttempts === '' ? null : Number(body.maxDownloadAttempts)) : undefined,
     songkongEnabled: typeof body.songkongEnabled === 'boolean' ? body.songkongEnabled : body.songkongEnabled === null ? null : undefined,
