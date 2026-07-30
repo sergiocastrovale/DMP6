@@ -34,9 +34,14 @@ export default defineEventHandler(async (event) => {
     return { id: row?.id ?? null, status: 'NO_YEAR' as const }
   }
 
+  // Key lookups on the stable releaseGroupId when we have one — mb.id (MusicBrainzRelease.id) is a
+  // cuid that sync/catalogue-gaps can delete + recreate, so a prior/in-flight row created against a
+  // now-stale id would otherwise go unnoticed and this "one-click grab" would double-download.
+  const dedupKey = mb.releaseGroupId ? { releaseGroupId: mb.releaseGroupId } : { mbReleaseId: mb.id }
+
   // Already in flight / ready to merge / promoted? Don't double-grab.
   const existing = await prisma.downloadedRelease.findFirst({
-    where: { mbReleaseId: mb.id, status: { in: ['DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] } },
+    where: { ...dedupKey, status: { in: ['DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] } },
     select: { id: true, status: true },
   })
   if (existing) return { id: existing.id, status: existing.status, alreadyQueued: true }
@@ -47,8 +52,9 @@ export default defineEventHandler(async (event) => {
   // Manual override: reuse a prior FAILED/ABANDONED/UNAVAILABLE/INVALID row and reset the attempt cap
   // (a human deliberately forced this) so it isn't immediately re-abandoned.
   const prior = await prisma.downloadedRelease.findFirst({
-    where: { mbReleaseId: mb.id, status: { in: ['FAILED', 'ABANDONED', 'REJECTED', 'UNAVAILABLE', 'INVALID'] } },
+    where: { ...dedupKey, status: { in: ['FAILED', 'ABANDONED', 'REJECTED', 'UNAVAILABLE', 'INVALID'] } },
     select: { id: true, triedSources: true, attempts: true },
+    orderBy: { updatedAt: 'desc' },
   })
 
   // Pick the source (RuTracker first within its band + budget, Soulseek fallback). Manual picks enter

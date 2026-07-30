@@ -173,7 +173,11 @@ async function pickFresh(slots: number): Promise<MissingPick[]> {
       JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mr.id AND mra."artistId" = ${a.id}
       WHERE mr.status = 'MISSING'
         AND mr.year IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM "DownloadedRelease" dr WHERE dr."mbReleaseId" = mr.id)
+        AND NOT EXISTS (
+          SELECT 1 FROM "DownloadedRelease" dr
+          WHERE (mr."releaseGroupId" IS NOT NULL AND dr."releaseGroupId" = mr."releaseGroupId")
+             OR dr."mbReleaseId" = mr.id
+        )
       ORDER BY random() LIMIT 1
     `)
     if (rel[0]) picks.push(rel[0])
@@ -185,16 +189,30 @@ async function pickFresh(slots: number): Promise<MissingPick[]> {
 // died below the cap). Ordered by priority DESC so the least-failed retry first; random within tier.
 // ABANDONED/REJECTED are terminal and excluded.
 async function pickRetry(slots: number): Promise<MissingPick[]> {
+  // Join on the stable releaseGroupId first (survives the MB release row being deleted + recreated
+  // with a fresh cuid by sync/catalogue-gaps); fall back to the volatile mbReleaseId only for legacy
+  // rows predating that column being populated. DISTINCT ON dr.id guards against a fan-out if more
+  // than one MISSING placeholder somehow exists for the same group.
   return prisma.$queryRaw<MissingPick[]>(Prisma.sql`
-    SELECT mr.id, mr.title, mr.year, mr."releaseGroupId",
+    WITH matched AS (
+      SELECT DISTINCT ON (dr.id)
+             mr.id, mr.title, mr.year, mr."releaseGroupId",
+             dr."artistId", dr.id AS "rowId", dr.attempts AS attempts, dr.priority AS priority,
+             dr."triedSources" AS "triedSources"
+      FROM "DownloadedRelease" dr
+      JOIN "MusicBrainzRelease" mr ON (
+        (dr."releaseGroupId" IS NOT NULL AND mr."releaseGroupId" = dr."releaseGroupId")
+        OR (dr."releaseGroupId" IS NULL AND mr.id = dr."mbReleaseId")
+      ) AND mr.status = 'MISSING' AND mr.year IS NOT NULL
+      WHERE dr.status IN ('UNAVAILABLE', 'FAILED', 'INVALID')
+      ORDER BY dr.id, mr."updatedAt" DESC
+    )
+    SELECT m.id, m.title, m.year, m."releaseGroupId",
            a.id AS "artistId", a.name AS "artistName",
-           dr.id AS "rowId", dr.attempts AS attempts, dr.priority AS priority,
-           dr."triedSources" AS "triedSources"
-    FROM "DownloadedRelease" dr
-    JOIN "MusicBrainzRelease" mr ON mr.id = dr."mbReleaseId" AND mr.status = 'MISSING' AND mr.year IS NOT NULL
-    JOIN "Artist" a ON a.id = dr."artistId" AND a.monitored = true AND a."relatedOnly" = false AND a.name NOT LIKE '%;%'
-    WHERE dr.status IN ('UNAVAILABLE', 'FAILED', 'INVALID')
-    ORDER BY dr.priority DESC, random() LIMIT ${slots}
+           m."rowId", m.attempts, m.priority, m."triedSources"
+    FROM matched m
+    JOIN "Artist" a ON a.id = m."artistId" AND a.monitored = true AND a."relatedOnly" = false AND a.name NOT LIKE '%;%'
+    ORDER BY m.priority DESC, random() LIMIT ${slots}
   `)
 }
 

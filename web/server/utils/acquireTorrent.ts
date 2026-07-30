@@ -89,11 +89,16 @@ export async function acquireTorrentRelease(
     if (!trigger) { await deleteTorrent(hash, true); continue } // target not in this torrent
 
     // Decide which matched albums we will actually fulfill (skip siblings already being handled).
+    // Key on the stable releaseGroupId when present — mbReleaseId is a cuid that sync/catalogue-gaps
+    // can delete + recreate, which would otherwise hide an already-in-flight sibling and re-grab it.
     const fulfill = [] as typeof matches
     for (const m of matches) {
       if (m.release.id === trigger.release.id) { fulfill.push(m); continue }
-      const existing = m.release.id
-        ? await prisma.downloadedRelease.findFirst({ where: { mbReleaseId: m.release.id, status: { in: ACTIVE as unknown as any[] } } })
+      const dedupKey = m.release.releaseGroupId
+        ? { releaseGroupId: m.release.releaseGroupId }
+        : m.release.id ? { mbReleaseId: m.release.id } : null
+      const existing = dedupKey
+        ? await prisma.downloadedRelease.findFirst({ where: { ...dedupKey, status: { in: ACTIVE as unknown as any[] } } })
         : null
       if (!existing) fulfill.push(m)
     }
@@ -126,7 +131,8 @@ export async function acquireTorrentRelease(
         await prisma.downloadedRelease.update({ where: { id: triggerRowId }, data })
       }
       else {
-        const existing = await prisma.downloadedRelease.findFirst({ where: { mbReleaseId: m.release.id } })
+        const dedupKey = m.release.releaseGroupId ? { releaseGroupId: m.release.releaseGroupId } : { mbReleaseId: m.release.id }
+        const existing = await prisma.downloadedRelease.findFirst({ where: dedupKey, orderBy: { updatedAt: 'desc' } })
         existing
           ? await prisma.downloadedRelease.update({ where: { id: existing.id }, data })
           : await prisma.downloadedRelease.create({ data })

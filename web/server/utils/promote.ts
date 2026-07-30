@@ -103,6 +103,7 @@ type MergeRow = {
   title: string
   stagingPath: string | null
   mbReleaseId: string | null
+  releaseGroupId: string | null
   attempts: number
   priority: number
   artist: { name: string } | null
@@ -199,11 +200,16 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
           where: { id: row.id },
           data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: reloaded!.id },
         }),
-        // Retire the group placeholder we downloaded against — it's now owned on disk, so it must stop
-        // being a pickable MISSING row (otherwise the re-download loop comes straight back).
-        ...(row.mbReleaseId
-          ? [prisma.musicBrainzRelease.deleteMany({ where: { id: row.mbReleaseId, status: 'MISSING' } })]
-          : []),
+        // Retire the group placeholder(s) we downloaded against — it's now owned on disk, so it must
+        // stop being a pickable MISSING row. Retire by the stable releaseGroupId (not the volatile
+        // mbReleaseId cuid): sync/catalogue-gaps can delete+recreate the MISSING row with a fresh id
+        // while a download was in flight, in which case retiring only row.mbReleaseId would no-op and
+        // leave a look-alike MISSING placeholder behind, re-triggering the download loop.
+        ...(row.releaseGroupId
+          ? [prisma.musicBrainzRelease.deleteMany({ where: { releaseGroupId: row.releaseGroupId, status: 'MISSING' } })]
+          : row.mbReleaseId
+            ? [prisma.musicBrainzRelease.deleteMany({ where: { id: row.mbReleaseId, status: 'MISSING' } })]
+            : []),
       ])
     }
     catch (e: any) {
