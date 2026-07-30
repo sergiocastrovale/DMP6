@@ -38,7 +38,7 @@ root cause below.
 
 ### 1. Duplicate-download loop: dedup is keyed on the volatile `MusicBrainzRelease.id` cuid
 
-- [ ] **Key the download↔release relationship on a stable MB identifier, not the internal cuid.**
+- [x] **Key the download↔release relationship on a stable MB identifier, not the internal cuid.**
 
 **Symptom.** The system re-downloads (or re-attempts) the same album hundreds/thousands of times.
 94% of `DownloadedRelease` rows are dangling garbage. Manual rejects reappear (455×).
@@ -84,7 +84,7 @@ Files: `web/prisma/schema.prisma` (migration), `autoDownload.ts`, `acquire.post.
 
 ### 2. Rejection / abandonment is not durable
 
-- [ ] **Make "rejected", "abandoned", and the attempts cap survive an MB-release recreate.**
+- [x] **Make "rejected", "abandoned", and the attempts cap survive an MB-release recreate.**
 
 **Symptom.** The user rejected one album **455 times** and it kept coming back. `ABANDONED` (the
 terminal cap) is almost never reached in practice for the churning albums.
@@ -107,7 +107,7 @@ Files: `promote.ts` (`applyRejectionCap`, `rejectDownloadedRelease`), `autoDownl
 
 ### 3. No garbage-collection of dangling / terminal download rows
 
-- [ ] **Add a sweep that deletes (or archives) `DownloadedRelease` rows whose target is gone.**
+- [x] **Add a sweep that deletes (or archives) `DownloadedRelease` rows whose target is gone.**
 
 **Symptom.** 5,145 dangling rows (94% of the table). `queue.get.ts` loads thousands of them on
 every poll (see #8). History/failed/unavailable tabs are unusable.
@@ -130,7 +130,7 @@ Files: new sweep in `monitorLoop.ts` or `promote.ts`; wire into `api/downloads/c
 
 ### 4. Every edition of a release group is a separate download target
 
-- [ ] **Deduplicate acquisition by release group so sibling editions aren't grabbed separately.**
+- [x] **Deduplicate acquisition by release group so sibling editions aren't grabbed separately.**
 
 **Symptom / risk.** `pickFresh`/`pickRetry`/`missingReleasesForArtist` select MISSING rows at the
 individual `MusicBrainzRelease` (edition) grain. `catalogue_gaps.rs` currently writes one MISSING
@@ -148,7 +148,7 @@ Files: `autoDownload.ts`, `acquireTorrent.ts`.
 
 ### 5. `settleFinished` leaves the row `DOWNLOADING` if `moveToReady` throws
 
-- [ ] **Set a definite state before/after move; don't strand a finished download as DOWNLOADING.**
+- [x] **Set a definite state before/after move; don't strand a finished download as DOWNLOADING.**
 
 **Symptom.** A finished download whose `moveToReady` fails (e.g. transient FS error, misconfig)
 stays `DOWNLOADING` with files already relocated. Next reconcile finds no source files
@@ -166,7 +166,7 @@ Files: `monitorLoop.ts`, `promote.ts::moveToReady`.
 
 ### 6. slskd relocate matches files by basename across the entire downloads root
 
-- [ ] **Scope slsk relocation to this download's files, not a whole-tree basename search.**
+- [x] **Scope slsk relocation to this download's files, not a whole-tree basename search.**
 
 **Symptom / risk.** `slskd.ts::relocateDownloadedFiles` locates files via
 `findFilesByBasename(downloadsPath, expected, 10)` — a 10-deep walk of the whole downloads root.
@@ -184,7 +184,7 @@ Files: `slskd.ts` (`relocateDownloadedFiles`, `findFilesByBasename`), `acquire.t
 
 ### 7. `findBestSlskdResult` doesn't verify the result is the requested album
 
-- [ ] **Validate that the chosen slsk result actually matches artist+album before enqueuing.**
+- [x] **Validate that the chosen slsk result actually matches artist+album before enqueuing.**
 
 **Symptom.** `acquire.ts::findBestSlskdResult` picks the highest *quality/speed*-scored folder from
 a free-text `"artist album"` search with no check that the folder/files correspond to the requested
@@ -205,7 +205,7 @@ Files: `downloads.ts::getSlskdResults` / `acquire.ts::findBestSlskdResult`, `sls
 
 ### 8. `/api/downloads/queue` returns the full active set unbounded
 
-- [ ] **Paginate/limit `active` (and history) in `queue.get.ts`.**
+- [x] **Paginate/limit `active` (and history) in `queue.get.ts`.**
 
 **Symptom.** `queue.get.ts` `active` selects **all** `DOWNLOADING/ENRICHING/FAILED/ABANDONED/
 UNAVAILABLE` rows with no `take`. With ~4,900 such rows (mostly dangling), every 2s poll ships
@@ -221,7 +221,7 @@ Files: `queue.get.ts`, `stores/downloads.ts`, the downloading/failed/unavailable
 
 ### 9. Enrichment (SongKong) rows pile up and stall
 
-- [ ] **Detect a down/backed-up SongKong drainer and stop spooling into ENRICHING.**
+- [x] **Detect a down/backed-up SongKong drainer and stop spooling into ENRICHING.**
 
 **Symptom.** 143 rows currently `ENRICHING`, all created in one 17-min window; 95 "SongKong
 enrichment timed out; merged without enrichment" for a single album. If the host drainer is
@@ -239,7 +239,7 @@ Files: `monitorLoop.ts` (`reconcileDownloads`, `drainEnriching`), `songkongSetti
 
 ### 10. INVALID discard deletes the library folder, then re-downloads forever
 
-- [ ] **Don't purge + re-fetch a copy that will never validate; cap by release group.**
+- [x] **Don't purge + re-fetch a copy that will never validate; cap by release group.**
 
 **Symptom.** `stampMerged` deletes the library folder + `LocalRelease` and marks `INVALID` when the
 merged copy has no MB identity / isn't a COMPLETE match. Combined with #1, a source that never
@@ -257,7 +257,7 @@ Files: `promote.ts::stampMerged`.
 
 ### 11. Manual acquire uses `artistId: ''` for year-less releases
 
-- [ ] **Don't write an empty-string `artistId`; use null or the real artist.**
+- [x] **Don't write an empty-string `artistId`; use null or the real artist.**
 
 **Symptom.** `acquire.post.ts` (year==null branch) creates a row with
 `artistId: mb.artists[0]?.artist?.id ?? ''`. An empty string is not a valid FK and not null;
@@ -271,7 +271,7 @@ Files: `acquire.post.ts:32`.
 
 ### 12. `mergeSelected` fans out N individual index+sync spawns
 
-- [ ] **Route multi-select merge through the batched `mergeManyDownloadedReleases` path.**
+- [x] **Route multi-select merge through the batched `mergeManyDownloadedReleases` path.**
 
 **Symptom.** `stores/downloads.ts::mergeSelected` does `Promise.all(ids.map(merge))`, i.e. one
 `merge/[id]` (→ one `index --folders` + one `sync --release`) per row. `mergeManyDownloadedReleases`
@@ -291,7 +291,7 @@ Files: `stores/downloads.ts`.
 
 ### 13. `getSlskdActiveDownloads` timeout is swallowed as "no transfers"
 
-- [ ] **Distinguish "slskd unreachable" from "no active transfers" in reconcile.**
+- [x] **Distinguish "slskd unreachable" from "no active transfers" in reconcile.**
 
 **Symptom.** In `reconcileDownloads`, `withTimeout(getSlskdActiveDownloads(), 15s).catch(() => [])`
 returns `[]` on timeout. Empty transfers for a row with files ⇒ "all terminal" ⇒ it finalizes /
@@ -304,7 +304,7 @@ Files: `monitorLoop.ts`.
 
 ### 14. `chooseSource` can strand a release when RuTracker budget is spent and Soulseek is off
 
-- [ ] **Confirm intended behavior when only RuTracker is enabled and its daily budget is spent.**
+- [x] **Confirm intended behavior when only RuTracker is enabled and its daily budget is spent.**
 
 **Symptom.** `chooseSource` returns `null`; `topUpDownloads` `continue`s and the monitor idle-gate
 (`downloadWorkPossible`) pauses acquisition until the RT window rolls. This is intended, but the
@@ -317,7 +317,7 @@ Files: `autoDownload.ts`, test.
 
 ### 15. `year IS NOT NULL` filter permanently excludes date-less release groups
 
-- [ ] **Decide policy for release groups MusicBrainz has no date for.**
+- [x] **Decide policy for release groups MusicBrainz has no date for.**
 
 **Symptom.** `pickFresh`/`pickRetry` require `mr.year IS NOT NULL`, and `moveToReady`/`acquire.post`
 treat year-less releases as "erroneous". Legitimate releases with no MB first-release-date are never
@@ -330,7 +330,7 @@ Files: `autoDownload.ts`, `acquireTorrent.ts::missingReleasesForArtist`, `promot
 
 ### 16. Torrent sibling-fulfilment check keyed on `mbReleaseId` (volatile)
 
-- [ ] **Use the stable key for the "sibling already handled?" check in `acquireTorrent`.**
+- [x] **Use the stable key for the "sibling already handled?" check in `acquireTorrent`.**
 
 **Symptom.** `acquireTorrent.ts` skips a pack sibling if a row exists with `mbReleaseId = m.release.id`
 in an ACTIVE status. Same volatile-id problem as #1 → a pack can re-download a sibling already had.
@@ -350,5 +350,8 @@ Files: `acquireTorrent.ts`.
 5. **#8, #9** (UI/perf + enrichment back-pressure).
 6. Remainder (#10–#16).
 
-> Note: #1 needs a Prisma schema migration (shared NAS↔local DB) — per project policy, coordinate a
-> deploy for that change. Most other fixes are web-only and stop at typecheck + tests.
+> Update: all 16 fixed. No Prisma migration was actually needed for #1 — `releaseGroupId` was already
+> a column on both `DownloadedRelease` and `MusicBrainzRelease`; the fix was rewiring every dedup/guard
+> query to key on it instead of the volatile cuid. One-off NAS cleanup ran as part of #3: removed
+> 4,785 of 5,482 dangling `DownloadedRelease` rows. All fixes are web-only (no `./deploy` needed) and
+> covered by unit/integration tests (478 passing).
