@@ -148,4 +148,20 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
     expect(rows).toHaveLength(1)
     expect(rows[0]!.mbReleaseId).toBe(editionA.id)
   })
+
+  it('creates no row at all when chooseSource has nothing eligible (both sources disabled)', async () => {
+    const { topUpDownloads } = await import('../../../server/utils/autoDownload')
+
+    await prisma.downloadSourceConfig.update({ where: { name: 'SLSKD' }, data: { enabled: false } })
+    // RUTRACKER is already disabled in beforeEach — nothing can be picked, chooseSource always returns null.
+
+    const artist = await makeArtist(prisma, { monitored: true })
+    const mb = await makeMbRelease(prisma, { releaseGroupId: 'rg-no-source', status: 'MISSING' })
+    await prisma.musicBrainzReleaseArtist.create({ data: { releaseId: mb.id, artistId: artist.id } })
+
+    await topUpDownloads()
+
+    const rows = await prisma.downloadedRelease.findMany({ where: { artistId: artist.id } })
+    expect(rows).toHaveLength(0)
+  })
 })
