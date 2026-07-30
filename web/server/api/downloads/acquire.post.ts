@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
     const row = errored
       ? await prisma.downloadedRelease.update({ where: { id: errored.id }, data })
       : await prisma.downloadedRelease.create({
-        data: { ...data, artistId: mb.artists[0]?.artist?.id ?? '', mbReleaseId: mb.id, releaseGroupId: mb.releaseGroupId ?? null, title: mb.title, year: null },
+        data: { ...data, artistId: mb.artists[0]?.artist?.id ?? null, mbReleaseId: mb.id, releaseGroupId: mb.releaseGroupId ?? null, title: mb.title, year: null },
       }).catch(() => null)
     return { id: row?.id ?? null, status: 'NO_YEAR' as const }
   }
