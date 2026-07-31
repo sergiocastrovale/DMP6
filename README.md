@@ -21,7 +21,6 @@ DMP is a web app which combines Spotify, Plex and Lidarr, along with other archi
 * [DB schema](docs/schema.md)
 * [Handling images](docs/images.md)
 * [Redis cache](docs/redis.md)
-* [TODO](docs/todo.md)
 * [Ideas and future features](docs/future.md)
 
 ## Scripts
