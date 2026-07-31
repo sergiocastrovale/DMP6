@@ -870,9 +870,15 @@ pub async fn get_track_id_file_paths_for_release(
     Ok(rows)
 }
 
+/// Pick which artist a `--release <id>` targeted sync/validate runs under. A collab release ("A & B")
+/// links multiple main artists via LocalReleaseArtist - without `artist_hint`, `ORDER BY a.name LIMIT 1`
+/// picks whichever sorts first alphabetically, which may not be the artist the caller actually cares
+/// about (e.g. the download's own artist during merge validation). When `artist_hint` names one of the
+/// release's main artists, prefer it; otherwise fall back to the alphabetical pick.
 pub async fn get_artist_for_release(
     pool: &PgPool,
     release_id: &str,
+    artist_hint: Option<&str>,
 ) -> Result<Option<ArtistSyncRow>, sqlx::Error> {
     let row: Option<(String, String, String, Option<String>, Option<String>, Option<String>)> =
         sqlx::query_as(
@@ -881,10 +887,11 @@ pub async fn get_artist_for_release(
                JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
                WHERE lra."localReleaseId" = $1
                  AND a."relatedOnly" = false
-               ORDER BY a.name
+               ORDER BY CASE WHEN a.id = $2 THEN 0 ELSE 1 END, a.name
                LIMIT 1"#,
         )
         .bind(release_id)
+        .bind(artist_hint)
         .fetch_optional(pool)
         .await?;
 

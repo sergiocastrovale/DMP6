@@ -115,6 +115,7 @@ type MergeRow = {
   attempts: number
   priority: number
   source: DownloadSource
+  artistId: string | null
   artist: { name: string } | null
 }
 
@@ -196,10 +197,14 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
   })
 
   // Targeted reconcile of just this release (non-destructive: never touches sibling MISSING placeholders).
+  // --artist-hint: on a collab release (multiple main artists), prefer syncing/validating under the
+  // artist this download was actually for, not whichever main artist sorts first alphabetically.
   let reconcilerFailed = false
   if (lr) {
     try {
-      await runReconciler('sync', ['--release', lr.id])
+      const args = ['--release', lr.id]
+      if (row.artistId) {args.push('--artist-hint', row.artistId)}
+      await runReconciler('sync', args)
     }
     catch (e: any) {
       reconcilerFailed = true

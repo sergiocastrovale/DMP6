@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
-import { makeDownloadedRelease, makeLocalRelease, makeMbRelease } from '../../../test/factories'
+import { makeArtist, makeDownloadedRelease, makeLocalRelease, makeMbRelease } from '../../../test/factories'
 
 const deleteTorrentMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('~/server/utils/qbittorrent', () => ({
@@ -331,6 +331,45 @@ describe('promote.ts (real Postgres)', () => {
       expect(localReleaseId).not.toBeNull()
       const lr = await prisma.localRelease.findUniqueOrThrow({ where: { id: localReleaseId! } })
       expect(lr.downloadedFrom).toBe('rutracker')
+    })
+
+    it('passes the download\'s artistId as --artist-hint to sync --release, so a collab release validates under the artist it was downloaded for', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - Collab Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const artist = await makeArtist(prisma)
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'READY', stagingPath, title: 'Collab Album', artistId: artist.id,
+      })
+      await makeLocalRelease(prisma, { folderPath: rel, matchStatus: 'UNMATCHED', releaseId: null })
+
+      await mergeDownloadedRelease(dl.id)
+
+      const syncCall = execFileMock.mock.calls.find(c => (c[1] as string[]).includes('--release'))
+      expect(syncCall?.[1]).toEqual(expect.arrayContaining(['--artist-hint', artist.id]))
+    })
+
+    it('omits --artist-hint when the download has no artistId', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - No Artist Id'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'READY', stagingPath, title: 'No Artist Id', artistId: null,
+      })
+      await makeLocalRelease(prisma, { folderPath: rel, matchStatus: 'UNMATCHED', releaseId: null })
+
+      await mergeDownloadedRelease(dl.id)
+
+      const syncCall = execFileMock.mock.calls.find(c => (c[1] as string[]).includes('--release'))
+      expect(syncCall?.[1]).not.toContain('--artist-hint')
     })
   })
 

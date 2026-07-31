@@ -41,6 +41,8 @@ struct SyncArgs {
     only: Option<String>,
     #[arg(long, help = "Re-sync a single release by its LocalRelease ID")]
     release: Option<String>,
+    #[arg(long, help = "With --release: prefer this Artist ID when the release has multiple main artists (e.g. the download's own artist, so a collab release syncs/validates under the artist it was actually downloaded for, not whichever main artist sorts first alphabetically)")]
+    artist_hint: Option<String>,
     #[arg(long)]
     overwrite: bool,
     #[arg(long, help = "Exact match for --only (no prefix matching)")]
@@ -488,7 +490,7 @@ async fn main() {
     reporter.blank();
 
     let mut artists: Vec<ArtistSyncRow> = if let Some(ref release_id) = target_release_id {
-        match get_artist_for_release(&pool, release_id).await {
+        match get_artist_for_release(&pool, release_id, args.artist_hint.as_deref()).await {
             Ok(Some(artist)) => {
                 reporter.info(&format!("Release {} → artist: {}", release_id, artist.name));
                 vec![artist]
