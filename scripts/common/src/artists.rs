@@ -12,6 +12,21 @@ pub const SPECIAL_MB_ARTIST_IDS: &[&str] = &[
     "9be7f096-97ec-4615-8957-8c3b0b15e4e0", // [unknown]
 ];
 
+/// Replace `from` with `to` in `tag`, but only on a whole-word (case-insensitive) match - not a bare
+/// substring. Used by duplicate-artist merge to rewrite embedded tags: a naive `str::replace` would
+/// turn "Amused" into garbage when merging an artist named "Muse" (substring match), and would miss
+/// "MUSE" entirely (case-sensitive). `\b` word boundaries fix both without needing to know the tag's
+/// separator style (comma/&/feat./etc.).
+pub fn replace_artist_word(tag: &str, from: &str, to: &str) -> String {
+    if from.is_empty() {
+        return tag.to_string();
+    }
+    let pattern = format!(r"(?i)\b{}\b", regex::escape(from));
+    let Ok(re) = Regex::new(&pattern) else { return tag.to_string() };
+    let escaped_to = to.replace('$', "$$"); // regex replacement syntax treats $ specially
+    re.replace_all(tag, escaped_to.as_str()).to_string()
+}
+
 pub fn is_various_artists(name: &str) -> bool {
     let lower = name.to_lowercase();
     lower == "various artists"
@@ -277,5 +292,28 @@ mod tests {
     fn no_separator() {
         let (m, _) = split_artists("Air");
         assert_eq!(m, vec!["Air"]);
+    }
+
+    #[test]
+    fn replace_artist_word_matches_whole_word_only() {
+        assert_eq!(replace_artist_word("Muse", "Muse", "Matthew Bellamy"), "Matthew Bellamy");
+        // "Muse" is a substring of "Amused" but not a whole word - must be left untouched.
+        assert_eq!(replace_artist_word("Amused", "Muse", "Matthew Bellamy"), "Amused");
+    }
+
+    #[test]
+    fn replace_artist_word_is_case_insensitive() {
+        assert_eq!(replace_artist_word("MUSE", "Muse", "Matthew Bellamy"), "Matthew Bellamy");
+        assert_eq!(replace_artist_word("muse", "Muse", "Matthew Bellamy"), "Matthew Bellamy");
+    }
+
+    #[test]
+    fn replace_artist_word_works_within_a_multi_artist_tag() {
+        assert_eq!(replace_artist_word("Muse & Radiohead", "Muse", "Matthew Bellamy"), "Matthew Bellamy & Radiohead");
+    }
+
+    #[test]
+    fn replace_artist_word_leaves_unrelated_tags_untouched() {
+        assert_eq!(replace_artist_word("Radiohead", "Muse", "Matthew Bellamy"), "Radiohead");
     }
 }
