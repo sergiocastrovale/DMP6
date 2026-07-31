@@ -73,7 +73,10 @@ services:
       - NUXT_PUBLIC_IMAGE_STORAGE=${IMAGE_STORAGE:-local}
       - NUXT_PUBLIC_STORAGE_PUBLIC_URL=${STORAGE_PUBLIC_URL:-}
       - DOWNLOADS_PATH=${DOWNLOADS_PATH:-/mnt/SSD/Downloads/dmp}
-      - DOWNLOAD_DIR_TEMPLATE=${DOWNLOAD_DIR_TEMPLATE:-{artist}/{year} - {album}}
+      # No compose default: an unescaped `}` in a `${VAR:-default}` value truncates compose's
+      # interpolation at the first `}`, mangling the template. downloadSettings.ts's
+      # DEFAULT_DOWNLOAD_DIR_TEMPLATE covers this when the env var is unset.
+      - DOWNLOAD_DIR_TEMPLATE=${DOWNLOAD_DIR_TEMPLATE:-}
       - SLSKD_URL=${SLSKD_URL:-http://host.docker.internal:5030}
       - SLSKD_API_KEY=${SLSKD_API_KEY:-}
       # RuTracker via Prowlarr (search) + qBittorrent (download). Credentials in Settings -> Downloads.
