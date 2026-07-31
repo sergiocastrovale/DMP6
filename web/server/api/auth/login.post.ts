@@ -1,7 +1,8 @@
 import { prisma } from '~/server/utils/prisma'
 import { createSession } from '~/server/utils/auth'
 import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
-import { verifyPassword } from '~/server/utils/password'
+import { DUMMY_PASSWORD_HASH, verifyPassword } from '~/server/utils/password'
+import { clearLoginFailures, isLoginLocked, registerLoginFailure } from '~/server/utils/loginThrottle'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -11,15 +12,20 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Missing credentials' })
   }
 
-  const user = await prisma.user.findUnique({ where: { username } })
-  if (!user) {
-    throw createError({ statusCode: 401, message: 'Invalid credentials' })
+  const throttleKey = `${username}:${getRequestIP(event, { xForwardedFor: true }) ?? 'unknown'}`
+  if (isLoginLocked(throttleKey)) {
+    throw createError({ statusCode: 429, message: 'Too many attempts — try again shortly' })
   }
 
-  const ok = await verifyPassword(password, user.passwordHash)
-  if (!ok) {
+  const user = await prisma.user.findUnique({ where: { username } })
+  // Always run the bcrypt compare, even for an unknown username, against a fixed dummy hash — timing
+  // must not reveal which usernames exist.
+  const ok = await verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH)
+  if (!user || !ok) {
+    registerLoginFailure(throttleKey)
     throw createError({ statusCode: 401, message: 'Invalid credentials' })
   }
+  clearLoginFailures(throttleKey)
 
   const token = createSession(user.id, user.passwordHash)
 

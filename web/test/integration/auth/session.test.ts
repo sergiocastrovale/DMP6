@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
 import { makeUser } from '../../../test/factories'
 import { createSession, isSessionStaleForUser, validateSession } from '../../../server/utils/auth'
-import { hashPassword, verifyPassword } from '../../../server/utils/password'
+import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from '../../../server/utils/password'
 
 const prisma = getTestPrisma()
 
@@ -50,6 +50,11 @@ describe('auth session lifecycle against a real User row', () => {
     const dbUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } })
     expect(isSessionStaleForUser(token, dbUser.passwordHash)).toBe(false)
     expect(validateSession(token)).not.toBeNull()
+  })
+
+  it('DUMMY_PASSWORD_HASH never verifies against a real password — safe to compare an unknown username against it for timing parity', async () => {
+    expect(await verifyPassword('correct-horse-battery-staple', DUMMY_PASSWORD_HASH)).toBe(false)
+    expect(await verifyPassword('', DUMMY_PASSWORD_HASH)).toBe(false)
   })
 
   it('a fresh User row seeded by the test harness satisfies the unique username/email constraints', async () => {
