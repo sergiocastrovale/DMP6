@@ -36,7 +36,7 @@ describe('promote.ts (real Postgres)', () => {
     await prisma.$disconnect()
   })
 
-  it('moveToReady: a release with no MusicBrainz year is purged and marked FAILED (never promoted to _ready)', async () => {
+  it('moveToReady: a release with no MusicBrainz year is purged and marked ABANDONED (terminal — never promoted to _ready, never retried)', async () => {
     const { moveToReady } = await import('../../../server/utils/promote')
     const dl = await makeDownloadedRelease(prisma, {
       year: null,
@@ -45,7 +45,7 @@ describe('promote.ts (real Postgres)', () => {
     })
     await moveToReady(dl.id)
     const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
-    expect(after.status).toBe('FAILED')
+    expect(after.status).toBe('ABANDONED')
     expect(after.error).toMatch(/no MusicBrainz year/)
     expect(after.stagingPath).toBeNull()
   })
@@ -373,6 +373,159 @@ describe('promote.ts (real Postgres)', () => {
     })
   })
 
+  describe('mergeDownloadedRelease: completeness gate (audit items 1, 6, 7)', () => {
+    let musicDirTmp: string
+    let readyRootTmp: string
+
+    beforeEach(async () => {
+      musicDirTmp = await mkdtemp(join(tmpdir(), 'dmp-music-'))
+      readyRootTmp = await mkdtemp(join(tmpdir(), 'dmp-ready-'))
+      process.env.MUSIC_DIR = musicDirTmp
+      await prisma.settings.upsert({
+        where: { id: 'main' },
+        create: { id: 'main', downloadsPath: readyRootTmp },
+        update: { downloadsPath: readyRootTmp },
+      })
+      execFileMock.mockReset()
+      execFileMock.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: (e: Error | null, o: string, err: string) => void) => cb(null, '', ''))
+    })
+
+    afterEach(async () => {
+      process.env.MUSIC_DIR = ''
+      await rm(musicDirTmp, { recursive: true, force: true })
+      await rm(readyRootTmp, { recursive: true, force: true })
+    })
+
+    it('COMPLETE (exact match): PROMOTED, and the MISSING placeholder it was downloaded against is retired so it stops being re-downloaded', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - Complete Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const rgId = `rg-complete-${randomUUID()}`
+      const boundMb = await makeMbRelease(prisma, { status: 'COMPLETE', releaseGroupId: rgId })
+      const placeholder = await makeMbRelease(prisma, { status: 'MISSING', releaseGroupId: rgId })
+      const otherRgPlaceholder = await makeMbRelease(prisma, { status: 'MISSING' }) // unrelated group — must survive
+      const lr = await makeLocalRelease(prisma, {
+        folderPath: rel, matchStatus: 'COMPLETE', releaseId: boundMb.id,
+      })
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'READY', stagingPath, title: 'Complete Album', releaseGroupId: rgId,
+      })
+
+      const { localReleaseId, error } = await mergeDownloadedRelease(dl.id)
+
+      expect(error).toBeNull()
+      expect(localReleaseId).toBe(lr.id)
+      const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
+      expect(after.status).toBe('PROMOTED')
+      expect(after.localReleaseId).toBe(lr.id)
+
+      expect(await prisma.musicBrainzRelease.findUnique({ where: { id: placeholder.id } })).toBeNull()
+      expect(await prisma.musicBrainzRelease.findUnique({ where: { id: otherRgPlaceholder.id } })).not.toBeNull()
+    })
+
+    it('MISSING_TRACKS (genuine shortfall): purges the folder, deletes the LocalRelease, lands INVALID, and leaves the MISSING placeholder alone', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - Shortfall Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const rgId = `rg-shortfall-${randomUUID()}`
+      const boundMb = await makeMbRelease(prisma, { status: 'MISSING_TRACKS', releaseGroupId: rgId })
+      const placeholder = await makeMbRelease(prisma, { status: 'MISSING', releaseGroupId: rgId })
+      const lr = await makeLocalRelease(prisma, {
+        folderPath: rel, matchStatus: 'MISSING_TRACKS', releaseId: boundMb.id,
+      })
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'READY', stagingPath, title: 'Shortfall Album', releaseGroupId: rgId, attempts: 0,
+      })
+
+      const { localReleaseId, error } = await mergeDownloadedRelease(dl.id)
+
+      expect(localReleaseId).toBeNull()
+      expect(error).toMatch(/incomplete/)
+      expect(await prisma.localRelease.findUnique({ where: { id: lr.id } })).toBeNull()
+      await expect(access(join(musicDirTmp, rel))).rejects.toThrow()
+
+      const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
+      expect(after.status).toBe('INVALID')
+      expect(after.attempts).toBe(1)
+
+      // The MISSING placeholder is deliberately kept — this release is still worth re-downloading.
+      expect(await prisma.musicBrainzRelease.findUnique({ where: { id: placeholder.id } })).not.toBeNull()
+    })
+
+    it('EXTRA_TRACKS (deluxe/superset copy): kept and PROMOTED, not purged — and the MISSING placeholder IS retired', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - Deluxe Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const rgId = `rg-deluxe-${randomUUID()}`
+      const boundMb = await makeMbRelease(prisma, { status: 'EXTRA_TRACKS', releaseGroupId: rgId })
+      const placeholder = await makeMbRelease(prisma, { status: 'MISSING', releaseGroupId: rgId })
+      const lr = await makeLocalRelease(prisma, {
+        folderPath: rel, matchStatus: 'EXTRA_TRACKS', releaseId: boundMb.id,
+      })
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'READY', stagingPath, title: 'Deluxe Album', releaseGroupId: rgId, attempts: 0,
+      })
+
+      const { localReleaseId, error } = await mergeDownloadedRelease(dl.id)
+
+      expect(error).toBeNull()
+      expect(localReleaseId).toBe(lr.id)
+      // Files stay on disk — never purged for a superset copy.
+      await expect(access(join(musicDirTmp, rel))).resolves.toBeUndefined()
+
+      const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
+      expect(after.status).toBe('PROMOTED')
+      expect(after.localReleaseId).toBe(lr.id)
+
+      // Fulfilled (even by a superset copy) — the placeholder must stop being re-downloaded.
+      expect(await prisma.musicBrainzRelease.findUnique({ where: { id: placeholder.id } })).toBeNull()
+    })
+
+    it('P2002 duplicate localReleaseId (audit item 8): a second row resolving to an already-owned LocalRelease is PROMOTED without the link, not thrown', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - Already Owned Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const mb = await makeMbRelease(prisma, { status: 'COMPLETE' })
+      const lr = await makeLocalRelease(prisma, { folderPath: rel, matchStatus: 'COMPLETE', releaseId: mb.id })
+      // dl1 already owns this LocalRelease (a prior successful merge).
+      const dl1 = await makeDownloadedRelease(prisma, {
+        status: 'PROMOTED', stagingPath: join(musicDirTmp, rel), title: 'Already Owned Album', localReleaseId: lr.id,
+      })
+      // dl2 is a second row (duplicate download / re-merge) whose folderPath resolves to the SAME lr.
+      const dl2 = await makeDownloadedRelease(prisma, {
+        status: 'READY', stagingPath, title: 'Already Owned Album',
+      })
+
+      const { localReleaseId, error } = await mergeDownloadedRelease(dl2.id)
+
+      expect(error).toBeNull()
+      expect(localReleaseId).toBe(lr.id) // reports the LocalRelease it resolved to, even though unlinked
+
+      const dl2After = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl2.id } })
+      expect(dl2After.status).toBe('PROMOTED')
+      expect(dl2After.localReleaseId).toBeNull() // never linked — dl1 already holds the unique FK
+
+      const dl1After = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl1.id } })
+      expect(dl1After.localReleaseId).toBe(lr.id) // untouched
+    })
+  })
+
   describe('mergeDownloadedRelease: folderPath matching must not cross into a sibling release', () => {
     let musicDirTmp: string
     let readyRootTmp: string
@@ -421,6 +574,64 @@ describe('promote.ts (real Postgres)', () => {
       const { localReleaseId } = await mergeDownloadedRelease(dl.id)
 
       expect(localReleaseId).toBe(real.id)
+    })
+  })
+
+  describe('mergeDownloadedRelease: status guard + concurrency claim (audit item 4)', () => {
+    let musicDirTmp: string
+    let readyRootTmp: string
+
+    beforeEach(async () => {
+      musicDirTmp = await mkdtemp(join(tmpdir(), 'dmp-music-'))
+      readyRootTmp = await mkdtemp(join(tmpdir(), 'dmp-ready-'))
+      process.env.MUSIC_DIR = musicDirTmp
+      await prisma.settings.upsert({
+        where: { id: 'main' },
+        create: { id: 'main', downloadsPath: readyRootTmp },
+        update: { downloadsPath: readyRootTmp },
+      })
+      execFileMock.mockReset()
+      execFileMock.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: (e: Error | null, o: string, err: string) => void) => cb(null, '', ''))
+    })
+
+    afterEach(async () => {
+      process.env.MUSIC_DIR = ''
+      await rm(musicDirTmp, { recursive: true, force: true })
+      await rm(readyRootTmp, { recursive: true, force: true })
+    })
+
+    it('refuses to merge a row that is not READY (e.g. already PROMOTED)', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+      const dl = await makeDownloadedRelease(prisma, { status: 'PROMOTED', stagingPath: '/some/path' })
+
+      await expect(mergeDownloadedRelease(dl.id)).rejects.toMatchObject({ statusCode: 409 })
+      expect(execFileMock).not.toHaveBeenCalled()
+    })
+
+    it('a second concurrent merge of the same row is rejected with 409 instead of double-running index/sync', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - Race Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+      const dl = await makeDownloadedRelease(prisma, { status: 'READY', stagingPath, title: 'Race Album' })
+      await makeLocalRelease(prisma, { folderPath: rel, matchStatus: 'UNMATCHED', releaseId: null })
+
+      // Hold the first merge mid-flight by making execFile (the index/sync step) never resolve until
+      // we've asserted the race, so the second call lands while the first still holds the claim.
+      let releaseFirst: () => void = () => {}
+      const stall = new Promise<void>((resolve) => { releaseFirst = resolve })
+      execFileMock.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: (e: Error | null, o: string, err: string) => void) => {
+        stall.then(() => cb(null, '', ''))
+      })
+
+      const first = mergeDownloadedRelease(dl.id)
+      await new Promise(r => setTimeout(r, 10)) // let the first call claim the row and reach the stalled step
+      await expect(mergeDownloadedRelease(dl.id)).rejects.toMatchObject({ statusCode: 409 })
+
+      releaseFirst()
+      await first
     })
   })
 

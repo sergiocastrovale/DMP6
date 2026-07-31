@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { buildTrackFilename, ext, sanitize } from '../../../server/utils/transcode'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { buildTrackFilename, ext, ffmpegAvailable, sanitize, transcodeDirToMp3320 } from '../../../server/utils/transcode'
+
+const execFileMock = vi.fn()
+vi.mock('node:child_process', () => {
+  const execFile = (...args: unknown[]) => execFileMock(...args)
+  return { execFile, default: { execFile } }
+})
 
 describe('ext', () => {
   it('returns the lowercased extension without the dot', () => {
@@ -55,5 +64,62 @@ describe('buildTrackFilename', () => {
   it('does not prefix disc when discTotal is 1 or absent', () => {
     expect(buildTrackFilename({ track: '1', title: 'Intro', disc: '1', discTotal: '1' })).toBe('01. Intro.mp3')
     expect(buildTrackFilename({ track: '1', title: 'Intro', disc: '1' })).toBe('01. Intro.mp3')
+  })
+})
+
+// Audit item 2: ffmpeg missing/errored must fail loudly (a single pre-flight check) instead of
+// silently leaving lossless files un-transcoded, which the library layout can't recognize as tracks.
+describe('transcodeDirToMp3320: ffmpeg pre-flight gate (audit item 2)', () => {
+  let dir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'dmp-transcode-'))
+    execFileMock.mockReset()
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('ffmpeg missing: every convertible file is marked failed without attempting per-file conversion', async () => {
+    await writeFile(join(dir, 'track1.flac'), 'fake-audio')
+    await writeFile(join(dir, 'track2.flac'), 'fake-audio')
+
+    // No options object at this call site (execFileAsync('ffmpeg', ['-version'])) — the callback is
+    // whichever arg comes last, not always index 3.
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const cb = args[args.length - 1] as (e: Error | null, o: string, err: string) => void
+      cb(new Error('ENOENT: ffmpeg not found'), '', '')
+    })
+
+    const result = await transcodeDirToMp3320(dir)
+
+    expect(result).toEqual({ converted: 0, failed: 2 })
+    // Only the -version probe ran — no per-file ffmpeg invocation for either flac file.
+    expect(execFileMock).toHaveBeenCalledTimes(1)
+    expect(execFileMock.mock.calls[0]![0]).toBe('ffmpeg')
+    expect(execFileMock.mock.calls[0]![1]).toEqual(['-version'])
+  })
+
+  it('no convertible files present (empty dir): skips the ffmpeg pre-flight entirely', async () => {
+    const result = await transcodeDirToMp3320(dir)
+
+    expect(result).toEqual({ converted: 0, failed: 0 })
+    expect(execFileMock).not.toHaveBeenCalled()
+  })
+
+  it('ffmpegAvailable() reflects ffmpeg -version success/failure', async () => {
+    // No options object at this call site (execFileAsync('ffmpeg', ['-version'])), so the callback is
+    // whichever arg comes last, not always index 3.
+    const withCb = (result: [Error | null, string, string]) => (...args: unknown[]) => {
+      const cb = args[args.length - 1] as (e: Error | null, o: string, err: string) => void
+      cb(...result)
+    }
+
+    execFileMock.mockImplementation(withCb([null, 'ffmpeg version 6.0', '']))
+    expect(await ffmpegAvailable()).toBe(true)
+
+    execFileMock.mockImplementation(withCb([new Error('ENOENT'), '', '']))
+    expect(await ffmpegAvailable()).toBe(false)
   })
 })
