@@ -78,8 +78,8 @@ ssh_cmd "mkdir -p $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NA
 echo "--- Restarting container ---"
 ssh_cmd "cd $NAS_DEPLOY_PATH && sudo docker compose up -d web"
 
-echo "--- Applying DB schema ---"
-ssh_cmd "cd $NAS_DEPLOY_PATH && sleep 3 && sudo docker compose exec -T web prisma db push --schema=prisma/schema.prisma"
+echo "--- Applying DB migrations ---"
+ssh_cmd "cd $NAS_DEPLOY_PATH && sleep 3 && sudo docker compose exec -T web prisma migrate deploy --schema=prisma/schema.prisma"
 
 # Clean up old images (after restart so the old image is no longer in use)
 echo "--- Cleaning up old images ---"

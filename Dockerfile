@@ -95,8 +95,9 @@ WORKDIR /app
 # Copy built Nuxt output
 COPY --from=web-builder /build/.output .output/
 COPY --from=web-builder /build/prisma/schema.prisma prisma/schema.prisma
+COPY --from=web-builder /build/prisma/migrations prisma/migrations/
 
-# Prisma CLI for db push on deploy (pinned to match project version)
+# Prisma CLI for migrate deploy on deploy (pinned to match project version)
 RUN npm install -g prisma@6
 
 # tmux for persistent terminal sessions + ca-certificates for HTTPS (MusicBrainz, S3)
