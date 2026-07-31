@@ -5,6 +5,7 @@ import {
   buildCommandLine,
   buildScript,
   hasDestructiveFlag,
+  hasUnfinishedRun,
   isAllowedCommand,
   isValidSessionName,
   parseExitLine,
@@ -88,6 +89,18 @@ export default defineEventHandler(async (event) => {
 
   const logFile = `/tmp/dmp-${session}.log`
   const scriptFile = `/tmp/dmp-${session}.sh`
+
+  // A same-named session still mid-run (no DMP_EXIT sentinel yet) means another tab/user is watching
+  // it - don't silently tmux-kill it out from under them (audit #84). Check BEFORE the log gets
+  // truncated below.
+  const prevLog = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : null
+  if (hasUnfinishedRun(prevLog)) {
+    throw createError({
+      statusCode: 409,
+      message: `Session "${session}" is already running - stop it first or reconnect instead.`,
+    })
+  }
+
   const fullCmd = buildCommandLine(binary, args)
   const script = buildScript(workDir, fullCmd, logFile)
   fs.writeFileSync(scriptFile, script, { mode: 0o755 })

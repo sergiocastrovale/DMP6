@@ -1,11 +1,8 @@
 import { spawn, execSync } from 'child_process'
 import fs from 'fs'
+import { parseExitLine, stripAnsi } from '~/server/utils/terminalCommand'
 
 const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/
-
-function stripAnsi(str: string): string {
-  return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')
-}
 
 export default defineEventHandler(async (event) => {
   if (!event.context.user) {
@@ -54,11 +51,11 @@ export default defineEventHandler(async (event) => {
       const text = stripAnsi(chunk.toString())
       for (const line of text.split('\n')) {
         if (!line) {continue}
-        if (line.startsWith('DMP_EXIT:')) {
+        const exitCode = parseExitLine(line)
+        if (exitCode !== null) {
           if (!done) {
             done = true
-            const code = parseInt(line.slice(9)) || 0
-            finish(code)
+            finish(exitCode)
           }
           return
         }

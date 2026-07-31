@@ -4,6 +4,7 @@ import {
   buildScript,
   escapeArg,
   hasDestructiveFlag,
+  hasUnfinishedRun,
   isAllowedCommand,
   isValidSessionName,
   parseExitLine,
@@ -196,7 +197,23 @@ describe('parseExitLine', () => {
     expect(parseExitLine('regular output')).toBeNull()
   })
 
-  it('falls back to 0 for a malformed (non-numeric) code', () => {
-    expect(parseExitLine('DMP_EXIT:abc')).toBe(0)
+  it('reports failure (1) for a malformed (non-numeric) code - must never read as success', () => {
+    expect(parseExitLine('DMP_EXIT:abc')).toBe(1)
+    expect(parseExitLine('DMP_EXIT:')).toBe(1)
+  })
+})
+
+describe('hasUnfinishedRun', () => {
+  it('true when the previous log has content but never reached the exit sentinel', () => {
+    expect(hasUnfinishedRun('still going...\nmore output\n')).toBe(true)
+  })
+
+  it('false when the previous log reached DMP_EXIT (run completed)', () => {
+    expect(hasUnfinishedRun('did stuff\nDMP_EXIT:0\n')).toBe(false)
+  })
+
+  it('false when there is no previous log (null) or it is empty', () => {
+    expect(hasUnfinishedRun(null)).toBe(false)
+    expect(hasUnfinishedRun('')).toBe(false)
   })
 })

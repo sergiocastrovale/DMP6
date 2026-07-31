@@ -79,8 +79,18 @@ echo "DMP_EXIT:$?" >> "${logFile}"
 const EXIT_PREFIX = 'DMP_EXIT:'
 
 // Returns the parsed exit code for a `DMP_EXIT:<code>` sentinel line, or null if the line isn't one.
-// A non-numeric code (shouldn't happen - `$?` is always numeric) falls back to 0 rather than NaN.
+// A non-numeric code (shouldn't happen - `$?` is always numeric, but garbage output could still land
+// here) reports failure (1) rather than silently reading as success - `|| 0` previously turned any
+// unparseable value into a false "clean exit" (audit #84).
 export const parseExitLine = (line: string): number | null => {
   if (!line.startsWith(EXIT_PREFIX)) {return null}
-  return parseInt(line.slice(EXIT_PREFIX.length), 10) || 0
+  const parsed = parseInt(line.slice(EXIT_PREFIX.length), 10)
+  return Number.isNaN(parsed) ? 1 : parsed
 }
+
+// True when a session's previous log exists but never reached its DMP_EXIT sentinel - i.e. that
+// session's command is still running (or crashed without exiting cleanly). Starting a NEW run under
+// the same session name would otherwise silently `tmux kill-session` it out from under whoever's
+// still watching it (audit #84's multi-tab clobber).
+export const hasUnfinishedRun = (prevLogContent: string | null): boolean =>
+  prevLogContent !== null && prevLogContent.length > 0 && !prevLogContent.includes(EXIT_PREFIX)
