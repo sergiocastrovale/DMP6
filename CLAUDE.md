@@ -31,8 +31,8 @@ Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
 - `Artist.country` = ISO 3166-1 alpha-2 code from MusicBrainz area (e.g. "US", "GB"), populated by sync
 - `Artist.relatedOnly` = true for guests (no own browse page, no MB sync); flips to false when found as albumArtist
 - `Artist.primaryArtistId` = FK to canonical Artist when this artist shares an MB ID with another; connected artist hidden from browse, catalogue aggregated on primary's page
-- `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING | UNKNOWN | UNMATCHED
-- `PlaylistType`: MANUAL | GENRE
+- `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING_TRACKS | MISSING | UNKNOWN | UNMATCHED
+- `PlaylistType`: MANUAL | GENRE | REGION
 - Releases deduplicated by `groupKey` (unique): `"mb:{mbAlbumId}"` or `"meta:{slugTitle}:{year}:{slugArtist}"`
 
 ## Standards
@@ -71,7 +71,7 @@ return c
 return a ? b : c
 ```
 
-- In Vue files, always organize the script code by context: 1. composables 2. static variables 3. watchers 4. computed 5. refs 5. methods
+- In Vue files, always organize the script code by context: 1. composables 2. static variables 3. refs 4. watchers 5. computed 6. methods
 - Zero custom CSS: Tailwind utility classes only. Sanctioned exceptions (things Tailwind utilities genuinely can't express) get a `<style scoped>` block and stay documented here rather than pretending the rule is unbroken:
   - `components/playlist/Block.vue`, `pages/playlists/[slug].vue`: `@property --angle` + `@keyframes` for the animated conic-gradient genre border — CSS `@property` registration and keyframe animations have no Tailwind utility equivalent.
   - `pages/labs/map.vue`: Leaflet control overrides (`.leaflet-container`, `.leaflet-control-zoom a`) — targets a third-party library's own class names, not app markup.
@@ -203,10 +203,28 @@ On the NAS, script error logs are at: `sudo docker exec dmp cat /app/errors.log`
 ### CRUD
 - `/api/playlists/*` - CRUD for playlists and playlist tracks
 - `/api/favorites/*` - toggle favorite releases and tracks
-- `/api/auth/login`, `/api/auth/logout` - session auth
+- `/api/auth/login`, `/api/auth/logout`, `/api/auth/change-password`, `/api/auth/me` - session auth
+- `/api/users/*` - admin user management (list/create/patch/delete)
+- `/api/permissions/*` - view/edit the role permission matrix
+
+### Downloads
+- `GET /api/downloads/queue`, `/active`, `/status` - queue state (gated `sync.view`)
+- `POST /api/downloads/acquire`, `/merge/[id]`, `/merge-all`, `/pause`, `/cleanup` - acquisition/merge pipeline (gated `downloads.crud`)
+- `POST /api/downloads/cancel/[id]`, `/reject/[id]`, `/reject-all`, `/requeue/[id]`, `/requeue-all`, `/retry/[id]` - per-row/bulk state transitions (gated `downloads.crud`)
+- `/api/downloads/sources` - GET/PUT per-source (slskd/RuTracker) config
+- `GET /api/artists/monitoring` - monitored-artist list for the downloads Monitoring tab
+- `PATCH /api/artists/[slug]` - toggle `monitored`
+
+### Settings
+- `/api/settings` - GET (masked secrets)/PUT (only overwrites secrets on non-empty value)
+
+### Scrobbling
+- `/api/scrobble/connect`, `/callback` - Last.fm OAuth handshake
+- `POST /api/scrobble/now-playing`, `/scrobble` - Last.fm now-playing + scrobble submission
 
 ### Labs
 - `GET /api/labs/map/countries` - artist country map data (24h cache)
+- `/api/labs/mosaic/*` - generate/cancel/list/delete mosaic images
 
 ### Operations
 - `POST /api/terminal/run` - execute shell commands (SSE streaming)
@@ -224,10 +242,14 @@ On the NAS, script error logs are at: `sudo docker exec dmp cat /app/errors.log`
 | `/playlists/[slug]` | Single playlist with tracks |
 | `/favorites` | Tabbed favorites (releases/tracks) |
 | `/timeline` | Browse by decade/year |
-| `/statistics` | Library stats dashboard |
-| `/labs/map` | World map with album art tiled by artist origin country |
+| `/statistics` (+ 15 subpages) | Library stats dashboard; subpages break out individual stat views (artists, releases, tracks, genres, bitrate, size, plays, synced/art-coverage counts, etc.) |
+| `/downloads` (+ 7 subpages) | Download queue shell; subpages are per-status tabs (downloading, failed, history, merge, monitoring, rejected, unavailable) |
+| `/labs` (+ 5 subpages) | Labs index; subpages: map (world map by artist origin country), genome, mosaic, network, decades |
 | `/issues` | Metadata issue overview - run audit, view counts per type |
 | `/issues/[type]` | Per-type issue table - select, edit proposed fixes, queue for fix |
+| `/issues/history` | Applied-fix history (undo/redo trail) |
+| `/settings/*` (8 pages) | api-keys, downloads, library, monitoring, permissions, scrobble, storage, users |
+| `/change-password` | Forced/voluntary password change |
 | `/login` | Auth page |
 
 ## Player Store
