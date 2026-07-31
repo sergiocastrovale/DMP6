@@ -380,13 +380,22 @@ pub async fn propagate_mb_artist_id(
         }
     }
 
+    // Only trust the embedded mbAlbumArtistId from releases where this artist is the SOLE main
+    // credited artist. A collab release ("A & B") links both A and B via LocalReleaseArtist to the
+    // same tracks, but the tag holds only the primary album artist's MB id - crediting that id to a
+    // co-artist with no other releases is exactly how a guest ends up impersonating the headliner in
+    // MusicBrainz terms (root feeder of the shared-releaseId + false-duplicate-artist bugs).
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"SELECT DISTINCT lrt."mbAlbumArtistId"
            FROM "LocalReleaseTrack" lrt
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lrt."localReleaseId"
            WHERE lra."artistId" = $1
              AND lrt."mbAlbumArtistId" IS NOT NULL
-             AND lrt."mbAlbumArtistId" != ''"#,
+             AND lrt."mbAlbumArtistId" != ''
+             AND (
+               SELECT COUNT(*) FROM "LocalReleaseArtist" lra2
+               WHERE lra2."localReleaseId" = lrt."localReleaseId"
+             ) = 1"#,
     )
     .bind(artist_id)
     .fetch_all(pool)
