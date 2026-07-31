@@ -1,36 +1,9 @@
 import type { Role } from '@prisma/client';
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcrypt'
+import { DEFAULT_MATRIX } from '../shared/permissionsMatrix'
 
 const prisma = new PrismaClient()
-
-const DEFAULT_MATRIX: Record<Role, string[]> = {
-  VIEWER: [
-    'play.view'
-  ],
-  MANAGER: [
-    'favorites.view',
-    'favorites.crud',
-    'playlists.view',
-    'playlists.crud',
-    'play.view',
-    'sync.view',
-    'sync.run',
-    'downloads.crud',
-  ],
-  ADMIN: [
-    'favorites.view',
-    'favorites.crud',
-    'playlists.view',
-    'playlists.crud',
-    'play.view',
-    'sync.view',
-    'sync.run',
-    'downloads.crud',
-    'issues.view',
-    'variables.edit',
-  ],
-}
 
 const main = async () => {
   const adminExists = await prisma.user.findFirst({ where: { role: 'ADMIN' } })

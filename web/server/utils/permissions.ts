@@ -1,36 +1,9 @@
 import type { H3Event } from 'h3'
 import type { Role } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
+import { ALL_PERMISSIONS, DEFAULT_MATRIX, type PermissionKey } from '~/shared/permissionsMatrix'
 
-export const ALL_PERMISSIONS = [
-  'favorites.view',
-  'favorites.crud',
-  'playlists.view',
-  'playlists.crud',
-  'play.view',
-  'sync.view',
-  'sync.run',
-  'downloads.crud',
-  'issues.view',
-  'variables.edit',
-] as const
-
-export type PermissionKey = typeof ALL_PERMISSIONS[number]
-
-export const DEFAULT_MATRIX: Record<Role, PermissionKey[]> = {
-  VIEWER: ['favorites.view', 'playlists.view', 'play.view'],
-  MANAGER: [
-    'favorites.view',
-    'favorites.crud',
-    'playlists.view',
-    'playlists.crud',
-    'play.view',
-    'sync.view',
-    'sync.run',
-    'downloads.crud',
-  ],
-  ADMIN: [...ALL_PERMISSIONS],
-}
+export { ALL_PERMISSIONS, DEFAULT_MATRIX, type PermissionKey }
 
 let cache: Record<Role, Set<string>> | null = null
 
