@@ -208,6 +208,29 @@ describe('usePlayerStore', () => {
     expect(() => store.previous()).not.toThrow()
   })
 
+  it('previous() works in catalogue mode, where the track played is never in queue/originalQueue', async () => {
+    // history stores full PlayerTrack objects (not ids) precisely so previous() doesn't depend on the
+    // track still being present in some queue - catalogue/explorer tracks never are.
+    const store = usePlayerStore()
+    store.shuffleMode = 'catalogue'
+    await store.playTrack(track({ id: 'cat-a' }))
+    await store.playTrack(track({ id: 'cat-b' }))
+    store.currentTime = 1
+    store.previous()
+    await Promise.resolve()
+    expect(store.currentTrack?.id).toBe('cat-a')
+  })
+
+  it('playTrack(track, newQueue) delegates to setQueue and pushes exactly one history entry, not the new track itself', async () => {
+    const store = usePlayerStore()
+    const a = track({ id: 'a' })
+    const b = track({ id: 'b' })
+    await store.playTrack(a)
+    await store.playTrack(b, [a, b])
+    expect(store.history.map(t => t.id)).toEqual(['a'])
+    expect(store.currentTrack?.id).toBe('b')
+  })
+
   it('cycleShuffleMode cycles off -> release -> artist -> catalogue -> off', async () => {
     fetchMock.mockResolvedValue([])
     const store = usePlayerStore()
@@ -269,6 +292,17 @@ describe('usePlayerStore', () => {
     await vi.advanceTimersByTimeAsync(600)
     const saved = JSON.parse(localStorage.getItem('dmp-player')!)
     expect(saved.volume).toBe(0.42)
+    vi.useRealTimers()
+  })
+
+  it('persists currentTime on its own throttle so resume position does not go stale during uninterrupted playback', async () => {
+    vi.useFakeTimers()
+    const store = usePlayerStore()
+    await store.playTrack(track())
+    store.currentTime = 37
+    await vi.advanceTimersByTimeAsync(5100)
+    const saved = JSON.parse(localStorage.getItem('dmp-player')!)
+    expect(saved.currentTime).toBe(37)
     vi.useRealTimers()
   })
 

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { useDebounceFn } from '@vueuse/core'
+import { useDebounceFn, useThrottleFn } from '@vueuse/core'
 import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState } from '~/types/player'
 import { nextIndexWrap, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
 
@@ -14,7 +14,7 @@ export const usePlayerStore = defineStore('player', () => {
   const duration = ref(0)
   const isVisible = ref(false)
   const shuffleMode = ref<ShuffleMode>('off')
-  const history = ref<string[]>([])
+  const history = ref<PlayerTrack[]>([])
   const explorerParams = ref<ExploreParams | null>(null)
   // Track IDs played during the current explorer session - used for deduplication
   const explorerHistory = ref<string[]>([])
@@ -88,19 +88,20 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function playTrack(track: PlayerTrack, newQueue?: PlayerTrack[]) {
+    // Delegate entirely to setQueue, which calls back into playTrack(track) with no newQueue - a single
+    // history push and a single audio/metadata setup, instead of doing both here AND in the recursive call.
+    if (newQueue) {
+      setQueue(newQueue, track)
+      return
+    }
+
     const a = getAudio()
     if (currentTrack.value?.id) {
-      pushCapped(history.value, currentTrack.value.id, 50)
+      pushCapped(history.value, currentTrack.value, 50)
     }
     currentTrack.value = track
     isVisible.value = true
     media.setMetadata(trackMeta(track))
-
-    // Set queue if provided
-    if (newQueue) {
-      setQueue(newQueue, track)
-      return // setQueue will handle playback
-    }
 
     a.src = `/api/audio/${track.id}`
     a.load()
@@ -293,10 +294,9 @@ export const usePlayerStore = defineStore('player', () => {
       seek(0)
       return
     }
-    const prevId = history.value.pop()
-    if (prevId) {
-      const track = queue.value.find(t => t.id === prevId) || originalQueue.value.find(t => t.id === prevId)
-      if (track) playTrack(track)
+    const track = history.value.pop()
+    if (track) {
+      playTrack(track)
     }
     else {
       seek(0)
@@ -431,21 +431,30 @@ export const usePlayerStore = defineStore('player', () => {
       catch { /* ignore corrupt state */ }
     }
 
+    const buildPersistedState = (): PersistedPlayerState => ({
+      trackId: currentTrack.value?.id ?? null,
+      currentTime: currentTime.value,
+      volume: volume.value,
+      isMuted: isMuted.value,
+      shuffleMode: shuffleMode.value,
+      queue: sliceForPersist(queue.value, QUEUE_PERSIST_CAP),
+      originalQueue: sliceForPersist(originalQueue.value, QUEUE_PERSIST_CAP),
+      explorerParams: explorerParams.value,
+    })
+
     const saveState = useDebounceFn(() => {
-      const state: PersistedPlayerState = {
-        trackId: currentTrack.value?.id ?? null,
-        currentTime: currentTime.value,
-        volume: volume.value,
-        isMuted: isMuted.value,
-        shuffleMode: shuffleMode.value,
-        queue: sliceForPersist(queue.value, QUEUE_PERSIST_CAP),
-        originalQueue: sliceForPersist(originalQueue.value, QUEUE_PERSIST_CAP),
-        explorerParams: explorerParams.value,
-      }
-      localStorage.setItem('dmp-player', JSON.stringify(state))
+      localStorage.setItem('dmp-player', JSON.stringify(buildPersistedState()))
     }, 500)
 
+    // currentTime ticks every ~250ms during playback and isn't in the structural watch below (it would
+    // fire the debounce constantly and never let it settle) - persist it on its own throttle instead, so
+    // resume position doesn't go stale until some other field happens to change.
+    const savePosition = useThrottleFn(() => {
+      localStorage.setItem('dmp-player', JSON.stringify(buildPersistedState()))
+    }, 5000)
+
     watch([currentTrack, volume, isMuted, shuffleMode, queue, explorerParams], saveState, { deep: true })
+    watch(currentTime, savePosition)
   }
 
   function getAudioElement(): HTMLAudioElement | null {
