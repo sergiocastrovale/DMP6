@@ -40,7 +40,15 @@ export default defineNitroPlugin(() => {
   // Make sure the DownloadSources config rows (RuTracker + Soulseek) exist before any routing runs.
   ensureDownloadSources().catch(e => monitorLog('error', `ensure download sources: ${e?.message || e}`))
 
-  setInterval(async () => {
+  setInterval(() => {
+    tick().catch(e => monitorLog('error', `tick crashed (recovered, retrying next tick): ${e?.message || e}`))
+  }, tickSec * 1000)
+
+  // Whole tick body wrapped by the setInterval callback's .catch() above - a bare unguarded await
+  // rejecting here would otherwise be an unhandled promise rejection, which crashes the Node process
+  // (and the monitor loop with it) on a single DB blip. Every step still logs its own error too, so
+  // partial failures are visible without needing to unwind the stack trace.
+  async function tick() {
     if (Date.now() - lastPruneAt > PRUNE_INTERVAL_MS) {
       lastPruneAt = Date.now()
       prisma.monitorEvent.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - EVENT_RETENTION_MS) } } })
@@ -84,5 +92,5 @@ export default defineNitroPlugin(() => {
     // Fire-and-forget; each self-throttles + self-guards against overlap.
     topUpDownloads().catch(e => monitorLog('error', `topUp error: ${e?.message || e}`))
     runGapsCycle().catch(e => monitorLog('error', `gaps error: ${e?.message || e}`))
-  }, tickSec * 1000)
+  }
 })
