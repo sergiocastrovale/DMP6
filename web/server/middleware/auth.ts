@@ -51,10 +51,11 @@ export default defineEventHandler(async (event) => {
       role: true,
       mustChangePassword: true,
       passwordHash: true,
+      tokenVersion: true,
     },
   })
 
-  const invalidSession = !dbUser || isSessionStaleForUser(token, dbUser.passwordHash)
+  const invalidSession = !dbUser || isSessionStaleForUser(token, dbUser.passwordHash, dbUser.tokenVersion)
   if (invalidSession) {
     deleteCookie(event, SESSION_COOKIE, { path: '/' })
     if (path.startsWith('/api/')) {
@@ -63,7 +64,7 @@ export default defineEventHandler(async (event) => {
     return sendRedirect(event, '/login')
   }
 
-  const { passwordHash: _, ...user } = dbUser
+  const { passwordHash: _, tokenVersion: __, ...user } = dbUser
   event.context.user = user
 
   if (user.mustChangePassword) {

@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
   }
 
   await prisma.user.delete({ where: { id } })
-  destroyUserSessions(id)
+  await destroyUserSessions(id)
 
   return { ok: true }
 })

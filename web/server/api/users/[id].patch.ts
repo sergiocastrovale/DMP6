@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
     }
     data.passwordHash = await hashPassword(password)
     data.mustChangePassword = true
-    destroyUserSessions(id)
+    await destroyUserSessions(id)
   }
 
   const updated = await prisma.user.update({

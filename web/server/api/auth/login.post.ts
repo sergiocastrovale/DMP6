@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   }
   clearLoginFailures(throttleKey)
 
-  const token = createSession(user.id, user.passwordHash)
+  const token = createSession(user.id, user.passwordHash, user.tokenVersion)
 
   setCookie(event, 'dmp_session', token, {
     httpOnly: true,

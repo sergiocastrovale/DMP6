@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
+import { prisma } from '~/server/utils/prisma'
 
 const TTL = SESSION_MAX_AGE_SECONDS * 1000
 
@@ -9,7 +10,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
 
 const SECRET = process.env.SESSION_SECRET ?? 'dmp-insecure-dev-secret'
 
-type Payload = { userId: number; exp: number; ph: string }
+type Payload = { userId: number; exp: number; ph: string; tv: number }
 
 const phash = (passwordHash: string): string =>
   createHmac('sha256', SECRET).update(passwordHash).digest('hex').slice(0, 16)
@@ -36,8 +37,8 @@ const decode = (token: string): Payload | null => {
   }
 }
 
-export const createSession = (userId: number, passwordHash: string): string =>
-  encode({ userId, exp: Date.now() + TTL, ph: phash(passwordHash) })
+export const createSession = (userId: number, passwordHash: string, tokenVersion: number): string =>
+  encode({ userId, exp: Date.now() + TTL, ph: phash(passwordHash), tv: tokenVersion })
 
 export const validateSession = (token: string | undefined): Payload | null => {
   if (!token) return null
@@ -45,10 +46,22 @@ export const validateSession = (token: string | undefined): Payload | null => {
   return p && p.exp > Date.now() ? p : null
 }
 
-export const isSessionStaleForUser = (token: string | undefined, passwordHash: string): boolean => {
+export const isSessionStaleForUser = (
+  token: string | undefined,
+  passwordHash: string,
+  tokenVersion: number,
+): boolean => {
   const p = validateSession(token)
-  return !p || p.ph !== phash(passwordHash)
+  return !p || p.ph !== phash(passwordHash) || p.tv !== tokenVersion
 }
 
-export const destroySession = (_token: string): void => {}
-export const destroyUserSessions = (_userId: number): void => {}
+// Stateless HMAC tokens can't be revoked individually - revoking means bumping the user's tokenVersion,
+// which invalidates every token issued before the bump (checked in isSessionStaleForUser above).
+export const destroyUserSessions = async (userId: number): Promise<void> => {
+  await prisma.user.update({ where: { id: userId }, data: { tokenVersion: { increment: 1 } } }).catch(() => {})
+}
+
+export const destroySession = async (token: string): Promise<void> => {
+  const session = validateSession(token)
+  if (session) await destroyUserSessions(session.userId)
+}

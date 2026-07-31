@@ -13,7 +13,7 @@ describe('auth session crypto', () => {
 
   it('roundtrips createSession -> validateSession', async () => {
     const { createSession, validateSession } = await import('../../../server/utils/auth')
-    const token = createSession(42, 'hash-a')
+    const token = createSession(42, 'hash-a', 0)
     const payload = validateSession(token)
     expect(payload).not.toBeNull()
     expect(payload!.userId).toBe(42)
@@ -21,16 +21,16 @@ describe('auth session crypto', () => {
 
   it('rejects a tampered payload', async () => {
     const { createSession, validateSession } = await import('../../../server/utils/auth')
-    const token = createSession(1, 'hash')
+    const token = createSession(1, 'hash', 0)
     const [data, sig] = token.split('.')
-    const tamperedPayload = Buffer.from(JSON.stringify({ userId: 999, exp: Date.now() + 1e9, ph: 'x' })).toString('base64url')
+    const tamperedPayload = Buffer.from(JSON.stringify({ userId: 999, exp: Date.now() + 1e9, ph: 'x', tv: 0 })).toString('base64url')
     expect(validateSession(`${tamperedPayload}.${sig}`)).toBeNull()
     void data
   })
 
   it('rejects a tampered signature', async () => {
     const { createSession, validateSession } = await import('../../../server/utils/auth')
-    const token = createSession(1, 'hash')
+    const token = createSession(1, 'hash', 0)
     const [data] = token.split('.')
     expect(validateSession(`${data}.deadbeef`)).toBeNull()
   })
@@ -39,7 +39,7 @@ describe('auth session crypto', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2024-01-01T00:00:00Z'))
     const { createSession, validateSession } = await import('../../../server/utils/auth')
-    const token = createSession(1, 'hash')
+    const token = createSession(1, 'hash', 0)
     vi.setSystemTime(new Date('2024-04-15T00:00:00Z')) // > 90 days later
     expect(validateSession(token)).toBeNull()
   })
@@ -56,26 +56,26 @@ describe('auth session crypto', () => {
 
   it('isSessionStaleForUser is true when the password hash changed', async () => {
     const { createSession, isSessionStaleForUser } = await import('../../../server/utils/auth')
-    const token = createSession(1, 'old-hash')
-    expect(isSessionStaleForUser(token, 'new-hash')).toBe(true)
+    const token = createSession(1, 'old-hash', 0)
+    expect(isSessionStaleForUser(token, 'new-hash', 0)).toBe(true)
   })
 
-  it('isSessionStaleForUser is false when the password hash is unchanged', async () => {
+  it('isSessionStaleForUser is false when the password hash and tokenVersion are unchanged', async () => {
     const { createSession, isSessionStaleForUser } = await import('../../../server/utils/auth')
-    const token = createSession(1, 'same-hash')
-    expect(isSessionStaleForUser(token, 'same-hash')).toBe(false)
+    const token = createSession(1, 'same-hash', 0)
+    expect(isSessionStaleForUser(token, 'same-hash', 0)).toBe(false)
+  })
+
+  it('isSessionStaleForUser is true when tokenVersion advanced (explicit revoke) even with the same password hash', async () => {
+    // This is the logout/revoke mechanism: bumping tokenVersion invalidates every token issued before
+    // the bump, without needing a password change.
+    const { createSession, isSessionStaleForUser } = await import('../../../server/utils/auth')
+    const token = createSession(1, 'same-hash', 0)
+    expect(isSessionStaleForUser(token, 'same-hash', 1)).toBe(true)
   })
 
   it('isSessionStaleForUser is true for an undefined token', async () => {
     const { isSessionStaleForUser } = await import('../../../server/utils/auth')
-    expect(isSessionStaleForUser(undefined, 'anything')).toBe(true)
-  })
-
-  it('destroySession/destroyUserSessions are no-ops (stateless sessions, documented risk)', async () => {
-    const { createSession, validateSession, destroySession } = await import('../../../server/utils/auth')
-    const token = createSession(1, 'hash')
-    destroySession(token)
-    // The token is still valid after "destroying" it - there is no server-side revocation.
-    expect(validateSession(token)).not.toBeNull()
+    expect(isSessionStaleForUser(undefined, 'anything', 0)).toBe(true)
   })
 })

@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
     data: { passwordHash: newHash, mustChangePassword: false },
   })
 
-  setCookie(event, 'dmp_session', createSession(user.id, newHash), {
+  setCookie(event, 'dmp_session', createSession(user.id, newHash, dbUser.tokenVersion), {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
