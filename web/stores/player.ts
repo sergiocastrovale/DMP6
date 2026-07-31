@@ -29,6 +29,7 @@ export const usePlayerStore = defineStore('player', () => {
   let audio: HTMLAudioElement | null = null
   let scrobbleStartTime = 0
   let scrobbled = false
+  let playCounted = false
 
   const { resolve } = useImageUrl()
   const nativeBridge = useNativeBridge()
@@ -54,8 +55,15 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function checkScrobble() {
-    if (scrobbled || !currentTrack.value) return
+    if (!currentTrack.value) return
     if (!shouldScrobble({ duration: duration.value, currentTime: currentTime.value })) return
+    // playCount uses the same "meaningfully listened to" threshold as a scrobble (30s/25% duration),
+    // not playback start - skipping through 10 tracks in a row must not inflate stats by 10 plays.
+    if (!playCounted) {
+      playCounted = true
+      $fetch(`/api/tracks/${currentTrack.value.id}/play`, { method: 'POST' }).catch(() => {})
+    }
+    if (scrobbled) return
     scrobbled = true
     $fetch('/api/scrobble/scrobble', {
       method: 'POST',
@@ -106,6 +114,7 @@ export const usePlayerStore = defineStore('player', () => {
     a.src = `/api/audio/${track.id}`
     a.load()
     scrobbled = false
+    playCounted = false
     scrobbleStartTime = Date.now()
     media.resetPositionThrottle()
     try {
@@ -113,7 +122,6 @@ export const usePlayerStore = defineStore('player', () => {
       isPlaying.value = true
       media.setPlaybackState('playing')
       nativeBridge.startPlaybackService(`${track.artist} - ${track.title}`)
-      $fetch(`/api/tracks/${track.id}/play`, { method: 'POST' }).catch(() => {})
       $fetch('/api/scrobble/now-playing', {
         method: 'POST',
         body: { trackId: track.id },

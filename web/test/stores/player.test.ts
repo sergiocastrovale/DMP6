@@ -63,6 +63,34 @@ describe('usePlayerStore', () => {
     expect(store.isVisible).toBe(true)
   })
 
+  it('does not count a play immediately at playback start - only once the scrobble threshold is crossed', async () => {
+    const store = usePlayerStore()
+    await store.playTrack(track())
+    expect(fetchMock.mock.calls.some(c => String(c[0]) === '/api/tracks/t1/play')).toBe(false)
+
+    const audioEl = store.getAudioElement() as unknown as FakeAudio
+    audioEl.duration = 100
+    audioEl.dispatch('loadedmetadata') // populates store.duration
+    audioEl.currentTime = 60 // > 50% of 100s -> shouldScrobble threshold crossed
+    audioEl.dispatch('timeupdate')
+
+    expect(fetchMock.mock.calls.some(c => String(c[0]) === '/api/tracks/t1/play')).toBe(true)
+  })
+
+  it('counts a play only once per track even with repeated timeupdate ticks past the threshold', async () => {
+    const store = usePlayerStore()
+    await store.playTrack(track())
+    const audioEl = store.getAudioElement() as unknown as FakeAudio
+    audioEl.duration = 100
+    audioEl.dispatch('loadedmetadata')
+    audioEl.currentTime = 60
+    audioEl.dispatch('timeupdate')
+    audioEl.dispatch('timeupdate')
+    audioEl.dispatch('timeupdate')
+    const playCalls = fetchMock.mock.calls.filter(c => String(c[0]) === '/api/tracks/t1/play')
+    expect(playCalls.length).toBe(1)
+  })
+
   it('playTrack pushes the previous track onto history, capped at 50', async () => {
     const store = usePlayerStore()
     for (let i = 0; i < 55; i++) {
