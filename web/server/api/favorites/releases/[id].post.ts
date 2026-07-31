@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import { isForeignKeyError } from '~/server/utils/prismaErrors'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'favorites.crud')
@@ -13,11 +14,19 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await prisma.favoriteRelease.upsert({
-    where: { releaseId: id },
-    create: { releaseId: id },
-    update: {},
-  })
+  try {
+    await prisma.favoriteRelease.upsert({
+      where: { releaseId: id },
+      create: { releaseId: id },
+      update: {},
+    })
+  }
+  catch (e) {
+    if (isForeignKeyError(e)) {
+      throw createError({ statusCode: 404, statusMessage: 'Release not found' })
+    }
+    throw e
+  }
 
   return { success: true, message: 'Release favorited' }
 })
