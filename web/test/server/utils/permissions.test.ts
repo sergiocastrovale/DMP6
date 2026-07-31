@@ -39,11 +39,12 @@ describe('permissions', () => {
     expect(findManyMock).toHaveBeenCalledTimes(2)
   })
 
-  it('an empty RolePermission table means every role has zero permissions (not the hardcoded defaults)', async () => {
+  it('an empty RolePermission table (fresh DB / failed seed) falls back to DEFAULT_MATRIX instead of locking everyone out', async () => {
     findManyMock.mockResolvedValue([])
     const { hasPermission } = await import('../../../server/utils/permissions')
-    expect(await hasPermission('ADMIN', 'issues.view')).toBe(false)
-    expect(await hasPermission('VIEWER', 'play.view')).toBe(false)
+    expect(await hasPermission('ADMIN', 'issues.view')).toBe(true)
+    expect(await hasPermission('VIEWER', 'play.view')).toBe(true)
+    expect(await hasPermission('VIEWER', 'variables.edit')).toBe(false)
   })
 
   it('getPermissionsForRole returns a sorted list', async () => {

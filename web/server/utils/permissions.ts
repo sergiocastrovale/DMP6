@@ -30,9 +30,21 @@ export const DEFAULT_MATRIX: Record<Role, PermissionKey[]> = {
 
 let cache: Record<Role, Set<string>> | null = null
 
+const matrixFromDefault = (): Record<Role, Set<string>> => ({
+  VIEWER: new Set(DEFAULT_MATRIX.VIEWER),
+  MANAGER: new Set(DEFAULT_MATRIX.MANAGER),
+  ADMIN: new Set(DEFAULT_MATRIX.ADMIN),
+})
+
 const loadMatrix = async (): Promise<Record<Role, Set<string>>> => {
   if (cache) return cache
   const rows = await prisma.rolePermission.findMany()
+  // Empty table (fresh DB, failed seed) means every role gets zero perms — ADMIN locked out of
+  // everything gated by requirePermission. Fall back to the hardcoded default matrix instead.
+  if (rows.length === 0) {
+    cache = matrixFromDefault()
+    return cache
+  }
   const map: Record<string, Set<string>> = { VIEWER: new Set(), MANAGER: new Set(), ADMIN: new Set() }
   for (const row of rows) {
     map[row.role]!.add(row.permission)
