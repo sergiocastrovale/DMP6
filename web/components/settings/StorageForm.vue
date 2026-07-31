@@ -36,7 +36,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
       storageBackupsBucket: form.storageBackupsBucket || null,
       awsRegion: form.awsRegion || null,
       awsAccessKeyId: form.awsAccessKeyId || null,
-      awsSecretAccessKey: form.awsSecretAccessKey || null,
+      awsSecretAccessKey: form.awsSecretAccessKey || undefined,
       storageEndpoint: form.storageEndpoint || null,
       storagePublicUrl: form.storagePublicUrl || null,
     },
@@ -89,7 +89,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
         label="Secret Access Key"
         description="Overrides AWS_SECRET_ACCESS_KEY."
         type="password"
-        placeholder="••••••••"
+        :placeholder="settings?.awsSecretAccessKeySet ? 'Set — leave blank to keep' : '••••••••'"
         v-model="form.awsSecretAccessKey"
       />
       <SettingsField

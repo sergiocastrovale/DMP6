@@ -11,14 +11,15 @@ const { data: settings, refresh } = await useAsyncData('settings-db-scrobble', (
 const apiKey = ref(settings.value?.lastfmApiKey ?? '')
 const secret = ref(settings.value?.lastfmSecret ?? '')
 const connectedUsername = computed(() => settings.value?.lastfmUsername ?? '')
-const isConnected = computed(() => !!settings.value?.lastfmSessionKey)
+// lastfmSessionKey is masked to '' by the API — check the isSet flag instead of the (always blank) value.
+const isConnected = computed(() => !!settings.value?.lastfmSessionKeySet)
 
 const { saving, saved, error, save } = useFormSave(async () => {
   await $fetch('/api/settings', {
     method: 'PUT',
     body: {
       lastfmApiKey: apiKey.value || null,
-      lastfmSecret: secret.value || null,
+      lastfmSecret: secret.value || undefined,
     },
   })
   await refresh()
@@ -96,8 +97,8 @@ const disconnect = async () => {
       <SettingsField
         label="Shared Secret"
         description="From your Last.fm API application"
-        placeholder="Your Last.fm shared secret"
         type="password"
+        :placeholder="settings?.lastfmSecretSet ? 'Set — leave blank to keep' : 'Your Last.fm shared secret'"
         v-model="secret"
       />
 
@@ -112,7 +113,7 @@ const disconnect = async () => {
         </button>
 
         <button
-          v-if="!isConnected && apiKey && secret"
+          v-if="!isConnected && apiKey && (secret || settings?.lastfmSecretSet)"
           :disabled="connecting || !canEdit"
           @click="connect"
           class="flex items-center gap-2 rounded bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"

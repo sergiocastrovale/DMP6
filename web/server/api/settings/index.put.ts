@@ -1,6 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { invalidateSettingsCache } from '~/server/utils/settingsCache'
 import { requirePermission } from '~/server/utils/permissions'
+import { maskSettingsSecrets, parseSecretField } from '~/server/utils/settingsSecrets'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'variables.edit')
@@ -10,18 +11,18 @@ export default defineEventHandler(async (event) => {
   const data = {
     musicDir: body.musicDir ?? undefined,
     slskdUrl: body.slskdUrl ?? undefined,
-    slskdApiKey: body.slskdApiKey ?? undefined,
+    slskdApiKey: parseSecretField(body.slskdApiKey),
     downloadsPath: body.downloadsPath ?? undefined,
     downloadDirTemplate: body.downloadDirTemplate ?? undefined,
     downloadFormats: body.downloadFormats ?? undefined,
     downloadMinBitrate: body.downloadMinBitrate != null ? Number(body.downloadMinBitrate) || null : undefined,
     // RuTracker via Prowlarr (search) + qBittorrent (download)
     prowlarrUrl: body.prowlarrUrl ?? undefined,
-    prowlarrApiKey: body.prowlarrApiKey ?? undefined,
+    prowlarrApiKey: parseSecretField(body.prowlarrApiKey),
     prowlarrIndexerId: body.prowlarrIndexerId ?? undefined,
     qbittorrentUrl: body.qbittorrentUrl ?? undefined,
     qbittorrentUser: body.qbittorrentUser ?? undefined,
-    qbittorrentPass: body.qbittorrentPass ?? undefined,
+    qbittorrentPass: parseSecretField(body.qbittorrentPass),
     qbittorrentSavePath: body.qbittorrentSavePath ?? undefined,
     // Monitoring knobs (null clears the override -> env/default)
     monitorEnabled: typeof body.monitorEnabled === 'boolean' ? body.monitorEnabled : body.monitorEnabled === null ? null : undefined,
@@ -44,13 +45,13 @@ export default defineEventHandler(async (event) => {
     storageBackupsBucket: body.storageBackupsBucket ?? undefined,
     awsRegion: body.awsRegion ?? undefined,
     awsAccessKeyId: body.awsAccessKeyId ?? undefined,
-    awsSecretAccessKey: body.awsSecretAccessKey ?? undefined,
+    awsSecretAccessKey: parseSecretField(body.awsSecretAccessKey),
     storageEndpoint: body.storageEndpoint ?? undefined,
     storagePublicUrl: body.storagePublicUrl ?? undefined,
     fanartApiKey: body.fanartApiKey ?? undefined,
     lastfmApiKey: body.lastfmApiKey ?? undefined,
-    lastfmSecret: body.lastfmSecret ?? undefined,
-    lastfmSessionKey: body.lastfmSessionKey ?? undefined,
+    lastfmSecret: parseSecretField(body.lastfmSecret),
+    lastfmSessionKey: parseSecretField(body.lastfmSessionKey),
     lastfmUsername: body.lastfmUsername ?? undefined,
     showTerminal: typeof body.showTerminal === 'boolean' ? body.showTerminal : body.showTerminal === null ? null : undefined,
   }
@@ -68,5 +69,5 @@ export default defineEventHandler(async (event) => {
 
   invalidateSettingsCache()
 
-  return settings
+  return maskSettingsSecrets(settings)
 })

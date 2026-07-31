@@ -29,17 +29,17 @@ const { saving, saved, error, save } = useFormSave(async () => {
     method: 'PUT',
     body: {
       slskdUrl: form.slskdUrl || null,
-      slskdApiKey: form.slskdApiKey || null,
+      slskdApiKey: form.slskdApiKey || undefined,
       downloadsPath: form.downloadsPath || null,
       downloadDirTemplate: form.downloadDirTemplate || null,
       downloadFormats: form.downloadFormats || null,
       downloadMinBitrate: form.downloadMinBitrate ? Number(form.downloadMinBitrate) : null,
       prowlarrUrl: form.prowlarrUrl || null,
-      prowlarrApiKey: form.prowlarrApiKey || null,
+      prowlarrApiKey: form.prowlarrApiKey || undefined,
       prowlarrIndexerId: form.prowlarrIndexerId || null,
       qbittorrentUrl: form.qbittorrentUrl || null,
       qbittorrentUser: form.qbittorrentUser || null,
-      qbittorrentPass: form.qbittorrentPass || null,
+      qbittorrentPass: form.qbittorrentPass || undefined,
       qbittorrentSavePath: form.qbittorrentSavePath || null,
     },
   })
@@ -62,7 +62,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
         label="slskd API Key"
         description="X-API-Key header value. Overrides SLSKD_API_KEY."
         type="password"
-        placeholder="••••••••"
+        :placeholder="settings?.slskdApiKeySet ? 'Set — leave blank to keep' : '••••••••'"
         v-model="form.slskdApiKey"
       />
     </div>
@@ -81,7 +81,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
         label="Prowlarr API Key"
         description="Settings → General → Security in Prowlarr. Overrides PROWLARR_API_KEY."
         type="password"
-        placeholder="••••••••"
+        :placeholder="settings?.prowlarrApiKeySet ? 'Set — leave blank to keep' : '••••••••'"
         v-model="form.prowlarrApiKey"
       />
       <SettingsField
@@ -110,7 +110,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
         label="qBittorrent Password"
         description="WebUI password. Overrides QBITTORRENT_PASS."
         type="password"
-        placeholder="••••••••"
+        :placeholder="settings?.qbittorrentPassSet ? 'Set — leave blank to keep' : '••••••••'"
         v-model="form.qbittorrentPass"
       />
       <SettingsField
