@@ -364,7 +364,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
  */
 export const stripSlskdSuffix = (name: string): string => {
   const e = extname(name)
-  return name.slice(0, name.length - e.length).replace(/_\d{6,}$/, '') + e
+  return name.slice(0, name.length - e.length).replace(/_\d{15,}$/, '') + e
 }
 
 // `names` maps a suffix-stripped basename to its expected byte size. When a size is known (> 0), a

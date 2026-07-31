@@ -56,13 +56,19 @@ describe('stripSlskdSuffix', () => {
     expect(stripSlskdSuffix('01. Stone.flac')).toBe('01. Stone.flac')
   })
 
-  it('does not strip a short numeric suffix (< 6 digits)', () => {
+  it('does not strip a short numeric suffix (< 15 digits)', () => {
     expect(stripSlskdSuffix('Track 12345.flac')).toBe('Track 12345.flac')
   })
 
-  it('documented false positive: a real title ending in 6+ digits gets stripped too', () => {
-    // e.g. a track literally titled "...Track_123456" loses its trailing digits - known limitation.
-    expect(stripSlskdSuffix('Track_123456.flac')).toBe('Track.flac')
+  it('no longer mangles a real title ending in 6-14 digits — only 15+ (the actual slskd token width) strips', () => {
+    // Previously the regex fired on 6+ digits, so a track literally titled "...Track_200601" (a date-like
+    // suffix, well short of slskd's 18-or-more digit collision token) lost its trailing digits.
+    expect(stripSlskdSuffix('Track_200601.flac')).toBe('Track_200601.flac')
+    expect(stripSlskdSuffix('Track_123456.flac')).toBe('Track_123456.flac')
+  })
+
+  it('still strips a real (18+ digit) slskd collision token', () => {
+    expect(stripSlskdSuffix('Track_639171186044183498.flac')).toBe('Track.flac')
   })
 })
 
