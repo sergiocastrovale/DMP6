@@ -87,14 +87,24 @@ watch(route, closeMore)
   </nav>
 
   <Teleport to="body">
-    <Transition name="fade">
+    <Transition
+      enter-active-class="transition-opacity duration-200 ease"
+      enter-from-class="opacity-0"
+      leave-active-class="transition-opacity duration-200 ease"
+      leave-to-class="opacity-0"
+    >
       <div
         v-if="showMore"
         class="fixed inset-0 z-50 bg-black/50 lg:hidden"
         @click="closeMore"
       />
     </Transition>
-    <Transition name="slide-up">
+    <Transition
+      enter-active-class="transition-transform duration-[250ms] ease"
+      enter-from-class="translate-y-full"
+      leave-active-class="transition-transform duration-[250ms] ease"
+      leave-to-class="translate-y-full"
+    >
       <div
         v-if="showMore"
         class="fixed bottom-[57px] left-0 right-0 z-50 rounded-t-2xl border-t border-rule bg-bg px-4 pb-4 pt-3 lg:hidden"
@@ -125,22 +135,3 @@ watch(route, closeMore)
     </Transition>
   </Teleport>
 </template>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-.slide-up-enter-active,
-.slide-up-leave-active {
-  transition: transform 0.25s ease;
-}
-.slide-up-enter-from,
-.slide-up-leave-to {
-  transform: translateY(100%);
-}
-</style>

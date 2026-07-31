@@ -72,7 +72,9 @@ return a ? b : c
 ```
 
 - In Vue files, always organize the script code by context: 1. composables 2. static variables 3. watchers 4. computed 5. refs 5. methods
-- Zero custom CSS: Tailwind utility classes only, no exceptions
+- Zero custom CSS: Tailwind utility classes only. Sanctioned exceptions (things Tailwind utilities genuinely can't express) get a `<style scoped>` block and stay documented here rather than pretending the rule is unbroken:
+  - `components/playlist/Block.vue`, `pages/playlists/[slug].vue`: `@property --angle` + `@keyframes` for the animated conic-gradient genre border — CSS `@property` registration and keyframe animations have no Tailwind utility equivalent.
+  - `pages/labs/map.vue`: Leaflet control overrides (`.leaflet-container`, `.leaflet-control-zoom a`) — targets a third-party library's own class names, not app markup.
 - Icons: `lucide-vue-next` only
 - Prisma singleton: `web/server/utils/prisma.ts` is the only place to instantiate PrismaClient
 
