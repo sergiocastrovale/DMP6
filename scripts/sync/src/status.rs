@@ -208,3 +208,158 @@ pub fn status_to_db_string(s: &ReleaseStatus) -> &'static str {
         ReleaseStatus::MissingTracks => "MISSING_TRACKS",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mb_types::MbMedia;
+
+    fn track(title: &str) -> TrackMeta {
+        TrackMeta {
+            file_path: String::new(),
+            file_size: 0,
+            mtime: chrono::Utc::now().naive_utc(),
+            title: Some(title.to_string()),
+            artist: None,
+            album_artist: None,
+            album: None,
+            year: None,
+            genre: None,
+            track_number: None,
+            disc_number: None,
+            duration: None,
+            bitrate: None,
+            sample_rate: None,
+            position: None,
+            content_hash: String::new(),
+            metadata_json: serde_json::Value::Null,
+            has_picture: false,
+            mb_release_id: None,
+            mb_release_group_id: None,
+            mb_album_artist_id: None,
+        }
+    }
+
+    fn track_ids(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("local-track-{i}")).collect()
+    }
+
+    fn mb_track(id: &str, title: &str) -> MbTrack {
+        MbTrack { id: id.to_string(), title: title.to_string(), position: None, length: None, disc_number: None }
+    }
+
+    fn mb_release(id: &str, date: Option<&str>, format: Option<&str>) -> MbRelease {
+        MbRelease {
+            id: id.to_string(),
+            title: "Release".to_string(),
+            date: date.map(|d| d.to_string()),
+            status: None,
+            disambiguation: None,
+            packaging: None,
+            country: None,
+            media: format.map(|f| vec![MbMedia { position: Some(1), format: Some(f.to_string()), tracks: None }]),
+        }
+    }
+
+    #[test]
+    fn single_edition_is_always_confident_and_complete_on_exact_title_match() {
+        let locals = vec![track("Intro"), track("Outro")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(2);
+        let releases = vec![(mb_release("r1", None, None), vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")])];
+
+        let result = check_release_status(&local_refs, &ids, &releases, None);
+
+        assert!(result.is_confident);
+        assert_eq!(result.status, ReleaseStatus::Complete);
+        assert_eq!(result.best_release_id, "r1");
+    }
+
+    #[test]
+    fn multiple_siblings_one_exact_track_count_is_confident() {
+        let locals = vec![track("Intro"), track("Outro")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(2);
+        let releases = vec![
+            (mb_release("r-3tracks", None, None), vec![mb_track("t1", "One"), mb_track("t2", "Two"), mb_track("t3", "Three")]),
+            (mb_release("r-2tracks", None, None), vec![mb_track("t4", "Intro"), mb_track("t5", "Outro")]),
+        ];
+
+        let result = check_release_status(&local_refs, &ids, &releases, None);
+
+        assert!(result.is_confident);
+        assert_eq!(result.best_release_id, "r-2tracks");
+        assert_eq!(result.status, ReleaseStatus::Complete);
+    }
+
+    #[test]
+    fn tiebreak_among_same_count_siblings_prefers_matching_year_then_cd_then_earliest_date() {
+        let locals = vec![track("Intro"), track("Outro")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(2);
+        // All three have the same 2-track count. Local year is 2010.
+        let releases = vec![
+            (mb_release("r-wrong-year-vinyl", Some("2005-01-01"), Some("Vinyl")), vec![mb_track("a1", "Intro"), mb_track("a2", "Outro")]),
+            (mb_release("r-right-year-vinyl", Some("2010-06-01"), Some("Vinyl")), vec![mb_track("b1", "Intro"), mb_track("b2", "Outro")]),
+            (mb_release("r-right-year-cd", Some("2010-03-01"), Some("CD")), vec![mb_track("c1", "Intro"), mb_track("c2", "Outro")]),
+        ];
+
+        let result = check_release_status(&local_refs, &ids, &releases, Some(2010));
+
+        assert!(result.is_confident);
+        // Same year (2010) narrows to the two 2010 releases; CD narrows to the CD one.
+        assert_eq!(result.best_release_id, "r-right-year-cd");
+    }
+
+    #[test]
+    fn more_local_tracks_than_matched_edition_is_extra_tracks() {
+        let locals = vec![track("Intro"), track("Outro"), track("Bonus Track")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(3);
+        let releases = vec![(mb_release("r1", None, None), vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")])];
+
+        let result = check_release_status(&local_refs, &ids, &releases, None);
+
+        assert_eq!(result.status, ReleaseStatus::ExtraTracks);
+    }
+
+    #[test]
+    fn fewer_local_tracks_than_matched_edition_is_missing_tracks() {
+        let locals = vec![track("Intro")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(1);
+        let releases = vec![(mb_release("r1", None, None), vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")])];
+
+        let result = check_release_status(&local_refs, &ids, &releases, None);
+
+        assert_eq!(result.status, ReleaseStatus::MissingTracks);
+    }
+
+    #[test]
+    fn no_sibling_with_an_exact_track_count_is_not_confident() {
+        let locals = vec![track("Intro"), track("Outro")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(2);
+        // Neither sibling has exactly 2 tracks — can't disambiguate which edition this is.
+        let releases = vec![
+            (mb_release("r-3", None, None), vec![mb_track("a1", "One"), mb_track("a2", "Two"), mb_track("a3", "Three")]),
+            (mb_release("r-4", None, None), vec![mb_track("b1", "One"), mb_track("b2", "Two"), mb_track("b3", "Three"), mb_track("b4", "Four")]),
+        ];
+
+        let result = check_release_status(&local_refs, &ids, &releases, None);
+
+        assert!(!result.is_confident);
+    }
+
+    #[test]
+    fn empty_mb_releases_is_never_confident() {
+        let locals = vec![track("Intro")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(1);
+
+        let result = check_release_status(&local_refs, &ids, &[], None);
+
+        assert!(!result.is_confident);
+        assert_eq!(result.status, ReleaseStatus::Incomplete);
+    }
+}
