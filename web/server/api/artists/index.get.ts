@@ -7,7 +7,9 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=120, stale-while-revalidate=60')
 
   const query = getQuery(event)
-  const { page, pageSize } = parsePagination(query, { defaultSize: 48, maxSize: 100 })
+  // maxSize 250 matches browse.ts's "summarized" view pageSize - a lower cap here would silently
+  // truncate that view's pages, throwing off its page-size-based skip math (audit #78).
+  const { page, pageSize } = parsePagination(query, { defaultSize: 48, maxSize: 250 })
   const letter = (query.letter as string)?.toLowerCase() || null
   const genre = query.genre as string || null
   const sort = (query.sort as string) || 'name'
