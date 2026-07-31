@@ -46,6 +46,7 @@ services:
       - ${MUSIC_DIR}:/music
       - ${DMP_DATA}/img:/app/data/img
       - ${DMP_DATA}/dump:/app/data/dump
+      - ${DMP_DATA}/logs:/app/data/logs
       # Identity mount: container path == host path, so DOWNLOADS_PATH is a real path everywhere
       # and the host-path SongKong scripts line up with the container's view.
       - ${DOWNLOADS_DIR:-/mnt/SSD/Downloads}:${DOWNLOADS_DIR:-/mnt/SSD/Downloads}

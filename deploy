@@ -73,7 +73,7 @@ echo "--- Ensuring downloads dir (gid 568, setgid so slskd+dmp share) ---"
 ssh_cmd "sudo mkdir -p '$DL_ROOT/dmp/_approved' && sudo chown -R :568 '$DL_ROOT/dmp' && sudo chmod -R 2775 '$DL_ROOT/dmp'"
 
 echo "--- Ensuring data dir permissions ---"
-ssh_cmd "mkdir -p $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump && chmod 777 $NAS_DEPLOY_PATH/img $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump"
+ssh_cmd "mkdir -p $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump $NAS_DEPLOY_PATH/logs && chmod 777 $NAS_DEPLOY_PATH/img $NAS_DEPLOY_PATH/img/releases $NAS_DEPLOY_PATH/img/artists $NAS_DEPLOY_PATH/dump $NAS_DEPLOY_PATH/logs"
 
 echo "--- Restarting container ---"
 ssh_cmd "cd $NAS_DEPLOY_PATH && sudo docker compose up -d web"
