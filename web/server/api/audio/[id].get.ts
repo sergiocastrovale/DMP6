@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
   // ETag + Cache-Control: audio files are immutable at a given ID
   const etag = buildEtag(stat.size, stat.mtimeMs)
   setResponseHeader(event, 'ETag', etag)
-  setResponseHeader(event, 'Cache-Control', 'public, max-age=86400, immutable')
+  setResponseHeader(event, 'Cache-Control', 'private, max-age=86400, immutable')
 
   const ifNoneMatch = getRequestHeader(event, 'if-none-match')
   if (ifNoneMatch === etag) {

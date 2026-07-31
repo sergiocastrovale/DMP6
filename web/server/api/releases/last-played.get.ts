@@ -3,7 +3,7 @@ import { cachedResponse } from '~/server/utils/cache'
 import { verifyImage } from '~/server/utils/images'
 
 export default defineEventHandler(async (event) => {
-  setResponseHeader(event, 'Cache-Control', 'public, max-age=30, stale-while-revalidate=15')
+  setResponseHeader(event, 'Cache-Control', 'private, max-age=30, stale-while-revalidate=15')
 
   const query = getQuery(event)
   const limit = Math.min(Number(query.limit) || 50, 100)

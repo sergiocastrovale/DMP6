@@ -2,7 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
 
 export default defineEventHandler(async (event) => {
-  setResponseHeader(event, 'Cache-Control', 'public, max-age=300, stale-while-revalidate=60')
+  setResponseHeader(event, 'Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
 
   return cachedResponse('stats', 300, async () => {
     const [stats, unmatchedReleases, incompleteReleases, lowBitrateTracks, singleReleaseResult, missingArtReleases, linkedArtists] = await Promise.all([

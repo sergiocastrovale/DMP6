@@ -3,7 +3,7 @@ import { cachedResponse } from '~/server/utils/cache'
 import { verifyImage } from '~/server/utils/images'
 
 export default defineEventHandler(async (event) => {
-  setResponseHeader(event, 'Cache-Control', 'public, max-age=600, stale-while-revalidate=60')
+  setResponseHeader(event, 'Cache-Control', 'private, max-age=600, stale-while-revalidate=60')
 
   const slug = getRouterParam(event, 'slug')
   if (!slug) throw createError({ statusCode: 400, statusMessage: 'Missing slug' })

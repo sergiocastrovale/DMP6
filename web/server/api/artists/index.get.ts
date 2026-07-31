@@ -4,7 +4,7 @@ import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 
 export default defineEventHandler(async (event) => {
-  setResponseHeader(event, 'Cache-Control', 'public, max-age=120, stale-while-revalidate=60')
+  setResponseHeader(event, 'Cache-Control', 'private, max-age=120, stale-while-revalidate=60')
 
   const query = getQuery(event)
   const { page, pageSize } = parsePagination(query, { defaultSize: 48, maxSize: 100 })
