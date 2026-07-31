@@ -20,6 +20,7 @@ mod mb_api;
 mod mb_matching;
 mod mb_types;
 mod nuke;
+mod repair;
 mod status;
 
 use db::*;
@@ -61,6 +62,10 @@ struct SyncArgs {
     catalogue_gaps: bool,
     #[arg(long, help = "Recompute averageMatchScore for all artists from the catalogue (pure SQL, no API), then exit")]
     recompute_scores: bool,
+    #[arg(long, help = "One-off repair (audit #24): unbind LocalReleases that lost a shared-releaseId conflict to another LocalRelease (pure SQL, no API), then exit")]
+    repair_shared_release_ids: bool,
+    #[arg(long, help = "With --repair-shared-release-ids: print the plan, write nothing")]
+    dry_run: bool,
     #[arg(long, help = "Read artist IDs from file (one per line, used by refresh)")]
     artist_ids: Option<String>,
     #[arg(long)]
@@ -165,6 +170,31 @@ async fn main() {
         match recompute_all_match_scores(&pool).await {
             Ok(n) => reporter.done(&format!("Recomputed match scores ({} artist(s) with catalogue)", n)),
             Err(e) => reporter.err(&format!("Recompute error: {}", e)),
+        }
+        return;
+    }
+
+    // Standalone one-off repair (audit #24). No lock, no API - pure SQL over LocalRelease/MB tables.
+    if args.repair_shared_release_ids {
+        reporter.header(if args.dry_run {
+            "DMP Sync - Repair Shared releaseId Conflicts (DRY RUN)"
+        } else {
+            "DMP Sync - Repair Shared releaseId Conflicts"
+        });
+        match repair::run_repair(&pool, &reporter, args.dry_run).await {
+            Ok(s) => {
+                reporter.blank();
+                reporter.done(&format!(
+                    "{} group(s) seen, {} skipped (shared artist), {} {} ({} row(s) {})",
+                    s.groups_seen,
+                    s.groups_skipped_shared_artist,
+                    s.groups_repaired,
+                    if args.dry_run { "would be repaired" } else { "repaired" },
+                    s.rows_unbound,
+                    if args.dry_run { "would be unbound" } else { "unbound" },
+                ));
+            }
+            Err(e) => reporter.err(&format!("Repair error: {}", e)),
         }
         return;
     }
