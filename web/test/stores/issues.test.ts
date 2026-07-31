@@ -88,4 +88,32 @@ describe('useIssuesStore', () => {
     const result = await store.undoHistoryItems(['h1', 'h2'])
     expect(result).toEqual({ corrupted: 1, unsplit: 0 })
   })
+
+  it('a stale fetchType response for the same type never overwrites a fresher one (audit #77)', async () => {
+    const store = useIssuesStore()
+
+    let resolveStale: (v: unknown) => void
+    const stalePromise = new Promise((resolve) => { resolveStale = resolve })
+    fetchMock.mockReturnValueOnce(stalePromise)
+
+    const staleCall = store.fetchType('corrupted' as any)
+
+    fetchMock.mockResolvedValueOnce(paginated([{ id: 'fresh' }]))
+    await store.fetchType('corrupted' as any)
+    expect(store.items.corrupted).toEqual([{ id: 'fresh' }])
+
+    resolveStale!(paginated([{ id: 'stale' }]))
+    await staleCall
+    expect(store.items.corrupted).toEqual([{ id: 'fresh' }])
+  })
+
+  it('a stale fetchType for a DIFFERENT type is unaffected (independent abort controllers)', async () => {
+    const store = useIssuesStore()
+    fetchMock.mockResolvedValueOnce(paginated([{ id: 'corrupted-item' }]))
+    await store.fetchType('corrupted' as any)
+    fetchMock.mockResolvedValueOnce(paginated([{ id: 'unsplit-item' }]))
+    await store.fetchType('unsplit' as any)
+    expect(store.items.corrupted).toEqual([{ id: 'corrupted-item' }])
+    expect(store.items.unsplit).toEqual([{ id: 'unsplit-item' }])
+  })
 })

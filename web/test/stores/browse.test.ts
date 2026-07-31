@@ -22,9 +22,9 @@ describe('useBrowseStore', () => {
     store.letterFilter = 'B'
     store.minScore = 40
     await store.fetchArtists()
-    expect(fetchMock).toHaveBeenCalledWith('/api/artists', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/artists', expect.objectContaining({
       params: { page: 1, pageSize: 48, sort: 'name', search: 'boards', letter: 'B', minScore: 40 },
-    })
+    }))
   })
 
   it('setLetterFilter clears the search query and refetches', async () => {
@@ -82,5 +82,28 @@ describe('useBrowseStore', () => {
     await store.fetchArtists()
     expect(store.page).toBe(1)
     expect(store.artists).toEqual([{ slug: 'a' }])
+  })
+
+  it('a stale response arriving after a newer request never overwrites the fresher one (audit #77)', async () => {
+    const store = useBrowseStore()
+
+    let resolveStale: (v: unknown) => void
+    const stalePromise = new Promise((resolve) => { resolveStale = resolve })
+    fetchMock.mockReturnValueOnce(stalePromise)
+
+    // Fire the stale request (search='old') but don't await it - it hangs until resolveStale() below.
+    store.searchQuery = 'old'
+    const staleCall = store.fetchArtists()
+
+    // A newer request supersedes it before the stale one resolves.
+    fetchMock.mockResolvedValueOnce(response({ items: [{ slug: 'fresh' }] }))
+    store.searchQuery = 'new'
+    await store.fetchArtists()
+    expect(store.artists).toEqual([{ slug: 'fresh' }])
+
+    // Now let the stale request resolve - it must be ignored, not clobber the fresh result.
+    resolveStale!(response({ items: [{ slug: 'stale' }] }))
+    await staleCall
+    expect(store.artists).toEqual([{ slug: 'fresh' }])
   })
 })

@@ -19,6 +19,12 @@ export const useIssuesStore = defineStore('issues', () => {
   const resolvedPage = ref<Record<string, number>>({})
   const resolvedLoading = ref<Record<string, boolean>>({})
 
+  // Per-type abort controllers: rapid setSort/setSearch/setPage calls for the SAME type must not let
+  // a stale response land after a fresher one; different types are independent and never cancel
+  // each other.
+  const typeAbortControllers: Record<string, AbortController> = {}
+  const resolvedAbortControllers: Record<string, AbortController> = {}
+
   async function fetchSummary() {
     summaryLoading.value = true
     try {
@@ -36,6 +42,10 @@ export const useIssuesStore = defineStore('issues', () => {
     const currentPage = page.value[type] ?? 1
     pageLoading.value[type] = true
 
+    typeAbortControllers[type]?.abort()
+    const controller = new AbortController()
+    typeAbortControllers[type] = controller
+
     try {
       const res = await $fetch<PaginatedResponse<any>>(`/api/issues/${type}`, {
         query: {
@@ -45,11 +55,19 @@ export const useIssuesStore = defineStore('issues', () => {
           order: order.value[type] ?? 'asc',
           q: search.value[type] || undefined,
         },
+        signal: controller.signal,
       })
+      if (controller.signal.aborted) {return}
       items.value[type] = res.items
       total.value[type] = res.total
-    } finally {
-      pageLoading.value[type] = false
+    }
+    catch (e: any) {
+      if (e?.name !== 'AbortError') {throw e}
+    }
+    finally {
+      if (typeAbortControllers[type] === controller) {
+        pageLoading.value[type] = false
+      }
     }
   }
 
@@ -61,6 +79,10 @@ export const useIssuesStore = defineStore('issues', () => {
     const currentPage = resolvedPage.value[type] ?? 1
     resolvedLoading.value[type] = true
 
+    resolvedAbortControllers[type]?.abort()
+    const controller = new AbortController()
+    resolvedAbortControllers[type] = controller
+
     try {
       const res = await $fetch<PaginatedResponse<any>>(`/api/issues/${type}`, {
         query: {
@@ -70,11 +92,19 @@ export const useIssuesStore = defineStore('issues', () => {
           sort: sort.value[type],
           order: order.value[type] ?? 'asc',
         },
+        signal: controller.signal,
       })
+      if (controller.signal.aborted) {return}
       resolvedItems.value[type] = res.items
       resolvedTotal.value[type] = res.total
-    } finally {
-      resolvedLoading.value[type] = false
+    }
+    catch (e: any) {
+      if (e?.name !== 'AbortError') {throw e}
+    }
+    finally {
+      if (resolvedAbortControllers[type] === controller) {
+        resolvedLoading.value[type] = false
+      }
     }
   }
 

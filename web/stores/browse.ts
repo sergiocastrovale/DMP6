@@ -21,7 +21,15 @@ export const useBrowseStore = defineStore('browse', () => {
   const maxScore = ref<number | null>(null)
   const viewMode = ref<'expanded' | 'summarized'>('expanded')
 
+  // Aborts any in-flight fetchArtists request when a newer one starts, so a slow stale response
+  // (from a filter that's since changed) can never land after - and overwrite - a fresher one.
+  let abortController: AbortController | null = null
+
   async function fetchArtists(append = false) {
+    abortController?.abort()
+    const controller = new AbortController()
+    abortController = controller
+
     if (append) {
       loadingMore.value = true
     }
@@ -49,7 +57,9 @@ export const useBrowseStore = defineStore('browse', () => {
         relatedCount: number
         page: number
         hasMore: boolean
-      }>('/api/artists', { params })
+      }>('/api/artists', { params, signal: controller.signal })
+
+      if (controller.signal.aborted) {return} // superseded by a newer request - ignore this response
 
       if (append) {
         artists.value.push(...data.items)
@@ -63,9 +73,14 @@ export const useBrowseStore = defineStore('browse', () => {
       relatedCount.value = data.relatedCount
       hasMore.value = data.hasMore
     }
+    catch (e: any) {
+      if (e?.name !== 'AbortError') {throw e}
+    }
     finally {
-      loading.value = false
-      loadingMore.value = false
+      if (abortController === controller) {
+        loading.value = false
+        loadingMore.value = false
+      }
     }
   }
 
