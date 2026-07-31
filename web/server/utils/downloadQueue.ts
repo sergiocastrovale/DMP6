@@ -46,3 +46,18 @@ export async function fetchRejectedQueueRows() {
     take: ACTIVE_TAKE,
   })
 }
+
+/**
+ * The "History" tab bucket (Promoted/Invalid subtabs) — read-only, no retry/reject actions. ABANDONED
+ * is deliberately NOT included here even though it's a terminal give-up state: it's still user-
+ * actionable (retryable, see autoDownload.ts's forceRetry), so it lives exclusively in the Failed tab
+ * (fetchActiveQueueRows) — showing it in both was the duplicate-tab bug from audit #75.
+ */
+export async function fetchHistoryQueueRows() {
+  return prisma.downloadedRelease.findMany({
+    where: { status: { in: ['PROMOTED', 'INVALID'] } },
+    include: artistSelect,
+    orderBy: { updatedAt: 'desc' },
+    take: ACTIVE_TAKE,
+  })
+}

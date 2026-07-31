@@ -5,13 +5,14 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getPauseState, freeGb } from '~/server/utils/pauseState'
 import { getAcquisitionStatus } from '~/server/utils/downloadSources'
-import { fetchActiveQueueRows, fetchRejectedQueueRows } from '~/server/utils/downloadQueue'
+import { fetchActiveQueueRows, fetchRejectedQueueRows, fetchHistoryQueueRows } from '~/server/utils/downloadQueue'
 
 const artistSelect = { artist: { select: { name: true, slug: true } } } as const
 
-// Returns the download queue: active acquisitions (downloading / enriching / failed) plus the ready
-// slice, the dedicated rejected slice, and a slice of recent history (promoted / abandoned / invalid,
-// for the History subtabs — REJECTED lives in its own tab/bucket, not history).
+// Returns the download queue: active acquisitions (downloading / enriching / failed / abandoned) plus
+// the ready slice, the dedicated rejected slice, and a slice of recent history (promoted / invalid, for
+// the History subtabs — REJECTED lives in its own tab/bucket, and ABANDONED stays in "active"/Failed
+// since it's still retryable, not history; see downloadQueue.ts's fetchHistoryQueueRows).
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'sync.view')
 
@@ -23,12 +24,7 @@ export default defineEventHandler(async (event) => {
       orderBy: { updatedAt: 'desc' },
     }),
     fetchRejectedQueueRows(),
-    prisma.downloadedRelease.findMany({
-      where: { status: { in: ['PROMOTED', 'ABANDONED', 'INVALID'] } },
-      include: artistSelect,
-      orderBy: { updatedAt: 'desc' },
-      take: 200,
-    }),
+    fetchHistoryQueueRows(),
   ])
 
   // Resolve the MB release type per row for the info dialog (no FK relation -> batch lookup).

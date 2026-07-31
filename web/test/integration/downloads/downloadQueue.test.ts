@@ -43,6 +43,33 @@ describe('downloadQueue.ts fetchActiveQueueRows (real Postgres)', () => {
   })
 })
 
+describe('downloadQueue.ts fetchHistoryQueueRows (real Postgres)', () => {
+  beforeEach(async () => {
+    await resetDb()
+  })
+
+  afterAll(async () => {
+    await prisma.$disconnect()
+  })
+
+  it('does not include ABANDONED - it stays in the Failed/active bucket, never both (audit #75)', async () => {
+    const { fetchActiveQueueRows, fetchHistoryQueueRows } = await import('../../../server/utils/downloadQueue')
+
+    const abandoned = await makeDownloadedRelease(prisma, { status: 'ABANDONED' })
+    const promoted = await makeDownloadedRelease(prisma, { status: 'PROMOTED' })
+    const invalid = await makeDownloadedRelease(prisma, { status: 'INVALID' })
+
+    const [active, history] = await Promise.all([fetchActiveQueueRows(), fetchHistoryQueueRows()])
+
+    expect(active.map(r => r.id)).toContain(abandoned.id)
+    expect(history.map(r => r.id)).not.toContain(abandoned.id)
+    expect(history.map(r => r.id).sort()).toEqual([invalid.id, promoted.id].sort())
+
+    const activeIds = new Set(active.map(r => r.id))
+    expect(history.some(r => activeIds.has(r.id))).toBe(false)
+  })
+})
+
 describe('downloadQueue.ts fetchRejectedQueueRows (real Postgres)', () => {
   beforeEach(async () => {
     await resetDb()
