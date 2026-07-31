@@ -1,6 +1,8 @@
 import { cancelDownloadBySource } from '~/server/utils/downloads'
+import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'sync.view')
   const body = await readBody(event)
   const { username, id } = body as {
     username: string
