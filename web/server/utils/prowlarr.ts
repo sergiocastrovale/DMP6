@@ -41,8 +41,7 @@ async function prowlarrFetch(path: string): Promise<Response> {
   const config = await getProwlarrConfig()
   if (!config) {throw createError({ statusCode: 503, message: 'Prowlarr not configured' })}
 
-  const sep = path.includes('?') ? '&' : '?'
-  const url = `${config.url}/api/v1${path}${sep}apikey=${encodeURIComponent(config.apiKey)}`
+  const url = `${config.url}/api/v1${path}`
   const response = await fetch(url, { headers: { 'X-Api-Key': config.apiKey } })
   if (!response.ok) {
     const text = await response.text().catch(() => '')
