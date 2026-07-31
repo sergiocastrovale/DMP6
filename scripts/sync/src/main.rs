@@ -1144,7 +1144,7 @@ async fn main() {
                 &pool,
                 &final_release_id,
                 &rg_id,
-                &local_release.title,
+                &best_release.title,
                 year,
                 &type_id,
                 status_str,
