@@ -74,7 +74,7 @@ echo "--- Restarting container ---"
 ssh_cmd "cd $NAS_DEPLOY_PATH && sudo docker compose up -d web"
 
 echo "--- Applying DB schema ---"
-ssh_cmd "cd $NAS_DEPLOY_PATH && sleep 3 && sudo docker compose exec -T web prisma db push --schema=prisma/schema.prisma --accept-data-loss 2>&1 || true"
+ssh_cmd "cd $NAS_DEPLOY_PATH && sleep 3 && sudo docker compose exec -T web prisma db push --schema=prisma/schema.prisma"
 
 # Clean up old images (after restart so the old image is no longer in use)
 echo "--- Cleaning up old images ---"
