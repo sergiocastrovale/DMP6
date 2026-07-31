@@ -13,8 +13,18 @@ import { deleteTorrent } from '~/server/utils/qbittorrent'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { monitorLog } from '~/server/utils/monitorLog'
 import { setMergeProgress, clearMergeProgress } from '~/server/utils/mergeProgress'
+import { songkongDirs } from '~/server/utils/songkongSettings'
 
 const execFileAsync = promisify(execFile)
+
+// Cancelling/rejecting an ENRICHING row leaves its SongKong spool/done markers behind - the host
+// drainer (songkong-drain.sh) treats a stale spool entry as "retry next tick" by design, so a
+// cancelled download otherwise means eternal cron noise over a path that no longer exists.
+async function cleanupSongkongMarkers(id: string): Promise<void> {
+  const dirs = songkongDirs()
+  await rm(join(dirs.spool, id), { force: true }).catch(() => {})
+  await rm(join(dirs.done, id), { force: true }).catch(() => {})
+}
 
 function musicDir(): string {
   return process.env.MUSIC_DIR || process.env.NUXT_MUSIC_DIR || ''
@@ -442,6 +452,7 @@ export async function rejectDownloadedRelease(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
   if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
   await purgeStagedFiles(row.stagingPath)
+  await cleanupSongkongMarkers(id)
   await applyRejectionCap(row, 'rejected by user')
 }
 
@@ -456,6 +467,7 @@ export async function forceRejectDownloadedReleases(ids: string[]): Promise<{ re
   const rows = await prisma.downloadedRelease.findMany({ where: { id: { in: ids } } })
   for (const row of rows) {
     await purgeStagedFiles(row.stagingPath)
+    await cleanupSongkongMarkers(row.id)
   }
   const result = await prisma.downloadedRelease.updateMany({
     where: { id: { in: ids } },
@@ -582,5 +594,6 @@ export async function cancelDownloadedRelease(id: string): Promise<void> {
     for (const t of ours) {await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})}
   }
   await purgeStagedFiles(row.stagingPath)
+  await cleanupSongkongMarkers(id)
   await applyRejectionCap(row, 'cancelled by user')
 }

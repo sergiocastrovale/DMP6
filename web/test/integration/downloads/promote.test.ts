@@ -113,6 +113,50 @@ describe('promote.ts (real Postgres)', () => {
     expect(after.attempts).toBe(1)
   })
 
+  describe('cancel/reject clean up SongKong spool/done markers', () => {
+    let stateDir: string
+
+    beforeEach(async () => {
+      stateDir = await mkdtemp(join(tmpdir(), 'dmp-songkong-'))
+      await mkdir(join(stateDir, 'spool'), { recursive: true })
+      await mkdir(join(stateDir, 'done'), { recursive: true })
+      process.env.SONGKONG_STATE_DIR = stateDir
+    })
+
+    afterEach(async () => {
+      delete process.env.SONGKONG_STATE_DIR
+      await rm(stateDir, { recursive: true, force: true })
+    })
+
+    it('cancelDownloadedRelease removes both the spool and done marker for that row, if present', async () => {
+      const { cancelDownloadedRelease } = await import('../../../server/utils/promote')
+      const dl = await makeDownloadedRelease(prisma, { status: 'ENRICHING', attempts: 0 })
+      await writeFile(join(stateDir, 'spool', dl.id), '')
+      await writeFile(join(stateDir, 'done', dl.id), '')
+
+      await cancelDownloadedRelease(dl.id)
+
+      await expect(access(join(stateDir, 'spool', dl.id))).rejects.toThrow()
+      await expect(access(join(stateDir, 'done', dl.id))).rejects.toThrow()
+    })
+
+    it('rejectDownloadedRelease removes the markers too', async () => {
+      const { rejectDownloadedRelease } = await import('../../../server/utils/promote')
+      const dl = await makeDownloadedRelease(prisma, { status: 'ENRICHING', attempts: 0 })
+      await writeFile(join(stateDir, 'spool', dl.id), '')
+
+      await rejectDownloadedRelease(dl.id)
+
+      await expect(access(join(stateDir, 'spool', dl.id))).rejects.toThrow()
+    })
+
+    it('is a safe no-op when no marker files exist for that row (not every cancelled row was ever spooled)', async () => {
+      const { cancelDownloadedRelease } = await import('../../../server/utils/promote')
+      const dl = await makeDownloadedRelease(prisma, { status: 'FAILED', attempts: 0 })
+      await expect(cancelDownloadedRelease(dl.id)).resolves.toBeUndefined()
+    })
+  })
+
   describe('forceRejectDownloadedReleases (bulk "Reject all")', () => {
     it('goes straight to REJECTED regardless of the attempts cap — unlike the single-row reject, it never cycles back to FAILED', async () => {
       const { forceRejectDownloadedReleases } = await import('../../../server/utils/promote')
