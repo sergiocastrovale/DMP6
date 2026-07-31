@@ -24,6 +24,11 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Python (stray venv from an earlier prototype - scripts are Rust now)
+venv/
+__pycache__/
+*.pyc
+
 # Build outputs
 *.exe
 *.dll
