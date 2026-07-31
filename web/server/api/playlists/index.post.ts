@@ -1,12 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
-
-function generateSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
+import { generateSlug } from '~/server/utils/slug'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'playlists.crud')
@@ -21,6 +15,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const slug = generateSlug(body.name)
+
+  // A name with no letters/digits (e.g. "!!!") strips to an empty slug - unroutable at /playlists/[slug].
+  if (!slug) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Playlist name must contain at least one letter or number',
+    })
+  }
 
   // Check for duplicate slug
   const existing = await prisma.playlist.findUnique({
