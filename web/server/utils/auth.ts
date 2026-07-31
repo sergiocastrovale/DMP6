@@ -2,6 +2,11 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
 
 const TTL = SESSION_MAX_AGE_SECONDS * 1000
+
+if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET required in production')
+}
+
 const SECRET = process.env.SESSION_SECRET ?? 'dmp-insecure-dev-secret'
 
 type Payload = { userId: number; exp: number; ph: string }
