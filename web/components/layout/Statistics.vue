@@ -20,7 +20,8 @@ const stats = computed(() => [
     <template v-for="(stat, i) in stats" :key="stat.label">
       <div v-if="i > 0" class="w-px self-stretch bg-rule my-1" />
       <div class="flex flex-col gap-0 leading-none">
-        <div class="font-display font-semibold text-ink tabular-nums">
+        <div v-if="!global.loaded" class="h-[1em] w-8 animate-pulse rounded bg-bg-2" />
+        <div v-else class="font-display font-semibold text-ink tabular-nums">
           {{ stat.value }}
         </div>
         <div class="font-mono text-xs uppercase text-ink-4 mt-1.5">
