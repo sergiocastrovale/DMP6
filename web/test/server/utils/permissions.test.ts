@@ -93,4 +93,14 @@ describe('permissions', () => {
       .toThrow(expect.objectContaining({ statusCode: 403 }))
     expect(() => requireRole({ context: { user: { role: 'ADMIN' } } } as unknown as H3Event, 'ADMIN')).not.toThrow()
   })
+
+  it('requireRoleAtLeast admits the given role and anything ranked above it (audit #94)', async () => {
+    const { requireRoleAtLeast } = await import('../../../server/utils/permissions')
+    const asRole = (role: string) => ({ context: { user: { role } } } as unknown as H3Event)
+
+    expect(() => requireRoleAtLeast(asRole('VIEWER'), 'MANAGER')).toThrow(expect.objectContaining({ statusCode: 403 }))
+    expect(() => requireRoleAtLeast(asRole('MANAGER'), 'MANAGER')).not.toThrow()
+    expect(() => requireRoleAtLeast(asRole('ADMIN'), 'MANAGER')).not.toThrow()
+    expect(() => requireRoleAtLeast({ context: {} } as H3Event, 'MANAGER')).toThrow(expect.objectContaining({ statusCode: 401 }))
+  })
 })

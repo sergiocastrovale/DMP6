@@ -1,9 +1,9 @@
 import { getMosaicProcess, setMosaicProcess } from '~/server/utils/mosaic'
+import { requireRoleAtLeast } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event): Promise<{ ok: boolean; message?: string }> => {
-  if (!event.context.user) {
-    throw createError({ statusCode: 401, message: 'Unauthorized' })
-  }
+  // Matches generate.post.ts's gating - cancelling affects the one global mosaic slot for everyone.
+  requireRoleAtLeast(event, 'MANAGER')
 
   const proc = getMosaicProcess()
   if (proc) {

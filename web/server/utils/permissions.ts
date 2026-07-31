@@ -56,3 +56,13 @@ export const requireRole = (event: H3Event, role: Role): void => {
   if (!user) {throw createError({ statusCode: 401, message: 'Unauthorized' })}
   if (user.role !== role) {throw createError({ statusCode: 403, message: 'Forbidden' })}
 }
+
+const ROLE_RANK: Record<Role, number> = { VIEWER: 0, MANAGER: 1, ADMIN: 2 }
+
+// Unlike requireRole (exact match, used for ADMIN-only actions), this allows the given role OR
+// anything ranked above it - e.g. requireRoleAtLeast(event, 'MANAGER') admits MANAGER and ADMIN.
+export const requireRoleAtLeast = (event: H3Event, role: Role): void => {
+  const user = event.context.user
+  if (!user) {throw createError({ statusCode: 401, message: 'Unauthorized' })}
+  if (ROLE_RANK[user.role] < ROLE_RANK[role]) {throw createError({ statusCode: 403, message: 'Forbidden' })}
+}

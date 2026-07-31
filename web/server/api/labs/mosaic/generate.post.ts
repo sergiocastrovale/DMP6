@@ -1,16 +1,21 @@
 import { spawn } from 'child_process'
-import { existsSync, readdirSync, writeFileSync, unlinkSync } from 'fs'
+import { writeFileSync, unlinkSync } from 'fs'
 import { join, resolve } from 'path'
 import { tmpdir } from 'os'
 import { getMosaicProcess, setMosaicProcess } from '~/server/utils/mosaic'
 import { prisma } from '~/server/utils/prisma'
+import { requireRoleAtLeast } from '~/server/utils/permissions'
 
 const VALID_MODES = ['chronological', 'gradient', 'random']
 
 export default defineEventHandler(async (event) => {
-  if (!event.context.user) {
-    throw createError({ statusCode: 401, message: 'Unauthorized' })
-  }
+  // Mosaic generation is a heavyweight, single-global-slot child process (409 if one's already
+  // running) - a VIEWER shouldn't be able to hog or repeatedly kill it for everyone else. No dedicated
+  // permission key exists for labs (adding one means a RolePermission backfill this session can't run
+  // against the real NAS DB - see docs' "TO DO / VERIFY WHEN NAS IS ONLINE"), so this uses the simpler
+  // role check instead, matching other ADMIN/MANAGER-gated actions that don't need a DB-backed
+  // permission row (audit #94).
+  requireRoleAtLeast(event, 'MANAGER')
 
   if (getMosaicProcess()) {
     throw createError({ statusCode: 409, message: 'Mosaic generation already in progress' })
@@ -74,7 +79,15 @@ export default defineEventHandler(async (event) => {
       try { unlinkSync(manifestPath) } catch { /* ignore */ }
     }
 
+    // Guards every res.write/res.end below - the client can disconnect (req 'close') before the
+    // child process actually exits, and the child's own 'close'/stdout/stderr events can still fire
+    // afterward. Without this, that late event writes to an already-`res.end()`ed response, which
+    // throws ERR_STREAM_WRITE_AFTER_END (audit #94).
+    let done = false
+
     child.on('error', (err) => {
+      if (done) {return}
+      done = true
       setMosaicProcess(null)
       cleanup()
       res.write(`data: ${JSON.stringify(`Error: ${err.message}`)}\n\n`)
@@ -86,6 +99,7 @@ export default defineEventHandler(async (event) => {
     let buffer = ''
 
     child.stdout.on('data', (chunk: Buffer) => {
+      if (done) {return}
       buffer += chunk.toString()
       const lines = buffer.split('\n')
       buffer = lines.pop()!
@@ -103,6 +117,7 @@ export default defineEventHandler(async (event) => {
     })
 
     child.stderr.on('data', (chunk: Buffer) => {
+      if (done) {return}
       const text = chunk.toString().trim()
       if (text) {
         res.write(`data: ${JSON.stringify(text)}\n\n`)
@@ -110,6 +125,8 @@ export default defineEventHandler(async (event) => {
     })
 
     child.on('close', (code) => {
+      if (done) {return}
+      done = true
       setMosaicProcess(null)
       cleanup()
       res.write(`event: done\ndata: ${code ?? 0}\n\n`)
@@ -118,6 +135,8 @@ export default defineEventHandler(async (event) => {
     })
 
     event.node.req.on('close', () => {
+      if (done) {return}
+      done = true
       if (getMosaicProcess() === child) {
         child.kill('SIGTERM')
         setMosaicProcess(null)

@@ -1,10 +1,10 @@
 import { existsSync, unlinkSync } from 'fs'
 import { join, resolve } from 'path'
+import { requireRoleAtLeast } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
-  if (!event.context.user) {
-    throw createError({ statusCode: 401, message: 'Unauthorized' })
-  }
+  // Matches generate.post.ts's gating - deletes a shared generated mosaic file, not per-user data.
+  requireRoleAtLeast(event, 'MANAGER')
 
   const filename = getRouterParam(event, 'filename')
   if (!filename || !filename.startsWith('mosaic_') || !filename.endsWith('.jpg')) {
