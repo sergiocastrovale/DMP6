@@ -6,6 +6,7 @@ import {
   buildCoArtistMap,
   buildConnectedArtistByRelease,
   buildLocalAndGapCards,
+  sortReleaseCards,
 } from '~/server/utils/releaseAggregation'
 
 export default defineEventHandler(async (event) => {
@@ -133,7 +134,7 @@ export default defineEventHandler(async (event) => {
     resolveImage: verifyImage,
   })
 
-  const releases = [...localAndGapCards, ...appearsOnCards]
+  const releases = sortReleaseCards([...localAndGapCards, ...appearsOnCards])
 
   // Paginate the unified list
   const total = releases.length

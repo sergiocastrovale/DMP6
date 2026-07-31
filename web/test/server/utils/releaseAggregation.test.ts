@@ -4,6 +4,8 @@ import {
   buildCoArtistMap,
   buildConnectedArtistByRelease,
   buildLocalAndGapCards,
+  type ReleaseCard,
+  sortReleaseCards,
   type LocalReleaseRow,
   type MbReleaseRow,
 } from '../../../server/utils/releaseAggregation'
@@ -216,5 +218,36 @@ describe('buildAppearsOnCards', () => {
       coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
     })
     expect(cards[0]).toMatchObject({ title: 'Local Title', year: 1999, isMusicBrainz: false, status: 'UNMATCHED', type: 'Album', typeSlug: 'album' })
+  })
+})
+
+describe('sortReleaseCards', () => {
+  const card = (id: string, year: number | null): ReleaseCard => ({
+    id, title: id, year, type: 'Album', typeSlug: 'album', mbReleaseRowId: null, musicbrainzId: null,
+    releaseGroupId: null, disambiguation: null, editionLabel: null, releaseDate: null, packaging: null,
+    country: null, format: null, status: 'COMPLETE', image: null, imageUrl: null, trackCount: 0,
+    totalPlayCount: 0, localTrackCount: 0, isMusicBrainz: false, hasLocal: true, localReleaseId: id,
+    folderPath: null,
+  })
+
+  it('sorts an appended appears-on gap (e.g. 1971) after page-2 locals instead of leaving it stuck at the tail', () => {
+    // Reproduces the reported bug: locals+gaps come pre-sorted year-ascending, appears-on cards are
+    // appended after unsorted - a page-2 slice of the unsorted concatenation could show a 1971 release
+    // right after a 2020 one.
+    const localsAndGaps = [card('a', 1980), card('b', 2020)]
+    const appearsOn = [card('c', 1971)]
+    const sorted = sortReleaseCards([...localsAndGaps, ...appearsOn])
+    expect(sorted.map(c => c.id)).toEqual(['c', 'a', 'b'])
+  })
+
+  it('sorts undated releases last', () => {
+    const sorted = sortReleaseCards([card('dated', 1990), card('undated', null)])
+    expect(sorted.map(c => c.id)).toEqual(['dated', 'undated'])
+  })
+
+  it('does not mutate the input array', () => {
+    const input = [card('b', 2020), card('a', 1980)]
+    sortReleaseCards(input)
+    expect(input.map(c => c.id)).toEqual(['b', 'a'])
   })
 })

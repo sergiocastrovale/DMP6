@@ -282,3 +282,11 @@ export function buildAppearsOnCards(params: {
     }
   })
 }
+
+// The caller builds the unified list as locals+gaps (already year-ascending) followed by appears-on
+// (unsorted, appended after). Sort the whole thing by year before paginating so page 2+ can't show an
+// old gap release after a recent local one. Undated releases sort last. Stable sort (ES2019+) keeps
+// same-year cards in their original relative order.
+export function sortReleaseCards(cards: ReleaseCard[]): ReleaseCard[] {
+  return [...cards].sort((a, b) => (a.year ?? Number.MAX_SAFE_INTEGER) - (b.year ?? Number.MAX_SAFE_INTEGER))
+}
