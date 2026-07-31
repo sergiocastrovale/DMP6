@@ -106,6 +106,10 @@ export const useTerminalStore = defineStore('terminal', () => {
     isOpen.value = false
   }
 
+  // Stops THIS session only. Does not touch the global scan lock - stop.post.ts only clears it when
+  // the recorded PID is verified to belong to this session's process, so an unrelated session (or a
+  // different machine/container sharing the same DB) never gets its lock wiped out from under it.
+  // Use the "Force unlock" button (hasLockError below) to explicitly clear a lock reported as stuck.
   async function stop() {
     if (currentSession.value) {
       try {
@@ -118,7 +122,6 @@ export const useTerminalStore = defineStore('terminal', () => {
       catch { /* best-effort - abort SSE regardless */ }
     }
     abortController?.abort()
-    await unlock()
   }
 
   const hasLockError = computed(() =>

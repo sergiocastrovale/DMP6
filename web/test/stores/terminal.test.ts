@@ -83,4 +83,17 @@ describe('useTerminalStore', () => {
     store.isOpen = false
     expect(store.hasBackground).toBe(true)
   })
+
+  it('stop() only hits /api/terminal/stop, never force-clears the lock itself', async () => {
+    const fakeFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+    store.currentSession = 'sess-stop'
+    await store.stop()
+    expect(fakeFetch).toHaveBeenCalledTimes(1)
+    expect(fakeFetch).toHaveBeenCalledWith('/api/terminal/stop', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ session: 'sess-stop' }),
+    }))
+  })
 })
