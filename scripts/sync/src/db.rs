@@ -626,6 +626,11 @@ pub async fn delete_missing_releases_for_artist(
     Ok(result.rows_affected())
 }
 
+// Cover set = this artist + every connected (duplicate-merged) artist, matching the web artist page's
+// own aggregation (releases.get.ts's allArtistIds = primary + Artist.findMany({primaryArtistId})).
+// Without this, a release owned only under a connected artist's LocalReleaseArtist link stayed
+// "uncovered" here, so catalogue-gaps created a MISSING placeholder and the trickle worker
+// re-downloaded an album the library already had (landing under the connected artist's folder).
 pub async fn get_covered_release_group_ids(
     pool: &PgPool,
     artist_id: &str,
@@ -635,7 +640,8 @@ pub async fn get_covered_release_group_ids(
            FROM "MusicBrainzRelease" mbr
            JOIN "LocalRelease" lr ON lr."releaseId" = mbr.id
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
-           WHERE lra."artistId" = $1
+           JOIN "Artist" a ON a.id = lra."artistId"
+           WHERE (lra."artistId" = $1 OR a."primaryArtistId" = $1)
              AND mbr."releaseGroupId" IS NOT NULL"#,
     )
     .bind(artist_id)
