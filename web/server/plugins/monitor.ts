@@ -1,4 +1,5 @@
 import { runGapsCycle, runAutoMergeCycle, reconcileDownloads, reconcileTorrentDownloads } from '~/server/utils/monitorLoop'
+import { sweepDanglingDownloads } from '~/server/utils/promote'
 import { topUpDownloads } from '~/server/utils/autoDownload'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
@@ -11,6 +12,15 @@ import { prisma } from '~/server/utils/prisma'
 const EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 const PRUNE_INTERVAL_MS = 6 * 60 * 60 * 1000
 let lastPruneAt = 0
+
+// Sweep terminal DownloadedRelease rows whose release is no longer MISSING (audit item 5 — this used
+// to run ONLY via the manual /api/downloads/cleanup endpoint, so the bloat it exists to fix
+// accumulated silently between manual runs). Pure DB op, safe on any instance — same slow cadence as
+// the MonitorEvent prune above. cleanupReadyDownloads is deliberately NOT scheduled here: it throws a
+// 409 on any instance without the downloads volume mounted (dev/non-NAS), so auto-running it would
+// spam errors everywhere but the NAS — it stays a manual, NAS-only action.
+const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000
+let lastSweepAt = 0
 
 // Tracks the acquisition idle/active transition so we log it once, not every tick.
 let acquisitionIdle = false
@@ -53,6 +63,11 @@ export default defineNitroPlugin(() => {
       lastPruneAt = Date.now()
       prisma.monitorEvent.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - EVENT_RETENTION_MS) } } })
         .catch(() => {})
+    }
+
+    if (Date.now() - lastSweepAt > SWEEP_INTERVAL_MS) {
+      lastSweepAt = Date.now()
+      sweepDanglingDownloads().catch(e => monitorLog('error', `dangling-download sweep error: ${e?.message || e}`))
     }
 
     // Always reconcile (cheap, bounded, internally guarded). Soulseek + torrent finalizers both run.

@@ -78,15 +78,18 @@ export async function moveToReady(id: string): Promise<void> {
   if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
 
   // Erroneous release (no MusicBrainz year — can't lay it out as `YYYY - title`): never promote to
-  // _ready. Purge the staged files and drop it into the Failed list. Safety net for anything that got
-  // past the pick gate (in-flight at deploy, ENRICHING/torrent finalize).
+  // _ready. Purge the staged files and mark it terminal — this can never resolve itself on retry (the
+  // year comes from the matched MB release, not from anything a re-download would change), so ABANDONED
+  // (not FAILED) keeps it out of the retry pool instead of lingering, retryable-looking, in the Failed
+  // tab. Safety net for anything that got past the pick gate (in-flight at deploy, ENRICHING/torrent
+  // finalize) — pickFresh/pickRetry already filter `year IS NOT NULL` so this shouldn't recur anyway.
   if (row.year == null) {
     await purgeStagedFiles(row.stagingPath)
     await prisma.downloadedRelease.update({
       where: { id },
-      data: { status: 'FAILED', error: 'no MusicBrainz year — erroneous release', stagingPath: null },
+      data: { status: 'ABANDONED', error: 'no MusicBrainz year — erroneous release', stagingPath: null },
     })
-    monitorLog('warn', `merge: "${row.title}" has no MusicBrainz year — erroneous, sent to Failed`)
+    monitorLog('warn', `merge: "${row.title}" has no MusicBrainz year — erroneous, sent to Abandoned`)
     return
   }
 
@@ -122,6 +125,12 @@ type MergeRow = {
 // Trailing disc subfolder (cd1 / disc 2 / disk3) — LocalRelease.folderPath is the rel path with this stripped.
 const DISC_SEGMENT_RE = /[/\\](?:cd|disc|disk)\s*\d+\s*$/i
 const stripDiscSegment = (rel: string): string => rel.replace(DISC_SEGMENT_RE, '')
+
+// In-process claim guard against double-merging the same row (manual double-click racing itself, or
+// racing runAutoMergeCycle) — mirrors monitorLoop.ts's `finalizing` Set. Merge only ever runs on the
+// primary/NAS instance (single process), so an in-process Set is sufficient; no cross-instance DB claim
+// needed (see audit item 4 / Q3).
+const merging = new Set<string>()
 
 // Delete a merged folder from disk, but only when it actually lives under MUSIC_DIR (safety guard).
 async function purgeLibraryFolder(music: string, rel: string): Promise<void> {
@@ -216,11 +225,14 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
     ? await prisma.localRelease.findUnique({ where: { id: lr.id }, select: { id: true, releaseId: true, matchStatus: true, forcedComplete: true } })
     : null
 
-  // Keep only an exact match: every MusicBrainz track present and no extras (matchStatus COMPLETE).
-  // forcedComplete is the manual "treat as complete" escape hatch — honour it. Anything else (partial,
-  // extra-tracks, or no MB identity at all) is discarded and left to retry for a better copy.
+  // Keep an exact match (matchStatus COMPLETE) or a superset (EXTRA_TRACKS — every MusicBrainz track
+  // present, plus bonus/deluxe tracks the matched edition doesn't have). The Rust matcher already tries
+  // to bind a deluxe sibling edition first when the local folder overshoots; EXTRA_TRACKS is what's left
+  // when no such sibling exists, and is a legitimate copy, not a data-quality problem — never purge it.
+  // forcedComplete is the manual "treat as complete" escape hatch — honour it. Only a genuine shortfall
+  // (INCOMPLETE / MISSING_TRACKS, or no MB identity at all) is discarded and left to retry.
   const matched = !!reloaded?.releaseId
-  const complete = matched && (reloaded!.forcedComplete || reloaded!.matchStatus === 'COMPLETE')
+  const complete = matched && (reloaded!.forcedComplete || reloaded!.matchStatus === 'COMPLETE' || reloaded!.matchStatus === 'EXTRA_TRACKS')
 
   if (complete) {
     try {
@@ -272,9 +284,10 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
     return { id: null, error: 'sync --release failed, retry pending' }
   }
 
-  // Discard: either no MusicBrainz identity, or matched but not an exact track-count match. Either way the
-  // files are unusable for the library. Remove them and bump the attempt cap so a complete copy can still
-  // surface later (the MISSING placeholder is deliberately NOT retired here).
+  // Discard: either no MusicBrainz identity, or matched with a genuine shortfall (INCOMPLETE /
+  // MISSING_TRACKS — fewer tracks than the matched edition). Either way the files are unusable for the
+  // library. Remove them and bump the attempt cap so a complete copy can still surface later (the
+  // MISSING placeholder is deliberately NOT retired here).
   let reason = 'no MusicBrainz identity after enrichment'
   if (matched) {
     const [expected, present] = await Promise.all([
@@ -308,8 +321,11 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
  * (index + sync, serialized), stamp provenance, mark PROMOTED.
  */
 export async function mergeDownloadedRelease(id: string, emit?: (line: string) => void): Promise<{ localReleaseId: string | null; error: string | null }> {
+  if (merging.has(id)) {throw createError({ statusCode: 409, message: 'already merging' })}
+
   const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: { select: { name: true } } } })
   if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
+  if (row.status !== 'READY') {throw createError({ statusCode: 409, message: `cannot merge a "${row.status}" download — must be READY` })}
   if (!row.stagingPath) {throw createError({ statusCode: 409, message: 'nothing to merge' })}
 
   const music = musicDir()
@@ -318,6 +334,7 @@ export async function mergeDownloadedRelease(id: string, emit?: (line: string) =
 
   const { maxDownloadAttempts } = await resolveMonitorSettings()
   const title = row.title ?? '?'
+  merging.add(id)
   try {
     setMergeProgress(id, { step: 'moving', title })
     emit?.(`Moving "${title}" to library…`)
@@ -337,6 +354,7 @@ export async function mergeDownloadedRelease(id: string, emit?: (line: string) =
     return { localReleaseId, error }
   }
   finally {
+    merging.delete(id)
     clearMergeProgress(id)
   }
 }
@@ -351,10 +369,14 @@ export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: s
   if (!music) {throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })}
   const { downloadsReadyPath } = await resolveDownloadSettings()
 
-  const rows = await prisma.downloadedRelease.findMany({
+  const fetched = await prisma.downloadedRelease.findMany({
     where: { id: { in: ids }, status: 'READY' },
     include: { artist: { select: { name: true } } },
   })
+  // Skip anything a concurrent single-row merge already claimed (mergeDownloadedRelease's `merging`
+  // guard) rather than racing it; claim the rest for the duration of this batch.
+  const rows = fetched.filter(r => !merging.has(r.id))
+  for (const r of rows) {merging.add(r.id)}
 
   const errors: string[] = []
   const moved: { row: MergeRow; rel: string }[] = []
@@ -414,6 +436,7 @@ export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: s
   }
   finally {
     for (const m of moved) {clearMergeProgress(m.row.id)}
+    for (const r of rows) {merging.delete(r.id)}
   }
 }
 
