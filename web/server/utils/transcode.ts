@@ -112,15 +112,35 @@ export async function probeTags(file: string): Promise<AudioTags> {
   }
 }
 
-/** Rename a single mp3 to `NN. Title.mp3`; no-op when tags are missing or the target exists. */
-async function renameFromTags(file: string): Promise<void> {
-  const { track, title } = await probeTags(file)
-  if (!track || !title) {return}
+/**
+ * Builds the `NN. Title.mp3` target filename from tags, prefixing the disc number
+ * (`D-NN. Title.mp3`) whenever discTotal > 1 - a multi-disc release flattened into one directory
+ * would otherwise have Disc 1 Track 1 and Disc 2 Track 1 collide on the same `01. Title.mp3` name,
+ * silently leaving the second file un-renamed (audit #83).
+ * Returns null when there's no usable track number/title.
+ */
+export function buildTrackFilename(tags: AudioTags): string | null {
+  const { track, title, disc, discTotal } = tags
+  if (!track || !title) {return null}
 
   const num = Number.parseInt(track, 10) // handles "1" and "1/12"
-  if (!Number.isFinite(num)) {return}
+  if (!Number.isFinite(num)) {return null}
 
-  const name = `${String(num).padStart(2, '0')}. ${sanitize(title)}.mp3`
+  const totalDiscs = discTotal ? Number.parseInt(discTotal, 10) : NaN
+  const discNum = disc ? Number.parseInt(disc, 10) : NaN
+  const numberPart = totalDiscs > 1 && Number.isFinite(discNum)
+    ? `${discNum}-${String(num).padStart(2, '0')}`
+    : String(num).padStart(2, '0')
+
+  return `${numberPart}. ${sanitize(title)}.mp3`
+}
+
+/** Rename a single mp3 to `NN. Title.mp3` (or `D-NN. Title.mp3` for multi-disc); no-op when tags are missing or the target exists. */
+async function renameFromTags(file: string): Promise<void> {
+  const tags = await probeTags(file)
+  const name = buildTrackFilename(tags)
+  if (!name) {return}
+
   const dest = join(dirname(file), name)
   if (dest === file) {return}
   // Don't clobber an existing file.
