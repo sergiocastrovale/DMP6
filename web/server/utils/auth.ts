@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
 import { prisma } from '~/server/utils/prisma'
+import { invalidateAuthUserCache } from '~/server/utils/userCache'
 
 const TTL = SESSION_MAX_AGE_SECONDS * 1000
 
@@ -59,6 +60,9 @@ export const isSessionStaleForUser = (
 // which invalidates every token issued before the bump (checked in isSessionStaleForUser above).
 export const destroyUserSessions = async (userId: number): Promise<void> => {
   await prisma.user.update({ where: { id: userId }, data: { tokenVersion: { increment: 1 } } }).catch(() => {})
+  // Don't wait out the 30s auth-user cache TTL to see the revoke - a stale cache entry would keep
+  // validating the very token this call is supposed to kill.
+  invalidateAuthUserCache(userId)
 }
 
 export const destroySession = async (token: string): Promise<void> => {

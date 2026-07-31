@@ -2,6 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { hashPassword, verifyPassword } from '~/server/utils/password'
 import { createSession } from '~/server/utils/auth'
 import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
+import { invalidateAuthUserCache } from '~/server/utils/userCache'
 
 export default defineEventHandler(async (event) => {
   const user = event.context.user
@@ -33,6 +34,7 @@ export default defineEventHandler(async (event) => {
     where: { id: user.id },
     data: { passwordHash: newHash, mustChangePassword: false },
   })
+  invalidateAuthUserCache(user.id)
 
   setCookie(event, 'dmp_session', createSession(user.id, newHash, dbUser.tokenVersion), {
     httpOnly: true,

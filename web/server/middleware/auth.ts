@@ -1,5 +1,5 @@
 import { validateSession, isSessionStaleForUser } from '~/server/utils/auth'
-import { prisma } from '~/server/utils/prisma'
+import { getCachedAuthUser } from '~/server/utils/userCache'
 
 const SESSION_COOKIE = 'dmp_session'
 
@@ -42,18 +42,7 @@ export default defineEventHandler(async (event) => {
     return sendRedirect(event, '/login')
   }
 
-  const dbUser = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: {
-      id: true,
-      username: true,
-      email: true,
-      role: true,
-      mustChangePassword: true,
-      passwordHash: true,
-      tokenVersion: true,
-    },
-  })
+  const dbUser = await getCachedAuthUser(session.userId)
 
   const invalidSession = !dbUser || isSessionStaleForUser(token, dbUser.passwordHash, dbUser.tokenVersion)
   if (invalidSession) {

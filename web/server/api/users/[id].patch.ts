@@ -3,6 +3,7 @@ import { prisma } from '~/server/utils/prisma'
 import { requireRole } from '~/server/utils/permissions'
 import { hashPassword } from '~/server/utils/password'
 import { destroyUserSessions } from '~/server/utils/auth'
+import { invalidateAuthUserCache } from '~/server/utils/userCache'
 
 const VALID_ROLES: Role[] = ['VIEWER', 'MANAGER', 'ADMIN']
 
@@ -63,6 +64,8 @@ export default defineEventHandler(async (event) => {
       updatedAt: true,
     },
   })
+  // Role/email changes should take effect promptly, not sit behind the 30s auth-user cache TTL.
+  invalidateAuthUserCache(id)
 
   return updated
 })
