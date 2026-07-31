@@ -569,6 +569,13 @@ fn select_tracks(
     });
     candidates.dedup_by(|a, b| a.track_id == b.track_id);
 
+    // Shuffle BEFORE sorting so a stable sort's tie-break (equal score) picks a random order each
+    // run instead of always the same insertion order - otherwise, with static artist scores, a big
+    // equal-score band means the SAME top max_tracks subset gets selected every regeneration, and the
+    // post-cap shuffle below only randomizes playback order within that frozen subset (audit #88).
+    use rand::seq::SliceRandom;
+    candidates.shuffle(&mut rand::thread_rng());
+
     // Sort by score descending to pick the best candidates
     candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
@@ -591,7 +598,6 @@ fn select_tracks(
     }
 
     // Shuffle the final selection so playback order is fresh on every regeneration
-    use rand::seq::SliceRandom;
     selected.shuffle(&mut rand::thread_rng());
 
     selected
@@ -985,5 +991,79 @@ async fn main() {
             total_playlists,
             total_tracks
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(max_tracks: usize, max_per_release: usize) -> GenreConfig {
+        GenreConfig { max_tracks, max_per_release, groups: vec![] }
+    }
+
+    // A big equal-score candidate pool (every artist scored identically) exceeding max_tracks -
+    // with a STABLE sort and no pre-sort shuffle, the same top max_tracks subset (by insertion
+    // order) would be selected on every single call. Run select_tracks many times and confirm the
+    // selected SET of track ids actually rotates (audit #88).
+    #[test]
+    fn select_tracks_rotates_the_selected_subset_across_runs_on_equal_scores() {
+        let n = 40;
+        let max_tracks = 10;
+        let artist_scores: HashMap<String, f64> = (0..n).map(|i| (format!("artist-{i}"), 1.0)).collect();
+
+        let make_tracks = || -> Vec<TrackCandidate> {
+            (0..n)
+                .map(|i| TrackCandidate {
+                    track_id: format!("track-{i}"),
+                    artist_id: format!("artist-{i}"),
+                    local_release_id: Some(format!("release-{i}")),
+                })
+                .collect()
+        };
+
+        let cfg = config(max_tracks, 1);
+        let first: std::collections::HashSet<String> =
+            select_tracks(make_tracks(), &artist_scores, &cfg).into_iter().collect();
+
+        let mut saw_a_different_subset = false;
+        for _ in 0..30 {
+            let selected: std::collections::HashSet<String> =
+                select_tracks(make_tracks(), &artist_scores, &cfg).into_iter().collect();
+            if selected != first {
+                saw_a_different_subset = true;
+                break;
+            }
+        }
+        assert!(saw_a_different_subset, "same top-{max_tracks} subset picked every run on a tied score band");
+    }
+
+    #[test]
+    fn select_tracks_respects_max_tracks_and_max_per_release() {
+        let artist_scores: HashMap<String, f64> = (0..20).map(|i| (format!("artist-{i}"), 1.0)).collect();
+        let tracks: Vec<TrackCandidate> = (0..20)
+            .map(|i| TrackCandidate {
+                track_id: format!("track-{i}"),
+                artist_id: format!("artist-{i}"),
+                local_release_id: Some("same-release".to_string()),
+            })
+            .collect();
+
+        let cfg = config(5, 2);
+        let selected = select_tracks(tracks, &artist_scores, &cfg);
+        // max_per_release=2 caps every candidate (they all share one release) well below max_tracks=5.
+        assert_eq!(selected.len(), 2);
+    }
+
+    #[test]
+    fn select_tracks_drops_a_track_whose_artist_has_no_score() {
+        let artist_scores: HashMap<String, f64> = HashMap::new();
+        let tracks = vec![TrackCandidate {
+            track_id: "track-1".to_string(),
+            artist_id: "unscored-artist".to_string(),
+            local_release_id: None,
+        }];
+        let cfg = config(10, 10);
+        assert!(select_tracks(tracks, &artist_scores, &cfg).is_empty());
     }
 }
