@@ -118,7 +118,6 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- Current Status -->
     <div class="rounded-lg border border-rule bg-bg-1 p-5">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -151,7 +150,6 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- Structured progress when available -->
       <div v-if="terminal.isRunning && progress" class="mt-4 space-y-2">
         <div class="flex items-center justify-between text-xs">
           <span class="text-ink-2">
@@ -168,7 +166,6 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Terminal preview when running -->
       <div
         v-if="terminal.isRunning && terminal.lines.length > 0 && settings.showTerminal"
         class="mt-4 max-h-24 overflow-hidden rounded border border-rule bg-bg p-3 font-mono text-xs leading-5 text-ink-2 cursor-pointer"
@@ -180,7 +177,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Background / stale lock banner -->
     <div
       v-if="staleLock"
       class="flex items-center justify-between rounded-lg border border-accent/30 bg-accent/5 px-4 py-3"
@@ -219,7 +215,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Scan Actions -->
     <div>
       <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink0">
         Scan Library
@@ -227,7 +222,6 @@ onUnmounted(() => {
       <ScanActions :disabled="!!staleLock" />
     </div>
 
-    <!-- Last Scan Info -->
     <div v-if="status && !loading">
       <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink0">
         History

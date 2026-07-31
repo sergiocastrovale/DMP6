@@ -49,7 +49,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
 <template>
   <div class="max-w-2xl space-y-6">
-    <!-- slskd -->
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Soulseek (slskd)</h2>
       <SettingsField
@@ -67,7 +66,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
       />
     </div>
 
-    <!-- RuTracker: Prowlarr (search) -->
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">RuTracker — Prowlarr (search)</h2>
       <p class="text-xs text-ink0">RuTracker is searched through Prowlarr (the RT login lives in Prowlarr, like Lidarr). When RuTracker is enabled it's tried first; Soulseek is the fallback.</p>
@@ -92,7 +90,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
       />
     </div>
 
-    <!-- RuTracker: qBittorrent (download) -->
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">RuTracker — qBittorrent (download)</h2>
       <SettingsField
@@ -121,7 +118,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
       />
     </div>
 
-    <!-- Download settings -->
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Download Settings</h2>
       <SettingsField

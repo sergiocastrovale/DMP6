@@ -67,7 +67,6 @@ function commitEdit(item: any, col: IssueColumn) {
 
 <template>
   <div class="flex flex-col gap-0">
-    <!-- Table -->
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead>
@@ -94,7 +93,6 @@ function commitEdit(item: any, col: IssueColumn) {
           </tr>
         </thead>
         <tbody>
-          <!-- Loading skeleton -->
           <template v-if="loading && items.length === 0">
             <tr v-for="n in 5" :key="n" class="border-b border-rule/50">
               <td v-if="type !== 'enrichment'" class="px-3 py-2.5">
@@ -106,14 +104,12 @@ function commitEdit(item: any, col: IssueColumn) {
             </tr>
           </template>
 
-          <!-- Empty state -->
           <tr v-else-if="!loading && items.length === 0">
             <td :colspan="type !== 'enrichment' ? columns.length + 1 : columns.length" class="px-3 py-12 text-center text-ink0">
               No issues found
             </td>
           </tr>
 
-          <!-- Rows -->
           <tr
             v-for="item in items"
             :key="item.id"
@@ -134,9 +130,7 @@ function commitEdit(item: any, col: IssueColumn) {
               class="px-3 py-2 text-ink-2"
               :class="col.width"
             >
-              <!-- Custom slot: dots in key replaced with underscores in slot name -->
               <slot :name="`cell-${col.key.replace(/[^a-zA-Z0-9]/g, '_')}`" :item="item" :value="getNestedValue(item, col.key)">
-                <!-- Editable cell -->
                 <template v-if="col.editable">
                   <input
                     v-if="editingCell !== null && editingCell.id === item.id && editingCell.key === (col.editKey ?? col.key)"
@@ -155,7 +149,6 @@ function commitEdit(item: any, col: IssueColumn) {
                     {{ getNestedValue(item, col.key) ?? '-' }}
                   </span>
                 </template>
-                <!-- Plain value -->
                 <span v-else class="truncate">{{ getNestedValue(item, col.key) ?? '-' }}</span>
               </slot>
             </td>
@@ -164,7 +157,6 @@ function commitEdit(item: any, col: IssueColumn) {
       </table>
     </div>
 
-    <!-- Pagination -->
     <div v-if="total > pageSize" class="flex items-center justify-between border-t border-rule px-4 py-2 text-xs text-ink0">
       <span>{{ total }} total</span>
       <div class="flex items-center gap-2">

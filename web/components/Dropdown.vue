@@ -74,7 +74,6 @@ function select(value: string | null) {
       </button>
     </div>
 
-    <!-- Backdrop -->
     <div v-if="open" class="fixed inset-0 z-10" @click="open = false" />
   </div>
 </template>

@@ -17,7 +17,6 @@ const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hyb
   <div class="mx-auto max-w-2xl px-4 py-8 pb-32">
     <PageTitle :icon="Compass" text="Explore" subtext="Discover something new" class="mb-8" />
 
-    <!-- Sliders -->
     <div class="flex flex-col gap-3">
       <Slider v-model="energy" title="I'm feeling..." left-label="Tired" right-label="Powerful" :stops="energyStops" />
       <Slider v-model="era" title="Era" left-label="Classic" right-label="Modern" :stops="eraStops" />
@@ -25,17 +24,14 @@ const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hyb
       <Slider v-model="sound" title="Sound" left-label="Acoustic" right-label="Electronic" :stops="soundStops" />
     </div>
 
-    <!-- Explore Button -->
     <div class="mt-6 flex justify-center">
       <UiButton size="lg" :icon="Play" icon-class="fill-current" :loading="isLoading" @click="explore">
         Explore
       </UiButton>
     </div>
 
-    <!-- Error -->
     <p v-if="error" class="mt-4 text-center text-sm text-red-400">{{ error }}</p>
 
-    <!-- Now Playing Card -->
     <div v-if="player.explorerCurrentTrack" class="mt-8">
       <ExploreCard
         :track="player.explorerCurrentTrack"
@@ -44,7 +40,6 @@ const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hyb
       />
     </div>
 
-    <!-- Session History -->
     <div v-if="player.explorerSessionHistory.length > 0" class="mt-8">
       <ExploreHistory
         :tracks="player.explorerSessionHistory"

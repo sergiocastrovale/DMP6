@@ -110,9 +110,7 @@ const progressPct = computed(() =>
     v-if="player.isVisible"
     class="flex w-full flex-col border-t border-rule bg-bg pt-3 pb-2"
   >
-    <!-- Controls row -->
     <div class="flex h-16 items-center px-4">
-      <!-- Track Info -->
       <div class="flex min-w-0 flex-1 items-center gap-3 md:flex-none md:w-1/3">
         <NuxtLink
           :to="player.currentTrack?.artistSlug ? `/artist/${player.currentTrack.artistSlug}` : '#'"
@@ -137,11 +135,8 @@ const progressPct = computed(() =>
         </div>
       </div>
 
-      <!-- Playback Controls -->
       <div class="flex flex-1 flex-col items-center justify-center gap-1.5">
-        <!-- Buttons row -->
         <div class="flex items-center gap-5">
-          <!-- Shuffle -->
           <div class="relative flex flex-col items-center">
             <span
               v-if="player.shuffleMode !== 'off'"
@@ -177,7 +172,6 @@ const progressPct = computed(() =>
             <SkipForward :size="20" />
           </button>
 
-          <!-- Playlist menu -->
           <div class="relative">
             <button
               class="text-ink-2 hover:text-ink transition-colors"
@@ -217,7 +211,6 @@ const progressPct = computed(() =>
           </div>
         </div>
 
-        <!-- Progress bar -->
         <div class="flex w-full items-center gap-2">
           <span class="w-8 shrink-0 text-right text-[10px] text-ink0 tabular-nums">{{ formatDuration(player.currentTime) }}</span>
           <div
@@ -236,7 +229,6 @@ const progressPct = computed(() =>
         </div>
       </div>
 
-      <!-- Spacer + Dismiss -->
       <div class="hidden md:flex md:w-1/3 justify-end">
         <button
           class="text-ink0 hover:text-ink transition-colors"

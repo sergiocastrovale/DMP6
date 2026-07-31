@@ -32,7 +32,6 @@ watch(() => terminal.lines.length, () => {
       v-if="terminal.isOpen"
       class="fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-rule bg-bg lg:w-[500px]"
     >
-      <!-- Header -->
       <div class="flex items-center justify-between border-b border-rule px-4 py-3">
         <span class="text-sm font-medium text-ink-2">Terminal</span>
         <div class="flex items-center gap-2">
@@ -61,7 +60,6 @@ watch(() => terminal.lines.length, () => {
         </div>
       </div>
 
-      <!-- Tmux hint -->
       <div
         v-if="terminal.currentSession || terminal.isRunning"
         class="flex items-center gap-2 border-b border-rule px-4 py-2"
@@ -79,7 +77,6 @@ watch(() => terminal.lines.length, () => {
         </button>
       </div>
 
-      <!-- Output -->
       <div
         ref="scrollContainer"
         class="flex-1 overflow-y-auto p-4 font-mono text-xs leading-5 text-ink-2"
