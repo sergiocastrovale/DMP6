@@ -33,6 +33,18 @@ impl Config {
     }
 }
 
+/// Walk up from a CWD of `scripts/<crate>` (index, sync, fix, delete, nuke, audit, ...) or
+/// `scripts` itself to the project root. Any other CWD is returned unchanged.
+fn project_root_from_cwd(d: &std::path::Path) -> Option<String> {
+    if d.parent().map(|p| p.ends_with("scripts")).unwrap_or(false) {
+        d.parent().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string())
+    } else if d.ends_with("scripts") {
+        d.parent().map(|p| p.to_string_lossy().to_string())
+    } else {
+        Some(d.to_string_lossy().to_string())
+    }
+}
+
 pub fn load_config(music_dir_override: Option<&str>) -> Config {
     let env_paths = [PathBuf::from("web/.env"), PathBuf::from("../../web/.env")];
     let mut env_loaded = false;
@@ -61,16 +73,7 @@ pub fn load_config(music_dir_override: Option<&str>) -> Config {
     let project_root = std::env::var("PROJECT_ROOT").unwrap_or_else(|_| {
         std::env::current_dir()
             .ok()
-            .and_then(|d| {
-                // Walk up from scripts/index or scripts/sync to project root
-                if d.ends_with("scripts/index") || d.ends_with("scripts/sync") || d.ends_with("scripts/sync") {
-                    d.parent().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string())
-                } else if d.ends_with("scripts") {
-                    d.parent().map(|p| p.to_string_lossy().to_string())
-                } else {
-                    Some(d.to_string_lossy().to_string())
-                }
-            })
+            .and_then(|d| project_root_from_cwd(&d))
             .unwrap_or_else(|| ".".to_string())
     });
 
@@ -137,5 +140,35 @@ pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
         if let Some(v) = storage_endpoint { config.storage_endpoint = Some(v); }
         if let Some(v) = storage_public_url { config.storage_public_url = Some(v); }
         if let Some(v) = fanart_api_key { config.fanart_api_key = Some(v); }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn walks_up_two_levels_from_any_crate_dir() {
+        for crate_name in ["index", "sync", "fix", "delete", "nuke", "audit", "playlists"] {
+            let cwd = Path::new("/home/user/dmp/scripts").join(crate_name);
+            assert_eq!(
+                project_root_from_cwd(&cwd),
+                Some("/home/user/dmp".to_string()),
+                "crate dir {crate_name} should walk up to project root"
+            );
+        }
+    }
+
+    #[test]
+    fn walks_up_one_level_from_scripts_dir() {
+        let cwd = Path::new("/home/user/dmp/scripts");
+        assert_eq!(project_root_from_cwd(cwd), Some("/home/user/dmp".to_string()));
+    }
+
+    #[test]
+    fn returns_cwd_unchanged_when_already_at_project_root() {
+        let cwd = Path::new("/home/user/dmp");
+        assert_eq!(project_root_from_cwd(cwd), Some("/home/user/dmp".to_string()));
     }
 }
