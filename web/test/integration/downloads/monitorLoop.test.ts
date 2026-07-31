@@ -24,6 +24,14 @@ vi.mock('~/server/utils/promote', () => ({
   moveToReady: (...args: unknown[]) => moveToReadyMock(...args),
   mergeManyDownloadedReleases: vi.fn(),
 }))
+const getTorrentInfoMock = vi.fn()
+const deleteTorrentMock = vi.fn().mockResolvedValue(undefined)
+vi.mock('~/server/utils/qbittorrent', () => ({
+  getTorrentInfo: (...args: unknown[]) => getTorrentInfoMock(...args),
+  deleteTorrent: (...args: unknown[]) => deleteTorrentMock(...args),
+  isQbitComplete: vi.fn().mockReturnValue(false),
+  isQbitErrored: vi.fn().mockReturnValue(false),
+}))
 
 const prisma = getTestPrisma()
 
@@ -88,5 +96,51 @@ describe('monitorLoop.ts reconcileDownloads: settleFinished failure handling (re
     const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
     expect(after.status).toBe('DOWNLOADING') // untouched — not FAILED/ABANDONED off a fetch error
     expect(after.attempts).toBe(0)
+  })
+})
+
+describe('monitorLoop.ts reconcileTorrentDownloads: proportional byte-progress split (real Postgres)', () => {
+  beforeEach(async () => {
+    await resetDb()
+    getTorrentInfoMock.mockReset()
+    deleteTorrentMock.mockClear()
+    await prisma.settings.upsert({
+      where: { id: 'main' },
+      create: { id: 'main', downloadsPath: '/tmp/dmp-test-downloads' },
+      update: { downloadsPath: '/tmp/dmp-test-downloads' },
+    })
+  })
+
+  afterAll(async () => {
+    await prisma.$disconnect()
+  })
+
+  it('splits the whole-torrent byte count proportionally across albums sharing one hash, instead of writing the same figure onto every row', async () => {
+    const { reconcileTorrentDownloads } = await import('../../../server/utils/monitorLoop')
+
+    const artist = await makeArtist(prisma)
+    const hash = 'hash-pack-1'
+    // Album A: 100 bytes of selected files (small); Album B: 900 bytes (big) -> 1000 in the pack.
+    const a = await makeDownloadedRelease(prisma, {
+      artistId: artist.id, source: 'RUTRACKER', status: 'DOWNLOADING', torrentHash: hash,
+      files: [{ filename: 'a1.flac', size: 100 }], bytesTransferred: 0n,
+    })
+    const b = await makeDownloadedRelease(prisma, {
+      artistId: artist.id, source: 'RUTRACKER', status: 'DOWNLOADING', torrentHash: hash,
+      files: [{ filename: 'b1.flac', size: 900 }], bytesTransferred: 0n,
+    })
+
+    getTorrentInfoMock.mockResolvedValue([
+      { hash, name: 'pack', state: 'downloading', progress: 0.5, size: 1000, completed: 0, downloaded: 500 },
+    ])
+
+    await reconcileTorrentDownloads()
+
+    const afterA = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: a.id } })
+    const afterB = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: b.id } })
+    // 500 whole-pack bytes split 100:900 -> 50 and 450, NOT 500 written onto both (which would make
+    // computeDownloadPercent divide 500 by each album's own tiny total and overshoot instantly).
+    expect(Number(afterA.bytesTransferred)).toBe(50)
+    expect(Number(afterB.bytesTransferred)).toBe(450)
   })
 })

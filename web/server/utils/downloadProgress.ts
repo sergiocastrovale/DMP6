@@ -16,14 +16,21 @@ const COMPLETED: ReadonlySet<DownloadStatus> = new Set<DownloadStatus>([
  * queued file sizes. One rule, shared by the queue + artist-page endpoints so they agree.
  * DOWNLOADING is capped at 99 until it flips to a completed status (avoids a premature 100%).
  */
+// Sum of `{ size }[]` file entries stored on a DownloadedRelease row - shared with the torrent
+// reconciler so a multi-album pack's whole-torrent byte count can be split proportionally per row
+// instead of being written identically onto every album sharing the torrent.
+export const sumFileBytes = (files: unknown): number => {
+  const arr = Array.isArray(files) ? files as Array<{ size?: number }> : []
+  return arr.reduce((sum, f) => sum + (Number(f?.size) || 0), 0)
+}
+
 export const computeDownloadPercent = (row: {
   status: DownloadStatus
   bytesTransferred: bigint | number | null
   files: unknown
 }): DownloadProgressFields => {
   const bytesTransferred = Number(row.bytesTransferred ?? 0)
-  const files = Array.isArray(row.files) ? row.files as Array<{ size?: number }> : []
-  const totalBytes = files.reduce((sum, f) => sum + (Number(f?.size) || 0), 0)
+  const totalBytes = sumFileBytes(row.files)
 
   let percent: number
   if (COMPLETED.has(row.status)) {

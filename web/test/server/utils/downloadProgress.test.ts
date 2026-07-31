@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { computeDownloadPercent } from '../../../server/utils/downloadProgress'
+import { computeDownloadPercent, sumFileBytes } from '../../../server/utils/downloadProgress'
+
+describe('sumFileBytes', () => {
+  it('sums the size field of a files array', () => {
+    expect(sumFileBytes([{ size: 100 }, { size: 250 }])).toBe(350)
+  })
+
+  it('treats missing/non-array/malformed input as zero', () => {
+    expect(sumFileBytes(null)).toBe(0)
+    expect(sumFileBytes(undefined)).toBe(0)
+    expect(sumFileBytes([{}, { size: 'nope' }])).toBe(0)
+  })
+})
 
 describe('computeDownloadPercent', () => {
   it('reports 100% for completed-family statuses regardless of bytes', () => {

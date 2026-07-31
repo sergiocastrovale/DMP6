@@ -25,6 +25,7 @@ import {
   isQbitComplete,
   isQbitErrored,
 } from '~/server/utils/qbittorrent'
+import { sumFileBytes } from '~/server/utils/downloadProgress'
 
 const execFileAsync = promisify(execFile)
 
@@ -386,13 +387,22 @@ export async function reconcileTorrentDownloads(): Promise<void> {
       if (!isQbitComplete(info)) {
         const head = group[0]!
         const bytes = info.downloaded || 0
+        // `info.downloaded` is the WHOLE torrent's byte count, which can span several albums in a
+        // discography pack - split it proportionally by each row's own selected file size instead of
+        // writing the same whole-torrent figure onto every row (which made computeDownloadPercent divide
+        // full-pack bytes by one album's much smaller total and overshoot to ~99% instantly).
+        const groupTotalBytes = group.reduce((sum, r) => sum + sumFileBytes(r.files), 0)
+        const headBytes = groupTotalBytes > 0 ? Math.round(bytes * (sumFileBytes(head.files) / groupTotalBytes)) : 0
         const watermark = Number(head.bytesTransferred || 0)
         const lastProgress = (head.lastProgressAt ?? head.updatedAt).getTime()
-        if (bytes > watermark) {
-          await prisma.downloadedRelease.updateMany({
-            where: { torrentHash: hash, status: 'DOWNLOADING' },
-            data: { bytesTransferred: BigInt(bytes), lastProgressAt: new Date() },
-          }).catch(() => {})
+        if (headBytes > watermark) {
+          for (const r of group) {
+            const rowBytes = groupTotalBytes > 0 ? Math.round(bytes * (sumFileBytes(r.files) / groupTotalBytes)) : 0
+            await prisma.downloadedRelease.update({
+              where: { id: r.id },
+              data: { bytesTransferred: BigInt(rowBytes), lastProgressAt: new Date() },
+            }).catch(() => {})
+          }
           continue
         }
         if (Date.now() - lastProgress <= noProgressMs) continue
