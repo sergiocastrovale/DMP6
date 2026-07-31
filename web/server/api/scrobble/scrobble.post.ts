@@ -1,7 +1,8 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { getCachedSettings } from '~/server/utils/settingsCache'
-import { callLastFm, isLastfmConfigured } from '~/server/utils/lastfm'
+import { callLastFm, describeLastfmProblem, isLastfmConfigured } from '~/server/utils/lastfm'
+import { monitorLog } from '~/server/utils/monitorLog'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'play.view')
@@ -33,7 +34,11 @@ export default defineEventHandler(async (event) => {
   if (track.duration) {params['duration[0]'] = String(track.duration)}
   if (track.trackNumber) {params['trackNumber[0]'] = String(track.trackNumber)}
 
-  await callLastFm('track.scrobble', params, settings)
+  const result = await callLastFm('track.scrobble', params, settings)
+  const problem = describeLastfmProblem(result)
+  if (problem) {
+    monitorLog('warn', `scrobble "${track.artist} - ${track.title}": ${problem}`)
+  }
 
   return { ok: true }
 })

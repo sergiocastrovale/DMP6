@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isLastfmConfigured, signRequest } from '../../../server/utils/lastfm'
+import { describeLastfmProblem, isLastfmConfigured, signRequest } from '../../../server/utils/lastfm'
 
 describe('isLastfmConfigured', () => {
   it('requires apiKey, secret, and sessionKey', () => {
@@ -30,5 +30,29 @@ describe('signRequest', () => {
     const a = signRequest({ k: 'v' }, 'secret1')
     const b = signRequest({ k: 'v' }, 'secret2')
     expect(a).not.toBe(b)
+  })
+})
+
+describe('describeLastfmProblem', () => {
+  it('null for a null response (network failure already logged by callLastFm)', () => {
+    expect(describeLastfmProblem(null)).toBeNull()
+  })
+
+  it('null for a clean scrobble response (0 ignored)', () => {
+    expect(describeLastfmProblem({ scrobbles: { '@attr': { accepted: '1', ignored: '0' } } })).toBeNull()
+  })
+
+  it('describes an explicit Last.fm error code', () => {
+    expect(describeLastfmProblem({ error: 9, message: 'Invalid session key' }))
+      .toBe('Last.fm error 9: Invalid session key')
+  })
+
+  it('describes an ignored scrobble', () => {
+    expect(describeLastfmProblem({ scrobbles: { '@attr': { accepted: '0', ignored: '1' } } }))
+      .toBe('Last.fm ignored 1 scrobble(s)')
+  })
+
+  it('null when there is no error and no scrobbles field at all (e.g. updateNowPlaying)', () => {
+    expect(describeLastfmProblem({ nowplaying: { track: { '#text': 'X' } } })).toBeNull()
   })
 })
