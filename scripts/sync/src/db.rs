@@ -199,6 +199,9 @@ pub async fn retire_owned_missing_placeholders(pool: &PgPool) -> Result<u64, sql
           AND NOT EXISTS (
             SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id
           )
+          AND m.id NOT IN (
+            SELECT "mbReleaseId" FROM "DownloadedRelease" WHERE "mbReleaseId" IS NOT NULL
+          )
         "#,
     )
     .execute(pool)
