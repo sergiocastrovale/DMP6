@@ -25,7 +25,7 @@ mod status;
 use db::*;
 use images::{download_artist_image, download_cover_art};
 use mb_api::RateLimiter;
-use mb_matching::{find_mb_match_with_fallback, is_special_artist_name};
+use mb_matching::{find_mb_match_with_fallback, is_special_artist_name, names_are_similar};
 use mb_types::{MbArtistMatch, MbRelease, MbTrack};
 use nuke::nuke_mb_data;
 use status::{check_release_status, status_to_db_string};
@@ -1161,6 +1161,25 @@ async fn main() {
                     continue;
                 }
             };
+
+            // Shared-releaseId guard (audit #24): this MB release may already be bound to a DIFFERENT
+            // artist's LocalRelease (bad tags / a prior matcher collision). Binding a second, unrelated
+            // artist onto it corrupts catalogue-gaps coverage and status counts for both artists. Only
+            // refuse when the existing owner is neither this same artist nor a title-similar release
+            // (legitimate same-artist re-syncs and near-duplicate titles still bind normally).
+            match find_release_owner(&pool, &mb_db_id, &local_release.id).await {
+                Ok(Some(owner)) if !owner.artist_ids.contains(&artist.id)
+                    && !names_are_similar(&owner.title, &local_release.title) =>
+                {
+                    mark_local_release_unmatched(&pool, &local_release.id).await.ok();
+                    reporter.warn(&format!(
+                        "{}: MB release already owned by a different artist's release \"{}\" ({}) - left Unmatched (shared-releaseId guard)",
+                        local_release.title, owner.title, owner.local_release_id
+                    ));
+                    continue;
+                }
+                _ => {}
+            }
 
             ensure_mb_release_artist_link(&pool, &mb_db_id, &artist.id)
                 .await
