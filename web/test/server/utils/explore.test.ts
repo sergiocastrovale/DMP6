@@ -5,7 +5,9 @@ import {
   removeFromPool,
   scoreTrack,
   setCachedPool,
+  sweepExpiredPools,
   weightedRandomPick,
+  type CachedPool,
   type ExploreParams,
   type TrackCandidate,
 } from '../../../server/utils/explore'
@@ -123,6 +125,25 @@ describe('candidate pool cache', () => {
     setCachedPool(key, [track({ id: 'a' }), track({ id: 'b' })])
     removeFromPool(key, 'a')
     expect(getCachedPool(key, [])?.map(t => t.id)).toEqual(['b'])
+  })
+})
+
+describe('sweepExpiredPools', () => {
+  const entry = (createdAt: number): CachedPool => ({ candidates: [], createdAt })
+
+  it('deletes only entries older than the TTL, leaving fresh ones untouched', () => {
+    const cache = new Map<string, CachedPool>([
+      ['stale', entry(0)],
+      ['fresh', entry(9000)],
+    ])
+    sweepExpiredPools(cache, 10000, 5000)
+    expect([...cache.keys()]).toEqual(['fresh'])
+  })
+
+  it('is a no-op when nothing has expired', () => {
+    const cache = new Map<string, CachedPool>([['a', entry(9000)], ['b', entry(9500)]])
+    sweepExpiredPools(cache, 10000, 5000)
+    expect(cache.size).toBe(2)
   })
 })
 

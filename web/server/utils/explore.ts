@@ -355,7 +355,7 @@ function scoreSound(meta: Record<string, string | number> | null, genre: GenreSi
 // Keyed by slider params, avoids re-querying 500 rows per song transition
 // ---------------------------------------------------------------------------
 
-interface CachedPool {
+export interface CachedPool {
   candidates: TrackCandidate[]
   createdAt: number
 }
@@ -385,7 +385,20 @@ export function getCachedPool(key: string, excludeIds: string[]): TrackCandidate
   return filtered
 }
 
+// Deletes every entry older than `ttlMs`. `getCachedPool` already evicts on READ, but a slider combo
+// that's set once and never revisited would otherwise sit in the map forever - this sweep runs on
+// every SET instead, so the map self-bounds to the working set of combos actually explored within the
+// last TTL window regardless of which specific keys get read again (audit #93).
+export function sweepExpiredPools(cache: Map<string, CachedPool>, now: number, ttlMs: number): void {
+  for (const [key, entry] of cache) {
+    if (now - entry.createdAt > ttlMs) {
+      cache.delete(key)
+    }
+  }
+}
+
 export function setCachedPool(key: string, candidates: TrackCandidate[]): void {
+  sweepExpiredPools(poolCache, Date.now(), POOL_TTL)
   poolCache.set(key, { candidates: [...candidates], createdAt: Date.now() })
 }
 
