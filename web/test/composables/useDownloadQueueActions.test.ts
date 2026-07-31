@@ -62,6 +62,39 @@ describe('useDownloadQueueActions', () => {
     expect(actions.bulkRejectOpen.value).toBe(false)
   })
 
+  it('requeue calls store.requeue immediately (no confirm dialog) and clears busy state', async () => {
+    const store = useDownloadsStore()
+    const requeueSpy = vi.spyOn(store, 'requeue').mockResolvedValue(undefined)
+    const actions = useDownloadQueueActions()
+    await actions.requeue('r1')
+    expect(requeueSpy).toHaveBeenCalledWith('r1')
+    expect(actions.busyId.value).toBeNull()
+  })
+
+  it('requeue surfaces a toast and error message on failure', async () => {
+    const store = useDownloadsStore()
+    vi.spyOn(store, 'requeue').mockRejectedValue({ data: { message: 'not found' } })
+    const actions = useDownloadQueueActions()
+    await actions.requeue('r1')
+    expect(actions.actionMsg.value).toBe('not found')
+  })
+
+  it('requeueAll calls store.requeueAll immediately and reports the count via toast', async () => {
+    const store = useDownloadsStore()
+    const requeueAllSpy = vi.spyOn(store, 'requeueAll').mockResolvedValue(2)
+    const actions = useDownloadQueueActions()
+    await actions.requeueAll(['a', 'b'])
+    expect(requeueAllSpy).toHaveBeenCalledWith(['a', 'b'])
+  })
+
+  it('requeueAll is a no-op for an empty id list', async () => {
+    const store = useDownloadsStore()
+    const requeueAllSpy = vi.spyOn(store, 'requeueAll')
+    const actions = useDownloadQueueActions()
+    await actions.requeueAll([])
+    expect(requeueAllSpy).not.toHaveBeenCalled()
+  })
+
   it('cancel/confirmCancel mirror the reject dialog flow', async () => {
     const store = useDownloadsStore()
     store.queueActive = [{ id: 'a1', title: 'Active Album' } as any]

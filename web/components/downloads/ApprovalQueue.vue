@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX } from 'lucide-vue-next'
+import { X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX, Undo2 } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { SortDir } from '~/helpers/functions'
 import { formatDate, sortItems } from '~/helpers/functions'
@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<{
   showRetry?: boolean
   showMerge?: boolean
   showCancel?: boolean
+  showRequeue?: boolean
   highlightId?: string | null
   selectable?: boolean
   selected?: Set<string>
@@ -42,6 +43,7 @@ watch(
 const emit = defineEmits<{
   reject: [id: string]
   retry: [id: string]
+  requeue: [id: string]
   merge: [id: string]
   cancel: [id: string]
   info: [id: string]
@@ -263,6 +265,18 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               >
                 <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
                 <X v-else :size="14" />
+              </button>
+              <button
+                v-if="showRequeue"
+                type="button"
+                class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent disabled:opacity-40 disabled:pointer-events-none"
+                title="Move back to queue"
+                aria-label="Move back to queue"
+                :disabled="busyId != null && busyId !== it.id"
+                @click="emit('requeue', it.id)"
+              >
+                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
+                <Undo2 v-else :size="14" />
               </button>
               <button
                 v-if="showActions"

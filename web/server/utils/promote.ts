@@ -435,6 +435,35 @@ export async function forceRejectDownloadedReleases(ids: string[]): Promise<{ re
   return { rejected: result.count }
 }
 
+// Backdated far enough that `updatedAt <= now() - make_interval(days => cooldownDays)` is true for
+// any realistic retryCooldownDays value, so a requeued row is immediately eligible for pickRetry
+// instead of waiting out a fresh cooldown window.
+const REQUEUE_EPOCH = new Date(0)
+
+/**
+ * "Move back to queue" (Rejected tab): the inverse of forceRejectDownloadedReleases. Resets the row
+ * to FAILED with attempts back at 0 and an immediately-eligible `updatedAt`, so the trickle worker's
+ * normal retry pool (pickRetry, gated by retryCooldownDays) picks it up on its own next cycle —
+ * deliberately NOT an immediate forced search (that's "Force retry", a different action).
+ */
+export async function requeueRejectedDownload(id: string): Promise<void> {
+  const row = await prisma.downloadedRelease.findUnique({ where: { id } })
+  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+  await prisma.downloadedRelease.update({
+    where: { id },
+    data: { status: 'FAILED', attempts: 0, priority: 10, error: null, updatedAt: REQUEUE_EPOCH },
+  })
+}
+
+/** Bulk "Move all back to queue" — same semantics as requeueRejectedDownload, batched. */
+export async function requeueRejectedDownloads(ids: string[]): Promise<{ requeued: number }> {
+  const result = await prisma.downloadedRelease.updateMany({
+    where: { id: { in: ids } },
+    data: { status: 'FAILED', attempts: 0, priority: 10, error: null, updatedAt: REQUEUE_EPOCH },
+  })
+  return { requeued: result.count }
+}
+
 /**
  * GC terminal `DownloadedRelease` rows (UNAVAILABLE/FAILED/INVALID/ABANDONED/REJECTED) that no longer
  * serve any purpose: their release (matched by the stable releaseGroupId, falling back to the volatile

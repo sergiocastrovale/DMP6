@@ -140,6 +140,45 @@ describe('promote.ts (real Postgres)', () => {
     })
   })
 
+  describe('requeueRejectedDownload(s) ("Move back to queue")', () => {
+    it('single: resets a REJECTED row to FAILED with attempts back at 0', async () => {
+      const { requeueRejectedDownload } = await import('../../../server/utils/promote')
+      const dl = await makeDownloadedRelease(prisma, { status: 'REJECTED', attempts: 3, error: 'rejected by user' })
+
+      await requeueRejectedDownload(dl.id)
+
+      const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
+      expect(after.status).toBe('FAILED')
+      expect(after.attempts).toBe(0)
+      expect(after.priority).toBe(10)
+      expect(after.error).toBeNull()
+    })
+
+    it('bulk: resets many REJECTED rows at once and reports the count', async () => {
+      const { requeueRejectedDownloads } = await import('../../../server/utils/promote')
+      const rows = await Promise.all(
+        Array.from({ length: 4 }, () => makeDownloadedRelease(prisma, { status: 'REJECTED', attempts: 3 })),
+      )
+
+      const { requeued } = await requeueRejectedDownloads(rows.map(r => r.id))
+
+      expect(requeued).toBe(4)
+      const after = await prisma.downloadedRelease.findMany({ where: { id: { in: rows.map(r => r.id) } } })
+      expect(after.every(r => r.status === 'FAILED' && r.attempts === 0)).toBe(true)
+    })
+
+    it('backdates updatedAt so the row is immediately eligible for pickRetry, bypassing a fresh cooldown', async () => {
+      const { requeueRejectedDownload } = await import('../../../server/utils/promote')
+      const dl = await makeDownloadedRelease(prisma, { status: 'REJECTED', attempts: 3 })
+
+      await requeueRejectedDownload(dl.id)
+
+      const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
+      // Any real retryCooldownDays value (default 7) is satisfied by an epoch timestamp.
+      expect(after.updatedAt.getTime()).toBeLessThan(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    })
+  })
+
   describe('sweepDanglingDownloads', () => {
     it('deletes a terminal row once its release group is no longer MISSING (fulfilled or gone)', async () => {
       const { sweepDanglingDownloads } = await import('../../../server/utils/promote')

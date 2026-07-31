@@ -6,7 +6,7 @@ import type { TabItem } from '~/types/ui'
 const store = useDownloadsStore()
 const settings = useSettingsStore()
 const toast = useToastStore()
-const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds, acquisition } = storeToRefs(store)
+const { queueActive, readyCount, queueRejected, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds, acquisition } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
 const issuesPanel = ref<{ fetchEvents: () => Promise<void> } | null>(null)
@@ -47,6 +47,7 @@ const breadcrumbLabels: Record<string, string> = {
   downloading: 'Downloading',
   failed: 'Failed',
   unavailable: 'Unavailable',
+  rejected: 'Rejected',
   history: 'History',
 }
 
@@ -56,6 +57,7 @@ const tabs = computed<TabItem[]>(() => [
   { key: 'downloading', label: 'Downloading', href: '/downloads/downloading', count: downloading.value.length, countHighlight: true },
   { key: 'failed', label: 'Failed', href: '/downloads/failed', count: failed.value.length, countHighlight: true },
   { key: 'unavailable', label: 'Unavailable', href: '/downloads/unavailable', count: unavailable.value.length, countHighlight: true },
+  { key: 'rejected', label: 'Rejected', href: '/downloads/rejected', count: queueRejected.value.length, countHighlight: true },
   { key: 'history', label: 'History', href: '/downloads/history' },
 ])
 

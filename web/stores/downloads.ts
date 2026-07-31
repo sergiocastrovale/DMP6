@@ -28,6 +28,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
   // Download queue (DownloadedRelease rows)
   const queueActive = ref<DownloadedReleaseItem[]>([])
   const queueReady = ref<DownloadedReleaseItem[]>([])
+  const queueRejected = ref<DownloadedReleaseItem[]>([])
   const queueHistory = ref<DownloadedReleaseItem[]>([])
   const readyCount = computed(() => queueReady.value.length)
 
@@ -157,9 +158,10 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   const fetchQueue = async () => {
     try {
-      const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; history: DownloadedReleaseItem[]; paused: boolean; pausedReason: string | null; freeGb: number | null; minFreeGb: number | null; acquisition: Acquisition }>('/api/downloads/queue')
+      const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; rejected: DownloadedReleaseItem[]; history: DownloadedReleaseItem[]; paused: boolean; pausedReason: string | null; freeGb: number | null; minFreeGb: number | null; acquisition: Acquisition }>('/api/downloads/queue')
       queueActive.value = data.active
       queueReady.value = data.ready
+      queueRejected.value = data.rejected
       queueHistory.value = data.history
       paused.value = data.paused
       pausedReason.value = data.pausedReason
@@ -218,6 +220,22 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const reject = async (id: string) => {
     await $fetch(`/api/downloads/reject/${id}`, { method: 'POST' })
     await fetchQueue()
+  }
+
+  // "Move back to queue" (Rejected tab): resets to FAILED, immediately eligible — see
+  // requeueRejectedDownload. Does NOT force a search (that's retry()/"Force retry").
+  const requeue = async (id: string) => {
+    await $fetch(`/api/downloads/requeue/${id}`, { method: 'POST' })
+    await fetchQueue()
+  }
+
+  const requeueAll = async (ids: string[]): Promise<number> => {
+    if (!ids.length) {
+      return 0
+    }
+    const { requeued } = await $fetch<{ requeued: number }>('/api/downloads/requeue-all', { method: 'POST', body: { ids } })
+    await fetchQueue()
+    return requeued
   }
 
   const retry = async (id: string) => {
@@ -366,6 +384,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     stopPolling,
     queueActive,
     queueReady,
+    queueRejected,
     queueHistory,
     readyCount,
     paused,
@@ -376,6 +395,8 @@ export const useDownloadsStore = defineStore('downloads', () => {
     setPaused,
     fetchQueue,
     reject,
+    requeue,
+    requeueAll,
     retry,
     cancel,
     merge,

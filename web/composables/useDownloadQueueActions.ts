@@ -7,7 +7,7 @@ import type { UnifiedRelease } from '~/types/release'
 export const useDownloadQueueActions = () => {
   const store = useDownloadsStore()
   const toast = useToastStore()
-  const { queueActive, queueReady, queueHistory } = storeToRefs(store)
+  const { queueActive, queueReady, queueRejected, queueHistory } = storeToRefs(store)
 
   const busyId = ref<string | null>(null)
   const actionMsg = ref<string | null>(null)
@@ -31,6 +31,21 @@ export const useDownloadQueueActions = () => {
   }
 
   const retry = (id: string) => run(id, () => store.retry(id), 'Retry failed')
+  // Rejected tab: "move back to queue" — immediate, non-destructive, no confirm dialog (same
+  // no-dialog precedent as retry/"Force retry").
+  const requeue = (id: string) => run(id, () => store.requeue(id), 'Move to queue failed')
+  const requeueAll = async (ids: string[]) => {
+    if (!ids.length) {
+      return
+    }
+    try {
+      const requeued = await store.requeueAll(ids)
+      toast.success(`Moved ${requeued} download${requeued === 1 ? '' : 's'} back to queue`)
+    }
+    catch (e: any) {
+      toast.error(e?.data?.message || e?.message || 'Move to queue failed')
+    }
+  }
   const merge = (id: string) => store.merge(id).catch((e: any) => {
     actionMsg.value = e?.data?.message || e?.message || 'Merge failed'
     toast.error(actionMsg.value!)
@@ -40,6 +55,7 @@ export const useDownloadQueueActions = () => {
   const findItem = (id: string | null) =>
     queueActive.value.find(i => i.id === id)
     ?? queueReady.value.find(i => i.id === id)
+    ?? queueRejected.value.find(i => i.id === id)
     ?? queueHistory.value.find(i => i.id === id)
     ?? null
 
@@ -162,6 +178,8 @@ export const useDownloadQueueActions = () => {
     busyIds,
     actionMsg,
     retry,
+    requeue,
+    requeueAll,
     merge,
     mergeMany,
     reject,

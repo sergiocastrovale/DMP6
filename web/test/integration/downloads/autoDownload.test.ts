@@ -241,4 +241,23 @@ describe('autoDownload.ts pickRetry: retryCooldownDays gate (real Postgres)', ()
       expect(rows[0]!.attempts).toBe(2) // incremented: it was actually retried
     }
   })
+
+  it('a REJECTED row that was "moved back to queue" is picked up immediately, bypassing the cooldown', async () => {
+    const { topUpDownloads } = await import('../../../server/utils/autoDownload')
+    const { requeueRejectedDownload } = await import('../../../server/utils/promote')
+
+    const { artist, row } = await seedRetryCandidate('FAILED', new Date()) // fresh — would normally be within cooldown
+    await prisma.downloadedRelease.update({ where: { id: row.id }, data: { status: 'REJECTED', attempts: 3 } })
+
+    await requeueRejectedDownload(row.id)
+    await topUpDownloads()
+
+    const rows = await prisma.downloadedRelease.findMany({ where: { artistId: artist.id } })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.id).toBe(row.id)
+    // requeueRejectedDownload reset attempts to 0; topUpDownloads' search-miss bumps it to 1 — proof
+    // it was actually picked this tick, not sitting out a fresh cooldown window.
+    expect(rows[0]!.attempts).toBe(1)
+    expect(rows[0]!.status).not.toBe('REJECTED')
+  })
 })

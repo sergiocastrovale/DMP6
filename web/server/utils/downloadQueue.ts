@@ -36,3 +36,13 @@ export async function fetchActiveQueueRows() {
   ])
   return [...inFlight, ...failed, ...unavailable]
 }
+
+/** The dedicated "Rejected" tab bucket — terminal, force-rejected rows, newest first, capped. */
+export async function fetchRejectedQueueRows() {
+  return prisma.downloadedRelease.findMany({
+    where: { status: 'REJECTED' },
+    include: artistSelect,
+    orderBy: { updatedAt: 'desc' },
+    take: ACTIVE_TAKE,
+  })
+}

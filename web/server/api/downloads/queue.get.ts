@@ -5,24 +5,26 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getPauseState, freeGb } from '~/server/utils/pauseState'
 import { getAcquisitionStatus } from '~/server/utils/downloadSources'
-import { fetchActiveQueueRows } from '~/server/utils/downloadQueue'
+import { fetchActiveQueueRows, fetchRejectedQueueRows } from '~/server/utils/downloadQueue'
 
 const artistSelect = { artist: { select: { name: true, slug: true } } } as const
 
 // Returns the download queue: active acquisitions (downloading / enriching / failed) plus the ready
-// slice and a slice of recent history (promoted / abandoned / rejected / invalid, for the History subtabs).
+// slice, the dedicated rejected slice, and a slice of recent history (promoted / abandoned / invalid,
+// for the History subtabs — REJECTED lives in its own tab/bucket, not history).
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'sync.view')
 
-  const [active, ready, history] = await Promise.all([
+  const [active, ready, rejected, history] = await Promise.all([
     fetchActiveQueueRows(),
     prisma.downloadedRelease.findMany({
       where: { status: 'READY' }, // in the ready folder, awaiting manual merge
       include: artistSelect,
       orderBy: { updatedAt: 'desc' },
     }),
+    fetchRejectedQueueRows(),
     prisma.downloadedRelease.findMany({
-      where: { status: { in: ['PROMOTED', 'ABANDONED', 'REJECTED', 'INVALID'] } },
+      where: { status: { in: ['PROMOTED', 'ABANDONED', 'INVALID'] } },
       include: artistSelect,
       orderBy: { updatedAt: 'desc' },
       take: 200,
@@ -30,7 +32,7 @@ export default defineEventHandler(async (event) => {
   ])
 
   // Resolve the MB release type per row for the info dialog (no FK relation -> batch lookup).
-  const mbIds = [...new Set([...active, ...ready, ...history].map(r => r.mbReleaseId).filter(Boolean) as string[])]
+  const mbIds = [...new Set([...active, ...ready, ...rejected, ...history].map(r => r.mbReleaseId).filter(Boolean) as string[])]
   const mbReleases = mbIds.length
     ? await prisma.musicBrainzRelease.findMany({
         where: { id: { in: mbIds } },
@@ -72,6 +74,7 @@ export default defineEventHandler(async (event) => {
   return {
     active: active.map(shape),
     ready: ready.map(shape),
+    rejected: rejected.map(shape),
     history: history.map(shape),
     paused,
     pausedReason: reason,

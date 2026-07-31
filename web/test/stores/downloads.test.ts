@@ -199,6 +199,33 @@ describe('useDownloadsStore - actions', () => {
     expect(rejected).toBe(0)
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('requeueAll batches through requeue-all (not one requeue/:id call per release) and refreshes the queue once', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/downloads/requeue-all') return Promise.resolve({ requeued: 2 })
+      return Promise.resolve({ active: [], ready: [], rejected: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
+    })
+    const store = useDownloadsStore()
+    const requeued = await store.requeueAll(['a', 'b'])
+    expect(requeued).toBe(2)
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/requeue-all', expect.objectContaining({ method: 'POST', body: { ids: ['a', 'b'] } }))
+    const individualRequeueCalls = fetchMock.mock.calls.filter(c => /^\/api\/downloads\/requeue\//.test(String(c[0])))
+    expect(individualRequeueCalls).toHaveLength(0)
+  })
+
+  it('requeueAll is a no-op for an empty selection', async () => {
+    const store = useDownloadsStore()
+    const requeued = await store.requeueAll([])
+    expect(requeued).toBe(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('requeue (single) POSTs to /api/downloads/requeue/:id', async () => {
+    fetchMock.mockResolvedValue({ active: [], ready: [], rejected: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
+    const store = useDownloadsStore()
+    await store.requeue('id1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/requeue/id1', expect.objectContaining({ method: 'POST' }))
+  })
 })
 
 describe('useDownloadsStore - queue polling', () => {

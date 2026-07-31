@@ -42,3 +42,37 @@ describe('downloadQueue.ts fetchActiveQueueRows (real Postgres)', () => {
     expect(rows.filter(r => r.status === 'FAILED').length).toBe(ACTIVE_TAKE)
   })
 })
+
+describe('downloadQueue.ts fetchRejectedQueueRows (real Postgres)', () => {
+  beforeEach(async () => {
+    await resetDb()
+  })
+
+  afterAll(async () => {
+    await prisma.$disconnect()
+  })
+
+  it('returns only REJECTED rows, newest first', async () => {
+    const { fetchRejectedQueueRows } = await import('../../../server/utils/downloadQueue')
+
+    await makeDownloadedRelease(prisma, { status: 'FAILED' })
+    await makeDownloadedRelease(prisma, { status: 'ABANDONED' })
+    const older = await makeDownloadedRelease(prisma, { status: 'REJECTED', title: 'Older reject' })
+    const newer = await makeDownloadedRelease(prisma, { status: 'REJECTED', title: 'Newer reject', updatedAt: new Date(Date.now() + 1000) })
+
+    const rows = await fetchRejectedQueueRows()
+
+    expect(rows.map(r => r.id)).toEqual([newer.id, older.id])
+  })
+
+  it('caps at ACTIVE_TAKE', async () => {
+    const { fetchRejectedQueueRows, ACTIVE_TAKE } = await import('../../../server/utils/downloadQueue')
+
+    await Promise.all(
+      Array.from({ length: ACTIVE_TAKE + 20 }, () => makeDownloadedRelease(prisma, { status: 'REJECTED' })),
+    )
+
+    const rows = await fetchRejectedQueueRows()
+    expect(rows).toHaveLength(ACTIVE_TAKE)
+  })
+})
