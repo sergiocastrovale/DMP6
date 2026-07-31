@@ -14,9 +14,9 @@ export default defineEventHandler(async (event): Promise<{ sources: DownloadSour
   }
 
   const data: Record<string, unknown> = {}
-  if (typeof body.enabled === 'boolean') data.enabled = body.enabled
-  if (typeof body.retry === 'boolean') data.retry = body.retry
-  if (typeof body.url === 'string' || body.url === null) data.url = body.url
+  if (typeof body.enabled === 'boolean') {data.enabled = body.enabled}
+  if (typeof body.retry === 'boolean') {data.retry = body.retry}
+  if (typeof body.url === 'string' || body.url === null) {data.url = body.url}
   if (Object.keys(data).length === 0) {
     throw createError({ statusCode: 400, message: 'nothing to update' })
   }

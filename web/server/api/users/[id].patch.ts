@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: 'Invalid role' })
     }
     const target = await prisma.user.findUnique({ where: { id } })
-    if (!target) throw createError({ statusCode: 404, message: 'User not found' })
+    if (!target) {throw createError({ statusCode: 404, message: 'User not found' })}
     if (target.role === 'ADMIN' && role !== 'ADMIN') {
       const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } })
       if (adminCount <= 1) {

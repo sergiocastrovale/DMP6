@@ -1,10 +1,10 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useHighlightId } from '../../composables/useHighlightId'
+
 const { routeRef } = vi.hoisted(() => ({ routeRef: { query: {} as Record<string, string> } }))
 mockNuxtImport('useRoute', () => () => routeRef)
-
-import { useHighlightId } from '../../composables/useHighlightId'
 
 describe('useHighlightId', () => {
   beforeEach(() => {

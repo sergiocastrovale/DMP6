@@ -11,6 +11,8 @@
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "lint": "eslint .",
+    "typecheck": "nuxt typecheck",
     "postinstall": "nuxt prepare",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
@@ -41,6 +43,7 @@
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@nuxt/eslint": "^1.16.0",
     "@nuxt/test-utils": "^4.0.3",
     "@pinia/nuxt": "^0.11.3",
     "@playwright/test": "^1.60.0",
@@ -59,6 +62,7 @@
     "@vite-pwa/nuxt": "^1.1.1",
     "@vitest/coverage-v8": "^4.1.8",
     "@vue/test-utils": "^2.4.11",
+    "eslint": "^10.8.0",
     "h3": "1.15.11",
     "happy-dom": "^20.10.1",
     "minimist": "^1.2.8",

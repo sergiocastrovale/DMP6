@@ -27,13 +27,13 @@ const props = withDefaults(defineProps<{
 // Scroll the highlighted row into view once it renders.
 const rowEls = new Map<string, HTMLElement>()
 const setRowEl = (id: string, el: any) => {
-  if (el) rowEls.set(id, el as HTMLElement)
-  else rowEls.delete(id)
+  if (el) {rowEls.set(id, el as HTMLElement)}
+  else {rowEls.delete(id)}
 }
 watch(
   () => [props.highlightId, props.items.length] as const,
   async () => {
-    if (!props.highlightId) return
+    if (!props.highlightId) {return}
     await nextTick()
     rowEls.get(props.highlightId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   },
@@ -140,7 +140,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
       <thead>
         <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink-3">
           <th v-if="selectable" class="w-10 px-4 py-2">
-            <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" />
+            <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" >
           </th>
           <SortableTh label="Artist" sort-key="artist" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
           <SortableTh label="Release" sort-key="title" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
@@ -165,7 +165,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               :checked="selected.has(it.id)"
               class="rounded border-rule bg-bg-2"
               @change="toggleRow(it.id)"
-            />
+            >
           </td>
           <td class="px-4 py-2.5 text-ink">
             <NuxtLink v-if="it.artistSlug" :to="`/artist/${it.artistSlug}`" class="hover:underline">

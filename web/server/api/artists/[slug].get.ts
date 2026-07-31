@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=600, stale-while-revalidate=60')
 
   const slug = getRouterParam(event, 'slug')
-  if (!slug) throw createError({ statusCode: 400, statusMessage: 'Missing slug' })
+  if (!slug) {throw createError({ statusCode: 400, statusMessage: 'Missing slug' })}
 
   return cachedResponse(`artist:${slug}`, 600, async () => {
     const artist = await prisma.artist.findUnique({
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
       },
     })
 
-    if (!artist) throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
+    if (!artist) {throw createError({ statusCode: 404, statusMessage: 'Artist not found' })}
 
     const connectedStats = await prisma.artist.aggregate({
       where: { primaryArtistId: artist.id },

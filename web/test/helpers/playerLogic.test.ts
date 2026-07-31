@@ -70,7 +70,7 @@ describe('pushCapped (FIFO)', () => {
 
   it('never exceeds the cap across repeated pushes', () => {
     const arr: number[] = []
-    for (let i = 0; i < 10; i++) pushCapped(arr, i, 5)
+    for (let i = 0; i < 10; i++) {pushCapped(arr, i, 5)}
     expect(arr).toHaveLength(5)
     expect(arr).toEqual([5, 6, 7, 8, 9])
   })
@@ -91,7 +91,7 @@ describe('unshiftCapped (LIFO)', () => {
 
   it('never exceeds the cap across repeated unshifts', () => {
     const arr: number[] = []
-    for (let i = 0; i < 10; i++) unshiftCapped(arr, i, 5)
+    for (let i = 0; i < 10; i++) {unshiftCapped(arr, i, 5)}
     expect(arr).toHaveLength(5)
     expect(arr).toEqual([9, 8, 7, 6, 5])
   })

@@ -2,14 +2,14 @@ import { prisma } from '~/server/utils/prisma'
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
-  if (!slug) throw createError({ statusCode: 400, statusMessage: 'Missing slug' })
+  if (!slug) {throw createError({ statusCode: 400, statusMessage: 'Missing slug' })}
 
   const artist = await prisma.artist.findUnique({
     where: { slug },
     select: { id: true },
   })
 
-  if (!artist) throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
+  if (!artist) {throw createError({ statusCode: 404, statusMessage: 'Artist not found' })}
 
   const tracks = await prisma.localReleaseTrack.findMany({
     where: {

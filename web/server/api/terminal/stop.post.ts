@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
   try {
     execSync(`tmux send-keys -t "${session}" C-c "" 2>/dev/null || true`)
   }
-  catch {}
+  catch { /* ignore */ }
 
   // Force-clear the DB lock since the process may not clean up in time
   await prisma.statistics.update({

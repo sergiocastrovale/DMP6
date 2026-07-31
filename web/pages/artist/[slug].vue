@@ -41,7 +41,7 @@ const fetchDownloadStatus = async () => {
     const data = await $fetch<{ items: DlStatusItem[] }>(`/api/artists/${slug.value}/download-status`)
     const next = new Map<string, DlStatusValue>()
     for (const i of data.items) {
-      if (i.mbReleaseId) next.set(i.mbReleaseId, { status: i.status, downloadedReleaseId: i.downloadedReleaseId, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes })
+      if (i.mbReleaseId) {next.set(i.mbReleaseId, { status: i.status, downloadedReleaseId: i.downloadedReleaseId, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes })}
     }
     // An item that was ready and is now gone was promoted (or rejected) ->
     // refresh the release list so the card flips to its final form.
@@ -60,11 +60,11 @@ onMounted(() => {
   fetchDownloadStatus()
   dlPoll = setInterval(fetchDownloadStatus, 2000)
 })
-onUnmounted(() => { if (dlPoll) clearInterval(dlPoll) })
+onUnmounted(() => { if (dlPoll) {clearInterval(dlPoll)} })
 
 const releases = computed(() => {
   const base = (releasesData.value?.releases ?? []) as UnifiedRelease[]
-  if (dlStatusMap.value.size === 0) return base
+  if (dlStatusMap.value.size === 0) {return base}
   return base.map((r) => {
     const dl = r.mbReleaseRowId ? dlStatusMap.value.get(r.mbReleaseRowId) : undefined
     return dl ? { ...r, downloadState: dl.status, downloadedReleaseId: dl.downloadedReleaseId, downloadPercent: dl.percent } : r
@@ -83,13 +83,13 @@ provide('catalogue', catalogue)
 // --- Monitor toggle (Lidarr-style auto-download of missing releases) ---
 const monitorBusy = ref(false)
 const toggleMonitor = async () => {
-  if (!artist.value || monitorBusy.value) return
+  if (!artist.value || monitorBusy.value) {return}
   monitorBusy.value = true
   const target = !artist.value.monitored
   artist.value.monitored = target // optimistic
   try {
     await $fetch<unknown, string>(`/api/artists/${slug.value}`, { method: 'PATCH', body: { monitored: target } })
-    if (target) fetchDownloadStatus() // kick fired server-side; surface rows ASAP
+    if (target) {fetchDownloadStatus()} // kick fired server-side; surface rows ASAP
   }
   catch {
     artist.value.monitored = !target // revert

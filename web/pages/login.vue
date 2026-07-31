@@ -11,7 +11,7 @@ const { login } = useAuth()
 const canSubmit = computed(() => !!username.value && !!password.value && !loading.value)
 
 const handleSubmit = async () => {
-  if (!canSubmit.value) return
+  if (!canSubmit.value) {return}
   error.value = ''
   loading.value = true
   try {
@@ -45,14 +45,14 @@ const handleSubmit = async () => {
           placeholder="Username"
           autocomplete="username"
           class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        />
+        >
         <input
           v-model="password"
           type="password"
           placeholder="Password"
           autocomplete="current-password"
           class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        />
+        >
 
         <p v-if="error" class="text-center text-sm text-red-400">
           {{ error }}

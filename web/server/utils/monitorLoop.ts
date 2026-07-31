@@ -75,7 +75,7 @@ const baseName = (f: string) => basename(f.replace(/\\/g, '/'))
  * Runs frequently (server plugin) so a refresh/poll always reflects reality.
  */
 export async function reconcileDownloads(): Promise<void> {
-  if (reconcileRunning) return
+  if (reconcileRunning) {return}
   reconcileRunning = true
   let failed = 0
   let finalized = 0
@@ -84,10 +84,10 @@ export async function reconcileDownloads(): Promise<void> {
       where: { status: { in: ['DOWNLOADING', 'ENRICHING'] }, source: 'SLSKD' },
       include: { artist: { select: { name: true } } },
     })
-    if (rows.length === 0) return
+    if (rows.length === 0) {return}
 
     const settings = await resolveDownloadSettings()
-    if (!settings.downloadsPath) return
+    if (!settings.downloadsPath) {return}
     const mon = await resolveMonitorSettings()
     const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
     const enrichRows = rows.filter(r => r.status === 'ENRICHING')
@@ -96,7 +96,7 @@ export async function reconcileDownloads(): Promise<void> {
       finalized += await drainEnriching(enrichRows, maxAttempts)
     }
     if (downloadingRows.length === 0) {
-      if (failed || finalized) log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)
+      if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
       return
     }
     // Distinguish "slskd unreachable" from "genuinely no active transfers" — swallowing the fetch error
@@ -107,7 +107,7 @@ export async function reconcileDownloads(): Promise<void> {
     const transfers = await withTimeout(getSlskdActiveDownloads(), 15_000).catch(() => { transfersUnknown = true; return [] })
     if (transfersUnknown) {
       logWarn(`reconcile: slskd unreachable — skipping finalize for ${downloadingRows.length} downloading row(s) this tick`)
-      if (failed || finalized) log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)
+      if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
       return
     }
 
@@ -116,7 +116,7 @@ export async function reconcileDownloads(): Promise<void> {
     log(`reconcile: ${downloadingRows.length} downloading, ${transfers.length} slskd transfers`)
 
     for (const row of downloadingRows) {
-      if (finalizing.has(row.id)) continue
+      if (finalizing.has(row.id)) {continue}
       const files = (row.files as Array<{ filename: string; size: number }> | null) ?? []
       const ageMin = (Date.now() - row.updatedAt.getTime()) / 60000
 
@@ -159,7 +159,7 @@ export async function reconcileDownloads(): Promise<void> {
         if (Date.now() - lastProgress <= noProgressMs) { continue } // still within the no-progress grace window
         // Stalled: cancel the stuck transfers, then fall through to finalize so any siblings that DID
         // complete are still captured into the library before we give up on the rest.
-        for (const t of ours) await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})
+        for (const t of ours) {await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})}
         stalled = true
       }
 
@@ -214,7 +214,7 @@ export async function reconcileDownloads(): Promise<void> {
         finalizing.delete(row.id)
       }
     }
-    if (failed || finalized) log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)
+    if (failed || finalized) {log(`reconcile done: ${finalized} -> READY, ${failed} -> FAILED/ABANDONED`)}
   }
   catch (e: any) {
     logErr(`reconcile failed: ${e?.message || e}`)
@@ -295,13 +295,13 @@ async function drainEnriching(
   const maxWaitMs = songkongMaxWaitMin() * 60_000
   let done = 0
   for (const row of rows) {
-    if (finalizing.has(row.id)) continue
-    if (!row.stagingPath) continue
+    if (finalizing.has(row.id)) {continue}
+    if (!row.stagingPath) {continue}
     const enriched = await access(join(dirs.done, row.id)).then(() => true, () => false)
     const timedOut = Date.now() - row.updatedAt.getTime() > maxWaitMs
-    if (!enriched && !timedOut) continue
+    if (!enriched && !timedOut) {continue}
 
-    if (enriched) lastSongkongDrainAt = new Date() // the drainer is alive and producing output
+    if (enriched) {lastSongkongDrainAt = new Date()} // the drainer is alive and producing output
 
     finalizing.add(row.id)
     try {
@@ -337,27 +337,27 @@ async function drainEnriching(
  * ENRICHING rows drain through the same SongKong path as slsk (source-agnostic). Idempotent + guarded.
  */
 export async function reconcileTorrentDownloads(): Promise<void> {
-  if (torrentReconcileRunning) return
+  if (torrentReconcileRunning) {return}
   torrentReconcileRunning = true
   try {
     const rows = await prisma.downloadedRelease.findMany({
       where: { status: { in: ['DOWNLOADING', 'ENRICHING'] }, source: 'RUTRACKER' },
       include: { artist: { select: { name: true } } },
     })
-    if (rows.length === 0) return
+    if (rows.length === 0) {return}
 
     const settings = await resolveDownloadSettings()
-    if (!settings.downloadsTorrentsPath) return
+    if (!settings.downloadsTorrentsPath) {return}
 
     const mon = await resolveMonitorSettings()
     const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
 
     // ENRICHING rows finalize identically to slsk (keyed on stagingPath, source-agnostic).
     const enrichRows = rows.filter(r => r.status === 'ENRICHING')
-    if (enrichRows.length > 0) await drainEnriching(enrichRows, maxAttempts)
+    if (enrichRows.length > 0) {await drainEnriching(enrichRows, maxAttempts)}
 
     const dlRows = rows.filter(r => r.status === 'DOWNLOADING' && r.torrentHash)
-    if (dlRows.length === 0) return
+    if (dlRows.length === 0) {return}
 
     const noProgressMs = Math.max(15, mon.noProgressSec) * 1000
 
@@ -375,12 +375,12 @@ export async function reconcileTorrentDownloads(): Promise<void> {
     for (const [hash, group] of byHash) {
       const info = infoByHash.get(hash.toLowerCase())
       if (!info) {
-        for (const r of group) await failAttempt(r, maxAttempts, 'torrent no longer in qBittorrent')
+        for (const r of group) {await failAttempt(r, maxAttempts, 'torrent no longer in qBittorrent')}
         continue
       }
       if (isQbitErrored(info)) {
         await deleteTorrent(hash, true)
-        for (const r of group) await failAttempt(r, maxAttempts, `qBittorrent error: ${info.state}`)
+        for (const r of group) {await failAttempt(r, maxAttempts, `qBittorrent error: ${info.state}`)}
         continue
       }
 
@@ -405,16 +405,16 @@ export async function reconcileTorrentDownloads(): Promise<void> {
           }
           continue
         }
-        if (Date.now() - lastProgress <= noProgressMs) continue
+        if (Date.now() - lastProgress <= noProgressMs) {continue}
         await deleteTorrent(hash, true)
-        for (const r of group) await failAttempt(r, maxAttempts, `no progress for ${mon.noProgressSec}s`)
+        for (const r of group) {await failAttempt(r, maxAttempts, `no progress for ${mon.noProgressSec}s`)}
         continue
       }
 
       // Complete: relocate every matched album folder, then delete the torrent + its data.
       let finalized = 0
       for (const r of group) {
-        if (finalizing.has(r.id)) continue
+        if (finalizing.has(r.id)) {continue}
         if (!r.artist?.name || !r.torrentFolder) { await failAttempt(r, maxAttempts, 'missing artist or torrent folder'); continue }
         finalizing.add(r.id)
         try {
@@ -455,7 +455,7 @@ export async function reconcileTorrentDownloads(): Promise<void> {
       }
       // Everything we wanted has been relocated out; the torrent is no longer needed.
       await deleteTorrent(hash, true)
-      if (finalized) log(`torrent reconcile: ${finalized} -> ready (hash ${hash.slice(0, 8)})`)
+      if (finalized) {log(`torrent reconcile: ${finalized} -> ready (hash ${hash.slice(0, 8)})`)}
     }
   }
   catch (e: any) {
@@ -474,10 +474,10 @@ export async function reconcileTorrentDownloads(): Promise<void> {
  * cycling everyone through over a configurable window instead of one giant 24h burst.
  */
 export async function runGapsCycle(): Promise<void> {
-  if (gapsCycleRunning) return
-  if (await isDownloadsPaused()) return
+  if (gapsCycleRunning) {return}
+  if (await isDownloadsPaused()) {return}
   const mon = await resolveMonitorSettings()
-  if (Date.now() - lastGapsRunAt < Math.max(1, mon.gapsIntervalMin) * 60_000) return
+  if (Date.now() - lastGapsRunAt < Math.max(1, mon.gapsIntervalMin) * 60_000) {return}
   gapsCycleRunning = true
   lastGapsRunAt = Date.now()
   try {
@@ -493,7 +493,7 @@ export async function runGapsCycle(): Promise<void> {
       orderBy: { lastGapsCheckedAt: { sort: 'asc', nulls: 'first' } },
       take: Math.max(1, mon.gapsPicksPerRun),
     })
-    if (batch.length === 0) return
+    if (batch.length === 0) {return}
 
     const root = process.env.PROJECT_ROOT || process.cwd()
     const binary = join(process.env.SCRIPTS_DIR || root, 'sync')
@@ -544,20 +544,20 @@ export async function runGapsCycle(): Promise<void> {
  * the library. Ships OFF (merge stays a manual gate by default). Throttled + guarded.
  */
 export async function runAutoMergeCycle(): Promise<void> {
-  if (autoMergeRunning) return
-  if (await isDownloadsPaused()) return
+  if (autoMergeRunning) {return}
+  if (await isDownloadsPaused()) {return}
   const { autoMergeDownloads } = await resolveDownloadSettings()
-  if (!autoMergeDownloads) return
-  if (Date.now() - lastAutoMergeAt < 120_000) return
+  if (!autoMergeDownloads) {return}
+  if (Date.now() - lastAutoMergeAt < 120_000) {return}
   autoMergeRunning = true
   lastAutoMergeAt = Date.now()
   try {
     const ids = (await prisma.downloadedRelease.findMany({
       where: { status: 'READY' }, select: { id: true }, take: 50,
     })).map(r => r.id)
-    if (ids.length === 0) return
+    if (ids.length === 0) {return}
     const { merged } = await mergeManyDownloadedReleases(ids)
-    if (merged) log(`auto-merge: ${merged} -> PROMOTED`)
+    if (merged) {log(`auto-merge: ${merged} -> PROMOTED`)}
   }
   catch (e: any) {
     logErr(`auto-merge failed: ${e?.message || e}`)

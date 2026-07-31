@@ -1,6 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
-import { getCachedSettings } from '~/server/utils/settingsCache'
-import { invalidateSettingsCache } from '~/server/utils/settingsCache'
+import { getCachedSettings, invalidateSettingsCache  } from '~/server/utils/settingsCache'
 import { getLastfmSession } from '~/server/utils/lastfm'
 
 export default defineEventHandler(async (event) => {

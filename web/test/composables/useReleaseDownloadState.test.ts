@@ -1,11 +1,11 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { describe, expect, it, vi } from 'vitest'
 
-const { navigateToMock } = vi.hoisted(() => ({ navigateToMock: vi.fn() }))
-mockNuxtImport('navigateTo', () => navigateToMock)
-
 import { useReleaseDownloadState } from '../../composables/useReleaseDownloadState'
 import type { UnifiedRelease } from '../../types/release'
+
+const { navigateToMock } = vi.hoisted(() => ({ navigateToMock: vi.fn() }))
+mockNuxtImport('navigateTo', () => navigateToMock)
 
 const release = (downloadState: string | null, downloadedReleaseId = 'dl1') =>
   ({ downloadState, downloadedReleaseId } as unknown as UnifiedRelease)

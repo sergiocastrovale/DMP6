@@ -12,7 +12,7 @@ const sseResponse = (chunks: string[]) => ({
       let i = 0
       return {
         read: async () => {
-          if (i >= chunks.length) return { done: true, value: undefined }
+          if (i >= chunks.length) {return { done: true, value: undefined }}
           const value = new TextEncoder().encode(chunks[i])
           i++
           return { done: false, value }

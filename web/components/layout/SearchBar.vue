@@ -82,7 +82,7 @@ onBeforeUnmount(() => {
         placeholder="Search artists, releases, tracks..."
         class="w-full bg-bg-2 border border-rule rounded-lg py-2.5 px-3.5 pl-10 text-ink text-sm placeholder:text-ink-4 outline-none transition focus:bg-bg-1 focus:border-accent focus:shadow-ring-accent"
         @focus="query && (showDropdown = true)"
-      />
+      >
       <button
         v-if="query"
         class="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink"

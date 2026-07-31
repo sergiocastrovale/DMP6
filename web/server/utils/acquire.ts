@@ -19,11 +19,11 @@ function sleep(ms: number) {
 export function albumFolderMatches(folderPath: string, albumTitle: string): boolean {
   const folder = normalizeTitle(folderPath.replace(/\\/g, '/').split('/').pop() || folderPath)
   const wanted = normalizeTitle(albumTitle)
-  if (!wanted) return true // nothing to compare against — don't block on an empty title
-  if (folder.includes(wanted) || wanted.includes(folder)) return true
+  if (!wanted) {return true} // nothing to compare against — don't block on an empty title
+  if (folder.includes(wanted) || wanted.includes(folder)) {return true}
   // Fall back to majority word overlap for near-matches (edition/remaster suffixes, minor reordering).
   const words = wanted.split(' ').filter(w => w.length >= 4)
-  if (words.length === 0) return folder.includes(wanted)
+  if (words.length === 0) {return folder.includes(wanted)}
   const hits = words.filter(w => folder.includes(w)).length
   return hits / words.length >= 0.6
 }
@@ -49,8 +49,8 @@ export async function findBestSlskdResult(
       const top = [...results].sort((a, b) => b.score - a.score)[0]
       if (top) {
         best = top
-        if (top.format === 'FLAC' && top.score >= 100) break
-        if (i >= 4 && results.length >= 3) break
+        if (top.format === 'FLAC' && top.score >= 100) {break}
+        if (i >= 4 && results.length >= 3) {break}
       }
     }
   }
@@ -84,7 +84,7 @@ export interface AcquireParams {
  */
 export async function acquireRelease(params: AcquireParams, existingRowId?: string): Promise<{ id: string }> {
   const { downloadsPath } = await resolveDownloadSettings()
-  if (!downloadsPath) throw createError({ statusCode: 503, message: 'DOWNLOADS_PATH not configured' })
+  if (!downloadsPath) {throw createError({ statusCode: 503, message: 'DOWNLOADS_PATH not configured' })}
 
   const quality = [params.result.format, params.result.avgBitrate || null]
     .filter(Boolean).join(' ').trim() || null

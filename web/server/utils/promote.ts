@@ -38,7 +38,7 @@ async function moveDir(src: string, dest: string): Promise<void> {
     return
   }
   catch (e: any) {
-    if (!['EXDEV', 'EACCES', 'EPERM', 'ENOTEMPTY'].includes(e?.code)) throw e
+    if (!['EXDEV', 'EACCES', 'EPERM', 'ENOTEMPTY'].includes(e?.code)) {throw e}
   }
   // Cross-device / permission fallback: copy file-by-file then remove the source tree. Use a streamed
   // read/write copy (NOT fs.copyFile) because copyFile uses the copy_file_range syscall, which returns
@@ -48,7 +48,7 @@ async function moveDir(src: string, dest: string): Promise<void> {
   for (const ent of entries) {
     const from = join(src, ent.name)
     const to = join(dest, ent.name)
-    if (ent.isDirectory()) await moveDir(from, to)
+    if (ent.isDirectory()) {await moveDir(from, to)}
     else { await pipeline(createReadStream(from), createWriteStream(to)); await unlink(from).catch(() => {}) }
   }
   await rmdir(src).catch(() => {})
@@ -67,7 +67,7 @@ function relUnder(root: string, full: string): string {
  */
 export async function moveToReady(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
-  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+  if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
 
   // Erroneous release (no MusicBrainz year — can't lay it out as `YYYY - title`): never promote to
   // _ready. Purge the staged files and drop it into the Failed list. Safety net for anything that got
@@ -82,10 +82,10 @@ export async function moveToReady(id: string): Promise<void> {
     return
   }
 
-  if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing staged' })
+  if (!row.stagingPath) {throw createError({ statusCode: 409, message: 'nothing staged' })}
 
   const { downloadsPath, downloadsReadyPath } = await resolveDownloadSettings()
-  if (!downloadsReadyPath) throw createError({ statusCode: 503, message: 'DOWNLOADS_PATH not configured' })
+  if (!downloadsReadyPath) {throw createError({ statusCode: 503, message: 'DOWNLOADS_PATH not configured' })}
 
   // Already in the ready folder? just flag it.
   if (row.stagingPath.startsWith(downloadsReadyPath + sep) || row.stagingPath === downloadsReadyPath) {
@@ -116,7 +116,7 @@ const stripDiscSegment = (rel: string): string => rel.replace(DISC_SEGMENT_RE, '
 
 // Delete a merged folder from disk, but only when it actually lives under MUSIC_DIR (safety guard).
 async function purgeLibraryFolder(music: string, rel: string): Promise<void> {
-  if (!music || !rel) return
+  if (!music || !rel) {return}
   const full = join(music, rel)
   if (full.startsWith(music + sep)) {
     await rm(full, { recursive: true, force: true }).catch(() => {})
@@ -272,7 +272,7 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
   }
 
   await purgeLibraryFolder(music, rel)
-  if (lr) await prisma.localRelease.delete({ where: { id: lr.id } }).catch(() => {})
+  if (lr) {await prisma.localRelease.delete({ where: { id: lr.id } }).catch(() => {})}
   const attempts = (row.attempts ?? 0) + 1
   const abandoned = attempts >= Math.max(1, maxDownloadAttempts)
   await prisma.downloadedRelease.update({
@@ -296,11 +296,11 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
  */
 export async function mergeDownloadedRelease(id: string, emit?: (line: string) => void): Promise<{ localReleaseId: string | null; error: string | null }> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: { select: { name: true } } } })
-  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
-  if (!row.stagingPath) throw createError({ statusCode: 409, message: 'nothing to merge' })
+  if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
+  if (!row.stagingPath) {throw createError({ statusCode: 409, message: 'nothing to merge' })}
 
   const music = musicDir()
-  if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
+  if (!music) {throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })}
   const { downloadsReadyPath } = await resolveDownloadSettings()
 
   const { maxDownloadAttempts } = await resolveMonitorSettings()
@@ -335,7 +335,7 @@ export async function mergeDownloadedRelease(id: string, emit?: (line: string) =
  */
 export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: string) => void): Promise<{ merged: number; errors: string[] }> {
   const music = musicDir()
-  if (!music) throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })
+  if (!music) {throw createError({ statusCode: 503, message: 'MUSIC_DIR not configured' })}
   const { downloadsReadyPath } = await resolveDownloadSettings()
 
   const rows = await prisma.downloadedRelease.findMany({
@@ -372,11 +372,11 @@ export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: s
     }
 
     // One index over all folders (--folders is ';'-separated); skip paths containing ';'.
-    for (const m of moved) setMergeProgress(m.row.id, { step: 'indexing', title: m.row.title })
+    for (const m of moved) {setMergeProgress(m.row.id, { step: 'indexing', title: m.row.title })}
     emit?.(`Indexing ${moved.length} release${moved.length === 1 ? '' : 's'}…`)
     const safeRels = moved.map(m => m.rel).filter(r => !r.includes(';'))
-    if (safeRels.length) await runReconciler('index', ['--folders', safeRels.join(';')])
-    for (const m of moved.filter(m => m.rel.includes(';'))) await runReconciler('index', ['--folders', m.rel])
+    if (safeRels.length) {await runReconciler('index', ['--folders', safeRels.join(';')])}
+    for (const m of moved.filter(m => m.rel.includes(';'))) {await runReconciler('index', ['--folders', m.rel])}
 
     // Per-release targeted validate-or-invalidate (each runs its own `sync --release`, never a
     // destructive per-artist sync). Matched releases are kept + PROMOTED; unmatched go INVALID.
@@ -396,11 +396,11 @@ export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: s
         emit?.(`✗ ${msg}`)
       }
     }
-    if (promoted > 0) emit?.(`✓ Merged ${promoted} release${promoted === 1 ? '' : 's'}`)
+    if (promoted > 0) {emit?.(`✓ Merged ${promoted} release${promoted === 1 ? '' : 's'}`)}
     return { merged: promoted, errors }
   }
   finally {
-    for (const m of moved) clearMergeProgress(m.row.id)
+    for (const m of moved) {clearMergeProgress(m.row.id)}
   }
 }
 
@@ -410,7 +410,7 @@ const baseName = (f: string) => basename(f.replace(/\\/g, '/'))
 // Delete the staged folder from disk, but only inside the configured downloads/staging or ready
 // roots (safety) — used by both reject and cancel.
 async function purgeStagedFiles(stagingPath: string | null): Promise<void> {
-  if (!stagingPath) return
+  if (!stagingPath) {return}
   const { downloadsPath, downloadsReadyPath } = await resolveDownloadSettings()
   const inside = (root: string) => root && (stagingPath.startsWith(root + sep) || stagingPath === root)
   if (!downloadsPath || inside(downloadsPath) || inside(downloadsReadyPath)) {
@@ -440,7 +440,7 @@ async function applyRejectionCap(row: { id: string; attempts: number }, reason: 
 /** Reject a staged download (FAILED or READY/ready-to-merge — identical outcome). */
 export async function rejectDownloadedRelease(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
-  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+  if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
   await purgeStagedFiles(row.stagingPath)
   await applyRejectionCap(row, 'rejected by user')
 }
@@ -477,7 +477,7 @@ const REQUEUE_EPOCH = new Date(0)
  */
 export async function requeueRejectedDownload(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
-  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+  if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
   await prisma.downloadedRelease.update({
     where: { id },
     data: { status: 'FAILED', attempts: 0, priority: 10, error: null, updatedAt: REQUEUE_EPOCH },
@@ -515,7 +515,7 @@ export async function sweepDanglingDownloads(): Promise<{ removed: number }> {
           )
       )
   `
-  if (removed > 0) monitorLog('notice', `cleanup: swept ${removed} dangling/terminal download row(s) (release no longer MISSING)`)
+  if (removed > 0) {monitorLog('notice', `cleanup: swept ${removed} dangling/terminal download row(s) (release no longer MISSING)`)}
   return { removed: Number(removed) }
 }
 
@@ -564,7 +564,7 @@ export async function cleanupReadyDownloads(): Promise<{ removed: number; checke
  */
 export async function cancelDownloadedRelease(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
-  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
+  if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
 
   const files = (row.files as Array<{ filename: string }> | null) ?? []
   if (row.source === 'RUTRACKER' && row.torrentHash) {
@@ -572,14 +572,14 @@ export async function cancelDownloadedRelease(id: string): Promise<void> {
     const siblings = await prisma.downloadedRelease.count({
       where: { torrentHash: row.torrentHash, status: { in: ['DOWNLOADING', 'ENRICHING'] }, id: { not: row.id } },
     })
-    if (siblings === 0) await deleteTorrent(row.torrentHash, true)
+    if (siblings === 0) {await deleteTorrent(row.torrentHash, true)}
   }
   else if (row.slskUsername && files.length) {
     const transfers = await getSlskdActiveDownloads().catch(() => [])
     const expected = new Set(files.map(f => baseName(String(f.filename))))
     const ours = transfers.filter(t => t.username === row.slskUsername && expected.has(baseName(t.filename)))
     // remove=true tells slskd to delete the (partial) file as it cancels the transfer.
-    for (const t of ours) await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})
+    for (const t of ours) {await cancelSlskdDownload(row.slskUsername!, t.id).catch(() => {})}
   }
   await purgeStagedFiles(row.stagingPath)
   await applyRejectionCap(row, 'cancelled by user')

@@ -2,6 +2,8 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { nextTick, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 
+import { useSidebar } from '../../composables/useSidebar'
+
 // `ref` isn't available yet inside a vi.hoisted() factory (it runs before any imports, including
 // vue itself), so the shared width ref is created lazily inside the vi.mock factory instead, which
 // DOES run after `vue` has loaded (as a transitive dependency of @vueuse/core).
@@ -16,12 +18,10 @@ vi.mock('@vueuse/core', async (importOriginal) => {
 mockNuxtImport('useState', () => {
   const stateMap = new Map<string, ReturnType<typeof ref>>()
   return (key: string, init: () => unknown) => {
-    if (!stateMap.has(key)) stateMap.set(key, ref(init()))
+    if (!stateMap.has(key)) {stateMap.set(key, ref(init()))}
     return stateMap.get(key)!
   }
 })
-
-import { useSidebar } from '../../composables/useSidebar'
 
 describe('useSidebar', () => {
   it('collapses when width drops to or below 720', async () => {

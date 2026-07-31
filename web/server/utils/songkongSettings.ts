@@ -49,9 +49,9 @@ export interface SongkongHealthInput {
 
 /** Pure predicate — no DB/FS access — so the staleness rule is independently testable. */
 export const isSongkongStalled = ({ enrichingRows, lastDrainedAt, now = new Date() }: SongkongHealthInput): boolean => {
-  if (enrichingRows.length === 0) return false // nothing waiting - can't be backed up
+  if (enrichingRows.length === 0) {return false} // nothing waiting - can't be backed up
   const oldestAgeMin = Math.max(...enrichingRows.map(r => (now.getTime() - r.updatedAt.getTime()) / 60_000))
-  if (oldestAgeMin < SONGKONG_STALE_AFTER_MIN) return false // still within normal turnaround grace
+  if (oldestAgeMin < SONGKONG_STALE_AFTER_MIN) {return false} // still within normal turnaround grace
   const sinceLastDrainMin = lastDrainedAt ? (now.getTime() - lastDrainedAt.getTime()) / 60_000 : Infinity
   return sinceLastDrainMin >= SONGKONG_STALE_AFTER_MIN
 }

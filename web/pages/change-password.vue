@@ -55,21 +55,21 @@ const handleSubmit = async () => {
           placeholder="Current password"
           autocomplete="current-password"
           class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        />
+        >
         <input
           v-model="newPassword"
           type="password"
           placeholder="New password"
           autocomplete="new-password"
           class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        />
+        >
         <input
           v-model="confirmPassword"
           type="password"
           placeholder="Confirm new password"
           autocomplete="new-password"
           class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        />
+        >
 
         <p v-if="error" class="text-center text-sm text-red-400">{{ error }}</p>
 

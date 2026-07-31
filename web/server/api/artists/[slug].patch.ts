@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
 
   const slug = getRouterParam(event, 'slug')
-  if (!slug) throw createError({ statusCode: 400, statusMessage: 'Missing slug' })
+  if (!slug) {throw createError({ statusCode: 400, statusMessage: 'Missing slug' })}
 
   const body = await readBody(event)
   if (typeof body?.monitored !== 'boolean') {

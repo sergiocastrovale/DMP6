@@ -44,7 +44,7 @@ async function selectDecade(decade: number) {
 }
 
 async function selectYear(year: number | null) {
-  if (!selectedDecade.value) return
+  if (!selectedDecade.value) {return}
   selectedYear.value = year
   loadingDecade.value = true
   try {
@@ -62,12 +62,12 @@ async function selectYear(year: number | null) {
 }
 
 async function loadMore() {
-  if (!decadeData.value || !decadeData.value.hasMore || loadingMore.value) return
+  if (!decadeData.value || !decadeData.value.hasMore || loadingMore.value) {return}
   loadingMore.value = true
   try {
     const nextPage = decadeData.value.page + 1
     let url = `/api/timeline/${selectedDecade.value}?page=${nextPage}`
-    if (selectedYear.value) url += `&year=${selectedYear.value}`
+    if (selectedYear.value) {url += `&year=${selectedYear.value}`}
     const more = await $fetch<DecadeResponse>(url)
     decadeData.value.releases.push(...more.releases)
     decadeData.value.page = more.page
@@ -84,11 +84,11 @@ async function loadMore() {
 
 // Group releases by year for display
 const releasesByYear = computed(() => {
-  if (!decadeData.value) return []
+  if (!decadeData.value) {return []}
   const map = new Map<number, TimelineRelease[]>()
   for (const r of decadeData.value.releases) {
     const year = r.year ?? 0
-    if (!map.has(year)) map.set(year, [])
+    if (!map.has(year)) {map.set(year, [])}
     map.get(year)!.push(r)
   }
   return Array.from(map.entries())
@@ -179,8 +179,8 @@ onMounted(() => {
           <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             <Block
               v-for="release in group.releases"
-              :key="release.id"
               :id="release.id"
+              :key="release.id"
               :title="release.title"
               :title-link="`/artist/${release.artist!.slug}?releaseId=${release.id}`"
               :subtitle="release.artist!.name"

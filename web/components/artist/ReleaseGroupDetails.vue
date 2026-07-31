@@ -83,7 +83,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           :alt="release.title"
           class="size-full object-cover"
           loading="lazy"
-        />
+        >
         <div v-else class="flex size-full items-center justify-center text-ink-4">
           <Disc3 :size="24" />
         </div>

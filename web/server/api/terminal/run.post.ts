@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
   const send = (text: string) => {
     const clean = stripAnsi(text)
     for (const line of clean.split('\n')) {
-      if (line) res.write(`data: ${JSON.stringify(line)}\n\n`)
+      if (line) {res.write(`data: ${JSON.stringify(line)}\n\n`)}
     }
   }
 
@@ -118,7 +118,7 @@ export default defineEventHandler(async (event) => {
     tail.stdout.on('data', (chunk: Buffer) => {
       const text = stripAnsi(chunk.toString())
       for (const line of text.split('\n')) {
-        if (!line) continue
+        if (!line) {continue}
         const exitCode = parseExitLine(line)
         if (exitCode !== null) {
           if (!done) {

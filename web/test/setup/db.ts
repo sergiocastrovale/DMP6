@@ -70,7 +70,7 @@ export const resetDb = async (): Promise<void> => {
   const toTruncate = tables
     .map(t => t.tablename)
     .filter(name => !PRESERVE_TABLES.has(name))
-  if (toTruncate.length === 0) return
+  if (toTruncate.length === 0) {return}
   const quoted = toTruncate.map(t => `"${t}"`).join(', ')
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${quoted} RESTART IDENTITY CASCADE`)
 }

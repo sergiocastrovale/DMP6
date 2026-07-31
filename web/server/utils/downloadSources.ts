@@ -45,7 +45,7 @@ export async function ensureDownloadSources(): Promise<void> {
 }
 
 export async function getDownloadSources(): Promise<SourceConfig[]> {
-  if (cache && Date.now() - cacheAt < TTL) return cache
+  if (cache && Date.now() - cacheAt < TTL) {return cache}
   let rows = await prisma.downloadSourceConfig.findMany().catch(() => [])
   if (rows.length === 0) {
     await ensureDownloadSources().catch(() => {})
@@ -70,9 +70,9 @@ const find = (configs: SourceConfig[], name: SourceConfig['name']) => configs.fi
 // Read the RUTRACKER row, rolling the 24h window over if it has elapsed. Returns remaining budget.
 async function rtBudgetRemaining(): Promise<number> {
   const row = await prisma.downloadSourceConfig.findUnique({ where: { name: 'RUTRACKER' } }).catch(() => null)
-  if (!row) return RT_DAILY_BUDGET
+  if (!row) {return RT_DAILY_BUDGET}
   const start = row.budgetWindowStart?.getTime() ?? 0
-  if (!start || Date.now() - start >= DAY_MS) return RT_DAILY_BUDGET // window elapsed -> full budget
+  if (!start || Date.now() - start >= DAY_MS) {return RT_DAILY_BUDGET} // window elapsed -> full budget
   return Math.max(0, RT_DAILY_BUDGET - row.budgetUsed)
 }
 
@@ -102,9 +102,9 @@ export async function exhaustRtBudget(): Promise<void> {
  */
 export async function downloadWorkPossible(): Promise<boolean> {
   const configs = await getDownloadSources()
-  if (find(configs, 'SLSKD')?.enabled) return true
+  if (find(configs, 'SLSKD')?.enabled) {return true}
   const rt = find(configs, 'RUTRACKER')
-  if (rt?.enabled && await rtBudgetAvailable()) return true
+  if (rt?.enabled && await rtBudgetAvailable()) {return true}
   return false
 }
 
@@ -186,7 +186,7 @@ export function chooseSource(
   // RuTracker first — but only while it has daily search budget left. When the budget is spent we skip
   // RT WITHOUT marking it tried (it wasn't really searched): the release falls through to Soulseek if
   // that's enabled, otherwise nothing happens and it's retried on RuTracker once the budget rolls over.
-  if (rt?.enabled && rtBudgetOk && !triedSources.includes('RUTRACKER') && priority > SLSK_PRIORITY) return 'RUTRACKER'
-  if (slsk?.enabled) return 'SLSKD'
+  if (rt?.enabled && rtBudgetOk && !triedSources.includes('RUTRACKER') && priority > SLSK_PRIORITY) {return 'RUTRACKER'}
+  if (slsk?.enabled) {return 'SLSKD'}
   return null
 }

@@ -40,8 +40,8 @@ function toggleAll() {
 
 function toggleRow(id: string) {
   const next = new Set(props.selected)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
+  if (next.has(id)) {next.delete(id)}
+  else {next.add(id)}
   emit('update:selected', next)
 }
 
@@ -53,13 +53,13 @@ const editingCell = ref<{ id: string; key: string } | null>(null)
 const editValue = ref('')
 
 function startEdit(item: any, col: IssueColumn) {
-  if (!col.editable) return
+  if (!col.editable) {return}
   editingCell.value = { id: item.id, key: col.editKey ?? col.key }
   editValue.value = String(getNestedValue(item, col.key) ?? '')
 }
 
 function commitEdit(item: any, col: IssueColumn) {
-  if (!editingCell.value) return
+  if (!editingCell.value) {return}
   emit('edit', item.id, editingCell.value.key, editValue.value)
   editingCell.value = null
 }
@@ -73,7 +73,7 @@ function commitEdit(item: any, col: IssueColumn) {
         <thead>
           <tr class="border-b border-rule text-left">
             <th v-if="type !== 'enrichment'" class="w-10 px-3 py-2">
-              <input type="checkbox" :checked="allChecked" @change="toggleAll" class="rounded border-rule bg-bg-2" />
+              <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" >
             </th>
             <th
               v-for="col in columns"
@@ -124,9 +124,9 @@ function commitEdit(item: any, col: IssueColumn) {
               <input
                 type="checkbox"
                 :checked="selected.has(item.id)"
-                @change="toggleRow(item.id)"
                 class="rounded border-rule bg-bg-2"
-              />
+                @change="toggleRow(item.id)"
+              >
             </td>
             <td
               v-for="col in columns"
@@ -142,11 +142,11 @@ function commitEdit(item: any, col: IssueColumn) {
                     v-if="editingCell !== null && editingCell.id === item.id && editingCell.key === (col.editKey ?? col.key)"
                     v-model="editValue"
                     class="w-full rounded border border-blue-500 bg-bg-1 px-2 py-0.5 text-sm outline-none"
+                    autofocus
                     @blur="commitEdit(item, col)"
                     @keydown.enter="commitEdit(item, col)"
                     @keydown.esc="editingCell = null"
-                    autofocus
-                  />
+                  >
                   <span
                     v-else
                     class="cursor-pointer rounded px-1 py-0.5 hover:bg-bg-2"
@@ -170,16 +170,16 @@ function commitEdit(item: any, col: IssueColumn) {
       <div class="flex items-center gap-2">
         <button
           :disabled="page <= 1"
-          @click="emit('page', page - 1)"
           class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
+          @click="emit('page', page - 1)"
         >
           Prev
         </button>
         <span>{{ page }} / {{ totalPages }}</span>
         <button
           :disabled="page >= totalPages"
-          @click="emit('page', page + 1)"
           class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
+          @click="emit('page', page + 1)"
         >
           Next
         </button>

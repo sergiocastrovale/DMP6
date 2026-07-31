@@ -23,8 +23,8 @@ async function run() {
     size="sm"
     :icon="RefreshCw"
     :loading="terminal.isRunning"
-    @click="run"
     :title="only?.length ? `Re-index + Re-sync: ${only.join(', ')}` : 'Re-index + Re-sync all'"
+    @click="run"
   >
     Re-index + Re-sync
     <span v-if="only?.length" class="text-xs text-ink0">({{ only.length }})</span>

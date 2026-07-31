@@ -53,17 +53,17 @@ const { saving, saved, error, save } = useFormSave(async () => {
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Soulseek (slskd)</h2>
       <SettingsField
+        v-model="form.slskdUrl"
         label="slskd URL"
         description="REST API base URL. Overrides SLSKD_URL."
         placeholder="http://localhost:5030"
-        v-model="form.slskdUrl"
       />
       <SettingsField
+        v-model="form.slskdApiKey"
         label="slskd API Key"
         description="X-API-Key header value. Overrides SLSKD_API_KEY."
         type="password"
         :placeholder="settings?.slskdApiKeySet ? 'Set — leave blank to keep' : '••••••••'"
-        v-model="form.slskdApiKey"
       />
     </div>
 
@@ -72,23 +72,23 @@ const { saving, saved, error, save } = useFormSave(async () => {
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">RuTracker — Prowlarr (search)</h2>
       <p class="text-xs text-ink0">RuTracker is searched through Prowlarr (the RT login lives in Prowlarr, like Lidarr). When RuTracker is enabled it's tried first; Soulseek is the fallback.</p>
       <SettingsField
+        v-model="form.prowlarrUrl"
         label="Prowlarr URL"
         description="Prowlarr base URL. Overrides PROWLARR_URL."
         placeholder="http://localhost:9696"
-        v-model="form.prowlarrUrl"
       />
       <SettingsField
+        v-model="form.prowlarrApiKey"
         label="Prowlarr API Key"
         description="Settings → General → Security in Prowlarr. Overrides PROWLARR_API_KEY."
         type="password"
         :placeholder="settings?.prowlarrApiKeySet ? 'Set — leave blank to keep' : '••••••••'"
-        v-model="form.prowlarrApiKey"
       />
       <SettingsField
+        v-model="form.prowlarrIndexerId"
         label="Indexer ID (optional)"
         description="Restrict searches to a single Prowlarr indexer id (the RuTracker indexer). Blank = all. Overrides PROWLARR_INDEXER_ID."
         placeholder="e.g. 5"
-        v-model="form.prowlarrIndexerId"
       />
     </div>
 
@@ -96,28 +96,28 @@ const { saving, saved, error, save } = useFormSave(async () => {
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">RuTracker — qBittorrent (download)</h2>
       <SettingsField
+        v-model="form.qbittorrentUrl"
         label="qBittorrent URL"
         description="WebUI base URL. Overrides QBITTORRENT_URL."
         placeholder="http://localhost:8080"
-        v-model="form.qbittorrentUrl"
       />
       <SettingsField
+        v-model="form.qbittorrentUser"
         label="qBittorrent Username"
         description="WebUI username. Overrides QBITTORRENT_USER."
-        v-model="form.qbittorrentUser"
       />
       <SettingsField
+        v-model="form.qbittorrentPass"
         label="qBittorrent Password"
         description="WebUI password. Overrides QBITTORRENT_PASS."
         type="password"
         :placeholder="settings?.qbittorrentPassSet ? 'Set — leave blank to keep' : '••••••••'"
-        v-model="form.qbittorrentPass"
       />
       <SettingsField
+        v-model="form.qbittorrentSavePath"
         label="Save Path (optional)"
         description="qBittorrent-side path that maps to {Downloads Path}/_torrents on the shared volume. Only set this if qBittorrent mounts the volume at a different prefix. Overrides QBITTORRENT_SAVE_PATH."
         placeholder="/downloads/dmp/_torrents"
-        v-model="form.qbittorrentSavePath"
       />
     </div>
 
@@ -125,37 +125,37 @@ const { saving, saved, error, save } = useFormSave(async () => {
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Download Settings</h2>
       <SettingsField
+        v-model="form.downloadsPath"
         label="Downloads Path"
         description="Directory where downloaded files are saved. Overrides DOWNLOADS_PATH."
         placeholder="/path/to/downloads"
-        v-model="form.downloadsPath"
       />
       <SettingsField
+        v-model="form.downloadDirTemplate"
         label="Directory Template"
         description="Folder template. Placeholders: {artist}, {album}, {year}. Overrides DOWNLOAD_DIR_TEMPLATE."
         placeholder="{artist}/{year} - {album}"
-        v-model="form.downloadDirTemplate"
       />
       <SettingsField
+        v-model="form.downloadFormats"
         label="Allowed Formats"
         description="Comma-separated list (e.g. flac,mp3). Overrides DOWNLOAD_FORMATS."
         placeholder="flac,mp3"
-        v-model="form.downloadFormats"
       />
       <SettingsField
+        v-model="form.downloadMinBitrate"
         label="Minimum Bitrate (kbps)"
         description="Minimum bitrate filter. Overrides DOWNLOAD_MIN_BITRATE."
         type="number"
         placeholder="320"
-        v-model="form.downloadMinBitrate"
       />
     </div>
 
     <div class="flex items-center gap-3">
       <button
         :disabled="saving || !canEdit"
-        @click="save"
         class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+        @click="save"
       >
         <Save :size="15" />
         {{ saving ? 'Saving…' : 'Save Changes' }}

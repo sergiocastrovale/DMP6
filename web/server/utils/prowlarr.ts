@@ -22,7 +22,7 @@ async function getProwlarrConfig(): Promise<ProwlarrConfig | null> {
     return { url: configCache.url, apiKey: configCache.apiKey, indexerId: configCache.indexerId }
   }
   const { prowlarrUrl, prowlarrApiKey, prowlarrIndexerId } = await resolveDownloadSettings()
-  if (!prowlarrUrl || !prowlarrApiKey) return null
+  if (!prowlarrUrl || !prowlarrApiKey) {return null}
 
   configCache = {
     url: prowlarrUrl.replace(/\/$/, ''),
@@ -39,7 +39,7 @@ export function clearProwlarrConfigCache() {
 
 async function prowlarrFetch(path: string): Promise<Response> {
   const config = await getProwlarrConfig()
-  if (!config) throw createError({ statusCode: 503, message: 'Prowlarr not configured' })
+  if (!config) {throw createError({ statusCode: 503, message: 'Prowlarr not configured' })}
 
   const sep = path.includes('?') ? '&' : '?'
   const url = `${config.url}/api/v1${path}${sep}apikey=${encodeURIComponent(config.apiKey)}`
@@ -54,9 +54,9 @@ async function prowlarrFetch(path: string): Promise<Response> {
 export async function checkProwlarrConnection(): Promise<{ ok: boolean; error?: string }> {
   try {
     const config = await getProwlarrConfig()
-    if (!config) return { ok: false, error: 'Prowlarr URL or API key not configured' }
+    if (!config) {return { ok: false, error: 'Prowlarr URL or API key not configured' }}
     const response = await prowlarrFetch('/health')
-    if (!response.ok) return { ok: false, error: `Prowlarr returned ${response.status}` }
+    if (!response.ok) {return { ok: false, error: `Prowlarr returned ${response.status}` }}
     return { ok: true }
   }
   catch (e: any) {
@@ -84,8 +84,8 @@ export async function prowlarrRtLimited(): Promise<boolean> {
 
 const guessFormat = (title: string): string => {
   const t = title.toLowerCase()
-  if (/\b(flac|lossless|ape|wav|alac)\b/.test(t)) return 'FLAC'
-  if (/\b(mp3|320|256|cbr|vbr|v0)\b/.test(t)) return 'MP3'
+  if (/\b(flac|lossless|ape|wav|alac)\b/.test(t)) {return 'FLAC'}
+  if (/\b(mp3|320|256|cbr|vbr|v0)\b/.test(t)) {return 'MP3'}
   return 'Unknown'
 }
 
@@ -108,15 +108,15 @@ interface ProwlarrRelease {
  */
 export async function prowlarrSearch(query: string): Promise<TorrentResult[]> {
   const config = await getProwlarrConfig()
-  if (!config) return []
+  if (!config) {return []}
 
   const params = new URLSearchParams({ query, type: 'search' })
   params.append('categories', String(MUSIC_CATEGORY))
-  if (config.indexerId) params.append('indexerIds', config.indexerId)
+  if (config.indexerId) {params.append('indexerIds', config.indexerId)}
 
   const response = await prowlarrFetch(`/search?${params.toString()}`)
   const data = (await response.json().catch(() => [])) as ProwlarrRelease[]
-  if (!Array.isArray(data)) return []
+  if (!Array.isArray(data)) {return []}
 
   return data
     .filter(r => (r.protocol ?? 'torrent') === 'torrent')

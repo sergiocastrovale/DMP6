@@ -34,7 +34,7 @@ const coverImageUrl = (cover: { image: string | null; imageUrl: string | null })
             :src="coverImageUrl(cover)!"
             loading="lazy"
             class="h-full w-full object-cover"
-          />
+          >
           <div v-else class="flex h-full w-full items-center justify-center text-ink-4">
             <LucideMusic class="size-8" />
           </div>

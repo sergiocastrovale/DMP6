@@ -74,8 +74,8 @@ const disconnect = async () => {
         </div>
         <button
           :disabled="disconnecting || !canEdit"
-          @click="disconnect"
           class="flex items-center gap-1.5 rounded bg-bg-2 px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-bg-3 disabled:opacity-50"
+          @click="disconnect"
         >
           <Unlink :size="12" />
           {{ disconnecting ? 'Disconnecting…' : 'Disconnect' }}
@@ -88,25 +88,25 @@ const disconnect = async () => {
       </div>
 
       <SettingsField
+        v-model="apiKey"
         label="API Key"
         description="From your Last.fm API application"
         placeholder="Your Last.fm API key"
-        v-model="apiKey"
       />
 
       <SettingsField
+        v-model="secret"
         label="Shared Secret"
         description="From your Last.fm API application"
         type="password"
         :placeholder="settings?.lastfmSecretSet ? 'Set — leave blank to keep' : 'Your Last.fm shared secret'"
-        v-model="secret"
       />
 
       <div class="flex items-center gap-3 pt-2">
         <button
           :disabled="saving || !canEdit"
-          @click="save"
           class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          @click="save"
         >
           <Save :size="15" />
           {{ saving ? 'Saving…' : 'Save' }}
@@ -115,8 +115,8 @@ const disconnect = async () => {
         <button
           v-if="!isConnected && apiKey && (secret || settings?.lastfmSecretSet)"
           :disabled="connecting || !canEdit"
-          @click="connect"
           class="flex items-center gap-2 rounded bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
+          @click="connect"
         >
           <ExternalLink :size="15" />
           {{ connecting ? 'Redirecting…' : 'Connect Last.fm' }}

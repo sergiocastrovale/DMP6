@@ -6,7 +6,7 @@ const row = (id: string) => ({ id, title: 't', artist: 'a', album: 'al', duratio
 
 const fakePrisma = (results: unknown[][]): PrismaClient => {
   const queryRaw = vi.fn()
-  for (const r of results) queryRaw.mockImplementationOnce(() => Promise.resolve(r))
+  for (const r of results) {queryRaw.mockImplementationOnce(() => Promise.resolve(r))}
   return { $queryRaw: queryRaw } as unknown as PrismaClient
 }
 

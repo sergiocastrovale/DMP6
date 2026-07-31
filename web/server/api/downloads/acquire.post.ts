@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client'
+import type { Prisma } from '@prisma/client'
 import { requirePermission } from '~/server/utils/permissions'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
@@ -13,13 +13,13 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const mbReleaseRowId = body?.mbReleaseRowId as string | undefined
-  if (!mbReleaseRowId) throw createError({ statusCode: 400, message: 'mbReleaseRowId required' })
+  if (!mbReleaseRowId) {throw createError({ statusCode: 400, message: 'mbReleaseRowId required' })}
 
   const mb = await prisma.musicBrainzRelease.findUnique({
     where: { id: mbReleaseRowId },
     include: { artists: { include: { artist: true } } },
   })
-  if (!mb) throw createError({ statusCode: 404, message: 'release not found' })
+  if (!mb) {throw createError({ statusCode: 404, message: 'release not found' })}
 
   // No MusicBrainz year = erroneous release (can't lay it out as `YYYY - title`). Discard it: record a
   // FAILED row (reusing any prior one) so it shows in the Failed list, and never grab it.
@@ -44,10 +44,10 @@ export default defineEventHandler(async (event) => {
     where: { ...dedupKey, status: { in: ['DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] } },
     select: { id: true, status: true },
   })
-  if (existing) return { id: existing.id, status: existing.status, alreadyQueued: true }
+  if (existing) {return { id: existing.id, status: existing.status, alreadyQueued: true }}
 
   const artist = mb.artists[0]?.artist
-  if (!artist) throw createError({ statusCode: 409, message: 'release has no artist' })
+  if (!artist) {throw createError({ statusCode: 409, message: 'release has no artist' })}
 
   // Manual override: reuse a prior FAILED/ABANDONED/UNAVAILABLE/INVALID row and reset the attempt cap
   // (a human deliberately forced this) so it isn't immediately re-abandoned.
@@ -61,7 +61,7 @@ export default defineEventHandler(async (event) => {
   // at the top priority band; triedSources still excludes a no-retry source already exhausted.
   const configs = await getDownloadSources()
   const src = chooseSource(10, prior?.triedSources ?? [], configs, await rtBudgetAvailable())
-  if (!src) return { id: null, status: 'NO_SOURCE' as const }
+  if (!src) {return { id: null, status: 'NO_SOURCE' as const }}
 
   const settings = await resolveDownloadSettings()
   const data = {

@@ -31,7 +31,7 @@ const { artistImage } = useImageUrl()
             :alt="artist.name"
             class="size-full object-cover"
             loading="lazy"
-          />
+          >
           <div v-else class="flex size-full items-center justify-center text-sm font-bold text-ink-4">
             {{ artist.name.charAt(0).toUpperCase() }}
           </div>

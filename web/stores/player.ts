@@ -38,8 +38,8 @@ export const usePlayerStore = defineStore('player', () => {
     isPlaying: () => isPlaying.value,
     currentTime: () => currentTime.value,
     duration: () => duration.value,
-    play: () => { if (!isPlaying.value) togglePlay() },
-    pause: () => { if (isPlaying.value) togglePlay() },
+    play: () => { if (!isPlaying.value) {togglePlay()} },
+    pause: () => { if (isPlaying.value) {togglePlay()} },
     next: () => { next() },
     previous: () => { previous() },
     seek: (time: number) => { seek(time) },
@@ -55,15 +55,15 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function checkScrobble() {
-    if (!currentTrack.value) return
-    if (!shouldScrobble({ duration: duration.value, currentTime: currentTime.value })) return
+    if (!currentTrack.value) {return}
+    if (!shouldScrobble({ duration: duration.value, currentTime: currentTime.value })) {return}
     // playCount uses the same "meaningfully listened to" threshold as a scrobble (30s/25% duration),
     // not playback start - skipping through 10 tracks in a row must not inflate stats by 10 plays.
     if (!playCounted) {
       playCounted = true
       $fetch(`/api/tracks/${currentTrack.value.id}/play`, { method: 'POST' }).catch(() => {})
     }
-    if (scrobbled) return
+    if (scrobbled) {return}
     scrobbled = true
     $fetch('/api/scrobble/scrobble', {
       method: 'POST',
@@ -135,7 +135,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   function togglePlay() {
     const a = getAudio()
-    if (!currentTrack.value) return
+    if (!currentTrack.value) {return}
     if (isPlaying.value) {
       a.pause()
       isPlaying.value = false
@@ -201,7 +201,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function refillCatalogueBuffer() {
-    if (catalogueBufferFetching || catalogueBuffer.value.length >= 5) return
+    if (catalogueBufferFetching || catalogueBuffer.value.length >= 5) {return}
     catalogueBufferFetching = true
     try {
       const tracks = await $fetch<PlayerTrack[]>('/api/tracks/random-batch?count=10')
@@ -230,7 +230,7 @@ export const usePlayerStore = defineStore('player', () => {
     shuffleMode.value = 'explorer'
 
     const track = await fetchExplorerTrack(params)
-    if (!track) return
+    if (!track) {return}
 
     explorerCurrentTrack.value = track
     pushCapped(explorerHistory.value, track.id, 50)
@@ -251,7 +251,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   async function next() {
     if (shuffleMode.value === 'explorer') {
-      if (!explorerParams.value) return
+      if (!explorerParams.value) {return}
       if (explorerCurrentTrack.value) {
         unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, 200)
       }
@@ -272,7 +272,7 @@ export const usePlayerStore = defineStore('player', () => {
       else {
         try {
           const track = await $fetch<PlayerTrack>('/api/tracks/random')
-          if (track) playTrack(track)
+          if (track) {playTrack(track)}
         }
         catch { /* ignore */ }
       }
@@ -284,7 +284,7 @@ export const usePlayerStore = defineStore('player', () => {
     if (queue.value.length === 0) {
       try {
         const track = await $fetch<PlayerTrack>('/api/tracks/random')
-        if (track) playTrack(track)
+        if (track) {playTrack(track)}
       }
       catch { /* ignore */ }
       return

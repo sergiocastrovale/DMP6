@@ -124,7 +124,7 @@ export const useIssuesStore = defineStore('issues', () => {
   async function patchIssue(type: IssueType, id: string, body: Record<string, unknown>) {
     await $fetch(`/api/issues/${type}/${id}`, { method: 'PATCH', body })
     const list = items.value[type]
-    if (!list) return
+    if (!list) {return}
     const idx = list.findIndex((i: any) => i.id === id)
     if (idx >= 0) {
       list[idx] = { ...list[idx], ...body }

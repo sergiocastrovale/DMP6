@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
     tail.stdout.on('data', (chunk: Buffer) => {
       const text = stripAnsi(chunk.toString())
       for (const line of text.split('\n')) {
-        if (!line) continue
+        if (!line) {continue}
         if (line.startsWith('DMP_EXIT:')) {
           if (!done) {
             done = true

@@ -14,8 +14,8 @@ const showDropdown = ref(false)
 const search = ref('')
 
 const filtered = computed(() => {
-  if (!genres.value) return []
-  if (!search.value) return genres.value.slice(0, 30)
+  if (!genres.value) {return []}
+  if (!search.value) {return genres.value.slice(0, 30)}
   return genres.value
     .filter(g => g.name.toLowerCase().includes(search.value.toLowerCase()))
     .slice(0, 30)
@@ -47,7 +47,7 @@ const filtered = computed(() => {
         type="text"
         placeholder="Filter genres..."
         class="mb-2 w-full rounded border border-rule bg-bg-2 px-2 py-1 text-xs text-ink placeholder:text-ink0 focus:border-accent focus:outline-none"
-      />
+      >
       <div class="max-h-48 overflow-y-auto">
         <button
           v-for="genre in filtered"

@@ -28,9 +28,9 @@ export default defineEventHandler(async (event) => {
     artist: track.artist,
     track: track.title,
   }
-  if (track.album) params.album = track.album
-  if (track.duration) params.duration = String(track.duration)
-  if (track.trackNumber) params.trackNumber = String(track.trackNumber)
+  if (track.album) {params.album = track.album}
+  if (track.duration) {params.duration = String(track.duration)}
+  if (track.trackNumber) {params.trackNumber = String(track.trackNumber)}
 
   await callLastFm('track.updateNowPlaying', params, settings)
 

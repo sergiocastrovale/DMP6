@@ -29,9 +29,9 @@ export default defineEventHandler(async (event) => {
     'track[0]': track.title,
     'timestamp[0]': String(Math.floor(Number(timestamp) / 1000)),
   }
-  if (track.album) params['album[0]'] = track.album
-  if (track.duration) params['duration[0]'] = String(track.duration)
-  if (track.trackNumber) params['trackNumber[0]'] = String(track.trackNumber)
+  if (track.album) {params['album[0]'] = track.album}
+  if (track.duration) {params['duration[0]'] = String(track.duration)}
+  if (track.trackNumber) {params['trackNumber[0]'] = String(track.trackNumber)}
 
   await callLastFm('track.scrobble', params, settings)
 

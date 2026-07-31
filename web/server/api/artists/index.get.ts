@@ -34,8 +34,8 @@ export default defineEventHandler(async (event) => {
 
     if (minScore !== null || maxScore !== null) {
       where.averageMatchScore = {}
-      if (minScore !== null) (where.averageMatchScore as Record<string, number>).gte = minScore / 100
-      if (maxScore !== null) (where.averageMatchScore as Record<string, number>).lte = maxScore / 100
+      if (minScore !== null) {(where.averageMatchScore as Record<string, number>).gte = minScore / 100}
+      if (maxScore !== null) {(where.averageMatchScore as Record<string, number>).lte = maxScore / 100}
     }
 
     const orderBy: Record<string, string> = {}

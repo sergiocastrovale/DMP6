@@ -26,7 +26,7 @@ export const maskSettingsSecrets = (row: Record<string, unknown>): Record<string
  *   - undefined / ''    -> no change
  */
 export const parseSecretField = (value: unknown): string | null | undefined => {
-  if (value === null) return null
-  if (typeof value === 'string' && value.length > 0) return value
+  if (value === null) {return null}
+  if (typeof value === 'string' && value.length > 0) {return value}
   return undefined
 }

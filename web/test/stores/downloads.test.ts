@@ -85,7 +85,7 @@ describe('useDownloadsStore - pure getters (seeded state)', () => {
   it('mergePercent never exceeds 99 during an in-flight batch merge', async () => {
     const store = useDownloadsStore()
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/merge-all') return new Promise(() => {}) // stay in-flight
+      if (url === '/api/downloads/merge-all') {return new Promise(() => {})} // stay in-flight
       return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     })
     void store.mergeAll(['a', 'b'])
@@ -102,8 +102,8 @@ describe('useDownloadsStore - actions', () => {
 
   it('toggleSource PUTs the new state and refetches the queue', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/sources') return Promise.resolve({ sources: [{ name: 'SLSKD', enabled: true }] })
-      if (url === '/api/downloads/queue') return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: { canAcquire: false } })
+      if (url === '/api/downloads/sources') {return Promise.resolve({ sources: [{ name: 'SLSKD', enabled: true }] })}
+      if (url === '/api/downloads/queue') {return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: { canAcquire: false } })}
       return Promise.resolve({})
     })
     const store = useDownloadsStore()
@@ -122,7 +122,7 @@ describe('useDownloadsStore - actions', () => {
 
   it('setPaused surfaces the server error message and still refreshes the queue', async () => {
     fetchMock.mockImplementation((url: string, opts?: any) => {
-      if (url === '/api/downloads/pause') return Promise.reject({ data: { message: 'disk full' } })
+      if (url === '/api/downloads/pause') {return Promise.reject({ data: { message: 'disk full' } })}
       return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: 1, minFreeGb: 5, acquisition: null })
     })
     const store = useDownloadsStore()
@@ -154,7 +154,7 @@ describe('useDownloadsStore - actions', () => {
 
   it('mergeAll returns {merged, errors} from the server without throwing on partial failure', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/merge-all') return Promise.resolve({ merged: 1, errors: ['release X: no MB match'] })
+      if (url === '/api/downloads/merge-all') {return Promise.resolve({ merged: 1, errors: ['release X: no MB match'] })}
       return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     })
     const store = useDownloadsStore()
@@ -164,7 +164,7 @@ describe('useDownloadsStore - actions', () => {
 
   it('mergeSelected batches through merge-all instead of one merge/:id call per release', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/merge-all') return Promise.resolve({ merged: 2, errors: [] })
+      if (url === '/api/downloads/merge-all') {return Promise.resolve({ merged: 2, errors: [] })}
       return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     })
     const store = useDownloadsStore()
@@ -182,7 +182,7 @@ describe('useDownloadsStore - actions', () => {
 
   it('rejectAll batches through reject-all (not one reject/:id call per release) and refreshes the queue once', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/reject-all') return Promise.resolve({ rejected: 2 })
+      if (url === '/api/downloads/reject-all') {return Promise.resolve({ rejected: 2 })}
       return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     })
     const store = useDownloadsStore()
@@ -202,7 +202,7 @@ describe('useDownloadsStore - actions', () => {
 
   it('requeueAll batches through requeue-all (not one requeue/:id call per release) and refreshes the queue once', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/requeue-all') return Promise.resolve({ requeued: 2 })
+      if (url === '/api/downloads/requeue-all') {return Promise.resolve({ requeued: 2 })}
       return Promise.resolve({ active: [], ready: [], rejected: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     })
     const store = useDownloadsStore()

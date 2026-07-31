@@ -19,7 +19,7 @@ export const callLastFm = async (
   params: Record<string, string>,
   settings: LastfmSettings,
 ): Promise<Record<string, unknown> | null> => {
-  if (!isLastfmConfigured(settings)) return null
+  if (!isLastfmConfigured(settings)) {return null}
 
   const fullParams: Record<string, string> = {
     ...params,

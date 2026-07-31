@@ -22,7 +22,7 @@ const { releaseImage } = useImageUrl()
               :src="releaseImage(release)!"
               :alt="release.title"
               class="size-full object-cover"
-            />
+            >
             <div v-else class="flex size-full items-center justify-center text-ink-4">
               <Disc3 :size="32" />
             </div>

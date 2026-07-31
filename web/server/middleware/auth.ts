@@ -20,18 +20,18 @@ const PASSWORD_CHANGE_ALLOWED_API = new Set([
 export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname
 
-  if (STATIC_PREFIXES.some((p) => path.startsWith(p))) return
-  if (STATIC_FILES.includes(path)) return
-  if (path.match(/^\/favicon[^/]*\.(ico|png|svg)$/)) return
+  if (STATIC_PREFIXES.some((p) => path.startsWith(p))) {return}
+  if (STATIC_FILES.includes(path)) {return}
+  if (path.match(/^\/favicon[^/]*\.(ico|png|svg)$/)) {return}
 
-  if (PUBLIC_API.has(path)) return
-  if (PUBLIC_PREFIXES.some((p) => path.startsWith(p))) return
+  if (PUBLIC_API.has(path)) {return}
+  if (PUBLIC_PREFIXES.some((p) => path.startsWith(p))) {return}
 
   const token = getCookie(event, SESSION_COOKIE)
   const session = validateSession(token)
 
   if (path === '/login') {
-    if (session) return sendRedirect(event, '/')
+    if (session) {return sendRedirect(event, '/')}
     return
   }
 

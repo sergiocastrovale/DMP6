@@ -24,11 +24,11 @@ const { saving, saved, error, save } = useFormSave(async () => {
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Fanart.tv</h2>
       <SettingsField
+        v-model="fanartApiKey"
         label="API Key"
         description="Used by the sync script to fetch artist images. Overrides FANART_API_KEY."
         type="password"
         placeholder="••••••••"
-        v-model="fanartApiKey"
       />
     </div>
 

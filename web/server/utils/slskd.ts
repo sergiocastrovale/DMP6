@@ -18,7 +18,7 @@ async function getSlskdConfig(): Promise<SlskdConfig | null> {
   }
 
   const { slskdUrl, slskdApiKey } = await resolveDownloadSettings()
-  if (!slskdUrl || !slskdApiKey) return null
+  if (!slskdUrl || !slskdApiKey) {return null}
 
   configCache = { url: slskdUrl.replace(/\/$/, ''), apiKey: slskdApiKey, cachedAt: Date.now() }
   return { url: configCache.url, apiKey: configCache.apiKey }
@@ -30,7 +30,7 @@ export function clearSlskdConfigCache() {
 
 async function slskdFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const config = await getSlskdConfig()
-  if (!config) throw createError({ statusCode: 503, message: 'slskd not configured' })
+  if (!config) {throw createError({ statusCode: 503, message: 'slskd not configured' })}
 
   const url = `${config.url}/api/v0${path}`
   const headers: Record<string, string> = {
@@ -53,12 +53,12 @@ async function slskdFetch(path: string, options: RequestInit = {}): Promise<Resp
 export async function checkSlskdConnection(): Promise<{ ok: boolean; error?: string }> {
   try {
     const config = await getSlskdConfig()
-    if (!config) return { ok: false, error: 'slskd URL or API key not configured' }
+    if (!config) {return { ok: false, error: 'slskd URL or API key not configured' }}
 
     const response = await slskdFetch('/server')
-    if (!response.ok) return { ok: false, error: `slskd returned ${response.status}` }
+    if (!response.ok) {return { ok: false, error: `slskd returned ${response.status}` }}
     const data = await response.json().catch(() => null)
-    if (data?.isLoggedIn === false) return { ok: false, error: 'slskd is not logged in to Soulseek' }
+    if (data?.isLoggedIn === false) {return { ok: false, error: 'slskd is not logged in to Soulseek' }}
     return { ok: true }
   }
   catch (e: any) {
@@ -102,7 +102,7 @@ export interface SlskdFile {
 
 export async function getSlskdSearchResults(searchId: string): Promise<SlskdSearchResponse[]> {
   const response = await slskdFetch(`/searches/${searchId}/responses`)
-  if (response.status === 404) return []
+  if (response.status === 404) {return []}
   return await response.json()
 }
 
@@ -189,10 +189,10 @@ export function isAudioFile(filename: string): boolean {
 
 export function detectFormat(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
-  if (ext === 'flac') return 'FLAC'
-  if (ext === 'mp3') return 'MP3'
-  if (ext === 'ogg' || ext === 'opus') return 'OGG'
-  if (ext === 'aac' || ext === 'm4a') return 'AAC'
+  if (ext === 'flac') {return 'FLAC'}
+  if (ext === 'mp3') {return 'MP3'}
+  if (ext === 'ogg' || ext === 'opus') {return 'OGG'}
+  if (ext === 'aac' || ext === 'm4a') {return 'AAC'}
   return ext.toUpperCase()
 }
 
@@ -205,29 +205,29 @@ export function scoreSlskdResult(
   hasFreeSlot: boolean,
 ): number {
   // Format weight
-  let score = 0
-  if (format === 'FLAC') score = 100
-  else if (format === 'MP3' && avgBitrate >= 320) score = 80
-  else if (format === 'MP3' && avgBitrate >= 256) score = 60
-  else if (format === 'MP3') score = 40
-  else score = 20
+  let score: number
+  if (format === 'FLAC') {score = 100}
+  else if (format === 'MP3' && avgBitrate >= 320) {score = 80}
+  else if (format === 'MP3' && avgBitrate >= 256) {score = 60}
+  else if (format === 'MP3') {score = 40}
+  else {score = 20}
 
   // File count bonus (more complete albums score higher)
   score += Math.min(fileCount * 2, 30)
 
   // Upload speed bonus (bytes/sec)
-  if (uploadSpeed >= 5_000_000) score += 15
-  else if (uploadSpeed >= 1_000_000) score += 10
-  else if (uploadSpeed >= 500_000) score += 5
+  if (uploadSpeed >= 5_000_000) {score += 15}
+  else if (uploadSpeed >= 1_000_000) {score += 10}
+  else if (uploadSpeed >= 500_000) {score += 5}
 
   // Queue length penalty
-  if (queueLength > 50) score -= 25
-  else if (queueLength > 20) score -= 15
-  else if (queueLength > 10) score -= 10
+  if (queueLength > 50) {score -= 25}
+  else if (queueLength > 20) {score -= 15}
+  else if (queueLength > 10) {score -= 10}
 
   // Free slot bonus
-  if (hasFreeSlot) score += 15
-  else score -= 15
+  if (hasFreeSlot) {score += 15}
+  else {score -= 15}
 
   return Math.max(0, score)
 }
@@ -269,7 +269,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   // on basename AND exact byte size (from the queued search result) to avoid one download's finalize
   // capturing a same-named file that belongs to a different, still-in-flight download.
   const expected = new Map<string, number>()
-  for (const f of args.files) expected.set(basename(f.filename.replace(/\\/g, '/')), f.size)
+  for (const f of args.files) {expected.set(basename(f.filename.replace(/\\/g, '/')), f.size)}
 
   const targetDir = join(
     args.downloadsPath,
@@ -360,8 +360,8 @@ async function findFilesByBasename(
   const skipNames = new Set(['_ready', '.dmp-songkong', '_torrents'])
 
   async function walk(dir: string, depth: number) {
-    if (depth > maxDepth) return
-    let entries: { name: string; isFile: boolean; isDir: boolean }[] = []
+    if (depth > maxDepth) {return}
+    let entries: { name: string; isFile: boolean; isDir: boolean }[]
     try {
       const raw = await readdir(dir, { withFileTypes: true })
       entries = raw.map(e => ({ name: e.name, isFile: e.isFile(), isDir: e.isDirectory() }))
@@ -374,7 +374,7 @@ async function findFilesByBasename(
         const expectedSize = wanted.get(stripSlskdSuffix(e.name))!
         if (expectedSize > 0) {
           const actualSize = await stat(full).then(s => s.size).catch(() => -1)
-          if (actualSize !== expectedSize) continue // same name, wrong file — belongs to another transfer
+          if (actualSize !== expectedSize) {continue} // same name, wrong file — belongs to another transfer
         }
         results.push(full)
       }
@@ -395,7 +395,7 @@ async function findFilesByBasename(
  */
 export async function purgeDownloadedSourceFiles(downloadsPath: string, files: { filename: string; size: number }[]): Promise<number> {
   const expected = new Map<string, number>()
-  for (const f of files) expected.set(basename(f.filename.replace(/\\/g, '/')), f.size)
+  for (const f of files) {expected.set(basename(f.filename.replace(/\\/g, '/')), f.size)}
   if (expected.size === 0) { return 0 }
 
   const found = await findFilesByBasename(downloadsPath, expected, 10)
@@ -422,13 +422,13 @@ async function removeEmptyDirsUp(startDir: string, stopAt: string): Promise<void
   const normalizedStop = stopAt.replace(/[/\\]+$/, '')
   let current = startDir
   while (current && current !== normalizedStop && current.startsWith(normalizedStop + sep)) {
-    let isEmpty = false
+    let isEmpty: boolean
     try {
       const entries = await readdir(current)
       isEmpty = entries.length === 0
     }
     catch { return }
-    if (!isEmpty) return
+    if (!isEmpty) {return}
     try { await rmdir(current) }
     catch { return }
     current = dirname(current)

@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{
 })
 
 async function checkFavorite() {
-  if (!player.currentTrack?.id) return
+  if (!player.currentTrack?.id) {return}
   try {
     const { isFavorite: fav } = await $fetch<{ isFavorite: boolean }>(`/api/favorites/tracks/${player.currentTrack.id}`)
     isFavorite.value = fav

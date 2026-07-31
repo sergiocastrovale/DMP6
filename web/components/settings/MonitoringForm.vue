@@ -81,52 +81,52 @@ const { saving, saved, error, save } = useFormSave(async () => {
       </div>
 
       <SettingsField
-        label="Max concurrent downloads"
-        description="Cap on simultaneous active Soulseek transfers. The worker tops up to this. Default 5. (MAX_CONCURRENT_DOWNLOADS)"
-        type="number" placeholder="5"
         v-model="form.maxConcurrentDownloads"
+        label="Max concurrent downloads"
+        description="Cap on simultaneous active Soulseek transfers. The worker tops up to this. Default 5. (MAX_CONCURRENT_DOWNLOADS)" type="number"
+        placeholder="5"
       />
       <SettingsField
-        label="Search picks per interval"
-        description="How many new missing releases the worker searches each top-up. Default 3. (SEARCH_PICKS_PER_INTERVAL)"
-        type="number" placeholder="3"
         v-model="form.searchPicksPerInterval"
+        label="Search picks per interval"
+        description="How many new missing releases the worker searches each top-up. Default 3. (SEARCH_PICKS_PER_INTERVAL)" type="number"
+        placeholder="3"
       />
       <SettingsField
-        label="Search interval (seconds)"
-        description="Minimum seconds between download top-up runs (throttle). Default 60. (SEARCH_INTERVAL_SEC)"
-        type="number" placeholder="60"
         v-model="form.searchIntervalSec"
+        label="Search interval (seconds)"
+        description="Minimum seconds between download top-up runs (throttle). Default 60. (SEARCH_INTERVAL_SEC)" type="number"
+        placeholder="60"
       />
       <SettingsField
-        label="Catalogue-gap picks per run"
-        description="Monitored artists whose MusicBrainz catalogue is refreshed each gap run (round-robin). Default 20. (GAPS_PICKS_PER_RUN)"
-        type="number" placeholder="20"
         v-model="form.gapsPicksPerRun"
+        label="Catalogue-gap picks per run"
+        description="Monitored artists whose MusicBrainz catalogue is refreshed each gap run (round-robin). Default 20. (GAPS_PICKS_PER_RUN)" type="number"
+        placeholder="20"
       />
       <SettingsField
-        label="Catalogue-gap interval (minutes)"
-        description="Minutes between catalogue-gap runs. Default 5. (GAPS_INTERVAL_MIN)"
-        type="number" placeholder="5"
         v-model="form.gapsIntervalMin"
+        label="Catalogue-gap interval (minutes)"
+        description="Minutes between catalogue-gap runs. Default 5. (GAPS_INTERVAL_MIN)" type="number"
+        placeholder="5"
       />
       <SettingsField
-        label="Retry cooldown (days)"
-        description="Wait this many days before retrying a FAILED/UNAVAILABLE/INVALID release. Default 7. (RETRY_COOLDOWN_DAYS)"
-        type="number" placeholder="7"
         v-model="form.retryCooldownDays"
+        label="Retry cooldown (days)"
+        description="Wait this many days before retrying a FAILED/UNAVAILABLE/INVALID release. Default 7. (RETRY_COOLDOWN_DAYS)" type="number"
+        placeholder="7"
       />
       <SettingsField
-        label="No-progress timeout (seconds)"
-        description="Kill a download making no byte progress for this long. Default 60. (NO_PROGRESS_SEC)"
-        type="number" placeholder="60"
         v-model="form.noProgressSec"
+        label="No-progress timeout (seconds)"
+        description="Kill a download making no byte progress for this long. Default 60. (NO_PROGRESS_SEC)" type="number"
+        placeholder="60"
       />
       <SettingsField
-        label="Max attempts before giving up"
-        description="After this many failed attempts a release is abandoned (never auto-retried). Default 3. (MAX_DOWNLOAD_ATTEMPTS)"
-        type="number" placeholder="3"
         v-model="form.maxDownloadAttempts"
+        label="Max attempts before giving up"
+        description="After this many failed attempts a release is abandoned (never auto-retried). Default 3. (MAX_DOWNLOAD_ATTEMPTS)" type="number"
+        placeholder="3"
       />
 
       <div class="space-y-1.5">
@@ -165,8 +165,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
     <div class="flex items-center gap-3">
       <button
         :disabled="saving || !canEdit"
-        @click="save"
         class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+        @click="save"
       >
         <Save :size="15" />
         {{ saving ? 'Saving…' : 'Save Changes' }}

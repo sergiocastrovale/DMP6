@@ -2,6 +2,9 @@ import { createPinia, setActivePinia } from 'pinia'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useBrowseUrl } from '../../composables/useBrowseUrl'
+import { useBrowseStore } from '../../stores/browse'
+
 // Only useRoute is stubbed - useRouter is left real. Nuxt's own bootstrap plugins (payload,
 // route-announcer) call router.afterEach/beforeResolve during app init, which a plain mock object
 // doesn't implement; the real (in-memory, in the `nuxt` test environment) router does.
@@ -10,9 +13,6 @@ mockNuxtImport('useRoute', () => () => routeRef)
 
 const fetchMock = vi.fn().mockResolvedValue({ artists: [], total: 0 })
 vi.stubGlobal('$fetch', fetchMock)
-
-import { useBrowseUrl } from '../../composables/useBrowseUrl'
-import { useBrowseStore } from '../../stores/browse'
 
 describe('useBrowseUrl', () => {
   beforeEach(() => {

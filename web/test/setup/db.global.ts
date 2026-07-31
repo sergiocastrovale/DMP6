@@ -27,6 +27,6 @@ export default async function setup(_project: TestProject): Promise<() => Promis
   await seedTestData()
 
   return async () => {
-    if (stop) await stop()
+    if (stop) {await stop()}
   }
 }

@@ -24,13 +24,13 @@ const encode = (obj: object): string => {
 
 const decode = (token: string): Payload | null => {
   const i = token.lastIndexOf('.')
-  if (i === -1) return null
+  if (i === -1) {return null}
   const data = token.slice(0, i)
   const sigBuf = Buffer.from(token.slice(i + 1), 'base64url')
   const expected = Buffer.from(createHmac('sha256', SECRET).update(data).digest('base64url'), 'base64url')
-  if (sigBuf.length !== expected.length) return null
+  if (sigBuf.length !== expected.length) {return null}
   try {
-    if (!timingSafeEqual(sigBuf, expected)) return null
+    if (!timingSafeEqual(sigBuf, expected)) {return null}
     return JSON.parse(Buffer.from(data, 'base64url').toString()) as Payload
   }
   catch {
@@ -42,7 +42,7 @@ export const createSession = (userId: number, passwordHash: string, tokenVersion
   encode({ userId, exp: Date.now() + TTL, ph: phash(passwordHash), tv: tokenVersion })
 
 export const validateSession = (token: string | undefined): Payload | null => {
-  if (!token) return null
+  if (!token) {return null}
   const p = decode(token)
   return p && p.exp > Date.now() ? p : null
 }
@@ -67,5 +67,5 @@ export const destroyUserSessions = async (userId: number): Promise<void> => {
 
 export const destroySession = async (token: string): Promise<void> => {
   const session = validateSession(token)
-  if (session) await destroyUserSessions(session.userId)
+  if (session) {await destroyUserSessions(session.userId)}
 }

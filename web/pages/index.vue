@@ -75,8 +75,8 @@ onMounted(() => {
           <template v-else>
             <Block
               v-for="item in (section.items.value as Release[])"
-              :key="item.id"
               :id="item.id"
+              :key="item.id"
               :title="item.title"
               :title-link="`/artist/${item.artist!.slug}?releaseId=${item.id}`"
               :subtitle="item.artist!.name"

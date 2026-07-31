@@ -21,8 +21,8 @@ const { artistImage } = useImageUrl()
     <div v-else ref="scrollContainer" class="grid grid-cols-2 gap-x-5 gap-y-10 sm:grid-cols-3 lg:grid-cols-[repeat(auto-fill,minmax(130px,200px))] xl:grid-cols-[repeat(auto-fill,minmax(130px,220px))]">
       <Block
         v-for="artist in store.artists"
-        :key="artist.id"
         :id="artist.id"
+        :key="artist.id"
         :title="artist.name"
         :subtitle="`${artist.totalTracks.toLocaleString()} tracks`"
         :link="`/artist/${artist.slug}`"

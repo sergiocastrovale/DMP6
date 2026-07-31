@@ -51,66 +51,66 @@ const { saving, saved, error, save } = useFormSave(async () => {
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Image Storage</h2>
       <SettingsField
+        v-model="form.imageStorage"
         label="Storage Mode"
         description="Where images are stored. Overrides IMAGE_STORAGE env var."
         type="select"
         :options="storageOptions"
-        v-model="form.imageStorage"
       />
     </div>
 
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">S3 / Compatible Storage</h2>
       <SettingsField
+        v-model="form.storageImageBucket"
         label="Image Bucket"
         description="S3 bucket for release and artist images. Overrides STORAGE_IMAGE_BUCKET."
         placeholder="my-dmp-images"
-        v-model="form.storageImageBucket"
       />
       <SettingsField
+        v-model="form.storageBackupsBucket"
         label="Backups Bucket"
         description="S3 bucket for backups. Overrides STORAGE_BACKUPS_BUCKET."
         placeholder="my-dmp-backups"
-        v-model="form.storageBackupsBucket"
       />
       <SettingsField
+        v-model="form.awsRegion"
         label="AWS Region"
         description="Overrides AWS_REGION."
         placeholder="us-east-1"
-        v-model="form.awsRegion"
       />
       <SettingsField
+        v-model="form.awsAccessKeyId"
         label="Access Key ID"
         description="Overrides AWS_ACCESS_KEY_ID."
         placeholder="AKIAIOSFODNN7EXAMPLE"
-        v-model="form.awsAccessKeyId"
       />
       <SettingsField
+        v-model="form.awsSecretAccessKey"
         label="Secret Access Key"
         description="Overrides AWS_SECRET_ACCESS_KEY."
         type="password"
         :placeholder="settings?.awsSecretAccessKeySet ? 'Set — leave blank to keep' : '••••••••'"
-        v-model="form.awsSecretAccessKey"
       />
       <SettingsField
+        v-model="form.storageEndpoint"
         label="S3 Endpoint"
         description="Leave empty for AWS S3. Set for S3-compatible services (Backblaze, MinIO). Overrides STORAGE_ENDPOINT."
         placeholder="https://s3.us-west-001.backblazeb2.com"
-        v-model="form.storageEndpoint"
       />
       <SettingsField
+        v-model="form.storagePublicUrl"
         label="Public URL"
         description="Public base URL for serving S3 images. Overrides STORAGE_PUBLIC_URL."
         placeholder="https://your-bucket.s3.us-east-1.amazonaws.com"
-        v-model="form.storagePublicUrl"
       />
     </div>
 
     <div class="flex items-center gap-3">
       <button
         :disabled="saving || !canEdit"
-        @click="save"
         class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+        @click="save"
       >
         <Save :size="15" />
         {{ saving ? 'Saving…' : 'Save Changes' }}

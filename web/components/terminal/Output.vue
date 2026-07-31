@@ -46,15 +46,15 @@ watch(() => terminal.lines.length, () => {
           </span>
           <button
             v-if="terminal.isRunning"
-            @click="terminal.stop()"
             class="rounded p-1 text-ink-2 hover:bg-bg-2 hover:text-red-400"
             title="Stop process"
+            @click="terminal.stop()"
           >
             <Square :size="14" />
           </button>
           <button
-            @click="terminal.close()"
             class="rounded p-1 text-ink-2 hover:bg-bg-2 hover:text-ink"
+            @click="terminal.close()"
           >
             <X :size="16" />
           </button>
@@ -71,9 +71,9 @@ watch(() => terminal.lines.length, () => {
         </span>
         <button
           v-if="terminal.currentSession"
-          @click="copySession(terminal.currentSession!)"
           class="rounded p-0.5 text-ink-4 hover:text-ink-2"
           title="Copy"
+          @click="copySession(terminal.currentSession!)"
         >
           <Copy :size="12" />
         </button>

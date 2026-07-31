@@ -99,7 +99,7 @@ export function buildConnectedArtistByRelease(
   const map = new Map<string, string>()
   for (const link of releaseLinks) {
     const ca = connectedArtistById.get(link.artistId)
-    if (ca) map.set(link.localReleaseId, ca.name)
+    if (ca) {map.set(link.localReleaseId, ca.name)}
   }
   return map
 }
@@ -201,8 +201,8 @@ export function buildLocalAndGapCards(params: {
   }
 
   for (const mbr of mbById.values()) {
-    if (coveredMbIds.has(mbr.id)) continue
-    if (!ALLOWED_GAP_TYPES.has(mbr.type.slug)) continue
+    if (coveredMbIds.has(mbr.id)) {continue}
+    if (!ALLOWED_GAP_TYPES.has(mbr.type.slug)) {continue}
     const gapImg = resolveImage(null, null, 'releases')
     cards.push({
       id: mbr.id,

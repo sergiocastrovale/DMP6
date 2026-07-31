@@ -55,7 +55,7 @@ const sections: PlaylistSection[] = [
   <template v-for="section in sections" :key="section.type">
     <div v-if="section.items.value.length > 0" class="flex flex-col gap-4">
       <div class="flex items-center gap-2">
-        <component v-if="section.type !== 'MANUAL'" :is="section.icon" class="size-4 text-accent" />
+        <component :is="section.icon" v-if="section.type !== 'MANUAL'" class="size-4 text-accent" />
         <h2
           v-if="section.type !== 'MANUAL' || hasGenerated"
           class="text-lg font-semibold text-ink"

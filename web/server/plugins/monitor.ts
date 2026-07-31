@@ -52,13 +52,13 @@ export default defineNitroPlugin(() => {
     reconcileTorrentDownloads().catch(e => monitorLog('error', `torrent reconcile error: ${e?.message || e}`))
 
     const mon = await resolveMonitorSettings().catch(() => null)
-    if (!mon?.monitorEnabled) return
+    if (!mon?.monitorEnabled) {return}
 
     // Disk-full → auto-pause. When paused (manual or disk-full), skip all NEW automated work;
     // reconcile above still finalizes in-flight downloads and can free space.
     const { downloadsPath } = await resolveDownloadSettings()
     const paused = await enforceDiskGuard(downloadsPath, mon.downloadsMinFreeGb).catch(() => false)
-    if (paused) return
+    if (paused) {return}
 
     // Auto-merge finalizes already-downloaded READY releases into the library — source-independent, so
     // it runs regardless of acquisition state (no-op + off by default anyway).

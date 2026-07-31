@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePlayerStore } from '../../stores/player'
 
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- stubs the real MediaMetadata constructor for vi.stubGlobal
 class FakeMediaMetadata {
   constructor(init: Record<string, unknown>) { Object.assign(this, init) }
 }
@@ -17,7 +18,7 @@ class FakeAudio {
     (this.listeners[event] ??= []).push(cb)
   }
   dispatch(event: string) {
-    for (const cb of this.listeners[event] ?? []) cb()
+    for (const cb of this.listeners[event] ?? []) {cb()}
   }
   load = vi.fn()
   play = vi.fn().mockImplementation(() => {
@@ -165,8 +166,8 @@ describe('usePlayerStore', () => {
     // seeded directly from a test - only its externally observable effects (which track gets played,
     // and that a refill fetch fires) can be asserted.
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/tracks/random') return Promise.resolve(track({ id: 'random-catalogue' }))
-      if (url.startsWith('/api/tracks/random-batch')) return Promise.resolve([track({ id: 'batch1' })])
+      if (url === '/api/tracks/random') {return Promise.resolve(track({ id: 'random-catalogue' }))}
+      if (url.startsWith('/api/tracks/random-batch')) {return Promise.resolve([track({ id: 'batch1' })])}
       return Promise.resolve({})
     })
     const store = usePlayerStore()
@@ -180,7 +181,7 @@ describe('usePlayerStore', () => {
 
   it('next() in catalogue mode falls back to /api/tracks/random when the buffer is empty', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/tracks/random') return Promise.resolve(track({ id: 'r1' }))
+      if (url === '/api/tracks/random') {return Promise.resolve(track({ id: 'r1' }))}
       return Promise.resolve([])
     })
     const store = usePlayerStore()

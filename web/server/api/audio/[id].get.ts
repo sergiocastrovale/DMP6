@@ -9,17 +9,17 @@ export default defineEventHandler(async (event) => {
   await requirePermission(event, 'play.view')
 
   const id = getRouterParam(event, 'id')
-  if (!id) throw createError({ statusCode: 400, statusMessage: 'Missing id' })
+  if (!id) {throw createError({ statusCode: 400, statusMessage: 'Missing id' })}
 
   const track = await prisma.localReleaseTrack.findUnique({
     where: { id },
     select: { filePath: true },
   })
 
-  if (!track) throw createError({ statusCode: 404, statusMessage: 'Track not found' })
+  if (!track) {throw createError({ statusCode: 404, statusMessage: 'Track not found' })}
 
   const musicDir = getCachedSettings().musicDir
-  if (!musicDir) throw createError({ statusCode: 500, statusMessage: 'MUSIC_DIR not configured' })
+  if (!musicDir) {throw createError({ statusCode: 500, statusMessage: 'MUSIC_DIR not configured' })}
 
   const filePath = join(musicDir, track.filePath)
 

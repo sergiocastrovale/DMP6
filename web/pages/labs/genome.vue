@@ -285,7 +285,7 @@ onUnmounted(() => {
               :min="1"
               :max="20"
               class="w-full accent-accent"
-            />
+            >
           </div>
 
           <div>
@@ -298,7 +298,7 @@ onUnmounted(() => {
               :min="1"
               :max="10"
               class="w-full accent-accent"
-            />
+            >
           </div>
         </div>
 
@@ -359,8 +359,8 @@ onUnmounted(() => {
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
         <Block
           v-for="artist in dialogArtists"
-          :key="artist.id"
           :id="artist.id"
+          :key="artist.id"
           :title="artist.name"
           :image="artistImage(artist)"
           :link="`/artist/${artist.slug}`"

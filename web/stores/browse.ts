@@ -36,11 +36,11 @@ export const useBrowseStore = defineStore('browse', () => {
         sort: sortBy.value,
       }
 
-      if (searchQuery.value) params.search = searchQuery.value
-      if (letterFilter.value) params.letter = letterFilter.value
-      if (genreFilter.value) params.genre = genreFilter.value
-      if (minScore.value !== null) params.minScore = minScore.value
-      if (maxScore.value !== null) params.maxScore = maxScore.value
+      if (searchQuery.value) {params.search = searchQuery.value}
+      if (letterFilter.value) {params.letter = letterFilter.value}
+      if (genreFilter.value) {params.genre = genreFilter.value}
+      if (minScore.value !== null) {params.minScore = minScore.value}
+      if (maxScore.value !== null) {params.maxScore = maxScore.value}
 
       const data = await $fetch<{
         items: ArtistListItem[]
@@ -70,7 +70,7 @@ export const useBrowseStore = defineStore('browse', () => {
   }
 
   async function loadMore() {
-    if (!hasMore.value || loadingMore.value) return
+    if (!hasMore.value || loadingMore.value) {return}
     page.value++
     await fetchArtists(true)
   }
@@ -93,7 +93,7 @@ export const useBrowseStore = defineStore('browse', () => {
 
   function setSearch(query: string) {
     searchQuery.value = query
-    if (query) letterFilter.value = null
+    if (query) {letterFilter.value = null}
     fetchArtists()
   }
 

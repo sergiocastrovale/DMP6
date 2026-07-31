@@ -42,13 +42,13 @@ const baseOf = (path: string): string => path.replace(/\\/g, '/').split('/').pop
  */
 export function matchTorrentFolders(files: QbitFile[], releases: MatchableRelease[]): FolderMatch[] {
   const audio = files.filter(f => isAudioFile(f.name))
-  if (audio.length === 0 || releases.length === 0) return []
+  if (audio.length === 0 || releases.length === 0) {return []}
 
   // folder -> its audio files
   const byFolder = new Map<string, QbitFile[]>()
   for (const f of audio) {
     const dir = dirOf(f.name)
-    if (!dir) continue // skip torrent-root files (no album folder to match on)
+    if (!dir) {continue} // skip torrent-root files (no album folder to match on)
     const list = byFolder.get(dir) || []
     list.push(f)
     byFolder.set(dir, list)
@@ -60,9 +60,9 @@ export function matchTorrentFolders(files: QbitFile[], releases: MatchableReleas
 
   for (const rel of [...releases].sort((a, b) => b.title.length - a.title.length)) {
     const normTitle = normalizeTitle(rel.title)
-    if (normTitle.length < 2) continue
+    if (normTitle.length < 2) {continue}
     const candidates = folders.filter(f => !usedFolders.has(f.dir) && f.norm.includes(normTitle))
-    if (candidates.length === 0) continue
+    if (candidates.length === 0) {continue}
     // Prefer a folder whose name also mentions the release year.
     const pick = (rel.year ? candidates.find(c => c.norm.includes(String(rel.year))) : undefined) ?? candidates[0]!
     usedFolders.add(pick.dir)

@@ -53,7 +53,7 @@ const hasMetadata = computed(() => props.year || props.genre || (props.score !==
         :alt="title"
         loading="lazy"
         class="w-full h-full object-cover transition-transform duration-400 group-hover:scale-[1.04]"
-      />
+      >
       <slot name="overlay" />
     </div>
     <div class="flex flex-col gap-0.5 min-w-0">
@@ -80,7 +80,7 @@ const hasMetadata = computed(() => props.year || props.genre || (props.score !==
         :alt="title"
         loading="lazy"
         class="w-full h-full object-cover transition-transform duration-400 group-hover:scale-[1.04]"
-      />
+      >
       <slot name="overlay" />
       <PlayerPlayPauseButton
         v-if="playable && releaseId"

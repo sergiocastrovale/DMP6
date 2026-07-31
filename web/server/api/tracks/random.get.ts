@@ -29,7 +29,7 @@ export default defineEventHandler(async () => {
     `
   }
 
-  if (rows.length === 0) return null
+  if (rows.length === 0) {return null}
 
   const raw = rows[0]!
 

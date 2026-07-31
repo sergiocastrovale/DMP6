@@ -45,7 +45,7 @@ const handleTrackClick = (pt: PlaylistTrack) => {
 <template>
   <Table v-if="tracks.length > 0">
     <TableRow
-      v-for="(pt, idx) in tracks"
+      v-for="pt in tracks"
       :key="pt.id"
       :active="isCurrentTrack(pt.track.id)"
     >

@@ -206,7 +206,7 @@ async function undoSelected() {
           <thead>
             <tr class="border-b border-rule text-left">
               <th class="w-10 px-3 py-2">
-                <input type="checkbox" :checked="allChecked" @change="toggleAll" class="rounded border-rule bg-bg-2" />
+                <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" >
               </th>
               <th class="px-3 py-2 text-xs font-medium text-ink0">Folder</th>
               <th class="px-3 py-2 text-xs font-medium text-ink0">Previous</th>
@@ -237,9 +237,9 @@ async function undoSelected() {
                   type="checkbox"
                   :checked="isGroupChecked(g)"
                   :indeterminate="isGroupPartial(g)"
-                  @change="toggleGroup(g)"
                   class="rounded border-rule bg-bg-2"
-                />
+                  @change="toggleGroup(g)"
+                >
               </td>
               <td class="px-3 py-2">
                 <div class="flex flex-col gap-1">
@@ -286,14 +286,14 @@ async function undoSelected() {
         <div class="flex items-center gap-2">
           <button
             :disabled="(issuesStore.historyPage[activeTab] ?? 1) <= 1"
-            @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) - 1)"
             class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
+            @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) - 1)"
           >Prev</button>
           <span>{{ issuesStore.historyPage[activeTab] ?? 1 }} / {{ Math.ceil((issuesStore.historyTotal[activeTab] ?? 0) / 50) }}</span>
           <button
             :disabled="(issuesStore.historyPage[activeTab] ?? 1) >= Math.ceil((issuesStore.historyTotal[activeTab] ?? 0) / 50)"
-            @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) + 1)"
             class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
+            @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) + 1)"
           >Next</button>
         </div>
       </div>
@@ -310,9 +310,9 @@ async function undoSelected() {
           <input
             type="checkbox"
             :checked="selected.has(item.id)"
-            @change="toggleFile(item.id)"
             class="rounded border-rule bg-bg-2"
-          />
+            @change="toggleFile(item.id)"
+          >
           <span class="flex-1 truncate text-xs text-ink-2" :title="item.filePath">{{ fileName(item.filePath) }}</span>
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getStateEntries(item.appliedState)" :key="e.key" class="text-[11px] text-green-400">

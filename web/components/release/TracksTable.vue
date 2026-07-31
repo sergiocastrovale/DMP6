@@ -22,7 +22,7 @@ const { data, pending } = useFetch(`/api/releases/${props.releaseId}/tracks`)
 const tracks = computed(() => (data.value as any)?.tracks || [])
 
 function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
-  if (!data.value) return
+  if (!data.value) {return}
   const release = (data.value as any).release
 
   const playerTracks = allTracks

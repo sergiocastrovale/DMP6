@@ -11,7 +11,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
-  if (!slug) throw createError({ statusCode: 400, statusMessage: 'Missing slug' })
+  if (!slug) {throw createError({ statusCode: 400, statusMessage: 'Missing slug' })}
 
   const query = getQuery(event)
   const { page, pageSize } = parsePagination(query, { defaultSize: 20, maxSize: 500 })
@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     select: { id: true },
   })
 
-  if (!artist) throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
+  if (!artist) {throw createError({ statusCode: 404, statusMessage: 'Artist not found' })}
 
   const connectedArtists = await prisma.artist.findMany({
     where: { primaryArtistId: artist.id },
@@ -156,7 +156,7 @@ export default defineEventHandler(async (event) => {
     })
     const dlByMb = new Map<string, { id: string; status: string }>()
     for (const d of dls) {
-      if (d.mbReleaseId && !dlByMb.has(d.mbReleaseId)) dlByMb.set(d.mbReleaseId, { id: d.id, status: d.status })
+      if (d.mbReleaseId && !dlByMb.has(d.mbReleaseId)) {dlByMb.set(d.mbReleaseId, { id: d.id, status: d.status })}
     }
     for (const r of paged) {
       const d = r.mbReleaseRowId ? dlByMb.get(r.mbReleaseRowId) : undefined

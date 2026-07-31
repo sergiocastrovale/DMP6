@@ -18,7 +18,7 @@ watch(show, (open) => {
 
 async function create() {
   if (!name.value.trim() || creating.value)
-    return
+    {return}
 
   creating.value = true
   try {

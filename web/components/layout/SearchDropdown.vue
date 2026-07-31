@@ -124,7 +124,7 @@ const { artistImage, releaseImage } = useImageUrl()
 
 const hasResults = computed(() => {
   if (!props.results)
-    return false
+    {return false}
   return props.results.artists.length > 0
     || props.results.releases.length > 0
     || props.results.tracks.length > 0

@@ -17,7 +17,7 @@ const matrix = ref<Record<string, Set<string>>>({
 })
 
 watch(data, (d) => {
-  if (!d) return
+  if (!d) {return}
   matrix.value = {
     VIEWER: new Set(d.matrix.VIEWER),
     MANAGER: new Set(d.matrix.MANAGER),
@@ -93,9 +93,9 @@ const permLabel = (p: string) => {
               <input
                 type="checkbox"
                 :checked="matrix[role]?.has(perm) ?? false"
-                @change="toggle(role, perm)"
                 class="h-4 w-4 rounded border-rule bg-bg-2 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer accent-blue-500"
-              />
+                @change="toggle(role, perm)"
+              >
             </td>
           </tr>
         </tbody>

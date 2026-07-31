@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Loader2, Radar, EyeOff, HelpCircle, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
-import { type SortDir } from '~/helpers/functions'
+import type { SortDir } from '~/helpers/functions'
 
 interface ArtistRow {
   id: string
@@ -214,7 +214,7 @@ onMounted(() => {
         <thead>
           <tr class="border-b border-rule bg-bg-1 text-xs font-semibold uppercase tracking-wider text-ink-3">
             <th class="w-10 px-4 py-2 text-left">
-              <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" title="Select all rows" @change="toggleAll" />
+              <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" title="Select all rows" @change="toggleAll" >
             </th>
             <SortableTh label="Artist" sort-key="name" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
             <SortableTh label="Missing / MB total" sort-key="missingReleases" align="right" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
@@ -266,7 +266,7 @@ onMounted(() => {
                 class="rounded border-rule bg-bg-2"
                 :title="`Select ${artist.name}`"
                 @change="toggleRow(artist.id)"
-              />
+              >
             </td>
             <td class="px-4 py-2.5">
               <NuxtLink :to="`/artist/${artist.slug}`" class="text-sm text-ink transition-colors hover:text-accent">

@@ -14,7 +14,7 @@ const sseResponse = (body: string, ok = true) => ({
       let sent = false
       return {
         read: async () => {
-          if (sent) return { done: true, value: undefined }
+          if (sent) {return { done: true, value: undefined }}
           sent = true
           return { done: false, value: new TextEncoder().encode(body) }
         },

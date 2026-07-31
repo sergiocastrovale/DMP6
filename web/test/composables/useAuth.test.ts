@@ -2,21 +2,21 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useAuth } from '../../composables/useAuth'
+
 const { navigateToMock } = vi.hoisted(() => ({ navigateToMock: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigateToMock)
 mockNuxtImport('useRequestHeaders', () => () => ({}))
 mockNuxtImport('useState', () => {
   const state = new Map<string, ReturnType<typeof ref>>()
   return (key: string, init: () => unknown) => {
-    if (!state.has(key)) state.set(key, ref(init()))
+    if (!state.has(key)) {state.set(key, ref(init()))}
     return state.get(key)!
   }
 })
 
 const fetchMock = vi.fn()
 vi.stubGlobal('$fetch', fetchMock)
-
-import { useAuth } from '../../composables/useAuth'
 
 describe('useAuth', () => {
   beforeEach(() => {
@@ -62,7 +62,7 @@ describe('useAuth', () => {
 
   it('login navigates to /change-password when mustChangePassword is true', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/auth/login') return Promise.resolve({ ok: true, mustChangePassword: true })
+      if (url === '/api/auth/login') {return Promise.resolve({ ok: true, mustChangePassword: true })}
       return Promise.resolve({ id: 1, username: 'admin', role: 'ADMIN', permissions: [], mustChangePassword: true })
     })
     await useAuth().login('admin', 'admin')
@@ -71,7 +71,7 @@ describe('useAuth', () => {
 
   it('login navigates to / when mustChangePassword is false', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/auth/login') return Promise.resolve({ ok: true, mustChangePassword: false })
+      if (url === '/api/auth/login') {return Promise.resolve({ ok: true, mustChangePassword: false })}
       return Promise.resolve({ id: 1, username: 'admin', role: 'ADMIN', permissions: [], mustChangePassword: false })
     })
     await useAuth().login('admin', 'goodpass')

@@ -73,7 +73,7 @@ export async function routeAcquire(
   const best = await findBestSlskdResult(
     p.artistName, p.albumTitle, formats || undefined, minBitrate ?? undefined,
   ).catch(() => null)
-  if (!best) return false
+  if (!best) {return false}
   await acquireRelease({
     result: best,
     artistId: p.artistId,
@@ -94,9 +94,9 @@ export async function routeAcquire(
  */
 export async function forceRetryDownload(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id }, include: { artist: true } })
-  if (!row) throw createError({ statusCode: 404, message: 'download not found' })
-  if (!row.artist?.name) throw createError({ statusCode: 409, message: 'download has no artist' })
-  if (!row.artistId) throw createError({ statusCode: 409, message: 'download has no artist' })
+  if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
+  if (!row.artist?.name) {throw createError({ statusCode: 409, message: 'download has no artist' })}
+  if (!row.artistId) {throw createError({ statusCode: 409, message: 'download has no artist' })}
 
   // Route by source, honouring triedSources (a no-retry RuTracker miss is never re-tried even on a
   // force retry). Resets priority to 10 but keeps triedSources, so RT stays excluded once exhausted.
@@ -162,7 +162,7 @@ async function pickFresh(slots: number): Promise<MissingPick[]> {
   `)
   const picks: MissingPick[] = []
   for (const a of artists) {
-    if (picks.length >= slots) break
+    if (picks.length >= slots) {break}
     const rel = await prisma.$queryRaw<MissingPick[]>(Prisma.sql`
       SELECT mr.id, mr.title, mr.year, mr."releaseGroupId",
              ${a.id} AS "artistId", ${a.name} AS "artistName",
@@ -180,7 +180,7 @@ async function pickFresh(slots: number): Promise<MissingPick[]> {
         )
       ORDER BY random() LIMIT 1
     `)
-    if (rel[0]) picks.push(rel[0])
+    if (rel[0]) {picks.push(rel[0])}
   }
   return picks
 }
@@ -239,13 +239,13 @@ async function pickCandidates(slots: number, cooldownDays: number): Promise<Miss
  * DOWNLOADING before searching so the next tick excludes it. Run-guarded + throttled + disk-gated.
  */
 export async function topUpDownloads(): Promise<void> {
-  if (topUpRunning) return
+  if (topUpRunning) {return}
   const settings = await resolveDownloadSettings()
-  if (!settings.downloadsPath) return
+  if (!settings.downloadsPath) {return}
   const mon = await resolveMonitorSettings()
 
-  if (Date.now() - lastTopUpAt < Math.max(5, mon.searchIntervalSec) * 1000) return
-  if (await isDownloadsPaused()) return // global pause (manual or disk-full); see pauseState.ts
+  if (Date.now() - lastTopUpAt < Math.max(5, mon.searchIntervalSec) * 1000) {return}
+  if (await isDownloadsPaused()) {return} // global pause (manual or disk-full); see pauseState.ts
 
   topUpRunning = true
   lastTopUpAt = Date.now()
@@ -253,10 +253,10 @@ export async function topUpDownloads(): Promise<void> {
     const maxConc = Math.max(1, mon.maxConcurrentDownloads)
     const inFlight = await prisma.downloadedRelease.count({ where: { status: 'DOWNLOADING' } })
     const slots = Math.min(maxConc - inFlight, Math.max(1, mon.searchPicksPerInterval))
-    if (slots <= 0) return
+    if (slots <= 0) {return}
 
     const picks = await pickCandidates(slots, mon.retryCooldownDays)
-    if (picks.length === 0) return
+    if (picks.length === 0) {return}
 
     const configs = await getDownloadSources()
 
@@ -265,7 +265,7 @@ export async function topUpDownloads(): Promise<void> {
     // budget per pick since each RT search spends a unit. Skip if nothing eligible.
     const rtOk = await rtBudgetAvailable()
     const src = chooseSource(p.priority, p.triedSources, configs, rtOk)
-    if (!src) continue
+    if (!src) {continue}
 
     // Retry-pool picks carry their existing row (and attempts/priority); fresh picks create a new one.
     const data = {

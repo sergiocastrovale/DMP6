@@ -20,7 +20,7 @@ export const QBIT_CATEGORY = 'dmp'
 
 async function getQbitConfig(): Promise<QbitConfig | null> {
   const { qbittorrentUrl, qbittorrentUser, qbittorrentPass } = await resolveDownloadSettings()
-  if (!qbittorrentUrl) return null
+  if (!qbittorrentUrl) {return null}
   return { url: qbittorrentUrl.replace(/\/$/, ''), user: qbittorrentUser, pass: qbittorrentPass }
 }
 
@@ -31,19 +31,19 @@ async function login(config: QbitConfig): Promise<string> {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: config.url },
     body,
   })
-  if (!res.ok) throw createError({ statusCode: res.status, message: `qBittorrent login failed: ${res.status}` })
+  if (!res.ok) {throw createError({ statusCode: res.status, message: `qBittorrent login failed: ${res.status}` })}
   const text = await res.text().catch(() => '')
-  if (text.trim() === 'Fails.') throw createError({ statusCode: 403, message: 'qBittorrent login rejected (bad credentials)' })
+  if (text.trim() === 'Fails.') {throw createError({ statusCode: 403, message: 'qBittorrent login rejected (bad credentials)' })}
   // The session cookie name varies by build/version: classic `SID`, newer `QBT_SID_<port>`. Capture
   // whatever name=value pair qBittorrent set rather than matching a fixed name.
   const raw = (res.headers.getSetCookie?.()[0]) || res.headers.get('set-cookie') || ''
   const pair = raw.split(';')[0]?.trim() || ''
-  if (!pair.includes('=')) throw createError({ statusCode: 502, message: 'qBittorrent did not return a session cookie' })
+  if (!pair.includes('=')) {throw createError({ statusCode: 502, message: 'qBittorrent did not return a session cookie' })}
   return pair
 }
 
 async function getCookie(config: QbitConfig): Promise<string> {
-  if (cookie && Date.now() - cookieAt < COOKIE_TTL) return cookie
+  if (cookie && Date.now() - cookieAt < COOKIE_TTL) {return cookie}
   cookie = await login(config)
   cookieAt = Date.now()
   return cookie
@@ -57,7 +57,7 @@ export function clearQbitSession() {
 // Core request helper: attaches the session cookie, retries once on 403 (expired session).
 async function qbitFetch(path: string, init: RequestInit = {}, retry = true): Promise<Response> {
   const config = await getQbitConfig()
-  if (!config) throw createError({ statusCode: 503, message: 'qBittorrent not configured' })
+  if (!config) {throw createError({ statusCode: 503, message: 'qBittorrent not configured' })}
   const sid = await getCookie(config)
   const res = await fetch(`${config.url}/api/v2${path}`, {
     ...init,
@@ -77,9 +77,9 @@ async function qbitFetch(path: string, init: RequestInit = {}, retry = true): Pr
 export async function checkQbittorrentConnection(): Promise<{ ok: boolean; error?: string }> {
   try {
     const config = await getQbitConfig()
-    if (!config) return { ok: false, error: 'qBittorrent URL not configured' }
+    if (!config) {return { ok: false, error: 'qBittorrent URL not configured' }}
     const res = await qbitFetch('/app/version')
-    if (!res.ok) return { ok: false, error: `qBittorrent returned ${res.status}` }
+    if (!res.ok) {return { ok: false, error: `qBittorrent returned ${res.status}` }}
     return { ok: true }
   }
   catch (e: any) {
@@ -101,7 +101,7 @@ export interface QbitTorrentInfo {
 async function torrentsInfo(query: string): Promise<QbitTorrentInfo[]> {
   const res = await qbitFetch(`/torrents/info?${query}`)
   const data = (await res.json().catch(() => [])) as any[]
-  if (!Array.isArray(data)) return []
+  if (!Array.isArray(data)) {return []}
   return data.map(t => ({
     hash: t.hash, name: t.name, state: t.state,
     progress: t.progress ?? 0, size: t.size ?? 0,
@@ -110,7 +110,7 @@ async function torrentsInfo(query: string): Promise<QbitTorrentInfo[]> {
 }
 
 export async function getTorrentInfo(hashes: string[]): Promise<QbitTorrentInfo[]> {
-  if (hashes.length === 0) return []
+  if (hashes.length === 0) {return []}
   return torrentsInfo(`hashes=${hashes.join('|')}`)
 }
 
@@ -135,7 +135,7 @@ export async function addTorrentPaused(urlOrMagnet: string, savePath: string, ta
   for (let i = 0; i < 30; i++) {
     await new Promise(r => setTimeout(r, 1000))
     const found = await torrentsInfo(`tag=${encodeURIComponent(tag)}`)
-    if (found[0]?.hash) return found[0].hash
+    if (found[0]?.hash) {return found[0].hash}
   }
   throw createError({ statusCode: 504, message: 'qBittorrent did not register the torrent within 30s' })
 }
@@ -151,7 +151,7 @@ export interface QbitFile {
 export async function getTorrentFiles(hash: string): Promise<QbitFile[]> {
   const res = await qbitFetch(`/torrents/files?hash=${hash}`)
   const data = (await res.json().catch(() => [])) as any[]
-  if (!Array.isArray(data)) return []
+  if (!Array.isArray(data)) {return []}
   // Older qBit omits `index`; fall back to array position.
   return data.map((f, i) => ({
     index: f.index ?? i, name: f.name || '', size: f.size || 0,
@@ -161,7 +161,7 @@ export async function getTorrentFiles(hash: string): Promise<QbitFile[]> {
 
 // Set download priority for the given file indexes (0 = do not download, 1 = normal).
 export async function setFilePriorities(hash: string, indexes: number[], priority: number): Promise<void> {
-  if (indexes.length === 0) return
+  if (indexes.length === 0) {return}
   const body = new URLSearchParams({ hash, id: indexes.join('|'), priority: String(priority) })
   await qbitFetch('/torrents/filePrio', {
     method: 'POST',

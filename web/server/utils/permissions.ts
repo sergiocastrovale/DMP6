@@ -41,7 +41,7 @@ const matrixFromDefault = (): Record<Role, Set<string>> => ({
 })
 
 const loadMatrix = async (): Promise<Record<Role, Set<string>>> => {
-  if (cache) return cache
+  if (cache) {return cache}
   const rows = await prisma.rolePermission.findMany()
   // Empty table (fresh DB, failed seed) means every role gets zero perms — ADMIN locked out of
   // everything gated by requirePermission. Fall back to the hardcoded default matrix instead.
@@ -73,13 +73,13 @@ export const getPermissionsForRole = async (role: Role): Promise<string[]> => {
 
 export const requirePermission = async (event: H3Event, key: PermissionKey): Promise<void> => {
   const user = event.context.user
-  if (!user) throw createError({ statusCode: 401, message: 'Unauthorized' })
+  if (!user) {throw createError({ statusCode: 401, message: 'Unauthorized' })}
   const ok = await hasPermission(user.role, key)
-  if (!ok) throw createError({ statusCode: 403, message: `Forbidden: missing ${key}` })
+  if (!ok) {throw createError({ statusCode: 403, message: `Forbidden: missing ${key}` })}
 }
 
 export const requireRole = (event: H3Event, role: Role): void => {
   const user = event.context.user
-  if (!user) throw createError({ statusCode: 401, message: 'Unauthorized' })
-  if (user.role !== role) throw createError({ statusCode: 403, message: 'Forbidden' })
+  if (!user) {throw createError({ statusCode: 401, message: 'Unauthorized' })}
+  if (user.role !== role) {throw createError({ statusCode: 403, message: 'Forbidden' })}
 }

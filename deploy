@@ -26,6 +26,11 @@ echo "=== DMP Deploy ==="
 echo "Target: $NAS_USER@$NAS_HOST:$NAS_DEPLOY_PATH"
 echo ""
 
+# Lint + typecheck (fail loudly before wasting a build on broken code)
+echo "--- Lint + typecheck ---"
+(cd "$PROJECT_ROOT/web" && pnpm lint && pnpm typecheck)
+echo ""
+
 # Build
 echo "--- Building image ---"
 docker build -t dmp:latest "$PROJECT_ROOT"

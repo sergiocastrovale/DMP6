@@ -22,7 +22,7 @@ const cache = new Map<number, { user: CachedAuthUser | null, expiry: number }>()
 
 export async function getCachedAuthUser(userId: number): Promise<CachedAuthUser | null> {
   const entry = cache.get(userId)
-  if (entry && Date.now() < entry.expiry) return entry.user
+  if (entry && Date.now() < entry.expiry) {return entry.user}
 
   const user = await prisma.user.findUnique({
     where: { id: userId },

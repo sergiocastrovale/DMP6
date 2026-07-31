@@ -18,8 +18,8 @@ export function parseSseEvents(buffer: string): { events: SseEvent[], remainder:
     let event = 'message'
     let data = ''
     for (const line of part.split('\n')) {
-      if (line.startsWith('event: ')) event = line.slice(7)
-      else if (line.startsWith('data: ')) data = line.slice(6)
+      if (line.startsWith('event: ')) {event = line.slice(7)}
+      else if (line.startsWith('data: ')) {data = line.slice(6)}
     }
     events.push({ event, data })
   }

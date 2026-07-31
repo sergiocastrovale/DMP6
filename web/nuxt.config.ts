@@ -7,6 +7,7 @@ export default defineNuxtConfig({
   modules: [
     '@pinia/nuxt',
     '@vite-pwa/nuxt',
+    '@nuxt/eslint',
   ],
   vite: {
     plugins: [tailwindcss() as any],

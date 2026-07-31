@@ -117,6 +117,7 @@ const columns = computed<IssueColumn[]>(() => {
       { key: 'folder', label: 'Folder', sortable: false },
       { key: '_resync', label: '', sortable: false, width: 'w-24' },
     ]
+    default: return []
   }
 })
 

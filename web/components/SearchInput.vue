@@ -93,7 +93,7 @@ onUnmounted(() => {
         @keydown="handleKeydown"
         @focus="emit('focus', $event)"
         @blur="emit('blur', $event)"
-      />
+      >
       <button
         v-if="clearable && inputValue"
         class="shrink-0 text-ink-2 transition-colors hover:text-ink"

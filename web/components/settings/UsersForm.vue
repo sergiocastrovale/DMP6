@@ -97,8 +97,8 @@ const roles = [
       <div class="flex items-center justify-between">
         <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Users</h2>
         <button
-          @click="showCreate = !showCreate"
           class="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
+          @click="showCreate = !showCreate"
         >
           <Plus :size="14" /> New User
         </button>
@@ -110,19 +110,19 @@ const roles = [
             v-model="newUser.username"
             placeholder="Username"
             class="rounded border border-rule bg-bg-1 px-3 py-2 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
-          />
+          >
           <input
             v-model="newUser.email"
             placeholder="Email"
             type="email"
             class="rounded border border-rule bg-bg-1 px-3 py-2 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
-          />
+          >
           <input
             v-model="newUser.password"
             placeholder="Password"
             type="password"
             class="rounded border border-rule bg-bg-1 px-3 py-2 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
-          />
+          >
           <select
             v-model="newUser.role"
             class="rounded border border-rule bg-bg-1 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
@@ -134,14 +134,14 @@ const roles = [
         <div class="flex gap-2">
           <button
             :disabled="creating"
-            @click="createUser"
             class="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            @click="createUser"
           >
             {{ creating ? 'Creating…' : 'Create' }}
           </button>
           <button
-            @click="showCreate = false"
             class="rounded bg-bg-3 px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-bg-3"
+            @click="showCreate = false"
           >
             Cancel
           </button>
@@ -174,7 +174,7 @@ const roles = [
                 <input
                   v-model="editForm.email"
                   class="w-full rounded border border-rule bg-bg-2 px-2 py-1 text-sm text-ink focus:border-blue-500 focus:outline-none"
-                />
+                >
               </td>
               <td class="py-2 pr-4">
                 <select
@@ -190,19 +190,19 @@ const roles = [
                   type="password"
                   placeholder="New pw (optional)"
                   class="w-full rounded border border-rule bg-bg-2 px-2 py-1 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
-                />
+                >
               </td>
               <td class="py-2 text-right space-x-1">
                 <button
                   :disabled="saving"
-                  @click="saveEdit(u.id)"
                   class="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+                  @click="saveEdit(u.id)"
                 >
                   <Save :size="12" />
                 </button>
                 <button
-                  @click="cancelEdit"
                   class="rounded bg-bg-3 px-2 py-1 text-xs text-ink-2 hover:bg-bg-3"
+                  @click="cancelEdit"
                 >
                   Cancel
                 </button>
@@ -232,14 +232,14 @@ const roles = [
               </td>
               <td class="py-2 text-right space-x-1">
                 <button
-                  @click="startEdit(u)"
                   class="rounded bg-bg-3 px-2 py-1 text-xs text-ink-2 hover:bg-bg-3"
+                  @click="startEdit(u)"
                 >
                   Edit
                 </button>
                 <button
-                  @click="deleteUser(u.id)"
                   class="rounded bg-red-900/50 px-2 py-1 text-xs text-red-400 hover:bg-red-900"
+                  @click="deleteUser(u.id)"
                 >
                   <Trash2 :size="12" />
                 </button>

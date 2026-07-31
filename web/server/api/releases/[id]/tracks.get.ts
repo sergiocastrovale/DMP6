@@ -11,7 +11,7 @@ function normalizeTitle(title: string): string {
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
-  if (!id) throw createError({ statusCode: 400, statusMessage: 'Missing id' })
+  if (!id) {throw createError({ statusCode: 400, statusMessage: 'Missing id' })}
 
   // Try as MusicBrainzRelease first
   const mbRelease = await prisma.musicBrainzRelease.findUnique({
@@ -231,7 +231,7 @@ async function getLocalReleaseTracks(
     enrichedTracks.sort((a, b) => {
       const da = a.discNumber ?? 0
       const db = b.discNumber ?? 0
-      if (da !== db) return da - db
+      if (da !== db) {return da - db}
       const ta = a.trackNumber ?? 0
       const tb = b.trackNumber ?? 0
       return ta - tb

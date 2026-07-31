@@ -31,7 +31,7 @@ const sizeClass = computed(() => {
       :alt="title"
       class="size-full object-cover"
       loading="lazy"
-    />
+    >
     <div v-else class="flex size-full items-center justify-center text-lg font-bold text-ink-4">
       <Initial :name="title" />
     </div>

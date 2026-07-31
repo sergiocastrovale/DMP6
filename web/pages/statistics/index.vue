@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideSearch, Info } from 'lucide-vue-next'
 import type { Component } from 'vue'
-
-const NuxtLink = resolveComponent('NuxtLink')
 import type { Statistics } from '~/types/stats'
 import { formatNumber, formatPlaytime, formatFileSize, formatDate } from '~/helpers/functions'
+
+const NuxtLink = resolveComponent('NuxtLink')
 
 definePageMeta({ layout: 'admin' })
 

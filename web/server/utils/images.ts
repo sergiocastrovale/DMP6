@@ -22,15 +22,15 @@ function cachedExists(filePath: string): boolean {
     lastCacheClear = now
   }
   const cached = existsCache.get(filePath)
-  if (cached !== undefined) return cached
+  if (cached !== undefined) {return cached}
   const exists = existsSync(filePath)
   existsCache.set(filePath, exists)
   return exists
 }
 
 export function localImageExists(type: 'artists' | 'releases', filename: string): boolean {
-  if (!filename) return false
-  if (filename.includes('..') || filename.includes('/')) return false
+  if (!filename) {return false}
+  if (filename.includes('..') || filename.includes('/')) {return false}
   const filePath = resolve(join(getImageDir(), type, filename))
   return cachedExists(filePath)
 }

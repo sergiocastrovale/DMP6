@@ -35,7 +35,7 @@ export async function transcodeDirToMp3320(dir: string): Promise<{ converted: nu
 
   const files = await collectAudioFiles(dir)
   for (const src of files) {
-    if (!CONVERT_EXTENSIONS.has(ext(src))) continue // keep mp3 and non-audio
+    if (!CONVERT_EXTENSIONS.has(ext(src))) {continue} // keep mp3 and non-audio
     const out = src.replace(/\.[^.]+$/, '.mp3')
     const part = `${out}.part`
     try {
@@ -54,7 +54,7 @@ export async function transcodeDirToMp3320(dir: string): Promise<{ converted: nu
       ], { maxBuffer: 1024 * 1024 * 16 })
       await rename(part, out)
       // remove the source (unless it shared the .mp3 name, which can't happen here)
-      if (src !== out) await unlink(src).catch(e => warn(`could not delete source ${basename(src)}: ${e.message}`))
+      if (src !== out) {await unlink(src).catch(e => warn(`could not delete source ${basename(src)}: ${e.message}`))}
       converted++
     }
     catch (e: any) {
@@ -70,7 +70,7 @@ export async function transcodeDirToMp3320(dir: string): Promise<{ converted: nu
     await renameFromTags(file).catch(e => warn(`rename failed ${basename(file)}: ${e.message || e}`))
   }
 
-  if (converted || failed) log(`${dir}: converted ${converted}, failed ${failed}`)
+  if (converted || failed) {log(`${dir}: converted ${converted}, failed ${failed}`)}
   return { converted, failed }
 }
 
@@ -97,7 +97,7 @@ export async function probeTags(file: string): Promise<AudioTags> {
     for (const src of sources) {
       for (const k of keys) {
         const found = Object.entries(src).find(([key]) => key.toLowerCase() === k)
-        if (found && String(found[1]).trim()) return String(found[1]).trim()
+        if (found && String(found[1]).trim()) {return String(found[1]).trim()}
       }
     }
     return undefined
@@ -115,22 +115,22 @@ export async function probeTags(file: string): Promise<AudioTags> {
 /** Rename a single mp3 to `NN. Title.mp3`; no-op when tags are missing or the target exists. */
 async function renameFromTags(file: string): Promise<void> {
   const { track, title } = await probeTags(file)
-  if (!track || !title) return
+  if (!track || !title) {return}
 
   const num = Number.parseInt(track, 10) // handles "1" and "1/12"
-  if (!Number.isFinite(num)) return
+  if (!Number.isFinite(num)) {return}
 
   const name = `${String(num).padStart(2, '0')}. ${sanitize(title)}.mp3`
   const dest = join(dirname(file), name)
-  if (dest === file) return
+  if (dest === file) {return}
   // Don't clobber an existing file.
-  if (await access(dest).then(() => true, () => false)) return
+  if (await access(dest).then(() => true, () => false)) {return}
   await rename(file, dest)
 }
 
 export async function collectAudioFiles(dir: string, depth = 0): Promise<string[]> {
-  if (depth > 6) return []
-  let entries: { name: string; isDir: boolean }[] = []
+  if (depth > 6) {return []}
+  let entries: { name: string; isDir: boolean }[]
   try {
     const raw = await readdir(dir, { withFileTypes: true })
     entries = raw.map(e => ({ name: e.name, isDir: e.isDirectory() }))
@@ -140,8 +140,8 @@ export async function collectAudioFiles(dir: string, depth = 0): Promise<string[
   const out: string[] = []
   for (const e of entries) {
     const full = join(dir, e.name)
-    if (e.isDir) out.push(...await collectAudioFiles(full, depth + 1))
-    else out.push(full)
+    if (e.isDir) {out.push(...await collectAudioFiles(full, depth + 1))}
+    else {out.push(full)}
   }
   return out
 }

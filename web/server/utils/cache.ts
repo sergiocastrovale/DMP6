@@ -9,11 +9,11 @@ export async function cachedResponse<T>(
   ttlSeconds: number,
   fn: () => Promise<T>,
 ): Promise<T> {
-  if (!redis) return fn()
+  if (!redis) {return fn()}
 
   try {
     const cached = await redis.get(key)
-    if (cached) return JSON.parse(cached) as T
+    if (cached) {return JSON.parse(cached) as T}
   }
   catch { /* ignore */ }
 
@@ -28,7 +28,7 @@ export async function cachedResponse<T>(
 }
 
 export async function invalidateCache(pattern: string) {
-  if (!redis) return
+  if (!redis) {return}
   try {
     if (!pattern.includes('*')) {
       await redis.del(pattern)
@@ -38,7 +38,7 @@ export async function invalidateCache(pattern: string) {
     do {
       const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100)
       cursor = next
-      if (keys.length) await redis.del(...keys)
+      if (keys.length) {await redis.del(...keys)}
     } while (cursor !== '0')
   }
   catch { /* ignore */ }

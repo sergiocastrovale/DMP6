@@ -45,7 +45,7 @@ describe('useFormSave', () => {
 
   it('clears a previous error on the next successful save', async () => {
     let shouldFail = true
-    const form = useFormSave(async () => { if (shouldFail) throw new Error('first') })
+    const form = useFormSave(async () => { if (shouldFail) {throw new Error('first')} })
     await form.save()
     expect(form.error.value).toBe('first')
     shouldFail = false

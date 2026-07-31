@@ -203,11 +203,11 @@ onMounted(async () => {
 
         <div v-if="previewUrl" class="cursor-pointer overflow-hidden rounded-lg" title="Click to open full resolution" @click="handleOpenPreview">
           <img
-            :src="previewUrl"
             :key="previewUrl"
+            :src="previewUrl"
             alt="Mosaic preview"
             class="w-full transition-opacity hover:opacity-90"
-          />
+          >
         </div>
         <p v-else class="text-sm text-ink0">
           Click the view button on a mosaic to see its preview here.

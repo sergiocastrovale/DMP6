@@ -29,7 +29,7 @@ async function save() {
     error.value = 'Please enter a valid name'
     return
   }
-  if (!props.trackId) return
+  if (!props.trackId) {return}
 
   saving.value = true
   error.value = ''

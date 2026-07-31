@@ -9,7 +9,7 @@ let hoverTimeout: ReturnType<typeof setTimeout> | null = null
 const isClick = computed(() => (props.trigger ?? 'click') === 'click')
 
 function onTriggerClick() {
-  if (isClick.value) open.value = !open.value
+  if (isClick.value) {open.value = !open.value}
 }
 
 function scheduleClose() {
@@ -20,7 +20,7 @@ function scheduleClose() {
 
 function cancelClose() {
   if (!isClick.value) {
-    if (hoverTimeout) clearTimeout(hoverTimeout)
+    if (hoverTimeout) {clearTimeout(hoverTimeout)}
     open.value = true
   }
 }
@@ -30,7 +30,7 @@ function close() {
 }
 
 onBeforeUnmount(() => {
-  if (hoverTimeout) clearTimeout(hoverTimeout)
+  if (hoverTimeout) {clearTimeout(hoverTimeout)}
 })
 </script>
 

@@ -144,7 +144,7 @@ function lookupGenre(tokens: string[], map: Record<string, number>): number | nu
         best = { key, score }
       }
     }
-    if (best) scores.push(best.score)
+    if (best) {scores.push(best.score)}
   }
   return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null
 }
@@ -157,10 +157,10 @@ function clampMood(val: unknown): number {
 
 // Resolve a metadata key across MP3 (e.g. "MOOD_HAPPY") and iTunes (e.g. "----:com.apple.iTunes:MOOD_HAPPY") variants
 function getMeta(meta: Record<string, string | number> | null, key: string): string | number | undefined {
-  if (!meta) return undefined
-  if (meta[key] !== undefined) return meta[key]
+  if (!meta) {return undefined}
+  if (meta[key] !== undefined) {return meta[key]}
   const itunesKey = `----:com.apple.iTunes:${key}`
-  if (meta[itunesKey] !== undefined) return meta[itunesKey]
+  if (meta[itunesKey] !== undefined) {return meta[itunesKey]}
   return undefined
 }
 
@@ -171,11 +171,11 @@ function hasMoodData(meta: Record<string, string | number> | null): boolean {
 
 // Get BPM from any available key variant, returns integer or null
 function getBpm(meta: Record<string, string | number> | null): number | null {
-  if (!meta) return null
+  if (!meta) {return null}
   for (const key of ['IntegerBpm', 'BPM', 'Bpm', 'FBPM', 'fBPM', '----:com.apple.iTunes:fBPM', 'fBPM2']) {
     if (meta[key] !== undefined) {
       const v = typeof meta[key] === 'string' ? parseFloat(meta[key] as string) : meta[key] as number
-      if (!isNaN(v) && v > 0) return Math.round(v)
+      if (!isNaN(v) && v > 0) {return Math.round(v)}
     }
   }
   return null
@@ -294,11 +294,11 @@ function scoreEnergy(meta: Record<string, string | number> | null, genre: GenreS
 }
 
 function scoreEra(year: number | null, slider: number): number {
-  if (year === null) return 0.5
+  if (year === null) {return 0.5}
 
   const [targetMin, targetMax] = ERA_CONFIGS[slider]!
 
-  if (year >= targetMin && year <= targetMax) return 1.0
+  if (year >= targetMin && year <= targetMax) {return 1.0}
 
   // Smooth linear decay: 0 at 30 years away from the target range edge
   const dist = Math.min(Math.abs(year - targetMin), Math.abs(year - targetMax))
@@ -306,7 +306,7 @@ function scoreEra(year: number | null, slider: number): number {
 }
 
 function scoreFamiliarity(playCount: number, lastPlayedAt: Date | null, slider: number): number {
-  if (slider === 9 && playCount > 0) return 0
+  if (slider === 9 && playCount > 0) {return 0}
 
   // Weight play count by recency: plays from 1 year ago count half
   const daysSince = lastPlayedAt ? (Date.now() - new Date(lastPlayedAt).getTime()) / 86400000 : Infinity
@@ -369,7 +369,7 @@ export function getPoolCacheKey(params: ExploreParams): string {
 
 export function getCachedPool(key: string, excludeIds: string[]): TrackCandidate[] | null {
   const entry = poolCache.get(key)
-  if (!entry) return null
+  if (!entry) {return null}
   if (Date.now() - entry.createdAt > POOL_TTL) {
     poolCache.delete(key)
     return null
@@ -397,7 +397,7 @@ export function removeFromPool(key: string, trackId: string): void {
 }
 
 export function weightedRandomPick(scored: ScoredTrack[]): ScoredTrack | null {
-  if (scored.length === 0) return null
+  if (scored.length === 0) {return null}
 
   // Softmax temperature sampling over all candidates
   // T < 1 sharpens the distribution (favors high scores), T > 1 flattens it
@@ -415,7 +415,7 @@ export function weightedRandomPick(scored: ScoredTrack[]): ScoredTrack | null {
   let r = Math.random() * totalWeight
   for (let i = 0; i < scored.length; i++) {
     r -= weights[i]!
-    if (r <= 0) return scored[i]!
+    if (r <= 0) {return scored[i]!}
   }
 
   return scored[scored.length - 1] ?? null

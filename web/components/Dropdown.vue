@@ -18,12 +18,12 @@ const emit = defineEmits<{
 const open = ref(false)
 
 const selectedLabel = computed(() => {
-  if (!props.modelValue) return props.placeholder || 'All'
+  if (!props.modelValue) {return props.placeholder || 'All'}
   return props.options.find(o => o.value === props.modelValue)?.label || props.modelValue
 })
 
 const selectedClasses = computed(() => {
-  if (!props.modelValue) return ''
+  if (!props.modelValue) {return ''}
   return props.options.find(o => o.value === props.modelValue)?.classes || ''
 })
 

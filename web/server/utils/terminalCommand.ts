@@ -81,6 +81,6 @@ const EXIT_PREFIX = 'DMP_EXIT:'
 // Returns the parsed exit code for a `DMP_EXIT:<code>` sentinel line, or null if the line isn't one.
 // A non-numeric code (shouldn't happen - `$?` is always numeric) falls back to 0 rather than NaN.
 export const parseExitLine = (line: string): number | null => {
-  if (!line.startsWith(EXIT_PREFIX)) return null
+  if (!line.startsWith(EXIT_PREFIX)) {return null}
   return parseInt(line.slice(EXIT_PREFIX.length), 10) || 0
 }

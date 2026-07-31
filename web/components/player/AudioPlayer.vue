@@ -69,7 +69,7 @@ async function loadPlaylists() {
 
 async function togglePlaylist(playlistSlug: string) {
   if (!player.currentTrack)
-    return
+    {return}
   const isIn = trackPlaylistSlugs.value.has(playlistSlug)
   try {
     if (isIn) {

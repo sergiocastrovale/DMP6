@@ -1,5 +1,5 @@
 export default defineNuxtRouteMiddleware(() => {
-  if (import.meta.server) return
+  if (import.meta.server) {return}
 
   const { isAdmin } = useAuth()
   if (!isAdmin.value) {

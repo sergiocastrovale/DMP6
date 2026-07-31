@@ -57,9 +57,9 @@ export const useMosaicStore = defineStore('mosaic', () => {
 
         for (const { event: eventType, data } of events) {
           if (eventType === 'progress') {
-            try { progress.value = JSON.parse(data) } catch {}
+            try { progress.value = JSON.parse(data) } catch { /* ignore */ }
           } else if (eventType === 'result') {
-            try { lastResult.value = JSON.parse(data) } catch {}
+            try { lastResult.value = JSON.parse(data) } catch { /* ignore */ }
             await loadMosaics()
           }
         }

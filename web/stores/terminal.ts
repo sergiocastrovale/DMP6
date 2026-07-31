@@ -42,7 +42,7 @@ export const useTerminalStore = defineStore('terminal', () => {
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {break}
 
         buffer += decoder.decode(value, { stream: true })
         const { events, remainder } = parseSseEvents(buffer)

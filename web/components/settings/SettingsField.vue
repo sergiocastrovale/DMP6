@@ -30,6 +30,6 @@ const model = defineModel<string | number | null>()
       :type="type === 'password' ? 'password' : type === 'number' ? 'number' : 'text'"
       :placeholder="placeholder"
       class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
-    />
+    >
   </div>
 </template>

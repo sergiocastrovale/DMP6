@@ -29,10 +29,10 @@ const { saving, saved, error, save } = useFormSave(async () => {
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Music Library</h2>
 
       <SettingsField
+        v-model="musicDir"
         label="Music Directory"
         description="Absolute path to your music library root. Overrides MUSIC_DIR env var. Used by index script and audio streaming."
         placeholder="/path/to/your/music"
-        v-model="musicDir"
       />
 
       <div class="space-y-1.5">
@@ -46,8 +46,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
       <div class="flex items-center gap-3 pt-2">
         <button
           :disabled="saving || !canEdit"
-          @click="save"
           class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          @click="save"
         >
           <Save :size="15" />
           {{ saving ? 'Saving…' : 'Save' }}

@@ -64,7 +64,7 @@ const onBulkAction = (key: string) => {
     <div class="flex items-center justify-between gap-4">
       <div class="flex items-center gap-2">
         <SearchInput v-model="search" placeholder="Search ready to merge…" />
-        <Dropdown :options="artistOptions" v-model="selectedArtist" placeholder="All artists" />
+        <Dropdown v-model="selectedArtist" :options="artistOptions" placeholder="All artists" />
       </div>
       <UiButton v-if="queueReady.length" size="sm" variant="primary" :icon="FolderInput" :loading="mergeActive" title="Merge all ready releases into the library" @click="mergeAll">
         Merge all ({{ queueReady.length }})

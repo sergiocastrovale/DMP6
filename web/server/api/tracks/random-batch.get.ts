@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
 
   const rows = await fetchRandomTrackRows(prisma, count)
 
-  if (rows.length === 0) return []
+  if (rows.length === 0) {return []}
 
   // Batch-fetch release data for all tracks in one query
   const releaseIds = [...new Set(rows.map(r => r.localReleaseId).filter(Boolean))] as string[]

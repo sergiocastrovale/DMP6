@@ -131,8 +131,8 @@ const unfavoriteTrack = async (trackId: string) => {
         >
           <Block
             v-for="fav in releases"
-            :key="fav.id"
             :id="fav.release.id"
+            :key="fav.id"
             :title="fav.release.title"
             :title-link="`/artist/${fav.release.artist!.slug}?releaseId=${fav.release.id}`"
             :subtitle="fav.release.artist!.name"

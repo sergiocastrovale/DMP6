@@ -5,7 +5,7 @@ describe('settingsSecrets', () => {
   describe('maskSettingsSecrets', () => {
     it('blanks every secret field and adds a Set boolean flag', () => {
       const row: Record<string, unknown> = { id: 'main', slskdUrl: 'http://x' }
-      for (const field of SECRET_SETTINGS_FIELDS) row[field] = 'super-secret-value'
+      for (const field of SECRET_SETTINGS_FIELDS) {row[field] = 'super-secret-value'}
 
       const masked = maskSettingsSecrets(row)
 

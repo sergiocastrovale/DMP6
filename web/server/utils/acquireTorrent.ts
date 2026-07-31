@@ -61,10 +61,10 @@ export async function acquireTorrentRelease(
   triggerRowId: string,
 ): Promise<{ id: string } | null> {
   const settings = await resolveDownloadSettings()
-  if (!settings.qbittorrentUrl || !settings.prowlarrUrl || !settings.qbittorrentSavePath) return null
+  if (!settings.qbittorrentUrl || !settings.prowlarrUrl || !settings.qbittorrentSavePath) {return null}
 
   const results = await prowlarrSearch(`${params.artistName} ${params.albumTitle}`.trim()).catch(() => [])
-  if (results.length === 0) return null
+  if (results.length === 0) {return null}
 
   const missing = await missingReleasesForArtist(params.artistId)
   // Always include the trigger release even if (rarely) not in the MISSING set yet.
@@ -104,7 +104,7 @@ export async function acquireTorrentRelease(
       const existing = dedupKey
         ? await prisma.downloadedRelease.findFirst({ where: { ...dedupKey, status: { in: ACTIVE as unknown as any[] } } })
         : null
-      if (!existing) fulfill.push(m)
+      if (!existing) {fulfill.push(m)}
     }
 
     // Download only the fulfilled folders; deselect everything else.

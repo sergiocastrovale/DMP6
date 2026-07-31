@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   await requirePermission(event, 'play.view')
 
   const id = getRouterParam(event, 'id')
-  if (!id) throw createError({ statusCode: 400, statusMessage: 'Missing id' })
+  if (!id) {throw createError({ statusCode: 400, statusMessage: 'Missing id' })}
 
   const track = await prisma.localReleaseTrack.findUnique({
     where: { id },
@@ -61,7 +61,7 @@ export default defineEventHandler(async (event) => {
       invalidateCache('stats'),
     ]
     for (const lra of track.localRelease.artists) {
-      if (lra.artist.slug) cacheInvalidations.push(invalidateCache(`artist:${lra.artist.slug}`))
+      if (lra.artist.slug) {cacheInvalidations.push(invalidateCache(`artist:${lra.artist.slug}`))}
     }
     await Promise.all(cacheInvalidations)
   }

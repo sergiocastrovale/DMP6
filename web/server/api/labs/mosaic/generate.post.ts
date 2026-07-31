@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
     setMosaicProcess(child)
 
     const cleanup = () => {
-      try { unlinkSync(manifestPath) } catch {}
+      try { unlinkSync(manifestPath) } catch { /* ignore */ }
     }
 
     child.on('error', (err) => {

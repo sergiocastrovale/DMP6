@@ -362,7 +362,7 @@ onUnmounted(() => {
             :min="1"
             :max="20"
             class="w-full accent-accent"
-          />
+          >
         </div>
 
         <div v-if="graphData && graphData.nodes.length > 0" class="mt-4 text-xs text-ink-2">

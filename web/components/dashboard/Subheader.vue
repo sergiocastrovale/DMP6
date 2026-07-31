@@ -24,7 +24,7 @@ const ctas: [string, string][] = [
   ['It\'s been a while since ', ', hasn\'t it?'],
 ]
 
-const pick = <T>(arr: T[], seed: number): T => arr[seed % arr.length]!
+const pick = <T,>(arr: T[], seed: number): T => arr[seed % arr.length]!
 
 const seed = useState('dashboard-seed', () => Math.floor(Math.random() * 1000))
 const greeting = pick(greetings, seed.value)

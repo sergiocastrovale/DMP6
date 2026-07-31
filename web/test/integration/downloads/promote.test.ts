@@ -224,8 +224,8 @@ describe('promote.ts (real Postgres)', () => {
       let call = 0
       execFileMock.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: (e: Error | null, o: string, err: string) => void) => {
         call++
-        if (call === 1) cb(null, '', '') // index --folders: no-op success
-        else cb(new Error('sync: MusicBrainz API unavailable (503)'), '', '') // sync --release: tool failure
+        if (call === 1) {cb(null, '', '')} // index --folders: no-op success
+        else {cb(new Error('sync: MusicBrainz API unavailable (503)'), '', '')} // sync --release: tool failure
       })
 
       const { localReleaseId, error } = await mergeDownloadedRelease(dl.id)

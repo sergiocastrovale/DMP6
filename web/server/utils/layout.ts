@@ -31,27 +31,27 @@ const resolveAlbumType = async (mbReleaseId?: string | null, releaseGroupId?: st
       where: { id: mbReleaseId },
       select: { type: { select: { name: true } } },
     })
-    if (rel?.type?.name) return rel.type.name
+    if (rel?.type?.name) {return rel.type.name}
   }
   if (releaseGroupId) {
     const rel = await prisma.musicBrainzRelease.findFirst({
       where: { releaseGroupId },
       select: { type: { select: { name: true } } },
     })
-    if (rel?.type?.name) return rel.type.name
+    if (rel?.type?.name) {return rel.type.name}
   }
   return 'Album'
 }
 
 /** Move a single file, copy+unlink fallback for cross-device / permission-restricted mounts. */
 const moveFile = async (src: string, dest: string): Promise<void> => {
-  if (src === dest) return
+  if (src === dest) {return}
   await mkdir(dirname(dest), { recursive: true })
   try {
     await rename(src, dest)
   }
   catch (e: any) {
-    if (!['EXDEV', 'EACCES', 'EPERM'].includes(e?.code)) throw e
+    if (!['EXDEV', 'EACCES', 'EPERM'].includes(e?.code)) {throw e}
     await copyFile(src, dest)
     await unlink(src).catch(() => {})
   }
@@ -63,7 +63,7 @@ const removeEmptyDirsUp = async (startDir: string, stopAt: string): Promise<void
   let current = startDir
   while (current && current !== stop && current.startsWith(stop + sep)) {
     try {
-      if ((await readdir(current)).length !== 0) return
+      if ((await readdir(current)).length !== 0) {return}
       await rmdir(current)
     }
     catch { return }
@@ -86,10 +86,10 @@ export const transformToLibraryLayout = async (
     where: { id: downloadId },
     include: { artist: { select: { name: true } } },
   })
-  if (!row) throw new Error(`download ${downloadId} not found`)
+  if (!row) {throw new Error(`download ${downloadId} not found`)}
 
   const { downloadsPath } = await resolveDownloadSettings()
-  if (!downloadsPath) throw new Error('DOWNLOADS_PATH not configured')
+  if (!downloadsPath) {throw new Error('DOWNLOADS_PATH not configured')}
 
   // Pass 1: probe every track (multi-disc detection + year fallback).
   const files = (await collectAudioFiles(stagingDir)).filter(f => ext(f) === 'mp3')
