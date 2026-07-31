@@ -90,7 +90,9 @@ pub async fn ensure_local_release(
         r#"INSERT INTO "LocalRelease" (id, title, year, "matchStatus", "forcedComplete", "totalPlayCount", "totalDuration", "totalFileSize", "createdAt", "updatedAt", "folderPath", "groupKey")
            VALUES ($1, $2, $3, 'UNMATCHED', false, 0, 0, 0, $4, $4, $5, $6)
            ON CONFLICT ("groupKey") DO UPDATE SET
+             title = EXCLUDED.title,
              year = COALESCE(EXCLUDED.year, "LocalRelease".year),
+             "folderPath" = EXCLUDED."folderPath",
              "updatedAt" = $4
            RETURNING id"#,
     )
