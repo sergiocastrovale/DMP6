@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use common::artists::split_artists;
 use common::filters::sanitize_mb_id;
 use sqlx::PgPool;
 
@@ -254,6 +255,27 @@ pub async fn find_mb_match_with_fallback(
             if let Some(m) =
                 try_release_group_credits(client, title, tag, artist_name, limiter).await?
             {
+                return Ok(Some(m));
+            }
+        }
+    }
+
+    // Step 6: the whole raw tag never resolved (steps 3-5) - split it by separators
+    // (feat./&/,/;// etc., via the same splitter the unsplit-artist fix uses) and search each
+    // individual member. Picks up compound tags like "Artist A & Artist B" where neither the
+    // combined tag nor a plain-name search for it matches anything in MB.
+    let mut seen_parts: HashSet<String> = seen_tags;
+    for (tag, _) in &all_tags {
+        let (mains, feats) = split_artists(tag);
+        for part in mains.iter().chain(feats.iter()) {
+            let key = part.to_lowercase();
+            if !seen_parts.insert(key) {
+                continue;
+            }
+            if let Some(m) = mb_search_artist(client, part, limiter).await? {
+                if is_special_mb_artist(&m.id, &m.name) {
+                    continue;
+                }
                 return Ok(Some(m));
             }
         }
