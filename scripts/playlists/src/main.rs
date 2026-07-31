@@ -1,6 +1,7 @@
 use chrono::Utc;
 use clap::Parser;
 use colored::*;
+use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
 use serde::Deserialize;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -400,9 +401,14 @@ async fn upsert_region_playlist(
         id
     };
 
+    // DELETE + INSERT in one transaction - a crash/error between the two previously left the
+    // playlist emptied (tracks deleted, replacement never inserted) until the next successful
+    // regen (audit #89).
+    let mut tx = pool.begin().await?;
+
     sqlx::query(r#"DELETE FROM "PlaylistTrack" WHERE "playlistId" = $1"#)
         .bind(&playlist_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     if !track_ids.is_empty() {
@@ -429,9 +435,11 @@ async fn upsert_region_playlist(
         .bind(&playlist_ids)
         .bind(&t_ids)
         .bind(&vec![Utc::now().naive_utc(); track_ids.len()])
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
+
+    tx.commit().await?;
 
     Ok(())
 }
@@ -480,10 +488,14 @@ async fn upsert_playlist(
         id
     };
 
-    // Clear existing tracks
+    // DELETE + INSERT in one transaction - a crash/error between the two previously left the
+    // playlist emptied (tracks deleted, replacement never inserted) until the next successful
+    // regen (audit #89).
+    let mut tx = pool.begin().await?;
+
     sqlx::query(r#"DELETE FROM "PlaylistTrack" WHERE "playlistId" = $1"#)
         .bind(&playlist_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // Batch insert tracks
@@ -511,9 +523,11 @@ async fn upsert_playlist(
         .bind(&playlist_ids)
         .bind(&t_ids)
         .bind(&vec![Utc::now().naive_utc(); track_ids.len()])
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
+
+    tx.commit().await?;
 
     Ok(())
 }
@@ -821,6 +835,20 @@ async fn main() {
         return;
     }
 
+    // Same DB scan lock index/sync/fix/delete/nuke use - regen mutates PlaylistTrack rows and reads
+    // artist/genre/track tables that index/sync are actively writing, so a concurrent run of either
+    // could otherwise interleave with this pass (audit #89, pairs #51). Skipped for --dry-run, which
+    // never writes.
+    if !args.dry_run {
+        if clear_stale_lock_minutes(&pool, 10).await {
+            println!("{}", "Cleared a stale lock.".yellow());
+        }
+        if let Err(e) = acquire_lock(&pool, "playlists", std::process::id(), "").await {
+            eprintln!("{}: {}", "Cannot start".red(), e);
+            std::process::exit(1);
+        }
+    }
+
     println!();
 
     let mut total_playlists = 0;
@@ -974,6 +1002,10 @@ async fn main() {
                 }
             }
         }
+    }
+
+    if !args.dry_run {
+        release_lock(&pool).await;
     }
 
     // Summary
