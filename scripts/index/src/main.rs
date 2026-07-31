@@ -1229,7 +1229,12 @@ async fn main() {
             stamp_folder_index_hash(&pool, folder_name, h).await;
         }
         save_index_checkpoint(&pool, folder_name).await.ok();
-        update_statistics(&pool).await.ok();
+        // update_statistics is 13 full-table aggregate scans - throttle to every 50 folders instead of
+        // every single one (19K+ folders = 250K+ scans per full run otherwise). The guaranteed call
+        // after the loop (below) always catches the tail, so stats are never more than 50 folders stale.
+        if folder_idx % 50 == 0 {
+            update_statistics(&pool).await.ok();
+        }
 
         // Emit structured progress for terminal UI
         reporter.index_progress(

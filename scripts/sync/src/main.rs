@@ -1476,7 +1476,9 @@ async fn main() {
             reporter.skip("No releases matched");
         }
         reporter.sync_progress(&artist.name, i + 1, total, "done");
-        if newly_synced_count > 0 {
+        // update_statistics is 13 full-table aggregate scans - throttle to every 50 artists instead of
+        // every synced one. The guaranteed call after the loop always catches the tail.
+        if newly_synced_count > 0 && i % 50 == 0 {
             update_statistics(&pool).await.ok();
         }
 
