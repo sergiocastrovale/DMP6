@@ -6,7 +6,9 @@ static DIGIT_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"^\d{1,3}$").unwrap());
 
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
-    sqlx::query(r#"DELETE FROM "IssueCorruptedTpe2""#)
+    // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
+    // are user/fix state and must survive across runs (queue, history trail, FixHistory links).
+    sqlx::query(r#"DELETE FROM "IssueCorruptedTpe2" WHERE status = 'DETECTED'"#)
         .execute(pool)
         .await?;
 
@@ -34,6 +36,17 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         let (proposed_value, confidence) = find_proposed(pool, track_id, release_id.as_deref(), *year).await?;
 
         if proposed_value.is_empty() || proposed_value == *current_value {
+            continue;
+        }
+
+        let already_tracked: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS(SELECT 1 FROM "IssueCorruptedTpe2"
+               WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+        )
+        .bind(track_id)
+        .fetch_one(pool)
+        .await?;
+        if already_tracked {
             continue;
         }
 

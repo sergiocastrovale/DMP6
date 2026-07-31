@@ -123,7 +123,9 @@ fn detect_separator(name: &str) -> Option<(&'static str, Vec<String>)> {
 }
 
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
-    sqlx::query(r#"DELETE FROM "IssueUnsplitArtist""#)
+    // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
+    // are user/fix state and must survive across runs (queue, history trail, FixHistory links).
+    sqlx::query(r#"DELETE FROM "IssueUnsplitArtist" WHERE status = 'DETECTED'"#)
         .execute(pool)
         .await?;
 
@@ -149,6 +151,17 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
             continue;
         };
         if parts.len() < 2 {
+            continue;
+        }
+
+        let already_tracked: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS(SELECT 1 FROM "IssueUnsplitArtist"
+               WHERE "artistId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+        )
+        .bind(artist_id)
+        .fetch_one(pool)
+        .await?;
+        if already_tracked {
             continue;
         }
 

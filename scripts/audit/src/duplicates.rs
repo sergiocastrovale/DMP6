@@ -3,7 +3,9 @@ use cuid2::create_id;
 use sqlx::PgPool;
 
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
-    sqlx::query(r#"DELETE FROM "IssueDuplicateArtist""#)
+    // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
+    // are user/fix state and must survive across runs (queue, history trail, FixHistory links).
+    sqlx::query(r#"DELETE FROM "IssueDuplicateArtist" WHERE status = 'DETECTED'"#)
         .execute(pool)
         .await?;
 
@@ -49,6 +51,19 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         } else {
             (id2.as_str(), id1.as_str())
         };
+
+        let already_tracked: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS(SELECT 1 FROM "IssueDuplicateArtist"
+               WHERE (("artistAId" = $1 AND "artistBId" = $2) OR ("artistAId" = $2 AND "artistBId" = $1))
+                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+        )
+        .bind(artist_a)
+        .bind(artist_b)
+        .fetch_one(pool)
+        .await?;
+        if already_tracked {
+            continue;
+        }
 
         let id = create_id();
         sqlx::query(

@@ -3,7 +3,9 @@ use serde_json::{json, Map, Value};
 use sqlx::PgPool;
 
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
-    sqlx::query(r#"DELETE FROM "IssueMissingMetadata""#)
+    // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
+    // are user/fix state and must survive across runs (queue, history trail, FixHistory links).
+    sqlx::query(r#"DELETE FROM "IssueMissingMetadata" WHERE status = 'DETECTED'"#)
         .execute(pool)
         .await?;
 
@@ -30,6 +32,17 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         if album_artist.as_deref().map_or(true, |s| s.is_empty()) { missing_fields.push("albumArtist"); }
         if album.as_deref().map_or(true, |s| s.is_empty()) { missing_fields.push("album"); }
         if year.is_none() { missing_fields.push("year"); }
+
+        let already_tracked: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS(SELECT 1 FROM "IssueMissingMetadata"
+               WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+        )
+        .bind(track_id)
+        .fetch_one(pool)
+        .await?;
+        if already_tracked {
+            continue;
+        }
 
         let proposed = build_proposed(pool, &missing_fields, artist, album_artist, year, release_id.as_deref()).await?;
 
