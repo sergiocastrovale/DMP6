@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
-import { makeDownloadedRelease, makeMbRelease } from '../../../test/factories'
+import { makeDownloadedRelease, makeLocalRelease, makeMbRelease } from '../../../test/factories'
 
 const deleteTorrentMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('~/server/utils/qbittorrent', () => ({
@@ -10,6 +13,11 @@ vi.mock('~/server/utils/qbittorrent', () => ({
 vi.mock('~/server/utils/slskd', () => ({
   getSlskdActiveDownloads: vi.fn().mockResolvedValue([]),
   cancelSlskdDownload: vi.fn().mockResolvedValue(undefined),
+}))
+
+const execFileMock = vi.fn()
+vi.mock('node:child_process', () => ({
+  execFile: (...args: unknown[]) => execFileMock(...args),
 }))
 
 const prisma = getTestPrisma()
@@ -176,6 +184,61 @@ describe('promote.ts (real Postgres)', () => {
       const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
       // Any real retryCooldownDays value (default 7) is satisfied by an epoch timestamp.
       expect(after.updatedAt.getTime()).toBeLessThan(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    })
+  })
+
+  describe('mergeDownloadedRelease: sync --release tool failure', () => {
+    let musicDirTmp: string
+    let readyRootTmp: string
+
+    beforeEach(async () => {
+      musicDirTmp = await mkdtemp(join(tmpdir(), 'dmp-music-'))
+      readyRootTmp = await mkdtemp(join(tmpdir(), 'dmp-ready-'))
+      process.env.MUSIC_DIR = musicDirTmp
+      await prisma.settings.upsert({
+        where: { id: 'main' },
+        create: { id: 'main', downloadsPath: readyRootTmp },
+        update: { downloadsPath: readyRootTmp },
+      })
+      execFileMock.mockReset()
+    })
+
+    afterEach(async () => {
+      process.env.MUSIC_DIR = ''
+      await rm(musicDirTmp, { recursive: true, force: true })
+      await rm(readyRootTmp, { recursive: true, force: true })
+    })
+
+    it('keeps files and requeues READY instead of purging/INVALID when sync --release itself fails (not a genuine no-match)', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const dl = await makeDownloadedRelease(prisma, { status: 'READY', stagingPath, title: 'Album' })
+      // Stand-in for the LocalRelease a real `index --folders` run would have created (execFile is mocked).
+      await makeLocalRelease(prisma, { folderPath: rel, matchStatus: 'UNMATCHED', releaseId: null })
+
+      let call = 0
+      execFileMock.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: (e: Error | null, o: string, err: string) => void) => {
+        call++
+        if (call === 1) cb(null, '', '') // index --folders: no-op success
+        else cb(new Error('sync: MusicBrainz API unavailable (503)'), '', '') // sync --release: tool failure
+      })
+
+      const { localReleaseId, error } = await mergeDownloadedRelease(dl.id)
+
+      expect(localReleaseId).toBeNull()
+      expect(error).toMatch(/sync --release failed/)
+
+      const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: dl.id } })
+      expect(after.status).toBe('READY')
+      expect(after.error).toMatch(/will retry/)
+
+      // A transient tool failure must never purge a good download's files.
+      await expect(access(join(musicDirTmp, rel))).resolves.toBeUndefined()
     })
   })
 

@@ -180,7 +180,16 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
   })
 
   // Targeted reconcile of just this release (non-destructive: never touches sibling MISSING placeholders).
-  if (lr) await runReconciler('sync', ['--release', lr.id]).catch(() => {})
+  let reconcilerFailed = false
+  if (lr) {
+    try {
+      await runReconciler('sync', ['--release', lr.id])
+    }
+    catch (e: any) {
+      reconcilerFailed = true
+      monitorLog('error', `merge: sync --release failed for "${row.artist?.name ?? '?'} - ${row.title}": ${e?.message ?? e}`)
+    }
+  }
 
   const reloaded = lr
     ? await prisma.localRelease.findUnique({ where: { id: lr.id }, select: { id: true, releaseId: true, matchStatus: true, forcedComplete: true } })
@@ -228,6 +237,18 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
       }
     }
     return { id: reloaded!.id, error: null }
+  }
+
+  if (reconcilerFailed) {
+    // The reconciler tool itself failed (MB API down, lock stolen, OOM, network) — that says nothing
+    // about whether the release genuinely lacks a MusicBrainz match. Keep the files (already moved into
+    // the library) and leave the row READY so the next merge cycle retries the sync instead of a good
+    // download getting purged over a transient hiccup.
+    await prisma.downloadedRelease.update({
+      where: { id: row.id },
+      data: { status: 'READY', error: 'sync --release failed during merge — will retry' },
+    })
+    return { id: null, error: 'sync --release failed, retry pending' }
   }
 
   // Discard: either no MusicBrainz identity, or matched but not an exact track-count match. Either way the
