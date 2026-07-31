@@ -88,7 +88,7 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
    - Tier 2: Release group browse via `MUSICBRAINZ_RELEASEGROUPID` (or Tier 1 404 fallback)
    - No MB IDs in tags → marked Unmatched, skipped
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
-7. **Write MB IDs** back to audio file tags (`MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_TRACKID`) - only writes tags that differ, preserves file mtime to avoid triggering re-index. Skipped with `--skip-mb-tags`
+7. **Write MB IDs** back to audio file tags (`MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_TRACKID`) - only fills tags that are absent; never overwrites an existing value unless `--overwrite` is passed (deliberate re-correction, e.g. after fixing a bad match). Preserves file mtime to avoid triggering re-index. Skipped with `--skip-mb-tags`. A file with no tag block at all gets one created so IDs can still be written.
 8. **Cover art** - download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
 9. **Set `lastSyncedAt`** on Artist, persist country code, compute average match score
 10. **Stamp run hash** on Artist for resumability
@@ -141,6 +141,8 @@ If artist already has a MB ID and not overwriting: uses it directly (no API sear
 ## Release Matching Policy
 
 Strict metadata-wins: only matches via embedded MB IDs in tags. Title fuzzy matching is intentionally disabled. Releases without MB IDs in tags are marked `UNMATCHED`. Confidence check: if multiple siblings returned and none match local track count exactly, marks `UNMATCHED`.
+
+Tier 2 (release-group browse via `MUSICBRAINZ_RELEASEGROUPID`) requires an EXACT local/MB track-count match to bind - by design, not a bug. A local album missing even one track can never bind through Tier 2; it stays `UNMATCHED` (never lands on `INCOMPLETE`, which is Tier-2-only unreachable as a result) unless the file also carries `MUSICBRAINZ_ALBUMID` for a direct Tier 1 lookup.
 
 Found MB IDs are written back to file tags after matching, so future syncs (or DB rebuilds) can skip expensive MB searches. The writeback preserves file mtime to avoid triggering re-index.
 
