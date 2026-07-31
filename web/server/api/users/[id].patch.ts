@@ -4,6 +4,7 @@ import { requireRole } from '~/server/utils/permissions'
 import { hashPassword } from '~/server/utils/password'
 import { destroyUserSessions } from '~/server/utils/auth'
 import { invalidateAuthUserCache } from '~/server/utils/userCache'
+import { isValidEmail } from '~/server/utils/validation'
 
 const VALID_ROLES: Role[] = ['VIEWER', 'MANAGER', 'ADMIN']
 
@@ -21,7 +22,7 @@ export default defineEventHandler(async (event) => {
   const data: Record<string, unknown> = {}
 
   if (email !== undefined) {
-    if (typeof email !== 'string' || !email) {
+    if (typeof email !== 'string' || !isValidEmail(email)) {
       throw createError({ statusCode: 400, message: 'Invalid email' })
     }
     data.email = email
@@ -49,6 +50,10 @@ export default defineEventHandler(async (event) => {
     data.passwordHash = await hashPassword(password)
     data.mustChangePassword = true
     await destroyUserSessions(id)
+  }
+
+  if (Object.keys(data).length === 0) {
+    throw createError({ statusCode: 400, message: 'No fields to update' })
   }
 
   const updated = await prisma.user.update({
