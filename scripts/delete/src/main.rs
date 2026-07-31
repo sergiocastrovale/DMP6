@@ -1,13 +1,13 @@
-use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client as S3Client;
 use clap::Parser;
 use colored::*;
 use common::{
+    config::{apply_db_overrides, load_config, Config},
     error_log,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
+    s3::create_s3_client,
     statistics::update_statistics,
 };
-use dotenvy;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -39,113 +39,8 @@ struct Args {
 }
 
 // ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-struct DeleteConfig {
-    database_url: String,
-    #[allow(dead_code)]
-    project_root: String,
-    image_dir: String,
-    image_storage: String,
-    storage_bucket: Option<String>,
-    s3_region: Option<String>,
-    s3_access_key: Option<String>,
-    s3_secret_key: Option<String>,
-    storage_endpoint: Option<String>,
-}
-
-fn load_config() -> DeleteConfig {
-    let env_paths = [
-        PathBuf::from("web/.env"),
-        PathBuf::from("../../web/.env"),
-    ];
-
-    let mut env_loaded = false;
-    for p in &env_paths {
-        if p.exists() {
-            dotenvy::from_path(p).ok();
-            env_loaded = true;
-            break;
-        }
-    }
-
-    if !env_loaded {
-        if let Ok(project_root) = std::env::var("PROJECT_ROOT") {
-            let env_path = PathBuf::from(&project_root).join("web/.env");
-            if env_path.exists() {
-                dotenvy::from_path(env_path).ok();
-            }
-        }
-    }
-
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set in web/.env");
-
-    let project_root = std::env::var("PROJECT_ROOT").unwrap_or_else(|_| {
-        std::env::current_dir()
-            .ok()
-            .and_then(|d| {
-                if d.ends_with("scripts/delete") {
-                    d.parent().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string())
-                } else if d.ends_with("scripts") {
-                    d.parent().map(|p| p.to_string_lossy().to_string())
-                } else {
-                    Some(d.to_string_lossy().to_string())
-                }
-            })
-            .unwrap_or_else(|| ".".to_string())
-    });
-
-    let image_dir = std::env::var("IMAGE_DIR").unwrap_or_else(|_| {
-        PathBuf::from(&project_root)
-            .join("web/public/img")
-            .to_string_lossy()
-            .to_string()
-    });
-
-    DeleteConfig {
-        database_url,
-        project_root,
-        image_dir,
-        image_storage: std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string()),
-        storage_bucket: std::env::var("STORAGE_IMAGE_BUCKET").ok(),
-        s3_region: std::env::var("AWS_REGION").ok(),
-        s3_access_key: std::env::var("AWS_ACCESS_KEY_ID").ok(),
-        s3_secret_key: std::env::var("AWS_SECRET_ACCESS_KEY").ok(),
-        storage_endpoint: std::env::var("STORAGE_ENDPOINT").ok().filter(|s| !s.is_empty()),
-    }
-}
-
-// ---------------------------------------------------------------------------
 // S3
 // ---------------------------------------------------------------------------
-
-async fn create_s3_client(config: &DeleteConfig) -> Option<S3Client> {
-    if config.storage_bucket.is_none() || config.s3_region.is_none() {
-        return None;
-    }
-
-    let mut aws_config = aws_config::defaults(BehaviorVersion::latest());
-
-    if let Some(ref region) = config.s3_region {
-        aws_config = aws_config.region(aws_sdk_s3::config::Region::new(region.clone()));
-    }
-
-    if let (Some(ref key), Some(ref secret)) = (&config.s3_access_key, &config.s3_secret_key) {
-        aws_config = aws_config.credentials_provider(
-            aws_sdk_s3::config::Credentials::new(key, secret, None, None, "delete"),
-        );
-    }
-
-    let aws_config = aws_config.load().await;
-    let mut s3_config = aws_sdk_s3::config::Builder::from(&aws_config);
-
-    if let Some(ref endpoint) = config.storage_endpoint {
-        s3_config = s3_config.endpoint_url(endpoint);
-    }
-
-    Some(S3Client::from_conf(s3_config.build()))
-}
 
 async fn delete_from_s3(client: &S3Client, bucket: &str, key: &str) {
     client.delete_object().bucket(bucket).key(key).send().await.ok();
@@ -387,7 +282,7 @@ async fn build_plan(
 async fn execute_plan(
     pool: &PgPool,
     plan: &DeletionPlan,
-    config: &DeleteConfig,
+    config: &Config,
     s3_client: &Option<S3Client>,
 ) -> Result<(usize, usize), sqlx::Error> {
     let use_local = config.image_storage == "local" || config.image_storage == "both";
@@ -600,13 +495,18 @@ async fn main() {
     }
     println!();
 
-    let config = load_config();
+    let mut config = load_config(None);
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&config.database_url)
         .await
         .expect("Failed to connect to database. Is PostgreSQL running?");
+
+    // DB-configured S3/image settings (Settings table) override env, same as index/sync - without
+    // this, delete never sees S3 credentials that live only in Settings and silently skips deleting
+    // the artist's images from S3.
+    apply_db_overrides(&mut config, &pool).await;
 
     // Resolve target artists
     let mut target_ids: Vec<(String, String)> = Vec::new();

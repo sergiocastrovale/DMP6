@@ -1,13 +1,13 @@
-use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client as S3Client;
 use clap::Parser;
 use colored::*;
 use common::{
+    config::{apply_db_overrides, load_config},
     error_log,
     filters::matches_filter,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
+    s3::create_s3_client,
 };
-use dotenvy;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -50,39 +50,6 @@ struct Args {
 // ---------------------------------------------------------------------------
 // S3
 // ---------------------------------------------------------------------------
-
-async fn create_s3_client() -> Option<S3Client> {
-    let storage_bucket = std::env::var("STORAGE_IMAGE_BUCKET").ok();
-    let s3_region = std::env::var("AWS_REGION").ok();
-
-    if storage_bucket.is_none() || s3_region.is_none() {
-        return None;
-    }
-
-    let mut aws_config = aws_config::defaults(BehaviorVersion::latest());
-
-    if let Some(ref region) = s3_region {
-        aws_config = aws_config.region(aws_sdk_s3::config::Region::new(region.clone()));
-    }
-
-    if let (Some(key), Some(secret)) = (
-        std::env::var("AWS_ACCESS_KEY_ID").ok(),
-        std::env::var("AWS_SECRET_ACCESS_KEY").ok(),
-    ) {
-        aws_config = aws_config.credentials_provider(aws_sdk_s3::config::Credentials::new(
-            key, secret, None, None, "nuke",
-        ));
-    }
-
-    let aws_config = aws_config.load().await;
-    let mut s3_config = aws_sdk_s3::config::Builder::from(&aws_config);
-
-    if let Some(endpoint) = std::env::var("STORAGE_ENDPOINT").ok().filter(|s| !s.is_empty()) {
-        s3_config = s3_config.endpoint_url(endpoint);
-    }
-
-    Some(S3Client::from_conf(s3_config.build()))
-}
 
 async fn delete_s3_prefix(
     client: &S3Client,
@@ -620,59 +587,11 @@ async fn main() {
     let args = Args::parse();
     error_log::init("nuke");
 
-    let env_paths = [PathBuf::from("web/.env"), PathBuf::from("../../web/.env")];
-    let mut env_loaded = false;
-    for p in &env_paths {
-        if p.exists() {
-            dotenvy::from_path(p).ok();
-            env_loaded = true;
-            break;
-        }
-    }
-    if !env_loaded {
-        if let Ok(project_root) = std::env::var("PROJECT_ROOT") {
-            let env_path = PathBuf::from(&project_root).join("web/.env");
-            if env_path.exists() {
-                dotenvy::from_path(env_path).ok();
-            }
-        }
-    }
-
-    let database_url = match std::env::var("DATABASE_URL") {
-        Ok(url) => url,
-        Err(_) => {
-            error_log::log_error("DATABASE_URL not found in web/.env");
-            eprintln!("Error: DATABASE_URL not found in web/.env");
-            std::process::exit(1);
-        }
-    };
-
-    let project_root = std::env::var("PROJECT_ROOT").unwrap_or_else(|_| {
-        std::env::current_dir()
-            .ok()
-            .and_then(|d| {
-                if d.ends_with("scripts/nuke") {
-                    d.parent()
-                        .and_then(|p| p.parent())
-                        .map(|p| p.to_string_lossy().to_string())
-                } else if d.ends_with("scripts") {
-                    d.parent().map(|p| p.to_string_lossy().to_string())
-                } else {
-                    Some(d.to_string_lossy().to_string())
-                }
-            })
-            .unwrap_or_else(|| ".".to_string())
-    });
-
-    let image_storage =
-        std::env::var("IMAGE_STORAGE").unwrap_or_else(|_| "local".to_string());
-    let image_dir = std::env::var("IMAGE_DIR").unwrap_or_else(|_| {
-        PathBuf::from(&project_root)
-            .join("web/public/img")
-            .to_string_lossy()
-            .to_string()
-    });
-    let storage_bucket = std::env::var("STORAGE_IMAGE_BUCKET").ok();
+    // NOTE: DB-configured S3/image overrides (Settings table) aren't applied until each branch below
+    // opens its own pool - apply_db_overrides needs a live connection, and --only/full-wipe modes each
+    // create their pool at a different point. `config` is `mut` so both branches can layer their
+    // overrides on afterward.
+    let mut config = load_config(None);
 
     // --only mode: selective artist deletion
     if let Some(ref only) = args.only {
@@ -685,7 +604,7 @@ async fn main() {
 
         let pool = match PgPoolOptions::new()
             .max_connections(5)
-            .connect(&database_url)
+            .connect(&config.database_url)
             .await
         {
             Ok(p) => p,
@@ -695,6 +614,9 @@ async fn main() {
                 std::process::exit(1);
             }
         };
+
+        // DB-configured S3/image settings (Settings table) override env, same as index/sync.
+        apply_db_overrides(&mut config, &pool).await;
 
         let plan = match build_only_plan(&pool, only, true).await {
             Ok(p) => p,
@@ -759,17 +681,17 @@ async fn main() {
             std::process::exit(1);
         }
 
-        let use_s3 = image_storage == "s3" || image_storage == "both";
-        let s3_client = if use_s3 { create_s3_client().await } else { None };
+        let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
+        let s3_client = if use_s3 { create_s3_client(&config).await } else { None };
 
         log!("Deleting...");
         match execute_only_plan(
             &pool,
             &plan,
-            &image_dir,
-            &image_storage,
+            &config.image_dir,
+            &config.image_storage,
             &s3_client,
-            &storage_bucket,
+            &config.storage_bucket,
             args.keep_artist_img,
         )
         .await
@@ -818,7 +740,7 @@ async fn main() {
     if args.keep_artist_img {
         log!("Artist images will be preserved.");
     }
-    log!("Database: {}", database_url);
+    log!("Database: {}", config.database_url);
     log!();
 
     if args.dry_run {
@@ -840,7 +762,7 @@ async fn main() {
 
     let pool = match PgPoolOptions::new()
         .max_connections(1)
-        .connect(&database_url)
+        .connect(&config.database_url)
         .await
     {
         Ok(p) => p,
@@ -861,6 +783,10 @@ async fn main() {
         eprintln!("{}: {}", "Cannot start".red(), e);
         std::process::exit(1);
     }
+
+    // DB-configured S3/image settings (Settings table) override env, same as index/sync. Safe to read
+    // now: Settings is preserved by this wipe (see #52), not truncated below.
+    apply_db_overrides(&mut config, &pool).await;
 
     log!("Truncating all tables...");
     let tables = vec![
@@ -902,8 +828,8 @@ async fn main() {
     log!("Deleting image files...");
 
     let img_dirs: Vec<(&str, PathBuf)> = vec![
-        ("releases", PathBuf::from(&image_dir).join("releases")),
-        ("artists", PathBuf::from(&image_dir).join("artists")),
+        ("releases", PathBuf::from(&config.image_dir).join("releases")),
+        ("artists", PathBuf::from(&config.image_dir).join("artists")),
     ];
 
     let mut local_deleted = 0usize;
@@ -928,12 +854,12 @@ async fn main() {
     }
     log!("  {} Deleted {} local image(s)", "✓".green(), local_deleted);
 
-    let use_s3 = image_storage == "s3" || image_storage == "both";
+    let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
 
     if use_s3 {
         log!("Deleting S3 images...");
-        if let Some(s3_client) = create_s3_client().await {
-            if let Some(bucket) = &storage_bucket {
+        if let Some(s3_client) = create_s3_client(&config).await {
+            if let Some(bucket) = &config.storage_bucket {
                 let prefixes: Vec<&str> = if args.keep_artist_img {
                     vec!["releases/"]
                 } else {
@@ -957,7 +883,7 @@ async fn main() {
         log!(
             "S3 images: {} (IMAGE_STORAGE={})",
             "skipped".bright_black(),
-            image_storage.bright_black()
+            config.image_storage.bright_black()
         );
     }
 
