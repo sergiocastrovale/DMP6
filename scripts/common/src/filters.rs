@@ -27,6 +27,14 @@ pub fn normalize_filter(s: &str) -> String {
         .join(" ")
 }
 
+/// Escape `%`, `_`, and the escape character itself for a SQL LIKE pattern (Postgres defaults to `\`
+/// as the LIKE escape char). Without this, a folder name containing `%` or `_` corrupts the pattern
+/// - `_` matches any single char, `%` matches anything - e.g. "100% Silk" or "A_Tribute" would produce
+/// bogus matches against unrelated folders. Escape the input BEFORE appending any wildcard suffix.
+pub fn escape_like(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
 pub fn matches_filter(folder: &str, from: &str, to: &str, only: &str, exact: bool) -> bool {
     let folder_norm = normalize_filter(folder);
 
@@ -60,4 +68,27 @@ pub fn matches_filter(folder: &str, from: &str, to: &str, only: &str, exact: boo
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_like_escapes_percent_and_underscore() {
+        assert_eq!(escape_like("100% Silk"), "100\\% Silk");
+        assert_eq!(escape_like("A_Tribute"), "A\\_Tribute");
+        assert_eq!(escape_like("100%_done"), "100\\%\\_done");
+    }
+
+    #[test]
+    fn escape_like_escapes_backslash_first_so_it_is_not_double_escaped() {
+        assert_eq!(escape_like("back\\slash"), "back\\\\slash");
+    }
+
+    #[test]
+    fn escape_like_leaves_plain_names_untouched() {
+        assert_eq!(escape_like("ACDC"), "ACDC");
+        assert_eq!(escape_like("Boards of Canada"), "Boards of Canada");
+    }
 }

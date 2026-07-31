@@ -1,5 +1,6 @@
 use common::config::Config;
 use common::error_log::log_warn;
+use common::filters::escape_like;
 use common::images::{delete_artist_images, delete_release_images};
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -28,7 +29,7 @@ pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir
     let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
         r#"SELECT id, "filePath", "localReleaseId" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
     )
-    .bind(format!("{}%", folder_prefix))
+    .bind(format!("{}%", escape_like(folder_prefix)))
     .fetch_all(pool)
     .await
     .unwrap_or_default();
@@ -216,7 +217,7 @@ async fn delete_folder_tracks(pool: &PgPool, folder: &str) -> u64 {
     let result = sqlx::query(
         r#"DELETE FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
     )
-    .bind(format!("{}/%", folder))
+    .bind(format!("{}/%", escape_like(folder)))
     .execute(pool)
     .await;
     result.map(|r| r.rows_affected()).unwrap_or(0)

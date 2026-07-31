@@ -11,7 +11,7 @@ use common::{
     checkpoint::{clear_index_checkpoint, load_index_checkpoint, save_index_checkpoint},
     config::{apply_db_overrides, load_config},
     db::{create_pool, ensure_artist_cached},
-    filters::matches_filter,
+    filters::{escape_like, matches_filter},
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
     progress::Reporter,
     run_hash::{clear_run_hash, get_run_hash, new_run_hash, set_run_hash},
@@ -489,7 +489,7 @@ async fn main() {
             let rows: Vec<(String,)> = sqlx::query_as(
                 r#"SELECT "filePath" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
             )
-            .bind(format!("{}%", folder_prefix))
+            .bind(format!("{}%", escape_like(&folder_prefix)))
             .fetch_all(&pool)
             .await
             .unwrap_or_default();
@@ -502,7 +502,7 @@ async fn main() {
                 r#"SELECT "filePath", "fileSize", mtime, "contentHash"
                    FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
             )
-            .bind(format!("{}%", folder_prefix))
+            .bind(format!("{}%", escape_like(&folder_prefix)))
             .fetch_all(&pool)
             .await
             .unwrap_or_default();
@@ -1144,7 +1144,9 @@ async fn main() {
                    FROM "LocalRelease" lr
                    WHERE lr."folderPath" LIKE $1"#,
             )
-            .bind(format!("{}%", folder_name))
+            // folder_prefix (not folder_name) - it already carries the trailing '/', otherwise this
+            // is a prefix match with no boundary and "AC" would swallow "ACDC/...".
+            .bind(format!("{}%", escape_like(&folder_prefix)))
             .fetch_all(&pool)
             .await
             .unwrap_or_default();
