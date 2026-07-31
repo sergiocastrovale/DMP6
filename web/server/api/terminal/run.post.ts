@@ -4,6 +4,7 @@ import { requirePermission, requireRole } from '~/server/utils/permissions'
 import {
   buildCommandLine,
   buildScript,
+  hasDestructiveFlag,
   isAllowedCommand,
   isValidSessionName,
   parseExitLine,
@@ -48,6 +49,12 @@ export default defineEventHandler(async (event) => {
   }
   else if (perm) {
     await requirePermission(event, perm)
+  }
+
+  // Destructive flags (--delete, --overwrite*) bypass the normal 'sync.run' gate - always ADMIN-only,
+  // regardless of which permission a MANAGER holds.
+  if (hasDestructiveFlag(body.args ?? [])) {
+    requireRole(event, 'ADMIN')
   }
 
   const workDir = process.env.PROJECT_ROOT!

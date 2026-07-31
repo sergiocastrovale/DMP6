@@ -4,7 +4,7 @@ import { forceRejectDownloadedReleases } from '~/server/utils/promote'
 // Bulk reject: always terminal (REJECTED), bypassing the attempts cap that the single-row reject
 // endpoint uses — see forceRejectDownloadedReleases for why.
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'sync.view')
+  await requirePermission(event, 'downloads.crud')
 
   const body = await readBody(event).catch(() => ({})) as { ids?: string[] }
   const ids = Array.isArray(body.ids) ? body.ids : []

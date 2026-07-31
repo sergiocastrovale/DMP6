@@ -14,6 +14,8 @@ const DEFAULT_MATRIX: Record<Role, string[]> = {
     'playlists.crud',
     'play.view',
     'sync.view',
+    'sync.run',
+    'downloads.crud',
   ],
   ADMIN: [
     'favorites.view',
@@ -22,6 +24,8 @@ const DEFAULT_MATRIX: Record<Role, string[]> = {
     'playlists.crud',
     'play.view',
     'sync.view',
+    'sync.run',
+    'downloads.crud',
     'issues.view',
     'variables.edit',
   ],

@@ -4,7 +4,7 @@ import { mergeManyDownloadedReleases } from '~/server/utils/promote'
 
 // SSE variant of merge-all: streams merge step lines to the terminal store (used when showTerminal=true).
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'sync.view')
+  await requirePermission(event, 'downloads.crud')
 
   const body = await readBody(event).catch(() => ({})) as { ids?: string[] }
   const ids = Array.isArray(body.ids) && body.ids.length

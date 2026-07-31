@@ -3,7 +3,7 @@ import { requeueRejectedDownloads } from '~/server/utils/promote'
 
 // Bulk "Move all back to queue" for the Rejected tab.
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'sync.view')
+  await requirePermission(event, 'downloads.crud')
 
   const body = await readBody(event).catch(() => ({})) as { ids?: string[] }
   const ids = Array.isArray(body.ids) ? body.ids : []

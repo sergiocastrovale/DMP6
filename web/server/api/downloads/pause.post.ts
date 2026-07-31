@@ -6,7 +6,7 @@ import { setDownloadsPaused, freeGb } from '~/server/utils/pauseState'
 // Toggle the global downloads pause. Pausing is always allowed (manual). Resuming is refused while the
 // disk is still below the free-space floor — it re-pauses (disk-full) and returns 409.
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'sync.view')
+  await requirePermission(event, 'downloads.crud')
 
   const body = await readBody(event)
   if (typeof body?.paused !== 'boolean') {

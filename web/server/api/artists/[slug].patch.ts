@@ -3,7 +3,7 @@ import { invalidateCache } from '~/server/utils/cache'
 import { requirePermission } from '~/server/utils/permissions'
 
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'sync.view')
+  await requirePermission(event, 'downloads.crud')
 
   const slug = getRouterParam(event, 'slug')
   if (!slug) throw createError({ statusCode: 400, statusMessage: 'Missing slug' })

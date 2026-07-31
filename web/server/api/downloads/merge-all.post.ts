@@ -4,7 +4,7 @@ import { mergeManyDownloadedReleases } from '~/server/utils/promote'
 
 // Batched merge of all (or the given) READY downloads into the library.
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'sync.view')
+  await requirePermission(event, 'downloads.crud')
 
   const body = await readBody(event).catch(() => ({})) as { ids?: string[] }
   const ids = Array.isArray(body.ids) && body.ids.length

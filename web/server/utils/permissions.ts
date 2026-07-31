@@ -9,6 +9,8 @@ export const ALL_PERMISSIONS = [
   'playlists.crud',
   'play.view',
   'sync.view',
+  'sync.run',
+  'downloads.crud',
   'issues.view',
   'variables.edit',
 ] as const
@@ -24,6 +26,8 @@ export const DEFAULT_MATRIX: Record<Role, PermissionKey[]> = {
     'playlists.crud',
     'play.view',
     'sync.view',
+    'sync.run',
+    'downloads.crud',
   ],
   ADMIN: [...ALL_PERMISSIONS],
 }

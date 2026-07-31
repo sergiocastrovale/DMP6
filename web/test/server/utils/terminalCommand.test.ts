@@ -3,6 +3,7 @@ import {
   buildCommandLine,
   buildScript,
   escapeArg,
+  hasDestructiveFlag,
   isAllowedCommand,
   isValidSessionName,
   parseExitLine,
@@ -48,10 +49,12 @@ describe('permissionForCommand', () => {
     expect(permissionForCommand('./nuke')).toBe('ADMIN')
   })
 
-  it('maps sync-family commands to sync.view', () => {
-    expect(permissionForCommand('./index')).toBe('sync.view')
-    expect(permissionForCommand('./sync')).toBe('sync.view')
-    expect(permissionForCommand('./refresh')).toBe('sync.view')
+  it('maps sync-family commands to sync.run, not the sync.view VIEW permission (docs audit #29)', () => {
+    expect(permissionForCommand('./index')).toBe('sync.run')
+    expect(permissionForCommand('./sync')).toBe('sync.run')
+    expect(permissionForCommand('./refresh')).toBe('sync.run')
+    expect(permissionForCommand('./analysis')).toBe('sync.run')
+    expect(permissionForCommand('./playlists')).toBe('sync.run')
   })
 
   it('maps audit/fix to issues.view', () => {
@@ -61,6 +64,23 @@ describe('permissionForCommand', () => {
 
   it('returns undefined for an unknown command', () => {
     expect(permissionForCommand('./unknown')).toBeUndefined()
+  })
+})
+
+describe('hasDestructiveFlag', () => {
+  it('flags --delete, --overwrite, and --overwrite-with-images', () => {
+    expect(hasDestructiveFlag(['--delete'])).toBe(true)
+    expect(hasDestructiveFlag(['--only', 'X', '--overwrite'])).toBe(true)
+    expect(hasDestructiveFlag(['--overwrite-with-images'])).toBe(true)
+  })
+
+  it('is false for normal args with no destructive flag', () => {
+    expect(hasDestructiveFlag(['--only', 'Boards of Canada'])).toBe(false)
+    expect(hasDestructiveFlag([])).toBe(false)
+  })
+
+  it('does not false-positive on a flag that merely contains the substring', () => {
+    expect(hasDestructiveFlag(['--overwrite-something-else'])).toBe(false)
   })
 })
 

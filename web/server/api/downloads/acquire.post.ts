@@ -9,7 +9,7 @@ import { routeAcquire, failRtMiss } from '~/server/utils/autoDownload'
 // monitor: RuTracker first (while it has daily budget), Soulseek fallback — honoring the enabled
 // sources, so it works whichever source(s) the user has switched on.
 export default defineEventHandler(async (event) => {
-  await requirePermission(event, 'sync.view')
+  await requirePermission(event, 'downloads.crud')
 
   const body = await readBody(event)
   const mbReleaseRowId = body?.mbReleaseRowId as string | undefined

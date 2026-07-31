@@ -47,6 +47,15 @@ describe('permissions', () => {
     expect(await hasPermission('VIEWER', 'variables.edit')).toBe(false)
   })
 
+  it('MANAGER holds sync.run/downloads.crud (not just the VIEW-only sync.view) so terminal runs and download mutations aren\'t gated by a view permission (docs audit #29)', async () => {
+    findManyMock.mockResolvedValue([])
+    const { hasPermission } = await import('../../../server/utils/permissions')
+    expect(await hasPermission('MANAGER', 'sync.run')).toBe(true)
+    expect(await hasPermission('MANAGER', 'downloads.crud')).toBe(true)
+    expect(await hasPermission('VIEWER', 'sync.run')).toBe(false)
+    expect(await hasPermission('VIEWER', 'downloads.crud')).toBe(false)
+  })
+
   it('getPermissionsForRole returns a sorted list', async () => {
     findManyMock.mockResolvedValue([
       { role: 'ADMIN', permission: 'sync.view' },

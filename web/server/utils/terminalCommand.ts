@@ -9,16 +9,26 @@ export const ALLOWED_COMMANDS = [
   './playlists', './audit', './fix', './refresh',
 ] as const
 
+// 'sync.view' only ever gated read/list endpoints elsewhere; running these scripts (they can mutate or
+// delete library data) needs 'sync.run', not a VIEW permission - see docs audit #29.
 export const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
-  './index': 'sync.view',
-  './sync': 'sync.view',
-  './refresh': 'sync.view',
-  './analysis': 'sync.view',
-  './playlists': 'sync.view',
+  './index': 'sync.run',
+  './sync': 'sync.run',
+  './refresh': 'sync.run',
+  './analysis': 'sync.run',
+  './playlists': 'sync.run',
   './audit': 'issues.view',
   './fix': 'issues.view',
   './nuke': 'ADMIN',
 }
+
+// Flags that delete data or force a destructive rewrite - restricted to ADMIN regardless of whether the
+// caller holds 'sync.run', so a MANAGER can trigger normal index/sync runs but not `--delete`/
+// `--overwrite` passes.
+const DESTRUCTIVE_FLAGS = ['--delete', '--overwrite', '--overwrite-with-images'] as const
+
+export const hasDestructiveFlag = (args: string[]): boolean =>
+  args.some(a => (DESTRUCTIVE_FLAGS as readonly string[]).includes(a))
 
 export const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/
 
