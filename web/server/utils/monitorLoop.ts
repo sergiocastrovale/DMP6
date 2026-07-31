@@ -41,6 +41,11 @@ let reconcileRunning = false
 let torrentReconcileRunning = false
 const finalizing = new Set<string>()
 
+// A row stuck this long with no file-level progress yet (slsk: never enqueued; torrent: crashed
+// before a hash was ever assigned) is a restart orphan, not a slow transfer. Shared by both
+// reconcilers so the threshold stays one number, not two independently-tuned magic constants.
+const ORPHAN_MIN = 3
+
 // SongKong drainer liveness (see songkongSettings.ts): updated whenever a row is observed actually
 // enriched (not just timed out), and read before spooling any NEW completion into ENRICHING.
 let lastSongkongDrainAt: Date | null = null
@@ -111,7 +116,6 @@ export async function reconcileDownloads(): Promise<void> {
       return
     }
 
-    const ORPHAN_MIN = 3                              // file-less row stuck this long = restart orphan
     const noProgressMs = Math.max(15, mon.noProgressSec) * 1000
     log(`reconcile: ${downloadingRows.length} downloading, ${transfers.length} slskd transfers`)
 
@@ -356,7 +360,20 @@ export async function reconcileTorrentDownloads(): Promise<void> {
     const enrichRows = rows.filter(r => r.status === 'ENRICHING')
     if (enrichRows.length > 0) {await drainEnriching(enrichRows, maxAttempts)}
 
-    const dlRows = rows.filter(r => r.status === 'DOWNLOADING' && r.torrentHash)
+    const downloadingRows = rows.filter(r => r.status === 'DOWNLOADING')
+
+    // A row crashed before addTorrentPaused ever returned a hash (dead mid-search/mid-add) sits at
+    // DOWNLOADING with torrentHash null forever - neither this reconciler (needs a hash to group by)
+    // nor the slsk one (source SLSKD only) ever picks it up otherwise.
+    const hashlessOrphans = downloadingRows.filter(r => !r.torrentHash)
+    for (const row of hashlessOrphans) {
+      const ageMin = (Date.now() - row.updatedAt.getTime()) / 60000
+      if (ageMin > ORPHAN_MIN) {
+        await failAttempt(row, maxAttempts, 'crashed before a torrent hash was ever assigned (search/add never completed)')
+      }
+    }
+
+    const dlRows = downloadingRows.filter(r => r.torrentHash)
     if (dlRows.length === 0) {return}
 
     const noProgressMs = Math.max(15, mon.noProgressSec) * 1000

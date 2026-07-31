@@ -143,4 +143,42 @@ describe('monitorLoop.ts reconcileTorrentDownloads: proportional byte-progress s
     expect(Number(afterA.bytesTransferred)).toBe(50)
     expect(Number(afterB.bytesTransferred)).toBe(450)
   })
+
+  it('fails a RUTRACKER row stuck DOWNLOADING with a null torrentHash once it is older than the orphan threshold (crashed before a hash was ever assigned)', async () => {
+    const { reconcileTorrentDownloads } = await import('../../../server/utils/monitorLoop')
+
+    const artist = await makeArtist(prisma)
+    const old = new Date(Date.now() - 10 * 60_000) // 10 min ago, past the 3-min orphan threshold
+    const orphan = await makeDownloadedRelease(prisma, {
+      artistId: artist.id, source: 'RUTRACKER', status: 'DOWNLOADING', torrentHash: null,
+      attempts: 0, priority: 10, updatedAt: old,
+    })
+
+    getTorrentInfoMock.mockResolvedValue([])
+
+    await reconcileTorrentDownloads()
+
+    const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: orphan.id } })
+    expect(after.status).toBe('FAILED')
+    expect(after.attempts).toBe(1)
+    expect(after.error).toMatch(/torrent hash was ever assigned/)
+  })
+
+  it('leaves a fresh (just-created) hashless RUTRACKER row alone - not every null-hash row is an orphan yet', async () => {
+    const { reconcileTorrentDownloads } = await import('../../../server/utils/monitorLoop')
+
+    const artist = await makeArtist(prisma)
+    const fresh = await makeDownloadedRelease(prisma, {
+      artistId: artist.id, source: 'RUTRACKER', status: 'DOWNLOADING', torrentHash: null,
+      attempts: 0, priority: 10,
+    })
+
+    getTorrentInfoMock.mockResolvedValue([])
+
+    await reconcileTorrentDownloads()
+
+    const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: fresh.id } })
+    expect(after.status).toBe('DOWNLOADING')
+    expect(after.attempts).toBe(0)
+  })
 })
