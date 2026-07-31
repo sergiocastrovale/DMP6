@@ -85,6 +85,8 @@ return a ? b : c
 - **No scripts code in web app** - scripts are separate Rust binaries located in /scripts
 - **Metadata is source of truth** - never use filesystem paths/folder names for artist, album, year or any other information
 - **MusicBrainz IDs are definitive** - when embedded MB IDs exist in tags, use them directly without re-verification
+- **`/img/` is public by design** - `server/middleware/auth.ts`'s `PUBLIC_PREFIXES` exempts artist/release artwork from session auth (avoids a DB round-trip per `<img>` request). Anyone with a direct URL can view artwork without logging in; nothing else under `/img/` is served. Acceptable since album art isn't sensitive data, but don't assume `/img/*` is access-controlled if you add anything else under that path.
+- **Seed admin is `admin`/`admin`** - `prisma/seed.ts` creates it with `mustChangePassword: true`, so it's only usable to log in once before a real password is required. Fine as a bootstrap credential; don't "fix" it by hardcoding a different default (there's nothing safer to hardcode) or removing the forced change.
 
 ### Testing
 
