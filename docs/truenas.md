@@ -110,7 +110,7 @@ Access: `http://192.168.1.241:3000`
 
 ```bash
 # Dev machine
-cd web && pnpm backup   # → dump/YYYY-MM-DD-HH-MM-SS.sql.gz
+./backup                # → web/dump/YYYY-MM-DDTHH-MM-SS.sql.gz
 scp "dump/$(ls -t dump/ | head -1)" nas:path/to/dmp/dump/
 
 # NAS

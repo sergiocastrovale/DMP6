@@ -37,4 +37,4 @@ Reads from `web/.env`. All values have sensible defaults; override only if your 
 
 ## Restore
 
-The TypeScript restore script (`web/scripts/restore.ts`, invoked via `pnpm restore`) reads `web/dump/*.sql.gz` and is fully compatible with the files this script produces.
+The `./restore` wrapper (`scripts/restore`) reads `web/dump/*.sql.gz` and is fully compatible with the files this script produces.
