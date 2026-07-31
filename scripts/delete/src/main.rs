@@ -2,7 +2,11 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client as S3Client;
 use clap::Parser;
 use colored::*;
-use common::{error_log, statistics::update_statistics};
+use common::{
+    error_log,
+    lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
+    statistics::update_statistics,
+};
 use dotenvy;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -728,6 +732,16 @@ async fn main() {
         println!();
     }
 
+    // Same DB scan lock index/sync use - acquired only now (not while waiting on the confirmation
+    // prompt above) so delete's cascading writes never interleave with a running index/sync pass.
+    if clear_stale_lock_minutes(&pool, 10).await {
+        eprintln!("{}", "Cleared a stale lock.".yellow());
+    }
+    if let Err(e) = acquire_lock(&pool, "delete", std::process::id(), "").await {
+        eprintln!("{}: {}", "Cannot start".red(), e);
+        std::process::exit(1);
+    }
+
     // Execute
     let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
     let s3_client = if use_s3 { create_s3_client(&config).await } else { None };
@@ -741,11 +755,13 @@ async fn main() {
         Err(e) => {
             error_log::log_error(&format!("Database error: {}", e));
             eprintln!("  {} Database error: {}", "✗".red(), e);
+            release_lock(&pool).await;
             std::process::exit(1);
         }
     }
 
     update_statistics(&pool).await.ok();
+    release_lock(&pool).await;
 
     println!();
     println!("{} {} artist(s) fully deleted, {} artist(s) flipped to related-only.",

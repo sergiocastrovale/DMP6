@@ -11,7 +11,12 @@ use std::process::Command;
 
 use clap::Parser;
 use colored::Colorize;
-use common::{config::{apply_db_overrides, load_config}, db::create_pool, error_log};
+use common::{
+    config::{apply_db_overrides, load_config},
+    db::create_pool,
+    error_log,
+    lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
+};
 
 #[derive(Parser, Debug)]
 #[command(name = "fix", about = "Apply fixes for PENDING metadata issues")]
@@ -49,6 +54,16 @@ async fn main() {
 
     if !args.corrupted && !args.unsplit && !args.orphans && !args.duplicates && !args.missing {
         eprintln!("{}", "Specify at least one fix type: --corrupted, --unsplit, --orphans, --duplicates, --missing".red());
+        std::process::exit(1);
+    }
+
+    // Same DB scan lock index/sync use - fix rewrites tags and merges/deletes artists, so it must
+    // not run concurrently with an index/sync pass touching the same rows.
+    if clear_stale_lock_minutes(&pool, 10).await {
+        eprintln!("{}", "Cleared a stale lock.".yellow());
+    }
+    if let Err(e) = acquire_lock(&pool, "fix", std::process::id(), "").await {
+        eprintln!("{}: {}", "Cannot start".red(), e);
         std::process::exit(1);
     }
 
@@ -151,6 +166,10 @@ async fn main() {
             }
         }
     }
+
+    // Release before spawning `index` as a subprocess below - it takes the same lock itself, and
+    // fix's own destructive work is done at this point.
+    release_lock(&pool).await;
 
     if had_file_writes && !affected_folders.is_empty() {
         let folders = affected_folders.into_iter().collect::<Vec<_>>().join(";");

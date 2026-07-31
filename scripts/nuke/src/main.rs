@@ -2,7 +2,11 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client as S3Client;
 use clap::Parser;
 use colored::*;
-use common::{error_log, filters::matches_filter};
+use common::{
+    error_log,
+    filters::matches_filter,
+    lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
+};
 use dotenvy;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -744,6 +748,17 @@ async fn main() {
             log!();
         }
 
+        // Same DB scan lock index/sync use - acquired only now (not while waiting on the
+        // confirmation prompt above) so this cascading delete never interleaves with a running
+        // index/sync pass.
+        if clear_stale_lock_minutes(&pool, 10).await {
+            log!("Cleared a stale lock.");
+        }
+        if let Err(e) = acquire_lock(&pool, "nuke", std::process::id(), "").await {
+            eprintln!("{}: {}", "Cannot start".red(), e);
+            std::process::exit(1);
+        }
+
         let use_s3 = image_storage == "s3" || image_storage == "both";
         let s3_client = if use_s3 { create_s3_client().await } else { None };
 
@@ -770,11 +785,13 @@ async fn main() {
             Err(e) => {
                 error_log::log_error(&e.to_string());
                 eprintln!("  {} Error: {}", "✗".red(), e);
+                release_lock(&pool).await;
                 std::process::exit(1);
             }
         }
 
         refresh_statistics(&pool).await;
+        release_lock(&pool).await;
 
         log!();
         log!(
@@ -829,6 +846,17 @@ async fn main() {
             std::process::exit(1);
         }
     };
+
+    // Same DB scan lock index/sync use. Note: this full wipe TRUNCATEs the very "Statistics" row
+    // that holds the lock columns - release_lock below becomes a harmless no-op in that case (0 rows
+    // affected), and the next acquire_lock anywhere recreates the row via its own ON CONFLICT insert.
+    if clear_stale_lock_minutes(&pool, 10).await {
+        log!("Cleared a stale lock.");
+    }
+    if let Err(e) = acquire_lock(&pool, "nuke", std::process::id(), "").await {
+        eprintln!("{}: {}", "Cannot start".red(), e);
+        std::process::exit(1);
+    }
 
     log!("Truncating all tables...");
     let tables = vec![
@@ -931,4 +959,5 @@ async fn main() {
 
     log!();
     log!("Done. Run ./index && ./sync to rebuild.");
+    release_lock(&pool).await;
 }
