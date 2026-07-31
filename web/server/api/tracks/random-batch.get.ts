@@ -1,36 +1,12 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
-
-interface RawTrack {
-  id: string
-  title: string | null
-  artist: string | null
-  album: string | null
-  duration: number | null
-  localReleaseId: string | null
-}
+import { fetchRandomTrackRows } from '~/server/utils/randomBatch'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const count = Math.min(Math.max(parseInt(query.count as string) || 10, 1), 30)
 
-  // TABLESAMPLE with slightly larger sample to reliably get N tracks
-  let rows = await prisma.$queryRaw<RawTrack[]>`
-    SELECT id, title, artist, album, duration, "localReleaseId"
-    FROM "LocalReleaseTrack"
-    TABLESAMPLE BERNOULLI(0.05)
-    LIMIT ${count}
-  `
-
-  // Fallback to larger sample if insufficient
-  if (rows.length < count) {
-    rows = await prisma.$queryRaw<RawTrack[]>`
-      SELECT id, title, artist, album, duration, "localReleaseId"
-      FROM "LocalReleaseTrack"
-      TABLESAMPLE BERNOULLI(1)
-      LIMIT ${count}
-    `
-  }
+  const rows = await fetchRandomTrackRows(prisma, count)
 
   if (rows.length === 0) return []
 
