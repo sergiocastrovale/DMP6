@@ -79,6 +79,44 @@ impl RateLimiter {
 }
 
 // ---------------------------------------------------------------------------
+// Error classification
+// ---------------------------------------------------------------------------
+
+/// Every mb_api function returns `Result<T, String>` (see mb_get below) - this is the single place
+/// that classifies what those error strings actually mean, instead of scattering `.contains("503")`
+/// checks at every call site. Previously a `Request failed: ...` (reqwest-level network/timeout/DNS
+/// error from mb_get's `.send()`) matched NONE of the "transient" checks and fell through to the
+/// hard-fail branch - in the `--release <id>` merge-validation path that feeds the file-deleting
+/// INVALID path on a plain network blip, not a genuine no-match (see docs audit #3/#63).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MbErrorKind {
+    /// HTTP 404 - this specific ID doesn't exist; try the next lookup tier.
+    NotFound,
+    /// Network/timeout/DNS error, or MB itself reporting overload (503/429, retries exhausted).
+    /// Worth skipping for now and retrying later - NOT evidence the release has no MB match.
+    Transient,
+    /// Anything else (unexpected status, response parse failure).
+    Hard,
+}
+
+pub fn classify_mb_error(e: &str) -> MbErrorKind {
+    if e.contains("HTTP 404") {
+        MbErrorKind::NotFound
+    }
+    else if e.starts_with("Request failed:")
+        || e.starts_with("Read body failed:")
+        || e.contains("unavailable")
+        || e.contains("503")
+        || e.contains("429")
+    {
+        MbErrorKind::Transient
+    }
+    else {
+        MbErrorKind::Hard
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Core HTTP helper
 // ---------------------------------------------------------------------------
 
@@ -441,4 +479,46 @@ pub async fn mb_get_release_by_id(
     }
 
     Ok((lookup.release, tracks, rg_id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_http_404_as_not_found() {
+        assert_eq!(classify_mb_error("HTTP 404 for https://musicbrainz.org/..."), MbErrorKind::NotFound);
+    }
+
+    #[test]
+    fn classifies_rate_limit_and_unavailable_as_transient() {
+        assert_eq!(
+            classify_mb_error("MusicBrainz API still unavailable after 6 retries (waited up to 16s). Will retry this release next time."),
+            MbErrorKind::Transient,
+        );
+        assert_eq!(classify_mb_error("HTTP 503 for https://musicbrainz.org/..."), MbErrorKind::Transient);
+        assert_eq!(classify_mb_error("HTTP 429 for https://musicbrainz.org/..."), MbErrorKind::Transient);
+    }
+
+    #[test]
+    fn classifies_network_timeout_dns_errors_as_transient_not_hard() {
+        // The actual bug (docs audit #63): a reqwest-level failure (timeout, DNS, connection refused)
+        // previously matched none of the "transient" substring checks and fell through to Hard, wrongly
+        // counting a network blip as a real failure.
+        assert_eq!(
+            classify_mb_error("Request failed: error sending request for url (https://musicbrainz.org/...): operation timed out"),
+            MbErrorKind::Transient,
+        );
+        assert_eq!(
+            classify_mb_error("Request failed: dns error: failed to lookup address information"),
+            MbErrorKind::Transient,
+        );
+        assert_eq!(classify_mb_error("Read body failed: error decoding response body"), MbErrorKind::Transient);
+    }
+
+    #[test]
+    fn classifies_everything_else_as_hard() {
+        assert_eq!(classify_mb_error("Parse error: invalid JSON"), MbErrorKind::Hard);
+        assert_eq!(classify_mb_error("HTTP 500 for https://musicbrainz.org/..."), MbErrorKind::Hard);
+    }
 }

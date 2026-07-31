@@ -1008,10 +1008,10 @@ async fn main() {
                             .to_string();
                         matched = Some((rel_id.clone(), rg_id, vec![(release, tracks)], type_name));
                     }
-                    Err(e) if e.contains("HTTP 404") => {
+                    Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::NotFound => {
                         reporter.info("        ← Album ID not found, trying release group...");
                     }
-                    Err(e) if e.contains("unavailable") || e.contains("503") || e.contains("429") => {
+                    Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::Transient => {
                         reporter.warn(&format!("{}: MB unavailable, skipping", local_release.title));
                         continue;
                     }
@@ -1049,7 +1049,7 @@ async fn main() {
                                 reporter.skip(&format!("{} (no official releases in group)", local_release.title));
                             }
                         }
-                        Err(e) if e.contains("unavailable") || e.contains("503") || e.contains("429") => {
+                        Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::Transient => {
                             reporter.warn(&format!("{}: MB unavailable, skipping", local_release.title));
                             continue;
                         }
