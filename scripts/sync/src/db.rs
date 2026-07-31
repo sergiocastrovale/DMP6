@@ -364,6 +364,7 @@ pub async fn batch_upsert_artist_urls(
 pub struct ReleaseOwner {
     pub local_release_id: String,
     pub title: String,
+    pub folder_path: Option<String>,
     pub artist_ids: Vec<String>,
 }
 
@@ -375,8 +376,8 @@ pub async fn find_release_owner(
     mb_release_id: &str,
     exclude_local_release_id: &str,
 ) -> Result<Option<ReleaseOwner>, sqlx::Error> {
-    let row: Option<(String, String, Vec<Option<String>>)> = sqlx::query_as(
-        r#"SELECT lr.id, lr.title, array_agg(lra."artistId")
+    let row: Option<(String, String, Option<String>, Vec<Option<String>>)> = sqlx::query_as(
+        r#"SELECT lr.id, lr.title, lr."folderPath", array_agg(lra."artistId")
            FROM "LocalRelease" lr
            LEFT JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
            WHERE lr."releaseId" = $1 AND lr.id != $2
@@ -388,9 +389,10 @@ pub async fn find_release_owner(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|(local_release_id, title, artist_ids)| ReleaseOwner {
+    Ok(row.map(|(local_release_id, title, folder_path, artist_ids)| ReleaseOwner {
         local_release_id,
         title,
+        folder_path,
         artist_ids: artist_ids.into_iter().flatten().collect(),
     }))
 }
@@ -724,15 +726,16 @@ pub struct LocalReleaseRow {
     pub release_id: Option<String>,
     pub match_status: Option<String>,
     pub has_cover: bool,
+    pub folder_path: Option<String>,
 }
 
 pub async fn get_local_releases_for_artist(
     pool: &PgPool,
     artist_id: &str,
 ) -> Result<Vec<LocalReleaseRow>, sqlx::Error> {
-    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
         r#"SELECT lr.id, lr.title, lr.year, lr."forcedComplete", lr."releaseId", lr."matchStatus"::text,
-                  lr.image, lr."imageUrl"
+                  lr.image, lr."imageUrl", lr."folderPath"
            FROM "LocalRelease" lr
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
            WHERE lra."artistId" = $1
@@ -744,7 +747,7 @@ pub async fn get_local_releases_for_artist(
 
     Ok(rows
         .into_iter()
-        .map(|(id, title, year, forced_complete, release_id, match_status, image, image_url)| LocalReleaseRow {
+        .map(|(id, title, year, forced_complete, release_id, match_status, image, image_url, folder_path)| LocalReleaseRow {
             id,
             title,
             year,
@@ -752,6 +755,7 @@ pub async fn get_local_releases_for_artist(
             release_id,
             match_status,
             has_cover: image.is_some() || image_url.is_some(),
+            folder_path,
         })
         .collect())
 }

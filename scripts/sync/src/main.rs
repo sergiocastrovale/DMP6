@@ -26,7 +26,7 @@ mod status;
 use db::*;
 use images::{download_artist_image, download_cover_art};
 use mb_api::RateLimiter;
-use mb_matching::{find_mb_match_with_fallback, is_special_artist_name, names_are_similar};
+use mb_matching::{find_mb_match_with_fallback, is_special_artist_name, shared_release_guard_reason};
 use mb_types::{MbArtistMatch, MbRelease, MbTrack};
 use nuke::nuke_mb_data;
 use status::{check_release_status, status_to_db_string};
@@ -1056,6 +1056,39 @@ async fn main() {
                 }
             }
 
+            // Deluxe/edition upgrade: Tier 1 bound a specific release, but if the local folder has
+            // MORE tracks than that edition (bonus/deluxe copy), browse the release group for a
+            // sibling edition whose track count matches exactly before accepting the base edition.
+            // A local UNDERcount is left alone here — that's genuine incompleteness, not an edition
+            // mismatch, and stays on the Tier 1 result to be caught as MISSING_TRACKS below.
+            let tier1_upgrade_check: Option<(String, usize)> = matched.as_ref().and_then(|(rel_id, rg_id, releases, _)| {
+                if rel_id.is_empty() { return None; } // Tier 2 already ran, nothing to upgrade
+                let track_count = releases.first().map(|(_, t)| t.len()).unwrap_or(0);
+                (track_count < local_tracks.len()).then(|| (rg_id.clone(), track_count))
+            });
+            if let Some((rg_id_for_tier1, tier1_track_count)) = tier1_upgrade_check {
+                reporter.info(&format!(
+                    "        → Local has more tracks than the matched edition ({} vs {}) — checking release group {} for a deluxe sibling",
+                    local_tracks.len(), tier1_track_count, rg_id_for_tier1
+                ));
+                match mb_api::mb_get_release_tracks(&http_client, &rg_id_for_tier1, &mut limiter).await {
+                    Ok(releases) if releases.iter().any(|(_, t)| t.len() == local_tracks.len()) => {
+                        reporter.info("        ← Found a deluxe sibling with matching track count");
+                        let type_name = release_groups.iter()
+                            .find(|rg2| rg2.id == rg_id_for_tier1)
+                            .and_then(|rg2| rg2.primary_type.as_deref())
+                            .unwrap_or("Other")
+                            .to_string();
+                        matched = Some((String::new(), rg_id_for_tier1, releases, type_name));
+                    }
+                    _ => {
+                        // No deluxe sibling found (or lookup failed) — keep the Tier 1 base edition.
+                        // check_release_status will record EXTRA_TRACKS, which stampMerged keeps
+                        // (not a purge trigger) rather than treating it as an error.
+                    }
+                }
+            }
+
             // Tier 2: Release group lookup via MUSICBRAINZ_RELEASEGROUPID (or Tier 1 fallback)
             if matched.is_none() {
                 let rg_id_to_try = majority_rg_id.as_deref()
@@ -1196,22 +1229,19 @@ async fn main() {
             };
 
             // Shared-releaseId guard (audit #24): this MB release may already be bound to a DIFFERENT
-            // artist's LocalRelease (bad tags / a prior matcher collision). Binding a second, unrelated
-            // artist onto it corrupts catalogue-gaps coverage and status counts for both artists. Only
-            // refuse when the existing owner is neither this same artist nor a title-similar release
-            // (legitimate same-artist re-syncs and near-duplicate titles still bind normally).
-            match find_release_owner(&pool, &mb_db_id, &local_release.id).await {
-                Ok(Some(owner)) if !owner.artist_ids.contains(&artist.id)
-                    && !names_are_similar(&owner.title, &local_release.title) =>
-                {
+            // LocalRelease. Binding a second, unrelated release onto it corrupts catalogue-gaps
+            // coverage and status counts for both. See shared_release_guard_reason for the predicate.
+            if let Ok(Some(owner)) = find_release_owner(&pool, &mb_db_id, &local_release.id).await {
+                if let Some(reason) = shared_release_guard_reason(
+                    &owner, &artist.id, &local_release.title, local_release.folder_path.as_deref(),
+                ) {
                     mark_local_release_unmatched(&pool, &local_release.id).await.ok();
                     reporter.warn(&format!(
-                        "{}: MB release already owned by a different artist's release \"{}\" ({}) - left Unmatched (shared-releaseId guard)",
-                        local_release.title, owner.title, owner.local_release_id
+                        "{}: MB release already owned by {} \"{}\" ({}) - left Unmatched (shared-releaseId guard)",
+                        local_release.title, reason, owner.title, owner.local_release_id
                     ));
                     continue;
                 }
-                _ => {}
             }
 
             ensure_mb_release_artist_link(&pool, &mb_db_id, &artist.id)
