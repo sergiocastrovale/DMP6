@@ -257,33 +257,6 @@ export interface SlskdMoveResult {
   movedCount: number
 }
 
-export async function moveSlskdFilesOnCompletion(args: SlskdMoveArgs): Promise<SlskdMoveResult> {
-  const log = (msg: string) => monitorLog('notice', `slskd move: ${msg}`)
-  const expected = new Set(args.files.map(f => basename(f.filename.replace(/\\/g, '/'))))
-  const deadline = Date.now() + 30 * 60 * 1000 // 30 minutes
-
-  log(`scheduled: ${args.username} / ${args.artistName} / ${args.albumTitle} (${expected.size} files)`)
-
-  // Wait for all transfers for this username+files to leave in-progress states.
-  while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, 5000))
-    let transfers: SlskdTransfer[] = []
-    try { transfers = await getSlskdActiveDownloads() }
-    catch { continue }
-
-    const ours = transfers.filter(t =>
-      t.username === args.username && expected.has(basename(t.filename.replace(/\\/g, '/'))),
-    )
-    // If slskd no longer lists the transfer, consider it done.
-    if (ours.length === 0) { log('transfers no longer listed - proceeding to move'); break }
-
-    const stillActive = ours.some(t => !isSlskdTerminal(t.state))
-    if (!stillActive) { log('all transfers reached terminal state - proceeding to move'); break }
-  }
-
-  return relocateDownloadedFiles(args)
-}
-
 /**
  * Move this download's files (located by basename+size under downloadsPath) into the templated
  * Artist/Album folder and normalize to MP3-320. Assumes the transfer is already finished —
