@@ -174,8 +174,15 @@ async function moveIntoLibrary(row: MergeRow, music: string, readyPath: string):
  */
 async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloadAttempts: number): Promise<{ id: string | null; error: string | null }> {
   const stripped = stripDiscSegment(rel)
+  // Exact match first - "Artist/2001 - Album" must not match "Artist/2001 - Album (Deluxe)". Only fall
+  // back to a prefix match for genuine disc subfolders ("Artist/2001 - Album/cd2"), constrained to a
+  // path separator boundary so it can't swallow a sibling release with a longer name.
   const lr = await prisma.localRelease.findFirst({
-    where: { OR: [{ folderPath: rel }, { folderPath: stripped }, { folderPath: { startsWith: stripped } }] },
+    where: { OR: [{ folderPath: rel }, { folderPath: stripped }] },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  }) ?? await prisma.localRelease.findFirst({
+    where: { folderPath: { startsWith: `${stripped}/` } },
     orderBy: { createdAt: 'desc' },
     select: { id: true },
   })

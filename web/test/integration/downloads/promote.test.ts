@@ -290,6 +290,57 @@ describe('promote.ts (real Postgres)', () => {
     })
   })
 
+  describe('mergeDownloadedRelease: folderPath matching must not cross into a sibling release', () => {
+    let musicDirTmp: string
+    let readyRootTmp: string
+
+    beforeEach(async () => {
+      musicDirTmp = await mkdtemp(join(tmpdir(), 'dmp-music-'))
+      readyRootTmp = await mkdtemp(join(tmpdir(), 'dmp-ready-'))
+      process.env.MUSIC_DIR = musicDirTmp
+      await prisma.settings.upsert({
+        where: { id: 'main' },
+        create: { id: 'main', downloadsPath: readyRootTmp },
+        update: { downloadsPath: readyRootTmp },
+      })
+      execFileMock.mockReset()
+      execFileMock.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: (e: Error | null, o: string, err: string) => void) => cb(null, '', ''))
+    })
+
+    afterEach(async () => {
+      process.env.MUSIC_DIR = ''
+      await rm(musicDirTmp, { recursive: true, force: true })
+      await rm(readyRootTmp, { recursive: true, force: true })
+    })
+
+    it('picks the exact-folderPath LocalRelease, never a "(Deluxe)" sibling that merely starts with the same prefix', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2001 - Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const realMb = await makeMbRelease(prisma, { status: 'COMPLETE' })
+      const decoyMb = await makeMbRelease(prisma, { status: 'COMPLETE' })
+
+      // Decoy is a genuinely different release that merely shares the prefix, created AFTER the real
+      // one - under the old `startsWith(stripped)` + `orderBy createdAt desc` query this would win.
+      const real = await makeLocalRelease(prisma, {
+        folderPath: rel, matchStatus: 'COMPLETE', releaseId: realMb.id,
+      })
+      await makeLocalRelease(prisma, {
+        folderPath: `${rel} (Deluxe)`, matchStatus: 'COMPLETE', releaseId: decoyMb.id,
+      })
+
+      const dl = await makeDownloadedRelease(prisma, { status: 'READY', stagingPath, title: 'Album' })
+
+      const { localReleaseId } = await mergeDownloadedRelease(dl.id)
+
+      expect(localReleaseId).toBe(real.id)
+    })
+  })
+
   describe('sweepDanglingDownloads', () => {
     it('deletes a terminal row once its release group is no longer MISSING (fulfilled or gone)', async () => {
       const { sweepDanglingDownloads } = await import('../../../server/utils/promote')
