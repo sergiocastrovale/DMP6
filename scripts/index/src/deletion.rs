@@ -1,4 +1,5 @@
 use common::config::Config;
+use common::error_log::log_warn;
 use common::images::{delete_artist_images, delete_release_images};
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -15,10 +16,16 @@ pub struct TrackDeletionResult {
     pub count: u64,
 }
 
+// If more than this fraction of a folder's known tracks appear missing in one pass, treat it as a
+// transient mount blip (NFS/CIFS stall, permission hiccup) rather than a real mass deletion, and skip
+// deleting anything for this folder this run. A real deletion of a few bonus tracks stays well under
+// this; losing every file at once is the signature of the mount, not the music, going away.
+const MAX_MISSING_RATIO: f64 = 0.2;
+
 /// Delete track rows whose filePath no longer exists on disk.
 /// Returns count deleted and which releases were affected.
 pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir: &str) -> TrackDeletionResult {
-    let rows: Vec<(String, String, String)> = sqlx::query_as(
+    let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
         r#"SELECT id, "filePath", "localReleaseId" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
     )
     .bind(format!("{}%", folder_prefix))
@@ -26,6 +33,7 @@ pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir
     .await
     .unwrap_or_default();
 
+    let total = rows.len();
     let base = Path::new(music_dir);
     let mut missing_ids: Vec<String> = Vec::new();
     let mut release_ids: HashSet<String> = HashSet::new();
@@ -33,11 +41,21 @@ pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir
     for (id, path, release_id) in rows {
         if !base.join(&path).exists() {
             missing_ids.push(id);
-            release_ids.insert(release_id);
+            if let Some(rid) = release_id {
+                release_ids.insert(rid);
+            }
         }
     }
 
     if missing_ids.is_empty() {
+        return TrackDeletionResult { count: 0 };
+    }
+
+    if total > 0 && missing_ids.len() as f64 / total as f64 > MAX_MISSING_RATIO {
+        log_warn(&format!(
+            "delete_removed_tracks: {}/{} tracks missing under '{}' - looks like a mount blip, not a real deletion. Skipping this folder.",
+            missing_ids.len(), total, folder_prefix
+        ));
         return TrackDeletionResult { count: 0 };
     }
 
@@ -166,11 +184,24 @@ pub async fn detect_deleted_folders(
 
     let mut stats = DeletionStats::default();
 
-    for (db_folder,) in rows {
-        if !scanned_folders.contains(&db_folder) {
-            let deleted = delete_folder_tracks(pool, &db_folder).await;
-            stats.tracks_deleted += deleted;
-        }
+    let total_known = rows.len();
+    let missing_folders: Vec<String> = rows
+        .into_iter()
+        .map(|(f,)| f)
+        .filter(|f| !scanned_folders.contains(f))
+        .collect();
+
+    if total_known > 0 && missing_folders.len() as f64 / total_known as f64 > MAX_MISSING_RATIO {
+        log_warn(&format!(
+            "detect_deleted_folders: {}/{} known folders missing from this scan - looks like a mount blip, not a real mass deletion. Skipping folder-level deletion this run.",
+            missing_folders.len(), total_known
+        ));
+        return stats;
+    }
+
+    for db_folder in missing_folders {
+        let deleted = delete_folder_tracks(pool, &db_folder).await;
+        stats.tracks_deleted += deleted;
     }
 
     if stats.tracks_deleted > 0 {
