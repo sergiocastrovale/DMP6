@@ -256,6 +256,10 @@ interface SlskdMoveArgs {
 export interface SlskdMoveResult {
   targetDir: string
   movedCount: number
+  // Convertible (non-mp3) files that failed to transcode (ffmpeg missing/errored) and are left in
+  // their original codec — the library layout only recognizes .mp3, so these are NOT usable tracks.
+  // Callers must treat a nonzero count as a failed attempt, not a successful relocate.
+  transcodeFailed: number
 }
 
 /**
@@ -283,7 +287,7 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   const found = await findFilesByBasename(scanRoot, expected, 10)
   log(`found ${found.length}/${expected.size} files under ${scanRoot} -> ${targetDir}`)
   if (found.length === 0) {
-    return { targetDir, movedCount: 0 }
+    return { targetDir, movedCount: 0, transcodeFailed: 0 }
   }
 
   const movedFromDirs = new Set<string>()
@@ -327,9 +331,9 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   }
 
   // Normalize everything in the target folder to MP3-320 (keeps existing mp3s as-is).
-  await transcodeDirToMp3320(targetDir).catch(e => monitorLog('warn', `slskd move: transcode failed: ${e.message}`))
+  const { failed: transcodeFailed } = await transcodeDirToMp3320(targetDir)
 
-  return { targetDir, movedCount }
+  return { targetDir, movedCount, transcodeFailed }
 }
 
 /**

@@ -34,8 +34,18 @@ export async function transcodeDirToMp3320(dir: string): Promise<{ converted: nu
   let failed = 0
 
   const files = await collectAudioFiles(dir)
-  for (const src of files) {
-    if (!CONVERT_EXTENSIONS.has(ext(src))) {continue} // keep mp3 and non-audio
+  const toConvert = files.filter(f => CONVERT_EXTENSIONS.has(ext(f)))
+
+  // Fast, single pre-flight instead of N identical per-file failures: if ffmpeg is missing, every
+  // convertible file is unusable in its current codec (the library layout only recognizes .mp3 —
+  // see layout.ts). Fail the whole batch loudly rather than silently leaving lossless files behind
+  // as unrecognized "extras".
+  if (toConvert.length > 0 && !(await ffmpegAvailable())) {
+    warn(`ffmpeg not found on PATH — ${toConvert.length} file(s) left un-transcoded in ${dir}`)
+    return { converted: 0, failed: toConvert.length }
+  }
+
+  for (const src of toConvert) {
     const out = src.replace(/\.[^.]+$/, '.mp3')
     const part = `${out}.part`
     try {

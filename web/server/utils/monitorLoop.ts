@@ -182,7 +182,15 @@ export async function reconcileDownloads(): Promise<void> {
           albumTitle: row.title,
           year: row.year ?? null,
         }), 5 * 60_000)
-        if (res.movedCount > 0) {
+        if (res.transcodeFailed > 0) {
+          // ffmpeg missing/errored on one or more convertible files — the layout transform only
+          // recognizes .mp3, so a partially-transcoded folder is not a usable release. Purge the
+          // broken relocation and retry from scratch rather than marching it to ENRICHING/READY.
+          await rm(res.targetDir, { recursive: true, force: true }).catch(() => {})
+          await failAttempt(row, maxAttempts, `${res.transcodeFailed} file(s) failed to transcode (ffmpeg missing/errored)`)
+          failed++
+        }
+        else if (res.movedCount > 0) {
           if (await resolveSongkongEnabled() && !(await songkongBacklogStalled())) {
             // Hand off to SongKong (host cron drainer) for enrichment before the layout transform.
             const dirs = songkongDirs()
@@ -446,7 +454,11 @@ export async function reconcileTorrentDownloads(): Promise<void> {
             albumTitle: r.title,
             year: r.year ?? null,
           }), 5 * 60_000)
-          if (res.movedCount > 0) {
+          if (res.transcodeFailed > 0) {
+            await rm(res.targetDir, { recursive: true, force: true }).catch(() => {})
+            await failAttempt(r, maxAttempts, `${res.transcodeFailed} file(s) failed to transcode (ffmpeg missing/errored)`)
+          }
+          else if (res.movedCount > 0) {
             if (await resolveSongkongEnabled() && !(await songkongBacklogStalled())) {
               const dirs = songkongDirs()
               await mkdir(dirs.spool, { recursive: true })
