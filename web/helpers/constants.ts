@@ -1,6 +1,9 @@
 export const maxGenres = 5
 export const SKELETON_GRID_SIZE = 10
 export const SESSION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
+// Ring-buffer cap for the terminal store's line buffer - a full ./index run can stream 19K+ lines;
+// capping keeps the reactive array (and every component re-scanning it per chunk) bounded (audit #92).
+export const TERMINAL_LINES_CAP = 5000
 
 // Friendly labels for the terminal/progress panel, keyed by the running command (or stream label).
 export const commandLabels: Record<string, string> = {

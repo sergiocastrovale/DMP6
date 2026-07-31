@@ -88,4 +88,18 @@ describe('appendTerminalLine', () => {
     appendTerminalLine(lines, '\rProgress: 1%')
     expect(lines).toEqual(['\rProgress: 1%'])
   })
+
+  it('drops the oldest line once over the cap (audit #92)', () => {
+    const lines: string[] = []
+    for (let i = 0; i < 5; i++) {
+      appendTerminalLine(lines, `line ${i}`, 3)
+    }
+    expect(lines).toEqual(['line 2', 'line 3', 'line 4'])
+  })
+
+  it('overwriting the last progress line never triggers the cap eviction', () => {
+    const lines = ['a', 'b', '\rProgress: 10%']
+    appendTerminalLine(lines, '\rProgress: 50%', 3)
+    expect(lines).toEqual(['a', 'b', '\rProgress: 50%'])
+  })
 })

@@ -2,6 +2,8 @@
 // fetch() ReadableStream and split it into `event: <type>\ndata: <payload>\n\n` frames by hand.
 // Extracted here so the framing/parsing itself is unit-testable without a real stream or fetch.
 
+import { TERMINAL_LINES_CAP } from '~/helpers/constants'
+
 export interface SseEvent {
   event: string
   data: string
@@ -33,18 +35,22 @@ export function parseDoneExitCode(data: string): number {
 
 // Terminal-specific line accumulation: a `\r`-prefixed line is a progress update that overwrites the
 // previous line if it was also a progress line, instead of appending a new one. Mutates `lines`.
-export function appendTerminalLine(lines: string[], text: string): void {
+// Ring-buffer capped at `cap` - a long-running command (e.g. a full ./index pass) can stream tens of
+// thousands of lines; growing `lines` unbounded balloons the reactive array and every re-render that
+// scans it (audit #92). Overwriting the last line never grows the array, so only the two push cases
+// need the cap check.
+export function appendTerminalLine(lines: string[], text: string, cap = TERMINAL_LINES_CAP): void {
   if (text.startsWith('\r')) {
     const cleaned = text.slice(1)
     const last = lines[lines.length - 1]
     if (lines.length > 0 && typeof last === 'string' && last.startsWith('\r')) {
       lines[lines.length - 1] = '\r' + cleaned
+      return
     }
-    else {
-      lines.push('\r' + cleaned)
-    }
+    lines.push('\r' + cleaned)
   }
   else {
     lines.push(text)
   }
+  if (lines.length > cap) {lines.shift()}
 }
