@@ -242,6 +242,54 @@ describe('promote.ts (real Postgres)', () => {
     })
   })
 
+  describe('mergeDownloadedRelease: provenance stamping', () => {
+    let musicDirTmp: string
+    let readyRootTmp: string
+
+    beforeEach(async () => {
+      musicDirTmp = await mkdtemp(join(tmpdir(), 'dmp-music-'))
+      readyRootTmp = await mkdtemp(join(tmpdir(), 'dmp-ready-'))
+      process.env.MUSIC_DIR = musicDirTmp
+      await prisma.settings.upsert({
+        where: { id: 'main' },
+        create: { id: 'main', downloadsPath: readyRootTmp },
+        update: { downloadsPath: readyRootTmp },
+      })
+      execFileMock.mockReset()
+      execFileMock.mockImplementation((_file: string, _args: string[], _opts: unknown, cb: (e: Error | null, o: string, err: string) => void) => cb(null, '', ''))
+    })
+
+    afterEach(async () => {
+      process.env.MUSIC_DIR = ''
+      await rm(musicDirTmp, { recursive: true, force: true })
+      await rm(readyRootTmp, { recursive: true, force: true })
+    })
+
+    it('stamps downloadedFrom as "rutracker" (not hardcoded "slskd") for a RUTRACKER-sourced merge', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - RT Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const mbRelease = await makeMbRelease(prisma, { status: 'COMPLETE' })
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'READY', stagingPath, title: 'RT Album', source: 'RUTRACKER',
+      })
+      // Stand-in for what a real (mocked-away) `sync --release` run would have bound.
+      await makeLocalRelease(prisma, {
+        folderPath: rel, matchStatus: 'COMPLETE', releaseId: mbRelease.id,
+      })
+
+      const { localReleaseId } = await mergeDownloadedRelease(dl.id)
+
+      expect(localReleaseId).not.toBeNull()
+      const lr = await prisma.localRelease.findUniqueOrThrow({ where: { id: localReleaseId! } })
+      expect(lr.downloadedFrom).toBe('rutracker')
+    })
+  })
+
   describe('sweepDanglingDownloads', () => {
     it('deletes a terminal row once its release group is no longer MISSING (fulfilled or gone)', async () => {
       const { sweepDanglingDownloads } = await import('../../../server/utils/promote')

@@ -4,7 +4,7 @@ import { mkdir, readdir, rename, unlink, rm, rmdir, access } from 'node:fs/promi
 import { createReadStream, createWriteStream } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import { join, basename, dirname, relative, sep } from 'node:path'
-import { Prisma } from '@prisma/client'
+import { Prisma, type DownloadSource } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
@@ -106,6 +106,7 @@ type MergeRow = {
   releaseGroupId: string | null
   attempts: number
   priority: number
+  source: DownloadSource
   artist: { name: string } | null
 }
 
@@ -204,7 +205,7 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
   if (complete) {
     try {
       await prisma.$transaction([
-        prisma.localRelease.update({ where: { id: reloaded!.id }, data: { downloadedFrom: 'slskd' } }),
+        prisma.localRelease.update({ where: { id: reloaded!.id }, data: { downloadedFrom: row.source === 'RUTRACKER' ? 'rutracker' : 'slskd' } }),
         prisma.downloadedRelease.update({
           where: { id: row.id },
           data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: reloaded!.id },
