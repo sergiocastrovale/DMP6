@@ -19,14 +19,18 @@ pub async fn get_run_hash(pool: &PgPool, field: &str) -> Option<String> {
 }
 
 pub async fn set_run_hash(pool: &PgPool, field: &str, hash: &str) {
+    // "updatedAt" is NOT NULL with no DB-level default (Prisma's @updatedAt is client-side only,
+    // like lock.rs's INSERT already accounts for) - omitting it here fails outright on a fresh DB
+    // with no existing 'main' row, silently swallowed by .ok() below, killing resumability until
+    // the web app happens to create the Settings row first.
     let sql = match field {
         "indexRunHash" => {
-            r#"INSERT INTO "Settings" (id, "indexRunHash") VALUES ('main', $1)
-               ON CONFLICT (id) DO UPDATE SET "indexRunHash" = $1"#
+            r#"INSERT INTO "Settings" (id, "indexRunHash", "updatedAt") VALUES ('main', $1, NOW())
+               ON CONFLICT (id) DO UPDATE SET "indexRunHash" = $1, "updatedAt" = NOW()"#
         }
         "syncRunHash" => {
-            r#"INSERT INTO "Settings" (id, "syncRunHash") VALUES ('main', $1)
-               ON CONFLICT (id) DO UPDATE SET "syncRunHash" = $1"#
+            r#"INSERT INTO "Settings" (id, "syncRunHash", "updatedAt") VALUES ('main', $1, NOW())
+               ON CONFLICT (id) DO UPDATE SET "syncRunHash" = $1, "updatedAt" = NOW()"#
         }
         _ => return,
     };
