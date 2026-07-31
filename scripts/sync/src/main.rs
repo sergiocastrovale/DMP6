@@ -398,6 +398,7 @@ async fn main() {
                     Some(&track.mb_release_id),
                     Some(&track.mb_release_group_id),
                     track.mb_track_id.as_deref(),
+                    args.overwrite,
                 ) {
                     Ok(true) => { written += 1; }
                     Ok(false) => {}
@@ -1255,6 +1256,7 @@ async fn main() {
                                 Some(&final_release_id),
                                 Some(&rg_id),
                                 mb_track_id,
+                                args.overwrite,
                             ) {
                                 Ok(true) => { tags_written += 1; }
                                 Ok(false) => {}

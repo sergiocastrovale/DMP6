@@ -1,15 +1,25 @@
 use lofty::config::{ParseOptions, ParsingMode, WriteOptions};
 use lofty::prelude::*;
 use lofty::probe::Probe;
-use lofty::tag::{ItemKey, ItemValue, TagItem};
+use lofty::tag::{ItemKey, ItemValue, Tag, TagItem};
 use std::path::Path;
 
+/// Write embedded MusicBrainz IDs into a file's tags.
+///
+/// Doctrine (CLAUDE.md: "MusicBrainz IDs are definitive"): an EXISTING tag value is never silently
+/// overwritten by default - a bad embedded ID from a past mis-match should require a deliberate
+/// decision to correct, not get clobbered by a routine sync. Pass `force = true` (wired to sync's
+/// `--force-mb-tags` flag) to intentionally overwrite existing values, e.g. after fixing a bad match.
+///
+/// A file with no tag block at all gets one created so IDs can still be written - that's a genuine gap
+/// (nothing to preserve), not a doctrine matter, unlike the overwrite behavior above.
 pub fn write_mb_ids(
     abs_path: &Path,
     album_artist_id: Option<&str>,
     album_id: Option<&str>,
     release_group_id: Option<&str>,
     track_id: Option<&str>,
+    force: bool,
 ) -> Result<bool, String> {
     if album_artist_id.is_none()
         && album_id.is_none()
@@ -33,10 +43,13 @@ pub fn write_mb_ids(
         .read()
         .map_err(|e| format!("cannot read tags {}: {}", abs_path.display(), e))?;
 
-    let tag = match tagged.primary_tag_mut() {
-        Some(t) => t,
-        None => return Ok(false),
-    };
+    if tagged.primary_tag().is_none() {
+        let tag_type = tagged.primary_tag_type();
+        tagged.insert_tag(Tag::new(tag_type));
+    }
+    let tag = tagged
+        .primary_tag_mut()
+        .expect("primary tag was just inserted");
 
     let pairs: &[(ItemKey, Option<&str>)] = &[
         (ItemKey::MusicBrainzReleaseArtistId, album_artist_id),
@@ -48,7 +61,7 @@ pub fn write_mb_ids(
     let mut needs_write = false;
     for (key, desired) in pairs {
         if let Some(val) = desired {
-            if tag.get_string(key.clone()).is_none() {
+            if force || tag.get_string(key.clone()).is_none() {
                 tag.insert(TagItem::new(
                     key.clone(),
                     ItemValue::Text(val.to_string()),
