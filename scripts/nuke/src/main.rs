@@ -811,6 +811,10 @@ async fn main() {
     log!();
 
     log!("WARNING: This will DELETE ALL DATA from the database and images.");
+    log!("This includes the download queue/history (DownloadedRelease) and the entire audit/fix");
+    log!("issue history (Issue* + FixHistory tables) - they cascade-truncate via their Artist FK");
+    log!("even though they aren't in the explicit truncate list below. Settings (web config +");
+    log!("credentials) is preserved.");
     if args.keep_artist_img {
         log!("Artist images will be preserved.");
     }
@@ -878,9 +882,9 @@ async fn main() {
         "Genre",
         "ReleaseType",
         "SearchSource",
-        "Settings",
         "Statistics",
         "FolderScan",
+        "FixHistory",
     ];
 
     for table in &tables {
