@@ -1,9 +1,10 @@
-import { mkdir, readdir, rename, copyFile, unlink, rmdir } from 'node:fs/promises'
+import { readdir, rmdir } from 'node:fs/promises'
 import { join, dirname, basename, sep } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { collectAudioFiles, ext, probeTags, sanitize, type AudioTags } from '~/server/utils/transcode'
 import { monitorLog } from '~/server/utils/monitorLog'
+import { safeMoveFile } from '~/server/utils/safeMove'
 
 const log = (msg: string) => monitorLog('notice', `layout: ${msg}`)
 
@@ -41,20 +42,6 @@ const resolveAlbumType = async (mbReleaseId?: string | null, releaseGroupId?: st
     if (rel?.type?.name) {return rel.type.name}
   }
   return 'Album'
-}
-
-/** Move a single file, copy+unlink fallback for cross-device / permission-restricted mounts. */
-const moveFile = async (src: string, dest: string): Promise<void> => {
-  if (src === dest) {return}
-  await mkdir(dirname(dest), { recursive: true })
-  try {
-    await rename(src, dest)
-  }
-  catch (e: any) {
-    if (!['EXDEV', 'EACCES', 'EPERM'].includes(e?.code)) {throw e}
-    await copyFile(src, dest)
-    await unlink(src).catch(() => {})
-  }
 }
 
 /** Best-effort removal of now-empty directories from startDir up to (not including) stopAt. */
@@ -114,7 +101,7 @@ export const transformToLibraryLayout = async (
     const subDir = discTotal > 1 ? `CD ${pad2(discNo)}` : ''
     const dest = join(releaseRoot, subDir, fileNameFromTags(tags, basename(file)))
     try {
-      await moveFile(file, dest)
+      await safeMoveFile(file, dest)
       moved++
     }
     catch (e: any) {
@@ -124,7 +111,7 @@ export const transformToLibraryLayout = async (
 
   // Carry over any non-audio extras (cover art, etc.) sitting alongside the tracks.
   for (const f of (await collectAudioFiles(stagingDir)).filter(f => ext(f) !== 'mp3')) {
-    await moveFile(f, join(releaseRoot, basename(f))).catch(() => {})
+    await safeMoveFile(f, join(releaseRoot, basename(f))).catch(() => {})
   }
 
   // Clean up the old staging tree (now emptied) up to the downloads root.

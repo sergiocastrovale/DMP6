@@ -1,8 +1,9 @@
-import { readdir, mkdir, rename, rmdir, copyFile, unlink, stat } from 'node:fs/promises'
+import { readdir, mkdir, rename, rmdir, unlink, stat } from 'node:fs/promises'
 import { basename, join, dirname, sep, extname } from 'node:path'
 import { resolveDownloadSettings, resolveDownloadDir } from '~/server/utils/downloadSettings'
 import { transcodeDirToMp3320 } from '~/server/utils/transcode'
 import { monitorLog } from '~/server/utils/monitorLog'
+import { streamCopyFile } from '~/server/utils/safeMove'
 
 interface SlskdConfig {
   url: string
@@ -297,10 +298,11 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
       movedCount++
     }
     catch (e: any) {
-      // SMB/drvfs mounts often refuse cross-directory rename. Fall back to copy+unlink.
+      // SMB/drvfs mounts often refuse cross-directory rename. Fall back to copy+unlink (streamed -
+      // see safeMove.ts's streamCopyFile for why this isn't fs.copyFile).
       if (e?.code === 'EACCES' || e?.code === 'EXDEV' || e?.code === 'EPERM') {
         try {
-          await copyFile(srcPath, destPath)
+          await streamCopyFile(srcPath, destPath)
           // The copy is what matters: the file is now in the target. slskd writes sources as its own
           // uid, so unlink can fail (EACCES) — count it moved anyway and leave the orphan source for
           // the periodic prune sweep. Failing here would wrongly mark the whole release as failed.
