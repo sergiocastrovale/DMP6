@@ -139,4 +139,40 @@ export const makeIssueCorrupted = async (
   })
 }
 
+export const makeIssueDuplicateRelease = async (
+  prisma: PrismaClient,
+  releaseAId: string,
+  releaseBId: string,
+  overrides: Partial<Prisma.IssueDuplicateReleaseUncheckedCreateInput> = {},
+) => {
+  const run = await makeAuditRun(prisma)
+  return prisma.issueDuplicateRelease.create({
+    data: {
+      auditRunId: run.id,
+      releaseAId,
+      releaseBId,
+      status: 'DETECTED',
+      ...overrides,
+    },
+  })
+}
+
+export const makeIssueMismatchedReleaseId = async (
+  prisma: PrismaClient,
+  releaseAId: string,
+  releaseBId: string,
+  overrides: Partial<Prisma.IssueMismatchedReleaseIdUncheckedCreateInput> = {},
+) => {
+  const run = await makeAuditRun(prisma)
+  return prisma.issueMismatchedReleaseId.create({
+    data: {
+      auditRunId: run.id,
+      releaseAId,
+      releaseBId,
+      status: 'DETECTED',
+      ...overrides,
+    },
+  })
+}
+
 export { uid }

@@ -39,6 +39,9 @@ const typeCards: { key: IssueType; label: string; description: string }[] = [
   { key: 'orphans', label: 'Orphan Artists', description: 'Artists with no releases, no tracks, or garbage phantom names' },
   { key: 'duplicates', label: 'Duplicate Artists', description: 'Artists with the same normalized name that should be merged' },
   { key: 'missing', label: 'Missing Metadata', description: 'Tracks with null or empty core metadata fields' },
+  { key: 'enrichment', label: 'Enrichment Gaps', description: 'Releases missing BPM, mood, AcousticID, or other enrichment data' },
+  { key: 'duplicate-release', label: 'Duplicate Releases', description: 'Local release pairs sharing one MusicBrainz release ID with matching title, track count, and duration - likely redundant folder copies' },
+  { key: 'mismatched-release-id', label: 'Mismatched Release ID', description: 'Local release pairs sharing one MusicBrainz release ID despite different titles - a sync-matcher linking bug' },
 ]
 
 function formatRelative(date: string): string {

@@ -117,6 +117,17 @@ const columns = computed<IssueColumn[]>(() => {
       { key: 'folder', label: 'Folder', sortable: false },
       { key: '_resync', label: '', sortable: false, width: 'w-24' },
     ]
+    case 'duplicate-release': return [
+      { key: 'releaseA.title', label: 'Release A', sortable: false },
+      { key: 'releaseA.trackCount', label: 'A Tracks', sortable: false, width: 'w-20' },
+      { key: 'releaseB.title', label: 'Release B', sortable: false },
+      { key: 'releaseB.trackCount', label: 'B Tracks', sortable: false, width: 'w-20' },
+    ]
+    case 'mismatched-release-id': return [
+      { key: 'releaseA.title', label: 'Release A', sortable: false },
+      { key: 'releaseB.title', label: 'Release B', sortable: false },
+      { key: 'releaseA.release.title', label: 'Shared MB Title', sortable: false },
+    ]
     default: return []
   }
 })
@@ -155,6 +166,8 @@ const typeLabels: Record<IssueType, string> = {
   duplicates: 'Duplicate Artists',
   missing: 'Missing Metadata',
   enrichment: 'Enrichment Gaps',
+  'duplicate-release': 'Duplicate Releases',
+  'mismatched-release-id': 'Mismatched Release ID',
 }
 
 const typeDescriptions: Record<IssueType, { detection: string; fix: string }> = {
@@ -181,6 +194,14 @@ const typeDescriptions: Record<IssueType, { detection: string; fix: string }> = 
   enrichment: {
     detection: 'Releases missing enrichment data: MusicBrainz link, BPM, mood, AcousticID, Discogs, Bandcamp, or Wikipedia URLs.',
     fix: 'Enrichment gaps are resolved by re-syncing with MusicBrainz or running external analysis tools. No automatic fix available - use the re-sync button where applicable.',
+  },
+  'duplicate-release': {
+    detection: 'Local release pairs pointing at the same MusicBrainz release with matching title, track count, and duration - likely the same edition ripped into two different folders.',
+    fix: 'No automatic fix - review and manually delete the redundant folder copy.',
+  },
+  'mismatched-release-id': {
+    detection: 'Local release pairs pointing at the same MusicBrainz release despite having different titles - a sync-matcher bug linking unrelated albums to the same release row.',
+    fix: 'No automatic fix - requires re-running the sync matcher, not a mechanical database edit.',
   },
 }
 
@@ -329,6 +350,42 @@ function getHistoryDate(item: any): string {
           </NuxtLink>
         </template>
 
+        <template #cell-releaseA_title="{ item }">
+          <NuxtLink
+            v-if="item.releaseA.artist"
+            :to="`/artist/${item.releaseA.artist.slug}`"
+            class="text-blue-400 hover:underline"
+            :title="item.releaseA.folderPath"
+          >
+            {{ item.releaseA.title }}
+          </NuxtLink>
+          <span v-else class="truncate text-ink0" :title="item.releaseA.folderPath">{{ item.releaseA.title }}</span>
+        </template>
+
+        <template #cell-releaseB_title="{ item }">
+          <NuxtLink
+            v-if="item.releaseB.artist"
+            :to="`/artist/${item.releaseB.artist.slug}`"
+            class="text-blue-400 hover:underline"
+            :title="item.releaseB.folderPath"
+          >
+            {{ item.releaseB.title }}
+          </NuxtLink>
+          <span v-else class="truncate text-ink0" :title="item.releaseB.folderPath">{{ item.releaseB.title }}</span>
+        </template>
+
+        <template #cell-releaseA_trackCount="{ item }">
+          <span class="text-xs text-ink0">{{ item.releaseA.trackCount }}</span>
+        </template>
+
+        <template #cell-releaseB_trackCount="{ item }">
+          <span class="text-xs text-ink0">{{ item.releaseB.trackCount }}</span>
+        </template>
+
+        <template #cell-releaseA_release_title="{ item }">
+          <span class="text-xs text-ink-2">{{ item.releaseA.release?.title ?? '-' }}</span>
+        </template>
+
         <template #cell-missingFields="{ item }">
           <div class="flex flex-wrap gap-1">
             <template v-if="type === 'enrichment'">
@@ -431,7 +488,7 @@ function getHistoryDate(item: any): string {
     </div>
 
     <IssuesSelectionBar
-      v-if="type !== 'enrichment' && activeSubtab === 'detected'"
+      v-if="type !== 'enrichment' && type !== 'duplicate-release' && type !== 'mismatched-release-id' && activeSubtab === 'detected'"
       :count="selected.size"
       :type="type"
       :loading="terminal.isRunning"

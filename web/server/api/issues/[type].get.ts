@@ -3,7 +3,7 @@ import { parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
 import type { PaginatedResponse } from '~/types/api'
 
-const VALID_TYPES = ['corrupted', 'unsplit', 'orphans', 'duplicates', 'missing', 'enrichment'] as const
+const VALID_TYPES = ['corrupted', 'unsplit', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id'] as const
 type IssueType = typeof VALID_TYPES[number]
 
 const VALID_STATUSES = ['DETECTED', 'PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'] as const
@@ -218,6 +218,45 @@ async function fetchType(
         folderPath: item.localRelease?.tracks?.[0]?.filePath ?? null,
       }))
       return [mapped, total]
+    }
+
+    case 'duplicate-release':
+    case 'mismatched-release-id': {
+      const model = type === 'duplicate-release' ? prisma.issueDuplicateRelease : prisma.issueMismatchedReleaseId
+      const where = q
+        ? { OR: [{ releaseA: { title: { contains: q, mode: 'insensitive' as const } } }, { releaseB: { title: { contains: q, mode: 'insensitive' as const } } }], status: status as any }
+        : { status: status as any }
+      const releaseSelect = {
+        id: true,
+        title: true,
+        year: true,
+        totalDuration: true,
+        folderPath: true,
+        artists: { take: 1, include: { artist: { select: { name: true, slug: true } } } },
+        _count: { select: { tracks: true } },
+        release: type === 'mismatched-release-id' ? { select: { title: true } } : false,
+      } as const
+      const [raw, total] = await Promise.all([
+        (model as any).findMany({
+          where,
+          skip,
+          take,
+          orderBy: { createdAt: order },
+          include: { releaseA: { select: releaseSelect }, releaseB: { select: releaseSelect } },
+        }),
+        (model as any).count({ where }),
+      ])
+      const flattenRelease = (r: any) => r && {
+        ...r,
+        trackCount: r._count?.tracks ?? 0,
+        artist: r.artists?.[0]?.artist ?? null,
+      }
+      const items = (raw as any[]).map(item => ({
+        ...item,
+        releaseA: flattenRelease(item.releaseA),
+        releaseB: flattenRelease(item.releaseB),
+      }))
+      return [items, total]
     }
   }
 }

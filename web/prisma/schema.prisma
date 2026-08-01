@@ -209,6 +209,10 @@ model LocalRelease {
   enrichmentIssues IssueEnrichmentGap[]
   favorite         FavoriteRelease?
   downloadedRelease DownloadedRelease?
+  duplicateReleaseAIssues    IssueDuplicateRelease[]    @relation("DuplicateReleaseA")
+  duplicateReleaseBIssues    IssueDuplicateRelease[]    @relation("DuplicateReleaseB")
+  mismatchedReleaseIdAIssues IssueMismatchedReleaseId[] @relation("MismatchedReleaseIdA")
+  mismatchedReleaseIdBIssues IssueMismatchedReleaseId[] @relation("MismatchedReleaseIdB")
 
   @@unique([groupKey])
   @@index([releaseId])
@@ -592,6 +596,8 @@ model AuditRun {
   duplicateIssues  IssueDuplicateArtist[]
   missingIssues    IssueMissingMetadata[]
   enrichmentIssues IssueEnrichmentGap[]
+  duplicateReleaseIssues    IssueDuplicateRelease[]
+  mismatchedReleaseIdIssues IssueMismatchedReleaseId[]
 }
 
 model IssueCorruptedTpe2 {
@@ -653,6 +659,38 @@ model IssueDuplicateArtist {
   auditRun   AuditRun    @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
   artistA    Artist      @relation("DuplicateArtistA", fields: [artistAId], references: [id], onDelete: Cascade)
   artistB    Artist      @relation("DuplicateArtistB", fields: [artistBId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([auditRunId])
+}
+
+model IssueDuplicateRelease {
+  id         String       @id @default(cuid())
+  auditRunId String
+  status     IssueStatus  @default(DETECTED)
+  releaseAId String
+  releaseBId String
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  auditRun   AuditRun     @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  releaseA   LocalRelease @relation("DuplicateReleaseA", fields: [releaseAId], references: [id], onDelete: Cascade)
+  releaseB   LocalRelease @relation("DuplicateReleaseB", fields: [releaseBId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([auditRunId])
+}
+
+model IssueMismatchedReleaseId {
+  id         String       @id @default(cuid())
+  auditRunId String
+  status     IssueStatus  @default(DETECTED)
+  releaseAId String
+  releaseBId String
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  auditRun   AuditRun     @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  releaseA   LocalRelease @relation("MismatchedReleaseIdA", fields: [releaseAId], references: [id], onDelete: Cascade)
+  releaseB   LocalRelease @relation("MismatchedReleaseIdB", fields: [releaseBId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([auditRunId])

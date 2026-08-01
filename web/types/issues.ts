@@ -1,7 +1,7 @@
 import type { ArtistRef } from './common'
 
 export type IssueStatus = 'DETECTED' | 'PENDING' | 'PENDING_REVERT' | 'RESOLVED' | 'FAILED'
-export type IssueType = 'corrupted' | 'unsplit' | 'orphans' | 'duplicates' | 'missing' | 'enrichment'
+export type IssueType = 'corrupted' | 'unsplit' | 'orphans' | 'duplicates' | 'missing' | 'enrichment' | 'duplicate-release' | 'mismatched-release-id'
 export type HistoryIssueType = Extract<IssueType, 'corrupted' | 'unsplit' | 'missing'>
 export type Confidence = 'high' | 'medium' | 'low'
 
@@ -72,6 +72,27 @@ export interface IssueEnrichmentGapRow extends IssueRowBase {
   missingFields: EnrichmentField[]
   artist: { name: string; slug: string } | null
   localRelease: { id: string; title: string; year: number | null }
+}
+
+interface ReleasePairRef {
+  id: string
+  title: string
+  year: number | null
+  totalDuration: number | null
+  folderPath: string | null
+  trackCount: number
+  artist: { name: string; slug: string } | null
+  release?: { title: string } | null
+}
+
+export interface IssueDuplicateReleaseRow extends IssueRowBase {
+  releaseA: ReleasePairRef
+  releaseB: ReleasePairRef
+}
+
+export interface IssueMismatchedReleaseIdRow extends IssueRowBase {
+  releaseA: ReleasePairRef
+  releaseB: ReleasePairRef
 }
 
 export interface FixHistoryRow {

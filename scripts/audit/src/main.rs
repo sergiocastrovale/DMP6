@@ -4,6 +4,7 @@ mod orphans;
 mod duplicates;
 mod missing;
 mod enrichment;
+mod release_pairs;
 
 use clap::Parser;
 use colored::Colorize;
@@ -32,11 +33,18 @@ struct Args {
     /// Only run enrichment gap detection (BPM, mood, acousticId, MB link, Discogs, Bandcamp, Wikipedia)
     #[arg(long)]
     enrichment: bool,
+    /// Only run duplicate-release detection (same MB releaseId, same title/tracks/duration)
+    #[arg(long = "duplicate-release")]
+    duplicate_release: bool,
+    /// Only run mismatched-release-id detection (same MB releaseId, different titles)
+    #[arg(long = "mismatched-release-id")]
+    mismatched_release_id: bool,
 }
 
 impl Args {
     fn run_all(&self) -> bool {
         !self.corrupted && !self.unsplit && !self.orphans && !self.duplicates && !self.missing && !self.enrichment
+            && !self.duplicate_release && !self.mismatched_release_id
     }
     fn should_run_corrupted(&self) -> bool { self.run_all() || self.corrupted }
     fn should_run_unsplit(&self) -> bool { self.run_all() || self.unsplit }
@@ -44,6 +52,8 @@ impl Args {
     fn should_run_duplicates(&self) -> bool { self.run_all() || self.duplicates }
     fn should_run_missing(&self) -> bool { self.run_all() || self.missing }
     fn should_run_enrichment(&self) -> bool { self.run_all() || self.enrichment }
+    fn should_run_duplicate_release(&self) -> bool { self.run_all() || self.duplicate_release }
+    fn should_run_mismatched_release_id(&self) -> bool { self.run_all() || self.mismatched_release_id }
 }
 
 #[tokio::main]
@@ -104,6 +114,22 @@ async fn main() {
         match enrichment::detect(&pool, &run_id).await {
             Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("enrichment".into(), json!(n)); }
             Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("enrichment".into(), json!(0)); }
+        }
+    }
+
+    if args.should_run_duplicate_release() {
+        print!("{} ", "→ Detecting duplicate releases...".cyan());
+        match release_pairs::detect_duplicate_release(&pool, &run_id).await {
+            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("duplicate-release".into(), json!(n)); }
+            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("duplicate-release".into(), json!(0)); }
+        }
+    }
+
+    if args.should_run_mismatched_release_id() {
+        print!("{} ", "→ Detecting mismatched release IDs...".cyan());
+        match release_pairs::detect_mismatched_release_id(&pool, &run_id).await {
+            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("mismatched-release-id".into(), json!(n)); }
+            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("mismatched-release-id".into(), json!(0)); }
         }
     }
 

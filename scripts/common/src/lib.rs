@@ -2,6 +2,7 @@ pub mod config;
 pub mod db;
 pub mod slug;
 pub mod filters;
+pub mod release_pairs;
 pub mod artists;
 pub mod s3;
 pub mod progress;
