@@ -434,11 +434,23 @@ pub async fn mb_get_release_tracks(
     Ok(releases)
 }
 
+/// The result of a Tier-1 release-by-id lookup. `primary_type` / `secondary_types` come from the
+/// release's own inline release-group (via `inc=release-groups`), so the allow-list can gate the
+/// exact group this release belongs to - authoritative even for compilations whose group is not in
+/// the local artist's browsed release-group list.
+pub struct ReleaseById {
+    pub release: MbRelease,
+    pub tracks: Vec<MbTrack>,
+    pub rg_id: String,
+    pub primary_type: Option<String>,
+    pub secondary_types: Vec<String>,
+}
+
 pub async fn mb_get_release_by_id(
     client: &Client,
     release_id: &str,
     limiter: &mut RateLimiter,
-) -> Result<(MbRelease, Vec<MbTrack>, String), String> {
+) -> Result<ReleaseById, String> {
     let url = format!(
         "{}/release/{}?inc=recordings+release-groups&fmt=json",
         MB_BASE, release_id
@@ -448,6 +460,10 @@ pub async fn mb_get_release_by_id(
     #[derive(serde::Deserialize)]
     struct ReleaseGroupRef {
         id: String,
+        #[serde(rename = "primary-type")]
+        primary_type: Option<String>,
+        #[serde(rename = "secondary-types")]
+        secondary_types: Option<Vec<String>>,
     }
     #[derive(serde::Deserialize)]
     struct ReleaseLookup {
@@ -460,10 +476,10 @@ pub async fn mb_get_release_by_id(
     let lookup: ReleaseLookup =
         serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
 
-    let rg_id = lookup
-        .release_group
-        .map(|rg| rg.id)
-        .unwrap_or_default();
+    let (rg_id, primary_type, secondary_types) = match lookup.release_group {
+        Some(rg) => (rg.id, rg.primary_type, rg.secondary_types.unwrap_or_default()),
+        None => (String::new(), None, Vec::new()),
+    };
 
     let mut tracks = Vec::new();
     if let Some(ref media) = lookup.release.media {
@@ -478,7 +494,7 @@ pub async fn mb_get_release_by_id(
         }
     }
 
-    Ok((lookup.release, tracks, rg_id))
+    Ok(ReleaseById { release: lookup.release, tracks, rg_id, primary_type, secondary_types })
 }
 
 #[cfg(test)]

@@ -617,6 +617,23 @@ async fn main() {
             map
         };
 
+        // Per-folder display title/year (mode album/year tag). The folder is the physical release
+        // unit: every track in a folder shares one LocalRelease keyed by folder path (see
+        // build_group_key), so the release's pre-match display name comes from the folder's majority
+        // tag rather than whichever track happens to be processed last.
+        let folder_display_meta: HashMap<String, (String, Option<i32>)> = {
+            let mut by_folder: HashMap<String, Vec<(Option<String>, Option<i32>)>> = HashMap::new();
+            for track in &extracted {
+                let raw = {
+                    let parts: Vec<&str> = track.file_path.rsplitn(2, '/').collect();
+                    if parts.len() > 1 { parts[1].to_string() } else { String::new() }
+                };
+                let fp = strip_disc_subfolder(&raw);
+                by_folder.entry(fp).or_default().push((track.album.clone(), track.year));
+            }
+            by_folder.into_iter().map(|(fp, v)| (fp, folder_majority_title_year(&v))).collect()
+        };
+
         // -----------------------------------------------------------------
         // Change detection + build batch
         // -----------------------------------------------------------------
@@ -698,6 +715,7 @@ async fn main() {
                 track.year.unwrap_or(0),
                 track.album_artist.as_deref().unwrap_or("").to_lowercase(),
             );
+            // MB ids are kept only for cover-art dedup (below), NOT for grouping - see build_group_key.
             let sanitized_release_id = track.mb_release_id.as_deref().and_then(common::filters::sanitize_mb_id);
             let sanitized_rg_id = track.mb_release_group_id.as_deref().and_then(common::filters::sanitize_mb_id);
             let effective_release_id = sanitized_release_id.as_deref().or_else(|| {
@@ -708,18 +726,21 @@ async fn main() {
             });
 
             let group_key = build_group_key(
-                effective_release_id,
-                effective_rg_id,
                 album_name,
                 track.year,
                 track.album_artist.as_deref().unwrap_or(""),
                 &folder_path_str,
             );
 
+            let (release_title, release_year) = folder_display_meta
+                .get(&folder_path_str)
+                .map(|(t, y)| (t.as_str(), *y))
+                .unwrap_or((album_name, track.year));
+
             let release_id = match ensure_local_release_cached(
                 &pool,
-                album_name,
-                track.year,
+                release_title,
+                release_year,
                 &folder_path_str,
                 &group_key,
                 &mut release_cache,

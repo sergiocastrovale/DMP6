@@ -17,6 +17,7 @@ mod catalogue_gaps;
 mod db;
 mod images;
 mod mb_api;
+mod allowlist;
 mod mb_matching;
 mod mb_types;
 mod nuke;
@@ -77,18 +78,43 @@ struct SyncArgs {
 }
 
 fn get_majority_id(tracks: &[LocalTrackRow], field: fn(&LocalTrackRow) -> &Option<String>) -> Option<String> {
-    let mut counts: HashMap<&str, usize> = HashMap::new();
-    for t in tracks {
-        if let Some(ref id) = field(t) {
-            if !id.is_empty() {
-                *counts.entry(id.as_str()).or_insert(0) += 1;
-            }
+    let counts: HashMap<&str, usize> = tracks.iter().fold(HashMap::new(), |mut acc, t| {
+        if let Some(id) = field(t).as_deref().filter(|s| !s.is_empty()) {
+            *acc.entry(id).or_insert(0) += 1;
+        }
+        acc
+    });
+    majority_from_counts(&counts)
+}
+
+/// The consensus id for a folder-release, or None if the tracks don't agree.
+/// - Exactly one distinct id (a unanimous album, or a genuine single-file folder) => that id.
+/// - Multiple competing ids => the mode, but only if it occurs at least twice AND strictly more than
+///   any rival (a real plurality); otherwise None.
+///
+/// This matters now that a LocalRelease is one whole folder: a compilation folder carries many
+/// distinct per-source ids (each count 1), and the old `max_by_key` returned an arbitrary one -
+/// matching the folder to a random source single. With competing count-1 ids there is no consensus
+/// => None => the release stays UNMATCHED (correct). A legit partial album (one track of many) has a
+/// single unambiguous id and still matches; the allow-list separately rejects it if it is a Single.
+fn majority_from_counts(counts: &HashMap<&str, usize>) -> Option<String> {
+    if counts.len() == 1 {
+        return counts.keys().next().map(|id| id.to_string());
+    }
+    let mut top: Option<(&str, usize)> = None;
+    let mut runner_up = 0usize;
+    for (&id, &c) in counts {
+        match top {
+            Some((_, tc)) if c > tc => { runner_up = tc; top = Some((id, c)); }
+            Some((_, _)) if c > runner_up => { runner_up = c; }
+            None => { top = Some((id, c)); }
+            _ => {}
         }
     }
-    counts
-        .into_iter()
-        .max_by_key(|(_, c)| *c)
-        .map(|(id, _)| id.to_string())
+    match top {
+        Some((id, c)) if c >= 2 && c > runner_up => Some(id.to_string()),
+        _ => None,
+    }
 }
 
 fn synthesize_edition_label(
@@ -1023,23 +1049,25 @@ async fn main() {
             let majority_rg_id = get_majority_id(&local_tracks, |t| &t.mb_release_group_id);
 
             // Tier 1: Direct release lookup via embedded MUSICBRAINZ_ALBUMID
-            let mut matched: Option<(String, String, Vec<(MbRelease, Vec<MbTrack>)>, String)> = None; // (release_id, rg_id, releases, type_name)
+            // matched = (release_id, rg_id, releases, primary_type, secondary_types)
+            let mut matched: Option<(String, String, Vec<(MbRelease, Vec<MbTrack>)>, Option<String>, Vec<String>)> = None;
             if let Some(ref rel_id) = majority_release_id {
                 let api_start = std::time::Instant::now();
                 reporter.info(&format!("        → Lookup by album ID {}", rel_id));
                 match mb_api::mb_get_release_by_id(&http_client, rel_id, &mut limiter).await {
-                    Ok((release, tracks, rg_id)) => {
+                    Ok(found) => {
                         reporter.info(&format!(
                             "        ← Found release in {:.1}s ({} tracks)",
                             api_start.elapsed().as_secs_f64(),
-                            tracks.len()
+                            found.tracks.len()
                         ));
-                        let type_name = release_groups.iter()
-                            .find(|rg| rg.id == rg_id)
-                            .and_then(|rg| rg.primary_type.as_deref())
-                            .unwrap_or("Other")
-                            .to_string();
-                        matched = Some((rel_id.clone(), rg_id, vec![(release, tracks)], type_name));
+                        matched = Some((
+                            rel_id.clone(),
+                            found.rg_id,
+                            vec![(found.release, found.tracks)],
+                            found.primary_type,
+                            found.secondary_types,
+                        ));
                     }
                     Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::NotFound => {
                         reporter.info("        ← Album ID not found, trying release group...");
@@ -1061,7 +1089,7 @@ async fn main() {
             // sibling edition whose track count matches exactly before accepting the base edition.
             // A local UNDERcount is left alone here — that's genuine incompleteness, not an edition
             // mismatch, and stays on the Tier 1 result to be caught as MISSING_TRACKS below.
-            let tier1_upgrade_check: Option<(String, usize)> = matched.as_ref().and_then(|(rel_id, rg_id, releases, _)| {
+            let tier1_upgrade_check: Option<(String, usize)> = matched.as_ref().and_then(|(rel_id, rg_id, releases, _, _)| {
                 if rel_id.is_empty() { return None; } // Tier 2 already ran, nothing to upgrade
                 let track_count = releases.first().map(|(_, t)| t.len()).unwrap_or(0);
                 (track_count < local_tracks.len()).then(|| (rg_id.clone(), track_count))
@@ -1071,15 +1099,15 @@ async fn main() {
                     "        → Local has more tracks than the matched edition ({} vs {}) — checking release group {} for a deluxe sibling",
                     local_tracks.len(), tier1_track_count, rg_id_for_tier1
                 ));
+                // Preserve the Tier 1 primary/secondary types for the same release group.
+                let (primary_type, secondary_types) = matched
+                    .as_ref()
+                    .map(|(_, _, _, p, s)| (p.clone(), s.clone()))
+                    .unwrap_or((None, Vec::new()));
                 match mb_api::mb_get_release_tracks(&http_client, &rg_id_for_tier1, &mut limiter).await {
                     Ok(releases) if releases.iter().any(|(_, t)| t.len() == local_tracks.len()) => {
                         reporter.info("        ← Found a deluxe sibling with matching track count");
-                        let type_name = release_groups.iter()
-                            .find(|rg2| rg2.id == rg_id_for_tier1)
-                            .and_then(|rg2| rg2.primary_type.as_deref())
-                            .unwrap_or("Other")
-                            .to_string();
-                        matched = Some((String::new(), rg_id_for_tier1, releases, type_name));
+                        matched = Some((String::new(), rg_id_for_tier1, releases, primary_type, secondary_types));
                     }
                     _ => {
                         // No deluxe sibling found (or lookup failed) — keep the Tier 1 base edition.
@@ -1103,12 +1131,10 @@ async fn main() {
                                 releases.len(),
                                 api_start.elapsed().as_secs_f64(),
                             ));
-                            let type_name = release_groups.iter()
-                                .find(|rg2| rg2.id == rg_id)
-                                .and_then(|rg2| rg2.primary_type.as_deref())
-                                .unwrap_or("Other")
-                                .to_string();
-                            matched = Some((String::new(), rg_id.to_string(), releases, type_name));
+                            let rg = release_groups.iter().find(|rg2| rg2.id == rg_id);
+                            let primary_type = rg.and_then(|rg2| rg2.primary_type.clone());
+                            let secondary_types = rg.and_then(|rg2| rg2.secondary_types.clone()).unwrap_or_default();
+                            matched = Some((String::new(), rg_id.to_string(), releases, primary_type, secondary_types));
                         }
                         Ok(_) => {
                             if args.verbose {
@@ -1131,7 +1157,7 @@ async fn main() {
             // Strict policy: metadata wins. No MB metadata in tags → leave Unmatched.
             // Title fuzzy matching (former Tier 3) is intentionally disabled to avoid
             // collapsing distinct editions onto a single MB release.
-            let (tier_release_id, rg_id, mb_release_tracks, type_name) = match matched {
+            let (tier_release_id, rg_id, mb_release_tracks, primary_type, secondary_types) = match matched {
                 Some(m) => m,
                 None => {
                     mark_local_release_unmatched(&pool, &local_release.id).await.ok();
@@ -1142,6 +1168,7 @@ async fn main() {
                 }
             };
 
+            let type_name = primary_type.clone().unwrap_or_else(|| "Other".to_string());
             let type_id =
                 match ensure_release_type_cached(&pool, &type_name, &mut release_type_cache).await {
                     Ok(id) => id,
@@ -1185,6 +1212,21 @@ async fn main() {
 
             let best_release = &mb_release_tracks[status_check.best_release_idx].0;
             let best_tracks = &mb_release_tracks[status_check.best_release_idx].1;
+
+            // Allow-list gate: album-oriented library, no singles. Reject any release whose group is
+            // not Album/EP, whose secondary type is non-music, or whose status is not Official. A
+            // rejected release leaves the LocalRelease UNMATCHED rather than binding a disallowed
+            // (e.g. Single-typed) MB release.
+            if !allowlist::is_allowed(primary_type.as_deref(), &secondary_types, best_release.status.as_deref()) {
+                mark_local_release_unmatched(&pool, &local_release.id).await.ok();
+                reporter.skip(&format!(
+                    "{} (not allowed: type={}, status={} - left Unmatched)",
+                    local_release.title,
+                    primary_type.as_deref().unwrap_or("?"),
+                    best_release.status.as_deref().unwrap_or("?"),
+                ));
+                continue;
+            }
 
             // Use Tier 1 release ID if available, otherwise use best match from status check
             let final_release_id = if !tier_release_id.is_empty() {
@@ -1374,10 +1416,12 @@ async fn main() {
                 if covered_rg_ids.contains(&rg.id) {
                     continue;
                 }
-                let type_name = rg.primary_type.as_deref().unwrap_or("Other");
-                if type_name != "Album" && type_name != "EP" {
+                // Album-oriented allow-list (no specific release for a gap, so status is N/A).
+                let secondary = rg.secondary_types.clone().unwrap_or_default();
+                if !allowlist::is_allowed(rg.primary_type.as_deref(), &secondary, None) {
                     continue;
                 }
+                let type_name = rg.primary_type.as_deref().unwrap_or("Other");
                 let type_id = match ensure_release_type_cached(&pool, type_name, &mut release_type_cache).await {
                     Ok(id) => id,
                     Err(_) => continue,
@@ -1590,5 +1634,47 @@ async fn main() {
         for (name, reason) in &failed_artists {
             reporter.err(&format!("    {} - {}", name, reason));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::majority_from_counts;
+    use std::collections::HashMap;
+
+    fn counts(pairs: &[(&'static str, usize)]) -> HashMap<&'static str, usize> {
+        pairs.iter().copied().collect()
+    }
+
+    #[test]
+    fn unanimous_single_id_wins() {
+        assert_eq!(majority_from_counts(&counts(&[("a", 12)])), Some("a".to_string()));
+    }
+
+    #[test]
+    fn single_track_single_id_still_wins() {
+        // A genuine partial album (one track of many) has one unambiguous id and must still match.
+        assert_eq!(majority_from_counts(&counts(&[("a", 1)])), Some("a".to_string()));
+    }
+
+    #[test]
+    fn all_distinct_count_one_is_no_consensus() {
+        // A compilation folder: many per-source ids, each once. Must NOT bind an arbitrary one.
+        assert_eq!(majority_from_counts(&counts(&[("a", 1), ("b", 1), ("c", 1)])), None);
+    }
+
+    #[test]
+    fn clear_plurality_wins() {
+        assert_eq!(majority_from_counts(&counts(&[("a", 3), ("b", 1), ("c", 1)])), Some("a".to_string()));
+    }
+
+    #[test]
+    fn tie_between_competing_ids_is_no_consensus() {
+        assert_eq!(majority_from_counts(&counts(&[("a", 2), ("b", 2)])), None);
+    }
+
+    #[test]
+    fn empty_counts_is_none() {
+        assert_eq!(majority_from_counts(&counts(&[])), None);
     }
 }

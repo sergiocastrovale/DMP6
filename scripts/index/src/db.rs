@@ -27,23 +27,16 @@ pub fn strip_disc_subfolder(folder_path: &str) -> String {
     folder_path.to_string()
 }
 
-pub fn build_group_key(
-    mb_release_id: Option<&str>,
-    mb_release_group_id: Option<&str>,
-    album_title: &str,
-    year: Option<i32>,
-    album_artist: &str,
-    folder_path: &str,
-) -> String {
-    if let Some(id) = mb_release_id {
-        if !id.is_empty() {
-            return format!("mbr:{}:{}", id, folder_path);
-        }
-    }
-    if let Some(id) = mb_release_group_id {
-        if !id.is_empty() {
-            return format!("mb:{}:{}", id, folder_path);
-        }
+/// Group tracks into one LocalRelease by their containing folder (the physical release unit).
+/// The folder path is a structural boundary only - never parsed for metadata values (title/year/
+/// artist come from tags, then from the MusicBrainz match). Per-track MB ids are deliberately NOT
+/// part of the key: an MB release id identifies which release a *recording* appears on, not which
+/// folder-album a *file* belongs to, so keying on it shreds compilations (whose files carry their
+/// original sources' ids) into per-track fragments. Root-level files with no folder fall back to
+/// album-identity tags.
+pub fn build_group_key(album_title: &str, year: Option<i32>, album_artist: &str, folder_path: &str) -> String {
+    if !folder_path.is_empty() {
+        return format!("folder:{}", folder_path);
     }
     let title_slug = slugify(album_title);
     let artist_slug = if album_artist.is_empty() {
@@ -51,8 +44,38 @@ pub fn build_group_key(
     } else {
         slugify(album_artist)
     };
-    let yr = year.unwrap_or(0);
-    format!("meta:{}:{}:{}:{}", title_slug, yr, artist_slug, folder_path)
+    format!("meta:{}:{}:{}", title_slug, year.unwrap_or(0), artist_slug)
+}
+
+/// Display title/year for a folder-release: the most common (mode) non-empty album tag and the most
+/// common year among the folder's tracks, computed from a fixed insertion order so the same input
+/// always yields the same result. Falls back to "Unknown Album" / None when the folder has no usable
+/// album/year tags. Sync overrides these with the MusicBrainz match when one is found; this is the
+/// pre-match, tag-derived display value.
+pub fn folder_majority_title_year(tracks: &[(Option<String>, Option<i32>)]) -> (String, Option<i32>) {
+    let mut album_counts: Vec<(String, usize)> = Vec::new();
+    let mut year_counts: Vec<(i32, usize)> = Vec::new();
+    for (album, year) in tracks {
+        if let Some(a) = album.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            match album_counts.iter_mut().find(|(v, _)| v == a) {
+                Some(entry) => entry.1 += 1,
+                None => album_counts.push((a.to_string(), 1)),
+            }
+        }
+        if let Some(y) = year {
+            match year_counts.iter_mut().find(|(v, _)| v == y) {
+                Some(entry) => entry.1 += 1,
+                None => year_counts.push((*y, 1)),
+            }
+        }
+    }
+    let title = album_counts
+        .into_iter()
+        .max_by_key(|(_, c)| *c)
+        .map(|(v, _)| v)
+        .unwrap_or_else(|| "Unknown Album".to_string());
+    let year = year_counts.into_iter().max_by_key(|(_, c)| *c).map(|(v, _)| v);
+    (title, year)
 }
 
 pub fn image_key_for_release(
@@ -446,5 +469,71 @@ pub async fn stamp_folder_index_hash(pool: &PgPool, folder_path: &str, hash: &st
     .execute(pool)
     .await
     .ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn group_key_is_folder_scoped_regardless_of_tags() {
+        // Two tracks in the same folder with different album tags / years still key to one release.
+        let a = build_group_key("Portrait", Some(1986), "Teddy Wilson", "Teddy Wilson/Album/2011 - Jazz Heroes");
+        let b = build_group_key("Different Album", Some(1999), "Teddy Wilson", "Teddy Wilson/Album/2011 - Jazz Heroes");
+        assert_eq!(a, b);
+        assert_eq!(a, "folder:Teddy Wilson/Album/2011 - Jazz Heroes");
+    }
+
+    #[test]
+    fn group_key_distinguishes_different_folders() {
+        let a = build_group_key("Guitar Town", Some(1986), "Steve Earle", "Steve Earle/Album/1986 - Guitar Town");
+        let b = build_group_key("Guitar Town", Some(1986), "Steve Earle", "Steve Earle/Remastered/1986 - Guitar Town [2002]");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn group_key_falls_back_to_meta_when_no_folder() {
+        let k = build_group_key("Some Album", Some(1990), "Some Artist", "");
+        assert_eq!(k, "meta:some-album:1990:some-artist");
+    }
+
+    #[test]
+    fn folder_majority_picks_mode_album_and_year() {
+        let tracks = vec![
+            (Some("Real Album".to_string()), Some(1986)),
+            (Some("Real Album".to_string()), Some(1986)),
+            (Some("Stray Tag".to_string()), Some(2016)),
+        ];
+        assert_eq!(folder_majority_title_year(&tracks), ("Real Album".to_string(), Some(1986)));
+    }
+
+    #[test]
+    fn folder_majority_ignores_empty_albums_and_falls_back() {
+        let tracks = vec![
+            (Some("   ".to_string()), None),
+            (None, None),
+        ];
+        assert_eq!(folder_majority_title_year(&tracks), ("Unknown Album".to_string(), None));
+    }
+
+    #[test]
+    fn folder_majority_year_independent_of_album_mode() {
+        let tracks = vec![
+            (Some("A".to_string()), Some(2000)),
+            (Some("B".to_string()), Some(2000)),
+            (Some("A".to_string()), Some(1999)),
+        ];
+        // Album mode = "A", year mode = 2000 (computed independently).
+        assert_eq!(folder_majority_title_year(&tracks), ("A".to_string(), Some(2000)));
+    }
+
+    #[test]
+    fn strip_disc_subfolder_collapses_disc_dirs() {
+        assert_eq!(strip_disc_subfolder("Artist/Album/CD1"), "Artist/Album");
+        assert_eq!(strip_disc_subfolder("Artist/Album/Disc 2"), "Artist/Album");
+        assert_eq!(strip_disc_subfolder("Artist/Album"), "Artist/Album");
+        // Non-pure-digit suffix is NOT a disc folder (known box-set gap, left as-is).
+        assert_eq!(strip_disc_subfolder("Artist/Box/CD2 - Warmin' Up"), "Artist/Box/CD2 - Warmin' Up");
+    }
 }
 
