@@ -361,42 +361,6 @@ pub async fn batch_upsert_artist_urls(
 // LocalRelease → MusicBrainzRelease link
 // ---------------------------------------------------------------------------
 
-pub struct ReleaseOwner {
-    pub local_release_id: String,
-    pub title: String,
-    pub folder_path: Option<String>,
-    pub artist_ids: Vec<String>,
-}
-
-/// Any OTHER LocalRelease already bound to this MusicBrainzRelease id, with the artist ids credited on
-/// it (via LocalReleaseArtist). Used to guard against binding the same MB release onto two unrelated
-/// artists' local releases (the shared-releaseId bug - see docs/scripts audit #24).
-pub async fn find_release_owner(
-    pool: &PgPool,
-    mb_release_id: &str,
-    exclude_local_release_id: &str,
-) -> Result<Option<ReleaseOwner>, sqlx::Error> {
-    let row: Option<(String, String, Option<String>, Vec<Option<String>>)> = sqlx::query_as(
-        r#"SELECT lr.id, lr.title, lr."folderPath", array_agg(lra."artistId")
-           FROM "LocalRelease" lr
-           LEFT JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
-           WHERE lr."releaseId" = $1 AND lr.id != $2
-           GROUP BY lr.id, lr.title
-           LIMIT 1"#,
-    )
-    .bind(mb_release_id)
-    .bind(exclude_local_release_id)
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(row.map(|(local_release_id, title, folder_path, artist_ids)| ReleaseOwner {
-        local_release_id,
-        title,
-        folder_path,
-        artist_ids: artist_ids.into_iter().flatten().collect(),
-    }))
-}
-
 pub async fn update_local_release_match(
     pool: &PgPool,
     local_release_id: &str,

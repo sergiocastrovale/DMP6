@@ -27,7 +27,7 @@ mod status;
 use db::*;
 use images::{download_artist_image, download_cover_art};
 use mb_api::RateLimiter;
-use mb_matching::{find_mb_match_with_fallback, is_special_artist_name, shared_release_guard_reason};
+use mb_matching::{find_mb_match_with_fallback, is_special_artist_name};
 use mb_types::{MbArtistMatch, MbRelease, MbTrack};
 use nuke::nuke_mb_data;
 use status::{check_release_status, status_to_db_string};
@@ -75,6 +75,23 @@ struct SyncArgs {
     /// Default is pretty colored console output.
     #[arg(long)]
     web: bool,
+}
+
+// Acceptance gate for a Tier-3 search hit: strong MB score, the found release-group title is similar
+// to the local album, and the type passes the album/EP-only allow-list. Track-count confidence is
+// enforced later by check_release_status when the chosen edition is scored.
+const SEARCH_MIN_SCORE: u32 = 85;
+
+fn search_match_acceptable(
+    score: u32,
+    candidate_title: &str,
+    local_title: &str,
+    primary_type: Option<&str>,
+    secondary_types: &[String],
+) -> bool {
+    score >= SEARCH_MIN_SCORE
+        && mb_matching::names_are_similar(candidate_title, local_title)
+        && allowlist::is_allowed(primary_type, secondary_types, None)
 }
 
 fn get_majority_id(tracks: &[LocalTrackRow], field: fn(&LocalTrackRow) -> &Option<String>) -> Option<String> {
@@ -1154,9 +1171,55 @@ async fn main() {
                 }
             }
 
-            // Strict policy: metadata wins. No MB metadata in tags → leave Unmatched.
-            // Title fuzzy matching (former Tier 3) is intentionally disabled to avoid
-            // collapsing distinct editions onto a single MB release.
+            // Tier 3 (search fallback): only when the local release carries NO usable embedded MB id
+            // (e.g. a compilation whose tracks are tagged with their original sources, so there is no
+            // release/release-group consensus). Search MB by album title + artist, and accept a
+            // candidate ONLY if its title is similar to the local album, it is an allowed type, and
+            // (downstream) an edition's track count matches. The embedded-id tiers always win first;
+            // this never overrides an id, and check_release_status still picks the edition by track
+            // count, so distinct editions are not collapsed.
+            if matched.is_none() && majority_release_id.is_none() && majority_rg_id.is_none() {
+                let api_start = std::time::Instant::now();
+                reporter.info(&format!("        → Search MusicBrainz for \"{}\" by {}", local_release.title, artist.name));
+                match mb_api::mb_search_release_group(&http_client, &local_release.title, &artist.name, &mut limiter).await {
+                    Ok(Some(found))
+                        if search_match_acceptable(
+                            found.score, &found.title, &local_release.title,
+                            found.primary_type.as_deref(), &found.secondary_types,
+                        ) =>
+                    {
+                        reporter.info(&format!(
+                            "        ← Search hit {} (score {}) in {:.1}s - browsing editions",
+                            found.id, found.score, api_start.elapsed().as_secs_f64()
+                        ));
+                        match mb_api::mb_get_release_tracks(&http_client, &found.id, &mut limiter).await {
+                            Ok(releases) if !releases.is_empty() => {
+                                matched = Some((String::new(), found.id, releases, found.primary_type, found.secondary_types));
+                            }
+                            _ => {
+                                if args.verbose {
+                                    reporter.skip(&format!("{} (search hit had no official editions)", local_release.title));
+                                }
+                            }
+                        }
+                    }
+                    Ok(_) => {
+                        if args.verbose {
+                            reporter.skip(&format!("{} (no confident search match)", local_release.title));
+                        }
+                    }
+                    Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::Transient => {
+                        reporter.warn(&format!("{}: MB unavailable, skipping", local_release.title));
+                        continue;
+                    }
+                    Err(e) => {
+                        reporter.warn(&format!("{}: search failed: {}", local_release.title, e));
+                    }
+                }
+            }
+
+            // Strict policy: metadata wins. No usable MB metadata (embedded id or confident search) →
+            // leave Unmatched. The former blanket "no fuzzy matching" is now the guarded Tier 3 above.
             let (tier_release_id, rg_id, mb_release_tracks, primary_type, secondary_types) = match matched {
                 Some(m) => m,
                 None => {
@@ -1270,21 +1333,11 @@ async fn main() {
                 }
             };
 
-            // Shared-releaseId guard (audit #24): this MB release may already be bound to a DIFFERENT
-            // LocalRelease. Binding a second, unrelated release onto it corrupts catalogue-gaps
-            // coverage and status counts for both. See shared_release_guard_reason for the predicate.
-            if let Ok(Some(owner)) = find_release_owner(&pool, &mb_db_id, &local_release.id).await {
-                if let Some(reason) = shared_release_guard_reason(
-                    &owner, &artist.id, &local_release.title, local_release.folder_path.as_deref(),
-                ) {
-                    mark_local_release_unmatched(&pool, &local_release.id).await.ok();
-                    reporter.warn(&format!(
-                        "{}: MB release already owned by {} \"{}\" ({}) - left Unmatched (shared-releaseId guard)",
-                        local_release.title, reason, owner.title, owner.local_release_id
-                    ));
-                    continue;
-                }
-            }
+            // (Removed) shared-releaseId guard: it unmatched any LocalRelease whose MB release was
+            // already bound to another LocalRelease. That was a band-aid for the old fragmentation
+            // matcher; with folder-grouping, multiple LocalReleases legitimately map to one MB release
+            // (duplicate folder-copies of the same album), so the guard wrongly blocked them. Duplicate
+            // copies are now surfaced by the duplicate-release audit rule instead of blocked here.
 
             ensure_mb_release_artist_link(&pool, &mb_db_id, &artist.id)
                 .await
@@ -1676,5 +1729,24 @@ mod tests {
     #[test]
     fn empty_counts_is_none() {
         assert_eq!(majority_from_counts(&counts(&[])), None);
+    }
+
+    use super::search_match_acceptable;
+
+    #[test]
+    fn search_accepts_strong_similar_album() {
+        assert!(search_match_acceptable(95, "Crooning Blackbird", "Crooning Blackbird", Some("Album"), &[]));
+        // Similar-but-not-identical title (subtitle) still passes names_are_similar.
+        assert!(search_match_acceptable(90, "A Centenary Celebration", "A Centenary Celebration (Remastered)", Some("Album"), &["Compilation".into()]));
+    }
+
+    #[test]
+    fn search_rejects_low_score_wrong_title_or_bad_type() {
+        // Low MB score.
+        assert!(!search_match_acceptable(70, "Crooning Blackbird", "Crooning Blackbird", Some("Album"), &[]));
+        // Dissimilar title (a wrong hit).
+        assert!(!search_match_acceptable(95, "Totally Different Record", "Crooning Blackbird", Some("Album"), &[]));
+        // Disallowed type (Single) even with a perfect title.
+        assert!(!search_match_acceptable(95, "Crooning Blackbird", "Crooning Blackbird", Some("Single"), &[]));
     }
 }

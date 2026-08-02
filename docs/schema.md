@@ -19,13 +19,24 @@ Local tree (files on disk):
 NULL` is unmatched/local-only; once sync binds it, `matchStatus` reflects how completely the local
 files match the MusicBrainz tracklist (see `ReleaseStatus` enum in CLAUDE.md).
 
+**Grouping is per folder.** A `LocalRelease` = one physical folder (`groupKey = "folder:{folderPath}"`);
+per-track MB ids no longer split a folder (see `docs/scripts/index.md` and `docs/index_severe_bug.md`).
+Two folder-copies of the same album are two `LocalRelease` rows that bind to the *same*
+`MusicBrainzRelease` — legitimate duplicates, surfaced by the `duplicate-release` audit rule. A
+compilation is **one** `LocalRelease` linked to N artists via the many-to-many `LocalReleaseArtist`
+table (one main-artist link per distinct `albumArtist` tag) — shared across those artists' pages,
+not duplicated per artist.
+
 ## Issue tables
 
 One table per audit detector (`IssueCorruptedTpe2`, `IssueUnsplitArtist`, `IssueOrphanArtist`,
-`IssueDuplicateArtist`, `IssueMissingMetadata`, `IssueEnrichmentGap`), each with an `IssueStatus`
-(`DETECTED → PENDING → RESOLVED`, or `PENDING_REVERT` for an undo in flight). `AuditRun` groups a
-detection pass; `FixHistory` records what a `./fix` run actually applied (used for the undo flow in
-`/issues/history`). See `web/docs/PLAN_tests.md` and the `/issues` pages for how these are consumed.
+`IssueDuplicateArtist`, `IssueMissingMetadata`, `IssueEnrichmentGap`, `IssueDuplicateRelease`,
+`IssueMismatchedReleaseId`), each with an `IssueStatus` (`DETECTED → PENDING → RESOLVED`, or
+`PENDING_REVERT` for an undo in flight). The two release-pair detectors are audit-only (no `./fix`
+action, like `enrichment`): `IssueDuplicateRelease` flags near-identical local copies that share one
+MB release; `IssueMismatchedReleaseId` flags different-title local releases that wrongly share one MB
+release. `AuditRun` groups a detection pass; `FixHistory` records what a `./fix` run actually applied
+(used for the undo flow in `/issues/history`). See the `/issues` pages for how these are consumed.
 
 ## Downloads
 

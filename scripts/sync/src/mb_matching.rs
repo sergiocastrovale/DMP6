@@ -4,7 +4,6 @@ use common::artists::split_artists;
 use common::filters::sanitize_mb_id;
 use sqlx::PgPool;
 
-use crate::db::ReleaseOwner;
 use crate::mb_api::*;
 use crate::mb_types::*;
 use reqwest::Client;
@@ -86,35 +85,6 @@ pub fn names_are_similar(a: &str, b: &str) -> bool {
     intersection as f64 / union as f64 >= 0.5
 }
 
-// ---------------------------------------------------------------------------
-// Shared-releaseId guard (audit #24)
-// ---------------------------------------------------------------------------
-
-/// Pure predicate for the shared-releaseId guard: should binding this MB release to
-/// `local_title`/`local_folder_path` (for `artist_id`) be refused because `owner` already holds it?
-/// Returns `Some(reason)` to refuse (leave Unmatched), `None` to proceed with the bind.
-///   - cross-artist: owner belongs to a different artist AND the titles aren't similar (legitimate
-///     same-artist re-syncs and near-duplicate titles still bind normally);
-///   - same-artist collision: owner belongs to THIS artist but is a genuinely different folder
-///     (different album) — same artist doesn't make it safe to double-bind.
-pub fn shared_release_guard_reason(
-    owner: &ReleaseOwner,
-    artist_id: &str,
-    local_title: &str,
-    local_folder_path: Option<&str>,
-) -> Option<&'static str> {
-    let same_artist = owner.artist_ids.iter().any(|a| a == artist_id);
-    if !same_artist && !names_are_similar(&owner.title, local_title) {
-        return Some("different artist's release");
-    }
-    if same_artist
-        && owner.folder_path.is_some()
-        && owner.folder_path.as_deref() != local_folder_path
-    {
-        return Some("this artist's other release (same-artist collision)");
-    }
-    None
-}
 
 // ---------------------------------------------------------------------------
 // 6-step artist matching
@@ -362,64 +332,3 @@ async fn try_release_group_credits(
     Ok(None)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn owner(artist_ids: Vec<&str>, title: &str, folder_path: Option<&str>) -> ReleaseOwner {
-        ReleaseOwner {
-            local_release_id: "owner-lr-id".to_string(),
-            title: title.to_string(),
-            folder_path: folder_path.map(|s| s.to_string()),
-            artist_ids: artist_ids.into_iter().map(|s| s.to_string()).collect(),
-        }
-    }
-
-    #[test]
-    fn allows_bind_when_no_owner_conflict() {
-        // Different artist entirely, but titles are similar enough — legitimate (e.g. a
-        // compilation/collab credited differently) — not this predicate's concern to block.
-        let o = owner(vec!["other-artist"], "Greatest Hits", Some("Other Artist/2001 - Greatest Hits"));
-        assert_eq!(
-            shared_release_guard_reason(&o, "artist-a", "Greatest Hits", Some("Artist A/2001 - Greatest Hits")),
-            None
-        );
-    }
-
-    #[test]
-    fn refuses_cross_artist_dissimilar_titles() {
-        let o = owner(vec!["other-artist"], "Totally Different Album", Some("Other Artist/1999 - Totally Different Album"));
-        let reason = shared_release_guard_reason(&o, "artist-a", "My Album", Some("Artist A/2020 - My Album"));
-        assert!(reason.is_some());
-    }
-
-    #[test]
-    fn allows_same_artist_resync_same_folder() {
-        // Same artist re-syncing the exact same folder it already owns — not a collision.
-        let o = owner(vec!["artist-a"], "My Album", Some("Artist A/2020 - My Album"));
-        assert_eq!(
-            shared_release_guard_reason(&o, "artist-a", "My Album", Some("Artist A/2020 - My Album")),
-            None
-        );
-    }
-
-    #[test]
-    fn refuses_same_artist_different_folder_collision() {
-        // Same artist, but a genuinely different album folder already owns this MB release id —
-        // the case the P0 tightening (audit item 3) added.
-        let o = owner(vec!["artist-a"], "Album One", Some("Artist A/2020 - Album One"));
-        let reason = shared_release_guard_reason(&o, "artist-a", "Album Two", Some("Artist A/2021 - Album Two"));
-        assert!(reason.is_some());
-    }
-
-    #[test]
-    fn allows_same_artist_when_owner_folder_path_unknown() {
-        // Owner has no folderPath on record (legacy/incomplete row) — can't prove a collision, so
-        // don't block a legitimate same-artist bind on missing data.
-        let o = owner(vec!["artist-a"], "Album One", None);
-        assert_eq!(
-            shared_release_guard_reason(&o, "artist-a", "Album Two", Some("Artist A/2021 - Album Two")),
-            None
-        );
-    }
-}

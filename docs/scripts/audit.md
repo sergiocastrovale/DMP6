@@ -14,6 +14,8 @@ The results drive the `/issues` web UI - run audit first, then review and fix fr
 ./audit --duplicates     # Only artists with duplicate normalized names
 ./audit --missing        # Only tracks with missing core metadata fields
 ./audit --enrichment     # Only enrichment gaps (BPM, mood, AcousticID, MB, Discogs, Bandcamp, Wikipedia)
+./audit --duplicate-release      # Only near-identical local copies sharing one MB release
+./audit --mismatched-release-id  # Only different-title local releases wrongly sharing one MB release
 ```
 
 ## Issue Types
@@ -80,6 +82,16 @@ Tracks with NULL or empty `title`, `artist`, `albumArtist`, `album`, or `year`.
 - Missing `title`/`album` → no proposal (manual fix only)
 
 **Fix:** `./fix --missing` writes proposed values to tag files (skips rows where `proposedValues` is null).
+
+### Duplicate Release (`IssueDuplicateRelease`)
+
+`LocalRelease` pairs that share one `MusicBrainzRelease` id with matching title, track count, and duration — near-identical duplicate folder-copies of the same album. Detect-only (no `./fix`): review and manually delete the redundant folder.
+
+### Mismatched Release ID (`IssueMismatchedReleaseId`)
+
+`LocalRelease` pairs that share one `MusicBrainzRelease` id despite different titles — a sync-matcher mis-link. Detect-only (no `./fix`): the correct resolution is re-running the matcher, not a mechanical DB edit.
+
+Both are classified from the same `LocalRelease`-pairs-sharing-a-`releaseId` scan (`common::release_pairs::classify_release_pair`): same normalized title + matching track count + close duration ⇒ duplicate-release; different title ⇒ mismatched-release-id.
 
 ## Workflow
 

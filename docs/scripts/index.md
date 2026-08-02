@@ -81,12 +81,15 @@ Run hash stored in `Settings.indexRunHash`. On restart, folders already processe
 
 ## Release Grouping
 
-Releases are deduplicated by `groupKey` (3-tier):
-- With MB release ID: `"mbr:{mbReleaseId}:{folderPath}"`
-- With MB release group ID: `"mb:{mbReleaseGroupId}:{folderPath}"`
-- Without MB IDs: `"meta:{slugTitle}:{year}:{slugArtist}:{folderPath}"`
+**One folder = one `LocalRelease`.** `build_group_key` (`scripts/index/src/db.rs`) keys a release on the containing folder alone: `"folder:{folderPath}"` (root-level files with no folder fall back to `"meta:{slugTitle}:{year}:{slugArtist}"`). The folder is treated as a *structural* boundary — its name is never parsed for metadata values; title/year/artist come only from tags, then from the MusicBrainz match.
 
-`folderPath` is always part of the key - same album in two folders creates separate `LocalRelease` rows. Deduplication into a single release card happens in **sync**, which links multiple `LocalRelease` rows to the same `MusicBrainzRelease` via `releaseId`.
+Per-track MB ids (`mb_release_id` / `mb_release_group_id`) are **not** part of the group key. They identify which release a *recording* appears on, not which folder-album a *file* belongs to — keying on them shredded compilations (whose tracks carry their original sources' ids) into per-track fragments (see `docs/index_severe_bug.md`). The ids are still stored per-track for sync's matcher.
+
+Display title/year for the release come from the folder's **majority (mode)** `album`/`year` tag (`folder_majority_title_year`), so a folder whose tracks disagree still gets a deterministic name (sync overrides it with the MB title once matched).
+
+`folderPath` scoping means the same album ripped into two folders creates two separate `LocalRelease` rows — genuine duplicate copies. Sync binds both to the same `MusicBrainzRelease` via `releaseId`; the web UI collapses them into one card, and the `duplicate-release` audit rule surfaces them for review.
+
+**Compilations link many artists to one release.** Index creates one `LocalReleaseArtist` link per distinct `albumArtist` tag in the folder (main artists), plus `TrackRelatedArtist` links for track-level guests. A comp tagged `albumArtist = "Various Artists"` gets one link; a per-source-tagged comp (each track credited to its original performer) gets N links to the *same* single `LocalRelease` — shared via the many-to-many table, not duplicated per artist, so it appears on each of those N artists' pages.
 
 ## Cover Art Deduplication
 

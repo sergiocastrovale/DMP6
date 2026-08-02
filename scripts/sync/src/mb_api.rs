@@ -341,6 +341,67 @@ pub async fn mb_search_release_group_credits(
     Ok(Vec::new())
 }
 
+/// A release-group found by a title+artist search: the id (to browse its editions), its title (to
+/// re-verify the match against the local album), and its primary/secondary types (for the allow-list).
+pub struct SearchedReleaseGroup {
+    pub id: String,
+    pub title: String,
+    pub primary_type: Option<String>,
+    pub secondary_types: Vec<String>,
+    pub score: u32,
+}
+
+/// Search MusicBrainz for a release group by album title + artist. Used only as a last-resort fallback
+/// when a local release carries no usable embedded MB id (e.g. a compilation whose tracks are tagged
+/// with their original sources). The caller re-verifies the returned title and gates on the allow-list
+/// before binding, so this only proposes a candidate - it never binds on its own.
+pub async fn mb_search_release_group(
+    client: &Client,
+    album_title: &str,
+    artist_name: &str,
+    limiter: &mut RateLimiter,
+) -> Result<Option<SearchedReleaseGroup>, String> {
+    let query = format!(
+        "releasegroup:\"{}\" AND artist:\"{}\"",
+        album_title.replace('"', ""),
+        artist_name.replace('"', ""),
+    );
+    let encoded = urlencoding::encode(&query);
+    let url = format!("{}/release-group/?query={}&limit=3&fmt=json", MB_BASE, encoded);
+    let body = mb_get(client, &url, limiter).await?;
+
+    #[derive(serde::Deserialize)]
+    struct RgResult {
+        id: String,
+        title: String,
+        #[serde(rename = "primary-type")]
+        primary_type: Option<String>,
+        #[serde(rename = "secondary-types")]
+        secondary_types: Option<Vec<String>>,
+        score: Option<u32>,
+    }
+    #[derive(serde::Deserialize)]
+    struct SearchResult {
+        #[serde(rename = "release-groups")]
+        release_groups: Option<Vec<RgResult>>,
+    }
+
+    let result: SearchResult =
+        serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
+    Ok(result
+        .release_groups
+        .unwrap_or_default()
+        .into_iter()
+        .next()
+        .map(|rg| SearchedReleaseGroup {
+            id: rg.id,
+            title: rg.title,
+            primary_type: rg.primary_type,
+            secondary_types: rg.secondary_types.unwrap_or_default(),
+            score: rg.score.unwrap_or(0),
+        }))
+}
+
 pub async fn mb_get_artist_detail(
     client: &Client,
     mb_id: &str,
