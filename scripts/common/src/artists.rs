@@ -105,6 +105,10 @@ const KNOWN_SINGLE_ARTISTS: &[&str] = &[
     "bob & earl",
     "mel & tim",
     "zager & evans",
+    // "with" bands
+    "sleeping with sirens",
+    "dancing with the dead",
+    "flirting with disaster",
     // comma bands
     "earth, wind & fire",
     "crosby, stills & nash",
@@ -147,7 +151,13 @@ fn split_ignoring_numeric_commas(s: &str) -> Vec<String> {
 /// - Splits on " & " (ampersand with spaces)
 /// - Splits on "/" "//" "\" "\\" "|" "||" ";"
 /// - Splits on "vs." / "vs" (unambiguous collaboration marker)
-/// - Respects KNOWN_SINGLE_ARTISTS (bands with , or & in their name)
+/// - Splits on " with " (space-bounded credit marker: "Frank Sinatra with Count Basie"), stripping a
+///   leading role qualifier ("special guests", "guest", "orchestra conducted/directed by", "arranged
+///   and conducted by") off the right-hand side first
+/// - Respects KNOWN_SINGLE_ARTISTS (bands with ,/&/with in their name) - guard is whole-tag only, same
+///   scope as the existing & and comma handling: a known band combined with another artist via a
+///   different separator (e.g. "Sleeping With Sirens, Pierce The Veil") is not protected, matching how
+///   "Simon & Garfunkel, Nash" already isn't either
 pub fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
     static FEAT_RE: OnceLock<Regex> = OnceLock::new();
     let feat_re = FEAT_RE.get_or_init(|| {
@@ -208,12 +218,37 @@ pub fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
     static VS_RE: OnceLock<Regex> = OnceLock::new();
     let vs_re = VS_RE.get_or_init(|| Regex::new(r"(?i)\s+vs\.?\s+").unwrap());
 
+    static WITH_RE: OnceLock<Regex> = OnceLock::new();
+    let with_re = WITH_RE.get_or_init(|| Regex::new(r"(?i)\s+with\s+").unwrap());
+
+    // Role qualifier left dangling on the right-hand side of a " with " split - e.g. "... with special
+    // guests Carey Bell & Sunnyland Slim" or "... with orchestra directed by Morris Stoloff". Stripped
+    // before that side re-enters the comma/&/vs pipeline, so the names underneath still get split.
+    static QUALIFIER_RE: OnceLock<Regex> = OnceLock::new();
+    let qualifier_re = QUALIFIER_RE.get_or_init(|| {
+        Regex::new(r"(?i)^(special\s+guests?|guests?|orchestra\s+(?:conducted|directed)\s+by|arranged\s+and\s+conducted\s+by)\s+").unwrap()
+    });
+
+    // " with " is treated as the outermost separator (applied to the whole segment before comma/&/vs),
+    // since every observed case nests the & / comma list INSIDE the "with" clause, never the reverse.
+    let split_with = |s: &str| -> Vec<String> {
+        if with_re.is_match(s) {
+            with_re
+                .split(s)
+                .map(|p| qualifier_re.replace(p.trim(), "").trim().to_string())
+                .collect()
+        } else {
+            vec![s.to_string()]
+        }
+    };
+
     let split_part = |s: &str| -> Vec<String> {
         if KNOWN_SINGLE_ARTISTS.iter().any(|k| s.trim().eq_ignore_ascii_case(k)) {
             return vec![s.trim().to_string()];
         }
-        split_ignoring_numeric_commas(s)
+        split_with(s)
             .into_iter()
+            .flat_map(|chunk| split_ignoring_numeric_commas(&chunk))
             .flat_map(|chunk| chunk.split(" & ").map(|p| p.trim().to_string()).collect::<Vec<_>>())
             .flat_map(|seg| vs_re.split(&seg).map(|p| p.to_string()).collect::<Vec<_>>())
             .flat_map(|seg| split_by_chars(&seg))
@@ -292,6 +327,50 @@ mod tests {
     fn no_separator() {
         let (m, _) = split_artists("Air");
         assert_eq!(m, vec!["Air"]);
+    }
+
+    #[test]
+    fn splits_with() {
+        let (m, _) = split_artists("Frank Sinatra with Count Basie");
+        assert_eq!(m, vec!["Frank Sinatra", "Count Basie"]);
+
+        let (m, _) = split_artists("B.B. King with Eric Clapton");
+        assert_eq!(m, vec!["B.B. King", "Eric Clapton"]);
+    }
+
+    #[test]
+    fn with_strips_qualifiers() {
+        let (m, _) = split_artists("Adelaide Hall with Guest Benny Waters");
+        assert_eq!(m, vec!["Adelaide Hall", "Benny Waters"]);
+
+        let (m, _) = split_artists("Bing Crosby and Al Jolson with orchestra directed by Morris Stoloff");
+        assert_eq!(m, vec!["Bing Crosby and Al Jolson", "Morris Stoloff"]);
+
+        let (m, _) = split_artists(
+            "The Eddie Taylor Blues Band with special guests Carey Bell & Sunnyland Slim",
+        );
+        assert_eq!(m, vec!["The Eddie Taylor Blues Band", "Carey Bell", "Sunnyland Slim"]);
+    }
+
+    #[test]
+    fn with_does_not_split_names_containing_the_substring() {
+        let (m, _) = split_artists("Bill Withers");
+        assert_eq!(m, vec!["Bill Withers"]);
+
+        let (m, _) = split_artists("Jimmy Witherspoon");
+        assert_eq!(m, vec!["Jimmy Witherspoon"]);
+
+        let (m, _) = split_artists("mewithoutYou");
+        assert_eq!(m, vec!["mewithoutYou"]);
+
+        let (m, _) = split_artists("And Hell Followed With");
+        assert_eq!(m, vec!["And Hell Followed With"]);
+    }
+
+    #[test]
+    fn with_known_single_preserved() {
+        let (m, _) = split_artists("Sleeping With Sirens");
+        assert_eq!(m, vec!["Sleeping With Sirens"]);
     }
 
     #[test]

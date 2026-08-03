@@ -1,8 +1,10 @@
 use chrono::{NaiveDateTime, Utc};
+use common::artists::split_artists;
+use common::slug::make_slug;
 use common::types::TrackMeta;
 use slug::slugify;
 use sqlx::PgPool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub fn strip_disc_subfolder(folder_path: &str) -> String {
     if let Some(last_slash) = folder_path.rfind('/') {
@@ -301,6 +303,128 @@ pub async fn batch_ensure_track_related_artists(
     .await?;
 
     Ok(())
+}
+
+#[derive(Debug, Default)]
+pub struct RelinkStats {
+    pub tracks_scanned: u64,
+    pub links_added: u64,
+    pub links_removed: u64,
+}
+
+/// Rebuild TrackRelatedArtist for every track: a credit is kept only when the credited name resolves to
+/// an artist that already owns a release via LocalReleaseArtist - no Artist row is ever created for a
+/// name that appears solely as a credit. Run once at the end of a full index pass (also available
+/// standalone via `--relink-credits`, or skippable via `--skip-relink`) so credits resolve regardless of
+/// folder scan order: an artist indexed after the release that credits them still gets linked once this
+/// pass runs, since it always re-derives from the full current Artist table rather than whatever existed
+/// mid-loop.
+pub async fn relink_track_credits(pool: &PgPool) -> RelinkStats {
+    let mut stats = RelinkStats::default();
+
+    // slug -> id, restricted to artists that own at least one release - the definition of "already
+    // exists" under the no-credit-only-rows model.
+    let artist_rows: Vec<(String, String)> = sqlx::query_as(
+        r#"SELECT DISTINCT a.slug, a.id FROM "Artist" a
+           WHERE EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)"#,
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let artist_by_slug: HashMap<String, String> = artist_rows.into_iter().collect();
+
+    // releaseId -> its main artist ids, so a track never credits its own release's artist.
+    let lra_rows: Vec<(String, String)> = sqlx::query_as(
+        r#"SELECT "localReleaseId", "artistId" FROM "LocalReleaseArtist""#,
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let mut main_artists_by_release: HashMap<String, HashSet<String>> = HashMap::new();
+    for (release_id, artist_id) in lra_rows {
+        main_artists_by_release.entry(release_id).or_default().insert(artist_id);
+    }
+
+    const BATCH: i64 = 5000;
+    let mut last_id = String::new();
+    loop {
+        let batch: Vec<(String, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+            r#"SELECT id, artist, "albumArtist", "localReleaseId" FROM "LocalReleaseTrack"
+               WHERE id > $1 AND artist IS NOT NULL AND artist <> ''
+               ORDER BY id LIMIT $2"#,
+        )
+        .bind(&last_id)
+        .bind(BATCH)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        if batch.is_empty() {
+            break;
+        }
+        last_id = batch.last().map(|(id, ..)| id.clone()).unwrap_or_default();
+        stats.tracks_scanned += batch.len() as u64;
+
+        let track_ids: Vec<String> = batch.iter().map(|(id, ..)| id.clone()).collect();
+        let existing_rows: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT "trackId", "artistId" FROM "TrackRelatedArtist" WHERE "trackId" = ANY($1::text[])"#,
+        )
+        .bind(&track_ids)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        let existing: HashSet<(String, String)> = existing_rows.into_iter().collect();
+
+        let mut desired: HashSet<(String, String)> = HashSet::new();
+        for (track_id, artist_tag, album_artist_tag, release_id) in &batch {
+            let Some(artist_tag) = artist_tag else { continue };
+            let album_artist_lower = album_artist_tag.as_deref().unwrap_or("").to_lowercase();
+            let (main, feat) = split_artists(artist_tag);
+            let release_main_ids = release_id.as_ref().and_then(|rid| main_artists_by_release.get(rid));
+
+            let mut seen: HashSet<String> = HashSet::new();
+            for name in main.into_iter().chain(feat.into_iter()) {
+                let lower = name.to_lowercase();
+                if lower == album_artist_lower || !seen.insert(lower) {
+                    continue;
+                }
+                let slug = make_slug(&name);
+                if slug.is_empty() {
+                    continue;
+                }
+                let Some(artist_id) = artist_by_slug.get(&slug) else { continue };
+                if release_main_ids.map(|s| s.contains(artist_id)).unwrap_or(false) {
+                    continue;
+                }
+                desired.insert((track_id.clone(), artist_id.clone()));
+            }
+        }
+
+        let to_insert: Vec<(String, String)> = desired.difference(&existing).cloned().collect();
+        let to_remove: Vec<(String, String)> = existing.difference(&desired).cloned().collect();
+
+        if !to_remove.is_empty() {
+            let (rt, ra): (Vec<String>, Vec<String>) = to_remove.into_iter().unzip();
+            sqlx::query(
+                r#"DELETE FROM "TrackRelatedArtist" t
+                   USING UNNEST($1::text[], $2::text[]) AS d(track_id, artist_id)
+                   WHERE t."trackId" = d.track_id AND t."artistId" = d.artist_id"#,
+            )
+            .bind(&rt)
+            .bind(&ra)
+            .execute(pool)
+            .await
+            .ok();
+            stats.links_removed += rt.len() as u64;
+        }
+
+        if !to_insert.is_empty() {
+            stats.links_added += to_insert.len() as u64;
+            batch_ensure_track_related_artists(pool, &to_insert).await.ok();
+        }
+    }
+
+    stats
 }
 
 pub async fn batch_ensure_local_release_artists(

@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
       localReleaseId: true,
       trackRelatedArtists: {
         select: {
-          artist: { select: { name: true, slug: true, relatedOnly: true } },
+          artist: { select: { name: true, slug: true } },
         },
       },
     },
@@ -47,7 +47,6 @@ export default defineEventHandler(async (event) => {
     artists: trackRelatedArtists.map(ta => ({
       name: ta.artist.name,
       slug: ta.artist.slug,
-      hasPage: !ta.artist.relatedOnly,
     })),
   }))
 })

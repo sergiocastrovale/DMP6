@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
   const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genre ?? ''}:s=${sort}:q=${search ?? ''}:min=${minScore ?? ''}:max=${maxScore ?? ''}`
 
   return cachedResponse(cacheKey, 120, async () => {
-    const where: Record<string, unknown> = { relatedOnly: false, primaryArtistId: null }
+    const where: Record<string, unknown> = { primaryArtistId: null }
 
     if (letter) {
       where.slug = { startsWith: letter }
@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
       prisma.artist.count({ where }),
       prisma.statistics.findUnique({
         where: { id: 'main' },
-        select: { mainArtists: true, relatedArtists: true },
+        select: { mainArtists: true },
       }),
     ])
 
@@ -88,7 +88,6 @@ export default defineEventHandler(async (event) => {
       items: verifiedItems,
       total,
       mainCount: stats?.mainArtists ?? 0,
-      relatedCount: stats?.relatedArtists ?? 0,
       page,
       pageSize,
       hasMore: page * pageSize < total,

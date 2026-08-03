@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { LayoutGrid, LayoutList } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
-import RelatedArtistsPopover from '~/components/browse/RelatedArtistsPopover.vue'
 
 const store = useBrowseStore()
 const { initFromUrl } = useBrowseUrl()
@@ -44,9 +43,6 @@ onMounted(() => {
     <PageTitle text="Browse">
       <div class="flex items-center gap-2 text-sm text-ink0">
         <span>{{ store.mainCount.toLocaleString() }} artists</span>
-        <span class="text-ink-4">|</span>
-        <span>{{ store.relatedCount.toLocaleString() }} related artists</span>
-        <RelatedArtistsPopover />
       </div>
     </PageTitle>
 

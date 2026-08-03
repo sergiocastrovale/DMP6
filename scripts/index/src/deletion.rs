@@ -139,7 +139,11 @@ pub async fn delete_orphaned_mb_releases(pool: &PgPool) -> u64 {
     result.map(|r| r.rows_affected()).unwrap_or(0)
 }
 
-/// Delete Artist rows that have no LocalReleaseArtist links remaining. Cleans images first.
+/// Delete Artist rows that own no release, local or MusicBrainz. Cleans images first.
+/// TrackRelatedArtist is deliberately NOT checked: a credit only ever links to an artist that already
+/// owns a release (see the end-of-run relink pass in main.rs) - a credit never keeps an otherwise-empty
+/// Artist alive, it just cascades away with it. Mirrors the orphan rule in `audit`'s
+/// scripts/audit/src/orphans.rs.
 pub async fn delete_orphan_artists(pool: &PgPool, config: &Config) -> u64 {
     let ids: Vec<(String,)> = sqlx::query_as(
         r#"SELECT id FROM "Artist" WHERE "primaryArtistId" IS NULL

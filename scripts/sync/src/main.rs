@@ -413,7 +413,7 @@ async fn main() {
 
         let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
             r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist"
-               WHERE "relatedOnly" = false AND "musicbrainzId" IS NOT NULL
+               WHERE "musicbrainzId" IS NOT NULL
                ORDER BY name"#,
         )
         .fetch_all(&pool)
@@ -571,7 +571,7 @@ async fn main() {
             }
             Ok(None) => {
                 reporter.err(&format!(
-                    "Release '{}' not found or has no non-relatedOnly artist",
+                    "Release '{}' not found or has no artist",
                     release_id
                 ));
                 release_lock(&pool).await;
@@ -611,7 +611,7 @@ async fn main() {
     } else if args.overwrite {
         let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
             sqlx::query_as(
-                r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" WHERE "relatedOnly" = false ORDER BY name"#,
+                r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" ORDER BY name"#,
             )
             .fetch_all(&pool)
             .await
@@ -835,7 +835,7 @@ async fn main() {
         if !is_duplicate {
             if let Some((db_primary_id,)) = sqlx::query_as::<_, (String,)>(
                 r#"SELECT id FROM "Artist"
-                   WHERE "musicbrainzId" = $1 AND id != $2 AND "relatedOnly" = false
+                   WHERE "musicbrainzId" = $1 AND id != $2
                      AND "primaryArtistId" IS NULL
                    LIMIT 1"#,
             )

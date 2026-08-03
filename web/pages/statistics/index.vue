@@ -33,7 +33,6 @@ const sections = computed<StatSection[]>(() => {
       icon: LucideLibrary,
       items: [
         { label: 'Artists', value: formatNumber(s.mainArtists), link: '/statistics/artists' },
-        { label: 'Related artists', value: formatNumber(s.relatedArtists), link: '/statistics/artists', info: 'Guest or contributing artists that appear in track tags but don\'t own any albums. They have no browse page.' },
         { label: 'Linked artists', value: formatNumber(s.linkedArtists), info: 'Artists that share a MusicBrainz ID with another artist (e.g. "Artist A & B" → "Artist A"). Their catalogue is aggregated on the primary artist\'s page.' },
         { label: 'Releases', value: formatNumber(s.releases), link: '/statistics/releases' },
         { label: 'Tracks', value: formatNumber(s.tracks), link: '/statistics/tracks' },

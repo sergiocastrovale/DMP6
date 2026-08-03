@@ -125,7 +125,7 @@ export async function countNoYearMissing(): Promise<number> {
     FROM "MusicBrainzRelease" mr
     JOIN "ReleaseType" rt ON rt.id = mr."typeId" AND rt.slug IN ('album', 'ep')
     JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mr.id
-    JOIN "Artist" a ON a.id = mra."artistId" AND a.monitored = true AND a."relatedOnly" = false AND a.name NOT LIKE '%;%'
+    JOIN "Artist" a ON a.id = mra."artistId" AND a.monitored = true AND a.name NOT LIKE '%;%'
     WHERE mr.status = 'MISSING' AND mr.year IS NULL
   `)
   return Number(rows[0]?.count ?? 0)

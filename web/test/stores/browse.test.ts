@@ -6,7 +6,7 @@ const fetchMock = vi.fn()
 vi.stubGlobal('$fetch', fetchMock)
 
 const response = (overrides: Partial<{ items: unknown[], total: number, hasMore: boolean }> = {}) => ({
-  items: [], total: 0, mainCount: 0, relatedCount: 0, page: 1, hasMore: false, ...overrides,
+  items: [], total: 0, mainCount: 0, page: 1, hasMore: false, ...overrides,
 })
 
 describe('useBrowseStore', () => {

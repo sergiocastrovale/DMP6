@@ -27,6 +27,8 @@ cd scripts && cargo build --release -p index
 ./index --delete                 # Delete local data for matched artists, then exit
 ./index --music-dir /path        # Override MUSIC_DIR env
 ./index --web                    # Emit PROGRESS:{json} for the web terminal
+./index --relink-credits         # Only rebuild TrackRelatedArtist credits, no folder scan
+./index --skip-relink            # Skip the end-of-run credit relink pass
 ```
 
 `--release` cannot combine with `--from`, `--to`, `--only`, or `--folders`.
@@ -51,6 +53,8 @@ cd scripts && cargo build --release -p index
 | `--music-dir` | String | - | Override MUSIC_DIR from env |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 | `--emit-artist-ids` | String | - | Write processed artist IDs to file (one per line, used by refresh) |
+| `--relink-credits` | bool | false | Only rebuild TrackRelatedArtist credit links against current artists, then exit (no folder scan) |
+| `--skip-relink` | bool | false | Skip the end-of-run TrackRelatedArtist relink pass |
 
 ## Output Modes
 
@@ -62,8 +66,8 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 2. **Extract** metadata in parallel (rayon + lofty), including MB tags: `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_ALBUMARTISTID`
 3. **Pre-scan** - propagate MB release/release-group IDs across tracks sharing same album/year/albumArtist
 4. **Change detection** - default: skip if filePath exists in DB. `--inspect`: compare size/mtime/hash. `--overwrite`: skip change detection but preserve existing covers. `--overwrite-with-images`: skip everything and re-extract covers
-5. **Split** albumArtist and artist tags into individual artists
-6. **Upsert** Artist, LocalRelease, LocalReleaseTrack, LocalReleaseArtist, TrackRelatedArtist (batch UNNEST)
+5. **Split** the albumArtist tag (verbatim, one artist) and the artist tag (via `split_artists`) - the artist-tag names are stored on the track for now, not yet turned into `TrackRelatedArtist` links (see Post-loop below)
+6. **Upsert** Artist, LocalRelease, LocalReleaseTrack, LocalReleaseArtist (batch UNNEST)
 7. **Cover art** - extract from embedded tags or folder images, content-addressed by MD5 hash (same image bytes = one file, shared across releases)
 8. **Delete** tracks no longer on disk
 9. **Update totals** for this artist's releases and tracks
@@ -71,7 +75,9 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 11. **Stamp run hash** on FolderScan for resumability
 12. **Upsert FolderScan** - stores folder mtime
 
-Post-loop: detects entirely deleted folders (only when unfiltered), safety-net pass re-extracts missing release images.
+Post-loop: detects entirely deleted folders (only when unfiltered), rebuilds `TrackRelatedArtist` credits
+(`relink_track_credits`, skippable via `--skip-relink` - see Artist Roles below), safety-net pass
+re-extracts missing release images.
 
 ## Locking & Resumability
 
@@ -89,7 +95,7 @@ Display title/year for the release come from the folder's **majority (mode)** `a
 
 `folderPath` scoping means the same album ripped into two folders creates two separate `LocalRelease` rows — genuine duplicate copies. Sync binds both to the same `MusicBrainzRelease` via `releaseId`; the web UI collapses them into one card, and the `duplicate-release` audit rule surfaces them for review.
 
-**Compilations link many artists to one release.** Index creates one `LocalReleaseArtist` link per distinct `albumArtist` tag in the folder (main artists), plus `TrackRelatedArtist` links for track-level guests. A comp tagged `albumArtist = "Various Artists"` gets one link; a per-source-tagged comp (each track credited to its original performer) gets N links to the *same* single `LocalRelease` — shared via the many-to-many table, not duplicated per artist, so it appears on each of those N artists' pages.
+**Compilations link many artists to one release.** Index creates one `LocalReleaseArtist` link per distinct `albumArtist` tag in the folder (main artists). A comp tagged `albumArtist = "Various Artists"` gets one link; a per-source-tagged comp (each track credited to its original performer) gets N links to the *same* single `LocalRelease` — shared via the many-to-many table, not duplicated per artist, so it appears on each of those N artists' pages.
 
 ## Cover Art Deduplication
 
@@ -103,21 +109,42 @@ Works with all storage modes (`local`, `s3`, `both`). S3 uploads happen once per
 
 ## Artist Tag Splitting
 
-`split_artists()` in `common/src/artists.rs`:
+`split_artists()` in `common/src/artists.rs` (applied to the `artist` tag only - `albumArtist` is taken
+verbatim, see Artist Roles below):
 - Splits on `feat.`/`ft.`/`featuring` → featured artists
 - Splits on `//` `\\` `||` `;` `|` - unambiguous separators
 - Splits on ` / ` ` \ ` (space-surrounded only - preserves AC/DC)
 - Splits on `vs.`/`vs`
-- Does **not** split on `,` or `&` (preserves "10,000 Maniacs", "Simon & Garfunkel")
+- Splits on `,` and ` & ` (preserves "10,000 Maniacs" via numeric-comma guard, and known single-artist
+  names like "Simon & Garfunkel" via `KNOWN_SINGLE_ARTISTS`)
+- Splits on ` with ` (space-bounded, so "Bill Withers" / "Jimmy Witherspoon" / "mewithoutYou" are safe),
+  stripping a leading role qualifier off the right side first ("special guests", "guest",
+  "orchestra conducted/directed by", "arranged and conducted by")
 
-## Artist Roles (Main vs Related)
+## Artist Roles (Main vs credited)
 
-Derived entirely from file metadata:
+Derived entirely from file metadata, never from folder paths:
 
-- **Main artist** = in `albumArtist` tag → `Artist.relatedOnly = false`, linked via `LocalReleaseArtist`
-- **Related artist** = in `artist` tag but NOT in `albumArtist` → `Artist.relatedOnly = true`, linked via `TrackRelatedArtist`
+- **Main artist** = in `albumArtist` tag, taken **verbatim** (never split) → linked via `LocalReleaseArtist`.
+  This is the only way an Artist row is ever created.
+- **Credit** = a name in the `artist` tag that isn't the albumArtist and isn't already a main artist on
+  that same release (no self-credits) → linked via `TrackRelatedArtist`, but **only if that name already
+  matches an existing Artist** (one with its own `LocalReleaseArtist` link). A credit for a name with no
+  matching artist yet is dropped, not created speculatively - there is no "credit-only" Artist row.
 
-If a related artist later appears as albumArtist on another release, `relatedOnly` flips to `false`.
+Because credits depend on an artist that may not be indexed yet (folders scan alphabetically), the actual
+linking happens in a **post-loop pass**, `relink_track_credits` (`scripts/index/src/db.rs`): it rebuilds
+`TrackRelatedArtist` from scratch by rescanning every track's `artist` tag against the current Artist
+table, so an artist indexed *after* the release that credits them still ends up linked once this pass
+runs, and a credit whose name no longer matches anything (retagged, or its artist was deleted) is removed
+rather than left stale. Runs by default after every index invocation; skip with `--skip-relink`, or run it
+standalone with `--relink-credits` (no folder scan). See
+`scripts/index/tests/relink_credits.rs`.
+
+Consequently `delete_orphan_artists` (`deletion.rs`, reported as `Cleaned up ... N orphan artist(s)`) only
+needs to check `LocalReleaseArtist` and `MusicBrainzReleaseArtist` - a `TrackRelatedArtist` row can never
+be the only thing keeping an artist alive, since a credit can only exist once its target already owns a
+release. See `scripts/index/tests/orphan_cleanup.rs`.
 
 ## Running on NAS
 

@@ -12,7 +12,7 @@ export interface Track {
   playCount: number
   filePath: string
   localReleaseId: string | null
-  artists?: { name: string; slug: string; hasPage: boolean }[]
+  artists?: { name: string; slug: string }[]
   missing?: boolean
   mbTitle?: string | null
   mbTrackMusicbrainzId?: string | null

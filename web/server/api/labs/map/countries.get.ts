@@ -30,7 +30,6 @@ export default defineEventHandler(async (event) => {
         JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
         JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
         WHERE a.country IS NOT NULL
-          AND a."relatedOnly" = false
           AND a."primaryArtistId" IS NULL
           AND (lr.image IS NOT NULL OR lr."imageUrl" IS NOT NULL)
       ),

@@ -1,5 +1,3 @@
-mod db;
-mod deletion;
 mod images;
 mod metadata;
 mod nuke;
@@ -31,8 +29,8 @@ use std::{
     },
 };
 
-use db::*;
-use deletion::{
+use index::db::*;
+use index::deletion::{
     delete_empty_releases, delete_orphan_artists, delete_orphaned_mb_releases,
     delete_removed_tracks, detect_deleted_folders,
 };
@@ -92,6 +90,12 @@ struct IndexArgs {
 
     #[arg(long, help = "Write processed artist IDs to file (one per line, used by refresh)")]
     emit_artist_ids: Option<String>,
+
+    #[arg(long, help = "Only rebuild TrackRelatedArtist credit links against current artists, then exit (no folder scan)")]
+    relink_credits: bool,
+
+    #[arg(long, help = "Skip the end-of-run TrackRelatedArtist relink pass")]
+    skip_relink: bool,
 }
 
 fn has_filter(args: &IndexArgs) -> bool {
@@ -212,6 +216,20 @@ async fn main() {
             Ok(n) => reporter.info(&format!("Deleted {} artist(s).", n)),
             Err(e) => reporter.err(&format!("Delete error: {}", e)),
         }
+        release_lock(&pool).await;
+        return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Relink-only mode: rebuild TrackRelatedArtist without scanning any folders
+    // -------------------------------------------------------------------------
+    if args.relink_credits {
+        reporter.info("Relinking track credits against current artists...");
+        let stats = relink_track_credits(&pool).await;
+        reporter.info(&format!(
+            "Relinked credits: {} tracks scanned, {} link(s) added, {} link(s) removed.",
+            stats.tracks_scanned, stats.links_added, stats.links_removed
+        ));
         release_lock(&pool).await;
         return;
     }
@@ -639,7 +657,6 @@ async fn main() {
         // -----------------------------------------------------------------
         let mut mtime_updates: Vec<(NaiveDateTime, String)> = Vec::new();
         let mut batch_tracks: Vec<_> = Vec::new();
-        let mut pending_related_links: Vec<(String, String)> = Vec::new();
         let mut pending_release_artist_links: HashSet<(String, String)> = HashSet::new();
         let mut releases_needing_art: HashMap<String, (PathBuf, Option<String>)> = HashMap::new();
         let mut releases_with_art: HashSet<String> = HashSet::new();
@@ -692,7 +709,7 @@ async fn main() {
                     Vec::new()
                 };
 
-            let (main_track_artists, feat_track_artists) = if !track_artist_tag.is_empty() {
+            let (main_track_artists, _) = if !track_artist_tag.is_empty() {
                 split_artists(track_artist_tag)
             } else {
                 (Vec::new(), Vec::new())
@@ -755,23 +772,17 @@ async fn main() {
                 }
             };
 
-            let fp = track.file_path.clone();
             folder_releases
                 .entry(release_id.clone())
                 .or_insert_with(|| folder_path_str.clone());
 
             // Album-artist → release links (main artists)
-            let album_artist_names_lower: HashSet<String> = main_album_artists
-                .iter()
-                .map(|n| n.to_lowercase())
-                .collect();
-
             if main_album_artists.is_empty() {
                 let fallback = main_track_artists
                     .first()
                     .map(|s| s.as_str())
                     .unwrap_or("Unknown Artist");
-                if let Ok(aid) = ensure_artist_cached(&pool, fallback, &mut artist_cache, false).await {
+                if let Ok(aid) = ensure_artist_cached(&pool, fallback, &mut artist_cache).await {
                     if !aid.is_empty() {
                         pending_release_artist_links.insert((release_id.clone(), aid.clone()));
                         folder_artist_ids.insert(aid.clone());
@@ -780,31 +791,13 @@ async fn main() {
             } else {
                 for aa_name in &main_album_artists {
                     if let Ok(aa_id) =
-                        ensure_artist_cached(&pool, aa_name, &mut artist_cache, false).await
+                        ensure_artist_cached(&pool, aa_name, &mut artist_cache).await
                     {
                         if !aa_id.is_empty() {
                             pending_release_artist_links
                                 .insert((release_id.clone(), aa_id.clone()));
                             folder_artist_ids.insert(aa_id.clone());
                         }
-                    }
-                }
-            }
-
-            // Track-level related artists (artist tag names NOT in albumArtist)
-            let all_track_names: Vec<String> = main_track_artists
-                .into_iter()
-                .chain(feat_track_artists.into_iter())
-                .collect();
-            for ta_name in &all_track_names {
-                if album_artist_names_lower.contains(&ta_name.to_lowercase()) {
-                    continue;
-                }
-                if let Ok(ta_id) =
-                    ensure_artist_cached(&pool, ta_name, &mut artist_cache, true).await
-                {
-                    if !ta_id.is_empty() {
-                        pending_related_links.push((fp.clone(), ta_id));
                     }
                 }
             }
@@ -839,23 +832,12 @@ async fn main() {
         }
 
         // -----------------------------------------------------------------
-        // Batch upsert tracks + resolve artist links
+        // Batch upsert tracks
         // -----------------------------------------------------------------
         if !batch_tracks.is_empty() {
-            match batch_upsert_tracks(&pool, &batch_tracks).await {
-                Ok(path_to_id) => {
-                    let resolved: Vec<(String, String)> = pending_related_links
-                        .into_iter()
-                        .filter_map(|(fp, aid)| {
-                            path_to_id.get(&fp).map(|tid| (tid.clone(), aid))
-                        })
-                        .collect();
-                    batch_ensure_track_related_artists(&pool, &resolved).await.ok();
-                }
-                Err(e) => {
-                    reporter.err(&format!("Batch upsert error for '{}': {}", folder_name, e));
-                    error_total += batch_tracks.len() as u64;
-                }
+            if let Err(e) = batch_upsert_tracks(&pool, &batch_tracks).await {
+                reporter.err(&format!("Batch upsert error for '{}': {}", folder_name, e));
+                error_total += batch_tracks.len() as u64;
             }
         }
 
@@ -1283,13 +1265,26 @@ async fn main() {
     }
 
     // -------------------------------------------------------------------------
+    // Post-loop: rebuild TrackRelatedArtist credit links
+    // -------------------------------------------------------------------------
+    if !shutdown.load(Ordering::SeqCst) && !args.skip_relink {
+        let stats = relink_track_credits(&pool).await;
+        if stats.links_added > 0 || stats.links_removed > 0 {
+            reporter.info(&format!(
+                "Relinked credits: {} link(s) added, {} link(s) removed.",
+                stats.links_added, stats.links_removed
+            ));
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Post-loop: re-extract missing release covers (safety net)
     // -------------------------------------------------------------------------
     if !shutdown.load(Ordering::SeqCst) && !args.skip_covers && !is_targeted {
         let has_filter = args.only.is_some() || args.from.is_some() || args.to.is_some();
         let missing: Vec<(String, String, Option<String>, String)> = if has_filter {
             let filtered_names: Vec<String> = sqlx::query_as::<_, (String,)>(
-                r#"SELECT name FROM "Artist" WHERE "relatedOnly" = false ORDER BY name"#,
+                r#"SELECT name FROM "Artist" ORDER BY name"#,
             )
             .fetch_all(&pool)
             .await

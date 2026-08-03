@@ -41,38 +41,37 @@ enum Role {
 // ---------------------------------------------------------------------------
 
 model Artist {
-  id                String               @id @default(cuid())
-  name              String
-  slug              String               @unique
-  image             String?
-  imageUrl          String?              @db.Text
-  musicbrainzId     String?
-  averageMatchScore Float?
-  totalPlayCount    Int                  @default(0)
-  totalTracks       Int                  @default(0)
-  totalFileSize     BigInt               @default(0)
-  lastSyncedAt      DateTime?
-  lastIndexedAt     DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  urls              ArtistUrl[]          @relation("ArtistUrls")
-  localReleases     LocalReleaseArtist[]
-  mbReleases        MusicBrainzReleaseArtist[]
-  downloadedReleases DownloadedRelease[]
-  genres            Genre[]              @relation("ArtistGenres")
-  country           String?              @db.VarChar(2)
-  syncHash          String?
-  relatedOnly       Boolean              @default(false)
-  monitored         Boolean              @default(false)
-  lastGapsCheckedAt DateTime?            // last catalogue-gap refresh (round-robin fairness at scale)
-  trackRelatedArtists TrackRelatedArtist[] @relation("ArtistRelatedTracks")
-  unsplitIssues     IssueUnsplitArtist[] @relation("UnsplitArtistIssue")
-  orphanIssues      IssueOrphanArtist[]  @relation("OrphanArtistIssue")
-  duplicateAIssues  IssueDuplicateArtist[] @relation("DuplicateArtistA")
-  duplicateBIssues  IssueDuplicateArtist[] @relation("DuplicateArtistB")
-  primaryArtistId   String?
-  primaryArtist     Artist?              @relation("ArtistPrimary", fields: [primaryArtistId], references: [id], onDelete: SetNull)
-  connectedArtists  Artist[]             @relation("ArtistPrimary")
+  id                  String                     @id @default(cuid())
+  name                String
+  slug                String                     @unique
+  image               String?
+  imageUrl            String?                    @db.Text
+  musicbrainzId       String?
+  averageMatchScore   Float?
+  totalPlayCount      Int                        @default(0)
+  totalTracks         Int                        @default(0)
+  totalFileSize       BigInt                     @default(0)
+  lastSyncedAt        DateTime?
+  lastIndexedAt       DateTime?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  urls                ArtistUrl[]                @relation("ArtistUrls")
+  localReleases       LocalReleaseArtist[]
+  mbReleases          MusicBrainzReleaseArtist[]
+  downloadedReleases  DownloadedRelease[]
+  genres              Genre[]                    @relation("ArtistGenres")
+  country             String?                    @db.VarChar(2)
+  syncHash            String?
+  monitored           Boolean                    @default(false)
+  lastGapsCheckedAt   DateTime? // last catalogue-gap refresh (round-robin fairness at scale)
+  trackRelatedArtists TrackRelatedArtist[]       @relation("ArtistRelatedTracks")
+  unsplitIssues       IssueUnsplitArtist[]       @relation("UnsplitArtistIssue")
+  orphanIssues        IssueOrphanArtist[]        @relation("OrphanArtistIssue")
+  duplicateAIssues    IssueDuplicateArtist[]     @relation("DuplicateArtistA")
+  duplicateBIssues    IssueDuplicateArtist[]     @relation("DuplicateArtistB")
+  primaryArtistId     String?
+  primaryArtist       Artist?                    @relation("ArtistPrimary", fields: [primaryArtistId], references: [id], onDelete: SetNull)
+  connectedArtists    Artist[]                   @relation("ArtistPrimary")
 
   @@index([musicbrainzId])
   @@index([totalPlayCount])
@@ -80,7 +79,6 @@ model Artist {
   @@index([createdAt])
   @@index([name]) // B-tree for ORDER BY name; trigram GIN index for ILIKE added via raw migration
   @@index([country])
-  @@index([relatedOnly])
   @@index([monitored, lastGapsCheckedAt])
   @@index([monitored])
   @@index([primaryArtistId])
@@ -121,11 +119,11 @@ model Genre {
 // ---------------------------------------------------------------------------
 
 model ReleaseType {
-  id        String               @id @default(cuid())
-  name      String               @unique
-  slug      String               @unique
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
+  id         String               @id @default(cuid())
+  name       String               @unique
+  slug       String               @unique
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
   mbReleases MusicBrainzRelease[]
 }
 
@@ -134,27 +132,27 @@ model ReleaseType {
 // ---------------------------------------------------------------------------
 
 model MusicBrainzRelease {
-  id              String                  @id @default(cuid())
-  title           String                  @db.VarChar(500)
-  typeId          String
-  year            Int?
-  musicbrainzId   String                  @unique
-  releaseGroupId  String?
-  disambiguation  String?
-  editionLabel    String?
-  releaseDate     String?
-  packaging       String?
-  country         String?
-  format          String?
-  status          ReleaseStatus           @default(UNKNOWN)
-  statusReason    String?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  localReleases   LocalRelease[]
-  artists         MusicBrainzReleaseArtist[]
-  type            ReleaseType             @relation(fields: [typeId], references: [id])
-  genres          Genre[]                 @relation("ReleaseGenres")
-  tracks          MusicBrainzReleaseTrack[]
+  id             String                     @id @default(cuid())
+  title          String                     @db.VarChar(500)
+  typeId         String
+  year           Int?
+  musicbrainzId  String                     @unique
+  releaseGroupId String?
+  disambiguation String?
+  editionLabel   String?
+  releaseDate    String?
+  packaging      String?
+  country        String?
+  format         String?
+  status         ReleaseStatus              @default(UNKNOWN)
+  statusReason   String?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  localReleases  LocalRelease[]
+  artists        MusicBrainzReleaseArtist[]
+  type           ReleaseType                @relation(fields: [typeId], references: [id])
+  genres         Genre[]                    @relation("ReleaseGenres")
+  tracks         MusicBrainzReleaseTrack[]
 
   @@index([typeId])
   @@index([releaseGroupId])
@@ -165,17 +163,17 @@ model MusicBrainzRelease {
 // ---------------------------------------------------------------------------
 
 model MusicBrainzReleaseTrack {
-  id              String              @id @default(cuid())
-  title           String              @db.VarChar(500)
-  position        Int?
-  discNumber      Int?
-  durationMs      Int?
-  musicbrainzId   String?
-  releaseId       String
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  release         MusicBrainzRelease  @relation(fields: [releaseId], references: [id], onDelete: Cascade)
-  localTracks     LocalReleaseTrack[]
+  id            String              @id @default(cuid())
+  title         String              @db.VarChar(500)
+  position      Int?
+  discNumber    Int?
+  durationMs    Int?
+  musicbrainzId String?
+  releaseId     String
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  release       MusicBrainzRelease  @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  localTracks   LocalReleaseTrack[]
 
   @@index([releaseId])
   @@index([musicbrainzId])
@@ -186,29 +184,29 @@ model MusicBrainzReleaseTrack {
 // ---------------------------------------------------------------------------
 
 model LocalRelease {
-  id              String              @id @default(cuid())
-  title           String              @db.VarChar(500)
-  year            Int?
-  releaseId       String?
-  matchStatus     ReleaseStatus       @default(UNMATCHED)
-  forcedComplete  Boolean             @default(false)
-  folderPath      String?             @db.Text
-  groupKey        String              @db.VarChar(500)
-  image           String?
-  imageUrl        String?             @db.Text
-  totalPlayCount  Int                 @default(0)
-  totalDuration   Int?                @default(0)
-  totalFileSize   BigInt              @default(0)
-  lastPlayedAt    DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  downloadedFrom   String?             // null = pristine library; 'slskd' = acquired via Soulseek
-  artists          LocalReleaseArtist[]
-  release          MusicBrainzRelease? @relation(fields: [releaseId], references: [id])
-  tracks           LocalReleaseTrack[]
-  enrichmentIssues IssueEnrichmentGap[]
-  favorite         FavoriteRelease?
-  downloadedRelease DownloadedRelease?
+  id                         String                     @id @default(cuid())
+  title                      String                     @db.VarChar(500)
+  year                       Int?
+  releaseId                  String?
+  matchStatus                ReleaseStatus              @default(UNMATCHED)
+  forcedComplete             Boolean                    @default(false)
+  folderPath                 String?                    @db.Text
+  groupKey                   String                     @db.VarChar(500)
+  image                      String?
+  imageUrl                   String?                    @db.Text
+  totalPlayCount             Int                        @default(0)
+  totalDuration              Int?                       @default(0)
+  totalFileSize              BigInt                     @default(0)
+  lastPlayedAt               DateTime?
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  downloadedFrom             String? // null = pristine library; 'slskd' = acquired via Soulseek
+  artists                    LocalReleaseArtist[]
+  release                    MusicBrainzRelease?        @relation(fields: [releaseId], references: [id])
+  tracks                     LocalReleaseTrack[]
+  enrichmentIssues           IssueEnrichmentGap[]
+  favorite                   FavoriteRelease?
+  downloadedRelease          DownloadedRelease?
   duplicateReleaseAIssues    IssueDuplicateRelease[]    @relation("DuplicateReleaseA")
   duplicateReleaseBIssues    IssueDuplicateRelease[]    @relation("DuplicateReleaseB")
   mismatchedReleaseIdAIssues IssueMismatchedReleaseId[] @relation("MismatchedReleaseIdA")
@@ -262,40 +260,41 @@ model MusicBrainzReleaseArtist {
 // ---------------------------------------------------------------------------
 
 model LocalReleaseTrack {
-  id             String                   @id @default(cuid())
-  title          String?                  @db.Text
-  artist         String?                  @db.Text
-  albumArtist    String?                  @db.Text
-  album          String?                  @db.Text
-  year           Int?
-  genre          String?                  @db.Text
-  duration       Int?
-  bitrate        Int?
-  sampleRate     Int?
-  filePath       String                   @unique @db.VarChar(500)
-  position       String?                  @db.Text
-  trackNumber    Int?
-  discNumber     Int?
-  localReleaseId    String?
-  mbTrackId         String?
-  mbReleaseGroupId  String?
-  mbReleaseId       String?
-  mbAlbumArtistId   String?
-  fileSize       BigInt?
-  mtime          DateTime?
-  contentHash    String?                  @db.VarChar(32)
-  metadata       Json?
-  playCount      Int                      @default(0)
-  lastPlayedAt   DateTime?
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
-  localRelease   LocalRelease?            @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
-  mbTrack        MusicBrainzReleaseTrack? @relation(fields: [mbTrackId], references: [id])
-  favorite       FavoriteTrack?
-  playlistTracks PlaylistTrack[]
-  trackRelatedArtists TrackRelatedArtist[]  @relation("TrackRelatedArtists")
-  corruptedIssues  IssueCorruptedTpe2[]     @relation("CorruptedTrackIssue")
-  missingIssues    IssueMissingMetadata[]   @relation("MissingMetadataIssue")
+  id                  String                   @id @default(cuid())
+  title               String?                  @db.Text
+  artist              String?                  @db.Text
+  albumArtist         String?                  @db.Text
+  album               String?                  @db.Text
+  year                Int?
+  genre               String?                  @db.Text
+  duration            Int?
+  bitrate             Int?
+  sampleRate          Int?
+  filePath            String                   @unique @db.VarChar(500)
+  position            String?                  @db.Text
+  trackNumber         Int?
+  discNumber          Int?
+  localReleaseId      String?
+  mbTrackId           String?
+  mbReleaseGroupId    String?
+  mbReleaseId         String?
+  mbAlbumArtistId     String?
+  fileSize            BigInt?
+  mtime               DateTime?
+  contentHash         String?                  @db.VarChar(32)
+  metadata            Json?
+  playCount           Int                      @default(0)
+  lastPlayedAt        DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  localRelease        LocalRelease?            @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
+  mbTrack             MusicBrainzReleaseTrack? @relation(fields: [mbTrackId], references: [id])
+  favorite            FavoriteTrack?
+  playlistTracks      PlaylistTrack[]
+  trackRelatedArtists TrackRelatedArtist[]     @relation("TrackRelatedArtists")
+  corruptedIssues     IssueCorruptedTpe2[]     @relation("CorruptedTrackIssue")
+  missingIssues       IssueMissingMetadata[]   @relation("MissingMetadataIssue")
+  // Trigram GIN index for title ILIKE and expression index on LOWER(genre) added via raw migration
 
   @@index([localReleaseId])
   @@index([mbTrackId])
@@ -309,7 +308,6 @@ model LocalReleaseTrack {
   @@index([localReleaseId, discNumber, trackNumber]) // Composite for ORDER BY discNumber, trackNumber within a release
   @@index([mbReleaseGroupId])
   @@index([mbReleaseId])
-  // Trigram GIN index for title ILIKE and expression index on LOWER(genre) added via raw migration
 }
 
 // ---------------------------------------------------------------------------
@@ -406,65 +404,65 @@ model SearchSource {
 }
 
 model Settings {
-  id                 String   @id @default("main")
+  id                     String   @id @default("main")
   // Library
-  musicDir           String?
+  musicDir               String?
   // Downloads
-  slskdUrl           String?
-  slskdApiKey        String?
-  downloadsPath      String?
-  downloadDirTemplate String?
-  downloadFormats    String?
-  downloadMinBitrate Int?
+  slskdUrl               String?
+  slskdApiKey            String?
+  downloadsPath          String?
+  downloadDirTemplate    String?
+  downloadFormats        String?
+  downloadMinBitrate     Int?
   // RuTracker via Prowlarr (search) + qBittorrent (download); null = use env/default
-  prowlarrUrl         String?
-  prowlarrApiKey      String?
-  prowlarrIndexerId   String? // optional: restrict Prowlarr search to this indexer id (the RT indexer)
-  qbittorrentUrl      String?
-  qbittorrentUser     String?
-  qbittorrentPass     String?
-  qbittorrentSavePath String? // qBit-side save prefix that maps to DOWNLOADS_PATH/_torrents on the shared mount
+  prowlarrUrl            String?
+  prowlarrApiKey         String?
+  prowlarrIndexerId      String? // optional: restrict Prowlarr search to this indexer id (the RT indexer)
+  qbittorrentUrl         String?
+  qbittorrentUser        String?
+  qbittorrentPass        String?
+  qbittorrentSavePath    String? // qBit-side save prefix that maps to DOWNLOADS_PATH/_torrents on the shared mount
   // Monitoring (all override the matching env var; null = use env/default)
-  monitorEnabled      Boolean?
-  monitorIntervalMin  Int?
-  monitorCap          Int?
-  monitorGapsHours    Int?
-  retryCooldownDays   Int? // days to wait before retrying a FAILED/UNAVAILABLE/INVALID release; null = env/default
-  noProgressSec       Int?
-  maxDownloadAttempts Int?
-  songkongEnabled     Boolean? // enrich downloads with SongKong before layout; null = env/default
+  monitorEnabled         Boolean?
+  monitorIntervalMin     Int?
+  monitorCap             Int?
+  monitorGapsHours       Int?
+  retryCooldownDays      Int? // days to wait before retrying a FAILED/UNAVAILABLE/INVALID release; null = env/default
+  noProgressSec          Int?
+  maxDownloadAttempts    Int?
+  songkongEnabled        Boolean? // enrich downloads with SongKong before layout; null = env/default
   // Always-on downloader (null = use env/default)
   autoMergeDownloads     Boolean? // auto-merge ready downloads into the library (default false)
-  maxConcurrentDownloads Int?     // cap on simultaneous active slskd transfers (default 5)
-  searchPicksPerInterval Int?     // missing releases queued per worker tick (default 3)
-  searchIntervalSec      Int?     // min seconds between download top-up runs (default 60)
-  gapsPicksPerRun        Int?     // monitored artists refreshed per catalogue-gap run (default 20)
-  gapsIntervalMin        Int?     // minutes between catalogue-gap runs (default 5)
+  maxConcurrentDownloads Int? // cap on simultaneous active slskd transfers (default 5)
+  searchPicksPerInterval Int? // missing releases queued per worker tick (default 3)
+  searchIntervalSec      Int? // min seconds between download top-up runs (default 60)
+  gapsPicksPerRun        Int? // monitored artists refreshed per catalogue-gap run (default 20)
+  gapsIntervalMin        Int? // minutes between catalogue-gap runs (default 5)
   downloadsPaused        Boolean  @default(false) // global halt: no new queue/search/gaps/auto-merge
-  downloadsPausedReason  String?  // why paused: 'manual' | 'disk-full' | null
+  downloadsPausedReason  String? // why paused: 'manual' | 'disk-full' | null
   // Storage
-  imageStorage       String?
-  storageImageBucket      String?
-  storageBackupsBucket    String?
-  awsRegion               String?
-  awsAccessKeyId          String?
-  awsSecretAccessKey      String?
-  storageEndpoint         String?
-  storagePublicUrl        String?
+  imageStorage           String?
+  storageImageBucket     String?
+  storageBackupsBucket   String?
+  awsRegion              String?
+  awsAccessKeyId         String?
+  awsSecretAccessKey     String?
+  storageEndpoint        String?
+  storagePublicUrl       String?
   // API Keys
-  fanartApiKey       String?
+  fanartApiKey           String?
   // Run hashes (resumability)
-  indexRunHash       String?
-  syncRunHash        String?
+  indexRunHash           String?
+  syncRunHash            String?
   // Last.fm / Scrobbling
-  lastfmApiKey       String?
-  lastfmSecret       String?
-  lastfmSessionKey   String?
-  lastfmUsername      String?
+  lastfmApiKey           String?
+  lastfmSecret           String?
+  lastfmSessionKey       String?
+  lastfmUsername         String?
   // UI (null = use env/default)
-  showTerminal       Boolean? // show raw terminal sidebar instead of the friendly progress panel
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  showTerminal           Boolean? // show raw terminal sidebar instead of the friendly progress panel
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -483,16 +481,16 @@ enum DownloadSource {
 //   url         => informational base (e.g. the RuTracker forum URL for UI links); optional.
 // Model name avoids the DownloadSource enum clash; table is `DownloadSources`.
 model DownloadSourceConfig {
-  id        String   @id @default(cuid())
-  name      String   @unique // matches a DownloadSource enum value: 'SLSKD' | 'RUTRACKER'
-  url       String?
-  retry     Boolean  @default(true)
-  enabled   Boolean  @default(true)
+  id                String    @id @default(cuid())
+  name              String    @unique // matches a DownloadSource enum value: 'SLSKD' | 'RUTRACKER'
+  url               String?
+  retry             Boolean   @default(true)
+  enabled           Boolean   @default(true)
   // Rolling daily search budget (used by RuTracker — its Prowlarr indexer caps searches/day).
   budgetUsed        Int       @default(0)
   budgetWindowStart DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@map("DownloadSources")
 }
@@ -510,31 +508,31 @@ enum DownloadStatus {
 }
 
 model DownloadedRelease {
-  id             String         @id @default(cuid())
-  artistId       String?
-  mbReleaseId    String?        // MusicBrainzRelease.id this fills (the MISSING target)
-  releaseGroupId String?        // MB release-group id (denormalized)
-  title          String         @db.VarChar(500)
-  year           Int?
-  source         DownloadSource @default(SLSKD)
-  triedSources   DownloadSource[] @default([]) // sources searched-and-missed whose retry=false; never re-searched
-  slskUsername   String?
-  torrentHash    String?        // qBittorrent infohash (shared by sibling rows extracted from one pack)
-  torrentFolder  String?        @db.Text // this release's folder inside the torrent (what relocate grabs)
-  quality        String?        // source format/bitrate, e.g. "MP3 320"
-  files          Json?          // [{filename,size}] queued from slskd — lets the reconciler finalize
-  stagingPath    String?        @db.Text // folder under DOWNLOADS_PATH
-  status         DownloadStatus @default(READY)
-  attempts       Int            @default(0) // failed/no-result attempts; >= max -> ABANDONED (download-fail path only)
-  priority       Int            @default(10) // 10 = freshest/highest; decremented per failure, floor 0; drives retry order
-  bytesTransferred BigInt       @default(0) // progress watermark for no-progress death
-  lastProgressAt DateTime?      // last time bytes increased
-  error          String?        @db.Text
-  localReleaseId String?        @unique // set on promote
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  artist         Artist?        @relation(fields: [artistId], references: [id], onDelete: SetNull)
-  localRelease   LocalRelease?  @relation(fields: [localReleaseId], references: [id], onDelete: SetNull)
+  id               String           @id @default(cuid())
+  artistId         String?
+  mbReleaseId      String? // MusicBrainzRelease.id this fills (the MISSING target)
+  releaseGroupId   String? // MB release-group id (denormalized)
+  title            String           @db.VarChar(500)
+  year             Int?
+  source           DownloadSource   @default(SLSKD)
+  triedSources     DownloadSource[] @default([]) // sources searched-and-missed whose retry=false; never re-searched
+  slskUsername     String?
+  torrentHash      String? // qBittorrent infohash (shared by sibling rows extracted from one pack)
+  torrentFolder    String?          @db.Text // this release's folder inside the torrent (what relocate grabs)
+  quality          String? // source format/bitrate, e.g. "MP3 320"
+  files            Json? // [{filename,size}] queued from slskd — lets the reconciler finalize
+  stagingPath      String?          @db.Text // folder under DOWNLOADS_PATH
+  status           DownloadStatus   @default(READY)
+  attempts         Int              @default(0) // failed/no-result attempts; >= max -> ABANDONED (download-fail path only)
+  priority         Int              @default(10) // 10 = freshest/highest; decremented per failure, floor 0; drives retry order
+  bytesTransferred BigInt           @default(0) // progress watermark for no-progress death
+  lastProgressAt   DateTime? // last time bytes increased
+  error            String?          @db.Text
+  localReleaseId   String?          @unique // set on promote
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  artist           Artist?          @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  localRelease     LocalRelease?    @relation(fields: [localReleaseId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([status, priority])
@@ -544,30 +542,29 @@ model DownloadedRelease {
 }
 
 model Statistics {
-  id                                  String    @id @default("main")
-  artists                             Int       @default(0)
-  mainArtists                         Int       @default(0)
-  relatedArtists                      Int       @default(0)
-  playtime                            BigInt    @default(0)
-  plays                               BigInt    @default(0)
-  tracks                              Int       @default(0)
-  releases                            Int       @default(0)
-  genres                              Int       @default(0)
-  artistsSyncedWithMusicbrainz        Int       @default(0)
-  releasesSyncedWithMusicbrainz       Int       @default(0)
-  artistsWithCoverArt                 Int       @default(0)
-  releasesWithCoverArt                Int       @default(0)
-  totalFileSize                       BigInt    @default(0)
-  lastScanStartedAt                   DateTime?
-  lastScanEndedAt                     DateTime?
-  lastSyncedArtist                    String?
-  lastSyncArgs                        Json?
-  lastIndexedFolder                   String?
-  scanLockedBy                        String?
-  scanLockedAt                        DateTime?
-  scanPid                             Int?
-  createdAt                           DateTime  @default(now())
-  updatedAt                           DateTime  @updatedAt
+  id                            String    @id @default("main")
+  artists                       Int       @default(0)
+  mainArtists                   Int       @default(0)
+  playtime                      BigInt    @default(0)
+  plays                         BigInt    @default(0)
+  tracks                        Int       @default(0)
+  releases                      Int       @default(0)
+  genres                        Int       @default(0)
+  artistsSyncedWithMusicbrainz  Int       @default(0)
+  releasesSyncedWithMusicbrainz Int       @default(0)
+  artistsWithCoverArt           Int       @default(0)
+  releasesWithCoverArt          Int       @default(0)
+  totalFileSize                 BigInt    @default(0)
+  lastScanStartedAt             DateTime?
+  lastScanEndedAt               DateTime?
+  lastSyncedArtist              String?
+  lastSyncArgs                  Json?
+  lastIndexedFolder             String?
+  scanLockedBy                  String?
+  scanLockedAt                  DateTime?
+  scanPid                       Int?
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -575,9 +572,9 @@ model Statistics {
 // ---------------------------------------------------------------------------
 
 model FolderScan {
-  folderPath  String   @id
-  mtime       DateTime
-  indexHash   String?
+  folderPath String   @id
+  mtime      DateTime
+  indexHash  String?
 }
 
 // ---------------------------------------------------------------------------
@@ -585,17 +582,17 @@ model FolderScan {
 // ---------------------------------------------------------------------------
 
 model AuditRun {
-  id               String                 @id @default(cuid())
-  startedAt        DateTime               @default(now())
-  finishedAt       DateTime?
-  counts           Json?
-  createdAt        DateTime               @default(now())
-  corruptedIssues  IssueCorruptedTpe2[]
-  unsplitIssues    IssueUnsplitArtist[]
-  orphanIssues     IssueOrphanArtist[]
-  duplicateIssues  IssueDuplicateArtist[]
-  missingIssues    IssueMissingMetadata[]
-  enrichmentIssues IssueEnrichmentGap[]
+  id                        String                     @id @default(cuid())
+  startedAt                 DateTime                   @default(now())
+  finishedAt                DateTime?
+  counts                    Json?
+  createdAt                 DateTime                   @default(now())
+  corruptedIssues           IssueCorruptedTpe2[]
+  unsplitIssues             IssueUnsplitArtist[]
+  orphanIssues              IssueOrphanArtist[]
+  duplicateIssues           IssueDuplicateArtist[]
+  missingIssues             IssueMissingMetadata[]
+  enrichmentIssues          IssueEnrichmentGap[]
   duplicateReleaseIssues    IssueDuplicateRelease[]
   mismatchedReleaseIdIssues IssueMismatchedReleaseId[]
 }

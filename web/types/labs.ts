@@ -28,7 +28,6 @@ export interface NetworkNode {
   name: string
   slug: string
   trackCount: number
-  isMain: boolean
   isFocus: boolean
 }
 

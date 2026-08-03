@@ -22,8 +22,8 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(
     name = "delete",
-    about = "Permanently delete an artist's catalogue. If the artist is featured \
-             on other artists' tracks, flips to related-only instead of deleting."
+    about = "Permanently delete an artist's catalogue. If the artist is credited on \
+             other artists' tracks, those credits are removed too - warned before confirming."
 )]
 struct Args {
     /// Artist name(s), separated by ';' for multiple (case-insensitive exact match)
@@ -66,12 +66,6 @@ fn extract_s3_key(url: &str) -> Option<String> {
 // Plan
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
-enum ArtistFate {
-    FullDelete,
-    FlipRelatedOnly,
-}
-
 #[derive(Debug)]
 struct ArtistAction {
     id: String,
@@ -79,9 +73,11 @@ struct ArtistAction {
     slug: String,
     image: Option<String>,
     image_url: Option<String>,
-    fate: ArtistFate,
     is_cascaded: bool,
-    surviving_track_count: i64,
+    /// Credits on tracks OUTSIDE the deletion set - purely informational, since this artist is deleted
+    /// either way and those TrackRelatedArtist rows cascade away with it. Surfaced so the operator sees
+    /// what else loses a credit before confirming.
+    other_credits_count: i64,
 }
 
 #[derive(Debug, Default)]
@@ -196,10 +192,9 @@ async fn build_plan(
     let mut all_artist_ids: Vec<String> = target_ids.iter().map(|(id, _)| id.clone()).collect();
     all_artist_ids.extend(cascaded.iter().cloned());
 
-    // Determine fate for each artist
     let mut artist_actions: Vec<ArtistAction> = Vec::new();
     for aid in &all_artist_ids {
-        let (surviving,): (i64,) = sqlx::query_as(
+        let (other_credits,): (i64,) = sqlx::query_as(
             r#"SELECT COUNT(*) FROM "TrackRelatedArtist" tra
                JOIN "LocalReleaseTrack" lrt ON lrt.id = tra."trackId"
                WHERE tra."artistId" = $1
@@ -209,12 +204,6 @@ async fn build_plan(
         .bind(&local_release_ids)
         .fetch_one(pool)
         .await?;
-
-        let fate = if surviving > 0 {
-            ArtistFate::FlipRelatedOnly
-        } else {
-            ArtistFate::FullDelete
-        };
 
         let row: (String, String, String, Option<String>, Option<String>) = sqlx::query_as(
             r#"SELECT id, name, slug, image, "imageUrl" FROM "Artist" WHERE id = $1"#,
@@ -229,9 +218,8 @@ async fn build_plan(
             slug: row.2,
             image: row.3,
             image_url: row.4,
-            fate,
             is_cascaded: cascaded.contains(aid),
-            surviving_track_count: surviving,
+            other_credits_count: other_credits,
         });
     }
 
@@ -294,7 +282,7 @@ async fn execute_plan(
     let mut local_deleted = 0usize;
     let mut s3_deleted = 0usize;
 
-    // Artist images - delete for ALL fates (flipped artists lose their image too)
+    // Artist images
     for action in &plan.artist_actions {
         let has_local = action.image.as_ref().map_or(false, |s| !s.is_empty());
         let has_s3 = action.image_url.as_ref().map_or(false, |s| !s.is_empty());
@@ -344,14 +332,6 @@ async fn execute_plan(
     let mut tx = pool.begin().await?;
 
     let all_artist_ids: Vec<String> = plan.artist_actions.iter().map(|a| a.id.clone()).collect();
-    let delete_ids: Vec<String> = plan.artist_actions.iter()
-        .filter(|a| a.fate == ArtistFate::FullDelete)
-        .map(|a| a.id.clone())
-        .collect();
-    let flip_ids: Vec<String> = plan.artist_actions.iter()
-        .filter(|a| a.fate == ArtistFate::FlipRelatedOnly)
-        .map(|a| a.id.clone())
-        .collect();
     let local_release_ids: Vec<String> = plan.local_releases.iter().map(|r| r.0.clone()).collect();
 
     // 1. _ArtistGenres (implicit junction, no cascade)
@@ -370,23 +350,7 @@ async fn execute_plan(
             .await?;
     }
 
-    // 3. Strip flipped artists: ArtistUrl
-    if !flip_ids.is_empty() {
-        sqlx::query(r#"DELETE FROM "ArtistUrl" WHERE "artistId" = ANY($1::text[])"#)
-            .bind(&flip_ids)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    // 4. Strip flipped artists: remaining MB release links
-    if !flip_ids.is_empty() {
-        sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "artistId" = ANY($1::text[])"#)
-            .bind(&flip_ids)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    // 5. LocalRelease (cascades: tracks, release artists, TrackRelatedArtist, favorites, playlists, issues)
+    // 3. LocalRelease (cascades: tracks, release artists, TrackRelatedArtist, favorites, playlists, issues)
     if !local_release_ids.is_empty() {
         sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = ANY($1::text[])"#)
             .bind(&local_release_ids)
@@ -394,7 +358,7 @@ async fn execute_plan(
             .await?;
     }
 
-    // 6. MusicBrainzRelease (cascades: tracks, release artists, favorites)
+    // 4. MusicBrainzRelease (cascades: tracks, release artists, favorites)
     if !plan.mb_releases.is_empty() {
         sqlx::query(r#"DELETE FROM "MusicBrainzRelease" WHERE id = ANY($1::text[])"#)
             .bind(&plan.mb_releases)
@@ -402,37 +366,16 @@ async fn execute_plan(
             .await?;
     }
 
-    // 7. Flip artists to related-only
-    if !flip_ids.is_empty() {
-        sqlx::query(
-            r#"UPDATE "Artist" SET
-                 "relatedOnly" = true,
-                 image = NULL,
-                 "imageUrl" = NULL,
-                 "musicbrainzId" = NULL,
-                 "averageMatchScore" = NULL,
-                 "lastSyncedAt" = NULL,
-                 "lastIndexedAt" = NULL,
-                 "totalPlayCount" = 0,
-                 "totalTracks" = 0,
-                 "totalFileSize" = 0,
-                 "updatedAt" = NOW()
-               WHERE id = ANY($1::text[])"#,
-        )
-        .bind(&flip_ids)
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    // 8. Fully delete artists
-    if !delete_ids.is_empty() {
+    // 5. Artists (cascades: remaining ArtistUrl, MusicBrainzReleaseArtist, TrackRelatedArtist credits
+    // on OTHER artists' tracks - those credits are lost, warned about in the plan display above)
+    if !all_artist_ids.is_empty() {
         sqlx::query(r#"DELETE FROM "Artist" WHERE id = ANY($1::text[])"#)
-            .bind(&delete_ids)
+            .bind(&all_artist_ids)
             .execute(&mut *tx)
             .await?;
     }
 
-    // 9. Sweep orphaned releases
+    // 6. Sweep orphaned releases
     sqlx::query(
         r#"DELETE FROM "LocalRelease" WHERE id NOT IN (
             SELECT DISTINCT "localReleaseId" FROM "LocalReleaseArtist"
@@ -441,7 +384,7 @@ async fn execute_plan(
     .execute(&mut *tx)
     .await?;
 
-    // 10. Sweep orphaned MB releases
+    // 7. Sweep orphaned MB releases
     sqlx::query(
         r#"DELETE FROM "MusicBrainzRelease" WHERE id NOT IN (
             SELECT DISTINCT "releaseId" FROM "MusicBrainzReleaseArtist"
@@ -452,7 +395,7 @@ async fn execute_plan(
 
     tx.commit().await?;
 
-    // 11. FolderScan cleanup (non-critical, outside transaction)
+    // 8. FolderScan cleanup (non-critical, outside transaction)
     if !plan.folder_paths.is_empty() {
         sqlx::query(r#"DELETE FROM "FolderScan" WHERE "folderPath" = ANY($1::text[])"#)
             .bind(&plan.folder_paths)
@@ -571,36 +514,22 @@ async fn main() {
         .expect("Failed to build deletion plan");
 
     // Display plan
-    let full_deletes: Vec<&ArtistAction> = plan.artist_actions.iter()
-        .filter(|a| a.fate == ArtistFate::FullDelete)
-        .collect();
-    let flips: Vec<&ArtistAction> = plan.artist_actions.iter()
-        .filter(|a| a.fate == ArtistFate::FlipRelatedOnly)
-        .collect();
     println!("{}", "Plan".bright_cyan().bold());
     println!("{}", "----".bright_black());
 
-    if !full_deletes.is_empty() {
-        println!("Artists to {} delete: {}", "fully".red(), full_deletes.len().to_string().bright_white());
-        for a in &full_deletes {
+    if !plan.artist_actions.is_empty() {
+        println!("Artists to delete: {}", plan.artist_actions.len().to_string().bright_white());
+        for a in &plan.artist_actions {
             let tag = if a.is_cascaded { "cascaded" } else { "target" };
+            let warning = if a.other_credits_count > 0 {
+                format!(" - WARNING: credited on {} track(s) by other artists, those credits will be lost", a.other_credits_count)
+            } else {
+                String::new()
+            };
             println!("    {} {}  {}",
                 "•".bright_black(),
                 a.name.bright_white(),
-                format!("({}) {}", a.slug, tag).bright_black());
-        }
-    }
-
-    if !flips.is_empty() {
-        println!("Artists to flip to {}: {}",
-            "related-only".yellow(),
-            flips.len().to_string().bright_white());
-        for a in &flips {
-            let tag = if a.is_cascaded { "cascaded" } else { "target" };
-            println!("    {} {}  {}",
-                "•".bright_black(),
-                a.name.bright_white(),
-                format!("({}) {} - featured on {} track(s) by other artists", a.slug, tag, a.surviving_track_count).bright_black());
+                format!("({}) {}{}", a.slug, tag, warning).bright_black());
         }
     }
 
@@ -664,10 +593,9 @@ async fn main() {
     release_lock(&pool).await;
 
     println!();
-    println!("{} {} artist(s) fully deleted, {} artist(s) flipped to related-only.",
+    println!("{} {} artist(s) deleted.",
         "✓".green().bold(),
-        full_deletes.len(),
-        flips.len());
+        plan.artist_actions.len());
     println!("  {} local release(s), {} MB release(s) deleted.",
         plan.local_releases.len(),
         plan.mb_releases.len());

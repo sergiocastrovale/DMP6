@@ -14,7 +14,6 @@ export interface AppStats {
 export interface Statistics {
   artists: number
   mainArtists: number
-  relatedArtists: number
   tracks: number
   releases: number
   genres: number

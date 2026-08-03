@@ -22,7 +22,6 @@ interface GraphNode extends SimulationNodeDatum {
   name: string
   slug: string
   trackCount: number
-  isMain: boolean
   isFocus: boolean
 }
 
@@ -41,7 +40,7 @@ const graphData = ref<NetworkGraph | null>(null)
 const minShared = ref(2)
 
 const svgContainer = ref<HTMLElement | null>(null)
-const tooltip = ref<{ x: number; y: number; name: string; tracks: number; isMain: boolean } | null>(null)
+const tooltip = ref<{ x: number; y: number; name: string; tracks: number } | null>(null)
 const linkTooltip = ref<{ x: number; y: number; source: string; target: string; shared: number; tracks: string[] } | null>(null)
 
 let simulation: ReturnType<typeof forceSimulation<GraphNode>> | null = null
@@ -179,18 +178,12 @@ const renderGraph = () => {
     .data(nodes)
     .join('circle')
     .attr('r', (d: GraphNode) => d.isFocus ? nodeRadiusScale(d.trackCount) * 1.4 : nodeRadiusScale(d.trackCount))
-    .attr('fill', (d: GraphNode) => {
-      if (d.isFocus) { return 'oklch(0.82 0.25 92)' }
-      return d.isMain ? 'oklch(0.75 0.18 250)' : 'oklch(0.7 0.15 330)'
-    })
-    .attr('stroke', (d: GraphNode) => {
-      if (d.isFocus) { return 'oklch(0.9 0.2 92)' }
-      return d.isMain ? 'oklch(0.85 0.18 250)' : 'oklch(0.8 0.15 330)'
-    })
+    .attr('fill', (d: GraphNode) => d.isFocus ? 'oklch(0.82 0.25 92)' : 'oklch(0.75 0.18 250)')
+    .attr('stroke', (d: GraphNode) => d.isFocus ? 'oklch(0.9 0.2 92)' : 'oklch(0.85 0.18 250)')
     .attr('stroke-width', (d: GraphNode) => d.isFocus ? 3 : 1.5)
     .attr('cursor', 'pointer')
     .on('mouseover', (event: MouseEvent, d: GraphNode) => {
-      tooltip.value = { x: event.clientX, y: event.clientY, name: d.name, tracks: d.trackCount, isMain: d.isMain }
+      tooltip.value = { x: event.clientX, y: event.clientY, name: d.name, tracks: d.trackCount }
       if (!d.isFocus) {
         select(event.currentTarget as Element).attr('fill', 'oklch(0.82 0.25 92)')
       }
@@ -204,8 +197,7 @@ const renderGraph = () => {
     .on('mouseout', (event: MouseEvent, d: GraphNode) => {
       tooltip.value = null
       if (!d.isFocus) {
-        const fill = d.isMain ? 'oklch(0.75 0.18 250)' : 'oklch(0.7 0.15 330)'
-        select(event.currentTarget as Element).attr('fill', fill)
+        select(event.currentTarget as Element).attr('fill', 'oklch(0.75 0.18 250)')
       }
     })
     .on('click', (_: MouseEvent, d: GraphNode) => {
@@ -369,18 +361,10 @@ onUnmounted(() => {
           {{ graphData.nodes.length }} artists · {{ graphData.links.length }} connections
         </div>
 
-        <div class="mt-4 flex flex-col gap-1.5 text-xs text-ink-2">
-          <div v-if="selectedArtist" class="flex items-center gap-1.5">
+        <div v-if="selectedArtist" class="mt-4 flex flex-col gap-1.5 text-xs text-ink-2">
+          <div class="flex items-center gap-1.5">
             <div class="size-2.5 rounded-full" style="background: oklch(0.82 0.25 92)" />
             Selected
-          </div>
-          <div class="flex items-center gap-1.5">
-            <div class="size-2.5 rounded-full" style="background: oklch(0.75 0.18 250)" />
-            Main artist
-          </div>
-          <div class="flex items-center gap-1.5">
-            <div class="size-2.5 rounded-full" style="background: oklch(0.7 0.15 330)" />
-            Guest artist
           </div>
         </div>
       </div>
@@ -426,7 +410,6 @@ onUnmounted(() => {
       <div class="text-sm font-semibold text-ink">{{ tooltip.name }}</div>
       <div class="text-xs text-ink-2">
         {{ tooltip.tracks }} {{ tooltip.tracks === 1 ? 'track' : 'tracks' }}
-        · {{ tooltip.isMain ? 'Main artist' : 'Guest artist' }}
       </div>
     </div>
 

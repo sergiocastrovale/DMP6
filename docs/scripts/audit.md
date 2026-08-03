@@ -37,9 +37,14 @@ For each detected track, the proposed fix is derived from peer tracks in the sam
 
 ### Unsplit Artists (`IssueUnsplitArtist`)
 
-Artists in the DB whose name contains multi-artist separators: `&`, `feat.`, `ft.`, `/`, `;`.
+Artists in the DB whose name contains multi-artist separators: `&`, `feat.`, `ft.`, `/`, `;`, `vs`/`vs.`,
+` with ` (e.g. "Frank Sinatra with Count Basie", stripping a leading role qualifier like "special guests"
+or "orchestra conducted by" off the right side first), `\` (e.g. "B.B. King\Bobby Bland"), and
+", ... conducted by"/", arranged and conducted by" (e.g. "Frank Sinatra, orchestra conducted by Nelson
+Riddle").
 
-Detection skips a hardcoded list of known-single artists (AC/DC, Simon & Garfunkel, Kool & the Gang, etc.).
+Detection skips a hardcoded list of known-single artists (AC/DC, Simon & Garfunkel, Kool & the Gang,
+Sleeping With Sirens, etc.).
 
 `proposedParts` contains the split result (e.g. `["Jeff Beck", "Eric Clapton"]`).
 
@@ -56,8 +61,7 @@ Artists that shouldn't exist:
 | Reason | Meaning |
 |--------|---------|
 | `phantom` | Name matches `^\d{1,3}$` or `@\d{2,3}$` - created by corrupted tags |
-| `no_releases` | No `LocalReleaseArtist` links |
-| `no_links` | No `LocalReleaseArtist` or `TrackRelatedArtist` links |
+| `no_releases` | No `LocalReleaseArtist` and no `MusicBrainzReleaseArtist` link. `TrackRelatedArtist` is not checked - a credit only ever links to an artist that already owns a release, so it can never be the only thing keeping an otherwise-empty artist alive (see `docs/scripts/index.md`'s Artist Roles section) |
 
 **Fix:** `./fix --orphans` deletes the artist and any local image file.
 

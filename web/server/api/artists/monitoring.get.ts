@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const showMonitored = query.showMonitored !== 'false'
   const showUnmonitored = query.showUnmonitored !== 'false'
 
-  const conditions = [Prisma.sql`a."relatedOnly" = false`, Prisma.sql`a."primaryArtistId" IS NULL`]
+  const conditions = [Prisma.sql`a."primaryArtistId" IS NULL`]
   if (search) {
     conditions.push(Prisma.sql`a.name ILIKE ${`%${search}%`}`)
   }
@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
   const orderCol = sortColumns[sortKey]!
   const orderDir = query.dir === 'desc' ? Prisma.raw('DESC') : Prisma.raw('ASC')
 
-  const monitoredCount = await prisma.artist.count({ where: { relatedOnly: false, primaryArtistId: null, monitored: true } })
+  const monitoredCount = await prisma.artist.count({ where: { primaryArtistId: null, monitored: true } })
 
   const rows = await prisma.$queryRaw<Array<{
     id: string

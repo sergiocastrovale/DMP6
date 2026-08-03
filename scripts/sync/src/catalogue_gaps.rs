@@ -25,8 +25,7 @@ pub async fn fill_catalogue_gaps(
     let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
         r#"SELECT id, name, slug, "musicbrainzId"
            FROM "Artist"
-           WHERE "relatedOnly" = false
-             AND "primaryArtistId" IS NULL
+           WHERE "primaryArtistId" IS NULL
              AND "musicbrainzId" IS NOT NULL
              AND "musicbrainzId" != ''
            ORDER BY name"#,

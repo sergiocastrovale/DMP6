@@ -27,9 +27,8 @@ Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
 ```
 
 - `LocalReleaseArtist` = main artists (albumArtist tag owners), many-to-many
-- `TrackRelatedArtist` = related/guest artists (artist tag extras not in albumArtist), many-to-many
+- `TrackRelatedArtist` = credited artists (artist tag extras not in albumArtist), many-to-many. A credit is only ever linked to an artist that already owns a release via `LocalReleaseArtist` — no Artist row is ever created for a name that appears solely as a credit. Rebuilt after every index run by `relink_track_credits` (`scripts/index/src/db.rs`) so credits resolve regardless of folder scan order.
 - `Artist.country` = ISO 3166-1 alpha-2 code from MusicBrainz area (e.g. "US", "GB"), populated by sync
-- `Artist.relatedOnly` = true for guests (no own browse page, no MB sync); flips to false when found as albumArtist
 - `Artist.primaryArtistId` = FK to canonical Artist when this artist shares an MB ID with another; connected artist hidden from browse, catalogue aggregated on primary's page
 - `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING_TRACKS | MISSING | UNKNOWN | UNMATCHED
 - `PlaylistType`: MANUAL | GENRE | REGION

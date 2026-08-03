@@ -557,8 +557,7 @@ async fn refresh_statistics(pool: &PgPool) {
     sqlx::query(
         r#"UPDATE "Statistics" SET
              artists = (SELECT COUNT(*)::int FROM "Artist"),
-             "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" WHERE "relatedOnly" = false),
-             "relatedArtists" = (SELECT COUNT(*)::int FROM "Artist" WHERE "relatedOnly" = true),
+             "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" WHERE "primaryArtistId" IS NULL),
              tracks = (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
              releases = (SELECT COUNT(*)::int FROM "LocalRelease"),
              "releasesWithCoverArt" = (SELECT COUNT(*)::int FROM "LocalRelease"

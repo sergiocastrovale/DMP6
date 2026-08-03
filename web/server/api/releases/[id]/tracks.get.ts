@@ -141,7 +141,7 @@ async function getLocalReleaseTracks(
       },
       trackRelatedArtists: {
         select: {
-          artist: { select: { name: true, slug: true, relatedOnly: true } },
+          artist: { select: { name: true, slug: true } },
         },
       },
     },
@@ -195,7 +195,7 @@ async function getLocalReleaseTracks(
       ...t,
       artists: trackRelatedArtists
         .filter(ta => !albumArtistSlugs.has(ta.artist.slug))
-        .map(ta => ({ name: ta.artist.name, slug: ta.artist.slug, hasPage: !ta.artist.relatedOnly })),
+        .map(ta => ({ name: ta.artist.name, slug: ta.artist.slug })),
       missing: false,
       mbTitle,
       mbTrackMusicbrainzId: mbTrack?.musicbrainzId || null,

@@ -5,7 +5,6 @@ export const useBrowseStore = defineStore('browse', () => {
   const artists = ref<ArtistListItem[]>([])
   const total = ref(0)
   const mainCount = ref(0)
-  const relatedCount = ref(0)
   const page = ref(1)
   const pageSize = ref(48)
   const hasMore = ref(false)
@@ -54,7 +53,6 @@ export const useBrowseStore = defineStore('browse', () => {
         items: ArtistListItem[]
         total: number
         mainCount: number
-        relatedCount: number
         page: number
         hasMore: boolean
       }>('/api/artists', { params, signal: controller.signal })
@@ -70,7 +68,6 @@ export const useBrowseStore = defineStore('browse', () => {
       }
       total.value = data.total
       mainCount.value = data.mainCount
-      relatedCount.value = data.relatedCount
       hasMore.value = data.hasMore
     }
     catch (e: any) {
@@ -149,7 +146,6 @@ export const useBrowseStore = defineStore('browse', () => {
     artists,
     total,
     mainCount,
-    relatedCount,
     page,
     pageSize,
     hasMore,

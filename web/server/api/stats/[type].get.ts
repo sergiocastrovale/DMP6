@@ -56,10 +56,9 @@ export default defineEventHandler(async (event) => {
 })
 
 async function queryArtists(type: string, search: string, skip: number, pageSize: number, page: number, _sort: string, order: 'asc' | 'desc') {
-  // Matches artists/index.get.ts's base filter: relatedOnly artists have no own browse page, and
-  // connected (duplicate) artists are aggregated onto their primary - counting them here inflated
-  // the stat beyond what /browse actually lists (audit #82).
-  const where: any = { relatedOnly: false, primaryArtistId: null }
+  // Matches artists/index.get.ts's base filter: connected (duplicate) artists are aggregated onto
+  // their primary - counting them here inflated the stat beyond what /browse actually lists (audit #82).
+  const where: any = { primaryArtistId: null }
   if (search) { where.name = { contains: search, mode: 'insensitive' } }
   if (type === 'artists-synced') { where.musicbrainzId = { not: null } }
   if (type === 'artists-with-art') { where.OR = [{ image: { not: null } }, { imageUrl: { not: null } }] }
@@ -360,7 +359,7 @@ async function querySingleRelease(search: string, skip: number, pageSize: number
       SELECT a.id
       FROM "Artist" a
       JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
-      WHERE a."relatedOnly" = false AND a."primaryArtistId" IS NULL ${searchClause}
+      WHERE a."primaryArtistId" IS NULL ${searchClause}
       GROUP BY a.id
       HAVING COUNT(DISTINCT lra."localReleaseId") = 1
     ) sub
@@ -379,7 +378,7 @@ async function querySingleRelease(search: string, skip: number, pageSize: number
     JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
     JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
     LEFT JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
-    WHERE a."relatedOnly" = false AND a."primaryArtistId" IS NULL ${searchClause}
+    WHERE a."primaryArtistId" IS NULL ${searchClause}
       AND a.id IN (
         SELECT lra2."artistId"
         FROM "LocalReleaseArtist" lra2

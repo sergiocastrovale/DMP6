@@ -1,6 +1,6 @@
 # Scripts: delete
 
-Permanently deletes an artist's catalogue (local + MB), images, and any co-artists whose entire catalogue falls within the deletion set. Smarter than `nuke --only` - artists featured on other artists' tracks are **flipped to `relatedOnly`** instead of deleted.
+Permanently deletes an artist's catalogue (local + MB), images, and any co-artists whose entire catalogue falls within the deletion set. If the artist is credited (`TrackRelatedArtist`) on other artists' tracks outside the deletion set, those credits are removed too - warned about in the plan display before confirming.
 
 ## Usage
 
@@ -21,34 +21,23 @@ Permanently deletes an artist's catalogue (local + MB), images, and any co-artis
 
 Artist lookup uses **case-insensitive exact match** (SQL `LOWER(name) = LOWER($1)`). Exits if 0 or >1 matches per name.
 
-## Artist Fate
-
-Each artist gets one of two outcomes:
-
-- **FullDelete** - no surviving track credits outside the deletion set. Artist row deleted entirely.
-- **FlipRelatedOnly** - artist appears as `TrackRelatedArtist` on tracks by other artists outside the deletion set. Flipped to `relatedOnly = true`, all stats/MB data/images cleared, but the artist row survives so existing track credits remain valid.
-
-This is the key difference from `nuke --only`, which always fully deletes.
-
 ## Cascade Rule
 
-Co-artists are automatically included when ALL of their local releases AND MB releases fall within the deletion set. Each cascaded co-artist also gets a FullDelete or FlipRelatedOnly fate check.
+Co-artists are automatically included when ALL of their local releases AND MB releases fall within the deletion set.
 
 ## What Gets Deleted
 
-Within a single **transaction** (10 steps):
+Within a single **transaction** (7 steps, plus a non-critical cleanup step after commit):
 1. `_ArtistGenres` junction rows
 2. `_ReleaseGenres` junction rows
-3. `ArtistUrl` rows for flipped artists
-4. `MusicBrainzReleaseArtist` links for flipped artists
-5. `LocalRelease` rows (cascades to tracks, playlist/favorite rows, release-artist links)
-6. `MusicBrainzRelease` rows (cascades to tracks, release-artist links, favorites)
-7. Flip artists to `relatedOnly = true` (clear image, MB ID, stats)
-8. Delete fully-removed `Artist` rows
-9. Sweep orphaned `LocalRelease` rows
-10. Sweep orphaned `MusicBrainzRelease` rows
+3. `LocalRelease` rows (cascades to tracks, playlist/favorite rows, release-artist links, `TrackRelatedArtist`)
+4. `MusicBrainzRelease` rows (cascades to tracks, release-artist links, favorites)
+5. `Artist` rows (cascades to remaining `ArtistUrl`, `MusicBrainzReleaseArtist`, and any `TrackRelatedArtist` credit this artist held on OTHER artists' tracks - those credits are lost)
+6. Sweep orphaned `LocalRelease` rows
+7. Sweep orphaned `MusicBrainzRelease` rows
+8. `FolderScan` cleanup (outside the transaction)
 
-Also: release + artist images (local + S3), `FolderScan` entries (outside transaction), statistics refresh.
+Also: release + artist images (local + S3), statistics refresh.
 
 ## After Deleting
 

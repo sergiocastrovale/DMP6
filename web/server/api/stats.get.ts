@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
           SELECT lra."artistId"
           FROM "LocalReleaseArtist" lra
           JOIN "Artist" a ON a.id = lra."artistId"
-          WHERE a."relatedOnly" = false AND a."primaryArtistId" IS NULL
+          WHERE a."primaryArtistId" IS NULL
           GROUP BY lra."artistId"
           HAVING COUNT(DISTINCT lra."localReleaseId") = 1
         ) sub
@@ -37,7 +37,6 @@ export default defineEventHandler(async (event) => {
       return {
         artists: 0,
         mainArtists: 0,
-        relatedArtists: 0,
         tracks: 0,
         releases: 0,
         genres: 0,
@@ -58,7 +57,6 @@ export default defineEventHandler(async (event) => {
     return {
       artists: stats.artists,
       mainArtists: stats.mainArtists,
-      relatedArtists: stats.relatedArtists,
       tracks: stats.tracks,
       releases: stats.releases,
       genres: stats.genres,

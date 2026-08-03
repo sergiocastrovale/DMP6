@@ -658,8 +658,7 @@ pub async fn get_artists_pending_sync(
         sqlx::query_as(
             r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl"
                FROM "Artist"
-               WHERE "relatedOnly" = false
-                 AND "lastIndexedAt" IS NOT NULL
+               WHERE "lastIndexedAt" IS NOT NULL
                  AND ("lastSyncedAt" IS NULL OR "lastIndexedAt" > "lastSyncedAt")
                ORDER BY name"#,
         )
@@ -854,7 +853,6 @@ pub async fn get_artist_for_release(
                FROM "Artist" a
                JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
                WHERE lra."localReleaseId" = $1
-                 AND a."relatedOnly" = false
                ORDER BY CASE WHEN a.id = $2 THEN 0 ELSE 1 END, a.name
                LIMIT 1"#,
         )

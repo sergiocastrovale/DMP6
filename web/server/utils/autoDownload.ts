@@ -157,7 +157,7 @@ let topUpRunning = false
 async function pickFresh(slots: number): Promise<MissingPick[]> {
   const artists = await prisma.$queryRaw<{ id: string; name: string }[]>(Prisma.sql`
     SELECT a.id, a.name FROM "Artist" a
-    WHERE a.monitored = true AND a."relatedOnly" = false AND a.name NOT LIKE '%;%'
+    WHERE a.monitored = true AND a.name NOT LIKE '%;%'
     ORDER BY random() LIMIT ${slots * 4}
   `)
   const picks: MissingPick[] = []
@@ -216,7 +216,7 @@ async function pickRetry(slots: number, cooldownDays: number): Promise<MissingPi
            a.id AS "artistId", a.name AS "artistName",
            m."rowId", m.attempts, m.priority, m."triedSources"
     FROM matched m
-    JOIN "Artist" a ON a.id = m."artistId" AND a.monitored = true AND a."relatedOnly" = false AND a.name NOT LIKE '%;%'
+    JOIN "Artist" a ON a.id = m."artistId" AND a.monitored = true AND a.name NOT LIKE '%;%'
     ORDER BY m.priority DESC, random() LIMIT ${slots}
   `)
 }

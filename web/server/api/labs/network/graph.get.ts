@@ -72,7 +72,6 @@ const getFullGraph = async (minShared: number): Promise<NetworkGraph> => {
       id: true,
       name: true,
       slug: true,
-      relatedOnly: true,
       totalTracks: true,
       _count: { select: { trackRelatedArtists: true } },
     },
@@ -83,7 +82,6 @@ const getFullGraph = async (minShared: number): Promise<NetworkGraph> => {
     name: a.name,
     slug: a.slug,
     trackCount: a.totalTracks + a._count.trackRelatedArtists,
-    isMain: !a.relatedOnly,
     isFocus: false,
   }))
 
@@ -109,7 +107,7 @@ const getFocusedGraph = async (artistId: string): Promise<NetworkGraph> => {
   if (pairs.length === 0) {
     const focusArtist = await prisma.artist.findUnique({
       where: { id: artistId },
-      select: { id: true, name: true, slug: true, relatedOnly: true, totalTracks: true },
+      select: { id: true, name: true, slug: true, totalTracks: true },
     })
     if (!focusArtist) {
       return { nodes: [], links: [] }
@@ -120,7 +118,6 @@ const getFocusedGraph = async (artistId: string): Promise<NetworkGraph> => {
         name: focusArtist.name,
         slug: focusArtist.slug,
         trackCount: focusArtist.totalTracks,
-        isMain: !focusArtist.relatedOnly,
         isFocus: true,
       }],
       links: [],
@@ -157,7 +154,6 @@ const getFocusedGraph = async (artistId: string): Promise<NetworkGraph> => {
       id: true,
       name: true,
       slug: true,
-      relatedOnly: true,
       totalTracks: true,
       _count: { select: { trackRelatedArtists: true } },
     },
@@ -168,7 +164,6 @@ const getFocusedGraph = async (artistId: string): Promise<NetworkGraph> => {
     name: a.name,
     slug: a.slug,
     trackCount: a.totalTracks + a._count.trackRelatedArtists,
-    isMain: !a.relatedOnly,
     isFocus: a.id === artistId,
   }))
 

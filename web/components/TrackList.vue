@@ -212,8 +212,7 @@ const formatFileSize = (bytes: number) => {
           <template v-if="track.artists?.length">
             <span class="text-ink0"> Feat.
               <template v-for="(a, i) in track.artists" :key="a.slug">
-                <NuxtLink v-if="a.hasPage" :to="`/artist/${a.slug}`" class="text-ink-2 hover:text-accent transition-colors" @click.stop>{{ a.name }}</NuxtLink>
-                <span v-else class="text-ink-2">{{ a.name }}</span><template v-if="i < track.artists.length - 1">, </template>
+                <NuxtLink :to="`/artist/${a.slug}`" class="text-ink-2 hover:text-accent transition-colors" @click.stop>{{ a.name }}</NuxtLink><template v-if="i < track.artists.length - 1">, </template>
               </template>
             </span>
           </template>
