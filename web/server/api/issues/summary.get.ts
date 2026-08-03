@@ -8,9 +8,8 @@ export default defineEventHandler(async (event) => {
     orderBy: { startedAt: 'desc' },
   })
 
-  const [corrupted, unsplit, orphans, duplicates, missing, enrichment, duplicateRelease, mismatchedReleaseId] = await Promise.all([
+  const [corrupted, orphans, duplicates, missing, enrichment, duplicateRelease, mismatchedReleaseId] = await Promise.all([
     prisma.issueCorruptedTpe2.count({ where: { status: 'DETECTED' as const } }),
-    prisma.issueUnsplitArtist.count({ where: { status: 'DETECTED' as const } }),
     prisma.issueOrphanArtist.count({ where: { status: 'DETECTED' as const } }),
     prisma.issueDuplicateArtist.count({ where: { status: 'DETECTED' as const } }),
     prisma.issueMissingMetadata.count({ where: { status: 'DETECTED' as const } }),
@@ -22,7 +21,7 @@ export default defineEventHandler(async (event) => {
   return {
     lastAudit,
     counts: {
-      corrupted, unsplit, orphans, duplicates, missing, enrichment,
+      corrupted, orphans, duplicates, missing, enrichment,
       'duplicate-release': duplicateRelease,
       'mismatched-release-id': mismatchedReleaseId,
     },

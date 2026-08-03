@@ -35,7 +35,6 @@ async function fetchHistoryCount() {
 
 const typeCards: { key: IssueType; label: string; description: string }[] = [
   { key: 'corrupted', label: 'Corrupted TPE2', description: 'Track numbers, paths, or years leaked into albumArtist tags' },
-  { key: 'unsplit', label: 'Unsplit Artists', description: 'Compound artist names that should be split into individual artists' },
   { key: 'orphans', label: 'Orphan Artists', description: 'Artists with no releases, no tracks, or garbage phantom names' },
   { key: 'duplicates', label: 'Duplicate Artists', description: 'Artists with the same normalized name that should be merged' },
   { key: 'missing', label: 'Missing Metadata', description: 'Tracks with null or empty core metadata fields' },

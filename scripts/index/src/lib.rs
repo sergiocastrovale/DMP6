@@ -4,3 +4,4 @@
 
 pub mod db;
 pub mod deletion;
+pub mod resolve;

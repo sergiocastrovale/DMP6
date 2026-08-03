@@ -3,7 +3,6 @@ import { requirePermission } from '~/server/utils/permissions'
 
 const MODEL_MAP = {
   corrupted: 'issueCorruptedTpe2',
-  unsplit: 'issueUnsplitArtist',
   orphans: 'issueOrphanArtist',
   duplicates: 'issueDuplicateArtist',
   missing: 'issueMissingMetadata',
@@ -13,7 +12,6 @@ type IssueType = keyof typeof MODEL_MAP
 
 const ALLOWED_FIELDS: Record<IssueType, string[]> = {
   corrupted: ['proposedValue'],
-  unsplit: ['proposedParts'],
   orphans: [],
   duplicates: [],
   missing: ['proposedValues'],

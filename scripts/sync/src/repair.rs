@@ -51,7 +51,10 @@ pub async fn find_conflict_groups(pool: &PgPool) -> Result<Vec<ConflictGroup>, s
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(release_id, local_ids)| ConflictGroup { release_id, local_ids })
+        .map(|(release_id, local_ids)| ConflictGroup {
+            release_id,
+            local_ids,
+        })
         .collect())
 }
 
@@ -101,21 +104,25 @@ pub async fn fetch_mb_release_info(
             .bind(release_id)
             .fetch_one(pool)
             .await?;
-    let (track_count,): (i64,) = sqlx::query_as(
-        r#"SELECT count(*) FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
-    )
-    .bind(release_id)
-    .fetch_one(pool)
-    .await?;
+    let (track_count,): (i64,) =
+        sqlx::query_as(r#"SELECT count(*) FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#)
+            .bind(release_id)
+            .fetch_one(pool)
+            .await?;
     Ok((title, track_count))
 }
 
 /// True when every candidate shares at least one credited artist in common - a legitimate
 /// multi-claim (e.g. a compilation credited to the same artist twice), not the bug this repairs.
 pub fn shares_common_artist(candidates: &[CandidateRelease]) -> bool {
-    let Some(first) = candidates.first() else { return false };
-    let mut common: HashSet<&str> =
-        first.credited_artist_ids.iter().map(|s| s.as_str()).collect();
+    let Some(first) = candidates.first() else {
+        return false;
+    };
+    let mut common: HashSet<&str> = first
+        .credited_artist_ids
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
     for c in &candidates[1..] {
         let set: HashSet<&str> = c.credited_artist_ids.iter().map(|s| s.as_str()).collect();
         common = common.intersection(&set).copied().collect();
@@ -127,7 +134,11 @@ pub fn shares_common_artist(candidates: &[CandidateRelease]) -> bool {
 }
 
 /// Pure decision logic (no DB) - which candidate wins, and who loses. See module doc for the rule.
-pub fn pick_winner(mb_title: &str, mb_track_count: i64, candidates: &[CandidateRelease]) -> Decision {
+pub fn pick_winner(
+    mb_title: &str,
+    mb_track_count: i64,
+    candidates: &[CandidateRelease],
+) -> Decision {
     let mut ranked: Vec<&CandidateRelease> = candidates.iter().collect();
     ranked.sort_by(|a, b| {
         let a_diff = (a.track_count - mb_track_count).abs();
@@ -188,7 +199,11 @@ pub async fn run_repair(
             mb_track_count
         );
         for c in &candidates {
-            let mark = if c.id == decision.winner { "WINNER".green().bold() } else { "loser".red() };
+            let mark = if c.id == decision.winner {
+                "WINNER".green().bold()
+            } else {
+                "loser".red()
+            };
             println!(
                 "    {} {} — \"{}\" ({} tracks) [{}]",
                 mark,
@@ -229,11 +244,20 @@ mod tests {
     use chrono::NaiveDate;
 
     fn dt(days: i64) -> NaiveDateTime {
-        NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap()
+        NaiveDate::from_ymd_opt(2026, 1, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
             + chrono::Duration::days(days)
     }
 
-    fn candidate(id: &str, title: &str, track_count: i64, updated_days: i64, artists: &[&str]) -> CandidateRelease {
+    fn candidate(
+        id: &str,
+        title: &str,
+        track_count: i64,
+        updated_days: i64,
+        artists: &[&str],
+    ) -> CandidateRelease {
         CandidateRelease {
             id: id.to_string(),
             title: title.to_string(),

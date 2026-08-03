@@ -9,7 +9,6 @@ const terminal = useTerminalStore()
 
 const TABS: { key: HistoryIssueType; label: string }[] = [
   { key: 'corrupted', label: 'Corrupted TPE2' },
-  { key: 'unsplit', label: 'Unsplit Artists' },
   { key: 'missing', label: 'Missing Metadata' },
 ]
 

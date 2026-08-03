@@ -77,17 +77,39 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let mut inserted = 0usize;
     let now = chrono::Utc::now().naive_utc();
 
-    for (release_id, missing_mb, missing_bpm, missing_mood, missing_acousticid,
-         missing_discogs, missing_bandcamp, missing_wikipedia) in &rows
+    for (
+        release_id,
+        missing_mb,
+        missing_bpm,
+        missing_mood,
+        missing_acousticid,
+        missing_discogs,
+        missing_bandcamp,
+        missing_wikipedia,
+    ) in &rows
     {
         let mut missing_fields: Vec<&str> = Vec::new();
-        if *missing_mb { missing_fields.push("mbRelease"); }
-        if *missing_bpm { missing_fields.push("bpm"); }
-        if *missing_mood { missing_fields.push("mood"); }
-        if *missing_acousticid { missing_fields.push("acousticId"); }
-        if *missing_discogs { missing_fields.push("discogs"); }
-        if *missing_bandcamp { missing_fields.push("bandcamp"); }
-        if *missing_wikipedia { missing_fields.push("wikipedia"); }
+        if *missing_mb {
+            missing_fields.push("mbRelease");
+        }
+        if *missing_bpm {
+            missing_fields.push("bpm");
+        }
+        if *missing_mood {
+            missing_fields.push("mood");
+        }
+        if *missing_acousticid {
+            missing_fields.push("acousticId");
+        }
+        if *missing_discogs {
+            missing_fields.push("discogs");
+        }
+        if *missing_bandcamp {
+            missing_fields.push("bandcamp");
+        }
+        if *missing_wikipedia {
+            missing_fields.push("wikipedia");
+        }
 
         let already_tracked: bool = sqlx::query_scalar(
             r#"SELECT EXISTS(SELECT 1 FROM "IssueEnrichmentGap"

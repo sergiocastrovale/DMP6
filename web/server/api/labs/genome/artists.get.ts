@@ -11,14 +11,14 @@ export default defineEventHandler(async (event) => {
 
   const [items, total] = await Promise.all([
     prisma.artist.findMany({
-      where: { genres: { some: { id: genreId } }, primaryArtistId: null },
+      where: { genres: { some: { id: genreId } }, primaryArtistId: null, localReleases: { some: {} } },
       select: { id: true, name: true, slug: true, image: true, imageUrl: true },
       orderBy: { name: 'asc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
     prisma.artist.count({
-      where: { genres: { some: { id: genreId } }, primaryArtistId: null },
+      where: { genres: { some: { id: genreId } }, primaryArtistId: null, localReleases: { some: {} } },
     }),
   ])
 

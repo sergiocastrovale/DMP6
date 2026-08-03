@@ -946,11 +946,13 @@ dependencies = [
  "lofty",
  "md-5",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "slug",
  "sqlx",
  "tokio",
+ "urlencoding",
 ]
 
 [[package]]
@@ -1160,6 +1162,7 @@ dependencies = [
  "clap",
  "colored",
  "common",
+ "cuid2",
  "dotenvy",
  "sqlx",
  "tokio",
@@ -2123,6 +2126,7 @@ dependencies = [
  "lofty",
  "md-5",
  "rayon",
+ "reqwest",
  "serde_json",
  "slug",
  "sqlx",

@@ -56,27 +56,50 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
         .header("User-Agent", MB_USER_AGENT)
         .send().await.expect("MB search request failed")
         .json().await.expect("MB search response not JSON");
-    let release_id = search["releases"][0]["id"].as_str()
-        .expect("no releases found in MB search — MusicBrainz may be unreachable or the query is stale")
+    let release_id = search["releases"][0]["id"]
+        .as_str()
+        .expect(
+            "no releases found in MB search — MusicBrainz may be unreachable or the query is stale",
+        )
         .to_string();
 
     tokio::time::sleep(MB_MIN_DELAY).await;
     let detail: serde_json::Value = http
         .get(format!("https://musicbrainz.org/ws/2/release/{release_id}"))
-        .query(&[("inc", "recordings+artist-credits+release-groups"), ("fmt", "json")])
+        .query(&[
+            ("inc", "recordings+artist-credits+release-groups"),
+            ("fmt", "json"),
+        ])
         .header("User-Agent", MB_USER_AGENT)
-        .send().await.expect("MB release lookup failed")
-        .json().await.expect("MB release response not JSON");
+        .send()
+        .await
+        .expect("MB release lookup failed")
+        .json()
+        .await
+        .expect("MB release response not JSON");
 
-    let release_group_id = detail["release-group"]["id"].as_str().expect("no release-group id in MB response").to_string();
-    let artist_mb_id = detail["artist-credit"][0]["artist"]["id"].as_str().expect("no artist-credit id in MB response").to_string();
-    let artist_name = detail["artist-credit"][0]["artist"]["name"].as_str().unwrap_or("Pink Floyd").to_string();
-    let track_titles: Vec<String> = detail["media"][0]["tracks"].as_array()
+    let release_group_id = detail["release-group"]["id"]
+        .as_str()
+        .expect("no release-group id in MB response")
+        .to_string();
+    let artist_mb_id = detail["artist-credit"][0]["artist"]["id"]
+        .as_str()
+        .expect("no artist-credit id in MB response")
+        .to_string();
+    let artist_name = detail["artist-credit"][0]["artist"]["name"]
+        .as_str()
+        .unwrap_or("Pink Floyd")
+        .to_string();
+    let track_titles: Vec<String> = detail["media"][0]["tracks"]
+        .as_array()
         .expect("no tracks on the first medium in MB response")
         .iter()
         .map(|t| t["title"].as_str().unwrap_or("Untitled").to_string())
         .collect();
-    assert!(!track_titles.is_empty(), "live MB lookup returned zero tracks — can't build a fixture");
+    assert!(
+        !track_titles.is_empty(),
+        "live MB lookup returned zero tracks — can't build a fixture"
+    );
 
     // 2. Fixture folder: one tiny silent mp3 per track, laid out the way a completed download would
     // be (Artist/Year - Album), tagged with the artist/title/year (index's own extraction) and the MB
@@ -90,9 +113,21 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
     std::fs::create_dir_all(&album_dir).expect("mkdir fixture album dir");
 
     for (i, title) in track_titles.iter().enumerate() {
-        let file = album_dir.join(format!("{:02}. {}.mp3", i + 1, title.replace(['/', '\\'], "_")));
+        let file = album_dir.join(format!(
+            "{:02}. {}.mp3",
+            i + 1,
+            title.replace(['/', '\\'], "_")
+        ));
         let status = Command::new("ffmpeg")
-            .args(["-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1"])
+            .args([
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=mono",
+                "-t",
+                "1",
+            ])
             .args(["-c:a", "libmp3lame", "-b:a", "64k"])
             .args(["-metadata", &format!("title={title}")])
             .args(["-metadata", &format!("artist={artist_name}")])
@@ -103,7 +138,10 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
             .arg(&file)
             .status()
             .expect("ffmpeg not on PATH — required to generate the fixture audio");
-        assert!(status.success(), "ffmpeg failed to generate fixture track {i}: {title}");
+        assert!(
+            status.success(),
+            "ffmpeg failed to generate fixture track {i}: {title}"
+        );
 
         common::tags::write_mb_ids(
             &file,
@@ -112,7 +150,8 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
             Some(&release_group_id),
             None, // per-track recording id isn't needed for the completeness match itself
             false,
-        ).expect("failed to write MB tags to fixture file");
+        )
+        .expect("failed to write MB tags to fixture file");
     }
 
     // 3. Seed the Artist row directly with the real MB id, matching ensure_artist_cached's own
@@ -139,8 +178,12 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
     // 4. Run the REAL compiled binaries — this is the whole point: no execFile mock.
     let sync_bin = PathBuf::from(env!("CARGO_BIN_EXE_sync"));
     let index_bin = sync_bin.with_file_name("index");
-    let scripts_root = sync_bin.parent().and_then(|p| p.parent()).and_then(|p| p.parent())
-        .expect("unexpected target dir layout").to_path_buf();
+    let scripts_root = sync_bin
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .expect("unexpected target dir layout")
+        .to_path_buf();
     assert!(index_bin.exists(), "index binary not found at {index_bin:?} — run `cargo build --release` for the whole workspace first");
 
     let index_status = Command::new(&index_bin)
@@ -152,19 +195,23 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
         .expect("failed to spawn index binary");
     assert!(index_status.success(), "index binary exited non-zero");
 
-    let local_release_id: String = sqlx::query_scalar(
-        r#"SELECT id FROM "LocalRelease" WHERE "folderPath" = $1"#,
-    )
-    .bind(&album_rel)
-    .fetch_one(&pool)
-    .await
-    .expect("index did not create the expected LocalRelease — check its stdout above");
+    let local_release_id: String =
+        sqlx::query_scalar(r#"SELECT id FROM "LocalRelease" WHERE "folderPath" = $1"#)
+            .bind(&album_rel)
+            .fetch_one(&pool)
+            .await
+            .expect("index did not create the expected LocalRelease — check its stdout above");
 
     let sync_status = Command::new(&sync_bin)
         .current_dir(&scripts_root)
         .env("DATABASE_URL", &db_url)
         .env("MUSIC_DIR", &music_dir)
-        .args(["--release", &local_release_id, "--skip-mb-tags", "--skip-release-img"])
+        .args([
+            "--release",
+            &local_release_id,
+            "--skip-mb-tags",
+            "--skip-release-img",
+        ])
         .status()
         .expect("failed to spawn sync binary");
     assert!(sync_status.success(), "sync binary exited non-zero");
@@ -178,8 +225,15 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
     .await
     .expect("LocalRelease vanished after sync");
 
-    assert!(bound_release_id.is_some(), "sync did not bind a MusicBrainzRelease — LocalRelease.releaseId is still null");
-    assert_eq!(match_status.as_deref(), Some("COMPLETE"), "expected an exact track-count match against the live release");
+    assert!(
+        bound_release_id.is_some(),
+        "sync did not bind a MusicBrainzRelease — LocalRelease.releaseId is still null"
+    );
+    assert_eq!(
+        match_status.as_deref(),
+        Some("COMPLETE"),
+        "expected an exact track-count match against the live release"
+    );
 
     let track_count: i64 = sqlx::query_scalar(
         r#"SELECT count(*) FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
@@ -188,9 +242,17 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
     .fetch_one(&pool)
     .await
     .expect("track count query failed");
-    assert_eq!(track_count as usize, track_titles.len(), "catalogue track count doesn't match the live MB tracklist");
+    assert_eq!(
+        track_count as usize,
+        track_titles.len(),
+        "catalogue track count doesn't match the live MB tracklist"
+    );
 
     // Cleanup: best-effort, this is a scratch DB, but tidy up so repeated runs don't collide.
-    sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#).bind(&artist_id).execute(&pool).await.ok();
+    sqlx::query(r#"DELETE FROM "Artist" WHERE id = $1"#)
+        .bind(&artist_id)
+        .execute(&pool)
+        .await
+        .ok();
     std::fs::remove_dir_all(&music_dir).ok();
 }

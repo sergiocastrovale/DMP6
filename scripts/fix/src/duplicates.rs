@@ -1,12 +1,16 @@
-use std::collections::HashSet;
+use crate::{folder_from_path, tags};
 use colored::Colorize;
 use common::artists::replace_artist_word;
 use common::config::Config;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
-use crate::{folder_from_path, tags};
+use std::collections::HashSet;
 
-pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
+pub async fn fix(
+    pool: &PgPool,
+    config: &Config,
+    music_dir: &str,
+) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
     let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
         r#"SELECT i.id, i."artistAId", a.name, i."artistBId", b.name
            FROM "IssueDuplicateArtist" i
@@ -43,7 +47,13 @@ pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usi
                 ok += 1;
             }
             Err(e) => {
-                println!("  {} Failed to merge {} → {}: {}", "✗".red(), name_b, name_a, e);
+                println!(
+                    "  {} Failed to merge {} → {}: {}",
+                    "✗".red(),
+                    name_b,
+                    name_a,
+                    e
+                );
                 sqlx::query(
                     r#"UPDATE "IssueDuplicateArtist" SET status = 'FAILED', "updatedAt" = $1 WHERE id = $2"#,
                 )
@@ -59,7 +69,15 @@ pub async fn fix(pool: &PgPool, config: &Config, music_dir: &str) -> Result<(usi
     Ok((ok, fail, artists))
 }
 
-async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, name_a: &str, artist_b: &str, name_b: &str) -> Result<HashSet<String>, sqlx::Error> {
+async fn merge(
+    pool: &PgPool,
+    config: &Config,
+    music_dir: &str,
+    artist_a: &str,
+    name_a: &str,
+    artist_b: &str,
+    name_b: &str,
+) -> Result<HashSet<String>, sqlx::Error> {
     let file_paths: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
         r#"SELECT DISTINCT t."filePath", t.artist, t."albumArtist"
            FROM "LocalReleaseTrack" t
@@ -94,12 +112,11 @@ async fn merge(pool: &PgPool, config: &Config, music_dir: &str, artist_a: &str, 
     }
 
     // Fetch B's image path before B disappears (used for a best-effort file delete after commit).
-    let img: Option<(Option<String>,)> = sqlx::query_as(
-        r#"SELECT image FROM "Artist" WHERE id = $1"#,
-    )
-    .bind(artist_b)
-    .fetch_optional(pool)
-    .await?;
+    let img: Option<(Option<String>,)> =
+        sqlx::query_as(r#"SELECT image FROM "Artist" WHERE id = $1"#)
+            .bind(artist_b)
+            .fetch_optional(pool)
+            .await?;
 
     // Everything below is one atomic merge - a crash mid-way must not leave B half-merged (double
     // work on re-run) or drop B's genres/URLs/play count/in-flight downloads on the floor.

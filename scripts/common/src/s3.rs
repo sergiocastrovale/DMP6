@@ -1,7 +1,7 @@
+use crate::config::Config;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client as S3Client;
-use crate::config::Config;
 use std::path::Path;
 
 pub async fn create_s3_client(config: &Config) -> Option<S3Client> {
@@ -50,5 +50,11 @@ pub async fn upload_to_s3(
 }
 
 pub async fn delete_from_s3(client: &S3Client, bucket: &str, key: &str) {
-    client.delete_object().bucket(bucket).key(key).send().await.ok();
+    client
+        .delete_object()
+        .bucket(bucket)
+        .key(key)
+        .send()
+        .await
+        .ok();
 }

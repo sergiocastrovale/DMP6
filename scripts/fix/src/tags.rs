@@ -23,7 +23,10 @@ pub fn write_album_artist(abs_path: &Path, value: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     if let Some(tag) = tagged.primary_tag_mut() {
-        tag.insert(TagItem::new(ItemKey::AlbumArtist, ItemValue::Text(value.to_string())));
+        tag.insert(TagItem::new(
+            ItemKey::AlbumArtist,
+            ItemValue::Text(value.to_string()),
+        ));
         tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
             .map_err(|e| e.to_string())?;
     }
@@ -41,7 +44,11 @@ pub async fn delete_artist_image(config: &Config, image_file: &str) {
             .join(image_file);
         if let Err(e) = std::fs::remove_file(&local_path) {
             if e.kind() != std::io::ErrorKind::NotFound {
-                error_log::log_warn(&format!("failed to delete local image {}: {}", local_path.display(), e));
+                error_log::log_warn(&format!(
+                    "failed to delete local image {}: {}",
+                    local_path.display(),
+                    e
+                ));
                 eprintln!(
                     "  Warning: failed to delete local image {}: {}",
                     local_path.display(),
@@ -73,7 +80,10 @@ pub fn write_artist_tags(abs_path: &Path, artist: &str, album_artist: &str) -> R
 
     if let Some(tag) = tagged.primary_tag_mut() {
         tag.set_artist(artist.to_string());
-        tag.insert(TagItem::new(ItemKey::AlbumArtist, ItemValue::Text(album_artist.to_string())));
+        tag.insert(TagItem::new(
+            ItemKey::AlbumArtist,
+            ItemValue::Text(album_artist.to_string()),
+        ));
         tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
             .map_err(|e| e.to_string())?;
     }
@@ -92,7 +102,9 @@ pub fn read_tags(abs_path: &Path) -> Result<serde_json::Value, String> {
         .read()
         .map_err(|e| e.to_string())?;
 
-    let tag = tagged.primary_tag().ok_or_else(|| "No primary tag".to_string())?;
+    let tag = tagged
+        .primary_tag()
+        .ok_or_else(|| "No primary tag".to_string())?;
 
     let artist = tag.artist().map(|s| s.to_string());
     let album_artist = tag.get_string(ItemKey::AlbumArtist).map(|s| s.to_string());
@@ -126,10 +138,15 @@ pub fn write_tags_from_json(abs_path: &Path, values: &serde_json::Value) -> Resu
         .read()
         .map_err(|e| e.to_string())?;
 
-    let tag = tagged.primary_tag_mut().ok_or_else(|| "No primary tag".to_string())?;
+    let tag = tagged
+        .primary_tag_mut()
+        .ok_or_else(|| "No primary tag".to_string())?;
 
     if let Some(v) = values.get("albumArtist").and_then(|v| v.as_str()) {
-        tag.insert(TagItem::new(ItemKey::AlbumArtist, ItemValue::Text(v.to_string())));
+        tag.insert(TagItem::new(
+            ItemKey::AlbumArtist,
+            ItemValue::Text(v.to_string()),
+        ));
     }
     if let Some(v) = values.get("artist").and_then(|v| v.as_str()) {
         tag.set_artist(v.to_string());
@@ -139,7 +156,14 @@ pub fn write_tags_from_json(abs_path: &Path, values: &serde_json::Value) -> Resu
     }
     if let Some(v) = values.get("year").and_then(|v| v.as_u64()) {
         use lofty::tag::items::Timestamp;
-        tag.set_date(Timestamp { year: v as u16, month: None, day: None, hour: None, minute: None, second: None });
+        tag.set_date(Timestamp {
+            year: v as u16,
+            month: None,
+            day: None,
+            hour: None,
+            minute: None,
+            second: None,
+        });
     }
 
     tag.save_to_path(abs_path, lofty::config::WriteOptions::default())

@@ -21,7 +21,9 @@ pub struct Config {
 impl Config {
     /// Returns music_dir or panics - used by index which requires it.
     pub fn require_music_dir(&self) -> &str {
-        self.music_dir.as_deref().expect("MUSIC_DIR not set. Pass as argument or set in web/.env")
+        self.music_dir
+            .as_deref()
+            .expect("MUSIC_DIR not set. Pass as argument or set in web/.env")
     }
 
     pub fn use_s3(&self) -> bool {
@@ -37,7 +39,9 @@ impl Config {
 /// `scripts` itself to the project root. Any other CWD is returned unchanged.
 fn project_root_from_cwd(d: &std::path::Path) -> Option<String> {
     if d.parent().map(|p| p.ends_with("scripts")).unwrap_or(false) {
-        d.parent().and_then(|p| p.parent()).map(|p| p.to_string_lossy().to_string())
+        d.parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.to_string_lossy().to_string())
     } else if d.ends_with("scripts") {
         d.parent().map(|p| p.to_string_lossy().to_string())
     } else {
@@ -95,9 +99,13 @@ pub fn load_config(music_dir_override: Option<&str>) -> Config {
         s3_region: std::env::var("AWS_REGION").ok(),
         s3_access_key: std::env::var("AWS_ACCESS_KEY_ID").ok(),
         s3_secret_key: std::env::var("AWS_SECRET_ACCESS_KEY").ok(),
-        storage_endpoint: std::env::var("STORAGE_ENDPOINT").ok().filter(|s| !s.is_empty()),
+        storage_endpoint: std::env::var("STORAGE_ENDPOINT")
+            .ok()
+            .filter(|s| !s.is_empty()),
         storage_public_url: std::env::var("STORAGE_PUBLIC_URL").ok(),
-        fanart_api_key: std::env::var("FANART_API_KEY").ok().filter(|s| !s.is_empty()),
+        fanart_api_key: std::env::var("FANART_API_KEY")
+            .ok()
+            .filter(|s| !s.is_empty()),
     }
 }
 
@@ -128,18 +136,47 @@ pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
         None
     });
 
-    if let Some((music_dir, image_storage, storage_bucket, s3_region, s3_access_key, s3_secret_key, storage_endpoint, storage_public_url, fanart_api_key)) = row {
+    if let Some((
+        music_dir,
+        image_storage,
+        storage_bucket,
+        s3_region,
+        s3_access_key,
+        s3_secret_key,
+        storage_endpoint,
+        storage_public_url,
+        fanart_api_key,
+    )) = row
+    {
         if !config.music_dir_locked {
-            if let Some(v) = music_dir { config.music_dir = Some(v); }
+            if let Some(v) = music_dir {
+                config.music_dir = Some(v);
+            }
         }
-        if let Some(v) = image_storage { config.image_storage = v; }
-        if let Some(v) = storage_bucket { config.storage_bucket = Some(v); }
-        if let Some(v) = s3_region { config.s3_region = Some(v); }
-        if let Some(v) = s3_access_key { config.s3_access_key = Some(v); }
-        if let Some(v) = s3_secret_key { config.s3_secret_key = Some(v); }
-        if let Some(v) = storage_endpoint { config.storage_endpoint = Some(v); }
-        if let Some(v) = storage_public_url { config.storage_public_url = Some(v); }
-        if let Some(v) = fanart_api_key { config.fanart_api_key = Some(v); }
+        if let Some(v) = image_storage {
+            config.image_storage = v;
+        }
+        if let Some(v) = storage_bucket {
+            config.storage_bucket = Some(v);
+        }
+        if let Some(v) = s3_region {
+            config.s3_region = Some(v);
+        }
+        if let Some(v) = s3_access_key {
+            config.s3_access_key = Some(v);
+        }
+        if let Some(v) = s3_secret_key {
+            config.s3_secret_key = Some(v);
+        }
+        if let Some(v) = storage_endpoint {
+            config.storage_endpoint = Some(v);
+        }
+        if let Some(v) = storage_public_url {
+            config.storage_public_url = Some(v);
+        }
+        if let Some(v) = fanart_api_key {
+            config.fanart_api_key = Some(v);
+        }
     }
 }
 
@@ -150,7 +187,15 @@ mod tests {
 
     #[test]
     fn walks_up_two_levels_from_any_crate_dir() {
-        for crate_name in ["index", "sync", "fix", "delete", "nuke", "audit", "playlists"] {
+        for crate_name in [
+            "index",
+            "sync",
+            "fix",
+            "delete",
+            "nuke",
+            "audit",
+            "playlists",
+        ] {
             let cwd = Path::new("/home/user/dmp/scripts").join(crate_name);
             assert_eq!(
                 project_root_from_cwd(&cwd),
@@ -163,12 +208,18 @@ mod tests {
     #[test]
     fn walks_up_one_level_from_scripts_dir() {
         let cwd = Path::new("/home/user/dmp/scripts");
-        assert_eq!(project_root_from_cwd(cwd), Some("/home/user/dmp".to_string()));
+        assert_eq!(
+            project_root_from_cwd(cwd),
+            Some("/home/user/dmp".to_string())
+        );
     }
 
     #[test]
     fn returns_cwd_unchanged_when_already_at_project_root() {
         let cwd = Path::new("/home/user/dmp");
-        assert_eq!(project_root_from_cwd(cwd), Some("/home/user/dmp".to_string()));
+        assert_eq!(
+            project_root_from_cwd(cwd),
+            Some("/home/user/dmp".to_string())
+        );
     }
 }

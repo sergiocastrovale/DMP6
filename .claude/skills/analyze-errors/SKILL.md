@@ -22,7 +22,7 @@ Fetch and analyze error logs from the NAS Docker container. Groups errors by cat
 |----------|---------|----------|-------------|
 | MB Rate Limiting | `HTTP 503 - Waiting for MusicBrainz` | Low | Self-recovering. Tune request rate if excessive |
 | Connection Failures | `Request failed: error sending request for url` | Medium | Transient network errors. Retry logic improvement |
-| Compound Artist Search | `Search error:` + artist name with "&", "feat.", "with", "presents", commas | Low | Expected for collaboration artists. Mark unsyncable or split artist name |
+| Compound Artist Search | `Search error:` + artist name with "&", "feat.", "with", "presents", commas | Low | Expected for collaboration artists. The index-time MusicBrainz resolver decides splits now - re-run `./index --resolve-artists` rather than splitting by hand |
 | File Permissions | `Permission denied (os error 13)` | Medium | Fix file ownership/permissions on NAS |
 | Release Sync Failures | `Failed to sync` or `N release(s) synced, M failed` | Medium | Usually caused by connection failures above |
 | Artist Detail Errors | `Detail error: Request failed` | Medium | MB API timeout fetching artist metadata |

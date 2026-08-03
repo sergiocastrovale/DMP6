@@ -35,7 +35,6 @@ Alternatively, from the command line:
 ```bash
 # Queue all DETECTED rows of a type (via API or Prisma Studio)
 ./fix --corrupted    # Fix corrupted albumArtist tags
-./fix --unsplit      # Split compound artists in TPE2, preserve compound in TPE1
 ./fix --orphans      # Delete phantom/orphan artists from DB
 ./fix --duplicates   # Merge duplicate artists
 ./fix --missing      # Write auto-derivable missing fields
@@ -69,5 +68,4 @@ Repeat from Phase 1 if new issues surface.
 | "run audit" / "detect issues" | Phase 2 - `./audit` |
 | "fix issues" | Phase 2 - `./fix --{type}` for pending rows |
 | "fix corrupted tags" | `./fix --corrupted` |
-| "fix compound artists" | `./fix --unsplit` |
 | "clean up orphans" | `./fix --orphans` |

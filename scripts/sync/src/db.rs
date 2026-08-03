@@ -8,10 +8,7 @@ use std::collections::{HashMap, HashSet};
 // ReleaseType
 // ---------------------------------------------------------------------------
 
-pub async fn ensure_release_type(
-    pool: &PgPool,
-    name: &str,
-) -> Result<String, sqlx::Error> {
+pub async fn ensure_release_type(pool: &PgPool, name: &str) -> Result<String, sqlx::Error> {
     let slug = slugify(name);
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
@@ -173,7 +170,10 @@ pub async fn ensure_mb_release_artist_link(
 // MusicBrainzReleaseTrack batch insert
 // ---------------------------------------------------------------------------
 
-pub async fn delete_mb_tracks_for_release(pool: &PgPool, release_id: &str) -> Result<(), sqlx::Error> {
+pub async fn delete_mb_tracks_for_release(
+    pool: &PgPool,
+    release_id: &str,
+) -> Result<(), sqlx::Error> {
     sqlx::query(r#"DELETE FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#)
         .bind(release_id)
         .execute(pool)
@@ -286,17 +286,12 @@ pub async fn batch_link_artist_genres(
     Ok(())
 }
 
-pub async fn get_artist_genre_ids(
-    pool: &PgPool,
-    artist_id: &str,
-) -> Vec<String> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        r#"SELECT "B" FROM "_ArtistGenres" WHERE "A" = $1"#,
-    )
-    .bind(artist_id)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+pub async fn get_artist_genre_ids(pool: &PgPool, artist_id: &str) -> Vec<String> {
+    let rows: Vec<(String,)> = sqlx::query_as(r#"SELECT "B" FROM "_ArtistGenres" WHERE "A" = $1"#)
+        .bind(artist_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
     rows.into_iter().map(|(id,)| id).collect()
 }
 
@@ -463,7 +458,10 @@ pub async fn update_artist_sync_stats(
 // Match score = catalogue completeness: owned album/EP releases / total album/EP catalogue. A release the
 // artist owns (matched to a non-MISSING MusicBrainzRelease) counts as 1, a MISSING gap as 0. NULL when the
 // artist has no album/EP catalogue. Pure SQL over the MB catalogue — no track/file scan, no API calls.
-pub async fn recompute_artist_match_score(pool: &PgPool, artist_id: &str) -> Result<(), sqlx::Error> {
+pub async fn recompute_artist_match_score(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"UPDATE "Artist" a
            SET "averageMatchScore" = sub.score, "updatedAt" = NOW()
@@ -600,10 +598,7 @@ pub async fn delete_missing_releases_for_artist(
 // Without this, a release owned only under a connected artist's LocalReleaseArtist link stayed
 // "uncovered" here, so catalogue-gaps created a MISSING placeholder and the trickle worker
 // re-downloaded an album the library already had (landing under the connected artist's folder).
-pub async fn get_covered_release_group_ids(
-    pool: &PgPool,
-    artist_id: &str,
-) -> HashSet<String> {
+pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> HashSet<String> {
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"SELECT DISTINCT mbr."releaseGroupId"
            FROM "MusicBrainzRelease" mbr
@@ -651,19 +646,23 @@ pub struct ArtistSyncRow {
     pub has_image: bool,
 }
 
-pub async fn get_artists_pending_sync(
-    pool: &PgPool,
-) -> Result<Vec<ArtistSyncRow>, sqlx::Error> {
-    let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl"
+pub async fn get_artists_pending_sync(pool: &PgPool) -> Result<Vec<ArtistSyncRow>, sqlx::Error> {
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl"
                FROM "Artist"
                WHERE "lastIndexedAt" IS NOT NULL
                  AND ("lastSyncedAt" IS NULL OR "lastIndexedAt" > "lastSyncedAt")
                ORDER BY name"#,
-        )
-        .fetch_all(pool)
-        .await?;
+    )
+    .fetch_all(pool)
+    .await?;
 
     Ok(rows
         .into_iter()
@@ -710,16 +709,28 @@ pub async fn get_local_releases_for_artist(
 
     Ok(rows
         .into_iter()
-        .map(|(id, title, year, forced_complete, release_id, match_status, image, image_url, folder_path)| LocalReleaseRow {
-            id,
-            title,
-            year,
-            forced_complete,
-            release_id,
-            match_status,
-            has_cover: image.is_some() || image_url.is_some(),
-            folder_path,
-        })
+        .map(
+            |(
+                id,
+                title,
+                year,
+                forced_complete,
+                release_id,
+                match_status,
+                image,
+                image_url,
+                folder_path,
+            )| LocalReleaseRow {
+                id,
+                title,
+                year,
+                forced_complete,
+                release_id,
+                match_status,
+                has_cover: image.is_some() || image_url.is_some(),
+                folder_path,
+            },
+        )
         .collect())
 }
 
@@ -755,8 +766,8 @@ pub async fn get_local_tracks_for_release(
 
     Ok(rows
         .into_iter()
-        .map(|(id, title, artist, mb_release_id, mb_release_group_id, mb_album_artist_id, track_number, disc_number)| {
-            LocalTrackRow {
+        .map(
+            |(
                 id,
                 title,
                 artist,
@@ -765,8 +776,19 @@ pub async fn get_local_tracks_for_release(
                 mb_album_artist_id,
                 track_number,
                 disc_number,
-            }
-        })
+            )| {
+                LocalTrackRow {
+                    id,
+                    title,
+                    artist,
+                    mb_release_id,
+                    mb_release_group_id,
+                    mb_album_artist_id,
+                    track_number,
+                    disc_number,
+                }
+            },
+        )
         .collect())
 }
 
@@ -813,12 +835,14 @@ pub async fn get_tracks_with_mb_ids_for_artist(
 
     Ok(rows
         .into_iter()
-        .map(|(file_path, mb_release_id, mb_release_group_id, mb_track_id)| TrackMbIds {
-            file_path,
-            mb_release_id,
-            mb_release_group_id,
-            mb_track_id,
-        })
+        .map(
+            |(file_path, mb_release_id, mb_release_group_id, mb_track_id)| TrackMbIds {
+                file_path,
+                mb_release_id,
+                mb_release_group_id,
+                mb_track_id,
+            },
+        )
         .collect())
 }
 
@@ -847,27 +871,35 @@ pub async fn get_artist_for_release(
     release_id: &str,
     artist_hint: Option<&str>,
 ) -> Result<Option<ArtistSyncRow>, sqlx::Error> {
-    let row: Option<(String, String, String, Option<String>, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            r#"SELECT a.id, a.name, a.slug, a."musicbrainzId", a.image, a."imageUrl"
+    let row: Option<(
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        r#"SELECT a.id, a.name, a.slug, a."musicbrainzId", a.image, a."imageUrl"
                FROM "Artist" a
                JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
                WHERE lra."localReleaseId" = $1
                ORDER BY CASE WHEN a.id = $2 THEN 0 ELSE 1 END, a.name
                LIMIT 1"#,
-        )
-        .bind(release_id)
-        .bind(artist_hint)
-        .fetch_optional(pool)
-        .await?;
+    )
+    .bind(release_id)
+    .bind(artist_hint)
+    .fetch_optional(pool)
+    .await?;
 
-    Ok(row.map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
-        id,
-        name,
-        slug,
-        mb_id,
-        has_image: image.is_some() || image_url.is_some(),
-    }))
+    Ok(
+        row.map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
+            id,
+            name,
+            slug,
+            mb_id,
+            has_image: image.is_some() || image_url.is_some(),
+        }),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -878,13 +910,11 @@ pub async fn load_synced_artist_ids(
     pool: &PgPool,
     hash: &str,
 ) -> std::collections::HashSet<String> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        r#"SELECT id FROM "Artist" WHERE "syncHash" = $1"#,
-    )
-    .bind(hash)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    let rows: Vec<(String,)> = sqlx::query_as(r#"SELECT id FROM "Artist" WHERE "syncHash" = $1"#)
+        .bind(hash)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
     rows.into_iter().map(|(id,)| id).collect()
 }
 
@@ -896,4 +926,3 @@ pub async fn stamp_sync_hash(pool: &PgPool, artist_id: &str, hash: &str) {
         .await
         .ok();
 }
-

@@ -20,7 +20,9 @@ export default defineEventHandler(async (event) => {
   const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genre ?? ''}:s=${sort}:q=${search ?? ''}:min=${minScore ?? ''}:max=${maxScore ?? ''}`
 
   return cachedResponse(cacheKey, 120, async () => {
-    const where: Record<string, unknown> = { primaryArtistId: null }
+    // Credit-only artists (MB-verified 'appears on' entries that own no release) have their own page
+    // and are searchable, but must not appear in browse. Ownership is derived, never a stored flag.
+    const where: Record<string, unknown> = { primaryArtistId: null, localReleases: { some: {} } }
 
     if (letter) {
       where.slug = { startsWith: letter }

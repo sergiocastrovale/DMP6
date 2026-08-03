@@ -25,7 +25,11 @@ const MAX_MISSING_RATIO: f64 = 0.2;
 
 /// Delete track rows whose filePath no longer exists on disk.
 /// Returns count deleted and which releases were affected.
-pub async fn delete_removed_tracks(pool: &PgPool, folder_prefix: &str, music_dir: &str) -> TrackDeletionResult {
+pub async fn delete_removed_tracks(
+    pool: &PgPool,
+    folder_prefix: &str,
+    music_dir: &str,
+) -> TrackDeletionResult {
     let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
         r#"SELECT id, "filePath", "localReleaseId" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
     )
@@ -139,11 +143,13 @@ pub async fn delete_orphaned_mb_releases(pool: &PgPool) -> u64 {
     result.map(|r| r.rows_affected()).unwrap_or(0)
 }
 
-/// Delete Artist rows that own no release, local or MusicBrainz. Cleans images first.
-/// TrackRelatedArtist is deliberately NOT checked: a credit only ever links to an artist that already
-/// owns a release (see the end-of-run relink pass in main.rs) - a credit never keeps an otherwise-empty
-/// Artist alive, it just cascades away with it. Mirrors the orphan rule in `audit`'s
-/// scripts/audit/src/orphans.rs.
+/// Delete Artist rows with no link left in ANY of the three link tables. Cleans images first.
+///
+/// `TrackRelatedArtist` must be one of the three: an MB-verified credit artist ("appears on" only -
+/// Count Basie guesting on a Sinatra album without owning a release here) is a legitimate row whose
+/// *only* link is a credit. Leaving that table out deletes every such artist the run just created and
+/// cascades their credits away - the exact data-loss bug this pass once shipped. Mirrors the orphan
+/// rule in `audit`'s scripts/audit/src/orphans.rs.
 pub async fn delete_orphan_artists(pool: &PgPool, config: &Config) -> u64 {
     let ids: Vec<(String,)> = sqlx::query_as(
         r#"SELECT id FROM "Artist" WHERE "primaryArtistId" IS NULL
@@ -151,6 +157,8 @@ pub async fn delete_orphan_artists(pool: &PgPool, config: &Config) -> u64 {
                SELECT DISTINCT "artistId" FROM "LocalReleaseArtist"
            ) AND id NOT IN (
                SELECT DISTINCT "artistId" FROM "MusicBrainzReleaseArtist"
+           ) AND id NOT IN (
+               SELECT DISTINCT "artistId" FROM "TrackRelatedArtist"
            )"#,
     )
     .fetch_all(pool)
@@ -218,13 +226,9 @@ pub async fn detect_deleted_folders(
 }
 
 async fn delete_folder_tracks(pool: &PgPool, folder: &str) -> u64 {
-    let result = sqlx::query(
-        r#"DELETE FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
-    )
-    .bind(format!("{}/%", escape_like(folder)))
-    .execute(pool)
-    .await;
+    let result = sqlx::query(r#"DELETE FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#)
+        .bind(format!("{}/%", escape_like(folder)))
+        .execute(pool)
+        .await;
     result.map(|r| r.rows_affected()).unwrap_or(0)
 }
-
-

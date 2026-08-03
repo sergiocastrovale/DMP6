@@ -2,9 +2,9 @@
 
 Queries pending artists (`lastIndexedAt > lastSyncedAt`) and syncs each against MusicBrainz. Uses a run hash for resumability - interrupted runs skip already-processed artists. Reads from DB and calls MB API. Writes found MB IDs back to audio file tags (preserving mtime to avoid re-index) and embeds downloaded cover art.
 
-Every `Artist` row owns at least one release (see `docs/scripts/index.md`'s Artist Roles section - a
-`TrackRelatedArtist` credit never creates an Artist by itself), so sync's artist queries no longer need a
-guest/main filter.
+Artists that only hold track credits ("appears on", owning no release here) are deliberately not synced -
+they are excluded by `EXISTS(LocalReleaseArtist)` rather than by a stored flag. See
+`docs/scripts/index.md`'s Artist Resolution section.
 
 ## TL;DR
 

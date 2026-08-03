@@ -16,12 +16,11 @@ pub async fn save_index_checkpoint(pool: &PgPool, folder: &str) -> Result<(), sq
 }
 
 pub async fn load_index_checkpoint(pool: &PgPool) -> Option<String> {
-    let row: Option<(Option<String>,)> = sqlx::query_as(
-        r#"SELECT "lastIndexedFolder" FROM "Statistics" WHERE id = 'main'"#,
-    )
-    .fetch_optional(pool)
-    .await
-    .ok()?;
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as(r#"SELECT "lastIndexedFolder" FROM "Statistics" WHERE id = 'main'"#)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
     row?.0
 }
 
@@ -56,7 +55,12 @@ pub async fn save_sync_checkpoint(pool: &PgPool, artist: &str) -> Result<(), sql
     Ok(())
 }
 
-pub async fn save_sync_args(pool: &PgPool, from: &str, to: &str, only: &str) -> Result<(), sqlx::Error> {
+pub async fn save_sync_args(
+    pool: &PgPool,
+    from: &str,
+    to: &str,
+    only: &str,
+) -> Result<(), sqlx::Error> {
     let json = serde_json::json!({ "from": from, "to": to, "only": only });
     sqlx::query(
         r#"UPDATE "Statistics" SET "lastSyncArgs" = $1, "updatedAt" = NOW() WHERE id = 'main'"#,
@@ -79,14 +83,31 @@ pub async fn load_sync_checkpoint(pool: &PgPool) -> Option<SyncCheckpoint> {
     let (from, to, only) = args_json
         .as_ref()
         .map(|v| {
-            let from = v.get("from").and_then(|x| x.as_str()).unwrap_or("").to_string();
-            let to = v.get("to").and_then(|x| x.as_str()).unwrap_or("").to_string();
-            let only = v.get("only").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let from = v
+                .get("from")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            let to = v
+                .get("to")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            let only = v
+                .get("only")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
             (from, to, only)
         })
         .unwrap_or_default();
 
-    Some(SyncCheckpoint { last_artist, from, to, only })
+    Some(SyncCheckpoint {
+        last_artist,
+        from,
+        to,
+        only,
+    })
 }
 
 pub async fn clear_sync_checkpoint(pool: &PgPool) -> Result<(), sqlx::Error> {

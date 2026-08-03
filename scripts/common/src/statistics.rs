@@ -5,7 +5,7 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
     let now = Utc::now().naive_utc();
     sqlx::query(
         r#"INSERT INTO "Statistics" (
-             id, artists, "mainArtists",
+             id, artists, "mainArtists", "creditArtists",
              tracks, releases, genres,
              "releasesWithCoverArt", playtime, plays,
              "artistsSyncedWithMusicbrainz", "releasesSyncedWithMusicbrainz",
@@ -14,7 +14,10 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
            )
            SELECT 'main',
              (SELECT COUNT(*)::int FROM "Artist"),
-             (SELECT COUNT(*)::int FROM "Artist" WHERE "primaryArtistId" IS NULL),
+             (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
+                AND EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)),
+             (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
+                AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)),
              (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
              (SELECT COUNT(*)::int FROM "LocalRelease"),
              (SELECT COUNT(*)::int FROM "Genre"),
@@ -29,6 +32,7 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
            ON CONFLICT (id) DO UPDATE SET
              artists = EXCLUDED.artists,
              "mainArtists" = EXCLUDED."mainArtists",
+             "creditArtists" = EXCLUDED."creditArtists",
              tracks = EXCLUDED.tracks,
              releases = EXCLUDED.releases,
              genres = EXCLUDED.genres,

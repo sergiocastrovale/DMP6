@@ -1,10 +1,19 @@
+use common::release_pairs::{classify_release_pair, ReleasePairKind};
 use cuid2::create_id;
 use sqlx::PgPool;
-use common::release_pairs::{classify_release_pair, ReleasePairKind};
 
 // Both rules share the same "LocalReleases pointing at the same MusicBrainzRelease" self-join;
 // they diverge only in which classify_release_pair() bucket they keep.
-type CandidateRow = (String, String, String, String, Option<i32>, Option<i32>, i64, i64);
+type CandidateRow = (
+    String,
+    String,
+    String,
+    String,
+    Option<i32>,
+    Option<i32>,
+    i64,
+    i64,
+);
 
 async fn candidate_pairs(pool: &PgPool) -> Result<Vec<CandidateRow>, sqlx::Error> {
     sqlx::query_as(
@@ -75,7 +84,10 @@ pub async fn detect_duplicate_release(pool: &PgPool, run_id: &str) -> Result<usi
     Ok(inserted)
 }
 
-pub async fn detect_mismatched_release_id(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
+pub async fn detect_mismatched_release_id(
+    pool: &PgPool,
+    run_id: &str,
+) -> Result<usize, sqlx::Error> {
     sqlx::query(r#"DELETE FROM "IssueMismatchedReleaseId" WHERE status = 'DETECTED'"#)
         .execute(pool)
         .await?;

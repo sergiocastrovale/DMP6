@@ -1,14 +1,18 @@
-use std::collections::HashSet;
+use crate::{folder_from_path, tags};
 use colored::Colorize;
 use common::error_log;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
-use crate::{folder_from_path, tags};
+use std::collections::HashSet;
 
-pub async fn revert(pool: &PgPool, music_dir: &str, issue_type: &str, mode: &str) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
+pub async fn revert(
+    pool: &PgPool,
+    music_dir: &str,
+    issue_type: &str,
+    mode: &str,
+) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
     let issue_table = match issue_type {
         "corrupted" => "IssueCorruptedTpe2",
-        "unsplit" => "IssueUnsplitArtist",
         "missing" => "IssueMissingMetadata",
         _ => {
             error_log::log_warn(&format!("Revert not supported for type: {}", issue_type));
@@ -21,15 +25,22 @@ pub async fn revert(pool: &PgPool, music_dir: &str, issue_type: &str, mode: &str
         "undo" => "DETECTED",
         "undo-resolved" => "RESOLVED",
         _ => {
-            error_log::log_error(&format!("Unknown revert mode: {} (expected 'undo' or 'undo-resolved')", mode));
-            eprintln!("  Unknown revert mode: {} (expected 'undo' or 'undo-resolved')", mode);
+            error_log::log_error(&format!(
+                "Unknown revert mode: {} (expected 'undo' or 'undo-resolved')",
+                mode
+            ));
+            eprintln!(
+                "  Unknown revert mode: {} (expected 'undo' or 'undo-resolved')",
+                mode
+            );
             return Ok((0, 0, HashSet::new()));
         }
     };
 
-    let issue_ids: Vec<(String,)> = sqlx::query_as(
-        &format!(r#"SELECT id FROM "{}" WHERE status = 'PENDING_REVERT'::"IssueStatus""#, issue_table),
-    )
+    let issue_ids: Vec<(String,)> = sqlx::query_as(&format!(
+        r#"SELECT id FROM "{}" WHERE status = 'PENDING_REVERT'::"IssueStatus""#,
+        issue_table
+    ))
     .fetch_all(pool)
     .await?;
 
@@ -56,10 +67,15 @@ pub async fn revert(pool: &PgPool, music_dir: &str, issue_type: &str, mode: &str
         .await?;
 
         if history_rows.is_empty() {
-            println!("  {} No fix history for issue {}", "⚠".yellow(), &issue_id[..8]);
-            sqlx::query(
-                &format!(r#"UPDATE "{}" SET status = $1::"IssueStatus", "updatedAt" = $2 WHERE id = $3"#, issue_table),
-            )
+            println!(
+                "  {} No fix history for issue {}",
+                "⚠".yellow(),
+                &issue_id[..8]
+            );
+            sqlx::query(&format!(
+                r#"UPDATE "{}" SET status = $1::"IssueStatus", "updatedAt" = $2 WHERE id = $3"#,
+                issue_table
+            ))
             .bind(target_status)
             .bind(now)
             .bind(issue_id)
@@ -78,7 +94,10 @@ pub async fn revert(pool: &PgPool, music_dir: &str, issue_type: &str, mode: &str
             }
 
             let abs_path = tags::resolve_path(music_dir, file_path);
-            let file_name = file_path.rsplit_once('/').map(|(_, f)| f).unwrap_or(file_path);
+            let file_name = file_path
+                .rsplit_once('/')
+                .map(|(_, f)| f)
+                .unwrap_or(file_path);
 
             if !abs_path.exists() {
                 println!("    {} not found: {}", "⚠".yellow(), file_name);
@@ -109,16 +128,21 @@ pub async fn revert(pool: &PgPool, music_dir: &str, issue_type: &str, mode: &str
         }
 
         let final_status = if any_fail { "FAILED" } else { target_status };
-        sqlx::query(
-            &format!(r#"UPDATE "{}" SET status = $1::"IssueStatus", "updatedAt" = $2 WHERE id = $3"#, issue_table),
-        )
+        sqlx::query(&format!(
+            r#"UPDATE "{}" SET status = $1::"IssueStatus", "updatedAt" = $2 WHERE id = $3"#,
+            issue_table
+        ))
         .bind(final_status)
         .bind(now)
         .bind(issue_id)
         .execute(pool)
         .await?;
 
-        if any_fail { fail += 1; } else { ok += 1; }
+        if any_fail {
+            fail += 1;
+        } else {
+            ok += 1;
+        }
     }
 
     Ok((ok, fail, artists))

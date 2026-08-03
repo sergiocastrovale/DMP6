@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
 async function queryArtists(type: string, search: string, skip: number, pageSize: number, page: number, _sort: string, order: 'asc' | 'desc') {
   // Matches artists/index.get.ts's base filter: connected (duplicate) artists are aggregated onto
   // their primary - counting them here inflated the stat beyond what /browse actually lists (audit #82).
-  const where: any = { primaryArtistId: null }
+  const where: any = { primaryArtistId: null, localReleases: { some: {} } }
   if (search) { where.name = { contains: search, mode: 'insensitive' } }
   if (type === 'artists-synced') { where.musicbrainzId = { not: null } }
   if (type === 'artists-with-art') { where.OR = [{ image: { not: null } }, { imageUrl: { not: null } }] }

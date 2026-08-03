@@ -1,6 +1,6 @@
+use crate::error_log;
 use colored::Colorize;
 use serde_json::Value as JsonValue;
-use crate::error_log;
 
 /// Reports script activity in one of two modes:
 /// - **console** (default): human-friendly colored output with icons and indentation

@@ -39,12 +39,8 @@ pub async fn set_run_hash(pool: &PgPool, field: &str, hash: &str) {
 
 pub async fn clear_run_hash(pool: &PgPool, field: &str) {
     let sql = match field {
-        "indexRunHash" => {
-            r#"UPDATE "Settings" SET "indexRunHash" = NULL WHERE id = 'main'"#
-        }
-        "syncRunHash" => {
-            r#"UPDATE "Settings" SET "syncRunHash" = NULL WHERE id = 'main'"#
-        }
+        "indexRunHash" => r#"UPDATE "Settings" SET "indexRunHash" = NULL WHERE id = 'main'"#,
+        "syncRunHash" => r#"UPDATE "Settings" SET "syncRunHash" = NULL WHERE id = 'main'"#,
         _ => return,
     };
     sqlx::query(sql).execute(pool).await.ok();

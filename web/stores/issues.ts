@@ -165,7 +165,7 @@ export const useIssuesStore = defineStore('issues', () => {
   const historyTotal = ref<Record<string, number>>({})
   const historyPage = ref<Record<string, number>>({})
   const historyLoading = ref<Record<string, boolean>>({})
-  const historyCounts = ref<{ corrupted: number; unsplit: number; missing: number }>({ corrupted: 0, unsplit: 0, missing: 0 })
+  const historyCounts = ref<{ corrupted: number; missing: number }>({ corrupted: 0, missing: 0 })
 
   async function fetchHistoryCounts() {
     const res = await $fetch<{ counts: typeof historyCounts.value; total: number }>('/api/issues/history', { query: { mode: 'counts' } })

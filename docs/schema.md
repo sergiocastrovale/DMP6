@@ -12,7 +12,7 @@ MusicBrainz tree (canonical):
 
 Local tree (files on disk):
   Artist ←→ LocalReleaseArtist ←→ LocalRelease → LocalReleaseTrack
-  Artist ←→ TrackRelatedArtist ←→ LocalReleaseTrack
+  Artist ←→ TrackRelatedArtist ←→ LocalReleaseTrack   (credits: "appears on")
 ```
 
 `LocalRelease.releaseId` is the only link between the two trees. A `LocalRelease` with `releaseId =
@@ -29,7 +29,7 @@ not duplicated per artist.
 
 ## Issue tables
 
-One table per audit detector (`IssueCorruptedTpe2`, `IssueUnsplitArtist`, `IssueOrphanArtist`,
+One table per audit detector (`IssueCorruptedTpe2`, `IssueOrphanArtist`,
 `IssueDuplicateArtist`, `IssueMissingMetadata`, `IssueEnrichmentGap`, `IssueDuplicateRelease`,
 `IssueMismatchedReleaseId`), each with an `IssueStatus` (`DETECTED → PENDING → RESOLVED`, or
 `PENDING_REVERT` for an undo in flight). The two release-pair detectors are audit-only (no `./fix`
@@ -56,3 +56,18 @@ server-side (bumped on logout/forced-reset) despite sessions being stateless sig
 No migration history existed until 2026-07-31 (`prisma/migrations/20260731101731_baseline`) — every
 prior schema change went through `prisma db push` directly against the shared NAS/dev Postgres. New
 schema changes should get a real migration (`prisma migrate dev --name <description>`) going forward.
+
+## Artist ownership vs credits
+
+`LocalReleaseArtist` means the artist **owns** that release (their discography — shown in `/browse`,
+counted in stats, synced to MusicBrainz). `TrackRelatedArtist` means they are merely **credited** on a
+track ("appears on" — own page and searchable, but excluded from browse/stats/sync).
+
+An artist owning nothing but holding credits is legitimate (Count Basie guesting on a Sinatra album). That
+state is **derived**, never stored: "owns something" is `EXISTS(LocalReleaseArtist)`. There is deliberately
+no flag column — a cached boolean is what silently read 0 for two and a half months.
+
+`MbArtistLookup` caches MusicBrainz name resolution, hits **and** misses (`mbid IS NULL` = confirmed
+not-found, re-checked after 30 days), so the 1.1 req/s MB budget is paid at most once per distinct name.
+`LocalReleaseTrack.artists[]` / `mbArtistIds[]` (plus the albumArtist equivalents) hold the multi-value tag
+frames in file order; when the two line up they are an authoritative pre-split artist list from Picard.

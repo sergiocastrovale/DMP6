@@ -30,3 +30,4 @@ dotenvy = { workspace = true }
 slug = { workspace = true }
 cuid2 = { workspace = true }
 futures = { workspace = true }
+reqwest = { workspace = true }

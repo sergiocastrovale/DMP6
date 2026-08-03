@@ -22,3 +22,5 @@ dotenvy = { workspace = true }
 regex = { workspace = true }
 lofty = { workspace = true }
 image = { workspace = true }
+reqwest = { workspace = true }
+urlencoding = { workspace = true }

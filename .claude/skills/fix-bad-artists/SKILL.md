@@ -6,7 +6,7 @@ user-invocable: true
 
 # Fix Bad Artists
 
-Fix artist pages that show wrong names - corrupted TPE2 tags (track numbers, paths, years, garbage) and compound artists that should be split (`&`, `/`, `feat.`).
+Fix artist pages that show wrong names - corrupted TPE2 tags (track numbers, paths, years, garbage). Compound artist names are handled by the MusicBrainz resolver at index time, not by an audit/fix cycle.
 
 Use the `./audit` + `./fix` Rust pipeline, not Python scripts (those have been deleted).
 
@@ -20,7 +20,7 @@ The sync script creates one `Artist` record per unique `albumArtist` (TPE2) valu
 
 ### Unsplit compound artists
 
-The sync script's `split_artists()` intentionally never splits on `&` (too ambiguous - "Simon & Garfunkel") and only splits `/` with surrounding spaces ("AC/DC" is safe). So compound artists like "Jeff Beck & Eric Clapton" persist as a single artist entry.
+Compound names are resolved against MusicBrainz at index time (`common::mb::resolve`), not guessed from punctuation. The whole string is looked up first, so "Simon & Garfunkel" and "Nurse With Wound" stay intact, while "Jeff Beck & Eric Clapton" splits once MB confirms both halves. Run `./index --resolve-artists --dry-run` to see the decisions before applying them.
 
 The fix for both: write the correct TPE2 value back to the file and resync with `--overwrite`.
 
@@ -73,7 +73,7 @@ ORDER BY t."filePath";
 
 **Categories:**
 - **Tag corruption**: albumArtist is a track number, year, path, or garbage → `./audit --corrupted` + `./fix --corrupted`
-- **Compound artist**: albumArtist contains `&`, `/`, `feat.` → `./audit --unsplit` + `./fix --unsplit`
+- **Compound artist**: albumArtist contains `&`, `/`, `feat.`, ` with ` → `./index --resolve-artists` (MusicBrainz decides the split; `--dry-run` to preview)
 - **MB credit artifact**: artist has 0 TrackArtist links, created via MB credit discovery → `./audit --orphans` + `./fix --orphans`
 - **Legitimate artist**: artist name just looks odd but tags are correct → skip, inform user
 
@@ -83,7 +83,6 @@ ORDER BY t."filePath";
 
 ```bash
 ./audit --corrupted    # detect corrupted TPE2 issues
-./audit --unsplit      # detect compound artist issues
 ./audit --orphans      # detect phantom/orphan artists
 ./audit               # detect all types at once
 ```
@@ -92,7 +91,6 @@ Review detected issues in the `/issues` UI - inspect proposed fixes, edit if nee
 
 ```bash
 ./fix --corrupted      # write corrected albumArtist tags to files
-./fix --unsplit        # write split albumArtist tags to files
 ./fix --orphans        # delete phantom artists from DB
 ```
 
@@ -146,7 +144,7 @@ SELECT name FROM "Artist" WHERE name ~ '^\d{1,3}$' ORDER BY name;
 -- Any remaining bad albumArtist patterns in tracks?
 SELECT COUNT(*) FROM "LocalReleaseTrack" WHERE "albumArtist" ~ '^\d{1,3}$';
 
--- Any unsplit compound artists?
+-- Any compound artist names left unresolved?
 SELECT name FROM "Artist" WHERE name LIKE '% & %' OR name LIKE '% / %' ORDER BY name;
 ```
 

@@ -3,6 +3,10 @@ name = "delete"
 version = "1.0.0"
 edition = "2021"
 
+[lib]
+name = "delete"
+path = "src/lib.rs"
+
 [[bin]]
 name = "delete"
 path = "src/main.rs"
@@ -17,3 +21,6 @@ aws-sdk-s3 = { workspace = true }
 aws-config = { workspace = true }
 chrono = { workspace = true }
 common = { path = "../common" }
+
+[dev-dependencies]
+cuid2 = { workspace = true }

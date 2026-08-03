@@ -1,6 +1,6 @@
 # Scripts: fix
 
-Reads `PENDING` issue rows from the DB and applies the corresponding fix: tag writes for corrupted/unsplit/missing issues, DB-only operations for orphans and duplicates.
+Reads `PENDING` issue rows from the DB and applies the corresponding fix: tag writes for corrupted/missing issues, DB-only operations for orphans and duplicates.
 
 Issues are detected by `./audit` and queued via the `/issues` web UI (or directly via `POST /api/issues/{type}/queue`).
 
@@ -8,12 +8,10 @@ Issues are detected by `./audit` and queued via the `/issues` web UI (or directl
 
 ```bash
 ./fix --corrupted    # Fix corrupted albumArtist tags
-./fix --unsplit      # Fix compound artist names in albumArtist → split between TPE1/TPE2
 ./fix --orphans      # Delete orphan/phantom artists from DB
 ./fix --duplicates   # Merge duplicate artists (B into A)
 ./fix --missing      # Write proposed values for tracks with missing metadata
 ./fix --revert --corrupted   # Revert previously applied corrupted fixes
-./fix --revert --unsplit     # Revert previously applied unsplit fixes
 ./fix --revert --missing     # Revert previously applied missing fixes
 ./fix --revert --mode undo-resolved --corrupted  # Revert but keep RESOLVED status
 ```
@@ -25,7 +23,6 @@ All fix types can be combined in one invocation. Only rows with `status = 'PENDI
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--corrupted` | bool | false | Fix corrupted TPE2 issues |
-| `--unsplit` | bool | false | Fix unsplit compound artist issues |
 | `--orphans` | bool | false | Fix orphan artists (delete) |
 | `--duplicates` | bool | false | Fix duplicate artists (merge B into A) |
 | `--missing` | bool | false | Fix missing metadata (tag writes) |
@@ -34,7 +31,7 @@ All fix types can be combined in one invocation. Only rows with `status = 'PENDI
 
 ## Auto Re-index
 
-After tag-writing fixes (corrupted, unsplit, missing), fix automatically invokes the sibling `index` binary with `--folders <affected_folders> --skip-covers` to re-index changed files. Only triggers when file writes actually happened.
+After tag-writing fixes (corrupted, missing), fix automatically invokes the sibling `index` binary with `--folders <affected_folders> --skip-covers` to re-index changed files. Only triggers when file writes actually happened.
 
 ## Fix Logic Per Type
 
@@ -45,17 +42,6 @@ Reads `IssueCorruptedTpe2` rows where `status = 'PENDING'`. For each:
 2. Writes `proposedValue` as the new `albumArtist` tag (TPE2/ALBUMARTIST/aART)
 3. Bumps parent directory mtime (creates and deletes `.fix-touch`) so `./index --quick` detects the change
 4. Marks issue as `RESOLVED` or `FAILED`
-
-### `--unsplit`
-
-Reads `IssueUnsplitArtist` rows where `status = 'PENDING'`. For each:
-1. Gets all track file paths linked to the compound artist via `LocalReleaseArtist`
-2. For each file: writes `proposedParts[0]` to `albumArtist` (TPE2) - primary artist only
-3. Writes the full compound artist name to `artist` (TPE1) - preserves multi-artist credit
-4. Bumps directory mtime
-5. Marks issue `RESOLVED` or `FAILED`
-
-**Why this split:** `albumArtist` (TPE2) is for grouping/sorting. `artist` (TPE1) is the track-level performing artist list - can be compound.
 
 ### `--orphans`
 
@@ -87,7 +73,7 @@ Rows where `proposedValues` is null (title/album with no derivable value) are sk
 
 ## Revert
 
-`--revert` restores original tag values from backup data stored in the issue rows. Only supported for tag-writing types (`corrupted`, `unsplit`, `missing`). Orphans and duplicates cannot be reverted.
+`--revert` restores original tag values from backup data stored in the issue rows. Only supported for tag-writing types (`corrupted`, `missing`). Orphans and duplicates cannot be reverted.
 
 Default mode `"undo"` sets status back to `DETECTED`. Mode `"undo-resolved"` keeps `RESOLVED` status.
 

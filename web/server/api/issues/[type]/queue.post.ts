@@ -3,7 +3,6 @@ import { requirePermission } from '~/server/utils/permissions'
 
 const MODEL_MAP = {
   corrupted: 'issueCorruptedTpe2',
-  unsplit: 'issueUnsplitArtist',
   orphans: 'issueOrphanArtist',
   duplicates: 'issueDuplicateArtist',
   missing: 'issueMissingMetadata',

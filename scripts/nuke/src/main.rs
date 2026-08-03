@@ -88,7 +88,11 @@ async fn delete_s3_prefix(
 
         let count = identifiers.len();
         if count > 0 {
-            log!("  Deleting {} S3 objects from {}...", count, prefix.trim_end_matches('/'));
+            log!(
+                "  Deleting {} S3 objects from {}...",
+                count,
+                prefix.trim_end_matches('/')
+            );
             let delete = Delete::builder()
                 .set_objects(Some(identifiers))
                 .quiet(true)
@@ -168,11 +172,9 @@ struct OnlyPlan {
 
 async fn build_only_plan(pool: &PgPool, only: &str, exact: bool) -> Result<OnlyPlan, sqlx::Error> {
     let all_artists: Vec<(String, String, String, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            r#"SELECT id, name, slug, image, "imageUrl" FROM "Artist" ORDER BY name"#,
-        )
-        .fetch_all(pool)
-        .await?;
+        sqlx::query_as(r#"SELECT id, name, slug, image, "imageUrl" FROM "Artist" ORDER BY name"#)
+            .fetch_all(pool)
+            .await?;
 
     let target_ids: HashSet<String> = all_artists
         .iter()
@@ -376,7 +378,11 @@ async fn build_only_plan(pool: &PgPool, only: &str, exact: bool) -> Result<OnlyP
 
     let local_releases: Vec<LocalReleaseRow> = local_release_data
         .into_iter()
-        .map(|(id, image, image_url, _)| LocalReleaseRow { id, image, image_url })
+        .map(|(id, image, image_url, _)| LocalReleaseRow {
+            id,
+            image,
+            image_url,
+        })
         .collect();
 
     let track_count: i64 = if local_release_ids.is_empty() {
@@ -557,7 +563,10 @@ async fn refresh_statistics(pool: &PgPool) {
     sqlx::query(
         r#"UPDATE "Statistics" SET
              artists = (SELECT COUNT(*)::int FROM "Artist"),
-             "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" WHERE "primaryArtistId" IS NULL),
+             "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
+                AND EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)),
+             "creditArtists" = (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
+                AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)),
              tracks = (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
              releases = (SELECT COUNT(*)::int FROM "LocalRelease"),
              "releasesWithCoverArt" = (SELECT COUNT(*)::int FROM "LocalRelease"
@@ -597,7 +606,10 @@ async fn main() {
         log!("{}", "DMP Nuke --only".bright_cyan().bold());
         log!("{}", "===============".bright_black());
         if args.dry_run {
-            log!("Mode: {}", "DRY RUN (no changes will be made)".yellow().bold());
+            log!(
+                "Mode: {}",
+                "DRY RUN (no changes will be made)".yellow().bold()
+            );
         }
         log!();
 
@@ -631,7 +643,10 @@ async fn main() {
             return;
         }
 
-        log!("Artists to delete  : {}", plan.artists.len().to_string().bright_white());
+        log!(
+            "Artists to delete  : {}",
+            plan.artists.len().to_string().bright_white()
+        );
         for artist in &plan.artists {
             let tag = if plan.target_ids.contains(&artist.id) {
                 "target".bright_white()
@@ -647,9 +662,18 @@ async fn main() {
                 format!("({}) {}", artist.slug, tag).bright_black()
             );
         }
-        log!("Local releases     : {}", plan.local_releases.len().to_string().bright_white());
-        log!("Local tracks       : {}", plan.track_count.to_string().bright_white());
-        log!("MB releases        : {}", plan.mb_release_ids.len().to_string().bright_white());
+        log!(
+            "Local releases     : {}",
+            plan.local_releases.len().to_string().bright_white()
+        );
+        log!(
+            "Local tracks       : {}",
+            plan.track_count.to_string().bright_white()
+        );
+        log!(
+            "MB releases        : {}",
+            plan.mb_release_ids.len().to_string().bright_white()
+        );
         log!();
 
         if args.dry_run {
@@ -681,7 +705,11 @@ async fn main() {
         }
 
         let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
-        let s3_client = if use_s3 { create_s3_client(&config).await } else { None };
+        let s3_client = if use_s3 {
+            create_s3_client(&config).await
+        } else {
+            None
+        };
 
         log!("Deleting...");
         match execute_only_plan(
@@ -810,6 +838,8 @@ async fn main() {
         "Statistics",
         "FolderScan",
         "FixHistory",
+        // Derived MusicBrainz name-resolution cache - a full nuke rebuilds it from scratch.
+        "MbArtistLookup",
     ];
 
     for table in &tables {
@@ -827,7 +857,10 @@ async fn main() {
     log!("Deleting image files...");
 
     let img_dirs: Vec<(&str, PathBuf)> = vec![
-        ("releases", PathBuf::from(&config.image_dir).join("releases")),
+        (
+            "releases",
+            PathBuf::from(&config.image_dir).join("releases"),
+        ),
         ("artists", PathBuf::from(&config.image_dir).join("artists")),
     ];
 
@@ -868,15 +901,24 @@ async fn main() {
                 for prefix in prefixes {
                     match delete_s3_prefix(&s3_client, bucket, prefix).await {
                         Ok(n) => s3_deleted += n,
-                        Err(e) => { error_log::log_error(&format!("S3 error ({}): {}", prefix, e)); eprintln!("  {} S3 error ({}): {}", "✗".red(), prefix, e); }
+                        Err(e) => {
+                            error_log::log_error(&format!("S3 error ({}): {}", prefix, e));
+                            eprintln!("  {} S3 error ({}): {}", "✗".red(), prefix, e);
+                        }
                     }
                 }
                 log!("  {} Deleted {} S3 image(s)", "✓".green(), s3_deleted);
             } else {
-                log!("  {} Skipped (STORAGE_IMAGE_BUCKET not set)", "–".bright_black());
+                log!(
+                    "  {} Skipped (STORAGE_IMAGE_BUCKET not set)",
+                    "–".bright_black()
+                );
             }
         } else {
-            log!("  {} Skipped (S3 credentials not configured)", "–".bright_black());
+            log!(
+                "  {} Skipped (S3 credentials not configured)",
+                "–".bright_black()
+            );
         }
     } else {
         log!(

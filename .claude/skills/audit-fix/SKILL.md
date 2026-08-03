@@ -29,13 +29,12 @@ The web terminal (`/issues/[type]` page) runs `./fix` automatically when you cli
 | Type | `./audit` flag | `./fix` flag | Writes files? | Reindex after? |
 |------|---------------|-------------|---------------|----------------|
 | corrupted | `--corrupted` | `--corrupted` | Yes (albumArtist tag) | Yes |
-| unsplit | `--unsplit` | `--unsplit` | Yes (albumArtist → primary; artist → compound) | Yes |
 | orphans | `--orphans` | `--orphans` | No (deletes Artist from DB) | No |
 | duplicates | `--duplicates` | `--duplicates` | No (merges B→A in DB, deletes B image) | No |
 | missing | `--missing` | `--missing` | Yes (writes missing tag fields) | Yes |
 | enrichment | `--enrichment` | *(no fix)* | No | No |
 
-**File-writing types** (corrupted, unsplit, missing): after `./fix`, the changed tags need to be re-read into the DB. The UI shows a "Refresh" button scoped to the affected artists after the terminal exits with code 0.
+**File-writing types** (corrupted, missing): after `./fix`, the changed tags need to be re-read into the DB. The UI shows a "Refresh" button scoped to the affected artists after the terminal exits with code 0.
 
 **Enrichment**: has no automated fix and no SelectionBar. Per-row "Re-sync" button appears only for releases where `mbRelease` is a missing field (triggers `./refresh --only="Artist Name"`). Other enrichment gaps (BPM, mood, etc.) require external tools - see the `enrichment-gaps` skill.
 
@@ -54,17 +53,13 @@ Patterns flagged as corrupted:
 
 Proposed fix is derived by majority vote of non-corrupt peers in the same release, then linked artists, then TPE1 consensus. Confidence: high ≥ 3 peers, medium ≥ 1, low = none.
 
-### Unsplit Artists
+### Compound artist names (no longer an audit type)
 
-Only these separators trigger detection (by design - `&` is too ambiguous without MB validation):
-- ` feat. ` (space-padded, dot-terminated only)
-- ` vs ` (space-padded)
-- ` vs. ` (space-padded, dot-terminated)
-- ` & ` (always detected in the name, proposed split is literal `&` split)
-- ` / ` (space-padded slash)
-- `; ` (semicolon-space)
-
-`ft.`, `featuring`, `feat` (no dot), `ft` - **not** detected. If you see these in artist names, they need manual handling or a regex extension in `scripts/audit/src/unsplit.rs`.
+The `unsplit` detector was **retired**. Compound names are now resolved at index time against
+MusicBrainz (`common::mb::resolve`): the whole string is looked up first, so a real band like
+"Nurse With Wound" is never split, and only MB-confirmed groupings are. Nothing to review or queue -
+re-run `./index --resolve-artists` (add `--dry-run` to preview the decisions) instead of an audit/fix
+cycle. See `docs/scripts/index.md`'s Artist Resolution section.
 
 ### Orphans
 
@@ -105,7 +100,6 @@ The watch has a `hasFixed` guard - it only triggers a refresh when a fix was act
 
 # Detect one type only
 ./audit --corrupted
-./audit --unsplit
 ./audit --orphans
 ./audit --duplicates
 ./audit --missing
@@ -113,7 +107,6 @@ The watch has a `hasFixed` guard - it only triggers a refresh when a fix was act
 
 # Apply pending fixes (after queuing via UI or direct DB update)
 ./fix --corrupted
-./fix --unsplit
 ./fix --orphans
 ./fix --duplicates
 ./fix --missing
@@ -156,7 +149,6 @@ UPDATE "IssueCorruptedTpe2" SET status = 'PENDING' WHERE status = 'DETECTED';
 ```
 AuditRun              - one row per ./audit invocation, tracks counts
 IssueCorruptedTpe2    - corrupted albumArtist tags; links to LocalReleaseTrack
-IssueUnsplitArtist    - compound artist names; links to Artist
 IssueOrphanArtist     - phantom/unreachable artists; links to Artist
 IssueDuplicateArtist  - normalized-name collisions; links to Artist (A=keep, B=merge)
 IssueMissingMetadata  - tracks missing core fields; links to LocalReleaseTrack

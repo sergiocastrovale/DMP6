@@ -2,7 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
 
-const VALID_TYPES = ['corrupted', 'unsplit', 'missing'] as const
+const VALID_TYPES = ['corrupted', 'missing'] as const
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.view')
@@ -12,12 +12,11 @@ export default defineEventHandler(async (event) => {
   const type = query.type as string | undefined
 
   if (mode === 'counts') {
-    const [corrupted, unsplit, missing] = await Promise.all([
+    const [corrupted, missing] = await Promise.all([
       prisma.fixHistory.count({ where: { issueType: 'corrupted', revertedAt: null } }),
-      prisma.fixHistory.count({ where: { issueType: 'unsplit', revertedAt: null } }),
       prisma.fixHistory.count({ where: { issueType: 'missing', revertedAt: null } }),
     ])
-    return { counts: { corrupted, unsplit, missing }, total: corrupted + unsplit + missing }
+    return { counts: { corrupted, missing }, total: corrupted + missing }
   }
 
   if (type && VALID_TYPES.includes(type as any)) {

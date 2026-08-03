@@ -24,12 +24,11 @@ pub async fn fix(pool: &PgPool, config: &Config) -> Result<(usize, usize), sqlx:
     let now = Utc::now().naive_utc();
 
     for (issue_id, artist_id, name) in &rows {
-        let img: Option<(Option<String>,)> = sqlx::query_as(
-            r#"SELECT image FROM "Artist" WHERE id = $1"#,
-        )
-        .bind(artist_id)
-        .fetch_optional(pool)
-        .await?;
+        let img: Option<(Option<String>,)> =
+            sqlx::query_as(r#"SELECT image FROM "Artist" WHERE id = $1"#)
+                .bind(artist_id)
+                .fetch_optional(pool)
+                .await?;
 
         if let Some((Some(image_file),)) = img {
             if !image_file.is_empty() {

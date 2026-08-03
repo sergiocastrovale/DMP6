@@ -24,6 +24,17 @@ pub struct TrackMeta {
     pub mb_release_id: Option<String>,
     pub mb_release_group_id: Option<String>,
     pub mb_album_artist_id: Option<String>,
+    /// Every value of the multi-value `Artists`/`TrackArtists` frame, in file order.
+    pub artists: Vec<String>,
+    /// Every value of the multi-value `AlbumArtists` frame, in file order.
+    pub album_artists: Vec<String>,
+    /// Every value of the multi-value `MusicBrainzArtistId` frame, in file order. When this has the
+    /// same length as `artists` (and more than one entry), the two zip into an authoritative
+    /// name->MBID artist list - Picard already did the splitting, so no separator guessing or API call
+    /// is needed. See `common::mb::resolve`.
+    pub mb_artist_ids: Vec<String>,
+    /// Same pairing, for `album_artists`.
+    pub mb_album_artist_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

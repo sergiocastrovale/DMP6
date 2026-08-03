@@ -3,12 +3,7 @@ use sqlx::PgPool;
 
 /// Atomically acquire the scan lock in the Statistics singleton row.
 /// Returns Err with the current holder's info if the lock is already held.
-pub async fn acquire_lock(
-    pool: &PgPool,
-    binary: &str,
-    pid: u32,
-    args: &str,
-) -> Result<(), String> {
+pub async fn acquire_lock(pool: &PgPool, binary: &str, pid: u32, args: &str) -> Result<(), String> {
     // First ensure the Statistics row exists
     sqlx::query(
         r#"INSERT INTO "Statistics" (id, "updatedAt") VALUES ('main', NOW()) ON CONFLICT DO NOTHING"#,
@@ -62,8 +57,7 @@ pub async fn release_lock(pool: &PgPool) {
 /// Detect and clear a stale lock (held for longer than max_age_minutes).
 /// Returns true if a stale lock was found and cleared.
 pub async fn clear_stale_lock_minutes(pool: &PgPool, max_age_minutes: u64) -> bool {
-    let threshold = Utc::now().naive_utc()
-        - chrono::Duration::minutes(max_age_minutes as i64);
+    let threshold = Utc::now().naive_utc() - chrono::Duration::minutes(max_age_minutes as i64);
 
     let result = sqlx::query(
         r#"UPDATE "Statistics"

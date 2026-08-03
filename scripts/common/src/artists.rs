@@ -22,7 +22,9 @@ pub fn replace_artist_word(tag: &str, from: &str, to: &str) -> String {
         return tag.to_string();
     }
     let pattern = format!(r"(?i)\b{}\b", regex::escape(from));
-    let Ok(re) = Regex::new(&pattern) else { return tag.to_string() };
+    let Ok(re) = Regex::new(&pattern) else {
+        return tag.to_string();
+    };
     let escaped_to = to.replace('$', "$$"); // regex replacement syntax treats $ specially
     re.replace_all(tag, escaped_to.as_str()).to_string()
 }
@@ -46,7 +48,11 @@ pub fn is_special_mb_artist(id: &str, name: &str) -> bool {
     SPECIAL_MB_ARTIST_IDS.contains(&id) || is_special_artist_name(name)
 }
 
-const KNOWN_SINGLE_ARTISTS: &[&str] = &[
+/// Bands whose own name contains what would otherwise look like a separator. This is a **backstop**,
+/// not the authority - `common::mb::resolve` asks MusicBrainz first and only consults this list to keep
+/// a definitive "no such artist" answer from shredding a band the codebase already knows about. It does
+/// not need to be exhaustive, and entries here are never a reason to skip the MB lookup.
+pub const KNOWN_SINGLE_ARTISTS: &[&str] = &[
     // & bands
     "simon & garfunkel",
     "kool & the gang",
@@ -109,6 +115,11 @@ const KNOWN_SINGLE_ARTISTS: &[&str] = &[
     "sleeping with sirens",
     "dancing with the dead",
     "flirting with disaster",
+    "nurse with wound",
+    "man with a mission",
+    "dance with the dead",
+    "ends with a bullet",
+    "tom petty and the heartbreakers",
     // comma bands
     "earth, wind & fire",
     "crosby, stills & nash",
@@ -120,6 +131,19 @@ const KNOWN_SINGLE_ARTISTS: &[&str] = &[
     // slash/semicolon bands
     "ac/dc",
 ];
+
+/// Whole-name match against `KNOWN_SINGLE_ARTISTS`, compared on the normalized form so one entry
+/// covers every punctuation variant of the same band - "Florence + the Machine", "Florence & The
+/// Machine" and "florence and the machine" all normalize alike.
+pub fn is_known_single_artist(name: &str) -> bool {
+    let n = crate::mb::names::normalize_name(name);
+    if n.is_empty() {
+        return false;
+    }
+    KNOWN_SINGLE_ARTISTS
+        .iter()
+        .any(|k| crate::mb::names::normalize_name(k) == n)
+}
 
 fn split_ignoring_numeric_commas(s: &str) -> Vec<String> {
     let mut parts = Vec::new();
@@ -243,13 +267,18 @@ pub fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
     };
 
     let split_part = |s: &str| -> Vec<String> {
-        if KNOWN_SINGLE_ARTISTS.iter().any(|k| s.trim().eq_ignore_ascii_case(k)) {
+        if is_known_single_artist(s) {
             return vec![s.trim().to_string()];
         }
         split_with(s)
             .into_iter()
             .flat_map(|chunk| split_ignoring_numeric_commas(&chunk))
-            .flat_map(|chunk| chunk.split(" & ").map(|p| p.trim().to_string()).collect::<Vec<_>>())
+            .flat_map(|chunk| {
+                chunk
+                    .split(" & ")
+                    .map(|p| p.trim().to_string())
+                    .collect::<Vec<_>>()
+            })
             .flat_map(|seg| vs_re.split(&seg).map(|p| p.to_string()).collect::<Vec<_>>())
             .flat_map(|seg| split_by_chars(&seg))
             .filter(|p| !p.is_empty())
@@ -343,13 +372,21 @@ mod tests {
         let (m, _) = split_artists("Adelaide Hall with Guest Benny Waters");
         assert_eq!(m, vec!["Adelaide Hall", "Benny Waters"]);
 
-        let (m, _) = split_artists("Bing Crosby and Al Jolson with orchestra directed by Morris Stoloff");
+        let (m, _) =
+            split_artists("Bing Crosby and Al Jolson with orchestra directed by Morris Stoloff");
         assert_eq!(m, vec!["Bing Crosby and Al Jolson", "Morris Stoloff"]);
 
         let (m, _) = split_artists(
             "The Eddie Taylor Blues Band with special guests Carey Bell & Sunnyland Slim",
         );
-        assert_eq!(m, vec!["The Eddie Taylor Blues Band", "Carey Bell", "Sunnyland Slim"]);
+        assert_eq!(
+            m,
+            vec![
+                "The Eddie Taylor Blues Band",
+                "Carey Bell",
+                "Sunnyland Slim"
+            ]
+        );
     }
 
     #[test]
@@ -375,24 +412,42 @@ mod tests {
 
     #[test]
     fn replace_artist_word_matches_whole_word_only() {
-        assert_eq!(replace_artist_word("Muse", "Muse", "Matthew Bellamy"), "Matthew Bellamy");
+        assert_eq!(
+            replace_artist_word("Muse", "Muse", "Matthew Bellamy"),
+            "Matthew Bellamy"
+        );
         // "Muse" is a substring of "Amused" but not a whole word - must be left untouched.
-        assert_eq!(replace_artist_word("Amused", "Muse", "Matthew Bellamy"), "Amused");
+        assert_eq!(
+            replace_artist_word("Amused", "Muse", "Matthew Bellamy"),
+            "Amused"
+        );
     }
 
     #[test]
     fn replace_artist_word_is_case_insensitive() {
-        assert_eq!(replace_artist_word("MUSE", "Muse", "Matthew Bellamy"), "Matthew Bellamy");
-        assert_eq!(replace_artist_word("muse", "Muse", "Matthew Bellamy"), "Matthew Bellamy");
+        assert_eq!(
+            replace_artist_word("MUSE", "Muse", "Matthew Bellamy"),
+            "Matthew Bellamy"
+        );
+        assert_eq!(
+            replace_artist_word("muse", "Muse", "Matthew Bellamy"),
+            "Matthew Bellamy"
+        );
     }
 
     #[test]
     fn replace_artist_word_works_within_a_multi_artist_tag() {
-        assert_eq!(replace_artist_word("Muse & Radiohead", "Muse", "Matthew Bellamy"), "Matthew Bellamy & Radiohead");
+        assert_eq!(
+            replace_artist_word("Muse & Radiohead", "Muse", "Matthew Bellamy"),
+            "Matthew Bellamy & Radiohead"
+        );
     }
 
     #[test]
     fn replace_artist_word_leaves_unrelated_tags_untouched() {
-        assert_eq!(replace_artist_word("Radiohead", "Muse", "Matthew Bellamy"), "Radiohead");
+        assert_eq!(
+            replace_artist_word("Radiohead", "Muse", "Matthew Bellamy"),
+            "Radiohead"
+        );
     }
 }

@@ -25,11 +25,10 @@ pub async fn nuke_local_artists(
     let use_local = config.use_local();
     let use_s3 = config.use_s3();
 
-    let artists_with_names: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
-        r#"SELECT id, name, image, "imageUrl" FROM "Artist""#,
-    )
-    .fetch_all(pool)
-    .await?;
+    let artists_with_names: Vec<(String, String, Option<String>, Option<String>)> =
+        sqlx::query_as(r#"SELECT id, name, image, "imageUrl" FROM "Artist""#)
+            .fetch_all(pool)
+            .await?;
 
     let mut target_ids: Vec<String> = Vec::new();
     for (id, name, _, _) in &artists_with_names {
@@ -81,12 +80,10 @@ pub async fn nuke_local_artists(
             continue;
         }
 
-        let slug: Option<(String,)> = sqlx::query_as(
-            r#"SELECT slug FROM "Artist" WHERE id = $1"#,
-        )
-        .bind(artist_id)
-        .fetch_optional(pool)
-        .await?;
+        let slug: Option<(String,)> = sqlx::query_as(r#"SELECT slug FROM "Artist" WHERE id = $1"#)
+            .bind(artist_id)
+            .fetch_optional(pool)
+            .await?;
 
         if image.is_some() || image_url.is_some() {
             if let Some((slug,)) = slug {
@@ -172,7 +169,10 @@ pub async fn nuke_local_artists(
 
     if total_images > 0 {
         if use_local && use_s3 {
-            println!("  {} Deleted {} local, {} S3", "✓", local_deleted, s3_deleted);
+            println!(
+                "  {} Deleted {} local, {} S3",
+                "✓", local_deleted, s3_deleted
+            );
         } else if use_s3 {
             println!("  {} Deleted {} from S3", "✓", s3_deleted);
         } else {

@@ -1,10 +1,8 @@
 use chrono::{NaiveDateTime, Utc};
-use common::artists::split_artists;
-use common::slug::make_slug;
 use common::types::TrackMeta;
 use slug::slugify;
 use sqlx::PgPool;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub fn strip_disc_subfolder(folder_path: &str) -> String {
     if let Some(last_slash) = folder_path.rfind('/') {
@@ -36,7 +34,12 @@ pub fn strip_disc_subfolder(folder_path: &str) -> String {
 /// folder-album a *file* belongs to, so keying on it shreds compilations (whose files carry their
 /// original sources' ids) into per-track fragments. Root-level files with no folder fall back to
 /// album-identity tags.
-pub fn build_group_key(album_title: &str, year: Option<i32>, album_artist: &str, folder_path: &str) -> String {
+pub fn build_group_key(
+    album_title: &str,
+    year: Option<i32>,
+    album_artist: &str,
+    folder_path: &str,
+) -> String {
     if !folder_path.is_empty() {
         return format!("folder:{}", folder_path);
     }
@@ -54,7 +57,9 @@ pub fn build_group_key(album_title: &str, year: Option<i32>, album_artist: &str,
 /// always yields the same result. Falls back to "Unknown Album" / None when the folder has no usable
 /// album/year tags. Sync overrides these with the MusicBrainz match when one is found; this is the
 /// pre-match, tag-derived display value.
-pub fn folder_majority_title_year(tracks: &[(Option<String>, Option<i32>)]) -> (String, Option<i32>) {
+pub fn folder_majority_title_year(
+    tracks: &[(Option<String>, Option<i32>)],
+) -> (String, Option<i32>) {
     let mut album_counts: Vec<(String, usize)> = Vec::new();
     let mut year_counts: Vec<(i32, usize)> = Vec::new();
     for (album, year) in tracks {
@@ -76,7 +81,10 @@ pub fn folder_majority_title_year(tracks: &[(Option<String>, Option<i32>)]) -> (
         .max_by_key(|(_, c)| *c)
         .map(|(v, _)| v)
         .unwrap_or_else(|| "Unknown Album".to_string());
-    let year = year_counts.into_iter().max_by_key(|(_, c)| *c).map(|(v, _)| v);
+    let year = year_counts
+        .into_iter()
+        .max_by_key(|(_, c)| *c)
+        .map(|(v, _)| v);
     (title, year)
 }
 
@@ -181,6 +189,12 @@ pub async fn batch_upsert_tracks(
     let mut mb_release_group_ids: Vec<Option<String>> = Vec::with_capacity(len);
     let mut mb_release_ids: Vec<Option<String>> = Vec::with_capacity(len);
     let mut mb_album_artist_ids: Vec<Option<String>> = Vec::with_capacity(len);
+    // Per-row string arrays can't ride along in UNNEST (no array-of-array columns), so they travel as
+    // jsonb and are converted back to text[] per row in the SELECT below.
+    let mut artists_multi: Vec<serde_json::Value> = Vec::with_capacity(len);
+    let mut mb_artist_ids_multi: Vec<serde_json::Value> = Vec::with_capacity(len);
+    let mut album_artists_multi: Vec<serde_json::Value> = Vec::with_capacity(len);
+    let mut mb_album_artist_ids_multi: Vec<serde_json::Value> = Vec::with_capacity(len);
     let now = Utc::now().naive_utc();
 
     for (track, release_id) in tracks {
@@ -202,10 +216,15 @@ pub async fn batch_upsert_tracks(
         file_sizes.push(track.file_size);
         mtimes.push(track.mtime);
         content_hashes.push(track.content_hash.clone());
-        metadatas.push(serde_json::to_value(&track.metadata_json).unwrap_or(serde_json::Value::Null));
+        metadatas
+            .push(serde_json::to_value(&track.metadata_json).unwrap_or(serde_json::Value::Null));
         mb_release_group_ids.push(track.mb_release_group_id.clone());
         mb_release_ids.push(track.mb_release_id.clone());
         mb_album_artist_ids.push(track.mb_album_artist_id.clone());
+        artists_multi.push(serde_json::json!(track.artists));
+        mb_artist_ids_multi.push(serde_json::json!(track.mb_artist_ids));
+        album_artists_multi.push(serde_json::json!(track.album_artists));
+        mb_album_artist_ids_multi.push(serde_json::json!(track.mb_album_artist_ids));
     }
 
     let play_counts: Vec<i32> = vec![0; len];
@@ -216,13 +235,27 @@ pub async fn batch_upsert_tracks(
            (id, title, artist, "albumArtist", album, year, genre,
             duration, bitrate, "sampleRate", "filePath", position, "trackNumber", "discNumber",
             "localReleaseId", "fileSize", mtime, "contentHash", metadata,
-            "playCount", "createdAt", "updatedAt", "mbReleaseGroupId", "mbReleaseId", "mbAlbumArtistId")
-           SELECT * FROM UNNEST(
+            "playCount", "createdAt", "updatedAt", "mbReleaseGroupId", "mbReleaseId", "mbAlbumArtistId",
+            artists, "mbArtistIds", "albumArtists", "mbAlbumArtistIds")
+           SELECT t.id, t.title, t.artist, t.album_artist, t.album, t.year, t.genre,
+                  t.duration, t.bitrate, t.sample_rate, t.file_path, t.position, t.track_number, t.disc_number,
+                  t.release_id, t.file_size, t.mtime, t.content_hash, t.metadata,
+                  t.play_count, t.created, t.updated, t.mb_rg_id, t.mb_rel_id, t.mb_aa_id,
+                  ARRAY(SELECT jsonb_array_elements_text(t.artists_json)),
+                  ARRAY(SELECT jsonb_array_elements_text(t.mb_artist_ids_json)),
+                  ARRAY(SELECT jsonb_array_elements_text(t.album_artists_json)),
+                  ARRAY(SELECT jsonb_array_elements_text(t.mb_album_artist_ids_json))
+           FROM UNNEST(
                $1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::text[],
                $8::int[], $9::int[], $10::int[], $11::text[], $12::text[], $13::int[], $14::int[],
                $15::text[], $16::bigint[], $17::timestamp[], $18::text[], $19::jsonb[],
-               $20::int[], $21::timestamp[], $22::timestamp[], $23::text[], $24::text[], $25::text[]
-           )
+               $20::int[], $21::timestamp[], $22::timestamp[], $23::text[], $24::text[], $25::text[],
+               $26::jsonb[], $27::jsonb[], $28::jsonb[], $29::jsonb[]
+           ) AS t(id, title, artist, album_artist, album, year, genre,
+                  duration, bitrate, sample_rate, file_path, position, track_number, disc_number,
+                  release_id, file_size, mtime, content_hash, metadata,
+                  play_count, created, updated, mb_rg_id, mb_rel_id, mb_aa_id,
+                  artists_json, mb_artist_ids_json, album_artists_json, mb_album_artist_ids_json)
            ON CONFLICT ("filePath") DO UPDATE SET
              title = EXCLUDED.title, artist = EXCLUDED.artist, "albumArtist" = EXCLUDED."albumArtist",
              album = EXCLUDED.album, year = EXCLUDED.year, genre = EXCLUDED.genre,
@@ -232,6 +265,8 @@ pub async fn batch_upsert_tracks(
              mtime = EXCLUDED.mtime, "contentHash" = EXCLUDED."contentHash", metadata = EXCLUDED.metadata,
              "mbReleaseGroupId" = EXCLUDED."mbReleaseGroupId", "mbReleaseId" = EXCLUDED."mbReleaseId",
              "mbAlbumArtistId" = EXCLUDED."mbAlbumArtistId",
+             artists = EXCLUDED.artists, "mbArtistIds" = EXCLUDED."mbArtistIds",
+             "albumArtists" = EXCLUDED."albumArtists", "mbAlbumArtistIds" = EXCLUDED."mbAlbumArtistIds",
              "updatedAt" = EXCLUDED."updatedAt"
            RETURNING id, "filePath""#,
     )
@@ -260,6 +295,10 @@ pub async fn batch_upsert_tracks(
     .bind(&mb_release_group_ids)
     .bind(&mb_release_ids)
     .bind(&mb_album_artist_ids)
+    .bind(&artists_multi)
+    .bind(&mb_artist_ids_multi)
+    .bind(&album_artists_multi)
+    .bind(&mb_album_artist_ids_multi)
     .fetch_all(pool)
     .await?;
 
@@ -303,128 +342,6 @@ pub async fn batch_ensure_track_related_artists(
     .await?;
 
     Ok(())
-}
-
-#[derive(Debug, Default)]
-pub struct RelinkStats {
-    pub tracks_scanned: u64,
-    pub links_added: u64,
-    pub links_removed: u64,
-}
-
-/// Rebuild TrackRelatedArtist for every track: a credit is kept only when the credited name resolves to
-/// an artist that already owns a release via LocalReleaseArtist - no Artist row is ever created for a
-/// name that appears solely as a credit. Run once at the end of a full index pass (also available
-/// standalone via `--relink-credits`, or skippable via `--skip-relink`) so credits resolve regardless of
-/// folder scan order: an artist indexed after the release that credits them still gets linked once this
-/// pass runs, since it always re-derives from the full current Artist table rather than whatever existed
-/// mid-loop.
-pub async fn relink_track_credits(pool: &PgPool) -> RelinkStats {
-    let mut stats = RelinkStats::default();
-
-    // slug -> id, restricted to artists that own at least one release - the definition of "already
-    // exists" under the no-credit-only-rows model.
-    let artist_rows: Vec<(String, String)> = sqlx::query_as(
-        r#"SELECT DISTINCT a.slug, a.id FROM "Artist" a
-           WHERE EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)"#,
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-    let artist_by_slug: HashMap<String, String> = artist_rows.into_iter().collect();
-
-    // releaseId -> its main artist ids, so a track never credits its own release's artist.
-    let lra_rows: Vec<(String, String)> = sqlx::query_as(
-        r#"SELECT "localReleaseId", "artistId" FROM "LocalReleaseArtist""#,
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-    let mut main_artists_by_release: HashMap<String, HashSet<String>> = HashMap::new();
-    for (release_id, artist_id) in lra_rows {
-        main_artists_by_release.entry(release_id).or_default().insert(artist_id);
-    }
-
-    const BATCH: i64 = 5000;
-    let mut last_id = String::new();
-    loop {
-        let batch: Vec<(String, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
-            r#"SELECT id, artist, "albumArtist", "localReleaseId" FROM "LocalReleaseTrack"
-               WHERE id > $1 AND artist IS NOT NULL AND artist <> ''
-               ORDER BY id LIMIT $2"#,
-        )
-        .bind(&last_id)
-        .bind(BATCH)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
-
-        if batch.is_empty() {
-            break;
-        }
-        last_id = batch.last().map(|(id, ..)| id.clone()).unwrap_or_default();
-        stats.tracks_scanned += batch.len() as u64;
-
-        let track_ids: Vec<String> = batch.iter().map(|(id, ..)| id.clone()).collect();
-        let existing_rows: Vec<(String, String)> = sqlx::query_as(
-            r#"SELECT "trackId", "artistId" FROM "TrackRelatedArtist" WHERE "trackId" = ANY($1::text[])"#,
-        )
-        .bind(&track_ids)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
-        let existing: HashSet<(String, String)> = existing_rows.into_iter().collect();
-
-        let mut desired: HashSet<(String, String)> = HashSet::new();
-        for (track_id, artist_tag, album_artist_tag, release_id) in &batch {
-            let Some(artist_tag) = artist_tag else { continue };
-            let album_artist_lower = album_artist_tag.as_deref().unwrap_or("").to_lowercase();
-            let (main, feat) = split_artists(artist_tag);
-            let release_main_ids = release_id.as_ref().and_then(|rid| main_artists_by_release.get(rid));
-
-            let mut seen: HashSet<String> = HashSet::new();
-            for name in main.into_iter().chain(feat.into_iter()) {
-                let lower = name.to_lowercase();
-                if lower == album_artist_lower || !seen.insert(lower) {
-                    continue;
-                }
-                let slug = make_slug(&name);
-                if slug.is_empty() {
-                    continue;
-                }
-                let Some(artist_id) = artist_by_slug.get(&slug) else { continue };
-                if release_main_ids.map(|s| s.contains(artist_id)).unwrap_or(false) {
-                    continue;
-                }
-                desired.insert((track_id.clone(), artist_id.clone()));
-            }
-        }
-
-        let to_insert: Vec<(String, String)> = desired.difference(&existing).cloned().collect();
-        let to_remove: Vec<(String, String)> = existing.difference(&desired).cloned().collect();
-
-        if !to_remove.is_empty() {
-            let (rt, ra): (Vec<String>, Vec<String>) = to_remove.into_iter().unzip();
-            sqlx::query(
-                r#"DELETE FROM "TrackRelatedArtist" t
-                   USING UNNEST($1::text[], $2::text[]) AS d(track_id, artist_id)
-                   WHERE t."trackId" = d.track_id AND t."artistId" = d.artist_id"#,
-            )
-            .bind(&rt)
-            .bind(&ra)
-            .execute(pool)
-            .await
-            .ok();
-            stats.links_removed += rt.len() as u64;
-        }
-
-        if !to_insert.is_empty() {
-            stats.links_added += to_insert.len() as u64;
-            batch_ensure_track_related_artists(pool, &to_insert).await.ok();
-        }
-    }
-
-    stats
 }
 
 pub async fn batch_ensure_local_release_artists(
@@ -477,7 +394,10 @@ pub async fn batch_update_mtimes(
 }
 
 /// Update lastIndexedAt on Artist rows after indexing a folder.
-pub async fn update_last_indexed_at(pool: &PgPool, artist_ids: &[String]) -> Result<(), sqlx::Error> {
+pub async fn update_last_indexed_at(
+    pool: &PgPool,
+    artist_ids: &[String],
+) -> Result<(), sqlx::Error> {
     if artist_ids.is_empty() {
         return Ok(());
     }
@@ -512,16 +432,12 @@ pub async fn upsert_folder_scan(
     Ok(())
 }
 
-pub async fn propagate_mb_artist_id(
-    pool: &PgPool,
-    artist_id: &str,
-) -> Result<(), sqlx::Error> {
-    let existing: Option<(Option<String>,)> = sqlx::query_as(
-        r#"SELECT "musicbrainzId" FROM "Artist" WHERE id = $1"#,
-    )
-    .bind(artist_id)
-    .fetch_optional(pool)
-    .await?;
+pub async fn propagate_mb_artist_id(pool: &PgPool, artist_id: &str) -> Result<(), sqlx::Error> {
+    let existing: Option<(Option<String>,)> =
+        sqlx::query_as(r#"SELECT "musicbrainzId" FROM "Artist" WHERE id = $1"#)
+            .bind(artist_id)
+            .fetch_optional(pool)
+            .await?;
 
     if let Some((Some(ref mb_id),)) = existing {
         if !mb_id.is_empty() {
@@ -568,17 +484,13 @@ pub async fn propagate_mb_artist_id(
 // Run-hash resumability
 // ---------------------------------------------------------------------------
 
-pub async fn load_indexed_folders(
-    pool: &PgPool,
-    hash: &str,
-) -> std::collections::HashSet<String> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        r#"SELECT "folderPath" FROM "FolderScan" WHERE "indexHash" = $1"#,
-    )
-    .bind(hash)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+pub async fn load_indexed_folders(pool: &PgPool, hash: &str) -> std::collections::HashSet<String> {
+    let rows: Vec<(String,)> =
+        sqlx::query_as(r#"SELECT "folderPath" FROM "FolderScan" WHERE "indexHash" = $1"#)
+            .bind(hash)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
     rows.into_iter().map(|(p,)| p).collect()
 }
 
@@ -602,16 +514,36 @@ mod tests {
     #[test]
     fn group_key_is_folder_scoped_regardless_of_tags() {
         // Two tracks in the same folder with different album tags / years still key to one release.
-        let a = build_group_key("Portrait", Some(1986), "Teddy Wilson", "Teddy Wilson/Album/2011 - Jazz Heroes");
-        let b = build_group_key("Different Album", Some(1999), "Teddy Wilson", "Teddy Wilson/Album/2011 - Jazz Heroes");
+        let a = build_group_key(
+            "Portrait",
+            Some(1986),
+            "Teddy Wilson",
+            "Teddy Wilson/Album/2011 - Jazz Heroes",
+        );
+        let b = build_group_key(
+            "Different Album",
+            Some(1999),
+            "Teddy Wilson",
+            "Teddy Wilson/Album/2011 - Jazz Heroes",
+        );
         assert_eq!(a, b);
         assert_eq!(a, "folder:Teddy Wilson/Album/2011 - Jazz Heroes");
     }
 
     #[test]
     fn group_key_distinguishes_different_folders() {
-        let a = build_group_key("Guitar Town", Some(1986), "Steve Earle", "Steve Earle/Album/1986 - Guitar Town");
-        let b = build_group_key("Guitar Town", Some(1986), "Steve Earle", "Steve Earle/Remastered/1986 - Guitar Town [2002]");
+        let a = build_group_key(
+            "Guitar Town",
+            Some(1986),
+            "Steve Earle",
+            "Steve Earle/Album/1986 - Guitar Town",
+        );
+        let b = build_group_key(
+            "Guitar Town",
+            Some(1986),
+            "Steve Earle",
+            "Steve Earle/Remastered/1986 - Guitar Town [2002]",
+        );
         assert_ne!(a, b);
     }
 
@@ -628,16 +560,19 @@ mod tests {
             (Some("Real Album".to_string()), Some(1986)),
             (Some("Stray Tag".to_string()), Some(2016)),
         ];
-        assert_eq!(folder_majority_title_year(&tracks), ("Real Album".to_string(), Some(1986)));
+        assert_eq!(
+            folder_majority_title_year(&tracks),
+            ("Real Album".to_string(), Some(1986))
+        );
     }
 
     #[test]
     fn folder_majority_ignores_empty_albums_and_falls_back() {
-        let tracks = vec![
-            (Some("   ".to_string()), None),
-            (None, None),
-        ];
-        assert_eq!(folder_majority_title_year(&tracks), ("Unknown Album".to_string(), None));
+        let tracks = vec![(Some("   ".to_string()), None), (None, None)];
+        assert_eq!(
+            folder_majority_title_year(&tracks),
+            ("Unknown Album".to_string(), None)
+        );
     }
 
     #[test]
@@ -648,7 +583,10 @@ mod tests {
             (Some("A".to_string()), Some(1999)),
         ];
         // Album mode = "A", year mode = 2000 (computed independently).
-        assert_eq!(folder_majority_title_year(&tracks), ("A".to_string(), Some(2000)));
+        assert_eq!(
+            folder_majority_title_year(&tracks),
+            ("A".to_string(), Some(2000))
+        );
     }
 
     #[test]
@@ -657,7 +595,9 @@ mod tests {
         assert_eq!(strip_disc_subfolder("Artist/Album/Disc 2"), "Artist/Album");
         assert_eq!(strip_disc_subfolder("Artist/Album"), "Artist/Album");
         // Non-pure-digit suffix is NOT a disc folder (known box-set gap, left as-is).
-        assert_eq!(strip_disc_subfolder("Artist/Box/CD2 - Warmin' Up"), "Artist/Box/CD2 - Warmin' Up");
+        assert_eq!(
+            strip_disc_subfolder("Artist/Box/CD2 - Warmin' Up"),
+            "Artist/Box/CD2 - Warmin' Up"
+        );
     }
 }
-

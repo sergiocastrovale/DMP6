@@ -27,8 +27,9 @@ cd scripts && cargo build --release -p index
 ./index --delete                 # Delete local data for matched artists, then exit
 ./index --music-dir /path        # Override MUSIC_DIR env
 ./index --web                    # Emit PROGRESS:{json} for the web terminal
-./index --relink-credits         # Only rebuild TrackRelatedArtist credits, no folder scan
-./index --skip-relink            # Skip the end-of-run credit relink pass
+./index --resolve-artists        # Only resolve artist tags against MusicBrainz, no folder scan
+./index --resolve-artists --dry-run  # Print the decisions, write nothing
+./index --skip-resolve           # Skip the end-of-run artist resolution pass
 ```
 
 `--release` cannot combine with `--from`, `--to`, `--only`, or `--folders`.
@@ -53,8 +54,9 @@ cd scripts && cargo build --release -p index
 | `--music-dir` | String | - | Override MUSIC_DIR from env |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 | `--emit-artist-ids` | String | - | Write processed artist IDs to file (one per line, used by refresh) |
-| `--relink-credits` | bool | false | Only rebuild TrackRelatedArtist credit links against current artists, then exit (no folder scan) |
-| `--skip-relink` | bool | false | Skip the end-of-run TrackRelatedArtist relink pass |
+| `--resolve-artists` | bool | false | Only resolve artist tags against MusicBrainz and rebuild links, then exit (no folder scan) |
+| `--dry-run` | bool | false | With `--resolve-artists`: print decisions, write nothing |
+| `--skip-resolve` | bool | false | Skip the end-of-run artist resolution pass |
 
 ## Output Modes
 
@@ -63,11 +65,11 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 ## Per-Folder Flow
 
 1. **Walk** folder for audio files (mp3, flac, aac, opus, m4a, ogg) via jwalk
-2. **Extract** metadata in parallel (rayon + lofty), including MB tags: `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_ALBUMARTISTID`
+2. **Extract** metadata in parallel (rayon + lofty), including MB tags: `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ARTISTID`. Tag keys are matched on an alphanumeric-only normalization, because the same key arrives as `MUSICBRAINZ_ALBUMID` (Vorbis), `MusicBrainz Album Id` (TXXX) or `MusicBrainzReleaseId` (lofty's own name) depending on container
 3. **Pre-scan** - propagate MB release/release-group IDs across tracks sharing same album/year/albumArtist
 4. **Change detection** - default: skip if filePath exists in DB. `--inspect`: compare size/mtime/hash. `--overwrite`: skip change detection but preserve existing covers. `--overwrite-with-images`: skip everything and re-extract covers
-5. **Split** the albumArtist tag (verbatim, one artist) and the artist tag (via `split_artists`) - the artist-tag names are stored on the track for now, not yet turned into `TrackRelatedArtist` links (see Post-loop below)
-6. **Upsert** Artist, LocalRelease, LocalReleaseTrack, LocalReleaseArtist (batch UNNEST)
+5. **Store** the raw artist / albumArtist tags plus the multi-value `Artists[]` + `MusicBrainzArtistId[]` frames on the track. No artist identity is decided here - that happens in the post-loop resolve pass (see Artist Resolution below)
+6. **Upsert** Artist (album artist only, at this stage), LocalRelease, LocalReleaseTrack, LocalReleaseArtist (batch UNNEST)
 7. **Cover art** - extract from embedded tags or folder images, content-addressed by MD5 hash (same image bytes = one file, shared across releases)
 8. **Delete** tracks no longer on disk
 9. **Update totals** for this artist's releases and tracks
@@ -75,8 +77,8 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 11. **Stamp run hash** on FolderScan for resumability
 12. **Upsert FolderScan** - stores folder mtime
 
-Post-loop: detects entirely deleted folders (only when unfiltered), rebuilds `TrackRelatedArtist` credits
-(`relink_track_credits`, skippable via `--skip-relink` - see Artist Roles below), safety-net pass
+Post-loop: detects entirely deleted folders (only when unfiltered), resolves artist identity and rebuilds
+owner/credit links (skippable via `--skip-resolve` - see Artist Resolution below), safety-net pass
 re-extracts missing release images.
 
 ## Locking & Resumability
@@ -107,44 +109,140 @@ Two levels of deduplication:
 
 Works with all storage modes (`local`, `s3`, `both`). S3 uploads happen once per unique hash. Shared images are reference-counted on delete - the file is only removed when no `LocalRelease` points to it.
 
-## Artist Tag Splitting
+## Artist Resolution (MusicBrainz-validated)
 
-`split_artists()` in `common/src/artists.rs` (applied to the `artist` tag only - `albumArtist` is taken
-verbatim, see Artist Roles below):
-- Splits on `feat.`/`ft.`/`featuring` → featured artists
-- Splits on `//` `\\` `||` `;` `|` - unambiguous separators
-- Splits on ` / ` ` \ ` (space-surrounded only - preserves AC/DC)
-- Splits on `vs.`/`vs`
-- Splits on `,` and ` & ` (preserves "10,000 Maniacs" via numeric-comma guard, and known single-artist
-  names like "Simon & Garfunkel" via `KNOWN_SINGLE_ARTISTS`)
-- Splits on ` with ` (space-bounded, so "Bill Withers" / "Jimmy Witherspoon" / "mewithoutYou" are safe),
-  stripping a leading role qualifier off the right side first ("special guests", "guest",
-  "orchestra conducted/directed by", "arranged and conducted by")
+**A separator is never, by itself, evidence of a split.** Real artists are called "Nurse With Wound",
+"MAN WITH A MISSION", "Mumford & Sons", "Earth, Wind & Fire". Measured against production data, the old
+punctuation-guessing splitter split **721 of 722** distinct `" with "` tag values - including four bands
+that own releases in this library. A hardcoded exception list cannot fix that; the list is unbounded.
 
-## Artist Roles (Main vs credited)
+So the question is asked of MusicBrainz instead: *is this whole string an artist?* Only a definitive "no"
+justifies looking for a split, and every candidate grouping is validated the same way
+(`common::mb::resolve`).
 
-Derived entirely from file metadata, never from folder paths:
+### Search order
 
-- **Main artist** = in `albumArtist` tag, taken **verbatim** (never split) → linked via `LocalReleaseArtist`.
-  This is the only way an Artist row is ever created.
-- **Credit** = a name in the `artist` tag that isn't the albumArtist and isn't already a main artist on
-  that same release (no self-credits) → linked via `TrackRelatedArtist`, but **only if that name already
-  matches an existing Artist** (one with its own `LocalReleaseArtist` link). A credit for a name with no
-  matching artist yet is dropped, not created speculatively - there is no "credit-only" Artist row.
+| Tier | Source | Cost |
+|---|---|---|
+| 0 | Embedded tags: `Artists[i]` paired with `MusicBrainzArtistId[i]` | free |
+| 1 | `MbArtistLookup` cache (hits **and** misses, 30-day negative TTL) | free |
+| 2 | MB search for the **whole string** - a hit means one artist, no split | 1 request |
+| 3 | Memoized contiguous-span recursion over separator positions, coarsest grouping wins | O(n²) requests |
+| 4 | Fallback: the atoms are the artists, unverified | free |
 
-Because credits depend on an artist that may not be indexed yet (folders scan alphabetically), the actual
-linking happens in a **post-loop pass**, `relink_track_credits` (`scripts/index/src/db.rs`): it rebuilds
-`TrackRelatedArtist` from scratch by rescanning every track's `artist` tag against the current Artist
-table, so an artist indexed *after* the release that credits them still ends up linked once this pass
-runs, and a credit whose name no longer matches anything (retagged, or its artist was deleted) is removed
-rather than left stale. Runs by default after every index invocation; skip with `--skip-relink`, or run it
-standalone with `--relink-credits` (no folder scan). See
-`scripts/index/tests/relink_credits.rs`.
+Tier 0 carries most of the library: Picard writes one `Artists` value and one `MusicBrainzArtistId` per
+credited artist, so when the two line up the split is already done, authoritatively, with MB ids attached.
+(Those frames are multi-value; `metadata.rs` collects every value rather than last-wins.)
 
-Consequently `delete_orphan_artists` (`deletion.rs`, reported as `Cleaned up ... N orphan artist(s)`) only
-needs to check `LocalReleaseArtist` and `MusicBrainzReleaseArtist` - a `TrackRelatedArtist` row can never
-be the only thing keeping an artist alive, since a credit can only exist once its target already owns a
-release. See `scripts/index/tests/orphan_cleanup.rs`.
+A **single** pair counts too, but only when that one value *is* the whole tag - which is what makes
+separator-bearing band names like "Kool & the Gang" safe without any network call. The equality guard is
+not theoretical: of 3,308 single-pair tracks measured, 3,307 match their tag and exactly one does not -
+tag `"The B.B. King Blues Band"` with the embedded value `"B.B. King"`. Trusting that pair would replace
+the band with the person, so a mismatch falls through to the lookup instead.
+
+Tier 3 is a span search, not a subset search: `resolve_span(i,j)` asks about a contiguous run of atoms and
+recurses on misses, memoized per span. That is O(n²) lookups instead of the O(2ⁿ) of trying every separator
+combination, and it prefers the **coarsest** valid grouping - `"Y & Z with A"` yields `"Y & Z"` + `"A"` when
+MB knows the duo. Above 8 separators (~0.1% of names) only the whole string and the atoms are tried.
+
+A transient failure (timeout, 503) yields **deferred**: the name is left alone and retried next run. Only a
+definitive MB "no match" is allowed to trigger a split, so a network blip can never permanently shred a band
+name.
+
+**Offline backstop.** `KNOWN_SINGLE_ARTISTS` (`common/src/artists.rs`) is consulted before any split is
+contemplated: a band already known to be one artist stays whole even if MusicBrainz answers "no such
+artist" (a rename, an aliased entry, a bad response). MB is still asked for the id - only the split is
+suppressed. Matching is on the normalized name, so one entry covers every punctuation spelling
+("Florence + the Machine" / "Florence & The Machine"). It is a floor, not the authority, and does not need
+to be exhaustive.
+
+Worked examples of the two safety levels:
+
+| Tag | Candidate split? | Survives because |
+|---|---|---|
+| `AC/DC` | none - bare `/` is not a separator | structurally unsplittable |
+| `Florence + The Machine` | none - `+` is not a separator | structurally unsplittable |
+| `Kool & The Gang` | yes (`" & "`) | embedded single pair, MB hit, **and** the backstop |
+| `Tom Petty and the Heartbreakers` | yes (`" and "`) | embedded single pair, MB hit, **and** the backstop |
+
+### Candidate separators
+
+`,` `;` `/` `\` `|` ` & ` ` and ` ` vs ` `feat.` `ft.` `featuring` ` with `. These only *propose* split
+points - MB decides. (`" and "` is new; previously `"Frank Sinatra and Count Basie"` had no split point at
+all and survived as a single junk artist.) A comma between digits ("10,000 Maniacs") is never a separator.
+
+### Owner vs credit
+
+Two relationships, mirroring MusicBrainz artist credits and Spotify's discography / `appears_on` split:
+
+- **Owner** → `LocalReleaseArtist`. Appears in `/browse`, counted in stats, synced to MB.
+- **Credit** → `TrackRelatedArtist`. Has its own page and is searchable, shows the release under
+  appearances, but is excluded from browse/stats/sync.
+
+The **join phrase decides** which one a resolved part becomes:
+
+- guest phrases (` with `, `feat.`, `ft.`, `featuring`) ⇒ the first part **owns**, the rest are **credits**.
+  `"Frank Sinatra with Count Basie"` ⇒ Sinatra owns the album, Basie is credited on the track.
+- co-billing (` & `, `,`, `;`, `/`, ` and `, `vs`) ⇒ all parts **co-own**. `"B.B. King & Eric Clapton"`
+  (*Riding With the King*) ⇒ both own it.
+
+An Artist row is created for a credit **only when MusicBrainz verified the name**. Unverified tier-4 atoms
+are never turned into browsable artists - that is exactly the junk this design exists to prevent. Dangling
+role fragments ("His Orchestra", "Chorus", a leftover "special guests") are dropped rather than created.
+
+`albumArtist` is no longer taken verbatim (reversing `bef2267b`): it goes through the same resolver, which
+is what finally splits compound album artists like `"Frank Sinatra with Billy May & His Orchestra"` - but
+only into artists MusicBrainz confirms.
+
+**Ownership is derived, never stored.** There is no `relatedOnly` flag; "owns something" is
+`EXISTS(LocalReleaseArtist)`. A cached boolean is what silently read 0 for two and a half months.
+
+Because credits can point at an artist that owns nothing, `delete_orphan_artists` must check **all three**
+link tables (`LocalReleaseArtist`, `MusicBrainzReleaseArtist`, `TrackRelatedArtist`) - omitting the third
+deletes every credit artist the resolver just created. See `scripts/index/tests/orphan_cleanup.rs`.
+
+### When ownership is written
+
+The folder loop cannot simply wait for the resolve pass to create owners: `lastIndexedAt`, the artist folder
+image, totals and `--emit-artist-ids` are all driven by the artist set the loop produces, and a release left
+ownerless is invisible in `/browse`, unsyncable, and (before the fix below) deletable by `./delete`'s sweep.
+On a full run that window would last days.
+
+So the loop still writes owners - but it resolves the `albumArtist` tag **offline first**, using only the
+free tiers (embedded pairs, the `MbArtistLookup` cache, the backstop). Tier 4 is explicitly rejected here: a
+cold cache must never blind-split `"Kool & The Gang"`. When offline resolution can't decide, the verbatim tag
+is written as a **provisional** owner and corrected later in the same run.
+
+The resolve pass then runs an **ownership reconcile** that replaces those provisional owners, guarded so it
+can never make things worse:
+
+| Guard | Why |
+|---|---|
+| Desired set = union across **all** distinct `albumArtist` values on the release | 11 of 435 releases measured carry more than one; overwriting from a single track would strip co-owners |
+| Skip the release if any of its album artists **deferred** | never rewrite ownership on an incomplete picture during an MB outage |
+| Skip if the desired set is empty | covers `"Various Artists"`, which resolves to nothing |
+| Insert new owners before deleting stale ones, one transaction | a release must never pass through zero owners |
+| Delete only within the release scope in play | targeted runs stay targeted |
+
+`delete_orphan_artists` runs after the reconcile, so a compound left holding no links is removed in the same
+run. Covered by `scripts/index/tests/owner_reconcile.rs`.
+
+On a warm cache the loop resolves correctly on the spot and no provisional owner is ever written - the second
+`--only` run of an artist typically costs **0 MB lookups**. The cost is paid once, on a cold cache.
+
+### Artist folder image
+
+The image follows ownership rather than the folder name. The **primary** owner (first album artist resolved
+for the folder) always receives it; the other resolved owners receive it only if they have no image yet.
+Previously this fired only for single-artist folders, so a folder whose `albumArtist` was
+`"Ella Fitzgerald & Roy Eldridge Sextet"` handed its image to the compound junk artist - and once album
+artists split, such folders would have contributed no image at all.
+
+### Resolution order doesn't matter
+
+Folders scan alphabetically, so a guest may not exist yet when their host album is indexed. The resolve pass
+runs **after** the folder loop and re-derives from the current DB, so an artist indexed later still ends up
+correctly linked; a credit whose name no longer matches anything is removed rather than left stale.
 
 ## Running on NAS
 

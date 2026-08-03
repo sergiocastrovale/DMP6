@@ -7,13 +7,23 @@
 const ALLOWED_PRIMARY_TYPES: &[&str] = &["album", "ep"];
 
 // Secondary types that disqualify an otherwise-album release (spoken-word / non-music kinds).
-const REJECTED_SECONDARY_TYPES: &[&str] =
-    &["audiobook", "audio drama", "spokenword", "interview", "field recording", "demo"];
+const REJECTED_SECONDARY_TYPES: &[&str] = &[
+    "audiobook",
+    "audio drama",
+    "spokenword",
+    "interview",
+    "field recording",
+    "demo",
+];
 
 /// `status` is the MusicBrainz release status (Official / Bootleg / Promotion / Pseudo-Release / ...).
 /// A missing status is treated as Official, matching the existing lenient behaviour in
 /// `mb_api::mb_get_release_tracks` (which only skips releases whose status is present and non-Official).
-pub fn is_allowed(primary_type: Option<&str>, secondary_types: &[String], status: Option<&str>) -> bool {
+pub fn is_allowed(
+    primary_type: Option<&str>,
+    secondary_types: &[String],
+    status: Option<&str>,
+) -> bool {
     let primary_ok = primary_type
         .map(|p| ALLOWED_PRIMARY_TYPES.contains(&p.to_lowercase().as_str()))
         .unwrap_or(false);
@@ -68,22 +78,50 @@ mod tests {
 
     #[test]
     fn allowed_secondary_types_pass() {
-        assert!(is_allowed(Some("Album"), &sec(&["Compilation"]), Some("Official")));
+        assert!(is_allowed(
+            Some("Album"),
+            &sec(&["Compilation"]),
+            Some("Official")
+        ));
         assert!(is_allowed(Some("Album"), &sec(&["Live"]), Some("Official")));
-        assert!(is_allowed(Some("Album"), &sec(&["Remix"]), Some("Official")));
-        assert!(is_allowed(Some("Album"), &sec(&["Soundtrack"]), Some("Official")));
+        assert!(is_allowed(
+            Some("Album"),
+            &sec(&["Remix"]),
+            Some("Official")
+        ));
+        assert!(is_allowed(
+            Some("Album"),
+            &sec(&["Soundtrack"]),
+            Some("Official")
+        ));
     }
 
     #[test]
     fn rejected_secondary_types_block_even_album() {
-        assert!(!is_allowed(Some("Album"), &sec(&["Audiobook"]), Some("Official")));
-        assert!(!is_allowed(Some("Album"), &sec(&["Interview"]), Some("Official")));
-        assert!(!is_allowed(Some("Album"), &sec(&["Compilation", "Spokenword"]), Some("Official")));
+        assert!(!is_allowed(
+            Some("Album"),
+            &sec(&["Audiobook"]),
+            Some("Official")
+        ));
+        assert!(!is_allowed(
+            Some("Album"),
+            &sec(&["Interview"]),
+            Some("Official")
+        ));
+        assert!(!is_allowed(
+            Some("Album"),
+            &sec(&["Compilation", "Spokenword"]),
+            Some("Official")
+        ));
     }
 
     #[test]
     fn case_insensitive() {
-        assert!(is_allowed(Some("album"), &sec(&["compilation"]), Some("official")));
+        assert!(is_allowed(
+            Some("album"),
+            &sec(&["compilation"]),
+            Some("official")
+        ));
         assert!(!is_allowed(Some("single"), &[], Some("official")));
     }
 }

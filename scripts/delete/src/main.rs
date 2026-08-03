@@ -43,7 +43,13 @@ struct Args {
 // ---------------------------------------------------------------------------
 
 async fn delete_from_s3(client: &S3Client, bucket: &str, key: &str) {
-    client.delete_object().bucket(bucket).key(key).send().await.ok();
+    client
+        .delete_object()
+        .bucket(bucket)
+        .key(key)
+        .send()
+        .await
+        .ok();
 }
 
 fn extract_s3_key(url: &str) -> Option<String> {
@@ -136,7 +142,12 @@ async fn build_plan(
                WHERE "localReleaseId" = ANY($1::text[]) AND "artistId" <> ALL($2::text[])"#,
         )
         .bind(&local_release_ids)
-        .bind(&target_ids.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>())
+        .bind(
+            &target_ids
+                .iter()
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>(),
+        )
         .fetch_all(pool)
         .await?;
         for (id,) in rows {
@@ -149,7 +160,12 @@ async fn build_plan(
                WHERE "releaseId" = ANY($1::text[]) AND "artistId" <> ALL($2::text[])"#,
         )
         .bind(&mb_release_ids)
-        .bind(&target_ids.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>())
+        .bind(
+            &target_ids
+                .iter()
+                .map(|(id, _)| id.clone())
+                .collect::<Vec<_>>(),
+        )
         .fetch_all(pool)
         .await?;
         for (id,) in rows {
@@ -332,6 +348,16 @@ async fn execute_plan(
     let mut tx = pool.begin().await?;
 
     let all_artist_ids: Vec<String> = plan.artist_actions.iter().map(|a| a.id.clone()).collect();
+    // An artist still credited on tracks OUTSIDE the deletion set survives as a credit-only artist
+    // (owns nothing here, but "appears on" someone else's release). Deleting the row would silently
+    // strip those credits from releases the user never asked to touch. Ownership is derived, so there
+    // is no flag to flip - simply not deleting the row is the whole change.
+    let delete_ids: Vec<String> = plan
+        .artist_actions
+        .iter()
+        .filter(|a| a.other_credits_count == 0)
+        .map(|a| a.id.clone())
+        .collect();
     let local_release_ids: Vec<String> = plan.local_releases.iter().map(|r| r.0.clone()).collect();
 
     // 1. _ArtistGenres (implicit junction, no cascade)
@@ -366,32 +392,33 @@ async fn execute_plan(
             .await?;
     }
 
-    // 5. Artists (cascades: remaining ArtistUrl, MusicBrainzReleaseArtist, TrackRelatedArtist credits
-    // on OTHER artists' tracks - those credits are lost, warned about in the plan display above)
-    if !all_artist_ids.is_empty() {
+    // 5. Artists with no surviving credits elsewhere. Those that DO keep credits are left in place and
+    // simply become credit-only rows (see delete_ids above).
+    if !delete_ids.is_empty() {
         sqlx::query(r#"DELETE FROM "Artist" WHERE id = ANY($1::text[])"#)
-            .bind(&all_artist_ids)
+            .bind(&delete_ids)
             .execute(&mut *tx)
             .await?;
     }
+    // Artists that survive lose their own catalogue metadata - they no longer own anything here.
+    let kept_ids: Vec<String> = all_artist_ids
+        .iter()
+        .filter(|id| !delete_ids.contains(id))
+        .cloned()
+        .collect();
+    if !kept_ids.is_empty() {
+        sqlx::query(
+            r#"UPDATE "Artist" SET image = NULL, "imageUrl" = NULL, "totalPlayCount" = 0,
+                 "totalTracks" = 0, "totalFileSize" = 0, "updatedAt" = NOW()
+               WHERE id = ANY($1::text[])"#,
+        )
+        .bind(&kept_ids)
+        .execute(&mut *tx)
+        .await?;
+    }
 
-    // 6. Sweep orphaned releases
-    sqlx::query(
-        r#"DELETE FROM "LocalRelease" WHERE id NOT IN (
-            SELECT DISTINCT "localReleaseId" FROM "LocalReleaseArtist"
-        )"#,
-    )
-    .execute(&mut *tx)
-    .await?;
-
-    // 7. Sweep orphaned MB releases
-    sqlx::query(
-        r#"DELETE FROM "MusicBrainzRelease" WHERE id NOT IN (
-            SELECT DISTINCT "releaseId" FROM "MusicBrainzReleaseArtist"
-        )"#,
-    )
-    .execute(&mut *tx)
-    .await?;
+    // 6/7. Sweep the local and MB releases this delete just orphaned, scoped to the deletion set.
+    delete::sweep::sweep_orphaned_releases(&mut tx, &local_release_ids, &plan.mb_releases).await?;
 
     tx.commit().await?;
 
@@ -426,12 +453,18 @@ async fn main() {
     println!("{}", "DMP Delete".bright_cyan().bold());
     println!("{}", "==========".bright_black());
     if args.dry_run {
-        println!("Mode    : {}", "DRY RUN (no changes will be made)".yellow().bold());
+        println!(
+            "Mode    : {}",
+            "DRY RUN (no changes will be made)".yellow().bold()
+        );
     }
     if artist_names.len() == 1 {
         println!("Target  : {}", artist_names[0].bright_white());
     } else {
-        println!("Targets : {} artists", artist_names.len().to_string().bright_white());
+        println!(
+            "Targets : {} artists",
+            artist_names.len().to_string().bright_white()
+        );
         for name in &artist_names {
             println!("    {} {}", "•".bright_black(), name.bright_white());
         }
@@ -486,13 +519,12 @@ async fn main() {
     // Expand targets: include connected (linked) artists
     let mut connected_ids: Vec<(String, String)> = Vec::new();
     for (tid, _) in &target_ids {
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            r#"SELECT id, name FROM "Artist" WHERE "primaryArtistId" = $1"#,
-        )
-        .bind(tid)
-        .fetch_all(&pool)
-        .await
-        .expect("Failed to query connected artists");
+        let rows: Vec<(String, String)> =
+            sqlx::query_as(r#"SELECT id, name FROM "Artist" WHERE "primaryArtistId" = $1"#)
+                .bind(tid)
+                .fetch_all(&pool)
+                .await
+                .expect("Failed to query connected artists");
         for (id, name) in rows {
             connected_ids.push((id, name));
         }
@@ -518,24 +550,41 @@ async fn main() {
     println!("{}", "----".bright_black());
 
     if !plan.artist_actions.is_empty() {
-        println!("Artists to delete: {}", plan.artist_actions.len().to_string().bright_white());
+        println!(
+            "Artists to delete: {}",
+            plan.artist_actions.len().to_string().bright_white()
+        );
         for a in &plan.artist_actions {
             let tag = if a.is_cascaded { "cascaded" } else { "target" };
             let warning = if a.other_credits_count > 0 {
-                format!(" - WARNING: credited on {} track(s) by other artists, those credits will be lost", a.other_credits_count)
+                format!(
+                    " - KEPT as credit-only artist: still credited on {} track(s) by other artists",
+                    a.other_credits_count
+                )
             } else {
                 String::new()
             };
-            println!("    {} {}  {}",
+            println!(
+                "    {} {}  {}",
                 "•".bright_black(),
                 a.name.bright_white(),
-                format!("({}) {}{}", a.slug, tag, warning).bright_black());
+                format!("({}) {}{}", a.slug, tag, warning).bright_black()
+            );
         }
     }
 
-    println!("Local releases  : {}", plan.local_releases.len().to_string().bright_white());
-    println!("Local tracks    : {}", plan.track_count.to_string().bright_white());
-    println!("MB releases     : {}", plan.mb_releases.len().to_string().bright_white());
+    println!(
+        "Local releases  : {}",
+        plan.local_releases.len().to_string().bright_white()
+    );
+    println!(
+        "Local tracks    : {}",
+        plan.track_count.to_string().bright_white()
+    );
+    println!(
+        "MB releases     : {}",
+        plan.mb_releases.len().to_string().bright_white()
+    );
     println!();
 
     if plan.artist_actions.is_empty() {
@@ -573,13 +622,21 @@ async fn main() {
 
     // Execute
     let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
-    let s3_client = if use_s3 { create_s3_client(&config).await } else { None };
+    let s3_client = if use_s3 {
+        create_s3_client(&config).await
+    } else {
+        None
+    };
 
     println!("Deleting...");
     match execute_plan(&pool, &plan, &config, &s3_client).await {
         Ok((local, s3)) => {
-            println!("  {} {} local image(s), {} S3 object(s) removed",
-                "✓".green(), local, s3);
+            println!(
+                "  {} {} local image(s), {} S3 object(s) removed",
+                "✓".green(),
+                local,
+                s3
+            );
         }
         Err(e) => {
             error_log::log_error(&format!("Database error: {}", e));
@@ -593,10 +650,20 @@ async fn main() {
     release_lock(&pool).await;
 
     println!();
-    println!("{} {} artist(s) deleted.",
+    let kept = plan
+        .artist_actions
+        .iter()
+        .filter(|a| a.other_credits_count > 0)
+        .count();
+    println!(
+        "{} {} artist(s) deleted, {} kept as credit-only.",
         "✓".green().bold(),
-        plan.artist_actions.len());
-    println!("  {} local release(s), {} MB release(s) deleted.",
+        plan.artist_actions.len() - kept,
+        kept
+    );
+    println!(
+        "  {} local release(s), {} MB release(s) deleted.",
         plan.local_releases.len(),
-        plan.mb_releases.len());
+        plan.mb_releases.len()
+    );
 }

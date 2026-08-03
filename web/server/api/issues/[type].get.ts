@@ -3,7 +3,7 @@ import { parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
 import type { PaginatedResponse } from '~/types/api'
 
-const VALID_TYPES = ['corrupted', 'unsplit', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id'] as const
+const VALID_TYPES = ['corrupted', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id'] as const
 type IssueType = typeof VALID_TYPES[number]
 
 const VALID_STATUSES = ['DETECTED', 'PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'] as const
@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
 
   const [items, total] = await fetchType(type, skip, ps, sort as string, orderDir, q as string, status)
 
-  if (status === 'RESOLVED' && ['corrupted', 'unsplit', 'missing'].includes(type)) {
+  if (status === 'RESOLVED' && ['corrupted', 'missing'].includes(type)) {
     const issueIds = (items as any[]).map((i: any) => i.id)
     if (issueIds.length > 0) {
       const history = await prisma.fixHistory.findMany({
@@ -93,35 +93,6 @@ async function fetchType(
       const items = raw.map(item => ({
         ...item,
         artist: item.track?.localRelease?.artists?.[0]?.artist ?? null,
-      }))
-      return [items, total]
-    }
-
-    case 'unsplit': {
-      const where = q
-        ? { artist: { name: { contains: q, mode: 'insensitive' as const } }, status: status as any }
-        : { status: status as any }
-      const orderBy = sort === 'separator' ? { separator: order } : { createdAt: order }
-      const [raw, total] = await Promise.all([
-        prisma.issueUnsplitArtist.findMany({
-          where,
-          skip,
-          take,
-          orderBy,
-          include: {
-            artist: {
-              select: {
-                id: true, name: true, slug: true, totalTracks: true,
-                localReleases: { take: 1, select: { localRelease: { select: { tracks: { take: 1, select: { filePath: true } } } } } },
-              },
-            },
-          },
-        }),
-        prisma.issueUnsplitArtist.count({ where }),
-      ])
-      const items = raw.map(item => ({
-        ...item,
-        folderPath: item.artist?.localReleases?.[0]?.localRelease?.tracks?.[0]?.filePath ?? null,
       }))
       return [items, total]
     }

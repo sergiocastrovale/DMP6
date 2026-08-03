@@ -12,7 +12,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Parser)]
-#[command(name = "mosaic", about = "Generate album cover mosaic from release images")]
+#[command(
+    name = "mosaic",
+    about = "Generate album cover mosaic from release images"
+)]
 struct Args {
     #[arg(long, default_value = "web/public/img/releases")]
     image_dir: String,
@@ -123,7 +126,11 @@ fn main() {
             .filter(|p| p.exists())
             .collect();
 
-        if filtered.is_empty() { scan_dir() } else { filtered }
+        if filtered.is_empty() {
+            scan_dir()
+        } else {
+            filtered
+        }
     };
 
     if paths.is_empty() {
@@ -233,7 +240,11 @@ fn main() {
     }
 
     if args.mode == "gradient" {
-        tiles.sort_by(|a, b| a.warmth.partial_cmp(&b.warmth).unwrap_or(std::cmp::Ordering::Equal));
+        tiles.sort_by(|a, b| {
+            a.warmth
+                .partial_cmp(&b.warmth)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let positions = diagonal_positions(cols, rows);
 
         for (tile_idx, tile) in tiles.iter().enumerate() {
@@ -245,7 +256,11 @@ fn main() {
                 .copy_from(&tile.full.to_rgb8(), col * tile_size, row * tile_size)
                 .ok();
             preview_canvas
-                .copy_from(&tile.preview.to_rgb8(), col * preview_size, row * preview_size)
+                .copy_from(
+                    &tile.preview.to_rgb8(),
+                    col * preview_size,
+                    row * preview_size,
+                )
                 .ok();
         }
     } else {
@@ -257,13 +272,20 @@ fn main() {
                 .copy_from(&tile.full.to_rgb8(), col * tile_size, row * tile_size)
                 .ok();
             preview_canvas
-                .copy_from(&tile.preview.to_rgb8(), col * preview_size, row * preview_size)
+                .copy_from(
+                    &tile.preview.to_rgb8(),
+                    col * preview_size,
+                    row * preview_size,
+                )
                 .ok();
         }
     }
 
     fs::create_dir_all(&args.output_dir).unwrap_or_else(|e| {
-        eprintln!("Cannot create output directory '{}': {}", args.output_dir, e);
+        eprintln!(
+            "Cannot create output directory '{}': {}",
+            args.output_dir, e
+        );
         std::process::exit(1);
     });
 

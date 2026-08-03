@@ -7,12 +7,20 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "dissect", about = "Parse errors.log into a structured XLSX report")]
+#[command(
+    name = "dissect",
+    about = "Parse errors.log into a structured XLSX report"
+)]
 struct Args {
     #[arg(long, short, default_value = "errors.log", help = "Path to errors.log")]
     input: String,
 
-    #[arg(long, short, default_value = "reports/errors.xlsx", help = "Output XLSX path")]
+    #[arg(
+        long,
+        short,
+        default_value = "reports/errors.xlsx",
+        help = "Output XLSX path"
+    )]
     output: String,
 }
 
@@ -37,7 +45,9 @@ impl ErrorType {
     fn description(&self) -> &str {
         match self {
             ErrorType::NoArtistTag => "Files missing the artist metadata tag",
-            ErrorType::CannotReadTags => "Files whose tags could not be parsed (corrupted/unsupported encoding)",
+            ErrorType::CannotReadTags => {
+                "Files whose tags could not be parsed (corrupted/unsupported encoding)"
+            }
             ErrorType::DbError => "Database errors during indexing (e.g. value too long)",
             ErrorType::Other => "Unclassified warnings or errors",
         }
@@ -113,7 +123,10 @@ fn parse_line(line: &str, line_re: &Regex) -> Option<ParsedError> {
 
     if message.contains("/music/") {
         let path_start = message.find("/music/").unwrap();
-        let path_end = message[path_start..].find(": ").map(|p| path_start + p).unwrap_or(message.len());
+        let path_end = message[path_start..]
+            .find(": ")
+            .map(|p| path_start + p)
+            .unwrap_or(message.len());
         let file_path = &message[path_start..path_end];
         let (artist, folder) = extract_path_parts(file_path);
         let detail = if path_end < message.len() {
@@ -160,7 +173,9 @@ fn main() {
         }
     };
 
-    let line_re = Regex::new(r"^\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)\[(\w+)\] (WARN|ERROR): (.+)$").unwrap();
+    let line_re =
+        Regex::new(r"^\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)\[(\w+)\] (WARN|ERROR): (.+)$")
+            .unwrap();
 
     let mut groups: HashMap<GroupKey, u64> = HashMap::new();
     let mut db_errors: Vec<(String, String, String)> = Vec::new();
@@ -188,13 +203,20 @@ fn main() {
 
     let mut by_type: BTreeMap<ErrorType, Vec<(String, String, String, u64)>> = BTreeMap::new();
     for ((error_type, artist, path, detail), count) in &groups {
-        by_type
-            .entry(error_type.clone())
-            .or_default()
-            .push((artist.clone(), path.clone(), detail.clone(), *count));
+        by_type.entry(error_type.clone()).or_default().push((
+            artist.clone(),
+            path.clone(),
+            detail.clone(),
+            *count,
+        ));
     }
     for rows in by_type.values_mut() {
-        rows.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+        rows.sort_by(|a, b| {
+            a.0.to_lowercase()
+                .cmp(&b.0.to_lowercase())
+                .then(a.1.cmp(&b.1))
+                .then(a.2.cmp(&b.2))
+        });
     }
 
     println!("Parsed  : {} lines", total_lines);
@@ -244,9 +266,17 @@ fn main() {
     let legend = workbook.add_worksheet();
     legend.set_name("Legend").ok();
 
-    let legend_headers = ["Error Type", "Sheet Name", "Description", "Total Errors", "Total Folders"];
+    let legend_headers = [
+        "Error Type",
+        "Sheet Name",
+        "Description",
+        "Total Errors",
+        "Total Folders",
+    ];
     for (col, header) in legend_headers.iter().enumerate() {
-        legend.write_string_with_format(0, col as u16, *header, &header_fmt).ok();
+        legend
+            .write_string_with_format(0, col as u16, *header, &header_fmt)
+            .ok();
     }
     legend.set_column_width(0, 20).ok();
     legend.set_column_width(1, 20).ok();
@@ -257,19 +287,39 @@ fn main() {
     let mut legend_row = 1u32;
     for (error_type, rows) in &by_type {
         let total_errors: u64 = rows.iter().map(|(_, _, _, c)| c).sum();
-        legend.write_string_with_format(legend_row, 0, error_type.sheet_name(), &cell_fmt).ok();
-        legend.write_string_with_format(legend_row, 1, error_type.sheet_name(), &cell_fmt).ok();
-        legend.write_string_with_format(legend_row, 2, error_type.description(), &cell_fmt).ok();
-        legend.write_number_with_format(legend_row, 3, total_errors as f64, &num_fmt).ok();
-        legend.write_number_with_format(legend_row, 4, rows.len() as f64, &num_fmt).ok();
+        legend
+            .write_string_with_format(legend_row, 0, error_type.sheet_name(), &cell_fmt)
+            .ok();
+        legend
+            .write_string_with_format(legend_row, 1, error_type.sheet_name(), &cell_fmt)
+            .ok();
+        legend
+            .write_string_with_format(legend_row, 2, error_type.description(), &cell_fmt)
+            .ok();
+        legend
+            .write_number_with_format(legend_row, 3, total_errors as f64, &num_fmt)
+            .ok();
+        legend
+            .write_number_with_format(legend_row, 4, rows.len() as f64, &num_fmt)
+            .ok();
         legend_row += 1;
     }
     if !db_errors.is_empty() {
-        legend.write_string_with_format(legend_row, 0, ErrorType::DbError.sheet_name(), &cell_fmt).ok();
-        legend.write_string_with_format(legend_row, 1, ErrorType::DbError.sheet_name(), &cell_fmt).ok();
-        legend.write_string_with_format(legend_row, 2, ErrorType::DbError.description(), &cell_fmt).ok();
-        legend.write_number_with_format(legend_row, 3, db_errors.len() as f64, &num_fmt).ok();
-        legend.write_string_with_format(legend_row, 4, "-", &num_fmt).ok();
+        legend
+            .write_string_with_format(legend_row, 0, ErrorType::DbError.sheet_name(), &cell_fmt)
+            .ok();
+        legend
+            .write_string_with_format(legend_row, 1, ErrorType::DbError.sheet_name(), &cell_fmt)
+            .ok();
+        legend
+            .write_string_with_format(legend_row, 2, ErrorType::DbError.description(), &cell_fmt)
+            .ok();
+        legend
+            .write_number_with_format(legend_row, 3, db_errors.len() as f64, &num_fmt)
+            .ok();
+        legend
+            .write_string_with_format(legend_row, 4, "-", &num_fmt)
+            .ok();
     }
 
     for (error_type, rows) in &by_type {
@@ -284,7 +334,9 @@ fn main() {
         };
 
         for (col, header) in headers.iter().enumerate() {
-            sheet.write_string_with_format(0, col as u16, *header, &header_fmt).ok();
+            sheet
+                .write_string_with_format(0, col as u16, *header, &header_fmt)
+                .ok();
         }
         sheet.set_column_width(0, 30).ok();
         sheet.set_column_width(1, 60).ok();
@@ -295,15 +347,23 @@ fn main() {
 
         for (i, (artist, path, detail, count)) in rows.iter().enumerate() {
             let row = (i + 1) as u32;
-            sheet.write_string_with_format(row, 0, artist, &cell_fmt).ok();
+            sheet
+                .write_string_with_format(row, 0, artist, &cell_fmt)
+                .ok();
             sheet.write_string_with_format(row, 1, path, &cell_fmt).ok();
-            sheet.write_number_with_format(row, 2, *count as f64, &num_fmt).ok();
+            sheet
+                .write_number_with_format(row, 2, *count as f64, &num_fmt)
+                .ok();
             if has_detail {
-                sheet.write_string_with_format(row, 3, detail, &cell_fmt).ok();
+                sheet
+                    .write_string_with_format(row, 3, detail, &cell_fmt)
+                    .ok();
             }
         }
 
-        sheet.autofilter(0, 0, rows.len() as u32, headers.len() as u16 - 1).ok();
+        sheet
+            .autofilter(0, 0, rows.len() as u32, headers.len() as u16 - 1)
+            .ok();
     }
 
     if !db_errors.is_empty() {
@@ -312,7 +372,9 @@ fn main() {
 
         let headers = ["Timestamp", "Message", "Detail"];
         for (col, header) in headers.iter().enumerate() {
-            sheet.write_string_with_format(0, col as u16, *header, &header_fmt).ok();
+            sheet
+                .write_string_with_format(0, col as u16, *header, &header_fmt)
+                .ok();
         }
         sheet.set_column_width(0, 20).ok();
         sheet.set_column_width(1, 80).ok();
@@ -322,7 +384,9 @@ fn main() {
             let row = (i + 1) as u32;
             sheet.write_string_with_format(row, 0, ts, &cell_fmt).ok();
             sheet.write_string_with_format(row, 1, msg, &cell_fmt).ok();
-            sheet.write_string_with_format(row, 2, detail, &cell_fmt).ok();
+            sheet
+                .write_string_with_format(row, 2, detail, &cell_fmt)
+                .ok();
         }
 
         sheet.autofilter(0, 0, db_errors.len() as u32, 2).ok();
@@ -330,7 +394,11 @@ fn main() {
 
     match workbook.save(&args.output) {
         Ok(_) => {
-            println!("{} Saved to {}", "✓".green().bold(), args.output.bright_white());
+            println!(
+                "{} Saved to {}",
+                "✓".green().bold(),
+                args.output.bright_white()
+            );
         }
         Err(e) => {
             eprintln!("{} Failed to write XLSX: {}", "✗".red(), e);

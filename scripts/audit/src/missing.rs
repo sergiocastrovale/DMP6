@@ -9,29 +9,46 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         .execute(pool)
         .await?;
 
-    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>)> =
-        sqlx::query_as(
-            r#"SELECT id, title, artist, "albumArtist", album, year, "localReleaseId"
+    let rows: Vec<(
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<i32>,
+        Option<String>,
+    )> = sqlx::query_as(
+        r#"SELECT id, title, artist, "albumArtist", album, year, "localReleaseId"
                FROM "LocalReleaseTrack"
                WHERE (title IS NULL OR title = '')
                   OR (artist IS NULL OR artist = '')
                   OR ("albumArtist" IS NULL OR "albumArtist" = '')
                   OR (album IS NULL OR album = '')
                   OR year IS NULL"#,
-        )
-        .fetch_all(pool)
-        .await?;
+    )
+    .fetch_all(pool)
+    .await?;
 
     let mut inserted = 0usize;
     let now = chrono::Utc::now().naive_utc();
 
     for (track_id, title, artist, album_artist, album, year, release_id) in &rows {
         let mut missing_fields: Vec<&str> = Vec::new();
-        if title.as_deref().map_or(true, |s| s.is_empty()) { missing_fields.push("title"); }
-        if artist.as_deref().map_or(true, |s| s.is_empty()) { missing_fields.push("artist"); }
-        if album_artist.as_deref().map_or(true, |s| s.is_empty()) { missing_fields.push("albumArtist"); }
-        if album.as_deref().map_or(true, |s| s.is_empty()) { missing_fields.push("album"); }
-        if year.is_none() { missing_fields.push("year"); }
+        if title.as_deref().map_or(true, |s| s.is_empty()) {
+            missing_fields.push("title");
+        }
+        if artist.as_deref().map_or(true, |s| s.is_empty()) {
+            missing_fields.push("artist");
+        }
+        if album_artist.as_deref().map_or(true, |s| s.is_empty()) {
+            missing_fields.push("albumArtist");
+        }
+        if album.as_deref().map_or(true, |s| s.is_empty()) {
+            missing_fields.push("album");
+        }
+        if year.is_none() {
+            missing_fields.push("year");
+        }
 
         let already_tracked: bool = sqlx::query_scalar(
             r#"SELECT EXISTS(SELECT 1 FROM "IssueMissingMetadata"
@@ -44,7 +61,15 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
             continue;
         }
 
-        let proposed = build_proposed(pool, &missing_fields, artist, album_artist, year, release_id.as_deref()).await?;
+        let proposed = build_proposed(
+            pool,
+            &missing_fields,
+            artist,
+            album_artist,
+            year,
+            release_id.as_deref(),
+        )
+        .await?;
 
         let id = create_id();
         sqlx::query(
@@ -104,5 +129,9 @@ async fn build_proposed(
         }
     }
 
-    if props.is_empty() { Ok(None) } else { Ok(Some(Value::Object(props))) }
+    if props.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(Value::Object(props)))
+    }
 }

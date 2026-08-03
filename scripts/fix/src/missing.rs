@@ -1,11 +1,14 @@
-use std::collections::HashSet;
+use crate::{folder_from_path, tags};
 use colored::Colorize;
 use serde_json::json;
 use sqlx::types::chrono::Utc;
 use sqlx::PgPool;
-use crate::{folder_from_path, tags};
+use std::collections::HashSet;
 
-pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
+pub async fn fix(
+    pool: &PgPool,
+    music_dir: &str,
+) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
     let rows: Vec<(String, String, Option<serde_json::Value>)> = sqlx::query_as(
         r#"SELECT i.id, t."filePath", i."proposedValues"
            FROM "IssueMissingMetadata" i
@@ -28,7 +31,9 @@ pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize, HashSe
     let mut current_folder = String::new();
 
     for (issue_id, file_path, proposed_opt) in &rows {
-        let Some(proposed) = proposed_opt else { continue };
+        let Some(proposed) = proposed_opt else {
+            continue;
+        };
 
         let folder = file_path.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
         if folder != current_folder {
@@ -37,7 +42,10 @@ pub async fn fix(pool: &PgPool, music_dir: &str) -> Result<(usize, usize, HashSe
         }
 
         let abs_path = tags::resolve_path(music_dir, file_path);
-        let file_name = file_path.rsplit_once('/').map(|(_, f)| f).unwrap_or(file_path);
+        let file_name = file_path
+            .rsplit_once('/')
+            .map(|(_, f)| f)
+            .unwrap_or(file_path);
 
         let previous_state = tags::read_tags(&abs_path).unwrap_or_else(|_| json!({}));
 

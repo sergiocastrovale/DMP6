@@ -1,26 +1,28 @@
 mod corrupted;
-mod unsplit;
-mod orphans;
 mod duplicates;
-mod missing;
 mod enrichment;
+mod missing;
+mod orphans;
 mod release_pairs;
 
 use clap::Parser;
 use colored::Colorize;
-use common::{config::{apply_db_overrides, load_config}, db::create_pool};
+use common::{
+    config::{apply_db_overrides, load_config},
+    db::create_pool,
+};
 use serde_json::json;
 use sqlx::PgPool;
 
 #[derive(Parser, Debug)]
-#[command(name = "audit", about = "Detect metadata issues and persist them in the DB")]
+#[command(
+    name = "audit",
+    about = "Detect metadata issues and persist them in the DB"
+)]
 struct Args {
     /// Only run corrupted TPE2 detection
     #[arg(long)]
     corrupted: bool,
-    /// Only run unsplit compound artist detection
-    #[arg(long)]
-    unsplit: bool,
     /// Only run orphan artist detection
     #[arg(long)]
     orphans: bool,
@@ -43,17 +45,35 @@ struct Args {
 
 impl Args {
     fn run_all(&self) -> bool {
-        !self.corrupted && !self.unsplit && !self.orphans && !self.duplicates && !self.missing && !self.enrichment
-            && !self.duplicate_release && !self.mismatched_release_id
+        !self.corrupted
+            && !self.orphans
+            && !self.duplicates
+            && !self.missing
+            && !self.enrichment
+            && !self.duplicate_release
+            && !self.mismatched_release_id
     }
-    fn should_run_corrupted(&self) -> bool { self.run_all() || self.corrupted }
-    fn should_run_unsplit(&self) -> bool { self.run_all() || self.unsplit }
-    fn should_run_orphans(&self) -> bool { self.run_all() || self.orphans }
-    fn should_run_duplicates(&self) -> bool { self.run_all() || self.duplicates }
-    fn should_run_missing(&self) -> bool { self.run_all() || self.missing }
-    fn should_run_enrichment(&self) -> bool { self.run_all() || self.enrichment }
-    fn should_run_duplicate_release(&self) -> bool { self.run_all() || self.duplicate_release }
-    fn should_run_mismatched_release_id(&self) -> bool { self.run_all() || self.mismatched_release_id }
+    fn should_run_corrupted(&self) -> bool {
+        self.run_all() || self.corrupted
+    }
+    fn should_run_orphans(&self) -> bool {
+        self.run_all() || self.orphans
+    }
+    fn should_run_duplicates(&self) -> bool {
+        self.run_all() || self.duplicates
+    }
+    fn should_run_missing(&self) -> bool {
+        self.run_all() || self.missing
+    }
+    fn should_run_enrichment(&self) -> bool {
+        self.run_all() || self.enrichment
+    }
+    fn should_run_duplicate_release(&self) -> bool {
+        self.run_all() || self.duplicate_release
+    }
+    fn should_run_mismatched_release_id(&self) -> bool {
+        self.run_all() || self.mismatched_release_id
+    }
 }
 
 #[tokio::main]
@@ -72,64 +92,98 @@ async fn main() {
     if args.should_run_corrupted() {
         print!("{} ", "→ Detecting corrupted TPE2...".cyan());
         match corrupted::detect(&pool, &run_id).await {
-            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("corrupted".into(), json!(n)); }
-            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("corrupted".into(), json!(0)); }
-        }
-    }
-
-    if args.should_run_unsplit() {
-        print!("{} ", "→ Detecting unsplit artists...".cyan());
-        match unsplit::detect(&pool, &run_id).await {
-            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("unsplit".into(), json!(n)); }
-            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("unsplit".into(), json!(0)); }
+            Ok(n) => {
+                println!("{} found", n.to_string().yellow());
+                counts.insert("corrupted".into(), json!(n));
+            }
+            Err(e) => {
+                println!("{}: {}", "ERROR".red(), e);
+                counts.insert("corrupted".into(), json!(0));
+            }
         }
     }
 
     if args.should_run_orphans() {
         print!("{} ", "→ Detecting orphan artists...".cyan());
         match orphans::detect(&pool, &run_id).await {
-            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("orphans".into(), json!(n)); }
-            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("orphans".into(), json!(0)); }
+            Ok(n) => {
+                println!("{} found", n.to_string().yellow());
+                counts.insert("orphans".into(), json!(n));
+            }
+            Err(e) => {
+                println!("{}: {}", "ERROR".red(), e);
+                counts.insert("orphans".into(), json!(0));
+            }
         }
     }
 
     if args.should_run_duplicates() {
         print!("{} ", "→ Detecting duplicate artists...".cyan());
         match duplicates::detect(&pool, &run_id).await {
-            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("duplicates".into(), json!(n)); }
-            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("duplicates".into(), json!(0)); }
+            Ok(n) => {
+                println!("{} found", n.to_string().yellow());
+                counts.insert("duplicates".into(), json!(n));
+            }
+            Err(e) => {
+                println!("{}: {}", "ERROR".red(), e);
+                counts.insert("duplicates".into(), json!(0));
+            }
         }
     }
 
     if args.should_run_missing() {
         print!("{} ", "→ Detecting missing metadata...".cyan());
         match missing::detect(&pool, &run_id).await {
-            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("missing".into(), json!(n)); }
-            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("missing".into(), json!(0)); }
+            Ok(n) => {
+                println!("{} found", n.to_string().yellow());
+                counts.insert("missing".into(), json!(n));
+            }
+            Err(e) => {
+                println!("{}: {}", "ERROR".red(), e);
+                counts.insert("missing".into(), json!(0));
+            }
         }
     }
 
     if args.should_run_enrichment() {
         print!("{} ", "→ Detecting enrichment gaps...".cyan());
         match enrichment::detect(&pool, &run_id).await {
-            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("enrichment".into(), json!(n)); }
-            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("enrichment".into(), json!(0)); }
+            Ok(n) => {
+                println!("{} found", n.to_string().yellow());
+                counts.insert("enrichment".into(), json!(n));
+            }
+            Err(e) => {
+                println!("{}: {}", "ERROR".red(), e);
+                counts.insert("enrichment".into(), json!(0));
+            }
         }
     }
 
     if args.should_run_duplicate_release() {
         print!("{} ", "→ Detecting duplicate releases...".cyan());
         match release_pairs::detect_duplicate_release(&pool, &run_id).await {
-            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("duplicate-release".into(), json!(n)); }
-            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("duplicate-release".into(), json!(0)); }
+            Ok(n) => {
+                println!("{} found", n.to_string().yellow());
+                counts.insert("duplicate-release".into(), json!(n));
+            }
+            Err(e) => {
+                println!("{}: {}", "ERROR".red(), e);
+                counts.insert("duplicate-release".into(), json!(0));
+            }
         }
     }
 
     if args.should_run_mismatched_release_id() {
         print!("{} ", "→ Detecting mismatched release IDs...".cyan());
         match release_pairs::detect_mismatched_release_id(&pool, &run_id).await {
-            Ok(n) => { println!("{} found", n.to_string().yellow()); counts.insert("mismatched-release-id".into(), json!(n)); }
-            Err(e) => { println!("{}: {}", "ERROR".red(), e); counts.insert("mismatched-release-id".into(), json!(0)); }
+            Ok(n) => {
+                println!("{} found", n.to_string().yellow());
+                counts.insert("mismatched-release-id".into(), json!(n));
+            }
+            Err(e) => {
+                println!("{}: {}", "ERROR".red(), e);
+                counts.insert("mismatched-release-id".into(), json!(0));
+            }
         }
     }
 

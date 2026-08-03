@@ -7,7 +7,7 @@ const props = defineProps<{ count: number; type: IssueType; loading: boolean }>(
 const emit = defineEmits<{ fix: [] }>()
 const terminal = useTerminalStore()
 
-const FILE_WRITING_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing']
+const FILE_WRITING_TYPES: IssueType[] = ['corrupted', 'missing']
 
 const fixDescription = computed(() => {
   if (FILE_WRITING_TYPES.includes(props.type)) {

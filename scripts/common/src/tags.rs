@@ -62,10 +62,7 @@ pub fn write_mb_ids(
     for (key, desired) in pairs {
         if let Some(val) = desired {
             if force || tag.get_string(key.clone()).is_none() {
-                tag.insert(TagItem::new(
-                    key.clone(),
-                    ItemValue::Text(val.to_string()),
-                ));
+                tag.insert(TagItem::new(key.clone(), ItemValue::Text(val.to_string())));
                 needs_write = true;
             }
         }

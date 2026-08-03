@@ -27,7 +27,8 @@ Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
 ```
 
 - `LocalReleaseArtist` = main artists (albumArtist tag owners), many-to-many
-- `TrackRelatedArtist` = credited artists (artist tag extras not in albumArtist), many-to-many. A credit is only ever linked to an artist that already owns a release via `LocalReleaseArtist` — no Artist row is ever created for a name that appears solely as a credit. Rebuilt after every index run by `relink_track_credits` (`scripts/index/src/db.rs`) so credits resolve regardless of folder scan order.
+- `TrackRelatedArtist` = credited artists ("appears on"), many-to-many. Owning a release (`LocalReleaseArtist`) vs merely being credited is the discography/appears-on split; an artist may legitimately hold credits and own nothing. **Ownership is derived, never stored** — `EXISTS(LocalReleaseArtist)`, no flag column. Which parts of a compound tag own vs. get credited is decided by the join phrase (` with `/`feat.` ⇒ first owns, rest credited; ` & `/`,` ⇒ all co-own).
+- **Artist identity is resolved against MusicBrainz, not guessed from punctuation.** A separator never splits a name on its own — `common::mb::resolve` asks MB whether the whole string is an artist first (so "Nurse With Wound" survives), then validates candidate groupings. Tiers: embedded multi-value `Artists[]`/`MusicBrainzArtistId[]` pairs (free) → `MbArtistLookup` cache → whole-string MB search → memoized span search → unverified atom fallback. Transient MB failures defer rather than guess. Only MB-verified names become credit artists. See `docs/scripts/index.md`.
 - `Artist.country` = ISO 3166-1 alpha-2 code from MusicBrainz area (e.g. "US", "GB"), populated by sync
 - `Artist.primaryArtistId` = FK to canonical Artist when this artist shares an MB ID with another; connected artist hidden from browse, catalogue aggregated on primary's page
 - `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING_TRACKS | MISSING | UNKNOWN | UNMATCHED
@@ -118,6 +119,9 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./index --inspect             # Re-check existing files for metadata changes
 ./index --folders "Artist/Album"   # Re-index exact folder paths
 ./index --release "clxxx"     # Re-index single release by LocalRelease ID
+./index --resolve-artists     # Resolve artist tags against MusicBrainz only (no folder scan)
+./index --resolve-artists --dry-run  # Preview resolution decisions, write nothing
+./index --skip-resolve        # Skip the end-of-run artist resolution pass
 ./index --delete              # Delete local data for matched artists
 ./index --emit-artist-ids f   # Write processed artist IDs to file (used by refresh)
 ./sync --only "Name" --exact  # Sync exact artist
@@ -135,20 +139,18 @@ cd scripts && cargo build --release    # Must rebuild manually!
 # Audit & Fix
 ./audit                       # Detect metadata issues → write to DB (all types)
 ./audit --corrupted           # Only detect corrupted TPE2 tags
-./audit --unsplit             # Only detect unsplit compound artists
 ./audit --orphans             # Only detect orphan artists
 ./audit --duplicates          # Only detect duplicate artists
 ./audit --missing             # Only detect missing metadata fields
 ./audit --enrichment          # Only detect enrichment gaps (BPM, mood, AcousticID, etc.)
 ./fix --corrupted             # Apply PENDING corrupted TPE2 fixes (tag writes)
-./fix --unsplit               # Apply PENDING unsplit artist fixes
 ./fix --orphans               # Apply PENDING orphan artist fixes (delete from DB)
 ./fix --duplicates            # Apply PENDING duplicate artist fixes (merge B into A)
 ./fix --missing               # Apply PENDING missing metadata fixes (tag writes)
 ./fix --revert --corrupted    # Revert previously applied corrupted fixes
 
 # Destructive
-./delete "Artist Name"        # Delete artist + cascade (exact match, flip-or-delete logic)
+./delete "Artist Name"        # Delete artist + cascade (kept as credit-only if credited elsewhere)
 ./delete "A;B" --dry-run      # Preview multi-artist deletion
 ./nuke                        # Full DB reset + image deletion
 ./nuke --keep-artist-img      # Full reset but preserve artist images
@@ -170,7 +172,7 @@ When browsing reveals artists with bad names (track numbers, paths, garbage):
 
 1. **Detect**: `./audit` - writes issues to DB
 2. **Review**: `/issues` in the web UI - inspect and queue fixes
-3. **Fix**: `./fix --corrupted` / `./fix --unsplit` / `./fix --orphans` etc.
+3. **Fix**: `./fix --corrupted` / `./fix --orphans` etc.
 4. **Refresh**: `./refresh --only="..."` for file-writing fix types
 5. **Iterate**: Re-run audit until clean
 

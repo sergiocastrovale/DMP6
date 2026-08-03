@@ -13,7 +13,10 @@ use std::path::PathBuf;
 // ---------------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
-#[command(name = "playlists", about = "Generate genre-based and region-based playlists")]
+#[command(
+    name = "playlists",
+    about = "Generate genre-based and region-based playlists"
+)]
 struct Args {
     /// Dry run - show what would be created without writing to DB
     #[arg(long)]
@@ -81,10 +84,7 @@ struct AppConfig {
 }
 
 fn load_env() -> AppConfig {
-    let env_paths = [
-        PathBuf::from("web/.env"),
-        PathBuf::from("../../web/.env"),
-    ];
+    let env_paths = [PathBuf::from("web/.env"), PathBuf::from("../../web/.env")];
 
     let mut env_loaded = false;
     for p in &env_paths {
@@ -143,7 +143,10 @@ fn load_genre_config(custom_path: Option<&str>) -> GenreConfig {
 
     panic!(
         "genre-groups.json not found. Tried: {:?}",
-        config_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
+        config_paths
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -177,7 +180,10 @@ fn load_region_config() -> RegionConfig {
 
     panic!(
         "region-groups.json not found. Tried: {:?}",
-        config_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
+        config_paths
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -321,15 +327,20 @@ async fn fetch_tracks_for_artists(pool: &PgPool, artist_ids: &[String]) -> Vec<T
     .expect("Failed to fetch tracks");
 
     rows.into_iter()
-        .map(|(track_id, artist_id, local_release_id, _genre)| TrackCandidate {
-            track_id,
-            artist_id,
-            local_release_id,
-        })
+        .map(
+            |(track_id, artist_id, local_release_id, _genre)| TrackCandidate {
+                track_id,
+                artist_id,
+                local_release_id,
+            },
+        )
         .collect()
 }
 
-async fn fetch_tracks_for_countries(pool: &PgPool, country_codes: &[String]) -> Vec<TrackCandidate> {
+async fn fetch_tracks_for_countries(
+    pool: &PgPool,
+    country_codes: &[String],
+) -> Vec<TrackCandidate> {
     if country_codes.is_empty() {
         return vec![];
     }
@@ -366,12 +377,11 @@ async fn upsert_region_playlist(
 ) -> Result<(), sqlx::Error> {
     let playlist_slug = format!("region-{}", group.slug);
 
-    let existing: Option<(String,)> = sqlx::query_as(
-        r#"SELECT id FROM "Playlist" WHERE "regionGroup" = $1"#,
-    )
-    .bind(&group.slug)
-    .fetch_optional(pool)
-    .await?;
+    let existing: Option<(String,)> =
+        sqlx::query_as(r#"SELECT id FROM "Playlist" WHERE "regionGroup" = $1"#)
+            .bind(&group.slug)
+            .fetch_optional(pool)
+            .await?;
 
     let playlist_id = if let Some((id,)) = existing {
         sqlx::query(
@@ -451,12 +461,11 @@ async fn upsert_playlist(
     let playlist_slug = format!("genre-{}", group.slug);
 
     // Check if playlist exists
-    let existing: Option<(String,)> = sqlx::query_as(
-        r#"SELECT id FROM "Playlist" WHERE "genreGroup" = $1"#,
-    )
-    .bind(&group.slug)
-    .fetch_optional(pool)
-    .await?;
+    let existing: Option<(String,)> =
+        sqlx::query_as(r#"SELECT id FROM "Playlist" WHERE "genreGroup" = $1"#)
+            .bind(&group.slug)
+            .fetch_optional(pool)
+            .await?;
 
     let playlist_id = if let Some((id,)) = existing {
         // Update existing playlist
@@ -577,8 +586,11 @@ fn select_tracks(
     // Deduplicate by track_id, keeping highest score
     // (a track can appear multiple times via different artist roles)
     candidates.sort_by(|a, b| {
-        a.track_id.cmp(&b.track_id)
-            .then(b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal))
+        a.track_id.cmp(&b.track_id).then(
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal),
+        )
     });
     candidates.dedup_by(|a, b| a.track_id == b.track_id);
 
@@ -590,7 +602,11 @@ fn select_tracks(
     candidates.shuffle(&mut rand::thread_rng());
 
     // Sort by score descending to pick the best candidates
-    candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    candidates.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // Take top max_tracks respecting max_per_release
     let mut release_counts: HashMap<String, usize> = HashMap::new();
@@ -616,14 +632,9 @@ fn select_tracks(
     selected
 }
 
-fn select_region_tracks(
-    tracks: Vec<TrackCandidate>,
-    config: &RegionConfig,
-) -> Vec<String> {
-    let artist_scores: HashMap<String, f64> = tracks
-        .iter()
-        .map(|t| (t.artist_id.clone(), 1.0))
-        .collect();
+fn select_region_tracks(tracks: Vec<TrackCandidate>, config: &RegionConfig) -> Vec<String> {
+    let artist_scores: HashMap<String, f64> =
+        tracks.iter().map(|t| (t.artist_id.clone(), 1.0)).collect();
 
     let mut candidates: Vec<ScoredTrack> = tracks
         .into_iter()
@@ -635,8 +646,11 @@ fn select_region_tracks(
         .collect();
 
     candidates.sort_by(|a, b| {
-        a.track_id.cmp(&b.track_id)
-            .then(b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal))
+        a.track_id.cmp(&b.track_id).then(
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal),
+        )
     });
     candidates.dedup_by(|a, b| a.track_id == b.track_id);
 
@@ -667,10 +681,7 @@ fn select_region_tracks(
 // Report Mode
 // ---------------------------------------------------------------------------
 
-fn print_report(
-    genres: &[(String, String)],
-    groups: &[GenreGroup],
-) {
+fn print_report(genres: &[(String, String)], groups: &[GenreGroup]) {
     println!("{}", "Genre Assignment Report".bold());
     println!("{}", "=".repeat(70));
     println!();
@@ -758,7 +769,10 @@ async fn main() {
     println!("DMP Genre Playlists");
     println!("===================");
     if args.dry_run {
-        println!("Mode: {} (no changes will be made)", "DRY RUN".yellow().bold());
+        println!(
+            "Mode: {} (no changes will be made)",
+            "DRY RUN".yellow().bold()
+        );
     }
     if args.report {
         println!("Mode: {}", "REPORT".cyan().bold());
@@ -787,7 +801,11 @@ async fn main() {
 
     // Fetch all genres
     let all_genres = fetch_all_genres(&pool).await;
-    println!("  {} {} genres in database", "→".bright_black(), all_genres.len());
+    println!(
+        "  {} {} genres in database",
+        "→".bright_black(),
+        all_genres.len()
+    );
 
     // Filter groups if --group is specified
     let groups: Vec<&GenreGroup> = if let Some(ref group_slug) = args.group {
@@ -800,7 +818,10 @@ async fn main() {
             // Also check region groups
             let region_match = region_config.groups.iter().any(|g| g.slug == *group_slug);
             if !region_match {
-                let all_slugs: Vec<&str> = genre_config.groups.iter().map(|g| g.slug.as_str())
+                let all_slugs: Vec<&str> = genre_config
+                    .groups
+                    .iter()
+                    .map(|g| g.slug.as_str())
                     .chain(region_config.groups.iter().map(|g| g.slug.as_str()))
                     .collect();
                 common::error_log::log_error(&format!("No group found with slug '{}'", group_slug));
@@ -819,7 +840,11 @@ async fn main() {
     };
 
     let region_groups: Vec<&RegionGroup> = if let Some(ref group_slug) = args.group {
-        region_config.groups.iter().filter(|g| g.slug == *group_slug).collect()
+        region_config
+            .groups
+            .iter()
+            .filter(|g| g.slug == *group_slug)
+            .collect()
     } else {
         region_config.groups.iter().collect()
     };
@@ -827,10 +852,7 @@ async fn main() {
     // Report mode: just show assignments and exit
     if args.report {
         println!();
-        print_report(
-            &all_genres,
-            &genre_config.groups,
-        );
+        print_report(&all_genres, &genre_config.groups);
         return;
     }
 
@@ -1013,8 +1035,16 @@ async fn main() {
     println!();
     if args.dry_run {
         let total_groups = if args.no_genres { 0 } else { groups.len() }
-            + if args.no_regions { 0 } else { region_groups.len() };
-        println!("{} {} group(s) would be updated", "Dry run:".cyan().bold(), total_groups);
+            + if args.no_regions {
+                0
+            } else {
+                region_groups.len()
+            };
+        println!(
+            "{} {} group(s) would be updated",
+            "Dry run:".cyan().bold(),
+            total_groups
+        );
     } else {
         println!(
             "{} {} playlist(s) updated with {} total tracks",
@@ -1030,7 +1060,11 @@ mod tests {
     use super::*;
 
     fn config(max_tracks: usize, max_per_release: usize) -> GenreConfig {
-        GenreConfig { max_tracks, max_per_release, groups: vec![] }
+        GenreConfig {
+            max_tracks,
+            max_per_release,
+            groups: vec![],
+        }
     }
 
     // A big equal-score candidate pool (every artist scored identically) exceeding max_tracks -
@@ -1041,7 +1075,8 @@ mod tests {
     fn select_tracks_rotates_the_selected_subset_across_runs_on_equal_scores() {
         let n = 40;
         let max_tracks = 10;
-        let artist_scores: HashMap<String, f64> = (0..n).map(|i| (format!("artist-{i}"), 1.0)).collect();
+        let artist_scores: HashMap<String, f64> =
+            (0..n).map(|i| (format!("artist-{i}"), 1.0)).collect();
 
         let make_tracks = || -> Vec<TrackCandidate> {
             (0..n)
@@ -1055,23 +1090,31 @@ mod tests {
 
         let cfg = config(max_tracks, 1);
         let first: std::collections::HashSet<String> =
-            select_tracks(make_tracks(), &artist_scores, &cfg).into_iter().collect();
+            select_tracks(make_tracks(), &artist_scores, &cfg)
+                .into_iter()
+                .collect();
 
         let mut saw_a_different_subset = false;
         for _ in 0..30 {
             let selected: std::collections::HashSet<String> =
-                select_tracks(make_tracks(), &artist_scores, &cfg).into_iter().collect();
+                select_tracks(make_tracks(), &artist_scores, &cfg)
+                    .into_iter()
+                    .collect();
             if selected != first {
                 saw_a_different_subset = true;
                 break;
             }
         }
-        assert!(saw_a_different_subset, "same top-{max_tracks} subset picked every run on a tied score band");
+        assert!(
+            saw_a_different_subset,
+            "same top-{max_tracks} subset picked every run on a tied score band"
+        );
     }
 
     #[test]
     fn select_tracks_respects_max_tracks_and_max_per_release() {
-        let artist_scores: HashMap<String, f64> = (0..20).map(|i| (format!("artist-{i}"), 1.0)).collect();
+        let artist_scores: HashMap<String, f64> =
+            (0..20).map(|i| (format!("artist-{i}"), 1.0)).collect();
         let tracks: Vec<TrackCandidate> = (0..20)
             .map(|i| TrackCandidate {
                 track_id: format!("track-{i}"),

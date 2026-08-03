@@ -4,15 +4,17 @@ DMP treats **embedded audio tags as the source of truth** for artist/album/track
 filesystem paths or folder names (see `CLAUDE.md`'s Project Conventions). When a file has a valid
 `MUSICBRAINZ_ALBUMID`/`MUSICBRAINZ_TRACKID` tag, sync trusts it directly without re-verifying.
 
+Compound artist names are no longer split by guessing at punctuation — `./index` resolves them against
+MusicBrainz instead, so "Nurse With Wound" stays one artist while "Frank Sinatra with Count Basie"
+becomes an owner plus a credit. See `docs/scripts/index.md`'s Artist Resolution section.
+
 ## Detecting bad tags: `./audit`
 
-Six detector types, each writing typed rows to the DB (`IssueCorruptedTpe2`, `IssueUnsplitArtist`,
-`IssueOrphanArtist`, `IssueDuplicateArtist`, `IssueMissingMetadata`, `IssueEnrichmentGap`):
+Five detector types, each writing typed rows to the DB (`IssueCorruptedTpe2`, `IssueOrphanArtist`,
+`IssueDuplicateArtist`, `IssueMissingMetadata`, `IssueEnrichmentGap`):
 
 - **Corrupted TPE2** — `albumArtist` contains garbage (bare track numbers, bitrate suffixes, leaked
   file-path fragments) instead of a real artist name.
-- **Unsplit artists** — a compound tag (`"Artist A & Artist B"`, `"Artist A feat. Artist B"`) stored as
-  one artist instead of split into its members.
 - **Orphan artists** — artist rows with no remaining tracks/releases (stale after a delete/re-tag).
 - **Duplicate artists** — two artist rows that normalize to the same name (case/whitespace/`the`-prefix
   variants) and should be merged.
@@ -30,8 +32,8 @@ actually applied, with an undo path (`PENDING_REVERT → RESOLVED` reversed).
 
 ## Applying fixes: `./fix`
 
-Applies all PENDING rows of a given type — rewrites the actual audio file tag (corrupted/unsplit/
-missing) or does a DB-level merge (duplicates) / delete (orphans). File-writing fix types need a
+Applies all PENDING rows of a given type — rewrites the actual audio file tag (corrupted/missing) or
+does a DB-level merge (duplicates) / delete (orphans). File-writing fix types need a
 `./refresh --only="artist"` afterward to re-index the rewritten tags. Full detail:
 `docs/scripts/fix.md`.
 

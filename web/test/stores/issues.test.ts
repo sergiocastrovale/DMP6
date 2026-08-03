@@ -83,10 +83,10 @@ describe('useIssuesStore', () => {
   })
 
   it('undoHistoryItems returns the per-type queued counts', async () => {
-    fetchMock.mockResolvedValue({ queued: { corrupted: 1, unsplit: 0 } })
+    fetchMock.mockResolvedValue({ queued: { corrupted: 1, missing: 0 } })
     const store = useIssuesStore()
     const result = await store.undoHistoryItems(['h1', 'h2'])
-    expect(result).toEqual({ corrupted: 1, unsplit: 0 })
+    expect(result).toEqual({ corrupted: 1, missing: 0 })
   })
 
   it('a stale fetchType response for the same type never overwrites a fresher one (audit #77)', async () => {
@@ -111,9 +111,9 @@ describe('useIssuesStore', () => {
     const store = useIssuesStore()
     fetchMock.mockResolvedValueOnce(paginated([{ id: 'corrupted-item' }]))
     await store.fetchType('corrupted' as any)
-    fetchMock.mockResolvedValueOnce(paginated([{ id: 'unsplit-item' }]))
-    await store.fetchType('unsplit' as any)
+    fetchMock.mockResolvedValueOnce(paginated([{ id: 'orphans-item' }]))
+    await store.fetchType('orphans' as any)
     expect(store.items.corrupted).toEqual([{ id: 'corrupted-item' }])
-    expect(store.items.unsplit).toEqual([{ id: 'unsplit-item' }])
+    expect(store.items.orphans).toEqual([{ id: 'orphans-item' }])
   })
 })

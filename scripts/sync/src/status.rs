@@ -66,7 +66,8 @@ pub struct StatusCheck {
 }
 
 fn year_from_date(d: Option<&str>) -> Option<i32> {
-    d.and_then(|s| s.split('-').next()).and_then(|y| y.parse::<i32>().ok())
+    d.and_then(|s| s.split('-').next())
+        .and_then(|y| y.parse::<i32>().ok())
 }
 
 fn release_has_cd_format(release: &MbRelease) -> bool {
@@ -222,6 +223,10 @@ mod tests {
             title: Some(title.to_string()),
             artist: None,
             album_artist: None,
+            artists: Vec::new(),
+            mb_artist_ids: Vec::new(),
+            album_artists: Vec::new(),
+            mb_album_artist_ids: Vec::new(),
             album: None,
             year: None,
             genre: None,
@@ -245,7 +250,13 @@ mod tests {
     }
 
     fn mb_track(id: &str, title: &str) -> MbTrack {
-        MbTrack { id: id.to_string(), title: title.to_string(), position: None, length: None, disc_number: None }
+        MbTrack {
+            id: id.to_string(),
+            title: title.to_string(),
+            position: None,
+            length: None,
+            disc_number: None,
+        }
     }
 
     fn mb_release(id: &str, date: Option<&str>, format: Option<&str>) -> MbRelease {
@@ -257,7 +268,13 @@ mod tests {
             disambiguation: None,
             packaging: None,
             country: None,
-            media: format.map(|f| vec![MbMedia { position: Some(1), format: Some(f.to_string()), tracks: None }]),
+            media: format.map(|f| {
+                vec![MbMedia {
+                    position: Some(1),
+                    format: Some(f.to_string()),
+                    tracks: None,
+                }]
+            }),
         }
     }
 
@@ -266,7 +283,10 @@ mod tests {
         let locals = vec![track("Intro"), track("Outro")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
-        let releases = vec![(mb_release("r1", None, None), vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")])];
+        let releases = vec![(
+            mb_release("r1", None, None),
+            vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")],
+        )];
 
         let result = check_release_status(&local_refs, &ids, &releases, None);
 
@@ -281,8 +301,18 @@ mod tests {
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
         let releases = vec![
-            (mb_release("r-3tracks", None, None), vec![mb_track("t1", "One"), mb_track("t2", "Two"), mb_track("t3", "Three")]),
-            (mb_release("r-2tracks", None, None), vec![mb_track("t4", "Intro"), mb_track("t5", "Outro")]),
+            (
+                mb_release("r-3tracks", None, None),
+                vec![
+                    mb_track("t1", "One"),
+                    mb_track("t2", "Two"),
+                    mb_track("t3", "Three"),
+                ],
+            ),
+            (
+                mb_release("r-2tracks", None, None),
+                vec![mb_track("t4", "Intro"), mb_track("t5", "Outro")],
+            ),
         ];
 
         let result = check_release_status(&local_refs, &ids, &releases, None);
@@ -299,9 +329,18 @@ mod tests {
         let ids = track_ids(2);
         // All three have the same 2-track count. Local year is 2010.
         let releases = vec![
-            (mb_release("r-wrong-year-vinyl", Some("2005-01-01"), Some("Vinyl")), vec![mb_track("a1", "Intro"), mb_track("a2", "Outro")]),
-            (mb_release("r-right-year-vinyl", Some("2010-06-01"), Some("Vinyl")), vec![mb_track("b1", "Intro"), mb_track("b2", "Outro")]),
-            (mb_release("r-right-year-cd", Some("2010-03-01"), Some("CD")), vec![mb_track("c1", "Intro"), mb_track("c2", "Outro")]),
+            (
+                mb_release("r-wrong-year-vinyl", Some("2005-01-01"), Some("Vinyl")),
+                vec![mb_track("a1", "Intro"), mb_track("a2", "Outro")],
+            ),
+            (
+                mb_release("r-right-year-vinyl", Some("2010-06-01"), Some("Vinyl")),
+                vec![mb_track("b1", "Intro"), mb_track("b2", "Outro")],
+            ),
+            (
+                mb_release("r-right-year-cd", Some("2010-03-01"), Some("CD")),
+                vec![mb_track("c1", "Intro"), mb_track("c2", "Outro")],
+            ),
         ];
 
         let result = check_release_status(&local_refs, &ids, &releases, Some(2010));
@@ -316,7 +355,10 @@ mod tests {
         let locals = vec![track("Intro"), track("Outro"), track("Bonus Track")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(3);
-        let releases = vec![(mb_release("r1", None, None), vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")])];
+        let releases = vec![(
+            mb_release("r1", None, None),
+            vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")],
+        )];
 
         let result = check_release_status(&local_refs, &ids, &releases, None);
 
@@ -328,7 +370,10 @@ mod tests {
         let locals = vec![track("Intro")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(1);
-        let releases = vec![(mb_release("r1", None, None), vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")])];
+        let releases = vec![(
+            mb_release("r1", None, None),
+            vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")],
+        )];
 
         let result = check_release_status(&local_refs, &ids, &releases, None);
 
@@ -342,8 +387,23 @@ mod tests {
         let ids = track_ids(2);
         // Neither sibling has exactly 2 tracks — can't disambiguate which edition this is.
         let releases = vec![
-            (mb_release("r-3", None, None), vec![mb_track("a1", "One"), mb_track("a2", "Two"), mb_track("a3", "Three")]),
-            (mb_release("r-4", None, None), vec![mb_track("b1", "One"), mb_track("b2", "Two"), mb_track("b3", "Three"), mb_track("b4", "Four")]),
+            (
+                mb_release("r-3", None, None),
+                vec![
+                    mb_track("a1", "One"),
+                    mb_track("a2", "Two"),
+                    mb_track("a3", "Three"),
+                ],
+            ),
+            (
+                mb_release("r-4", None, None),
+                vec![
+                    mb_track("b1", "One"),
+                    mb_track("b2", "Two"),
+                    mb_track("b3", "Three"),
+                    mb_track("b4", "Four"),
+                ],
+            ),
         ];
 
         let result = check_release_status(&local_refs, &ids, &releases, None);

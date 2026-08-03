@@ -65,7 +65,6 @@ model Artist {
   monitored           Boolean                    @default(false)
   lastGapsCheckedAt   DateTime? // last catalogue-gap refresh (round-robin fairness at scale)
   trackRelatedArtists TrackRelatedArtist[]       @relation("ArtistRelatedTracks")
-  unsplitIssues       IssueUnsplitArtist[]       @relation("UnsplitArtistIssue")
   orphanIssues        IssueOrphanArtist[]        @relation("OrphanArtistIssue")
   duplicateAIssues    IssueDuplicateArtist[]     @relation("DuplicateArtistA")
   duplicateBIssues    IssueDuplicateArtist[]     @relation("DuplicateArtistB")
@@ -279,6 +278,13 @@ model LocalReleaseTrack {
   mbReleaseGroupId    String?
   mbReleaseId         String?
   mbAlbumArtistId     String?
+  // Multi-value tag frames, kept in file order. artists[i] pairs with mbArtistIds[i] when the lengths
+  // match - that pairing is an authoritative, pre-split artist list from Picard (see
+  // common::mb::resolve tier 0), so no separator guessing or MB lookup is needed for those tracks.
+  artists             String[]
+  mbArtistIds         String[]
+  albumArtists        String[]
+  mbAlbumArtistIds    String[]
   fileSize            BigInt?
   mtime               DateTime?
   contentHash         String?                  @db.VarChar(32)
@@ -545,6 +551,9 @@ model Statistics {
   id                            String    @id @default("main")
   artists                       Int       @default(0)
   mainArtists                   Int       @default(0)
+  /// Artists owning no release - they exist only as MB-verified track credits ("appears on").
+  /// Derived from LocalReleaseArtist at write time; there is deliberately no flag on Artist.
+  creditArtists                 Int       @default(0)
   playtime                      BigInt    @default(0)
   plays                         BigInt    @default(0)
   tracks                        Int       @default(0)
@@ -588,7 +597,6 @@ model AuditRun {
   counts                    Json?
   createdAt                 DateTime                   @default(now())
   corruptedIssues           IssueCorruptedTpe2[]
-  unsplitIssues             IssueUnsplitArtist[]
   orphanIssues              IssueOrphanArtist[]
   duplicateIssues           IssueDuplicateArtist[]
   missingIssues             IssueMissingMetadata[]
@@ -609,22 +617,6 @@ model IssueCorruptedTpe2 {
   updatedAt     DateTime          @updatedAt
   auditRun      AuditRun          @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
   track         LocalReleaseTrack @relation("CorruptedTrackIssue", fields: [trackId], references: [id], onDelete: Cascade)
-
-  @@index([status])
-  @@index([auditRunId])
-}
-
-model IssueUnsplitArtist {
-  id            String      @id @default(cuid())
-  auditRunId    String
-  status        IssueStatus @default(DETECTED)
-  artistId      String
-  separator     String
-  proposedParts String[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  auditRun      AuditRun    @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
-  artist        Artist      @relation("UnsplitArtistIssue", fields: [artistId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([auditRunId])

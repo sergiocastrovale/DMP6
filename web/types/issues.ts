@@ -1,8 +1,8 @@
 import type { ArtistRef } from './common'
 
 export type IssueStatus = 'DETECTED' | 'PENDING' | 'PENDING_REVERT' | 'RESOLVED' | 'FAILED'
-export type IssueType = 'corrupted' | 'unsplit' | 'orphans' | 'duplicates' | 'missing' | 'enrichment' | 'duplicate-release' | 'mismatched-release-id'
-export type HistoryIssueType = Extract<IssueType, 'corrupted' | 'unsplit' | 'missing'>
+export type IssueType = 'corrupted' | 'orphans' | 'duplicates' | 'missing' | 'enrichment' | 'duplicate-release' | 'mismatched-release-id'
+export type HistoryIssueType = Extract<IssueType, 'corrupted' | 'missing'>
 export type Confidence = 'high' | 'medium' | 'low'
 
 interface IssueRowBase {
@@ -33,12 +33,6 @@ export interface IssueCorruptedTPE2Row extends IssueRowBase {
     album: string | null
     localRelease: { artists: { artist: { name: string; slug: string } }[] } | null
   }
-}
-
-export interface IssueUnsplitArtistRow extends IssueRowBase {
-  separator: string
-  proposedParts: string[]
-  artist: ArtistRef & { totalTracks: number }
 }
 
 export interface IssueOrphanArtistRow extends IssueRowBase {

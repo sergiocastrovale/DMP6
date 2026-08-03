@@ -9,14 +9,12 @@ onMounted(() => {
 
 const historyTotal = computed(() =>
   (issuesStore.historyCounts.corrupted ?? 0) +
-  (issuesStore.historyCounts.unsplit ?? 0) +
   (issuesStore.historyCounts.missing ?? 0)
 )
 
 const breadcrumbRoot = { label: 'Issues', to: '/issues' }
 const breadcrumbLabels: Record<string, string> = {
   corrupted: 'Corrupted TPE2',
-  unsplit: 'Unsplit Artists',
   orphans: 'Orphans',
   duplicates: 'Duplicates',
   missing: 'Missing Metadata',
@@ -27,7 +25,6 @@ const breadcrumbLabels: Record<string, string> = {
 const tabs = computed(() => [
   { key: 'overview', label: 'Overview', href: '/issues' },
   { key: 'corrupted', label: 'Corrupted TPE2', href: '/issues/corrupted', count: issuesStore.summary?.counts.corrupted, countHighlight: true },
-  { key: 'unsplit', label: 'Unsplit Artists', href: '/issues/unsplit', count: issuesStore.summary?.counts.unsplit, countHighlight: true },
   { key: 'orphans', label: 'Orphans', href: '/issues/orphans', count: issuesStore.summary?.counts.orphans, countHighlight: true },
   { key: 'duplicates', label: 'Duplicates', href: '/issues/duplicates', count: issuesStore.summary?.counts.duplicates, countHighlight: true },
   { key: 'missing', label: 'Missing Metadata', href: '/issues/missing', count: issuesStore.summary?.counts.missing, countHighlight: true },

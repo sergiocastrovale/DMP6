@@ -13,7 +13,7 @@ const selectedResolved = ref<Set<string>>(new Set())
 const searchInput = ref('')
 const awaitingTerminal = ref(false)
 
-const REVERTABLE_TYPES: IssueType[] = ['corrupted', 'unsplit', 'missing']
+const REVERTABLE_TYPES: IssueType[] = ['corrupted', 'missing']
 
 const activeSubtab = ref<'detected' | 'fixed'>('detected')
 
@@ -82,13 +82,6 @@ const columns = computed<IssueColumn[]>(() => {
       { key: 'confidence', label: 'Confidence', sortable: true },
       { key: 'folder', label: 'Folder', sortable: false },
     ]
-    case 'unsplit': return [
-      { key: 'artist.name', label: 'Artist', sortable: false },
-      { key: 'artist.totalTracks', label: 'Tracks', sortable: false, width: 'w-16' },
-      { key: 'separator', label: 'Separator', sortable: true, width: 'w-20' },
-      { key: 'proposedParts', label: 'Proposed Split', sortable: false, editable: false },
-      { key: 'folder', label: 'Folder', sortable: false },
-    ]
     case 'orphans': return [
       { key: 'artist.name', label: 'Artist', sortable: false },
       { key: 'reason', label: 'Reason', sortable: true },
@@ -141,13 +134,6 @@ const resolvedColumns = computed<IssueColumn[]>(() => {
       { key: 'folder', label: 'Folder', sortable: false },
       { key: 'fixedAt', label: 'Fixed At', sortable: false, width: 'w-28' },
     ]
-    case 'unsplit': return [
-      { key: 'artist.name', label: 'Artist', sortable: false },
-      { key: 'previousValue', label: 'Original Name', sortable: false },
-      { key: 'appliedValue', label: 'Split To', sortable: false },
-      { key: 'folder', label: 'Folder', sortable: false },
-      { key: 'fixedAt', label: 'Fixed At', sortable: false, width: 'w-28' },
-    ]
     case 'missing': return [
       { key: 'track.title', label: 'Title', sortable: false },
       { key: 'previousValue', label: 'Previous', sortable: false },
@@ -161,7 +147,6 @@ const resolvedColumns = computed<IssueColumn[]>(() => {
 
 const typeLabels: Record<IssueType, string> = {
   corrupted: 'Corrupted TPE2',
-  unsplit: 'Unsplit Artists',
   orphans: 'Orphan Artists',
   duplicates: 'Duplicate Artists',
   missing: 'Missing Metadata',
@@ -174,10 +159,6 @@ const typeDescriptions: Record<IssueType, { detection: string; fix: string }> = 
   corrupted: {
     detection: 'Tracks where the album artist tag (TPE2) contains numeric garbage, bitrate markers, or file path fragments instead of an actual artist name.',
     fix: 'Rewrites the TPE2 tag in the original audio file with the proposed value, then requires a re-index to update the database.',
-  },
-  unsplit: {
-    detection: 'Artists whose names contain separators like "&", "feat.", "vs." - indicating multiple artists stored as a single compound name.',
-    fix: 'Sets the album artist tag to the primary (first) artist and keeps the full compound name in the artist tag. After re-index, the system creates separate artist entries linked to shared releases. Example: "Daft Punk & Pharrell Williams" → albumArtist="Daft Punk", artist="Daft Punk & Pharrell Williams".',
   },
   orphans: {
     detection: 'Artists with no linked releases or tracks - either phantom entries with corrupted names (numeric/bitrate garbage) or fully disconnected records.',

@@ -15,11 +15,9 @@ pub async fn nuke_mb_data(
     s3_client: &Option<S3Client>,
     config: &Config,
 ) -> Result<u64, sqlx::Error> {
-    let artists: Vec<(String, String)> = sqlx::query_as(
-        r#"SELECT id, name FROM "Artist""#,
-    )
-    .fetch_all(pool)
-    .await?;
+    let artists: Vec<(String, String)> = sqlx::query_as(r#"SELECT id, name FROM "Artist""#)
+        .fetch_all(pool)
+        .await?;
 
     let mut deleted = 0u64;
 
@@ -72,12 +70,10 @@ pub async fn nuke_mb_data(
         }
 
         // Delete MB release artist links for this artist
-        sqlx::query(
-            r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "artistId" = $1"#,
-        )
-        .bind(&id)
-        .execute(pool)
-        .await?;
+        sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "artistId" = $1"#)
+            .bind(&id)
+            .execute(pool)
+            .await?;
 
         // Delete MB releases that now have no artist links
         sqlx::query(

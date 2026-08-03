@@ -33,7 +33,8 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let mut inserted = 0usize;
 
     for (track_id, current_value, release_id, year) in &rows {
-        let (proposed_value, confidence) = find_proposed(pool, track_id, release_id.as_deref(), *year).await?;
+        let (proposed_value, confidence) =
+            find_proposed(pool, track_id, release_id.as_deref(), *year).await?;
 
         if proposed_value.is_empty() || proposed_value == *current_value {
             continue;
@@ -107,12 +108,11 @@ async fn find_proposed(
             return Ok((val, confidence.to_string()));
         }
 
-        let row: Option<(Option<String>,)> = sqlx::query_as(
-            r#"SELECT artist FROM "LocalReleaseTrack" WHERE id = $1"#,
-        )
-        .bind(track_id)
-        .fetch_optional(pool)
-        .await?;
+        let row: Option<(Option<String>,)> =
+            sqlx::query_as(r#"SELECT artist FROM "LocalReleaseTrack" WHERE id = $1"#)
+                .bind(track_id)
+                .fetch_optional(pool)
+                .await?;
 
         if let Some((Some(artist),)) = row {
             if !artist.is_empty() && !DIGIT_RE.is_match(&artist) {

@@ -11,7 +11,6 @@ export default defineEventHandler(async (event) => {
       prisma.favoriteRelease.count().then((r) => prisma.favoriteTrack.count().then((t) => r + t)),
       Promise.all([
         prisma.issueCorruptedTpe2.count({ where: { status: 'PENDING' } }),
-        prisma.issueUnsplitArtist.count({ where: { status: 'PENDING' } }),
         prisma.issueOrphanArtist.count({ where: { status: 'PENDING' } }),
         prisma.issueDuplicateArtist.count({ where: { status: 'PENDING' } }),
         prisma.issueMissingMetadata.count({ where: { status: 'PENDING' } }),

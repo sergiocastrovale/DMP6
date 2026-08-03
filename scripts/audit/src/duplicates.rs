@@ -1,6 +1,6 @@
-use std::collections::HashSet;
 use cuid2::create_id;
 use sqlx::PgPool;
+use std::collections::HashSet;
 
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
@@ -9,9 +9,8 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         .execute(pool)
         .await?;
 
-    let rows: Vec<(String, String, Option<String>, Option<String>, i64, i64)> =
-        sqlx::query_as(
-            r#"SELECT a1.id, a2.id,
+    let rows: Vec<(String, String, Option<String>, Option<String>, i64, i64)> = sqlx::query_as(
+        r#"SELECT a1.id, a2.id,
                       a1."musicbrainzId", a2."musicbrainzId",
                       (SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = a1.id),
                       (SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = a2.id)
@@ -20,9 +19,9 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
                WHERE LOWER(REGEXP_REPLACE(a1.name, '[^[:alnum:]]', '', 'g')) =
                      LOWER(REGEXP_REPLACE(a2.name, '[^[:alnum:]]', '', 'g'))
                  AND REGEXP_REPLACE(a1.name, '[^[:alnum:]]', '', 'g') <> ''"#,
-        )
-        .fetch_all(pool)
-        .await?;
+    )
+    .fetch_all(pool)
+    .await?;
 
     let mut inserted = 0usize;
     let now = chrono::Utc::now().naive_utc();
@@ -33,18 +32,32 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         )
         .fetch_all(pool)
         .await?;
-        rows.into_iter().map(|(child, parent)| {
-            if child < parent { (child, parent) } else { (parent, child) }
-        }).collect()
+        rows.into_iter()
+            .map(|(child, parent)| {
+                if child < parent {
+                    (child, parent)
+                } else {
+                    (parent, child)
+                }
+            })
+            .collect()
     };
 
     for (id1, id2, mb1, mb2, tracks1, tracks2) in &rows {
         if let (Some(m1), Some(m2)) = (mb1, mb2) {
-            if m1 != m2 { continue; }
+            if m1 != m2 {
+                continue;
+            }
         }
 
-        let pair_key = if id1 < id2 { (id1.clone(), id2.clone()) } else { (id2.clone(), id1.clone()) };
-        if linked_pairs.contains(&pair_key) { continue; }
+        let pair_key = if id1 < id2 {
+            (id1.clone(), id2.clone())
+        } else {
+            (id2.clone(), id1.clone())
+        };
+        if linked_pairs.contains(&pair_key) {
+            continue;
+        }
 
         let (artist_a, artist_b) = if tracks1 >= tracks2 {
             (id1.as_str(), id2.as_str())

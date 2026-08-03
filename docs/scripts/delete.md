@@ -39,6 +39,12 @@ Within a single **transaction** (7 steps, plus a non-critical cleanup step after
 
 Also: release + artist images (local + S3), statistics refresh.
 
+**Steps 6/7 are scoped to the deletion set** (`delete::sweep::sweep_orphaned_releases`). The local sweep was
+previously unscoped - it deleted *every* ownerless `LocalRelease` in the library, so deleting one artist could
+garbage-collect unrelated releases that merely happened to be between owners. That is a real state during an
+index run, where releases are legitimately ownerless between the folder scan and the artist-resolution pass.
+Guarded by `scripts/delete/tests/delete_plan.rs`.
+
 ## After Deleting
 
 ```bash

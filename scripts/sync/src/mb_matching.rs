@@ -42,49 +42,9 @@ pub fn is_special_mb_artist(id: &str, name: &str) -> bool {
 // Name normalisation + similarity
 // ---------------------------------------------------------------------------
 
-pub fn normalize_name(name: &str) -> String {
-    let lower = name.to_lowercase();
-    let stripped = lower.strip_prefix("the ").unwrap_or(&lower);
-    stripped
-        .chars()
-        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-pub fn names_are_similar(a: &str, b: &str) -> bool {
-    let na = normalize_name(a);
-    let nb = normalize_name(b);
-    if na == nb {
-        return true;
-    }
-
-    let noise: HashSet<&str> = [
-        "the", "and", "&", "a", "an",
-        "of", "in", "on", "at", "to", "for", "with", "by", "from", "or",
-        "is", "et", "und", "e", "y", "i",
-    ].iter().copied().collect();
-
-    let words_a: HashSet<&str> = na
-        .split_whitespace()
-        .filter(|w| !noise.contains(*w))
-        .collect();
-    let words_b: HashSet<&str> = nb
-        .split_whitespace()
-        .filter(|w| !noise.contains(*w))
-        .collect();
-
-    if words_a.is_empty() || words_b.is_empty() {
-        return false;
-    }
-
-    let intersection = words_a.intersection(&words_b).count();
-    let union = words_a.union(&words_b).count();
-    intersection as f64 / union as f64 >= 0.5
-}
-
+// Single definition lives in `common::mb::names` - shared with the index resolver so the two binaries
+// can never drift on what "the same artist" means. Re-exported here for sync's existing call sites.
+pub use common::mb::names::{names_are_similar, normalize_name};
 
 // ---------------------------------------------------------------------------
 // 6-step artist matching
@@ -309,8 +269,7 @@ async fn try_release_group_credits(
 
     // Find the credit that matches our artist name
     if let Some(matched) = real_credits.iter().find(|c| {
-        names_are_similar(artist_name, &c.name)
-            || c.name.eq_ignore_ascii_case(artist_name)
+        names_are_similar(artist_name, &c.name) || c.name.eq_ignore_ascii_case(artist_name)
     }) {
         return Ok(Some(matched.clone()));
     }
@@ -331,4 +290,3 @@ async fn try_release_group_credits(
 
     Ok(None)
 }
-

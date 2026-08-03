@@ -3,7 +3,6 @@ import { requirePermission } from '~/server/utils/permissions'
 
 const REVERTABLE_MODELS = {
   corrupted: 'issueCorruptedTpe2',
-  unsplit: 'issueUnsplitArtist',
   missing: 'issueMissingMetadata',
 } as const
 
