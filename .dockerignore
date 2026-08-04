@@ -1,5 +1,6 @@
 .git/
 scripts/target/
+scripts/target-bookworm/
 web/node_modules/
 web/.output/
 web/.nuxt/
@@ -8,7 +9,9 @@ web/.env.*
 web/dump/
 web/public/img/
 venv/
-problems/
-reports/
+# Leading slash anchors these to the repo root. Without it, a future scripts/problems/ or
+# scripts/reports/ could match and silently vanish from the build context.
+/problems/
+/reports/
 *.log
 .DS_Store

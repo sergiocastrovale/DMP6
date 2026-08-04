@@ -158,6 +158,10 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./nuke --only "Name" --dry-run  # Preview what --only would delete
 
 # Other
+./problems                    # Scan every file for tag defects that break index/sync → problems.xlsx (READ-ONLY)
+./problems --only "Name"      # Scan one artist
+./problems --resume           # Continue an interrupted scan
+./problems --report-only      # Rebuild the xlsx from an existing spool
 ./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
 ./playlists                   # Generate/update genre playlists
 ./playlists --dry-run         # Preview without changes

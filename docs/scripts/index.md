@@ -165,6 +165,13 @@ Worked examples of the two safety levels:
 | `Kool & The Gang` | yes (`" & "`) | embedded single pair, MB hit, **and** the backstop |
 | `Tom Petty and the Heartbreakers` | yes (`" and "`) | embedded single pair, MB hit, **and** the backstop |
 
+### Finding the bad tags at source
+
+Everything above is the pipeline *surviving* bad tags. To find and fix them at source instead, run
+`./problems` - a read-only scan of every file in the library that reports each tag condition known to
+break or degrade this pipeline, with the consequence spelled out per file. See
+`docs/scripts/problems.md`.
+
 ### Candidate separators
 
 `,` `;` `/` `\` `|` ` & ` ` and ` ` vs ` ` x ` `feat.` `ft.` `featuring` ` with `. These only *propose*

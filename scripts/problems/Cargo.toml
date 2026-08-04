@@ -1,0 +1,25 @@
+[package]
+name = "problems"
+version = "1.0.0"
+edition = "2021"
+
+[[bin]]
+name = "problems"
+path = "src/main.rs"
+
+# Deliberately does NOT depend on `common`. That crate pulls in sqlx + tokio + aws-sdk-s3 + reqwest
+# + image, and `common::config::load_config` hard-expects DATABASE_URL - a read-only filesystem
+# scanner has no business requiring a database to start. The small pieces of `common` this tool
+# needs to mirror real pipeline behaviour are copied into src/checks/ with provenance comments.
+[dependencies]
+clap = { workspace = true }
+lofty = { workspace = true }
+rayon = { workspace = true }
+rust_xlsxwriter = { workspace = true }
+chrono = { workspace = true }
+colored = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+num_cpus = { workspace = true }
+# Not a workspace dependency (same as the analysis crate, which also declares it locally).
+walkdir = "2.5"

@@ -11,6 +11,7 @@ members = [
     "delete",
     "mosaic",
     "dissect",
+    "problems",
 ]
 resolver = "2"
 
@@ -51,7 +52,9 @@ num_cpus = "1.16"
 rand = "0.8"
 html-escape = "0.2"
 unicode-normalization = "0.1"
-rust_xlsxwriter = "0.80"
+# constant_memory streams rows to a tempfile instead of holding the sheet in RAM - `problems` can
+# emit millions of rows inside a 2 GB container.
+rust_xlsxwriter = { version = "0.80", features = ["constant_memory"] }
 
 [profile.release]
 opt-level = 3
@@ -59,3 +62,18 @@ lto = "fat"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# `problems` scans the whole library in one multi-hour pass. A lofty panic on a single corrupt file
+# must cost one row in the report, not the entire run - which needs catch_unwind, which needs
+# unwinding. Every other binary keeps panic = "abort" from [profile.release].
+#
+#   cargo build --profile scan -p problems   ->   target/scan/problems
+#
+# This cannot be a [profile.release.package.problems] override: that table deliberately excludes
+# `panic`, because the panic strategy has to be uniform across a linked binary.
+[profile.scan]
+inherits = "release"
+panic = "unwind"
+# Fat LTO with one codegen unit costs minutes of link time and buys nothing on an I/O-bound scanner.
+lto = "thin"
+codegen-units = 16
