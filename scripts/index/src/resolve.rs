@@ -318,6 +318,7 @@ pub async fn resolve_and_apply(
     resolver: &mut ArtistResolver<'_>,
     scoped_release_ids: Option<&[String]>,
     report: &mut Vec<Decision>,
+    progress: Option<(&common::progress::Reporter, usize)>,
 ) -> Result<(), sqlx::Error> {
     type Row = (
         String,
@@ -417,6 +418,14 @@ pub async fn resolve_and_apply(
                         resolved_names.insert(aa.clone(), parts);
                     }
                     None => {
+                        if let Some((reporter, total)) = progress {
+                            reporter.transient(&format!(
+                                "[{}/{}] {}",
+                                resolved_names.len() + 1,
+                                total,
+                                aa
+                            ));
+                        }
                         let (res, src) = resolver.resolve(aa).await;
                         match res {
                             Resolution::Resolved(mut parts) => {
@@ -487,6 +496,14 @@ pub async fn resolve_and_apply(
                     continue;
                 };
                 if !resolved_names.contains_key(tag) {
+                    if let Some((reporter, total)) = progress {
+                        reporter.transient(&format!(
+                            "[{}/{}] {}",
+                            resolved_names.len() + 1,
+                            total,
+                            tag
+                        ));
+                    }
                     let (res, src) = resolver.resolve(tag).await;
                     match res {
                         Resolution::Resolved(parts) => {
@@ -629,6 +646,10 @@ pub async fn resolve_and_apply(
         crate::db::batch_ensure_track_related_artists(pool, &to_add)
             .await
             .ok();
+    }
+
+    if let Some((reporter, _)) = progress {
+        reporter.clear_transient();
     }
 
     Ok(())

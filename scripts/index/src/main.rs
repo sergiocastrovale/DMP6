@@ -161,7 +161,16 @@ async fn run_artist_resolution(
     ));
 
     let mut report: Vec<index::resolve::Decision> = Vec::new();
-    if let Err(e) = resolve_and_apply(pool, &mut resolver, scoped_release_ids, &mut report).await {
+    let result = resolve_and_apply(
+        pool,
+        &mut resolver,
+        scoped_release_ids,
+        &mut report,
+        Some((reporter, names.len())),
+    )
+    .await;
+    reporter.clear_transient();
+    if let Err(e) = result {
         reporter.err(&format!("Artist resolution failed: {}", e));
         return;
     }

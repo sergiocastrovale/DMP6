@@ -116,6 +116,7 @@ async fn embedded_pairing_resolves_owner_and_credit_without_network() {
         &mut resolver,
         Some(&[release_id.clone()]),
         &mut report,
+        None,
     )
     .await
     .expect("resolution failed");
@@ -227,6 +228,7 @@ async fn dry_run_writes_no_library_data() {
         &mut resolver,
         Some(&[release_id.clone()]),
         &mut report,
+        None,
     )
     .await
     .expect("dry run failed");

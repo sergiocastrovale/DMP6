@@ -133,7 +133,7 @@ impl Ctx {
         let mut resolver = ArtistResolver::new(&self.pool, false);
         resolver.offline = true;
         let mut report: Vec<Decision> = Vec::new();
-        resolve_and_apply(&self.pool, &mut resolver, Some(release_ids), &mut report)
+        resolve_and_apply(&self.pool, &mut resolver, Some(release_ids), &mut report, None)
             .await
             .expect("resolution failed");
     }
