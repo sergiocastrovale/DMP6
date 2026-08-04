@@ -145,6 +145,10 @@ const SEPARATOR_PATTERNS: &[(&str, JoinKind)] = &[
     (" vs ", JoinKind::CoBilling),
     (" and ", JoinKind::CoBilling),
     (" & ", JoinKind::CoBilling),
+    // Streetwear/collab-style billing: "Artist x Artist". Same risk profile as every other word-based
+    // separator here (a real name could contain " x " as ordinary text) - the whole-string MB check
+    // still runs first, so this only ever fires when that lookup has already failed.
+    (" x ", JoinKind::CoBilling),
     ("; ", JoinKind::CoBilling),
     (", ", JoinKind::CoBilling),
     (" / ", JoinKind::CoBilling),
@@ -658,6 +662,13 @@ mod tests {
             known(&["Frank Sinatra", "Count Basie"]),
         );
         assert_eq!(names_of(&res), vec!["Frank Sinatra", "Count Basie"]);
+    }
+
+    #[test]
+    fn x_is_a_separator_now() {
+        // Streetwear/collab-style billing: "Artist x Artist". Previously unsplittable.
+        let (res, _) = resolve_with("Travis Scott x The Weeknd", known(&["Travis Scott", "The Weeknd"]));
+        assert_eq!(names_of(&res), vec!["Travis Scott", "The Weeknd"]);
     }
 
     #[test]

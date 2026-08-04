@@ -167,8 +167,8 @@ Worked examples of the two safety levels:
 
 ### Candidate separators
 
-`,` `;` `/` `\` `|` ` & ` ` and ` ` vs ` `feat.` `ft.` `featuring` ` with `. These only *propose* split
-points - MB decides. (`" and "` is new; previously `"Frank Sinatra and Count Basie"` had no split point at
+`,` `;` `/` `\` `|` ` & ` ` and ` ` vs ` ` x ` `feat.` `ft.` `featuring` ` with `. These only *propose*
+split points - MB decides. (`" and "` is new; previously `"Frank Sinatra and Count Basie"` had no split point at
 all and survived as a single junk artist.) A comma between digits ("10,000 Maniacs") is never a separator.
 
 ### Owner vs credit
