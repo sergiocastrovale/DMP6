@@ -5,7 +5,7 @@ mod nuke;
 use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
 use common::{
-    artists::{is_special_artist_name, split_artists},
+    artists::is_special_artist_name,
     checkpoint::{clear_index_checkpoint, load_index_checkpoint, save_index_checkpoint},
     config::{apply_db_overrides, load_config},
     db::{create_pool, ensure_artist_cached},
@@ -29,7 +29,7 @@ use std::{
     },
 };
 
-use common::mb::resolve::{resolve_offline, JoinKind, LookupResult};
+use common::mb::resolve::LookupResult;
 use images::{extract_cover_art, hash_image_file, upload_release_image_to_s3, use_folder_image};
 use index::db::*;
 use index::deletion::{
@@ -900,18 +900,20 @@ async fn main() {
                     let album_artist_tag = track.album_artist.as_deref().unwrap_or("");
                     let track_artist_tag = track.artist.as_deref().unwrap_or("");
 
-                    let main_album_artists = if !album_artist_tag.is_empty()
+                    // The tag that names this release's owner(s): albumArtist when present and not
+                    // a Various-Artists placeholder, otherwise the track's own artist tag - whole,
+                    // never naively split here. A track artist shaped like "Simon & Garfunkel" must
+                    // go through the same MB-verified resolver as albumArtist below, not the old
+                    // blind splitter, which would shred it into a fragment the same way the
+                    // pre-refactor albumArtist path once did.
+                    let owner_tag: Option<&str> = if !album_artist_tag.is_empty()
                         && !is_special_artist_name(album_artist_tag)
                     {
-                        vec![album_artist_tag.to_string()]
+                        Some(album_artist_tag)
+                    } else if !track_artist_tag.is_empty() {
+                        Some(track_artist_tag)
                     } else {
-                        Vec::new()
-                    };
-
-                    let (main_track_artists, _) = if !track_artist_tag.is_empty() {
-                        split_artists(track_artist_tag)
-                    } else {
-                        (Vec::new(), Vec::new())
+                        None
                     };
 
                     let album_name = track.album.as_deref().unwrap_or("Unknown Album");
@@ -984,46 +986,27 @@ async fn main() {
                         .or_insert_with(|| folder_path_str.clone());
 
                     // Album-artist → release links (main artists)
-                    if main_album_artists.is_empty() {
-                        let fallback = main_track_artists
-                            .first()
-                            .map(|s| s.as_str())
-                            .unwrap_or("Unknown Artist");
-                        if let Ok(aid) =
-                            ensure_artist_cached(&pool, fallback, &mut artist_cache).await
-                        {
-                            if !aid.is_empty() {
-                                pending_release_artist_links
-                                    .insert((release_id.clone(), aid.clone()));
-                                folder_artist_ids.insert(aid.clone());
+                    match owner_tag {
+                        None => {
+                            // No albumArtist and no track artist at all - nothing to resolve.
+                            if let Ok(aid) =
+                                ensure_artist_cached(&pool, "Unknown Artist", &mut artist_cache)
+                                    .await
+                            {
+                                if !aid.is_empty() {
+                                    pending_release_artist_links
+                                        .insert((release_id.clone(), aid.clone()));
+                                    folder_artist_ids.insert(aid.clone());
+                                }
                             }
                         }
-                    } else {
-                        for aa_name in &main_album_artists {
-                            // Resolve the album artist offline: embedded MB-id pairs, the lookup cache and the
-                            // known-single backstop only. A confident answer means the right artists own the
-                            // release from the moment it is indexed, and no compound row is ever written.
-                            //
-                            // With a cold cache this deliberately returns None rather than guessing - splitting
-                            // offline with no evidence is exactly how real bands get shredded. The raw tag is
-                            // then used as a PROVISIONAL owner so the release is never ownerless (which would
-                            // break lastIndexedAt, totals, the folder image, and make it deletable), and the
-                            // post-loop resolution pass reconciles it away once MusicBrainz can be asked.
-                            let offline = resolve_offline(aa_name, |q| {
+                        Some(owner_tag) => {
+                            let owners = index::resolve::resolve_owner_offline(owner_tag, |q| {
                                 lookup_memo
                                     .get(q)
                                     .cloned()
                                     .unwrap_or(LookupResult::NeedsFetch)
                             });
-
-                            let owners: Vec<(String, Option<String>)> = match offline {
-                                Some(parts) => parts
-                                    .into_iter()
-                                    .filter(|p| p.role == JoinKind::CoBilling)
-                                    .map(|p| (p.name, p.mbid))
-                                    .collect(),
-                                None => vec![(aa_name.clone(), None)],
-                            };
 
                             for (owner_name, owner_mbid) in owners {
                                 let Ok(aa_id) =

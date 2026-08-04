@@ -248,6 +248,33 @@ pub fn embedded_pairing(
     )
 }
 
+/// Decide the folder loop's provisional owner(s) for a release, from a single "owner tag" -
+/// `albumArtist` when present, otherwise the track's own `artist` tag, whole and unsplit.
+///
+/// Used identically regardless of which tag it came from: resolve offline only (embedded pairs, the
+/// lookup cache, the `KNOWN_SINGLE_ARTISTS` backstop - never a network call, never the naive
+/// character splitter). A confident answer means the right artists own the release from the moment
+/// it is indexed. A cold cache deliberately returns the **whole raw tag** as one provisional owner
+/// rather than guessing a split - splitting with no evidence is exactly how real bands get
+/// shredded (`"Simon & Garfunkel"` -> a lone `"Simon"`) - and the post-loop resolve pass
+/// (`resolve_and_apply`) reconciles the provisional owner away once MusicBrainz can be asked.
+///
+/// A pure function (no I/O) so the offline-vs-provisional decision is unit-testable without a
+/// database; `main.rs`'s folder loop supplies the lookup closure and does the actual DB writes.
+pub fn resolve_owner_offline<F>(owner_tag: &str, lookup: F) -> Vec<(String, Option<String>)>
+where
+    F: FnMut(&str) -> LookupResult,
+{
+    match common::mb::resolve::resolve_offline(owner_tag, lookup) {
+        Some(parts) => parts
+            .into_iter()
+            .filter(|p| p.role == JoinKind::CoBilling)
+            .map(|p| (p.name, p.mbid))
+            .collect(),
+        None => vec![(owner_tag.to_string(), None)],
+    }
+}
+
 /// Slug -> artist id for every artist that can be the target of a credit. Connected (duplicate)
 /// artists are excluded so a credit always lands on the canonical primary, never the hidden twin.
 pub async fn artist_slug_map(pool: &PgPool) -> HashMap<String, String> {
@@ -688,4 +715,78 @@ pub async fn distinct_tag_values(
         .map(|(v,)| v)
         .filter(|v| seen.insert(v.clone()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_owner_offline;
+    use common::mb::resolve::LookupResult;
+
+    /// A lookup that never has an answer - the folder loop's actual condition on a cold cache.
+    fn cold(_: &str) -> LookupResult {
+        LookupResult::NeedsFetch
+    }
+
+    #[test]
+    fn a_backstopped_duo_stays_whole_even_on_a_cold_cache() {
+        // This is the exact regression the migration off `split_artists` fixes: the old code split
+        // the track-artist tag unconditionally and took the first fragment, so a folder with no
+        // albumArtist and track artist "Simon & Garfunkel" would have been owned by a lone "Simon".
+        let owners = resolve_owner_offline("Simon & Garfunkel", cold);
+        assert_eq!(
+            owners,
+            vec![("Simon & Garfunkel".to_string(), None)],
+            "a known duo must stay one owner, never a split fragment"
+        );
+    }
+
+    #[test]
+    fn an_unresolvable_cold_cache_tag_is_kept_whole_as_a_provisional_owner() {
+        // Not backstopped, not in cache, no network available offline: must NOT guess a split.
+        // The whole raw tag becomes the provisional owner, corrected later by resolve_and_apply
+        // once MusicBrainz can actually be asked - never a fragment of it.
+        let owners = resolve_owner_offline("Obscure Duo & Friends", cold);
+        assert_eq!(owners, vec![("Obscure Duo & Friends".to_string(), None)]);
+    }
+
+    #[test]
+    fn a_genuine_split_still_happens_when_the_cache_confirms_both_atoms() {
+        // Proves the migration didn't lose real splitting power - it only removed the *blind*
+        // splitting. A warm cache that actually confirms two distinct real artists still produces
+        // two owners.
+        let lookup = |name: &str| match name {
+            "Artist One & Artist Two" => LookupResult::NotFound,
+            "Artist One" => LookupResult::Found { mbid: Some("mbid-one".into()) },
+            "Artist Two" => LookupResult::Found { mbid: Some("mbid-two".into()) },
+            _ => LookupResult::NeedsFetch,
+        };
+        let mut owners = resolve_owner_offline("Artist One & Artist Two", lookup);
+        owners.sort();
+        assert_eq!(
+            owners,
+            vec![
+                ("Artist One".to_string(), Some("mbid-one".to_string())),
+                ("Artist Two".to_string(), Some("mbid-two".to_string())),
+            ]
+        );
+    }
+
+    #[test]
+    fn guest_joined_parts_are_excluded_only_the_owner_remains() {
+        // "A with B" means A owns the release, B is merely credited - resolve_owner_offline must
+        // only ever return owners, so a guest-joined name must not smuggle the guest in as a
+        // second owner.
+        let lookup = |name: &str| match name {
+            "Frank Sinatra with Count Basie" => LookupResult::NotFound,
+            "Frank Sinatra" => LookupResult::Found { mbid: Some("sinatra-id".into()) },
+            "Count Basie" => LookupResult::Found { mbid: Some("basie-id".into()) },
+            _ => LookupResult::NeedsFetch,
+        };
+        let owners = resolve_owner_offline("Frank Sinatra with Count Basie", lookup);
+        assert_eq!(
+            owners,
+            vec![("Frank Sinatra".to_string(), Some("sinatra-id".to_string()))],
+            "the guest must not appear in the owners list"
+        );
+    }
 }

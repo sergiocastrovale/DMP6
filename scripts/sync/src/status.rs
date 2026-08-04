@@ -18,6 +18,14 @@ pub fn normalize_title(title: &str) -> String {
         .join(" ")
 }
 
+/// Words that shouldn't count toward a title match - the same list `common::mb::names::names_are_similar`
+/// filters for the identical reason when comparing artist names. Without this, two different songs
+/// that happen to share "the"/"and"/"of" score higher than the words that actually distinguish them.
+const NOISE_WORDS: &[&str] = &[
+    "the", "and", "&", "a", "an", "of", "in", "on", "at", "to", "for", "with", "by", "from", "or",
+    "is", "et", "und", "e", "y", "i",
+];
+
 fn titles_match(a: &str, b: &str) -> bool {
     let na = normalize_title(a);
     let nb = normalize_title(b);
@@ -28,9 +36,13 @@ fn titles_match(a: &str, b: &str) -> bool {
     if na.contains(nb.as_str()) || nb.contains(na.as_str()) {
         return true;
     }
-    // Jaccard on word sets as fallback
-    let words_a: std::collections::HashSet<&str> = na.split_whitespace().collect();
-    let words_b: std::collections::HashSet<&str> = nb.split_whitespace().collect();
+    // Jaccard on word sets as fallback, noise words excluded so they can't inflate a match between
+    // two titles that don't actually share any meaningful word.
+    let noise: std::collections::HashSet<&str> = NOISE_WORDS.iter().copied().collect();
+    let words_a: std::collections::HashSet<&str> =
+        na.split_whitespace().filter(|w| !noise.contains(w)).collect();
+    let words_b: std::collections::HashSet<&str> =
+        nb.split_whitespace().filter(|w| !noise.contains(w)).collect();
     if words_a.is_empty() || words_b.is_empty() {
         return false;
     }
@@ -207,6 +219,52 @@ pub fn status_to_db_string(s: &ReleaseStatus) -> &'static str {
         ReleaseStatus::Incomplete => "INCOMPLETE",
         ReleaseStatus::ExtraTracks => "EXTRA_TRACKS",
         ReleaseStatus::MissingTracks => "MISSING_TRACKS",
+    }
+}
+
+#[cfg(test)]
+mod titles_match_tests {
+    use super::titles_match;
+
+    #[test]
+    fn exact_match_after_normalizing_case_and_whitespace() {
+        assert!(titles_match("Hello World", "hello   world"));
+    }
+
+    #[test]
+    fn containment_handles_remaster_and_live_suffixes() {
+        assert!(titles_match("Song Title", "Song Title (Live)"));
+        assert!(titles_match("Song Title - 2011 Remaster", "Song Title"));
+    }
+
+    #[test]
+    fn jaccard_fallback_still_matches_a_close_title_with_no_noise_words_involved() {
+        // Nine unique words, one differs at the end - (8 shared)/(10 union) = 0.8, right at the
+        // threshold. No noise words here, so this is unaffected by the fix: it isolates that the
+        // 0.8 threshold itself is untouched.
+        let a = "alpha bravo charlie delta echo foxtrot golf hotel apple";
+        let b = "alpha bravo charlie delta echo foxtrot golf hotel banana";
+        assert!(titles_match(a, b));
+    }
+
+    #[test]
+    fn jaccard_fallback_rejects_titles_with_little_real_overlap() {
+        assert!(!titles_match("Alpha Bravo Charlie", "Delta Echo Foxtrot"));
+    }
+
+    #[test]
+    fn noise_words_no_longer_inflate_a_mismatch_into_a_match() {
+        // Constructed to isolate the mechanism, not lifted from a real title pair: 8 of 9 words
+        // shared pre-filter, but 3 of those 8 ("the", "and", "of") are noise. Pre-fix this scored
+        // 8/10 = 0.8 and matched despite the only real content ("apple" vs "banana") differing
+        // completely - the same class of false positive `names_are_similar` already guards against
+        // for artist names. Post-fix, filtering those 3 words drops it to 5/7 ~= 0.71 - no match.
+        let a = "the alpha and bravo of charlie delta echo apple";
+        let b = "the alpha and bravo of charlie delta echo banana";
+        assert!(
+            !titles_match(a, b),
+            "noise words inflated an otherwise-different pair into a false match"
+        );
     }
 }
 
