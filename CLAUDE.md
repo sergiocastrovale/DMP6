@@ -164,6 +164,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./problems --audit --report-only      # Rebuild the xlsx from an existing spool (also picks up any --fix:* since the last report)
 ./problems --fix:years                # MB-verified fix for YEAR_ZERO/YEAR_NON_NUMERIC (no match ⇒ null, never a guess); marks fixed rows green + updates Summary counts
 ./problems --fix:years --dry-run      # Preview proposed matches/years, write nothing
+./problems --fix:artist-missing               # Fill ARTIST_MISSING from albumArtist / folder majority (no MB - nothing to search by)
+./problems --fix:artist-missing --dry-run     # Preview, write nothing
 ./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
 ./playlists                   # Generate/update genre playlists
 ./playlists --dry-run         # Preview without changes

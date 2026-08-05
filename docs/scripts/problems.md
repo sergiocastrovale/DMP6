@@ -1,15 +1,17 @@
 # Scripts: problems
 
 Two modes of one binary: `--audit` scans a music library and writes an XLSX report of tag defects
-that break or degrade the index/sync pipeline; `--fix:<type>` resolves defects `--audit` found
-against MusicBrainz, writing tags only on a perfect match. Exactly one of `--audit` / `--fix:<type>`
-is required per run.
+that break or degrade the index/sync pipeline; `--fix:<type>` resolves defects `--audit` found,
+writing tags only when it has a reliable, verified source for the new value. Exactly one of
+`--audit` / `--fix:<type>` is required per run.
 
 `--audit` is **strictly read-only** - it opens audio files for reading and never writes, moves,
 renames or deletes one. `--fix:<type>` is the only thing in this binary that writes tags, and it
-never guesses: short of a perfect MusicBrainz match it clears the field rather than leaving a
-best-effort value behind. `--years` is the first fix type; more are meant to be added as new
-`--fix:<type>` flags reusing the same worklist/ledger/report-regeneration machinery.
+never guesses: each fix type defines its own bar for "reliable enough to write" (MusicBrainz for
+`--fix:years`, the file's own other tags or its release folder's consensus for
+`--fix:artist-missing`), and short of that bar it leaves the file alone rather than writing a
+best-effort value. `--years` and `--artist-missing` are the first two fix types; more are meant to
+be added as new `--fix:<type>` flags reusing the same worklist/ledger/report-regeneration machinery.
 
 ## Usage
 
@@ -29,6 +31,9 @@ best-effort value behind. `--years` is the first fix type; more are meant to be 
 
 ./problems --fix:years                # Resolve YEAR_ZERO/YEAR_NON_NUMERIC against MusicBrainz
 ./problems --fix:years --dry-run      # Preview matches/years, write nothing
+
+./problems --fix:artist-missing               # Fill in ARTIST_MISSING from albumArtist / folder majority
+./problems --fix:artist-missing --dry-run     # Preview, write nothing
 ```
 
 On the NAS:
@@ -43,6 +48,7 @@ sudo ./problems --audit --root /music
 |---|---|---|---|
 | `--audit` | bool | - | Scan the library and write `problems.xlsx`. Mutually exclusive with `--fix:*`, one required |
 | `--fix:years` | bool | - | Resolve `YEAR_ZERO`/`YEAR_NON_NUMERIC` against MusicBrainz. Mutually exclusive with `--audit`, one required |
+| `--fix:artist-missing` | bool | - | Fill in `ARTIST_MISSING` from the file's own `albumArtist` or a folder majority. Mutually exclusive with `--audit`, one required |
 | `--dry-run` | bool | false | `--fix:*` only: print what would change, write nothing (no tags, no ledger, no report regen) |
 | `--root` | String | `$MUSIC_DIR` | Music library root |
 | `--output` / `-o` | String | `<work-dir>/problems.xlsx` | Report path |
@@ -171,6 +177,26 @@ The MusicBrainz search itself already retries transient 503/429 responses with b
 
 For each file in a resolved (or nulled) group: `audio::read_tags_guarded` gets the raw `RecordingDate`/`Year` strings, and the same `recording`-then-`year` precedence `checks::year` uses picks which one is the "effective", broken field - **only that `ItemKey`** is written or removed. Every other tag item on the file is untouched. A resolved year is written as a plain 4-digit string (`tag.insert`); a null result removes the key (`tag.remove_key`) instead of leaving the original `"0000"`/`"xxxx"` behind.
 
+### `--fix:artist-missing`: how a file is resolved
+
+No MusicBrainz call at all - there is nothing reliable to search by on a file whose `title` is
+frequently *also* empty (per `YearLostToMalformedDate`-style co-occurring defects, an
+`ArtistMissing` row very often carries `TitleEmpty` too). Two sources, tried in order, both purely
+from tags already on disk:
+
+1. The same file's own `albumArtist`, if present and not machine junk (reuses the scanner's own
+   `checks::artist` predicates - `index_treats_as_special`, `is_unknown_artist`,
+   `numeric_or_corrupted`, `unrecognised_various` - so a value this fixer accepts is held to exactly
+   the bar the detector uses to flag everything else).
+2. Failing that, a **strict majority** `artist` value across the *whole* release folder (every audio
+   file, not just the defective ones - unlike `--fix:years`, trusting siblings here is the correct
+   signal rather than the risk: even a folder mixing several sub-albums, per `FolderMultipleAlbums`,
+   is very often still one artist's whole discography dumped together).
+
+No majority and no usable `albumArtist` ⇒ an error, file left untouched - there is no "clear to
+null" for a field that is already null, so every outcome is `set` or nothing at all, never
+`cleared`.
+
 ### The fixed-row ledger, and why the xlsx doesn't need a separate marking step
 
 Every non-dry-run `--fix:*` appends to `<work-dir>/problems.fixed.jsonl` (one JSON object per
@@ -179,6 +205,7 @@ end up silently marked green):
 
 ```json
 {"path":"...","file":"...","code":"YearZero","action":"set","field":"RecordingDate","old_value":"0000","new_value":"1990","fix_kind":"years","detail":{"mbReleaseGroupId":"...","mbTitle":"...","mbArtist":"..."},"fixed_at":"..."}
+{"path":"...","file":"...","code":"ArtistMissing","action":"set","field":"Artist","old_value":"","new_value":"Hank Mobley","fix_kind":"artist-missing","detail":{"source":"folder-majority"},"fixed_at":"..."}
 ```
 
 This ledger is **shared across every fix type** (`fix_kind` distinguishes entries), and it is what `report::write_report` consults on *every* regeneration - a fresh `--audit`, `--audit --report-only`, or the automatic regeneration `--fix:*` triggers after writing tags - to green-mark rows and populate the Summary sheet's `Fixed` column. There is no separate "mark the xlsx" step; it is a native, automatic part of building the report, for as long as the ledger and spool both exist.

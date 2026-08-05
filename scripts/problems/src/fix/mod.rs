@@ -5,6 +5,7 @@
 //! triggering the report regeneration that turns ledger entries into green rows and Summary counts.
 //! Kind-specific: only how one release's worklist entries actually get resolved (`years::run`).
 
+mod artist_missing;
 mod tags;
 mod years;
 
@@ -20,18 +21,21 @@ use crate::spool::{self, Paths};
 #[derive(Clone, Copy, Debug)]
 pub enum FixKind {
     Years,
+    ArtistMissing,
 }
 
 impl FixKind {
     fn codes(self) -> &'static [ReasonCode] {
         match self {
             Self::Years => &[ReasonCode::YearZero, ReasonCode::YearNonNumeric],
+            Self::ArtistMissing => &[ReasonCode::ArtistMissing],
         }
     }
 
     fn name(self) -> &'static str {
         match self {
             Self::Years => "years",
+            Self::ArtistMissing => "artist-missing",
         }
     }
 }
@@ -127,6 +131,7 @@ pub fn run_fix(
     let result = rt.block_on(async {
         match kind {
             FixKind::Years => years::run(root, &list, dry_run).await,
+            FixKind::ArtistMissing => artist_missing::run(root, &list, dry_run).await,
         }
     });
     let result = match result {

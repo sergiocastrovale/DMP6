@@ -37,7 +37,7 @@ use spool::{load_state, save_state, Paths, ScanState, SpoolWriter};
 #[command(
     name = "problems",
     about = "Scan a music library for tag defects (--audit) or fix ones MusicBrainz can verify (--fix:<type>).",
-    group(ArgGroup::new("mode").args(["audit", "fix_years"]).required(true))
+    group(ArgGroup::new("mode").args(["audit", "fix_years", "fix_artist_missing"]).required(true))
 )]
 struct Args {
     /// Scan the library and write problems.xlsx. Never modifies audio files.
@@ -48,6 +48,12 @@ struct Args {
     /// match; otherwise clears the field. Requires a prior --audit (reads its spool).
     #[arg(long = "fix:years")]
     fix_years: bool,
+
+    /// Fill in a missing artist tag from the file's own albumArtist or a folder-wide majority.
+    /// Never MusicBrainz - there's nothing to search by on files whose title is often also empty.
+    /// Requires a prior --audit (reads its spool).
+    #[arg(long = "fix:artist-missing")]
+    fix_artist_missing: bool,
 
     /// --fix:* only: print what would change without writing any tags or updating the ledger.
     #[arg(long)]
@@ -178,11 +184,25 @@ fn main() {
         "unwind"
     };
 
+    let fix_mode = if args.fix_years {
+        Some((
+            FixKind::Years,
+            "fix:years (writes tags only on a perfect MusicBrainz match)",
+        ))
+    } else if args.fix_artist_missing {
+        Some((
+            FixKind::ArtistMissing,
+            "fix:artist-missing (writes tags from the file's own albumArtist or a folder majority - never MusicBrainz)",
+        ))
+    } else {
+        None
+    };
+
     println!(
         "{}",
         format!(
             "DMP tag problem {}",
-            if args.fix_years { "fix" } else { "scan" }
+            if fix_mode.is_some() { "fix" } else { "scan" }
         )
         .bright_cyan()
         .bold()
@@ -199,15 +219,11 @@ fn main() {
         work_dir.display().to_string().bright_white()
     );
 
-    if args.fix_years {
-        println!(
-            "{:<14}: {}",
-            "Mode",
-            "fix:years (writes tags only on a perfect MusicBrainz match)".bright_white()
-        );
+    if let Some((kind, mode_desc)) = fix_mode {
+        println!("{:<14}: {}", "Mode", mode_desc.bright_white());
         println!();
         fix::run_fix(
-            FixKind::Years,
+            kind,
             &root,
             &output,
             &work_dir,
