@@ -158,10 +158,12 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./nuke --only "Name" --dry-run  # Preview what --only would delete
 
 # Other
-./problems                    # Scan every file for tag defects that break index/sync → problems.xlsx (READ-ONLY)
-./problems --only "Name"      # Scan one artist
-./problems --resume           # Continue an interrupted scan
-./problems --report-only      # Rebuild the xlsx from an existing spool
+./problems --audit                    # Scan every file for tag defects that break index/sync → problems.xlsx (READ-ONLY)
+./problems --audit --only "Name"      # Scan one artist
+./problems --audit --resume           # Continue an interrupted scan
+./problems --audit --report-only      # Rebuild the xlsx from an existing spool (also picks up any --fix:* since the last report)
+./problems --fix:years                # MB-verified fix for YEAR_ZERO/YEAR_NON_NUMERIC (no match ⇒ null, never a guess); marks fixed rows green + updates Summary counts
+./problems --fix:years --dry-run      # Preview proposed matches/years, write nothing
 ./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
 ./playlists                   # Generate/update genre playlists
 ./playlists --dry-run         # Preview without changes

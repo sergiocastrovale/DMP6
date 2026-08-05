@@ -113,7 +113,7 @@ pub async fn fill_catalogue_gaps(
             // Same album-oriented allow-list as the matcher. No specific release exists for a gap, so
             // status is N/A (None); primary Album/EP + non-rejected secondary types gate it.
             let secondary = rg.secondary_types.clone().unwrap_or_default();
-            if !crate::allowlist::is_allowed(rg.primary_type.as_deref(), &secondary, None) {
+            if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &secondary, None) {
                 continue;
             }
             let type_name = rg.primary_type.as_deref().unwrap_or("Other");

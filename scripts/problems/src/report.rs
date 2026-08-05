@@ -13,6 +13,8 @@ use std::path::Path;
 
 use rust_xlsxwriter::{Format, FormatAlign, FormatBorder, Workbook, XlsxError};
 
+use crate::checks::codes_in_rendered;
+use crate::fixed::FixedIndex;
 use crate::scan::{ranked_counts, CodeCounts};
 use crate::spool::Row;
 
@@ -56,6 +58,12 @@ fn label_format() -> Format {
     Format::new().set_bold()
 }
 
+/// Marks a row `--fix:*` has already resolved. Same shade a manual OOXML patch used before this
+/// became a native part of report generation.
+fn fixed_format() -> Format {
+    Format::new().set_background_color("C6EFCE")
+}
+
 /// Write the whole report.
 ///
 /// `rows` is an iterator so the caller can stream straight from the spool without materialising
@@ -65,6 +73,7 @@ pub fn write_report(
     rows: impl Iterator<Item = Row>,
     counts: &CodeCounts,
     info: &RunInfo,
+    fixed: &FixedIndex,
 ) -> Result<ReportStats, XlsxError> {
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent).ok();
@@ -78,11 +87,11 @@ pub fn write_report(
 
     let mut writer = SheetWriter::new(&mut workbook)?;
     for row in rows {
-        writer.write_row(&row)?;
+        writer.write_row(&row, fixed)?;
     }
     let stats = writer.finish()?;
 
-    write_summary(&mut workbook, summary_index, counts, info, &stats)?;
+    write_summary(&mut workbook, summary_index, counts, info, &stats, fixed)?;
     workbook.save(output)?;
     Ok(stats)
 }
@@ -101,6 +110,7 @@ struct SheetWriter<'a> {
     sheet_number: usize,
     total_rows: u64,
     header_fmt: Format,
+    fixed_fmt: Format,
 }
 
 impl<'a> SheetWriter<'a> {
@@ -112,6 +122,7 @@ impl<'a> SheetWriter<'a> {
             sheet_number: 0,
             total_rows: 0,
             header_fmt: header_format(),
+            fixed_fmt: fixed_format(),
         };
         me.new_sheet()?;
         Ok(me)
@@ -140,7 +151,7 @@ impl<'a> SheetWriter<'a> {
         Ok(())
     }
 
-    fn write_row(&mut self, row: &Row) -> Result<(), XlsxError> {
+    fn write_row(&mut self, row: &Row, fixed: &FixedIndex) -> Result<(), XlsxError> {
         if self.rows_in_sheet >= MAX_DATA_ROWS {
             self.finalize_current()?;
             self.new_sheet()?;
@@ -148,9 +159,16 @@ impl<'a> SheetWriter<'a> {
         let r = self.rows_in_sheet + 1; // +1 for the header
         let idx = self.sheet_index;
         let ws = &mut self.workbook.worksheets_mut()[idx];
-        ws.write_string(r, 0, &row.path)?;
-        ws.write_string(r, 1, &row.file)?;
-        ws.write_string(r, 2, &row.reason)?;
+
+        if row_is_fixed(row, fixed) {
+            ws.write_string_with_format(r, 0, &row.path, &self.fixed_fmt)?;
+            ws.write_string_with_format(r, 1, &row.file, &self.fixed_fmt)?;
+            ws.write_string_with_format(r, 2, &row.reason, &self.fixed_fmt)?;
+        } else {
+            ws.write_string(r, 0, &row.path)?;
+            ws.write_string(r, 1, &row.file)?;
+            ws.write_string(r, 2, &row.reason)?;
+        }
         self.rows_in_sheet += 1;
         self.total_rows += 1;
         Ok(())
@@ -176,12 +194,22 @@ impl<'a> SheetWriter<'a> {
     }
 }
 
+/// Whether a row's `--fix:*` history covers at least one of the defects it currently lists. Pulled
+/// out of `write_row` so the decision is directly testable without going through
+/// `rust_xlsxwriter`, which has no cell-format readback API.
+fn row_is_fixed(row: &Row, fixed: &FixedIndex) -> bool {
+    // On an ordinary run (no ledger yet) this never even runs `codes_in_rendered`, which matters at
+    // full-library scale - one substring scan per row otherwise.
+    !fixed.is_empty() && fixed.contains_any(&row.path, &row.file, &codes_in_rendered(&row.reason))
+}
+
 fn write_summary(
     workbook: &mut Workbook,
     index: usize,
     counts: &CodeCounts,
     info: &RunInfo,
     stats: &ReportStats,
+    fixed: &FixedIndex,
 ) -> Result<(), XlsxError> {
     let header_fmt = header_format();
     let title_fmt = title_format();
@@ -193,6 +221,8 @@ fn write_summary(
     ws.set_column_width(2, 90)?;
     ws.set_column_width(3, 16)?;
     ws.set_column_width(4, 12)?;
+    ws.set_column_width(5, 12)?;
+    ws.set_column_width(6, 12)?;
 
     let mut r = 0u32;
     ws.write_string_with_format(r, 0, "DMP tag problem scan", &title_fmt)?;
@@ -257,7 +287,9 @@ fn write_summary(
     ws.write_string_with_format(r, 1, "Code", &header_fmt)?;
     ws.write_string_with_format(r, 2, "What it breaks", &header_fmt)?;
     ws.write_string_with_format(r, 3, "Files affected", &header_fmt)?;
-    ws.write_string_with_format(r, 4, "% of files", &header_fmt)?;
+    ws.write_string_with_format(r, 4, "Fixed", &header_fmt)?;
+    ws.write_string_with_format(r, 5, "Remaining", &header_fmt)?;
+    ws.write_string_with_format(r, 6, "% of files", &header_fmt)?;
     let table_header = r;
     r += 1;
 
@@ -267,16 +299,19 @@ fn write_summary(
         } else {
             0.0
         };
+        let fixed_n = fixed.count_for(code);
         ws.write_string(r, 0, code.severity().label())?;
         ws.write_string(r, 1, code.code())?;
         ws.write_string(r, 2, code.message())?;
         ws.write_number(r, 3, n as f64)?;
-        ws.write_string(r, 4, format!("{pct:.2}%"))?;
+        ws.write_number(r, 4, fixed_n as f64)?;
+        ws.write_number(r, 5, n.saturating_sub(fixed_n) as f64)?;
+        ws.write_string(r, 6, format!("{pct:.2}%"))?;
         r += 1;
     }
 
     if r > table_header + 1 {
-        ws.autofilter(table_header, 0, r - 1, 4)?;
+        ws.autofilter(table_header, 0, r - 1, 6)?;
     }
     Ok(())
 }
@@ -285,6 +320,7 @@ fn write_summary(
 mod tests {
     use super::*;
     use crate::checks::ReasonCode;
+    use crate::fixed::{self, FixOutcome};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn temp_path(tag: &str) -> std::path::PathBuf {
@@ -295,6 +331,20 @@ mod tests {
             tag,
             SEQ.fetch_add(1, Ordering::Relaxed)
         ))
+    }
+
+    fn temp_ledger_path(tag: &str) -> std::path::PathBuf {
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        std::env::temp_dir().join(format!(
+            "problems-report-{}-{}-{}.fixed.jsonl",
+            std::process::id(),
+            tag,
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    fn no_fixes() -> FixedIndex {
+        FixedIndex::load(&temp_path("no-fixes-nonexistent"))
     }
 
     fn info(files: u64) -> RunInfo {
@@ -330,7 +380,8 @@ mod tests {
         let mut counts = CodeCounts::new();
         counts.insert(ReasonCode::ArtistMissing, 2);
         let rows = vec![row(1), row(2)];
-        let stats = write_report(&path, rows.into_iter(), &counts, &info(2)).expect("write report");
+        let stats = write_report(&path, rows.into_iter(), &counts, &info(2), &no_fixes())
+            .expect("write report");
         assert_eq!(stats.rows_written, 2);
         assert_eq!(stats.sheets_used, 1);
         assert!(!stats.rolled_over);
@@ -343,11 +394,127 @@ mod tests {
     fn an_empty_report_still_produces_a_valid_workbook() {
         // A clean library is a legitimate outcome and must not produce a corrupt file.
         let path = temp_path("empty");
-        let stats = write_report(&path, std::iter::empty(), &CodeCounts::new(), &info(0))
-            .expect("write empty report");
+        let stats = write_report(
+            &path,
+            std::iter::empty(),
+            &CodeCounts::new(),
+            &info(0),
+            &no_fixes(),
+        )
+        .expect("write empty report");
         assert_eq!(stats.rows_written, 0);
         assert!(std::fs::metadata(&path).expect("stat").len() > 0);
         std::fs::remove_file(&path).ok();
+    }
+
+    fn year_zero_row(path: &str, file: &str) -> Row {
+        Row {
+            path: path.into(),
+            file: file.into(),
+            reason: crate::checks::Reason::new(ReasonCode::YearZero, "0000").render(),
+        }
+    }
+
+    #[test]
+    fn row_is_fixed_matches_a_ledger_entry_for_the_same_file_and_code() {
+        let ledger = temp_ledger_path("row-is-fixed");
+        fixed::append(
+            &ledger,
+            &[FixOutcome {
+                path: "Artist/Album 1".into(),
+                file: "01.mp3".into(),
+                code: ReasonCode::YearZero,
+                action: "cleared".into(),
+                field: "RecordingDate".into(),
+                old_value: "0000".into(),
+                new_value: None,
+                fix_kind: "years".into(),
+                detail: serde_json::Value::Null,
+                fixed_at: "now".into(),
+            }],
+        )
+        .expect("append");
+        let idx = FixedIndex::load(&ledger);
+
+        assert!(row_is_fixed(&year_zero_row("Artist/Album 1", "01.mp3"), &idx));
+        // Same folder, different file - the ledger is keyed per file, not per release.
+        assert!(!row_is_fixed(&year_zero_row("Artist/Album 1", "02.mp3"), &idx));
+        // An ordinary (non-year) row is never fixed by a years-ledger entry.
+        assert!(!row_is_fixed(&row(1), &no_fixes()));
+        std::fs::remove_file(&ledger).ok();
+    }
+
+    #[test]
+    fn a_fixed_row_still_produces_a_valid_workbook() {
+        // Smoke test for the write_row/fixed-format integration itself - row_is_fixed above covers
+        // the actual decision logic; rust_xlsxwriter has no cell-format readback API to assert the
+        // green style landed on the right cells.
+        let ledger = temp_ledger_path("smoke");
+        fixed::append(
+            &ledger,
+            &[FixOutcome {
+                path: "Artist/Album 1".into(),
+                file: "01.mp3".into(),
+                code: ReasonCode::YearZero,
+                action: "cleared".into(),
+                field: "RecordingDate".into(),
+                old_value: "0000".into(),
+                new_value: None,
+                fix_kind: "years".into(),
+                detail: serde_json::Value::Null,
+                fixed_at: "now".into(),
+            }],
+        )
+        .expect("append");
+        let idx = FixedIndex::load(&ledger);
+
+        let path = temp_path("fixed-smoke");
+        let mut counts = CodeCounts::new();
+        counts.insert(ReasonCode::YearZero, 1);
+        let rows = vec![year_zero_row("Artist/Album 1", "01.mp3")];
+        write_report(&path, rows.into_iter(), &counts, &info(1), &idx).expect("write report");
+        assert!(std::fs::metadata(&path).expect("stat").len() > 0);
+        std::fs::remove_file(&path).ok();
+        std::fs::remove_file(&ledger).ok();
+    }
+
+    #[test]
+    fn summary_fixed_column_counts_distinct_files_per_code() {
+        let ledger = temp_ledger_path("counts");
+        fixed::append(
+            &ledger,
+            &[
+                FixOutcome {
+                    path: "A".into(),
+                    file: "1.mp3".into(),
+                    code: ReasonCode::YearZero,
+                    action: "set".into(),
+                    field: "RecordingDate".into(),
+                    old_value: "0000".into(),
+                    new_value: Some("1990".into()),
+                    fix_kind: "years".into(),
+                    detail: serde_json::Value::Null,
+                    fixed_at: "now".into(),
+                },
+                FixOutcome {
+                    path: "B".into(),
+                    file: "2.mp3".into(),
+                    code: ReasonCode::YearZero,
+                    action: "cleared".into(),
+                    field: "Year".into(),
+                    old_value: "xxxx".into(),
+                    new_value: None,
+                    fix_kind: "years".into(),
+                    detail: serde_json::Value::Null,
+                    fixed_at: "now".into(),
+                },
+            ],
+        )
+        .expect("append");
+        let idx = FixedIndex::load(&ledger);
+        assert_eq!(idx.count_for(ReasonCode::YearZero), 2);
+        assert_eq!(idx.count_for(ReasonCode::YearNonNumeric), 0);
+        std::fs::remove_file(&ledger).ok();
     }
 
     /// The rollover branch is unreachable in any test-sized run and only fires hours into the real
@@ -368,7 +535,7 @@ mod tests {
                 writer.finalize_current().expect("finalize");
                 writer.new_sheet().expect("new sheet");
             }
-            writer.write_row(&row(i)).expect("write");
+            writer.write_row(&row(i), &no_fixes()).expect("write");
         }
         let stats = writer.finish().expect("finish");
         assert_eq!(stats.rows_written, 25);

@@ -71,6 +71,8 @@ impl ScanState {
 pub struct Paths {
     pub spool: PathBuf,
     pub state: PathBuf,
+    /// The fixed-row ledger (`fixed.rs`) - shared by every `--fix:*` kind.
+    pub fixed: PathBuf,
 }
 
 impl Paths {
@@ -78,6 +80,7 @@ impl Paths {
         Self {
             spool: dir.join("problems.spool.jsonl"),
             state: dir.join("problems.state.json"),
+            fixed: dir.join("problems.fixed.jsonl"),
         }
     }
 }

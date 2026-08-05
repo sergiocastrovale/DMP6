@@ -1,26 +1,34 @@
-//! `problems` - library-wide audio tag defect scanner.
+//! `problems` - library-wide audio tag defect scanner, with a MusicBrainz-verified fixer built in.
 //!
-//! Walks a music library, reports every tag condition known to break or degrade the DMP index/sync
-//! pipeline, and writes an XLSX report. **Strictly read-only**: it opens audio files for reading and
-//! never writes, moves, renames or deletes one.
+//! `--audit` walks a music library, reports every tag condition known to break or degrade the DMP
+//! index/sync pipeline, and writes an XLSX report. **Strictly read-only**: it opens audio files for
+//! reading and never writes, moves, renames or deletes one.
+//!
+//! `--fix:<type>` (currently only `--fix:years`) resolves defects `--audit` found against
+//! MusicBrainz, writing tags only on a perfect match - see `fix/mod.rs`. Exactly one of `--audit` /
+//! `--fix:<type>` is required per run.
 
 mod audio;
 mod checks;
 mod filter;
+mod fix;
+mod fixed;
 mod id3raw;
 mod progress;
 mod report;
 mod scan;
 mod spool;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
 
-use clap::Parser;
+use clap::{ArgGroup, Parser};
 use colored::*;
 
+use fix::FixKind;
+use fixed::FixedIndex;
 use progress::{format_duration, Counters, Progress};
 use scan::CodeCounts;
 use spool::{load_state, save_state, Paths, ScanState, SpoolWriter};
@@ -28,10 +36,24 @@ use spool::{load_state, save_state, Paths, ScanState, SpoolWriter};
 #[derive(Parser, Debug)]
 #[command(
     name = "problems",
-    about = "Scan a music library for tag defects that break indexing/syncing. Never modifies files."
+    about = "Scan a music library for tag defects (--audit) or fix ones MusicBrainz can verify (--fix:<type>).",
+    group(ArgGroup::new("mode").args(["audit", "fix_years"]).required(true))
 )]
 struct Args {
-    /// Music library root. Defaults to $MUSIC_DIR.
+    /// Scan the library and write problems.xlsx. Never modifies audio files.
+    #[arg(long)]
+    audit: bool,
+
+    /// Resolve YEAR_ZERO / YEAR_NON_NUMERIC against MusicBrainz. Writes tags only on a perfect
+    /// match; otherwise clears the field. Requires a prior --audit (reads its spool).
+    #[arg(long = "fix:years")]
+    fix_years: bool,
+
+    /// --fix:* only: print what would change without writing any tags or updating the ledger.
+    #[arg(long)]
+    dry_run: bool,
+
+    /// Music library root. Defaults to $MUSIC_DIR. --fix:* only needs this to open files.
     #[arg(long)]
     root: Option<String>,
 
@@ -39,57 +61,63 @@ struct Args {
     #[arg(long, short)]
     output: Option<String>,
 
-    /// Directory for the spool, checkpoint and default report location.
+    /// Directory for the spool, checkpoint, fixed-row ledger and default report location.
     #[arg(long)]
     work_dir: Option<String>,
 
     #[arg(
         long,
         default_value = "",
-        help = "Only artist folders from this prefix"
+        help = "--audit only: only artist folders from this prefix"
     )]
     from: String,
 
     #[arg(
         long,
         default_value = "",
-        help = "Only artist folders up to this prefix"
+        help = "--audit only: only artist folders up to this prefix"
     )]
     to: String,
 
     #[arg(
         long,
         default_value = "",
-        help = "Only artist folders starting with this prefix"
+        help = "--audit only: only artist folders starting with this prefix"
     )]
     only: String,
 
-    #[arg(long, help = "Make --only an exact match")]
+    #[arg(long, help = "--audit only: make --only an exact match")]
     exact: bool,
 
     #[arg(
         long,
         default_value_t = 16,
-        help = "Worker threads (NAS I/O bound; try 8/16/24)"
+        help = "--audit only: worker threads (NAS I/O bound; try 8/16/24)"
     )]
     threads: usize,
 
-    #[arg(long, help = "Stop after roughly this many files (smoke testing)")]
+    #[arg(
+        long,
+        help = "--audit only: stop after roughly this many files (smoke testing)"
+    )]
     limit_files: Option<usize>,
 
-    #[arg(long, help = "Continue a previous interrupted scan")]
+    #[arg(long, help = "--audit only: continue a previous interrupted scan")]
     resume: bool,
 
-    #[arg(long, help = "Discard any previous scan state and start over")]
+    #[arg(
+        long,
+        help = "--audit only: discard any previous scan state and start over"
+    )]
     restart: bool,
 
     #[arg(
         long,
-        help = "Skip scanning; rebuild the report from an existing spool"
+        help = "--audit only: skip scanning; rebuild the report from an existing spool"
     )]
     report_only: bool,
 
-    #[arg(long, help = "Disable the live progress line")]
+    #[arg(long, help = "--audit only: disable the live progress line")]
     no_progress: bool,
 }
 
@@ -138,24 +166,27 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(default_work_dir);
     std::fs::create_dir_all(&work_dir).ok();
-    let paths = Paths::in_dir(&work_dir);
     let output = args
         .output
         .clone()
         .map(PathBuf::from)
         .unwrap_or_else(|| work_dir.join("problems.xlsx"));
 
-    let filter_key = filter::filter_key(&args.from, &args.to, &args.only, args.exact);
-    let filters = if args.from.is_empty() && args.to.is_empty() && args.only.is_empty() {
-        "none".to_string()
+    let panic_strategy = if cfg!(panic = "abort") {
+        "abort"
     } else {
-        format!(
-            "from={} to={} only={} exact={}",
-            args.from, args.to, args.only, args.exact
-        )
+        "unwind"
     };
 
-    println!("{}", "DMP tag problem scan".bright_cyan().bold());
+    println!(
+        "{}",
+        format!(
+            "DMP tag problem {}",
+            if args.fix_years { "fix" } else { "scan" }
+        )
+        .bright_cyan()
+        .bold()
+    );
     println!("{}", "===================".bright_black());
     println!(
         "{:<14}: {}",
@@ -167,6 +198,49 @@ fn main() {
         "Work dir",
         work_dir.display().to_string().bright_white()
     );
+
+    if args.fix_years {
+        println!(
+            "{:<14}: {}",
+            "Mode",
+            "fix:years (writes tags only on a perfect MusicBrainz match)".bright_white()
+        );
+        println!();
+        fix::run_fix(
+            FixKind::Years,
+            &root,
+            &output,
+            &work_dir,
+            "none",
+            args.threads,
+            panic_strategy,
+            args.dry_run,
+        );
+        return;
+    }
+
+    run_audit(&args, &root, &work_dir, &output, panic_strategy);
+}
+
+fn run_audit(
+    args: &Args,
+    root: &Path,
+    work_dir: &Path,
+    output: &Path,
+    panic_strategy: &'static str,
+) {
+    let paths = Paths::in_dir(work_dir);
+
+    let filter_key = filter::filter_key(&args.from, &args.to, &args.only, args.exact);
+    let filters = if args.from.is_empty() && args.to.is_empty() && args.only.is_empty() {
+        "none".to_string()
+    } else {
+        format!(
+            "from={} to={} only={} exact={}",
+            args.from, args.to, args.only, args.exact
+        )
+    };
+
     println!(
         "{:<14}: {}",
         "Report",
@@ -184,11 +258,6 @@ fn main() {
         "read-only (never modifies audio files)".bright_white()
     );
 
-    let panic_strategy = if cfg!(panic = "abort") {
-        "abort"
-    } else {
-        "unwind"
-    };
     if panic_strategy == "abort" {
         eprintln!(
             "{}",
@@ -201,14 +270,7 @@ fn main() {
     println!();
 
     if args.report_only {
-        run_report_only(
-            &paths,
-            &output,
-            &root,
-            &filters,
-            args.threads,
-            panic_strategy,
-        );
+        regenerate_report(&paths, output, root, &filters, args.threads, panic_strategy);
         return;
     }
 
@@ -270,7 +332,7 @@ fn main() {
         .build_global()
         .ok();
 
-    let artists = match scan::list_artist_dirs(&root, &args.from, &args.to, &args.only, args.exact)
+    let artists = match scan::list_artist_dirs(root, &args.from, &args.to, &args.only, args.exact)
     {
         Ok(a) => a,
         Err(e) => {
@@ -337,7 +399,7 @@ fn main() {
             break;
         }
 
-        let batch = scan::scan_artist(&root, artist, current_year, &counters, remaining);
+        let batch = scan::scan_artist(root, artist, current_year, &counters, remaining);
         scan::merge_counts(&mut counts, &batch.counts);
 
         if let Err(e) = spool.write_rows(&batch.rows).and_then(|_| spool.sync()) {
@@ -378,22 +440,24 @@ fn main() {
         panic_strategy,
     };
 
-    emit_report(&paths, &output, &counts, &info);
+    emit_report(&paths, output, &counts, &info);
 
     if stopped_early {
         println!("  {} stopped at --limit-files", "→".bright_black());
     }
-    print_summary(&info, &output);
+    print_summary(&info, output);
 }
 
 /// Rebuild the workbook from an existing spool without rescanning.
 ///
 /// Worth having on its own: after a multi-hour scan, an XLSX write failure (bad path, full disk)
-/// should cost seconds to retry, not another full run.
-fn run_report_only(
+/// should cost seconds to retry, not another full run. Also what `fix::run_fix` calls after a
+/// non-dry-run fix, so the ledger's new entries turn into green rows and updated Summary counts
+/// immediately - no separate marking step.
+pub fn regenerate_report(
     paths: &Paths,
-    output: &PathBuf,
-    root: &std::path::Path,
+    output: &Path,
+    root: &Path,
     filters: &str,
     threads: usize,
     panic_strategy: &'static str,
@@ -447,7 +511,7 @@ fn run_report_only(
     print_summary(&info, output);
 }
 
-fn emit_report(paths: &Paths, output: &PathBuf, counts: &CodeCounts, info: &report::RunInfo) {
+fn emit_report(paths: &Paths, output: &Path, counts: &CodeCounts, info: &report::RunInfo) {
     let rows = match spool::read_rows(&paths.spool) {
         Ok(r) => r,
         Err(e) => {
@@ -455,7 +519,8 @@ fn emit_report(paths: &Paths, output: &PathBuf, counts: &CodeCounts, info: &repo
             std::process::exit(1);
         }
     };
-    match report::write_report(output, rows, counts, info) {
+    let fixed = FixedIndex::load(&paths.fixed);
+    match report::write_report(output, rows, counts, info, &fixed) {
         Ok(stats) => {
             if stats.rolled_over {
                 println!(
@@ -468,7 +533,7 @@ fn emit_report(paths: &Paths, output: &PathBuf, counts: &CodeCounts, info: &repo
         Err(e) => {
             eprintln!("{}", format!("Cannot write report: {e}").bright_red());
             eprintln!(
-                "  The spool is intact at {} - fix the path and re-run with --report-only.",
+                "  The spool is intact at {} - fix the path and re-run with --audit --report-only.",
                 paths.spool.display()
             );
             std::process::exit(1);
@@ -476,7 +541,7 @@ fn emit_report(paths: &Paths, output: &PathBuf, counts: &CodeCounts, info: &repo
     }
 }
 
-fn print_summary(info: &report::RunInfo, output: &PathBuf) {
+fn print_summary(info: &report::RunInfo, output: &Path) {
     println!();
     println!("{}", "═".repeat(60).bright_black());
     println!();

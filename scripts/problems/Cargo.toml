@@ -7,10 +7,12 @@ edition = "2021"
 name = "problems"
 path = "src/main.rs"
 
-# Deliberately does NOT depend on `common`. That crate pulls in sqlx + tokio + aws-sdk-s3 + reqwest
-# + image, and `common::config::load_config` hard-expects DATABASE_URL - a read-only filesystem
-# scanner has no business requiring a database to start. The small pieces of `common` this tool
-# needs to mirror real pipeline behaviour are copied into src/checks/ with provenance comments.
+# `common` is a dependency now (for --fix:* MusicBrainz lookups), but --audit never touches it:
+# `common::config::load_config` hard-expects DATABASE_URL, and the scan path deliberately never
+# calls it - a read-only filesystem scanner has no business requiring a database to start. Only
+# `src/fix/*` reaches into `common::mb`. reqwest/tokio are likewise only exercised by --fix:*, built
+# on a `tokio::runtime::Runtime` scoped to that branch (see `fix::run_fix`) rather than wrapping the
+# whole (CPU-bound, rayon-parallel) --audit path in an async runtime it doesn't need.
 [dependencies]
 clap = { workspace = true }
 lofty = { workspace = true }
@@ -21,5 +23,8 @@ colored = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 num_cpus = { workspace = true }
+common = { path = "../common" }
+reqwest = { workspace = true }
+tokio = { workspace = true }
 # Not a workspace dependency (same as the analysis crate, which also declares it locally).
 walkdir = "2.5"

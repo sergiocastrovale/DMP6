@@ -28,6 +28,9 @@ Thumbs.db
 # Python (stray venv from an earlier prototype - scripts are Rust now)
 venv/
 __pycache__/
+
+# Generated reports (./problems --audit output - regenerate, don't commit)
+problems.xlsx
 *.pyc
 
 # Build outputs

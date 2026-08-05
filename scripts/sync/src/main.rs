@@ -13,7 +13,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-mod allowlist;
 mod catalogue_gaps;
 mod db;
 mod images;
@@ -112,7 +111,7 @@ fn search_match_acceptable(
 ) -> bool {
     score >= SEARCH_MIN_SCORE
         && mb_matching::names_are_similar(candidate_title, local_title)
-        && allowlist::is_allowed(primary_type, secondary_types, None)
+        && common::mb::allowlist::is_allowed(primary_type, secondary_types, None)
 }
 
 fn get_majority_id(
@@ -1453,7 +1452,7 @@ async fn main() {
             // not Album/EP, whose secondary type is non-music, or whose status is not Official. A
             // rejected release leaves the LocalRelease UNMATCHED rather than binding a disallowed
             // (e.g. Single-typed) MB release.
-            if !allowlist::is_allowed(
+            if !common::mb::allowlist::is_allowed(
                 primary_type.as_deref(),
                 &secondary_types,
                 best_release.status.as_deref(),
@@ -1666,7 +1665,7 @@ async fn main() {
                 }
                 // Album-oriented allow-list (no specific release for a gap, so status is N/A).
                 let secondary = rg.secondary_types.clone().unwrap_or_default();
-                if !allowlist::is_allowed(rg.primary_type.as_deref(), &secondary, None) {
+                if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &secondary, None) {
                     continue;
                 }
                 let type_name = rg.primary_type.as_deref().unwrap_or("Other");

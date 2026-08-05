@@ -390,13 +390,20 @@ pub async fn mb_search_release_group_credits(
 }
 
 /// A release-group found by a title+artist search: the id (to browse its editions), its title (to
-/// re-verify the match against the local album), and its primary/secondary types (for the allow-list).
+/// re-verify the match against the local album), its primary/secondary types (for the allow-list),
+/// and the artist-credit names (to re-verify the artist independently of the search query's own
+/// fuzzy `AND artist:"..."` clause).
 pub struct SearchedReleaseGroup {
     pub id: String,
     pub title: String,
     pub primary_type: Option<String>,
     pub secondary_types: Vec<String>,
     pub score: u32,
+    pub artist_credit: Vec<String>,
+    /// The release-group's own release year (earliest release in the group) - what MusicBrainz
+    /// itself shows as "Year" for this release-group, independent of which specific edition a
+    /// caller later looks up. `None` for a handful of legitimately dateless entries.
+    pub first_release_date: Option<String>,
 }
 
 /// Search MusicBrainz for a release group by album title + artist. Used only as a last-resort fallback
@@ -422,6 +429,14 @@ pub async fn mb_search_release_group(
     let body = mb_get(client, &url, limiter).await?;
 
     #[derive(serde::Deserialize)]
+    struct ArtistRef {
+        name: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct ArtistCredit {
+        artist: ArtistRef,
+    }
+    #[derive(serde::Deserialize)]
     struct RgResult {
         id: String,
         title: String,
@@ -430,6 +445,10 @@ pub async fn mb_search_release_group(
         #[serde(rename = "secondary-types")]
         secondary_types: Option<Vec<String>>,
         score: Option<u32>,
+        #[serde(rename = "artist-credit")]
+        artist_credit: Option<Vec<ArtistCredit>>,
+        #[serde(rename = "first-release-date")]
+        first_release_date: Option<String>,
     }
     #[derive(serde::Deserialize)]
     struct SearchResult {
@@ -450,6 +469,13 @@ pub async fn mb_search_release_group(
             primary_type: rg.primary_type,
             secondary_types: rg.secondary_types.unwrap_or_default(),
             score: rg.score.unwrap_or(0),
+            artist_credit: rg
+                .artist_credit
+                .unwrap_or_default()
+                .into_iter()
+                .map(|ac| ac.artist.name)
+                .collect(),
+            first_release_date: rg.first_release_date,
         }))
 }
 

@@ -59,9 +59,10 @@ COPY scripts/problems/src problems/src
 # Touch source files to invalidate the dummy build
 RUN find . -name '*.rs' -exec touch {} +
 
-# Build all binaries. `problems` is excluded here and built separately below: it scans the whole
-# library in one long pass and must survive a tag parser panic on a single corrupt file, which needs
-# panic="unwind" - and [profile.release] sets panic="abort". See [profile.scan] in scripts/Cargo.toml.
+# Build all binaries. `problems` is excluded here and built separately below: it calls
+# `audio::read_tags_guarded` (used by both --audit scanning and --fix:* tag writes), whose
+# `catch_unwind` only actually catches a corrupt file's tag-parser panic under panic="unwind" - and
+# [profile.release] sets panic="abort". See [profile.scan] in scripts/Cargo.toml.
 RUN cargo build --release --workspace --exclude problems
 RUN cargo build --profile scan -p problems
 
