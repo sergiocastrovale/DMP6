@@ -5,10 +5,6 @@
 //! crate stays free of the `common` dependency graph; the tests below pin the exact accepted set,
 //! so a drift in the real guard shows up as a documented difference rather than a silent one.
 
-use super::separators::{
-    co_billing_parts, separator_positions, MAX_CO_OWNERS, MAX_SPAN_SEPARATORS,
-};
-
 /// Mirror of `common::artists::is_various_artists`.
 ///
 /// Note it does **not** trim - that is not an oversight in the copy, it is the real behaviour, and
@@ -168,18 +164,6 @@ fn is_known_numeric_artist_name(s: &str) -> bool {
     )
 }
 
-/// Reports a tag whose separator count exceeds what the resolver will verify.
-pub fn too_many_separators(name: &str) -> Option<usize> {
-    let n = separator_positions(name).len();
-    (n > MAX_SPAN_SEPARATORS).then_some(n)
-}
-
-/// Reports a tag listing more co-billed artists than the resolver keeps as owners.
-pub fn too_many_co_owners(name: &str) -> Option<usize> {
-    let n = co_billing_parts(name);
-    (n > MAX_CO_OWNERS).then_some(n)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,11 +307,4 @@ mod tests {
         assert!(numeric_or_corrupted("2563").is_some(), "not on the whitelist");
     }
 
-    #[test]
-    fn separator_and_co_owner_limits_flag_only_past_the_boundary() {
-        assert!(too_many_co_owners("Crosby, Stills, Nash & Young").is_none());
-        assert_eq!(too_many_co_owners("A, B, C, D, E"), Some(5));
-        assert!(too_many_separators("Simon & Garfunkel").is_none());
-        assert!(too_many_separators("A, B, C, D, E, F, G, H, I, J").is_some());
-    }
 }

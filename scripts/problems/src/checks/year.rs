@@ -141,19 +141,6 @@ pub fn check_dates(dates: &RawDates, current_year: i32) -> Vec<Reason> {
         YearShape::Empty => {}
     }
 
-    // The indexer never reads originaldate, so when the two disagree it binds to whichever edition
-    // the DATE tag names - typically the remaster rather than the original release.
-    if let (Some(orig), Some(rec)) = (dates.original.as_deref(), dates.recording.as_deref()) {
-        if let (Some(o), Some(r)) = (leading_year(orig), leading_year(rec)) {
-            if o != r {
-                out.push(Reason::new(
-                    ReasonCode::OriginalDateDiffers,
-                    format!("originaldate={o}, date={r}"),
-                ));
-            }
-        }
-    }
-
     out
 }
 
@@ -242,26 +229,16 @@ mod tests {
     }
 
     #[test]
-    fn originaldate_divergence_is_reported_only_when_both_parse_and_differ() {
+    fn an_originaldate_differing_from_date_is_no_longer_reported() {
+        // Retired: which of the two years is "the" release year is a policy call, not a defect -
+        // and in real data originaldate is frequently *later* than date, so it is often the
+        // unreliable field rather than the authoritative one.
         let differing = RawDates {
             recording: Some("2011".into()),
             original: Some("1975".into()),
             ..Default::default()
         };
-        assert!(codes(&check_dates(&differing, 2026)).contains(&ReasonCode::OriginalDateDiffers));
-
-        let same = RawDates {
-            recording: Some("1975".into()),
-            original: Some("1975".into()),
-            ..Default::default()
-        };
-        assert!(check_dates(&same, 2026).is_empty());
-
-        let only_one = RawDates {
-            recording: Some("1975".into()),
-            ..Default::default()
-        };
-        assert!(check_dates(&only_one, 2026).is_empty());
+        assert!(check_dates(&differing, 2026).is_empty());
     }
 
     #[test]

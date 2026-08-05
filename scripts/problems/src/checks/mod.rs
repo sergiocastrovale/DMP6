@@ -6,8 +6,6 @@
 //! actionable, "artist tag is empty" is not.
 
 pub mod artist;
-pub mod folder;
-pub mod separators;
 pub mod text;
 pub mod year;
 
@@ -62,8 +60,6 @@ pub enum ReasonCode {
     AlbumArtistNumericJunk,
     AlbumArtistInvisibleChars,
     AlbumArtistMojibake,
-    AlbumArtistTooManySeparators,
-    AlbumArtistTooManyCoOwners,
 
     // ---- file-level: year ---------------------------------------------------------------------
     YearZero,
@@ -71,15 +67,6 @@ pub enum ReasonCode {
     YearNonNumeric,
     YearImplausible,
     YearLostToMalformedDate,
-    OriginalDateDiffers,
-
-    // ---- folder-level -------------------------------------------------------------------------
-    FolderMultipleAlbumArtists,
-    FolderMultipleAlbums,
-    FolderMultipleYears,
-    FolderAlbumEmpty,
-    FolderArtistCaseDrift,
-    FolderArtistThePrefixDrift,
 }
 
 impl ReasonCode {
@@ -102,29 +89,15 @@ impl ReasonCode {
             | AlbumArtistUnknownArtist
             | AlbumArtistNumericJunk
             | AlbumArtistMojibake
-            | AlbumArtistTooManySeparators
-            | FolderMultipleAlbumArtists
-            | FolderAlbumEmpty
             | YearLostToMalformedDate => Severity::High,
 
             ArtistInvisibleChars
             | AlbumArtistInvisibleChars
             | AlbumArtistUntrimmed
-            | AlbumArtistTooManyCoOwners
             | YearZero
             | YearTwoDigit
             | YearNonNumeric
-            | YearImplausible
-            | OriginalDateDiffers
-            | FolderMultipleAlbums => Severity::Medium,
-
-            // Endemic and usually legitimate: on reissues and compilations each track carries its
-            // own original recording date, so measured against the real library this fires on the
-            // majority of jazz folders. The indexer copes (it takes the majority), so it is
-            // informational - reporting it any higher buries the defects that actually break things.
-            FolderMultipleYears | FolderArtistCaseDrift | FolderArtistThePrefixDrift => {
-                Severity::Low
-            }
+            | YearImplausible => Severity::Medium,
         }
     }
 
@@ -150,20 +123,11 @@ impl ReasonCode {
             AlbumArtistNumericJunk => "ALBUMARTIST_NUMERIC_JUNK",
             AlbumArtistInvisibleChars => "ALBUMARTIST_INVISIBLE_CHARS",
             AlbumArtistMojibake => "ALBUMARTIST_MOJIBAKE",
-            AlbumArtistTooManySeparators => "ALBUMARTIST_TOO_MANY_SEPARATORS",
-            AlbumArtistTooManyCoOwners => "ALBUMARTIST_TOO_MANY_CO_OWNERS",
             YearZero => "YEAR_ZERO",
             YearTwoDigit => "YEAR_TWO_DIGIT",
             YearNonNumeric => "YEAR_NON_NUMERIC",
             YearImplausible => "YEAR_IMPLAUSIBLE",
             YearLostToMalformedDate => "YEAR_LOST_TO_MALFORMED_DATE",
-            OriginalDateDiffers => "ORIGINALDATE_DIFFERS",
-            FolderMultipleAlbumArtists => "FOLDER_MULTIPLE_ALBUMARTISTS",
-            FolderMultipleAlbums => "FOLDER_MULTIPLE_ALBUMS",
-            FolderMultipleYears => "FOLDER_MULTIPLE_YEARS",
-            FolderAlbumEmpty => "FOLDER_ALBUM_EMPTY",
-            FolderArtistCaseDrift => "FOLDER_ARTIST_CASE_DRIFT",
-            FolderArtistThePrefixDrift => "FOLDER_ARTIST_THE_PREFIX_DRIFT",
         }
     }
 
@@ -189,20 +153,11 @@ impl ReasonCode {
             AlbumArtistNumericJunk => "albumArtist looks like a track number, year or bitrate rather than a name - creates a junk artist",
             AlbumArtistInvisibleChars => "albumArtist contains invisible characters - creates a duplicate artist that looks identical to the real one",
             AlbumArtistMojibake => "albumArtist looks mis-decoded (mojibake) - creates a permanent garbled artist",
-            AlbumArtistTooManySeparators => "albumArtist has too many separators to verify - every part is created unverified, producing junk artists",
-            AlbumArtistTooManyCoOwners => "albumArtist lists more co-billed artists than are kept as owners - the album is missing from all but the first artist's page",
             YearZero => "year is zero - stored as 0 rather than empty, so it is invisible to every missing-year check and kills release matching",
             YearTwoDigit => "year is two digits - the indexer cannot parse it, so the year is silently lost",
             YearNonNumeric => "year is not a number - the indexer cannot parse it, so the year is silently lost",
             YearImplausible => "year is implausible - release matching silently falls back to the earliest edition",
             YearLostToMalformedDate => "a valid year exists but the date field is malformed - the indexer reads the date field first and gives up, losing the year",
-            OriginalDateDiffers => "original release date differs from the date tag - the indexer ignores originaldate, so this binds to the reissue rather than the original",
-            FolderMultipleAlbumArtists => "folder has more than one albumArtist value - each becomes a co-owner, putting this album on unrelated artists' pages",
-            FolderMultipleAlbums => "folder has more than one album value - the release title is picked by directory read order and can change between runs",
-            FolderMultipleYears => "folder mixes several year values, which is normal when tracks carry their own original recording dates - the release year is taken from the majority and flips on ties",
-            FolderAlbumEmpty => "no file in this folder has an album tag - the release is titled \"Unknown Album\" and cannot be found on MusicBrainz",
-            FolderArtistCaseDrift => "folder mixes capitalisations of the same name - harmless after indexing, but a sign the tags were edited inconsistently",
-            FolderArtistThePrefixDrift => "folder mixes \"The X\" and \"X\" spellings - creates two separate artist pages that the duplicate-artist audit cannot detect",
         }
     }
 }
@@ -280,20 +235,11 @@ pub const ALL_CODES: &[ReasonCode] = &[
     ReasonCode::AlbumArtistNumericJunk,
     ReasonCode::AlbumArtistInvisibleChars,
     ReasonCode::AlbumArtistMojibake,
-    ReasonCode::AlbumArtistTooManySeparators,
-    ReasonCode::AlbumArtistTooManyCoOwners,
     ReasonCode::YearZero,
     ReasonCode::YearTwoDigit,
     ReasonCode::YearNonNumeric,
     ReasonCode::YearImplausible,
     ReasonCode::YearLostToMalformedDate,
-    ReasonCode::OriginalDateDiffers,
-    ReasonCode::FolderMultipleAlbumArtists,
-    ReasonCode::FolderMultipleAlbums,
-    ReasonCode::FolderMultipleYears,
-    ReasonCode::FolderAlbumEmpty,
-    ReasonCode::FolderArtistCaseDrift,
-    ReasonCode::FolderArtistThePrefixDrift,
 ];
 
 /// Recover which codes a rendered reason cell contains, by matching each code's message text.
@@ -309,8 +255,7 @@ pub fn codes_in_rendered(rendered: &str) -> Vec<ReasonCode> {
         .collect()
 }
 
-/// Every defect for one file, from its tag values alone. Folder-level reasons are appended
-/// separately by [`folder::folder_reasons`].
+/// Every defect for one file, from its tag values alone.
 ///
 /// Ordering within the returned vec does not matter - [`render_reasons`] sorts before joining.
 pub fn check_file(snap: &crate::audio::TagSnapshot, current_year: i32) -> Vec<Reason> {
@@ -435,23 +380,6 @@ fn check_album_artist(aa: &str) -> Vec<Reason> {
             ReasonCode::AlbumArtistNumericJunk,
             format!("{why}: \"{}\"", sanitize_cell(aa)),
         ));
-    }
-
-    // Separator-driven defects are meaningless for a placeholder like "Various Artists", which the
-    // indexer never resolves at all.
-    if !artist::index_treats_as_special(aa.trim()) {
-        if let Some(n) = artist::too_many_separators(aa) {
-            out.push(Reason::new(
-                ReasonCode::AlbumArtistTooManySeparators,
-                format!("{n} separators in \"{}\"", sanitize_cell(aa)),
-            ));
-        }
-        if let Some(n) = artist::too_many_co_owners(aa) {
-            out.push(Reason::new(
-                ReasonCode::AlbumArtistTooManyCoOwners,
-                format!("{n} co-billed in \"{}\"", sanitize_cell(aa)),
-            ));
-        }
     }
 
     out
@@ -620,12 +548,10 @@ mod tests {
     }
 
     #[test]
-    fn various_artists_is_not_flagged_for_separators() {
-        // "Various Artists, Vol 2" has a comma but the indexer never resolves it, so reporting a
-        // separator defect on it would be pure noise.
+    fn a_recognised_various_artists_value_is_not_flagged() {
+        // The indexer resolves this placeholder itself, so reporting anything on it would be noise.
         let s = snap(Some("A"), Some("Various Artists, Vol 2"), Some("T"));
         let got = codes(&check_file(&s, 2026));
-        assert!(!got.contains(&ReasonCode::AlbumArtistTooManyCoOwners));
         assert!(!got.contains(&ReasonCode::AlbumArtistUnrecognisedVarious));
     }
 
@@ -673,7 +599,7 @@ mod tests {
         // variant without updating ALL_CODES fails here.
         assert_eq!(
             ALL_CODES.len(),
-            32,
+            23,
             "ALL_CODES is out of sync with the ReasonCode enum"
         );
     }

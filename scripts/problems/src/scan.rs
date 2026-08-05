@@ -14,7 +14,6 @@ use std::sync::Arc;
 use rayon::prelude::*;
 
 use crate::audio::{self, is_audio_file};
-use crate::checks::folder::{folder_reasons, FileFacts};
 use crate::checks::{check_file, render_reasons, sanitize_cell, Reason, ReasonCode};
 use crate::progress::Counters;
 use crate::spool::Row;
@@ -129,58 +128,35 @@ fn folders_for_artist(root: &Path, artist: &str) -> BTreeMap<String, Vec<(PathBu
     map
 }
 
-/// Scan one release folder: check every file, then attribute folder-level defects back to all of
-/// them.
+/// Scan one release folder: check every file.
+///
+/// Every remaining check is file-local, so this is a single pass with no folder-wide aggregate -
+/// the folder-level checks (and the two-phase collect they required) were retired as structural
+/// observations about how a folder is *organised*, not defects in any one file's tags.
 fn scan_folder(
     folder: &str,
     files: &[(PathBuf, String)],
     current_year: i32,
     counters: &Counters,
 ) -> (Vec<Row>, CodeCounts) {
-    let mut per_file: Vec<(String, Vec<Reason>)> = Vec::with_capacity(files.len());
-    let mut facts: Vec<FileFacts> = Vec::with_capacity(files.len());
+    let mut rows = Vec::new();
+    let mut counts: CodeCounts = BTreeMap::new();
 
     for (path, name) in files {
-        let name = name.clone();
         counters.files.fetch_add(1, Ordering::Relaxed);
 
-        match audio::read_tags_guarded(path) {
-            Ok(snap) => {
-                let reasons = check_file(&snap, current_year);
-                facts.push(FileFacts {
-                    file_name: name.clone(),
-                    artist: snap.artist.clone(),
-                    album_artist: snap.album_artist.clone(),
-                    album: snap.album.clone(),
-                    year: crate::checks::year::leading_year(
-                        snap.dates
-                            .recording
-                            .as_deref()
-                            .or(snap.dates.year.as_deref())
-                            .unwrap_or(""),
-                    ),
-                });
-                per_file.push((name, reasons));
-            }
+        let reasons = match audio::read_tags_guarded(path) {
+            Ok(snap) => check_file(&snap, current_year),
             Err(e) => {
                 counters.unreadable.fetch_add(1, Ordering::Relaxed);
                 let code = match e {
                     audio::ReadError::Panicked => ReasonCode::TagReadPanicked,
                     _ => ReasonCode::TagsUnreadable,
                 };
-                // No facts: an unreadable file contributes nothing to folder aggregates, since we
-                // cannot know what it claims. Counting it would invent drift that may not exist.
-                per_file.push((name, vec![Reason::new(code, sanitize_cell(&e.detail()))]));
+                vec![Reason::new(code, sanitize_cell(&e.detail()))]
             }
-        }
-    }
+        };
 
-    let shared = folder_reasons(&facts);
-
-    let mut rows = Vec::new();
-    let mut counts: CodeCounts = BTreeMap::new();
-    for (name, mut reasons) in per_file {
-        reasons.extend(shared.iter().cloned());
         if reasons.is_empty() {
             continue;
         }
@@ -193,7 +169,7 @@ fn scan_folder(
             .fetch_add(reasons.len() as u64, Ordering::Relaxed);
         rows.push(Row {
             path: sanitize_cell(folder),
-            file: sanitize_cell(&name),
+            file: sanitize_cell(name),
             reason: render_reasons(reasons),
         });
     }
@@ -338,7 +314,7 @@ mod tests {
     #[test]
     fn ranked_counts_orders_by_severity_then_frequency() {
         let mut counts = CodeCounts::new();
-        counts.insert(ReasonCode::FolderMultipleAlbums, 500); // Medium
+        counts.insert(ReasonCode::YearZero, 500); // Medium
         counts.insert(ReasonCode::ArtistMissing, 10); // Critical
         counts.insert(ReasonCode::TitleEmpty, 3); // Critical
         let ranked = ranked_counts(&counts);
@@ -348,7 +324,7 @@ mod tests {
             "critical must outrank frequency"
         );
         assert_eq!(ranked[1].0, ReasonCode::TitleEmpty);
-        assert_eq!(ranked[2].0, ReasonCode::FolderMultipleAlbums);
+        assert_eq!(ranked[2].0, ReasonCode::YearZero);
     }
 
     #[test]
