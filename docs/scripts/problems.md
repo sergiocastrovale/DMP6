@@ -9,10 +9,11 @@ writing tags only when it has a reliable, verified source for the new value. Exa
 renames or deletes one. `--fix:<type>` is the only thing in this binary that writes tags, and it
 never guesses: each fix type defines its own bar for "reliable enough to write" (MusicBrainz for
 `--fix:years`, the file's own other tags or its release folder's consensus for
-`--fix:artist-missing`/`--fix:albumartist-numeric-junk`), and short of that bar it leaves the file
-alone rather than writing a best-effort value. `--years`, `--artist-missing` and
-`--albumartist-numeric-junk` are the first three fix types; more are meant to be added as new
-`--fix:<type>` flags reusing the same worklist/ledger/report-regeneration machinery.
+`--fix:artist-missing`/`--fix:albumartist-numeric-junk`, pure normalization of the existing value for
+`--fix:text-normalize`), and short of that bar it leaves the file alone rather than writing a
+best-effort value. `--years`, `--artist-missing`, `--albumartist-numeric-junk` and
+`--text-normalize` are the first four fix types; more are meant to be added as new `--fix:<type>`
+flags reusing the same worklist/ledger/report-regeneration machinery.
 
 ## Usage
 
@@ -38,6 +39,9 @@ alone rather than writing a best-effort value. `--years`, `--artist-missing` and
 
 ./problems --fix:albumartist-numeric-junk             # Replace ALBUMARTIST_NUMERIC_JUNK from artist / folder majority
 ./problems --fix:albumartist-numeric-junk --dry-run   # Preview, write nothing
+
+./problems --fix:text-normalize               # Strip invisible chars, trim albumArtist whitespace
+./problems --fix:text-normalize --dry-run     # Preview, write nothing
 ```
 
 On the NAS:
@@ -54,6 +58,7 @@ sudo ./problems --audit --root /music
 | `--fix:years` | bool | - | Resolve `YEAR_ZERO`/`YEAR_NON_NUMERIC` against MusicBrainz. Mutually exclusive with `--audit`, one required |
 | `--fix:artist-missing` | bool | - | Fill in `ARTIST_MISSING` from the file's own `albumArtist` or a folder majority. Mutually exclusive with `--audit`, one required |
 | `--fix:albumartist-numeric-junk` | bool | - | Replace `ALBUMARTIST_NUMERIC_JUNK` from the file's own `artist` or a folder majority. Mutually exclusive with `--audit`, one required |
+| `--fix:text-normalize` | bool | - | Strip invisible characters (`ARTIST_INVISIBLE_CHARS`/`ALBUMARTIST_INVISIBLE_CHARS`) and trim whitespace (`ALBUMARTIST_UNTRIMMED`). Mutually exclusive with `--audit`, one required |
 | `--dry-run` | bool | false | `--fix:*` only: print what would change, write nothing (no tags, no ledger, no report regen) |
 | `--root` | String | `$MUSIC_DIR` | Music library root |
 | `--output` / `-o` | String | `<work-dir>/problems.xlsx` | Report path |
@@ -243,6 +248,37 @@ keeps this safe in the meantime: run it against a stale spool and every now-fals
 correctly resolves to "no longer looks like junk" - an error, not a write - rather than "fixing" a
 file that was never actually broken.
 
+### `--fix:text-normalize`: `ARTIST_INVISIBLE_CHARS` / `ALBUMARTIST_INVISIBLE_CHARS` / `ALBUMARTIST_UNTRIMMED`
+
+The only fix type so far where the correct value is derivable from the broken value itself - no
+MusicBrainz, no sibling files, no folder majority. `checks::text::normalize_tag_text` is the total,
+pure transform (space-like invisible characters, e.g. NBSP, become a real space rather than being
+deleted - deleting would fuse adjacent words; everything else `invisible_chars` flags renders as
+nothing and is deleted outright; the result is trimmed, which is the same operation `is_untrimmed`
+checks). It is bound to the two detectors it exists to satisfy by an invariant test, not by
+convention: for every input, `invisible_chars(normalize(s))` must be empty and `is_untrimmed(normalize(s))`
+must be false, and a clean input must come back byte-identical.
+
+This fix type does not special-case `U+FFFD` (the replacement character) inside `normalize_tag_text`
+itself - that's a policy decision, made by `fix/text_normalize.rs`, not a property of the transform.
+A field whose *current* value contains `U+FFFD`, or whose normalized value fails
+`fix::candidates::is_usable_candidate` (nothing left after stripping - the value was entirely
+invisible characters), refuses the **whole file**, not just that field: a partial write would leave
+the file in a state the scan never described. `artist` and `albumArtist` are independently
+re-checked and independently normalized, but written and ledgered together per file when both need
+it - one `FixOutcome` per code actually resolved, so a file fixing both `ARTIST_INVISIBLE_CHARS` and
+`ALBUMARTIST_INVISIBLE_CHARS` produces two ledger entries, keeping the Summary sheet's per-code
+counts accurate.
+
+**Known gap, found while verifying the real fix on disk:** some files (the `ARTIST_INVISIBLE_CHARS`
+ones, from Picard-style tagging) also carry a `TXXX:ARTISTS` frame - a non-standard multi-artist
+credit list - with the *same* corrupted value. The scanner never reads this frame (only `artist`/
+`albumArtist`, i.e. `TPE1`/`TPE2`), so it was never flagged and `--fix:text-normalize` correctly
+leaves it untouched - touching an unflagged field would be the same mistake as guessing. The file is
+not fully clean of invisible characters after the fix; `TPE1`/`TPE2` are, because those are the only
+two fields this defect type was ever about. Extending the scanner to also check `TXXX:ARTISTS` would
+be a new, separate defect type, not a widening of these three.
+
 ### The fixed-row ledger, and why the xlsx doesn't need a separate marking step
 
 Every non-dry-run `--fix:*` appends to `<work-dir>/problems.fixed.jsonl` (one JSON object per
@@ -253,6 +289,7 @@ end up silently marked green):
 {"path":"...","file":"...","code":"YearZero","action":"set","field":"RecordingDate","old_value":"0000","new_value":"1990","fix_kind":"years","detail":{"mbReleaseGroupId":"...","mbTitle":"...","mbArtist":"..."},"fixed_at":"..."}
 {"path":"...","file":"...","code":"ArtistMissing","action":"set","field":"Artist","old_value":"","new_value":"Hank Mobley","fix_kind":"artist-missing","detail":{"source":"folder-majority"},"fixed_at":"..."}
 {"path":"...","file":"...","code":"AlbumArtistNumericJunk","action":"set","field":"AlbumArtist","old_value":"999","new_value":"J.J. Cale","fix_kind":"albumartist-numeric-junk","detail":{"source":"artist"},"fixed_at":"..."}
+{"path":"...","file":"...","code":"ArtistInvisibleChars","action":"set","field":"Artist","old_value":"Death Cab for Cutie & Jay​-​Z","new_value":"Death Cab for Cutie & Jay-Z","fix_kind":"text-normalize","detail":null,"fixed_at":"..."}
 ```
 
 This ledger is **shared across every fix type** (`fix_kind` distinguishes entries), and it is what `report::write_report` consults on *every* regeneration - a fresh `--audit`, `--audit --report-only`, or the automatic regeneration `--fix:*` triggers after writing tags - to green-mark rows and populate the Summary sheet's `Fixed` column. There is no separate "mark the xlsx" step; it is a native, automatic part of building the report, for as long as the ledger and spool both exist.

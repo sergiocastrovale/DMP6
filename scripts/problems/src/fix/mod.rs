@@ -9,6 +9,7 @@ mod albumartist_numeric_junk;
 mod artist_missing;
 mod candidates;
 mod tags;
+mod text_normalize;
 mod years;
 
 use std::collections::BTreeMap;
@@ -25,6 +26,7 @@ pub enum FixKind {
     Years,
     ArtistMissing,
     AlbumArtistNumericJunk,
+    TextNormalize,
 }
 
 impl FixKind {
@@ -33,6 +35,11 @@ impl FixKind {
             Self::Years => &[ReasonCode::YearZero, ReasonCode::YearNonNumeric],
             Self::ArtistMissing => &[ReasonCode::ArtistMissing],
             Self::AlbumArtistNumericJunk => &[ReasonCode::AlbumArtistNumericJunk],
+            Self::TextNormalize => &[
+                ReasonCode::ArtistInvisibleChars,
+                ReasonCode::AlbumArtistInvisibleChars,
+                ReasonCode::AlbumArtistUntrimmed,
+            ],
         }
     }
 
@@ -41,6 +48,7 @@ impl FixKind {
             Self::Years => "years",
             Self::ArtistMissing => "artist-missing",
             Self::AlbumArtistNumericJunk => "albumartist-numeric-junk",
+            Self::TextNormalize => "text-normalize",
         }
     }
 }
@@ -140,6 +148,7 @@ pub fn run_fix(
             FixKind::AlbumArtistNumericJunk => {
                 albumartist_numeric_junk::run(root, &list, dry_run).await
             }
+            FixKind::TextNormalize => text_normalize::run(root, &list, dry_run).await,
         }
     });
     let result = match result {

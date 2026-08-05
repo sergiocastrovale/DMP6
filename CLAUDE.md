@@ -168,6 +168,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./problems --fix:artist-missing --dry-run     # Preview, write nothing
 ./problems --fix:albumartist-numeric-junk             # Replace ALBUMARTIST_NUMERIC_JUNK from artist / folder majority (no MB)
 ./problems --fix:albumartist-numeric-junk --dry-run   # Preview, write nothing
+./problems --fix:text-normalize               # Strip invisible chars, trim albumArtist whitespace (pure normalization, no MB)
+./problems --fix:text-normalize --dry-run     # Preview, write nothing
 ./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
 ./playlists                   # Generate/update genre playlists
 ./playlists --dry-run         # Preview without changes

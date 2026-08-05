@@ -37,7 +37,7 @@ use spool::{load_state, save_state, Paths, ScanState, SpoolWriter};
 #[command(
     name = "problems",
     about = "Scan a music library for tag defects (--audit) or fix ones with a reliable source (--fix:<type>).",
-    group(ArgGroup::new("mode").args(["audit", "fix_years", "fix_artist_missing", "fix_albumartist_numeric_junk"]).required(true))
+    group(ArgGroup::new("mode").args(["audit", "fix_years", "fix_artist_missing", "fix_albumartist_numeric_junk", "fix_text_normalize"]).required(true))
 )]
 struct Args {
     /// Scan the library and write problems.xlsx. Never modifies audio files.
@@ -60,6 +60,12 @@ struct Args {
     /// --audit (reads its spool).
     #[arg(long = "fix:albumartist-numeric-junk")]
     fix_albumartist_numeric_junk: bool,
+
+    /// Strip invisible characters from artist/albumArtist and trim albumArtist whitespace. Pure
+    /// normalization of the existing value - never MusicBrainz, no sibling files. Requires a prior
+    /// --audit (reads its spool).
+    #[arg(long = "fix:text-normalize")]
+    fix_text_normalize: bool,
 
     /// --fix:* only: print what would change without writing any tags or updating the ledger.
     #[arg(long)]
@@ -204,6 +210,11 @@ fn main() {
         Some((
             FixKind::AlbumArtistNumericJunk,
             "fix:albumartist-numeric-junk (writes tags from the file's own artist or a folder majority - never MusicBrainz)",
+        ))
+    } else if args.fix_text_normalize {
+        Some((
+            FixKind::TextNormalize,
+            "fix:text-normalize (strips invisible characters, trims albumArtist - pure normalization, never MusicBrainz)",
         ))
     } else {
         None

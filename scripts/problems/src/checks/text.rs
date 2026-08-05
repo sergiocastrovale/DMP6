@@ -95,6 +95,38 @@ pub fn looks_like_mojibake(s: &str) -> bool {
     false
 }
 
+/// Normalizes a tag value the way [`invisible_chars`]/[`is_untrimmed`] expect a clean one to look:
+/// every char class [`invisible_chars`] flags is either replaced with a real space or deleted
+/// outright, then the result is trimmed - the same operation [`is_untrimmed`] itself checks against.
+///
+/// Space-like characters (NBSP, line/paragraph separators) become a real `' '` rather than being
+/// deleted - deleting them would fuse adjacent words (`"Bj\u{00A0}rk"` must become `"Bj rk"`, never
+/// `"Bjrk"`). Everything else in [`invisible_chars`]'s set renders as nothing, so removing it
+/// restores the name a tag editor already appears to show.
+///
+/// Deliberately does **not** special-case `U+FFFD` (the replacement character) - it means data was
+/// already unrecoverably lost by an earlier, different mis-decode, and no text transform here can
+/// un-lose it. A caller that cares whether a value is safe to auto-fix must check for `U+FFFD` itself
+/// before calling this (see `fix::text_normalize`), not rely on this function to refuse.
+pub fn normalize_tag_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\u{A0}' | '\u{2028}' | '\u{2029}' => out.push(' '),
+            '\u{0}'..='\u{8}'
+            | '\u{B}'..='\u{1F}'
+            | '\u{7F}'..='\u{9F}'
+            | '\u{00AD}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'
+            | '\u{FEFF}' => {}
+            _ => out.push(c),
+        }
+    }
+    out.trim().to_string()
+}
+
 /// Render a char list for the report: `U+00A0, U+200B`.
 pub fn describe_chars(chars: &[char]) -> String {
     chars
@@ -163,6 +195,78 @@ mod tests {
     #[test]
     fn invisible_chars_dedupes() {
         assert_eq!(invisible_chars("a\u{200B}b\u{200B}c"), vec!['\u{200B}']);
+    }
+
+    #[test]
+    fn normalize_satisfies_both_detectors_it_exists_to_clear() {
+        // The invariant that matters: after normalizing, neither detector this function is the
+        // inverse of still fires - checked against every real char class seen in the library plus
+        // the shapes those detectors' own tests already pin, not a hand-picked handful.
+        for input in [
+            "Death Cab for Cutie & Jay\u{200B}-\u{200B}Z",
+            "Death Cab for Cutie\\Jay\u{200B}-\u{200B}Z",
+            "Bj\u{00A0}rk",
+            "a\u{200B}b",
+            "\u{FEFF}x",
+            "x\u{00AD}y",
+            "a\u{2060}b",
+            "line\u{2028}break",
+            "para\u{2029}break",
+            " Various Artists",
+            "Radiohead ",
+            "  Both sides  ",
+            "HEALTH ",
+            " Michelle Blades",
+        ] {
+            let n = normalize_tag_text(input);
+            assert!(
+                invisible_chars(&n).is_empty(),
+                "still has invisible chars after normalize: {input:?} -> {n:?}"
+            );
+            assert!(
+                !is_untrimmed(&n),
+                "still untrimmed after normalize: {input:?} -> {n:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_replaces_space_like_chars_with_a_real_space_not_nothing() {
+        // Deleting these instead of spacing them would fuse adjacent words.
+        assert_eq!(normalize_tag_text("Bj\u{00A0}rk"), "Bj rk");
+        assert_eq!(normalize_tag_text("line\u{2028}break"), "line break");
+        assert_eq!(normalize_tag_text("para\u{2029}break"), "para break");
+    }
+
+    #[test]
+    fn normalize_deletes_zero_width_and_formatting_chars_outright() {
+        assert_eq!(
+            normalize_tag_text("Death Cab for Cutie & Jay\u{200B}-\u{200B}Z"),
+            "Death Cab for Cutie & Jay-Z"
+        );
+        assert_eq!(normalize_tag_text("\u{FEFF}Radiohead"), "Radiohead");
+        assert_eq!(normalize_tag_text("sof\u{00AD}t"), "soft");
+    }
+
+    #[test]
+    fn normalize_trims_leading_and_trailing_whitespace() {
+        assert_eq!(normalize_tag_text("HEALTH "), "HEALTH");
+        assert_eq!(normalize_tag_text(" Michelle Blades"), "Michelle Blades");
+    }
+
+    #[test]
+    fn normalize_leaves_u_fffd_alone_it_is_not_this_functions_call_to_make() {
+        // Unrecoverable - a previous decode already lost the real character. The caller (not this
+        // function) is responsible for treating its presence as a refusal to auto-fix.
+        assert!(normalize_tag_text("x\u{FFFD}y").contains('\u{FFFD}'));
+    }
+
+    #[test]
+    fn normalize_leaves_clean_values_byte_identical() {
+        // The fixer must never rewrite a file it has no business touching.
+        for clean in ["Radiohead", "Sigur Rós", "日本", "AC/DC", "Simon & Garfunkel"] {
+            assert_eq!(normalize_tag_text(clean), clean);
+        }
     }
 
     #[test]
