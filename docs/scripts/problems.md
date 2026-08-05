@@ -9,9 +9,10 @@ writing tags only when it has a reliable, verified source for the new value. Exa
 renames or deletes one. `--fix:<type>` is the only thing in this binary that writes tags, and it
 never guesses: each fix type defines its own bar for "reliable enough to write" (MusicBrainz for
 `--fix:years`, the file's own other tags or its release folder's consensus for
-`--fix:artist-missing`), and short of that bar it leaves the file alone rather than writing a
-best-effort value. `--years` and `--artist-missing` are the first two fix types; more are meant to
-be added as new `--fix:<type>` flags reusing the same worklist/ledger/report-regeneration machinery.
+`--fix:artist-missing`/`--fix:albumartist-numeric-junk`), and short of that bar it leaves the file
+alone rather than writing a best-effort value. `--years`, `--artist-missing` and
+`--albumartist-numeric-junk` are the first three fix types; more are meant to be added as new
+`--fix:<type>` flags reusing the same worklist/ledger/report-regeneration machinery.
 
 ## Usage
 
@@ -34,6 +35,9 @@ be added as new `--fix:<type>` flags reusing the same worklist/ledger/report-reg
 
 ./problems --fix:artist-missing               # Fill in ARTIST_MISSING from albumArtist / folder majority
 ./problems --fix:artist-missing --dry-run     # Preview, write nothing
+
+./problems --fix:albumartist-numeric-junk             # Replace ALBUMARTIST_NUMERIC_JUNK from artist / folder majority
+./problems --fix:albumartist-numeric-junk --dry-run   # Preview, write nothing
 ```
 
 On the NAS:
@@ -49,6 +53,7 @@ sudo ./problems --audit --root /music
 | `--audit` | bool | - | Scan the library and write `problems.xlsx`. Mutually exclusive with `--fix:*`, one required |
 | `--fix:years` | bool | - | Resolve `YEAR_ZERO`/`YEAR_NON_NUMERIC` against MusicBrainz. Mutually exclusive with `--audit`, one required |
 | `--fix:artist-missing` | bool | - | Fill in `ARTIST_MISSING` from the file's own `albumArtist` or a folder majority. Mutually exclusive with `--audit`, one required |
+| `--fix:albumartist-numeric-junk` | bool | - | Replace `ALBUMARTIST_NUMERIC_JUNK` from the file's own `artist` or a folder majority. Mutually exclusive with `--audit`, one required |
 | `--dry-run` | bool | false | `--fix:*` only: print what would change, write nothing (no tags, no ledger, no report regen) |
 | `--root` | String | `$MUSIC_DIR` | Music library root |
 | `--output` / `-o` | String | `<work-dir>/problems.xlsx` | Report path |
@@ -184,18 +189,59 @@ frequently *also* empty (per `YearLostToMalformedDate`-style co-occurring defect
 `ArtistMissing` row very often carries `TitleEmpty` too). Two sources, tried in order, both purely
 from tags already on disk:
 
-1. The same file's own `albumArtist`, if present and not machine junk (reuses the scanner's own
-   `checks::artist` predicates - `index_treats_as_special`, `is_unknown_artist`,
-   `numeric_or_corrupted`, `unrecognised_various` - so a value this fixer accepts is held to exactly
-   the bar the detector uses to flag everything else).
+1. The same file's own `albumArtist`, if present and not machine junk (`fix::candidates::is_usable_candidate`
+   reuses the scanner's own `checks::artist` predicates - `index_treats_as_special`,
+   `is_unknown_artist`, `numeric_or_corrupted`, `unrecognised_various` - so a value this fixer accepts
+   is held to exactly the bar the detector uses to flag everything else. Shared with
+   `--fix:albumartist-numeric-junk`, below, so both fixers apply one definition of "usable", not two
+   that can drift).
 2. Failing that, a **strict majority** `artist` value across the *whole* release folder (every audio
    file, not just the defective ones - unlike `--fix:years`, trusting siblings here is the correct
    signal rather than the risk: even a folder mixing several sub-albums, per `FolderMultipleAlbums`,
-   is very often still one artist's whole discography dumped together).
+   is very often still one artist's whole discography dumped together). `fix::candidates::folder_majority`
+   is generic over which field to vote on, shared with `--fix:albumartist-numeric-junk` too.
 
 No majority and no usable `albumArtist` ⇒ an error, file left untouched - there is no "clear to
 null" for a field that is already null, so every outcome is `set` or nothing at all, never
 `cleared`.
+
+### `--fix:albumartist-numeric-junk`: how a file is resolved, and the detector fix that came first
+
+Same shape as `--fix:artist-missing`, roles reversed - here `albumArtist` is the broken field and the
+file's own `artist` is the first place to look for a replacement:
+
+1. Re-verify the *current* `albumArtist` still trips `checks::artist::numeric_or_corrupted` (tags, or
+   the detector, may have changed since the scan - see below) - if not, an error, not a write.
+2. The same file's own `artist`, if present and not machine junk.
+3. Failing that, a strict majority `albumArtist` across the release folder's *other* files whose
+   `albumArtist` is present and not junk.
+
+No candidate clears either bar ⇒ an error, file left untouched. Unlike the two fields above, this one
+already holds *something* - leaving known-wrong data in place beats guessing or silently blanking a
+field that at least currently has a value, so there is no `cleared` outcome here either, only `set`
+or nothing.
+
+**Before writing any fix code for this type, the real data changed the plan.** Pulling the actual
+`ALBUMARTIST_NUMERIC_JUNK` rows showed the overwhelming majority (366 of 570 instances, 52 of 54
+folders in one snapshot) were false positives from `checks::artist::numeric_or_corrupted` itself -
+real artists whose name happens to fit one of its junk shapes: `"3"` and `"213"` (bare-digit rule -
+real bands, one an actual group named after an album literally called *"213 - The Hard Way"*),
+`"22-20s"`/`"24-7 Spyz"` (numbered-track-title rule), `"2562"` (bare-year rule, a real Berlin
+electronic producer). The function already had exactly this escape hatch for one of its four
+sub-rules (`is_numeric_band_name`, now `is_known_numeric_artist_name` - renamed since it's no longer
+bare-digit-specific), just wired to guard only that one branch. The fix moved the whitelist check to
+the top of the function, covering all four shapes, and extended it with the five confirmed-real names
+above. Existing tests already pinned the tradeoff this preserves: tightening either shape rule instead
+would reintroduce a documented false negative (`"07-Song"` with no space around the dash must still be
+caught), so a curated exact-match exception list - not a looser heuristic - is the fix, same as the
+bare-digit rule already used.
+
+Fixing the detector doesn't retroactively clean an existing spool - a row flagged before the fix stays
+in the report as a defect until the *next* `--audit` re-scans the file. `--fix:albumartist-numeric-junk`'s
+own re-verification step (`numeric_or_corrupted` on the *current* value, per file, per run) is what
+keeps this safe in the meantime: run it against a stale spool and every now-false-positive row
+correctly resolves to "no longer looks like junk" - an error, not a write - rather than "fixing" a
+file that was never actually broken.
 
 ### The fixed-row ledger, and why the xlsx doesn't need a separate marking step
 
@@ -206,6 +252,7 @@ end up silently marked green):
 ```json
 {"path":"...","file":"...","code":"YearZero","action":"set","field":"RecordingDate","old_value":"0000","new_value":"1990","fix_kind":"years","detail":{"mbReleaseGroupId":"...","mbTitle":"...","mbArtist":"..."},"fixed_at":"..."}
 {"path":"...","file":"...","code":"ArtistMissing","action":"set","field":"Artist","old_value":"","new_value":"Hank Mobley","fix_kind":"artist-missing","detail":{"source":"folder-majority"},"fixed_at":"..."}
+{"path":"...","file":"...","code":"AlbumArtistNumericJunk","action":"set","field":"AlbumArtist","old_value":"999","new_value":"J.J. Cale","fix_kind":"albumartist-numeric-junk","detail":{"source":"artist"},"fixed_at":"..."}
 ```
 
 This ledger is **shared across every fix type** (`fix_kind` distinguishes entries), and it is what `report::write_report` consults on *every* regeneration - a fresh `--audit`, `--audit --report-only`, or the automatic regeneration `--fix:*` triggers after writing tags - to green-mark rows and populate the Summary sheet's `Fixed` column. There is no separate "mark the xlsx" step; it is a native, automatic part of building the report, for as long as the ledger and spool both exist.

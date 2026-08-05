@@ -36,8 +36,8 @@ use spool::{load_state, save_state, Paths, ScanState, SpoolWriter};
 #[derive(Parser, Debug)]
 #[command(
     name = "problems",
-    about = "Scan a music library for tag defects (--audit) or fix ones MusicBrainz can verify (--fix:<type>).",
-    group(ArgGroup::new("mode").args(["audit", "fix_years", "fix_artist_missing"]).required(true))
+    about = "Scan a music library for tag defects (--audit) or fix ones with a reliable source (--fix:<type>).",
+    group(ArgGroup::new("mode").args(["audit", "fix_years", "fix_artist_missing", "fix_albumartist_numeric_junk"]).required(true))
 )]
 struct Args {
     /// Scan the library and write problems.xlsx. Never modifies audio files.
@@ -54,6 +54,12 @@ struct Args {
     /// Requires a prior --audit (reads its spool).
     #[arg(long = "fix:artist-missing")]
     fix_artist_missing: bool,
+
+    /// Replace a machine-junk albumArtist (track number/bare year/bitrate suffix) with the file's
+    /// own artist tag or a folder-wide majority albumArtist. Never MusicBrainz. Requires a prior
+    /// --audit (reads its spool).
+    #[arg(long = "fix:albumartist-numeric-junk")]
+    fix_albumartist_numeric_junk: bool,
 
     /// --fix:* only: print what would change without writing any tags or updating the ledger.
     #[arg(long)]
@@ -193,6 +199,11 @@ fn main() {
         Some((
             FixKind::ArtistMissing,
             "fix:artist-missing (writes tags from the file's own albumArtist or a folder majority - never MusicBrainz)",
+        ))
+    } else if args.fix_albumartist_numeric_junk {
+        Some((
+            FixKind::AlbumArtistNumericJunk,
+            "fix:albumartist-numeric-junk (writes tags from the file's own artist or a folder majority - never MusicBrainz)",
         ))
     } else {
         None

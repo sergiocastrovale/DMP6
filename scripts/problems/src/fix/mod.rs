@@ -5,7 +5,9 @@
 //! triggering the report regeneration that turns ledger entries into green rows and Summary counts.
 //! Kind-specific: only how one release's worklist entries actually get resolved (`years::run`).
 
+mod albumartist_numeric_junk;
 mod artist_missing;
+mod candidates;
 mod tags;
 mod years;
 
@@ -22,6 +24,7 @@ use crate::spool::{self, Paths};
 pub enum FixKind {
     Years,
     ArtistMissing,
+    AlbumArtistNumericJunk,
 }
 
 impl FixKind {
@@ -29,6 +32,7 @@ impl FixKind {
         match self {
             Self::Years => &[ReasonCode::YearZero, ReasonCode::YearNonNumeric],
             Self::ArtistMissing => &[ReasonCode::ArtistMissing],
+            Self::AlbumArtistNumericJunk => &[ReasonCode::AlbumArtistNumericJunk],
         }
     }
 
@@ -36,6 +40,7 @@ impl FixKind {
         match self {
             Self::Years => "years",
             Self::ArtistMissing => "artist-missing",
+            Self::AlbumArtistNumericJunk => "albumartist-numeric-junk",
         }
     }
 }
@@ -132,6 +137,9 @@ pub fn run_fix(
         match kind {
             FixKind::Years => years::run(root, &list, dry_run).await,
             FixKind::ArtistMissing => artist_missing::run(root, &list, dry_run).await,
+            FixKind::AlbumArtistNumericJunk => {
+                albumartist_numeric_junk::run(root, &list, dry_run).await
+            }
         }
     });
     let result = match result {

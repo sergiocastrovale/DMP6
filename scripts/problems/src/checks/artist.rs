@@ -107,9 +107,18 @@ pub fn numeric_or_corrupted(name: &str) -> Option<String> {
         return None;
     }
 
-    // A bare 1-3 digit number is a track number that leaked into the tag. Deliberately does not
-    // cover 3-digit values that are real band names - see the exception list below.
-    if t.len() <= 3 && t.chars().all(|c| c.is_ascii_digit()) && !is_numeric_band_name(t) {
+    // Real artists whose whole name happens to fit one of the junk shapes below. Checked once,
+    // up front, against the whole value - not per-branch - because the false positives this guards
+    // against aren't confined to the bare-digit rule: "22-20s" and "24-7 Spyz" trip the numbered-
+    // track-title rule, "2562" trips the bare-year rule. A real album genuinely named "07 - Song"-
+    // shaped or a real bare year in the field is what the branches below still need to catch, so
+    // this is a curated exception list, not a loosening of any rule's shape.
+    if is_known_numeric_artist_name(t) {
+        return None;
+    }
+
+    // A bare 1-3 digit number is a track number that leaked into the tag.
+    if t.len() <= 3 && t.chars().all(|c| c.is_ascii_digit()) {
         return Some("looks like a track number".into());
     }
 
@@ -149,10 +158,14 @@ pub fn numeric_or_corrupted(name: &str) -> Option<String> {
     None
 }
 
-/// Real bands whose entire name is a short number. Without this, the track-number rule would
-/// report them on every one of their files.
-fn is_numeric_band_name(s: &str) -> bool {
-    matches!(s, "311" | "112" | "702" | "98" | "504")
+/// Real artists whose name is entirely (or mostly) digits, so one of the shape rules above would
+/// otherwise report them on every file they own. Each entry here was confirmed against real,
+/// currently-owned library data - not added speculatively.
+fn is_known_numeric_artist_name(s: &str) -> bool {
+    matches!(
+        s,
+        "311" | "112" | "702" | "98" | "504" | "3" | "22-20s" | "24-7 Spyz" | "213" | "2562"
+    )
 }
 
 /// Reports a tag whose separator count exceeds what the resolver will verify.
@@ -290,6 +303,24 @@ mod tests {
                 "false positive: {name}"
             );
         }
+    }
+
+    #[test]
+    fn numeric_junk_spares_the_known_numeric_artist_whitelist() {
+        // Confirmed false positives against real library data: "3" and "213" would otherwise trip
+        // the bare-digit rule, "22-20s"/"24-7 Spyz" the numbered-track-title rule, "2562" the
+        // bare-year rule.
+        for name in ["3", "22-20s", "24-7 Spyz", "213", "2562"] {
+            assert!(
+                numeric_or_corrupted(name).is_none(),
+                "false positive: {name}"
+            );
+        }
+        // Real corruption in the exact same shapes must still be caught - the whitelist is a
+        // curated exact-match list, not a loosening of any rule.
+        assert!(numeric_or_corrupted("07 - Song").is_some());
+        assert!(numeric_or_corrupted("214").is_some(), "not on the whitelist");
+        assert!(numeric_or_corrupted("2563").is_some(), "not on the whitelist");
     }
 
     #[test]

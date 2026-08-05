@@ -166,6 +166,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./problems --fix:years --dry-run      # Preview proposed matches/years, write nothing
 ./problems --fix:artist-missing               # Fill ARTIST_MISSING from albumArtist / folder majority (no MB - nothing to search by)
 ./problems --fix:artist-missing --dry-run     # Preview, write nothing
+./problems --fix:albumartist-numeric-junk             # Replace ALBUMARTIST_NUMERIC_JUNK from artist / folder majority (no MB)
+./problems --fix:albumartist-numeric-junk --dry-run   # Preview, write nothing
 ./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
 ./playlists                   # Generate/update genre playlists
 ./playlists --dry-run         # Preview without changes
