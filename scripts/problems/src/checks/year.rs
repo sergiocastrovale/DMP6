@@ -91,7 +91,7 @@ pub fn leading_year(raw: &str) -> Option<i32> {
 
 /// Earliest plausible release year. Commercial recordings predate this only as curiosities, and a
 /// value below it is invariably a typo or a placeholder.
-const MIN_PLAUSIBLE_YEAR: i32 = 1860;
+pub const MIN_PLAUSIBLE_YEAR: i32 = 1860;
 
 /// All year-related defects for one file.
 ///

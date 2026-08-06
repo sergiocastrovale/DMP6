@@ -36,7 +36,12 @@ pub enum FixKind {
 impl FixKind {
     fn codes(self) -> &'static [ReasonCode] {
         match self {
-            Self::Year => &[ReasonCode::YearZero, ReasonCode::YearNonNumeric],
+            Self::Year => &[
+                ReasonCode::YearZero,
+                ReasonCode::YearNonNumeric,
+                ReasonCode::YearTwoDigit,
+                ReasonCode::YearImplausible,
+            ],
             Self::Artist => &[ReasonCode::ArtistMissing, ReasonCode::ArtistInvisibleChars],
             Self::AlbumArtist => &[
                 ReasonCode::AlbumArtistNumericJunk,

@@ -1,9 +1,12 @@
-//! `--fix:year`: resolve YEAR_ZERO / YEAR_NON_NUMERIC against MusicBrainz.
+//! `--fix:year`: resolve YEAR_ZERO / YEAR_NON_NUMERIC / YEAR_TWO_DIGIT / YEAR_IMPLAUSIBLE against
+//! MusicBrainz.
 //!
 //! One MB release-group search per unique release folder (not per file), gated to a **perfect**
 //! match - exact normalized title, exact normalized artist, and an allow-listed type. Anything short
 //! of that (no candidate, title/artist not exact, disallowed type, no parseable year) clears the
-//! field instead of guessing. The worklist and the "which tag key is actually broken" question both
+//! field instead of guessing - a two-digit or implausible year is exactly as unrecoverable by
+//! padding/clamping as a zero or non-numeric one, so all four codes share this one resolution path.
+//! The worklist and the "which tag key is actually broken, and which of the four" question both
 //! come from `problems`'s own detection code (`crate::audio`, `crate::checks::year`), so this can
 //! never disagree with what `problems.xlsx` reported.
 
@@ -18,7 +21,8 @@ use common::mb::api::{self, RateLimiter};
 use common::mb::{allowlist, names::normalize_name};
 
 use crate::audio::{read_tags_guarded, ReadError, TagSnapshot};
-use crate::checks::year::{leading_year, year_shape, YearShape};
+use crate::checks::year::{leading_year, year_shape, YearShape, MIN_PLAUSIBLE_YEAR};
+use crate::checks::ReasonCode;
 use crate::fixed::FixOutcome;
 
 use super::tags::apply_year;
@@ -36,11 +40,32 @@ fn effective_key(dates: &crate::checks::year::RawDates) -> Option<(ItemKey, &str
     None
 }
 
+/// Which of the four codes this umbrella handles the raw value still reproduces, if any. Mirrors
+/// `checks::year::check_dates`' own classification exactly - the same reason `MIN_PLAUSIBLE_YEAR`
+/// is `pub` rather than duplicated as a second constant here.
+fn defect_code(raw: &str, current_year: i32) -> Option<ReasonCode> {
+    match year_shape(raw) {
+        YearShape::Zero => Some(ReasonCode::YearZero),
+        YearShape::NonNumeric => Some(ReasonCode::YearNonNumeric),
+        YearShape::TwoDigit => Some(ReasonCode::YearTwoDigit),
+        YearShape::FourDigit(n) if n < MIN_PLAUSIBLE_YEAR || n > current_year + 1 => {
+            Some(ReasonCode::YearImplausible)
+        }
+        YearShape::FourDigit(_) | YearShape::Empty => None,
+    }
+}
+
 pub async fn run(
     root: &Path,
     worklist: &BTreeMap<String, Vec<String>>,
     dry_run: bool,
 ) -> Result<FixRunResult, String> {
+    let current_year: i32 = chrono::Local::now()
+        .format("%Y")
+        .to_string()
+        .parse()
+        .expect("current year formats as digits");
+
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
@@ -101,6 +126,7 @@ pub async fn run(
                 mb_artist.clone(),
                 mb_call_failed,
                 dry_run,
+                current_year,
             ) {
                 Ok(outcome) => result.outcomes.push(outcome),
                 Err(error) => result.errors.push(error),
@@ -123,6 +149,7 @@ fn process_file(
     mb_artist: Option<String>,
     mb_call_failed: bool,
     dry_run: bool,
+    current_year: i32,
 ) -> Result<FixOutcome, FixError> {
     let err = |message: String| FixError {
         path: rel_path.to_string(),
@@ -136,11 +163,9 @@ fn process_file(
 
     let (key, raw) =
         effective_key(&snap.dates).ok_or_else(|| err("no date field present - defect no longer reproduces".to_string()))?;
-    if !matches!(year_shape(raw), YearShape::Zero | YearShape::NonNumeric) {
-        return Err(err(
-            "field no longer YEAR_ZERO/YEAR_NON_NUMERIC - tags changed since scan".to_string(),
-        ));
-    }
+    let code = defect_code(raw, current_year).ok_or_else(|| {
+        err("field no longer YEAR_ZERO/YEAR_NON_NUMERIC/YEAR_TWO_DIGIT/YEAR_IMPLAUSIBLE - tags changed since scan".to_string())
+    })?;
 
     if mb_call_failed {
         return Err(err(
@@ -161,11 +186,7 @@ fn process_file(
     Ok(FixOutcome {
         path: rel_path.to_string(),
         file: file.to_string(),
-        code: if raw_shape_is_zero(raw) {
-            crate::checks::ReasonCode::YearZero
-        } else {
-            crate::checks::ReasonCode::YearNonNumeric
-        },
+        code,
         action: if resolved_year.is_some() { "set" } else { "cleared" }.to_string(),
         field: field_name(&key).to_string(),
         old_value: raw.to_string(),
@@ -174,10 +195,6 @@ fn process_file(
         detail,
         fixed_at: chrono::Local::now().to_rfc3339(),
     })
-}
-
-fn raw_shape_is_zero(raw: &str) -> bool {
-    matches!(year_shape(raw), YearShape::Zero)
 }
 
 fn field_name(key: &ItemKey) -> &'static str {
@@ -346,6 +363,32 @@ mod tests {
         let (key, raw) = effective_key(&d).unwrap();
         assert_eq!(key, ItemKey::Year);
         assert_eq!(raw, "xxxx");
+    }
+
+    #[test]
+    fn defect_code_covers_all_four_shapes() {
+        assert_eq!(defect_code("0000", 2026), Some(ReasonCode::YearZero));
+        assert_eq!(defect_code("N/A", 2026), Some(ReasonCode::YearNonNumeric));
+        assert_eq!(defect_code("97", 2026), Some(ReasonCode::YearTwoDigit));
+        assert_eq!(
+            defect_code("196", 2026),
+            Some(ReasonCode::YearTwoDigit),
+            "3-digit truncation is still short of 4, not implausible"
+        );
+        assert_eq!(
+            defect_code("1859", 2026),
+            Some(ReasonCode::YearImplausible)
+        );
+        assert_eq!(
+            defect_code("2028", 2026),
+            Some(ReasonCode::YearImplausible)
+        );
+    }
+
+    #[test]
+    fn defect_code_is_none_for_a_plausible_four_digit_year() {
+        assert_eq!(defect_code("1997", 2026), None);
+        assert_eq!(defect_code("2027", 2026), None, "next year is a preorder");
     }
 
     #[test]

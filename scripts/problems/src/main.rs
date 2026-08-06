@@ -44,8 +44,9 @@ struct Args {
     #[arg(long)]
     audit: bool,
 
-    /// Fix every year defect this build knows how to: YEAR_ZERO / YEAR_NON_NUMERIC resolved against
-    /// MusicBrainz on a perfect match, otherwise cleared. Requires a prior --audit (reads its spool).
+    /// Fix every year defect this build knows how to: YEAR_ZERO / YEAR_NON_NUMERIC / YEAR_TWO_DIGIT
+    /// / YEAR_IMPLAUSIBLE resolved against MusicBrainz on a perfect match, otherwise cleared.
+    /// Requires a prior --audit (reads its spool).
     #[arg(long = "fix:year")]
     fix_year: bool,
 
