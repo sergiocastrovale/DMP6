@@ -21,22 +21,25 @@ use crate::checks::{self, ReasonCode};
 use crate::fixed::{self, FixOutcome};
 use crate::spool::{self, Paths};
 
+/// Field umbrellas, each running every repair that applies to its field in a fixed precedence:
+/// normalize in place -> derive from a sibling/folder source -> MusicBrainz (year only). One
+/// release folder's worklist is shared across every repair module a kind dispatches to; each module
+/// is independently self-contained and no-ops on a file whose own specific defect is not present -
+/// see the module docs on `years`, `artist_missing`, `albumartist_numeric_junk`, `text_normalize`.
 #[derive(Clone, Copy, Debug)]
 pub enum FixKind {
-    Years,
-    ArtistMissing,
-    AlbumArtistNumericJunk,
-    TextNormalize,
+    Year,
+    Artist,
+    AlbumArtist,
 }
 
 impl FixKind {
     fn codes(self) -> &'static [ReasonCode] {
         match self {
-            Self::Years => &[ReasonCode::YearZero, ReasonCode::YearNonNumeric],
-            Self::ArtistMissing => &[ReasonCode::ArtistMissing],
-            Self::AlbumArtistNumericJunk => &[ReasonCode::AlbumArtistNumericJunk],
-            Self::TextNormalize => &[
-                ReasonCode::ArtistInvisibleChars,
+            Self::Year => &[ReasonCode::YearZero, ReasonCode::YearNonNumeric],
+            Self::Artist => &[ReasonCode::ArtistMissing, ReasonCode::ArtistInvisibleChars],
+            Self::AlbumArtist => &[
+                ReasonCode::AlbumArtistNumericJunk,
                 ReasonCode::AlbumArtistInvisibleChars,
                 ReasonCode::AlbumArtistUntrimmed,
             ],
@@ -45,12 +48,18 @@ impl FixKind {
 
     fn name(self) -> &'static str {
         match self {
-            Self::Years => "years",
-            Self::ArtistMissing => "artist-missing",
-            Self::AlbumArtistNumericJunk => "albumartist-numeric-junk",
-            Self::TextNormalize => "text-normalize",
+            Self::Year => "year",
+            Self::Artist => "artist",
+            Self::AlbumArtist => "albumartist",
         }
     }
+}
+
+/// Concatenate two repair passes over the same worklist into one result.
+fn merge(mut a: FixRunResult, b: FixRunResult) -> FixRunResult {
+    a.outcomes.extend(b.outcomes);
+    a.errors.extend(b.errors);
+    a
 }
 
 /// One file this run could not resolve either way - never recorded in the ledger, so a failed file
@@ -143,12 +152,17 @@ pub fn run_fix(
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let result = rt.block_on(async {
         match kind {
-            FixKind::Years => years::run(root, &list, dry_run).await,
-            FixKind::ArtistMissing => artist_missing::run(root, &list, dry_run).await,
-            FixKind::AlbumArtistNumericJunk => {
-                albumartist_numeric_junk::run(root, &list, dry_run).await
+            FixKind::Year => years::run(root, &list, dry_run).await,
+            FixKind::Artist => {
+                let missing = artist_missing::run(root, &list, dry_run).await?;
+                let normalized = text_normalize::run(root, &list, dry_run).await?;
+                Ok(merge(missing, normalized))
             }
-            FixKind::TextNormalize => text_normalize::run(root, &list, dry_run).await,
+            FixKind::AlbumArtist => {
+                let numeric = albumartist_numeric_junk::run(root, &list, dry_run).await?;
+                let normalized = text_normalize::run(root, &list, dry_run).await?;
+                Ok(merge(numeric, normalized))
+            }
         }
     });
     let result = match result {

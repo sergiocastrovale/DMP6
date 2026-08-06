@@ -1,11 +1,11 @@
-//! `--fix:artist-missing`: derive a missing `artist` tag from reliable signals already on disk.
+//! Part of `--fix:artist`: derive a missing `artist` tag from reliable signals already on disk.
 //!
 //! Two sources, tried in order, never MusicBrainz - there is nothing to verify an artist name
 //! against without a title/album to search by, and `title` is frequently *also* empty on exactly
 //! the files this targets:
 //! 1. The same file's own `albumArtist`, if present and not machine junk.
 //! 2. A strict majority `artist` value among the release folder's files (the whole folder, not just
-//!    the defective ones - unlike `--fix:years`, trusting siblings here is the correct signal, not
+//!    the defective ones - unlike `years`, trusting siblings here is the correct signal, not
 //!    the risk: even a folder that mixes several sub-albums, per `FolderMultipleAlbums`, is very
 //!    often still one artist's whole discography dumped together, and one mistagged track shouldn't
 //!    be left broken when 200 others in the same folder agree).

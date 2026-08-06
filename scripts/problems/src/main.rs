@@ -4,9 +4,9 @@
 //! index/sync pipeline, and writes an XLSX report. **Strictly read-only**: it opens audio files for
 //! reading and never writes, moves, renames or deletes one.
 //!
-//! `--fix:<type>` (currently only `--fix:years`) resolves defects `--audit` found against
-//! MusicBrainz, writing tags only on a perfect match - see `fix/mod.rs`. Exactly one of `--audit` /
-//! `--fix:<type>` is required per run.
+//! `--fix:<type>` resolves defects `--audit` found, one field umbrella at a time
+//! (`year`/`artist`/`albumartist`), writing tags only when the source is reliable - see
+//! `fix/mod.rs`. Exactly one of `--audit` / `--fix:<type>` is required per run.
 
 mod audio;
 mod checks;
@@ -37,35 +37,31 @@ use spool::{load_state, save_state, Paths, ScanState, SpoolWriter};
 #[command(
     name = "problems",
     about = "Scan a music library for tag defects (--audit) or fix ones with a reliable source (--fix:<type>).",
-    group(ArgGroup::new("mode").args(["audit", "fix_years", "fix_artist_missing", "fix_albumartist_numeric_junk", "fix_text_normalize"]).required(true))
+    group(ArgGroup::new("mode").args(["audit", "fix_year", "fix_artist", "fix_albumartist"]).required(true))
 )]
 struct Args {
     /// Scan the library and write problems.xlsx. Never modifies audio files.
     #[arg(long)]
     audit: bool,
 
-    /// Resolve YEAR_ZERO / YEAR_NON_NUMERIC against MusicBrainz. Writes tags only on a perfect
-    /// match; otherwise clears the field. Requires a prior --audit (reads its spool).
-    #[arg(long = "fix:years")]
-    fix_years: bool,
+    /// Fix every year defect this build knows how to: YEAR_ZERO / YEAR_NON_NUMERIC resolved against
+    /// MusicBrainz on a perfect match, otherwise cleared. Requires a prior --audit (reads its spool).
+    #[arg(long = "fix:year")]
+    fix_year: bool,
 
-    /// Fill in a missing artist tag from the file's own albumArtist or a folder-wide majority.
-    /// Never MusicBrainz - there's nothing to search by on files whose title is often also empty.
+    /// Fix every artist-field defect this build knows how to: a missing artist tag filled from the
+    /// file's own albumArtist or a folder-wide majority (never MusicBrainz - there's nothing to
+    /// search by on files whose title is often also empty), then invisible characters stripped.
     /// Requires a prior --audit (reads its spool).
-    #[arg(long = "fix:artist-missing")]
-    fix_artist_missing: bool,
+    #[arg(long = "fix:artist")]
+    fix_artist: bool,
 
-    /// Replace a machine-junk albumArtist (track number/bare year/bitrate suffix) with the file's
-    /// own artist tag or a folder-wide majority albumArtist. Never MusicBrainz. Requires a prior
-    /// --audit (reads its spool).
-    #[arg(long = "fix:albumartist-numeric-junk")]
-    fix_albumartist_numeric_junk: bool,
-
-    /// Strip invisible characters from artist/albumArtist and trim albumArtist whitespace. Pure
-    /// normalization of the existing value - never MusicBrainz, no sibling files. Requires a prior
-    /// --audit (reads its spool).
-    #[arg(long = "fix:text-normalize")]
-    fix_text_normalize: bool,
+    /// Fix every albumArtist-field defect this build knows how to: machine-junk (track
+    /// number/bare year/bitrate suffix) replaced from the file's own artist tag or a folder-wide
+    /// majority, then invisible characters stripped and whitespace trimmed. Never MusicBrainz.
+    /// Requires a prior --audit (reads its spool).
+    #[arg(long = "fix:albumartist")]
+    fix_albumartist: bool,
 
     /// --fix:* only: print what would change without writing any tags or updating the ledger.
     #[arg(long)]
@@ -196,25 +192,20 @@ fn main() {
         "unwind"
     };
 
-    let fix_mode = if args.fix_years {
+    let fix_mode = if args.fix_year {
         Some((
-            FixKind::Years,
-            "fix:years (writes tags only on a perfect MusicBrainz match)",
+            FixKind::Year,
+            "fix:year (MusicBrainz on a perfect match, otherwise clears the field)",
         ))
-    } else if args.fix_artist_missing {
+    } else if args.fix_artist {
         Some((
-            FixKind::ArtistMissing,
-            "fix:artist-missing (writes tags from the file's own albumArtist or a folder majority - never MusicBrainz)",
+            FixKind::Artist,
+            "fix:artist (fills from albumArtist/folder majority, then strips invisible characters - never MusicBrainz)",
         ))
-    } else if args.fix_albumartist_numeric_junk {
+    } else if args.fix_albumartist {
         Some((
-            FixKind::AlbumArtistNumericJunk,
-            "fix:albumartist-numeric-junk (writes tags from the file's own artist or a folder majority - never MusicBrainz)",
-        ))
-    } else if args.fix_text_normalize {
-        Some((
-            FixKind::TextNormalize,
-            "fix:text-normalize (strips invisible characters, trims albumArtist - pure normalization, never MusicBrainz)",
+            FixKind::AlbumArtist,
+            "fix:albumartist (fills from artist/folder majority, then normalizes - never MusicBrainz)",
         ))
     } else {
         None

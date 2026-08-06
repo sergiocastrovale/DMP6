@@ -1,7 +1,7 @@
-//! `--fix:albumartist-numeric-junk`: replace a machine-junk `albumArtist` (a track number, bare
+//! Part of `--fix:albumartist`: replace a machine-junk `albumArtist` (a track number, bare
 //! year, or bitrate suffix that leaked into the field) with a reliable value already on disk.
 //!
-//! Same two-source, no-MusicBrainz shape as `--fix:artist-missing` (there is nothing to verify a
+//! Same two-source, no-MusicBrainz shape as `artist_missing` (there is nothing to verify a
 //! plain artist-name string against in isolation), mirrored rather than shared because the roles are
 //! reversed: here `albumArtist` is the broken field and `artist` is the first place to look for a
 //! replacement, not the other way round.

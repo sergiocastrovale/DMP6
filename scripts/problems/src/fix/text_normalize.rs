@@ -1,5 +1,6 @@
-//! `--fix:text-normalize`: `ARTIST_INVISIBLE_CHARS` / `ALBUMARTIST_INVISIBLE_CHARS` /
-//! `ALBUMARTIST_UNTRIMMED` - the right name with the wrong bytes around it.
+//! Part of `--fix:artist` and `--fix:albumartist`: `ARTIST_INVISIBLE_CHARS` /
+//! `ALBUMARTIST_INVISIBLE_CHARS` / `ALBUMARTIST_UNTRIMMED` - the right name with the wrong bytes
+//! around it.
 //!
 //! Unlike every other fix type, the correct value is derivable from the broken value itself: no
 //! MusicBrainz, no sibling files, no folder majority. `checks::text::normalize_tag_text` is the

@@ -1,4 +1,4 @@
-//! `--fix:years`: resolve YEAR_ZERO / YEAR_NON_NUMERIC against MusicBrainz.
+//! `--fix:year`: resolve YEAR_ZERO / YEAR_NON_NUMERIC against MusicBrainz.
 //!
 //! One MB release-group search per unique release folder (not per file), gated to a **perfect**
 //! match - exact normalized title, exact normalized artist, and an allow-listed type. Anything short

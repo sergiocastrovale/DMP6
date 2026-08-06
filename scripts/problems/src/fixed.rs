@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::checks::ReasonCode;
 
 /// One resolved defect. `detail` carries whatever a fix kind wants to remember beyond the generic
-/// fields - e.g. `--fix:years` records the MusicBrainz release-group id/title/artist it matched on.
+/// fields - e.g. `--fix:year` records the MusicBrainz release-group id/title/artist it matched on.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FixOutcome {
     pub path: String,
