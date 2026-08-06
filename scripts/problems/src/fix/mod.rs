@@ -5,6 +5,7 @@
 //! triggering the report regeneration that turns ledger entries into green rows and Summary counts.
 //! Kind-specific: only how one release's worklist entries actually get resolved (`years::run`).
 
+mod albumartist_missing;
 mod albumartist_numeric_junk;
 mod artist_missing;
 mod candidates;
@@ -44,6 +45,9 @@ impl FixKind {
             ],
             Self::Artist => &[ReasonCode::ArtistMissing, ReasonCode::ArtistInvisibleChars],
             Self::AlbumArtist => &[
+                ReasonCode::AlbumArtistMissing,
+                ReasonCode::AlbumArtistUnknownArtist,
+                ReasonCode::AlbumArtistUnrecognisedVarious,
                 ReasonCode::AlbumArtistNumericJunk,
                 ReasonCode::AlbumArtistInvisibleChars,
                 ReasonCode::AlbumArtistUntrimmed,
@@ -164,9 +168,10 @@ pub fn run_fix(
                 Ok(merge(missing, normalized))
             }
             FixKind::AlbumArtist => {
+                let missing = albumartist_missing::run(root, &list, dry_run).await?;
                 let numeric = albumartist_numeric_junk::run(root, &list, dry_run).await?;
                 let normalized = text_normalize::run(root, &list, dry_run).await?;
-                Ok(merge(numeric, normalized))
+                Ok(merge(merge(missing, numeric), normalized))
             }
         }
     });
