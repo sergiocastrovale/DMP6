@@ -162,14 +162,12 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./problems --audit --only "Name"      # Scan one artist
 ./problems --audit --resume           # Continue an interrupted scan
 ./problems --audit --report-only      # Rebuild the xlsx from an existing spool (also picks up any --fix:* since the last report)
-./problems --fix:years                # MB-verified fix for YEAR_ZERO/YEAR_NON_NUMERIC (no match ⇒ null, never a guess); marks fixed rows green + updates Summary counts
-./problems --fix:years --dry-run      # Preview proposed matches/years, write nothing
-./problems --fix:artist-missing               # Fill ARTIST_MISSING from albumArtist / folder majority (no MB - nothing to search by)
-./problems --fix:artist-missing --dry-run     # Preview, write nothing
-./problems --fix:albumartist-numeric-junk             # Replace ALBUMARTIST_NUMERIC_JUNK from artist / folder majority (no MB)
-./problems --fix:albumartist-numeric-junk --dry-run   # Preview, write nothing
-./problems --fix:text-normalize               # Strip invisible chars, trim albumArtist whitespace (pure normalization, no MB)
-./problems --fix:text-normalize --dry-run     # Preview, write nothing
+./problems --fix:year                 # Fix every year defect (ZERO/NON_NUMERIC/TWO_DIGIT/IMPLAUSIBLE): MB-verified match, no match ⇒ null, never a guess; marks fixed rows green + updates Summary counts
+./problems --fix:year --dry-run       # Preview proposed matches/years, write nothing
+./problems --fix:artist               # Fix every artist-field defect: fill ARTIST_MISSING from albumArtist/folder majority (no MB), then strip invisible chars
+./problems --fix:artist --dry-run     # Preview, write nothing
+./problems --fix:albumartist          # Fix every albumArtist-field defect: fill MISSING/UNKNOWN_ARTIST, rewrite UNRECOGNISED_VARIOUS to "Various Artists", replace NUMERIC_JUNK, strip invisible chars + trim (no MB)
+./problems --fix:albumartist --dry-run  # Preview, write nothing
 ./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
 ./playlists                   # Generate/update genre playlists
 ./playlists --dry-run         # Preview without changes
