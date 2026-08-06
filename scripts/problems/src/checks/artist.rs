@@ -71,26 +71,6 @@ pub fn is_unknown_artist(name: &str) -> bool {
     lower == "unknown artist" || lower == "unknown artists"
 }
 
-/// Why a value would break the MusicBrainz artist query, if it would.
-///
-/// `common::mb::api` builds the query as `format!("\"{}\"", name)` with **no escaping** (contrast
-/// its own release-group search, which does strip quotes). Two shapes break the resulting Lucene
-/// syntax and make MusicBrainz answer HTTP 400. The resolver classifies a non-404 error as
-/// transient and defers - and deferred lookups are never cached, so the name is re-fetched, re-fails
-/// and re-defers on every single run, forever, and the release's ownership is never reconciled.
-pub fn breaks_lucene_query(name: &str) -> Option<&'static str> {
-    if name.contains('"') {
-        return Some("contains a double quote");
-    }
-    // Only an ODD number of trailing backslashes is dangerous: the closing quote gets escaped.
-    // An even count self-escapes and is harmless, so flagging it would be a false positive.
-    let trailing = name.chars().rev().take_while(|c| *c == '\\').count();
-    if trailing % 2 == 1 {
-        return Some("ends with an unescaped backslash");
-    }
-    None
-}
-
 /// Why a value looks like machine junk rather than an artist name, if it does.
 ///
 /// Extends the SQL rules in `scripts/audit/src/corrupted.rs:16-27`, which can only see values
@@ -164,6 +144,13 @@ fn is_known_numeric_artist_name(s: &str) -> bool {
     )
 }
 
+/// Real artists whose name is entirely punctuation, so [`super::text::is_punctuation_only`] would
+/// otherwise report them on every file they own. Confirmed against real, currently-owned library
+/// data (136 files for `!!!`, 3 for `+/-`) - not added speculatively.
+pub fn is_known_punctuation_artist_name(s: &str) -> bool {
+    matches!(s.trim(), "!!!" | "+/-")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,38 +214,6 @@ mod tests {
     }
 
     #[test]
-    fn lucene_breakage_distinguishes_odd_from_even_backslashes() {
-        assert!(breaks_lucene_query("Guns N\" Roses").is_some());
-        assert!(
-            breaks_lucene_query("AC\\").is_some(),
-            "odd trailing backslash escapes the quote"
-        );
-        assert!(
-            breaks_lucene_query("AC\\\\").is_none(),
-            "even count self-escapes - not a defect"
-        );
-        assert!(breaks_lucene_query("AC\\\\\\").is_some());
-    }
-
-    #[test]
-    fn lucene_check_leaves_awkward_but_safe_names_alone() {
-        // These all look alarming and are all completely fine in a quoted Lucene phrase.
-        for name in [
-            "AC/DC",
-            "Sunn O)))",
-            "!!!",
-            "†††",
-            "Godspeed You! Black Emperor",
-            "P!nk",
-        ] {
-            assert!(
-                breaks_lucene_query(name).is_none(),
-                "false positive: {name}"
-            );
-        }
-    }
-
-    #[test]
     fn numeric_junk_catches_the_real_corruption_patterns() {
         assert!(numeric_or_corrupted("03").is_some());
         assert!(numeric_or_corrupted("7").is_some());
@@ -307,4 +262,19 @@ mod tests {
         assert!(numeric_or_corrupted("2563").is_some(), "not on the whitelist");
     }
 
+    #[test]
+    fn punctuation_junk_spares_the_known_punctuation_artist_whitelist() {
+        for name in ["!!!", "+/-", " !!! ", " +/- "] {
+            assert!(
+                is_known_punctuation_artist_name(name),
+                "should be whitelisted: {name}"
+            );
+        }
+        for name in ["---", "...", "???", "[]"] {
+            assert!(
+                !is_known_punctuation_artist_name(name),
+                "not on the whitelist: {name}"
+            );
+        }
+    }
 }

@@ -9,6 +9,26 @@ use super::types::*;
 pub const MB_BASE: &str = "https://musicbrainz.org/ws/2";
 pub const USER_AGENT: &str = "DMPv6/0.1.0 ( https://github.com/dmp )";
 
+/// Escape a value for use inside a **quoted** Lucene phrase (`field:"…"`), which is how every
+/// search query here is built.
+///
+/// Only `\` and `"` matter inside a quoted phrase - the other Lucene metacharacters (`+ - && || !
+/// ( ) { } [ ] ^ ~ * ? :`) are literal there, so escaping them would corrupt real names like
+/// `AC/DC` or `Sunn O)))`. Backslash must be escaped first, or the backslashes introduced when
+/// escaping the quotes would themselves be doubled.
+///
+/// Without this, an artist whose name carries a nickname in quotes - `Lee "Scratch" Perry`,
+/// `Bonnie "Prince" Billy`, `"Weird Al" Yankovic`, and 176 others in a real library - closes the
+/// phrase early. MusicBrainz's parser tolerates the broken syntax rather than rejecting it (still
+/// HTTP 200), but it degrades into a noisy multi-term match: `artist:"Lee "Scratch" Perry"` returns
+/// five candidates (Perry Como, Katy Perry, Perry Rhodan among them) instead of the one clean hit
+/// `artist:"Lee \"Scratch\" Perry"` gives. That noise is exactly what the PERFECT-match-only
+/// resolvers here are built to distrust, so the unescaped query was quietly starving correct tags of
+/// a match rather than hard-failing on them. The tags are correct; the query was not.
+pub fn escape_lucene_phrase(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 // ---------------------------------------------------------------------------
 // Adaptive rate limiter
 // ---------------------------------------------------------------------------
@@ -211,7 +231,7 @@ async fn mb_artist_candidates(
     name: &str,
     limiter: &mut RateLimiter,
 ) -> Result<Vec<MbArtistMatch>, String> {
-    let phrase = format!("\"{}\"", name);
+    let phrase = format!("\"{}\"", escape_lucene_phrase(name));
     let quoted = urlencoding::encode(&phrase);
     let url = format!(
         "{}/artist/?query=artist:{}&limit=5&fmt=json",
@@ -251,7 +271,7 @@ pub async fn mb_search_artist_exact(
     name: &str,
     limiter: &mut RateLimiter,
 ) -> Result<Option<MbArtistMatch>, String> {
-    let phrase = format!("\"{}\"", name);
+    let phrase = format!("\"{}\"", escape_lucene_phrase(name));
     let quoted = urlencoding::encode(&phrase);
     let url = format!(
         "{}/artist/?query=artist:{}&limit=5&inc=aliases&fmt=json",
@@ -337,8 +357,8 @@ pub async fn mb_search_release_group_credits(
 ) -> Result<Vec<MbArtistMatch>, String> {
     let query = format!(
         "releasegroup:\"{}\" AND artist:\"{}\"",
-        album_title.replace('"', ""),
-        artist_name.replace('"', ""),
+        escape_lucene_phrase(album_title),
+        escape_lucene_phrase(artist_name),
     );
     let encoded = urlencoding::encode(&query);
     let url = format!(
@@ -418,8 +438,8 @@ pub async fn mb_search_release_group(
 ) -> Result<Option<SearchedReleaseGroup>, String> {
     let query = format!(
         "releasegroup:\"{}\" AND artist:\"{}\"",
-        album_title.replace('"', ""),
-        artist_name.replace('"', ""),
+        escape_lucene_phrase(album_title),
+        escape_lucene_phrase(artist_name),
     );
     let encoded = urlencoding::encode(&query);
     let url = format!(
@@ -702,5 +722,33 @@ mod tests {
             classify_mb_error("HTTP 500 for https://musicbrainz.org/..."),
             MbErrorKind::Hard
         );
+    }
+
+    #[test]
+    fn escapes_names_that_used_to_produce_noisy_multi_candidate_matches() {
+        // Real library values. Each closes the quoted phrase early unescaped.
+        assert_eq!(
+            escape_lucene_phrase(r#"Lee "Scratch" Perry"#),
+            r#"Lee \"Scratch\" Perry"#
+        );
+        assert_eq!(
+            escape_lucene_phrase(r#""Weird Al" Yankovic"#),
+            r#"\"Weird Al\" Yankovic"#
+        );
+    }
+
+    #[test]
+    fn escapes_backslashes_before_quotes() {
+        // Order matters: escaping quotes first would then double the backslashes this introduces.
+        assert_eq!(escape_lucene_phrase(r"AC\"), r"AC\\");
+        assert_eq!(escape_lucene_phrase(r#"a\"b"#), r#"a\\\"b"#);
+    }
+
+    #[test]
+    fn leaves_other_lucene_metacharacters_alone() {
+        // Inside a quoted phrase these are literal. Escaping them would corrupt real artist names.
+        for name in ["AC/DC", "Sunn O)))", "!!!", "+/-", "Godspeed You! Black Emperor"] {
+            assert_eq!(escape_lucene_phrase(name), name, "over-escaped: {name}");
+        }
     }
 }

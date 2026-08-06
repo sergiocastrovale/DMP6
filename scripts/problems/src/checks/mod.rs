@@ -45,7 +45,6 @@ pub enum ReasonCode {
     ArtistMissing,
     ArtistWhitespaceOnly,
     TitleEmpty,
-    AlbumArtistBreaksLucene,
 
     // ---- file-level: artist / albumArtist ----------------------------------------------------
     ArtistPunctuationOnly,
@@ -77,8 +76,7 @@ impl ReasonCode {
             | TagReadPanicked
             | ArtistMissing
             | ArtistWhitespaceOnly
-            | TitleEmpty
-            | AlbumArtistBreaksLucene => Severity::Critical,
+            | TitleEmpty => Severity::Critical,
 
             ArtistPunctuationOnly
             | ArtistMojibake
@@ -110,7 +108,6 @@ impl ReasonCode {
             ArtistMissing => "ARTIST_MISSING",
             ArtistWhitespaceOnly => "ARTIST_WHITESPACE_ONLY",
             TitleEmpty => "TITLE_EMPTY",
-            AlbumArtistBreaksLucene => "ALBUMARTIST_BREAKS_LUCENE",
             ArtistPunctuationOnly => "ARTIST_PUNCTUATION_ONLY",
             ArtistInvisibleChars => "ARTIST_INVISIBLE_CHARS",
             ArtistMojibake => "ARTIST_MOJIBAKE",
@@ -140,7 +137,6 @@ impl ReasonCode {
             ArtistMissing => "artist tag is missing - the indexer skips this file entirely, and the missing track breaks the folder's track count so the whole album stays UNMATCHED",
             ArtistWhitespaceOnly => "artist tag is only whitespace - passes the indexer's untrimmed empty-check and is indexed as a junk artist",
             TitleEmpty => "title tag is empty - matches the first unclaimed MusicBrainz track and cascades wrong titles down the rest of the album",
-            AlbumArtistBreaksLucene => "albumArtist breaks the MusicBrainz query (unescaped quote/backslash) - returns HTTP 400 forever, so this release's ownership is never resolved",
             ArtistPunctuationOnly => "artist tag has no letters or digits - produces an unbrowsable artist with a hash-based slug",
             ArtistInvisibleChars => "artist tag contains invisible characters - creates a duplicate artist that looks identical to the real one",
             ArtistMojibake => "artist tag looks mis-decoded (mojibake) - creates a permanent garbled artist",
@@ -222,7 +218,6 @@ pub const ALL_CODES: &[ReasonCode] = &[
     ReasonCode::ArtistMissing,
     ReasonCode::ArtistWhitespaceOnly,
     ReasonCode::TitleEmpty,
-    ReasonCode::AlbumArtistBreaksLucene,
     ReasonCode::ArtistPunctuationOnly,
     ReasonCode::ArtistInvisibleChars,
     ReasonCode::ArtistMojibake,
@@ -270,7 +265,8 @@ pub fn check_file(snap: &crate::audio::TagSnapshot, current_year: i32) -> Vec<Re
                     ReasonCode::ArtistWhitespaceOnly,
                     sanitize_cell(a),
                 ));
-            } else if text::is_punctuation_only(a) {
+            } else if text::is_punctuation_only(a) && !artist::is_known_punctuation_artist_name(a)
+            {
                 out.push(Reason::new(
                     ReasonCode::ArtistPunctuationOnly,
                     sanitize_cell(a),
@@ -327,7 +323,7 @@ fn check_album_artist(aa: &str) -> Vec<Reason> {
         // Everything below would be noise on a blank value.
         return out;
     }
-    if text::is_punctuation_only(aa) {
+    if text::is_punctuation_only(aa) && !artist::is_known_punctuation_artist_name(aa) {
         out.push(Reason::new(
             ReasonCode::AlbumArtistPunctuationOnly,
             sanitize_cell(aa),
@@ -358,12 +354,6 @@ fn check_album_artist(aa: &str) -> Vec<Reason> {
         ));
     }
 
-    if let Some(why) = artist::breaks_lucene_query(aa) {
-        out.push(Reason::new(
-            ReasonCode::AlbumArtistBreaksLucene,
-            format!("{why}: \"{}\"", sanitize_cell(aa)),
-        ));
-    }
     if artist::is_unknown_artist(aa) {
         out.push(Reason::new(
             ReasonCode::AlbumArtistUnknownArtist,
@@ -537,22 +527,20 @@ mod tests {
     }
 
     #[test]
-    fn the_lucene_breaker_is_reported_as_critical() {
-        let s = snap(Some("A"), Some("Guns N\" Roses"), Some("T"));
-        let rs = check_file(&s, 2026);
-        assert!(codes(&rs).contains(&ReasonCode::AlbumArtistBreaksLucene));
-        assert_eq!(
-            ReasonCode::AlbumArtistBreaksLucene.severity(),
-            Severity::Critical
-        );
-    }
-
-    #[test]
     fn a_recognised_various_artists_value_is_not_flagged() {
         // The indexer resolves this placeholder itself, so reporting anything on it would be noise.
         let s = snap(Some("A"), Some("Various Artists, Vol 2"), Some("T"));
         let got = codes(&check_file(&s, 2026));
         assert!(!got.contains(&ReasonCode::AlbumArtistUnrecognisedVarious));
+    }
+
+    #[test]
+    fn a_whitelisted_punctuation_only_band_name_is_not_flagged() {
+        // "!!!" is a real band, not junk - would otherwise trip PunctuationOnly on both fields.
+        let s = snap(Some("!!!"), Some("!!!"), Some("T"));
+        let got = codes(&check_file(&s, 2026));
+        assert!(!got.contains(&ReasonCode::ArtistPunctuationOnly));
+        assert!(!got.contains(&ReasonCode::AlbumArtistPunctuationOnly));
     }
 
     #[test]
@@ -599,7 +587,7 @@ mod tests {
         // variant without updating ALL_CODES fails here.
         assert_eq!(
             ALL_CODES.len(),
-            23,
+            22,
             "ALL_CODES is out of sync with the ReasonCode enum"
         );
     }

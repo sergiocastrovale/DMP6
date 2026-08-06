@@ -54,15 +54,21 @@ pub fn invisible_chars(s: &str) -> Vec<char> {
     found
 }
 
-/// The 27 characters that CP1252 maps into the 0x80..=0x9F range where Latin-1 has controls.
+/// The subset of CP1252's 0x80..=0x9F range used to detect mojibake: symbols and punctuation only.
 ///
 /// A UTF-8 continuation byte in that range surfaces as one of these when text is mis-decoded as
 /// CP1252, which is why `â€™` (U+00E2 U+20AC U+2122) is the single most common mojibake signature.
+///
+/// CP1252 maps 27 characters into this range, but 8 of them are ordinary letters in real
+/// orthographies - `Š Œ Ž š œ ž Ÿ ƒ` (Czech/Slovak, French, Turkish, Scandinavian names all use
+/// these). `Křížek` contains the adjacent pair `í` (a lead-range char) + `ž` (one of the 8), which
+/// is two legitimate letters, not a mis-decode, and would otherwise be flagged on every file that
+/// artist owns. The remaining 19 - curly quotes, dashes, ellipsis, dagger, per-mille, trademark,
+/// bullet - never double as an ordinary letter, so they stay a reliable signal.
 const CP1252_HIGH: &[char] = &[
-    '\u{20AC}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}', '\u{02C6}',
-    '\u{2030}', '\u{0160}', '\u{2039}', '\u{0152}', '\u{017D}', '\u{2018}', '\u{2019}', '\u{201C}',
-    '\u{201D}', '\u{2022}', '\u{2013}', '\u{2014}', '\u{02DC}', '\u{2122}', '\u{0161}', '\u{203A}',
-    '\u{0153}', '\u{017E}', '\u{0178}',
+    '\u{20AC}', '\u{201A}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}', '\u{02C6}',
+    '\u{2030}', '\u{2039}', '\u{2018}', '\u{2019}', '\u{201C}',
+    '\u{201D}', '\u{2022}', '\u{2013}', '\u{2014}', '\u{02DC}', '\u{2122}', '\u{203A}',
 ];
 
 /// True when the value looks like UTF-8 that was decoded as Latin-1 or CP1252 ("mojibake").
@@ -302,11 +308,24 @@ mod tests {
             "",
             "Ñ",
             "Ø",
+            "Křížek",
         ] {
             assert!(
                 !looks_like_mojibake(name),
                 "false positive on legitimate name: {name}"
             );
+        }
+    }
+
+    #[test]
+    fn mojibake_does_not_fire_on_a_lead_range_letter_followed_by_a_cp1252_high_letter() {
+        // "í" (U+00ED) is in the lead range and "ž" (U+017E) is one of CP1252's 8 letter-shaped
+        // high chars - adjacent by pure coincidence in "Křížek", not a mis-decode. The symbol-only
+        // subset of CP1252_HIGH must not include it.
+        assert!(!looks_like_mojibake("íž"));
+        // The other 7 letter-shaped chars, same shape of false positive.
+        for pair in ["âŒ", "âŠ", "âŽ", "âœ", "âš", "âŸ", "âƒ"] {
+            assert!(!looks_like_mojibake(pair), "false positive: {pair}");
         }
     }
 
