@@ -18,7 +18,7 @@ derive from a sibling/folder source → MusicBrainz, year only), sharing one wor
 |---|---|---|
 | `--fix:year` | year | MusicBrainz on a perfect match (`YEAR_ZERO`/`YEAR_NON_NUMERIC`/`YEAR_TWO_DIGIT`/`YEAR_IMPLAUSIBLE`), otherwise cleared |
 | `--fix:artist` | `artist` | fill from `albumArtist`/folder majority (`ARTIST_MISSING`), then strip invisible characters (`ARTIST_INVISIBLE_CHARS`) |
-| `--fix:albumartist` | `albumArtist` | fill from `artist`/folder majority (`ALBUMARTIST_MISSING`, `ALBUMARTIST_UNKNOWN_ARTIST`), rewrite an unrecognised Various Artists marker to the canonical spelling (`ALBUMARTIST_UNRECOGNISED_VARIOUS`), replace machine-junk from `artist`/folder majority (`ALBUMARTIST_NUMERIC_JUNK`), then strip invisible characters and trim whitespace (`ALBUMARTIST_INVISIBLE_CHARS`/`ALBUMARTIST_UNTRIMMED`) |
+| `--fix:albumartist` | `albumArtist` | fill from `artist`/folder majority (`ALBUMARTIST_MISSING`, `ALBUMARTIST_UNKNOWN_ARTIST`), rewrite an unrecognised Various Artists marker to the canonical spelling (`ALBUMARTIST_UNRECOGNISED_VARIOUS`), then strip invisible characters and trim whitespace (`ALBUMARTIST_INVISIBLE_CHARS`/`ALBUMARTIST_UNTRIMMED`) |
 
 More repairs are meant to be added to an existing umbrella, or a new umbrella added for a new field,
 reusing the same worklist/ledger/report-regeneration machinery.
@@ -45,7 +45,7 @@ reusing the same worklist/ledger/report-regeneration machinery.
 ./problems --fix:artist                # Fix every artist-field defect (fill, then strip invisible chars)
 ./problems --fix:artist --dry-run     # Preview, write nothing
 
-./problems --fix:albumartist           # Fix every albumArtist-field defect (fill/rewrite/replace/normalize)
+./problems --fix:albumartist           # Fix every albumArtist-field defect (fill/rewrite/normalize)
 ./problems --fix:albumartist --dry-run  # Preview, write nothing
 ```
 
@@ -62,7 +62,7 @@ sudo ./problems --audit --root /music
 | `--audit` | bool | - | Scan the library and write `problems.xlsx`. Mutually exclusive with `--fix:*`, one required |
 | `--fix:year` | bool | - | Fix every year defect (`YEAR_ZERO`/`YEAR_NON_NUMERIC`/`YEAR_TWO_DIGIT`/`YEAR_IMPLAUSIBLE`) - MusicBrainz on a perfect match, otherwise cleared. Mutually exclusive with `--audit`, one required |
 | `--fix:artist` | bool | - | Fix every `artist`-field defect: fill `ARTIST_MISSING` from `albumArtist`/folder majority, then strip invisible characters (`ARTIST_INVISIBLE_CHARS`). Mutually exclusive with `--audit`, one required |
-| `--fix:albumartist` | bool | - | Fix every `albumArtist`-field defect: fill `ALBUMARTIST_MISSING`/`ALBUMARTIST_UNKNOWN_ARTIST` from `artist`/folder majority, rewrite `ALBUMARTIST_UNRECOGNISED_VARIOUS` to the canonical spelling, replace `ALBUMARTIST_NUMERIC_JUNK`, then strip invisible characters and trim whitespace. Mutually exclusive with `--audit`, one required |
+| `--fix:albumartist` | bool | - | Fix every `albumArtist`-field defect: fill `ALBUMARTIST_MISSING`/`ALBUMARTIST_UNKNOWN_ARTIST` from `artist`/folder majority, rewrite `ALBUMARTIST_UNRECOGNISED_VARIOUS` to the canonical spelling, then strip invisible characters and trim whitespace. Mutually exclusive with `--audit`, one required |
 | `--dry-run` | bool | false | `--fix:*` only: print what would change, write nothing (no tags, no ledger, no report regen) |
 | `--root` | String | `$MUSIC_DIR` | Music library root |
 | `--output` / `-o` | String | `<work-dir>/problems.xlsx` | Report path |
@@ -101,16 +101,21 @@ Defaults to `$PROJECT_ROOT/data/logs/` → `/app/data/logs/` in the container, w
 
 ## What `--audit` Checks
 
-22 codes survive an earlier, much larger set - a full audit of every code against real per-code
+21 codes survive an earlier, much larger set - a full audit of every code against real per-code
 counts and value samples found that most of what a first pass flagged was either noise nobody wanted
 reported or the scanner being wrong rather than the tags. Retired entirely (code, detector, and
 report, with a one-time spool prune in place of a re-scan): `ORIGINALDATE_DIFFERS` (a policy call,
 not a defect - real libraries routinely have `originaldate` *later* than `date`, so it is often the
 unreliable field); `ALBUMARTIST_TOO_MANY_CO_OWNERS`/`ALBUMARTIST_TOO_MANY_SEPARATORS` (legitimate
-long credit lists, e.g. film-score/tribute-album personnel); and all six `FOLDER_*` structural codes
+long credit lists, e.g. film-score/tribute-album personnel); all six `FOLDER_*` structural codes
 (`FOLDER_MULTIPLE_ALBUMS`/`_ALBUMARTISTS`/`_YEARS`, `FOLDER_ALBUM_EMPTY`, `FOLDER_ARTIST_CASE_DRIFT`,
 `FOLDER_ARTIST_THE_PREFIX_DRIFT`) - observations about how a folder is organised, not defects in any
-one file's tags.
+one file's tags; and `ALBUMARTIST_NUMERIC_JUNK` (`checks::artist::numeric_or_corrupted`, still used
+internally as a candidate-quality filter - see `is_usable_candidate` below - just no longer reported
+as a defect on its own). That last one had already grown a curated whitelist for confirmed-real
+numeric-shaped names (`"3"`, `"213"`, `"22-20s"`, `"24-7 Spyz"`, `"2562"`) once; real numeric-shaped
+artist names kept surfacing regardless, and a whitelist can never stay ahead of an open-ended set of
+real band names, so the check was retired outright rather than extended again.
 
 Two detector bugs found and fixed in the same pass, rather than retired: `ALBUMARTIST_BREAKS_LUCENE`
 turned out to be **wrong about the consequence** - `common::mb::api` built the MusicBrainz query with
@@ -145,7 +150,6 @@ double as the second half of a real accented-letter pair.
 | `albumArtist` whitespace/punctuation-only | Junk artist with a hash-based, unbrowsable slug |
 | Unrecognised compilation marker (`V/A`, `V.A.`, `Various Artist`, `OST`, `Soundtrack`, `Compilation`, `Verschiedene`, …) | Becomes a real browsable artist and is synced to MusicBrainz |
 | `albumArtist` = `Unknown Artist` | Not special-cased, so it becomes one shared junk artist page |
-| `albumArtist` numeric junk (`07`, `12 - Intro`, `Artist@320`, a bare year) | Junk artist |
 | `artist`/`albumArtist` mojibake | Permanent garbled artist |
 | Valid year present but the date field is malformed | The indexer reads the date field first and gives up, losing the year |
 
@@ -200,9 +204,9 @@ underlying repair module against the *same* shared worklist, one after another, 
 outcomes. Each module is independently self-contained - it re-reads the file's live tags and only
 acts on its own specific defect shape, no-opping harmlessly on a file it was handed for a different
 reason - so sharing one worklist across several modules is safe: `--fix:artist` runs
-`artist_missing` then `text_normalize`; `--fix:albumartist` runs `albumartist_missing`, then
-`albumartist_numeric_junk`, then `text_normalize`. `--fix:year` has just the one module
-(`years`), covering all four year codes directly.
+`artist_missing` then `text_normalize`; `--fix:albumartist` runs `albumartist_missing` then
+`text_normalize`. `--fix:year` has just the one module (`years`), covering all four year codes
+directly.
 
 ### `--fix:year`: how a release is resolved
 
@@ -241,10 +245,9 @@ from tags already on disk:
 
 1. The same file's own `albumArtist`, if present and not machine junk (`fix::candidates::is_usable_candidate`
    reuses the scanner's own `checks::artist` predicates - `index_treats_as_special`,
-   `is_unknown_artist`, `numeric_or_corrupted`, `unrecognised_various` - so a value this fixer accepts
-   is held to exactly the bar the detector uses to flag everything else. Shared with
-   `albumartist_numeric_junk`/`albumartist_missing`, below, so every fixer applies one definition of
-   "usable", not several that can drift).
+   `is_unknown_artist`, `numeric_or_corrupted`, `unrecognised_various` - the same bar every
+   candidate-deriving fixer holds a value to, including `albumartist_missing` below, so there is one
+   definition of "usable", not several that can drift).
 2. Failing that, a **strict majority** `artist` value across the *whole* release folder (every audio
    file, not just the defective ones - unlike `years`, trusting siblings here is the correct
    signal rather than the risk: even a folder mixing several sub-albums is very often still one
@@ -267,43 +270,29 @@ check does not recognise, so there is no sibling vote: straight rewrite to the c
 `"Various Artists"` string `checks::artist::index_treats_as_various` (the scanner's mirror of
 `common::artists::is_various_artists`) actually recognises.
 
-### `albumartist_numeric_junk` (part of `--fix:albumartist`): how a file is resolved, and the detector fix that came first
+### Retired: `ALBUMARTIST_NUMERIC_JUNK` and the whitelist that couldn't keep up
 
-Same shape as `artist_missing`, roles reversed - here `albumArtist` is the broken field and the
-file's own `artist` is the first place to look for a replacement:
+A fixer for this code shipped once, mirroring `artist_missing` with roles reversed (own `artist` tag,
+else a folder majority `albumArtist`). Before it shipped, pulling the actual flagged rows showed the
+overwhelming majority (366 of 570 instances, 52 of 54 folders in one snapshot) were false positives
+from `checks::artist::numeric_or_corrupted` itself - real artists whose name happens to fit one of
+its junk shapes: `"3"` and `"213"` (bare-digit rule - real bands, one an actual group named after an
+album literally called *"213 - The Hard Way"*), `"22-20s"`/`"24-7 Spyz"` (numbered-track-title rule),
+`"2562"` (bare-year rule, a real Berlin electronic producer). The fix at the time was a curated
+exact-match whitelist (`is_known_numeric_artist_name`), on the reasoning that tightening any of the
+four shape rules instead would reintroduce a documented false negative (`"07-Song"` with no space
+around the dash must still be caught).
 
-1. Re-verify the *current* `albumArtist` still trips `checks::artist::numeric_or_corrupted` (tags, or
-   the detector, may have changed since the scan - see below) - if not, an error, not a write.
-2. The same file's own `artist`, if present and not machine junk.
-3. Failing that, a strict majority `albumArtist` across the release folder's *other* files whose
-   `albumArtist` is present and not junk.
-
-No candidate clears either bar ⇒ an error, file left untouched. Unlike the two fields above, this one
-already holds *something* - leaving known-wrong data in place beats guessing or silently blanking a
-field that at least currently has a value, so there is no `cleared` outcome here either, only `set`
-or nothing.
-
-**Before writing any fix code for this type, the real data changed the plan.** Pulling the actual
-`ALBUMARTIST_NUMERIC_JUNK` rows showed the overwhelming majority (366 of 570 instances, 52 of 54
-folders in one snapshot) were false positives from `checks::artist::numeric_or_corrupted` itself -
-real artists whose name happens to fit one of its junk shapes: `"3"` and `"213"` (bare-digit rule -
-real bands, one an actual group named after an album literally called *"213 - The Hard Way"*),
-`"22-20s"`/`"24-7 Spyz"` (numbered-track-title rule), `"2562"` (bare-year rule, a real Berlin
-electronic producer). The function already had exactly this escape hatch for one of its four
-sub-rules (`is_numeric_band_name`, now `is_known_numeric_artist_name` - renamed since it's no longer
-bare-digit-specific), just wired to guard only that one branch. The fix moved the whitelist check to
-the top of the function, covering all four shapes, and extended it with the five confirmed-real names
-above. Existing tests already pinned the tradeoff this preserves: tightening either shape rule instead
-would reintroduce a documented false negative (`"07-Song"` with no space around the dash must still be
-caught), so a curated exact-match exception list - not a looser heuristic - is the fix, same as the
-bare-digit rule already used.
-
-Fixing the detector doesn't retroactively clean an existing spool - a row flagged before the fix stays
-in the report as a defect until the *next* `--audit` re-scans the file. `albumartist_numeric_junk`'s
-own re-verification step (`numeric_or_corrupted` on the *current* value, per file, per run) is what
-keeps this safe in the meantime: run it against a stale spool and every now-false-positive row
-correctly resolves to "no longer looks like junk" - an error, not a write - rather than "fixing" a
-file that was never actually broken.
+That held for a while, but real numeric-shaped artist names kept surfacing beyond the whitelist
+regardless - a curated list can never stay ahead of an open-ended set of real band names. Rather than
+extend it again, `ALBUMARTIST_NUMERIC_JUNK` was retired outright: the reported code, its `message()`,
+and the `albumartist_numeric_junk` fixer module are gone. `numeric_or_corrupted` itself (and
+`is_known_numeric_artist_name`) survive purely as the candidate-quality filter inside
+`fix::candidates::is_usable_candidate` - "should this value ever be reported as broken" and "is this
+value trustworthy enough to copy into another file's field as a derived replacement" turned out to be
+different questions with different answers: reporting stopped, but a genuine track-number leak on one
+file still shouldn't propagate into a sibling's missing `artist`/`albumArtist` via folder-majority
+derivation.
 
 ### `text_normalize` (part of both `--fix:artist` and `--fix:albumartist`): `ARTIST_INVISIBLE_CHARS` / `ALBUMARTIST_INVISIBLE_CHARS` / `ALBUMARTIST_UNTRIMMED`
 

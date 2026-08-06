@@ -6,7 +6,6 @@
 //! Kind-specific: only how one release's worklist entries actually get resolved (`years::run`).
 
 mod albumartist_missing;
-mod albumartist_numeric_junk;
 mod artist_missing;
 mod candidates;
 mod tags;
@@ -26,7 +25,7 @@ use crate::spool::{self, Paths};
 /// normalize in place -> derive from a sibling/folder source -> MusicBrainz (year only). One
 /// release folder's worklist is shared across every repair module a kind dispatches to; each module
 /// is independently self-contained and no-ops on a file whose own specific defect is not present -
-/// see the module docs on `years`, `artist_missing`, `albumartist_numeric_junk`, `text_normalize`.
+/// see the module docs on `years`, `artist_missing`, `albumartist_missing`, `text_normalize`.
 #[derive(Clone, Copy, Debug)]
 pub enum FixKind {
     Year,
@@ -48,7 +47,6 @@ impl FixKind {
                 ReasonCode::AlbumArtistMissing,
                 ReasonCode::AlbumArtistUnknownArtist,
                 ReasonCode::AlbumArtistUnrecognisedVarious,
-                ReasonCode::AlbumArtistNumericJunk,
                 ReasonCode::AlbumArtistInvisibleChars,
                 ReasonCode::AlbumArtistUntrimmed,
             ],
@@ -169,9 +167,8 @@ pub fn run_fix(
             }
             FixKind::AlbumArtist => {
                 let missing = albumartist_missing::run(root, &list, dry_run).await?;
-                let numeric = albumartist_numeric_junk::run(root, &list, dry_run).await?;
                 let normalized = text_normalize::run(root, &list, dry_run).await?;
-                Ok(merge(merge(missing, numeric), normalized))
+                Ok(merge(missing, normalized))
             }
         }
     });

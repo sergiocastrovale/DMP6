@@ -73,6 +73,14 @@ pub fn is_unknown_artist(name: &str) -> bool {
 
 /// Why a value looks like machine junk rather than an artist name, if it does.
 ///
+/// **Not a reported defect** - `ALBUMARTIST_NUMERIC_JUNK` was retired: real numeric-shaped artist
+/// names (`"3"`, `"213"`, a real Berlin electronic producer named `"2562"`, ...) keep surfacing, and
+/// a curated whitelist can never stay ahead of that. This function survives purely as an internal
+/// candidate-quality filter (`fix::candidates::is_usable_candidate`) - "is this numeric-looking
+/// value on file A trustworthy enough to copy into file B's missing field" is a different, narrower
+/// question than "should this ever be reported as broken," and the answer there is still no: a
+/// genuine track-number leak on one file should not propagate into a sibling's derived value.
+///
 /// Extends the SQL rules in `scripts/audit/src/corrupted.rs:16-27`, which can only see values
 /// already in the database. The bare 4-digit-year rule is the notable addition: the audit only
 /// catches a year in albumArtist when it happens to equal that track's own year column, so a

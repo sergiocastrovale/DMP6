@@ -56,7 +56,6 @@ pub enum ReasonCode {
     AlbumArtistUntrimmed,
     AlbumArtistUnrecognisedVarious,
     AlbumArtistUnknownArtist,
-    AlbumArtistNumericJunk,
     AlbumArtistInvisibleChars,
     AlbumArtistMojibake,
 
@@ -85,7 +84,6 @@ impl ReasonCode {
             | AlbumArtistPunctuationOnly
             | AlbumArtistUnrecognisedVarious
             | AlbumArtistUnknownArtist
-            | AlbumArtistNumericJunk
             | AlbumArtistMojibake
             | YearLostToMalformedDate => Severity::High,
 
@@ -117,7 +115,6 @@ impl ReasonCode {
             AlbumArtistUntrimmed => "ALBUMARTIST_UNTRIMMED",
             AlbumArtistUnrecognisedVarious => "ALBUMARTIST_UNRECOGNISED_VARIOUS",
             AlbumArtistUnknownArtist => "ALBUMARTIST_UNKNOWN_ARTIST",
-            AlbumArtistNumericJunk => "ALBUMARTIST_NUMERIC_JUNK",
             AlbumArtistInvisibleChars => "ALBUMARTIST_INVISIBLE_CHARS",
             AlbumArtistMojibake => "ALBUMARTIST_MOJIBAKE",
             YearZero => "YEAR_ZERO",
@@ -146,7 +143,6 @@ impl ReasonCode {
             AlbumArtistUntrimmed => "albumArtist has leading/trailing whitespace - defeats the Various Artists check, which compares untrimmed",
             AlbumArtistUnrecognisedVarious => "albumArtist is a compilation marker the indexer does not recognise - becomes a real browsable artist and is synced to MusicBrainz",
             AlbumArtistUnknownArtist => "albumArtist is literally \"Unknown Artist\" - not special-cased, so it becomes a shared junk artist page and is synced to MusicBrainz",
-            AlbumArtistNumericJunk => "albumArtist looks like a track number, year or bitrate rather than a name - creates a junk artist",
             AlbumArtistInvisibleChars => "albumArtist contains invisible characters - creates a duplicate artist that looks identical to the real one",
             AlbumArtistMojibake => "albumArtist looks mis-decoded (mojibake) - creates a permanent garbled artist",
             YearZero => "year is zero - stored as 0 rather than empty, so it is invisible to every missing-year check and kills release matching",
@@ -227,7 +223,6 @@ pub const ALL_CODES: &[ReasonCode] = &[
     ReasonCode::AlbumArtistUntrimmed,
     ReasonCode::AlbumArtistUnrecognisedVarious,
     ReasonCode::AlbumArtistUnknownArtist,
-    ReasonCode::AlbumArtistNumericJunk,
     ReasonCode::AlbumArtistInvisibleChars,
     ReasonCode::AlbumArtistMojibake,
     ReasonCode::YearZero,
@@ -363,12 +358,6 @@ fn check_album_artist(aa: &str) -> Vec<Reason> {
         out.push(Reason::new(
             ReasonCode::AlbumArtistUnrecognisedVarious,
             marker.to_string(),
-        ));
-    }
-    if let Some(why) = artist::numeric_or_corrupted(aa) {
-        out.push(Reason::new(
-            ReasonCode::AlbumArtistNumericJunk,
-            format!("{why}: \"{}\"", sanitize_cell(aa)),
         ));
     }
 
@@ -587,7 +576,7 @@ mod tests {
         // variant without updating ALL_CODES fails here.
         assert_eq!(
             ALL_CODES.len(),
-            22,
+            21,
             "ALL_CODES is out of sync with the ReasonCode enum"
         );
     }

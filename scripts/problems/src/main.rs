@@ -59,9 +59,8 @@ struct Args {
 
     /// Fix every albumArtist-field defect this build knows how to: missing/"Unknown Artist" filled
     /// from the file's own artist tag or a folder-wide majority, an unrecognised Various Artists
-    /// marker (e.g. "v.a.") rewritten to the canonical spelling, machine-junk (track number/bare
-    /// year/bitrate suffix) replaced the same way, then invisible characters stripped and whitespace
-    /// trimmed. Never MusicBrainz. Requires a prior --audit (reads its spool).
+    /// marker (e.g. "v.a.") rewritten to the canonical spelling, then invisible characters stripped
+    /// and whitespace trimmed. Never MusicBrainz. Requires a prior --audit (reads its spool).
     #[arg(long = "fix:albumartist")]
     fix_albumartist: bool,
 

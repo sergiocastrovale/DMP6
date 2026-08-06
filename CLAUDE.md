@@ -166,7 +166,7 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./problems --fix:year --dry-run       # Preview proposed matches/years, write nothing
 ./problems --fix:artist               # Fix every artist-field defect: fill ARTIST_MISSING from albumArtist/folder majority (no MB), then strip invisible chars
 ./problems --fix:artist --dry-run     # Preview, write nothing
-./problems --fix:albumartist          # Fix every albumArtist-field defect: fill MISSING/UNKNOWN_ARTIST, rewrite UNRECOGNISED_VARIOUS to "Various Artists", replace NUMERIC_JUNK, strip invisible chars + trim (no MB)
+./problems --fix:albumartist          # Fix every albumArtist-field defect: fill MISSING/UNKNOWN_ARTIST, rewrite UNRECOGNISED_VARIOUS to "Various Artists", strip invisible chars + trim (no MB)
 ./problems --fix:albumartist --dry-run  # Preview, write nothing
 ./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
 ./playlists                   # Generate/update genre playlists
