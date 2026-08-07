@@ -1,4 +1,3 @@
 pub use common::images::{
-    extract_cover_art, hash_image_file, upload_release_image_to_s3, use_artist_folder_image,
-    use_folder_image,
+    hash_image_file, resolve_release_cover, upload_release_image_to_s3, use_artist_folder_image,
 };

@@ -29,18 +29,112 @@ pub fn extract_cover_art(path: &Path, output_path: &Path) -> bool {
 
     for tag in tagged_file.tags() {
         for pic in tag.pictures() {
-            match image::load_from_memory(pic.data()) {
-                Ok(img) => {
-                    let resized = img.resize_to_fill(200, 200, FilterType::Triangle);
-                    if let Some(parent) = output_path.parent() {
-                        fs::create_dir_all(parent).ok();
-                    }
-                    if resized.save(output_path).is_ok() {
-                        return true;
-                    }
+            if let Ok(img) = image::load_from_memory(pic.data()) {
+                if save_resized(img, output_path) {
+                    return true;
                 }
-                Err(_) => continue,
             }
+        }
+    }
+    false
+}
+
+fn save_resized(img: image::DynamicImage, output_path: &Path) -> bool {
+    let resized = img.resize_to_fill(200, 200, FilterType::Triangle);
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    resized.save(output_path).is_ok()
+}
+
+// ---------------------------------------------------------------------------
+// Release cover resolution: external file first, then embedded tag from the
+// first audio file (or the first disc subfolder's), no scanning beyond that.
+// ---------------------------------------------------------------------------
+
+const COVER_FILE_STEMS: &[&str] = &["cover", "folder", "front"];
+const COVER_FILE_EXTS: &[&str] = &["jpg", "jpeg", "png"];
+const RELEASE_AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "opus", "aac", "ogg", "flac"];
+
+fn find_cover_file(dir: &Path) -> Option<PathBuf> {
+    let mut matches: Vec<PathBuf> = fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            if !p.is_file() {
+                return false;
+            }
+            let stem = p
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            let ext = p
+                .extension()
+                .map(|s| s.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            COVER_FILE_STEMS.contains(&stem.as_str()) && COVER_FILE_EXTS.contains(&ext.as_str())
+        })
+        .collect();
+    matches.sort();
+    matches.into_iter().next()
+}
+
+fn first_audio_file(dir: &Path) -> Option<PathBuf> {
+    let mut files: Vec<PathBuf> = fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.extension()
+                    .map(|e| RELEASE_AUDIO_EXTENSIONS.contains(&e.to_string_lossy().to_lowercase().as_str()))
+                    .unwrap_or(false)
+        })
+        .collect();
+    files.sort();
+    files.into_iter().next()
+}
+
+fn first_subfolder(dir: &Path) -> Option<PathBuf> {
+    let mut dirs: Vec<PathBuf> = fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    dirs.into_iter().next()
+}
+
+fn use_cover_file(cover: &Path, output_path: &Path) -> bool {
+    match image::open(cover) {
+        Ok(img) => save_resized(img, output_path),
+        Err(_) => false,
+    }
+}
+
+/// Resolve a release's cover: external cover/folder/front file wins if present
+/// (release root, then first disc subfolder as fallback layout); otherwise the
+/// embedded picture tag of the first audio file (root, or first subfolder's) is
+/// used. No further files are tried once the first candidate is chosen.
+pub fn resolve_release_cover(folder_path: &Path, output_path: &Path) -> bool {
+    if let Some(cover) = find_cover_file(folder_path) {
+        if use_cover_file(&cover, output_path) {
+            return true;
+        }
+    }
+    if let Some(first) = first_audio_file(folder_path) {
+        return extract_cover_art(&first, output_path);
+    }
+    if let Some(sub) = first_subfolder(folder_path) {
+        if let Some(cover) = find_cover_file(&sub) {
+            if use_cover_file(&cover, output_path) {
+                return true;
+            }
+        }
+        if let Some(first) = first_audio_file(&sub) {
+            return extract_cover_art(&first, output_path);
         }
     }
     false
@@ -321,5 +415,158 @@ pub async fn delete_release_images(pool: &PgPool, config: &Config, release_ids: 
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "dmp_images_test_{}_{}_{}",
+            std::process::id(),
+            n,
+            name
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Encodes a solid-color square as JPEG bytes via the `image` crate (no hand-rolled
+    /// binary fixtures).
+    fn solid_jpeg(rgb: [u8; 3]) -> Vec<u8> {
+        let img = image::RgbImage::from_pixel(4, 4, image::Rgb(rgb));
+        let mut buf = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Jpeg)
+            .unwrap();
+        buf
+    }
+
+    fn write_cover_file(dir: &Path, filename: &str, rgb: [u8; 3]) {
+        let img = image::RgbImage::from_pixel(4, 4, image::Rgb(rgb));
+        image::DynamicImage::ImageRgb8(img)
+            .save(dir.join(filename))
+            .unwrap();
+    }
+
+    /// Minimal FLAC: "fLaC" marker + STREAMINFO block, optionally followed by a PICTURE
+    /// block (raw METADATA_BLOCK_PICTURE bytes) carrying `jpeg`. No real audio frames -
+    /// lofty only needs valid block structure to read tags/pictures.
+    fn write_minimal_flac(path: &Path, jpeg: Option<&[u8]>) {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"fLaC");
+
+        bytes.push(if jpeg.is_none() { 0x80 } else { 0x00 }); // STREAMINFO (type 0)
+        bytes.extend_from_slice(&34u32.to_be_bytes()[1..]); // 3-byte BE length
+        bytes.extend(std::iter::repeat(0u8).take(34));
+
+        if let Some(jpeg) = jpeg {
+            let mime = b"image/jpeg";
+            let mut content = Vec::new();
+            content.extend_from_slice(&3u32.to_be_bytes()); // picture type: front cover
+            content.extend_from_slice(&(mime.len() as u32).to_be_bytes());
+            content.extend_from_slice(mime);
+            content.extend_from_slice(&0u32.to_be_bytes()); // description length
+            content.extend_from_slice(&4u32.to_be_bytes()); // width
+            content.extend_from_slice(&4u32.to_be_bytes()); // height
+            content.extend_from_slice(&24u32.to_be_bytes()); // color depth
+            content.extend_from_slice(&0u32.to_be_bytes()); // indexed colors used
+            content.extend_from_slice(&(jpeg.len() as u32).to_be_bytes());
+            content.extend_from_slice(jpeg);
+
+            bytes.push(0x80 | 6); // PICTURE (type 6), last block
+            bytes.extend_from_slice(&(content.len() as u32).to_be_bytes()[1..]);
+            bytes.extend_from_slice(&content);
+        }
+
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn dominant_channel(path: &Path) -> usize {
+        let img = image::open(path).unwrap().to_rgb8();
+        let px = img.get_pixel(0, 0);
+        let (mut idx, mut max) = (0usize, px[0]);
+        for i in 1..3 {
+            if px[i] > max {
+                max = px[i];
+                idx = i;
+            }
+        }
+        idx
+    }
+
+    #[test]
+    fn cover_file_wins_over_embedded_tag() {
+        let dir = temp_dir("cover_wins");
+        write_cover_file(&dir, "cover.jpg", [200, 0, 0]); // red
+        // Present but unreadable as audio - proves it's never touched.
+        fs::write(dir.join("track.flac"), b"not a real flac file").unwrap();
+
+        let out = dir.join("out.jpg");
+        assert!(resolve_release_cover(&dir, &out));
+        assert_eq!(dominant_channel(&out), 0); // red channel
+    }
+
+    #[test]
+    fn embedded_tag_uses_first_file_alphabetically() {
+        let dir = temp_dir("first_file");
+        write_minimal_flac(&dir.join("a.flac"), Some(&solid_jpeg([200, 0, 0]))); // red
+        write_minimal_flac(&dir.join("b.flac"), Some(&solid_jpeg([0, 0, 200]))); // blue
+
+        let out = dir.join("out.jpg");
+        assert!(resolve_release_cover(&dir, &out));
+        assert_eq!(dominant_channel(&out), 0); // a.flac's red, not b.flac's blue
+    }
+
+    #[test]
+    fn subfolder_used_when_root_has_no_direct_audio_files() {
+        let dir = temp_dir("subfolder");
+        let cd1 = dir.join("CD1");
+        let cd2 = dir.join("CD2");
+        fs::create_dir_all(&cd1).unwrap();
+        fs::create_dir_all(&cd2).unwrap();
+        write_minimal_flac(&cd1.join("01.flac"), None); // no picture, no cover file
+        write_minimal_flac(&cd2.join("01.flac"), Some(&solid_jpeg([0, 200, 0]))); // green
+
+        let out = dir.join("out.jpg");
+        // First subfolder (CD1) has neither a cover file nor a decodable picture -
+        // must skip entirely, never falling through to CD2.
+        assert!(!resolve_release_cover(&dir, &out));
+    }
+
+    #[test]
+    fn subfolder_cover_file_used_when_present() {
+        let dir = temp_dir("subfolder_cover");
+        let cd1 = dir.join("CD1");
+        fs::create_dir_all(&cd1).unwrap();
+        write_cover_file(&cd1, "folder.png", [0, 0, 200]); // blue
+        write_minimal_flac(&cd1.join("01.flac"), Some(&solid_jpeg([200, 0, 0]))); // red, ignored
+
+        let out = dir.join("out.jpg");
+        assert!(resolve_release_cover(&dir, &out));
+        assert_eq!(dominant_channel(&out), 2); // blue channel, from folder.png not the flac
+    }
+
+    #[test]
+    fn cover_file_is_case_insensitive_and_supports_png() {
+        let dir = temp_dir("case_insensitive_png");
+        write_cover_file(&dir, "Cover.PNG", [0, 200, 0]); // green
+
+        let out = dir.join("out.jpg");
+        assert!(resolve_release_cover(&dir, &out));
+        assert_eq!(dominant_channel(&out), 1); // green channel
+    }
+
+    #[test]
+    fn empty_folder_yields_no_cover() {
+        let dir = temp_dir("empty");
+        let out = dir.join("out.jpg");
+        assert!(!resolve_release_cover(&dir, &out));
     }
 }
