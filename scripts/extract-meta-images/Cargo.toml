@@ -1,0 +1,18 @@
+[package]
+name = "extract-meta-images"
+version = "1.0.0"
+edition = "2021"
+
+[[bin]]
+name = "extract-meta-images"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+image = { workspace = true }
+rayon = { workspace = true }
+colored = { workspace = true }
+dotenvy = { workspace = true }
+# Not a workspace dependency (same as the analysis and problems crates, which also declare it locally).
+walkdir = "2.5"
+common = { path = "../common" }

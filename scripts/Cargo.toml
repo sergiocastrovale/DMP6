@@ -12,6 +12,7 @@ members = [
     "mosaic",
     "dissect",
     "problems",
+    "extract-meta-images",
 ]
 resolver = "2"
 

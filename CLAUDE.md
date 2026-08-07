@@ -168,6 +168,9 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./problems --fix:artist --dry-run     # Preview, write nothing
 ./problems --fix:albumartist          # Fix every albumArtist-field defect: fill MISSING/UNKNOWN_ARTIST, rewrite UNRECOGNISED_VARIOUS to "Various Artists", strip invisible chars + trim (no MB)
 ./problems --fix:albumartist --dry-run  # Preview, write nothing
+./extract-meta-images         # Extract embedded cover art → folder.jpg (500px, q80) for every release lacking a cover file; speeds up index
+./extract-meta-images --dry-run       # Preview, write nothing
+./extract-meta-images --only "Name"   # One artist
 ./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
 ./playlists                   # Generate/update genre playlists
 ./playlists --dry-run         # Preview without changes

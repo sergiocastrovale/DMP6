@@ -12,6 +12,13 @@ use std::path::{Path, PathBuf};
 // ---------------------------------------------------------------------------
 
 pub fn extract_cover_art(path: &Path, output_path: &Path) -> bool {
+    first_embedded_image(path)
+        .map(|img| save_resized(img, output_path))
+        .unwrap_or(false)
+}
+
+/// The first picture embedded in an audio file's tags that decodes as an image.
+pub fn first_embedded_image(path: &Path) -> Option<image::DynamicImage> {
     use lofty::config::{ParseOptions, ParsingMode};
     use lofty::prelude::*;
     use lofty::probe::Probe;
@@ -19,24 +26,15 @@ pub fn extract_cover_art(path: &Path, output_path: &Path) -> bool {
     let parse_opts = ParseOptions::new()
         .read_properties(false)
         .parsing_mode(ParsingMode::Relaxed);
-    let tagged_file = match Probe::open(path)
+    let tagged_file = Probe::open(path)
         .ok()
-        .and_then(|p| p.options(parse_opts).read().ok())
-    {
-        Some(f) => f,
-        None => return false,
-    };
+        .and_then(|p| p.options(parse_opts).read().ok())?;
 
-    for tag in tagged_file.tags() {
-        for pic in tag.pictures() {
-            if let Ok(img) = image::load_from_memory(pic.data()) {
-                if save_resized(img, output_path) {
-                    return true;
-                }
-            }
-        }
-    }
-    false
+    tagged_file
+        .tags()
+        .iter()
+        .flat_map(|tag| tag.pictures())
+        .find_map(|pic| image::load_from_memory(pic.data()).ok())
 }
 
 fn save_resized(img: image::DynamicImage, output_path: &Path) -> bool {
@@ -56,7 +54,9 @@ const COVER_FILE_STEMS: &[&str] = &["cover", "folder", "front"];
 const COVER_FILE_EXTS: &[&str] = &["jpg", "jpeg", "png"];
 const RELEASE_AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "opus", "aac", "ogg", "flac"];
 
-fn find_cover_file(dir: &Path) -> Option<PathBuf> {
+/// The cover/folder/front image file in a directory, if one exists. Case-insensitive,
+/// jpg/jpeg/png. Deterministic: `read_dir` order is not guaranteed, so matches are sorted.
+pub fn find_cover_file(dir: &Path) -> Option<PathBuf> {
     let mut matches: Vec<PathBuf> = fs::read_dir(dir)
         .ok()?
         .filter_map(|e| e.ok())
@@ -107,37 +107,57 @@ fn first_subfolder(dir: &Path) -> Option<PathBuf> {
     dirs.into_iter().next()
 }
 
-fn use_cover_file(cover: &Path, output_path: &Path) -> bool {
-    match image::open(cover) {
-        Ok(img) => save_resized(img, output_path),
-        Err(_) => false,
+/// Where a release's cover art can be read from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CoverSource {
+    /// A standalone image file (cover/folder/front).
+    File(PathBuf),
+    /// An audio file carrying an embedded picture tag.
+    Embedded(PathBuf),
+}
+
+/// A release's cover candidates, best first: an external image file beats an embedded
+/// tag, and the release root beats its first disc subfolder. Only the *first* audio
+/// file and the *first* subfolder are ever considered - a release whose first file
+/// carries no picture is left without art rather than scanning the rest of the folder.
+pub fn release_cover_candidates(folder_path: &Path) -> Vec<CoverSource> {
+    let mut candidates = Vec::new();
+
+    if let Some(cover) = find_cover_file(folder_path) {
+        candidates.push(CoverSource::File(cover));
+    }
+    if let Some(first) = first_audio_file(folder_path) {
+        candidates.push(CoverSource::Embedded(first));
+        return candidates;
+    }
+    // No audio directly in the release folder - a disc-split layout (CD1/CD2/...).
+    if let Some(sub) = first_subfolder(folder_path) {
+        if let Some(cover) = find_cover_file(&sub) {
+            candidates.push(CoverSource::File(cover));
+        }
+        if let Some(first) = first_audio_file(&sub) {
+            candidates.push(CoverSource::Embedded(first));
+        }
+    }
+    candidates
+}
+
+/// Decode a cover candidate, or None when it is unreadable/undecodable.
+pub fn load_cover_source(source: &CoverSource) -> Option<image::DynamicImage> {
+    match source {
+        CoverSource::File(path) => image::open(path).ok(),
+        CoverSource::Embedded(path) => first_embedded_image(path),
     }
 }
 
-/// Resolve a release's cover: external cover/folder/front file wins if present
-/// (release root, then first disc subfolder as fallback layout); otherwise the
-/// embedded picture tag of the first audio file (root, or first subfolder's) is
-/// used. No further files are tried once the first candidate is chosen.
+/// Resolve a release's cover to a 200x200 thumbnail at `output_path`, taking the first
+/// candidate that decodes (see `release_cover_candidates` for the ordering).
 pub fn resolve_release_cover(folder_path: &Path, output_path: &Path) -> bool {
-    if let Some(cover) = find_cover_file(folder_path) {
-        if use_cover_file(&cover, output_path) {
-            return true;
-        }
-    }
-    if let Some(first) = first_audio_file(folder_path) {
-        return extract_cover_art(&first, output_path);
-    }
-    if let Some(sub) = first_subfolder(folder_path) {
-        if let Some(cover) = find_cover_file(&sub) {
-            if use_cover_file(&cover, output_path) {
-                return true;
-            }
-        }
-        if let Some(first) = first_audio_file(&sub) {
-            return extract_cover_art(&first, output_path);
-        }
-    }
-    false
+    release_cover_candidates(folder_path)
+        .iter()
+        .find_map(load_cover_source)
+        .map(|img| save_resized(img, output_path))
+        .unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------

@@ -122,6 +122,7 @@ COPY --from=scripts-builder /build/target/release/playlists /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/delete /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/mosaic /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/dissect /usr/local/bin/
+COPY --from=scripts-builder /build/target/release/extract-meta-images /usr/local/bin/
 # Note target/scan/, not target/release/ - `problems` uses the scan profile.
 COPY --from=scripts-builder /build/target/scan/problems /usr/local/bin/
 

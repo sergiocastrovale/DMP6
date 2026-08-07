@@ -16,6 +16,7 @@ Shell wrappers at the project root (`./sync`, `./analysis`, etc.) auto-build the
 | `nuke/` | `nuke` | Full or partial database reset | [docs/scripts/nuke.md](../docs/scripts/nuke.md) |
 | `playlists/` | `playlists` | Auto-generate genre playlists | - |
 | `delete/` | `delete` | Permanently delete a single artist + cascade | [docs/scripts/delete.md](../docs/scripts/delete.md) |
+| `extract-meta-images/` | `extract-meta-images` | Extract embedded cover art to `folder.jpg` per release | [docs/scripts/extract-meta-images.md](../docs/scripts/extract-meta-images.md) |
 
 Build the full workspace:
 ```bash
