@@ -22,9 +22,10 @@ COPY scripts/delete/Cargo.toml delete/Cargo.toml
 COPY scripts/mosaic/Cargo.toml mosaic/Cargo.toml
 COPY scripts/dissect/Cargo.toml dissect/Cargo.toml
 COPY scripts/problems/Cargo.toml problems/Cargo.toml
+COPY scripts/extract-meta-images/Cargo.toml extract-meta-images/Cargo.toml
 
 # Create dummy src files to pre-build dependencies
-RUN mkdir -p common/src index/src sync/src fix/src analysis/src nuke/src audit/src playlists/src delete/src mosaic/src dissect/src problems/src \
+RUN mkdir -p common/src index/src sync/src fix/src analysis/src nuke/src audit/src playlists/src delete/src mosaic/src dissect/src problems/src extract-meta-images/src \
     && echo 'pub mod config; pub mod db; pub mod slug; pub mod filters; pub mod artists; pub mod s3; pub mod progress; pub mod lock; pub mod checkpoint; pub mod totals; pub mod statistics; pub mod types; pub mod images;' > common/src/lib.rs \
     && for m in config db slug filters artists s3 progress lock checkpoint totals statistics types images; do echo '' > common/src/$m.rs; done \
     && echo 'fn main(){}' > index/src/main.rs \
@@ -37,7 +38,8 @@ RUN mkdir -p common/src index/src sync/src fix/src analysis/src nuke/src audit/s
     && echo 'fn main(){}' > delete/src/main.rs \
     && echo 'fn main(){}' > mosaic/src/main.rs \
     && echo 'fn main(){}' > dissect/src/main.rs \
-    && echo 'fn main(){}' > problems/src/main.rs
+    && echo 'fn main(){}' > problems/src/main.rs \
+    && echo 'fn main(){}' > extract-meta-images/src/main.rs
 
 # Build dependencies only (cached unless Cargo.toml/Cargo.lock changes)
 RUN cargo build --release --workspace 2>/dev/null || true
@@ -55,6 +57,7 @@ COPY scripts/delete/src delete/src
 COPY scripts/mosaic/src mosaic/src
 COPY scripts/dissect/src dissect/src
 COPY scripts/problems/src problems/src
+COPY scripts/extract-meta-images/src extract-meta-images/src
 
 # Touch source files to invalidate the dummy build
 RUN find . -name '*.rs' -exec touch {} +
