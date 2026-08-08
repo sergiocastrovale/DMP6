@@ -29,6 +29,8 @@ cd scripts && cargo build --release -p index
 ./index --web                    # Emit PROGRESS:{json} for the web terminal
 ./index --resolve-artists        # Only resolve artist tags against MusicBrainz, no folder scan
 ./index --resolve-artists --dry-run  # Print the decisions, write nothing
+./index --resolve-artists --only "Name"  # Scope resolution to one artist
+./index --resolve-artists --overwrite    # Re-ask MB for every name in scope, ignoring the cache
 ./index --skip-resolve           # Skip the end-of-run artist resolution pass
 ```
 
@@ -54,7 +56,7 @@ cd scripts && cargo build --release -p index
 | `--music-dir` | String | - | Override MUSIC_DIR from env |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 | `--emit-artist-ids` | String | - | Write processed artist IDs to file (one per line, used by refresh) |
-| `--resolve-artists` | bool | false | Only resolve artist tags against MusicBrainz and rebuild links, then exit (no folder scan) |
+| `--resolve-artists` | bool | false | Only resolve artist tags against MusicBrainz and rebuild links, then exit (no folder scan). Honours `--only`/`--from`/`--to`/`--exact`/`--folders`/`--release` for scope, and `--overwrite` to ignore the lookup cache |
 | `--dry-run` | bool | false | With `--resolve-artists`: print decisions, write nothing |
 | `--skip-resolve` | bool | false | Skip the end-of-run artist resolution pass |
 
@@ -120,6 +122,21 @@ So the question is asked of MusicBrainz instead: *is this whole string an artist
 justifies looking for a split, and every candidate grouping is validated the same way
 (`common::mb::resolve`).
 
+### Two phases
+
+The pass runs as **Phase A** (network) then **Phase B** (offline), not interleaved:
+
+* **Phase A** walks the distinct tag values, sorted case-insensitively, and asks MusicBrainz about each
+  one. The product is the memo plus the `MbArtistLookup` rows - the `Resolution` itself is discarded.
+* **Phase B** walks the tracks and writes the owner/credit links. Every name is memoized by then, so it
+  makes no network calls.
+
+Three things follow from the split. Progress is alphabetical and its counter is honest (the old
+track-driven loop reported `resolved_names.len() + 1`, a different population that stalled and repeated
+whenever a name deferred). A crash is cheap: the pass has no checkpoint, so `MbArtistLookup` *is* the
+resume state, and a rerun skips every name already answered - `--overwrite` skips the cache warm to force
+a full re-ask. And the run's cost is visible up front, as `Resolving N of M (M-N already resolved)`.
+
 ### Search order
 
 | Tier | Source | Cost |
@@ -147,7 +164,20 @@ MB knows the duo. Above 8 separators (~0.1% of names) only the whole string and 
 
 A transient failure (timeout, 503) yields **deferred**: the name is left alone and retried next run. Only a
 definitive MB "no match" is allowed to trigger a split, so a network blip can never permanently shred a band
-name.
+name. Deferred answers are never cached, so a deferred name is genuinely re-asked rather than pinned.
+
+### Pacing
+
+`common::mb::api::RateLimiter` paces requests at a floor of 1300ms (`MB_MIN_DELAY_MS` overrides it,
+clamped 1100-10000) and adapts from there: a rate limit doubles the delay up to a 10s cap, each success
+sheds a flat 100ms back toward the floor.
+
+Two distinctions matter. A 503 is classified as **rate-limit** or **server overload** by its body and
+`X-RateLimit-Remaining` header, and only the former slows the steady-state pace - MusicBrainz being unwell
+is not fixed by going slower. And the penalty applies at most **once per request**, not once per retry:
+five retries of one unlucky name used to walk the delay 1100 → 10000 and pin every later name at the cap,
+which is the difference between a ~17h pass over 56k names and a ~157h one. `Retry-After` wins over the
+local backoff ladder when MusicBrainz sends it.
 
 **Offline backstop.** `KNOWN_SINGLE_ARTISTS` (`common/src/artists.rs`) is consulted before any split is
 contemplated: a band already known to be one artist stays whole even if MusicBrainz answers "no such

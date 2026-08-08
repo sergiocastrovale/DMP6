@@ -136,23 +136,104 @@ fn has_filter(args: &IndexArgs) -> bool {
         || args.release.is_some()
 }
 
+/// Release ids a filtered run should confine artist resolution to, or `None` for the whole library.
+///
+/// Only used by `--resolve-artists`, which has no folder scan to collect touched artist ids from and
+/// therefore has to derive the scope from the filter itself. Reuses `matches_filter` - the same helper
+/// `nuke_local_artists` applies - so `--only`/`--from`/`--to`/`--exact` mean exactly what they mean
+/// everywhere else.
+async fn scoped_release_ids_for_filter(
+    pool: &sqlx::PgPool,
+    args: &IndexArgs,
+) -> Option<Vec<String>> {
+    if !has_filter(args) {
+        return None;
+    }
+
+    if let Some(ref release_id) = args.release {
+        return Some(vec![release_id.clone()]);
+    }
+
+    if let Some(ref folders) = args.folders {
+        let paths: Vec<String> = folders
+            .split(';')
+            .map(|f| f.trim().to_string())
+            .filter(|f| !f.is_empty())
+            .collect();
+        let rows: Vec<(String,)> =
+            sqlx::query_as(r#"SELECT id FROM "LocalRelease" WHERE "folderPath" = ANY($1::text[])"#)
+                .bind(&paths)
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default();
+        return Some(rows.into_iter().map(|(id,)| id).collect());
+    }
+
+    let artists: Vec<(String, String)> = sqlx::query_as(r#"SELECT id, name FROM "Artist""#)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+    let target_ids: Vec<String> = artists
+        .into_iter()
+        .filter(|(_, name)| {
+            matches_filter(
+                name,
+                args.from.as_deref().unwrap_or(""),
+                args.to.as_deref().unwrap_or(""),
+                args.only.as_deref().unwrap_or(""),
+                args.exact,
+            )
+        })
+        .map(|(id, _)| id)
+        .collect();
+
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT DISTINCT lra."localReleaseId" FROM "LocalReleaseArtist" lra
+           WHERE lra."artistId" = ANY($1::text[])"#,
+    )
+    .bind(&target_ids)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    Some(rows.into_iter().map(|(id,)| id).collect())
+}
+
 /// Decide artist identity for every tag in scope and write the resulting owner/credit links.
 /// With `dry_run` nothing is written - the decisions are printed instead, which is the intended way to
 /// inspect what a full run would do before paying for it.
+///
+/// Two phases, deliberately separated. Phase A walks the sorted distinct tag values and asks
+/// MusicBrainz about each; Phase B walks the tracks and writes links, entirely offline because Phase A
+/// has already memoized every name. The split is what makes progress alphabetical, the counter honest,
+/// and a crash cheap - every answer Phase A obtained is already in `MbArtistLookup`, so a rerun starts
+/// where the last one stopped.
+///
+/// `overwrite` skips the cache warm, which is all it takes to force a full re-ask: an empty memo pins
+/// nothing, and `persist_lookup` upserts over the stale rows.
 async fn run_artist_resolution(
     pool: &sqlx::PgPool,
     reporter: &Reporter,
     dry_run: bool,
     scoped_release_ids: Option<&[String]>,
+    overwrite: bool,
 ) {
     use index::resolve::{distinct_tag_values, resolve_and_apply, ArtistResolver};
 
     let mut resolver = ArtistResolver::new(pool, dry_run);
     let names = distinct_tag_values(pool, scoped_release_ids).await;
-    resolver.warm_cache(&names).await;
+    if !overwrite {
+        resolver.warm_cache(&names).await;
+    }
+    let pending: Vec<String> = names
+        .iter()
+        .filter(|n| !resolver.is_cached(n))
+        .cloned()
+        .collect();
     reporter.info(&format!(
-        "Resolving {} distinct artist tag value(s){}...",
+        "Resolving {} of {} distinct artist tag value(s) ({} already resolved){}...",
+        pending.len(),
         names.len(),
+        names.len() - pending.len(),
         if dry_run {
             " (dry run - no writes)"
         } else {
@@ -160,13 +241,15 @@ async fn run_artist_resolution(
         }
     ));
 
+    resolver.prefetch(&pending, Some(reporter)).await;
+
     let mut report: Vec<index::resolve::Decision> = Vec::new();
     let result = resolve_and_apply(
         pool,
         &mut resolver,
         scoped_release_ids,
         &mut report,
-        Some((reporter, names.len())),
+        Some(reporter),
     )
     .await;
     reporter.clear_transient();
@@ -352,7 +435,15 @@ async fn main() {
     // Resolve-only mode: decide artist identity against MusicBrainz, no folder scan
     // -------------------------------------------------------------------------
     if args.resolve_artists {
-        run_artist_resolution(&pool, &reporter, args.dry_run, None).await;
+        let scoped = scoped_release_ids_for_filter(&pool, &args).await;
+        run_artist_resolution(
+            &pool,
+            &reporter,
+            args.dry_run,
+            scoped.as_deref(),
+            args.overwrite,
+        )
+        .await;
         release_lock(&pool).await;
         return;
     }
@@ -1539,7 +1630,7 @@ async fn main() {
         } else {
             None
         };
-        run_artist_resolution(&pool, &reporter, false, scoped.as_deref()).await;
+        run_artist_resolution(&pool, &reporter, false, scoped.as_deref(), false).await;
     }
 
     // -------------------------------------------------------------------------

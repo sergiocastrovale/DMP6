@@ -33,6 +33,29 @@ pub fn escape_lucene_phrase(value: &str) -> String {
 // Adaptive rate limiter
 // ---------------------------------------------------------------------------
 
+/// MusicBrainz allows roughly one request per second per client. 1100ms was the old floor and is kept
+/// as the hard lower bound for `MB_MIN_DELAY_MS`; the default sits slightly above it so ordinary clock
+/// jitter doesn't push a run over the line and earn a 503 that then costs minutes to recover from.
+const MIN_DELAY_FLOOR_MS: u64 = 1100;
+const DEFAULT_MIN_DELAY_MS: u64 = 1300;
+const MAX_DELAY_MS: u64 = 10000;
+
+/// Recovery is additive, not multiplicative. A 15% cut per success walked the delay back to the floor
+/// in ~14 requests, which is fast enough to slam straight back into the wall - the observed pattern of
+/// 503s arriving in clusters. Shedding a fixed 100ms per success drains a spike gradually instead.
+const RECOVERY_STEP_MS: u64 = 100;
+
+/// `MB_MIN_DELAY_MS` overrides the pacing floor for a run without a rebuild - useful when MusicBrainz
+/// is having a bad day and the only lever left is going slower. Clamped, because a floor below MB's
+/// published rate is not a knob anyone should be able to turn.
+fn configured_min_delay() -> u64 {
+    std::env::var("MB_MIN_DELAY_MS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|v| v.clamp(MIN_DELAY_FLOOR_MS, MAX_DELAY_MS))
+        .unwrap_or(DEFAULT_MIN_DELAY_MS)
+}
+
 pub struct RateLimiter {
     delay_ms: u64,
     min_delay: u64,
@@ -44,10 +67,11 @@ pub struct RateLimiter {
 
 impl RateLimiter {
     pub fn new() -> Self {
+        let min_delay = configured_min_delay();
         Self {
-            delay_ms: 1100,
-            min_delay: 1100,
-            max_delay: 10000,
+            delay_ms: min_delay,
+            min_delay,
+            max_delay: MAX_DELAY_MS,
             last_request: Instant::now(),
             remaining: None,
             reset_at: None,
@@ -88,7 +112,10 @@ impl RateLimiter {
 
     fn on_success(&mut self) {
         if self.delay_ms > self.min_delay {
-            self.delay_ms = (self.delay_ms * 85 / 100).max(self.min_delay);
+            self.delay_ms = self
+                .delay_ms
+                .saturating_sub(RECOVERY_STEP_MS)
+                .max(self.min_delay);
         }
     }
 
@@ -97,6 +124,45 @@ impl RateLimiter {
         self.remaining = None;
         self.reset_at = None;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Throttle classification
+// ---------------------------------------------------------------------------
+
+/// Why MusicBrainz refused a request.
+///
+/// 503 covers two unrelated situations - "you are going too fast" and "our servers are struggling" -
+/// and they want opposite responses. Pacing down fixes the first and does nothing for the second, so
+/// treating every 503 as a rate limit permanently slows a run because MB had a bad minute. With 56k
+/// names to resolve that is the difference between a ~17h pass at the floor and a ~157h one at the cap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThrottleKind {
+    /// We are over the allowance - back the pacing off.
+    RateLimited,
+    /// MusicBrainz itself is unwell - retry, but do not slow the steady-state pace.
+    Overloaded,
+}
+
+pub fn classify_throttle(status: u16, remaining: Option<u64>, body: &str) -> ThrottleKind {
+    if status == 429 || remaining == Some(0) {
+        return ThrottleKind::RateLimited;
+    }
+    if body.to_lowercase().contains("rate limit") {
+        ThrottleKind::RateLimited
+    } else {
+        ThrottleKind::Overloaded
+    }
+}
+
+/// `Retry-After` in its delta-seconds form, as milliseconds.
+///
+/// The HTTP-date variant is not parsed: MusicBrainz doesn't send it, and a date we failed to read must
+/// never collapse into a 0ms wait - anything unparseable yields `None` so the caller keeps its own
+/// backoff ladder. Clamped to 1..=60s so a hostile or mistaken header can't stall a run for an hour.
+fn parse_retry_after(raw: Option<&str>) -> Option<u64> {
+    let secs = raw?.trim().parse::<u64>().ok()?;
+    Some(secs.clamp(1, 60) * 1000)
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +211,12 @@ pub async fn mb_get(
     limiter: &mut RateLimiter,
 ) -> Result<String, String> {
     let max_attempts = 6;
-    let mut wait_time: u64 = 1000;
+    let mut ladder: u64 = 1000;
+    // The pacing penalty is applied at most once per call. Previously every retry inside a single
+    // mb_get doubled delay_ms, so one unlucky name walked the limiter 1100 -> 2200 -> 4400 -> 8800 ->
+    // 10000 and pinned every *later* name at the cap until enough successes had drained it. The
+    // per-attempt backoff below still escalates - only the steady-state pace is spared.
+    let mut penalised = false;
 
     for attempt in 0..max_attempts {
         limiter.wait().await;
@@ -170,6 +241,11 @@ pub async fn mb_get(
             .get("X-RateLimit-Reset")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<u64>().ok());
+        let retry_after = parse_retry_after(
+            resp.headers()
+                .get("Retry-After")
+                .and_then(|v| v.to_str().ok()),
+        );
         limiter.update_from_headers(rl_remaining, rl_reset);
 
         if status == 200 {
@@ -181,23 +257,31 @@ pub async fn mb_get(
         }
 
         if status == 503 || status == 429 {
-            limiter.on_rate_limit();
+            // The body is what separates MB's rate-limit 503 from a plain overload 503. It is small,
+            // and this branch is already the slow path, so reading it costs nothing that matters.
+            let body = resp.text().await.unwrap_or_default();
+            let kind = classify_throttle(status, rl_remaining, &body);
+            if kind == ThrottleKind::RateLimited && !penalised {
+                limiter.on_rate_limit();
+                penalised = true;
+            }
             if attempt < max_attempts - 1 {
-                wait_time = (wait_time * 2).min(16000);
-                let reason = if status == 503 {
-                    "Waiting for MusicBrainz"
-                } else {
-                    "Rate limited"
+                ladder = (ladder * 2).min(16000);
+                // MB's own advice wins over our guess when it bothers to give one.
+                let wait_time = retry_after.unwrap_or(ladder);
+                let reason = match kind {
+                    ThrottleKind::RateLimited => "rate-limit",
+                    ThrottleKind::Overloaded => "server overload",
                 };
                 error_log::log_warn(&format!(
-                    "HTTP {} - {} (attempt {}/{})",
+                    "HTTP {} ({}) (attempt {}/{})",
                     status,
                     reason,
                     attempt + 1,
                     max_attempts - 1
                 ));
                 eprintln!(
-                    "      ⚠ HTTP {} - {} - waiting {:.1}s before next attempt ({}/{}) [delay_ms={}]",
+                    "      ⚠ HTTP {} ({}) - waiting {:.1}s before next attempt ({}/{}) [delay_ms={}]",
                     status,
                     reason,
                     wait_time as f64 / 1000.0,
@@ -211,7 +295,7 @@ pub async fn mb_get(
                 return Err(format!(
                     "MusicBrainz API still unavailable after {} retries (waited up to {}s). Will retry this release next time.",
                     max_attempts,
-                    wait_time / 1000
+                    ladder / 1000
                 ));
             }
         }
@@ -668,6 +752,111 @@ pub async fn mb_get_release_by_id(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The real 503 body MusicBrainz serves when a client is over its allowance.
+    const RATE_LIMIT_BODY: &str =
+        r#"{"error":"Your requests are exceeding the allowable rate limit. Please see http://wiki.musicbrainz.org/XMLWebService for more information."}"#;
+
+    /// Built field-by-field rather than via `RateLimiter::new()` on purpose: `new()` reads
+    /// `MB_MIN_DELAY_MS`, and cargo runs these tests in parallel with the one that mutates it.
+    fn limiter_at(delay_ms: u64) -> RateLimiter {
+        RateLimiter {
+            delay_ms,
+            min_delay: DEFAULT_MIN_DELAY_MS,
+            max_delay: MAX_DELAY_MS,
+            last_request: Instant::now(),
+            remaining: None,
+            reset_at: None,
+        }
+    }
+
+    #[test]
+    fn recovery_is_additive_and_floors_at_min_delay() {
+        let mut l = limiter_at(5000);
+        l.on_success();
+        assert_eq!(l.delay_ms, 4900, "one success sheds exactly RECOVERY_STEP_MS");
+        let floor = l.min_delay;
+        let mut l = limiter_at(floor + 50);
+        l.on_success();
+        assert_eq!(l.delay_ms, floor, "recovery never undercuts the floor");
+        l.on_success();
+        assert_eq!(l.delay_ms, floor, "already at the floor is a no-op");
+    }
+
+    #[test]
+    fn rate_limit_doubles_and_caps() {
+        let mut l = limiter_at(4000);
+        l.on_rate_limit();
+        assert_eq!(l.delay_ms, 8000);
+        l.on_rate_limit();
+        assert_eq!(l.delay_ms, MAX_DELAY_MS, "capped, not 16000");
+    }
+
+    #[test]
+    fn a_single_call_penalises_the_pace_at_most_once() {
+        // Mirrors mb_get's `penalised` latch: five retries of one unlucky name must cost one doubling,
+        // not five. Before this, one bad name pinned every later name at the 10s cap.
+        let mut l = limiter_at(1300);
+        let mut penalised = false;
+        for _ in 0..5 {
+            let kind = classify_throttle(503, None, RATE_LIMIT_BODY);
+            if kind == ThrottleKind::RateLimited && !penalised {
+                l.on_rate_limit();
+                penalised = true;
+            }
+        }
+        assert_eq!(l.delay_ms, 2600);
+    }
+
+    #[test]
+    fn rate_limit_body_and_429_and_exhausted_budget_are_rate_limited() {
+        assert_eq!(
+            classify_throttle(503, None, RATE_LIMIT_BODY),
+            ThrottleKind::RateLimited
+        );
+        assert_eq!(classify_throttle(429, None, ""), ThrottleKind::RateLimited);
+        assert_eq!(
+            classify_throttle(503, Some(0), "<html>Service Unavailable</html>"),
+            ThrottleKind::RateLimited,
+            "an empty X-RateLimit-Remaining budget is a rate limit whatever the body says"
+        );
+    }
+
+    #[test]
+    fn bare_503_is_overload_not_rate_limit() {
+        // The whole point of the split: slowing down does not fix MusicBrainz being unwell.
+        assert_eq!(
+            classify_throttle(503, None, "<html><body>503 Service Unavailable</body></html>"),
+            ThrottleKind::Overloaded
+        );
+        assert_eq!(classify_throttle(503, Some(42), ""), ThrottleKind::Overloaded);
+    }
+
+    #[test]
+    fn retry_after_is_parsed_clamped_and_never_zero() {
+        assert_eq!(parse_retry_after(Some("30")), Some(30_000));
+        assert_eq!(parse_retry_after(Some("  5 ")), Some(5_000));
+        assert_eq!(parse_retry_after(Some("0")), Some(1_000), "clamped up");
+        assert_eq!(parse_retry_after(Some("9999")), Some(60_000), "clamped down");
+        // HTTP-date form is deliberately unparsed - falling back to the caller's ladder beats a 0ms wait.
+        assert_eq!(parse_retry_after(Some("Wed, 21 Oct 2015 07:28:00 GMT")), None);
+        assert_eq!(parse_retry_after(None), None);
+    }
+
+    #[test]
+    fn min_delay_env_override_is_clamped() {
+        // Serialised implicitly: these tests share the process env, so set/remove around each assert.
+        std::env::set_var("MB_MIN_DELAY_MS", "2000");
+        assert_eq!(configured_min_delay(), 2000);
+        std::env::set_var("MB_MIN_DELAY_MS", "10");
+        assert_eq!(configured_min_delay(), MIN_DELAY_FLOOR_MS, "never below MB's rate");
+        std::env::set_var("MB_MIN_DELAY_MS", "999999");
+        assert_eq!(configured_min_delay(), MAX_DELAY_MS);
+        std::env::set_var("MB_MIN_DELAY_MS", "not-a-number");
+        assert_eq!(configured_min_delay(), DEFAULT_MIN_DELAY_MS);
+        std::env::remove_var("MB_MIN_DELAY_MS");
+        assert_eq!(configured_min_delay(), DEFAULT_MIN_DELAY_MS);
+    }
 
     #[test]
     fn classifies_http_404_as_not_found() {

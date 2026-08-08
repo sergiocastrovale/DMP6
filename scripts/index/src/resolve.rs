@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 use common::mb::api::{mb_search_artist_exact, RateLimiter};
 use common::mb::names::normalize_name;
+use common::progress::Reporter;
 use common::mb::resolve::{
     cap_co_owners, resolve_with, JoinKind, LookupResult, Resolution, ResolveSource, ResolvedArtist,
 };
@@ -63,7 +64,12 @@ impl<'a> ArtistResolver<'a> {
     pub fn new(pool: &'a PgPool, dry_run: bool) -> Self {
         Self {
             pool,
-            client: Client::new(),
+            // Timeout deliberately matched to sync and problems: `Client::new()` has none, so a stalled
+            // MusicBrainz connection hung the whole pass instead of taking the deferred path below.
+            client: Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
             limiter: RateLimiter::new(),
             memo: HashMap::new(),
             dry_run,
@@ -104,9 +110,9 @@ impl<'a> ArtistResolver<'a> {
     /// library: a preview that re-asked MusicBrainz for all 59k names and then made the real run pay
     /// for them again would waste hours at 1.1 req/s. Dry run still writes no artists, links or
     /// credits - see `resolve_and_apply`.
-    async fn persist_lookup(&self, name: &str, result: &LookupResult) {
+    async fn persist_lookup(&self, name: &str, result: &LookupResult, mb_name: Option<String>) {
         let (mbid, mb_name) = match result {
-            LookupResult::Found { mbid } => (mbid.clone(), None::<String>),
+            LookupResult::Found { mbid } => (mbid.clone(), mb_name),
             LookupResult::NotFound => (None, None),
             // Never cache an unknown - it isn't an answer.
             LookupResult::Transient | LookupResult::NeedsFetch => return,
@@ -132,8 +138,14 @@ impl<'a> ArtistResolver<'a> {
             return LookupResult::Transient;
         }
         self.stats.mb_lookups += 1;
+        // MB's own spelling of the name, kept so the cache row records what was matched rather than
+        // leaving `mbName` permanently NULL.
+        let mut mb_name: Option<String> = None;
         let result = match mb_search_artist_exact(&self.client, name, &mut self.limiter).await {
-            Ok(Some(m)) => LookupResult::Found { mbid: Some(m.id) },
+            Ok(Some(m)) => {
+                mb_name = Some(m.name);
+                LookupResult::Found { mbid: Some(m.id) }
+            }
             Ok(None) => LookupResult::NotFound,
             Err(e) => {
                 // A transient failure must never be recorded as "no such artist", or one network blip
@@ -150,9 +162,35 @@ impl<'a> ArtistResolver<'a> {
                 }
             }
         };
-        self.persist_lookup(name, &result).await;
+        self.persist_lookup(name, &result, mb_name).await;
         self.memo.insert(name.to_string(), result.clone());
         result
+    }
+
+    /// Is this tag value already fully answered by the cache? See [`is_fully_memoized`].
+    pub fn is_cached(&self, name: &str) -> bool {
+        is_fully_memoized(&self.memo, name)
+    }
+
+    /// Phase A: ask MusicBrainz about every name in `names`, in the order given.
+    ///
+    /// The `Resolution` is thrown away - the product is the memo and the `MbArtistLookup` rows, which
+    /// is what makes this phase resumable for free: a crash costs only the names not yet asked. Driving
+    /// the network from the *name* list rather than from the track list is also what makes progress
+    /// alphabetical and the counter honest; the old track-driven loop reported
+    /// `resolved_names.len() + 1`, a different population that stalled and repeated whenever a name
+    /// deferred.
+    pub async fn prefetch(&mut self, names: &[String], progress: Option<&Reporter>) {
+        let total = names.len();
+        for (i, name) in names.iter().enumerate() {
+            if let Some(reporter) = progress {
+                reporter.transient(&format!("[{}/{}] {}", i + 1, total, name));
+            }
+            self.resolve(name).await;
+        }
+        if let Some(reporter) = progress {
+            reporter.clear_transient();
+        }
     }
 
     /// Resolve one tag string, fetching whatever the synchronous search asks for.
@@ -345,7 +383,7 @@ pub async fn resolve_and_apply(
     resolver: &mut ArtistResolver<'_>,
     scoped_release_ids: Option<&[String]>,
     report: &mut Vec<Decision>,
-    progress: Option<(&common::progress::Reporter, usize)>,
+    progress: Option<&Reporter>,
 ) -> Result<(), sqlx::Error> {
     type Row = (
         String,
@@ -420,7 +458,19 @@ pub async fn resolve_and_apply(
     // ends up invisible, unsyncable, and deletable by ./delete's sweep.
     let mut releases_with_deferred: HashSet<String> = HashSet::new();
 
-    for track in &tracks {
+    // Phase B is offline - every name Phase A asked about is already memoized - so progress here is
+    // measured in tracks, not names. Reported every PROGRESS_EVERY tracks: 1.8M transient lines is
+    // noise, and the terminal spends longer redrawing them than the loop spends working.
+    const PROGRESS_EVERY: usize = 500;
+    let total_tracks = tracks.len();
+
+    for (i, track) in tracks.iter().enumerate() {
+        if let Some(reporter) = progress {
+            if i % PROGRESS_EVERY == 0 {
+                reporter.transient(&format!("Applying links [{}/{}]", i + 1, total_tracks));
+            }
+        }
+
         // --- album artist decides who OWNS the release -----------------------------------------
         if let (Some(aa), Some(release_id)) =
             (track.album_artist.as_ref(), track.local_release_id.as_ref())
@@ -445,14 +495,6 @@ pub async fn resolve_and_apply(
                         resolved_names.insert(aa.clone(), parts);
                     }
                     None => {
-                        if let Some((reporter, total)) = progress {
-                            reporter.transient(&format!(
-                                "[{}/{}] {}",
-                                resolved_names.len() + 1,
-                                total,
-                                aa
-                            ));
-                        }
                         let (res, src) = resolver.resolve(aa).await;
                         match res {
                             Resolution::Resolved(mut parts) => {
@@ -523,14 +565,6 @@ pub async fn resolve_and_apply(
                     continue;
                 };
                 if !resolved_names.contains_key(tag) {
-                    if let Some((reporter, total)) = progress {
-                        reporter.transient(&format!(
-                            "[{}/{}] {}",
-                            resolved_names.len() + 1,
-                            total,
-                            tag
-                        ));
-                    }
                     let (res, src) = resolver.resolve(tag).await;
                     match res {
                         Resolution::Resolved(parts) => {
@@ -675,56 +709,120 @@ pub async fn resolve_and_apply(
             .ok();
     }
 
-    if let Some((reporter, _)) = progress {
+    if let Some(reporter) = progress {
         reporter.clear_transient();
     }
 
     Ok(())
 }
 
-/// Distinct non-empty tag values to resolve, newest-first so a targeted run does useful work early.
+/// Has every lookup this name needs already been answered?
+///
+/// The "pin" that lets a rerun skip work it already paid for. Deliberately stronger than "a cache row
+/// exists for this string": a compound like `"A feat. B"` caches its whole-string miss under its own
+/// key but still needs a row per span, so row-presence alone would skip a name with most of its work
+/// left. Running the real search against the memo and watching for a single `NeedsFetch` is the only
+/// honest test - pure CPU, no network, nothing mutated.
+pub fn is_fully_memoized(memo: &HashMap<String, LookupResult>, name: &str) -> bool {
+    let mut needs_fetch = false;
+    resolve_with(name, |q| match memo.get(q) {
+        Some(r) => r.clone(),
+        None => {
+            needs_fetch = true;
+            LookupResult::NeedsFetch
+        }
+    });
+    !needs_fetch
+}
+
+/// Distinct non-empty tag values to resolve, sorted case-insensitively.
+///
+/// The order is the user-facing one: it is what Phase A walks, so progress reads alphabetically and a
+/// resumed run picks up somewhere recognisable. Without the `ORDER BY` this returned Postgres's
+/// hash-distinct order - arbitrary, and free to differ between runs.
 pub async fn distinct_tag_values(
     pool: &PgPool,
     scoped_release_ids: Option<&[String]>,
 ) -> Vec<String> {
     let rows: Vec<(String,)> = match scoped_release_ids {
         Some(ids) => sqlx::query_as(
-            r#"SELECT DISTINCT v FROM (
+            r#"SELECT v FROM (
                    SELECT artist AS v FROM "LocalReleaseTrack" WHERE "localReleaseId" = ANY($1::text[])
                    UNION
                    SELECT "albumArtist" AS v FROM "LocalReleaseTrack" WHERE "localReleaseId" = ANY($1::text[])
-               ) s WHERE v IS NOT NULL AND v <> ''"#,
+               ) s WHERE v IS NOT NULL AND v <> ''
+               ORDER BY lower(v), v"#,
         )
         .bind(ids)
         .fetch_all(pool)
         .await
         .unwrap_or_default(),
         None => sqlx::query_as(
-            r#"SELECT DISTINCT v FROM (
+            r#"SELECT v FROM (
                    SELECT artist AS v FROM "LocalReleaseTrack"
                    UNION
                    SELECT "albumArtist" AS v FROM "LocalReleaseTrack"
-               ) s WHERE v IS NOT NULL AND v <> ''"#,
+               ) s WHERE v IS NOT NULL AND v <> ''
+               ORDER BY lower(v), v"#,
         )
         .fetch_all(pool)
         .await
         .unwrap_or_default(),
     };
-    let mut seen: HashSet<String> = HashSet::new();
-    rows.into_iter()
-        .map(|(v,)| v)
-        .filter(|v| seen.insert(v.clone()))
-        .collect()
+    // No second dedupe pass: `UNION` (not `UNION ALL`) already guarantees uniqueness, and the old
+    // HashSet filter existed only to preserve an order the SQL never established. The explicit
+    // `SELECT DISTINCT` went with it - Postgres rejects `ORDER BY lower(v)` alongside it, since a
+    // DISTINCT's sort keys must appear in the select list.
+    rows.into_iter().map(|(v,)| v).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_owner_offline;
+    use super::{is_fully_memoized, resolve_owner_offline};
     use common::mb::resolve::LookupResult;
+    use std::collections::HashMap;
 
     /// A lookup that never has an answer - the folder loop's actual condition on a cold cache.
     fn cold(_: &str) -> LookupResult {
         LookupResult::NeedsFetch
+    }
+
+    fn memo(entries: &[(&str, LookupResult)]) -> HashMap<String, LookupResult> {
+        entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn a_cold_memo_pins_nothing() {
+        assert!(!is_fully_memoized(&HashMap::new(), "Miles Davis"));
+    }
+
+    #[test]
+    fn a_whole_string_answer_is_enough_for_a_simple_name() {
+        // Hit or miss, both are answers: a name with no separators needs exactly one lookup, so once
+        // that lookup is cached there is nothing left to ask.
+        let found = memo(&[("Miles Davis", LookupResult::Found { mbid: None })]);
+        assert!(is_fully_memoized(&found, "Miles Davis"));
+        let missing = memo(&[("Some Unknown Act", LookupResult::NotFound)]);
+        assert!(is_fully_memoized(&missing, "Some Unknown Act"));
+    }
+
+    #[test]
+    fn a_compound_needs_its_spans_not_just_its_whole_string() {
+        // The reason the pin runs the real search instead of checking for a cache row. The whole-string
+        // miss IS cached here, so a row-presence check would call this name done and skip the span
+        // lookups that are the actual work.
+        let whole_only = memo(&[("Sonny Rollins feat. Jim Hall", LookupResult::NotFound)]);
+        assert!(!is_fully_memoized(&whole_only, "Sonny Rollins feat. Jim Hall"));
+
+        let complete = memo(&[
+            ("Sonny Rollins feat. Jim Hall", LookupResult::NotFound),
+            ("Sonny Rollins", LookupResult::Found { mbid: None }),
+            ("Jim Hall", LookupResult::Found { mbid: None }),
+        ]);
+        assert!(is_fully_memoized(&complete, "Sonny Rollins feat. Jim Hall"));
     }
 
     #[test]

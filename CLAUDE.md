@@ -119,8 +119,10 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./index --inspect             # Re-check existing files for metadata changes
 ./index --folders "Artist/Album"   # Re-index exact folder paths
 ./index --release "clxxx"     # Re-index single release by LocalRelease ID
-./index --resolve-artists     # Resolve artist tags against MusicBrainz only (no folder scan)
+./index --resolve-artists     # Resolve artist tags against MusicBrainz only (no folder scan); alphabetical, skips names already in MbArtistLookup
 ./index --resolve-artists --dry-run  # Preview resolution decisions, write nothing
+./index --resolve-artists --only "Name"  # Scope resolution to one artist (also honours --from/--to/--folders/--release/--exact)
+./index --resolve-artists --overwrite    # Re-ask MusicBrainz for every name in scope, ignoring the cache
 ./index --skip-resolve        # Skip the end-of-run artist resolution pass
 ./index --delete              # Delete local data for matched artists
 ./index --emit-artist-ids f   # Write processed artist IDs to file (used by refresh)
@@ -317,3 +319,7 @@ Scripts are built into the docker container and copied to the NAS folder. You ca
 ## Environment Variables
 
 See `web/.env.example` for full documentation.
+
+Scripts-only knob: `MB_MIN_DELAY_MS` sets the MusicBrainz inter-request floor for `index`, `sync` and
+`problems` (default 1300, clamped to 1100–10000). Raise it when MusicBrainz is rate-limiting a long
+run; it does nothing for the "server overload" 503s, which the client now labels separately.

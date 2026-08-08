@@ -307,3 +307,64 @@ async fn single_embedded_pair_is_trusted_only_when_it_is_the_whole_tag() {
     .is_none());
     assert!(embedded_pairing("A", &[], &[], JoinKind::Guest).is_none());
 }
+
+/// The pin: a name already answered in `MbArtistLookup` must cost nothing on the next run.
+///
+/// This is what makes a crashed `--resolve-artists` cheap to restart - the pass has no checkpoint, so
+/// the cache IS the resume state. It also proves `--overwrite` still works: skipping the cache warm is
+/// the whole mechanism by which a forced re-ask happens.
+#[tokio::test]
+#[ignore]
+async fn a_cached_name_is_pinned_and_costs_no_lookups() {
+    let db_url = std::env::var("SMOKE_TEST_DATABASE_URL").expect("set SMOKE_TEST_DATABASE_URL");
+    let pool = common::db::create_pool(&db_url).await;
+    let name = "DMP Test Pinned Artist (resolve_artists)";
+
+    sqlx::query(r#"DELETE FROM "MbArtistLookup" WHERE name = $1"#)
+        .bind(name)
+        .execute(&pool)
+        .await
+        .expect("clear lookup");
+    sqlx::query(
+        r#"INSERT INTO "MbArtistLookup" (id, name, normalized, mbid, "mbName", "checkedAt")
+           VALUES ($1, $2, $3, $4, $2, NOW())"#,
+    )
+    .bind(cuid2::create_id())
+    .bind(name)
+    .bind(name.to_lowercase())
+    .bind(OWNER_MBID)
+    .execute(&pool)
+    .await
+    .expect("seed lookup");
+
+    let names = vec![name.to_string()];
+
+    let mut warm = ArtistResolver::new(&pool, true);
+    warm.offline = true; // any network call here would be the bug this test exists to catch
+    warm.warm_cache(&names).await;
+    assert!(warm.is_cached(name), "a cached answer must pin the name");
+    warm.prefetch(&names, None).await;
+    assert_eq!(
+        warm.stats.mb_lookups, 0,
+        "a pinned name must not be asked again"
+    );
+    // The discriminating assertion: `offline` alone would also yield 0 lookups, but it would yield a
+    // deferral. Resolving from cache is the only way to get neither.
+    assert_eq!(
+        warm.stats.deferred, 0,
+        "a pinned name must resolve from cache, not defer"
+    );
+
+    // --overwrite skips the warm, so nothing is pinned and the name is re-asked.
+    let cold = ArtistResolver::new(&pool, true);
+    assert!(
+        !cold.is_cached(name),
+        "without the cache warm nothing is pinned - this is how --overwrite forces a re-ask"
+    );
+
+    sqlx::query(r#"DELETE FROM "MbArtistLookup" WHERE name = $1"#)
+        .bind(name)
+        .execute(&pool)
+        .await
+        .expect("cleanup lookup");
+}
