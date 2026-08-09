@@ -1964,12 +1964,22 @@ async fn main() {
         }
     }
 
-    if let Ok(n) = delete_empty_local_releases(&pool).await {
+    // A narrowed run cleans up only after the artists it actually synced. Unscoped, `--only "X"` used
+    // to delete unbound MB releases across the whole library - collateral for artists it never touched.
+    // The default "pending" sweep and `--overwrite` still garbage-collect globally: those see everything.
+    let cleanup_scope: Option<Vec<String>> = (args.only.is_some()
+        || args.from.is_some()
+        || args.to.is_some()
+        || args.release.is_some()
+        || args.artist_ids.is_some())
+    .then(|| artists.iter().map(|a| a.id.clone()).collect());
+
+    if let Ok(n) = delete_empty_local_releases(&pool, cleanup_scope.as_deref()).await {
         if n > 0 {
             reporter.info(&format!("Cleaned up {} empty local release(s)", n));
         }
     }
-    if let Ok(n) = delete_orphaned_mb_releases(&pool).await {
+    if let Ok(n) = delete_orphaned_mb_releases(&pool, cleanup_scope.as_deref()).await {
         if n > 0 {
             reporter.info(&format!("Cleaned up {} orphaned MB release(s)", n));
         }

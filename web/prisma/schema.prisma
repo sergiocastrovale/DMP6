@@ -281,10 +281,15 @@ model LocalReleaseTrack {
   // Multi-value tag frames, kept in file order. artists[i] pairs with mbArtistIds[i] when the lengths
   // match - that pairing is an authoritative, pre-split artist list from Picard (see
   // common::mb::resolve tier 0), so no separator guessing or MB lookup is needed for those tracks.
-  artists             String[]
-  mbArtistIds         String[]
-  albumArtists        String[]
-  mbAlbumArtistIds    String[]
+  //
+  // `@default([])` is required, not cosmetic. The migration created these NOT NULL DEFAULT ARRAY[],
+  // but a bare `String[]` pushes as nullable with no default - so a database built from this schema
+  // (a fresh install, or the vitest harness) handed NULL to the resolver, which decodes them as
+  // Vec<String>, and artist resolution died with UnexpectedNullError before touching a single track.
+  artists             String[]                 @default([])
+  mbArtistIds         String[]                 @default([])
+  albumArtists        String[]                 @default([])
+  mbAlbumArtistIds    String[]                 @default([])
   fileSize            BigInt?
   mtime               DateTime?
   contentHash         String?                  @db.VarChar(32)
@@ -331,6 +336,27 @@ model TrackRelatedArtist {
   @@unique([trackId, artistId])
   @@index([trackId])
   @@index([artistId])
+}
+
+// MusicBrainz artist-name resolution cache, written by the index resolver (scripts/index/src/resolve.rs)
+// and read by sync's match ladder (scripts/common/src/mb/cache.rs). Caches hits AND misses so MB's
+// ~1 req/s budget is paid once per name; `mbid IS NULL` means MusicBrainz confirmed it does not know
+// the name, re-checked after a 30-day TTL rather than re-queried every run. It is also the only resume
+// state `index --resolve-artists` has - the pass keeps no checkpoint of its own.
+//
+// Declared here as well as in migration 20260803124822_mb_artist_resolution: the migration created the
+// table but the model was never added, so `prisma db push` built databases without it and the next
+// `prisma migrate dev` would have generated a migration DROPPING it.
+model MbArtistLookup {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  normalized String
+  mbid       String?
+  mbName     String?
+  checkedAt  DateTime @default(now())
+
+  @@index([normalized])
+  @@index([checkedAt])
 }
 
 // ---------------------------------------------------------------------------

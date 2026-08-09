@@ -89,17 +89,45 @@ pub async fn delete_removed_tracks(
     TrackDeletionResult { count }
 }
 
+/// Artist ids a run is allowed to clean up after, or `None` for the whole library.
+///
+/// A filtered run (`--only`, `--folders`, `--from`/`--to`) must not garbage-collect rows belonging to
+/// artists it never looked at: it has no idea whether those rows are genuinely orphaned or merely
+/// mid-write by something else, and deleting them makes a one-artist rescan a library-wide mutation.
+/// Only an unfiltered run has the whole picture, so only an unfiltered run sweeps globally.
+pub type ArtistScope<'a> = Option<&'a [String]>;
+
 /// Delete LocalRelease rows that have no tracks left. Cleans images (local + S3) first.
 /// Also deletes orphan MusicBrainzRelease rows that no LocalRelease references anymore.
-pub async fn delete_empty_releases(pool: &PgPool, config: &Config) -> u64 {
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        r#"SELECT id, "releaseId" FROM "LocalRelease" WHERE id NOT IN (
-               SELECT DISTINCT "localReleaseId" FROM "LocalReleaseTrack"
-           )"#,
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+///
+/// Scoped to releases owned by `scope`'s artists when it is `Some`. An *ownerless* empty release is
+/// deliberately left to the global pass - nothing attributes it to the artists in scope.
+pub async fn delete_empty_releases(pool: &PgPool, config: &Config, scope: ArtistScope<'_>) -> u64 {
+    let rows: Vec<(String, Option<String>)> = match scope {
+        Some(artist_ids) => sqlx::query_as(
+            r#"SELECT lr.id, lr."releaseId" FROM "LocalRelease" lr
+               WHERE NOT EXISTS (
+                       SELECT 1 FROM "LocalReleaseTrack" t WHERE t."localReleaseId" = lr.id
+                     )
+                 AND EXISTS (
+                       SELECT 1 FROM "LocalReleaseArtist" lra
+                       WHERE lra."localReleaseId" = lr.id AND lra."artistId" = ANY($1::text[])
+                     )"#,
+        )
+        .bind(artist_ids)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default(),
+        None => sqlx::query_as(
+            r#"SELECT lr.id, lr."releaseId" FROM "LocalRelease" lr
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM "LocalReleaseTrack" t WHERE t."localReleaseId" = lr.id
+               )"#,
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default(),
+    };
 
     if rows.is_empty() {
         return 0;
@@ -119,9 +147,9 @@ pub async fn delete_empty_releases(pool: &PgPool, config: &Config) -> u64 {
     // Clean up MB releases that no LocalRelease points to anymore
     if !mb_release_ids.is_empty() {
         sqlx::query(
-            r#"DELETE FROM "MusicBrainzRelease"
-               WHERE id = ANY($1::text[])
-                 AND id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)"#,
+            r#"DELETE FROM "MusicBrainzRelease" m
+               WHERE m.id = ANY($1::text[])
+                 AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)"#,
         )
         .bind(&mb_release_ids)
         .execute(pool)
@@ -132,14 +160,38 @@ pub async fn delete_empty_releases(pool: &PgPool, config: &Config) -> u64 {
     deleted
 }
 
-pub async fn delete_orphaned_mb_releases(pool: &PgPool) -> u64 {
-    let result = sqlx::query(
-        r#"DELETE FROM "MusicBrainzRelease"
-           WHERE id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)
-             AND status != 'MISSING'"#,
-    )
-    .execute(pool)
-    .await;
+/// Scoped to releases credited to `scope`'s artists when it is `Some`.
+///
+/// `NOT EXISTS` rather than the old `NOT IN (... WHERE "releaseId" IS NOT NULL)`: `NOT IN` over a
+/// nullable column yields UNKNOWN for every row the moment one NULL slips into the subquery, which is
+/// what that `IS NOT NULL` guard was there to paper over. `NOT EXISTS` has no such trap and plans
+/// better as an anti-join.
+pub async fn delete_orphaned_mb_releases(pool: &PgPool, scope: ArtistScope<'_>) -> u64 {
+    let result = match scope {
+        Some(artist_ids) => {
+            sqlx::query(
+                r#"DELETE FROM "MusicBrainzRelease" m
+                   WHERE m.status <> 'MISSING'
+                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)
+                     AND EXISTS (
+                           SELECT 1 FROM "MusicBrainzReleaseArtist" mra
+                           WHERE mra."releaseId" = m.id AND mra."artistId" = ANY($1::text[])
+                         )"#,
+            )
+            .bind(artist_ids)
+            .execute(pool)
+            .await
+        }
+        None => {
+            sqlx::query(
+                r#"DELETE FROM "MusicBrainzRelease" m
+                   WHERE m.status <> 'MISSING'
+                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)"#,
+            )
+            .execute(pool)
+            .await
+        }
+    };
     result.map(|r| r.rows_affected()).unwrap_or(0)
 }
 
@@ -150,20 +202,28 @@ pub async fn delete_orphaned_mb_releases(pool: &PgPool) -> u64 {
 /// *only* link is a credit. Leaving that table out deletes every such artist the run just created and
 /// cascades their credits away - the exact data-loss bug this pass once shipped. Mirrors the orphan
 /// rule in `audit`'s scripts/audit/src/orphans.rs.
-pub async fn delete_orphan_artists(pool: &PgPool, config: &Config) -> u64 {
-    let ids: Vec<(String,)> = sqlx::query_as(
-        r#"SELECT id FROM "Artist" WHERE "primaryArtistId" IS NULL
-           AND id NOT IN (
-               SELECT DISTINCT "artistId" FROM "LocalReleaseArtist"
-           ) AND id NOT IN (
-               SELECT DISTINCT "artistId" FROM "MusicBrainzReleaseArtist"
-           ) AND id NOT IN (
-               SELECT DISTINCT "artistId" FROM "TrackRelatedArtist"
-           )"#,
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+/// Scoped to `scope`'s own artist ids when it is `Some` - a filtered run may retire an artist it just
+/// emptied, never one it never looked at.
+pub async fn delete_orphan_artists(pool: &PgPool, config: &Config, scope: ArtistScope<'_>) -> u64 {
+    const UNLINKED: &str = r#"a."primaryArtistId" IS NULL
+           AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = a.id)
+           AND NOT EXISTS (SELECT 1 FROM "MusicBrainzReleaseArtist" x WHERE x."artistId" = a.id)
+           AND NOT EXISTS (SELECT 1 FROM "TrackRelatedArtist" x WHERE x."artistId" = a.id)"#;
+
+    let ids: Vec<(String,)> = match scope {
+        Some(artist_ids) => sqlx::query_as(&format!(
+            r#"SELECT a.id FROM "Artist" a WHERE a.id = ANY($1::text[]) AND {}"#,
+            UNLINKED
+        ))
+        .bind(artist_ids)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default(),
+        None => sqlx::query_as(&format!(r#"SELECT a.id FROM "Artist" a WHERE {}"#, UNLINKED))
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default(),
+    };
 
     if ids.is_empty() {
         return 0;
@@ -218,8 +278,10 @@ pub async fn detect_deleted_folders(
     }
 
     if stats.tracks_deleted > 0 {
-        stats.releases_deleted = delete_empty_releases(pool, config).await;
-        stats.artists_deleted = delete_orphan_artists(pool, config).await;
+        // Unscoped on purpose: this pass only ever runs on an unfiltered scan (see the `!has_filter`
+        // gate at its call site), which is exactly the run that is entitled to sweep globally.
+        stats.releases_deleted = delete_empty_releases(pool, config, None).await;
+        stats.artists_deleted = delete_orphan_artists(pool, config, None).await;
     }
 
     stats

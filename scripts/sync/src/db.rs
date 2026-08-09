@@ -548,24 +548,83 @@ pub async fn batch_link_release_genres(
 // Cleanup: delete MusicBrainzRelease rows no LocalRelease points to
 // ---------------------------------------------------------------------------
 
-pub async fn delete_orphaned_mb_releases(pool: &PgPool) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query(
-        r#"DELETE FROM "MusicBrainzRelease"
-           WHERE id NOT IN (SELECT DISTINCT "releaseId" FROM "LocalRelease" WHERE "releaseId" IS NOT NULL)
-             AND status != 'MISSING'"#,
-    )
-    .execute(pool)
-    .await?;
+/// Artist ids this run is allowed to clean up after, or `None` for the whole library.
+///
+/// A `--only`/`--artist-ids`/`--release` run must not garbage-collect rows for artists it never
+/// synced. The MB variant below is the reason this type exists: unscoped, a one-artist sync deletes
+/// every non-MISSING `MusicBrainzRelease` in the library that happens to be unbound at that instant -
+/// including a perfectly real release whose `LocalRelease` index had just regrouped, for an artist the
+/// run never looked at. Only an unfiltered run has the whole picture.
+pub type ArtistScope<'a> = Option<&'a [String]>;
+
+/// `NOT EXISTS` rather than `NOT IN (... WHERE "releaseId" IS NOT NULL)`: `NOT IN` over a nullable
+/// column collapses to UNKNOWN for every row as soon as one NULL enters the subquery, which is what
+/// that `IS NOT NULL` guard existed to work around.
+pub async fn delete_orphaned_mb_releases(
+    pool: &PgPool,
+    scope: ArtistScope<'_>,
+) -> Result<u64, sqlx::Error> {
+    let result = match scope {
+        Some(artist_ids) => {
+            sqlx::query(
+                r#"DELETE FROM "MusicBrainzRelease" m
+                   WHERE m.status <> 'MISSING'
+                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)
+                     AND EXISTS (
+                           SELECT 1 FROM "MusicBrainzReleaseArtist" mra
+                           WHERE mra."releaseId" = m.id AND mra."artistId" = ANY($1::text[])
+                         )"#,
+            )
+            .bind(artist_ids)
+            .execute(pool)
+            .await?
+        }
+        None => {
+            sqlx::query(
+                r#"DELETE FROM "MusicBrainzRelease" m
+                   WHERE m.status <> 'MISSING'
+                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)"#,
+            )
+            .execute(pool)
+            .await?
+        }
+    };
     Ok(result.rows_affected())
 }
 
-pub async fn delete_empty_local_releases(pool: &PgPool) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query(
-        r#"DELETE FROM "LocalRelease"
-           WHERE id NOT IN (SELECT DISTINCT "localReleaseId" FROM "LocalReleaseTrack")"#,
-    )
-    .execute(pool)
-    .await?;
+/// Scoped to releases owned by `scope`'s artists. An *ownerless* empty release is left to the global
+/// pass - nothing attributes it to the artists this run synced.
+pub async fn delete_empty_local_releases(
+    pool: &PgPool,
+    scope: ArtistScope<'_>,
+) -> Result<u64, sqlx::Error> {
+    let result = match scope {
+        Some(artist_ids) => {
+            sqlx::query(
+                r#"DELETE FROM "LocalRelease" lr
+                   WHERE NOT EXISTS (
+                           SELECT 1 FROM "LocalReleaseTrack" t WHERE t."localReleaseId" = lr.id
+                         )
+                     AND EXISTS (
+                           SELECT 1 FROM "LocalReleaseArtist" lra
+                           WHERE lra."localReleaseId" = lr.id AND lra."artistId" = ANY($1::text[])
+                         )"#,
+            )
+            .bind(artist_ids)
+            .execute(pool)
+            .await?
+        }
+        None => {
+            sqlx::query(
+                r#"DELETE FROM "LocalRelease" lr
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM "LocalReleaseTrack" t WHERE t."localReleaseId" = lr.id
+                   )"#,
+            )
+            .execute(pool)
+            .await?
+        }
+    };
     Ok(result.rows_affected())
 }
 

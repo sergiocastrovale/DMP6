@@ -238,6 +238,18 @@ Because credits can point at an artist that owns nothing, `delete_orphan_artists
 link tables (`LocalReleaseArtist`, `MusicBrainzReleaseArtist`, `TrackRelatedArtist`) - omitting the third
 deletes every credit artist the resolver just created. See `scripts/index/tests/orphan_cleanup.rs`.
 
+### Cleanup is scoped to the run
+
+`delete_empty_releases`, `delete_orphaned_mb_releases` and `delete_orphan_artists` take an `ArtistScope`.
+On a filtered run (`--only`, `--folders`, `--from`/`--to`) that scope is the artist set the run actually
+touched; only an unfiltered run sweeps the whole library. Unscoped, a one-artist rescan was a library-wide
+mutation - it garbage-collected rows for artists it had never looked at and could not reason about.
+
+They also run **once, after the folder loop**, not once per folder as they used to: three full-table
+anti-joins × ~25k folders, for a result nothing inside the loop reads. `detect_deleted_folders` stays
+unscoped by design and is gated on `!has_filter` - a partial scan has no business concluding that the
+folders it didn't visit are gone.
+
 ### When ownership is written
 
 The folder loop cannot simply wait for the resolve pass to create owners: `lastIndexedAt`, the artist folder

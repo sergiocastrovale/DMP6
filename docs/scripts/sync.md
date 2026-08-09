@@ -227,6 +227,17 @@ A compilation is one `LocalRelease` linked to many artists through the many-to-m
 
 Multiple editions (original, remaster, deluxe) stored as separate `MusicBrainzRelease` rows sharing a `releaseGroupId`. Each has its own `musicbrainzId` and `disambiguation` label. Cover art fetched per-release first, falling back to release-group art.
 
+## End-of-run cleanup (scoped)
+
+`delete_empty_local_releases` and `delete_orphaned_mb_releases` take an `ArtistScope`. A narrowed run
+(`--only`, `--from`/`--to`, `--release`, `--artist-ids`) passes the artists it actually synced; the default
+"pending" sweep and `--overwrite` pass `None` and garbage-collect globally, because they saw everything.
+
+This is not a micro-optimisation. Unscoped, the MB variant deletes every non-MISSING `MusicBrainzRelease`
+in the library that is unbound at that instant — so `./sync --only "One Artist"` could take out a perfectly
+real release whose `LocalRelease` index had just regrouped, for an artist the run never touched.
+`retire_owned_missing_placeholders` stays global: its predicate is fully self-contained.
+
 ## Locking & Resumability
 
 Named DB lock (`"sync"`). Clears stale locks older than 10 min. SIGTERM/Ctrl-C handlers release the lock; second Ctrl-C force-exits.

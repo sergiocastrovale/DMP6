@@ -208,7 +208,7 @@ async fn credits_and_release_links_both_protect_an_artist() {
     .await
     .expect("insert fixture MusicBrainzReleaseArtist");
 
-    delete_orphan_artists(&pool, &config).await;
+    delete_orphan_artists(&pool, &config, None).await;
 
     assert!(
         artist_exists(&pool, &lra_id).await,
@@ -234,11 +234,67 @@ async fn credits_and_release_links_both_protect_an_artist() {
         .execute(&pool)
         .await
         .expect("delete fixture track");
-    delete_orphan_artists(&pool, &config).await;
+    delete_orphan_artists(&pool, &config, None).await;
     assert!(
         !artist_exists(&pool, &credit_only_id).await,
         "artist kept alive after its last credit disappeared - the cleanup would leak rows forever"
     );
 
     reset_fixture(&pool).await;
+}
+
+const IN_SCOPE_NAME: &str = "DMP Test In Scope Orphan (orphan_cleanup)";
+const OUT_OF_SCOPE_NAME: &str = "DMP Test Out Of Scope Orphan (orphan_cleanup)";
+
+async fn reset_scope_fixture(pool: &PgPool) {
+    sqlx::query(r#"DELETE FROM "Artist" WHERE slug = ANY($1::text[])"#)
+        .bind(vec![
+            common::slug::make_slug(IN_SCOPE_NAME),
+            common::slug::make_slug(OUT_OF_SCOPE_NAME),
+        ])
+        .execute(pool)
+        .await
+        .expect("clear scope fixture artists");
+}
+
+/// A filtered run must clean up only after the artists it touched.
+///
+/// The regression this guards: cleanup ran unscoped from inside the folder loop, so
+/// `./index --only "One Artist"` garbage-collected rows across the entire library - rows it had no
+/// information about and did not create. Two identical orphans, one named in the scope and one not;
+/// only the first may disappear.
+#[tokio::test]
+#[ignore]
+async fn a_scoped_cleanup_never_reaches_outside_its_scope() {
+    let db_url = std::env::var("SMOKE_TEST_DATABASE_URL").expect(
+        "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
+         against the production DATABASE_URL",
+    );
+    let pool = common::db::create_pool(&db_url).await;
+    let config = test_config();
+    reset_scope_fixture(&pool).await;
+
+    let in_scope = insert_artist(&pool, IN_SCOPE_NAME).await;
+    let out_of_scope = insert_artist(&pool, OUT_OF_SCOPE_NAME).await;
+
+    delete_orphan_artists(&pool, &config, Some(&[in_scope.clone()])).await;
+
+    assert!(
+        !artist_exists(&pool, &in_scope).await,
+        "an orphan inside the scope should still be collected"
+    );
+    assert!(
+        artist_exists(&pool, &out_of_scope).await,
+        "a scoped run deleted an artist outside its scope - this is the whole bug: a one-artist \
+         rescan must never be a library-wide mutation"
+    );
+
+    // An unfiltered run is the one entitled to sweep everything.
+    delete_orphan_artists(&pool, &config, None).await;
+    assert!(
+        !artist_exists(&pool, &out_of_scope).await,
+        "the global pass must still collect it"
+    );
+
+    reset_scope_fixture(&pool).await;
 }

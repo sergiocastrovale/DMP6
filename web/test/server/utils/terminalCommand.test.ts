@@ -168,11 +168,15 @@ describe('escapeArg - injection safety (security-critical)', () => {
 
 describe('buildCommandLine', () => {
   it('joins the binary with escaped args', () => {
-    expect(buildCommandLine('/bin/index', ['--only', 'Boards of Canada'])).toBe(`/bin/index '--only' 'Boards of Canada'`)
+    expect(buildCommandLine('/bin/index', ['--only', 'Boards of Canada'])).toBe(`'/bin/index' '--only' 'Boards of Canada'`)
   })
 
   it('returns just the binary when there are no args', () => {
-    expect(buildCommandLine('/bin/nuke', [])).toBe('/bin/nuke')
+    expect(buildCommandLine('/bin/nuke', [])).toBe(`'/bin/nuke'`)
+  })
+
+  it('quotes the binary path so a SCRIPTS_DIR with spaces does not split into two words', () => {
+    expect(buildCommandLine('/srv/my scripts/index', ['--web'])).toBe(`'/srv/my scripts/index' '--web'`)
   })
 })
 
@@ -183,6 +187,18 @@ describe('buildScript', () => {
     expect(script).toContain('cd "/srv/dmp"')
     expect(script).toContain('/bin/sync --web 2>&1 | tee "/tmp/dmp-x.log"')
     expect(script).toContain('echo "DMP_EXIT:$?" >> "/tmp/dmp-x.log"')
+  })
+
+  it('sets pipefail so the sentinel reports the command exit code, not tee\'s', () => {
+    // Without this the command is piped into tee, `$?` is tee's status, and every failed run was
+    // streamed to the UI as DMP_EXIT:0 - a clean run that never happened.
+    const script = buildScript('/srv/dmp', '/bin/sync', '/tmp/dmp-x.log')
+    expect(script).toContain('set -o pipefail')
+    expect(script.indexOf('set -o pipefail')).toBeLessThan(script.indexOf('| tee'))
+  })
+
+  it('does not set -e, so the exit sentinel is still written when the command fails', () => {
+    expect(buildScript('/srv/dmp', '/bin/sync', '/tmp/x.log')).not.toMatch(/^set -e$/m)
   })
 })
 

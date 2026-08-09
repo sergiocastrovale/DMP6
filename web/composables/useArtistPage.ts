@@ -3,7 +3,7 @@ import type { Artist } from '~/types/artist'
 import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import { useTerminalStore } from '~/stores/terminal'
-import { dedupeLocalFolders, filterInFlight, mergeDownloadStatus, type DlStatusValue } from '~/helpers/artistPageLogic'
+import { artistScanFolders, filterInFlight, mergeDownloadStatus, type DlStatusValue } from '~/helpers/artistPageLogic'
 
 type DlStatusItem = { mbReleaseId: string | null, status: string, downloadedReleaseId: string, percent: number, bytesTransferred: number, totalBytes: number }
 
@@ -86,7 +86,7 @@ export const useArtistPage = (slug: Ref<string>) => {
 
   const pending = computed(() => artistPending.value || releasesPending.value)
 
-  const artistFolders = computed(() => dedupeLocalFolders(releases.value))
+  const artistFolders = computed(() => artistScanFolders(releases.value, artist.value?.name ?? ''))
 
   const playingAll = ref(false)
   const playAll = async () => {

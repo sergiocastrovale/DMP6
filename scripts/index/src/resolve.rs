@@ -385,15 +385,20 @@ pub async fn resolve_and_apply(
     report: &mut Vec<Decision>,
     progress: Option<&Reporter>,
 ) -> Result<(), sqlx::Error> {
+    // The four multi-value frames decode as Option: Prisma cannot express NOT NULL on a scalar list,
+    // so a database built by `prisma db push` (fresh install, vitest harness) has them nullable while
+    // the migration made them NOT NULL DEFAULT ARRAY[]. Decoding them as plain Vec made the whole pass
+    // die with UnexpectedNullError on such a database. An absent frame means "no embedded pairing",
+    // which is exactly what an empty Vec already means here.
     type Row = (
         String,
         Option<String>,
         Option<String>,
         Option<String>,
-        Vec<String>,
-        Vec<String>,
-        Vec<String>,
-        Vec<String>,
+        Option<Vec<String>>,
+        Option<Vec<String>>,
+        Option<Vec<String>>,
+        Option<Vec<String>>,
     );
     const COLS: &str = r#"id, artist, "albumArtist", "localReleaseId", artists, "mbArtistIds", "albumArtists", "mbAlbumArtistIds""#;
     let rows: Vec<Row> = match scoped_release_ids {
@@ -428,19 +433,28 @@ pub async fn resolve_and_apply(
                 artist,
                 album_artist,
                 local_release_id,
-                artists,
-                mb_artist_ids,
-                album_artists,
-                mb_album_artist_ids,
+                artists: artists.unwrap_or_default(),
+                mb_artist_ids: mb_artist_ids.unwrap_or_default(),
+                album_artists: album_artists.unwrap_or_default(),
+                mb_album_artist_ids: mb_album_artist_ids.unwrap_or_default(),
             },
         )
         .collect();
 
-    // release -> current owners, so a credit never duplicates an owner.
-    let owner_rows: Vec<(String, String)> =
-        sqlx::query_as(r#"SELECT "localReleaseId", "artistId" FROM "LocalReleaseArtist""#)
+    // release -> current owners, so a credit never duplicates an owner. Scoped with the tracks: a
+    // one-artist run has no use for the other ~165k ownership links.
+    let owner_rows: Vec<(String, String)> = match scoped_release_ids {
+        Some(ids) => sqlx::query_as(
+            r#"SELECT "localReleaseId", "artistId" FROM "LocalReleaseArtist"
+               WHERE "localReleaseId" = ANY($1::text[])"#,
+        )
+        .bind(ids)
+        .fetch_all(pool)
+        .await?,
+        None => sqlx::query_as(r#"SELECT "localReleaseId", "artistId" FROM "LocalReleaseArtist""#)
             .fetch_all(pool)
-            .await?;
+            .await?,
+    };
     let mut owners_by_release: HashMap<String, HashSet<String>> = HashMap::new();
     for (release_id, artist_id) in owner_rows {
         owners_by_release

@@ -65,12 +65,20 @@ export const stripAnsi = (str: string): string =>
 export const escapeArg = (arg: string): string =>
   `'${arg.replace(/'/g, "'\\''")}'`
 
+// The binary path is escaped too. It is not user input (it comes from SCRIPTS_DIR plus an
+// allow-listed command name), but an unquoted path breaks the moment SCRIPTS_DIR contains a space.
 export const buildCommandLine = (binary: string, args: string[]): string => {
   const safeArgs = args.map(escapeArg).join(' ')
-  return safeArgs ? `${binary} ${safeArgs}` : binary
+  const safeBinary = escapeArg(binary)
+  return safeArgs ? `${safeBinary} ${safeArgs}` : safeBinary
 }
 
+// `pipefail` is load-bearing, not tidiness: the command is piped into `tee`, so without it `$?` is
+// *tee's* status and a crashed ./sync streamed DMP_EXIT:0 - the UI reported every failed run as clean.
+// `set -e` stays off deliberately: the sentinel line must still be written when the command fails,
+// which is the whole point of the exit-code channel.
 export const buildScript = (workDir: string, fullCmd: string, logFile: string): string => `#!/bin/bash
+set -o pipefail
 cd "${workDir}"
 ${fullCmd} 2>&1 | tee "${logFile}"
 echo "DMP_EXIT:$?" >> "${logFile}"

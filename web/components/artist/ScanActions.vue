@@ -16,21 +16,15 @@ const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownl
 
 const artistActions: Record<string, (name: string, folders: string[]) => () => Promise<void>> = {
   'check': (name, folders) => async () => {
-    if (folders.length) {
-      await terminal.run('./index', ['--folders', folders.join(';')])
-    }
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact'])
     await terminal.run('./sync', ['--only', name, '--exact'])
   },
   'index-sync': (name, folders) => async () => {
-    if (folders.length) {
-      await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
-    }
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'])
     await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
   },
   'index': (_name, folders) => async () => {
-    if (folders.length) {
-      await terminal.run('./index', ['--folders', folders.join(';'), '--overwrite'])
-    }
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'])
   },
   'sync': (name) => async () => {
     await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])

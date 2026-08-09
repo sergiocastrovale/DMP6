@@ -498,6 +498,10 @@ async fn main() {
     // Everything MusicBrainz has already told us about a name, loaded once so the folder scan can
     // resolve album artists without a single network call. Empty after a nuke, in which case album
     // artists fall back to the raw tag and the post-loop pass corrects them.
+    //
+    // Deliberately unscoped even on a filtered run: the names this scan will ask about come out of the
+    // files as they are read, so there is nothing to filter on until it is too late to batch. One query
+    // for the table beats a round trip per name. Same reasoning as the slug map above.
     let lookup_memo: HashMap<String, LookupResult> = {
         let rows: Vec<(String, Option<String>)> =
             sqlx::query_as(r#"SELECT name, mbid FROM "MbArtistLookup""#)
@@ -1536,15 +1540,8 @@ async fn main() {
                 .count
         };
 
-        let rel_del = delete_empty_releases(&pool, &config).await;
-        let mb_del = delete_orphaned_mb_releases(&pool).await;
-        let art_del = delete_orphan_artists(&pool, &config).await;
-        if rel_del > 0 || mb_del > 0 || art_del > 0 {
-            reporter.info(&format!(
-                "Cleaned up {} empty release(s), {} orphaned MB release(s), {} orphan artist(s).",
-                rel_del, mb_del, art_del
-            ));
-        }
+        // Cleanup used to run right here, once per folder - three full-table anti-joins × ~25k folders,
+        // for a result nothing in this loop reads. It happens once after the loop instead.
 
         // -----------------------------------------------------------------
         // Update totals + lastIndexedAt
@@ -1842,13 +1839,29 @@ async fn main() {
         reporter.info(&format!("  {}", parts.join(" | ")));
     }
 
-    let rel_del = delete_empty_releases(&pool, &config).await;
-    let mb_del = delete_orphaned_mb_releases(&pool).await;
-    let art_del = delete_orphan_artists(&pool, &config).await;
+    // A filtered run cleans up only after the artists it actually touched. Sweeping globally from a
+    // `--only "X"` run would let a one-artist rescan delete rows across the whole library - rows it has
+    // no information about and did not create.
+    let cleanup_scope: Option<Vec<String>> = has_filter(&args).then(|| {
+        all_artist_ids
+            .iter()
+            .cloned()
+            .collect::<Vec<String>>()
+    });
+    let rel_del = delete_empty_releases(&pool, &config, cleanup_scope.as_deref()).await;
+    let mb_del = delete_orphaned_mb_releases(&pool, cleanup_scope.as_deref()).await;
+    let art_del = delete_orphan_artists(&pool, &config, cleanup_scope.as_deref()).await;
     if rel_del > 0 || mb_del > 0 || art_del > 0 {
         reporter.info(&format!(
-            "Final cleanup: {} empty release(s), {} orphaned MB release(s), {} orphan artist(s).",
-            rel_del, mb_del, art_del
+            "Cleanup{}: {} empty release(s), {} orphaned MB release(s), {} orphan artist(s).",
+            if cleanup_scope.is_some() {
+                " (this run's artists)"
+            } else {
+                ""
+            },
+            rel_del,
+            mb_del,
+            art_del
         ));
     }
 

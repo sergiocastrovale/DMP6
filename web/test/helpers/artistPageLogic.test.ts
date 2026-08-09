@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dedupeLocalFolders, filterInFlight, mergeDownloadStatus, type DlStatusValue } from '../../helpers/artistPageLogic'
+import { artistScanFolders, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, type DlStatusValue } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 
 const release = (overrides: Partial<UnifiedRelease> = {}): UnifiedRelease => ({
@@ -69,5 +69,35 @@ describe('dedupeLocalFolders', () => {
       release({ id: 'r2', hasLocal: true, folderPath: null }),
     ]
     expect(dedupeLocalFolders(releases)).toEqual([])
+  })
+})
+
+describe('artistScanFolders', () => {
+  it('reduces album paths to their distinct top-level artist directories', () => {
+    // The reason this exists: `index --folders` walks exactly the paths it is handed, so passing the
+    // album directories means a newly added album is never seen. The artist directory is the scan root.
+    const releases = [
+      release({ id: 'r1', hasLocal: true, folderPath: 'Miles Davis/Kind of Blue' }),
+      release({ id: 'r2', hasLocal: true, folderPath: 'Miles Davis/Bitches Brew' }),
+    ]
+    expect(artistScanFolders(releases, 'Miles Davis')).toEqual(['Miles Davis'])
+  })
+
+  it('keeps every distinct root when an artist spans more than one directory', () => {
+    const releases = [
+      release({ id: 'r1', hasLocal: true, folderPath: 'Miles Davis/Kind of Blue' }),
+      release({ id: 'r2', hasLocal: true, folderPath: 'Various Artists/Jazz Comp' }),
+    ]
+    expect(artistScanFolders(releases, 'Miles Davis')).toEqual(['Miles Davis', 'Various Artists'])
+  })
+
+  it('falls back to the artist name when there are no local releases yet', () => {
+    expect(artistScanFolders([], 'Aphex Twin')).toEqual(['Aphex Twin'])
+    expect(artistScanFolders([release({ hasLocal: false, folderPath: 'x/y' })], 'Aphex Twin')).toEqual(['Aphex Twin'])
+  })
+
+  it('treats a root-level path as its own scan root', () => {
+    const releases = [release({ id: 'r1', hasLocal: true, folderPath: 'Loose Album' })]
+    expect(artistScanFolders(releases, 'Whoever')).toEqual(['Loose Album'])
   })
 })
