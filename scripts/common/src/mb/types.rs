@@ -78,14 +78,15 @@ pub struct MbTrack {
     pub disc_number: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct MbArea {
     pub name: Option<String>,
     #[serde(rename = "iso-3166-1-codes")]
     pub iso_3166_1_codes: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+/// `Clone` because sync hands it to a spawned image-download task, which outlives the loop iteration.
+#[derive(Debug, Clone, Deserialize)]
 pub struct MbArtistDetail {
     pub id: String,
     pub name: String,
@@ -105,14 +106,14 @@ impl MbArtistDetail {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct MbRelation {
     #[serde(rename = "type")]
     pub relation_type: String,
     pub url: Option<MbUrl>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct MbUrl {
     pub resource: String,
 }
@@ -123,7 +124,7 @@ pub struct MbGenre {
     pub count: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct MbTag {
     pub name: String,
     pub count: Option<i32>,

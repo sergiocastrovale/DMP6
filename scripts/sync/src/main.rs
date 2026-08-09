@@ -238,6 +238,80 @@ fn local_track_to_meta(t: &LocalTrackRow) -> TrackMeta {
     }
 }
 
+/// How many artist images may be in flight at once. Small on purpose: the point is to stop the fetches
+/// blocking the MusicBrainz loop, not to hammer Wikidata/Wikipedia/Fanart.
+const MAX_IMAGE_TASKS: usize = 4;
+
+/// Fetch an artist image and record it, on a task of its own.
+///
+/// Image lookups go to Wikidata/Wikipedia/Fanart, never to MusicBrainz, so they consume none of MB's
+/// rate budget - yet awaiting them inline stalled the loop, leaving the limiter idle. ~20k artists in
+/// this library still need one, at up to three lookups plus a download each, so that idle time is
+/// hours. Spawned via `JoinSet` rather than collected into a `FuturesUnordered`: a local
+/// `FuturesUnordered` only advances while you await *it*, which would overlap nothing.
+#[allow(clippy::too_many_arguments)]
+async fn fetch_and_store_artist_image(
+    http_client: Client,
+    detail: common::mb::types::MbArtistDetail,
+    artist_id: String,
+    artist_slug: String,
+    artist_name: String,
+    s3_client: Option<aws_sdk_s3::Client>,
+    config: common::config::Config,
+    pool: sqlx::PgPool,
+) -> (String, Result<bool, String>) {
+    let result = download_artist_image(
+        &http_client,
+        &detail,
+        &artist_slug,
+        &config.project_root,
+        &s3_client,
+        &config,
+    )
+    .await;
+
+    if let Ok(true) = result {
+        if config.use_local() {
+            let filename = format!("{}.jpg", &artist_slug);
+            sqlx::query(r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#)
+                .bind(&filename)
+                .bind(&artist_id)
+                .execute(&pool)
+                .await
+                .ok();
+        }
+        if config.use_s3() {
+            if let Some(ref public_url) = config.storage_public_url {
+                let image_url = format!(
+                    "{}/artists/{}.jpg",
+                    public_url.trim_end_matches('/'),
+                    &artist_slug
+                );
+                sqlx::query(
+                    r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                )
+                .bind(&image_url)
+                .bind(&artist_id)
+                .execute(&pool)
+                .await
+                .ok();
+            }
+        }
+    }
+
+    (artist_name, result)
+}
+
+/// Named because the download no longer lines up with the artist on screen - the result arrives while
+/// some later artist is being synced, so the message has to say whose image it was.
+fn report_image_result(reporter: &Reporter, name: &str, result: &Result<bool, String>) {
+    match result {
+        Ok(true) => reporter.sub_ok(&format!("Artist image downloaded: {}", name)),
+        Ok(false) => reporter.sub_step(&format!("Artist image not found: {}", name)),
+        Err(e) => reporter.sub_step(&format!("Artist image error ({}): {}", name, e)),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let args = SyncArgs::parse();
@@ -763,6 +837,27 @@ async fn main() {
 
     let total = artists.len();
     reporter.info(&format!("Syncing {} artist(s)...", total));
+
+    // Every artist without a musicbrainzId falls into the search ladder, which used to re-ask
+    // MusicBrainz for names the index resolver had already answered. One query up front replaces a
+    // point lookup per artist; tags discovered mid-ladder still fall back to those. Read-only - see
+    // `common::mb::cache` for why sync must never write here.
+    let warmed_artist_names: HashMap<String, mb_types::MbArtistMatch> = {
+        let names: Vec<String> = artists
+            .iter()
+            .filter(|a| a.mb_id.as_deref().unwrap_or("").is_empty())
+            .map(|a| a.name.clone())
+            .collect();
+        let warmed = common::mb::cache::warm_exact_artists(&pool, &names).await;
+        if !warmed.is_empty() {
+            reporter.info(&format!(
+                "{} of {} unmatched artist(s) already resolved in cache - no search needed",
+                warmed.len(),
+                names.len()
+            ));
+        }
+        warmed
+    };
     reporter.blank();
 
     let mut release_type_cache: HashMap<String, String> = HashMap::new();
@@ -772,6 +867,11 @@ async fn main() {
     let mut total_partial = 0usize;
     let mut failed_artists: Vec<(String, String)> = Vec::new();
     let start_time = std::time::Instant::now();
+
+    // Artist image downloads run off the critical path - they never touch MB's rate budget, so there
+    // is no reason for the MusicBrainz loop to wait on them.
+    let mut image_tasks: tokio::task::JoinSet<(String, Result<bool, String>)> =
+        tokio::task::JoinSet::new();
 
     // MB ID → DB artist ID: detect duplicate artists resolving to the same MB ID.
     let mut synced_mb_ids: HashMap<String, String> = HashMap::new();
@@ -840,6 +940,7 @@ async fn main() {
                     &artist.name,
                     artist.mb_id.as_deref(),
                     &mut limiter,
+                    &warmed_artist_names,
                 )
                 .await
                 {
@@ -859,6 +960,7 @@ async fn main() {
                 &artist.name,
                 None,
                 &mut limiter,
+                &warmed_artist_names,
             )
             .await
             {
@@ -1026,57 +1128,25 @@ async fn main() {
                     .unwrap_or_default()
             ));
 
-            // 3. Artist image - skip if already present
+            // 3. Artist image - skip if already present. Spawned, not awaited: see
+            // `fetch_and_store_artist_image`.
             if !args.skip_artist_img && !artist.has_image {
-                reporter.sub_step("Downloading artist image...");
-                let img_result = download_artist_image(
-                    &http_client,
-                    &detail,
-                    &artist.slug,
-                    &config.project_root,
-                    &s3_client,
-                    &config,
-                )
-                .await;
-                match img_result {
-                    Ok(true) => {
-                        reporter.sub_ok("Artist image downloaded");
-                        if config.use_local() {
-                            let filename = format!("{}.jpg", &artist.slug);
-                            sqlx::query(
-                                r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                            )
-                            .bind(&filename)
-                            .bind(&artist.id)
-                            .execute(&pool)
-                            .await
-                            .ok();
-                        }
-                        if config.use_s3() {
-                            if let Some(ref public_url) = config.storage_public_url {
-                                let image_url = format!(
-                                    "{}/artists/{}.jpg",
-                                    public_url.trim_end_matches('/'),
-                                    &artist.slug
-                                );
-                                sqlx::query(
-                                    r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                                )
-                                .bind(&image_url)
-                                .bind(&artist.id)
-                                .execute(&pool)
-                                .await
-                                .ok();
-                            }
-                        }
-                    }
-                    Ok(false) => {
-                        reporter.sub_step("Artist image not found");
-                    }
-                    Err(e) => {
-                        reporter.sub_step(&format!("Artist image error: {}", e));
+                while image_tasks.len() >= MAX_IMAGE_TASKS {
+                    match image_tasks.join_next().await {
+                        Some(Ok((name, result))) => report_image_result(&reporter, &name, &result),
+                        Some(Err(_)) | None => break,
                     }
                 }
+                image_tasks.spawn(fetch_and_store_artist_image(
+                    http_client.clone(),
+                    detail.clone(),
+                    artist.id.clone(),
+                    artist.slug.clone(),
+                    artist.name.clone(),
+                    s3_client.clone(),
+                    config.clone(),
+                    pool.clone(),
+                ));
             }
 
             (artist_genre_ids, country_code)
@@ -1873,6 +1943,24 @@ async fn main() {
         // every synced one. The guaranteed call after the loop always catches the tail.
         if newly_synced_count > 0 && i % 50 == 0 {
             update_statistics(&pool).await.ok();
+        }
+    }
+
+    if !image_tasks.is_empty() {
+        if running.load(Ordering::SeqCst) {
+            reporter.info(&format!(
+                "Finishing {} artist image download(s)...",
+                image_tasks.len()
+            ));
+            while let Some(joined) = image_tasks.join_next().await {
+                if let Ok((name, result)) = joined {
+                    report_image_result(&reporter, &name, &result);
+                }
+            }
+        } else {
+            // Ctrl-C: an abandoned download costs nothing. The fetch is gated on `!artist.has_image`,
+            // so the next run simply picks it up again.
+            image_tasks.abort_all();
         }
     }
 

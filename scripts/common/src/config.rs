@@ -1,6 +1,10 @@
 use sqlx::PgPool;
 use std::path::PathBuf;
 
+/// `Clone` because sync hands a copy to spawned image-download tasks, which outlive the loop iteration
+/// that started them. All fields are owned scalars, so a clone is cheap and the config is read-only
+/// after `apply_db_overrides`.
+#[derive(Clone)]
 pub struct Config {
     pub music_dir: Option<String>,
     /// true when music_dir came from a CLI arg - DB override must not replace it.

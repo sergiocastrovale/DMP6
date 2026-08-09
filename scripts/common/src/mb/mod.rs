@@ -5,6 +5,7 @@
 
 pub mod allowlist;
 pub mod api;
+pub mod cache;
 pub mod names;
 pub mod resolve;
 pub mod types;

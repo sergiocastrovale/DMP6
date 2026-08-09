@@ -85,7 +85,7 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
 
 1. **Find MB match** - 5-step algorithm (see below)
 2. **Fetch** artist detail: URLs, genres (top 5 by count), tags, country (from `area.iso-3166-1-codes`)
-3. **Download** artist image (Wikidata → Wikipedia → Fanart.tv), resize to 500px
+3. **Download** artist image (Wikidata → Wikipedia → Fanart.tv), resize to 500px — **spawned, not awaited** (max 4 in flight). None of those hosts is MusicBrainz, so the fetches consume no MB rate budget; awaiting them inline left the limiter idle for hours across the ~20k artists still missing an image. Results are reported by artist name as they land, so a line may appear while a later artist is syncing. Ctrl-C abandons in-flight downloads — the fetch is gated on the artist having no image, so the next run picks it up.
 4. **Fetch** release groups (paginated)
 5. **For each local release** - 3-tier matching (see Release Matching Policy):
    - Tier 1: Direct release lookup via embedded `MUSICBRAINZ_ALBUMID` (consensus vote across tracks)
@@ -143,6 +143,24 @@ Resets `musicbrainzId`, `averageMatchScore`, and `lastSyncedAt` to NULL, unlinks
 
 If artist already has a MB ID and not overwriting: uses it directly (no API search).
 
+### Shared lookup cache (read-only)
+
+Every search step (3, 4, 6) consults `MbArtistLookup` before spending a request. That table is filled
+by index's artist-resolution pass, which has usually already asked MusicBrainz about these exact
+strings — 9,507 artists in this library carry no `musicbrainzId` and fall into this ladder, and before
+this they re-paid for those answers every run. The artist names known at startup are bulk-loaded in one
+query (`common::mb::cache::warm_exact_artists`); tags discovered mid-ladder use a point lookup.
+
+Two rules, and they are not stylistic:
+
+- **Hits only.** A cached *miss* is the strict resolver's answer (`mb_search_artist_exact`). Sync's
+  search is fuzzy (`mb_search_artist`) and may still match where the strict one didn't, so a miss must
+  fall through rather than short-circuit.
+- **Sync never writes to `MbArtistLookup`.** Its fuzzy matcher scores "Frank Sinatra with Count Basie"
+  against "Frank Sinatra" at exactly 0.5 and passes, so feeding results back would confirm nearly every
+  compound tag as a single artist and corrupt the resolver's decisions for every later run. See
+  `common/src/mb/cache.rs`.
+
 ## Release Matching Policy
 
 Metadata-wins with a guarded search fallback. Three tiers, tried in order; embedded MB ids always win first.
@@ -195,7 +213,9 @@ All statuses in `ReleaseStatus` enum and how they are assigned:
 
 ## Rate Limiting
 
-Adaptive backoff: 1100ms–10s per request, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers. Retries up to 6x on 429/503 with exponential backoff (1s → 16s cap).
+Shared with `index` via `common::mb::api::RateLimiter` — one limiter per process, threaded as `&mut`, so MB calls are sequential by construction. Floor 1300ms (`MB_MIN_DELAY_MS` overrides, clamped 1100–10000), cap 10s, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset`. A rate limit doubles the delay; each success sheds a flat 100ms back toward the floor.
+
+503 is classified **rate-limit** vs **server overload** from its body and headers, and only the former slows the steady-state pace — MusicBrainz being unwell is not fixed by going slower. The penalty applies at most once per request, not once per retry. Retries up to 6x on 429/503 with a 1s → 16s ladder, or `Retry-After` when MusicBrainz sends it. Full detail in `docs/scripts/index.md` § Pacing.
 
 ## Release Deduplication
 

@@ -1,7 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use common::artists::split_artists;
 use common::filters::sanitize_mb_id;
+use common::mb::cache::cached_exact_artist;
 use sqlx::PgPool;
 
 use crate::mb_api::*;
@@ -59,6 +60,15 @@ pub use common::mb::names::{names_are_similar, normalize_name};
 ///   4. Search by raw artist/albumArtist tags from DB
 ///   5. Search MB for a release-group by album title + tag → use artist-credit array
 ///   6. Split tags by separators and search each part
+///
+/// Every search step (3, 4, 6) consults `MbArtistLookup` first - the index resolver has usually already
+/// asked MusicBrainz about these exact strings, and re-asking is the single largest avoidable cost in a
+/// sync run. Only cached *hits* count: a cached miss is the strict resolver's answer, and the fuzzy
+/// search here may still match where the strict one didn't, so a miss falls through. Nothing here ever
+/// writes to that table - see `common::mb::cache`.
+///
+/// `warmed` holds the bulk-loaded cache entries for the artist names known before the run started;
+/// tags discovered mid-ladder fall back to a point lookup.
 pub async fn find_mb_match_with_fallback(
     client: &Client,
     pool: &PgPool,
@@ -66,7 +76,21 @@ pub async fn find_mb_match_with_fallback(
     artist_name: &str,
     mb_hint_artist_id: Option<&str>,
     limiter: &mut RateLimiter,
+    warmed: &HashMap<String, MbArtistMatch>,
 ) -> Result<Option<MbArtistMatch>, String> {
+    /// A cached exact hit for `name`, unless it names a non-artist placeholder.
+    async fn cache_hit(
+        pool: &PgPool,
+        warmed: &HashMap<String, MbArtistMatch>,
+        name: &str,
+    ) -> Option<MbArtistMatch> {
+        let m = match warmed.get(name) {
+            Some(m) => m.clone(),
+            None => cached_exact_artist(pool, name).await?,
+        };
+        (!is_special_mb_artist(&m.id, &m.name)).then_some(m)
+    }
+
     // Step 1: direct lookup via embedded MUSICBRAINZ_ALBUMARTISTID
     if let Some(mb_aid) = mb_hint_artist_id.and_then(sanitize_mb_id) {
         if SPECIAL_MB_ARTIST_IDS.contains(&mb_aid.as_str()) {
@@ -124,6 +148,9 @@ pub async fn find_mb_match_with_fallback(
     }
 
     // Step 3: search MB by stored artist name
+    if let Some(m) = cache_hit(pool, warmed, artist_name).await {
+        return Ok(Some(m));
+    }
     if let Some(m) = mb_search_artist(client, artist_name, limiter).await? {
         return Ok(Some(m));
     }
@@ -201,6 +228,9 @@ pub async fn find_mb_match_with_fallback(
         if tag.eq_ignore_ascii_case(artist_name) {
             continue;
         }
+        if let Some(m) = cache_hit(pool, warmed, tag).await {
+            return Ok(Some(m));
+        }
         if let Some(m) = mb_search_artist(client, tag, limiter).await? {
             if is_special_mb_artist(&m.id, &m.name) {
                 continue;
@@ -232,6 +262,9 @@ pub async fn find_mb_match_with_fallback(
             let key = part.to_lowercase();
             if !seen_parts.insert(key) {
                 continue;
+            }
+            if let Some(m) = cache_hit(pool, warmed, part).await {
+                return Ok(Some(m));
             }
             if let Some(m) = mb_search_artist(client, part, limiter).await? {
                 if is_special_mb_artist(&m.id, &m.name) {
@@ -289,4 +322,69 @@ async fn try_release_group_credits(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The ladder must take a warmed cache hit instead of searching MusicBrainz.
+    ///
+    /// `#[ignore]`d - it needs a pool for the steps that run before the cache consult. Point it at a
+    /// disposable, migrated database, never the production `DATABASE_URL`:
+    ///
+    ///   SMOKE_TEST_DATABASE_URL=postgres://... cargo test -p sync -- --ignored --nocapture
+    ///
+    /// The fixture name is one MusicBrainz could never match, so if the cache consult were dropped the
+    /// ladder would fall through every step and return `None` - a clean discriminator that needs no
+    /// request counter.
+    #[tokio::test]
+    #[ignore]
+    async fn a_warmed_cache_hit_short_circuits_the_search_ladder() {
+        let db_url = std::env::var("SMOKE_TEST_DATABASE_URL").expect(
+            "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
+             against the production DATABASE_URL",
+        );
+        let pool = common::db::create_pool(&db_url).await;
+        let name = "DMP Test Cached Artist (sync)";
+        let mbid = "44444444-4444-4444-8444-444444444444";
+
+        let mut warmed: HashMap<String, MbArtistMatch> = HashMap::new();
+        warmed.insert(
+            name.to_string(),
+            common::mb::cache::match_from_cache_row(name, mbid.to_string(), None),
+        );
+
+        let mut limiter = RateLimiter::new();
+        let client = Client::new();
+        let found = find_mb_match_with_fallback(
+            &client,
+            &pool,
+            "nonexistent-artist-id",
+            name,
+            None,
+            &mut limiter,
+            &warmed,
+        )
+        .await
+        .expect("ladder errored");
+
+        assert_eq!(
+            found.map(|m| m.id).as_deref(),
+            Some(mbid),
+            "step 3 must return the cached hit rather than searching MusicBrainz"
+        );
+    }
+
+    /// A cached hit that names a placeholder ("Various Artists" and friends) must be ignored, exactly
+    /// as a live search result would be - otherwise the cache becomes a way to smuggle one in.
+    #[test]
+    fn special_artists_are_rejected_from_the_cache_too() {
+        let m = common::mb::cache::match_from_cache_row(
+            "Various Artists",
+            "89ad4ac3-39f7-470e-963a-56509c546377".to_string(),
+            None,
+        );
+        assert!(is_special_mb_artist(&m.id, &m.name));
+    }
 }
