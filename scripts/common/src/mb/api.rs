@@ -33,12 +33,22 @@ pub fn escape_lucene_phrase(value: &str) -> String {
 // Adaptive rate limiter
 // ---------------------------------------------------------------------------
 
-/// MusicBrainz allows roughly one request per second per client. 1100ms was the old floor and is kept
-/// as the hard lower bound for `MB_MIN_DELAY_MS`; the default sits slightly above it so ordinary clock
-/// jitter doesn't push a run over the line and earn a 503 that then costs minutes to recover from.
+/// MusicBrainz allows roughly one request per second per client; 1100ms is that with a little headroom.
+///
+/// The default was briefly raised to 1300ms on the theory that the 503 storm during a resolve run was
+/// us exceeding the allowance. Measured against the live API, it is not: the 503 body reads
+/// `{"error": "The MusicBrainz web server is currently busy. Please try again later."}` and arrives
+/// with `x-ratelimit-remaining: 14` of `x-ratelimit-limit: 15` and `retry-after: 0`. We were using one
+/// fifteenth of the budget. Slowing down bought nothing and cost ~15% throughput, so the floor is back
+/// where it was.
 const MIN_DELAY_FLOOR_MS: u64 = 1100;
-const DEFAULT_MIN_DELAY_MS: u64 = 1300;
+const DEFAULT_MIN_DELAY_MS: u64 = 1100;
 const MAX_DELAY_MS: u64 = 10000;
+
+/// A load-shed 503 returns no data and explicitly says `retry-after: 0`, so the retry should not have
+/// to re-pay the full inter-request delay - MusicBrainz did no work for us. A short floor keeps that
+/// from becoming a hot loop against a struggling server.
+const OVERLOAD_RETRY_FLOOR_MS: u64 = 250;
 
 /// Recovery is additive, not multiplicative. A 15% cut per success walked the delay back to the floor
 /// in ~14 requests, which is fast enough to slam straight back into the wall - the observed pattern of
@@ -63,6 +73,13 @@ pub struct RateLimiter {
     last_request: Instant,
     remaining: Option<u64>,
     reset_at: Option<u64>,
+    /// Retryable 503s absorbed this run. Counted rather than logged per occurrence: on a long resolve
+    /// pass roughly a third of requests get load-shed and recover on the first retry, and warning about
+    /// each one made a healthy run read as a failing one.
+    pub absorbed_503s: u64,
+    /// Set by an overload 503 so the next `wait()` only honours a short floor - see
+    /// `OVERLOAD_RETRY_FLOOR_MS`.
+    immediate_retry: bool,
 }
 
 impl RateLimiter {
@@ -75,12 +92,29 @@ impl RateLimiter {
             last_request: Instant::now(),
             remaining: None,
             reset_at: None,
+            absorbed_503s: 0,
+            immediate_retry: false,
         }
     }
 
     pub fn set_web(&mut self, _web: bool) {}
 
+    /// A load-shed 503 served nothing, so the retry should not queue behind a full pacing slot. This
+    /// is where most of a resolve run's lost time went: the retry itself is cheap, but re-paying the
+    /// ~1.1s inter-request delay for a request MusicBrainz never answered is not.
+    pub fn allow_immediate_retry(&mut self) {
+        self.immediate_retry = true;
+    }
+
     pub async fn wait(&mut self) {
+        if std::mem::take(&mut self.immediate_retry) {
+            let elapsed = self.last_request.elapsed().as_millis() as u64;
+            if elapsed < OVERLOAD_RETRY_FLOOR_MS {
+                sleep(Duration::from_millis(OVERLOAD_RETRY_FLOOR_MS - elapsed)).await;
+            }
+            self.last_request = Instant::now();
+            return;
+        }
         let effective = self.effective_delay();
         let elapsed = self.last_request.elapsed().as_millis() as u64;
         if elapsed < effective {
@@ -267,29 +301,41 @@ pub async fn mb_get(
             }
             if attempt < max_attempts - 1 {
                 ladder = (ladder * 2).min(16000);
-                // MB's own advice wins over our guess when it bothers to give one.
-                let wait_time = retry_after.unwrap_or(ladder);
-                let reason = match kind {
-                    ThrottleKind::RateLimited => "rate-limit",
-                    ThrottleKind::Overloaded => "server overload",
-                };
-                error_log::log_warn(&format!(
-                    "HTTP {} ({}) (attempt {}/{})",
-                    status,
-                    reason,
-                    attempt + 1,
-                    max_attempts - 1
-                ));
-                eprintln!(
-                    "      ⚠ HTTP {} ({}) - waiting {:.1}s before next attempt ({}/{}) [delay_ms={}]",
-                    status,
-                    reason,
-                    wait_time as f64 / 1000.0,
-                    attempt + 1,
-                    max_attempts - 1,
-                    limiter.delay_ms,
-                );
-                sleep(Duration::from_millis(wait_time)).await;
+                limiter.absorbed_503s += 1;
+
+                match kind {
+                    // Load shedding, not us: MusicBrainz served nothing and says `retry-after: 0`. Do
+                    // not re-pay the inter-request delay for a request it never answered, and do not
+                    // report it - it recovers on the first retry and warning about each one turned a
+                    // healthy run into a wall of red. The run summary carries the total instead.
+                    ThrottleKind::Overloaded => {
+                        limiter.allow_immediate_retry();
+                        if let Some(ms) = retry_after {
+                            if ms > OVERLOAD_RETRY_FLOOR_MS {
+                                sleep(Duration::from_millis(ms)).await;
+                            }
+                        }
+                    }
+                    // Genuinely over the allowance: back off loudly, this one is actionable.
+                    ThrottleKind::RateLimited => {
+                        let wait_time = retry_after.unwrap_or(ladder);
+                        error_log::log_warn(&format!(
+                            "HTTP {} (rate-limit) (attempt {}/{})",
+                            status,
+                            attempt + 1,
+                            max_attempts - 1
+                        ));
+                        eprintln!(
+                            "      ⚠ HTTP {} (rate-limit) - waiting {:.1}s before next attempt ({}/{}) [delay_ms={}]",
+                            status,
+                            wait_time as f64 / 1000.0,
+                            attempt + 1,
+                            max_attempts - 1,
+                            limiter.delay_ms,
+                        );
+                        sleep(Duration::from_millis(wait_time)).await;
+                    }
+                }
                 continue;
             } else {
                 return Err(format!(
@@ -767,6 +813,8 @@ mod tests {
             last_request: Instant::now(),
             remaining: None,
             reset_at: None,
+            absorbed_503s: 0,
+            immediate_retry: false,
         }
     }
 
@@ -819,6 +867,46 @@ mod tests {
             classify_throttle(503, Some(0), "<html>Service Unavailable</html>"),
             ThrottleKind::RateLimited,
             "an empty X-RateLimit-Remaining budget is a rate limit whatever the body says"
+        );
+    }
+
+    #[test]
+    fn the_real_busy_body_musicbrainz_serves_is_classified_as_overload() {
+        // Captured from the live API during a resolve run. It arrives with `x-ratelimit-remaining: 14`
+        // of `x-ratelimit-limit: 15` and `retry-after: 0` - i.e. we are using a fifteenth of the
+        // allowance and MusicBrainz is simply load-shedding. Reading this as a rate limit is what made
+        // an earlier fix slow the client down for no benefit.
+        const BUSY: &str =
+            r#"{"error": "The MusicBrainz web server is currently busy. Please try again later."}"#;
+        assert_eq!(
+            classify_throttle(503, Some(14), BUSY),
+            ThrottleKind::Overloaded
+        );
+    }
+
+    #[tokio::test]
+    async fn an_overload_retry_skips_the_pacing_slot() {
+        // The throughput fix: a load-shed 503 served no data, so the retry must not queue behind a full
+        // inter-request delay. Roughly a third of requests on a long run take this path.
+        let mut l = limiter_at(DEFAULT_MIN_DELAY_MS);
+        l.wait().await; // establishes last_request
+        l.allow_immediate_retry();
+        let started = Instant::now();
+        l.wait().await;
+        let waited = started.elapsed().as_millis() as u64;
+        assert!(
+            waited < DEFAULT_MIN_DELAY_MS,
+            "immediate retry waited {waited}ms - it must not re-pay the {DEFAULT_MIN_DELAY_MS}ms slot"
+        );
+
+        // ...and the flag is one-shot: the next request pays full price again.
+        l.allow_immediate_retry();
+        l.wait().await;
+        let started = Instant::now();
+        l.wait().await;
+        assert!(
+            started.elapsed().as_millis() as u64 > OVERLOAD_RETRY_FLOOR_MS,
+            "the immediate-retry flag leaked into a normal request"
         );
     }
 

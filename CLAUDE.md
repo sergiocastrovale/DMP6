@@ -321,5 +321,6 @@ Scripts are built into the docker container and copied to the NAS folder. You ca
 See `web/.env.example` for full documentation.
 
 Scripts-only knob: `MB_MIN_DELAY_MS` sets the MusicBrainz inter-request floor for `index`, `sync` and
-`problems` (default 1300, clamped to 1100–10000). Raise it when MusicBrainz is rate-limiting a long
-run; it does nothing for the "server overload" 503s, which the client now labels separately.
+`problems` (default 1100, clamped to 1100–10000). Raise it only if MusicBrainz is genuinely
+rate-limiting you. It does nothing for the "server busy" 503s, which are MB load-shedding while we sit
+at ~1/15 of the allowance — those are absorbed silently and counted in the run summary.

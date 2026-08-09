@@ -137,6 +137,13 @@ whenever a name deferred). A crash is cheap: the pass has no checkpoint, so `MbA
 resume state, and a rerun skips every name already answered - `--overwrite` skips the cache warm to force
 a full re-ask. And the run's cost is visible up front, as `Resolving N of M (M-N already resolved)`.
 
+**The warm loads the whole cache table, not just the tag values being resolved.** Tier 3 takes a compound
+apart and asks about the *atoms* inside it, and an atom is usually not itself a distinct tag value — so
+warming by name left every atom a memo miss and sent the resolver to MusicBrainz for an answer already in
+the table. Measured on the live library, a 3-minute run made 57 network lookups and inserted **zero** new
+rows: every request re-asked a name it already knew. Loading the table whole (~44k rows, a few MB — the
+folder scan already does this) cut the pending set from 44,544 names to 34,874 in one step.
+
 ### Search order
 
 | Tier | Source | Cost |
@@ -168,16 +175,27 @@ name. Deferred answers are never cached, so a deferred name is genuinely re-aske
 
 ### Pacing
 
-`common::mb::api::RateLimiter` paces requests at a floor of 1300ms (`MB_MIN_DELAY_MS` overrides it,
+`common::mb::api::RateLimiter` paces requests at a floor of 1100ms (`MB_MIN_DELAY_MS` overrides it,
 clamped 1100-10000) and adapts from there: a rate limit doubles the delay up to a 10s cap, each success
 sheds a flat 100ms back toward the floor.
 
 Two distinctions matter. A 503 is classified as **rate-limit** or **server overload** by its body and
-`X-RateLimit-Remaining` header, and only the former slows the steady-state pace - MusicBrainz being unwell
-is not fixed by going slower. And the penalty applies at most **once per request**, not once per retry:
-five retries of one unlucky name used to walk the delay 1100 → 10000 and pin every later name at the cap,
-which is the difference between a ~17h pass over 56k names and a ~157h one. `Retry-After` wins over the
-local backoff ladder when MusicBrainz sends it.
+`X-RateLimit-Remaining` header, and only the former slows the steady-state pace. And the penalty applies
+at most **once per request**, not once per retry: five retries of one unlucky name used to walk the delay
+1100 → 10000 and pin every later name at the cap. `Retry-After` wins over the local backoff ladder when
+MusicBrainz sends it.
+
+**Most 503s on this API are not us.** Measured live during a resolve run, the body reads
+`{"error": "The MusicBrainz web server is currently busy. Please try again later."}` and arrives with
+`x-ratelimit-remaining: 14` of `x-ratelimit-limit: 15` and `retry-after: 0` — we are using a fifteenth of
+the allowance and the server is simply load-shedding. Slowing down does nothing for it; an earlier attempt
+to fix this by raising the floor to 1300ms cost throughput and bought nothing, and was reverted.
+
+So an overload 503 is handled as what it is: it served no data, so the retry does **not** re-pay the
+inter-request delay (a 250ms floor keeps it from becoming a hot loop), and it is **not** logged. Roughly a
+third of requests on a long run take that path and recover on the first retry; warning about each one made
+a healthy run read as a failing one. The total is reported once in the run summary as
+`Absorbed N transient MusicBrainz 503(s)`. Only `deferred` counts names that actually failed.
 
 **Offline backstop.** `KNOWN_SINGLE_ARTISTS` (`common/src/artists.rs`) is consulted before any split is
 contemplated: a band already known to be one artist stays whole even if MusicBrainz answers "no such

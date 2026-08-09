@@ -222,7 +222,7 @@ async fn run_artist_resolution(
     let mut resolver = ArtistResolver::new(pool, dry_run);
     let names = distinct_tag_values(pool, scoped_release_ids).await;
     if !overwrite {
-        resolver.warm_cache(&names).await;
+        resolver.warm_cache().await;
     }
     let pending: Vec<String> = names
         .iter()
@@ -293,6 +293,15 @@ async fn run_artist_resolution(
         s.names_seen, s.from_embedded, s.from_cache, s.from_mb_whole, s.from_mb_span, s.from_fallback,
         s.deferred, s.mb_lookups
     ));
+    // Reported once, as a fact about MusicBrainz's health rather than a problem with this run: these
+    // all recovered on retry. Only `deferred` above counts names that actually failed.
+    let absorbed = resolver.absorbed_503s();
+    if absorbed > 0 {
+        reporter.info(&format!(
+            "Absorbed {} transient MusicBrainz 503(s) (server busy, retried successfully).",
+            absorbed
+        ));
+    }
 }
 
 #[tokio::main]

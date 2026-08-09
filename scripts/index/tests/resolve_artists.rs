@@ -341,7 +341,7 @@ async fn a_cached_name_is_pinned_and_costs_no_lookups() {
 
     let mut warm = ArtistResolver::new(&pool, true);
     warm.offline = true; // any network call here would be the bug this test exists to catch
-    warm.warm_cache(&names).await;
+    warm.warm_cache().await;
     assert!(warm.is_cached(name), "a cached answer must pin the name");
     warm.prefetch(&names, None).await;
     assert_eq!(

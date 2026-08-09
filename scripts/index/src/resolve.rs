@@ -78,16 +78,20 @@ impl<'a> ArtistResolver<'a> {
         }
     }
 
-    /// Seed the memo from the cache table in one query rather than a round-trip per name.
-    pub async fn warm_cache(&mut self, names: &[String]) {
-        if names.is_empty() {
-            return;
-        }
+    /// Seed the memo from the whole cache table in one query.
+    ///
+    /// Deliberately the whole table, not just the tag values being resolved. The span search takes a
+    /// compound like `"Gordon Ashworth & Julie Byrne"` apart and asks about the *atoms* inside it, and
+    /// those atoms are not themselves distinct tag values - so warming by name left every one of them a
+    /// memo miss and sent the resolver to MusicBrainz for an answer already sitting in this table.
+    /// Measured on the live library: a 3-minute run made 57 network lookups and inserted 0 new rows,
+    /// i.e. every request re-asked a name it already knew. The table is one row per distinct artist
+    /// name (~44k), so loading it whole costs a few MB - the folder scan already does exactly this.
+    pub async fn warm_cache(&mut self) {
         let rows: Vec<(String, Option<String>, bool)> = sqlx::query_as(
-            r#"SELECT name, mbid, ("mbid" IS NULL AND "checkedAt" < NOW() - ($2 || ' days')::interval) AS stale
-               FROM "MbArtistLookup" WHERE name = ANY($1::text[])"#,
+            r#"SELECT name, mbid, ("mbid" IS NULL AND "checkedAt" < NOW() - ($1 || ' days')::interval) AS stale
+               FROM "MbArtistLookup""#,
         )
-        .bind(names)
         .bind(NEGATIVE_TTL_DAYS.to_string())
         .fetch_all(self.pool)
         .await
@@ -170,6 +174,11 @@ impl<'a> ArtistResolver<'a> {
     /// Is this tag value already fully answered by the cache? See [`is_fully_memoized`].
     pub fn is_cached(&self, name: &str) -> bool {
         is_fully_memoized(&self.memo, name)
+    }
+
+    /// Transient MusicBrainz 503s this run retried through. Not failures - see the run summary.
+    pub fn absorbed_503s(&self) -> u64 {
+        self.limiter.absorbed_503s
     }
 
     /// Phase A: ask MusicBrainz about every name in `names`, in the order given.
