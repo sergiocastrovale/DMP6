@@ -15,13 +15,29 @@ export const commandLabels: Record<string, string> = {
   './playlists': 'Generating playlists…',
 }
 
+// The scan menu, shared by the global grid (components/ScanActions.vue) and the artist dropdown
+// (components/artist/ScanActions.vue).
+//
+// `scope: 'artist'` keeps an action out of the global grid, which has no handler for it - the grid used
+// to render every entry and threw on click for the one it could not run.
+//
+// `admin` marks the actions that carry destructive flags (`--overwrite*`, `--prune`). The server
+// rejects those for non-admins anyway (DESTRUCTIVE_FLAGS in server/utils/terminalCommand.ts); hiding
+// them here just avoids offering a button that is guaranteed to 403.
 export const scanActions = [
-  { id: 'check', icon: 'Search', text: 'Check for new files', subtext: 'Index new files & sync' },
-  { id: 'index-sync', icon: 'RefreshCw', text: 'Index & Sync', subtext: 'Full re-scan from scratch' },
-  { id: 'index', icon: 'HardDriveDownload', text: 'Index only', subtext: 'Re-index local files' },
-  { id: 'sync', icon: 'Globe', text: 'Sync only', subtext: 'Re-sync catalogue against MusicBrainz' },
-  { id: 'catalogue-gaps', icon: 'ListChecks', text: 'Catalogue gaps', subtext: 'Find missing releases in local catalogue' },
+  { id: 'check', icon: 'Search', text: 'Check for new files', subtext: 'Index new files & sync', scope: 'both', admin: false },
+  { id: 'full', icon: 'RefreshCw', text: 'Full re-scan', subtext: 'Re-read every tag, prune missing files, rematch', scope: 'both', admin: true },
+  { id: 'index', icon: 'HardDriveDownload', text: 'Index only', subtext: 'Index new local files', scope: 'both', admin: false },
+  { id: 'sync', icon: 'Globe', text: 'Sync only', subtext: 'Sync pending releases against MusicBrainz', scope: 'both', admin: false },
+  { id: 'catalogue-gaps', icon: 'ListChecks', text: 'Catalogue gaps', subtext: 'Find missing releases in local catalogue', scope: 'artist', admin: false },
 ] as const
+
+export type ScanAction = (typeof scanActions)[number]
+
+// Actions a given surface may show: global grid drops artist-only entries, non-admins drop the
+// destructive ones.
+export const visibleScanActions = (scope: 'both' | 'artist', isAdmin: boolean): ScanAction[] =>
+  scanActions.filter(s => (scope === 'artist' || s.scope === 'both') && (isAdmin || !s.admin))
 
 export const scoreRanges = [
   { min: 0, max: 20, label: '0% – 20%', color: 'bg-red-500', textColor: 'text-red-400', bgColor: 'bg-red-500/20' },

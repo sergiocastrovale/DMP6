@@ -117,6 +117,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./index --only "Name" --overwrite-with-images  # Force re-index + re-extract covers
 ./index --resume              # Continue from last checkpoint
 ./index --inspect             # Re-check existing files for metadata changes
+./index --only "Name" --overwrite-with-images --prune  # Full re-scan: re-read tags/covers + delete rows for files that are gone
+./index --prune               # Delete rows for missing files even when >20% of a folder changed (folder must be scanned and non-empty)
 ./index --folders "Artist/Album"   # Re-index exact folder paths
 ./index --release "clxxx"     # Re-index single release by LocalRelease ID
 ./index --resolve-artists     # Resolve artist tags against MusicBrainz only (no folder scan); alphabetical, skips names already in MbArtistLookup

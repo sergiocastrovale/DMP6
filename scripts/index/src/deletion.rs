@@ -25,10 +25,17 @@ const MAX_MISSING_RATIO: f64 = 0.2;
 
 /// Delete track rows whose filePath no longer exists on disk.
 /// Returns count deleted and which releases were affected.
+///
+/// `force` (`./index --prune`) skips the ratio guard. Its call site only sets it for a folder this run
+/// just walked and found audio files in - the mount is provably up, so a missing file is a real
+/// deletion no matter what fraction of the folder it represents. That is the case a wholesale folder
+/// swap (old rip removed, new one dropped in) always lands in, and the guard would otherwise strand
+/// every old row forever.
 pub async fn delete_removed_tracks(
     pool: &PgPool,
     folder_prefix: &str,
     music_dir: &str,
+    force: bool,
 ) -> TrackDeletionResult {
     let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
         r#"SELECT id, "filePath", "localReleaseId" FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
@@ -56,7 +63,7 @@ pub async fn delete_removed_tracks(
         return TrackDeletionResult { count: 0 };
     }
 
-    if total > 0 && missing_ids.len() as f64 / total as f64 > MAX_MISSING_RATIO {
+    if !force && total > 0 && missing_ids.len() as f64 / total as f64 > MAX_MISSING_RATIO {
         log_warn(&format!(
             "delete_removed_tracks: {}/{} tracks missing under '{}' - looks like a mount blip, not a real deletion. Skipping this folder.",
             missing_ids.len(), total, folder_prefix
@@ -65,6 +72,12 @@ pub async fn delete_removed_tracks(
     }
 
     let count = missing_ids.len() as u64;
+    if force && total > 0 && count as f64 / total as f64 > MAX_MISSING_RATIO {
+        println!(
+            "  Pruning {}/{} track(s) missing under '{}' (--prune, ratio guard bypassed)",
+            count, total, folder_prefix
+        );
+    }
     sqlx::query(r#"DELETE FROM "LocalReleaseTrack" WHERE id = ANY($1::text[])"#)
         .bind(&missing_ids)
         .execute(pool)

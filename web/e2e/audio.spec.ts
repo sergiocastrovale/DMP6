@@ -37,7 +37,9 @@ test('matching If-None-Match returns 304', async ({ page }) => {
 })
 
 test('unauthenticated audio request is rejected with 401', async ({ baseURL }) => {
-  const ctx = await request.newContext({ baseURL })
+  // Empty storageState explicitly: a bare newContext() inherits the config's admin session, which
+  // turned this into an authenticated request that 404s on the missing track instead of 401ing.
+  const ctx = await request.newContext({ baseURL, storageState: { cookies: [], origins: [] } })
   const res = await ctx.get('/api/audio/any-id')
   expect(res.status()).toBe(401)
   await ctx.dispose()

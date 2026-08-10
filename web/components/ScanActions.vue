@@ -2,17 +2,16 @@
 import { Search, RefreshCw, HardDriveDownload, Globe, Loader2 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { useTerminalStore } from '~/stores/terminal'
-import { scanActions } from '~/helpers/constants'
+import { visibleScanActions } from '~/helpers/constants'
 
-const props = withDefaults(defineProps<{
+withDefaults(defineProps<{
   disabled?: boolean
-  filter?: string[]
-  overrides?: Record<string, { text?: string; subtext?: string }>
 }>(), {
   disabled: false,
 })
 
 const terminal = useTerminalStore()
+const { isAdmin } = useAuth()
 
 const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe }
 
@@ -21,17 +20,15 @@ const globalActions: Record<string, () => Promise<void>> = {
     await terminal.run('./index', [])
     await terminal.run('./sync', [])
   },
-  'index-sync': () => terminal.run('./refresh', []),
+  'full': async () => {
+    await terminal.run('./index', ['--overwrite-with-images'])
+    await terminal.run('./sync', ['--overwrite'])
+  },
   'index': () => terminal.run('./index', []),
   'sync': () => terminal.run('./sync', []),
 }
 
-const visibleActions = computed(() => {
-  const base = props.filter ? scanActions.filter(s => props.filter!.includes(s.id)) : scanActions
-  return props.overrides
-    ? base.map(s => ({ ...s, ...props.overrides![s.id] }))
-    : base
-})
+const visibleActions = computed(() => visibleScanActions('both', isAdmin.value))
 </script>
 
 <template>

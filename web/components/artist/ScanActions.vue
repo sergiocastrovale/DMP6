@@ -3,7 +3,7 @@ import { RefreshCw, Loader2, Search, HardDriveDownload, Globe, ListChecks } from
 import type { Component } from 'vue'
 import type { ButtonDropdownOption } from '~/types/ui'
 import { useTerminalStore } from '~/stores/terminal'
-import { scanActions } from '~/helpers/constants'
+import { visibleScanActions } from '~/helpers/constants'
 
 const props = defineProps<{
   artistName: string
@@ -11,6 +11,7 @@ const props = defineProps<{
 }>()
 
 const terminal = useTerminalStore()
+const { isAdmin } = useAuth()
 
 const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe, ListChecks }
 
@@ -19,15 +20,15 @@ const artistActions: Record<string, (name: string, folders: string[]) => () => P
     await terminal.run('./index', ['--only', folders.join(';'), '--exact'])
     await terminal.run('./sync', ['--only', name, '--exact'])
   },
-  'index-sync': (name, folders) => async () => {
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'])
+  'full': (name, folders) => async () => {
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite-with-images', '--prune'])
     await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
   },
   'index': (_name, folders) => async () => {
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'])
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact'])
   },
   'sync': (name) => async () => {
-    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
+    await terminal.run('./sync', ['--only', name, '--exact'])
   },
   'catalogue-gaps': (name) => async () => {
     await terminal.run('./sync', ['--only', name, '--exact', '--catalogue-gaps'])
@@ -35,7 +36,7 @@ const artistActions: Record<string, (name: string, folders: string[]) => () => P
 }
 
 const syncOptions = computed<ButtonDropdownOption[]>(() =>
-  scanActions.map(s => ({
+  visibleScanActions('artist', isAdmin.value).map(s => ({
     label: s.text,
     description: s.subtext,
     icon: scanIcons[s.icon],

@@ -24,8 +24,9 @@ export const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
 
 // Flags that delete data or force a destructive rewrite - restricted to ADMIN regardless of whether the
 // caller holds 'sync.run', so a MANAGER can trigger normal index/sync runs but not `--delete`/
-// `--overwrite` passes.
-const DESTRUCTIVE_FLAGS = ['--delete', '--overwrite', '--overwrite-with-images'] as const
+// `--overwrite` passes. `--prune` belongs here too: it bypasses index's mount-blip ratio guard, so a
+// wrong scope deletes rows the guard would otherwise have saved.
+const DESTRUCTIVE_FLAGS = ['--delete', '--overwrite', '--overwrite-with-images', '--prune'] as const
 
 export const hasDestructiveFlag = (args: string[]): boolean =>
   args.some(a => (DESTRUCTIVE_FLAGS as readonly string[]).includes(a))

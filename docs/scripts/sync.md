@@ -17,7 +17,7 @@ they are excluded by `EXISTS(LocalReleaseArtist)` rather than by a stored flag. 
    - Download artist image if missing (Wikidata → Wikipedia → Fanart.tv → local/S3)
    - Fetch release groups from MB API
 4. **Per release (within artist):**
-   - Skip already-synced unless `--overwrite`
+   - Skip already-synced (has `releaseId`) unless `--overwrite` or its status is `UNKNOWN` (index flagged it for recalculation after deleting tracks)
    - Match: Tier 1 (MUSICBRAINZ_ALBUMID) → Tier 2 (MUSICBRAINZ_RELEASEGROUPID) → Tier 3 (title+artist search, only when no usable MB-id consensus) → no match = UNMATCHED
    - Majority id must be a real consensus (unanimous, or a strict plurality ≥2); a folder of all-distinct per-source ids yields no consensus
    - **Allow-list**: bind only Official Album/EP release-groups (rejects Single/Broadcast/Other, non-Official/bootleg, and non-music secondary types)
@@ -210,6 +210,11 @@ All statuses in `ReleaseStatus` enum and how they are assigned:
 4. **Track deletion** on a matched release → `UNKNOWN` (needs sync recalculation, `releaseId` kept)
 5. **Nuke/delete** unlinks from MB → `UNMATCHED` (`releaseId` cleared)
 6. **Re-sync** (`--overwrite`) → re-evaluates, lands on any of the above
+
+`UNKNOWN` is the one status a plain `./sync` re-evaluates despite the release already holding a
+`releaseId`. The per-release skip is `releaseId.is_some() && status != UNKNOWN`, so step 4's reset
+actually reaches a recalculation on the next ordinary run - it used to be inert, leaving a status
+computed against a tracklist that no longer existed until someone thought to pass `--overwrite`.
 
 ## Rate Limiting
 

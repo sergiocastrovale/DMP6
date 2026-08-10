@@ -1197,7 +1197,13 @@ async fn main() {
             ));
 
             // If already synced and not overwriting, skip the MB API call entirely.
-            if !args.overwrite {
+            //
+            // UNKNOWN is the exception: index sets it (keeping `releaseId`) when it deletes tracks
+            // from a matched release, precisely so the track-count comparison gets redone here.
+            // Skipping on `releaseId` alone made that reset a no-op - the release kept a status
+            // computed against a tracklist that no longer exists until someone ran `--overwrite`.
+            let needs_recalc = local_release.match_status.as_deref() == Some("UNKNOWN");
+            if !args.overwrite && !needs_recalc {
                 if let Some(ref existing_mb_db_id) = local_release.release_id {
                     ensure_mb_release_artist_link(&pool, existing_mb_db_id, &artist.id)
                         .await

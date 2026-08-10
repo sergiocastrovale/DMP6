@@ -69,10 +69,11 @@ describe('permissionForCommand', () => {
 })
 
 describe('hasDestructiveFlag', () => {
-  it('flags --delete, --overwrite, and --overwrite-with-images', () => {
+  it('flags --delete, --overwrite, --overwrite-with-images and --prune', () => {
     expect(hasDestructiveFlag(['--delete'])).toBe(true)
     expect(hasDestructiveFlag(['--only', 'X', '--overwrite'])).toBe(true)
     expect(hasDestructiveFlag(['--overwrite-with-images'])).toBe(true)
+    expect(hasDestructiveFlag(['--only', 'X', '--exact', '--prune'])).toBe(true)
   })
 
   it('is false for normal args with no destructive flag', () => {

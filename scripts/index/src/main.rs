@@ -72,6 +72,12 @@ struct IndexArgs {
     #[arg(long, help = "Re-index all tracks AND re-extract all cover art")]
     overwrite_with_images: bool,
 
+    #[arg(
+        long,
+        help = "Delete DB rows for files missing on disk even when most of the folder changed (bypasses the mount-blip ratio guard)"
+    )]
+    prune: bool,
+
     #[arg(long, help = "Exact match for --only (no prefix matching)")]
     exact: bool,
 
@@ -362,13 +368,14 @@ async fn main() {
     }
 
     let args_str = format!(
-        "from={} to={} only={} overwrite={} inspect={} delete={} release={}",
+        "from={} to={} only={} overwrite={} inspect={} delete={} prune={} release={}",
         args.from.as_deref().unwrap_or(""),
         args.to.as_deref().unwrap_or(""),
         args.only.as_deref().unwrap_or(""),
         args.overwrite,
         args.inspect,
         args.delete,
+        args.prune,
         args.release.as_deref().unwrap_or(""),
     );
     if let Err(e) = acquire_lock(&pool, "index", std::process::id(), &args_str).await {
@@ -1534,17 +1541,20 @@ async fn main() {
         // -----------------------------------------------------------------
         // Delete tracks that no longer exist on disk
         // -----------------------------------------------------------------
+        // --prune only counts when this pass actually walked the folder and found audio files in it:
+        // that is what proves the mount is up, which is the only thing the ratio guard was defending.
+        let prune = args.prune && file_count > 0;
         let deleted_tracks = if let Some(ref tf) = target_folders {
             let mut total = 0u64;
             for sub in tf.get(folder_name.as_str()).unwrap_or(&vec![]) {
                 let prefix = format!("{}/", sub);
-                total += delete_removed_tracks(&pool, &prefix, &music_dir)
+                total += delete_removed_tracks(&pool, &prefix, &music_dir, prune)
                     .await
                     .count;
             }
             total
         } else {
-            delete_removed_tracks(&pool, &folder_prefix, &music_dir)
+            delete_removed_tracks(&pool, &folder_prefix, &music_dir, prune)
                 .await
                 .count
         };

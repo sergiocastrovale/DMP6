@@ -19,6 +19,7 @@ cd scripts && cargo build --release -p index
 ./index --overwrite              # Force re-index (keeps existing covers)
 ./index --overwrite-with-images  # Force re-index + re-extract all covers
 ./index --inspect                # Re-check existing files for metadata changes
+./index --prune                  # Delete rows for files gone from disk even past the 20% mount-blip guard
 ./index --resume                 # Continue from last checkpoint
 ./index --release "clxxxxxxx"   # Re-index a single release by LocalRelease ID
 ./index --folders "Artist/Album" # Re-index exact folder paths (semicolon-separated)
@@ -49,6 +50,7 @@ cd scripts && cargo build --release -p index
 | `--overwrite` | bool | false | Re-index all tracks ignoring change detection (keeps existing covers) |
 | `--overwrite-with-images` | bool | false | Like --overwrite but also deletes and re-extracts all cover art |
 | `--inspect` | bool | false | Re-check existing files for metadata changes (size/mtime/hash) |
+| `--prune` | bool | false | Delete rows for files missing on disk even when they exceed the 20% mount-blip ratio guard (only applies to folders this run walked and found files in) |
 | `--skip-covers` | bool | false | Skip cover art extraction |
 | `--resume` | bool | false | Resume from last checkpoint |
 | `--delete` | bool | false | Nuke local data for matched artists, then exit |
@@ -73,7 +75,11 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
 5. **Store** the raw artist / albumArtist tags plus the multi-value `Artists[]` + `MusicBrainzArtistId[]` frames on the track. No artist identity is decided here - that happens in the post-loop resolve pass (see Artist Resolution below)
 6. **Upsert** Artist (album artist only, at this stage), LocalRelease, LocalReleaseTrack, LocalReleaseArtist (batch UNNEST)
 7. **Cover art** - extract from embedded tags or folder images, content-addressed by MD5 hash (same image bytes = one file, shared across releases)
-8. **Delete** tracks no longer on disk
+8. **Delete** tracks no longer on disk. Guarded: if more than 20% of the DB rows under the prefix are
+   missing, the pass assumes an unmounted share and deletes nothing. `--prune` bypasses that guard for
+   folders this run walked and found audio files in (the mount is provably up), which is the only way a
+   wholesale folder swap - old rip removed, new one dropped in, so ~half the rows look missing - ever
+   loses its stale rows. The whole-library `detect_deleted_folders` sweep keeps the guard unconditionally
 9. **Update totals** for this artist's releases and tracks
 10. **Set `lastIndexedAt`** on Artist (only if new/updated/deleted tracks in folder)
 11. **Stamp run hash** on FolderScan for resumability
