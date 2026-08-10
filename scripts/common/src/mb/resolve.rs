@@ -159,19 +159,31 @@ const SEPARATOR_PATTERNS: &[(&str, JoinKind)] = &[
 
 /// Find every candidate split point. Purely syntactic - proposes, never decides. A comma between two
 /// digits ("10,000 Maniacs") is not a separator.
+///
+/// Matching is **ASCII**-case-insensitive, against the original bytes, and that is deliberate. Scanning
+/// a `to_lowercase()` copy while recording offsets into the original is only correct while lowercasing
+/// preserves byte length, and it does not: Turkish `İ` (U+0130, 2 bytes) lowercases to `i` + U+0307
+/// (3 bytes). On `"İlhan Mimaroğlu; Freddie Hubbard Quintet"` the two strings drift apart and the scan
+/// panics on a non-boundary slice - and before it panics, every offset it returns points into the wrong
+/// place in the original, so the splits would have been silently wrong anyway.
+///
+/// Every pattern here is pure ASCII, so ASCII folding cannot miss one: for a full-Unicode lowering to
+/// produce a pattern, some non-ASCII char would have to fold to an ASCII letter *and* land mid-pattern
+/// ("Wİth" folds to "wi̇th", which is not "with"). An ASCII match at a char boundary also guarantees
+/// `i + pat.len()` is a boundary, since ASCII bytes never appear inside a multi-byte sequence.
 pub fn separator_positions(name: &str) -> Vec<Separator> {
     let bytes = name.as_bytes();
-    let lower = name.to_lowercase();
     let mut found: Vec<Separator> = Vec::new();
     let mut i = 0usize;
 
-    'outer: while i < name.len() {
+    'outer: while i < bytes.len() {
         if !name.is_char_boundary(i) {
             i += 1;
             continue;
         }
         for (pat, kind) in SEPARATOR_PATTERNS {
-            if lower[i..].starts_with(pat) {
+            let p = pat.as_bytes();
+            if bytes.len() - i >= p.len() && bytes[i..i + p.len()].eq_ignore_ascii_case(p) {
                 // "10,000 Maniacs" - a comma wrapped in digits is part of the number.
                 if *pat == ", " {
                     let prev_digit = i > 0 && bytes[i - 1].is_ascii_digit();
@@ -203,9 +215,12 @@ pub fn separator_positions(name: &str) -> Vec<Separator> {
 
 /// Leading qualifier words left dangling on the right-hand side of a guest split
 /// ("... with special guests Carey Bell"), stripped before the part is judged.
+/// ASCII-case-insensitive against the original for the same reason as `separator_positions`: the
+/// prefixes are ASCII, and comparing a lowercased copy while slicing the original is only sound while
+/// lowercasing preserves byte length.
 pub fn strip_role_qualifier(part: &str) -> &str {
     let trimmed = part.trim();
-    let lower = trimmed.to_lowercase();
+    let bytes = trimmed.as_bytes();
     for prefix in [
         "special guests ",
         "special guest ",
@@ -219,7 +234,8 @@ pub fn strip_role_qualifier(part: &str) -> &str {
         "conducted by ",
         "directed by ",
     ] {
-        if lower.starts_with(prefix) {
+        let p = prefix.as_bytes();
+        if bytes.len() >= p.len() && bytes[..p.len()].eq_ignore_ascii_case(p) {
             return trimmed[prefix.len()..].trim();
         }
     }
@@ -732,6 +748,46 @@ mod tests {
         assert!(separator_positions("10,000 Maniacs").is_empty());
         let (res, _) = resolve_with("10,000 Maniacs", known(&[]));
         assert_eq!(names_of(&res), vec!["10,000 Maniacs"]);
+    }
+
+    #[test]
+    fn a_dotted_capital_i_does_not_panic_or_shift_the_offsets() {
+        // The exact tag that killed a resolve run at [4861/34850]:
+        //   "start byte index 2 is not a char boundary; it is inside '\u{307}'"
+        // Turkish İ (U+0130, 2 bytes) lowercases to i + U+0307 (3 bytes), so a scan over a lowercased
+        // copy drifts out of alignment with the original it records offsets into.
+        let name = "İlhan Mimaroğlu; Freddie Hubbard Quintet";
+        let seps = separator_positions(name);
+        assert_eq!(seps.len(), 1, "the '; ' between the two artists");
+
+        // The offsets must address the ORIGINAL string - before the fix they addressed the lowercased
+        // copy, so even without the panic the split would have sliced the wrong bytes.
+        let sep = &seps[0];
+        assert_eq!(&name[..sep.start], "İlhan Mimaroğlu");
+        assert_eq!(&name[sep.end..], "Freddie Hubbard Quintet");
+
+        // Every offset is a valid char boundary, so slicing can never panic downstream.
+        for s in &seps {
+            assert!(name.is_char_boundary(s.start) && name.is_char_boundary(s.end));
+        }
+    }
+
+    #[test]
+    fn separator_matching_stays_case_insensitive_for_ascii() {
+        // ASCII folding replaced to_lowercase(); word separators must still match in any case.
+        for variant in ["A FEAT. B", "A Feat. B", "A feat. B"] {
+            assert_eq!(separator_positions(variant).len(), 1, "{variant}");
+        }
+        assert_eq!(strip_role_qualifier("CONDUCTED BY Nelson Riddle"), "Nelson Riddle");
+        assert_eq!(strip_role_qualifier("Special Guests Carey Bell"), "Carey Bell");
+    }
+
+    #[test]
+    fn non_ascii_names_survive_the_role_qualifier_strip() {
+        // Same offset hazard, same fix - a name that lowercases to a different byte length must come
+        // back untouched rather than sliced at a stale offset.
+        assert_eq!(strip_role_qualifier("İlhan Mimaroğlu"), "İlhan Mimaroğlu");
+        assert_eq!(strip_role_qualifier("Ğğ Şş Çç"), "Ğğ Şş Çç");
     }
 
     #[test]
