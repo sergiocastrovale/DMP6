@@ -12,17 +12,11 @@ IMAGE_STORAGE=s3 # can be s3, local or both
 
 This variable is read by both the `index` and `sync` scripts so they can act accordingly after downloading/extracting the images.
 
-### Implementation Status: ✅ COMPLETE
+- **s3** — uploads with the credentials from `.env` and stores the full URL in `Artist.imageUrl` / `LocalRelease.imageUrl`.
+- **local** — stores the filename in `Artist.image` / `LocalRelease.image`, served from `web/public/img/`.
+- **both** — saves locally *and* uploads.
 
-**For S3**:
-- ✅ Use the S3 credentials stored in .env and upload to S3
-- ✅ Set the `Artist.imageUrl` or `LocalRelease.imageUrl` as the full URL to the image (for use in the web app)
-
-**For local**:
-- ✅ Set the `Artist.image` or `LocalRelease.image` as the path to the image
-
-**For both**:
-- ✅ Combine both strategies - saves locally AND uploads to S3
+In the web app always resolve images through the `useImageUrl()` composable, which picks between the two.
 
 ## S3 Setup Guide
 
@@ -90,7 +84,6 @@ Add these variables to your `web/.env` file:
 ```bash
 # Image Storage Configuration
 IMAGE_STORAGE=s3  # or "local" or "both"
-BACKUP_STORAGE=s3  # or "local" or "both"
 
 # Storage buckets (S3-compatible)
 STORAGE_IMAGE_BUCKET=dmp-img
@@ -109,7 +102,7 @@ STORAGE_PUBLIC_URL=https://dmp-img.s3.us-east-1.amazonaws.com
 After configuring, run:
 
 ```bash
-./index "/path/to/music" --only="Test"
+./index --only "Test" --exact
 ```
 
 Images will be:

@@ -20,7 +20,7 @@ Fetch and analyze error logs from the NAS Docker container. Groups errors by cat
 
 | Category | Pattern | Severity | Typical Fix |
 |----------|---------|----------|-------------|
-| MB Rate Limiting | `HTTP 503 - Waiting for MusicBrainz` | Low | Self-recovering. Tune request rate if excessive |
+| MB Rate Limiting | `HTTP 503 - Waiting for MusicBrainz` | Low | Self-recovering, and mostly absent from newer logs: load-shed 503s are absorbed silently and only counted in the run summary. Raising `MB_MIN_DELAY_MS` does not help — we sit at ~1/15 of the allowance |
 | Connection Failures | `Request failed: error sending request for url` | Medium | Transient network errors. Retry logic improvement |
 | Compound Artist Search | `Search error:` + artist name with "&", "feat.", "with", "presents", commas | Low | Expected for collaboration artists. The index-time MusicBrainz resolver decides splits now - re-run `./index --resolve-artists` rather than splitting by hand |
 | File Permissions | `Permission denied (os error 13)` | Medium | Fix file ownership/permissions on NAS |
@@ -56,6 +56,6 @@ Fetch and analyze error logs from the NAS Docker container. Groups errors by cat
 ## Notes
 
 - Warnings (WARN) are informational, not errors — include but separate
-- 503s are normal for MB API under load — only flag if attempt count regularly hits 3+
+- 503s are normal for MB API under load — only flag if attempt count regularly hits 3+. `./dissect` turns the same log into `reports/errors.xlsx` if a spreadsheet is easier than a summary
 - Compound artist names (containing "&", "feat.", "with", "presents", commas) will almost always fail search — these are expected
 - `errors.log` is append-only; grows across sessions. Use timestamps to isolate sessions

@@ -13,14 +13,14 @@ The structured workflow for detecting and fixing metadata issues in the library.
 ## Overview
 
 ```
-./audit           →  writes DETECTED rows to 6 issue tables
+./audit           →  writes DETECTED rows to 7 issue tables
 /issues UI        →  review, edit proposed values, select rows, click "Fix Selected"
   (queues rows)   →  status changes DETECTED → PENDING
 ./fix --{type}    →  reads PENDING rows, applies fixes, sets RESOLVED or FAILED
 ./refresh    →  re-reads file tags back into DB (only after file-writing fix types)
 ```
 
-The web terminal (`/issues/[type]` page) runs `./fix` automatically when you click "Fix Selected". The `./audit` is triggered from `/issues` (overview page, "Run Audit" button).
+The web terminal (per-type page, e.g. `/issues/corrupted`) runs `./fix` automatically when you click "Fix Selected". The `./audit` is triggered from `/issues` (overview page, "Run Audit" button).
 
 ---
 
@@ -33,6 +33,8 @@ The web terminal (`/issues/[type]` page) runs `./fix` automatically when you cli
 | duplicates | `--duplicates` | `--duplicates` | No (merges B→A in DB, deletes B image) | No |
 | missing | `--missing` | `--missing` | Yes (writes missing tag fields) | Yes |
 | enrichment | `--enrichment` | *(no fix)* | No | No |
+| duplicate-release | `--duplicate-release` | *(no fix)* | No | No |
+| mismatched-release-id | `--mismatched-release-id` | *(no fix)* | No | No |
 
 **File-writing types** (corrupted, missing): after `./fix`, the changed tags need to be re-read into the DB. The UI shows a "Refresh" button scoped to the affected artists after the terminal exits with code 0.
 
@@ -128,7 +130,7 @@ UPDATE "IssueCorruptedTpe2" SET status = 'PENDING' WHERE status = 'DETECTED';
 
 | Concern | Location |
 |---------|----------|
-| Detection logic | `scripts/audit/src/{type}.rs` |
+| Detection logic | `scripts/audit/src/{type}.rs` (both release-pair rules live in `release_pairs.rs`) |
 | Fix logic | `scripts/fix/src/{type}.rs` |
 | Tag writes | `scripts/fix/src/tags.rs` |
 | Image deletion | `dmp_fix::tags::delete_artist_image(config, filename)` - uses `config.project_root` + S3 |
@@ -138,7 +140,7 @@ UPDATE "IssueCorruptedTpe2" SET status = 'PENDING' WHERE status = 'DETECTED';
 | Summary counts | `web/server/api/issues/summary.get.ts` |
 | Store | `web/stores/issues.ts` |
 | Types | `web/types/issues.ts` - `IssueType`, `EnrichmentField`, row interfaces |
-| Per-type page | `web/pages/issues/[type].vue` |
+| Per-type page | one file per type, e.g. `web/pages/issues/corrupted.vue` (thin wrappers around `components/issues/TypeContent.vue`) |
 | Table component | `web/components/issues/IssueTable.vue` |
 | Slot names | Keys transformed via `.replace(/[^a-zA-Z0-9]/g, '_')` - e.g. `artist.name` → `cell-artist_name` |
 
@@ -153,9 +155,12 @@ IssueOrphanArtist     - phantom/unreachable artists; links to Artist
 IssueDuplicateArtist  - normalized-name collisions; links to Artist (A=keep, B=merge)
 IssueMissingMetadata  - tracks missing core fields; links to LocalReleaseTrack
 IssueEnrichmentGap    - releases missing enrichment fields; links to LocalRelease
+IssueDuplicateRelease - near-identical local copies sharing one MB release; links to two LocalReleases
+IssueMismatchedReleaseId - different-title local releases sharing one MB release; links to two LocalReleases
+FixHistory            - what a ./fix run applied (drives /issues/history undo)
 ```
 
-All have `status IssueStatus` (DETECTED/PENDING/RESOLVED/FAILED) and cascade-delete from AuditRun.
+All issue tables have `status IssueStatus` (DETECTED/PENDING/PENDING_REVERT/RESOLVED/FAILED) and cascade-delete from AuditRun.
 
 ---
 

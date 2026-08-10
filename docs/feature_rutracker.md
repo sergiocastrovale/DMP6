@@ -88,7 +88,7 @@ waits for the window to roll over. Raise the budget only after raising the Prowl
 limit (and mind RuTracker's own server-side limits). At 19K-catalogue scale Soulseek stays the
 workhorse; RuTracker is a slow, prioritized trickle.
 
-The `/downloads` header **Sources** switches (`components/downloads/DownloadSources.vue`) toggle
+The **Sources** switches on Settings → Monitoring (`components/settings/MonitoringSources.vue`) toggle
 `DownloadSources.enabled` per source and show each source's live connection status (RuTracker needs
 both Prowlarr + qBittorrent connected; Soulseek needs slskd). The queue tables badge each row with its
 actual source (RuTracker / Soulseek), tied to `DownloadedRelease.source`.

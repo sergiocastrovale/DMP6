@@ -24,7 +24,9 @@ Truncates all database tables and deletes all image files. **Destructive** - req
 
 ## Full Wipe
 
-Truncates all tables (cascading, 21 tables) and deletes every `.jpg` under `web/public/img/releases/` and `web/public/img/artists/` (plus S3 if `IMAGE_STORAGE=s3` or `both`).
+`TRUNCATE ... CASCADE` on 22 tables (catalogue, playlists, favorites, `FolderScan`, `FixHistory`, `MbArtistLookup`) and deletes every `.jpg` under `web/public/img/releases/` and `web/public/img/artists/` (plus S3 if `IMAGE_STORAGE=s3` or `both`). Issue tables aren't listed explicitly — they go via the `Artist`/release cascades.
+
+`Settings`, `User` and `RolePermission` are **not** truncated: config and logins survive a full nuke. `Statistics` is truncated, which includes the scan-lock row; the next `acquire_lock` recreates it.
 
 ## `--only` (Selective Delete)
 

@@ -99,7 +99,7 @@ Run hash stored in `Settings.indexRunHash`. On restart, folders already processe
 
 **One folder = one `LocalRelease`.** `build_group_key` (`scripts/index/src/db.rs`) keys a release on the containing folder alone: `"folder:{folderPath}"` (root-level files with no folder fall back to `"meta:{slugTitle}:{year}:{slugArtist}"`). The folder is treated as a *structural* boundary — its name is never parsed for metadata values; title/year/artist come only from tags, then from the MusicBrainz match.
 
-Per-track MB ids (`mb_release_id` / `mb_release_group_id`) are **not** part of the group key. They identify which release a *recording* appears on, not which folder-album a *file* belongs to — keying on them shredded compilations (whose tracks carry their original sources' ids) into per-track fragments (see `docs/index_severe_bug.md`). The ids are still stored per-track for sync's matcher.
+Per-track MB ids (`mb_release_id` / `mb_release_group_id`) are **not** part of the group key. They identify which release a *recording* appears on, not which folder-album a *file* belongs to — keying on them shredded compilations (whose tracks carry their original sources' ids) into per-track fragments. The ids are still stored per-track for sync's matcher.
 
 Display title/year for the release come from the folder's **majority (mode)** `album`/`year` tag (`folder_majority_title_year`), so a folder whose tracks disagree still gets a deterministic name (sync overrides it with the MB title once matched).
 

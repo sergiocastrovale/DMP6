@@ -1,32 +1,34 @@
 # Scripts: backup
 
-Streams a compressed PostgreSQL dump from the NAS into `web/dump/`.
+Pulls a compressed PostgreSQL dump **and** an image archive from the NAS into `web/dump/`.
 
 ## Usage
 
 ```bash
-./backup
+./backup              # Database + images
+./backup --db-only    # Database only
+./backup --img-only   # Images only
 ```
 
 Output:
 
 ```
-web/dump/YYYY-MM-DDTHH-MM-SS.sql.gz
+web/dump/YYYY-MM-DDTHH-MM-SS.sql.gz       # pg_dump
+web/dump/YYYY-MM-DDTHH-MM-SS_img.tar.gz   # everything under NAS_IMG_DIR
 ```
 
 ## How It Works
 
 1. SSHes into the NAS using the `nas` host alias from `~/.ssh/config` (set up in [docs/truenas.md](../truenas.md)).
-2. Runs `pg_dump --no-owner --no-acl --clean --if-exists` **inside** the `ix-postgres-postgres-1` container, so the dump uses the server's own `pg_dump` and the local PostgreSQL client version is irrelevant.
-3. Pipes the dump through `gzip -9` (maximum compression) **on the NAS side**, so the wire only carries already-compressed bytes.
-4. Streams those bytes back over SSH straight into the local file - nothing is buffered to memory or to a temp file on the NAS.
-5. Verifies the result with `gzip -t` and a minimum-size check; if either fails, the partial file is deleted so you never end up with a corrupt dump.
+2. Runs `sudo docker exec` + `pg_dump --no-owner --no-acl --clean --if-exists` **inside** the Postgres container, so the dump uses the server's own `pg_dump` and the local client version is irrelevant.
+3. Compresses with `gzip -9` (DB) and `tar -cf - | gzip -9` (images) **on the NAS**, writing both into `NAS_DUMP_DIR`, then copies them down — the wire only carries already-compressed bytes.
+4. Verifies each archive with `gzip -t` and a minimum-size check; a failed check deletes the partial file, so a corrupt archive never lands in `web/dump/`.
 
-The dump is **read-only** from the database's perspective - `pg_dump` never modifies anything, and the script never issues `DROP`/`CREATE` against the live database.
+Read-only from the database's perspective: `pg_dump` modifies nothing, and the script never issues `DROP`/`CREATE` against the live database.
 
 ## Configuration
 
-Reads from `web/.env`. All values have sensible defaults; override only if your setup differs.
+Reads `web/.env`. All values have defaults; override only if your setup differs.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -34,7 +36,10 @@ Reads from `web/.env`. All values have sensible defaults; override only if your 
 | `POSTGRES_CONTAINER` | `ix-postgres-postgres-1` | Postgres container name on the NAS |
 | `BACKUP_DB_USER` | `dmp` | Database role |
 | `BACKUP_DB_NAME` | `dmp` | Database name |
+| `NAS_DUMP_DIR` | `/mnt/SSD/web/dmp/dump` | Where archives are built on the NAS |
+| `NAS_IMG_DIR` | `/mnt/SSD/web/dmp/img` | Image directory to archive |
 
 ## Restore
 
-The `./restore` wrapper (`scripts/restore`) reads `web/dump/*.sql.gz` and is fully compatible with the files this script produces.
+`./restore [file.sql.gz]` loads the newest (or named) dump from `web/dump/` into the local PostgreSQL
+named by `DATABASE_URL`. Database only — image archives are extracted by hand.

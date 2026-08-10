@@ -7,7 +7,7 @@ Deploy DMP on TrueNAS Scale. Images are built on your dev machine and pushed to 
 - TrueNAS Scale 25.04+, PostgreSQL app installed
 - Docker on your dev machine
 - SSH access: user `Kp` with full privileges
-- Music at `/mnt/dmp/music/mainstream`, SSD pool at `/mnt/SSD`
+- Music at `/mnt/dmp/mainstream`, SSD pool at `/mnt/SSD`
 
 ---
 
@@ -29,8 +29,8 @@ GRANT ALL PRIVILEGES ON DATABASE dmp TO dmp;
 
 ```bash
 ssh nas
-mkdir -p path/to/dmp/{img/artists,img/releases,dump,redis}
-chown -R 999:999 path/to/dmp
+mkdir -p $DEPLOY_PATH/{img/artists,img/releases,dump,redis}
+chown -R 999:999 $DEPLOY_PATH
 ```
 
 ---
@@ -60,7 +60,7 @@ Set in `web/.env`:
 ```env
 SERVER_HOST=192.168.1.241
 SERVER_USER=Kp
-DEPLOY_PATH=path/to/dmp
+DEPLOY_PATH=/mnt/SSD/web/dmp
 SSH_KEY_PATH=~/.ssh/nas
 ```
 
@@ -69,13 +69,13 @@ SSH_KEY_PATH=~/.ssh/nas
 ## 4. NAS `.env`
 
 ```bash
-ssh nas && nano path/to/dmp/.env
+ssh nas && nano $DEPLOY_PATH/.env
 ```
 
 ```env
 DATABASE_URL=postgresql://dmp:your-password@host.docker.internal:5432/dmp?connection_limit=20&pool_timeout=10
-MUSIC_DIR=/mnt/dmp/music/mainstream
-DMP_DATA=path/to/dmp
+MUSIC_DIR=/mnt/dmp/mainstream
+DMP_DATA=/mnt/SSD/web/dmp
 DMP_PORT=3000
 ```
 
@@ -111,11 +111,11 @@ Access: `http://192.168.1.241:3000`
 ```bash
 # Dev machine
 ./backup                # → web/dump/YYYY-MM-DDTHH-MM-SS.sql.gz
-scp "dump/$(ls -t dump/ | head -1)" nas:path/to/dmp/dump/
+scp "dump/$(ls -t dump/ | head -1)" nas:$DEPLOY_PATH/dump/
 
 # NAS
 ssh nas
-cd path/to/dmp
+cd "$DEPLOY_PATH"   # /mnt/SSD/web/dmp
 sudo docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "DROP DATABASE IF EXISTS dmp;"
 sudo docker exec -it ix-postgres-postgres-1 psql -U dmp -d postgres -c "CREATE DATABASE dmp OWNER dmp;"
 gunzip -c "dump/$(ls -t dump/ | head -1)" | sudo docker exec -i ix-postgres-postgres-1 psql -U dmp -d dmp
@@ -126,7 +126,7 @@ sudo docker restart dmp
 
 ```bash
 ssh nas
-cd path/to/dmp
+cd "$DEPLOY_PATH"   # /mnt/SSD/web/dmp
 ./index && ./sync
 ```
 
@@ -138,11 +138,11 @@ Shell wrappers are deployed to `DEPLOY_PATH`. They run binaries inside the conta
 
 ```bash
 ssh nas
-cd path/to/dmp
+cd "$DEPLOY_PATH"   # /mnt/SSD/web/dmp
 
 ./index                          # extract metadata from files → DB
 ./index --only="Artist Name"     # single artist
-./index --quick                  # skip unchanged folders (mtime check)
+./index --inspect                # re-check indexed files for metadata changes (size/mtime/hash)
 ./index --resume                 # continue from last checkpoint
 ./index --from=a --to=cz         # letter range batch
 
@@ -169,7 +169,7 @@ tmux is pre-installed on TrueNAS Scale. Use it to keep syncs running after you d
 ```bash
 ssh nas
 tmux new -s sync
-cd path/to/dmp
+cd "$DEPLOY_PATH"   # /mnt/SSD/web/dmp
 ./index --from=a --to=z && ./sync --from=a --to=z
 ```
 
@@ -235,7 +235,7 @@ Sized for 32 GB RAM. Settings survive container recreation (written to `postgres
 Runs as `dmp-redis` sidecar. If unreachable the app falls through to the DB silently.
 
 ```bash
-mkdir -p path/to/dmp/redis
+mkdir -p $DEPLOY_PATH/redis
 ```
 
 ### ZFS (music dataset)
@@ -258,7 +258,7 @@ sudo zfs set atime=off dmp/music
    - Service: HTTP, URL: `dmp:3000`
 3. Add the token to the NAS `.env`:
    ```bash
-   echo "CLOUDFLARE_TUNNEL_TOKEN=<token>" >> path/to/dmp/.env
+   echo "CLOUDFLARE_TUNNEL_TOKEN=<token>" >> $DEPLOY_PATH/.env
    ```
 4. Redeploy: `./deploy`
 

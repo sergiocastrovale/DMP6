@@ -76,6 +76,9 @@ Uses `KEYS pattern` to find matching keys, then `DEL`s them. Used for event-driv
 | `GET /api/artists/[slug]` | `artist:{slug}` | 10 min | Artist metadata, genres, URLs |
 | `GET /api/releases/latest` | `releases:latest:{limit}` | 2 min | Ordered by `createdAt DESC` |
 | `GET /api/releases/last-played` | `releases:last-played:{limit}` | 1 min | Shorter TTL - changes on every play |
+| `GET /api/releases/archive` | `releases:archive:pool` | 5 min | Pool the endpoint samples from |
+| `GET /api/app-stats` | `app-stats` | 2 min | Dashboard counters |
+| `GET /api/labs/map/countries` | `map:countries` | 24 h | Country aggregate, changes only after a sync |
 | `GET /api/timeline/decades` | `timeline:decades` | 5 min | Reads from `dmp_timeline` materialized view |
 | `GET /api/timeline/[decade]` | `timeline:{decade}:y=…:p=…:l=…` | 5 min | Year filter + pagination encoded in key |
 
@@ -119,8 +122,7 @@ After `REFRESH MATERIALIZED VIEW CONCURRENTLY dmp_timeline`, all timeline keys a
 If you need to force-clear all DMP cache keys (e.g. after a full re-index), run on the NAS:
 
 ```bash
-sudo docker exec dmp-redis redis-cli KEYS "dmp:*" | xargs sudo docker exec -i dmp-redis redis-cli DEL
-# or wipe everything:
+# Keys are unprefixed (`stats`, `artist:{slug}`, …) and the instance is DMP's alone, so just wipe it:
 sudo docker exec dmp-redis redis-cli FLUSHDB
 ```
 
@@ -157,7 +159,7 @@ Before the first deploy with Redis, create the data directory:
 
 ```bash
 ssh nas
-mkdir -p path/to/dmp/redis
+mkdir -p "$DEPLOY_PATH"/redis   # /mnt/SSD/web/dmp/redis
 ```
 
 ---

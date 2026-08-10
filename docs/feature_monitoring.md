@@ -22,7 +22,7 @@ fully trusted) — everything up to READY is automatic; nothing enters the libra
 
 > **Two sources.** Acquisition can use **RuTracker** (via Prowlarr + qBittorrent) in addition to
 > Soulseek. When both are enabled RuTracker is tried first and Soulseek is the fallback; the
-> `/downloads` header **Sources** switches toggle each. Routing is driven by the existing `priority`
+> Settings → Monitoring **Sources** switches toggle each. Routing is driven by the existing `priority`
 > field (fresh picks → RuTracker at priority 10; an RT miss is recorded in `triedSources`, drops the
 > release to priority 5, and falls through to Soulseek). Everything below stays the same regardless of
 > source. See [feature_rutracker.md](feature_rutracker.md).

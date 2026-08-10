@@ -8,8 +8,8 @@ emulator).
 
 | Layer | Tool | Where | Status |
 |-------|------|-------|--------|
-| 5a Unit | Vitest (happy-dom) | `web/test/useMediaSession.test.ts` | ✅ MediaSession controller (13 tests) |
-| 5b API | Vitest (pure helper) | `web/test/audioRange.test.ts` | ✅ Range/ETag/MIME (10 tests) |
+| 5a Unit | Vitest (happy-dom) | `web/test/unit/composables/useMediaSession.test.ts` | ✅ MediaSession controller (13 tests) |
+| 5b API | Vitest (pure helper) | `web/test/server/utils/audioRange.test.ts` | ✅ Range/ETag/MIME (10 tests) |
 | 5c Web E2E | Playwright | `web/e2e/` | ✅ PWA install, SW denylist, audio Range/304/401 |
 | 5d Android E2E | Emulator (UIAutomator) | `mobile/android-overrides/androidTest/` | ✅ foreground-service gate |
 
@@ -21,7 +21,7 @@ Run on CI via `.github/workflows/web-tests.yml` (5a/5b/5c) and `android-e2e.yml`
 cd web && pnpm test          # vitest run
 ```
 
-`web/test/useMediaSession.test.ts` covers the lock-screen/notification logic that cannot be
+`web/test/unit/composables/useMediaSession.test.ts` covers the lock-screen/notification logic that cannot be
 hand-verified: metadata building (incl. relative→absolute artwork), action-handler registration
 and routing (`next`/`prev`/`play`/`pause`/`seek` with clamping), `playbackState`, and throttled
 `setPositionState` with its error-swallowing race guard. 13 tests.
@@ -32,7 +32,7 @@ injected callbacks) so it needs no Nuxt runtime, `$fetch`, or DOM-of-a-real-stor
 ## 5b — API contract (implemented)
 
 The Range/ETag/MIME logic was extracted from `web/server/api/audio/[id].get.ts` into the pure
-helper `web/server/utils/audioRange.ts`, unit-tested in `web/test/audioRange.test.ts`: open/closed
+helper `web/server/utils/audioRange.ts`, unit-tested in `web/test/server/utils/audioRange.test.ts`: open/closed
 /suffix Range parsing, end clamping, unsatisfiable → null (200 fallback), MIME mapping, ETag
 format. The HTTP status paths (`206`/`304`/`401`) are exercised end-to-end in 5c.
 

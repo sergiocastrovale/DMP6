@@ -20,8 +20,9 @@ The `deploy` script builds the image locally, ships it to the NAS, and restarts 
 1. **Build** - runs `docker build` locally, producing a single `dmp:latest` image (Rust scripts + Nuxt app).
 2. **Pack & transfer** - saves the image to `/tmp/dmp-image.tar.gz`, SCPs to the NAS.
 3. **Load** - runs `docker load` on the NAS, then deletes the archive.
-4. **Deploy** - copies `docker-compose.yml` to `DEPLOY_PATH` on the NAS, runs `docker compose up -d web`.
-5. **Schema** - runs `prisma db push` inside the container to apply any schema changes.
+4. **Deploy** - copies `docker-compose.yml` and the shell wrappers to `DEPLOY_PATH`, ensures the data dirs exist, runs `docker compose up -d web`.
+5. **Schema** - runs `prisma migrate deploy` inside the container (migrations only — never `db push` against production).
+6. **Cleanup** - `docker image prune -f` on the NAS, once the old image is no longer in use.
 
 ## Required env vars
 
@@ -44,18 +45,21 @@ For first-time NAS setup (storage, SSH key, NAS `.env`) see [docs/truenas.md](tr
 
 The `docker-compose.yml` at the project root defines these services:
 
-| Service | Description |
+| Service (container) | Description |
 |---|---|
-| `dmp` | Nuxt app + Rust scripts - serves the UI/API on port `DMP_PORT` (default 3000) |
-| `dmp-redis` | Redis cache (512 MB LRU) |
-| `dmp-cloudflared` | Cloudflare Tunnel - exposes the app publicly without port-forwarding |
+| `web` (`dmp`) | Nuxt app + Rust scripts - serves the UI/API on port `DMP_PORT` (default 3000) |
+| `redis` (`dmp-redis`) | Redis cache (512 MB LRU) |
+| `cloudflared` (`dmp-cloudflared`) | Cloudflare Tunnel - exposes the app publicly without port-forwarding |
+
+Compose commands take the **service** name (`docker compose logs -f web`); `docker exec` takes the
+**container** name (`sudo docker exec dmp cat /app/errors.log`).
 
 ## Running scripts on the NAS
 
 Shell wrappers are deployed alongside `docker-compose.yml`. They invoke binaries inside the container via `docker exec`.
 
 ```bash
-cd path/to/dmp
+cd "$DEPLOY_PATH"   # /mnt/SSD/web/dmp
 ./index --from=a --to=z
 ./sync --only="Artist Name"
 ./audit
@@ -66,14 +70,14 @@ For long-running commands, use tmux on the NAS host:
 
 ```bash
 tmux new -s sync
-cd path/to/dmp
+cd "$DEPLOY_PATH"   # /mnt/SSD/web/dmp
 ./index --from=a --to=z && ./sync --from=a --to=z
 # Ctrl+B, D to detach
 ```
 
 ## Cloudflare Tunnel
 
-If you want to expose the NAS to the web via Cloudflare, you can use a Cloudflared Tunne.
+If you want to expose the NAS to the web via Cloudflare, you can use a Cloudflared Tunnel.
 
 Set `CLOUDFLARE_TUNNEL_TOKEN` in `.env` to your tunnel token. The `cloudflared` container starts after the web container is healthy and keeps the tunnel alive automatically.
 
@@ -81,7 +85,7 @@ Set `CLOUDFLARE_TUNNEL_TOKEN` in `.env` to your tunnel token. The `cloudflared` 
 
 ```bash
 # On the NAS
-cd path/to/dmp
+cd "$DEPLOY_PATH"   # /mnt/SSD/web/dmp
 sudo docker compose ps
 sudo docker compose logs -f web
 sudo docker compose logs -f cloudflared

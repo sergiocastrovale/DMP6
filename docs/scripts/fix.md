@@ -40,7 +40,7 @@ After tag-writing fixes (corrupted, missing), fix automatically invokes the sibl
 Reads `IssueCorruptedTpe2` rows where `status = 'PENDING'`. For each:
 1. Opens the audio file at `track.filePath` (resolved against `MUSIC_DIR`)
 2. Writes `proposedValue` as the new `albumArtist` tag (TPE2/ALBUMARTIST/aART)
-3. Bumps parent directory mtime (creates and deletes `.fix-touch`) so `./index --quick` detects the change
+3. Bumps parent directory mtime (creates and deletes `.fix-touch`) so the follow-up index run sees the folder as changed
 4. Marks issue as `RESOLVED` or `FAILED`
 
 ### `--orphans`

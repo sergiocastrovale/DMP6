@@ -5,7 +5,8 @@ Personal music library web app. Scans local audio files, matches against MusicBr
 ## Stack
 
 - **Web**: Nuxt 4 + Vue 3 + TypeScript + Tailwind v4 + Pinia + Prisma + PostgreSQL
-- **Scripts**: Rust CLI tools (`sync`, `analysis`, `nuke`, `audit`, `fix`)
+- **Scripts**: Rust CLI tools, one crate per binary under `scripts/` (`index`, `sync`, `audit`, `fix`, `problems`, `analysis`, `nuke`, `delete`, `playlists`, `extract-meta-images`, `dissect`, `mosaic`, plus the shared `common` lib)
+- **Mobile**: PWA, plus a Capacitor Android wrapper in `mobile/` that points at a deployed origin (`MOBILE_SERVER_URL`) — see `docs/pwa_capacitor_android.md`
 - **Deployment**: Docker on TrueNAS NAS via `./deploy`
 - **Optional**: Redis cache (ioredis), S3 image storage, Cloudflare Tunnel
 
@@ -33,7 +34,7 @@ Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
 - `Artist.primaryArtistId` = FK to canonical Artist when this artist shares an MB ID with another; connected artist hidden from browse, catalogue aggregated on primary's page
 - `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING_TRACKS | MISSING | UNKNOWN | UNMATCHED
 - `PlaylistType`: MANUAL | GENRE | REGION
-- `LocalRelease` grouped one-per-folder: `groupKey` (unique) = `"folder:{folderPath}"` (root-level files fall back to `"meta:{slugTitle}:{year}:{slugArtist}"`). Per-track MB ids are NOT part of the key — folder is the physical release unit; sync matches folder→MB by embedded-id consensus, then a guarded title+artist search, binding only Official Album/EP (never a Single). See `docs/scripts/index.md`, `docs/scripts/sync.md`, `docs/index_severe_bug.md`.
+- `LocalRelease` grouped one-per-folder: `groupKey` (unique) = `"folder:{folderPath}"` (root-level files fall back to `"meta:{slugTitle}:{year}:{slugArtist}"`). Per-track MB ids are NOT part of the key — folder is the physical release unit; sync matches folder→MB by embedded-id consensus, then a guarded title+artist search, binding only Official Album/EP (never a Single). Keying on per-track ids shredded compilations into per-track fragments — see `docs/scripts/index.md`, `docs/scripts/sync.md`.
 
 ## Standards
 
@@ -91,7 +92,8 @@ return a ? b : c
 ### Testing
 
 - Every code change must consider tests. Before a change is done: run the relevant suite (`pnpm test:unit`, plus `pnpm test:e2e` for UI/flow changes). If touched code has no test, add one; if an existing test is now wrong or deprecated, update it in the same change. A behavior change that doesn't touch its tests is incomplete.
-- Tests live under `web/test/**/*.test.ts` (unit/integration, mirror the source path) and `web/e2e/**/*.spec.ts` (e2e). Runners: `vitest` + `@nuxt/test-utils` (unit), Playwright against the prod build (e2e). Full architecture and conventions: `web/docs/PLAN_tests.md`.
+- Tests live under `web/test/**/*.test.ts` and `web/e2e/**/*.spec.ts`, mirroring the source path. `vitest.config.ts` defines three projects: `unit` (happy-dom; `test/helpers`, `test/server/utils`, `test/unit`), `nuxt` (`@nuxt/test-utils` environment; `test/stores`, `test/composables`, `test/components`), `integration` (node, own ephemeral Postgres via testcontainers, `fileParallelism: false`). Coverage thresholds are baselined in that config — ratchet up, never down.
+- e2e runs Playwright against the **production build** (`pnpm build` then `node .output/server/index.mjs`); `e2e/global-setup.ts` logs in once and saves the session. A spec must never let a click reach `/api/terminal/run` for real — stub the route (see `e2e/scan-actions.spec.ts`), because the real endpoint spawns the Rust binaries against `MUSIC_DIR`.
 - New pure logic goes in an importable helper/util (relative-imported) with a unit test - don't bury testable logic inside store closures or route handlers (extraction pattern: `server/utils/audioRange.ts`).
 - Rust script changes still require `cd scripts && cargo build --release`; web changes require the touched test suite to pass before commit/deploy.
 
@@ -139,6 +141,9 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./sync --catalogue-gaps       # Fast pass: populate MISSING catalogue entries (1 API/artist)
 ./sync --catalogue-gaps --overwrite  # Re-fetch all MISSING entries from scratch
 ./sync --artist-ids file      # Sync artists by ID file, one per line (used by refresh)
+./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when a collab release has several main artists
+./sync --recompute-scores     # Recompute every artist's averageMatchScore from the catalogue (pure SQL), then exit
+./sync --repair-shared-release-ids [--dry-run]  # One-off: unbind LocalReleases that lost a shared-releaseId conflict
 
 # Audit & Fix
 ./audit                       # Detect metadata issues → write to DB (all types)
@@ -147,11 +152,14 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./audit --duplicates          # Only detect duplicate artists
 ./audit --missing             # Only detect missing metadata fields
 ./audit --enrichment          # Only detect enrichment gaps (BPM, mood, AcousticID, etc.)
+./audit --duplicate-release   # Only detect duplicate local copies sharing one MB release (audit-only, no ./fix)
+./audit --mismatched-release-id  # Only detect different-title local releases sharing one MB release (audit-only)
 ./fix --corrupted             # Apply PENDING corrupted TPE2 fixes (tag writes)
 ./fix --orphans               # Apply PENDING orphan artist fixes (delete from DB)
 ./fix --duplicates            # Apply PENDING duplicate artist fixes (merge B into A)
 ./fix --missing               # Apply PENDING missing metadata fixes (tag writes)
 ./fix --revert --corrupted    # Revert previously applied corrupted fixes
+./fix --revert --mode undo-resolved --corrupted  # Revert but leave the issue RESOLVED (default mode is 'undo' → back to DETECTED)
 
 # Destructive
 ./delete "Artist Name"        # Delete artist + cascade (kept as credit-only if credited elsewhere)
@@ -180,8 +188,18 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./playlists --dry-run         # Preview without changes
 ./playlists --report          # Show genre → group assignments
 ./playlists --group rock      # Update single group
+./dissect                     # Parse errors.log → reports/errors.xlsx (--input/--output override paths)
+./backup                      # pg_dump + image archive from the NAS → web/dump/
+./restore [file.sql.gz]       # Load the latest (or named) dump into local PostgreSQL
 ```
-See the docs/scripts folder for context on each script.
+Each script has a doc in `docs/scripts/`. `mosaic` has no wrapper — it is invoked by the web app
+(`/api/labs/mosaic/generate`).
+
+The web UI's scan buttons (`components/ScanActions.vue`, `components/artist/ScanActions.vue`) run
+these same binaries through `/api/terminal/run`. Two intents: **check for new files** (unflagged,
+MANAGER-usable) and **full re-scan** (`--overwrite-with-images --prune`, then `sync --overwrite`;
+ADMIN-only, since `DESTRUCTIVE_FLAGS` in `server/utils/terminalCommand.ts` gates `--delete`,
+`--overwrite*` and `--prune`).
 
 ### Fixing Wrong Artist Pages
 
@@ -204,21 +222,24 @@ On the NAS, script error logs are at: `sudo docker exec dmp cat /app/errors.log`
 - `GET /api/artists/[slug]` - artist detail with genres, URLs, stats
 - `GET /api/artists/[slug]/releases` - all releases (unified MB + local)
 - `GET /api/artists/[slug]/tracks` - all tracks
-- `GET /api/releases/[id]/tracks` - tracks in a release (merges local + MB missing)
+- `GET /api/artists/random` - one random artist
+- `GET /api/releases/[id]/tracks`, `/info` - tracks in a release (merges local + MB missing); release detail
 
 ### Playback
 - `GET /api/audio/[id]` - stream audio with HTTP range support + ETag
 - `POST /api/tracks/[id]/play` - increment playCount
+- `GET /api/tracks/[id]/info`, `/playlists` - track detail; playlists containing it
 - `POST /api/tracks/explore` - 4-slider scoring (energy/era/familiarity/sound)
-- `GET /api/tracks/random-batch` - random tracks for catalogue shuffle
+- `GET /api/tracks/random`, `/random-batch` - random track(s) for catalogue shuffle
 
 ### Library
 - `GET /api/releases/latest` - recently added
 - `GET /api/releases/last-played` - recently played
+- `GET /api/releases/archive` - random archive pool
 - `GET /api/search` - full-text across artists/releases/tracks
-- `GET /api/timeline/decades` - decade grouping
+- `GET /api/timeline/decades`, `/[decade]`, `POST /timeline/refresh` - decade grouping; refresh the `dmp_timeline` materialized view
 - `GET /api/genres` - all genres with counts
-- `GET /api/stats` - library statistics
+- `GET /api/stats`, `/stats/[type]`, `/app-stats` - library statistics; per-stat detail; dashboard counters
 
 ### CRUD
 - `/api/playlists/*` - CRUD for playlists and playlist tracks
@@ -231,23 +252,33 @@ On the NAS, script error logs are at: `sudo docker exec dmp cat /app/errors.log`
 - `GET /api/downloads/queue`, `/active`, `/status` - queue state (gated `sync.view`)
 - `POST /api/downloads/acquire`, `/merge/[id]`, `/merge-all`, `/pause`, `/cleanup` - acquisition/merge pipeline (gated `downloads.crud`)
 - `POST /api/downloads/cancel/[id]`, `/reject/[id]`, `/reject-all`, `/requeue/[id]`, `/requeue-all`, `/retry/[id]` - per-row/bulk state transitions (gated `downloads.crud`)
-- `/api/downloads/sources` - GET/PUT per-source (slskd/RuTracker) config
+- `/api/downloads/sources` - per-source (slskd/RuTracker) config: GET gated `sync.view`, PUT gated `variables.edit`
 - `GET /api/artists/monitoring` - monitored-artist list for the downloads Monitoring tab
 - `PATCH /api/artists/[slug]` - toggle `monitored`
 
+### Issues
+- `GET /api/issues/summary` - counts per issue type
+- `GET /api/issues/[type]`, `PATCH /api/issues/[type]/[id]` - per-type table; edit one proposed fix
+- `POST /api/issues/[type]/queue`, `/queue-revert` - mark DETECTED → PENDING (or PENDING_REVERT)
+- `GET /api/issues/history`, `POST /api/issues/history-undo`, `DELETE /api/issues/history` - applied-fix trail
+
 ### Settings
 - `/api/settings` - GET (masked secrets)/PUT (only overwrites secrets on non-empty value)
+- `GET /api/settings/public` - unauthenticated-safe subset for the client
 
 ### Scrobbling
 - `/api/scrobble/connect`, `/callback` - Last.fm OAuth handshake
 - `POST /api/scrobble/now-playing`, `/scrobble` - Last.fm now-playing + scrobble submission
 
 ### Labs
-- `GET /api/labs/map/countries` - artist country map data (24h cache)
+- `GET /api/labs/map/countries`, `/map/artists` - artist country map data (24h cache); artists per country
+- `GET /api/labs/genome/artists`, `/genome/graph`, `/network/graph`, `/decades/stats` - graph + stats data
 - `/api/labs/mosaic/*` - generate/cancel/list/delete mosaic images
 
 ### Operations
-- `POST /api/terminal/run` - execute shell commands (SSE streaming)
+- `POST /api/terminal/run` - run an allow-listed script (SSE streaming, tmux-backed)
+- `POST /api/terminal/stop`, `/reconnect`, `/unlock` - kill the session, reattach to a running one, clear a stale lock
+- `GET /api/scan/status`, `POST /api/scan/unlock` - index/sync lock state; force-release it
 - `GET /api/health` - health check (public)
 
 ## Pages
@@ -262,11 +293,11 @@ On the NAS, script error logs are at: `sudo docker exec dmp cat /app/errors.log`
 | `/playlists/[slug]` | Single playlist with tracks |
 | `/favorites` | Tabbed favorites (releases/tracks) |
 | `/timeline` | Browse by decade/year |
-| `/statistics` (+ 15 subpages) | Library stats dashboard; subpages break out individual stat views (artists, releases, tracks, genres, bitrate, size, plays, synced/art-coverage counts, etc.) |
+| `/statistics` (+ 16 subpages) | Library stats dashboard; subpages break out individual stat views (artists, releases, tracks, genres, bitrate, size, plays, shortest, incomplete, unmatched, single-release, synced/art-coverage counts) |
 | `/downloads` (+ 7 subpages) | Download queue shell; subpages are per-status tabs (downloading, failed, history, merge, monitoring, rejected, unavailable) |
 | `/labs` (+ 5 subpages) | Labs index; subpages: map (world map by artist origin country), genome, mosaic, network, decades |
 | `/issues` | Metadata issue overview - run audit, view counts per type |
-| `/issues/[type]` | Per-type issue table - select, edit proposed fixes, queue for fix |
+| `/issues/<type>` (7 pages) | Per-type issue table - select, edit proposed fixes, queue for fix. One page each: corrupted, duplicates, duplicate-release, enrichment, mismatched-release-id, missing, orphans |
 | `/issues/history` | Applied-fix history (undo/redo trail) |
 | `/settings/*` (8 pages) | api-keys, downloads, library, monitoring, permissions, scrobble, storage, users |
 | `/change-password` | Forced/voluntary password change |
@@ -295,13 +326,18 @@ Optional Redis sidecar. Falls through to DB silently if unavailable.
 | `/api/artists/[slug]` | 10 min |
 | `/api/releases/latest` | 2 min |
 | `/api/releases/last-played` | 1 min |
+| `/api/releases/archive` | 5 min |
+| `/api/app-stats` | 2 min |
 | `/api/timeline/*` | 5 min |
+| `/api/labs/map/countries` | 24 h |
 
 Invalidated on track play (`last-played`, `stats`, `artist:{slug}`) and timeline refresh.
 
 ## NAS integration (production server)
 
-NAS target: TrueNAS at `192.168.1.241`, data at `path/to/dmp/`, music at `/mnt/dmp/music/mainstream`.
+NAS target: TrueNAS at `SERVER_HOST` (`192.168.1.241`), deploy dir `DEPLOY_PATH` (`/mnt/SSD/web/dmp`),
+music at `MUSIC_DIR` (`/mnt/dmp/mainstream`). All three come from `web/.env` — the values here are the
+current ones, not hardcoded anywhere.
 
 ## Deployment
 

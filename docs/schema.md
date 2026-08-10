@@ -20,7 +20,7 @@ NULL` is unmatched/local-only; once sync binds it, `matchStatus` reflects how co
 files match the MusicBrainz tracklist (see `ReleaseStatus` enum in CLAUDE.md).
 
 **Grouping is per folder.** A `LocalRelease` = one physical folder (`groupKey = "folder:{folderPath}"`);
-per-track MB ids no longer split a folder (see `docs/scripts/index.md` and `docs/index_severe_bug.md`).
+per-track MB ids no longer split a folder (see `docs/scripts/index.md`).
 Two folder-copies of the same album are two `LocalRelease` rows that bind to the *same*
 `MusicBrainzRelease` — legitimate duplicates, surfaced by the `duplicate-release` audit rule. A
 compilation is **one** `LocalRelease` linked to N artists via the many-to-many `LocalReleaseArtist`

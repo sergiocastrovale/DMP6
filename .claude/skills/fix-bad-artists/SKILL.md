@@ -1,6 +1,6 @@
 ---
 name: fix-bad-artists
-description: Fix wrong artist pages - read screenshots from problems/, diagnose via DB, queue fixes via audit+fix, resync
+description: Fix wrong artist pages - read screenshots the user supplies, diagnose via DB, queue fixes via audit+fix, resync
 user-invocable: true
 ---
 
@@ -41,7 +41,9 @@ The fix for both: write the correct TPE2 value back to the file and resync with 
 
 ## Phase 1: Read Screenshots and Identify Problems
 
-Read all images from the `problems/` folder (or whatever path the user provides). For each screenshot:
+Read the screenshots from the folder the user provides. There is no screenshots folder in the repo, and
+`./problems` at the project root is the tag-defect **script**, not a directory — ask for the path if the
+user hasn't given one. For each screenshot:
 - Note the artist name shown and what looks wrong about it
 - Note the URL slug shown (used to find the artist in DB)
 - Group by problem type (numeric name, track-number prefix, path string, compound artist, etc.)

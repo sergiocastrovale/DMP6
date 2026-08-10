@@ -1,33 +1,33 @@
-
-### Backup Database
-
-To create a local backup of the production database:
+# Local setup
 
 ```bash
-./backup
+cp web/.env.example web/.env      # fill in DATABASE_URL, MUSIC_DIR, SESSION_SECRET
+cd web
+pnpm install
+pnpm db:push                      # create tables
+pnpm db:seed                      # admin/admin, forced password change on first login
+pnpm dev                          # http://localhost:3000
 ```
 
-This command:
-1. Connects to the NAS via SSH
-2. Creates a compressed dump using `pg_dump` (runs inside the NAS's Postgres container)
-3. Downloads it to `web/dump/` directory locally
-4. Names it with timestamp: `YYYY-MM-DDTHH-MM-SS.sql.gz`
-
-This is particularly useful for keeping a local copy of the production database. See [docs/scripts/backup.md](scripts/backup.md) for details.
-
-### Restore Database Locally
-
-To restore a backup to your local database:
+Rust binaries (needed for `./index`, `./sync`, …):
 
 ```bash
-./restore [filename]
+cd scripts && cargo build --release
 ```
 
-Examples:
+Postgres install and troubleshooting: [dev_guide.md](dev_guide.md).
+
+## Populate from production
+
+Fastest way to get a real catalogue locally — no indexing, no MusicBrainz calls.
+
 ```bash
-# Restore latest backup
-./restore
-
-# Restore specific backup
-./restore 2026-02-18T14-30-00.sql.gz
+./backup                          # NAS → web/dump/YYYY-MM-DDTHH-MM-SS.sql.gz (+ _img.tar.gz)
+./restore                         # newest dump → local PostgreSQL
+./restore 2026-02-18T14-30-00.sql.gz   # or a specific one
 ```
+
+Details and configuration: [scripts/backup.md](scripts/backup.md).
+
+Images referenced by the restored rows live in the image archive; extract it over `web/public/img/`,
+or set `REMOTE_SERVER_URL` in `web/.env` to proxy missing images and audio from the NAS instead.

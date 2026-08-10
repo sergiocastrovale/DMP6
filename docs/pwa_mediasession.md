@@ -13,7 +13,7 @@ The logic lives in a standalone, dependency-free module:
 `web/composables/useMediaSession.ts` → `createMediaSession(controls)`.
 
 It takes plain getter/action callbacks (no Vue, no Nuxt, no `$fetch`), so it is unit-testable in
-isolation (`web/test/useMediaSession.test.ts`). The store wires it up.
+isolation (`web/test/unit/composables/useMediaSession.test.ts`). The store wires it up.
 
 ```
 createMediaSession(controls) → {

@@ -1,12 +1,13 @@
 # Dev guide
 
-This document is the single source of truth for the DMP v6 web application.
+Local development setup. Conventions, data model, commands and API/page inventory live in
+[CLAUDE.md](../CLAUDE.md) — that file is canonical; this one covers getting a machine running.
 
 ## Stack
 
 - **Node.js 20+** and **pnpm** (for Prisma): `npm install -g pnpm`
-- **Framework**: Nuxt 4.x (latest) + Vue 3 + TypeScript
-- **Styling**: Tailwind CSS v4 only (absolutely no custom CSS)
+- **Framework**: Nuxt 4 + Vue 3 + TypeScript
+- **Styling**: Tailwind CSS v4. No custom CSS except the three exceptions listed in CLAUDE.md (animated conic-gradient border, Leaflet control overrides)
 - **Icons**: Lucide (`lucide-vue-next`)
 - **State**: Pinia with localStorage persistence (`pinia-plugin-persistedstate`)
 - **Database**: Prisma + PostgreSQL 16+ (schema at `web/prisma/schema.prisma`)
@@ -17,12 +18,13 @@ This document is the single source of truth for the DMP v6 web application.
 
 ## Coding Standards
 
+Full list in CLAUDE.md. The load-bearing ones:
+
 - All TypeScript definitions live in `web/types/`
-- API consolidated with centralized patterns in `server/api/`
-- Zero CSS - Tailwind utility classes only
-- Icons from Lucide only
+- Tailwind utilities only; icons from Lucide only
 - Keep database queries performant - use Prisma `select` to limit fields, proper indexes
-- No scripts-related code, no downloader code, no CLI invocation code
+- No Rust/scripts logic reimplemented in the web app - the app shells out to the binaries via `/api/terminal/run`
+- Tests: `pnpm test:unit` for every change, `pnpm test:e2e` (needs `pnpm build` first) for UI/flow changes
 
 
 ## PostgreSQL Setup (WSL2 / Ubuntu)
@@ -42,18 +44,20 @@ sudo service postgresql start
 
 ### Create database and user
 
+Use the role/database named in `DATABASE_URL` (`dmp`/`dmp` by default):
+
 ```bash
 sudo -u postgres psql <<SQL
-CREATE USER dmp6 WITH PASSWORD 'dmp6';
-CREATE DATABASE dmp6 OWNER dmp6;
-GRANT ALL PRIVILEGES ON DATABASE dmp6 TO dmp6;
+CREATE USER dmp WITH PASSWORD 'dmp';
+CREATE DATABASE dmp OWNER dmp;
+GRANT ALL PRIVILEGES ON DATABASE dmp TO dmp;
 SQL
 ```
 
 ### Verify connection
 
 ```bash
-psql -U dmp6 -d dmp6 -h localhost -c "SELECT 1;"
+psql -U dmp -d dmp -h localhost -c "SELECT 1;"
 ```
 
 ## Database Schema
@@ -68,14 +72,6 @@ This creates all tables and relations automatically. Run this whenever the schem
 
 ## Common Workflows
 
-### Initial Setup
-
-### Fine-tuning metadata
-```bash
-# Generate metadata report in /reports
-./analysis
-```
-
 ### First setup
 
 ```bash
@@ -86,11 +82,15 @@ This creates all tables and relations automatically. Run this whenever the schem
 ### After adding new music
 
 ```bash
-# After adding new music
-./index --resume
+./refresh          # index (skips already-indexed files) then sync
+./index --resume   # only to continue a run that was interrupted
+```
 
-# Sync new artists
-./sync
+### Fine-tuning metadata
+
+```bash
+./analysis         # metadata quality report in /reports
+./problems --audit # per-file tag defects → problems.xlsx
 ```
 
 ###  Rebuild entire DB and catalogue

@@ -64,7 +64,7 @@ files during the post-download move. See the permissions note in `lidarr-stack.m
 
 ### 2. DMP env vars (NAS `.env`)
 
-In `path/to/dmp/.env` (the DMP deploy `.env`, **not** slskd's):
+In the NAS `.env` (`$DEPLOY_PATH/.env`) (the DMP deploy `.env`, **not** slskd's):
 
 ```
 DOWNLOADS_DIR=/mnt/SSD/Downloads        # host dataset, identity-mounted into the web container

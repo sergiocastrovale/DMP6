@@ -53,6 +53,9 @@ cd scripts && cargo build --release -p sync
 ./sync --only-write-mb-to-files  # Backfill DB-known MB IDs into file tags (no API calls)
 ./sync --only-write-mb-to-files --only "radiohead"  # Backfill specific artist
 ./sync --web                     # Emit PROGRESS:{json} for the web terminal
+./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when the release has several main artists
+./sync --recompute-scores        # Recompute every artist's averageMatchScore (pure SQL), then exit
+./sync --repair-shared-release-ids [--dry-run]  # One-off repair of releases that lost a shared-releaseId conflict
 ```
 
 `--release` cannot combine with `--from`, `--to`, or `--only`.
@@ -76,6 +79,10 @@ cd scripts && cargo build --release -p sync
 | `--verbose` | bool | false | Log skipped/already-synced releases |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 | `--artist-ids` | String | - | Read artist IDs from file (one per line, used by refresh) |
+| `--artist-hint` | String | - | With `--release`: prefer this Artist ID when the release has several main artists |
+| `--recompute-scores` | bool | false | Recompute `averageMatchScore` for all artists from the catalogue (pure SQL, no API), then exit |
+| `--repair-shared-release-ids` | bool | false | One-off: unbind LocalReleases that lost a shared-`releaseId` conflict (pure SQL), then exit |
+| `--dry-run` | bool | false | With `--repair-shared-release-ids`: print the plan, write nothing |
 
 ## Output Modes
 
@@ -169,7 +176,7 @@ Metadata-wins with a guarded search fallback. Three tiers, tried in order; embed
 
 Tiers 1 and 2 use a **consensus** of the tracks' embedded ids, not an arbitrary pick. The majority id is accepted only if it is **unanimous** (the only distinct id) or a **strict plurality** (count ≥ 2 and strictly greater than any rival). A compilation folder whose tracks each carry their *original source's* id has no consensus → those tiers don't fire (it falls to Tier 3 or `UNMATCHED`). This is what stops a comp from binding to one arbitrary source single.
 
-### Allow-list (`scripts/sync/src/allowlist.rs`)
+### Allow-list (`scripts/common/src/mb/allowlist.rs`)
 
 Before any bind, the candidate must pass `is_allowed`:
 - release-group **primary type** ∈ {Album, EP} (rejects Single, Broadcast, Other);
@@ -218,7 +225,7 @@ computed against a tracklist that no longer existed until someone thought to pas
 
 ## Rate Limiting
 
-Shared with `index` via `common::mb::api::RateLimiter` — one limiter per process, threaded as `&mut`, so MB calls are sequential by construction. Floor 1300ms (`MB_MIN_DELAY_MS` overrides, clamped 1100–10000), cap 10s, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset`. A rate limit doubles the delay; each success sheds a flat 100ms back toward the floor.
+Shared with `index` via `common::mb::api::RateLimiter` — one limiter per process, threaded as `&mut`, so MB calls are sequential by construction. Floor 1100ms (`MB_MIN_DELAY_MS` overrides, clamped 1100–10000), cap 10s, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset`. A rate limit doubles the delay; each success sheds a flat 100ms back toward the floor.
 
 503 is classified **rate-limit** vs **server overload** from its body and headers, and only the former slows the steady-state pace — MusicBrainz being unwell is not fixed by going slower. The penalty applies at most once per request, not once per retry. Retries up to 6x on 429/503 with a 1s → 16s ladder, or `Retry-After` when MusicBrainz sends it. Full detail in `docs/scripts/index.md` § Pacing.
 

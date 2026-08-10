@@ -4,9 +4,16 @@ Download missing releases from an artist page via [Soulseek](downloads_slskd.md)
 
 > A second source, **RuTracker** (via Prowlarr + qBittorrent), can run alongside Soulseek and is tried
 > first when enabled (Soulseek is the fallback). It can fill a whole discography pack's missing albums
-> in one grab. Toggle both via the `/downloads` header **Sources** switches. See
+> in one grab. Toggle both via the **Sources** switches on Settings → Monitoring. See
 > [feature_rutracker.md](feature_rutracker.md) for setup (`PROWLARR_*` / `QBITTORRENT_*` env or
 > Settings → Downloads).
+
+Provenance: the slskd integration (endpoint shapes, search polling, download monitoring, rate limiting),
+the quality-scoring heuristic (format weight + bitrate + peer speed + queue penalty) and the
+source-agnostic orchestrator pattern were modelled on
+[SoulSync](https://github.com/Nezreka/SoulSync). Its other sources (Deezer/Tidal/Qobuz/YouTube),
+AcoustID fingerprinting and metadata-enrichment workers were deliberately not adopted — DMP has its own
+MusicBrainz sync.
 
 ## How it works
 
@@ -76,7 +83,7 @@ Two roots, three logical areas (downloads root holds only `dmp/`, `.dmp-songkong
 DOWNLOADS_PATH = /mnt/SSD/Downloads/dmp        staging + _ready subfolder (transient)
   /mnt/SSD/Downloads/dmp/{artist}/…            in-progress: transfer → transcode → enrich → layout
   /mnt/SSD/Downloads/dmp/_ready/…              READY, "Ready to merge" (awaiting merge)
-MUSIC_DIR = /mnt/dmp/music/mainstream (/music) merged into the library (index + sync run)   (live)
+MUSIC_DIR = /mnt/dmp/mainstream (/music) merged into the library (index + sync run)   (live)
 ```
 
 Steps:
@@ -102,13 +109,14 @@ The folder transform is **DMP's** (it knows the MB album type); SongKong is enri
 
 Each tab is its **own page** (mirrors `/issues`: slim pages + a shared `DownloadsShell` =
 breadcrumbs + tab bar + persistent header; chrome is the generic `components/TabShell.vue` +
-`components/Breadcrumbs.vue`, shared with `/issues`). Tabs: **Monitoring** (`/downloads`, root;
+`components/Breadcrumbs.vue`, shared with `/issues`). Tabs: **Monitoring** (`/downloads/monitoring`;
 paginated artist list with search + per-artist Turn on/off and a live "Monitoring x/y" counter) ·
 **Ready to merge** (`/downloads/merge`, READY, with Merge / Merge all; the artist page deep-links here
 via an **Awaiting merge** pill → `?highlight=<id>`, hiding the MISSING badge while acquiring) · **Downloading** (`/downloads/downloading`,
 live % bars + Cancel) · **Failed** (`/downloads/failed`, Force retry / Reject, icon actions) ·
 **Unavailable** (`/downloads/unavailable`, no Soulseek source found yet — not a failure, sinks in
-priority and auto-retries; Force retry boosts it back to the front) · **History**
+priority and auto-retries; Force retry boosts it back to the front) · **Rejected**
+(`/downloads/rejected`, terminal rejects with "Move back to queue") · **History**
 (`/downloads/history`, read-only, subtabs per terminal status: Promoted / Rejected / Abandoned /
 Invalid). Every queue page has its own client-side search box. Failed/Unavailable rows show the
 attempt count ("unavailable (N tries)" / "gave up (N tries)").
@@ -153,7 +161,7 @@ slskd-specific config: [downloads_slskd.md](downloads_slskd.md).
 ## Set up on a fresh NAS (copy-paste)
 
 Assumes TrueNAS, shared apps group **gid 568**, downloads on `/mnt/SSD/Downloads`, collection on
-`/mnt/dmp/music/mainstream`. Adjust paths per NAS.
+`/mnt/dmp/mainstream`. Adjust paths per NAS.
 
 **1. Paths & permissions** — the downloads volume is shared by slskd (writes as its uid) and dmp
 (moves/deletes), so they need a common group with group-write:
@@ -169,7 +177,7 @@ ssh nas '
 
 **2. docker-compose.yml** (already in repo) — both `web` and `slskd`:
 - identity-mount downloads: `- /mnt/SSD/Downloads:/mnt/SSD/Downloads` (host path == container path).
-- `web`: mount collection `- /mnt/dmp/music/mainstream:/music`; **`group_add: ["568"]`** (so dmp can
+- `web`: mount collection `- /mnt/dmp/mainstream:/music`; **`group_add: ["568"]`** (so dmp can
   delete slskd-owned source files); `MUSIC_DIR=/music`; `DOWNLOADS_PATH=/mnt/SSD/Downloads/dmp`.
 - `slskd`: `environment: UMASK=0002` (group-writable downloads).
 
@@ -190,7 +198,7 @@ the table above. Leave `MUSIC_DIR` per environment (NAS `/music`, local dev your
 # then in the app: Settings → Downloads/Monitoring, or Downloads page → "Monitor all"
 ```
 
-**6. Collection writes** — merges add new folders under `/mnt/dmp/music/mainstream`; dmp (uid 1000,
+**6. Collection writes** — merges add new folders under `/mnt/dmp/mainstream`; dmp (uid 1000,
 gid 1001 + 568) can create them. Overwriting a *pre-existing* release owned by another user can `EPERM`
 — but truly-missing releases create fresh dmp-owned folders, so normal merges work.
 

@@ -1,6 +1,8 @@
 # Scripts: playlists
 
-Generates or updates genre-based playlists by matching artists' MusicBrainz genres against configurable genre groups with weighted proximity scoring.
+Generates or updates **genre** playlists (`PlaylistType=GENRE`, from `genre-groups.json`) and **region**
+playlists (`PlaylistType=REGION`, from `region-groups.json`, keyed on `Artist.country`). Genre matching
+scores artists' MusicBrainz genres against configurable groups with weighted proximity.
 
 ## Build
 
@@ -16,6 +18,8 @@ cd scripts/playlists && cargo build --release
 ./playlists --group rock                 # Update single group
 ./playlists --report                     # Show all genres → group assignments
 ./playlists --config path/to/custom.json # Custom config file
+./playlists --no-genres                  # Skip genre playlists (regions only)
+./playlists --no-regions                 # Skip region playlists (genres only)
 ```
 
 ## How It Works
@@ -24,7 +28,7 @@ cd scripts/playlists && cargo build --release
 2. Fetches all genres from the database (sourced from MusicBrainz artist genres/tags)
 3. For each group, matches genres using root keyword matching + includes/excludes
 4. Scores artists by their best matching genre weight
-5. Selects up to 500 tracks from highest-scored artists
+5. Selects up to `max_tracks` (500 in the shipped config) from highest-scored artists, capped at `max_per_release` (3) per release
 6. Creates/updates `Playlist` records with `type=GENRE`
 
 ## Genre Matching
