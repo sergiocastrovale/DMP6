@@ -16,6 +16,24 @@ export const parseProgress = (lines: string[]): ScanProgress | null => {
   return null
 }
 
+// Reads the "dropped links" warning ./index emits when tracks whose files disappeared took favorites
+// or playlist entries with them (dropped_links_line in scripts/index/src/deletion.rs - keep both in
+// sync). Replacing a file under a NEW name is a new track row, so the old row's links cascade away;
+// they are reported, never re-linked.
+export const parseDroppedLinks = (lines: string[]): { favorites: number, playlists: number } | null => {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    if (typeof line !== 'string') {
+      continue
+    }
+    const match = /WARN: dropped (\d+) favourite\(s\) and (\d+) playlist entry\(ies\)/.exec(line)
+    if (match) {
+      return { favorites: Number(match[1]), playlists: Number(match[2]) }
+    }
+  }
+  return null
+}
+
 export const filterQueue = (items: DownloadedReleaseItem[], query: string): DownloadedReleaseItem[] => {
   const q = query.trim().toLowerCase()
   if (!q) {

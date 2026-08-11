@@ -12,11 +12,18 @@ const settingsStore = useSettingsStore()
 
 const musicDir = ref(settings.value?.musicDir ?? '')
 const showTerminal = ref(settingsStore.showTerminal)
+const autoScanEnabled = ref(settings.value?.autoScanEnabled ?? false)
+const autoScanIntervalHours = ref(String(settings.value?.autoScanIntervalHours ?? 12))
 
 const { saving, saved, error, save } = useFormSave(async () => {
   await $fetch('/api/settings', {
     method: 'PUT',
-    body: { musicDir: musicDir.value || null, showTerminal: showTerminal.value },
+    body: {
+      musicDir: musicDir.value || null,
+      showTerminal: showTerminal.value,
+      autoScanEnabled: autoScanEnabled.value,
+      autoScanIntervalHours: autoScanIntervalHours.value === '' ? null : autoScanIntervalHours.value,
+    },
   })
   await refresh()
   await settingsStore.load()
@@ -33,6 +40,22 @@ const { saving, saved, error, save } = useFormSave(async () => {
         label="Music Directory"
         description="Absolute path to your music library root. Overrides MUSIC_DIR env var. Used by index script and audio streaming."
         placeholder="/path/to/your/music"
+      />
+
+      <div class="space-y-1.5">
+        <Switch v-model="autoScanEnabled" label="Scan automatically" />
+        <p class="text-xs text-ink0">
+          Runs index + sync unattended so new folders and releases appear without pressing anything.
+          Only the instance started with MONITOR_PRIMARY=true runs it.
+        </p>
+      </div>
+
+      <SettingsField
+        v-if="autoScanEnabled"
+        v-model="autoScanIntervalHours"
+        label="Automatic scan interval (hours)"
+        description="Minimum hours between unattended scans. Minimum 1."
+        placeholder="12"
       />
 
       <div class="space-y-1.5">

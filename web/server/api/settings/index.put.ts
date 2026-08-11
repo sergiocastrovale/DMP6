@@ -5,7 +5,7 @@ import { maskSettingsSecrets, parseSecretField } from '~/server/utils/settingsSe
 import { parseNullableInt } from '~/server/utils/settingsFields'
 
 const INT_FIELDS = [
-  'downloadMinBitrate',
+  'downloadMinBitrate', 'autoScanIntervalHours',
   'monitorIntervalMin', 'monitorCap', 'monitorGapsHours', 'retryCooldownDays',
   'noProgressSec', 'maxDownloadAttempts', 'maxConcurrentDownloads',
   'searchPicksPerInterval', 'searchIntervalSec', 'gapsPicksPerRun', 'gapsIntervalMin',
@@ -30,6 +30,8 @@ export default defineEventHandler(async (event) => {
 
   const data = {
     musicDir: body.musicDir ?? undefined,
+    autoScanEnabled: typeof body.autoScanEnabled === 'boolean' ? body.autoScanEnabled : body.autoScanEnabled === null ? null : undefined,
+    autoScanIntervalHours: ints.autoScanIntervalHours,
     slskdUrl: body.slskdUrl ?? undefined,
     slskdApiKey: parseSecretField(body.slskdApiKey),
     downloadsPath: body.downloadsPath ?? undefined,

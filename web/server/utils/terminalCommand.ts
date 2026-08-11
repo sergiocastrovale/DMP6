@@ -7,6 +7,7 @@ import type { PermissionKey } from './permissions'
 export const ALLOWED_COMMANDS = [
   './index', './sync', './analysis', './nuke',
   './playlists', './audit', './fix', './refresh',
+  './delete',
 ] as const
 
 // 'sync.view' only ever gated read/list endpoints elsewhere; running these scripts (they can mutate or
@@ -20,13 +21,18 @@ export const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
   './audit': 'issues.view',
   './fix': 'issues.view',
   './nuke': 'ADMIN',
+  // Wipes an artist's whole catalogue (and with `--files`, their audio files) - ADMIN like ./nuke,
+  // never a 'sync.run' MANAGER action.
+  './delete': 'ADMIN',
 }
 
 // Flags that delete data or force a destructive rewrite - restricted to ADMIN regardless of whether the
 // caller holds 'sync.run', so a MANAGER can trigger normal index/sync runs but not `--delete`/
 // `--overwrite` passes. `--prune` belongs here too: it bypasses index's mount-blip ratio guard, so a
 // wrong scope deletes rows the guard would otherwise have saved.
-const DESTRUCTIVE_FLAGS = ['--delete', '--overwrite', '--overwrite-with-images', '--prune'] as const
+// `--files` belongs here for the same reason: it removes audio files from MUSIC_DIR, which no amount
+// of re-indexing brings back.
+const DESTRUCTIVE_FLAGS = ['--delete', '--overwrite', '--overwrite-with-images', '--prune', '--files'] as const
 
 export const hasDestructiveFlag = (args: string[]): boolean =>
   args.some(a => (DESTRUCTIVE_FLAGS as readonly string[]).includes(a))

@@ -163,6 +163,7 @@ cd scripts && cargo build --release    # Must rebuild manually!
 
 # Destructive
 ./delete "Artist Name"        # Delete artist + cascade (kept as credit-only if credited elsewhere)
+./delete "Artist Name" --files  # Same, plus delete their audio files inside MUSIC_DIR (+ emptied folders)
 ./delete "A;B" --dry-run      # Preview multi-artist deletion
 ./nuke                        # Full DB reset + image deletion
 ./nuke --keep-artist-img      # Full reset but preserve artist images
@@ -196,10 +197,18 @@ Each script has a doc in `docs/scripts/`. `mosaic` has no wrapper — it is invo
 (`/api/labs/mosaic/generate`).
 
 The web UI's scan buttons (`components/ScanActions.vue`, `components/artist/ScanActions.vue`) run
-these same binaries through `/api/terminal/run`. Two intents: **check for new files** (unflagged,
-MANAGER-usable) and **full re-scan** (`--overwrite-with-images --prune`, then `sync --overwrite`;
-ADMIN-only, since `DESTRUCTIVE_FLAGS` in `server/utils/terminalCommand.ts` gates `--delete`,
-`--overwrite*` and `--prune`).
+these same binaries through `/api/terminal/run`. Three intents: **check for new files** (unflagged,
+MANAGER-usable), **re-check changed files** (`--inspect`, MANAGER-usable — the only non-destructive way
+to pick up files replaced in place, since a default index skips any known `filePath`) and **full
+re-scan** (`--overwrite-with-images --prune`, then `sync --overwrite`; ADMIN-only, since
+`DESTRUCTIVE_FLAGS` in `server/utils/terminalCommand.ts` gates `--delete`, `--overwrite*`, `--prune`
+and `--files`). Artist removal (`components/artist/DeleteDialog.vue` → `./delete`, ADMIN-only) is on
+the same allow-list; its unchecked "Remove all files" switch is what adds `--files`.
+
+`Settings → Library` also carries the opt-in **auto-scan** (`server/utils/autoScan.ts`, ticked by
+`server/plugins/monitor.ts` on the `MONITOR_PRIMARY` instance only, serialized through `runExclusive`).
+Off by default; interval floor 1 hour. See `docs/GUIDE.md` for the user-facing walkthrough of all of
+this.
 
 ### Fixing Wrong Artist Pages
 

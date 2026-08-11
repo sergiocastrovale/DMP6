@@ -79,7 +79,13 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
    missing, the pass assumes an unmounted share and deletes nothing. `--prune` bypasses that guard for
    folders this run walked and found audio files in (the mount is provably up), which is the only way a
    wholesale folder swap - old rip removed, new one dropped in, so ~half the rows look missing - ever
-   loses its stale rows. The whole-library `detect_deleted_folders` sweep keeps the guard unconditionally
+   loses its stale rows. The whole-library `detect_deleted_folders` sweep keeps the guard unconditionally.
+   Favorites and playlist entries pointing at those tracks cascade away with them (a file replaced under
+   a NEW name is a new track row - `filePath` is the identity). They are counted before the delete and
+   reported once at the end of the run as
+   `WARN: dropped N favourite(s) and M playlist entry(ies) for removed files`, which the web UI turns
+   into an amber notice (`dropped_links_line` in `deletion.rs` ↔ `parseDroppedLinks` in
+   `web/helpers/functions.ts`). Nothing is re-linked automatically
 9. **Update totals** for this artist's releases and tracks
 10. **Set `lastIndexedAt`** on Artist (only if new/updated/deleted tracks in folder)
 11. **Stamp run hash** on FolderScan for resumability

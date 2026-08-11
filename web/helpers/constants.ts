@@ -27,6 +27,7 @@ export const commandLabels: Record<string, string> = {
 export const scanActions = [
   { id: 'check', icon: 'Search', text: 'Check for new files', subtext: 'Index new files & sync', scope: 'both', admin: false },
   { id: 'full', icon: 'RefreshCw', text: 'Full re-scan', subtext: 'Re-read every tag, prune missing files, rematch', scope: 'both', admin: true },
+  { id: 'inspect', icon: 'FileSearch', text: 'Re-check changed files', subtext: 'Re-read tags for files that changed on disk', scope: 'both', admin: false },
   { id: 'index', icon: 'HardDriveDownload', text: 'Index only', subtext: 'Index new local files', scope: 'both', admin: false },
   { id: 'sync', icon: 'Globe', text: 'Sync only', subtext: 'Sync pending releases against MusicBrainz', scope: 'both', admin: false },
   { id: 'catalogue-gaps', icon: 'ListChecks', text: 'Catalogue gaps', subtext: 'Find missing releases in local catalogue', scope: 'artist', admin: false },

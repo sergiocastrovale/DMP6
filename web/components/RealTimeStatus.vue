@@ -166,6 +166,8 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <DroppedLinksNotice v-if="!terminal.isRunning" class="mt-4" />
+
       <div
         v-if="terminal.isRunning && terminal.lines.length > 0 && settings.showTerminal"
         class="mt-4 max-h-24 overflow-hidden rounded border border-rule bg-bg p-3 font-mono text-xs leading-5 text-ink-2 cursor-pointer"

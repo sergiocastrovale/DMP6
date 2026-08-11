@@ -34,7 +34,7 @@ use images::{hash_image_file, resolve_release_cover, upload_release_image_to_s3}
 use index::db::*;
 use index::deletion::{
     delete_empty_releases, delete_orphan_artists, delete_orphaned_mb_releases,
-    delete_removed_tracks, detect_deleted_folders,
+    delete_removed_tracks, detect_deleted_folders, dropped_links_line,
 };
 use metadata::extract_metadata;
 use nuke::nuke_local_artists;
@@ -707,6 +707,11 @@ async fn main() {
     let mut updated_total: u64 = 0;
     let mut skipped_total: u64 = 0;
     let mut error_total: u64 = 0;
+    // Favorites / playlist entries that cascaded away with tracks whose files disappeared. Surfaced in
+    // the run summary (and parsed by the web progress panel) so a re-encode or rename that silently
+    // takes a playlist entry with it is visible instead of invisible.
+    let mut favorites_dropped_total: u64 = 0;
+    let mut playlists_dropped_total: u64 = 0;
     let scanned_folders: HashSet<String> = artist_folders.iter().cloned().collect();
     let mut mb_id_to_image_hash: HashMap<String, String> = HashMap::new();
     let mut all_artist_ids: HashSet<String> = HashSet::new();
@@ -1548,15 +1553,17 @@ async fn main() {
             let mut total = 0u64;
             for sub in tf.get(folder_name.as_str()).unwrap_or(&vec![]) {
                 let prefix = format!("{}/", sub);
-                total += delete_removed_tracks(&pool, &prefix, &music_dir, prune)
-                    .await
-                    .count;
+                let res = delete_removed_tracks(&pool, &prefix, &music_dir, prune).await;
+                favorites_dropped_total += res.favorites_dropped;
+                playlists_dropped_total += res.playlists_dropped;
+                total += res.count;
             }
             total
         } else {
-            delete_removed_tracks(&pool, &folder_prefix, &music_dir, prune)
-                .await
-                .count
+            let res = delete_removed_tracks(&pool, &folder_prefix, &music_dir, prune).await;
+            favorites_dropped_total += res.favorites_dropped;
+            playlists_dropped_total += res.playlists_dropped;
+            res.count
         };
 
         // Cleanup used to run right here, once per folder - three full-table anti-joins × ~25k folders,
@@ -1619,6 +1626,8 @@ async fn main() {
     // -------------------------------------------------------------------------
     if !shutdown.load(Ordering::SeqCst) && !has_filter(&args) {
         let del = detect_deleted_folders(&pool, &scanned_folders, &config).await;
+        favorites_dropped_total += del.favorites_dropped;
+        playlists_dropped_total += del.playlists_dropped;
         if del.tracks_deleted > 0 {
             reporter.info(&format!(
                 "Removed {} track(s), {} release(s), {} artist(s) for deleted folders.",
@@ -1856,6 +1865,13 @@ async fn main() {
             parts.push(format!("{} errors", error_total));
         }
         reporter.info(&format!("  {}", parts.join(" | ")));
+    }
+
+    if favorites_dropped_total > 0 || playlists_dropped_total > 0 {
+        reporter.info(&dropped_links_line(
+            favorites_dropped_total,
+            playlists_dropped_total,
+        ));
     }
 
     // A filtered run cleans up only after the artists it actually touched. Sweeping globally from a

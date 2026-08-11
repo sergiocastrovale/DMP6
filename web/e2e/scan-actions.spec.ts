@@ -149,6 +149,16 @@ test.describe('artist scan dropdown', () => {
     ])
   })
 
+  test('"Re-check changed files" re-reads tags for files already indexed', async ({ page }) => {
+    const runs = await stubTerminal(page)
+    await openArtistMenu(page)
+    await page.getByRole('button', { name: 'Re-check changed files' }).click()
+
+    await expect.poll(() => runs).toEqual([
+      { command: './index', args: ['--only', artistName, '--exact', '--inspect'] },
+    ])
+  })
+
   test('"Catalogue gaps" runs the fast gaps pass only', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)

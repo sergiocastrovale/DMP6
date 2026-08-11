@@ -439,6 +439,11 @@ model Settings {
   id                     String   @id @default("main")
   // Library
   musicDir               String?
+  // Opt-in unattended library scan (index + sync) run by the monitor plugin on the primary instance.
+  // null = off; the interval falls back to AUTO_SCAN_INTERVAL_HOURS/12 when only the toggle is set.
+  autoScanEnabled        Boolean?
+  autoScanIntervalHours  Int?
+  autoScanLastRunAt      DateTime?
   // Downloads
   slskdUrl               String?
   slskdApiKey            String?

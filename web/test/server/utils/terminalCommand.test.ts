@@ -15,7 +15,7 @@ import {
 
 describe('isAllowedCommand', () => {
   it('accepts every allow-listed command', () => {
-    for (const cmd of ['./index', './sync', './analysis', './nuke', './playlists', './audit', './fix', './refresh']) {
+    for (const cmd of ['./index', './sync', './analysis', './nuke', './playlists', './audit', './fix', './refresh', './delete']) {
       expect(isAllowedCommand(cmd)).toBe(true)
     }
   })
@@ -58,6 +58,10 @@ describe('permissionForCommand', () => {
     expect(permissionForCommand('./playlists')).toBe('sync.run')
   })
 
+  it('maps ./delete to the ADMIN role gate - it wipes a catalogue and can wipe files', () => {
+    expect(permissionForCommand('./delete')).toBe('ADMIN')
+  })
+
   it('maps audit/fix to issues.view', () => {
     expect(permissionForCommand('./audit')).toBe('issues.view')
     expect(permissionForCommand('./fix')).toBe('issues.view')
@@ -74,6 +78,11 @@ describe('hasDestructiveFlag', () => {
     expect(hasDestructiveFlag(['--only', 'X', '--overwrite'])).toBe(true)
     expect(hasDestructiveFlag(['--overwrite-with-images'])).toBe(true)
     expect(hasDestructiveFlag(['--only', 'X', '--exact', '--prune'])).toBe(true)
+  })
+
+  it('flags --files: deleting audio files is not recoverable by re-scanning', () => {
+    expect(hasDestructiveFlag(['Boards of Canada', '--y', '--files'])).toBe(true)
+    expect(hasDestructiveFlag(['Boards of Canada', '--y'])).toBe(false)
   })
 
   it('is false for normal args with no destructive flag', () => {
@@ -93,6 +102,10 @@ describe('withWebFlag', () => {
 
   it('does not duplicate --web if already present', () => {
     expect(withWebFlag('./sync', ['--web'])).toEqual(['--web'])
+  })
+
+  it('leaves ./delete alone - it has no --web mode', () => {
+    expect(withWebFlag('./delete', ['Artist', '--y'])).toEqual(['Artist', '--y'])
   })
 
   it('leaves args untouched for non-web-mode commands', () => {

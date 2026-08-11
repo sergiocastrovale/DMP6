@@ -31,7 +31,7 @@ describe('getScoreRange', () => {
 describe('visibleScanActions', () => {
   it('drops artist-only actions from the global surface', () => {
     const ids = visibleScanActions('both', true).map(s => s.id)
-    expect(ids).toEqual(['check', 'full', 'index', 'sync'])
+    expect(ids).toEqual(['check', 'full', 'inspect', 'index', 'sync'])
   })
 
   it('keeps every action on the artist surface', () => {
@@ -39,7 +39,7 @@ describe('visibleScanActions', () => {
   })
 
   it('hides destructive actions from non-admins on both surfaces', () => {
-    expect(visibleScanActions('both', false).map(s => s.id)).toEqual(['check', 'index', 'sync'])
+    expect(visibleScanActions('both', false).map(s => s.id)).toEqual(['check', 'inspect', 'index', 'sync'])
     expect(visibleScanActions('artist', false).map(s => s.id)).not.toContain('full')
   })
 

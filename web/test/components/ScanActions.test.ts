@@ -35,14 +35,23 @@ describe('ScanActions.vue (global)', () => {
   it('never renders artist-only actions', async () => {
     const wrapper = await mountSuspended(ScanActions)
     expect(wrapper.text()).not.toContain('Catalogue gaps')
-    expect(wrapper.findAll('button')).toHaveLength(4)
+    expect(wrapper.findAll('button')).toHaveLength(5)
   })
 
   it('hides the destructive full re-scan from non-admins', async () => {
     auth.isAdmin = false
     const wrapper = await mountSuspended(ScanActions)
     expect(wrapper.text()).not.toContain('Full re-scan')
-    expect(wrapper.findAll('button')).toHaveLength(3)
+    expect(wrapper.findAll('button')).toHaveLength(4)
+  })
+
+  it('re-reads changed files with --inspect, which needs no admin flag', async () => {
+    auth.isAdmin = false
+    const wrapper = await mountSuspended(ScanActions)
+    const inspect = wrapper.findAll('button')[1]!
+    expect(inspect.text()).toContain('Re-check changed files')
+    await inspect.trigger('click')
+    expect(runMock.mock.calls).toEqual([['./index', ['--inspect']]])
   })
 
   it('runs an unflagged index+sync for "Check for new files"', async () => {
@@ -96,6 +105,14 @@ describe('artist/ScanActions.vue', () => {
     expect(runMock.mock.calls).toEqual([
       ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite-with-images', '--prune']],
       ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite']],
+    ])
+  })
+
+  it('scopes --inspect to the artist folders so replaced files are re-read', async () => {
+    const wrapper = await openMenu()
+    await wrapper.findAll('button')[3]!.trigger('click')
+    expect(runMock.mock.calls).toEqual([
+      ['./index', ['--only', 'Boards of Canada', '--exact', '--inspect']],
     ])
   })
 

@@ -33,6 +33,10 @@ struct Args {
     #[arg(long)]
     y: bool,
 
+    /// Also delete the artist's audio files from disk (only paths inside MUSIC_DIR)
+    #[arg(long)]
+    files: bool,
+
     /// Show what would be deleted without changing anything
     #[arg(long)]
     dry_run: bool,
@@ -93,6 +97,9 @@ struct DeletionPlan {
     mb_releases: Vec<String>,
     folder_paths: Vec<String>,
     track_count: i64,
+    /// Absolute `LocalReleaseTrack.filePath` values, read BEFORE the transaction - once the rows are
+    /// gone there is nothing left to tell `--files` which files belonged to the artist.
+    track_paths: Vec<String>,
 }
 
 async fn build_plan(
@@ -270,12 +277,27 @@ async fn build_plan(
         .0
     };
 
+    let track_paths: Vec<String> = if local_release_ids.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_as::<_, (String,)>(
+            r#"SELECT "filePath" FROM "LocalReleaseTrack" WHERE "localReleaseId" = ANY($1::text[])"#,
+        )
+        .bind(&local_release_ids)
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .map(|(p,)| p)
+        .collect()
+    };
+
     Ok(DeletionPlan {
         artist_actions,
         local_releases,
         mb_releases: mb_release_ids,
         folder_paths,
         track_count,
+        track_paths,
     })
 }
 
@@ -435,6 +457,46 @@ async fn execute_plan(
 }
 
 // ---------------------------------------------------------------------------
+// Files on disk
+// ---------------------------------------------------------------------------
+
+/// Deletes the artist's audio files and prunes the folders they emptied. Runs AFTER the DB work: a
+/// failed transaction must never leave the catalogue intact while the files are gone. Paths outside
+/// MUSIC_DIR are skipped and reported, never followed (see `delete::files`).
+fn remove_audio_files(plan: &DeletionPlan, config: &Config, dry_run: bool) {
+    let Some(music_dir) = config.music_dir.as_deref() else {
+        eprintln!(
+            "  {} MUSIC_DIR is not configured - no files deleted",
+            "✗".red()
+        );
+        error_log::log_error("--files requested but MUSIC_DIR is not configured");
+        return;
+    };
+
+    let result = delete::files::delete_files(&plan.track_paths, music_dir, dry_run);
+    let verb = if dry_run { "would remove" } else { "removed" };
+
+    println!(
+        "  {} {} {} file(s), {} empty folder(s)",
+        "✓".green(),
+        verb,
+        result.files_removed,
+        result.dirs_removed
+    );
+
+    if !result.skipped.is_empty() {
+        println!(
+            "  {} {} path(s) skipped (outside MUSIC_DIR, missing, or not removable)",
+            "!".yellow(),
+            result.skipped.len()
+        );
+        for path in result.skipped.iter().take(10) {
+            println!("      {} {}", "•".bright_black(), path.bright_black());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -585,6 +647,13 @@ async fn main() {
         "MB releases     : {}",
         plan.mb_releases.len().to_string().bright_white()
     );
+    if args.files {
+        println!(
+            "Files on disk   : {} {}",
+            plan.track_paths.len().to_string().bright_white(),
+            "(will be DELETED from MUSIC_DIR)".red().bold()
+        );
+    }
     println!();
 
     if plan.artist_actions.is_empty() {
@@ -593,6 +662,9 @@ async fn main() {
     }
 
     if args.dry_run {
+        if args.files {
+            remove_audio_files(&plan, &config, true);
+        }
         println!("{} (dry run - no changes made)", "✓".green());
         return;
     }
@@ -644,6 +716,10 @@ async fn main() {
             release_lock(&pool).await;
             std::process::exit(1);
         }
+    }
+
+    if args.files {
+        remove_audio_files(&plan, &config, false);
     }
 
     update_statistics(&pool).await.ok();

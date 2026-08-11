@@ -8,6 +8,7 @@ import {
   formatNumber,
   formatPlaytime,
   formatSpeed,
+  parseDroppedLinks,
   parseProgress,
   sortItems,
   timeAgo,
@@ -31,6 +32,33 @@ describe('parseProgress', () => {
 
   it('returns null for an empty array', () => {
     expect(parseProgress([])).toBeNull()
+  })
+})
+
+describe('parseDroppedLinks', () => {
+  const warning = 'WARN: dropped 3 favourite(s) and 5 playlist entry(ies) for removed files'
+
+  it('reads both counts from the index warning line', () => {
+    expect(parseDroppedLinks(['Done.', warning, '════'])).toEqual({ favorites: 3, playlists: 5 })
+  })
+
+  it('returns null when no run dropped anything', () => {
+    expect(parseDroppedLinks(['Done.', 'Files: 10 | New: 2'])).toBeNull()
+    expect(parseDroppedLinks([])).toBeNull()
+  })
+
+  it('keeps the latest warning when a session ran twice', () => {
+    const older = 'WARN: dropped 1 favourite(s) and 1 playlist entry(ies) for removed files'
+    expect(parseDroppedLinks([older, 'Done.', warning])).toEqual({ favorites: 3, playlists: 5 })
+  })
+
+  it('ignores non-string lines (the store also buffers structured entries)', () => {
+    expect(parseDroppedLinks([{ foo: 1 } as any, warning])).toEqual({ favorites: 3, playlists: 5 })
+  })
+
+  it('reports zero counts rather than null when the run dropped none of one kind', () => {
+    const line = 'WARN: dropped 0 favourite(s) and 2 playlist entry(ies) for removed files'
+    expect(parseDroppedLinks([line])).toEqual({ favorites: 0, playlists: 2 })
   })
 })
 

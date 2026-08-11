@@ -5,6 +5,7 @@ import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { ensureDownloadSources, downloadWorkPossible } from '~/server/utils/downloadSources'
 import { enforceDiskGuard } from '~/server/utils/pauseState'
+import { resolveAutoScanSettings, runAutoScan, shouldRunAutoScan } from '~/server/utils/autoScan'
 import { monitorLog } from '~/server/utils/monitorLog'
 import { prisma } from '~/server/utils/prisma'
 
@@ -24,6 +25,9 @@ let lastSweepAt = 0
 
 // Tracks the acquisition idle/active transition so we log it once, not every tick.
 let acquisitionIdle = false
+
+// One unattended scan at a time - a full index+sync outlives many ticks.
+let autoScanRunning = false
 
 // Always-on, headless acquisition (see docs/feature_monitoring.md). One base tick fires three
 // INDEPENDENT, self-guarded, self-throttled workers (none awaited together, so a slow Soulseek
@@ -73,6 +77,19 @@ export default defineNitroPlugin(() => {
     // Always reconcile (cheap, bounded, internally guarded). Soulseek + torrent finalizers both run.
     reconcileDownloads().catch(e => monitorLog('error', `reconcile error: ${e?.message || e}`))
     reconcileTorrentDownloads().catch(e => monitorLog('error', `torrent reconcile error: ${e?.message || e}`))
+
+    // Unattended library scan. Deliberately ahead of the monitorEnabled gate below: it is a library
+    // concern, not a downloader one, so it still runs with acquisition disabled. Off unless the user
+    // turns it on in Settings → Library.
+    if (!autoScanRunning) {
+      const scan = await resolveAutoScanSettings().catch(() => null)
+      if (scan && shouldRunAutoScan(scan, new Date())) {
+        autoScanRunning = true
+        runAutoScan()
+          .catch(e => monitorLog('error', `auto-scan error: ${e?.message || e}`))
+          .finally(() => { autoScanRunning = false })
+      }
+    }
 
     const mon = await resolveMonitorSettings().catch(() => null)
     if (!mon?.monitorEnabled) {return}

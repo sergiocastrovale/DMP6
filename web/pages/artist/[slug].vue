@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Radar } from 'lucide-vue-next'
+import { Loader2, Radar, Trash2 } from 'lucide-vue-next'
 
 definePageMeta({
   layout: 'default',
@@ -16,6 +16,10 @@ const {
 
 const catalogue = useArtistCatalogue(releases)
 provide('catalogue', catalogue)
+
+const { isAdmin } = useAuth()
+
+const deleteOpen = ref(false)
 </script>
 
 <template>
@@ -49,8 +53,20 @@ provide('catalogue', catalogue)
             Monitor {{ artist.monitored ? 'ON' : 'OFF' }}
           </UiButton>
           <ArtistScanActions :artist-name="artist.name" :folders="artistFolders" />
+          <UiButton
+            v-if="isAdmin"
+            variant="secondary"
+            size="sm"
+            :icon="Trash2"
+            title="Remove this artist from the catalogue, optionally deleting their files"
+            @click="deleteOpen = true"
+          >
+            Remove
+          </UiButton>
         </div>
       </ArtistHeader>
+
+      <ArtistDeleteDialog v-if="isAdmin" v-model="deleteOpen" :artist-name="artist.name" />
 
       <ArtistReleases
         :slug="artist.slug"

@@ -77,6 +77,10 @@ watch(() => terminal.lines.length, () => {
         </button>
       </div>
 
+      <div v-if="!terminal.isRunning" class="px-4 pt-3">
+        <DroppedLinksNotice />
+      </div>
+
       <div
         ref="scrollContainer"
         class="flex-1 overflow-y-auto p-4 font-mono text-xs leading-5 text-ink-2"

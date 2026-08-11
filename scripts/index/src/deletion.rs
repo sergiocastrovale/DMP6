@@ -11,10 +11,41 @@ pub struct DeletionStats {
     pub tracks_deleted: u64,
     pub releases_deleted: u64,
     pub artists_deleted: u64,
+    pub favorites_dropped: u64,
+    pub playlists_dropped: u64,
 }
 
 pub struct TrackDeletionResult {
     pub count: u64,
+    /// User-owned links that cascade away with the deleted rows. Counted, never re-linked: a replaced
+    /// file is a new `LocalReleaseTrack` (filePath is the identity), so its favorite / playlist entries
+    /// and playCount are gone. Reported so the run does not lose them silently.
+    pub favorites_dropped: u64,
+    pub playlists_dropped: u64,
+}
+
+/// The single line the web UI parses for the "dropped links" chip (`parseDroppedLinks` in
+/// web/helpers/functions.ts). Keep the wording and both counts in sync with that parser.
+pub fn dropped_links_line(favorites: u64, playlists: u64) -> String {
+    format!(
+        "WARN: dropped {} favourite(s) and {} playlist entry(ies) for removed files",
+        favorites, playlists
+    )
+}
+
+/// Counts the favorite / playlist rows pointing at `track_ids`, before those tracks are deleted.
+async fn count_dropped_links(pool: &PgPool, track_ids: &[String]) -> (u64, u64) {
+    let row: Option<(i64, i64)> = sqlx::query_as(
+        r#"SELECT
+             (SELECT COUNT(*) FROM "FavoriteTrack" WHERE "trackId" = ANY($1::text[])),
+             (SELECT COUNT(*) FROM "PlaylistTrack" WHERE "trackId" = ANY($1::text[]))"#,
+    )
+    .bind(track_ids)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or_default();
+
+    row.map(|(f, p)| (f as u64, p as u64)).unwrap_or((0, 0))
 }
 
 // If more than this fraction of a folder's known tracks appear missing in one pass, treat it as a
@@ -60,7 +91,11 @@ pub async fn delete_removed_tracks(
     }
 
     if missing_ids.is_empty() {
-        return TrackDeletionResult { count: 0 };
+        return TrackDeletionResult {
+            count: 0,
+            favorites_dropped: 0,
+            playlists_dropped: 0,
+        };
     }
 
     if !force && total > 0 && missing_ids.len() as f64 / total as f64 > MAX_MISSING_RATIO {
@@ -68,7 +103,11 @@ pub async fn delete_removed_tracks(
             "delete_removed_tracks: {}/{} tracks missing under '{}' - looks like a mount blip, not a real deletion. Skipping this folder.",
             missing_ids.len(), total, folder_prefix
         ));
-        return TrackDeletionResult { count: 0 };
+        return TrackDeletionResult {
+            count: 0,
+            favorites_dropped: 0,
+            playlists_dropped: 0,
+        };
     }
 
     let count = missing_ids.len() as u64;
@@ -78,6 +117,8 @@ pub async fn delete_removed_tracks(
             count, total, folder_prefix
         );
     }
+    let (favorites_dropped, playlists_dropped) = count_dropped_links(pool, &missing_ids).await;
+
     sqlx::query(r#"DELETE FROM "LocalReleaseTrack" WHERE id = ANY($1::text[])"#)
         .bind(&missing_ids)
         .execute(pool)
@@ -99,7 +140,11 @@ pub async fn delete_removed_tracks(
         .ok();
     }
 
-    TrackDeletionResult { count }
+    TrackDeletionResult {
+        count,
+        favorites_dropped,
+        playlists_dropped,
+    }
 }
 
 /// Artist ids a run is allowed to clean up after, or `None` for the whole library.
@@ -287,7 +332,9 @@ pub async fn detect_deleted_folders(
 
     for db_folder in missing_folders {
         let deleted = delete_folder_tracks(pool, &db_folder).await;
-        stats.tracks_deleted += deleted;
+        stats.tracks_deleted += deleted.count;
+        stats.favorites_dropped += deleted.favorites_dropped;
+        stats.playlists_dropped += deleted.playlists_dropped;
     }
 
     if stats.tracks_deleted > 0 {
@@ -300,10 +347,38 @@ pub async fn detect_deleted_folders(
     stats
 }
 
-async fn delete_folder_tracks(pool: &PgPool, folder: &str) -> u64 {
-    let result = sqlx::query(r#"DELETE FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#)
-        .bind(format!("{}/%", escape_like(folder)))
+async fn delete_folder_tracks(pool: &PgPool, folder: &str) -> TrackDeletionResult {
+    let prefix = format!("{}/%", escape_like(folder));
+
+    // Ids first: the favorite/playlist counts have to be read while the rows still exist.
+    let ids: Vec<String> =
+        sqlx::query_as::<_, (String,)>(r#"SELECT id FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#)
+            .bind(&prefix)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id,)| id)
+            .collect();
+
+    if ids.is_empty() {
+        return TrackDeletionResult {
+            count: 0,
+            favorites_dropped: 0,
+            playlists_dropped: 0,
+        };
+    }
+
+    let (favorites_dropped, playlists_dropped) = count_dropped_links(pool, &ids).await;
+
+    let result = sqlx::query(r#"DELETE FROM "LocalReleaseTrack" WHERE id = ANY($1::text[])"#)
+        .bind(&ids)
         .execute(pool)
         .await;
-    result.map(|r| r.rows_affected()).unwrap_or(0)
+
+    TrackDeletionResult {
+        count: result.map(|r| r.rows_affected()).unwrap_or(0),
+        favorites_dropped,
+        playlists_dropped,
+    }
 }

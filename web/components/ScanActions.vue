@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search, RefreshCw, HardDriveDownload, Globe, Loader2 } from 'lucide-vue-next'
+import { Search, RefreshCw, HardDriveDownload, Globe, FileSearch, Loader2 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import { useTerminalStore } from '~/stores/terminal'
 import { visibleScanActions } from '~/helpers/constants'
@@ -13,7 +13,7 @@ withDefaults(defineProps<{
 const terminal = useTerminalStore()
 const { isAdmin } = useAuth()
 
-const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe }
+const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe, FileSearch }
 
 const globalActions: Record<string, () => Promise<void>> = {
   'check': async () => {
@@ -24,6 +24,9 @@ const globalActions: Record<string, () => Promise<void>> = {
     await terminal.run('./index', ['--overwrite-with-images'])
     await terminal.run('./sync', ['--overwrite'])
   },
+  // --inspect re-reads tags for files already in the DB (default index skips any known filePath), so
+  // replaced or re-tagged files are picked up without a destructive --overwrite pass.
+  'inspect': () => terminal.run('./index', ['--inspect']),
   'index': () => terminal.run('./index', []),
   'sync': () => terminal.run('./sync', []),
 }

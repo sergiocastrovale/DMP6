@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RefreshCw, Loader2, Search, HardDriveDownload, Globe, ListChecks } from 'lucide-vue-next'
+import { RefreshCw, Loader2, Search, HardDriveDownload, Globe, ListChecks, FileSearch } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type { ButtonDropdownOption } from '~/types/ui'
 import { useTerminalStore } from '~/stores/terminal'
@@ -13,7 +13,7 @@ const props = defineProps<{
 const terminal = useTerminalStore()
 const { isAdmin } = useAuth()
 
-const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe, ListChecks }
+const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe, ListChecks, FileSearch }
 
 const artistActions: Record<string, (name: string, folders: string[]) => () => Promise<void>> = {
   'check': (name, folders) => async () => {
@@ -23,6 +23,11 @@ const artistActions: Record<string, (name: string, folders: string[]) => () => P
   'full': (name, folders) => async () => {
     await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite-with-images', '--prune'])
     await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
+  },
+  // --inspect re-reads tags for files already in the DB (default index skips any known filePath), so
+  // replaced or re-tagged files are picked up without a destructive --overwrite pass.
+  'inspect': (_name, folders) => async () => {
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--inspect'])
   },
   'index': (_name, folders) => async () => {
     await terminal.run('./index', ['--only', folders.join(';'), '--exact'])
