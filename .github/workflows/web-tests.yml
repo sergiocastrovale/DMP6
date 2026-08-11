@@ -19,13 +19,18 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # >=22.19 required: testcontainers pulls undici 8, whose webidl layer calls
+          # `markAsUncloneable` from node:worker_threads. On Node 20 that import is undefined and
+          # the integration project's globalSetup dies before any test file is collected.
+          node-version: 22
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       # `integration` project boots its own ephemeral Postgres via testcontainers (docker is
       # preinstalled on ubuntu-latest runners) - no postgres service needed for this job.
-      - run: pnpm test:unit -- --coverage
+      # No `--` before the flag: pnpm 10 forwards it verbatim and vitest then treats `--coverage`
+      # as post-separator noise, silently running without coverage.
+      - run: pnpm test:unit --coverage
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -59,7 +64,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
