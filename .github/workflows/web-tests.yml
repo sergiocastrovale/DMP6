@@ -36,7 +36,10 @@ jobs:
         with:
           name: coverage
           path: web/coverage
-      - run: pnpm exec nuxi typecheck
+      # Uses the workspace's own vue-tsc/typescript. Without vue-tsc in devDependencies, nuxi
+      # npx-installs it into a temp tree that pairs it with a mismatched typescript, and vue-tsc
+      # dies on `require('typescript/lib/tsc')` (ERR_PACKAGE_PATH_NOT_EXPORTED).
+      - run: pnpm typecheck
 
   e2e:
     runs-on: ubuntu-latest
