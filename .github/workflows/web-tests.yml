@@ -54,6 +54,9 @@ jobs:
       DATABASE_URL: postgresql://dmp:dmp@localhost:5432/dmp_test
       MUSIC_DIR: /tmp/music
       NODE_ENV: production
+      # `server/utils/auth.ts` refuses to boot in production without one, and the e2e suite runs
+      # the production build. Throwaway value - the DB is ephemeral and nothing outside CI sees it.
+      SESSION_SECRET: e2e-ci-session-secret
       BASE_URL: http://localhost:3000
       TEST_USER: admin
       TEST_PASS: admin
