@@ -26,6 +26,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # Prisma 6 no longer generates the client on install, and anything importing
+      # `server/utils/prisma.ts` dies on `Cannot find module '.prisma/client/default'`. Needs no
+      # DATABASE_URL - generate never touches the database.
+      - run: pnpm db:generate
       # `integration` project boots its own ephemeral Postgres via testcontainers (docker is
       # preinstalled on ubuntu-latest runners) - no postgres service needed for this job.
       # No `--` before the flag: pnpm 10 forwards it verbatim and vitest then treats `--coverage`
