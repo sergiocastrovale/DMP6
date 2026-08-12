@@ -58,10 +58,11 @@ pub async fn nuke_mb_data(
         // Unlink LocalReleases from MB (set releaseId = NULL, reset status)
         for (mb_db_id, _) in &mb_release_ids {
             sqlx::query(
+                // No "statusReason" here: it is a MusicBrainzRelease column, and naming it made this
+                // statement error out - which `?` propagated, aborting the unlink mid-way.
                 r#"UPDATE "LocalRelease"
                    SET "releaseId" = NULL,
-                       "matchStatus" = 'UNMATCHED'::"ReleaseStatus",
-                       "statusReason" = NULL
+                       "matchStatus" = 'UNMATCHED'::"ReleaseStatus"
                    WHERE "releaseId" = $1"#,
             )
             .bind(mb_db_id)

@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DeleteDialog from '../../components/artist/DeleteDialog.vue'
 
 // Plain values, not refs: vi.hoisted runs before vue is imported.
-const { runMock, terminal, toast } = vi.hoisted(() => ({
+const { runMock, terminal, toast, pushMock } = vi.hoisted(() => ({
   runMock: vi.fn().mockResolvedValue(undefined),
   terminal: { exitCode: 0 },
   toast: { success: vi.fn(), error: vi.fn() },
+  pushMock: vi.fn(),
 }))
 
 vi.mock('~/stores/terminal', () => ({
@@ -19,11 +20,10 @@ vi.mock('~/stores/toast', () => ({
   useToastStore: () => toast,
 }))
 
-// The component redirects with router.push, not navigateTo: the redirect runs after an await, past the
-// point where the Nuxt instance is still available.
-// The component redirects through nuxtApp.runWithContext(() => navigateTo(...)): the redirect runs
-// after an await, where the Nuxt instance would otherwise be gone.
-const pushMock = vi.fn()
+// The component redirects through nuxtApp.runWithContext(() => navigateTo(...)): the redirect runs after
+// an await, where the Nuxt instance would otherwise be gone. `pushMock` has to come from vi.hoisted -
+// mockNuxtImport hoists its factory above every plain const, so a `const pushMock` up here is still in
+// its temporal dead zone when the factory runs.
 mockNuxtImport('navigateTo', () => pushMock)
 
 // ConfirmDialog renders through Dialog.vue's <Teleport to="body">, so the switch and buttons land

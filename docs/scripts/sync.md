@@ -140,6 +140,8 @@ Cannot combine with `--release`, `--delete`, or `--catalogue-gaps`. Compatible w
 
 Resets `musicbrainzId`, `averageMatchScore`, and `lastSyncedAt` to NULL, unlinks `MusicBrainzRelease` records, resets `LocalRelease.matchStatus` to `UNMATCHED`. Re-running `./sync` after this automatically re-syncs those artists.
 
+The unlink statement used to set `statusReason` as well. That column lives on `MusicBrainzRelease`, not `LocalRelease`, so the statement errored - and here the error was propagated with `?`, aborting the unlink part-way through and leaving the rest of the artist's releases still bound to MB. Removed.
+
 ## Artist Matching (5-step)
 
 1. Embedded MB artist ID in any track tag → direct lookup

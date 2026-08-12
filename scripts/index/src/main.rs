@@ -5,7 +5,6 @@ mod nuke;
 use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
 use common::{
-    artists::is_special_artist_name,
     checkpoint::{clear_index_checkpoint, load_index_checkpoint, save_index_checkpoint},
     config::{apply_db_overrides, load_config},
     db::{create_pool, ensure_artist_cached},
@@ -132,6 +131,12 @@ struct IndexArgs {
 
     #[arg(long, help = "Skip the end-of-run artist resolution pass")]
     skip_resolve: bool,
+
+    #[arg(
+        long,
+        help = "Only reconcile Artist rows with MusicBrainz (clear contradicted ids, rename to the canonical name, connect duplicates, sweep orphans), then exit. No network, no folder scan"
+    )]
+    canonicalize_artists: bool,
 }
 
 fn has_filter(args: &IndexArgs) -> bool {
@@ -144,10 +149,14 @@ fn has_filter(args: &IndexArgs) -> bool {
 
 /// Release ids a filtered run should confine artist resolution to, or `None` for the whole library.
 ///
-/// Only used by `--resolve-artists`, which has no folder scan to collect touched artist ids from and
-/// therefore has to derive the scope from the filter itself. Reuses `matches_filter` - the same helper
-/// `nuke_local_artists` applies - so `--only`/`--from`/`--to`/`--exact` mean exactly what they mean
-/// everywhere else.
+/// Used by `--resolve-artists` and `--canonicalize-artists`, neither of which has a folder scan to
+/// collect touched artist ids from, so both derive the scope from the filter itself. Reuses
+/// `matches_filter` - the same helper `nuke_local_artists` applies - so `--only`/`--from`/`--to`/
+/// `--exact` mean exactly what they mean everywhere else.
+///
+/// Never returns `None` once any filter is set, which is load-bearing: `None` means "the whole library"
+/// downstream, so a `--folders` run that fell through to it would canonicalize all ~54k artists behind
+/// a single release's refresh button.
 async fn scoped_release_ids_for_filter(
     pool: &sqlx::PgPool,
     args: &IndexArgs,
@@ -218,12 +227,20 @@ async fn scoped_release_ids_for_filter(
 /// nothing, and `persist_lookup` upserts over the stale rows.
 async fn run_artist_resolution(
     pool: &sqlx::PgPool,
+    config: &common::config::Config,
     reporter: &Reporter,
     dry_run: bool,
     scoped_release_ids: Option<&[String]>,
     overwrite: bool,
 ) {
     use index::resolve::{distinct_tag_values, resolve_and_apply, ArtistResolver};
+
+    // Captured BEFORE the pass runs: the reconcile is what unlinks an artist, so afterwards there is
+    // nothing left to join on. `None` means the whole library, matching the folder loop's convention.
+    let linked_before: Option<Vec<String>> = match scoped_release_ids {
+        Some(ids) => Some(artists_linked_to_releases(pool, ids).await),
+        None => None,
+    };
 
     let mut resolver = ArtistResolver::new(pool, dry_run);
     let names = distinct_tag_values(pool, scoped_release_ids).await;
@@ -307,6 +324,97 @@ async fn run_artist_resolution(
             "Absorbed {} transient MusicBrainz 503(s) (server busy, retried successfully).",
             absorbed
         ));
+    }
+
+    // The pass has just decided who every tag names; this is the moment to make the Artist rows agree,
+    // and to sweep whatever the reconcile left holding nothing.
+    //
+    // The scope is the union of before and after: `before` holds the rows the reconcile may have
+    // stranded, `after` holds the ones it just created (a credit artist that did not exist when the pass
+    // started still needs its name canonicalized).
+    let scope: Option<Vec<String>> = match (linked_before, scoped_release_ids) {
+        (Some(before), Some(ids)) => {
+            let mut all: HashSet<String> = before.into_iter().collect();
+            all.extend(artists_linked_to_releases(pool, ids).await);
+            Some(all.into_iter().collect())
+        }
+        _ => None,
+    };
+    run_canonicalize(pool, config, reporter, dry_run, scope.as_deref()).await;
+}
+
+/// Artists currently linked to `release_ids`, as owners or as track credits. The orphan sweep's scope
+/// on a filtered run: exactly the rows this pass could plausibly strand, and nothing else.
+async fn artists_linked_to_releases(pool: &sqlx::PgPool, release_ids: &[String]) -> Vec<String> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT DISTINCT lra."artistId" FROM "LocalReleaseArtist" lra
+           WHERE lra."localReleaseId" = ANY($1::text[])
+           UNION
+           SELECT DISTINCT tra."artistId" FROM "TrackRelatedArtist" tra
+           JOIN "LocalReleaseTrack" t ON t.id = tra."trackId"
+           WHERE t."localReleaseId" = ANY($1::text[])"#,
+    )
+    .bind(release_ids)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter().map(|(id,)| id).collect()
+}
+
+/// Reconcile Artist rows with MusicBrainz, then delete whatever ends up linked to nothing.
+///
+/// Pure SQL against `MbArtistLookup` - no network, no audio files - which is what makes it usable as a
+/// standalone repair (`--canonicalize-artists`) on a library that cannot afford a re-index.
+async fn run_canonicalize(
+    pool: &sqlx::PgPool,
+    config: &common::config::Config,
+    reporter: &Reporter,
+    dry_run: bool,
+    scope: index::deletion::ArtistScope<'_>,
+) {
+    let (stats, report) = match index::canonicalize::canonicalize_artists(pool, scope, dry_run).await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            reporter.err(&format!("Artist canonicalization failed: {}", e));
+            return;
+        }
+    };
+
+    if dry_run {
+        for name in &report.mbids_cleared {
+            println!("  clear mbid  {}", name);
+        }
+        for r in &report.renames {
+            println!(
+                "  rename      {}  ->  {}{}",
+                r.from,
+                r.to,
+                if r.slug_changes { "  (slug changes)" } else { "" }
+            );
+        }
+        for c in &report.connections {
+            println!("  connect     {}  ->  {}  [{}]", c.duplicate, c.primary, c.mbid);
+        }
+        if !report.mbids_cleared.is_empty() || !report.renames.is_empty() || !report.connections.is_empty() {
+            println!();
+        }
+    }
+
+    if !stats.is_empty() {
+        reporter.info(&format!(
+            "Canonicalized artists: {} contradicted MB id(s) cleared, {} renamed to the MusicBrainz name, {} connected to a primary{}.",
+            stats.mbids_cleared, stats.renamed, stats.connected,
+            if dry_run { " (dry run - no writes)" } else { "" }
+        ));
+    }
+
+    if dry_run {
+        return;
+    }
+    let swept = index::deletion::delete_orphan_artists(pool, config, scope).await;
+    if swept > 0 {
+        reporter.info(&format!("Deleted {} artist(s) left linked to nothing.", swept));
     }
 }
 
@@ -454,12 +562,27 @@ async fn main() {
         let scoped = scoped_release_ids_for_filter(&pool, &args).await;
         run_artist_resolution(
             &pool,
+            &config,
             &reporter,
             args.dry_run,
             scoped.as_deref(),
             args.overwrite,
         )
         .await;
+        release_lock(&pool).await;
+        return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Canonicalize-only mode: reconcile Artist rows with MusicBrainz, no network, no folder scan
+    // -------------------------------------------------------------------------
+    if args.canonicalize_artists {
+        let scoped = scoped_release_ids_for_filter(&pool, &args).await;
+        let scope: Option<Vec<String>> = match scoped.as_deref() {
+            Some(ids) => Some(artists_linked_to_releases(&pool, ids).await),
+            None => None,
+        };
+        run_canonicalize(&pool, &config, &reporter, args.dry_run, scope.as_deref()).await;
         release_lock(&pool).await;
         return;
     }
@@ -1012,24 +1135,15 @@ async fn main() {
                         folder_new += 1;
                     }
 
-                    let album_artist_tag = track.album_artist.as_deref().unwrap_or("");
-                    let track_artist_tag = track.artist.as_deref().unwrap_or("");
-
-                    // The tag that names this release's owner(s): albumArtist when present and not
-                    // a Various-Artists placeholder, otherwise the track's own artist tag - whole,
-                    // never naively split here. A track artist shaped like "Simon & Garfunkel" must
-                    // go through the same MB-verified resolver as albumArtist below, not the old
-                    // blind splitter, which would shred it into a fragment the same way the
-                    // pre-refactor albumArtist path once did.
-                    let owner_tag: Option<&str> = if !album_artist_tag.is_empty()
-                        && !is_special_artist_name(album_artist_tag)
-                    {
-                        Some(album_artist_tag)
-                    } else if !track_artist_tag.is_empty() {
-                        Some(track_artist_tag)
-                    } else {
-                        None
-                    };
+                    // The tag that names this release's owner(s) - albumArtist unless it is a
+                    // Various-Artists placeholder, then the track's own artist tag. Shared with the
+                    // resolve pass's owner reconcile (`index::resolve::owner_tag`) so the two can
+                    // never disagree about which tag they are reconciling.
+                    let owner_tag: Option<&str> = index::resolve::owner_tag(
+                        track.album_artist.as_deref(),
+                        track.artist.as_deref(),
+                    )
+                    .map(|t| t.value());
 
                     let album_name = track.album.as_deref().unwrap_or("Unknown Album");
 
@@ -1655,7 +1769,7 @@ async fn main() {
         } else {
             None
         };
-        run_artist_resolution(&pool, &reporter, false, scoped.as_deref(), false).await;
+        run_artist_resolution(&pool, &config, &reporter, false, scoped.as_deref(), false).await;
     }
 
     // -------------------------------------------------------------------------

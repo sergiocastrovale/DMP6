@@ -127,11 +127,15 @@ pub async fn delete_removed_tracks(
 
     let affected: Vec<String> = release_ids.into_iter().collect();
 
-    // Reset matchStatus so sync recalculates
+    // Reset matchStatus so sync recalculates.
+    //
+    // `statusReason` is a MusicBrainzRelease column, not a LocalRelease one. Naming it here made the
+    // whole statement fail, and `.ok()` swallowed the error - so no pruned release was ever flagged
+    // and sync never recomputed any of them. Caught by `tests/prune_guard.rs`, which had been red.
     if !affected.is_empty() {
         sqlx::query(
             r#"UPDATE "LocalRelease"
-               SET "matchStatus" = 'UNKNOWN'::"ReleaseStatus", "statusReason" = NULL
+               SET "matchStatus" = 'UNKNOWN'::"ReleaseStatus"
                WHERE id = ANY($1::text[])"#,
         )
         .bind(&affected)

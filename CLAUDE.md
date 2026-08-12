@@ -27,11 +27,11 @@ Link: LocalReleaseTrack.mbTrackId → MusicBrainzReleaseTrack.id
 Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
 ```
 
-- `LocalReleaseArtist` = main artists (albumArtist tag owners), many-to-many
+- `LocalReleaseArtist` = main artists (owner-tag owners), many-to-many. The **owner tag** is `albumArtist`, except when that is a Various-Artists placeholder — then the track's own `artist` tag decides, so a compilation is co-owned by its contributors. One definition (`index::resolve::owner_tag`), called by both the folder loop and the resolve pass's reconcile; when they had separate copies, VA compilations were never reconciled and kept the raw compound tag as an owner.
 - `TrackRelatedArtist` = credited artists ("appears on"), many-to-many. Owning a release (`LocalReleaseArtist`) vs merely being credited is the discography/appears-on split; an artist may legitimately hold credits and own nothing. **Ownership is derived, never stored** — `EXISTS(LocalReleaseArtist)`, no flag column. Which parts of a compound tag own vs. get credited is decided by the join phrase (` with `/`feat.` ⇒ first owns, rest credited; ` & `/`,` ⇒ all co-own).
-- **Artist identity is resolved against MusicBrainz, not guessed from punctuation.** A separator never splits a name on its own — `common::mb::resolve` asks MB whether the whole string is an artist first (so "Nurse With Wound" survives), then validates candidate groupings. Tiers: embedded multi-value `Artists[]`/`MusicBrainzArtistId[]` pairs (free) → `MbArtistLookup` cache → whole-string MB search → memoized span search → unverified atom fallback. Transient MB failures defer rather than guess. Only MB-verified names become credit artists. See `docs/scripts/index.md`.
+- **Artist identity is resolved against MusicBrainz, not guessed from punctuation.** A separator never splits a name on its own — `common::mb::resolve` asks MB whether the whole string is an artist first (so "Nurse With Wound" survives), then validates candidate groupings. Tiers: embedded multi-value `Artists[]`/`MusicBrainzArtistId[]` pairs (free) → `MbArtistLookup` cache → whole-string MB search → memoized span search → unverified atom fallback. Transient MB failures defer rather than guess. Only MB-verified names become credit artists. Separators need surrounding spaces except `\`, `\\` and `|` — bare `/` and `+` are deliberately not separators ("AC/DC"). `\\` is the ID3v2.3 multi-value join and must be matched before `\`. See `docs/scripts/index.md`.
 - `Artist.country` = ISO 3166-1 alpha-2 code from MusicBrainz area (e.g. "US", "GB"), populated by sync
-- `Artist.primaryArtistId` = FK to canonical Artist when this artist shares an MB ID with another; connected artist hidden from browse, catalogue aggregated on primary's page
+- `Artist.primaryArtistId` = FK to canonical Artist when this artist shares an MB ID with another; connected artist hidden from browse, catalogue aggregated on primary's page. Set by sync, and by `./index --canonicalize-artists` — but only when **both** names have an `MbArtistLookup` row resolving to the same MB ID. `Artist.musicbrainzId` alone is not a safe merge key: it leaks onto compounds (`"Lena Horne & Gábor Szabó"` carries Lena Horne's ID while its lookup row says MB denied the string), so merging on the column folds collaborations into their first member.
 - `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING_TRACKS | MISSING | UNKNOWN | UNMATCHED
 - `PlaylistType`: MANUAL | GENRE | REGION
 - `LocalRelease` grouped one-per-folder: `groupKey` (unique) = `"folder:{folderPath}"` (root-level files fall back to `"meta:{slugTitle}:{year}:{slugArtist}"`). Per-track MB ids are NOT part of the key — folder is the physical release unit; sync matches folder→MB by embedded-id consensus, then a guarded title+artist search, binding only Official Album/EP (never a Single). Keying on per-track ids shredded compilations into per-track fragments — see `docs/scripts/index.md`, `docs/scripts/sync.md`.
@@ -128,6 +128,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./index --resolve-artists --only "Name"  # Scope resolution to one artist (also honours --from/--to/--folders/--release/--exact)
 ./index --resolve-artists --overwrite    # Re-ask MusicBrainz for every name in scope, ignoring the cache
 ./index --skip-resolve        # Skip the end-of-run artist resolution pass
+./index --canonicalize-artists           # Reconcile Artist rows with MusicBrainz (clear contradicted MB ids, rename to the canonical name, connect duplicates, sweep zero-link artists), then exit. Pure SQL, no network, no folder scan
+./index --canonicalize-artists --dry-run # Preview the clears/renames/connections, write nothing
 ./index --delete              # Delete local data for matched artists
 ./index --emit-artist-ids f   # Write processed artist IDs to file (used by refresh)
 ./sync --only "Name" --exact  # Sync exact artist
@@ -204,6 +206,14 @@ re-scan** (`--overwrite-with-images --prune`, then `sync --overwrite`; ADMIN-onl
 `DESTRUCTIVE_FLAGS` in `server/utils/terminalCommand.ts` gates `--delete`, `--overwrite*`, `--prune`
 and `--files`). Artist removal (`components/artist/DeleteDialog.vue` → `./delete`, ADMIN-only) is on
 the same allow-list; its unchecked "Remove all files" switch is what adds `--files`.
+
+**No UI caller passes `--skip-resolve`**, so every one of these already runs the artist-resolution pass
+and its offline tail (canonicalize + orphan sweep) — the new behaviour needs no argument changes at any
+call site (`ScanActions.vue` ×2, `ui/RefreshButton.vue`, `FirstScan.vue`, `autoScan.ts`). What matters is
+that the tail is **scoped**: `--only`/`--folders`/`--release` runs narrow it to the artists they touched,
+because `scoped_release_ids_for_filter` never returns `None` once a filter is set, and `None` means the
+whole library downstream. Flag gating is a deny-list (`DESTRUCTIVE_FLAGS`), so no allow-list needs
+extending when a flag is added — but a new *destructive* flag must be added there explicitly.
 
 `Settings → Library` also carries the opt-in **auto-scan** (`server/utils/autoScan.ts`, ticked by
 `server/plugins/monitor.ts` on the `MONITOR_PRIMARY` instance only, serialized through `runExclusive`).

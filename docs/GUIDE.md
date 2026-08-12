@@ -106,10 +106,14 @@ followed by `./sync --only "Name" --exact --overwrite`.
 Artists are keyed by name (slug), and MusicBrainz decides identity — not punctuation in the tags.
 
 - **Same name**: no new artist is created. The releases appear on the existing artist's page after the
-  scan, and compilations link to every album-artist they credit.
-- **A name variant sharing the same MusicBrainz ID** (e.g. "Beyoncé" vs "Beyonce"): `sync` connects the
-  variant to the artist you already have (`primaryArtistId`). The variant is hidden from /browse and
-  its releases are shown on the primary artist's page. Nothing to do.
+  scan. A **Various Artists compilation** has no album artist of its own, so each track's artist owns it
+  — the album shows up in the discography of every contributor, not under a "Various Artists" page.
+- **A name variant sharing the same MusicBrainz ID** (e.g. "Beyoncé" vs "Beyonce", "Iron & Wine" vs
+  "Iron And Wine"): `sync` connects the variant to the artist you already have (`primaryArtistId`), and
+  `./index --canonicalize-artists` does the same in seconds without any network calls. The variant is
+  hidden from /browse and its releases are shown on the primary artist's page. Nothing to do.
+  Only spellings of the *same* name are connected — MusicBrainz lists "Simone" as an alias of Nina
+  Simone, but the two stay separate artists.
 - **Credits**: an artist that only appears in track credits gets an "appears on" entry, not a
   discography. Owning a release and being credited on a track are separate things.
 - **A true duplicate with no shared MB ID**: run `./audit --duplicates` (or the **Run audit** button on

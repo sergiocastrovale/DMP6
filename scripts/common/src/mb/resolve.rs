@@ -152,7 +152,20 @@ const SEPARATOR_PATTERNS: &[(&str, JoinKind)] = &[
     ("; ", JoinKind::CoBilling),
     (", ", JoinKind::CoBilling),
     (" / ", JoinKind::CoBilling),
+    // Typographic co-billing. Spaces are required on all four: bare "/" and bare "+" appear inside real
+    // names ("AC/DC", "Florence + the Machine" survives only because tier 2 asks MusicBrainz first, and
+    // relying on that for every "X/Y" string is a shredding risk not worth taking).
+    (" + ", JoinKind::CoBilling),
+    (" · ", JoinKind::CoBilling),
+    (" • ", JoinKind::CoBilling),
+    (" ♦ ", JoinKind::CoBilling),
     (" \\ ", JoinKind::CoBilling),
+    // ID3v2.3 has no multi-value frame, so taggers join values with a DOUBLED backslash. It must be
+    // listed before the single one: matched one byte at a time, the first `\` consumes the separator and
+    // the second rides along on the next atom, which is how `"Mal Waldron\\Jim Pepper"` produced a
+    // browsable artist called `\Jim Pepper` - and got it MB-verified, since `normalize_name` strips the
+    // punctuation before comparing.
+    ("\\\\", JoinKind::CoBilling),
     ("\\", JoinKind::CoBilling),
     ("|", JoinKind::CoBilling),
 ];
@@ -167,10 +180,16 @@ const SEPARATOR_PATTERNS: &[(&str, JoinKind)] = &[
 /// panics on a non-boundary slice - and before it panics, every offset it returns points into the wrong
 /// place in the original, so the splits would have been silently wrong anyway.
 ///
-/// Every pattern here is pure ASCII, so ASCII folding cannot miss one: for a full-Unicode lowering to
-/// produce a pattern, some non-ASCII char would have to fold to an ASCII letter *and* land mid-pattern
-/// ("Wİth" folds to "wi̇th", which is not "with"). An ASCII match at a char boundary also guarantees
-/// `i + pat.len()` is a boundary, since ASCII bytes never appear inside a multi-byte sequence.
+/// Every *letter-bearing* pattern here is pure ASCII, so ASCII folding cannot miss one: for a
+/// full-Unicode lowering to produce a pattern, some non-ASCII char would have to fold to an ASCII letter
+/// *and* land mid-pattern ("Wİth" folds to "wi̇th", which is not "with").
+///
+/// The four typographic separators (`·`, `•`, `♦`, and the spaces around them) are multi-byte, and that
+/// is still sound: they carry no case, so `eq_ignore_ascii_case` degenerates to byte equality, and each
+/// pattern is itself well-formed UTF-8 that begins with an ASCII space. Matching a whole pattern at a
+/// char boundary therefore lands `i + pat.len()` on a boundary too - for the ASCII patterns because
+/// ASCII bytes never appear inside a multi-byte sequence, and for these because the matched bytes are
+/// exactly one complete pattern.
 pub fn separator_positions(name: &str) -> Vec<Separator> {
     let bytes = name.as_bytes();
     let mut found: Vec<Separator> = Vec::new();
@@ -207,6 +226,31 @@ pub fn separator_positions(name: &str) -> Vec<Separator> {
     }
 
     found
+}
+
+/// Separator punctuation dangling at either end of a tag value, with no name on the other side of it.
+///
+/// A multi-value frame whose other slot was empty writes `"\Andrew Barr"`, `"Andy Edwards\"`,
+/// `"Yasuaki Shimizu |"`. Splitting alone does not fix these: the empty atom is dropped, but the
+/// **whole string** is asked of MusicBrainz first, and `normalize_name` strips punctuation before
+/// comparing - so `"\Jim Pepper"` matched MB's *Jim Pepper*, took his MBID, and became a browsable
+/// artist under the decorated name. Trimming here means the clean name is what gets looked up, cached
+/// and written.
+///
+/// Guarded on the result still carrying a letter or digit, so bands that are *entirely* punctuation
+/// ("+/-", "!!!") are returned untouched rather than trimmed to nothing.
+pub fn trim_separator_noise(name: &str) -> &str {
+    const NOISE: &[char] = &[
+        '\\', '|', '/', '+', '·', '•', '♦', ',', ';', '&', '-', '–', '—',
+    ];
+    let trimmed = name
+        .trim()
+        .trim_matches(|c: char| c.is_whitespace() || NOISE.contains(&c));
+    if trimmed.chars().any(|c| c.is_alphanumeric()) {
+        trimmed
+    } else {
+        name.trim()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +345,7 @@ impl<'a, F: FnMut(&str) -> LookupResult> SpanResolver<'a, F> {
         }
 
         let text = self.span_text(lo, hi);
-        let stripped = strip_role_qualifier(&text).to_string();
+        let stripped = strip_role_qualifier(trim_separator_noise(&text)).to_string();
 
         // Coarsest first: is this whole span one artist?
         let whole = if stripped.is_empty() {
@@ -383,7 +427,7 @@ pub fn resolve_with<F: FnMut(&str) -> LookupResult>(
     name: &str,
     mut lookup: F,
 ) -> (Resolution, ResolveSource) {
-    let trimmed = name.trim();
+    let trimmed = trim_separator_noise(name);
     if trimmed.is_empty() || is_special_artist_name(trimmed) {
         return (
             Resolution::Resolved(Vec::new()),
@@ -469,7 +513,7 @@ pub fn resolve_with<F: FnMut(&str) -> LookupResult>(
     let mut atoms: Vec<ResolvedArtist> = Vec::new();
     let mut transient = false;
     for (idx, atom) in atom_texts(trimmed, &seps).into_iter().enumerate() {
-        let atom = strip_role_qualifier(&atom).to_string();
+        let atom = strip_role_qualifier(trim_separator_noise(&atom)).to_string();
         if atom.is_empty() {
             continue;
         }
@@ -896,12 +940,69 @@ mod tests {
 
     #[test]
     fn bare_backslash_splits() {
-        // Real library values: "B.B. King\\Bobby Bland", "Joan Baez\\Mimi Farina" - no spaces around it.
+        // Real library values: "B.B. King\Bobby Bland", "Joan Baez\Mimi Farina" - no spaces around it.
         let (res, _) = resolve_with(
             "B.B. King\\Bobby Bland",
             known(&["B.B. King", "Bobby Bland"]),
         );
         assert_eq!(names_of(&res), vec!["B.B. King", "Bobby Bland"]);
+    }
+
+    #[test]
+    fn a_doubled_backslash_leaves_no_stray_byte_on_the_next_atom() {
+        // ID3v2.3's multi-value join. Matched one byte at a time this produced `\Jim Pepper`, which then
+        // passed MB verification (normalize_name strips the backslash) and became a browsable artist.
+        let seps = separator_positions("Mal Waldron\\\\Jim Pepper");
+        assert_eq!(seps.len(), 1, "the pair is ONE separator, not two");
+        assert_eq!(&"Mal Waldron\\\\Jim Pepper"[seps[0].end..], "Jim Pepper");
+
+        let catalogue: &'static [&'static str] = &[
+            "Mal Waldron",
+            "Jim Pepper",
+            "Ras Teo",
+            "Lone Ark",
+            "Alton Ellis",
+            "Rude Rich",
+            "The High Notes",
+        ];
+        for (tag, parts) in [
+            ("Mal Waldron\\\\Jim Pepper", vec!["Mal Waldron", "Jim Pepper"]),
+            ("Ras Teo\\\\Lone Ark", vec!["Ras Teo", "Lone Ark"]),
+            (
+                "Alton Ellis\\\\Rude Rich\\\\The High Notes",
+                vec!["Alton Ellis", "Rude Rich", "The High Notes"],
+            ),
+        ] {
+            let (res, _) = resolve_with(tag, known(catalogue));
+            assert_eq!(names_of(&res), parts, "{tag}");
+        }
+    }
+
+    #[test]
+    fn a_leading_or_trailing_multi_value_marker_yields_one_clean_name() {
+        // "\Andrew Barr", "Andy Edwards\" - a multi-value frame whose other slot was empty. Splitting is
+        // not enough on its own: the WHOLE string is asked of MB first, and normalize_name strips the
+        // marker, so the decorated spelling used to come back "verified" and become the artist's name.
+        for tag in [
+            "\\Andrew Barr",
+            "Andrew Barr\\",
+            "\\\\Andrew Barr",
+            "| Andrew Barr |",
+            "Andrew Barr, ",
+        ] {
+            let (res, _) = resolve_with(tag, known(&["Andrew Barr"]));
+            assert_eq!(names_of(&res), vec!["Andrew Barr"], "{tag}");
+        }
+    }
+
+    #[test]
+    fn punctuation_only_band_names_are_never_trimmed_away() {
+        // "+/-" and "!!!" are real artists. The noise trim must give up rather than empty them.
+        assert_eq!(trim_separator_noise("+/-"), "+/-");
+        assert_eq!(trim_separator_noise("!!!"), "!!!");
+        assert_eq!(trim_separator_noise("  \\  "), "\\");
+        let (res, _) = resolve_with("+/-", known(&["+/-"]));
+        assert_eq!(names_of(&res), vec!["+/-"]);
     }
 
     #[test]
@@ -952,15 +1053,61 @@ mod tests {
     }
 
     #[test]
-    fn no_separator_is_even_found_for_slash_or_plus_names() {
-        // AC/DC and Florence + The Machine cannot be split even in principle: bare "/" is not a
-        // separator (only " / " is) and "+" is not one at all. They survive a total MB blackout.
+    fn bare_slash_is_still_not_a_separator() {
+        // Only " / " splits. Deliberate: "Akio Suzuki/Takehisa Kosugi/Riri Shimada" stays whole rather
+        // than risk a tier-4 fallback shredding an unknown "X/Y" into two unverified owners.
         assert!(separator_positions("AC/DC").is_empty());
-        assert!(separator_positions("Florence + The Machine").is_empty());
-        for name in ["AC/DC", "Florence + The Machine"] {
-            let (res, _) = resolve_with(name, |_| LookupResult::NotFound);
-            assert_eq!(names_of(&res), vec![name.to_string()]);
-        }
+        let (res, _) = resolve_with("AC/DC", |_| LookupResult::NotFound);
+        assert_eq!(names_of(&res), vec!["AC/DC".to_string()]);
+    }
+
+    #[test]
+    fn spaced_plus_splits_but_the_band_is_protected() {
+        // " + " is a separator now, so "Abbey Lincoln + Archie Shepp" finally resolves to two artists.
+        let (res, _) = resolve_with(
+            "Abbey Lincoln + Archie Shepp",
+            known(&["Abbey Lincoln", "Archie Shepp"]),
+        );
+        assert_eq!(names_of(&res), vec!["Abbey Lincoln", "Archie Shepp"]);
+
+        // The band that shares the shape is caught twice over: the offline backstop short-circuits
+        // before any split is contemplated, so even a total MB blackout leaves it whole.
+        assert!(!separator_positions("Florence + The Machine").is_empty());
+        let (res, _) = resolve_with("Florence + The Machine", |_| LookupResult::NotFound);
+        assert_eq!(names_of(&res), vec!["Florence + The Machine".to_string()]);
+    }
+
+    #[test]
+    fn typographic_separators_split() {
+        let (res, _) = resolve_with(
+            "Alan Vega · Alex Chilton · Ben Vaughn",
+            known(&["Alan Vega", "Alex Chilton", "Ben Vaughn"]),
+        );
+        assert_eq!(names_of(&res), vec!["Alan Vega", "Alex Chilton", "Ben Vaughn"]);
+
+        let (res, _) = resolve_with(
+            "Tommy Dorsey ♦ Frank Sinatra",
+            known(&["Tommy Dorsey", "Frank Sinatra"]),
+        );
+        assert_eq!(names_of(&res), vec!["Tommy Dorsey", "Frank Sinatra"]);
+
+        let (res, _) = resolve_with(
+            "Antônio Carlos Jobim • Toquinho",
+            known(&["Antônio Carlos Jobim", "Toquinho"]),
+        );
+        assert_eq!(names_of(&res), vec!["Antônio Carlos Jobim", "Toquinho"]);
+    }
+
+    #[test]
+    fn a_multi_byte_separator_does_not_shift_the_offsets() {
+        // The offsets are byte offsets into the original. A three-byte separator must be consumed
+        // whole, or every atom after it starts mid-character (or one byte late, which is how the
+        // doubled backslash used to leak a `\` onto the next name).
+        let seps = separator_positions("Antônio Carlos Jobim • Toquinho");
+        assert_eq!(seps.len(), 1);
+        let s = &seps[0];
+        assert_eq!(&"Antônio Carlos Jobim • Toquinho"[..s.start], "Antônio Carlos Jobim");
+        assert_eq!(&"Antônio Carlos Jobim • Toquinho"[s.end..], "Toquinho");
     }
 
     #[test]

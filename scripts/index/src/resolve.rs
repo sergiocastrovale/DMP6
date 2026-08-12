@@ -14,6 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use common::artists::is_special_artist_name;
 use common::mb::api::{mb_search_artist_exact, RateLimiter};
 use common::mb::names::normalize_name;
 use common::progress::Reporter;
@@ -295,6 +296,38 @@ pub fn embedded_pairing(
     )
 }
 
+/// Which frame a release's owner tag came from - the pairing arrays differ, so the caller has to know.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnerTag<'a> {
+    AlbumArtist(&'a str),
+    TrackArtist(&'a str),
+}
+
+impl<'a> OwnerTag<'a> {
+    pub fn value(&self) -> &'a str {
+        match self {
+            OwnerTag::AlbumArtist(v) | OwnerTag::TrackArtist(v) => v,
+        }
+    }
+}
+
+/// The tag that names a release's owner(s): `albumArtist` when present and not a Various-Artists
+/// placeholder, otherwise the track's own `artist` tag - whole, never naively split here.
+///
+/// One definition, called from both places that need it. They used to have their own: the folder loop
+/// (`main.rs`) had the VA fallback, the resolve pass's owner reconcile read `albumArtist` alone. On a VA
+/// compilation the loop wrote provisional owners from the raw `artist` tag and the reconcile then had
+/// nothing to replace them with, so `"Aaron Neville, Kenny G, Walter Afanasieff, ..."` stayed a
+/// browsable artist owning The Bodyguard OST. 497 of those had accumulated.
+pub fn owner_tag<'a>(album_artist: Option<&'a str>, artist: Option<&'a str>) -> Option<OwnerTag<'a>> {
+    let usable = |t: &'a str| (!t.trim().is_empty()).then_some(t);
+    album_artist
+        .and_then(usable)
+        .filter(|t| !is_special_artist_name(t))
+        .map(OwnerTag::AlbumArtist)
+        .or_else(|| artist.and_then(usable).map(OwnerTag::TrackArtist))
+}
+
 /// Decide the folder loop's provisional owner(s) for a release, from a single "owner tag" -
 /// `albumArtist` when present, otherwise the track's own `artist` tag, whole and unsplit.
 ///
@@ -313,11 +346,17 @@ where
     F: FnMut(&str) -> LookupResult,
 {
     match common::mb::resolve::resolve_offline(owner_tag, lookup) {
-        Some(parts) => parts
-            .into_iter()
-            .filter(|p| p.role == JoinKind::CoBilling)
-            .map(|p| (p.name, p.mbid))
-            .collect(),
+        Some(mut parts) => {
+            // Cap here as well as in the resolve pass. A warm cache lets the folder loop resolve a
+            // 44-name personnel list on the spot, and without this it wrote 44 provisional owners for
+            // the pass to trim - a browse page per session musician until the pass caught up.
+            cap_co_owners(&mut parts);
+            parts
+                .into_iter()
+                .filter(|p| p.role == JoinKind::CoBilling && !is_special_artist_name(&p.name))
+                .map(|p| (p.name, p.mbid))
+                .collect()
+        }
         None => vec![(owner_tag.to_string(), None)],
     }
 }
@@ -474,6 +513,10 @@ pub async fn resolve_and_apply(
 
     let mut slug_cache = artist_slug_map(pool).await;
     let mut resolved_names: HashMap<String, Vec<ResolvedArtist>> = HashMap::new();
+    // Kept apart from `resolved_names`: the same string can be a track's `artist` tag AND (on a VA
+    // compilation) its owner tag, and the two want different join semantics - co-billing for owners,
+    // guest for credits. One map would hand the credit pass a capped, co-billed answer.
+    let mut resolved_owners: HashMap<String, Vec<ResolvedArtist>> = HashMap::new();
     let mut desired_credits: HashSet<(String, String)> = HashSet::new();
     let mut new_owner_links: HashSet<(String, String)> = HashSet::new();
     // Releases whose album artist could not be decided this run (MusicBrainz unreachable). Their
@@ -494,42 +537,51 @@ pub async fn resolve_and_apply(
             }
         }
 
-        // --- album artist decides who OWNS the release -----------------------------------------
-        if let (Some(aa), Some(release_id)) =
-            (track.album_artist.as_ref(), track.local_release_id.as_ref())
-        {
-            if !aa.trim().is_empty() && !resolved_names.contains_key(aa) {
-                // Tier 0 applies here too: the album-artist frames pair the same way.
-                let embedded_aa = embedded_pairing(
-                    aa,
-                    &track.album_artists,
-                    &track.mb_album_artist_ids,
-                    JoinKind::CoBilling,
-                );
-                match embedded_aa {
+        // --- the owner tag decides who OWNS the release ------------------------------------------
+        //
+        // `owner_tag` - not `albumArtist` - because the folder loop uses the same rule and the two must
+        // not drift. They did: this branch read `albumArtist` alone, so on a Various-Artists compilation
+        // it resolved "Various Artists" to nothing, the release never entered `new_owner_links`, and the
+        // reconcile below skipped it under the empty-desired-set guard. The provisional owners the
+        // folder loop had written from the raw per-track `artist` tag were therefore permanent - 497
+        // unverified compounds like `Aaron Neville, Kenny G, Walter Afanasieff, ...` owning The
+        // Bodyguard OST.
+        if let (Some(tag), Some(release_id)) = (
+            owner_tag(track.album_artist.as_deref(), track.artist.as_deref()),
+            track.local_release_id.as_ref(),
+        ) {
+            let owner = tag.value();
+            // Tier 0 applies here too, paired against whichever frame the owner tag came from.
+            let (multi, mb_ids) = match tag {
+                OwnerTag::AlbumArtist(_) => (&track.album_artists, &track.mb_album_artist_ids),
+                OwnerTag::TrackArtist(_) => (&track.artists, &track.mb_artist_ids),
+            };
+
+            if !resolved_owners.contains_key(owner) {
+                match embedded_pairing(owner, multi, mb_ids, JoinKind::CoBilling) {
                     Some(mut parts) => {
                         resolver.stats.from_embedded += 1;
                         cap_co_owners(&mut parts);
                         report.push(Decision {
-                            name: aa.clone(),
+                            name: owner.to_string(),
                             source: ResolveSource::EmbeddedId,
                             parts: parts.clone(),
                         });
-                        resolved_names.insert(aa.clone(), parts);
+                        resolved_owners.insert(owner.to_string(), parts);
                     }
                     None => {
-                        let (res, src) = resolver.resolve(aa).await;
+                        let (res, src) = resolver.resolve(owner).await;
                         match res {
                             Resolution::Resolved(mut parts) => {
                                 // An album artist naming dozens of people is a personnel list, not
                                 // co-billing.
                                 cap_co_owners(&mut parts);
                                 report.push(Decision {
-                                    name: aa.clone(),
+                                    name: owner.to_string(),
                                     source: src,
                                     parts: parts.clone(),
                                 });
-                                resolved_names.insert(aa.clone(), parts);
+                                resolved_owners.insert(owner.to_string(), parts);
                             }
                             Resolution::Deferred => {
                                 releases_with_deferred.insert(release_id.clone());
@@ -538,16 +590,21 @@ pub async fn resolve_and_apply(
                     }
                 }
             }
-            if !aa.trim().is_empty() && !resolved_names.contains_key(aa) {
+            if !resolved_owners.contains_key(owner) {
                 // Deferred on an earlier track of this same release.
                 releases_with_deferred.insert(release_id.clone());
             }
-            if let Some(parts) = resolved_names.get(aa).cloned() {
+            if let Some(parts) = resolved_owners.get(owner).cloned() {
                 for part in parts {
                     // Guest-joined album artists are credits, not owners - "Frank Sinatra with Count
                     // Basie" means Sinatra's album, Basie appearing on it.
                     let is_owner = part.role == JoinKind::CoBilling;
                     if !is_owner && !part.verified {
+                        continue;
+                    }
+                    // A tier-0 pairing can hand back the placeholder itself (`{"Various Artists",
+                    // "Whitney Houston"}`); it is never an owner.
+                    if is_special_artist_name(&part.name) {
                         continue;
                     }
                     let id = if resolver.dry_run {

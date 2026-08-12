@@ -116,6 +116,35 @@ impl Ctx {
         id
     }
 
+    /// A compilation track: `albumArtist` is the Various-Artists placeholder, so the *track* artist is
+    /// what names the owner - with its own embedded pairing so the decision stays offline.
+    async fn va_track(
+        &self,
+        release_id: &str,
+        n: u32,
+        artist: &str,
+        artists: &[&str],
+        mb_ids: &[&str],
+    ) -> String {
+        let id = cuid2::create_id();
+        sqlx::query(
+            r#"INSERT INTO "LocalReleaseTrack"
+                 (id, title, artist, "albumArtist", album, "filePath", "localReleaseId", "playCount",
+                  artists, "mbArtistIds", "createdAt", "updatedAt")
+               VALUES ($1, 'T', $2, 'Various Artists', 'Reconcile Fixture', $3, $4, 0, $5, $6, now(), now())"#,
+        )
+        .bind(&id)
+        .bind(artist)
+        .bind(format!("{}/{}/va{:02}.mp3", self.folder(), release_id, n))
+        .bind(release_id)
+        .bind(artists.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        .bind(mb_ids.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        .execute(&self.pool)
+        .await
+        .expect("insert va track");
+        id
+    }
+
     async fn owners(&self, release_id: &str) -> Vec<String> {
         let rows: Vec<(String,)> = sqlx::query_as(
             r#"SELECT a.name FROM "LocalReleaseArtist" l JOIN "Artist" a ON a.id = l."artistId"
@@ -241,13 +270,14 @@ async fn a_multi_album_artist_compilation_keeps_every_owner() {
 
 #[tokio::test]
 #[ignore]
-async fn various_artists_release_is_left_alone() {
+async fn various_artists_release_with_nothing_resolvable_is_left_alone() {
     let c = Ctx::new("va").await;
     let placeholder = c.artist("Comp Owner");
 
     let release = c.release("r1").await;
     c.own(&release, &placeholder).await;
-    // "Various Artists" resolves to nothing at all, so there is no desired set to reconcile against.
+    // albumArtist AND artist are both the placeholder, which resolves to nothing at all - so there is
+    // no desired set to reconcile against and the folder scan's owner must survive.
     c.track(&release, 1, "Various Artists", &[], &[]).await;
 
     c.run(&[release.clone()]).await;
@@ -255,7 +285,73 @@ async fn various_artists_release_is_left_alone() {
     assert_eq!(
         c.owners(&release).await,
         vec![placeholder.clone()],
-        "a Various Artists release must keep the owner the folder scan established"
+        "a Various Artists release with no resolvable track artist must keep its existing owner"
+    );
+
+    c.reset().await;
+}
+
+/// The defect this pass existed with for its whole life: on a Various-Artists compilation the folder
+/// loop falls back to the per-track `artist` tag for ownership, but this pass read `albumArtist` alone.
+/// "Various Artists" resolved to nothing, the release never entered the desired set, and the raw
+/// compound the folder loop had written stayed an owner forever - 497 of them, e.g.
+/// `Aaron Neville, Kenny G, Walter Afanasieff, ...` owning The Bodyguard OST.
+#[tokio::test]
+#[ignore]
+async fn various_artists_compilation_reconciles_from_the_track_artist() {
+    let c = Ctx::new("vafallback").await;
+    let (a, b) = (c.artist("Whitney"), c.artist("Kenny"));
+    let compound = format!("{}, {}", a, b);
+
+    let release = c.release("r1").await;
+    // What the folder loop wrote with a cold cache: the raw track-artist tag, verbatim.
+    c.own(&release, &compound).await;
+    c.va_track(&release, 1, &compound, &[&a, &b], &[MBID_A, MBID_B])
+        .await;
+
+    c.run(&[release.clone()]).await;
+
+    // `owners()` sorts by name, and "Kenny" sorts before "Whitney".
+    let owners = c.owners(&release).await;
+    assert_eq!(
+        owners,
+        vec![b.clone(), a.clone()],
+        "the compilation should be owned by the artists the track artist names"
+    );
+    assert!(
+        !owners.contains(&compound),
+        "the provisional compound must lose ownership on a VA release too"
+    );
+
+    c.reset().await;
+}
+
+/// The placeholder can also arrive *inside* the pairing (`{"Various Artists", "Whitney Houston"}` is a
+/// real tag shape). It is never an owner, whichever tier produced it.
+#[tokio::test]
+#[ignore]
+async fn the_placeholder_itself_never_becomes_an_owner() {
+    let c = Ctx::new("vaplaceholder").await;
+    let a = c.artist("Whitney");
+    let compound = format!("Various Artists, {}", a);
+
+    let release = c.release("r1").await;
+    c.own(&release, &compound).await;
+    c.va_track(
+        &release,
+        1,
+        &compound,
+        &["Various Artists", &a],
+        &[MBID_B, MBID_A],
+    )
+    .await;
+
+    c.run(&[release.clone()]).await;
+
+    assert_eq!(
+        c.owners(&release).await,
+        vec![a.clone()],
+        "only the real artist owns it - not the placeholder, not the compound"
     );
 
     c.reset().await;

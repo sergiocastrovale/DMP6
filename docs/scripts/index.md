@@ -33,6 +33,8 @@ cd scripts && cargo build --release -p index
 ./index --resolve-artists --only "Name"  # Scope resolution to one artist
 ./index --resolve-artists --overwrite    # Re-ask MB for every name in scope, ignoring the cache
 ./index --skip-resolve           # Skip the end-of-run artist resolution pass
+./index --canonicalize-artists   # Only reconcile Artist rows with MusicBrainz, then exit (no network, no folder scan)
+./index --canonicalize-artists --dry-run  # Print the clears/renames/connections, write nothing
 ```
 
 `--release` cannot combine with `--from`, `--to`, `--only`, or `--folders`.
@@ -59,8 +61,9 @@ cd scripts && cargo build --release -p index
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 | `--emit-artist-ids` | String | - | Write processed artist IDs to file (one per line, used by refresh) |
 | `--resolve-artists` | bool | false | Only resolve artist tags against MusicBrainz and rebuild links, then exit (no folder scan). Honours `--only`/`--from`/`--to`/`--exact`/`--folders`/`--release` for scope, and `--overwrite` to ignore the lookup cache |
-| `--dry-run` | bool | false | With `--resolve-artists`: print decisions, write nothing |
+| `--dry-run` | bool | false | With `--resolve-artists` or `--canonicalize-artists`: print decisions, write nothing |
 | `--skip-resolve` | bool | false | Skip the end-of-run artist resolution pass |
+| `--canonicalize-artists` | bool | false | Only reconcile `Artist` rows against `MbArtistLookup` (clear contradicted MB ids, rename to the canonical name, connect duplicates, sweep orphans), then exit. Pure SQL - seconds, no network, no folder scan. Honours the same scope filters as `--resolve-artists`; a scoped run makes only slug-stable renames |
 
 ## Output Modes
 
@@ -85,7 +88,11 @@ Without `--web`: colored, indented console progress. With `--web`: `PROGRESS:{js
    reported once at the end of the run as
    `WARN: dropped N favourite(s) and M playlist entry(ies) for removed files`, which the web UI turns
    into an amber notice (`dropped_links_line` in `deletion.rs` ↔ `parseDroppedLinks` in
-   `web/helpers/functions.ts`). Nothing is re-linked automatically
+   `web/helpers/functions.ts`). Nothing is re-linked automatically.
+   Every affected release is then reset to `matchStatus = UNKNOWN` so sync recomputes it. That statement
+   used to also set `statusReason`, which is a **`MusicBrainzRelease`** column, not a `LocalRelease` one -
+   so the whole UPDATE errored, `.ok()` swallowed it, and no pruned release was ever flagged. Fixed;
+   `tests/prune_guard.rs` covers it and had been failing
 9. **Update totals** for this artist's releases and tracks
 10. **Set `lastIndexedAt`** on Artist (only if new/updated/deleted tracks in folder)
 11. **Stamp run hash** on FolderScan for resumability
@@ -142,8 +149,11 @@ The pass runs as **Phase A** (network) then **Phase B** (offline), not interleav
   one. The product is the memo plus the `MbArtistLookup` rows - the `Resolution` itself is discarded.
 * **Phase B** walks the tracks and writes the owner/credit links. Every name is memoized by then, so it
   makes no network calls.
+* Then a **Phase C** tail, also offline: `canonicalize_artists` (see below) reconciles the `Artist` rows
+  themselves with what MusicBrainz said, and `delete_orphan_artists` sweeps whatever the reconcile left
+  linked to nothing.
 
-Three things follow from the split. Progress is alphabetical and its counter is honest (the old
+Three things follow from the A/B split. Progress is alphabetical and its counter is honest (the old
 track-driven loop reported `resolved_names.len() + 1`, a different population that stalled and repeated
 whenever a name deferred). A crash is cheap: the pass has no checkpoint, so `MbArtistLookup` *is* the
 resume state, and a rerun skips every name already answered - `--overwrite` skips the cache warm to force
@@ -184,6 +194,25 @@ MB knows the duo. Above 8 separators (~0.1% of names) only the whole string and 
 A transient failure (timeout, 503) yields **deferred**: the name is left alone and retried next run. Only a
 definitive MB "no match" is allowed to trigger a split, so a network blip can never permanently shred a band
 name. Deferred answers are never cached, so a deferred name is genuinely re-asked rather than pinned.
+
+### Separators
+
+Word separators (` featuring `, ` feat. `, ` ft. `, ` with ` ⇒ guest; ` vs `, ` and `, ` & `, ` x `, `; `,
+`, ` ⇒ co-billing) plus typographic ones: ` / `, ` + `, ` · `, ` • `, ` ♦ `, ` \ `, `\\`, `\`, `|`.
+
+Three rules the list encodes:
+
+* **Spaces are required** on `/` and `+`. Bare `"AC/DC"` and `"Akio Suzuki/Takehisa Kosugi/Riri Shimada"`
+  are the same shape, and only the first is protected by a tier-2 hit; a tier-4 fallback on the second
+  would emit unverified owner atoms. The names stay whole instead.
+* **`\\` is listed before `\`.** ID3v2.3 has no multi-value frame, so taggers join with a doubled
+  backslash. Matched one byte at a time, the first `\` was the separator and the second rode along on the
+  next atom - `"Mal Waldron\\Jim Pepper"` produced a browsable artist called `\Jim Pepper`, which then
+  *passed* MB verification because `normalize_name` strips punctuation before comparing.
+* **Dangling markers are trimmed, not split.** `trim_separator_noise` strips leading/trailing separator
+  punctuation before anything is looked up, because tier 2 runs before any split and would otherwise
+  cache and name the artist under the decorated spelling. Guarded on the result still holding a letter or
+  digit, so bands that are entirely punctuation ("+/-", "!!!") survive intact.
 
 ### Pacing
 
@@ -280,6 +309,11 @@ anti-joins × ~25k folders, for a result nothing inside the loop reads. `detect_
 unscoped by design and is gated on `!has_filter` - a partial scan has no business concluding that the
 folders it didn't visit are gone.
 
+`--resolve-artists` has no folder loop, so it derives its own orphan scope: the artists linked to the
+releases in scope, captured **before** the pass runs. It has to be before - unlinking is exactly what the
+reconcile does, so afterwards there is nothing left to join on. This scope is why the flag no longer
+strands rows: it previously ran neither cleanup at all, and 8,216 zero-link artists had accumulated.
+
 ### When ownership is written
 
 The folder loop cannot simply wait for the resolve pass to create owners: `lastIndexedAt`, the artist folder
@@ -287,24 +321,36 @@ image, totals and `--emit-artist-ids` are all driven by the artist set the loop 
 ownerless is invisible in `/browse`, unsyncable, and (before the fix below) deletable by `./delete`'s sweep.
 On a full run that window would last days.
 
-So the loop still writes owners - but it resolves the `albumArtist` tag **offline first**, using only the
-free tiers (embedded pairs, the `MbArtistLookup` cache, the backstop). Tier 4 is explicitly rejected here: a
-cold cache must never blind-split `"Kool & The Gang"`. When offline resolution can't decide, the verbatim tag
-is written as a **provisional** owner and corrected later in the same run.
+So the loop still writes owners - but it resolves the **owner tag** offline first, using only the free tiers
+(embedded pairs, the `MbArtistLookup` cache, the backstop). Tier 4 is explicitly rejected here: a cold cache
+must never blind-split `"Kool & The Gang"`. When offline resolution can't decide, the verbatim tag is written
+as a **provisional** owner and corrected later in the same run.
+
+**The owner tag is not always `albumArtist`.** On a Various-Artists compilation the placeholder names nobody,
+so the track's own `artist` tag decides ownership instead - the contributors co-own the compilation. One
+definition of that choice, `index::resolve::owner_tag`, is called from both the folder loop and the reconcile.
+It has to be: the two used to have their own copies and drifted. The loop had the VA fallback, the reconcile
+read `albumArtist` alone, so on a VA release "Various Artists" resolved to nothing, the release never entered
+the desired set, the empty-set guard below skipped it, and the raw compound the loop had written stayed an
+owner **forever**. 497 of those had accumulated -
+`"Aaron Neville, Kenny G, Walter Afanasieff, John \"JR\" Robinson, ..."` owning *The Bodyguard OST*.
 
 The resolve pass then runs an **ownership reconcile** that replaces those provisional owners, guarded so it
 can never make things worse:
 
 | Guard | Why |
 |---|---|
-| Desired set = union across **all** distinct `albumArtist` values on the release | 11 of 435 releases measured carry more than one; overwriting from a single track would strip co-owners |
-| Skip the release if any of its album artists **deferred** | never rewrite ownership on an incomplete picture during an MB outage |
-| Skip if the desired set is empty | covers `"Various Artists"`, which resolves to nothing |
+| Desired set = union across **all** distinct owner tags on the release | 11 of 435 releases measured carry more than one; overwriting from a single track would strip co-owners. On a VA compilation this union is what makes every contributor an owner |
+| Skip the release if any of its owner tags **deferred** | never rewrite ownership on an incomplete picture during an MB outage |
+| Skip if the desired set is empty | a release whose owner tag resolves to nothing keeps whatever the folder scan established |
+| `is_special_artist_name` parts are never owners | a tier-0 pairing can hand back the placeholder itself (`{"Various Artists", "Whitney Houston"}`) |
+| `cap_co_owners` on both sides | a tag naming 44 session musicians is a personnel list; the first owns, the rest become credits. The loop caps too, or a warm cache writes 44 provisional owners for the pass to trim |
 | Insert new owners before deleting stale ones, one transaction | a release must never pass through zero owners |
 | Delete only within the release scope in play | targeted runs stay targeted |
 
-`delete_orphan_artists` runs after the reconcile, so a compound left holding no links is removed in the same
-run. Covered by `scripts/index/tests/owner_reconcile.rs`.
+`delete_orphan_artists` runs after the reconcile - in `--resolve-artists` mode too, where it used to be
+skipped entirely, leaving every artist the reconcile unlinked behind as a zero-link row (8,216 of them had
+piled up). Covered by `scripts/index/tests/owner_reconcile.rs`.
 
 On a warm cache the loop resolves correctly on the spot and no provisional owner is ever written - the second
 `--only` run of an artist typically costs **0 MB lookups**. The cost is paid once, on a cold cache.
@@ -316,6 +362,59 @@ for the folder) always receives it; the other resolved owners receive it only if
 Previously this fired only for single-artist folders, so a folder whose `albumArtist` was
 `"Ella Fitzgerald & Roy Eldridge Sextet"` handed its image to the compound junk artist - and once album
 artists split, such folders would have contributed no image at all.
+
+### Canonicalizing artist rows
+
+An `Artist` row is created from a *tag string*, once. `common::db::ensure_artist` upserts
+`ON CONFLICT (slug) DO UPDATE SET "updatedAt"`, so whoever inserted a slug first owns its spelling forever -
+and `make_slug` strips punctuation, which means `"\Jim Pepper"` and `"Jim Pepper"` are the **same row**,
+stuck under the decorated name. `canonicalize_artists` reconciles the rows with what MusicBrainz actually
+said, from `MbArtistLookup` alone - no network, no audio files, seconds on the live library:
+
+1. **Clear contradicted MB ids.** The row carries a `musicbrainzId` its own lookup row denies
+   (`mbid IS NULL` - MB was asked about that exact string and said no). Scoped to `lastSyncedAt IS NULL`:
+   sync answers a different question, with a tolerant predicate, about an artist it is already committed
+   to, and its ids are not ours to overrule.
+2. **Rename to the canonical name** when `MbArtistLookup.mbName` differs. Free slug ⇒ rename both fields;
+   slug unchanged (punctuation-only: `"\Jim Pepper"`, `'` vs `’`) ⇒ a pure display fix with no URL churn.
+   A taken name or slug is skipped - that pair is a duplicate, handled next.
+3. **Connect duplicates** via `primaryArtistId`, so the twin drops out of `/browse` and its catalogue
+   aggregates onto the primary. Primary = most `LocalReleaseArtist` links, tie-broken by `createdAt`.
+   Never a delete: folding two rows into one is `./fix --duplicates`' job, which has the genre/URL/playcount
+   merge and an undo trail.
+
+Two guards, and both were load-bearing when measured against the live library:
+
+**`Artist.musicbrainzId` is not a safe merge key.** 3,115 ids were shared by more than one row, but almost
+all of those are leaks: `"Lena Horne & Gábor Szabó"` carries Lena Horne's id with zero links, while its
+lookup row says MB denied the string. Merging on the column alone folds collaborations into their first
+member. So both names must have a lookup row resolving to the same id - MusicBrainz corroborating the pair
+rather than us inferring it. 3,115 candidate groups → 172.
+
+**Sharing an MB id is still not enough**, because `mb_artist_exact` matches on MusicBrainz **aliases**. The
+lookup table legitimately reports `"Simone" → Nina Simone`, `"ANT" → Adam Ant`, `"Lowe" → Nick Lowe` - MB
+saying the string *can* refer to that artist, not that it is their name. A library tagged
+`albumArtist = "Simone"` means the Brazilian singer. So steps 2 and 3 additionally require the two spellings
+to **normalize to the same key** (case, punctuation, a leading "the", and `&` vs `and` all folded). Variant
+pairs still merge (`Iron And Wine` / `Iron & Wine`, `Chi-Lites` / `The Chi-Lites`,
+`Teddy Wilson & His Orchestra` / `Teddy Wilson and His Orchestra`); alias hits are dropped. 172 → 108
+connections, 1,343 → 1,295 renames.
+
+**Scoped like every other cleanup.** `./index --only "X"` must stay about X - the artist page's *Scan
+catalogue* button issues exactly that, and an unscoped pass would rename ~1,300 unrelated artists behind
+a one-artist refresh. Steps 1 and 2 filter on artist id; step 3 filters on **MBID** instead, because the
+twin of an in-scope row is by definition usually out of scope and filtering it out would make every group
+look like a singleton. Measured: unfiltered `6474 / 1295 / 108`, `--only "Frank Sinatra" --exact`
+`1 / 5 / 4`.
+
+A scoped run also makes **only slug-stable renames**. Punctuation-only fixes still land
+(`\Jim Pepper` → `Jim Pepper` slugifies identically), but `Ink Spots` → `The Ink Spots` moves the URL, and
+doing that under a user who is sitting on `/artist/ink-spots` watching the scan terminal is not a targeted
+change. Those wait for the library-wide pass, which is a deliberate maintenance action.
+
+Runs at the end of every resolve pass - so every UI scan button already gets it, with no argument changes
+- and standalone as `--canonicalize-artists` (`--dry-run` prints the clears, renames and connections
+without writing). Covered by `scripts/index/tests/canonicalize.rs`.
 
 ### Resolution order doesn't matter
 
