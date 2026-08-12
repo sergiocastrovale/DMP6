@@ -2,6 +2,9 @@
 
 export const QUEUE_PERSIST_CAP = 200
 
+// Explorer session history is browsable from /explore, so it keeps a much shorter tail than the queue.
+export const EXPLORER_SESSION_HISTORY_CAP = 50
+
 // Fisher-Yates shuffle, in place. Returns the same array reference.
 export function shuffleArray<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {

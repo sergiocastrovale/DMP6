@@ -1,5 +1,7 @@
 export const maxGenres = 5
 export const SKELETON_GRID_SIZE = 10
+// Rows shown per page in the /explore session history; the store retains EXPLORER_SESSION_HISTORY_CAP.
+export const EXPLORE_HISTORY_PAGE_SIZE = 15
 export const SESSION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
 // Ring-buffer cap for the terminal store's line buffer - a full ./index run can stream 19K+ lines;
 // capping keeps the reactive array (and every component re-scanning it per chunk) bounded (audit #92).

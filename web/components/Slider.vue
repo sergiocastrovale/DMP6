@@ -8,10 +8,12 @@ const props = withDefaults(defineProps<{
   rightLabel: string
   title: string
   stops: string[]
+  hint?: string
 }>(), {
   min: 0,
   max: 9,
   step: 1,
+  hint: undefined,
 })
 
 const emit = defineEmits<{
@@ -20,9 +22,8 @@ const emit = defineEmits<{
 
 const currentLabel = computed(() => props.stops[props.modelValue] ?? '')
 
-function onInput(e: Event) {
-  const val = parseInt((e.target as HTMLInputElement).value, 10)
-  emit('update:modelValue', val)
+const onInput = (e: Event) => {
+  emit('update:modelValue', parseInt((e.target as HTMLInputElement).value, 10))
 }
 </script>
 
@@ -57,5 +58,7 @@ function onInput(e: Event) {
 
       <span class="w-20 shrink-0 text-xs text-ink0">{{ rightLabel }}</span>
     </div>
+
+    <p v-if="hint" class="mt-2 text-xs leading-snug text-ink0">{{ hint }}</p>
   </div>
 </template>

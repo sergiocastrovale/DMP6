@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePlayerStore } from '../../stores/player'
+import { EXPLORER_SESSION_HISTORY_CAP } from '../../helpers/playerLogic'
 
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- stubs the real MediaMetadata constructor for vi.stubGlobal
 class FakeMediaMetadata {
@@ -202,6 +203,22 @@ describe('usePlayerStore', () => {
     expect(store.explorerCurrentTrack?.id).toBe('exp2')
     expect(store.explorerHistory).toContain('exp2')
     expect(store.explorerSessionHistory[0]?.id).toBe('exp1')
+  })
+
+  it('explorer session history keeps only the newest EXPLORER_SESSION_HISTORY_CAP entries', async () => {
+    let n = 0
+    fetchMock.mockImplementation((url: string) => url === '/api/tracks/explore'
+      ? Promise.resolve(track({ id: `exp${++n}` }))
+      : Promise.resolve({}))
+    const store = usePlayerStore()
+    store.shuffleMode = 'explorer'
+    store.explorerParams = { energy: 5, era: 5, familiarity: 5, sound: 5 }
+    for (let i = 0; i < 60; i++) {
+      await store.next()
+    }
+    expect(store.explorerSessionHistory).toHaveLength(EXPLORER_SESSION_HISTORY_CAP)
+    expect(store.explorerSessionHistory[0]?.id).toBe('exp59')
+    expect(store.explorerSessionHistory.at(-1)?.id).toBe('exp10')
   })
 
   it('previous() restarts the current track when more than 3s in', async () => {

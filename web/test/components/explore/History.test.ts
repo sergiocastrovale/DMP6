@@ -1,0 +1,62 @@
+import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { describe, expect, it } from 'vitest'
+import type { DOMWrapper } from '@vue/test-utils'
+import History from '../../../components/explore/History.vue'
+import { EXPLORE_HISTORY_PAGE_SIZE } from '../../../helpers/constants'
+
+const tracks = (count: number) => Array.from({ length: count }, (_, i) => ({
+  id: `t${i}`, title: `Track ${i}`, artist: 'Artist', album: 'Album', duration: 200,
+  artistSlug: 'artist', releaseImage: null, releaseImageUrl: null, localReleaseId: 'r1',
+})) as any
+
+type Buttons = DOMWrapper<HTMLButtonElement>[]
+
+const rows = (wrapper: { findAll: (selector: string) => Buttons }): Buttons =>
+  wrapper.findAll('button').filter(b => b.text().includes('Track'))
+
+describe('explore/History.vue', () => {
+  it('shows at most one page of rows', async () => {
+    const wrapper = await mountSuspended(History, { props: { tracks: tracks(40) } })
+    expect(rows(wrapper)).toHaveLength(EXPLORE_HISTORY_PAGE_SIZE)
+    expect(wrapper.text()).toContain('Track 0')
+    expect(wrapper.text()).not.toContain('Track 20')
+  })
+
+  it('hides the arrows when everything fits on one page', async () => {
+    const wrapper = await mountSuspended(History, { props: { tracks: tracks(EXPLORE_HISTORY_PAGE_SIZE) } })
+    expect(wrapper.findAll('button[aria-label="Older tracks"]')).toHaveLength(0)
+  })
+
+  it('pages back through older entries and disables the arrows at each end', async () => {
+    const wrapper = await mountSuspended(History, { props: { tracks: tracks(40) } })
+    const older = wrapper.get('button[aria-label="Older tracks"]')
+    const newer = wrapper.get('button[aria-label="Newer tracks"]')
+    expect(newer.attributes('disabled')).toBeDefined()
+
+    await older.trigger('click')
+    expect(wrapper.text()).toContain('Track 15')
+    expect(wrapper.text()).not.toContain('Track 0')
+    expect(newer.attributes('disabled')).toBeUndefined()
+
+    await older.trigger('click')
+    expect(older.attributes('disabled')).toBeDefined()
+
+    await newer.trigger('click')
+    expect(wrapper.text()).toContain('Track 15')
+  })
+
+  it('clamps the page when the list shrinks under it', async () => {
+    const wrapper = await mountSuspended(History, { props: { tracks: tracks(40) } })
+    await wrapper.get('button[aria-label="Older tracks"]').trigger('click')
+    await wrapper.get('button[aria-label="Older tracks"]').trigger('click')
+    await wrapper.setProps({ tracks: tracks(10) })
+    expect(rows(wrapper)).toHaveLength(10)
+    expect(wrapper.text()).toContain('Track 0')
+  })
+
+  it('emits play with the clicked track', async () => {
+    const wrapper = await mountSuspended(History, { props: { tracks: tracks(3) } })
+    await rows(wrapper)[1]!.trigger('click')
+    expect(wrapper.emitted('play')?.[0]?.[0]).toMatchObject({ id: 't1' })
+  })
+})

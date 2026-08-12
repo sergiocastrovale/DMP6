@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  clampPage,
   downloadSubpage,
   filterQueue,
   formatDate,
@@ -8,6 +9,8 @@ import {
   formatNumber,
   formatPlaytime,
   formatSpeed,
+  pageCount,
+  paginate,
   parseDroppedLinks,
   parseProgress,
   sortItems,
@@ -274,5 +277,54 @@ describe('formatSpeed', () => {
 
   it('uses MB/s at or above 1 MiB/s', () => {
     expect(formatSpeed(2 * 1_048_576)).toBe('2.0 MB/s')
+  })
+})
+
+describe('pageCount', () => {
+  it('returns 1 for an empty list so page 0 stays valid', () => {
+    expect(pageCount(0, 15)).toBe(1)
+  })
+
+  it('rounds up partial pages', () => {
+    expect(pageCount(15, 15)).toBe(1)
+    expect(pageCount(16, 15)).toBe(2)
+    expect(pageCount(50, 15)).toBe(4)
+  })
+})
+
+describe('clampPage', () => {
+  it('clamps below zero', () => {
+    expect(clampPage(-3, 50, 15)).toBe(0)
+  })
+
+  it('clamps past the last page', () => {
+    expect(clampPage(9, 50, 15)).toBe(3)
+  })
+
+  it('pulls the page back when the list shrinks', () => {
+    expect(clampPage(3, 20, 15)).toBe(1)
+    expect(clampPage(3, 0, 15)).toBe(0)
+  })
+})
+
+describe('paginate', () => {
+  const items = Array.from({ length: 50 }, (_, i) => i)
+
+  it('slices the requested page', () => {
+    expect(paginate(items, 0, 15)).toEqual(items.slice(0, 15))
+    expect(paginate(items, 2, 15)).toEqual(items.slice(30, 45))
+  })
+
+  it('returns the short last page', () => {
+    expect(paginate(items, 3, 15)).toEqual(items.slice(45))
+  })
+
+  it('clamps an out-of-range page instead of returning nothing', () => {
+    expect(paginate(items, 99, 15)).toEqual(items.slice(45))
+    expect(paginate(items, -1, 15)).toEqual(items.slice(0, 15))
+  })
+
+  it('handles an empty list', () => {
+    expect(paginate([], 0, 15)).toEqual([])
   })
 })

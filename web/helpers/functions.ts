@@ -155,3 +155,21 @@ export const formatSpeed = (bytesPerSec: number): string => {
   if (bytesPerSec >= 1_048_576) { return `${(bytesPerSec / 1_048_576).toFixed(1)} MB/s` }
   return `${(bytesPerSec / 1024).toFixed(0)} KB/s`
 }
+
+// Number of pages needed to show `total` items `size` at a time. Always at least 1, so an empty
+// list still has a valid page 0 to render.
+export const pageCount = (total: number, size: number): number =>
+  total <= 0 || size <= 0 ? 1 : Math.ceil(total / size)
+
+// Clamp a page index into [0, pageCount - 1]. Used when the underlying list shrinks under a page
+// the user is currently sitting on.
+export const clampPage = (page: number, total: number, size: number): number =>
+  Math.min(Math.max(page, 0), pageCount(total, size) - 1)
+
+// Slice of `items` for a zero-based page index. Out-of-range pages are clamped rather than
+// returning an empty slice.
+export const paginate = <T>(items: T[], page: number, size: number): T[] => {
+  if (size <= 0) { return items }
+  const start = clampPage(page, items.length, size) * size
+  return items.slice(start, start + size)
+}

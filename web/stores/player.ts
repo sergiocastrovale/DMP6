@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { useDebounceFn, useThrottleFn } from '@vueuse/core'
 import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState } from '~/types/player'
-import { nextIndexWrap, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
+import { EXPLORER_SESSION_HISTORY_CAP, nextIndexWrap, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
 
 export const usePlayerStore = defineStore('player', () => { 
   const currentTrack = ref<PlayerTrack | null>(null)
@@ -224,7 +224,7 @@ export const usePlayerStore = defineStore('player', () => {
   // Called from the Explore page button - fetches next track, updates session state, plays it
   async function pickExplorerTrack(params: ExploreParams): Promise<void> {
     if (explorerCurrentTrack.value) {
-      unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, 200)
+      unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, EXPLORER_SESSION_HISTORY_CAP)
     }
     explorerParams.value = params
     shuffleMode.value = 'explorer'
@@ -240,7 +240,7 @@ export const usePlayerStore = defineStore('player', () => {
   // Called when replaying a history track from the Explore page
   function setExplorerTrack(track: PlayerTrack, params: ExploreParams): void {
     if (explorerCurrentTrack.value && explorerCurrentTrack.value.id !== track.id) {
-      unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, 200)
+      unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, EXPLORER_SESSION_HISTORY_CAP)
     }
     explorerCurrentTrack.value = track
     explorerParams.value = params
@@ -253,7 +253,7 @@ export const usePlayerStore = defineStore('player', () => {
     if (shuffleMode.value === 'explorer') {
       if (!explorerParams.value) {return}
       if (explorerCurrentTrack.value) {
-        unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, 200)
+        unshiftCapped(explorerSessionHistory.value, explorerCurrentTrack.value, EXPLORER_SESSION_HISTORY_CAP)
       }
       const track = await fetchExplorerTrack(explorerParams.value)
       if (track) {

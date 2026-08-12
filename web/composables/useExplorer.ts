@@ -1,7 +1,7 @@
 import { usePlayerStore } from '~/stores/player'
 import type { PlayerTrack } from '~/types/player'
 
-export function useExplorer() {
+export const useExplorer = () => {
   const player = usePlayerStore()
 
   const energy = ref(5)
@@ -18,7 +18,7 @@ export function useExplorer() {
     sound: sound.value,
   }))
 
-  async function explore() {
+  const explore = async () => {
     isLoading.value = true
     error.value = null
     try {
@@ -32,7 +32,7 @@ export function useExplorer() {
     }
   }
 
-  function playFromHistory(track: PlayerTrack) {
+  const playFromHistory = (track: PlayerTrack) => {
     player.setExplorerTrack(track, params.value)
   }
 
