@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { RefreshCw, Loader2, Search, HardDriveDownload, Globe, ListChecks, FileSearch } from 'lucide-vue-next'
+import { RefreshCw, Loader2, Search, HardDriveDownload, Globe } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type { ButtonDropdownOption } from '~/types/ui'
 import { useTerminalStore } from '~/stores/terminal'
-import { visibleScanActions } from '~/helpers/constants'
+import { visibleArtistScanActions } from '~/helpers/constants'
 
 const props = defineProps<{
   artistName: string
@@ -13,35 +13,32 @@ const props = defineProps<{
 const terminal = useTerminalStore()
 const { isAdmin } = useAuth()
 
-const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe, ListChecks, FileSearch }
+const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownload, Globe }
 
+// `./delete` prompts for confirmation on stdin, which nothing answers in a tmux-backed run - `--y` is
+// what keeps the rebuilds from hanging there forever. It scopes by artist name; index scopes by the
+// artist's on-disk folders, which is why the two take different arguments.
 const artistActions: Record<string, (name: string, folders: string[]) => () => Promise<void>> = {
   'check': (name, folders) => async () => {
     await terminal.run('./index', ['--only', folders.join(';'), '--exact'])
     await terminal.run('./sync', ['--only', name, '--exact'])
   },
-  'full': (name, folders) => async () => {
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite-with-images', '--prune'])
+  'rebuild': (name, folders) => async () => {
+    await terminal.run('./delete', [name, '--y'])
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'])
     await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
   },
-  // --inspect re-reads tags for files already in the DB (default index skips any known filePath), so
-  // replaced or re-tagged files are picked up without a destructive --overwrite pass.
-  'inspect': (_name, folders) => async () => {
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--inspect'])
+  'reindex': (name, folders) => async () => {
+    await terminal.run('./delete', [name, '--y'])
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'])
   },
-  'index': (_name, folders) => async () => {
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact'])
-  },
-  'sync': (name) => async () => {
-    await terminal.run('./sync', ['--only', name, '--exact'])
-  },
-  'catalogue-gaps': (name) => async () => {
-    await terminal.run('./sync', ['--only', name, '--exact', '--catalogue-gaps'])
+  'resync': (name) => async () => {
+    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
   },
 }
 
 const syncOptions = computed<ButtonDropdownOption[]>(() =>
-  visibleScanActions('artist', isAdmin.value).map(s => ({
+  visibleArtistScanActions(isAdmin.value).map(s => ({
     label: s.text,
     description: s.subtext,
     icon: scanIcons[s.icon],

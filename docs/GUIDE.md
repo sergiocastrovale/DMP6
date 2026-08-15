@@ -9,9 +9,9 @@ progress panel when *Settings → Library → Show terminal sidebar* is off).
 | Event | Automatic? | Where you act |
 |---|---|---|
 | New artist folder copied into `MUSIC_DIR` | Only with auto-scan on | Settings → Library → **Check for new files** |
-| New releases added to an existing artist | Only with auto-scan on | Artist page → **Scan catalogue** → Check for new files |
-| Files replaced in place (same filename) | No | **Re-check changed files** |
-| Files replaced with a new filename / whole folder swapped | No | **Full re-scan** (ADMIN) |
+| New releases added to an existing artist | Only with auto-scan on | Artist page → **Scan catalogue** → Scan for new files |
+| Files replaced in place (same filename) | No | Settings → Library → **Re-check changed files** |
+| Files replaced with a new filename / whole folder swapped | No | Artist page → **Rebuild everything** (ADMIN), or library-wide **Full re-scan** (ADMIN) |
 | Releases acquired by the downloader | Yes | Merge runs `index` + `sync` for you |
 | Deleting an artist | No | Artist page → **Remove** |
 
@@ -19,9 +19,25 @@ progress panel when *Settings → Library → Show terminal sidebar* is off).
 hours, minimum 1. It only runs on the instance started with `MONITOR_PRIMARY=true`, and it waits for
 any other running script, so it never collides with a manual scan.
 
+**The two menus are different.** Settings → Library holds the library-wide grid (*Check for new
+files*, *Full re-scan*, *Re-check changed files*, *Index only*, *Sync only*). The artist page's **Scan
+catalogue** dropdown holds four per-artist intents, cheapest first:
+
+| Artist action | What it runs | When |
+|---|---|---|
+| **Scan for new files** | `index` on the artist's folders, then `sync` | New releases dropped into an artist you already have |
+| **Rebuild everything** | `delete`, then `index --overwrite`, then `sync --overwrite` | The artist's rows are wrong and you want them rebuilt from the files and MusicBrainz |
+| **Rebuild from files only** | `delete`, then `index --overwrite` | Same, but you want the local tree rebuilt without touching MusicBrainz — the artist stays *Unmatched* until a sync runs |
+| **Re-match from scratch** | `sync --overwrite` | Files are fine; the MusicBrainz matches are not |
+
+Both rebuilds **delete the artist first**, so their releases, statuses and match history are recreated
+from scratch. Favorites, playlists and play counts follow the file paths (see §4) — unchanged paths
+survive the rebuild.
+
 **Permissions**: MANAGER can run *Check for new files*, *Re-check changed files*, *Index only*, *Sync
-only*, *Catalogue gaps*. *Full re-scan* and *Remove artist* are ADMIN-only — the server rejects the
-destructive flags (`--overwrite*`, `--prune`, `--files`, `--delete`) for anyone else, even by a forged
+only* and the artist page's *Scan for new files*. *Full re-scan*, both artist rebuilds, *Re-match from
+scratch* and *Remove artist* are ADMIN-only — the server rejects the destructive flags (`--overwrite*`,
+`--prune`, `--files`, `--delete`) and the `./delete` binary itself for anyone else, even by a forged
 request.
 
 ---
@@ -68,11 +84,12 @@ CLI equivalent: `./delete "Artist Name"` (add `--files` to delete audio, `--dry-
 ## 3. I added releases to an artist I already have
 
 1. Open the artist page.
-2. **Scan catalogue → Check for new files**. It indexes only that artist's folders and syncs only that
+2. **Scan catalogue → Scan for new files**. It indexes only that artist's folders and syncs only that
    artist, so it takes seconds rather than a library pass.
 3. The new releases appear in the release list with a status chip (Complete, Missing tracks, …).
-4. If MusicBrainz knows releases you do not own, use **Scan catalogue → Catalogue gaps** to list them
-   as *Missing* (1 API call per artist).
+4. Releases MusicBrainz knows and you do not own are filled in as *Missing* by the sync itself. To
+   refresh only that list without a full sync, run `./sync --catalogue-gaps --only "Artist Name"` from
+   the CLI — it has no button.
 
 CLI equivalent: `./refresh --only "Artist Name"`.
 
@@ -83,11 +100,13 @@ A normal scan **skips any file path already in the database**, so replacing file
 
 | What you did | Action | Why |
 |---|---|---|
-| Overwrote the files, same names | **Re-check changed files** | Compares size/mtime/hash and re-reads changed tags (`./index --inspect`) |
-| Re-encoded/renamed (e.g. mp3 → flac), or swapped the whole folder | **Full re-scan** (ADMIN) | Re-reads every tag, re-extracts covers and prunes rows for files that are gone |
-| Only fixed tags with an external tool | **Re-check changed files** | Same as above; no need for the destructive pass |
+| Overwrote the files, same names | Settings → Library → **Re-check changed files** | Compares size/mtime/hash and re-reads changed tags (`./index --inspect`) |
+| Re-encoded/renamed (e.g. mp3 → flac), or swapped one artist's folder | Artist page → **Rebuild everything** (ADMIN) | Drops the artist's rows and rebuilds them from the files, then re-matches |
+| Swapped folders across many artists | Settings → Library → **Full re-scan** (ADMIN) | Re-reads every tag and re-extracts covers library-wide |
+| Only fixed tags with an external tool | Settings → Library → **Re-check changed files** | Same as the first row; no need for a destructive pass |
 
-Then, if the release matched differently, run **Sync only** to rematch it.
+Then, if the release matched differently, **Re-match from scratch** on the artist page rematches it
+without touching the files.
 
 **Favorites, playlists and play counts**: a track is identified by its file path.
 

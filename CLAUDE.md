@@ -201,14 +201,28 @@ cd scripts && cargo build --release    # Must rebuild manually!
 Each script has a doc in `docs/scripts/`. `mosaic` has no wrapper — it is invoked by the web app
 (`/api/labs/mosaic/generate`).
 
-The web UI's scan buttons (`components/ScanActions.vue`, `components/artist/ScanActions.vue`) run
-these same binaries through `/api/terminal/run`. Three intents: **check for new files** (unflagged,
-MANAGER-usable), **re-check changed files** (`--inspect`, MANAGER-usable — the only non-destructive way
-to pick up files replaced in place, since a default index skips any known `filePath`) and **full
-re-scan** (`--overwrite-with-images --prune`, then `sync --overwrite`; ADMIN-only, since
-`DESTRUCTIVE_FLAGS` in `server/utils/terminalCommand.ts` gates `--delete`, `--overwrite*`, `--prune`
-and `--files`). Artist removal (`components/artist/DeleteDialog.vue` → `./delete`, ADMIN-only) is on
-the same allow-list; its unchecked "Remove all files" switch is what adds `--files`.
+The web UI's scan buttons run these same binaries through `/api/terminal/run`, from **two separate
+action lists** in `helpers/constants.ts` — the surfaces stopped sharing one list once the artist
+actions became rebuilds rather than scopes of the library-wide ones:
+
+- `scanActions` → `components/ScanActions.vue`, the library-wide grid: **check for new files**
+  (unflagged), **re-check changed files** (`--inspect` — the only non-destructive way to pick up files
+  replaced in place, since a default index skips any known `filePath`), **index only**, **sync only**,
+  all MANAGER-usable, plus ADMIN-only **full re-scan** (`--overwrite-with-images`, then `sync
+  --overwrite`; never `--prune` library-wide, where a half-mounted share would defeat the ratio guard).
+- `artistScanActions` → `components/artist/ScanActions.vue`, four per-artist intents: **scan for new
+  files** (`index --only <folders> --exact` + `sync --only <name> --exact`, the only MANAGER-usable
+  one), **rebuild everything** (`delete` + `index --overwrite` + `sync --overwrite`), **rebuild from
+  files only** (same without the sync — the artist stays unmatched until one runs) and **re-match from
+  scratch** (`sync --only --overwrite` alone). The last three are ADMIN-only.
+
+`./delete` takes the artist **name** positionally and needs `--y`: it prompts on stdin, which nothing
+answers in a tmux-backed run. `index` is scoped by the artist's on-disk **folders**, which is why the
+two take different arguments. ADMIN gating is `DESTRUCTIVE_FLAGS` in
+`server/utils/terminalCommand.ts` (`--delete`, `--overwrite*`, `--prune`, `--files`) plus
+`COMMAND_PERM`, which puts `./delete` and `./nuke` at ADMIN outright. Artist removal
+(`components/artist/DeleteDialog.vue` → `./delete`) is the same binary; its unchecked "Remove all
+files" switch is what adds `--files`. `sync --catalogue-gaps` is CLI-only — no button runs it.
 
 **No UI caller passes `--skip-resolve`**, so every one of these already runs the artist-resolution pass
 and its offline tail (canonicalize + orphan sweep) — the new behaviour needs no argument changes at any

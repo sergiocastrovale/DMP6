@@ -4,10 +4,10 @@ import bcrypt from 'bcrypt'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
-// The scan buttons are the only UI that can mutate or destroy the whole library: they shell out to
-// ./index and ./sync, and the "full re-scan" variant carries flags (--overwrite-with-images, --prune)
-// that re-read every tag and delete DB rows past the mount-blip guard. What must never regress is the
-// exact command line each button sends, and who is allowed to send it.
+// The scan buttons are the only UI that can mutate or destroy library data: they shell out to
+// ./index, ./sync and ./delete. The library-wide "full re-scan" re-reads every tag
+// (--overwrite-with-images); the artist rebuilds drop the artist's rows outright before re-indexing.
+// What must never regress is the exact command line each button sends, and who is allowed to send it.
 //
 // So every test intercepts POST /api/terminal/run and answers with a canned SSE stream: the real
 // endpoint spawns tmux + the release binaries against MUSIC_DIR, which would rewrite the machine's
@@ -54,7 +54,7 @@ const openArtistMenu = async (page: Page) => {
   await gotoHydrated(page, `/artist/${artistSlug}`, `**/api/artists/${artistSlug}/download-status`)
   await page.getByRole('button', { name: 'Scan catalogue' }).click()
   // Menu contents confirm the dropdown is open before any option is addressed.
-  await expect(page.getByRole('button', { name: 'Sync only' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Scan for new files' })).toBeVisible()
 }
 
 const gotoLibrarySettings = async (page: Page) =>
@@ -110,10 +110,10 @@ test.afterAll(async () => {
 })
 
 test.describe('artist scan dropdown', () => {
-  test('"Check for new files" runs a scoped index+sync with no destructive flag', async ({ page }) => {
+  test('"Scan for new files" runs a scoped index+sync with no destructive flag', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)
-    await page.getByRole('button', { name: 'Check for new files' }).click()
+    await page.getByRole('button', { name: 'Scan for new files' }).click()
 
     await expect.poll(() => runs).toEqual([
       { command: './index', args: ['--only', artistName, '--exact'] },
@@ -121,51 +121,37 @@ test.describe('artist scan dropdown', () => {
     ])
   })
 
-  test('"Full re-scan" prunes and rematches the artist', async ({ page }) => {
+  // --y is load-bearing: ./delete prompts on stdin, and a tmux-backed run has nobody to answer it.
+  test('"Rebuild everything" deletes, re-indexes and re-matches', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)
-    await page.getByRole('button', { name: 'Full re-scan' }).click()
+    await page.getByRole('button', { name: 'Rebuild everything' }).click()
 
     await expect.poll(() => runs).toEqual([
-      { command: './index', args: ['--only', artistName, '--exact', '--overwrite-with-images', '--prune'] },
+      { command: './delete', args: [artistName, '--y'] },
+      { command: './index', args: ['--only', artistName, '--exact', '--overwrite'] },
       { command: './sync', args: ['--only', artistName, '--exact', '--overwrite'] },
     ])
   })
 
-  test('"Index only" and "Sync only" each run one unflagged, scoped command', async ({ page }) => {
+  test('"Rebuild from files only" stops before MusicBrainz', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)
-    await page.getByRole('button', { name: 'Index only' }).click()
-    await expect.poll(() => runs).toEqual([
-      { command: './index', args: ['--only', artistName, '--exact'] },
-    ])
+    await page.getByRole('button', { name: 'Rebuild from files only' }).click()
 
-    await page.getByRole('button', { name: 'Scan catalogue' }).click()
-    await expect(page.getByRole('button', { name: 'Sync only' })).toBeVisible()
-    await page.getByRole('button', { name: 'Sync only' }).click()
     await expect.poll(() => runs).toEqual([
-      { command: './index', args: ['--only', artistName, '--exact'] },
-      { command: './sync', args: ['--only', artistName, '--exact'] },
+      { command: './delete', args: [artistName, '--y'] },
+      { command: './index', args: ['--only', artistName, '--exact', '--overwrite'] },
     ])
   })
 
-  test('"Re-check changed files" re-reads tags for files already indexed', async ({ page }) => {
+  test('"Re-match from scratch" touches MusicBrainz only', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)
-    await page.getByRole('button', { name: 'Re-check changed files' }).click()
+    await page.getByRole('button', { name: 'Re-match from scratch' }).click()
 
     await expect.poll(() => runs).toEqual([
-      { command: './index', args: ['--only', artistName, '--exact', '--inspect'] },
-    ])
-  })
-
-  test('"Catalogue gaps" runs the fast gaps pass only', async ({ page }) => {
-    const runs = await stubTerminal(page)
-    await openArtistMenu(page)
-    await page.getByRole('button', { name: 'Catalogue gaps' }).click()
-
-    await expect.poll(() => runs).toEqual([
-      { command: './sync', args: ['--only', artistName, '--exact', '--catalogue-gaps'] },
+      { command: './sync', args: ['--only', artistName, '--exact', '--overwrite'] },
     ])
   })
 })
@@ -196,11 +182,13 @@ test.describe('global scan grid (/settings/library)', () => {
     expect(runs.flatMap(r => r.args)).not.toContain('--prune')
   })
 
-  test('offers no artist-only action', async ({ page }) => {
+  test('offers no per-artist rebuild', async ({ page }) => {
     await stubTerminal(page)
     await gotoLibrarySettings(page)
     await expect(page.getByRole('button', { name: 'Check for new files' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Catalogue gaps' })).toHaveCount(0)
+    // The rebuilds delete an artist first; there is no library-wide equivalent behind this grid.
+    await expect(page.getByRole('button', { name: 'Rebuild everything' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Rebuild from files only' })).toHaveCount(0)
   })
 })
 
@@ -221,15 +209,17 @@ test.describe('manager (non-admin)', () => {
     await page.waitForURL('/')
   }
 
-  test('can run the normal scans but is never offered the destructive one', async ({ page }) => {
+  test('can run the normal scan but is never offered a rebuild', async ({ page }) => {
     const runs = await stubTerminal(page)
     await loginAsManager(page)
     await openArtistMenu(page)
 
-    await expect(page.getByRole('button', { name: 'Full re-scan' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Check for new files' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Rebuild everything' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Rebuild from files only' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Re-match from scratch' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Scan for new files' })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Check for new files' }).click()
+    await page.getByRole('button', { name: 'Scan for new files' }).click()
     await expect.poll(() => runs).toEqual([
       { command: './index', args: ['--only', artistName, '--exact'] },
       { command: './sync', args: ['--only', artistName, '--exact'] },

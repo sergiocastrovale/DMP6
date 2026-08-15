@@ -31,7 +31,7 @@ const globalActions: Record<string, () => Promise<void>> = {
   'sync': () => terminal.run('./sync', []),
 }
 
-const visibleActions = computed(() => visibleScanActions('both', isAdmin.value))
+const visibleActions = computed(() => visibleScanActions(isAdmin.value))
 </script>
 
 <template>

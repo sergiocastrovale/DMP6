@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ScanActions from '../../components/ScanActions.vue'
 import ArtistScanActions from '../../components/artist/ScanActions.vue'
-import { scanActions } from '../../helpers/constants'
+import { artistScanActions } from '../../helpers/constants'
 
 // Plain values, not refs: vi.hoisted runs before vue is imported.
 const { runMock, auth } = vi.hoisted(() => ({
@@ -18,8 +18,8 @@ vi.mock('~/stores/terminal', () => ({
 // Read at setup time, which is after each test has set the flag it wants.
 mockNuxtImport('useAuth', () => () => ({ isAdmin: { value: auth.isAdmin } }))
 
-// Every rendered action must resolve to a real handler. The global grid used to render the
-// artist-only 'catalogue-gaps' entry it had no handler for, so clicking it threw.
+// Every rendered action must resolve to a real handler - the two surfaces read from separate action
+// lists, so a rename on one side must not leave the other rendering an entry it cannot run.
 const clickAll = async (buttons: { trigger: (e: string) => Promise<void> }[]) => {
   for (const button of buttons) {
     await button.trigger('click')
@@ -32,9 +32,8 @@ describe('ScanActions.vue (global)', () => {
     auth.isAdmin = true
   })
 
-  it('never renders artist-only actions', async () => {
+  it('renders every library-wide action for an admin', async () => {
     const wrapper = await mountSuspended(ScanActions)
-    expect(wrapper.text()).not.toContain('Catalogue gaps')
     expect(wrapper.findAll('button')).toHaveLength(5)
   })
 
@@ -90,7 +89,7 @@ describe('artist/ScanActions.vue', () => {
     auth.isAdmin = true
   })
 
-  it('scopes the normal check to the artist folders and name, with no destructive flag', async () => {
+  it('scopes the normal scan to the artist folders and name, with no destructive flag', async () => {
     const wrapper = await openMenu()
     await wrapper.findAll('button')[1]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
@@ -99,20 +98,31 @@ describe('artist/ScanActions.vue', () => {
     ])
   })
 
-  it('prunes and rematches on a full re-scan', async () => {
+  // --y matters: ./delete prompts on stdin, and nothing answers it in a tmux-backed run.
+  it('deletes, re-indexes and re-matches for a full rebuild', async () => {
     const wrapper = await openMenu()
     await wrapper.findAll('button')[2]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
-      ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite-with-images', '--prune']],
+      ['./delete', ['Boards of Canada', '--y']],
+      ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite']],
       ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite']],
     ])
   })
 
-  it('scopes --inspect to the artist folders so replaced files are re-read', async () => {
+  it('stops before MusicBrainz when rebuilding from files only', async () => {
     const wrapper = await openMenu()
     await wrapper.findAll('button')[3]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
-      ['./index', ['--only', 'Boards of Canada', '--exact', '--inspect']],
+      ['./delete', ['Boards of Canada', '--y']],
+      ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite']],
+    ])
+  })
+
+  it('re-matches without touching local files', async () => {
+    const wrapper = await openMenu()
+    await wrapper.findAll('button')[4]!.trigger('click')
+    expect(runMock.mock.calls).toEqual([
+      ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite']],
     ])
   })
 
@@ -125,18 +135,19 @@ describe('artist/ScanActions.vue', () => {
     expect(runMock.mock.calls[0]).toEqual(['./index', ['--only', 'Aphex Twin;AFX', '--exact']])
   })
 
-  it('keeps catalogue gaps, and hides only the full re-scan from non-admins', async () => {
+  it('leaves a non-admin only the additive scan - every rebuild deletes the artist first', async () => {
     auth.isAdmin = false
     const wrapper = await openMenu()
-    expect(wrapper.text()).toContain('Catalogue gaps')
-    expect(wrapper.text()).not.toContain('Full re-scan')
-    // One trigger button plus every action except the admin-only one.
-    expect(wrapper.findAll('button')).toHaveLength(scanActions.length)
+    expect(wrapper.text()).toContain('Scan for new files')
+    expect(wrapper.text()).not.toContain('Rebuild')
+    expect(wrapper.text()).not.toContain('Re-match from scratch')
+    // The trigger button plus the single visible action.
+    expect(wrapper.findAll('button')).toHaveLength(2)
   })
 
   it('gives every rendered action a handler', async () => {
     // Selecting an option closes the menu, so each option needs its own mount.
-    for (let i = 1; i <= scanActions.length; i++) {
+    for (let i = 1; i <= artistScanActions.length; i++) {
       runMock.mockClear()
       const wrapper = await openMenu()
       await wrapper.findAll('button')[i]!.trigger('click')
