@@ -23,8 +23,9 @@ mod nuke;
 mod repair;
 mod status;
 
+use common::images::download_artist_image;
 use db::*;
-use images::{download_artist_image, download_cover_art};
+use images::download_cover_art;
 use mb_api::RateLimiter;
 use mb_matching::{find_mb_match_with_fallback, is_special_artist_name};
 use mb_types::{MbArtistMatch, MbRelease, MbTrack};
@@ -66,7 +67,7 @@ struct SyncArgs {
     delete: bool,
     #[arg(
         long,
-        help = "Fast pass: populate MISSING catalogue entries only (1 API call/artist)"
+        help = "Fast pass: populate MISSING catalogue entries only (few API calls/artist)"
     )]
     catalogue_gaps: bool,
     #[arg(
@@ -264,39 +265,14 @@ async fn fetch_and_store_artist_image(
         &http_client,
         &detail,
         &artist_slug,
-        &config.project_root,
+        None,
         &s3_client,
         &config,
     )
     .await;
 
     if let Ok(true) = result {
-        if config.use_local() {
-            let filename = format!("{}.jpg", &artist_slug);
-            sqlx::query(r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#)
-                .bind(&filename)
-                .bind(&artist_id)
-                .execute(&pool)
-                .await
-                .ok();
-        }
-        if config.use_s3() {
-            if let Some(ref public_url) = config.storage_public_url {
-                let image_url = format!(
-                    "{}/artists/{}.jpg",
-                    public_url.trim_end_matches('/'),
-                    &artist_slug
-                );
-                sqlx::query(
-                    r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                )
-                .bind(&image_url)
-                .bind(&artist_id)
-                .execute(&pool)
-                .await
-                .ok();
-            }
-        }
+        common::images::record_artist_image(&pool, &config, &artist_id, &artist_slug).await;
     }
 
     (artist_name, result)
@@ -471,7 +447,7 @@ async fn main() {
         reporter.header("DMP Sync - Catalogue Gaps");
         reporter.kv(
             "Mode",
-            "catalogue-gaps (MISSING entries only, 1 API call/artist)",
+            "catalogue-gaps (MISSING entries only, few API calls/artist)",
         );
         if args.overwrite {
             reporter.kv("Overwrite", "yes");
@@ -1730,57 +1706,79 @@ async fn main() {
 
         // Catalogue gaps: persist MISSING entries for MB release groups without local releases
         if !release_groups.is_empty() && !is_targeted && !is_duplicate {
-            delete_missing_releases_for_artist(&pool, &artist.id)
-                .await
-                .ok();
             let covered_rg_ids = get_covered_release_group_ids(&pool, &artist.id).await;
-            let mut gap_count = 0u32;
-            for rg in &release_groups {
-                if covered_rg_ids.contains(&rg.id) {
-                    continue;
+            // A release group has no status, so the allow-list alone lets bootleg live recordings in
+            // (primary Album, secondary Live - both kept on purpose for official live albums). Ask MB
+            // which of this artist's groups actually have an Official release. On failure, leave the
+            // existing MISSING rows alone rather than rewriting the catalogue from unfiltered data.
+            let official_rg_ids = match mb_api::mb_get_official_release_group_ids(
+                &http_client,
+                &mb_artist.id,
+                &mut limiter,
+            )
+            .await
+            {
+                Ok(ids) => Some(ids),
+                Err(e) => {
+                    reporter.warn(&format!("Official release lookup failed: {} - gaps skipped", e));
+                    None
                 }
-                // Album-oriented allow-list (no specific release for a gap, so status is N/A).
-                let secondary = rg.secondary_types.clone().unwrap_or_default();
-                if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &secondary, None) {
-                    continue;
-                }
-                let type_name = rg.primary_type.as_deref().unwrap_or("Other");
-                let type_id =
-                    match ensure_release_type_cached(&pool, type_name, &mut release_type_cache)
-                        .await
-                    {
-                        Ok(id) => id,
-                        Err(_) => continue,
+            };
+            if let Some(official_rg_ids) = official_rg_ids {
+                delete_missing_releases_for_artist(&pool, &artist.id).await.ok();
+                let mut gap_count = 0u32;
+                for rg in &release_groups {
+                    if covered_rg_ids.contains(&rg.id) {
+                        continue;
+                    }
+                    // Album-oriented allow-list, plus proof the group has an Official release.
+                    let secondary = rg.secondary_types.clone().unwrap_or_default();
+                    if !common::mb::allowlist::is_allowed_gap(
+                        rg.primary_type.as_deref(),
+                        &secondary,
+                        &rg.id,
+                        &official_rg_ids,
+                    ) {
+                        continue;
+                    }
+                    let type_name = rg.primary_type.as_deref().unwrap_or("Other");
+                    let type_id =
+                        match ensure_release_type_cached(&pool, type_name, &mut release_type_cache)
+                            .await
+                        {
+                            Ok(id) => id,
+                            Err(_) => continue,
+                        };
+                    let year = rg
+                        .first_release_date
+                        .as_deref()
+                        .and_then(|d| d.split('-').next())
+                        .and_then(|y| y.parse::<i32>().ok());
+                    let extras = MbReleaseExtras {
+                        release_date: rg.first_release_date.as_deref(),
+                        ..Default::default()
                     };
-                let year = rg
-                    .first_release_date
-                    .as_deref()
-                    .and_then(|d| d.split('-').next())
-                    .and_then(|y| y.parse::<i32>().ok());
-                let extras = MbReleaseExtras {
-                    release_date: rg.first_release_date.as_deref(),
-                    ..Default::default()
-                };
-                if let Ok(mb_db_id) = upsert_mb_release(
-                    &pool, &rg.id, &rg.id, &rg.title, year, &type_id, "MISSING", None, None,
-                    &extras,
-                )
-                .await
-                {
-                    ensure_mb_release_artist_link(&pool, &mb_db_id, &artist.id)
-                        .await
-                        .ok();
-                    batch_link_release_genres(&pool, &mb_db_id, &artist_genre_ids)
-                        .await
-                        .ok();
-                    gap_count += 1;
+                    if let Ok(mb_db_id) = upsert_mb_release(
+                        &pool, &rg.id, &rg.id, &rg.title, year, &type_id, "MISSING", None, None,
+                        &extras,
+                    )
+                    .await
+                    {
+                        ensure_mb_release_artist_link(&pool, &mb_db_id, &artist.id)
+                            .await
+                            .ok();
+                        batch_link_release_genres(&pool, &mb_db_id, &artist_genre_ids)
+                            .await
+                            .ok();
+                        gap_count += 1;
+                    }
                 }
-            }
-            if gap_count > 0 {
-                reporter.ok(&format!(
-                    "{} missing release(s) appended to catalogue",
-                    gap_count
-                ));
+                if gap_count > 0 {
+                    reporter.ok(&format!(
+                        "{} missing release(s) appended to catalogue",
+                        gap_count
+                    ));
+                }
             }
         }
 

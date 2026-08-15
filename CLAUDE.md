@@ -140,7 +140,7 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./sync --skip-mb-tags        # Skip writing MB IDs back to audio file tags
 ./sync --only-write-mb-to-files          # Backfill MB IDs from DB into file tags (no API calls)
 ./sync --only-write-mb-to-files --only x # Backfill for specific artist
-./sync --catalogue-gaps       # Fast pass: populate MISSING catalogue entries (1 API/artist)
+./sync --catalogue-gaps       # Fast pass: populate MISSING catalogue entries (few API calls/artist)
 ./sync --catalogue-gaps --overwrite  # Re-fetch all MISSING entries from scratch
 ./sync --artist-ids file      # Sync artists by ID file, one per line (used by refresh)
 ./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when a collab release has several main artists
@@ -186,6 +186,9 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./extract-meta-images         # Extract embedded cover art → folder.jpg (500px, q80) for every release lacking a cover file; speeds up index
 ./extract-meta-images --dry-run       # Preview, write nothing
 ./extract-meta-images --only "Name"   # One artist
+./artist-photos                # One-off: backfill missing artist photos (Wikidata/Wikipedia/Fanart.tv) → IMAGE_DIR + MUSIC_DIR/{Artist}/folder.jpg + DB
+./artist-photos --dry-run      # Report candidate/source availability, write nothing
+./artist-photos --limit 50     # Cap the run for validation
 ./analysis /path/to/music     # Standalone metadata quality HTML report → reports/
 ./playlists                   # Generate/update genre playlists
 ./playlists --dry-run         # Preview without changes

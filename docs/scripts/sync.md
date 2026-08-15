@@ -46,7 +46,7 @@ cd scripts && cargo build --release -p sync
 ./sync --skip-release-img        # Skip cover art downloads
 ./sync --verbose                 # Show skipped MB releases
 ./sync --delete                  # Delete MB data for matched artists, then exit
-./sync --catalogue-gaps          # Fast pass: populate MISSING catalogue entries only (1 API call/artist)
+./sync --catalogue-gaps          # Fast pass: populate MISSING catalogue entries only (few API calls/artist)
 ./sync --catalogue-gaps --only x # Gaps for specific artist
 ./sync --catalogue-gaps --overwrite # Re-fetch all MISSING entries from scratch
 ./sync --skip-mb-tags            # Skip writing MB IDs back to file tags
@@ -73,7 +73,7 @@ cd scripts && cargo build --release -p sync
 | `--skip-artist-img` | bool | false | Skip artist image download |
 | `--skip-release-img` | bool | false | Skip release cover download |
 | `--delete` | bool | false | Nuke MB data for matched artists, then exit |
-| `--catalogue-gaps` | bool | false | Fast pass: only populate MISSING catalogue entries (1 API call/artist) |
+| `--catalogue-gaps` | bool | false | Fast pass: only populate MISSING catalogue entries (few API calls/artist) |
 | `--skip-mb-tags` | bool | false | Skip writing found MB IDs back into audio file tags |
 | `--only-write-mb-to-files` | bool | false | Backfill DB-known MB IDs into file tags (no API calls), then exit |
 | `--verbose` | bool | false | Log skipped/already-synced releases |
@@ -111,18 +111,19 @@ Duplicate detection: tracks processed MB IDs across the run. Skips artists that 
 
 Fast path for populating MISSING MusicBrainzRelease entries without re-running the full sync. Requires artists to already have `musicbrainzId` in DB (from a previous full sync).
 
-**Per artist (1 API call):**
+**Per artist (a few API calls):**
 1. Use existing `musicbrainzId` from DB (no search/lookup)
-2. Fetch release groups from MB API (sole API call)
-3. Query existing artist genres from DB (no API call)
-4. If `--overwrite`, delete stale MISSING entries first; otherwise skip release groups that already have MISSING entries
-5. Create MISSING entries for uncovered Album/EP release groups + link genres
+2. Fetch release groups from MB API
+3. Fetch the artist's Official Album/EP releases (paginated, ~1–4 calls) to learn which groups have an Official release — see "Official-only gaps"
+4. Query existing artist genres from DB (no API call)
+5. If `--overwrite`, delete stale MISSING entries first; otherwise skip release groups that already have MISSING entries
+6. Create MISSING entries for uncovered, official Album/EP release groups + link genres
 
 **Skips entirely:** artist search, artist detail fetch, URL upsert, artist image, local release matching, cover art download.
 
 **Skip logic:** Without `--overwrite`, existing MISSING releases are preserved and only new gaps are added. With `--overwrite`, all MISSING releases are deleted and re-created from scratch.
 
-**Performance:** ~1.1s per artist (rate limit). 500 artists ≈ 9 minutes vs ~7 days for full sync.
+**Performance:** ~2–5s per artist (rate limit; 1 release-group browse + 1–4 official-release pages). 500 artists ≈ 20–40 minutes vs ~7 days for full sync.
 
 Cannot combine with `--release` or `--delete`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`/`--web`/`--verbose`.
 
@@ -186,6 +187,22 @@ Before any bind, the candidate must pass `is_allowed`:
 - no **rejected secondary type** (audiobook, audio drama, spokenword, interview, field recording, demo). Compilation / Live / Remix / Soundtrack ride on an Album/EP primary type and pass. Remasters/special editions aren't MB types — they're Album primary and pass automatically.
 
 The same allow-list gates `--catalogue-gaps` MISSING creation. Net effect: **the library never binds a Single.**
+
+### Official-only gaps (`is_allowed_gap`)
+
+A **release group carries no status** — status lives on the releases inside it — so for a catalogue gap
+(no local copy, no chosen release) `is_allowed` sees `status = None` and treats the group as Official.
+That is how bootleg soundboard recordings flooded the catalogue: they are primary type Album with a
+Live secondary type, structurally identical to an official live album, which we keep on purpose.
+Radiohead ended up with **366** MISSING entries, nearly all bootlegs.
+
+Both gap paths (the end-of-artist block in `main.rs` and `--catalogue-gaps`) now call
+`mb_get_official_release_group_ids` once per artist: browse
+`/release?artist=…&status=official&type=album|ep&inc=release-groups`, paginated, collecting the groups
+that actually have an Official release. `is_allowed_gap` = that set ∧ `is_allowed`. Radiohead: 366 → 13.
+Server-side filtering keeps this to ~4 extra calls even for an artist with 500 releases; asking per
+group would have been one call per gap. If the lookup fails, the artist's existing MISSING rows are
+left untouched rather than rewritten from unfiltered data.
 
 ### The three tiers
 

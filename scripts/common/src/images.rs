@@ -1,8 +1,10 @@
 use crate::config::Config;
+use crate::mb::types::MbArtistDetail;
 use crate::s3::{create_s3_client, delete_from_s3, upload_to_s3};
 use aws_sdk_s3::Client as S3Client;
 use image::imageops::FilterType;
 use md5::{Digest, Md5};
+use reqwest::Client;
 use sqlx::PgPool;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -264,6 +266,265 @@ pub fn use_artist_folder_image(artist_folder: &Path, output_path: &Path) -> bool
         }
     }
     false
+}
+
+// ---------------------------------------------------------------------------
+// Artist image (Wikidata → Wikipedia → Fanart.tv)
+//
+// Moved here from `sync` (originally `sync/src/images.rs`) so a standalone script can fetch
+// artist photos without re-syncing the whole library - `sync` still calls this mid-sync for any
+// artist still missing one.
+// ---------------------------------------------------------------------------
+
+async fn download_and_resize(client: &Client, url: &str, dest: &Path, max_px: u32) -> Result<(), String> {
+    let bytes = client
+        .get(url)
+        .header("User-Agent", crate::mb::api::USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("Download failed: {}", e))?
+        .bytes()
+        .await
+        .map_err(|e| format!("Read body failed: {}", e))?;
+
+    let img = image::load_from_memory(&bytes).map_err(|e| format!("Image decode: {}", e))?;
+
+    let (w, h) = (img.width(), img.height());
+    let img = if w > max_px || h > max_px {
+        img.resize(max_px, max_px, FilterType::Triangle)
+    } else {
+        img
+    };
+
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+
+    img.save(dest).map_err(|e| format!("Save failed: {}", e))?;
+    Ok(())
+}
+
+async fn upload_image(
+    s3_client: &Option<S3Client>,
+    local_path: &Path,
+    config: &Config,
+    s3_key: &str,
+) -> Result<(), String> {
+    if config.use_s3() {
+        if let Some(ref client) = s3_client {
+            if let Some(ref bucket) = config.storage_bucket {
+                upload_to_s3(client, bucket, s3_key, local_path)
+                    .await
+                    .map_err(|e| format!("S3 upload failed: {}", e))?;
+                if !config.use_local() {
+                    let _ = fs::remove_file(local_path);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Copy a downloaded artist photo into the artist's on-disk root folder as `folder.jpg`, unless
+/// a cover already sits there (never clobber a manually-curated one - if `index` hasn't picked it
+/// up yet, that's a re-index concern, not this function's).
+fn write_artist_folder_image(local_path: &Path, music_dir: &str, artist_folder: &str) {
+    let dir = PathBuf::from(music_dir).join(artist_folder);
+    if dir.join("folder.jpg").is_file() || dir.join("cover.jpg").is_file() {
+        return;
+    }
+    let dest = dir.join("folder.jpg");
+    if let Err(_) = fs::create_dir_all(&dir) {
+        return;
+    }
+    if let Ok(bytes) = fs::read(local_path) {
+        let _ = fs::write(&dest, bytes);
+    }
+}
+
+async fn get_wikidata_image(client: &Client, wikidata_url: &str) -> Option<String> {
+    let entity_id = wikidata_url
+        .split('/')
+        .last()
+        .filter(|s| s.starts_with('Q'))?;
+    let api_url = format!(
+        "https://www.wikidata.org/w/api.php?action=wbgetentities&ids={}&props=claims&format=json",
+        entity_id
+    );
+    let body = client
+        .get(&api_url)
+        .header("User-Agent", crate::mb::api::USER_AGENT)
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+
+    let v: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let p18 = v["entities"][entity_id]["claims"]["P18"]
+        .as_array()?
+        .first()?;
+    let filename = p18["mainsnak"]["datavalue"]["value"].as_str()?;
+    Some(format!(
+        "https://commons.wikimedia.org/wiki/Special:FilePath/{}",
+        urlencoding::encode(filename)
+    ))
+}
+
+async fn get_wikipedia_image(client: &Client, wikipedia_url: &str) -> Option<String> {
+    let title = wikipedia_url
+        .split("/wiki/")
+        .nth(1)
+        .map(|s| s.replace(' ', "_"))?;
+
+    let lang = wikipedia_url
+        .split("://")
+        .nth(1)
+        .and_then(|s| s.split('.').next())
+        .unwrap_or("en");
+
+    let api_url = format!(
+        "https://{}.wikipedia.org/w/api.php?action=query&titles={}&prop=pageimages&format=json&pithumbsize=500",
+        lang,
+        urlencoding::encode(&title)
+    );
+    let body = client
+        .get(&api_url)
+        .header("User-Agent", crate::mb::api::USER_AGENT)
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+
+    let v: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let pages = v["query"]["pages"].as_object()?;
+    let page = pages.values().next()?;
+    page["thumbnail"]["source"].as_str().map(|s| s.to_string())
+}
+
+async fn get_fanart_image(client: &Client, mb_artist_id: &str, api_key: &str) -> Option<String> {
+    let url = format!(
+        "https://webservice.fanart.tv/v3/music/{}?api_key={}",
+        mb_artist_id, api_key
+    );
+    let body = client
+        .get(&url)
+        .header("User-Agent", crate::mb::api::USER_AGENT)
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+
+    let v: serde_json::Value = serde_json::from_str(&body).ok()?;
+    let thumbs = v["artistthumb"].as_array()?;
+    thumbs
+        .first()
+        .and_then(|t| t["url"].as_str())
+        .map(|s| s.to_string())
+}
+
+/// Fetch an artist photo (Wikidata -> Wikipedia -> Fanart.tv, first hit wins) and store it at
+/// `{image_dir}/artists/{slug}.jpg` (+ S3 upload if configured). When `artist_folder` is given (the
+/// artist's top-level folder name under `MUSIC_DIR`) and `music_dir` is configured, also copies the
+/// result to `{music_dir}/{artist_folder}/folder.jpg`. Returns `Ok(true)` when a new image was
+/// stored, `Ok(false)` when none of the sources had one (not an error - most artists won't).
+pub async fn download_artist_image(
+    client: &Client,
+    detail: &MbArtistDetail,
+    artist_slug: &str,
+    artist_folder: Option<&str>,
+    s3_client: &Option<S3Client>,
+    config: &Config,
+) -> Result<bool, String> {
+    let s3_key = format!("artists/{}.jpg", artist_slug);
+    let local_path = PathBuf::from(&config.image_dir)
+        .join("artists")
+        .join(format!("{}.jpg", artist_slug));
+
+    if config.use_local() && local_path.exists() {
+        return Ok(false);
+    }
+
+    let mut image_url: Option<String> = None;
+
+    if let Some(ref relations) = detail.relations {
+        for rel in relations {
+            if image_url.is_some() {
+                break;
+            }
+            if let Some(ref url_obj) = rel.url {
+                let resource = &url_obj.resource;
+                match rel.relation_type.as_str() {
+                    "wikidata" => {
+                        image_url = get_wikidata_image(client, resource).await;
+                    }
+                    "wikipedia" => {
+                        if image_url.is_none() {
+                            image_url = get_wikipedia_image(client, resource).await;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if image_url.is_none() {
+        if let Some(ref api_key) = config.fanart_api_key {
+            image_url = get_fanart_image(client, &detail.id, api_key).await;
+        }
+    }
+
+    let url = match image_url {
+        Some(u) => u,
+        None => return Ok(false),
+    };
+
+    match download_and_resize(client, &url, &local_path, 500).await {
+        Ok(()) => {
+            if let (Some(folder), Some(music_dir)) = (artist_folder, config.music_dir.as_deref()) {
+                write_artist_folder_image(&local_path, music_dir, folder);
+            }
+            upload_image(s3_client, &local_path, config, &s3_key).await?;
+            Ok(true)
+        }
+        Err(_) => Ok(false),
+    }
+}
+
+/// Point `Artist.image`/`imageUrl` at a just-stored `{slug}.jpg` (local filename and/or S3 public
+/// URL, matching whichever of `config.use_local()`/`use_s3()` is active). Called after
+/// `download_artist_image` returns `Ok(true)`.
+pub async fn record_artist_image(pool: &PgPool, config: &Config, artist_id: &str, artist_slug: &str) {
+    if config.use_local() {
+        let filename = format!("{}.jpg", artist_slug);
+        sqlx::query(r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#)
+            .bind(&filename)
+            .bind(artist_id)
+            .execute(pool)
+            .await
+            .ok();
+    }
+    if config.use_s3() {
+        if let Some(ref public_url) = config.storage_public_url {
+            let image_url = format!(
+                "{}/artists/{}.jpg",
+                public_url.trim_end_matches('/'),
+                artist_slug
+            );
+            sqlx::query(r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#)
+                .bind(&image_url)
+                .bind(artist_id)
+                .execute(pool)
+                .await
+                .ok();
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

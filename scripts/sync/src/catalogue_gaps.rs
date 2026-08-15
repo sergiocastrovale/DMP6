@@ -95,6 +95,18 @@ pub async fn fill_catalogue_gaps(
             continue;
         }
 
+        // Release groups carry no status; only the releases inside them do. Without this the gap pass
+        // fills the catalogue with bootleg live recordings (primary Album, secondary Live - the same
+        // shape as an official live album, which we keep). See `mb_get_official_release_group_ids`.
+        let official_rg_ids =
+            match mb_api::mb_get_official_release_group_ids(http_client, mb_id, limiter).await {
+                Ok(ids) => ids,
+                Err(e) => {
+                    reporter.err(&format!("{}: {}", name, e));
+                    continue;
+                }
+            };
+
         let artist_genre_ids = get_artist_genre_ids(pool, artist_id).await;
         if overwrite {
             delete_missing_releases_for_artist(pool, artist_id).await.ok();
@@ -110,10 +122,15 @@ pub async fn fill_catalogue_gaps(
             if covered_rg_ids.contains(&rg.id) {
                 continue;
             }
-            // Same album-oriented allow-list as the matcher. No specific release exists for a gap, so
-            // status is N/A (None); primary Album/EP + non-rejected secondary types gate it.
+            // Same album-oriented allow-list as the matcher, plus proof the group has an Official
+            // release - the release group itself carries no status.
             let secondary = rg.secondary_types.clone().unwrap_or_default();
-            if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &secondary, None) {
+            if !common::mb::allowlist::is_allowed_gap(
+                rg.primary_type.as_deref(),
+                &secondary,
+                &rg.id,
+                &official_rg_ids,
+            ) {
                 continue;
             }
             let type_name = rg.primary_type.as_deref().unwrap_or("Other");

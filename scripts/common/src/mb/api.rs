@@ -673,6 +673,66 @@ pub async fn mb_get_release_groups(
     Ok(all_groups)
 }
 
+/// Release-group ids of this artist that have at least one **Official** release.
+///
+/// A release group carries no status - status lives on the releases inside it - so the album-oriented
+/// allow-list alone cannot tell "OK Computer" from a bootleg soundboard recording: both are primary
+/// type Album, and the bootleg's Live secondary type is one we deliberately keep (official live albums
+/// belong in the catalogue). Browsing the artist's official releases once and keeping only the groups
+/// that appear is what separates them. Filtering server-side by `status=official&type=album|ep` keeps
+/// this to ~4 pages even for an artist with 500 releases; asking per release group would be one call
+/// per gap (366 for Radiohead).
+pub async fn mb_get_official_release_group_ids(
+    client: &Client,
+    mb_id: &str,
+    limiter: &mut RateLimiter,
+) -> Result<std::collections::HashSet<String>, String> {
+    #[derive(serde::Deserialize)]
+    struct ReleaseGroupRef {
+        id: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct ReleaseRef {
+        #[serde(rename = "release-group")]
+        release_group: Option<ReleaseGroupRef>,
+    }
+    #[derive(serde::Deserialize)]
+    struct ReleaseRefList {
+        releases: Vec<ReleaseRef>,
+        #[serde(rename = "release-count")]
+        release_count: Option<u32>,
+    }
+
+    let mut ids = std::collections::HashSet::new();
+    let mut offset = 0u32;
+    let limit = 100u32;
+
+    loop {
+        let url = format!(
+            "{}/release?artist={}&status=official&type=album|ep&inc=release-groups&limit={}&offset={}&fmt=json",
+            MB_BASE, mb_id, limit, offset
+        );
+        let body = mb_get(client, &url, limiter).await?;
+        let result: ReleaseRefList =
+            serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
+
+        let count = result.releases.len() as u32;
+        for release in result.releases {
+            if let Some(rg) = release.release_group {
+                ids.insert(rg.id);
+            }
+        }
+
+        let total = result.release_count.unwrap_or(0);
+        offset += count;
+        if offset >= total || count == 0 {
+            break;
+        }
+    }
+
+    Ok(ids)
+}
+
 pub async fn mb_get_release_tracks(
     client: &Client,
     release_group_id: &str,

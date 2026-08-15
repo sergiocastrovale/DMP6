@@ -1,0 +1,16 @@
+[package]
+name = "artist-photos"
+version = "1.0.0"
+edition = "2021"
+
+[[bin]]
+name = "artist-photos"
+path = "src/main.rs"
+
+[dependencies]
+common = { path = "../common" }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+reqwest = { workspace = true }
+aws-sdk-s3 = { workspace = true }

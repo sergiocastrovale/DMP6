@@ -42,12 +42,52 @@ pub fn is_allowed(
     }
 }
 
+/// Whether a release group with no local copy may be recorded as a MISSING catalogue entry.
+///
+/// A gap has no specific release, so `is_allowed` sees `status = None` and treats the group as
+/// Official - which is how bootleg live recordings got in: they are primary Album with a Live
+/// secondary type, indistinguishable from an official live album by type alone. `official_rg_ids`
+/// (from `api::mb_get_official_release_group_ids`) supplies the status the group itself lacks.
+pub fn is_allowed_gap(
+    primary_type: Option<&str>,
+    secondary_types: &[String],
+    rg_id: &str,
+    official_rg_ids: &std::collections::HashSet<String>,
+) -> bool {
+    official_rg_ids.contains(rg_id) && is_allowed(primary_type, secondary_types, None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     fn sec(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn official(ids: &[&str]) -> HashSet<String> {
+        ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn gap_needs_an_official_release_in_the_group() {
+        let ids = official(&["rg-official"]);
+        assert!(is_allowed_gap(Some("Album"), &sec(&["Live"]), "rg-official", &ids));
+        // Same shape, but every release in the group is a bootleg - the Radiohead soundboard case.
+        assert!(!is_allowed_gap(Some("Album"), &sec(&["Live"]), "rg-bootleg", &ids));
+    }
+
+    #[test]
+    fn gap_still_obeys_the_type_allow_list() {
+        let ids = official(&["rg-single", "rg-audiobook"]);
+        assert!(!is_allowed_gap(Some("Single"), &[], "rg-single", &ids));
+        assert!(!is_allowed_gap(
+            Some("Album"),
+            &sec(&["Audiobook"]),
+            "rg-audiobook",
+            &ids
+        ));
     }
 
     #[test]

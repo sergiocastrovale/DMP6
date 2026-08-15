@@ -13,6 +13,7 @@ members = [
     "dissect",
     "problems",
     "extract-meta-images",
+    "artist-photos",
 ]
 resolver = "2"
 
