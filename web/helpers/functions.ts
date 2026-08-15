@@ -173,3 +173,14 @@ export const paginate = <T>(items: T[], page: number, size: number): T[] => {
   const start = clampPage(page, items.length, size) * size
   return items.slice(start, start + size)
 }
+
+// MusicBrainz link for a release row. A catalogue gap (status MISSING) has no chosen release - sync
+// creates the placeholder from the release *group*, storing that group's MBID in both columns - so
+// linking it as /release/<id> 404s. Anything with a real release id keeps the /release/ URL.
+export const musicBrainzUrl = (release: { musicbrainzId: string | null, releaseGroupId?: string | null }): string | null => {
+  if (!release.musicbrainzId) {
+    return null
+  }
+  const isGroupPlaceholder = release.releaseGroupId === release.musicbrainzId
+  return `https://musicbrainz.org/${isGroupPlaceholder ? 'release-group' : 'release'}/${release.musicbrainzId}`
+}

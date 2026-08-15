@@ -20,7 +20,7 @@ they are excluded by `EXISTS(LocalReleaseArtist)` rather than by a stored flag. 
    - Skip already-synced (has `releaseId`) unless `--overwrite` or its status is `UNKNOWN` (index flagged it for recalculation after deleting tracks)
    - Match: Tier 1 (MUSICBRAINZ_ALBUMID) → Tier 2 (MUSICBRAINZ_RELEASEGROUPID) → Tier 3 (title+artist search, only when no usable MB-id consensus) → no match = UNMATCHED
    - Majority id must be a real consensus (unanimous, or a strict plurality ≥2); a folder of all-distinct per-source ids yields no consensus
-   - **Allow-list**: bind only Official Album/EP release-groups (rejects Single/Broadcast/Other, non-Official/bootleg, and non-music secondary types)
+   - **Allow-list**: bind only Official Album/EP release-groups (rejects Broadcast/Other, non-Official/bootleg, and non-music secondary types). A Single-typed group binds only when the *files' own* MB ids point at it; a rejected candidate gets one search-tier retry before going Unmatched
    - Compare local vs MB track counts → status: COMPLETE / EXTRA_TRACKS / MISSING_TRACKS / INCOMPLETE
    - If ambiguous (multiple editions, no exact track-count match) → UNMATCHED
    - Upsert MB release, link tracks, update local release match status
@@ -97,8 +97,8 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
 5. **For each local release** - 3-tier matching (see Release Matching Policy):
    - Tier 1: Direct release lookup via embedded `MUSICBRAINZ_ALBUMID` (consensus vote across tracks)
    - Tier 2: Release group browse via `MUSICBRAINZ_RELEASEGROUPID` (or Tier 1 404 fallback)
-   - Tier 3: MB search by album title + artist — **only** when the release carries no usable MB-id consensus (per-source-tagged comps); gated hard so it never mis-binds
-   - Every candidate passes the allow-list (Official Album/EP) before binding; no consensus and no confident search hit → marked Unmatched
+   - Tier 3: MB search by album title + artist — when the release carries no usable MB-id consensus (per-source-tagged comps), and once as a retry after the allow-list rejects a tagged candidate; gated hard so it never mis-binds
+   - Every candidate passes the allow-list before binding (Official Album/EP, plus Single when the files' own ids point at it); no consensus and no confident search hit → marked Unmatched
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
 7. **Write MB IDs** back to audio file tags (`MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_TRACKID`) - only fills tags that are absent; never overwrites an existing value unless `--overwrite` is passed (deliberate re-correction, e.g. after fixing a bad match). Preserves file mtime to avoid triggering re-index. Skipped with `--skip-mb-tags`. A file with no tag block at all gets one created so IDs can still be written.
 8. **Cover art** - download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
@@ -186,7 +186,32 @@ Before any bind, the candidate must pass `is_allowed`:
 - release **status** = Official (rejects bootleg/promotion/pseudo-release; missing status is treated as Official, matching the Tier-2 browse filter);
 - no **rejected secondary type** (audiobook, audio drama, spokenword, interview, field recording, demo). Compilation / Live / Remix / Soundtrack ride on an Album/EP primary type and pass. Remasters/special editions aren't MB types — they're Album primary and pass automatically.
 
-The same allow-list gates `--catalogue-gaps` MISSING creation. Net effect: **the library never binds a Single.**
+The same allow-list gates `--catalogue-gaps` MISSING creation. Net effect: **the library never
+searches for, browses or invents a Single.**
+
+### The tagged exception (`is_allowed_tagged`)
+
+One case gets a wider gate: a candidate the **files themselves point at** — a unanimous embedded
+`MUSICBRAINZ_ALBUMID` (Tier 1) or `MUSICBRAINZ_RELEASEGROUPID` (Tier 2). There, a Single-typed group
+passes; status and secondary-type rules are unchanged. MusicBrainz files a lot of owned 4-track CD
+"EP"s under a Single group — Radiohead's 1993 `Creep` (release `130fe36f…`, Official, GB, 4/4 exact
+match) is the canonical one, and it sat `UNMATCHED` purely because of its group's type. The tags are
+definitive about a disc that is already on disk.
+
+Those bind and enter the catalogue **typed `Single`**, which the artist page's Singles filter and
+counts already understand. Search hits (Tier 3) and catalogue gaps keep using `is_allowed`, so nothing
+ever *invents* a Single — only a disc you own can produce one. `MatchCandidate.from_tags` is what
+selects the gate.
+
+### Rejected candidates fall back to search
+
+An allow-list rejection used to be a dead end: the release was marked `UNMATCHED` and that was that.
+Files tagged with a **bootleg** edition's release id therefore stayed unmatched forever even when the
+official album was one search away — Radiohead's `A Moon Shaped Pool` was tagged
+`7c2cae71…` (status Bootleg) and showed up as *missing* in the same catalogue that held the local copy.
+Now a rejected tagged candidate gets one Tier-3 search attempt (`search_release_candidate`, shared with
+Tier 3 proper) before giving up. The tags still win whenever they are usable; the fallback only runs
+after they have already been refused.
 
 ### Official-only gaps (`is_allowed_gap`)
 
@@ -208,7 +233,7 @@ left untouched rather than rewritten from unfiltered data.
 
 - **Tier 1** — direct lookup by `MUSICBRAINZ_ALBUMID` consensus.
 - **Tier 2** — release-group browse by `MUSICBRAINZ_RELEASEGROUPID` consensus (or a Tier-1 404 fallback). `mb_get_release_tracks` returns only Official editions; `check_release_status` then picks the edition (exact track-count sibling preferred; a single-edition group binds directly and records `MISSING_TRACKS`/`EXTRA_TRACKS` as appropriate). A deluxe/edition upgrade re-checks the group when the local folder has *more* tracks than the bound edition.
-- **Tier 3 (search fallback)** — runs **only** when the release has no usable embedded MB-id consensus. Searches MB by album title + artist (`mb_search_release_group`) and accepts the top hit **only** if all of: MB score ≥ 85, the found release-group title is similar to the local album (`names_are_similar`), the type passes the allow-list, and a browsed edition is track-count-confident. It never overrides an embedded id and never binds a Single, so distinct editions are not collapsed. This is the narrow, gated re-opening of the formerly-disabled fuzzy matching, for the no-id case only.
+- **Tier 3 (search fallback)** — runs when the release has no usable embedded MB-id consensus, and once more as a retry after the allow-list rejects a tagged candidate. Searches MB by album title + artist (`mb_search_release_groups`, limit 5) and takes the **first hit in the shortlist** that satisfies all of: MB score ≥ 85, the found release-group title is similar to the local album (`names_are_similar`), the type passes the allow-list; a browsed edition must then be track-count-confident. Scanning the shortlist rather than the top hit is load-bearing — MusicBrainz scores `Amnesiac` **the single** at 100 ahead of `Amnesiac` the album, so taking only the best hit left a 26-track album Unmatched. It never overrides an embedded id and never binds a Single (only tagged candidates may), so distinct editions are not collapsed. This is the narrow, gated re-opening of the formerly-disabled fuzzy matching.
 
 Found MB ids are written back to file tags after matching, so future syncs (or DB rebuilds) can skip expensive MB work. The writeback preserves file mtime to avoid triggering re-index.
 
@@ -226,7 +251,7 @@ All statuses in `ReleaseStatus` enum and how they are assigned:
 | `INCOMPLETE` | 0.5 | Sync: fallback when some local tracks are unmatched | Amber |
 | `MISSING` | - | API-only: MB release exists in artist catalogue but no local files | Red |
 | `UNKNOWN` | - | Index: track deletion resets matched release for sync recalculation. Release still has `releaseId`. | Gray |
-| `UNMATCHED` | - | Index: new release (no MB match yet). Sync: no MB-id consensus and no confident Tier-3 search hit, disallowed type (Single/non-Official), or ambiguous edition (multiple MB siblings, no exact track-count match). Nuke: unlink from MB. | Beige |
+| `UNMATCHED` | - | Index: new release (no MB match yet). Sync: no MB-id consensus and no confident Tier-3 search hit, disallowed type/status that the search fallback could not replace, or ambiguous edition (multiple MB siblings, no exact track-count match). Nuke: unlink from MB. | Beige |
 
 ### Status lifecycle
 

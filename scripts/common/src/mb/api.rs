@@ -560,12 +560,29 @@ pub struct SearchedReleaseGroup {
 /// when a local release carries no usable embedded MB id (e.g. a compilation whose tracks are tagged
 /// with their original sources). The caller re-verifies the returned title and gates on the allow-list
 /// before binding, so this only proposes a candidate - it never binds on its own.
+/// Top hit only. Callers that must skip a disallowed candidate (a Single-typed group MusicBrainz
+/// scores first, say) should use [`mb_search_release_groups`] and pick from the whole shortlist.
 pub async fn mb_search_release_group(
     client: &Client,
     album_title: &str,
     artist_name: &str,
     limiter: &mut RateLimiter,
 ) -> Result<Option<SearchedReleaseGroup>, String> {
+    Ok(
+        mb_search_release_groups(client, album_title, artist_name, limiter)
+            .await?
+            .into_iter()
+            .next(),
+    )
+}
+
+/// The search shortlist, best score first.
+pub async fn mb_search_release_groups(
+    client: &Client,
+    album_title: &str,
+    artist_name: &str,
+    limiter: &mut RateLimiter,
+) -> Result<Vec<SearchedReleaseGroup>, String> {
     let query = format!(
         "releasegroup:\"{}\" AND artist:\"{}\"",
         escape_lucene_phrase(album_title),
@@ -573,7 +590,7 @@ pub async fn mb_search_release_group(
     );
     let encoded = urlencoding::encode(&query);
     let url = format!(
-        "{}/release-group/?query={}&limit=3&fmt=json",
+        "{}/release-group/?query={}&limit=5&fmt=json",
         MB_BASE, encoded
     );
     let body = mb_get(client, &url, limiter).await?;
@@ -612,7 +629,6 @@ pub async fn mb_search_release_group(
         .release_groups
         .unwrap_or_default()
         .into_iter()
-        .next()
         .map(|rg| SearchedReleaseGroup {
             id: rg.id,
             title: rg.title,
@@ -626,7 +642,8 @@ pub async fn mb_search_release_group(
                 .map(|ac| ac.artist.name)
                 .collect(),
             first_release_date: rg.first_release_date,
-        }))
+        })
+        .collect())
 }
 
 pub async fn mb_get_artist_detail(

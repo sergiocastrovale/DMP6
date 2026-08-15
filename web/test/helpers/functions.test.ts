@@ -9,6 +9,7 @@ import {
   formatNumber,
   formatPlaytime,
   formatSpeed,
+  musicBrainzUrl,
   pageCount,
   paginate,
   parseDroppedLinks,
@@ -326,5 +327,27 @@ describe('paginate', () => {
 
   it('handles an empty list', () => {
     expect(paginate([], 0, 15)).toEqual([])
+  })
+})
+
+describe('musicBrainzUrl', () => {
+  it('links a bound release to its release page', () => {
+    expect(musicBrainzUrl({ musicbrainzId: 'rel-1', releaseGroupId: 'rg-1' }))
+      .toBe('https://musicbrainz.org/release/rel-1')
+  })
+
+  // Catalogue gaps have no chosen release: sync stores the release-group MBID in both columns, and
+  // /release/<group-id> 404s on musicbrainz.org.
+  it('links a catalogue gap to its release-group page', () => {
+    expect(musicBrainzUrl({ musicbrainzId: 'rg-1', releaseGroupId: 'rg-1' }))
+      .toBe('https://musicbrainz.org/release-group/rg-1')
+  })
+
+  it('returns null when there is no MBID at all', () => {
+    expect(musicBrainzUrl({ musicbrainzId: null, releaseGroupId: null })).toBeNull()
+  })
+
+  it('falls back to the release page when the group is unknown', () => {
+    expect(musicBrainzUrl({ musicbrainzId: 'rel-1' })).toBe('https://musicbrainz.org/release/rel-1')
   })
 })

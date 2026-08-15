@@ -115,6 +115,106 @@ fn search_match_acceptable(
         && common::mb::allowlist::is_allowed(primary_type, secondary_types, None)
 }
 
+/// One MB candidate a local release may bind to. `release_id` is set only by Tier 1 (a direct release
+/// lookup); the browse/search tiers leave it empty and let `check_release_status` pick the edition.
+///
+/// `from_tags` records whether the files pointed here themselves (Tier 1/2 embedded ids) rather than a
+/// title search. Only a tagged candidate may bind a Single-typed group - see `allowlist::is_allowed_tagged`.
+struct MatchCandidate {
+    release_id: String,
+    rg_id: String,
+    releases: Vec<(MbRelease, Vec<MbTrack>)>,
+    primary_type: Option<String>,
+    secondary_types: Vec<String>,
+    from_tags: bool,
+}
+
+enum SearchOutcome {
+    Found(MatchCandidate),
+    NotFound,
+    /// MB was unavailable - the caller leaves the release alone so the next run retries it.
+    Transient,
+}
+
+/// Tier 3: find a release group by album title + artist. Extracted so the allow-list gate can reuse
+/// it as a fallback when the tags point at a release the library refuses to bind (a bootleg edition,
+/// or a group MusicBrainz types as a Single) - before, that rejection was a dead end and the release
+/// stayed Unmatched even though the correct official album was one search away.
+async fn search_release_candidate(
+    http_client: &Client,
+    limiter: &mut RateLimiter,
+    reporter: &Reporter,
+    local_title: &str,
+    artist_name: &str,
+    verbose: bool,
+) -> SearchOutcome {
+    let api_start = std::time::Instant::now();
+    reporter.info(&format!(
+        "        → Search MusicBrainz for \"{}\" by {}",
+        local_title, artist_name
+    ));
+    // The whole shortlist, not just the top hit: MusicBrainz frequently scores a Single-typed group
+    // first for an album's own name (searching "Amnesiac" by Radiohead returns the *single* at score
+    // 100 and the album at score 100 behind it). Taking only the best hit meant one disallowed
+    // candidate hid the correct album and the release stayed Unmatched.
+    let hits = match mb_api::mb_search_release_groups(http_client, local_title, artist_name, limiter)
+        .await
+    {
+        Ok(hits) => hits,
+        Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::Transient => {
+            return SearchOutcome::Transient
+        }
+        Err(e) => {
+            reporter.warn(&format!("{}: search failed: {}", local_title, e));
+            return SearchOutcome::NotFound;
+        }
+    };
+
+    let Some(found) = hits.into_iter().find(|hit| {
+        search_match_acceptable(
+            hit.score,
+            &hit.title,
+            local_title,
+            hit.primary_type.as_deref(),
+            &hit.secondary_types,
+        )
+    }) else {
+        if verbose {
+            reporter.skip(&format!("{} (no confident search match)", local_title));
+        }
+        return SearchOutcome::NotFound;
+    };
+
+    reporter.info(&format!(
+        "        ← Search hit {} (score {}) in {:.1}s - browsing editions",
+        found.id,
+        found.score,
+        api_start.elapsed().as_secs_f64()
+    ));
+    match mb_api::mb_get_release_tracks(http_client, &found.id, limiter).await {
+        Ok(releases) if !releases.is_empty() => SearchOutcome::Found(MatchCandidate {
+            release_id: String::new(),
+            rg_id: found.id,
+            releases,
+            primary_type: found.primary_type,
+            secondary_types: found.secondary_types,
+            from_tags: false,
+        }),
+        Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::Transient => {
+            SearchOutcome::Transient
+        }
+        _ => {
+            if verbose {
+                reporter.skip(&format!(
+                    "{} (search hit had no official editions)",
+                    local_title
+                ));
+            }
+            SearchOutcome::NotFound
+        }
+    }
+}
+
 fn get_majority_id(
     tracks: &[LocalTrackRow],
     field: fn(&LocalTrackRow) -> &Option<String>,
@@ -1205,14 +1305,7 @@ async fn main() {
             let majority_rg_id = get_majority_id(&local_tracks, |t| &t.mb_release_group_id);
 
             // Tier 1: Direct release lookup via embedded MUSICBRAINZ_ALBUMID
-            // matched = (release_id, rg_id, releases, primary_type, secondary_types)
-            let mut matched: Option<(
-                String,
-                String,
-                Vec<(MbRelease, Vec<MbTrack>)>,
-                Option<String>,
-                Vec<String>,
-            )> = None;
+            let mut matched: Option<MatchCandidate> = None;
             if let Some(ref rel_id) = majority_release_id {
                 let api_start = std::time::Instant::now();
                 reporter.info(&format!("        → Lookup by album ID {}", rel_id));
@@ -1223,13 +1316,14 @@ async fn main() {
                             api_start.elapsed().as_secs_f64(),
                             found.tracks.len()
                         ));
-                        matched = Some((
-                            rel_id.clone(),
-                            found.rg_id,
-                            vec![(found.release, found.tracks)],
-                            found.primary_type,
-                            found.secondary_types,
-                        ));
+                        matched = Some(MatchCandidate {
+                            release_id: rel_id.clone(),
+                            rg_id: found.rg_id,
+                            releases: vec![(found.release, found.tracks)],
+                            primary_type: found.primary_type,
+                            secondary_types: found.secondary_types,
+                            from_tags: true,
+                        });
                     }
                     Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::NotFound => {
                         reporter.info("        ← Album ID not found, trying release group...");
@@ -1254,16 +1348,13 @@ async fn main() {
             // sibling edition whose track count matches exactly before accepting the base edition.
             // A local UNDERcount is left alone here — that's genuine incompleteness, not an edition
             // mismatch, and stays on the Tier 1 result to be caught as MISSING_TRACKS below.
-            let tier1_upgrade_check: Option<(String, usize)> =
-                matched
-                    .as_ref()
-                    .and_then(|(rel_id, rg_id, releases, _, _)| {
-                        if rel_id.is_empty() {
-                            return None;
-                        } // Tier 2 already ran, nothing to upgrade
-                        let track_count = releases.first().map(|(_, t)| t.len()).unwrap_or(0);
-                        (track_count < local_tracks.len()).then(|| (rg_id.clone(), track_count))
-                    });
+            let tier1_upgrade_check: Option<(String, usize)> = matched.as_ref().and_then(|c| {
+                if c.release_id.is_empty() {
+                    return None;
+                } // Tier 2 already ran, nothing to upgrade
+                let track_count = c.releases.first().map(|(_, t)| t.len()).unwrap_or(0);
+                (track_count < local_tracks.len()).then(|| (c.rg_id.clone(), track_count))
+            });
             if let Some((rg_id_for_tier1, tier1_track_count)) = tier1_upgrade_check {
                 reporter.info(&format!(
                     "        → Local has more tracks than the matched edition ({} vs {}) — checking release group {} for a deluxe sibling",
@@ -1272,20 +1363,21 @@ async fn main() {
                 // Preserve the Tier 1 primary/secondary types for the same release group.
                 let (primary_type, secondary_types) = matched
                     .as_ref()
-                    .map(|(_, _, _, p, s)| (p.clone(), s.clone()))
+                    .map(|c| (c.primary_type.clone(), c.secondary_types.clone()))
                     .unwrap_or((None, Vec::new()));
                 match mb_api::mb_get_release_tracks(&http_client, &rg_id_for_tier1, &mut limiter)
                     .await
                 {
                     Ok(releases) if releases.iter().any(|(_, t)| t.len() == local_tracks.len()) => {
                         reporter.info("        ← Found a deluxe sibling with matching track count");
-                        matched = Some((
-                            String::new(),
-                            rg_id_for_tier1,
+                        matched = Some(MatchCandidate {
+                            release_id: String::new(),
+                            rg_id: rg_id_for_tier1,
                             releases,
                             primary_type,
                             secondary_types,
-                        ));
+                            from_tags: true,
+                        });
                     }
                     _ => {
                         // No deluxe sibling found (or lookup failed) — keep the Tier 1 base edition.
@@ -1316,13 +1408,14 @@ async fn main() {
                             let secondary_types = rg
                                 .and_then(|rg2| rg2.secondary_types.clone())
                                 .unwrap_or_default();
-                            matched = Some((
-                                String::new(),
-                                rg_id.to_string(),
+                            matched = Some(MatchCandidate {
+                                release_id: String::new(),
+                                rg_id: rg_id.to_string(),
                                 releases,
                                 primary_type,
                                 secondary_types,
-                            ));
+                                from_tags: true,
+                            });
                         }
                         Ok(_) => {
                             if args.verbose {
@@ -1357,96 +1450,144 @@ async fn main() {
             // (downstream) an edition's track count matches. The embedded-id tiers always win first;
             // this never overrides an id, and check_release_status still picks the edition by track
             // count, so distinct editions are not collapsed.
-            if matched.is_none() && majority_release_id.is_none() && majority_rg_id.is_none() {
-                let api_start = std::time::Instant::now();
-                reporter.info(&format!(
-                    "        → Search MusicBrainz for \"{}\" by {}",
-                    local_release.title, artist.name
-                ));
-                match mb_api::mb_search_release_group(
+            let has_embedded_ids = majority_release_id.is_some() || majority_rg_id.is_some();
+            if matched.is_none() && !has_embedded_ids {
+                match search_release_candidate(
                     &http_client,
+                    &mut limiter,
+                    &reporter,
                     &local_release.title,
                     &artist.name,
-                    &mut limiter,
+                    args.verbose,
                 )
                 .await
                 {
-                    Ok(Some(found))
-                        if search_match_acceptable(
-                            found.score,
-                            &found.title,
-                            &local_release.title,
-                            found.primary_type.as_deref(),
-                            &found.secondary_types,
-                        ) =>
-                    {
-                        reporter.info(&format!(
-                            "        ← Search hit {} (score {}) in {:.1}s - browsing editions",
-                            found.id,
-                            found.score,
-                            api_start.elapsed().as_secs_f64()
-                        ));
-                        match mb_api::mb_get_release_tracks(&http_client, &found.id, &mut limiter)
-                            .await
-                        {
-                            Ok(releases) if !releases.is_empty() => {
-                                matched = Some((
-                                    String::new(),
-                                    found.id,
-                                    releases,
-                                    found.primary_type,
-                                    found.secondary_types,
-                                ));
-                            }
-                            _ => {
-                                if args.verbose {
-                                    reporter.skip(&format!(
-                                        "{} (search hit had no official editions)",
-                                        local_release.title
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    Ok(_) => {
-                        if args.verbose {
-                            reporter.skip(&format!(
-                                "{} (no confident search match)",
-                                local_release.title
-                            ));
-                        }
-                    }
-                    Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::Transient => {
+                    SearchOutcome::Found(candidate) => matched = Some(candidate),
+                    SearchOutcome::NotFound => {}
+                    SearchOutcome::Transient => {
                         reporter.warn(&format!(
                             "{}: MB unavailable, skipping",
                             local_release.title
                         ));
                         continue;
                     }
-                    Err(e) => {
-                        reporter.warn(&format!("{}: search failed: {}", local_release.title, e));
-                    }
                 }
             }
 
             // Strict policy: metadata wins. No usable MB metadata (embedded id or confident search) →
             // leave Unmatched. The former blanket "no fuzzy matching" is now the guarded Tier 3 above.
-            let (tier_release_id, rg_id, mb_release_tracks, primary_type, secondary_types) =
-                match matched {
-                    Some(m) => m,
-                    None => {
-                        mark_local_release_unmatched(&pool, &local_release.id)
-                            .await
-                            .ok();
-                        if args.verbose {
-                            reporter.skip(&format!(
-                                "{} (no MB metadata in tags - left Unmatched)",
-                                local_release.title
-                            ));
-                        }
+            let mut candidate = match matched {
+                Some(m) => m,
+                None => {
+                    mark_local_release_unmatched(&pool, &local_release.id).await.ok();
+                    if args.verbose {
+                        reporter.skip(&format!(
+                            "{} (no MB metadata in tags - left Unmatched)",
+                            local_release.title
+                        ));
+                    }
+                    continue;
+                }
+            };
+
+            let local_track_ids: Vec<String> = local_tracks.iter().map(|t| t.id.clone()).collect();
+            let local_metas: Vec<TrackMeta> =
+                local_tracks.iter().map(local_track_to_meta).collect();
+            let local_meta_refs: Vec<&TrackMeta> = local_metas.iter().collect();
+
+            // Score the candidate, and - when the tags point at something the library refuses to bind -
+            // give the search tier one shot at an allowed edition before giving up. The tagged ids win
+            // whenever they are usable; this only runs after they have already been rejected, which is
+            // how a folder tagged with a bootleg's release id (or one MusicBrainz files under a Single
+            // group) can still find its official album instead of sitting Unmatched forever.
+            let mut searched_fallback = false;
+            let scored = loop {
+                let status_check = check_release_status(
+                    &local_meta_refs,
+                    &local_track_ids,
+                    &candidate.releases,
+                    local_release.year,
+                );
+
+                // Strict policy: when a release-group lookup returned multiple siblings and
+                // none (or several) match the local track count, refuse to bind a specific
+                // edition. Leave the LocalRelease Unmatched so the user can disambiguate
+                // by tagging the files with the correct MUSICBRAINZ_ALBUMID.
+                if !status_check.is_confident {
+                    mark_local_release_unmatched(&pool, &local_release.id).await.ok();
+                    reporter.skip(&format!(
+                        "{} ({} MB siblings, no exact track-count match - left Unmatched)",
+                        local_release.title,
+                        candidate.releases.len()
+                    ));
+                    break None;
+                }
+
+                // Allow-list gate: album-oriented library, no singles. Reject any release whose group
+                // is not Album/EP, whose secondary type is non-music, or whose status is not Official.
+                let best_status = candidate.releases[status_check.best_release_idx]
+                    .0
+                    .status
+                    .clone();
+                let gate = if candidate.from_tags {
+                    common::mb::allowlist::is_allowed_tagged
+                } else {
+                    common::mb::allowlist::is_allowed
+                };
+                if gate(
+                    candidate.primary_type.as_deref(),
+                    &candidate.secondary_types,
+                    best_status.as_deref(),
+                ) {
+                    break Some(status_check);
+                }
+
+                if has_embedded_ids && !searched_fallback {
+                    searched_fallback = true;
+                    reporter.info(&format!(
+                        "        → Tagged release is not bindable (type={}, status={}) - searching for an allowed edition",
+                        candidate.primary_type.as_deref().unwrap_or("?"),
+                        best_status.as_deref().unwrap_or("?"),
+                    ));
+                    if let SearchOutcome::Found(found) = search_release_candidate(
+                        &http_client,
+                        &mut limiter,
+                        &reporter,
+                        &local_release.title,
+                        &artist.name,
+                        args.verbose,
+                    )
+                    .await
+                    {
+                        candidate = found;
                         continue;
                     }
-                };
+                }
+
+                mark_local_release_unmatched(&pool, &local_release.id).await.ok();
+                reporter.skip(&format!(
+                    "{} (not allowed: type={}, status={} - left Unmatched)",
+                    local_release.title,
+                    candidate.primary_type.as_deref().unwrap_or("?"),
+                    best_status.as_deref().unwrap_or("?"),
+                ));
+                break None;
+            };
+
+            let status_check = match scored {
+                Some(s) => s,
+                None => continue,
+            };
+
+            let MatchCandidate {
+                release_id: tier_release_id,
+                rg_id,
+                releases: mb_release_tracks,
+                primary_type,
+                secondary_types: _,
+                from_tags: _,
+            } = candidate;
+            let status_str = status_to_db_string(&status_check.status);
 
             let type_name = primary_type.clone().unwrap_or_else(|| "Other".to_string());
             let type_id = match ensure_release_type_cached(
@@ -1468,58 +1609,8 @@ async fn main() {
                 .and_then(|d| d.split('-').next())
                 .and_then(|y| y.parse::<i32>().ok());
 
-            let local_track_ids: Vec<String> = local_tracks.iter().map(|t| t.id.clone()).collect();
-            let local_metas: Vec<TrackMeta> =
-                local_tracks.iter().map(local_track_to_meta).collect();
-            let local_meta_refs: Vec<&TrackMeta> = local_metas.iter().collect();
-
-            let status_check = check_release_status(
-                &local_meta_refs,
-                &local_track_ids,
-                &mb_release_tracks,
-                local_release.year,
-            );
-            let status_str = status_to_db_string(&status_check.status);
-
-            // Strict policy: when a release-group lookup returned multiple siblings and
-            // none (or several) match the local track count, refuse to bind a specific
-            // edition. Leave the LocalRelease Unmatched so the user can disambiguate
-            // by tagging the files with the correct MUSICBRAINZ_ALBUMID.
-            if !status_check.is_confident {
-                mark_local_release_unmatched(&pool, &local_release.id)
-                    .await
-                    .ok();
-                reporter.skip(&format!(
-                    "{} ({} MB siblings, no exact track-count match - left Unmatched)",
-                    local_release.title,
-                    mb_release_tracks.len()
-                ));
-                continue;
-            }
-
             let best_release = &mb_release_tracks[status_check.best_release_idx].0;
             let best_tracks = &mb_release_tracks[status_check.best_release_idx].1;
-
-            // Allow-list gate: album-oriented library, no singles. Reject any release whose group is
-            // not Album/EP, whose secondary type is non-music, or whose status is not Official. A
-            // rejected release leaves the LocalRelease UNMATCHED rather than binding a disallowed
-            // (e.g. Single-typed) MB release.
-            if !common::mb::allowlist::is_allowed(
-                primary_type.as_deref(),
-                &secondary_types,
-                best_release.status.as_deref(),
-            ) {
-                mark_local_release_unmatched(&pool, &local_release.id)
-                    .await
-                    .ok();
-                reporter.skip(&format!(
-                    "{} (not allowed: type={}, status={} - left Unmatched)",
-                    local_release.title,
-                    primary_type.as_deref().unwrap_or("?"),
-                    best_release.status.as_deref().unwrap_or("?"),
-                ));
-                continue;
-            }
 
             // Use Tier 1 release ID if available, otherwise use best match from status check
             let final_release_id = if !tier_release_id.is_empty() {

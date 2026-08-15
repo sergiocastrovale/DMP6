@@ -4,6 +4,7 @@ import type { UnifiedRelease } from '~/types/release'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'
+import { musicBrainzUrl } from '~/helpers/functions'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
 const props = withDefaults(defineProps<{
@@ -46,6 +47,7 @@ const hasPlayable = computed(() => !!props.release.localReleaseId || props.relea
 const coArtists = computed(() => props.coArtists ?? props.release.coArtists ?? [])
 const displayTrackCount = computed(() => props.trackCount ?? props.release.trackCount)
 const displayPlayCount = computed(() => props.playCount ?? props.release.totalPlayCount)
+const mbUrl = computed(() => musicBrainzUrl(props.release))
 
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
 </script>
@@ -193,8 +195,8 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         </button>
 
         <a
-          v-if="release.musicbrainzId"
-          :href="`https://musicbrainz.org/release/${release.musicbrainzId}`"
+          v-if="mbUrl"
+          :href="mbUrl"
           target="_blank"
           rel="noopener noreferrer"
           class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"

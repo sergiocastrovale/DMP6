@@ -1,10 +1,18 @@
-// Which MusicBrainz releases may be bound to a local release. The library is album-oriented and must
-// never contain singles. A candidate passes only if its release-group primary type is Album or EP,
-// its release status is Official, and its secondary types include none of the non-music kinds below.
-// Compilation / Live / Remix / Soundtrack ride on an Album/EP primary type and pass; remasters and
-// special editions are not MB types at all (they are Album primary) and pass automatically.
+// Which MusicBrainz releases may be bound to a local release. The library is album-oriented: a
+// candidate passes only if its release-group primary type is Album or EP, its release status is
+// Official, and its secondary types include none of the non-music kinds below. Compilation / Live /
+// Remix / Soundtrack ride on an Album/EP primary type and pass; remasters and special editions are
+// not MB types at all (they are Album primary) and pass automatically. The one exception is
+// `is_allowed_tagged` - see TAGGED_ONLY_PRIMARY_TYPES.
 
 const ALLOWED_PRIMARY_TYPES: &[&str] = &["album", "ep"];
+
+// Singles are never browsed, searched or invented as catalogue gaps - but a file whose own tags carry
+// the MusicBrainz release (or release-group) id of a Single is a disc the user physically owns, and
+// MusicBrainz files plenty of 4-track CD "EP"s under a Single group (Radiohead's 1993 "Creep" is the
+// canonical case: an exact 4/4 match that sat Unmatched for years). Those bind, and they enter the
+// catalogue typed "Single" so the artist page's Singles filter can find them.
+const TAGGED_ONLY_PRIMARY_TYPES: &[&str] = &["single"];
 
 // Secondary types that disqualify an otherwise-album release (spoken-word / non-music kinds).
 const REJECTED_SECONDARY_TYPES: &[&str] = &[
@@ -24,8 +32,37 @@ pub fn is_allowed(
     secondary_types: &[String],
     status: Option<&str>,
 ) -> bool {
+    check(primary_type, secondary_types, status, &[])
+}
+
+/// The gate for a candidate the local files themselves point at (a unanimous embedded
+/// `MUSICBRAINZ_ALBUMID` or `MUSICBRAINZ_RELEASEGROUPID`). Identical to [`is_allowed`] except that a
+/// Single-typed group passes: the tags are definitive about a disc that is already on disk. Search
+/// hits and catalogue gaps must keep using [`is_allowed`], or the library starts inventing singles.
+pub fn is_allowed_tagged(
+    primary_type: Option<&str>,
+    secondary_types: &[String],
+    status: Option<&str>,
+) -> bool {
+    check(
+        primary_type,
+        secondary_types,
+        status,
+        TAGGED_ONLY_PRIMARY_TYPES,
+    )
+}
+
+fn check(
+    primary_type: Option<&str>,
+    secondary_types: &[String],
+    status: Option<&str>,
+    extra_primary_types: &[&str],
+) -> bool {
     let primary_ok = primary_type
-        .map(|p| ALLOWED_PRIMARY_TYPES.contains(&p.to_lowercase().as_str()))
+        .map(|p| {
+            let p = p.to_lowercase();
+            ALLOWED_PRIMARY_TYPES.contains(&p.as_str()) || extra_primary_types.contains(&p.as_str())
+        })
         .unwrap_or(false);
     if !primary_ok {
         return false;
@@ -68,6 +105,29 @@ mod tests {
 
     fn official(ids: &[&str]) -> HashSet<String> {
         ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn tagged_singles_bind_but_only_when_official_and_tagged() {
+        // MusicBrainz files plenty of owned 4-track CD "EP"s under a Single group.
+        assert!(is_allowed_tagged(Some("Single"), &[], Some("Official")));
+        assert!(!is_allowed(Some("Single"), &[], Some("Official")));
+        // The Single exception never relaxes the other two rules.
+        assert!(!is_allowed_tagged(Some("Single"), &[], Some("Bootleg")));
+        assert!(!is_allowed_tagged(
+            Some("Single"),
+            &sec(&["Interview"]),
+            Some("Official")
+        ));
+        // Nor does it open the other banned primary types.
+        assert!(!is_allowed_tagged(Some("Broadcast"), &[], Some("Official")));
+        assert!(!is_allowed_tagged(Some("Other"), &[], Some("Official")));
+    }
+
+    #[test]
+    fn tagged_gate_still_accepts_everything_the_normal_gate_does() {
+        assert!(is_allowed_tagged(Some("Album"), &[], Some("Official")));
+        assert!(is_allowed_tagged(Some("EP"), &sec(&["Live"]), None));
     }
 
     #[test]
