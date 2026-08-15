@@ -86,7 +86,7 @@ onMounted(() => loadPlaylist())
 <template>
   <div class="flex flex-col gap-6">
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <div class="text-ink0">Loading...</div>
+      <div class="text-ink-3">Loading...</div>
     </div>
 
     <div v-else-if="playlist" class="flex flex-col gap-6">
@@ -101,7 +101,7 @@ onMounted(() => loadPlaylist())
         <div class="flex flex-1 flex-col gap-4">
           <div>
             <div class="flex items-center gap-2">
-              <p class="text-sm text-ink0">Playlist</p>
+              <p class="text-sm text-ink-3">Playlist</p>
               <span
                 v-if="isGenerated"
                 class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent"
@@ -115,7 +115,7 @@ onMounted(() => loadPlaylist())
             <p v-if="playlist.description" class="mt-2 text-sm text-ink-2">{{ playlist.description }}</p>
           </div>
 
-          <div class="text-sm text-ink0">
+          <div class="text-sm text-ink-3">
             {{ playlist.tracks.length }} {{ playlist.tracks.length === 1 ? 'track' : 'tracks' }}
           </div>
 
@@ -160,7 +160,7 @@ onMounted(() => loadPlaylist())
       />
     </div>
 
-    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
+    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink-3">
       <LucideListMusic class="mb-3 size-12 opacity-50" />
       <p>Playlist not found</p>
       <UiButton variant="secondary" size="sm" to="/playlists" class="mt-4">

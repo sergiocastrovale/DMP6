@@ -182,7 +182,7 @@ watch(decades, (val) => {
       </div>
 
       <div v-if="decades && decades.length > 0" class="rounded-lg border border-rule bg-bg-1 p-5">
-        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink0">
+        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
           Breakdown
         </h3>
         <div class="divide-y divide-rule">

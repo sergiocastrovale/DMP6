@@ -64,7 +64,7 @@ watch(() => terminal.lines.length, () => {
         v-if="terminal.currentSession || terminal.isRunning"
         class="flex items-center gap-2 border-b border-rule px-4 py-2"
       >
-        <span class="font-mono text-xs text-ink0">
+        <span class="font-mono text-xs text-ink-3">
           tmux attach-session -t {{ terminal.currentSession ?? '...' }}
         </span>
         <button

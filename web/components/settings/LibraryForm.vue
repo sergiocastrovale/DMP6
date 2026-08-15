@@ -44,7 +44,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
       <div class="space-y-1.5">
         <Switch v-model="autoScanEnabled" label="Scan automatically" />
-        <p class="text-xs text-ink0">
+        <p class="text-xs text-ink-3">
           Runs index + sync unattended so new folders and releases appear without pressing anything.
           Only the instance started with MONITOR_PRIMARY=true runs it.
         </p>
@@ -60,7 +60,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
       <div class="space-y-1.5">
         <Switch v-model="showTerminal" label="Show terminal sidebar" />
-        <p class="text-xs text-ink0">
+        <p class="text-xs text-ink-3">
           Stream raw output in the terminal sidebar for scans, fixes and merges. When off, a compact progress
           panel is shown instead. Overrides the SHOW_TERMINAL env var.
         </p>

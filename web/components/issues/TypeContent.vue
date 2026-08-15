@@ -249,7 +249,7 @@ function getHistoryDate(item: any): string {
         />
       </div>
       </div>
-      <p class="text-sm text-ink0">
+      <p class="text-sm text-ink-3">
         {{ typeDescriptions[type].detection }}
         <span class="text-ink-4">Fix:</span> {{ typeDescriptions[type].fix }}
       </p>
@@ -290,7 +290,7 @@ function getHistoryDate(item: any): string {
         </template>
 
         <template #cell-folder="{ item }">
-          <span class="truncate text-xs text-ink0" :title="getFolderPath(item)">
+          <span class="truncate text-xs text-ink-3" :title="getFolderPath(item)">
             {{ getFolderPath(item) }}
           </span>
         </template>
@@ -310,7 +310,7 @@ function getHistoryDate(item: any): string {
         </template>
 
         <template #cell-artist_createdAt="{ item }">
-          <span class="text-xs text-ink0">{{ formatDate(item.artist.createdAt) }}</span>
+          <span class="text-xs text-ink-3">{{ formatDate(item.artist.createdAt) }}</span>
         </template>
 
         <template #cell-artist_musicbrainzId="{ item }">
@@ -340,7 +340,7 @@ function getHistoryDate(item: any): string {
           >
             {{ item.releaseA.title }}
           </NuxtLink>
-          <span v-else class="truncate text-ink0" :title="item.releaseA.folderPath">{{ item.releaseA.title }}</span>
+          <span v-else class="truncate text-ink-3" :title="item.releaseA.folderPath">{{ item.releaseA.title }}</span>
         </template>
 
         <template #cell-releaseB_title="{ item }">
@@ -352,15 +352,15 @@ function getHistoryDate(item: any): string {
           >
             {{ item.releaseB.title }}
           </NuxtLink>
-          <span v-else class="truncate text-ink0" :title="item.releaseB.folderPath">{{ item.releaseB.title }}</span>
+          <span v-else class="truncate text-ink-3" :title="item.releaseB.folderPath">{{ item.releaseB.title }}</span>
         </template>
 
         <template #cell-releaseA_trackCount="{ item }">
-          <span class="text-xs text-ink0">{{ item.releaseA.trackCount }}</span>
+          <span class="text-xs text-ink-3">{{ item.releaseA.trackCount }}</span>
         </template>
 
         <template #cell-releaseB_trackCount="{ item }">
-          <span class="text-xs text-ink0">{{ item.releaseB.trackCount }}</span>
+          <span class="text-xs text-ink-3">{{ item.releaseB.trackCount }}</span>
         </template>
 
         <template #cell-releaseA_release_title="{ item }">
@@ -441,7 +441,7 @@ function getHistoryDate(item: any): string {
         <template #cell-previousValue="{ item }">
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getHistoryPreviousEntries(item)" :key="e.key" class="text-xs text-accent">
-              <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
+              <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
             </span>
             <span v-if="!getHistoryPreviousEntries(item).length" class="text-xs text-ink-4">-</span>
           </div>
@@ -450,20 +450,20 @@ function getHistoryDate(item: any): string {
         <template #cell-appliedValue="{ item }">
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getHistoryAppliedEntries(item)" :key="e.key" class="text-xs text-green-400">
-              <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
+              <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
             </span>
             <span v-if="!getHistoryAppliedEntries(item).length" class="text-xs text-ink-4">-</span>
           </div>
         </template>
 
         <template #cell-folder="{ item }">
-          <span class="truncate text-xs text-ink0" :title="getFolderPath(item)">
+          <span class="truncate text-xs text-ink-3" :title="getFolderPath(item)">
             {{ getFolderPath(item) }}
           </span>
         </template>
 
         <template #cell-fixedAt="{ item }">
-          <span class="text-xs text-ink0">{{ getHistoryDate(item) }}</span>
+          <span class="text-xs text-ink-3">{{ getHistoryDate(item) }}</span>
         </template>
       </IssuesIssueTable>
     </div>

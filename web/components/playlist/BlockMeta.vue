@@ -1,5 +1,5 @@
 <template>
-  <p class="text-xs text-ink0">
+  <p class="text-xs text-ink-3">
     {{ playlist.trackCount }} {{ playlist.trackCount === 1 ? 'track' : 'tracks' }}
   </p>
 </template>

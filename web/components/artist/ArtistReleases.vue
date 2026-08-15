@@ -302,16 +302,16 @@ watch(() => props.releases, () => {
         />
       </div>
 
-      <div v-if="sortedGroups.length === 0" class="py-8 text-center text-sm text-ink0">
+      <div v-if="sortedGroups.length === 0" class="py-8 text-center text-sm text-ink-3">
         No releases match your filters
       </div>
     </template>
 
     <template v-else>
-      <div v-if="allTracksLoading" class="py-8 text-center text-sm text-ink0">
+      <div v-if="allTracksLoading" class="py-8 text-center text-sm text-ink-3">
         Loading all tracks...
       </div>
-      <div v-else-if="filteredAllTracks.length === 0" class="py-8 text-center text-sm text-ink0">
+      <div v-else-if="filteredAllTracks.length === 0" class="py-8 text-center text-sm text-ink-3">
         No tracks found
       </div>
       <TrackList

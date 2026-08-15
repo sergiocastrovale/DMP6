@@ -203,7 +203,7 @@ const progressPct = computed(() =>
                     <Check v-if="trackPlaylistSlugs.has(playlist.slug)" :size="14" />
                   </button>
                 </div>
-                <div v-if="playlists.length === 0" class="px-3 py-2 text-sm text-ink0">
+                <div v-if="playlists.length === 0" class="px-3 py-2 text-sm text-ink-3">
                   No playlists yet
                 </div>
               </div>
@@ -212,7 +212,7 @@ const progressPct = computed(() =>
         </div>
 
         <div class="flex w-full items-center gap-2">
-          <span class="w-8 shrink-0 text-right text-[10px] text-ink0 tabular-nums">{{ formatDuration(player.currentTime) }}</span>
+          <span class="w-8 shrink-0 text-right text-[10px] text-ink-3 tabular-nums">{{ formatDuration(player.currentTime) }}</span>
           <div
             class="group relative h-1.5 flex-1 cursor-pointer rounded-full bg-bg-2"
             @click="handleProgressClick"
@@ -225,13 +225,13 @@ const progressPct = computed(() =>
               }"
             />
           </div>
-          <span class="w-8 shrink-0 text-[10px] text-ink0 tabular-nums">{{ formatDuration(player.duration) }}</span>
+          <span class="w-8 shrink-0 text-[10px] text-ink-3 tabular-nums">{{ formatDuration(player.duration) }}</span>
         </div>
       </div>
 
       <div class="hidden md:flex md:w-1/3 justify-end">
         <button
-          class="text-ink0 hover:text-ink transition-colors"
+          class="text-ink-3 hover:text-ink transition-colors"
           title="Dismiss player"
           @click="player.dismiss()"
         >
@@ -239,7 +239,7 @@ const progressPct = computed(() =>
         </button>
       </div>
       <button
-        class="ml-2 shrink-0 text-ink0 hover:text-ink transition-colors md:hidden"
+        class="ml-2 shrink-0 text-ink-3 hover:text-ink transition-colors md:hidden"
         title="Dismiss player"
         @click="player.dismiss()"
       >

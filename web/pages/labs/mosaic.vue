@@ -128,7 +128,7 @@ onMounted(async () => {
               Building
               <span class="text-ink">({{ mosaic.progress.current }}/{{ mosaic.progress.total }} images processed)</span>
             </span>
-            <span class="text-ink0">{{ Math.round(progressPercent) }}%</span>
+            <span class="text-ink-3">{{ Math.round(progressPercent) }}%</span>
           </div>
           <div class="h-1.5 w-full rounded-full bg-bg-2">
             <div
@@ -147,11 +147,11 @@ onMounted(async () => {
       </div>
 
       <div class="rounded-lg border border-rule bg-bg-1 p-5">
-        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink0">
+        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
           Mosaic History
         </h3>
 
-        <div v-if="mosaic.mosaics.length === 0" class="text-sm text-ink0">
+        <div v-if="mosaic.mosaics.length === 0" class="text-sm text-ink-3">
           No mosaics generated yet.
         </div>
 
@@ -163,7 +163,7 @@ onMounted(async () => {
           >
             <div>
               <p class="text-sm text-ink">{{ formatDate(item.createdAt) }}</p>
-              <p class="text-xs text-ink0">
+              <p class="text-xs text-ink-3">
                 <span v-if="item.imageCount">{{ item.imageCount }} covers · </span>{{ formatSize(item.size) }}
               </p>
             </div>
@@ -197,7 +197,7 @@ onMounted(async () => {
 
     <div class="lg:col-span-2">
       <div class="sticky top-20 rounded-lg border border-rule bg-bg-1 p-5">
-        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink0">
+        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
           Preview
         </h3>
 
@@ -209,7 +209,7 @@ onMounted(async () => {
             class="w-full transition-opacity hover:opacity-90"
           >
         </div>
-        <p v-else class="text-sm text-ink0">
+        <p v-else class="text-sm text-ink-3">
           Click the view button on a mosaic to see its preview here.
         </p>
       </div>

@@ -52,7 +52,7 @@ const handleTrackClick = (fav: FavoriteTrack) => {
       <PlayerPlayPauseButton
         :playing="isTrackPlaying(fav.track.id)"
         size="sm"
-        :class="isCurrentTrack(fav.track.id) ? 'text-accent' : 'text-ink0'"
+        :class="isCurrentTrack(fav.track.id) ? 'text-accent' : 'text-ink-3'"
         @click="handleTrackClick(fav)"
       />
 
@@ -85,7 +85,7 @@ const handleTrackClick = (fav: FavoriteTrack) => {
         </div>
       </div>
 
-      <span class="text-xs text-ink0">
+      <span class="text-xs text-ink-3">
         {{ formatDuration(fav.track.duration) }}
       </span>
 
@@ -99,7 +99,7 @@ const handleTrackClick = (fav: FavoriteTrack) => {
     </TableRow>
   </Table>
 
-  <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
+  <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink-3">
     <LucideMusic class="mb-3 size-12 opacity-50" />
     <p>No favorite tracks yet</p>
   </div>

@@ -74,7 +74,7 @@ const permLabel = (p: string) => {
 
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink0">
+          <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink-3">
             <th class="pb-2 pr-4">Permission</th>
             <th v-for="role in roles" :key="role" class="pb-2 px-4 text-center">{{ role.toLowerCase() }}</th>
           </tr>
@@ -87,7 +87,7 @@ const permLabel = (p: string) => {
           >
             <td class="py-2 pr-4">
               <span class="text-ink-2">{{ permLabel(perm).feature }}</span>
-              <span class="text-ink0">.{{ permLabel(perm).action }}</span>
+              <span class="text-ink-3">.{{ permLabel(perm).action }}</span>
             </td>
             <td v-for="role in roles" :key="role" class="py-2 px-4 text-center">
               <input

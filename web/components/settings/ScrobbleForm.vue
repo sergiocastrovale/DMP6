@@ -70,7 +70,7 @@ const disconnect = async () => {
           <p class="text-sm text-emerald-300">
             Connected as <span class="font-semibold">{{ connectedUsername }}</span>
           </p>
-          <p class="text-xs text-ink0">Tracks are being scrobbled to Last.fm</p>
+          <p class="text-xs text-ink-3">Tracks are being scrobbled to Last.fm</p>
         </div>
         <button
           :disabled="disconnecting || !canEdit"
@@ -83,7 +83,7 @@ const disconnect = async () => {
       </div>
 
       <div v-else class="flex items-center gap-3 rounded-lg border border-rule/50 bg-bg-2/50 px-4 py-3">
-        <AlertCircle :size="18" class="text-ink0 shrink-0" />
+        <AlertCircle :size="18" class="text-ink-3 shrink-0" />
         <p class="flex-1 text-sm text-ink-2">Not connected to Last.fm</p>
       </div>
 

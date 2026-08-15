@@ -41,7 +41,7 @@ onMounted(() => {
 <template>
   <div class="flex flex-col gap-4">
     <PageTitle text="Browse">
-      <div class="flex items-center gap-2 text-sm text-ink0">
+      <div class="flex items-center gap-2 text-sm text-ink-3">
         <span>{{ store.mainCount.toLocaleString() }} artists</span>
       </div>
     </PageTitle>

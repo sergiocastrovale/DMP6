@@ -62,14 +62,14 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Auto-monitoring</h2>
-      <p class="text-xs text-ink0">
+      <p class="text-xs text-ink-3">
         Leave a field blank to use the environment default. Changes apply live (no restart),
         except the base reconcile tick (RECONCILE_SEC, env only).
       </p>
 
       <div class="space-y-1.5">
         <label class="block text-sm font-medium text-ink">Monitoring</label>
-        <p class="text-xs text-ink0">Master switch for the download + catalogue loops.</p>
+        <p class="text-xs text-ink-3">Master switch for the download + catalogue loops.</p>
         <select
           v-model="enabledChoice"
           class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
@@ -131,7 +131,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
       <div class="space-y-1.5">
         <label class="block text-sm font-medium text-ink">SongKong enrichment</label>
-        <p class="text-xs text-ink0">
+        <p class="text-xs text-ink-3">
           Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library
           folder layout is applied. Requires the host SongKong drainer cron. (SONGKONG_ENABLED)
         </p>
@@ -147,7 +147,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
       <div class="space-y-1.5">
         <label class="block text-sm font-medium text-ink">Auto-merge into library</label>
-        <p class="text-xs text-ink0">
+        <p class="text-xs text-ink-3">
           When on, ready downloads are merged into the music library automatically (no manual
           “Merge”). Off by default — merging stays a manual gate. (AUTO_MERGE)
         </p>

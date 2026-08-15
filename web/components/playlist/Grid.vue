@@ -38,7 +38,7 @@
 
     <div
       v-else-if="!loading"
-      class="flex flex-col items-center justify-center py-12 text-center text-ink0"
+      class="flex flex-col items-center justify-center py-12 text-center text-ink-3"
     >
       <LucideListMusic class="mb-3 size-12 opacity-50" />
       <p>No playlists yet</p>

@@ -77,7 +77,7 @@ function commitEdit(item: any, col: IssueColumn) {
             <th
               v-for="col in columns"
               :key="col.key"
-              class="px-3 py-2 text-xs font-medium text-ink0"
+              class="px-3 py-2 text-xs font-medium text-ink-3"
               :class="[col.width, col.sortable ? 'cursor-pointer select-none hover:text-ink-2' : '']"
               @click="col.sortable && emit('sort', col.key)"
             >
@@ -105,7 +105,7 @@ function commitEdit(item: any, col: IssueColumn) {
           </template>
 
           <tr v-else-if="!loading && items.length === 0">
-            <td :colspan="type !== 'enrichment' ? columns.length + 1 : columns.length" class="px-3 py-12 text-center text-ink0">
+            <td :colspan="type !== 'enrichment' ? columns.length + 1 : columns.length" class="px-3 py-12 text-center text-ink-3">
               No issues found
             </td>
           </tr>
@@ -157,7 +157,7 @@ function commitEdit(item: any, col: IssueColumn) {
       </table>
     </div>
 
-    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-rule px-4 py-2 text-xs text-ink0">
+    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-rule px-4 py-2 text-xs text-ink-3">
       <span>{{ total }} total</span>
       <div class="flex items-center gap-2">
         <button

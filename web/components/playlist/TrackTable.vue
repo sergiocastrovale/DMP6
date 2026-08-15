@@ -52,7 +52,7 @@ const handleTrackClick = (pt: PlaylistTrack) => {
       <PlayerPlayPauseButton
         :playing="isTrackPlaying(pt.track.id)"
         size="sm"
-        :class="isCurrentTrack(pt.track.id) ? 'text-accent' : 'text-ink0'"
+        :class="isCurrentTrack(pt.track.id) ? 'text-accent' : 'text-ink-3'"
         @click="handleTrackClick(pt)"
       />
 
@@ -85,13 +85,13 @@ const handleTrackClick = (pt: PlaylistTrack) => {
         </div>
       </div>
 
-      <span class="text-xs text-ink0">
+      <span class="text-xs text-ink-3">
         {{ formatDuration(pt.track.duration) }}
       </span>
 
       <button
         v-if="!isGenre"
-        class="rounded-full p-1.5 text-ink0 hover:text-ink opacity-0 transition-opacity group-hover:opacity-100"
+        class="rounded-full p-1.5 text-ink-3 hover:text-ink opacity-0 transition-opacity group-hover:opacity-100"
         @click="emit('remove', pt.track.id)"
       >
         <LucideX class="size-4" />
@@ -99,7 +99,7 @@ const handleTrackClick = (pt: PlaylistTrack) => {
     </TableRow>
   </Table>
 
-  <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
+  <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink-3">
     <LucideMusic class="mb-3 size-12 opacity-50" />
     <p>No tracks in this playlist yet</p>
   </div>

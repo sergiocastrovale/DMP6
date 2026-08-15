@@ -63,7 +63,7 @@ const helpStyle = computed(() => {
       @mouseenter="helpOpen = true"
       @mouseleave="helpOpen = false"
     >
-      <button ref="helpButton" class="text-ink0 transition-colors hover:text-ink-2">
+      <button ref="helpButton" class="text-ink-3 transition-colors hover:text-ink-2">
         <HelpCircle :size="14" />
       </button>
       <Teleport to="body">

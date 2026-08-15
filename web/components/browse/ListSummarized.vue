@@ -10,10 +10,10 @@ const { artistImage } = useImageUrl()
 <template>
   <div>
     <div v-if="store.loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-ink0" />
+      <Loader2 :size="24" class="animate-spin text-ink-3" />
     </div>
 
-    <div v-else-if="store.artists.length === 0" class="py-20 text-center text-ink0">
+    <div v-else-if="store.artists.length === 0" class="py-20 text-center text-ink-3">
       No artists found
     </div>
 
@@ -38,7 +38,7 @@ const { artistImage } = useImageUrl()
         </div>
         <div class="min-w-0 flex-1">
           <div class="truncate text-sm font-medium text-ink">{{ artist.name }}</div>
-          <div class="text-xs text-ink0">{{ artist.totalTracks.toLocaleString() }} tracks</div>
+          <div class="text-xs text-ink-3">{{ artist.totalTracks.toLocaleString() }} tracks</div>
         </div>
       </NuxtLink>
     </div>
@@ -46,10 +46,10 @@ const { artistImage } = useImageUrl()
     <InfiniteScroll @load="store.loadMore()" />
 
     <div v-if="store.loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" class="animate-spin text-ink0" />
+      <Loader2 :size="20" class="animate-spin text-ink-3" />
     </div>
 
-    <div v-if="!store.loading && store.artists.length > 0" class="mt-4 text-center text-xs text-ink0">
+    <div v-if="!store.loading && store.artists.length > 0" class="mt-4 text-center text-xs text-ink-3">
       Showing {{ store.artists.length }} of {{ store.total }} artists
     </div>
   </div>

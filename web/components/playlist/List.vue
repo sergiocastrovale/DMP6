@@ -62,7 +62,7 @@ const sections: PlaylistSection[] = [
         >
           {{ section.label }}
         </h2>
-        <span v-if="section.type !== 'MANUAL'" class="text-xs text-ink0">Auto-generated</span>
+        <span v-if="section.type !== 'MANUAL'" class="text-xs text-ink-3">Auto-generated</span>
         <PlaylistGeneratedPopover
           v-if="section.popoverTitle"
           :title="section.popoverTitle"
@@ -81,7 +81,7 @@ const sections: PlaylistSection[] = [
 
   <div
     v-if="playlists.length === 0"
-    class="flex flex-col items-center justify-center py-20 text-center text-ink0"
+    class="flex flex-col items-center justify-center py-20 text-center text-ink-3"
   >
     <LucideListMusic class="mb-3 size-12 opacity-50" />
     <p>No playlists yet</p>

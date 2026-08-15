@@ -46,7 +46,7 @@ const filtered = computed(() => {
         v-model="search"
         type="text"
         placeholder="Filter genres..."
-        class="mb-2 w-full rounded border border-rule bg-bg-2 px-2 py-1 text-xs text-ink placeholder:text-ink0 focus:border-accent focus:outline-none"
+        class="mb-2 w-full rounded border border-rule bg-bg-2 px-2 py-1 text-xs text-ink placeholder:text-ink-3 focus:border-accent focus:outline-none"
       >
       <div class="max-h-48 overflow-y-auto">
         <button
@@ -57,7 +57,7 @@ const filtered = computed(() => {
           @click="emit('select', genre.name); showDropdown = false"
         >
           <span>{{ genre.name }}</span>
-          <span class="text-ink0">{{ genre.artistCount }}</span>
+          <span class="text-ink-3">{{ genre.artistCount }}</span>
         </button>
       </div>
     </div>

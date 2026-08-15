@@ -132,10 +132,10 @@ onUnmounted(() => {
             <p class="text-sm font-medium text-ink">
               {{ terminal.isRunning ? 'Scan in progress' : 'Idle' }}
             </p>
-            <p v-if="terminal.isRunning && settings.showTerminal" class="text-xs text-ink0">
+            <p v-if="terminal.isRunning && settings.showTerminal" class="text-xs text-ink-3">
               Check the terminal for live output
             </p>
-            <p v-else-if="status" class="text-xs text-ink0">
+            <p v-else-if="status" class="text-xs text-ink-3">
               Last scan: {{ formatRelativeTime(status.lastScanEndedAt) }}
             </p>
           </div>
@@ -156,7 +156,7 @@ onUnmounted(() => {
             {{ progress.phase === 'index' ? 'Indexing' : 'Syncing' }}:
             <span class="text-ink">{{ progress.folder || progress.artist }}</span>
           </span>
-          <span class="text-ink0">{{ progress.current }} / {{ progress.total }}</span>
+          <span class="text-ink-3">{{ progress.current }} / {{ progress.total }}</span>
         </div>
         <div class="h-1.5 w-full rounded-full bg-bg-2">
           <div
@@ -187,7 +187,7 @@ onUnmounted(() => {
         <p class="text-sm font-medium text-accent">
           {{ staleLock.sessionName ? 'Session running in background' : 'Lock held externally' }}
         </p>
-        <p class="text-xs text-ink0">
+        <p class="text-xs text-ink-3">
           <span class="text-ink-2">{{ staleLock.lockedBy }}</span>
           (pid {{ staleLock.pid }})
           <template v-if="staleLock.sessionName"> - reconnect to view output</template>
@@ -218,14 +218,14 @@ onUnmounted(() => {
     </div>
 
     <div>
-      <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink0">
+      <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
         Scan Library
       </h3>
       <ScanActions :disabled="!!staleLock" />
     </div>
 
     <div v-if="status && !loading">
-      <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink0">
+      <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
         History
       </h3>
       <div class="rounded-lg border border-rule bg-bg-1 divide-y divide-rule">

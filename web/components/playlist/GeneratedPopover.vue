@@ -1,7 +1,7 @@
 <template>
   <Popover trigger="hover">
     <template #trigger>
-      <button class="text-ink0 hover:text-ink-2 transition-colors">
+      <button class="text-ink-3 hover:text-ink-2 transition-colors">
         <LucideHelpCircle class="size-3.5" />
       </button>
     </template>

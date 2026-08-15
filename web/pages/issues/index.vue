@@ -79,7 +79,7 @@ function formatRelative(date: string): string {
       <ChevronRight :size="16" class="text-ink-4" />
     </NuxtLink>
 
-    <div v-if="!issuesStore.summary && !issuesStore.summaryLoading" class="py-20 text-center text-ink0">
+    <div v-if="!issuesStore.summary && !issuesStore.summaryLoading" class="py-20 text-center text-ink-3">
       Run an audit to detect metadata issues
     </div>
 
@@ -93,12 +93,12 @@ function formatRelative(date: string): string {
         <div class="flex items-start justify-between">
           <div>
             <p class="font-medium text-white">{{ card.label }}</p>
-            <p class="mt-1 text-xs text-ink0">{{ card.description }}</p>
+            <p class="mt-1 text-xs text-ink-3">{{ card.description }}</p>
           </div>
           <span
             v-if="issuesStore.summary"
             class="ml-3 shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold"
-            :class="(issuesStore.summary.counts[card.key] ?? 0) > 0 ? 'bg-accent-soft text-accent' : 'bg-bg-2 text-ink0'"
+            :class="(issuesStore.summary.counts[card.key] ?? 0) > 0 ? 'bg-accent-soft text-accent' : 'bg-bg-2 text-ink-3'"
           >
             {{ issuesStore.summary.counts[card.key] ?? 0 }}
           </span>

@@ -38,7 +38,7 @@ const image = computed(() =>
       <div class="min-w-0 flex-1">
         <p class="truncate text-lg font-semibold text-ink">{{ track.title }}</p>
         <p class="truncate text-sm text-ink-2">{{ track.artist }}</p>
-        <p class="truncate text-xs text-ink0">
+        <p class="truncate text-xs text-ink-3">
           {{ track.album }}
           <span v-if="track.duration"> · {{ formatDuration(track.duration) }}</span>
         </p>

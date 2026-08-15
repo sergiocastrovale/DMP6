@@ -18,7 +18,7 @@ const label = computed(() => (segment.value ? props.labels[segment.value] ?? seg
 
 <template>
   <nav v-if="segment" class="flex items-center gap-1.5 text-sm">
-    <NuxtLink :to="root.to" class="text-ink0 transition-colors hover:text-ink-2">
+    <NuxtLink :to="root.to" class="text-ink-3 transition-colors hover:text-ink-2">
       {{ root.label }}
     </NuxtLink>
     <ChevronRight :size="12" class="text-ink-4" />

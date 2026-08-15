@@ -13,7 +13,7 @@ const model = defineModel<string | number | null>()
 <template>
   <div class="space-y-1.5">
     <label class="block text-sm font-medium text-ink">{{ label }}</label>
-    <p v-if="description" class="text-xs text-ink0">{{ description }}</p>
+    <p v-if="description" class="text-xs text-ink-3">{{ description }}</p>
 
     <select
       v-if="type === 'select' && options"

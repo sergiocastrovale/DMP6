@@ -82,7 +82,7 @@ onMounted(fetchStatus)
           <HardDriveDownload v-else :size="16" class="shrink-0 text-ink-2" />
           <div>
             <p class="text-xs font-medium text-ink-2">Index only</p>
-            <p class="text-xs text-ink0">Scan local audio files without MusicBrainz sync</p>
+            <p class="text-xs text-ink-3">Scan local audio files without MusicBrainz sync</p>
           </div>
         </button>
 

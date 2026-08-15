@@ -68,7 +68,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
     <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
       <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">RuTracker — Prowlarr (search)</h2>
-      <p class="text-xs text-ink0">RuTracker is searched through Prowlarr (the RT login lives in Prowlarr, like Lidarr). When RuTracker is enabled it's tried first; Soulseek is the fallback.</p>
+      <p class="text-xs text-ink-3">RuTracker is searched through Prowlarr (the RT login lives in Prowlarr, like Lidarr). When RuTracker is enabled it's tried first; Soulseek is the fallback.</p>
       <SettingsField
         v-model="form.prowlarrUrl"
         label="Prowlarr URL"

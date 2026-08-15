@@ -68,10 +68,10 @@ const goNewer = () => {
         class="flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-bg-2/50"
         @click="emit('play', track)"
       >
-        <Play :size="14" class="shrink-0 text-ink0" />
+        <Play :size="14" class="shrink-0 text-ink-3" />
         <span class="min-w-0 flex-1 truncate text-sm text-ink-2">
           {{ track.title }}
-          <span class="text-ink0"> - {{ track.artist }}</span>
+          <span class="text-ink-3"> - {{ track.artist }}</span>
         </span>
         <span v-if="track.duration" class="shrink-0 text-xs tabular-nums text-ink-4">
           {{ formatDuration(track.duration) }}

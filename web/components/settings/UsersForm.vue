@@ -154,7 +154,7 @@ const roles = [
 
       <table class="w-full text-sm">
         <thead>
-          <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink0">
+          <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink-3">
             <th class="pb-2 pr-4">Username</th>
             <th class="pb-2 pr-4">Email</th>
             <th class="pb-2 pr-4">Role</th>
@@ -228,7 +228,7 @@ const roles = [
                 <span v-if="u.mustChangePassword" class="flex items-center gap-1 text-xs text-yellow-500">
                   <KeyRound :size="12" /> must change pw
                 </span>
-                <span v-else class="text-xs text-ink0">active</span>
+                <span v-else class="text-xs text-ink-3">active</span>
               </td>
               <td class="py-2 text-right space-x-1">
                 <button

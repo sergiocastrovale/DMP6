@@ -49,7 +49,7 @@ onUnmounted(() => {
 <template>
   <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
     <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Sources</h2>
-    <p class="text-xs text-ink0">
+    <p class="text-xs text-ink-3">
       Where dmp searches for missing releases. RuTracker is tried first; Soulseek is the fallback.
     </p>
 

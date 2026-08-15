@@ -37,7 +37,7 @@ const onInput = (e: Event) => {
     </div>
 
     <div class="flex items-center gap-3">
-      <span class="w-20 shrink-0 text-right text-xs text-ink0">{{ leftLabel }}</span>
+      <span class="w-20 shrink-0 text-right text-xs text-ink-3">{{ leftLabel }}</span>
 
       <input
         type="range"
@@ -56,9 +56,9 @@ const onInput = (e: Event) => {
         @input="onInput"
       >
 
-      <span class="w-20 shrink-0 text-xs text-ink0">{{ rightLabel }}</span>
+      <span class="w-20 shrink-0 text-xs text-ink-3">{{ rightLabel }}</span>
     </div>
 
-    <p v-if="hint" class="mt-2 text-xs leading-snug text-ink0">{{ hint }}</p>
+    <p v-if="hint" class="mt-2 text-xs leading-snug text-ink-3">{{ hint }}</p>
   </div>
 </template>

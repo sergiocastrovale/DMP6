@@ -106,12 +106,12 @@ onMounted(() => {
     />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <div class="text-ink0">Loading...</div>
+      <div class="text-ink-3">Loading...</div>
     </div>
 
     <div v-else-if="stats" class="grid grid-cols-1 gap-6 sm:grid-cols-2">
       <section v-for="section in sections" :key="section.title" class="rounded-lg border border-rule bg-bg-1 p-5">
-        <h2 class="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-ink0">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-ink-3">
           <component :is="section.icon" class="size-4 text-accent" />
           {{ section.title }}
         </h2>
@@ -124,11 +124,11 @@ onMounted(() => {
             class="flex items-baseline justify-between px-2 py-1"
             :class="item.link ? 'rounded transition-colors hover:bg-bg-2' : ''"
           >
-            <span class="flex items-center gap-1 text-sm text-ink0">
+            <span class="flex items-center gap-1 text-sm text-ink-3">
               {{ item.label }}
               <Popover v-if="item.info" trigger="hover">
                 <template #trigger>
-                  <Info :size="13" class="text-ink0/50 transition-colors hover:text-accent" />
+                  <Info :size="13" class="text-ink-3/50 transition-colors hover:text-accent" />
                 </template>
                 <template #content>
                   <div class="absolute left-0 top-full z-20 mt-1 w-64 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">

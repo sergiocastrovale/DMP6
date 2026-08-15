@@ -24,10 +24,10 @@ const columns = [
         <span class="text-xs text-ink-2">{{ item.artistName }}</span>
       </td>
       <td class="px-4 py-2.5 text-right">
-        <span class="text-xs tabular-nums text-ink0">{{ item.trackCount }}</span>
+        <span class="text-xs tabular-nums text-ink-3">{{ item.trackCount }}</span>
       </td>
       <td class="px-4 py-2.5 text-right">
-        <span class="text-xs tabular-nums text-ink0">{{ formatDuration(item.totalDuration) }}</span>
+        <span class="text-xs tabular-nums text-ink-3">{{ formatDuration(item.totalDuration) }}</span>
       </td>
     </template>
   </StatisticsStatPage>

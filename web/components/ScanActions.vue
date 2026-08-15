@@ -47,7 +47,7 @@ const visibleActions = computed(() => visibleScanActions(isAdmin.value))
       <component :is="scanIcons[scan.icon]" v-else :size="20" class="shrink-0 text-accent" />
       <div>
         <p class="text-sm font-medium text-ink">{{ scan.text }}</p>
-        <p class="text-xs text-ink0">{{ scan.subtext }}</p>
+        <p class="text-xs text-ink-3">{{ scan.subtext }}</p>
       </div>
     </button>
   </div>

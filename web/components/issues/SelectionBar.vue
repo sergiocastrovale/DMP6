@@ -50,7 +50,7 @@ const fixDescription = computed(() => {
       <div class="flex items-center gap-2">
         <Popover v-if="fixDescription" trigger="hover">
           <template #trigger>
-            <button class="text-ink0 transition-colors hover:text-ink-2">
+            <button class="text-ink-3 transition-colors hover:text-ink-2">
               <HelpCircle :size="14" />
             </button>
           </template>

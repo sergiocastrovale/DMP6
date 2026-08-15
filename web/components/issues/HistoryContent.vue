@@ -192,7 +192,7 @@ async function undoSelected() {
           class="inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
           :class="(issuesStore.historyCounts[tab.key] ?? 0) > 0
             ? 'bg-accent-soft text-accent'
-            : 'bg-bg-2 text-ink0'"
+            : 'bg-bg-2 text-ink-3'"
         >
           {{ issuesStore.historyCounts[tab.key] ?? 0 }}
         </span>
@@ -207,10 +207,10 @@ async function undoSelected() {
               <th class="w-10 px-3 py-2">
                 <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" >
               </th>
-              <th class="px-3 py-2 text-xs font-medium text-ink0">Folder</th>
-              <th class="px-3 py-2 text-xs font-medium text-ink0">Previous</th>
-              <th class="px-3 py-2 text-xs font-medium text-ink0">Applied</th>
-              <th class="w-32 px-3 py-2 text-xs font-medium text-ink0">Applied At</th>
+              <th class="px-3 py-2 text-xs font-medium text-ink-3">Folder</th>
+              <th class="px-3 py-2 text-xs font-medium text-ink-3">Previous</th>
+              <th class="px-3 py-2 text-xs font-medium text-ink-3">Applied</th>
+              <th class="w-32 px-3 py-2 text-xs font-medium text-ink-3">Applied At</th>
             </tr>
           </thead>
           <tbody>
@@ -222,7 +222,7 @@ async function undoSelected() {
             </template>
 
             <tr v-else-if="!issuesStore.historyLoading[activeTab] && groups.length === 0">
-              <td colspan="5" class="px-3 py-12 text-center text-ink0">No history records</td>
+              <td colspan="5" class="px-3 py-12 text-center text-ink-3">No history records</td>
             </tr>
 
             <tr
@@ -256,7 +256,7 @@ async function undoSelected() {
               <td class="px-3 py-2">
                 <div class="flex flex-col gap-0.5">
                   <span v-for="e in getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {}))" :key="e.key" class="text-xs text-accent">
-                    <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
+                    <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
                   </span>
                   <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-ink-4">-</span>
                 </div>
@@ -264,13 +264,13 @@ async function undoSelected() {
               <td class="px-3 py-2">
                 <div class="flex flex-col gap-0.5">
                   <span v-for="e in getStateEntries(g.items[0]!.appliedState)" :key="e.key" class="text-xs text-green-400">
-                    <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
+                    <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
                   </span>
                   <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-ink-4">-</span>
                 </div>
               </td>
               <td class="px-3 py-2">
-                <span class="text-xs text-ink0">{{ formatDate(g.items[0]!.appliedAt) }}</span>
+                <span class="text-xs text-ink-3">{{ formatDate(g.items[0]!.appliedAt) }}</span>
               </td>
             </tr>
           </tbody>
@@ -279,7 +279,7 @@ async function undoSelected() {
 
       <div
         v-if="(issuesStore.historyTotal[activeTab] ?? 0) > 50"
-        class="flex items-center justify-between border-t border-rule px-4 py-2 text-xs text-ink0"
+        class="flex items-center justify-between border-t border-rule px-4 py-2 text-xs text-ink-3"
       >
         <span>{{ issuesStore.historyTotal[activeTab] }} total</span>
         <div class="flex items-center gap-2">
@@ -315,7 +315,7 @@ async function undoSelected() {
           <span class="flex-1 truncate text-xs text-ink-2" :title="item.filePath">{{ fileName(item.filePath) }}</span>
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getStateEntries(item.appliedState)" :key="e.key" class="text-[11px] text-green-400">
-              <span class="text-ink0">{{ e.key }}:</span> {{ e.value }}
+              <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
             </span>
           </div>
         </div>

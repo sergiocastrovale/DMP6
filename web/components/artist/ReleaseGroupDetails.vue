@@ -102,7 +102,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
 
       <div class="min-w-0 flex-1 self-center ml-1">
         <div class="flex items-center gap-2">
-          <span class="truncate text-lg font-medium" :class="release.status === 'MISSING' ? 'text-ink0' : 'text-ink'">
+          <span class="truncate text-lg font-medium" :class="release.status === 'MISSING' ? 'text-ink-3' : 'text-ink'">
             {{ release.title }}
           </span>
           <span v-if="subtitle" class="shrink-0 rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-medium text-ink-2">{{ subtitle }}</span>

@@ -27,10 +27,10 @@ const columns = [
         <span class="text-xs text-ink-2">{{ item.artistName }}</span>
       </td>
       <td class="px-4 py-2.5 text-right">
-        <span class="text-xs tabular-nums text-ink0">{{ item.year }}</span>
+        <span class="text-xs tabular-nums text-ink-3">{{ item.year }}</span>
       </td>
       <td class="px-4 py-2.5">
-        <span class="text-xs text-ink0">{{ STATUS_LABELS[item.matchStatus] ?? item.matchStatus }}</span>
+        <span class="text-xs text-ink-3">{{ STATUS_LABELS[item.matchStatus] ?? item.matchStatus }}</span>
       </td>
     </template>
   </StatisticsStatPage>

@@ -97,7 +97,7 @@ onMounted(() => {
         </NuxtLink>
         <h1 class="text-2xl font-bold text-ink">{{ title }}</h1>
       </div>
-      <span class="text-sm text-ink0">{{ total.toLocaleString() }} {{ label }}</span>
+      <span class="text-sm text-ink-3">{{ total.toLocaleString() }} {{ label }}</span>
     </div>
 
     <SearchInput
@@ -108,15 +108,15 @@ onMounted(() => {
       @update:model-value="handleSearch"
     />
 
-    <div v-if="!loading && items.length > 0 && items.length < total" class="text-xs text-ink0">
+    <div v-if="!loading && items.length > 0 && items.length < total" class="text-xs text-ink-3">
       Showing {{ items.length.toLocaleString() }} of {{ total.toLocaleString() }}
     </div>
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-ink0" />
+      <Loader2 :size="24" class="animate-spin text-ink-3" />
     </div>
 
-    <div v-else-if="items.length === 0" class="py-20 text-center text-ink0">
+    <div v-else-if="items.length === 0" class="py-20 text-center text-ink-3">
       No results found
     </div>
 
@@ -127,7 +127,7 @@ onMounted(() => {
             <th
               v-for="col in columns"
               :key="col.key"
-              class="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-ink0"
+              class="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-ink-3"
               :class="[
                 col.align === 'right' ? 'text-right' : 'text-left',
                 col.sortable ? 'cursor-pointer select-none hover:text-ink transition-colors' : '',
@@ -161,7 +161,7 @@ onMounted(() => {
     <InfiniteScroll @load="loadMore" />
 
     <div v-if="loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" class="animate-spin text-ink0" />
+      <Loader2 :size="20" class="animate-spin text-ink-3" />
     </div>
   </div>
 </template>

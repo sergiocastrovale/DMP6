@@ -25,7 +25,7 @@ const columns = [
         </NuxtLink>
       </td>
       <td class="px-4 py-2.5 text-right">
-        <span class="text-xs tabular-nums text-ink0">{{ formatFileSize(item.totalSize ?? 0) }}</span>
+        <span class="text-xs tabular-nums text-ink-3">{{ formatFileSize(item.totalSize ?? 0) }}</span>
       </td>
     </template>
   </StatisticsStatPage>

@@ -28,7 +28,7 @@ const clampedPercent = computed(() => Math.max(0, Math.min(100, props.percent)))
   <div class="space-y-1.5">
     <div v-if="label" class="flex items-center justify-between text-xs">
       <span class="text-ink-2">{{ label }}</span>
-      <span class="text-ink0">{{ clampedPercent }}%</span>
+      <span class="text-ink-3">{{ clampedPercent }}%</span>
     </div>
     <div class="w-full overflow-hidden rounded-full bg-bg-2" :class="barHeight">
       <div

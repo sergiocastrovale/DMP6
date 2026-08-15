@@ -233,7 +233,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               <button
                 v-if="showActions && showRetry"
                 type="button"
-                class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent disabled:opacity-40 disabled:pointer-events-none"
+                class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent disabled:opacity-40 disabled:pointer-events-none"
                 title="Force retry"
                 aria-label="Force retry"
                 :disabled="busyId != null && busyId !== it.id"
@@ -269,7 +269,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               <button
                 v-if="showRequeue"
                 type="button"
-                class="rounded-full p-1.5 text-ink0 transition-colors hover:text-accent disabled:opacity-40 disabled:pointer-events-none"
+                class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent disabled:opacity-40 disabled:pointer-events-none"
                 title="Move back to queue"
                 aria-label="Move back to queue"
                 :disabled="busyId != null && busyId !== it.id"

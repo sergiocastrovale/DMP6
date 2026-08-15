@@ -14,7 +14,7 @@ const columns = [
         <span class="text-sm text-ink">{{ item.name }}</span>
       </td>
       <td class="px-4 py-2.5 text-right">
-        <span class="text-xs tabular-nums text-ink0">{{ item.artistCount }}</span>
+        <span class="text-xs tabular-nums text-ink-3">{{ item.artistCount }}</span>
       </td>
     </template>
   </StatisticsStatPage>

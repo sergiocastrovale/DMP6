@@ -45,7 +45,7 @@ const handleSubmit = async () => {
     <div class="w-full max-w-sm">
       <div class="mb-8 text-center">
         <h1 class="text-3xl font-bold tracking-tight text-accent">DMP</h1>
-        <p class="mt-1 text-sm text-ink0">Change your password</p>
+        <p class="mt-1 text-sm text-ink-3">Change your password</p>
       </div>
 
       <form class="space-y-3" @submit.prevent="handleSubmit">

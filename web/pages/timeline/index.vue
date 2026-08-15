@@ -116,7 +116,7 @@ onMounted(() => {
     <PageTitle text="Timeline" subtext="Browse your library by decade and year" />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <div class="text-ink0">Loading...</div>
+      <div class="text-ink-3">Loading...</div>
     </div>
 
     <template v-else-if="decades.length > 0">
@@ -160,7 +160,7 @@ onMounted(() => {
       </div>
 
       <div v-if="loadingDecade" class="flex items-center justify-center py-16">
-        <div class="text-ink0">Loading...</div>
+        <div class="text-ink-3">Loading...</div>
       </div>
 
       <div v-else-if="decadeData" class="relative pl-40 mt-10">
@@ -200,7 +200,7 @@ onMounted(() => {
 
         <div
           v-if="decadeData.releases.length === 0"
-          class="flex flex-col items-center justify-center py-20 text-center text-ink0"
+          class="flex flex-col items-center justify-center py-20 text-center text-ink-3"
         >
           <LucideMusic class="mb-3 size-12 opacity-50" />
           <p>No releases in this period</p>
@@ -212,7 +212,7 @@ onMounted(() => {
       </div>
     </template>
 
-    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
+    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink-3">
       <LucideClock class="mb-3 size-12 opacity-50" />
       <p>No releases with year information found</p>
     </div>

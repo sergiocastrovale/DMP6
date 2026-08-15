@@ -19,7 +19,7 @@ const options = [
 
 <template>
   <div class="flex items-center gap-2">
-    <ArrowUpDown :size="14" class="text-ink0" />
+    <ArrowUpDown :size="14" class="text-ink-3" />
     <select
       :value="active"
       class="rounded-lg border border-rule bg-bg-1 px-3 py-1.5 text-xs text-ink-2 focus:border-accent focus:outline-none"

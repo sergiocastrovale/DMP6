@@ -18,7 +18,7 @@ const {
     <Tabs v-model="activeTab" :tabs="favTabs" />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-ink0" />
+      <Loader2 :size="24" class="animate-spin text-ink-3" />
     </div>
 
     <div v-else>
@@ -51,7 +51,7 @@ const {
             </template>
           </Block>
         </div>
-        <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink0">
+        <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink-3">
           <LucideDisc class="mb-3 size-12 opacity-50" />
           <p>No favorite releases yet</p>
           <UiButton variant="secondary" size="sm" to="/browse" class="mt-4">
@@ -67,7 +67,7 @@ const {
 
       <InfiniteScroll @load="loadMore" />
       <div v-if="loadingMore" class="flex justify-center py-4">
-        <Loader2 :size="20" class="animate-spin text-ink0" />
+        <Loader2 :size="20" class="animate-spin text-ink-3" />
       </div>
     </div>
   </div>
