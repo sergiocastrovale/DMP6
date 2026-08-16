@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { useSettingsStore } from '~/stores/settings'
 import { useTerminalStore } from '~/stores/terminal'
-import type { ActiveDownload, DownloadSourceStatus, DownloadSourceConfigItem, DownloadedReleaseItem, Acquisition } from '~/types/download'
+import type { ActiveDownload, DownloadSourceStatus, DownloadSourceConfigItem, DownloadedReleaseItem, Acquisition, SongkongHealth } from '~/types/download'
 
 type MergeStep = 'moving' | 'indexing' | 'syncing'
 type MergeProgressMap = Record<string, { step: MergeStep; title: string }>
@@ -40,6 +40,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   // Why background acquisition is/ isn't running (RuTracker budget, source switches) — for the idle banner.
   const acquisition = ref<Acquisition | null>(null)
+
+  // Host SongKong drainer liveness — explains why rows sit in ENRICHING (see EnrichmentStalledBanner).
+  const songkong = ref<SongkongHealth | null>(null)
 
   // Merge progress (server-driven, so it persists across tab switches + page refresh).
   const mergeProgress = ref<MergeProgressMap>({})
@@ -158,7 +161,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   const fetchQueue = async () => {
     try {
-      const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; rejected: DownloadedReleaseItem[]; history: DownloadedReleaseItem[]; paused: boolean; pausedReason: string | null; freeGb: number | null; minFreeGb: number | null; acquisition: Acquisition }>('/api/downloads/queue')
+      const data = await $fetch<{ active: DownloadedReleaseItem[]; ready: DownloadedReleaseItem[]; rejected: DownloadedReleaseItem[]; history: DownloadedReleaseItem[]; paused: boolean; pausedReason: string | null; freeGb: number | null; minFreeGb: number | null; acquisition: Acquisition; songkong: SongkongHealth }>('/api/downloads/queue')
       queueActive.value = data.active
       queueReady.value = data.ready
       queueRejected.value = data.rejected
@@ -168,6 +171,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
       freeGb.value = data.freeGb
       minFreeGb.value = data.minFreeGb
       acquisition.value = data.acquisition
+      songkong.value = data.songkong
     }
     catch { /* ignore */ }
     // Self-manage the live poll: spin it up whenever there's work to watch (a fresh download/merge just
@@ -389,6 +393,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     readyCount,
     paused,
     pausedReason,
+    songkong,
     freeGb,
     minFreeGb,
     acquisition,

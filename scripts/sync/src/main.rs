@@ -20,6 +20,7 @@ mod mb_api;
 mod mb_matching;
 mod mb_types;
 mod nuke;
+mod owned;
 mod repair;
 mod status;
 
@@ -1817,7 +1818,10 @@ async fn main() {
             };
             if let Some(official_rg_ids) = official_rg_ids {
                 delete_missing_releases_for_artist(&pool, &artist.id).await.ok();
+                // Candidate containers for the "already owned inside another release" check below.
+                let local_bundles = get_local_bundles_for_artist(&pool, &artist.id).await;
                 let mut gap_count = 0u32;
+                let mut owned_count = 0u32;
                 for rg in &release_groups {
                     if covered_rg_ids.contains(&rg.id) {
                         continue;
@@ -1830,6 +1834,28 @@ async fn main() {
                         &rg.id,
                         &official_rg_ids,
                     ) {
+                        continue;
+                    }
+                    // A bonus disc has its own MB release group but no bind of its own, so coverage
+                    // cannot see it and the trickle worker would download tracks already on disk.
+                    if let Some(owner) = owned::claim_owned_bundle(
+                        &pool,
+                        &http_client,
+                        &mut limiter,
+                        &artist.id,
+                        &rg.id,
+                        rg.primary_type.as_deref(),
+                        &local_bundles,
+                        &mut release_type_cache,
+                        &artist_genre_ids,
+                    )
+                    .await
+                    {
+                        owned_count += 1;
+                        reporter.info(&format!(
+                            "        ✓ {} already owned inside \"{}\" - linked, not queued",
+                            rg.title, owner
+                        ));
                         continue;
                     }
                     let type_name = rg.primary_type.as_deref().unwrap_or("Other");
@@ -1868,6 +1894,12 @@ async fn main() {
                     reporter.ok(&format!(
                         "{} missing release(s) appended to catalogue",
                         gap_count
+                    ));
+                }
+                if owned_count > 0 {
+                    reporter.ok(&format!(
+                        "{} release(s) already owned inside another release - linked, not queued",
+                        owned_count
                     ));
                 }
             }

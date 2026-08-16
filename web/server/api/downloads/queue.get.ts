@@ -6,6 +6,7 @@ import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getPauseState, freeGb } from '~/server/utils/pauseState'
 import { getAcquisitionStatus } from '~/server/utils/downloadSources'
 import { fetchActiveQueueRows, fetchRejectedQueueRows, fetchHistoryQueueRows } from '~/server/utils/downloadQueue'
+import { readSongkongHealth } from '~/server/utils/songkongHealth'
 
 const artistSelect = { artist: { select: { name: true, slug: true } } } as const
 
@@ -66,6 +67,7 @@ export default defineEventHandler(async (event) => {
   const { downloadsMinFreeGb } = await resolveMonitorSettings()
   const free = await freeGb(downloadsPath)
   const acquisition = await getAcquisitionStatus()
+  const songkong = await readSongkongHealth()
 
   return {
     active: active.map(shape),
@@ -77,5 +79,6 @@ export default defineEventHandler(async (event) => {
     freeGb: free >= 0 ? Math.round(free * 10) / 10 : null,
     minFreeGb: downloadsMinFreeGb,
     acquisition,
+    songkong,
   }
 })

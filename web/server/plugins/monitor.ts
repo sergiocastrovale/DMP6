@@ -1,5 +1,5 @@
 import { runGapsCycle, runAutoMergeCycle, reconcileDownloads, reconcileTorrentDownloads } from '~/server/utils/monitorLoop'
-import { sweepDanglingDownloads } from '~/server/utils/promote'
+import { sweepDanglingDownloads, rejectOwnedElsewhereDownloads } from '~/server/utils/promote'
 import { topUpDownloads } from '~/server/utils/autoDownload'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
@@ -22,6 +22,10 @@ let lastPruneAt = 0
 // spam errors everywhere but the NAS — it stays a manual, NAS-only action.
 const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000
 let lastSweepAt = 0
+
+// Staged-but-already-owned check: cheap, but not worth the 5s base tick.
+const OWNED_CHECK_INTERVAL_MS = 60 * 1000
+let lastOwnedCheckAt = 0
 
 // Tracks the acquisition idle/active transition so we log it once, not every tick.
 let acquisitionIdle = false
@@ -72,6 +76,13 @@ export default defineNitroPlugin(() => {
     if (Date.now() - lastSweepAt > SWEEP_INTERVAL_MS) {
       lastSweepAt = Date.now()
       sweepDanglingDownloads().catch(e => monitorLog('error', `dangling-download sweep error: ${e?.message || e}`))
+    }
+
+    // Staged downloads of releases the catalogue has since claimed as already-owned (bonus disc inside
+    // a bigger folder). Throttled: the query is tiny but this runs on the 5s base tick.
+    if (Date.now() - lastOwnedCheckAt > OWNED_CHECK_INTERVAL_MS) {
+      lastOwnedCheckAt = Date.now()
+      rejectOwnedElsewhereDownloads().catch(e => monitorLog('error', `owned-elsewhere sweep error: ${e?.message || e}`))
     }
 
     // Always reconcile (cheap, bounded, internally guarded). Soulseek + torrent finalizers both run.

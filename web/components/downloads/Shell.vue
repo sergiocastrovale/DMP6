@@ -151,6 +151,8 @@ onUnmounted(() => {
 
         <DownloadsAcquisitionIdleBanner />
 
+        <DownloadsEnrichmentStalledBanner />
+
         <RecentIssuesPanel ref="issuesPanel" />
 
         <p v-if="actionMsg" class="rounded-lg border border-rule bg-bg-1 px-4 py-2 text-sm text-ink-2">

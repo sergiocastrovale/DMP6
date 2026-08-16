@@ -101,6 +101,16 @@ export interface ReleaseProgress {
 }
 
 // Why the background acquisition workers are (or aren't) running — drives the /downloads idle banner.
+// Host SongKong drainer liveness — see server/utils/songkongHealth.ts. Surfaced so an ENRICHING row
+// can explain itself instead of looking permanently stuck.
+export interface SongkongHealth {
+  enabled: boolean
+  spoolCount: number
+  oldestSpoolMin: number | null
+  stalled: boolean
+  maxWaitMin: number
+}
+
 export interface Acquisition {
   canAcquire: boolean
   rt: { enabled: boolean; used: number; limit: number; remaining: number; resetsAt: string | null }

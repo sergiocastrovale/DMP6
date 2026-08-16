@@ -203,6 +203,36 @@ counts already understand. Search hits (Tier 3) and catalogue gaps keep using `i
 ever *invents* a Single — only a disc you own can produce one. `MatchCandidate.from_tags` is what
 selects the gate.
 
+### Already owned inside another release (`scripts/sync/src/owned.rs`)
+
+Coverage is computed from binds, and a `LocalRelease` can only point at one MB release — so a **bonus
+disc has no bind of its own**. `Radiohead/EP/2009 - In Rainbows Disk 2` physically holds CD 01 + CD 02
+(18 tracks, tagged `album = In Rainbows`, no MB ids), binds to the *In Rainbows* group, and leaves
+MusicBrainz's separate `In Rainbows Disk 2` group looking uncovered → MISSING gap → the trickle worker
+downloaded 8 tracks that were already on disc 2.
+
+Before writing a gap, `claim_owned_bundle` asks a stricter question: **is every track of this release
+already inside one local release?** A claim requires all of:
+
+- every MB track matched to a **distinct** local track by normalized title (case/punctuation-insensitive);
+- durations within **±5s** where both are known — `In Rainbows: From the Basement` is the same ten
+  songs played live and passed a title-only rule; its takes run 1–33s off the studio ones, and since
+  every track must match, one honest outlier refuses the claim;
+- the local release is a **strict superset** (an exact-size match belongs to the matcher, which binds it);
+- at least 3 MB tracks (a one- or two-track "release" matches by coincidence inside any album).
+
+On a claim: the real release + its tracks are written, the local tracks are linked to them
+(`LocalReleaseTrack.mbTrackId` — so `sync --only-write-mb-to-files` puts the ids in the files), the
+release is stored `COMPLETE` with `statusReason = 'Owned as part of "<folder>"'`, dead queue rows for
+the group are rejected, and **no gap is created**. Release-level ids are deliberately *not* written to
+those files: making 8 tracks the majority `MUSICBRAINZ_ALBUMID` of an 18-track folder would rebind the
+whole folder to the bonus disc, and `In Rainbows` itself would then look missing.
+
+`get_covered_release_group_ids` counts a group as owned when every one of its MB tracks is linked to a
+local track, so a claim survives — the check costs one MB call per group, once, and never repeats.
+The web side finishes the job: `rejectOwnedElsewhereDownloads` (monitor tick, 60s) rejects any staged
+READY download whose release carries that reason, purging its files through the normal reject path.
+
 ### Rejected candidates fall back to search
 
 An allow-list rejection used to be a dead end: the release was marked `UNMATCHED` and that was that.

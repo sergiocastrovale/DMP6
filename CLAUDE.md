@@ -34,6 +34,14 @@ Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
 - `Artist.primaryArtistId` = FK to canonical Artist when this artist shares an MB ID with another; connected artist hidden from browse, catalogue aggregated on primary's page. Set by sync, and by `./index --canonicalize-artists` — but only when **both** names have an `MbArtistLookup` row resolving to the same MB ID. `Artist.musicbrainzId` alone is not a safe merge key: it leaks onto compounds (`"Lena Horne & Gábor Szabó"` carries Lena Horne's ID while its lookup row says MB denied the string), so merging on the column folds collaborations into their first member.
 - `ReleaseStatus`: COMPLETE | INCOMPLETE | EXTRA_TRACKS | MISSING_TRACKS | MISSING | UNKNOWN | UNMATCHED
 - `PlaylistType`: MANUAL | GENRE | REGION
+- **A release can be owned without being bound.** A bonus disc is its own MB release group, but a
+  folder holding CD 01 + CD 02 binds to the *album* group — so coverage (which reads binds) called the
+  bonus disc missing and the downloader fetched tracks already on disk. `sync::owned::claim_owned_bundle`
+  catches that before a gap is written: all tracks present in one local release, matched by title **and**
+  ±5s duration (live re-recordings share titles), strict superset, ≥3 tracks. It links the local tracks
+  to that release's MB tracks and marks it `COMPLETE` / `statusReason = 'Owned as part of "…"'`;
+  `get_covered_release_group_ids` then treats a fully track-linked group as covered. Never writes
+  release-level MB ids onto a partially-matching folder — that would flip the folder's id consensus.
 - `LocalRelease` grouped one-per-folder: `groupKey` (unique) = `"folder:{folderPath}"` (root-level files fall back to `"meta:{slugTitle}:{year}:{slugArtist}"`). Per-track MB ids are NOT part of the key — folder is the physical release unit; sync matches folder→MB by embedded-id consensus, then a guarded title+artist search, binding only Official Album/EP — plus Single, but **only** when the files' own MB ids point at it (`allowlist::is_allowed_tagged`; MB files many owned 4-track CD "EP"s under a Single group). Searches and catalogue gaps never produce a Single. A candidate the allow-list rejects (bootleg edition, Single-typed search hit) gets one search-tier retry before the release is left UNMATCHED. Keying on per-track ids shredded compilations into per-track fragments — see `docs/scripts/index.md`, `docs/scripts/sync.md`.
 
 ## Standards

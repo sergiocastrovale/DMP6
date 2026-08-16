@@ -667,6 +667,11 @@ pub async fn delete_missing_releases_for_artist(
 // "uncovered" here, so catalogue-gaps created a MISSING placeholder and the trickle worker
 // re-downloaded an album the library already had (landing under the connected artist's folder).
 pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> HashSet<String> {
+    // Two ways a group counts as owned:
+    //   1. a LocalRelease is bound to one of its releases (the ordinary case), or
+    //   2. every one of its MB tracks is linked to a local track (`owned.rs`'s bundle claim) — a
+    //      bonus disc that lives inside a bigger local folder has no bind of its own, and without
+    //      this it would come back as a MISSING gap on every run and be downloaded again.
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"SELECT DISTINCT mbr."releaseGroupId"
            FROM "MusicBrainzRelease" mbr
@@ -674,13 +679,85 @@ pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> Ha
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
            JOIN "Artist" a ON a.id = lra."artistId"
            WHERE (lra."artistId" = $1 OR a."primaryArtistId" = $1)
-             AND mbr."releaseGroupId" IS NOT NULL"#,
+             AND mbr."releaseGroupId" IS NOT NULL
+           UNION
+           SELECT DISTINCT mbr."releaseGroupId"
+           FROM "MusicBrainzRelease" mbr
+           JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mbr.id
+           JOIN "Artist" a2 ON a2.id = mra."artistId"
+           WHERE (mra."artistId" = $1 OR a2."primaryArtistId" = $1)
+             AND mbr."releaseGroupId" IS NOT NULL
+             AND EXISTS (SELECT 1 FROM "MusicBrainzReleaseTrack" t WHERE t."releaseId" = mbr.id)
+             AND NOT EXISTS (
+               SELECT 1 FROM "MusicBrainzReleaseTrack" t
+               WHERE t."releaseId" = mbr.id
+                 AND NOT EXISTS (
+                   SELECT 1 FROM "LocalReleaseTrack" lt WHERE lt."mbTrackId" = t.id
+                 )
+             )"#,
     )
     .bind(artist_id)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
     rows.into_iter().map(|(id,)| id).collect()
+}
+
+/// Every local release of this artist with its track ids + titles — the candidate containers for
+/// `owned::find_owning_bundle`. One query per artist; only pulled when there are gaps to test.
+pub async fn get_local_bundles_for_artist(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Vec<crate::owned::LocalBundle> {
+    let rows: Vec<(String, String, String, String, Option<i32>)> = sqlx::query_as(
+        r#"SELECT lr.id, lr.title, lrt.id, COALESCE(lrt.title, ''), lrt.duration
+           FROM "LocalRelease" lr
+           JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+           JOIN "Artist" a ON a.id = lra."artistId"
+           JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
+           WHERE (lra."artistId" = $1 OR a."primaryArtistId" = $1)
+           ORDER BY lr.id, lrt."discNumber" NULLS FIRST, lrt."trackNumber" NULLS FIRST"#,
+    )
+    .bind(artist_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut bundles: Vec<crate::owned::LocalBundle> = Vec::new();
+    for (release_id, release_title, track_id, track_title, duration) in rows {
+        match bundles.last_mut() {
+            Some(last) if last.release_id == release_id => {
+                last.tracks.push((track_id, track_title, duration))
+            }
+            _ => bundles.push(crate::owned::LocalBundle {
+                release_id,
+                title: release_title,
+                tracks: vec![(track_id, track_title, duration)],
+            }),
+        }
+    }
+    bundles
+}
+
+/// Take an already-owned release out of the download queue. Only touches rows that are not in
+/// flight: cancelling a live transfer (or discarding files already staged for merge) is the user's
+/// call, not a side effect of a catalogue pass.
+pub async fn reject_queued_downloads_for_group(
+    pool: &PgPool,
+    release_group_id: &str,
+    reason: &str,
+) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query(
+        r#"UPDATE "DownloadedRelease"
+           SET status = 'REJECTED', error = $2, "updatedAt" = NOW()
+           WHERE "releaseGroupId" = $1
+             AND status IN ('UNAVAILABLE', 'FAILED', 'INVALID', 'ABANDONED')"#,
+    )
+    .bind(release_group_id)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
 }
 
 pub async fn get_missing_release_group_ids_for_artist(

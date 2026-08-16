@@ -540,6 +540,45 @@ export async function requeueRejectedDownloads(ids: string[]): Promise<{ requeue
  * either way; keeping it around only bloats the table and every /downloads queue poll (see
  * docs/downloader_issues.md #3, #8). Pure DB operation — no filesystem dependency, safe on any instance.
  */
+/**
+ * Drop a staged download the library turned out to already own.
+ *
+ * Sync's gap pass claims a release whose every track is already inside a bigger local release (a bonus
+ * disc in a two-disc folder — see scripts/sync/src/owned.rs) and stamps the MusicBrainzRelease with
+ * `Owned as part of "<folder>"`. Anything already downloaded for that group is a duplicate: merging it
+ * would add a second copy of tracks that are on disk. Rejecting from here (rather than from the Rust
+ * pass) is deliberate — this is where staged files and SongKong markers get cleaned up properly.
+ *
+ * Matched on that reason specifically, not on "no longer MISSING": only a claim we made ourselves is
+ * strong enough to justify discarding files without asking.
+ */
+export async function rejectOwnedElsewhereDownloads(): Promise<{ rejected: number }> {
+  const rows = await prisma.$queryRaw<{ id: string, stagingPath: string | null, reason: string }[]>`
+    SELECT dr.id, dr."stagingPath", mr."statusReason" AS reason
+    FROM "DownloadedRelease" dr
+    JOIN "MusicBrainzRelease" mr ON (
+      (dr."releaseGroupId" IS NOT NULL AND mr."releaseGroupId" = dr."releaseGroupId")
+      OR (dr."releaseGroupId" IS NULL AND mr.id = dr."mbReleaseId")
+    )
+    WHERE dr.status = 'READY'
+      AND mr.status <> 'MISSING'
+      AND mr."statusReason" LIKE 'Owned as part of%'
+  `
+  if (rows.length === 0) {
+    return { rejected: 0 }
+  }
+  for (const row of rows) {
+    await purgeStagedFiles(row.stagingPath)
+    await cleanupSongkongMarkers(row.id)
+  }
+  const result = await prisma.downloadedRelease.updateMany({
+    where: { id: { in: rows.map(r => r.id) } },
+    data: { status: 'REJECTED', error: rows[0]!.reason, stagingPath: null, files: Prisma.JsonNull },
+  })
+  monitorLog('notice', `cleanup: rejected ${result.count} staged download(s) already owned inside another release`)
+  return { rejected: result.count }
+}
+
 export async function sweepDanglingDownloads(): Promise<{ removed: number }> {
   const removed = await prisma.$executeRaw`
     DELETE FROM "DownloadedRelease" dr

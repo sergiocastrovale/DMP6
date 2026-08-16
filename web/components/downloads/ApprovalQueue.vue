@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { X, Loader2, AlertCircle, Ban, RotateCw, Info, FolderInput, SearchX, FileX, Undo2 } from 'lucide-vue-next'
+import { storeToRefs } from 'pinia'
+import { X, Loader2, AlertCircle, AlertTriangle, Ban, RotateCw, Info, FolderInput, SearchX, FileX, Undo2 } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { SortDir } from '~/helpers/functions'
 import { formatDate, sortItems } from '~/helpers/functions'
@@ -117,6 +118,24 @@ const statusClass = (s: string) => ({
   INVALID: 'text-ink-3',
 }[s] || 'text-ink-2')
 
+const { songkong } = storeToRefs(useDownloadsStore())
+
+// What the hover on the status cell says. FAILED rows have `error`; ENRICHING rows have nothing at all,
+// and "enriching" on its own never explained why a row could sit there for half an hour - enrichment
+// runs outside dmp, on a host cron, so a dead cron looks identical to a slow one from here.
+const statusNote = (it: DownloadedReleaseItem): string | null => {
+  if (it.error) {
+    return it.error
+  }
+  if (it.status !== 'ENRICHING') {
+    return null
+  }
+  const maxWait = songkong.value?.maxWaitMin ?? 30
+  return songkong.value?.stalled
+    ? `Waiting for SongKong, but nothing is draining the queue (${songkong.value.spoolCount} album(s) spooled). This merges without enrichment ${maxWait} min after it was spooled.`
+    : `Waiting for SongKong to tag this album — it runs on a host cron every 2 min. Merges without enrichment if it takes longer than ${maxWait} min.`
+}
+
 const statusLabel = (it: DownloadedReleaseItem) => {
   if (it.status === 'ABANDONED') {
     return `gave up${it.attempts ? ` (${it.attempts} tries)` : ''}`
@@ -187,19 +206,21 @@ const statusLabel = (it: DownloadedReleaseItem) => {
             <template v-if="it.slskUsername"> · {{ it.slskUsername }}</template>
           </td>
           <td class="px-4 py-2.5">
-            <Popover v-if="it.error" trigger="hover">
+            <Popover v-if="statusNote(it)" trigger="hover">
               <template #trigger>
                 <span class="inline-flex cursor-help items-center gap-1.5" :class="statusClass(it.status)">
-                  <AlertCircle v-if="it.status === 'FAILED'" :size="13" />
+                  <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" class="animate-spin" />
+                  <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
                   <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
                   <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />
                   <FileX v-else-if="it.status === 'INVALID'" :size="13" />
                   {{ statusLabel(it) }}
+                  <AlertTriangle v-if="it.status === 'ENRICHING' && songkong?.stalled" :size="13" class="text-amber-400" />
                 </span>
               </template>
               <template #content>
                 <div class="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
-                  <p class="text-xs text-ink-2">{{ it.error }}</p>
+                  <p class="text-xs text-ink-2">{{ statusNote(it) }}</p>
                 </div>
               </template>
             </Popover>

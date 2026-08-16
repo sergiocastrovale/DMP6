@@ -117,7 +117,9 @@ pub async fn fill_catalogue_gaps(
             covered_rg_ids.extend(existing_missing);
         }
 
+        let local_bundles = get_local_bundles_for_artist(pool, artist_id).await;
         let mut gap_count = 0u32;
+        let mut owned_count = 0u32;
         for rg in &release_groups {
             if covered_rg_ids.contains(&rg.id) {
                 continue;
@@ -131,6 +133,30 @@ pub async fn fill_catalogue_gaps(
                 &rg.id,
                 &official_rg_ids,
             ) {
+                continue;
+            }
+            // Already sitting inside a bigger local release (a bonus disc in a two-disc folder)?
+            // Then it is owned, not missing - link it and keep it out of the download queue.
+            if let Some(owner) = crate::owned::claim_owned_bundle(
+                pool,
+                http_client,
+                limiter,
+                artist_id,
+                &rg.id,
+                rg.primary_type.as_deref(),
+                &local_bundles,
+                &mut release_type_cache,
+                &artist_genre_ids,
+            )
+            .await
+            {
+                owned_count += 1;
+                if verbose {
+                    reporter.info(&format!(
+                        "    {} already owned inside \"{}\" - linked, not queued",
+                        rg.title, owner
+                    ));
+                }
                 continue;
             }
             let type_name = rg.primary_type.as_deref().unwrap_or("Other");
@@ -163,6 +189,12 @@ pub async fn fill_catalogue_gaps(
 
         if gap_count > 0 {
             reporter.ok(&format!("{} missing release(s) appended to catalogue", gap_count));
+        }
+        if owned_count > 0 {
+            reporter.ok(&format!(
+                "{} release(s) already owned inside another release - linked, not queued",
+                owned_count
+            ));
         } else if verbose {
             reporter.skip("No gaps");
         }
