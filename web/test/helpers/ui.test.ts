@@ -64,6 +64,14 @@ describe('button', () => {
     expect(on).toContain('text-amber-400')
   })
 
+  it.each(VARIANTS)('icon-only mode is a square, never combined with the text-mode height/padding classes (%s)', (variant) => {
+    for (const size of SIZES) {
+      const classes = button(variant, size, '', false, true).split(' ')
+      expect(classes.some(c => c.startsWith('size-['))).toBe(true)
+      expect(classes.some(c => c.startsWith('px-') || c.startsWith('h-['))).toBe(false)
+    }
+  })
+
   it.each(['primary', 'danger'] as const)('falls back to an outline ring for the %s action variant, keeping its idle fill', (variant) => {
     const idle = button(variant)
     const on = button(variant, 'md', '', true)

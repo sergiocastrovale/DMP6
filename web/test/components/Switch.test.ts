@@ -21,8 +21,8 @@ describe('Switch.vue', () => {
 
   it('applies the "on" background class only when checked', async () => {
     const off = await mountSuspended(Switch, { props: { modelValue: false } })
-    expect(off.get('button').classes()).toContain('bg-bg-3')
+    expect(off.get('button').classes()).toContain('bg-stone-700')
     const on = await mountSuspended(Switch, { props: { modelValue: true } })
-    expect(on.get('button').classes()).toContain('bg-accent')
+    expect(on.get('button').classes()).toContain('bg-amber-400')
   })
 })

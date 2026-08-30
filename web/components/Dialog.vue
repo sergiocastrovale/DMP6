@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { X } from 'lucide-vue-next'
+import { cx, layout } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -14,42 +15,78 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
 }>()
 
-function close() {
-  emit('update:modelValue', false)
+const close = () => emit('update:modelValue', false)
+
+const MAX_WIDTH_CLASS: Record<'sm' | 'md' | 'lg' | 'xl' | '2xl', string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-3xl',
+  '2xl': 'max-w-4xl',
 }
 
-const maxWidthClass = computed(() => {
-  switch (props.maxWidth) {
-    case 'sm':
-      return 'max-w-sm'
-    case 'lg': 
-      return 'max-w-2xl'
-    case 'xl':
-      return 'max-w-3xl'
-    case '2xl':
-      return 'max-w-4xl'
-    default: 
-      return 'max-w-lg'
+const maxWidthClass = computed(() => MAX_WIDTH_CLASS[props.maxWidth])
+const titleId = useId()
+const isOpen = computed(() => props.modelValue)
+
+const panelRef = ref<HTMLElement>()
+useFocusTrap(panelRef, isOpen)
+
+const onKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    close()
+  }
+}
+
+// Body scroll lock: a dialog over a scrollable page must not let the page behind it scroll too.
+// onMounted (not an immediate watcher) for the initial state - this runs during Nuxt's SSR
+// setup() too, where `document` doesn't exist; onMounted is guaranteed client-only.
+const applyOpenEffects = (open: boolean) => {
+  if (open) {
+    document.addEventListener('keydown', onKeydown)
+    document.body.style.overflow = 'hidden'
+  }
+  else {
+    document.removeEventListener('keydown', onKeydown)
+    document.body.style.overflow = ''
+  }
+}
+
+onMounted(() => {
+  if (isOpen.value) {
+    applyOpenEffects(true)
+  }
+})
+
+watch(isOpen, applyOpenEffects)
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKeydown)
+  if (isOpen.value) {
+    document.body.style.overflow = ''
   }
 })
 </script>
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="modelValue"
-      class="fixed inset-0 z-3000 flex items-center justify-center bg-black/60 p-4"
-      @click.self="close"
-    >
-      <div :class="maxWidthClass" class="w-full max-h-[80vh] flex flex-col rounded-xl border border-rule bg-bg-1 shadow-2xl">
-        <div class="border-b border-rule px-7 py-5">
-          <div class="flex items-center justify-between">
-            <h2 class="block w-full text-lg font-semibold text-ink">{{ title }}</h2>
-            <UiButton variant="ghost" icon-only :icon="X" aria-label="Close" @click="close" />
+    <div v-if="modelValue" :class="layout.scrim" @click.self="close">
+      <div
+        ref="panelRef"
+        role="dialog"
+        aria-modal="true"
+        tabindex="-1"
+        :aria-labelledby="titleId"
+        :class="cx(layout.dialog, maxWidthClass, 'max-h-[80vh] flex flex-col outline-none')"
+      >
+        <div class="flex items-start justify-between gap-4 mb-3.5">
+          <div class="min-w-0">
+            <h2 :id="titleId" class="text-xl font-semibold tracking-[-0.01em] text-stone-100">{{ title }}</h2>
+            <p v-if="subtitle" class="mt-1 text-sm text-stone-100/40">{{ subtitle }}</p>
           </div>
-          <h3 v-if="subtitle" class="text-sm text-ink-2">{{ subtitle }}</h3>
+          <UiButton variant="ghost" size="sm" icon-only :icon="X" aria-label="Close" @click="close" />
         </div>
-        <div class="flex-1 overflow-y-auto px-6 py-4">
+        <div class="flex-1 overflow-y-auto">
           <slot />
         </div>
       </div>

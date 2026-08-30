@@ -1,20 +1,27 @@
 <script setup lang="ts">
+import { cx } from '~/helpers/ui'
+
 const model = defineModel<boolean>({ required: true })
 defineProps<{ label?: string }>()
 </script>
 
 <template>
-  <label class="flex cursor-pointer items-center gap-2 text-sm text-ink-2 select-none">
+  <label class="flex cursor-pointer items-center gap-2.5 text-base text-stone-100/60 select-none">
     <button
+      type="button"
       role="switch"
       :aria-checked="model"
-      class="relative h-5 w-9 rounded-full transition-colors"
-      :class="model ? 'bg-accent' : 'bg-bg-3'"
+      :class="cx(
+        'relative inline-flex h-[19px] w-[34px] shrink-0 rounded-full border transition-colors duration-150',
+        model ? 'bg-amber-400 border-amber-400' : 'bg-stone-700 border-stone-100/10',
+      )"
       @click="model = !model"
     >
       <span
-        class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform"
-        :class="model && 'translate-x-4'"
+        :class="cx(
+          'absolute top-0.5 left-0.5 size-[15px] rounded-full bg-stone-100 shadow-md transition-transform duration-150',
+          model && 'translate-x-[15px]',
+        )"
       />
     </button>
     <span v-if="label">{{ label }}</span>

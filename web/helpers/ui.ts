@@ -6,6 +6,10 @@
 export const cx = (...classes: Array<string | false | null | undefined>): string =>
   classes.filter(Boolean).join(' ')
 
+// The system's icon weight (lucide-vue-next defaults to 2). Pass to every Lucide icon so the
+// whole app reads as one stroke weight instead of whatever each call site happened to leave.
+export const ICON_STROKE_WIDTH = 1.6
+
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'ghost'
 export type ButtonSize = 'sm' | 'md' | 'lg'
 export type Tone = 'accent' | 'success' | 'warning' | 'danger' | 'info' | 'muted'
@@ -25,6 +29,16 @@ const BUTTON_SIZE: Record<ButtonSize, string> = {
   sm: 'h-[30px] px-[11px] text-sm',
   md: 'h-[34px] px-4 text-base',
   lg: 'h-[40px] px-5 text-lg',
+}
+
+// Square, label-less variant of the same heights - kept apart from BUTTON_SIZE (rather than
+// added on top of it) so an icon-only button never carries both a horizontal-padding utility
+// and a `p-0` meant to cancel it. Same-property utilities resolve by stylesheet order, not by
+// which one a caller lists last, so the only safe fix is to never emit both.
+const BUTTON_ICON_ONLY_SIZE: Record<ButtonSize, string> = {
+  sm: 'size-[30px] p-0',
+  md: 'size-[34px] p-0',
+  lg: 'size-[40px] p-0',
 }
 
 // `structural` (shape) and `idle`/`on` (colour) are kept apart on purpose: Tailwind resolves
@@ -56,19 +70,23 @@ const BUTTON_VARIANT: Record<ButtonVariant, ButtonVariantSpec> = {
   },
 }
 
-// button(variant, size, extra, on) - the only way a <button> gets its classes. Pass on=true for
-// a pressed/selected toggle (filter chips styled as buttons, view-mode switches, ...). Variants
-// with no dedicated `on` colour (primary, danger are actions, not toggles) fall back to an
-// outline ring layered on top of their idle colour instead of silently ignoring the flag.
+// button(variant, size, extra, on, iconOnly) - the only way a <button> gets its classes. Pass
+// on=true for a pressed/selected toggle (filter chips styled as buttons, view-mode switches,
+// ...). Variants with no dedicated `on` colour (primary, danger are actions, not toggles) fall
+// back to an outline ring layered on top of their idle colour instead of silently ignoring the
+// flag. Pass iconOnly=true for a square, label-less button - never combine it with `extra`
+// padding/sizing utilities for the same reason described on BUTTON_ICON_ONLY_SIZE above.
 export const button = (
   variant: ButtonVariant = 'primary',
   size: ButtonSize = 'md',
   extra = '',
   on = false,
+  iconOnly = false,
 ): string => {
   const spec = BUTTON_VARIANT[variant]
   const color = on ? spec.on ?? cx('outline outline-2 outline-offset-2 outline-amber-400/60', spec.idle) : spec.idle
-  return cx(BUTTON_BASE, BUTTON_SIZE[size], spec.structural, color, extra)
+  const sizeClass = iconOnly ? BUTTON_ICON_ONLY_SIZE[size] : BUTTON_SIZE[size]
+  return cx(BUTTON_BASE, sizeClass, spec.structural, color, extra)
 }
 
 export const iconButton = 'grid place-items-center rounded-md bg-transparent border border-transparent text-stone-100/40 hover:text-stone-100 hover:bg-stone-800 transition-colors duration-150'

@@ -1,26 +1,62 @@
 <script setup lang="ts">
+import { cx } from '~/helpers/ui'
+
 interface RadioOption {
   value: string
   label: string
 }
 
-defineProps<{
+const props = defineProps<{
   options: RadioOption[]
 }>()
 
 const model = defineModel<string>({ required: true })
+
+const currentIndex = computed(() => props.options.findIndex(o => o.value === model.value))
+
+const selectByIndex = (index: number) => {
+  const count = props.options.length
+  const option = props.options[(index + count) % count]
+  if (option) {
+    model.value = option.value
+  }
+}
+
+// Roving tabindex + arrow-key movement, per the WAI-ARIA radiogroup pattern: only the checked
+// item is in the Tab order, and arrow keys (not Tab) move selection between options.
+const onKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    event.preventDefault()
+    selectByIndex(currentIndex.value + 1)
+  }
+  else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    selectByIndex(currentIndex.value - 1)
+  }
+  else if (event.key === 'Home') {
+    event.preventDefault()
+    selectByIndex(0)
+  }
+  else if (event.key === 'End') {
+    event.preventDefault()
+    selectByIndex(props.options.length - 1)
+  }
+}
 </script>
 
 <template>
-  <div class="inline-flex rounded-lg bg-bg-2 p-1">
+  <div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-md border border-stone-100/10 bg-stone-900 p-0.5" @keydown="onKeydown">
     <button
       v-for="option in options"
       :key="option.value"
       type="button"
-      class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-      :class="model === option.value
-        ? 'bg-bg-3 text-ink'
-        : 'text-ink-2 hover:text-ink-2'"
+      role="radio"
+      :aria-checked="model === option.value"
+      :tabindex="model === option.value ? 0 : -1"
+      :class="cx(
+        'rounded-sm px-3 py-1.5 text-sm font-medium transition-colors duration-150',
+        model === option.value ? 'bg-stone-700 text-stone-100' : 'text-stone-100/40 hover:text-stone-100',
+      )"
       @click="model = option.value"
     >
       {{ option.label }}

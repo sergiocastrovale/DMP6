@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { ChevronDown } from 'lucide-vue-next'
+import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+
 interface DropdownOption {
   value: string
   label: string
@@ -16,46 +19,82 @@ const emit = defineEmits<{
 }>()
 
 const open = ref(false)
+const triggerRef = ref<HTMLElement>()
 
-const selectedLabel = computed(() => {
-  if (!props.modelValue) {return props.placeholder || 'All'}
-  return props.options.find(o => o.value === props.modelValue)?.label || props.modelValue
-})
+const selectedOption = computed(() => props.options.find(o => o.value === props.modelValue))
+const selectedLabel = computed(() => selectedOption.value?.label ?? props.placeholder ?? 'All')
 
-const selectedClasses = computed(() => {
-  if (!props.modelValue) {return ''}
-  return props.options.find(o => o.value === props.modelValue)?.classes || ''
-})
-
-function select(value: string | null) {
+const select = (value: string | null) => {
   emit('update:modelValue', value)
   open.value = false
+  triggerRef.value?.focus()
 }
+
+const onTriggerKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    open.value = true
+  }
+}
+
+const onDocumentKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    open.value = false
+    triggerRef.value?.focus()
+  }
+}
+
+// document is undefined during SSR - open always starts false, so there is nothing to attach on
+// the very first (server) render anyway. A plain (non-immediate) watch only ever fires in
+// response to a later, client-side change, which is exactly what this needs.
+watch(open, (isOpen) => {
+  if (isOpen) {
+    document.addEventListener('keydown', onDocumentKeydown)
+  }
+  else {
+    document.removeEventListener('keydown', onDocumentKeydown)
+  }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDocumentKeydown)
+})
 </script>
 
 <template>
   <div class="relative">
     <button
-      class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors"
-      :class="modelValue
-        ? 'border-rule bg-bg-2 text-ink'
-        : 'border-rule bg-bg-1 text-ink-2 hover:text-ink'"
+      ref="triggerRef"
+      type="button"
+      aria-haspopup="listbox"
+      :aria-expanded="open"
+      :class="cx(
+        'flex items-center gap-1.5 rounded-lg border border-stone-100/10 px-3 py-1.5 text-xs transition-colors duration-150',
+        modelValue ? 'bg-stone-800 text-stone-100' : 'bg-stone-900 text-stone-100/60 hover:text-stone-100',
+      )"
       @click="open = !open"
+      @keydown="onTriggerKeydown"
     >
-      <span v-if="modelValue && selectedClasses" :class="selectedClasses" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
+      <span v-if="modelValue && selectedOption?.classes" :class="selectedOption.classes" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
         {{ selectedLabel }}
       </span>
       <span v-else>{{ selectedLabel }}</span>
-      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      <ChevronDown :size="12" :stroke-width="ICON_STROKE_WIDTH" />
     </button>
 
     <div
       v-if="open"
-      class="absolute left-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-rule bg-bg-1 p-1 shadow-xl"
+      role="listbox"
+      class="absolute left-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-stone-100/10 bg-stone-900 p-1 shadow-lg"
     >
       <button
-        class="flex w-full items-center rounded px-3 py-2 text-left text-xs transition-colors"
-        :class="!modelValue ? 'bg-bg-2 text-ink' : 'text-ink-2 hover:bg-bg-2 hover:text-ink'"
+        type="button"
+        role="option"
+        :aria-selected="!modelValue"
+        :class="cx(
+          'flex w-full items-center rounded px-3 py-2 text-left text-xs transition-colors duration-150',
+          !modelValue ? 'bg-stone-800 text-stone-100' : 'text-stone-100/60 hover:bg-stone-800 hover:text-stone-100',
+        )"
         @click="select(null)"
       >
         All
@@ -63,8 +102,13 @@ function select(value: string | null) {
       <button
         v-for="opt in options"
         :key="opt.value"
-        class="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs transition-colors"
-        :class="modelValue === opt.value ? 'bg-bg-2 text-ink' : 'text-ink-2 hover:bg-bg-2 hover:text-ink'"
+        type="button"
+        role="option"
+        :aria-selected="modelValue === opt.value"
+        :class="cx(
+          'flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs transition-colors duration-150',
+          modelValue === opt.value ? 'bg-stone-800 text-stone-100' : 'text-stone-100/60 hover:bg-stone-800 hover:text-stone-100',
+        )"
         @click="select(opt.value)"
       >
         <span v-if="opt.classes" :class="opt.classes" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium">

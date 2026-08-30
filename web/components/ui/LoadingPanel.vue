@@ -12,12 +12,12 @@ const props = withDefaults(defineProps<{
   size: 'md',
 })
 
-const variants: Record<Variant, string> = {
-  accent: 'bg-accent',
-  success: 'bg-emerald-400',
-  violet: 'bg-violet-400',
-  danger: 'bg-red-400',
-  neutral: 'bg-ink-3',
+const VARIANT_FILL: Record<Variant, string> = {
+  accent: 'bg-amber-400',
+  success: 'bg-success',
+  violet: 'bg-info',
+  danger: 'bg-danger',
+  neutral: 'bg-stone-100/30',
 }
 
 const barHeight = computed(() => (props.size === 'sm' ? 'h-1' : 'h-1.5'))
@@ -25,15 +25,23 @@ const clampedPercent = computed(() => Math.max(0, Math.min(100, props.percent)))
 </script>
 
 <template>
-  <div class="space-y-1.5">
+  <div class="flex flex-col gap-1.5">
     <div v-if="label" class="flex items-center justify-between text-xs">
-      <span class="text-ink-2">{{ label }}</span>
-      <span class="text-ink-3">{{ clampedPercent }}%</span>
+      <span class="text-stone-100/60">{{ label }}</span>
+      <span class="text-stone-100/40 tabular-nums">{{ clampedPercent }}%</span>
     </div>
-    <div class="w-full overflow-hidden rounded-full bg-bg-2" :class="barHeight">
+    <div
+      role="progressbar"
+      :aria-label="label"
+      :aria-valuenow="clampedPercent"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      class="w-full overflow-hidden rounded-full bg-stone-800"
+      :class="barHeight"
+    >
       <div
-        class="rounded-full transition-all duration-300"
-        :class="[barHeight, variants[variant]]"
+        class="rounded-full transition-[width] duration-300"
+        :class="[barHeight, VARIANT_FILL[variant]]"
         :style="{ width: `${clampedPercent}%` }"
       />
     </div>

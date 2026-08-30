@@ -20,45 +20,96 @@ const emit = defineEmits<{
   'update:modelValue': [value: number]
 }>()
 
+const trackRef = ref<HTMLElement>()
 const currentLabel = computed(() => props.stops[props.modelValue] ?? '')
+const percent = computed(() => ((props.modelValue - props.min) / (props.max - props.min)) * 100)
 
-const onInput = (e: Event) => {
-  emit('update:modelValue', parseInt((e.target as HTMLInputElement).value, 10))
+const clamp = (value: number) => Math.min(props.max, Math.max(props.min, Math.round(value / props.step) * props.step))
+
+const setFromClientX = (clientX: number) => {
+  const track = trackRef.value
+  if (!track) {
+    return
+  }
+  const rect = track.getBoundingClientRect()
+  const ratio = rect.width === 0 ? 0 : Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+  emit('update:modelValue', clamp(props.min + ratio * (props.max - props.min)))
+}
+
+const onPointerDown = (event: PointerEvent) => {
+  setFromClientX(event.clientX)
+  // Pointer capture keeps drag updates coming even once the cursor leaves the track - without
+  // it a fast drag past the rail's edge would stop tracking mid-gesture. Not every test DOM
+  // implements it, so this degrades to click-to-position there rather than throwing.
+  try {
+    trackRef.value?.setPointerCapture(event.pointerId)
+  }
+  catch { /* not implemented in this environment - click-to-position still works */ }
+}
+
+const onPointerMove = (event: PointerEvent) => {
+  if (event.buttons === 0) {
+    return
+  }
+  setFromClientX(event.clientX)
+}
+
+const onKeydown = (event: KeyboardEvent) => {
+  const step = (delta: number) => {
+    event.preventDefault()
+    emit('update:modelValue', clamp(props.modelValue + delta))
+  }
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+    step(-props.step)
+  }
+  else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+    step(props.step)
+  }
+  else if (event.key === 'Home') {
+    event.preventDefault()
+    emit('update:modelValue', props.min)
+  }
+  else if (event.key === 'End') {
+    event.preventDefault()
+    emit('update:modelValue', props.max)
+  }
 }
 </script>
 
 <template>
-  <div class="rounded-xl bg-bg-1/50 px-5 py-4">
+  <div class="rounded-xl bg-stone-900/50 px-5 py-4">
     <div class="mb-3 flex items-center justify-between">
-      <span class="text-sm font-medium text-ink-2">{{ title }}</span>
-      <span class="rounded-md bg-bg-2 px-2.5 py-0.5 text-sm font-semibold text-ink">
+      <span class="text-base font-medium text-stone-100/60">{{ title }}</span>
+      <span class="rounded-md bg-stone-800 px-2.5 py-0.5 text-sm font-semibold text-stone-100">
         {{ currentLabel }}
       </span>
     </div>
 
     <div class="flex items-center gap-3">
-      <span class="w-20 shrink-0 text-right text-xs text-ink-3">{{ leftLabel }}</span>
+      <span class="w-20 shrink-0 text-right text-xs text-stone-100/40">{{ leftLabel }}</span>
 
-      <input
-        type="range"
-        :min="min"
-        :max="max"
-        :step="step"
-        :value="modelValue"
-        class="h-2 w-full cursor-pointer appearance-none rounded-full bg-bg-3 accent-accent
-               [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4
-               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full
-               [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:shadow-md
-               [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125
-               [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4
-               [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0
-               [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:shadow-md"
-        @input="onInput"
+      <div
+        ref="trackRef"
+        role="slider"
+        tabindex="0"
+        class="relative h-4 flex-1 flex items-center cursor-pointer touch-none"
+        :aria-label="title"
+        :aria-valuenow="modelValue"
+        :aria-valuemin="min"
+        :aria-valuemax="max"
+        :aria-valuetext="currentLabel"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @keydown="onKeydown"
       >
+        <div class="absolute inset-x-0 h-1 rounded-full bg-stone-700" />
+        <div class="absolute left-0 h-1 rounded-full bg-amber-400" :style="{ width: `${percent}%` }" />
+        <div class="absolute size-3.5 -ml-[7px] rounded-full bg-stone-100 shadow-md" :style="{ left: `${percent}%` }" />
+      </div>
 
-      <span class="w-20 shrink-0 text-xs text-ink-3">{{ rightLabel }}</span>
+      <span class="w-20 shrink-0 text-xs text-stone-100/40">{{ rightLabel }}</span>
     </div>
 
-    <p v-if="hint" class="mt-2 text-xs leading-snug text-ink-3">{{ hint }}</p>
+    <p v-if="hint" class="mt-2 text-xs leading-snug text-stone-100/40">{{ hint }}</p>
   </div>
 </template>

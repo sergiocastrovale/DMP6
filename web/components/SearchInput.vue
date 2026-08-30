@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Search, X } from 'lucide-vue-next'
+import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -47,7 +48,8 @@ const handleInput = (event: Event) => {
   if (debounceTimer) { clearTimeout(debounceTimer) }
   if (props.debounce === 0) {
     emit('update:modelValue', val)
-  } else {
+  }
+  else {
     debounceTimer = setTimeout(() => {
       emit('update:modelValue', val)
     }, props.debounce)
@@ -74,21 +76,21 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div :class="['relative', wrapperClass, showSubmit ? 'flex items-center gap-2' : '']">
+  <div :class="cx('relative', wrapperClass, showSubmit ? 'flex items-center gap-2' : '')">
     <div
-      :class="[
-        'flex items-center gap-1.5 rounded-lg border border-rule bg-bg-1 px-3',
+      :class="cx(
+        'flex items-center gap-[9px] rounded-md border border-stone-100/10 bg-stone-900 px-3 transition-colors duration-150 focus-within:border-amber-400/40',
         sizeClass,
         showSubmit ? 'flex-1' : 'w-full',
-      ]"
+      )"
     >
-      <Search :size="14" class="shrink-0 text-ink-2" />
+      <Search :size="14" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 text-stone-100/40" />
       <input
         :value="inputValue"
         type="text"
         :placeholder="placeholder"
         :disabled="disabled"
-        class="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-2"
+        class="w-full bg-transparent text-base text-stone-100 outline-0 placeholder:text-stone-100/30"
         @input="handleInput"
         @keydown="handleKeydown"
         @focus="emit('focus', $event)"
@@ -96,17 +98,22 @@ onUnmounted(() => {
       >
       <button
         v-if="clearable && inputValue"
-        class="shrink-0 text-ink-2 transition-colors hover:text-ink"
+        type="button"
+        aria-label="Clear search"
+        class="shrink-0 text-stone-100/40 transition-colors duration-150 hover:text-stone-100"
         @click="clear"
       >
-        <X :size="14" />
+        <X :size="14" :stroke-width="ICON_STROKE_WIDTH" />
       </button>
     </div>
 
     <button
       v-if="showSubmit"
-      class="shrink-0 rounded-lg border border-rule bg-bg-2 px-3 text-sm text-ink-2 transition-colors hover:bg-bg-3"
-      :class="sizeClass"
+      type="button"
+      :class="cx(
+        'shrink-0 rounded-md border border-stone-100/10 bg-stone-800 px-3 text-sm text-stone-100/60 transition-colors duration-150 hover:bg-stone-700 hover:text-stone-100',
+        sizeClass,
+      )"
       :disabled="disabled"
       @click="emit('submit')"
     >

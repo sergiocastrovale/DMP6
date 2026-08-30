@@ -9,7 +9,7 @@ let hoverTimeout: ReturnType<typeof setTimeout> | null = null
 const isClick = computed(() => (props.trigger ?? 'click') === 'click')
 
 function onTriggerClick() {
-  if (isClick.value) {open.value = !open.value}
+  if (isClick.value) { open.value = !open.value }
 }
 
 function scheduleClose() {
@@ -20,7 +20,7 @@ function scheduleClose() {
 
 function cancelClose() {
   if (!isClick.value) {
-    if (hoverTimeout) {clearTimeout(hoverTimeout)}
+    if (hoverTimeout) { clearTimeout(hoverTimeout) }
     open.value = true
   }
 }
@@ -29,8 +29,24 @@ function close() {
   open.value = false
 }
 
+const onKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    close()
+  }
+}
+
+watch(open, (isOpen) => {
+  if (isOpen) {
+    document.addEventListener('keydown', onKeydown)
+  }
+  else {
+    document.removeEventListener('keydown', onKeydown)
+  }
+})
+
 onBeforeUnmount(() => {
-  if (hoverTimeout) {clearTimeout(hoverTimeout)}
+  if (hoverTimeout) { clearTimeout(hoverTimeout) }
+  document.removeEventListener('keydown', onKeydown)
 })
 </script>
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronUp } from 'lucide-vue-next'
 import type { ButtonDropdownOption } from '~/types/ui'
+import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 defineProps<{
   label: string
@@ -11,42 +12,80 @@ defineProps<{
 defineSlots<{ icon(): any }>()
 
 const open = ref(false)
-const buttonRef = ref<HTMLElement>()
+const triggerRef = ref<HTMLElement>()
 
-function select(option: ButtonDropdownOption) {
+const select = (option: ButtonDropdownOption) => {
   open.value = false
+  triggerRef.value?.focus()
   option.action()
 }
+
+const onTriggerKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    open.value = true
+  }
+}
+
+const onDocumentKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    open.value = false
+    triggerRef.value?.focus()
+  }
+}
+
+// document is undefined during SSR - open always starts false, so there is nothing to attach on
+// the very first (server) render anyway. A plain (non-immediate) watch only ever fires in
+// response to a later, client-side change, which is exactly what this needs.
+watch(open, (isOpen) => {
+  if (isOpen) {
+    document.addEventListener('keydown', onDocumentKeydown)
+  }
+  else {
+    document.removeEventListener('keydown', onDocumentKeydown)
+  }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDocumentKeydown)
+})
 </script>
 
 <template>
   <div class="relative">
     <button
-      ref="buttonRef"
+      ref="triggerRef"
+      type="button"
       :disabled="disabled"
-      class="flex items-center gap-2 rounded-lg border border-rule bg-bg-1 px-3 py-2 text-sm text-ink-2 transition-colors hover:border-ink-4 hover:bg-bg-2 disabled:pointer-events-none disabled:opacity-50"
+      aria-haspopup="menu"
+      :aria-expanded="open"
+      class="flex items-center gap-2 rounded-lg border border-stone-100/10 bg-stone-900 px-3 py-2 text-sm text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100 disabled:pointer-events-none disabled:opacity-40"
       @click="open = !open"
+      @keydown="onTriggerKeydown"
     >
       <slot name="icon" />
       <span>{{ label }}</span>
-      <ChevronUp v-if="open" :size="14" class="text-ink-3" />
-      <ChevronDown v-else :size="14" class="text-ink-3" />
+      <ChevronUp v-if="open" :size="14" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/40" />
+      <ChevronDown v-else :size="14" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/40" />
     </button>
 
     <div
       v-if="open"
-      class="absolute right-0 top-full z-20 mt-1 w-max rounded-lg border border-rule bg-bg-1 p-1 shadow-xl"
+      role="menu"
+      class="absolute right-0 top-full z-20 mt-1 w-max rounded-lg border border-stone-100/10 bg-stone-900 p-1 shadow-lg"
     >
       <button
         v-for="opt in options"
         :key="opt.label"
-        class="flex w-full items-start gap-2.5 rounded px-3 py-2 text-left transition-colors text-ink-2 hover:bg-bg-2 hover:text-ink"
+        type="button"
+        role="menuitem"
+        class="flex w-full items-start gap-2.5 rounded px-3 py-2 text-left text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100"
         @click="select(opt)"
       >
-        <component :is="opt.icon" v-if="opt.icon" :size="14" class="mt-0.5 shrink-0 text-ink-3" />
+        <component :is="opt.icon" v-if="opt.icon" :size="14" :stroke-width="ICON_STROKE_WIDTH" class="mt-0.5 shrink-0 text-stone-100/40" />
         <div class="flex flex-col">
           <span class="text-sm">{{ opt.label }}</span>
-          <span v-if="opt.description" class="text-xs text-ink-3">{{ opt.description }}</span>
+          <span v-if="opt.description" class="text-xs text-stone-100/40">{{ opt.description }}</span>
         </div>
       </button>
     </div>

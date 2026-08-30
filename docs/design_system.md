@@ -115,6 +115,71 @@ on-accent on accent, each status tone on the page surface) are checked against r
 contrast ratios — not eyeballed. `test/helpers/colorMath.ts` holds the OKLCH→sRGB conversion and
 contrast-ratio maths those checks run on; it isn't shipped app code.
 
+## Control primitives (Stage 1)
+
+Rewritten on the recipes above, same component names and props so call sites were untouched
+except where the API itself changed:
+
+- `components/ui/Button.vue` — variants `primary | secondary | quiet | danger | ghost`, sizes
+  `sm | md | lg`, a new `on` prop for toggle-style buttons (routed through `button()`),
+  `aria-busy` while loading, `aria-pressed` when `on` is set.
+- `components/Dialog.vue` / `ConfirmDialog.vue` — scrim + panel, `role="dialog"
+  aria-modal="true"` with the title as `aria-labelledby`, focus trap + focus restore
+  (`composables/useFocusTrap.ts`), Escape to close, body scroll lock. Fixed the `maxWidth` map
+  (`md` used to render `max-w-lg`, keyed one size off from its own name).
+- `components/Switch.vue` — 34×19 track, 15px knob, `role="switch"` unchanged.
+- `components/Slider.vue` — rebuilt as a custom `role="slider"` control (rail/knob divs, pointer
+  drag with pointer capture, arrow/Home/End keys, full aria value attributes) replacing a styled
+  native `<input type="range">`. Same props (`modelValue`, `min/max/step`, `leftLabel`,
+  `rightLabel`, `title`, `stops`, `hint`).
+- `components/RadioGroup.vue` — segmented control, `role="radiogroup"` + roving-tabindex
+  `role="radio"` items, arrow/Home/End keys.
+- `components/Dropdown.vue` / `ButtonDropdown.vue` — `aria-haspopup`/`aria-expanded` on the
+  trigger, `role="listbox"`/`"menu"` panel, Escape closes and returns focus to the trigger.
+  Outside-click still closes via the pre-existing full-screen backdrop `<div>` technique, not
+  `@vueuse/core`'s `onClickOutside` — see the SSR note below for why that swap was reverted.
+- `components/Popover.vue` — unchanged click/hover/backdrop behaviour, now also closes on
+  Escape while open.
+- `components/Tabs.vue` / `Subtabs.vue` — `role="tablist"`/`"tab"`, roving tabindex, arrow/Home/End
+  move focus among tabs (manual-activation pattern: arrow keys move focus, they don't themselves
+  select). `Subtabs` no longer hard-codes `border-blue-500 text-white` as its default active
+  colour.
+- `components/ui/Checkbox.vue` (new) — real `<input type="checkbox">` under a styled overlay
+  (`form.checkbox`), supports `indeterminate` (a DOM property, not an attribute — set imperatively
+  via `watchEffect`, see the component for why).
+- `components/ui/EmptyState.vue` (new) — icon + message + optional hint + action slot. Existing
+  ad-hoc empty states get migrated onto it page by page, not in this stage.
+- `components/Skeleton.vue` — deleted (zero consumers; `release/Skeleton.vue` is the one actually
+  used).
+
+### SSR safety: `document`/`window` access must never be unconditional
+
+Every one of these primitives is a plain SFC that Nuxt renders on the **server** too. `document`
+and `window` don't exist there. The bug this caught: `Dialog.vue`'s first draft wired Escape/
+scroll-lock through `watch(isOpen, ..., { immediate: true })` — `immediate` runs the callback
+*synchronously at the `watch()` call site*, which is during `setup()`, which runs on the server.
+Even the "closed" branch touched `document.removeEventListener`, so **every** page rendering a
+closed dialog would have crashed SSR. No component test caught it, because `mountSuspended`
+always mounts into a live (happy-dom) DOM — there is no `window`/`document` missing to trip over.
+Caught only by grepping the rendered output for the crash after the fact.
+
+The fix, and the pattern every later stage should reuse: split the effect into two entry points.
+`onMounted(() => { if (active) applyEffect() })` handles "already active on first render" — safe
+because `onMounted` is a purely client-side hook, never called during SSR. A **non-immediate**
+`watch(active, applyEffect)` handles every later toggle — safe because reactive state can't
+change during a single synchronous SSR pass, so a non-immediate watcher simply never fires there.
+`useFocusTrap` and every dropdown/popover above follow this shape. `@vueuse/core`'s
+`onClickOutside` was tried for Dropdown/ButtonDropdown and reverted: making it work at all
+required passing an explicit `{ window }` option, and a bare top-level `window` reference in
+`<script setup>` throws `ReferenceError: window is not defined` the moment that line runs on the
+server - a second, worse instance of the same bug. The existing full-screen backdrop `<div>`
+technique (already used everywhere else in this app) has no such risk, since it never touches a
+global directly.
+
+Grep any new interactive component for `document\.|window\.` before considering it done, and
+confirm every hit sits inside `onMounted`, a non-immediate `watch` callback, or an event-handler
+function body - never at the top level of `<script setup>` and never inside `{ immediate: true }`.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ChevronRight } from 'lucide-vue-next'
+import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const props = defineProps<{
-  root: { label: string; to: string }
+  root: { label: string, to: string }
   labels: Record<string, string>
 }>()
 
@@ -17,11 +18,11 @@ const label = computed(() => (segment.value ? props.labels[segment.value] ?? seg
 </script>
 
 <template>
-  <nav v-if="segment" class="flex items-center gap-1.5 text-sm">
-    <NuxtLink :to="root.to" class="text-ink-3 transition-colors hover:text-ink-2">
+  <nav v-if="segment" aria-label="Breadcrumb" class="flex items-center gap-1.5 text-sm">
+    <NuxtLink :to="root.to" class="text-stone-100/40 transition-colors duration-150 hover:text-stone-100/60">
       {{ root.label }}
     </NuxtLink>
-    <ChevronRight :size="12" class="text-ink-4" />
-    <span class="text-ink">{{ label }}</span>
+    <ChevronRight :size="12" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/30" />
+    <span class="text-stone-100" aria-current="page">{{ label }}</span>
   </nav>
 </template>
