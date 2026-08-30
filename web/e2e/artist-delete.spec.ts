@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcrypt'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { createReadyGuard, onlyId } from './helpers/fixtures'
 
 // "Remove artist" is the only UI that can delete audio files from MUSIC_DIR (./delete --files). What
 // must never regress: the checkbox is off by default, --files is sent ONLY when it is ticked, and a
@@ -13,6 +14,7 @@ import type { Page } from '@playwright/test'
 // before anything is spawned.
 
 const prisma = new PrismaClient()
+const { markReady, isReady } = createReadyGuard()
 
 interface CapturedRun { command: string, args: string[] }
 
@@ -66,11 +68,17 @@ test.beforeAll(async () => {
       mustChangePassword: false,
     },
   })
+
+  markReady()
 })
 
 test.afterAll(async () => {
-  await prisma.artist.deleteMany({ where: { id: artistId } })
-  await prisma.user.deleteMany({ where: { username: managerUsername } })
+  if (!isReady()) {
+    await prisma.$disconnect()
+    return
+  }
+  await prisma.artist.deleteMany({ where: onlyId(artistId) })
+  await prisma.user.deleteMany({ where: { username: managerUsername || '__never_matches__' } })
   await prisma.$disconnect()
 })
 

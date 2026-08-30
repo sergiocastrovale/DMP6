@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcrypt'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { createReadyGuard, onlyId } from './helpers/fixtures'
 
 // The scan buttons are the only UI that can mutate or destroy library data: they shell out to
 // ./index, ./sync and ./delete. The library-wide "full re-scan" re-reads every tag
@@ -15,6 +16,7 @@ import type { Page } from '@playwright/test'
 // permission check, which must reach the server to prove it 403s.
 
 const prisma = new PrismaClient()
+const { markReady, isReady } = createReadyGuard()
 
 interface CapturedRun { command: string, args: string[] }
 
@@ -100,12 +102,18 @@ test.beforeAll(async () => {
       mustChangePassword: false,
     },
   })
+
+  markReady()
 })
 
 test.afterAll(async () => {
-  await prisma.localRelease.deleteMany({ where: { id: releaseId } })
-  await prisma.artist.deleteMany({ where: { id: artistId } })
-  await prisma.user.deleteMany({ where: { username: managerUsername } })
+  if (!isReady()) {
+    await prisma.$disconnect()
+    return
+  }
+  await prisma.localRelease.deleteMany({ where: onlyId(releaseId) })
+  await prisma.artist.deleteMany({ where: onlyId(artistId) })
+  await prisma.user.deleteMany({ where: { username: managerUsername || '__never_matches__' } })
   await prisma.$disconnect()
 })
 

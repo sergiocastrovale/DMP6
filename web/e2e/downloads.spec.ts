@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { expect, test } from '@playwright/test'
+import { createReadyGuard } from './helpers/fixtures'
 
 // End-to-end coverage of the downloads queue lifecycle (audit item 12): reject and "move back to
 // queue" (requeue) are pure DB-state transitions with no external-service dependency, so they're
@@ -11,6 +12,7 @@ import { expect, test } from '@playwright/test'
 // better than the integration tests already do.
 
 const prisma = new PrismaClient()
+const { markReady, isReady } = createReadyGuard()
 
 // Default maxDownloadAttempts is 3 (Settings.maxDownloadAttempts / MAX_DOWNLOAD_ATTEMPTS), same
 // assumption web/test/integration/downloads/promote.test.ts makes — attempts=2 -> one more reject
@@ -36,10 +38,19 @@ test.beforeAll(async () => {
     data: { title: rejectedFixtureTitle, year: 2021, source: 'SLSKD', status: 'REJECTED', attempts: 3, error: 'rejected by user' },
   })
   rejectedFixtureId = rejected.id
+
+  markReady()
 })
 
 test.afterAll(async () => {
-  await prisma.downloadedRelease.deleteMany({ where: { id: { in: [failedFixtureId, rejectedFixtureId] } } })
+  if (!isReady()) {
+    await prisma.$disconnect()
+    return
+  }
+  // Explicitly filtered, not a bare [failedFixtureId, rejectedFixtureId]: an unassigned id would
+  // put a literal `undefined` in the array, and this file's own history is why nothing here trusts
+  // that Prisma treats that as "matches nothing" without being proven so first - see helpers/fixtures.ts.
+  await prisma.downloadedRelease.deleteMany({ where: { id: { in: [failedFixtureId, rejectedFixtureId].filter(Boolean) } } })
   await prisma.$disconnect()
 })
 
