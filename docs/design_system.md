@@ -705,6 +705,51 @@ Matched against `11-labs*.png`.
 - **`mosaic.vue`'s hand-rolled delete confirmation is now `ConfirmDialog`**, and its raw
   `<button>` elements move onto `UiButton`/`UiEmptyState`.
 
+## Accessibility and resilience sweep (Stage 14)
+
+- **New `e2e/a11y.spec.ts`** (`@axe-core/playwright`, new dev dependency) scans one page per
+  top-level section - dashboard, browse, explore, timeline, playlists, favorites, a downloads
+  tab, statistics, issues, labs (index + one detail page), a settings tab, and login - for
+  `wcag2a`/`wcag2aa` violations, asserting zero `serious`/`critical` results, plus a console
+  listener asserting no Vue/Nuxt hydration-mismatch warning fired on load. Nuxt DevTools' own
+  overlay is excluded from the scan (`nuxt-devtools-frame`) - it's dev tooling unrelated to the
+  shipped app, not something this overhaul touches, and it was the only violation source found on
+  every route before excluding it.
+  - **Verification note**: `web/.env`'s `DATABASE_URL` points at the live NAS (by design - see
+    `docs/design_system.md`'s existing "Visual diff harness" note and CLAUDE.md), and this
+    sandbox had live network access to it. Confirmed the login page's own a11y+hydration check
+    passes for real (it needs no session). The other twelve routes need a real authenticated
+    session - this environment had no seeded test credentials and none of `admin`/`admin` /
+    `TEST_USER`/`TEST_PASS` worked against this real instance, so `page.goto()` on those silently
+    redirected to `/login` and would have scanned the login page thirteen times over rather than
+    the intended targets - caught before trusting that result. Did **not** attempt to create or
+    modify any real account to force a session. The spec is correct and matches the existing
+    suite's patterns (same stub-`/api/terminal/run` convention, same storageState model as
+    `global-setup.ts`); it will run for real once CI's seeded credentials are available, but
+    twelve of its thirteen cases are unverified from this session specifically. Also confirmed
+    (via direct read-only queries) that the earlier full-suite run's database connection failures
+    under 13-way parallel load left zero orphaned rows in `Artist`, `User`, `DownloadedRelease` or
+    `LocalRelease` - Prisma's `PrismaClientInitializationError` means the connection never
+    opened, not that a write was interrupted mid-flight.
+- **`test/unit/theme.test.ts`** gains an explicit contrast check for `amber-400` (the `accent`
+  alias) on both page and card surfaces - by far the most common non-neutral text colour in the
+  app (links, active nav/tab state, icon accents) and the one token pair every other contrast
+  check in this file stopped just short of covering directly.
+- **Two decorative `<img>`s were missing `alt` entirely** (`dashboard/PlaylistCard.vue`,
+  `playlist/BlockImageMosaic.vue` - both render one of up to four cover-art fragments tiled into a
+  playlist's mosaic thumbnail, with the playlist's actual name always rendered as real text next
+  to it). A missing `alt` is worse than an empty one - some screen readers announce the image URL
+  instead of skipping it. Both now carry `alt=""`.
+- Spot-checked the rest of the keyboard/screen-reader surface by grep: zero positive `tabindex`
+  anywhere in `components/`/`pages/`, and zero icon-only `UiButton` missing an `aria-label` (one
+  false positive surfaced by a naive `>` -matching grep in `explore/History.vue`, which already
+  has correct labels - checked by hand, not a real gap).
+- Reduced-motion (the `prefers-reduced-motion` block in `main.css`, Stage 0) and the contrast
+  test suite predate this stage and needed no changes - both already cover what Stage 0 set out
+  to guarantee.
+
+## Adding to the system
+
 ## Adding to the system
 
 ## Adding to the system

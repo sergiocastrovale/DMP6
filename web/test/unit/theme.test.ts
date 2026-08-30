@@ -110,4 +110,11 @@ describe('theme.css contrast', () => {
     const rgb = parseColor(resolve(`color-${alias}`))
     expect(contrastRatio(rgb, stone950)).toBeGreaterThanOrEqual(4.5)
   })
+
+  it('accent text (amber-400) clears 4.5:1 on both page and card surfaces', () => {
+    // The single most common non-neutral text colour in the app - links, active nav/tab state,
+    // icon accents (toneText.accent, hover states) - all read this exact token.
+    expect(contrastRatio(accent, stone950)).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(accent, stone900)).toBeGreaterThanOrEqual(4.5)
+  })
 })
