@@ -28,17 +28,17 @@ const coverImageUrl = (cover: { image: string | null; imageUrl: string | null })
     <div
       v-for="(cover, idx) in covers"
       :key="idx"
-      class="relative overflow-hidden bg-bg-1"
+      class="relative overflow-hidden bg-stone-900"
     >
       <img
         v-if="coverImageUrl(cover)"
         :src="coverImageUrl(cover)!"
         loading="lazy"
-        class="h-full w-full object-cover transition-transform group-hover:scale-105"
+        class="h-full w-full object-cover transition-transform duration-400 group-hover:scale-105"
       >
       <div
         v-else
-        class="flex h-full w-full items-center justify-center text-ink-4"
+        class="flex h-full w-full items-center justify-center text-stone-100/20"
       >
         <LucideMusic class="size-8" />
       </div>
@@ -46,7 +46,7 @@ const coverImageUrl = (cover: { image: string | null; imageUrl: string | null })
   </div>
   <div
     v-else
-    class="flex h-full w-full items-center justify-center text-ink-4"
+    class="flex h-full w-full items-center justify-center text-stone-100/20"
   >
     <LucideListMusic class="size-12" />
   </div>

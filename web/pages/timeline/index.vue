@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { LucideClock, LucideMusic } from 'lucide-vue-next'
+import { LucideClock, LucideMusic, Loader2 } from 'lucide-vue-next'
 import type { Decade, DecadeResponse, TimelineRelease } from '~/types/timeline'
+import { grid, sw } from '~/helpers/ui'
 
 const loading = ref(true)
 const decades = ref<Decade[]>([])
@@ -81,7 +82,6 @@ async function loadMore() {
   }
 }
 
-
 // Group releases by year for display
 const releasesByYear = computed(() => {
   if (!decadeData.value) {return []}
@@ -106,6 +106,8 @@ const yearCountMap = computed(() => {
   return map
 })
 
+const releaseCountFor = (year: number, fallback: number) => yearCountMap.value.get(year) ?? fallback
+
 onMounted(() => {
   loadDecades()
 })
@@ -113,10 +115,10 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-6">
-    <PageTitle text="Timeline" subtext="Browse your library by decade and year" />
+    <PageTitle :icon="LucideClock" text="Timeline" subtext="Browse your library by decade and year" />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <div class="text-ink-3">Loading...</div>
+      <Loader2 :size="24" class="animate-spin text-stone-100/40" />
     </div>
 
     <template v-else-if="decades.length > 0">
@@ -124,23 +126,19 @@ onMounted(() => {
         <button
           v-for="d in decades"
           :key="d.decade"
-          class="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-          :class="selectedDecade === d.decade
-            ? 'bg-accent text-accent-ink'
-            : 'bg-bg-2 text-ink-2 hover:text-ink'"
+          type="button"
+          :class="sw('chip', selectedDecade === d.decade)"
           @click="selectDecade(d.decade)"
         >
           {{ d.decade }}s
-          <span class="ml-1 text-xs opacity-70">({{ d.count }})</span>
+          <span class="opacity-70">({{ d.count }})</span>
         </button>
       </div>
 
-      <div v-if="decadeData && decadeData.years.length > 1" class="flex flex-wrap gap-1">
+      <div v-if="decadeData && decadeData.years.length > 1" class="flex flex-wrap gap-1.5">
         <button
-          class="rounded px-3 py-1 text-xs font-medium transition-colors"
-          :class="!selectedYear
-            ? 'bg-accent text-accent-ink'
-            : 'bg-bg-2 text-ink-2 hover:text-ink'"
+          type="button"
+          :class="sw('chip', selectedYear === null)"
           @click="selectYear(null)"
         >
           All
@@ -148,35 +146,40 @@ onMounted(() => {
         <button
           v-for="y in decadeData.years"
           :key="y.year"
-          class="rounded px-3 py-1 text-xs font-medium transition-colors"
-          :class="selectedYear === y.year
-            ? 'bg-accent text-accent-ink'
-            : 'bg-bg-2 text-ink-2 hover:text-ink'"
+          type="button"
+          :class="sw('chip', selectedYear === y.year)"
           @click="selectYear(y.year)"
         >
           {{ y.year }}
-          <span class="ml-0.5 opacity-70">({{ y.count }})</span>
+          <span class="opacity-70">({{ y.count }})</span>
         </button>
       </div>
 
       <div v-if="loadingDecade" class="flex items-center justify-center py-16">
-        <div class="text-ink-3">Loading...</div>
+        <Loader2 :size="24" class="animate-spin text-stone-100/40" />
       </div>
 
-      <div v-else-if="decadeData" class="relative pl-40 mt-10">
-        <div class="absolute left-[7rem] top-0 bottom-0 w-0.5 bg-accent-soft" />
+      <div v-else-if="decadeData" class="mt-6 flex flex-col gap-10 lg:gap-0 lg:relative lg:pl-[11rem]">
+        <div class="hidden lg:block absolute left-28 top-1 bottom-0 w-px bg-stone-800" />
 
-        <div v-for="group in releasesByYear" :key="group.year" class="relative pb-12">
-          <div class="absolute left-[-12.5rem] top-0 w-[8rem] text-right">
-            <div class="font-display text-3xl font-bold text-ink leading-none">{{ group.year || '????' }}</div>
-            <div class="text-xs font-medium text-ink-3 mt-1">
-              {{ yearCountMap.get(group.year) ?? group.releases.length }} {{ (yearCountMap.get(group.year) ?? group.releases.length) === 1 ? 'release' : 'releases' }}
+        <div v-for="group in releasesByYear" :key="group.year" class="flex flex-col gap-3 lg:relative lg:gap-0 lg:pb-12">
+          <div class="flex items-baseline gap-2 lg:hidden">
+            <h3 class="font-display text-xl font-bold text-stone-100 tabular-nums">{{ group.year || '????' }}</h3>
+            <span class="text-sm text-stone-100/40">
+              {{ releaseCountFor(group.year, group.releases.length) }} {{ releaseCountFor(group.year, group.releases.length) === 1 ? 'release' : 'releases' }}
+            </span>
+          </div>
+
+          <div class="hidden lg:block absolute -left-[11rem] top-0 w-28 text-right">
+            <div class="font-display text-3xl font-bold text-stone-100 leading-none tabular-nums">{{ group.year || '????' }}</div>
+            <div class="mt-1 text-xs font-medium text-stone-100/40">
+              {{ releaseCountFor(group.year, group.releases.length) }} {{ releaseCountFor(group.year, group.releases.length) === 1 ? 'release' : 'releases' }}
             </div>
           </div>
 
-          <div class="absolute left-[-3.4rem] top-0 size-3.5 rounded-full bg-accent ring-[3px] ring-accent/30" />
+          <div class="hidden lg:block absolute left-[6.6rem] top-1.5 size-3.5 rounded-full bg-amber-400 ring-[3px] ring-amber-400/30" />
 
-          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          <div :class="grid.auto">
             <Block
               v-for="release in group.releases"
               :id="release.id"
@@ -193,28 +196,23 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-if="decadeData.hasMore" class="flex justify-center py-4">
+        <div v-if="decadeData.hasMore" class="flex items-center justify-center gap-2 py-4">
           <InfiniteScroll margin="200px" @load="loadMore" />
-          <span v-if="loadingMore" class="text-sm text-ink-3">Loading...</span>
+          <Loader2 v-if="loadingMore" :size="18" class="animate-spin text-stone-100/40" />
         </div>
 
-        <div
+        <UiEmptyState
           v-if="decadeData.releases.length === 0"
-          class="flex flex-col items-center justify-center py-20 text-center text-ink-3"
-        >
-          <LucideMusic class="mb-3 size-12 opacity-50" />
-          <p>No releases in this period</p>
-        </div>
+          :icon="LucideMusic"
+          message="No releases in this period"
+        />
 
-        <div v-if="decadeData.total > 0" class="text-center text-xs text-ink-4">
+        <div v-if="decadeData.total > 0" class="text-center text-xs text-stone-100/30">
           {{ decadeData.total }} {{ decadeData.total === 1 ? 'release' : 'releases' }}
         </div>
       </div>
     </template>
 
-    <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink-3">
-      <LucideClock class="mb-3 size-12 opacity-50" />
-      <p>No releases with year information found</p>
-    </div>
+    <UiEmptyState v-else :icon="LucideClock" message="No releases with year information found" />
   </div>
 </template>

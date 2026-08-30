@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { LucideListMusic } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
 

@@ -1,5 +1,5 @@
 <template>
-  <p class="line-clamp-1 text-sm font-medium text-ink group-hover:text-accent transition-colors">
+  <p class="line-clamp-1 text-lg font-semibold text-stone-100 transition-colors duration-150 group-hover:text-amber-400">
     {{ playlist.name }}
   </p>
 </template>

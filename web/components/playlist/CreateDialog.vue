@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { form } from '~/helpers/ui'
+
 const emit = defineEmits<{
   created: []
 }>()
@@ -17,8 +19,9 @@ watch(show, (open) => {
 })
 
 async function create() {
-  if (!name.value.trim() || creating.value)
-    {return}
+  if (!name.value.trim() || creating.value) {
+    return
+  }
 
   creating.value = true
   try {
@@ -45,23 +48,23 @@ async function create() {
   <Dialog :model-value="show" title="Create Playlist" max-width="sm" @update:model-value="show = $event">
     <form class="flex flex-col gap-4" @submit.prevent="create">
       <div>
-        <label class="mb-1 block text-sm text-ink-2">Name</label>
+        <label :class="form.label" class="mb-1 block">Name</label>
         <input
           v-model="name"
           type="text"
           placeholder="My Playlist"
           autofocus
           required
-          class="w-full rounded-lg border border-rule bg-bg-2 px-3 py-2 text-sm text-ink placeholder-ink-3 outline-none focus:border-accent transition-colors"
+          :class="form.input"
         >
       </div>
       <div>
-        <label class="mb-1 block text-sm text-ink-2">Description (optional)</label>
+        <label :class="form.label" class="mb-1 block">Description (optional)</label>
         <textarea
           v-model="description"
           placeholder="Add a description..."
           rows="3"
-          class="w-full rounded-lg border border-rule bg-bg-2 px-3 py-2 text-sm text-ink placeholder-ink-3 outline-none focus:border-accent transition-colors"
+          :class="[form.input, 'h-auto py-2.5']"
         />
       </div>
       <div class="flex justify-end gap-2">

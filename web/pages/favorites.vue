@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { LucideHeart, LucideDisc, Loader2 } from 'lucide-vue-next'
+import { grid } from '~/helpers/ui'
 
 const { releaseImage } = useImageUrl()
 const { hasPerm } = useAuth()
@@ -18,15 +19,12 @@ const {
     <Tabs v-model="activeTab" :tabs="favTabs" />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-ink-3" />
+      <Loader2 :size="24" class="animate-spin text-stone-100/40" />
     </div>
 
     <div v-else>
       <div v-if="activeTab === 'releases'">
-        <div
-          v-if="releases.length > 0"
-          class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-        >
+        <div v-if="releases.length > 0" :class="grid.auto">
           <Block
             v-for="fav in releases"
             :id="fav.release.id"
@@ -43,7 +41,8 @@ const {
           >
             <template v-if="canCrud" #overlay>
               <button
-                class="absolute right-2 top-2 z-10 rounded-full bg-bg-1/90 p-1.5 text-accent opacity-0 transition-opacity group-hover:opacity-100"
+                class="absolute right-2 top-2 z-10 rounded-full bg-stone-900/90 p-1.5 text-amber-400 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                :aria-label="`Remove ${fav.release.title} from favorites`"
                 @click.stop="unfavoriteRelease(fav.release.id)"
               >
                 <LucideHeart class="size-4" fill="currentColor" />
@@ -51,23 +50,34 @@ const {
             </template>
           </Block>
         </div>
-        <div v-else class="flex flex-col items-center justify-center py-20 text-center text-ink-3">
-          <LucideDisc class="mb-3 size-12 opacity-50" />
-          <p>No favorite releases yet</p>
-          <UiButton variant="secondary" size="sm" to="/browse" class="mt-4">
-            Browse releases
-          </UiButton>
-        </div>
+        <UiEmptyState v-else :icon="LucideDisc" message="No favorite releases yet">
+          <template #action>
+            <UiButton variant="secondary" size="sm" to="/browse">
+              Browse releases
+            </UiButton>
+          </template>
+        </UiEmptyState>
       </div>
-      <FavoritesTrackTable
+
+      <TrackTable
         v-if="activeTab === 'tracks'"
-        :tracks="tracks"
-        @unfavorite="unfavoriteTrack"
-      />
+        :rows="tracks"
+        empty-message="No favorite tracks yet"
+      >
+        <template v-if="canCrud" #action="{ row }">
+          <button
+            class="rounded-full p-1.5 text-amber-400 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+            :aria-label="`Remove ${row.track.title} from favorites`"
+            @click.stop="unfavoriteTrack(row.track.id)"
+          >
+            <LucideHeart class="size-4" fill="currentColor" />
+          </button>
+        </template>
+      </TrackTable>
 
       <InfiniteScroll @load="loadMore" />
       <div v-if="loadingMore" class="flex justify-center py-4">
-        <Loader2 :size="20" class="animate-spin text-ink-3" />
+        <Loader2 :size="20" class="animate-spin text-stone-100/40" />
       </div>
     </div>
   </div>

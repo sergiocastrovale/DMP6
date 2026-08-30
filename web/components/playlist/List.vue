@@ -2,6 +2,7 @@
 import { LucideListMusic, LucideSparkles, LucideGlobe } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 import type { Component } from 'vue'
+import { typography, toneBg, grid } from '~/helpers/ui'
 
 const props = defineProps<{
   playlists: PlaylistSummary[]
@@ -13,8 +14,6 @@ const emit = defineEmits<{
 
 const { hasPerm } = useAuth()
 const canCrud = hasPerm('playlists.crud')
-
-const hasGenerated = computed(() => props.playlists.some(p => p.type !== 'MANUAL'))
 
 interface PlaylistSection {
   type: PlaylistSummary['type']
@@ -52,45 +51,40 @@ const sections: PlaylistSection[] = [
 </script>
 
 <template>
-  <template v-for="section in sections" :key="section.type">
-    <div v-if="section.items.value.length > 0" class="flex flex-col gap-4">
-      <div class="flex items-center gap-2">
-        <component :is="section.icon" v-if="section.type !== 'MANUAL'" class="size-4 text-accent" />
-        <h2
-          v-if="section.type !== 'MANUAL' || hasGenerated"
-          class="text-lg font-semibold text-ink"
-        >
-          {{ section.label }}
-        </h2>
-        <span v-if="section.type !== 'MANUAL'" class="text-xs text-ink-3">Auto-generated</span>
-        <PlaylistGeneratedPopover
-          v-if="section.popoverTitle"
-          :title="section.popoverTitle"
-          :text="section.popoverText!"
-        />
+  <div class="flex flex-col gap-10">
+    <template v-for="section in sections" :key="section.type">
+      <div v-if="section.items.value.length > 0" class="flex flex-col gap-4">
+        <div class="flex items-center gap-2.5">
+          <h2 :class="typography.h3">{{ section.label }}</h2>
+          <span
+            v-if="section.type !== 'MANUAL'"
+            :class="[toneBg.accent, 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium']"
+          >
+            <component :is="section.icon" class="size-3" />
+            Auto-generated
+          </span>
+          <PlaylistGeneratedPopover
+            v-if="section.popoverTitle"
+            :title="section.popoverTitle"
+            :text="section.popoverText!"
+          />
+        </div>
+        <div :class="grid.auto">
+          <PlaylistBlock
+            v-for="playlist in section.items.value"
+            :key="playlist.id"
+            :playlist="playlist"
+          />
+        </div>
       </div>
-      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-        <PlaylistBlock
-          v-for="playlist in section.items.value"
-          :key="playlist.id"
-          :playlist="playlist"
-        />
-      </div>
-    </div>
-  </template>
+    </template>
 
-  <div
-    v-if="playlists.length === 0"
-    class="flex flex-col items-center justify-center py-20 text-center text-ink-3"
-  >
-    <LucideListMusic class="mb-3 size-12 opacity-50" />
-    <p>No playlists yet</p>
-    <button
-      v-if="canCrud"
-      class="mt-4 text-sm text-accent hover:text-accent transition-colors"
-      @click="emit('create')"
-    >
-      Create your first playlist
-    </button>
+    <UiEmptyState v-if="playlists.length === 0" :icon="LucideListMusic" message="No playlists yet">
+      <template v-if="canCrud" #action>
+        <UiButton variant="secondary" size="sm" @click="emit('create')">
+          Create your first playlist
+        </UiButton>
+      </template>
+    </UiEmptyState>
   </div>
 </template>

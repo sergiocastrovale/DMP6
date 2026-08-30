@@ -433,6 +433,44 @@ by this stage's own rewrite, caught before commit):
   `role="slider"`. Not a component bug; fixed the test to check for `Config`-specific text
   instead.
 
+## Timeline, Playlists, Favorites (Stage 7)
+
+Matched against `04-timeline.png`, `05-playlists*.png`, `06-favorites_*.png`.
+
+- **New shared `components/TrackTable.vue`** replaces two near-duplicate div-based tables,
+  `playlist/TrackTable.vue` and `favorites/TrackTable.vue` (both deleted). `PlaylistTrack` and
+  `FavoriteTrack` already share the same `{ id, track: TrackInContext }` shape, so one component
+  now takes `rows: Array<{ id, track }>` and renders play/pause, cover, title+artist+album and
+  duration on `SlimTable`/`SlimTableRow` - the same real-`<table>` lineage `TrackList.vue`
+  standardised on in Stage 2. Clicking a row queues every row in table order and starts at the
+  one clicked (`playerStore.setQueue`); the differing bit each screen needs - a remove `×` for a
+  manual playlist, a filled heart for favorites - is a `#action="{ row }"` scoped slot rather
+  than a prop, since the two actions differ in icon, colour and the condition that shows them.
+  This is also the last non-`downloads/*` consumer of `Table.vue`/`TableRow.vue` migrated off
+  them (per the Stage 2 note) - only `downloads/ApprovalQueue.vue` is left, moving in Stage 12.
+- **The playlist tile's conic-gradient border now uses the shared `genre-border` utility** from
+  `main.css` (Stage 0) instead of its own `<style scoped>` block - `playlist/Block.vue` was one
+  of the two deferred consumers named when that utility was created, the other being
+  `pages/playlists/[slug].vue`'s hero cover, fixed the same way here. Both had drifted slightly
+  from each other (different border widths, radii, and one read the never-defined
+  `var(--color-surface)`); one definition now, so a themed change to the ring applies everywhere.
+- **`pages/playlists/[slug].vue`'s hand-rolled `Teleport` delete modal is gone**, replaced with
+  `ConfirmDialog` (focus trap, Escape, `role="dialog"` all inherited for free). Its confirm
+  handler now follows the same fire-and-forget convention already used by
+  `artist/DeleteDialog.vue`: close the dialog immediately on confirm rather than waiting on the
+  request, and surface a toast on failure instead of only a `console.error` - there was no user-
+  visible failure feedback before.
+- **Timeline's year rail is now responsive.** The reference is a fixed-position magazine layout
+  (absolute year label + vertical line + dot, permanently indented `pl-40`) that was unusable
+  under `lg`: the label sat at a negative offset from the content column, so on a narrow viewport
+  it rendered off-screen instead of just cramped. The desktop rail (`lg:` absolute positioning)
+  is unchanged in spirit; below `lg` each year now gets an ordinary heading stacked above its own
+  grid instead of being positioned relative to a column that no longer exists at that width.
+  Decade/year pills moved off hand-written `bg-accent`/`bg-bg-2` conditionals onto `sw('chip',
+  active)` - the same toggle-chip recipe Browse's filters already use.
+- Both `playlist/List.vue` (the Your/Genre/Region sections) and the timeline/favorites empty
+  states now go through `UiEmptyState` instead of each writing its own icon+sentence block.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

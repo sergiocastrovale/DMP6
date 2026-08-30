@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { form } from '~/helpers/ui'
+
 const props = defineProps<{
   modelValue: boolean
   trackId: string | null
@@ -58,32 +60,24 @@ async function save() {
   <Dialog :model-value="modelValue" title="New Playlist" max-width="sm" @update:model-value="emit('update:modelValue', $event)">
     <form class="flex flex-col gap-4" @submit.prevent="save">
       <div>
-        <label for="playlist-name" class="mb-1 block text-sm text-ink-2">Name</label>
+        <label for="playlist-name" :class="form.label" class="mb-1 block">Name</label>
         <input
           id="playlist-name"
           v-model="name"
           type="text"
-          class="w-full rounded-lg border border-rule bg-bg-2 px-3 py-2 text-sm text-ink placeholder-ink-3 outline-none focus:border-accent transition-colors"
+          :class="form.input"
           placeholder="My playlist"
           autofocus
         >
       </div>
-      <p v-if="error" class="text-xs text-red-400">{{ error }}</p>
+      <p v-if="error" role="alert" :class="form.error">{{ error }}</p>
       <div class="flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-2 hover:bg-bg-2 transition-colors"
-          @click="emit('update:modelValue', false)"
-        >
+        <UiButton variant="ghost" @click="emit('update:modelValue', false)">
           Cancel
-        </button>
-        <button
-          type="submit"
-          class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:bg-accent transition-colors disabled:opacity-50"
-          :disabled="saving || !name.trim()"
-        >
-          {{ saving ? 'Creating...' : 'Create' }}
-        </button>
+        </UiButton>
+        <UiButton type="submit" :loading="saving" :disabled="!name.trim()">
+          Create
+        </UiButton>
       </div>
     </form>
   </Dialog>
