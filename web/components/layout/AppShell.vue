@@ -1,31 +1,39 @@
 <script setup lang="ts">
 import { Loader2, Terminal } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
+import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const terminal = useTerminalStore()
 const settings = useSettingsStore()
 const { collapsed } = useSidebar()
 
 const gridCols = computed(() =>
-  collapsed.value ? 'grid-cols-1 lg:grid-cols-[72px_1fr]' : 'grid-cols-1 lg:grid-cols-[240px_1fr]',
+  collapsed.value ? 'grid-cols-1 lg:grid-cols-[64px_1fr]' : 'grid-cols-1 lg:grid-cols-[240px_1fr]',
 )
 </script>
 
 <template>
-  <div class="flex flex-col h-screen bg-bg text-ink font-sans antialiased">
+  <a
+    href="#main-content"
+    class="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-[100] focus-visible:rounded-md focus-visible:bg-amber-400 focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-on-accent"
+  >
+    Skip to content
+  </a>
+
+  <div class="flex flex-col h-screen bg-stone-950 text-stone-100 font-sans antialiased">
     <div :class="['grid flex-1 overflow-hidden transition-all duration-200', gridCols]">
       <LayoutSidebar class="hidden lg:flex" />
 
       <div class="flex flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-[500px]': terminal.isOpen && settings.showTerminal }">
-        <div class="sticky top-0 z-30 border-b border-rule bg-bg">
-          <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-18">
+        <div class="sticky top-0 z-30 border-b border-stone-100/6 bg-stone-950/85 backdrop-blur-[14px]">
+          <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-[56px]">
             <LayoutSearchBar />
           </div>
         </div>
 
-        <div class="overflow-y-auto flex-1 px-6 py-6 lg:px-8">
+        <main id="main-content" class="overflow-y-auto flex-1 px-6 py-6 lg:px-8">
           <slot />
-        </div>
+        </main>
       </div>
     </div>
 
@@ -38,11 +46,12 @@ const gridCols = computed(() =>
 
   <button
     v-if="terminal.hasBackground && settings.showTerminal"
-    class="fixed bottom-24 right-4 z-50 flex items-center gap-2 rounded-lg border border-rule bg-bg-2 px-3 py-2 text-sm text-ink-2 shadow-lg transition-colors hover:border-ink-4 hover:bg-bg-3"
+    type="button"
+    class="fixed bottom-24 right-4 z-50 flex items-center gap-2 rounded-lg border border-stone-100/10 bg-stone-900 px-3 py-2 text-sm text-stone-100/60 shadow-lg transition-colors duration-150 hover:border-stone-100/20 hover:bg-stone-800"
     @click="terminal.open()"
   >
-    <Loader2 :size="14" class="animate-spin text-accent" />
-    <Terminal :size="14" />
+    <Loader2 :size="14" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-amber-400" />
+    <Terminal :size="14" :stroke-width="ICON_STROKE_WIDTH" />
     <span>Terminal running</span>
   </button>
 

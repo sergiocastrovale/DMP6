@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { LucideHome, LucideAlertCircle } from 'lucide-vue-next'
+import { LucideAlertCircle, LucideHome } from 'lucide-vue-next'
+import { button, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const props = defineProps<{
   error: {
@@ -37,27 +38,24 @@ function handleError() {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-zinc-950 px-4">
+  <div class="flex min-h-screen items-center justify-center bg-stone-950 px-4">
     <div class="flex max-w-md flex-col items-center text-center">
-      <div class="mb-6 flex size-20 items-center justify-center rounded-full bg-zinc-900">
-        <LucideAlertCircle class="size-10 text-amber-500" />
+      <div class="mb-6 flex size-20 items-center justify-center rounded-full bg-stone-900">
+        <LucideAlertCircle class="size-10 text-amber-400" :stroke-width="ICON_STROKE_WIDTH" />
       </div>
 
-      <h1 class="mb-2 text-4xl font-bold text-zinc-50">
+      <h1 class="mb-2 font-display text-4xl font-bold text-stone-100">
         {{ error.statusCode }}
       </h1>
-      <h2 class="mb-4 text-xl font-semibold text-zinc-300">
+      <h2 class="mb-4 text-xl font-semibold text-stone-100/60">
         {{ title }}
       </h2>
-      <p class="mb-8 text-sm text-zinc-500">
+      <p class="mb-8 text-sm text-stone-100/40">
         {{ description }}
       </p>
 
-      <button
-        class="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-6 py-2.5 text-sm font-medium text-zinc-950 hover:bg-amber-600 transition-colors"
-        @click="handleError"
-      >
-        <LucideHome class="size-4" />
+      <button type="button" :class="button('primary', 'lg')" @click="handleError">
+        <LucideHome class="size-4" :stroke-width="ICON_STROKE_WIDTH" />
         Back to Home
       </button>
     </div>

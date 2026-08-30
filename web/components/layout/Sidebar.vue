@@ -1,20 +1,21 @@
 <script setup lang="ts">
 import {
+  AlertTriangle,
+  BarChart3,
+  ChevronLeft,
+  Clock,
+  Compass,
+  DownloadCloud,
+  FlaskConical,
+  Heart,
   Home,
   Library,
-  Compass,
-  Clock,
   ListMusic,
-  Heart,
-  BarChart3,
-  Settings,
-  ChevronLeft,
   LogOut,
-  AlertTriangle,
-  FlaskConical,
-  DownloadCloud,
+  Settings,
 } from 'lucide-vue-next'
 import { useGlobalStore } from '~/stores/global'
+import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const { logout, hasPerm, isAdmin } = useAuth()
 const global = useGlobalStore()
@@ -26,145 +27,81 @@ const canViewPlaylists = hasPerm('playlists.view')
 const canViewFavorites = hasPerm('favorites.view')
 const canViewDownloads = hasPerm('sync.view')
 
-const formatCount = (n: number) => n.toLocaleString()
+interface NavEntry {
+  to?: string
+  activePath?: string
+  label: string
+  icon: typeof Home
+  count?: number | null
+  action?: () => void
+}
 
-const navItems = computed(() => {
-  const items = [
-    { to: '/', label: 'Home', icon: Home, show: true, count: null },
-    { to: '/browse', label: 'Browse', icon: Library, show: true, count: global.stats.artists },
-    { to: '/explore', label: 'Explore', icon: Compass, show: true, count: null },
-    { to: '/timeline', label: 'Timeline', icon: Clock, show: true, count: null },
-    { to: '/playlists', label: 'Playlists', icon: ListMusic, show: canViewPlaylists.value, count: global.stats.playlists },
-    { to: '/favorites', label: 'Favorites', icon: Heart, show: canViewFavorites.value, count: global.stats.favorites },
-    { to: '/downloads', label: 'Downloads', icon: DownloadCloud, show: canViewDownloads.value, count: null },
-    { to: '/labs', label: 'Labs', icon: FlaskConical, show: true, count: null },
-  ]
-  return items.filter((i) => i.show)
-})
+const navItems = computed<NavEntry[]>(() => [
+  { to: '/', label: 'Home', icon: Home },
+  { to: '/browse', label: 'Browse', icon: Library, count: global.stats.artists },
+  { to: '/explore', label: 'Explore', icon: Compass },
+  { to: '/timeline', label: 'Timeline', icon: Clock },
+  ...(canViewPlaylists.value ? [{ to: '/playlists', label: 'Playlists', icon: ListMusic, count: global.stats.playlists }] : []),
+  ...(canViewFavorites.value ? [{ to: '/favorites', label: 'Favorites', icon: Heart, count: global.stats.favorites }] : []),
+  ...(canViewDownloads.value ? [{ to: '/downloads', label: 'Downloads', icon: DownloadCloud }] : []),
+  { to: '/labs', label: 'Labs', icon: FlaskConical },
+])
 
-const isActive = (path: string) => path === '/' ? route.path === '/' : route.path.startsWith(path)
+const footerItems = computed<NavEntry[]>(() => [
+  { to: '/statistics', label: 'Statistics', icon: BarChart3 },
+  ...(canViewIssues.value ? [{ to: '/issues', label: 'Issues', icon: AlertTriangle, count: global.stats.issues }] : []),
+  ...(isAdmin.value ? [{ to: '/settings/library', activePath: '/settings', label: 'Settings', icon: Settings }] : []),
+  { label: 'Sign out', icon: LogOut, action: logout },
+])
+
+const isActive = (item: NavEntry) => {
+  const path = item.activePath ?? item.to
+  if (!path) {
+    return false
+  }
+  return path === '/' ? route.path === '/' : route.path.startsWith(path)
+}
 </script>
 
 <template>
-  <aside
-    class="flex h-full flex-col border-r border-rule bg-bg overflow-hidden transition-all duration-200"
-  >
-    <div class="flex items-center gap-2 px-3 py-3 mb-5" :class="collapsed ? 'flex-col' : 'justify-between'">
+  <aside class="flex h-full flex-col overflow-hidden border-r border-stone-100/6 bg-stone-950 transition-all duration-200">
+    <div :class="cx('flex items-center gap-2 px-3 py-3 mb-5', collapsed ? 'flex-col' : 'justify-between')">
       <LayoutLogo />
       <button
-        class="w-8 h-8 rounded grid place-items-center text-ink-3 transition-colors hover:bg-bg-2 hover:text-ink hover:border hover:border-rule"
+        type="button"
+        class="grid size-8 place-items-center rounded-sm border border-transparent text-stone-100/30 transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800 hover:text-stone-100/60"
+        :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
         @click="toggle"
       >
-        <ChevronLeft
-          :size="16"
-          class="transition-transform duration-200"
-          :class="collapsed ? 'rotate-180' : ''"
-        />
+        <ChevronLeft :size="16" :stroke-width="ICON_STROKE_WIDTH" class="transition-transform duration-200" :class="collapsed && 'rotate-180'" />
       </button>
     </div>
 
-    <nav class="flex flex-1 flex-col gap-3 px-2 overflow-y-auto">
-      <NuxtLink
+    <nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2" aria-label="Primary">
+      <LayoutSidebarItem
         v-for="item in navItems"
-        :key="item.to"
+        :key="item.label"
         :to="item.to"
-        class="relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-        :class="[
-          isActive(item.to)
-            ? 'bg-accent-soft text-accent'
-            : 'text-ink-2 hover:bg-bg-2 hover:text-ink',
-          collapsed ? 'justify-center px-0' : '',
-        ]"
-      >
-        <span
-          v-if="isActive(item.to)"
-          class="absolute top-2 bottom-2 w-0.5 bg-accent"
-          :class="collapsed ? 'left-0' : 'left-[-14px]'"
-        />
-        <component :is="item.icon" :size="20" class="shrink-0" />
-        <span v-if="!collapsed" class="flex-1 truncate">{{ item.label }}</span>
-        <span
-          v-if="!collapsed && item.count !== null && item.count > 0"
-          class="font-mono text-[11px]"
-          :class="isActive(item.to) ? 'text-accent opacity-80' : 'text-ink-4'"
-        >
-          {{ formatCount(item.count) }}
-        </span>
-      </NuxtLink>
+        :label="item.label"
+        :icon="item.icon"
+        :count="item.count"
+        :collapsed="collapsed"
+        :active="isActive(item)"
+      />
     </nav>
 
-    <div class="border-t border-rule pt-3 mt-3 px-2 mb-4">
-      <NuxtLink
-        to="/statistics"
-        class="relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-        :class="[
-          isActive('/statistics')
-            ? 'bg-accent-soft text-accent'
-            : 'text-ink-2 hover:bg-bg-2 hover:text-ink',
-          collapsed ? 'justify-center px-0' : '',
-        ]"
-      >
-        <span
-          v-if="isActive('/statistics')"
-          class="absolute top-2 bottom-2 w-0.5 bg-accent"
-          :class="collapsed ? 'left-0' : 'left-[-14px]'"
-        />
-        <BarChart3 :size="20" class="shrink-0" />
-        <span v-if="!collapsed">Statistics</span>
-      </NuxtLink>
-      <NuxtLink
-        v-if="canViewIssues"
-        to="/issues"
-        class="relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-        :class="[
-          isActive('/issues')
-            ? 'bg-accent-soft text-accent'
-            : 'text-ink-2 hover:bg-bg-2 hover:text-ink',
-          collapsed ? 'justify-center px-0' : '',
-        ]"
-      >
-        <span
-          v-if="isActive('/issues')"
-          class="absolute top-2 bottom-2 w-0.5 bg-accent"
-          :class="collapsed ? 'left-0' : 'left-[-14px]'"
-        />
-        <AlertTriangle :size="20" class="shrink-0" />
-        <span v-if="!collapsed" class="flex-1 truncate">Issues</span>
-        <span
-          v-if="!collapsed && global.stats.issues > 0"
-          class="font-mono text-[11px]"
-          :class="isActive('/issues') ? 'text-accent opacity-80' : 'text-ink-4'"
-        >
-          {{ formatCount(global.stats.issues) }}
-        </span>
-      </NuxtLink>
-      <NuxtLink
-        v-if="isAdmin"
-        to="/settings/library"
-        class="relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-        :class="[
-          isActive('/settings')
-            ? 'bg-accent-soft text-accent'
-            : 'text-ink-2 hover:bg-bg-2 hover:text-ink',
-          collapsed ? 'justify-center px-0' : '',
-        ]"
-      >
-        <span
-          v-if="isActive('/settings')"
-          class="absolute top-2 bottom-2 w-0.5 bg-accent"
-          :class="collapsed ? 'left-0' : 'left-[-14px]'"
-        />
-        <Settings :size="20" class="shrink-0" />
-        <span v-if="!collapsed">Settings</span>
-      </NuxtLink>
-      <button
-        class="relative flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink"
-        :class="collapsed ? 'justify-center px-0' : ''"
-        @click="logout"
-      >
-        <LogOut :size="20" class="shrink-0" />
-        <span v-if="!collapsed">Sign out</span>
-      </button>
-    </div>
+    <nav class="mb-4 mt-3 flex flex-col gap-0.5 border-t border-stone-100/6 px-2 pt-3" aria-label="System">
+      <LayoutSidebarItem
+        v-for="item in footerItems"
+        :key="item.label"
+        :to="item.to"
+        :label="item.label"
+        :icon="item.icon"
+        :count="item.count"
+        :collapsed="collapsed"
+        :active="isActive(item)"
+        @click="item.action?.()"
+      />
+    </nav>
   </aside>
 </template>

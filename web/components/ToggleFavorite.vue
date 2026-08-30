@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { usePlayerStore } from '~/stores/player'
 import { Heart } from 'lucide-vue-next'
+import { usePlayerStore } from '~/stores/player'
+import { cx } from '~/helpers/ui'
 
 const player = usePlayerStore()
 const { hasPerm } = useAuth()
@@ -14,7 +15,7 @@ const props = withDefaults(defineProps<{
 })
 
 async function checkFavorite() {
-  if (!player.currentTrack?.id) {return}
+  if (!player.currentTrack?.id) { return }
   try {
     const { isFavorite: fav } = await $fetch<{ isFavorite: boolean }>(`/api/favorites/tracks/${player.currentTrack.id}`)
     isFavorite.value = fav
@@ -52,8 +53,8 @@ onMounted(() => {
 <template>
   <button
     v-if="canCrud"
-    class="hidden lg:block text-ink-2 hover:text-accent transition-colors cursor-pointer"
-    :class="{ 'text-accent': isFavorite }"
+    type="button"
+    :class="cx('hidden lg:block transition-colors duration-150 cursor-pointer', isFavorite ? 'text-amber-400' : 'text-stone-100/60 hover:text-amber-400')"
     :aria-label="isFavorite ? 'Remove from favorites' : 'Add to favorites'"
     @click="toggleFavorite"
   >

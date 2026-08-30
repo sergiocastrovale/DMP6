@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-screen bg-bg text-ink font-sans antialiased">
+  <div class="flex flex-col h-screen bg-stone-950 text-stone-100 font-sans antialiased">
     <div class="flex-1 overflow-hidden flex flex-col">
       <LabsHeader />
 

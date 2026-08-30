@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play, Pause } from 'lucide-vue-next'
+import { Pause, Play } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{
   playing?: boolean
@@ -21,8 +21,8 @@ const config = {
 <template>
   <button
     type="button"
-    class="flex items-center justify-center rounded-full transition-all hover:bg-accent hover:text-accent-ink hover:scale-105"
-    :class="[config[size].circle, highlighted && 'bg-accent text-accent-ink scale-105']"
+    class="flex items-center justify-center rounded-full transition-all duration-150 hover:bg-amber-400 hover:text-on-accent hover:scale-105"
+    :class="[config[size].circle, highlighted && 'bg-amber-400 text-on-accent scale-105']"
     :aria-label="playing ? 'Pause' : 'Play'"
   >
     <Pause v-if="playing" :size="config[size].icon" fill="currentColor" />

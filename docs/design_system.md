@@ -233,6 +233,70 @@ going through a tone. Only the ramp-step values changed (old raw `bg-red-500`/`b
 current consumers (`browse/FilterScore.vue`, `artist/AverageMatchScore.vue`, both un-migrated
 until their own stage) don't need a second change later.
 
+## Application shell (Stage 3)
+
+`components/layout/*`, `layouts/*`, `error.vue`, `components/terminal/*`,
+`components/player/{AudioPlayer,PlayPauseButton}.vue`, `components/ToggleFavorite.vue` —
+retokenised, plus:
+
+- **`components/layout/SidebarItem.vue` (new)** replaces `Sidebar.vue`'s four copy-pasted
+  nav-link blocks (three links + a sign-out button, each with its own active-rail markup) with
+  one component driven by a `NavEntry[]` list, used for both the primary and footer nav groups.
+  Sets `aria-current="page"` on the active link and `title`/`aria-label` when collapsed (a
+  collapsed icon-only item had neither before).
+- **A real bug found while rewriting `useSidebar.ts`**: its width watcher forced
+  `collapsed = width <= 720` on every resize, including ones after the user had manually expanded
+  the sidebar while the window happened to be narrow — the next resize (even a 1px change from a
+  scrollbar appearing) silently snapped it back closed. Fixed with a `sidebar-manually-set` flag:
+  once the user toggles, their choice wins over the width default for the rest of the session.
+  Covered by a new test in `test/composables/useSidebar.test.ts`.
+- **`components/layout/SearchBar.vue` + `SearchDropdown.vue`** gained the ARIA combobox
+  contract: `role="combobox"` + `aria-expanded`/`aria-controls`/`aria-activedescendant` on the
+  input, `role="listbox"`/`"option"` on the dropdown, and ArrowUp/ArrowDown/Enter/Escape keyboard
+  navigation across all three result sections (artists → releases → tracks) as one flat list —
+  previously mouse-only. `SearchDropdown` exposes `flatEntries` via `defineExpose` so `SearchBar`
+  can count total results and read a route to navigate to on Enter without duplicating the
+  route-building logic in two places.
+- **`components/layout/AppShell.vue`** gained a skip-to-content link (`#main-content`, the page
+  slot's new `<main>` landmark) — previously the sidenav was ~12 tab stops ahead of the page on
+  every route with no way to jump past it. Topbar height is now the literal `56px` the design
+  calls for (was `lg:h-18`, a Tailwind arbitrary value that doesn't correspond to the intended
+  height).
+- **`error.vue`** was the one file in the whole app still on a fully independent, off-token
+  palette (`zinc-*`) — now on the same tokens as everything else.
+- **The play/pause transport button** (`PlayerPlayPauseButton` in `AudioPlayer.vue`) now uses its
+  own `highlighted` prop instead of the caller overriding its background/text colour classes
+  directly - one fewer place a future colour change has to be kept in sync by hand.
+  `AudioPlayer.vue`'s progress-bar fill drops the hard-coded
+  `linear-gradient(#d97706,#fbbf24,#f59e0b)` for a plain `bg-amber-400`, matching every other
+  progress indicator in the app (`UiLoadingPanel`, `DataTable`'s bulk bar).
+
+### A test caught a resolveComponent bug before it shipped
+
+`SidebarItem.vue`'s first draft resolved its NuxtLink-or-button tag inline in the template:
+`:is="to ? resolveComponent('NuxtLink') : 'button'"`. The SFC compiler hoists a
+`resolveComponent()` call written directly in a template expression to module scope, outside any
+active component instance - at that point there's no Nuxt app context for it to search, so it
+silently falls back to rendering a literal, unresolved `<nuxtlink>` tag instead of throwing.
+`test/components/layout/SidebarItem.test.ts`'s very first assertion (`wrapper.find('a').exists()`)
+failed immediately. The fix - and the pattern to use everywhere else in this codebase
+(`ui/Button.vue` already did it correctly) - is to resolve the tag in a `computed()` in
+`<script setup>`, which runs during the actual render pass where the instance context is live,
+and reference that computed's result (`:is="tag"`) from the template instead of calling
+`resolveComponent()` inline in a template expression.
+
+### happy-dom gaps this stage's tests worked around
+
+Two more, beyond the `offsetParent`/`mouseenter`-bubbling ones Stage 0/1 already hit:
+
+- **Native `<label>` click-to-child-input forwarding isn't simulated.** In a real browser,
+  clicking a `<label>` also toggles/focuses the `<input>` it wraps (implicit label association).
+  happy-dom doesn't replicate this, so `DataTable`/`Checkbox` tests that need to "check a box"
+  dispatch `change` on the `<input>` itself (after setting `.checked`) rather than clicking the
+  wrapping label.
+- Both are documented inline at the point of use rather than in a shared test helper, since each
+  is a one-line workaround specific to the element being interacted with.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

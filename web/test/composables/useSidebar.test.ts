@@ -50,4 +50,16 @@ describe('useSidebar', () => {
     toggle()
     expect(collapsed.value).toBe(true)
   })
+
+  it('a manual toggle persists across a later resize, instead of being clobbered', async () => {
+    state.widthRef.value = 500
+    const { collapsed, toggle } = useSidebar()
+    await nextTick()
+    toggle()
+    const afterManualToggle = collapsed.value
+    // Still narrow, but a different value so the width watcher actually re-fires.
+    state.widthRef.value = 400
+    await nextTick()
+    expect(collapsed.value).toBe(afterManualToggle)
+  })
 })
