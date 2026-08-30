@@ -6,11 +6,10 @@ breakdown; this doc describes what has actually landed, not what's planned.
 ## Layers
 
 ```
-web/assets/css/theme.css         generated design data — colour ramps, type scale, radii, shadows
-web/assets/css/legacy-theme.css  pre-overhaul tokens, kept until every page migrates off them
-web/assets/css/main.css          imports + base layer (resets, keyframes, the two @utility
-                                 replacements for what used to be component <style> blocks)
-web/helpers/ui.ts                recipe layer: typed Tailwind utility-string builders
+web/assets/css/theme.css   design data — colour ramps, type scale, radii, shadows
+web/assets/css/main.css    imports + base layer (resets, keyframes, the @utility rules that
+                            replace what used to be component <style> blocks)
+web/helpers/ui.ts          recipe layer: typed Tailwind utility-string builders
 ```
 
 ### `theme.css` — tokens
@@ -30,46 +29,41 @@ Never hand-edit `theme.css`'s values without updating this doc — there is no s
 for it in this codebase (unlike the reference design handoff this system was seeded from); the
 file itself is the source of truth.
 
-### `legacy-theme.css` — transition scaffolding
-
-The token set every page used before the overhaul (`bg-bg`, `text-ink`, `border-rule`, DM Sans,
-etc.), moved verbatim out of `main.css` so `theme.css` can be imported after it. Two names
-collide on purpose — `--color-accent` and `--font-sans`/`--font-display` — and because the later
-`@import` wins, the whole app got the new brand colour and typeface immediately, before a single
-page was touched. Every other legacy token keeps resolving until the page using it is migrated.
-
-Deleted whole once no page references it. Grep for `bg-bg\b|text-ink\b|border-rule|accent-soft|
-accent-ink|rounded-cover|shadow-play|shadow-ring-accent|text-card-|text-meta|text-hero-stat|
-text-mag-title|spacing-sidebar` to check what's left.
-
 ### `main.css` — base layer
 
-Import order (`@import` must precede all other rules, so both legacy and new theme files are
-imported before anything else):
+Import order (`@import` must precede all other rules):
 
 ```css
 @import "tailwindcss";
-@import "./legacy-theme.css";
 @import "./theme.css";
 ```
 
 Everything after that is hand-written CSS, and everything here is either a base-element reset
 (link/selection/focus-visible colours, ground background/text/font on `html,body`) or a
-`@utility`/keyframe that replaces what used to be a component-local `<style scoped>` block:
+`@utility`/keyframe that replaces what would otherwise be a component-local `<style scoped>`
+block:
 
 - `animate-highlight-flash` / `animate-spin-slow` — shared animation utilities.
 - `genre-border` — the animated conic-gradient border for genre/region playlists. One
-  definition; replaces the two copies in `components/playlist/Block.vue` and
-  `pages/playlists/[slug].vue` (the latter referenced an undefined `--color-surface`, so its
-  border rendered with a transparent inner layer — fixed by removing the copy).
+  definition shared by every playlist tile and the playlist detail page's hero cover.
 - `.leaflet-container` / `.leaflet-control-zoom a` — Leaflet doesn't take Tailwind classes, so
-  its chrome is themed globally instead of in `pages/labs/map.vue`'s own `<style>` block.
+  its chrome is themed globally here instead of per-page.
 - A `prefers-reduced-motion: reduce` block that neutralises transitions/animations app-wide.
 
-**The `<style scoped>` blocks in `playlist/Block.vue`, `pages/playlists/[slug].vue` and
-`pages/labs/map.vue` still exist right now** — they're removed once those specific pages are
-restyled (their stage deletes the local copy in favour of the shared utility above). Until then
-`CLAUDE.md`'s exception list is still accurate.
+**Zero `<style>` blocks exist anywhere in `web/components/**` or `web/pages/**`** (grep-verified,
+Stage 15). Every case that genuinely needed CSS Tailwind utilities can't express lives here
+instead — see `CLAUDE.md`'s "Zero custom CSS" bullet.
+
+### History: the legacy token bridge (removed)
+
+Through Stages 0–13 the app ran on two token sets at once: `web/assets/css/legacy-theme.css`
+held the pre-overhaul values (`bg-bg`, `text-ink`, `border-rule`, DM Sans, …) verbatim, imported
+*before* `theme.css` so two deliberately-colliding names — `--color-accent` and
+`--font-sans`/`--font-display` — let the new brand colour and typeface take over immediately,
+while every other legacy token kept resolving until the page using it was migrated. This meant
+no stage ever had to touch every page at once, and the app was never left mid-migration for long.
+Deleted whole in Stage 15 once a repo-wide grep for every legacy token name and every raw-palette
+escape (`zinc-|slate-|purple-|emerald-|blue-|yellow-` outside `theme.css`) returned nothing.
 
 ### `helpers/ui.ts` — recipes
 
@@ -747,6 +741,39 @@ Matched against `11-labs*.png`.
 - Reduced-motion (the `prefers-reduced-motion` block in `main.css`, Stage 0) and the contrast
   test suite predate this stage and needed no changes - both already cover what Stage 0 set out
   to guarantee.
+
+## Teardown (Stage 15)
+
+- **Deleted `web/assets/css/legacy-theme.css`** and its `@import` in `main.css` - the pre-overhaul
+  token bridge described above under "History", no longer needed once every page migrated off it
+  across Stages 4-14.
+- **Repo-wide grep confirms zero remaining legacy tokens** (`bg-bg`, `text-ink`, `border-rule`,
+  `accent-soft`, `accent-ink`, `rounded-cover`, `shadow-play`, `shadow-ring-accent`, `text-card-*`,
+  `text-meta*`, `text-hero-stat`, `text-mag-title`, `spacing-sidebar*`) and zero raw-palette
+  escapes (`zinc-`, `slate-`, `purple-`, `emerald-`, `blue-`, `yellow-` outside `theme.css`)
+  anywhere in `components/`/`pages/`/`stores/`/`composables/`/`helpers/`. One straggler
+  (`components/ui/RefreshButton.vue`'s count badge, `text-ink-3`) had been missed by every prior
+  per-page stage since it's a small shared component with no page of its own - caught here by the
+  final sweep, which is exactly what this stage is for.
+- **Zero `<style>` blocks remain in `web/components/**` or `web/pages/**`** - confirmed by grep
+  (this was actually already true as of Stage 13, when `pages/labs/map.vue` removed the last one).
+- **Coverage thresholds raised** in `vitest.config.ts` from the pre-overhaul baseline
+  (lines 60/functions 50/statements 60/branches 45) to lines 72/functions 64/statements
+  71/branches 58 - a few points under the actual measured coverage (~75/67/74/61) so normal test
+  variance doesn't flake CI, reflecting the component/composable tests added for every rewritten
+  primitive across Stages 0-14.
+- `CLAUDE.md`'s "Zero custom CSS" and "Design system" bullets are finalised (no more exception
+  list, no more mid-migration caveats); `docs/dev_guide.md`'s styling bullet updated to match.
+- Full verification suite run clean: `pnpm test:unit` (915 tests), `pnpm typecheck`, whole-repo
+  `pnpm lint` (0 errors; 677 warnings, all pre-existing categories - `func-style`,
+  `no-explicit-any`, `multi-word-component-names`, `require-default-prop`, `no-unused-vars` -
+  unrelated to this overhaul), `pnpm build`.
+
+This closes the UI overhaul: every page now sits on the single token/recipe layer described
+above, with one status map, one table primitive family, one bulk-action-bar shell, and a
+documented state/accessibility contract applied to every interactive component.
+
+## Adding to the system
 
 ## Adding to the system
 

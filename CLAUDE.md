@@ -107,7 +107,7 @@ return a ? b : c
   names) live as `@utility`/global rules in `web/assets/css/main.css`, driven by the design tokens. If a
   new screen needs something Tailwind utilities truly can't express, it becomes a global rule there too
   — never a component-local `<style>` block. See `docs/design_system.md`.
-- **Design system**: colour ramps, type scale, radii and shadows live in `web/assets/css/theme.css` (never hand-edit without updating `docs/design_system.md`); reusable Tailwind utility-string builders (`button()`, `sw()`, tone maps, `ui.*`) live in `web/helpers/ui.ts`. `web/assets/css/legacy-theme.css` holds the pre-overhaul tokens (`bg-bg`, `text-ink`, `border-rule`, ...) until every page migrates off them — check `docs/design_system.md` before assuming either the old or new token set is authoritative for a given page.
+- **Design system**: colour ramps, type scale, radii and shadows live in `web/assets/css/theme.css` (`@theme static`, never hand-edit without updating `docs/design_system.md` — there is no separate generator, the file itself is the source of truth). Reusable Tailwind utility-string builders (`button()`, `sw()`, tone maps, `ui.*`) live in `web/helpers/ui.ts` — reuse an existing recipe or extend it with `cx()`; never redefine one locally, and only promote a new one once a utility string repeats a second time. Status/match-score colour has exactly one source: `helpers/constants.ts`'s `statuses[]`/`scoreRanges[]`, resolved through `toneBg`/`toneText`/`toneFill`. See `docs/design_system.md` for the full primitive catalogue and the state/accessibility contract every interactive component follows.
 - Icons: `lucide-vue-next` only
 - Prisma singleton: `web/server/utils/prisma.ts` is the only place to instantiate PrismaClient
 

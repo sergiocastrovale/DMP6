@@ -18,15 +18,16 @@ export default defineConfig({
         '**/*.config.ts',
         'test/**',
       ],
-      // Baselined to the actual coverage after the initial test-writing pass (see docs/PLAN_tests.md
-      // Phases 1-4: pure utils/helpers/composables are near-100%, but pages/most components/many
-      // server routes are still untested). Ratchet these up as more of the plan's phases land -
-      // don't lower them to make a future regression pass.
+      // Raised after the design-system overhaul (Stages 0-14) added component/composable tests
+      // for every rewritten primitive - actual sits around lines 75%/statements 74%/functions
+      // 67%/branches 61% as of Stage 15; thresholds are set a few points under that so normal
+      // test variance doesn't flake CI. Ratchet these up as coverage grows further - don't lower
+      // them to make a future regression pass.
       thresholds: {
-        lines: 60,
-        functions: 50,
-        statements: 60,
-        branches: 45,
+        lines: 72,
+        functions: 64,
+        statements: 71,
+        branches: 58,
       },
     },
     projects: [

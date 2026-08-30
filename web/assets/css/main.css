@@ -1,10 +1,5 @@
-/* All @import statements must stay first (CSS requirement). legacy-theme.css is imported
-   before theme.css on purpose: theme.css redefines --color-accent, --font-sans and
-   --font-display, and the later import wins, so the new brand colour and typeface take over
-   immediately while every other legacy token (bg-bg, text-ink, ...) keeps working until the
-   page that uses it is migrated. See docs/design_system.md. */
+/* @import statements must stay first (CSS requirement). */
 @import "tailwindcss";
-@import "./legacy-theme.css";
 @import "./theme.css";
 
 html,
