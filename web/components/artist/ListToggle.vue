@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
+import { segmentGroup, sw } from '~/helpers/ui'
 
 interface ToggleOption {
   value: string
@@ -15,18 +16,17 @@ const model = defineModel<string>({ required: true })
 </script>
 
 <template>
-  <div class="flex items-center rounded-lg border border-rule bg-bg-1">
+  <div :class="segmentGroup" role="radiogroup">
     <button
-      v-for="(option, index) in options"
+      v-for="option in options"
       :key="option.value"
       type="button"
-      class="px-2.5 py-1.5 transition-colors"
-      :class="[
-        model === option.value ? 'bg-bg-3 text-ink' : 'text-ink-2 hover:text-ink',
-        index === 0 ? 'rounded-l-lg' : '',
-        index === options.length - 1 ? 'rounded-r-lg' : '',
-      ]"
+      role="radio"
+      :aria-checked="model === option.value"
+      :tabindex="model === option.value ? 0 : -1"
+      :class="sw('switchBtn', model === option.value)"
       :title="option.title"
+      :aria-label="option.title"
       @click="model = option.value"
     >
       <component :is="option.icon" :size="16" />

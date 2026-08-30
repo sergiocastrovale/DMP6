@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowUpDown } from 'lucide-vue-next'
 
-const props = defineProps<{
+defineProps<{
   active: string
 }>()
 
@@ -15,19 +15,22 @@ const options = [
   { value: 'score', label: 'Match score' },
   { value: 'recent', label: 'Recently added' },
 ]
+
+// Dropdown's contract allows a null selection (for filters with a "show everything" state);
+// this control never has one, so the emitted value is never actually null in practice.
+const onUpdate = (value: string | null) => {
+  if (value) {
+    emit('select', value)
+  }
+}
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
-    <ArrowUpDown :size="14" class="text-ink-3" />
-    <select
-      :value="active"
-      class="rounded-lg border border-rule bg-bg-1 px-3 py-1.5 text-xs text-ink-2 focus:border-accent focus:outline-none"
-      @change="emit('select', ($event.target as HTMLSelectElement).value)"
-    >
-      <option v-for="opt in options" :key="opt.value" :value="opt.value">
-        {{ opt.label }}
-      </option>
-    </select>
-  </div>
+  <Dropdown
+    :model-value="active"
+    :options="options"
+    :icon="ArrowUpDown"
+    :allow-clear="false"
+    @update:model-value="onUpdate"
+  />
 </template>

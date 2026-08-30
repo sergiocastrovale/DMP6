@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { typography } from '~/helpers/ui'
+
 const { user } = useAuth()
 
 const greetings = [
@@ -35,12 +37,12 @@ const [ctaBefore, ctaAfter] = randomArtist.value ? pick(ctas, seed.value + 1) : 
 
 <template>
   <div class="flex flex-col gap-1">
-    <h1 class="font-display text-5xl font-semibold text-ink">
+    <h1 :class="typography.h1">
       Hello, {{ user?.username }}
     </h1>
-    <p class="text-lg text-ink-3">
+    <p class="text-lg text-stone-100/40">
       {{ greeting }}
-      <span v-if="randomArtist">{{ ctaBefore }}<NuxtLink :to="`/artist/${randomArtist.slug}`" class="text-ink-2 underline decoration-ink-4 underline-offset-2 transition-colors hover:text-ink">{{ randomArtist.name }}</NuxtLink>{{ ctaAfter }}</span>
+      <span v-if="randomArtist">{{ ctaBefore }}<NuxtLink :to="`/artist/${randomArtist.slug}`" class="text-stone-100/60 underline decoration-stone-100/30 underline-offset-2 transition-colors duration-150 hover:text-stone-100">{{ randomArtist.name }}</NuxtLink>{{ ctaAfter }}</span>
     </p>
   </div>
   <LayoutStatistics />

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { SlidersHorizontal, X } from 'lucide-vue-next'
 import { scoreRanges } from '~/helpers/constants'
+import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 interface Props {
   minScore: number | null
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const showDropdown = ref(false)
+const triggerRef = ref<HTMLElement>()
 
 const isActive = computed(() => props.minScore !== null || props.maxScore !== null)
 
@@ -33,36 +35,77 @@ const clear = () => {
   emit('update:range', null, null)
   showDropdown.value = false
 }
+
+const onDocumentKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    showDropdown.value = false
+    triggerRef.value?.focus()
+  }
+}
+
+// See FilterGenre.vue for why this is a non-immediate watch, not an immediate one.
+watch(showDropdown, (open) => {
+  if (open) {
+    document.addEventListener('keydown', onDocumentKeydown)
+  }
+  else {
+    document.removeEventListener('keydown', onDocumentKeydown)
+  }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDocumentKeydown)
+})
 </script>
 
 <template>
   <div class="relative">
-    <button
-      class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors"
-      :class="isActive
-        ? 'border-accent bg-accent/10 text-accent'
-        : 'border-rule bg-bg-1 text-ink-2 hover:text-ink'"
-      @click="showDropdown = !showDropdown"
+    <!-- Two separate controls sharing one pill, not one <button> nesting another - a clear icon
+         inside the trigger button would be unreachable by keyboard and invalid HTML. -->
+    <div
+      :class="cx(
+        'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors duration-150',
+        isActive ? 'border-amber-400/45 bg-amber-400/10 text-amber-400' : 'border-stone-100/10 bg-stone-900 text-stone-100/60 hover:text-stone-100',
+      )"
     >
-      <SlidersHorizontal :size="12" />
-      {{ activeLabel || 'Match Score' }}
-      <X v-if="isActive" :size="12" class="ml-1" @click.stop="clear" />
-    </button>
+      <button
+        ref="triggerRef"
+        type="button"
+        aria-haspopup="listbox"
+        :aria-expanded="showDropdown"
+        class="flex items-center gap-1.5"
+        @click="showDropdown = !showDropdown"
+      >
+        <SlidersHorizontal :size="12" :stroke-width="ICON_STROKE_WIDTH" />
+        {{ activeLabel || 'Match Score' }}
+      </button>
+      <button v-if="isActive" type="button" aria-label="Clear match score filter" class="hover:text-stone-100" @click="clear">
+        <X :size="12" :stroke-width="ICON_STROKE_WIDTH" />
+      </button>
+    </div>
 
     <div
       v-if="showDropdown"
-      class="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-rule bg-bg-1 p-1 shadow-lg"
+      role="listbox"
+      class="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-stone-100/10 bg-stone-900 p-1 shadow-lg"
     >
       <button
         v-for="range in scoreRanges"
         :key="range.label"
-        class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs transition-colors hover:bg-bg-2"
-        :class="minScore === range.min && maxScore === range.max ? 'text-accent' : 'text-ink-2'"
+        type="button"
+        role="option"
+        :aria-selected="minScore === range.min && maxScore === range.max"
+        :class="cx(
+          'flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs transition-colors duration-150 hover:bg-stone-800',
+          minScore === range.min && maxScore === range.max ? 'text-amber-400' : 'text-stone-100/60',
+        )"
         @click="select(range)"
       >
         <span class="size-2.5 shrink-0 rounded-sm" :class="range.color" />
         {{ range.label }}
       </button>
     </div>
+
+    <div v-if="showDropdown" class="fixed inset-0 z-10" @click="showDropdown = false" />
   </div>
 </template>

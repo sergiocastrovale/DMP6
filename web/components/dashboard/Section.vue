@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
+import { grid } from '~/helpers/ui'
 
 defineProps<{
   title: string
@@ -11,9 +12,13 @@ defineProps<{
 <template>
   <div>
     <DashboardSectionHeader :title="title" />
-    <LoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
-
-    <div v-else-if="!empty" class="grid grid-cols-2 gap-x-5 gap-y-10 sm:grid-cols-3 lg:grid-cols-[repeat(auto-fill,minmax(130px,200px))] xl:grid-cols-[repeat(auto-fill,minmax(130px,220px))]">
+    <!-- One grid definition for both states (not a separately-defined LoadingGrid) - a skeleton
+         grid with different columns than the real one causes a layout shift the instant data
+         arrives. -->
+    <div v-if="loading" :class="grid.auto">
+      <ReleaseSkeleton v-for="i in SKELETON_GRID_SIZE" :key="i" />
+    </div>
+    <div v-else-if="!empty" :class="grid.auto">
       <slot />
     </div>
   </div>

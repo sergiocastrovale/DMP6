@@ -91,6 +91,10 @@ export const button = (
 
 export const iconButton = 'grid place-items-center rounded-md bg-transparent border border-transparent text-stone-100/40 hover:text-stone-100 hover:bg-stone-800 transition-colors duration-150'
 
+// Shared wrapper for a segmented control (radio group, view-mode switch): a bordered pill
+// holding tightly-packed toggle buttons.
+export const segmentGroup = 'inline-flex items-center gap-0.5 rounded-md border border-stone-100/10 bg-stone-900 p-0.5'
+
 interface ToggleSpec {
   base: string
   idle: string

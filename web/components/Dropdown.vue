@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Component } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
 import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
@@ -8,11 +9,18 @@ interface DropdownOption {
   classes?: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   options: DropdownOption[]
   modelValue: string | null
   placeholder?: string
-}>()
+  icon?: Component
+  // Set false for an always-one-of-these-options control (e.g. sort order) that has no "show
+  // everything" state - hides the leading "All" entry rather than forcing every consumer to
+  // filter it out of `options` itself.
+  allowClear?: boolean
+}>(), {
+  allowClear: true,
+})
 
 const emit = defineEmits<{
   'update:modelValue': [value: string | null]
@@ -75,6 +83,7 @@ onBeforeUnmount(() => {
       @click="open = !open"
       @keydown="onTriggerKeydown"
     >
+      <component :is="icon" v-if="icon" :size="12" :stroke-width="ICON_STROKE_WIDTH" />
       <span v-if="modelValue && selectedOption?.classes" :class="selectedOption.classes" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
         {{ selectedLabel }}
       </span>
@@ -88,6 +97,7 @@ onBeforeUnmount(() => {
       class="absolute left-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-stone-100/10 bg-stone-900 p-1 shadow-lg"
     >
       <button
+        v-if="allowClear"
         type="button"
         role="option"
         :aria-selected="!modelValue"

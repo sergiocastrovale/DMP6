@@ -297,6 +297,47 @@ Two more, beyond the `offsetParent`/`mouseenter`-bubbling ones Stage 0/1 already
 - Both are documented inline at the point of use rather than in a shared test helper, since each
   is a one-line workaround specific to the element being interacted with.
 
+## Dashboard + Browse (Stage 4)
+
+The reference handoff has no dashboard/home screen (its 12 screens start at Browse), so
+`pages/index.vue` and `components/dashboard/*` got a straight retokenise with one structural fix,
+not a redesign:
+
+- **`dashboard/Section.vue` had a layout-shift bug**: its loading state used the shared
+  `LoadingGrid.vue` component, whose grid (`grid-cols-2 … xl:grid-cols-6`, tuned for
+  `playlists/index.vue`'s fixed-column grid) didn't match the dashboard's own loaded-state grid
+  (an auto-fill `minmax(130px,200px/220px)` definition). The skeleton tiles snapped into a
+  different column count the instant real data arrived. Fixed by having `Section.vue` render its
+  skeletons inside the *same* grid container as its real content (now `ui.grid.auto`), rather
+  than delegating to a component with its own competing grid. `LoadingGrid.vue` itself is
+  untouched - `playlists/index.vue` still uses it correctly in Stage 7.
+- The dashboard's seeded greeting (`useState('dashboard-seed', () => Math.random())`) was flagged
+  as a hydration-mismatch risk worth checking - it isn't one: `useState` is Nuxt's SSR-serialized
+  state primitive specifically so the client reuses the server's random value instead of
+  recomputing its own. A plain `ref(Math.random())` would have been the actual bug.
+
+**Browse** (`pages/browse.vue`, `components/browse/*`) has a reference (`01-browse*.png`) and
+picks up real behavioural fixes alongside the retokenise:
+
+- **`FilterSort.vue`** was a raw native `<select>`, visually inconsistent with its sibling filter
+  chips. Rewritten on the shared `Dropdown.vue`, which gained two small, generally-useful
+  additions to support it: an optional leading `icon` prop, and `allowClear` (default `true`) to
+  hide the "All" entry for a control like sort order that always has exactly one active value
+  rather than an optional filter.
+- **`FilterGenre.vue` and `FilterScore.vue` gained a real bug fix, not just a backdrop.** Their
+  clear ("×") control was an SVG with a click handler living *inside* the trigger `<button>` -
+  invalid HTML (a button can't contain another interactive control) and unreachable by keyboard
+  entirely. Split into two sibling buttons sharing one visual pill (trigger + a separate clear
+  button), each independently focusable. Both also gained the click-outside backdrop and Escape
+  handling every other dropdown in the app already has, via the same non-immediate-watch pattern.
+- **`components/RadioGroup.vue` and `artist/ListToggle.vue` share one wrapper now**
+  (`ui.segmentGroup`, new) - both are the same bordered-pill-of-toggle-buttons shape, previously
+  hand-written twice. `ListToggle.vue` (the catalogue grid/list switch) also gained the
+  `role="radiogroup"`/`role="radio"` + roving-tabindex contract `RadioGroup.vue` already had, plus
+  a real accessible name (`title`/`aria-label`) on each icon-only option - it had neither before.
+- `ArtistGrid.vue`/`ListSummarized.vue` now render their "no results" state through
+  `UiEmptyState` instead of a bare line of text.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

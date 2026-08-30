@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { cx } from '~/helpers/ui'
+import { cx, segmentGroup } from '~/helpers/ui'
 
 interface RadioOption {
   value: string
@@ -45,7 +45,7 @@ const onKeydown = (event: KeyboardEvent) => {
 </script>
 
 <template>
-  <div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-md border border-stone-100/10 bg-stone-900 p-0.5" @keydown="onKeydown">
+  <div role="radiogroup" :class="segmentGroup" @keydown="onKeydown">
     <button
       v-for="option in options"
       :key="option.value"
