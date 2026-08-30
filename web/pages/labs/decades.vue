@@ -11,10 +11,12 @@ import {
   Legend,
 } from 'chart.js'
 import type { DecadeStats } from '~/types/labs'
+import { cssVar } from '~/helpers/theme'
+import { sw } from '~/helpers/ui'
 
 Chart.register(RadarController, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
-definePageMeta({ layout: 'labs' })
+definePageMeta({ layout: 'default' })
 
 const { data: decades, status } = useFetch<DecadeStats[]>('/api/labs/decades/stats')
 
@@ -24,14 +26,12 @@ let chart: Chart | null = null
 
 const availableDecades = computed(() => decades.value?.map((d) => d.decade) || [])
 
-const colors = [
-  { bg: 'rgba(99, 155, 255, 0.2)', border: 'rgba(99, 155, 255, 0.8)' },
-  { bg: 'rgba(255, 99, 132, 0.2)', border: 'rgba(255, 99, 132, 0.8)' },
-  { bg: 'rgba(75, 220, 150, 0.2)', border: 'rgba(75, 220, 150, 0.8)' },
-  { bg: 'rgba(255, 206, 86, 0.2)', border: 'rgba(255, 206, 86, 0.8)' },
-  { bg: 'rgba(153, 102, 255, 0.2)', border: 'rgba(153, 102, 255, 0.8)' },
-  { bg: 'rgba(255, 159, 64, 0.2)', border: 'rgba(255, 159, 64, 0.8)' },
-]
+// Read live off the theme instead of hard-coded rgba() literals, so a token change here
+// doesn't silently drift from the rest of the app - one ramp per selectable decade slot.
+const colors = computed(() => ['amber-400', 'green-500', 'orange-400', 'red-400', 'violet-400'].map((token) => {
+  const border = cssVar(`--color-${token}`)
+  return { bg: `color-mix(in oklch, ${border} 20%, transparent)`, border }
+}))
 
 const normalize = (value: number, max: number) => (max > 0 ? (value / max) * 100 : 0)
 
@@ -64,10 +64,10 @@ const renderChart = () => {
       normalize(d.avgBitrate, maxBitrate),
       normalize(d.totalPlayCount, maxPlays),
     ],
-    backgroundColor: colors[i % colors.length]!.bg,
-    borderColor: colors[i % colors.length]!.border,
+    backgroundColor: colors.value[i % colors.value.length]!.bg,
+    borderColor: colors.value[i % colors.value.length]!.border,
     borderWidth: 2,
-    pointBackgroundColor: colors[i % colors.length]!.border,
+    pointBackgroundColor: colors.value[i % colors.value.length]!.border,
     pointRadius: 3,
   }))
 
@@ -83,15 +83,15 @@ const renderChart = () => {
           beginAtZero: true,
           max: 100,
           ticks: { display: false },
-          grid: { color: 'rgba(255, 255, 255, 0.08)' },
-          angleLines: { color: 'rgba(255, 255, 255, 0.08)' },
-          pointLabels: { color: 'rgba(255, 255, 255, 0.6)', font: { size: 11 } },
+          grid: { color: `color-mix(in oklch, ${cssVar('--color-stone-100')} 8%, transparent)` },
+          angleLines: { color: `color-mix(in oklch, ${cssVar('--color-stone-100')} 8%, transparent)` },
+          pointLabels: { color: `color-mix(in oklch, ${cssVar('--color-stone-100')} 60%, transparent)`, font: { size: 11 } },
         },
       },
       plugins: {
         legend: {
           position: 'bottom',
-          labels: { color: 'rgba(255, 255, 255, 0.7)', padding: 16 },
+          labels: { color: `color-mix(in oklch, ${cssVar('--color-stone-100')} 70%, transparent)`, padding: 16 },
         },
         tooltip: {
           callbacks: {
@@ -141,85 +141,89 @@ watch(decades, (val) => {
     selectedDecades.value = sorted.slice(0, 3).map((d) => d.decade)
   }
 })
+
+onUnmounted(() => {
+  chart?.destroy()
+})
 </script>
 
 <template>
-  <div class="grid h-full gap-6 lg:grid-cols-5">
-    <div class="flex flex-col gap-6 lg:col-span-2">
-      <div class="rounded-lg border border-rule bg-bg-1 p-5">
-        <div class="mb-4 flex items-center gap-3">
-          <div class="flex size-10 items-center justify-center rounded-lg bg-accent/10">
-            <Clock :size="20" class="text-accent" />
+  <div class="flex flex-col gap-4">
+    <LabsBackLink />
+
+    <div class="grid gap-6 lg:grid-cols-5">
+      <div class="flex flex-col gap-6 lg:col-span-2">
+        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
+          <div class="mb-4 flex items-center gap-3">
+            <div class="flex size-10 items-center justify-center rounded-lg bg-amber-400/10">
+              <Clock :size="20" class="text-amber-400" />
+            </div>
+            <div>
+              <h2 class="text-lg font-semibold text-stone-100">Decade DNA</h2>
+              <p class="text-sm text-stone-100/40">Compare your collection across decades</p>
+            </div>
           </div>
-          <div>
-            <h2 class="text-sm font-semibold text-ink">Decade DNA</h2>
-            <p class="text-xs text-ink-2">Compare your collection across decades</p>
+
+          <p class="mb-4 text-base leading-relaxed text-stone-100/60">
+            Select decades to compare on the radar chart. Each axis is normalized to the max value across all decades.
+          </p>
+
+          <div v-if="status === 'pending'" class="flex items-center gap-2 text-base text-stone-100/60">
+            <Loader2 :size="14" class="animate-spin text-amber-400" />
+            Loading...
+          </div>
+
+          <div v-else class="flex flex-wrap gap-2">
+            <button
+              v-for="decade in availableDecades"
+              :key="decade"
+              type="button"
+              :class="sw('chip', selectedDecades.includes(decade))"
+              @click="toggleDecade(decade)"
+            >
+              {{ decade }}
+            </button>
           </div>
         </div>
 
-        <p class="mb-4 text-sm leading-relaxed text-ink-2">
-          Select decades to compare on the radar chart. Each axis is normalized to the max value across all decades.
-        </p>
-
-        <div v-if="status === 'pending'" class="flex items-center gap-2 text-sm text-ink-2">
-          <Loader2 :size="14" class="animate-spin text-accent" />
-          Loading...
-        </div>
-
-        <div v-else class="flex flex-wrap gap-2">
-          <button
-            v-for="decade in availableDecades"
-            :key="decade"
-            class="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
-            :class="selectedDecades.includes(decade)
-              ? 'border-accent/50 bg-accent/20 text-accent'
-              : 'border-rule bg-bg-2 text-ink-2 hover:text-ink'"
-            @click="toggleDecade(decade)"
-          >
-            {{ decade }}
-          </button>
+        <div v-if="decades && decades.length > 0" class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
+          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+            Breakdown
+          </h3>
+          <div class="divide-y divide-stone-100/6">
+            <div
+              v-for="d in decades.filter((d) => selectedDecades.includes(d.decade))"
+              :key="d.decade"
+              class="py-3 first:pt-0 last:pb-0"
+            >
+              <div class="mb-1 text-base font-medium text-stone-100">{{ d.decade }}</div>
+              <div class="grid grid-cols-3 gap-2 text-sm text-stone-100/60 tabular-nums">
+                <div>{{ d.releaseCount }} releases</div>
+                <div>{{ d.trackCount }} tracks</div>
+                <div>{{ d.artistCount }} artists</div>
+                <div>{{ formatDuration(d.avgDuration) }} avg</div>
+                <div>{{ d.avgBitrate }} kbps</div>
+                <div>{{ d.totalPlayCount }} plays</div>
+              </div>
+              <div v-if="d.topGenres.length > 0" class="mt-1.5 flex flex-wrap gap-1">
+                <span
+                  v-for="g in d.topGenres.slice(0, 3)"
+                  :key="g.name"
+                  class="rounded-full bg-stone-800 px-2 py-0.5 text-[10px] text-stone-100/60"
+                >
+                  {{ g.name }}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div v-if="decades && decades.length > 0" class="rounded-lg border border-rule bg-bg-1 p-5">
-        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
-          Breakdown
-        </h3>
-        <div class="divide-y divide-rule">
-          <div
-            v-for="d in decades.filter((d) => selectedDecades.includes(d.decade))"
-            :key="d.decade"
-            class="py-3 first:pt-0 last:pb-0"
-          >
-            <div class="mb-1 text-sm font-medium text-ink">{{ d.decade }}</div>
-            <div class="grid grid-cols-3 gap-2 text-xs text-ink-2">
-              <div>{{ d.releaseCount }} releases</div>
-              <div>{{ d.trackCount }} tracks</div>
-              <div>{{ d.artistCount }} artists</div>
-              <div>{{ formatDuration(d.avgDuration) }} avg</div>
-              <div>{{ d.avgBitrate }} kbps</div>
-              <div>{{ d.totalPlayCount }} plays</div>
-            </div>
-            <div v-if="d.topGenres.length > 0" class="mt-1.5 flex flex-wrap gap-1">
-              <span
-                v-for="g in d.topGenres.slice(0, 3)"
-                :key="g.name"
-                class="rounded-full bg-bg-2 px-2 py-0.5 text-[10px] text-ink-2"
-              >
-                {{ g.name }}
-              </span>
-            </div>
-          </div>
+      <div class="lg:col-span-3">
+        <div class="sticky top-20 flex h-[600px] items-center justify-center rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+          <UiEmptyState v-if="selectedDecades.length === 0" message="Select decades to compare" />
+          <canvas v-show="selectedDecades.length > 0" ref="radarCanvas" class="h-full w-full" />
         </div>
-      </div>
-    </div>
-
-    <div class="lg:col-span-3">
-      <div class="sticky top-20 flex h-[600px] items-center justify-center rounded-lg border border-rule bg-bg-1 p-6">
-        <div v-if="selectedDecades.length === 0" class="text-sm text-ink-2">
-          Select decades to compare
-        </div>
-        <canvas v-show="selectedDecades.length > 0" ref="radarCanvas" class="h-full w-full" />
       </div>
     </div>
   </div>

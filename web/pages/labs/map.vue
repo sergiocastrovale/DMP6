@@ -2,6 +2,7 @@
 import type { Map as LeafletMap, GeoJSON as LeafletGeoJSON, Path, Layer } from 'leaflet'
 import type { Feature } from 'geojson'
 import type { MapCountry } from '~/types/labs'
+import { cssVar } from '~/helpers/theme'
 
 definePageMeta({ layout: false })
 
@@ -267,7 +268,7 @@ onMounted(async () => {
   const getStyle = (feature?: Feature) => {
     const code = feature?.properties?.ISO_A2
     return {
-      color: 'white',
+      color: cssVar('--color-stone-100'),
       weight: 0.8,
       fillColor: 'transparent',
       fillOpacity: 1,
@@ -285,7 +286,7 @@ onMounted(async () => {
 
       layer.on('mouseover', (e: any) => {
         tooltip.value = { x: e.originalEvent.clientX, y: e.originalEvent.clientY, code }
-        ;(layer as Path).setStyle({ color: 'oklch(0.82 0.25 92)', weight: 2 })
+        ;(layer as Path).setStyle({ color: cssVar('--color-amber-400'), weight: 2 })
       })
       layer.on('mousemove', (e: any) => {
         if (tooltip.value) {
@@ -295,7 +296,7 @@ onMounted(async () => {
       })
       layer.on('mouseout', () => {
         tooltip.value = null
-        ;(layer as Path).setStyle({ color: 'white', weight: 0.8 })
+        ;(layer as Path).setStyle({ color: cssVar('--color-stone-100'), weight: 0.8 })
       })
       layer.on('click', () => {
         openCountryDialog(code)
@@ -318,7 +319,18 @@ watch(countryData, (val) => {
   }
 })
 
+const onKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    tooltip.value = null
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKeydown)
+})
+
 onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
   map?.remove()
   map = null
   geoLayer = null
@@ -327,8 +339,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex h-screen flex-col bg-bg font-sans text-ink antialiased">
-    <LabsHeader />
+  <div class="flex h-screen flex-col bg-stone-950 font-sans text-stone-100 antialiased">
+    <div class="px-4 py-3">
+      <LabsBackLink />
+    </div>
 
     <div class="relative flex-1">
       <div ref="mapContainer" class="absolute inset-0" />
@@ -337,29 +351,29 @@ onUnmounted(() => {
         v-if="status === 'pending'"
         class="pointer-events-none absolute inset-0 flex items-center justify-center"
       >
-        <div class="text-sm text-ink-2">Loading map data...</div>
+        <div class="text-base text-stone-100/60">Loading map data...</div>
       </div>
 
       <div
         v-if="generating"
         class="pointer-events-none absolute left-4 right-4 top-4 z-[1000]"
       >
-        <div class="mx-auto max-w-xs overflow-hidden rounded-full bg-bg-2/80 backdrop-blur">
+        <div class="mx-auto max-w-xs overflow-hidden rounded-full bg-stone-800/80 backdrop-blur">
           <div
-            class="h-1.5 rounded-full bg-accent transition-all duration-300"
+            class="h-1.5 rounded-full bg-amber-400 transition-all duration-300"
             :style="{ width: `${progressPercent}%` }"
           />
         </div>
-        <div class="mt-1 text-center text-xs text-ink-2">
+        <div class="mt-1 text-center text-sm text-stone-100/60">
           {{ generationProgress.current }}/{{ generationProgress.total }}
         </div>
       </div>
 
       <div
         v-if="coverageStat.countries > 0"
-        class="pointer-events-none absolute bottom-4 right-4 z-[1000] rounded-lg bg-bg-1/80 px-3 py-2 text-sm text-ink-2 backdrop-blur"
+        class="pointer-events-none absolute bottom-4 right-4 z-[1000] rounded-lg bg-stone-900/80 px-3 py-2 text-base text-stone-100/60 backdrop-blur"
       >
-        Showing <strong>{{ coverageStat.artists }}</strong> artists from <strong>{{ coverageStat.countries }}</strong> countries
+        Showing <strong class="text-stone-100">{{ coverageStat.artists }}</strong> artists from <strong class="text-stone-100">{{ coverageStat.countries }}</strong> countries
       </div>
     </div>
 
@@ -368,17 +382,17 @@ onUnmounted(() => {
     <Teleport to="body">
       <div
         v-if="tooltip && tooltipData"
-        class="pointer-events-none fixed z-[2000] rounded-lg border border-rule bg-bg-1 px-3 py-2 shadow-lg"
+        class="pointer-events-none fixed z-[2000] rounded-lg border border-stone-100/10 bg-stone-900 px-3 py-2 shadow-lg"
         :style="{
           left: `${tooltip.x + 12}px`,
           top: `${tooltip.y - 10}px`,
         }"
       >
-        <div class="text-sm font-semibold text-ink">{{ tooltipData.name }}</div>
-        <div v-if="tooltipData.count > 0" class="text-xs text-ink-2">
+        <div class="text-base font-semibold text-stone-100">{{ tooltipData.name }}</div>
+        <div v-if="tooltipData.count > 0" class="text-sm text-stone-100/60">
           {{ tooltipData.count }} {{ tooltipData.count === 1 ? 'artist' : 'artists' }}
         </div>
-        <div v-else class="text-xs text-ink-3">No artists</div>
+        <div v-else class="text-sm text-stone-100/40">No artists</div>
       </div>
     </Teleport>
 
@@ -399,29 +413,11 @@ onUnmounted(() => {
           />
         </div>
         <InfiniteScroll margin="100px" @load="loadMoreArtists" />
-        <div v-if="dialogLoading" class="py-6 text-center text-sm text-ink-2">
+        <div v-if="dialogLoading" class="py-6 text-center text-base text-stone-100/60">
           Loading...
         </div>
-        <div v-if="!dialogLoading && dialogArtists.length === 0" class="py-6 text-center text-sm text-ink-2">
-          No artists found
-        </div>
+        <UiEmptyState v-if="!dialogLoading && dialogArtists.length === 0" message="No artists found" />
       </div>
     </Dialog>
   </div>
 </template>
-
-<style>
-.leaflet-container {
-  background: transparent !important;
-}
-
-.leaflet-control-zoom a {
-  background-color: var(--color-bg-2, #1a1a2e) !important;
-  color: var(--color-ink, #e0e0e0) !important;
-  border-color: var(--color-rule, #333) !important;
-}
-
-.leaflet-control-zoom a:hover {
-  background-color: var(--color-bg-1, #252540) !important;
-}
-</style>

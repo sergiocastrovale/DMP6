@@ -101,10 +101,12 @@ return a ? b : c
 ```
 
 - In Vue files, always organize the script code by context: 1. composables 2. static variables 3. refs 4. watchers 5. computed 6. methods
-- Zero custom CSS: Tailwind utility classes only. Sanctioned exceptions (things Tailwind utilities genuinely can't express) get a `<style scoped>` block and stay documented here rather than pretending the rule is unbroken:
-  - `components/playlist/Block.vue`, `pages/playlists/[slug].vue`: `@property --angle` + `@keyframes` for the animated conic-gradient genre border — CSS `@property` registration and keyframe animations have no Tailwind utility equivalent.
-  - `pages/labs/map.vue`: Leaflet control overrides (`.leaflet-container`, `.leaflet-control-zoom a`) — targets a third-party library's own class names, not app markup.
-  - **Mid-migration note**: both exceptions above already have a shared, non-scoped equivalent in `web/assets/css/main.css` (`@utility genre-border`, the `.leaflet-*` block) driven by the new design tokens. The component-local copies are removed page by page as the UI overhaul reaches them — see `docs/design_system.md`.
+- Zero custom CSS: Tailwind utility classes only. No component or page has a `<style>` block — the
+  two cases that genuinely need CSS Tailwind can't express (the animated conic-gradient genre border's
+  `@property --angle` + `@keyframes`; Leaflet's own `.leaflet-container`/`.leaflet-control-zoom a` class
+  names) live as `@utility`/global rules in `web/assets/css/main.css`, driven by the design tokens. If a
+  new screen needs something Tailwind utilities truly can't express, it becomes a global rule there too
+  — never a component-local `<style>` block. See `docs/design_system.md`.
 - **Design system**: colour ramps, type scale, radii and shadows live in `web/assets/css/theme.css` (never hand-edit without updating `docs/design_system.md`); reusable Tailwind utility-string builders (`button()`, `sw()`, tone maps, `ui.*`) live in `web/helpers/ui.ts`. `web/assets/css/legacy-theme.css` holds the pre-overhaul tokens (`bg-bg`, `text-ink`, `border-rule`, ...) until every page migrates off them — check `docs/design_system.md` before assuming either the old or new token set is authoritative for a given page.
 - Icons: `lucide-vue-next` only
 - Prisma singleton: `web/server/utils/prisma.ts` is the only place to instantiate PrismaClient

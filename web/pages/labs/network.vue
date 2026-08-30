@@ -14,8 +14,9 @@ import { select } from 'd3-selection'
 import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import type { NetworkGraph } from '~/types/labs'
+import { cssVar } from '~/helpers/theme'
 
-definePageMeta({ layout: 'labs' })
+definePageMeta({ layout: 'default' })
 
 interface GraphNode extends SimulationNodeDatum {
   id: string
@@ -38,6 +39,7 @@ const selectedArtist = ref<{ id: string; name: string } | null>(null)
 const loading = ref(true)
 const graphData = ref<NetworkGraph | null>(null)
 const minShared = ref(2)
+const minSharedId = useId()
 
 const svgContainer = ref<HTMLElement | null>(null)
 const tooltip = ref<{ x: number; y: number; name: string; tracks: number } | null>(null)
@@ -146,7 +148,7 @@ const renderGraph = () => {
     .selectAll('line')
     .data(links)
     .join('line')
-    .attr('stroke', 'oklch(0.7 0.12 180)')
+    .attr('stroke', `color-mix(in oklch, ${cssVar('--color-stone-100')} 40%, transparent)`)
     .attr('stroke-width', (d: GraphLink) => linkWidthScale(d.sharedTracks))
     .attr('stroke-opacity', (d: GraphLink) => linkOpacityScale(d.sharedTracks))
     .attr('cursor', 'pointer')
@@ -178,14 +180,14 @@ const renderGraph = () => {
     .data(nodes)
     .join('circle')
     .attr('r', (d: GraphNode) => d.isFocus ? nodeRadiusScale(d.trackCount) * 1.4 : nodeRadiusScale(d.trackCount))
-    .attr('fill', (d: GraphNode) => d.isFocus ? 'oklch(0.82 0.25 92)' : 'oklch(0.75 0.18 250)')
-    .attr('stroke', (d: GraphNode) => d.isFocus ? 'oklch(0.9 0.2 92)' : 'oklch(0.85 0.18 250)')
+    .attr('fill', (d: GraphNode) => d.isFocus ? cssVar('--color-orange-400') : cssVar('--color-amber-400'))
+    .attr('stroke', (d: GraphNode) => d.isFocus ? cssVar('--color-orange-300') : cssVar('--color-amber-300'))
     .attr('stroke-width', (d: GraphNode) => d.isFocus ? 3 : 1.5)
     .attr('cursor', 'pointer')
     .on('mouseover', (event: MouseEvent, d: GraphNode) => {
       tooltip.value = { x: event.clientX, y: event.clientY, name: d.name, tracks: d.trackCount }
       if (!d.isFocus) {
-        select(event.currentTarget as Element).attr('fill', 'oklch(0.82 0.25 92)')
+        select(event.currentTarget as Element).attr('fill', cssVar('--color-orange-400'))
       }
     })
     .on('mousemove', (event: MouseEvent) => {
@@ -197,7 +199,7 @@ const renderGraph = () => {
     .on('mouseout', (event: MouseEvent, d: GraphNode) => {
       tooltip.value = null
       if (!d.isFocus) {
-        select(event.currentTarget as Element).attr('fill', 'oklch(0.75 0.18 250)')
+        select(event.currentTarget as Element).attr('fill', cssVar('--color-amber-400'))
       }
     })
     .on('click', (_: MouseEvent, d: GraphNode) => {
@@ -216,7 +218,7 @@ const renderGraph = () => {
     .text((d: GraphNode) => d.name)
     .attr('font-size', (d: GraphNode) => d.isFocus ? 12 : Math.max(7, Math.min(10, nodeRadiusScale(d.trackCount) * 0.7)))
     .attr('font-weight', (d: GraphNode) => d.isFocus ? 'bold' : 'normal')
-    .attr('fill', 'oklch(0.85 0 0)')
+    .attr('fill', `color-mix(in oklch, ${cssVar('--color-stone-100')} 75%, transparent)`)
     .attr('text-anchor', 'middle')
     .attr('dy', (d: GraphNode) => {
       const r = d.isFocus ? nodeRadiusScale(d.trackCount) * 1.4 : nodeRadiusScale(d.trackCount)
@@ -300,137 +302,140 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="grid h-full gap-6 lg:grid-cols-5">
-    <div class="flex flex-col gap-6 lg:col-span-1">
-      <div class="rounded-lg border border-rule bg-bg-1 p-5">
-        <div class="mb-4 flex items-center gap-3">
-          <div class="flex size-10 items-center justify-center rounded-lg bg-accent/10">
-            <Network :size="20" class="text-accent" />
-          </div>
-          <div>
-            <h2 class="text-sm font-semibold text-ink">Artist Network</h2>
-            <p class="text-xs text-ink-2">Collaboration connections</p>
-          </div>
-        </div>
+  <div class="flex flex-col gap-4">
+    <LabsBackLink />
 
-        <p class="mb-4 text-sm leading-relaxed text-ink-2">
-          Artists connected by shared tracks. Search to focus on one artist's collaborations. Click any node to explore its network.
-        </p>
-
-        <SearchInput
-          v-model="searchQuery"
-          placeholder="Search artist..."
-          size="md"
-          clearable
-          :debounce="250"
-          @focus="searchOpen = true"
-          @blur="blurSearch"
-          @clear="clearSearch"
-        >
-          <template #results>
-            <div
-              v-if="searchOpen && searchResults.length > 0"
-              class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-rule bg-bg-1 shadow-lg"
-            >
-              <button
-                v-for="result in searchResults"
-                :key="result.id"
-                class="w-full px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-bg-2"
-                @mousedown.prevent="selectArtist(result)"
-              >
-                {{ result.name }}
-              </button>
+    <div class="grid gap-6 lg:grid-cols-5">
+      <div class="flex flex-col gap-6 lg:col-span-1">
+        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
+          <div class="mb-4 flex items-center gap-3">
+            <div class="flex size-10 items-center justify-center rounded-lg bg-amber-400/10">
+              <Network :size="20" class="text-amber-400" />
             </div>
-          </template>
-        </SearchInput>
+            <div>
+              <h2 class="text-lg font-semibold text-stone-100">Artist Network</h2>
+              <p class="text-sm text-stone-100/40">Collaboration connections</p>
+            </div>
+          </div>
 
-        <div v-if="!selectedArtist" class="mt-4">
-          <label class="mb-1 block text-xs font-medium text-ink-2">
-            Min shared tracks: {{ minShared }}
-          </label>
-          <input
-            v-model.number="minShared"
-            type="range"
-            :min="1"
-            :max="20"
-            class="w-full accent-accent"
+          <p class="mb-4 text-base leading-relaxed text-stone-100/60">
+            Artists connected by shared tracks. Search to focus on one artist's collaborations. Click any node to explore its network.
+          </p>
+
+          <SearchInput
+            v-model="searchQuery"
+            placeholder="Search artist..."
+            size="md"
+            clearable
+            :debounce="250"
+            @focus="searchOpen = true"
+            @blur="blurSearch"
+            @clear="clearSearch"
           >
-        </div>
+            <template #results>
+              <div
+                v-if="searchOpen && searchResults.length > 0"
+                class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-stone-100/10 bg-stone-900 shadow-lg"
+              >
+                <button
+                  v-for="result in searchResults"
+                  :key="result.id"
+                  type="button"
+                  class="w-full px-3 py-2 text-left text-base text-stone-100 transition-colors duration-150 hover:bg-stone-800"
+                  @mousedown.prevent="selectArtist(result)"
+                >
+                  {{ result.name }}
+                </button>
+              </div>
+            </template>
+          </SearchInput>
 
-        <div v-if="graphData && graphData.nodes.length > 0" class="mt-4 text-xs text-ink-2">
-          {{ graphData.nodes.length }} artists · {{ graphData.links.length }} connections
-        </div>
+          <div v-if="!selectedArtist" class="mt-4">
+            <label :for="minSharedId" class="mb-1 block text-sm font-medium text-stone-100/60">
+              Min shared tracks: {{ minShared }}
+            </label>
+            <input
+              :id="minSharedId"
+              v-model.number="minShared"
+              type="range"
+              :min="1"
+              :max="20"
+              class="w-full accent-amber-400"
+            >
+          </div>
 
-        <div v-if="selectedArtist" class="mt-4 flex flex-col gap-1.5 text-xs text-ink-2">
-          <div class="flex items-center gap-1.5">
-            <div class="size-2.5 rounded-full" style="background: oklch(0.82 0.25 92)" />
-            Selected
+          <div v-if="graphData && graphData.nodes.length > 0" class="mt-4 text-sm text-stone-100/60 tabular-nums">
+            {{ graphData.nodes.length }} artists · {{ graphData.links.length }} connections
+          </div>
+
+          <div v-if="selectedArtist" class="mt-4 flex flex-col gap-1.5 text-sm text-stone-100/60">
+            <div class="flex items-center gap-1.5">
+              <div class="size-2.5 rounded-full bg-orange-400" />
+              Selected
+            </div>
           </div>
         </div>
       </div>
+
+      <div class="relative lg:col-span-4">
+        <div
+          v-if="loading"
+          class="flex h-full min-h-[600px] items-center justify-center rounded-xl border border-stone-100/6 bg-stone-900"
+        >
+          <div class="flex items-center gap-2 text-base text-stone-100/60">
+            <Loader2 :size="16" class="animate-spin text-amber-400" />
+            Loading network...
+          </div>
+        </div>
+
+        <UiEmptyState
+          v-else-if="!graphData || graphData.nodes.length === 0"
+          :message="selectedArtist ? 'No collaborations found for this artist.' : 'No connections found. Try lowering the threshold.'"
+          class="flex h-full min-h-[600px] flex-col items-center justify-center rounded-xl border border-stone-100/6 bg-stone-900"
+        />
+
+        <div
+          v-else
+          ref="svgContainer"
+          class="h-full min-h-[600px] overflow-hidden rounded-xl border border-stone-100/6 bg-stone-900"
+        />
+      </div>
     </div>
 
-    <div class="relative lg:col-span-4">
+    <Teleport to="body">
       <div
-        v-if="loading"
-        class="flex h-full min-h-[600px] items-center justify-center rounded-lg border border-rule bg-bg-1"
+        v-if="tooltip"
+        class="pointer-events-none fixed z-[2000] rounded-lg border border-stone-100/10 bg-stone-900 px-3 py-2 shadow-lg"
+        :style="{
+          left: `${tooltip.x + 12}px`,
+          top: `${tooltip.y - 10}px`,
+        }"
       >
-        <div class="flex items-center gap-2 text-sm text-ink-2">
-          <Loader2 :size="16" class="animate-spin text-accent" />
-          Loading network...
+        <div class="text-base font-semibold text-stone-100">{{ tooltip.name }}</div>
+        <div class="text-sm text-stone-100/60">
+          {{ tooltip.tracks }} {{ tooltip.tracks === 1 ? 'track' : 'tracks' }}
         </div>
       </div>
 
       <div
-        v-else-if="!graphData || graphData.nodes.length === 0"
-        class="flex h-full min-h-[600px] items-center justify-center rounded-lg border border-rule bg-bg-1"
+        v-if="linkTooltip"
+        class="pointer-events-none fixed z-[2000] max-w-xs rounded-lg border border-stone-100/10 bg-stone-900 px-3 py-2 shadow-lg"
+        :style="{
+          left: `${linkTooltip.x + 12}px`,
+          top: `${linkTooltip.y - 10}px`,
+        }"
       >
-        <p class="text-sm text-ink-2">
-          {{ selectedArtist ? 'No collaborations found for this artist.' : 'No connections found. Try lowering the threshold.' }}
-        </p>
+        <div class="text-base font-semibold text-stone-100">{{ linkTooltip.source }} × {{ linkTooltip.target }}</div>
+        <div class="text-sm text-stone-100/60">{{ linkTooltip.shared }} shared tracks</div>
+        <div v-if="linkTooltip.tracks.length > 0" class="mt-1 flex flex-col gap-0.5">
+          <div v-for="track in linkTooltip.tracks.slice(0, 5)" :key="track" class="truncate text-[10px] text-stone-100/60">
+            {{ track }}
+          </div>
+          <div v-if="linkTooltip.tracks.length > 5" class="text-[10px] text-stone-100/60">
+            +{{ linkTooltip.tracks.length - 5 }} more
+          </div>
+        </div>
       </div>
-
-      <div
-        v-else
-        ref="svgContainer"
-        class="h-full min-h-[600px] overflow-hidden rounded-lg border border-rule bg-bg-1"
-      />
-    </div>
+    </Teleport>
   </div>
-
-  <Teleport to="body">
-    <div
-      v-if="tooltip"
-      class="pointer-events-none fixed z-[2000] rounded-lg border border-rule bg-bg-1 px-3 py-2 shadow-lg"
-      :style="{
-        left: `${tooltip.x + 12}px`,
-        top: `${tooltip.y - 10}px`,
-      }"
-    >
-      <div class="text-sm font-semibold text-ink">{{ tooltip.name }}</div>
-      <div class="text-xs text-ink-2">
-        {{ tooltip.tracks }} {{ tooltip.tracks === 1 ? 'track' : 'tracks' }}
-      </div>
-    </div>
-
-    <div
-      v-if="linkTooltip"
-      class="pointer-events-none fixed z-[2000] max-w-xs rounded-lg border border-rule bg-bg-1 px-3 py-2 shadow-lg"
-      :style="{
-        left: `${linkTooltip.x + 12}px`,
-        top: `${linkTooltip.y - 10}px`,
-      }"
-    >
-      <div class="text-sm font-semibold text-ink">{{ linkTooltip.source }} × {{ linkTooltip.target }}</div>
-      <div class="text-xs text-ink-2">{{ linkTooltip.shared }} shared tracks</div>
-      <div v-if="linkTooltip.tracks.length > 0" class="mt-1 space-y-0.5">
-        <div v-for="track in linkTooltip.tracks.slice(0, 5)" :key="track" class="truncate text-[10px] text-ink-2">
-          {{ track }}
-        </div>
-        <div v-if="linkTooltip.tracks.length > 5" class="text-[10px] text-ink-2">
-          +{{ linkTooltip.tracks.length - 5 }} more
-        </div>
-      </div>
-    </div>
-  </Teleport>
 </template>

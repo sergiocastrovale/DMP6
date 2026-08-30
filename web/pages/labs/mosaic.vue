@@ -3,7 +3,7 @@ import { Grid3x3, Loader2, Download, Eye, Trash2, Play, Square } from 'lucide-vu
 import { formatDate } from '~/helpers/functions'
 import { useMosaicStore } from '~/stores/mosaic'
 
-definePageMeta({ layout: 'labs' })
+definePageMeta({ layout: 'default' })
 
 const mosaic = useMosaicStore()
 const mode = ref('chronological')
@@ -83,156 +83,147 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="grid gap-6 lg:grid-cols-5">
-    <div class="flex flex-col gap-6 lg:col-span-3">
-      <div class="rounded-lg border border-rule bg-bg-1 p-5">
-        <div class="mb-4 flex items-center gap-3">
-          <div class="flex size-10 items-center justify-center rounded-lg bg-accent/10">
-            <Grid3x3 :size="20" class="text-accent" />
-          </div>
-          <div>
-            <h2 class="text-sm font-semibold text-ink">Album Mosaic</h2>
-            <p class="text-xs text-ink-2">All your album covers in one image</p>
-          </div>
-        </div>
+  <div class="flex flex-col gap-4">
+    <LabsBackLink />
 
-        <p class="mb-4 text-sm leading-relaxed text-ink-2">
-          Generates a mosaic of every album cover in your library.
-          Chronological sorts by release year. Gradient arranges covers by color temperature - cold tones top-left, warm tones bottom-right.
-        </p>
-
-        <div class="mb-4">
-          <RadioGroup v-model="mode" :options="modeOptions" />
-        </div>
-
-        <button
-          v-if="!mosaic.isGenerating"
-          class="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink transition-colors hover:bg-accent"
-          @click="mosaic.generate(mode)"
-        >
-          <Play :size="14" />
-          Generate
-        </button>
-        <button
-          v-else
-          class="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
-          @click="mosaic.cancel()"
-        >
-          <Square :size="14" />
-          Cancel
-        </button>
-
-        <div v-if="mosaic.isGenerating && mosaic.progress" class="mt-4 space-y-2">
-          <div class="flex items-center justify-between text-xs">
-            <span class="text-ink-2">
-              Building
-              <span class="text-ink">({{ mosaic.progress.current }}/{{ mosaic.progress.total }} images processed)</span>
-            </span>
-            <span class="text-ink-3">{{ Math.round(progressPercent) }}%</span>
-          </div>
-          <div class="h-1.5 w-full rounded-full bg-bg-2">
-            <div
-              class="h-1.5 rounded-full bg-accent transition-all duration-300"
-              :style="{ width: `${progressPercent}%` }"
-            />
-          </div>
-        </div>
-
-        <div v-if="mosaic.isGenerating && !mosaic.progress" class="mt-4 flex items-center gap-2 text-xs text-ink-2">
-          <Loader2 :size="14" class="animate-spin text-accent" />
-          Starting...
-        </div>
-
-        <p v-if="mosaic.error" class="mt-3 text-xs text-red-400">{{ mosaic.error }}</p>
-      </div>
-
-      <div class="rounded-lg border border-rule bg-bg-1 p-5">
-        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
-          Mosaic History
-        </h3>
-
-        <div v-if="mosaic.mosaics.length === 0" class="text-sm text-ink-3">
-          No mosaics generated yet.
-        </div>
-
-        <div v-else class="divide-y divide-rule rounded-lg border border-rule">
-          <div
-            v-for="item in mosaic.mosaics"
-            :key="item.filename"
-            class="flex items-center justify-between px-4 py-3"
-          >
+    <div class="grid gap-6 lg:grid-cols-5">
+      <div class="flex flex-col gap-6 lg:col-span-3">
+        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
+          <div class="mb-4 flex items-center gap-3">
+            <div class="flex size-10 items-center justify-center rounded-lg bg-amber-400/10">
+              <Grid3x3 :size="20" class="text-amber-400" />
+            </div>
             <div>
-              <p class="text-sm text-ink">{{ formatDate(item.createdAt) }}</p>
-              <p class="text-xs text-ink-3">
-                <span v-if="item.imageCount">{{ item.imageCount }} covers · </span>{{ formatSize(item.size) }}
-              </p>
+              <h2 class="text-lg font-semibold text-stone-100">Album Mosaic</h2>
+              <p class="text-sm text-stone-100/40">All your album covers in one image</p>
             </div>
-            <div class="flex items-center gap-1">
-              <button
-                class="rounded-md p-1.5 text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink"
-                title="View preview"
-                @click="handleView(item)"
-              >
-                <Eye :size="14" />
-              </button>
-              <button
-                class="rounded-md p-1.5 text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink"
-                title="Download full resolution"
-                @click="handleDownload(item.filename)"
-              >
-                <Download :size="14" />
-              </button>
-              <button
-                class="rounded-md p-1.5 text-ink-2 transition-colors hover:bg-bg-2 hover:text-red-400"
-                title="Delete"
-                @click="confirmDelete(item.filename)"
-              >
-                <Trash2 :size="14" />
-              </button>
+          </div>
+
+          <p class="mb-4 text-base leading-relaxed text-stone-100/60">
+            Generates a mosaic of every album cover in your library.
+            Chronological sorts by release year. Gradient arranges covers by color temperature - cold tones top-left, warm tones bottom-right.
+          </p>
+
+          <div class="mb-4">
+            <RadioGroup v-model="mode" :options="modeOptions" />
+          </div>
+
+          <UiButton v-if="!mosaic.isGenerating" :icon="Play" @click="mosaic.generate(mode)">
+            Generate
+          </UiButton>
+          <UiButton v-else variant="danger" :icon="Square" @click="mosaic.cancel()">
+            Cancel
+          </UiButton>
+
+          <div v-if="mosaic.isGenerating && mosaic.progress" class="mt-4 flex flex-col gap-2">
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-stone-100/60">
+                Building
+                <span class="text-stone-100">({{ mosaic.progress.current }}/{{ mosaic.progress.total }} images processed)</span>
+              </span>
+              <span class="text-stone-100/40 tabular-nums">{{ Math.round(progressPercent) }}%</span>
+            </div>
+            <div class="h-1.5 w-full rounded-full bg-stone-800">
+              <div
+                class="h-1.5 rounded-full bg-amber-400 transition-all duration-300"
+                :style="{ width: `${progressPercent}%` }"
+              />
+            </div>
+          </div>
+
+          <div v-if="mosaic.isGenerating && !mosaic.progress" class="mt-4 flex items-center gap-2 text-base text-stone-100/60">
+            <Loader2 :size="14" class="animate-spin text-amber-400" />
+            Starting...
+          </div>
+
+          <p v-if="mosaic.error" class="mt-3 text-sm text-danger">{{ mosaic.error }}</p>
+        </div>
+
+        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
+          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+            Mosaic History
+          </h3>
+
+          <UiEmptyState v-if="mosaic.mosaics.length === 0" message="No mosaics generated yet." />
+
+          <div v-else class="divide-y divide-stone-100/6 rounded-lg border border-stone-100/6">
+            <div
+              v-for="item in mosaic.mosaics"
+              :key="item.filename"
+              class="flex items-center justify-between px-4 py-3"
+            >
+              <div>
+                <p class="text-base text-stone-100">{{ formatDate(item.createdAt) }}</p>
+                <p class="text-sm text-stone-100/40">
+                  <span v-if="item.imageCount">{{ item.imageCount }} covers · </span>{{ formatSize(item.size) }}
+                </p>
+              </div>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  class="rounded-md p-1.5 text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100"
+                  aria-label="View preview"
+                  @click="handleView(item)"
+                >
+                  <Eye :size="14" />
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md p-1.5 text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100"
+                  aria-label="Download full resolution"
+                  @click="handleDownload(item.filename)"
+                >
+                  <Download :size="14" />
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md p-1.5 text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-danger"
+                  aria-label="Delete"
+                  @click="confirmDelete(item.filename)"
+                >
+                  <Trash2 :size="14" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="lg:col-span-2">
-      <div class="sticky top-20 rounded-lg border border-rule bg-bg-1 p-5">
-        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
-          Preview
-        </h3>
+      <div class="lg:col-span-2">
+        <div class="sticky top-20 rounded-xl border border-stone-100/6 bg-stone-900 p-5">
+          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+            Preview
+          </h3>
 
-        <div v-if="previewUrl" class="cursor-pointer overflow-hidden rounded-lg" title="Click to open full resolution" @click="handleOpenPreview">
-          <img
-            :key="previewUrl"
-            :src="previewUrl"
-            alt="Mosaic preview"
-            class="w-full transition-opacity hover:opacity-90"
+          <button
+            v-if="previewUrl"
+            type="button"
+            class="block w-full cursor-pointer overflow-hidden rounded-lg"
+            title="Click to open full resolution"
+            @click="handleOpenPreview"
           >
+            <img
+              :key="previewUrl"
+              :src="previewUrl"
+              alt="Mosaic preview"
+              class="w-full transition-opacity duration-150 hover:opacity-90"
+            >
+          </button>
+          <p v-else class="text-base text-stone-100/40">
+            Click the view button on a mosaic to see its preview here.
+          </p>
         </div>
-        <p v-else class="text-sm text-ink-3">
-          Click the view button on a mosaic to see its preview here.
-        </p>
       </div>
     </div>
-  </div>
 
-  <Dialog v-model="showDeleteDialog" title="Delete Mosaic">
-    <p class="mb-4 text-sm text-ink-2">
-      This will permanently delete this mosaic and its preview. This cannot be undone.
-    </p>
-    <div class="flex justify-end gap-2">
-      <button
-        class="rounded-md px-3 py-1.5 text-sm font-medium text-ink-2 transition-colors hover:text-ink"
-        @click="showDeleteDialog = false"
-      >
-        Cancel
-      </button>
-      <button
-        class="rounded-md bg-red-500/20 border border-red-500/30 px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30"
-        @click="handleDelete"
-      >
-        Delete
-      </button>
-    </div>
-  </Dialog>
+    <ConfirmDialog
+      v-model="showDeleteDialog"
+      title="Delete Mosaic"
+      message="This will permanently delete this mosaic and its preview. This cannot be undone."
+      confirm-label="Delete"
+      variant="danger"
+      :icon="Trash2"
+      @confirm="handleDelete"
+    />
+  </div>
 </template>

@@ -661,6 +661,52 @@ Matched against `10-downloads*.png`.
   instead of its own idle/on class pair, and its bare hover-only help icon is now a real
   `<button aria-label>` - previously unreachable by keyboard, decorative-only.
 
+## Labs (Stage 13)
+
+Matched against `11-labs*.png`.
+
+- **Deleted `layouts/labs.vue` and `components/labs/Header.vue`.** The reference doesn't use a
+  standalone top-nav layout for Labs at all - every detail-page screenshot shows the same
+  collapsed sidebar rail the rest of the app uses, with a plain "‹ Back to Labs" link where the
+  old layout had a persistent five-item nav strip. All Labs pages (`index`, `decades`, `genome`,
+  `mosaic`, `network`) now use the standard `default` layout (`AppShell`), and the four detail
+  pages get a new `components/labs/BackLink.vue` instead. `map.vue` keeps `layout: false` - the
+  reference's map is genuinely full-bleed (no sidebar at all), which was already the right call
+  before this stage; it gets its own slim back-link row above the map canvas instead of floating
+  one over the Leaflet canvas, avoiding any collision with Leaflet's own top-left zoom control.
+- **New `helpers/theme.ts` (`cssVar`)** reads a design token's live value off the document root
+  (`getComputedStyle(document.documentElement)`), SSR-guarded. This is why `theme.css` is emitted
+  `@theme static` in the first place (Stage 0) - it's the one thing making every non-Tailwind
+  rendering surface here (Chart.js canvases, d3 SVGs, Leaflet's vector layer) able to read the
+  current theme instead of a colour literal frozen at the moment someone copied it in.
+- **`decades.vue`'s six hardcoded Chart.js `rgba()` pairs** are replaced with `cssVar` reads of
+  five ramps (amber/green/orange/red/violet) plus `color-mix()` for the grid lines, angle lines,
+  point labels and legend text (previously `rgba(255,255,255,...)` literals). Chart.js also had no
+  `onUnmounted` destroy - a real leak, since every rerender created a new `Chart` instance without
+  disposing the last one's canvas context and event listeners.
+- **`genome.vue` and `network.vue`'s d3 node/link colours** move off hardcoded `oklch()` literals
+  onto `cssVar`. Both files carried their own copy of the *old* pre-Stage-0 accent literal
+  (`oklch(0.82 0.25 92)`, superseded by amber back in Stage 0) for their "selected/hover" state -
+  now `cssVar('--color-orange-400')`, matching the warmer highlight colour the reference actually
+  shows against the base amber nodes. Node/link base colours moved off an unrelated blue hue
+  (`oklch(0.7-0.75 0.1-0.18 250)`, never one of the app's six ramps) onto amber to match.
+- **`map.vue`'s Leaflet `setStyle` calls** move the same way (border colour, hover colour), and
+  its own `.leaflet-container`/`.leaflet-control-zoom a` `<style>` block is deleted - `main.css`
+  already carries the identical rules from Stage 0, this was the last of the two deferred
+  consumers named there (`playlist/Block.vue` was the other, migrated in Stage 7). **The
+  `<style>` exception list in `CLAUDE.md` is now empty** - grep confirms zero `<style` blocks
+  remain anywhere in `components/` or `pages/`, ahead of Stage 15's teardown checklist.
+- **Escape now clears the hover tooltip on the map** - a touch tap fires a synthetic `mouseover`
+  with no matching `mouseout` to follow it, so without this a tapped country's tooltip had no way
+  to dismiss on a touch device. `genome.vue`/`network.vue`'s tooltips are the same hover-tracked,
+  auto-clearing-on-mouseout pattern and have the identical touch gap, but weren't touched here to
+  keep this stage's d3 changes to colour-literal fixes only, not new interaction code - worth
+  revisiting in the Stage 14 accessibility/resilience sweep.
+- **`mosaic.vue`'s hand-rolled delete confirmation is now `ConfirmDialog`**, and its raw
+  `<button>` elements move onto `UiButton`/`UiEmptyState`.
+
+## Adding to the system
+
 ## Adding to the system
 
 ## Adding to the system

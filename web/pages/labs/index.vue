@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Globe, Grid3x3, Dna, Clock, Network } from 'lucide-vue-next'
 
-definePageMeta({ layout: 'labs' })
+definePageMeta({ layout: 'default' })
 
 const labs = [
   {
@@ -38,21 +38,21 @@ const labs = [
 </script>
 
 <template>
-  <div>
-    <h1 class="mb-6 text-2xl font-bold">Labs</h1>
+  <div class="flex flex-col gap-6">
+    <PageTitle text="Labs" />
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <NuxtLink
         v-for="lab in labs"
         :key="lab.to"
         :to="lab.to"
-        class="group rounded-lg border border-rule bg-bg-1 p-5 transition-colors hover:border-rule hover:bg-bg-2/50"
+        class="group rounded-xl border border-stone-100/6 bg-stone-900 p-5 transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800/50"
       >
-        <div class="mb-3 flex size-10 items-center justify-center rounded-lg bg-accent/10">
-          <component :is="lab.icon" :size="20" class="text-accent" />
+        <div class="mb-3 flex size-10 items-center justify-center rounded-lg bg-amber-400/10">
+          <component :is="lab.icon" :size="20" class="text-amber-400" />
         </div>
-        <h2 class="mb-1 text-sm font-semibold text-ink">{{ lab.title }}</h2>
-        <p class="text-xs leading-relaxed text-ink-2">{{ lab.description }}</p>
+        <h2 class="mb-1 text-lg font-semibold text-stone-100">{{ lab.title }}</h2>
+        <p class="text-sm leading-relaxed text-stone-100/40">{{ lab.description }}</p>
       </NuxtLink>
     </div>
   </div>

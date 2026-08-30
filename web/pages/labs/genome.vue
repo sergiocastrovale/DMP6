@@ -14,8 +14,9 @@ import { select } from 'd3-selection'
 import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import type { GenomeGraph } from '~/types/labs'
+import { cssVar } from '~/helpers/theme'
 
-definePageMeta({ layout: 'labs' })
+definePageMeta({ layout: 'default' })
 
 const { artistImage } = useImageUrl()
 
@@ -44,6 +45,8 @@ const dialogLoading = ref(false)
 
 const minArtists = ref(2)
 const minWeight = ref(1)
+const minArtistsId = useId()
+const minWeightId = useId()
 
 const filteredGraph = computed(() => {
   if (!graphData.value) {
@@ -116,7 +119,7 @@ const renderGraph = () => {
     .selectAll('line')
     .data(links)
     .join('line')
-    .attr('stroke', 'oklch(0.7 0.1 250)')
+    .attr('stroke', `color-mix(in oklch, ${cssVar('--color-stone-100')} 40%, transparent)`)
     .attr('stroke-width', (d: GraphLink) => linkWidthScale(d.weight))
     .attr('stroke-opacity', (d: GraphLink) => linkOpacityScale(d.weight))
 
@@ -126,13 +129,13 @@ const renderGraph = () => {
     .data(nodes)
     .join('circle')
     .attr('r', (d: GraphNode) => nodeRadiusScale(d.artistCount))
-    .attr('fill', 'oklch(0.75 0.18 250)')
-    .attr('stroke', 'oklch(0.85 0.18 250)')
+    .attr('fill', cssVar('--color-amber-400'))
+    .attr('stroke', cssVar('--color-amber-300'))
     .attr('stroke-width', 1.5)
     .attr('cursor', 'pointer')
     .on('mouseover', (event: MouseEvent, d: GraphNode) => {
       tooltip.value = { x: event.clientX, y: event.clientY, name: d.name, count: d.artistCount }
-      select(event.currentTarget as Element).attr('fill', 'oklch(0.82 0.25 92)')
+      select(event.currentTarget as Element).attr('fill', cssVar('--color-orange-400'))
     })
     .on('mousemove', (event: MouseEvent) => {
       if (tooltip.value) {
@@ -142,7 +145,7 @@ const renderGraph = () => {
     })
     .on('mouseout', (event: MouseEvent) => {
       tooltip.value = null
-      select(event.currentTarget as Element).attr('fill', 'oklch(0.75 0.18 250)')
+      select(event.currentTarget as Element).attr('fill', cssVar('--color-amber-400'))
     })
     .on('click', (_: MouseEvent, d: GraphNode) => {
       openGenreDialog(d)
@@ -155,7 +158,7 @@ const renderGraph = () => {
     .join('text')
     .text((d: GraphNode) => d.name)
     .attr('font-size', (d: GraphNode) => Math.max(8, Math.min(12, nodeRadiusScale(d.artistCount) * 0.8)))
-    .attr('fill', 'oklch(0.8 0 0)')
+    .attr('fill', `color-mix(in oklch, ${cssVar('--color-stone-100')} 70%, transparent)`)
     .attr('text-anchor', 'middle')
     .attr('dy', (d: GraphNode) => nodeRadiusScale(d.artistCount) + 12)
     .attr('pointer-events', 'none')
@@ -257,122 +260,125 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="grid h-full gap-6 lg:grid-cols-5">
-    <div class="flex flex-col gap-6 lg:col-span-1">
-      <div class="rounded-lg border border-rule bg-bg-1 p-5">
-        <div class="mb-4 flex items-center gap-3">
-          <div class="flex size-10 items-center justify-center rounded-lg bg-accent/10">
-            <Dna :size="20" class="text-accent" />
-          </div>
-          <div>
-            <h2 class="text-sm font-semibold text-ink">Genre Genome</h2>
-            <p class="text-xs text-ink-2">Genre relationships via shared artists</p>
-          </div>
-        </div>
+  <div class="flex flex-col gap-4">
+    <LabsBackLink />
 
-        <p class="mb-4 text-sm leading-relaxed text-ink-2">
-          Each node is a genre. Lines connect genres that share artists - thicker lines mean more artists in common. Drag nodes to rearrange. Click a genre to see its artists.
-        </p>
-
-        <div class="space-y-4">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-ink-2">
-              Min artists per genre: {{ minArtists }}
-            </label>
-            <input
-              v-model.number="minArtists"
-              type="range"
-              :min="1"
-              :max="20"
-              class="w-full accent-accent"
-            >
+    <div class="grid gap-6 lg:grid-cols-5">
+      <div class="flex flex-col gap-6 lg:col-span-1">
+        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
+          <div class="mb-4 flex items-center gap-3">
+            <div class="flex size-10 items-center justify-center rounded-lg bg-amber-400/10">
+              <Dna :size="20" class="text-amber-400" />
+            </div>
+            <div>
+              <h2 class="text-lg font-semibold text-stone-100">Genre Genome</h2>
+              <p class="text-sm text-stone-100/40">Genre relationships via shared artists</p>
+            </div>
           </div>
 
-          <div>
-            <label class="mb-1 block text-xs font-medium text-ink-2">
-              Min shared artists: {{ minWeight }}
-            </label>
-            <input
-              v-model.number="minWeight"
-              type="range"
-              :min="1"
-              :max="10"
-              class="w-full accent-accent"
-            >
+          <p class="mb-4 text-base leading-relaxed text-stone-100/60">
+            Each node is a genre. Lines connect genres that share artists - thicker lines mean more artists in common. Drag nodes to rearrange. Click a genre to see its artists.
+          </p>
+
+          <div class="flex flex-col gap-4">
+            <div>
+              <label :for="minArtistsId" class="mb-1 block text-sm font-medium text-stone-100/60">
+                Min artists per genre: {{ minArtists }}
+              </label>
+              <input
+                :id="minArtistsId"
+                v-model.number="minArtists"
+                type="range"
+                :min="1"
+                :max="20"
+                class="w-full accent-amber-400"
+              >
+            </div>
+
+            <div>
+              <label :for="minWeightId" class="mb-1 block text-sm font-medium text-stone-100/60">
+                Min shared artists: {{ minWeight }}
+              </label>
+              <input
+                :id="minWeightId"
+                v-model.number="minWeight"
+                type="range"
+                :min="1"
+                :max="10"
+                class="w-full accent-amber-400"
+              >
+            </div>
           </div>
-        </div>
 
-        <div v-if="filteredGraph.nodes.length > 0" class="mt-4 text-xs text-ink-2">
-          {{ filteredGraph.nodes.length }} genres · {{ filteredGraph.links.length }} connections
-        </div>
-      </div>
-    </div>
-
-    <div class="relative lg:col-span-4">
-      <div
-        v-if="status === 'pending'"
-        class="flex h-full items-center justify-center rounded-lg border border-rule bg-bg-1"
-      >
-        <div class="flex items-center gap-2 text-sm text-ink-2">
-          <Loader2 :size="16" class="animate-spin text-accent" />
-          Loading genre data...
+          <div v-if="filteredGraph.nodes.length > 0" class="mt-4 text-sm text-stone-100/60 tabular-nums">
+            {{ filteredGraph.nodes.length }} genres · {{ filteredGraph.links.length }} connections
+          </div>
         </div>
       </div>
 
-      <div
-        v-else-if="filteredGraph.nodes.length === 0"
-        class="flex h-full items-center justify-center rounded-lg border border-rule bg-bg-1"
-      >
-        <p class="text-sm text-ink-2">No genres match current filters. Try lowering thresholds.</p>
-      </div>
+      <div class="relative lg:col-span-4">
+        <div
+          v-if="status === 'pending'"
+          class="flex h-full items-center justify-center rounded-xl border border-stone-100/6 bg-stone-900"
+        >
+          <div class="flex items-center gap-2 text-base text-stone-100/60">
+            <Loader2 :size="16" class="animate-spin text-amber-400" />
+            Loading genre data...
+          </div>
+        </div>
 
-      <div
-        v-else
-        ref="svgContainer"
-        class="h-full min-h-[600px] overflow-hidden rounded-lg border border-rule bg-bg-1"
-      />
-    </div>
-  </div>
+        <UiEmptyState
+          v-else-if="filteredGraph.nodes.length === 0"
+          message="No genres match current filters. Try lowering thresholds."
+          class="h-full rounded-xl border border-stone-100/6 bg-stone-900"
+        />
 
-  <Teleport to="body">
-    <div
-      v-if="tooltip"
-      class="pointer-events-none fixed z-[2000] rounded-lg border border-rule bg-bg-1 px-3 py-2 shadow-lg"
-      :style="{
-        left: `${tooltip.x + 12}px`,
-        top: `${tooltip.y - 10}px`,
-      }"
-    >
-      <div class="text-sm font-semibold text-ink">{{ tooltip.name }}</div>
-      <div class="text-xs text-ink-2">
-        {{ tooltip.count }} {{ tooltip.count === 1 ? 'artist' : 'artists' }}
-      </div>
-    </div>
-  </Teleport>
-
-  <Dialog
-    v-model="dialogOpen"
-    :title="dialogGenre ? `${dialogGenre.name} (${dialogGenre.count})` : ''"
-    max-width="lg"
-  >
-    <div class="-mx-6 -my-4 max-h-[70vh] overflow-y-auto px-6 py-4">
-      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-        <Block
-          v-for="artist in dialogArtists"
-          :id="artist.id"
-          :key="artist.id"
-          :title="artist.name"
-          :image="artistImage(artist)"
-          :link="`/artist/${artist.slug}`"
+        <div
+          v-else
+          ref="svgContainer"
+          class="h-full min-h-[600px] overflow-hidden rounded-xl border border-stone-100/6 bg-stone-900"
         />
       </div>
-      <InfiniteScroll margin="100px" @load="loadMoreArtists" />
-      <div v-if="dialogLoading" class="py-6 text-center text-sm text-ink-2">
-        Loading...
-      </div>
-      <div v-if="!dialogLoading && dialogArtists.length === 0" class="py-6 text-center text-sm text-ink-2">
-        No artists found
-      </div>
     </div>
-  </Dialog>
+
+    <Teleport to="body">
+      <div
+        v-if="tooltip"
+        class="pointer-events-none fixed z-[2000] rounded-lg border border-stone-100/10 bg-stone-900 px-3 py-2 shadow-lg"
+        :style="{
+          left: `${tooltip.x + 12}px`,
+          top: `${tooltip.y - 10}px`,
+        }"
+      >
+        <div class="text-base font-semibold text-stone-100">{{ tooltip.name }}</div>
+        <div class="text-sm text-stone-100/60">
+          {{ tooltip.count }} {{ tooltip.count === 1 ? 'artist' : 'artists' }}
+        </div>
+      </div>
+    </Teleport>
+
+    <Dialog
+      v-model="dialogOpen"
+      :title="dialogGenre ? `${dialogGenre.name} (${dialogGenre.count})` : ''"
+      max-width="lg"
+    >
+      <div class="-mx-6 -my-4 max-h-[70vh] overflow-y-auto px-6 py-4">
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+          <Block
+            v-for="artist in dialogArtists"
+            :id="artist.id"
+            :key="artist.id"
+            :title="artist.name"
+            :image="artistImage(artist)"
+            :link="`/artist/${artist.slug}`"
+          />
+        </div>
+        <InfiniteScroll margin="100px" @load="loadMoreArtists" />
+        <div v-if="dialogLoading" class="py-6 text-center text-base text-stone-100/60">
+          Loading...
+        </div>
+        <UiEmptyState v-if="!dialogLoading && dialogArtists.length === 0" message="No artists found" />
+      </div>
+    </Dialog>
+  </div>
 </template>
