@@ -7,7 +7,7 @@ Local development setup. Conventions, data model, commands and API/page inventor
 
 - **Node.js 20+** and **pnpm** (for Prisma): `npm install -g pnpm`
 - **Framework**: Nuxt 4 + Vue 3 + TypeScript
-- **Styling**: Tailwind CSS v4. No custom CSS except the three exceptions listed in CLAUDE.md (animated conic-gradient border, Leaflet control overrides)
+- **Styling**: Tailwind CSS v4, on the token/recipe layer described in [design_system.md](design_system.md) (`web/assets/css/theme.css` + `web/helpers/ui.ts`). No custom CSS except the exceptions listed in CLAUDE.md (animated conic-gradient border, Leaflet control overrides) — both already have a shared, non-scoped home in `main.css`; the remaining component-local copies are transitional, see design_system.md
 - **Icons**: Lucide (`lucide-vue-next`)
 - **State**: Pinia with localStorage persistence (`pinia-plugin-persistedstate`)
 - **Database**: Prisma + PostgreSQL 16+ (schema at `web/prisma/schema.prisma`)

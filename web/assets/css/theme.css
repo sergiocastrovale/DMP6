@@ -1,0 +1,121 @@
+/* DMP design tokens — Tailwind v4 @theme.
+   Six colour ramps (50 -> 950) plus six semantic aliases that name a decision, not a hue.
+   `static` so every token is also emitted as a real CSS custom property, resolvable from
+   inline styles, canvas and JS (see pages/labs/*.vue) via getComputedStyle. */
+
+@theme static {
+  /* stone — warm neutral: surfaces at the dark end, text at the light end */
+  --color-stone-50: #faf8f3;
+  --color-stone-100: #f0ebde;
+  --color-stone-200: #d3cbb8;
+  --color-stone-300: #a8a08c;
+  --color-stone-400: #7d7563;
+  --color-stone-500: #57503f;
+  --color-stone-600: #3a352b;
+  --color-stone-700: #232019;
+  --color-stone-800: #1c1a16;
+  --color-stone-900: #15130f;
+  --color-stone-950: #0e0d0c;
+
+  /* amber — brand hue */
+  --color-amber-50: oklch(0.97 0.02 80);
+  --color-amber-100: oklch(0.94 0.05 80);
+  --color-amber-200: oklch(0.89 0.09 78);
+  --color-amber-300: oklch(0.86 0.13 78);
+  --color-amber-400: oklch(0.78 0.16 75);
+  --color-amber-500: oklch(0.72 0.16 72);
+  --color-amber-600: oklch(0.64 0.15 68);
+  --color-amber-700: oklch(0.54 0.13 64);
+  --color-amber-800: oklch(0.44 0.10 60);
+  --color-amber-900: oklch(0.34 0.08 58);
+  --color-amber-950: oklch(0.24 0.06 56);
+
+  /* green — success */
+  --color-green-50: oklch(0.97 0.02 155);
+  --color-green-100: oklch(0.93 0.05 155);
+  --color-green-200: oklch(0.87 0.08 155);
+  --color-green-300: oklch(0.80 0.11 155);
+  --color-green-400: oklch(0.76 0.12 155);
+  --color-green-500: oklch(0.72 0.13 155);
+  --color-green-600: oklch(0.62 0.13 155);
+  --color-green-700: oklch(0.52 0.11 155);
+  --color-green-800: oklch(0.42 0.09 155);
+  --color-green-900: oklch(0.32 0.07 155);
+  --color-green-950: oklch(0.22 0.05 155);
+
+  /* orange — warning */
+  --color-orange-50: oklch(0.97 0.02 55);
+  --color-orange-100: oklch(0.93 0.05 55);
+  --color-orange-200: oklch(0.87 0.10 52);
+  --color-orange-300: oklch(0.80 0.14 52);
+  --color-orange-400: oklch(0.74 0.16 50);
+  --color-orange-500: oklch(0.68 0.18 40);
+  --color-orange-600: oklch(0.60 0.17 38);
+  --color-orange-700: oklch(0.50 0.15 36);
+  --color-orange-800: oklch(0.40 0.12 34);
+  --color-orange-900: oklch(0.31 0.09 32);
+  --color-orange-950: oklch(0.22 0.06 30);
+
+  /* red — danger */
+  --color-red-50: oklch(0.97 0.02 20);
+  --color-red-100: oklch(0.93 0.05 20);
+  --color-red-200: oklch(0.86 0.10 20);
+  --color-red-300: oklch(0.75 0.16 20);
+  --color-red-400: oklch(0.62 0.20 20);
+  --color-red-500: oklch(0.56 0.20 20);
+  --color-red-600: oklch(0.49 0.19 20);
+  --color-red-700: oklch(0.42 0.16 20);
+  --color-red-800: oklch(0.35 0.13 20);
+  --color-red-900: oklch(0.28 0.10 20);
+  --color-red-950: oklch(0.20 0.07 20);
+
+  /* violet — info */
+  --color-violet-50: oklch(0.97 0.02 285);
+  --color-violet-100: oklch(0.93 0.04 285);
+  --color-violet-200: oklch(0.86 0.08 285);
+  --color-violet-300: oklch(0.76 0.12 285);
+  --color-violet-400: oklch(0.66 0.16 285);
+  --color-violet-500: oklch(0.59 0.18 285);
+  --color-violet-600: oklch(0.51 0.18 285);
+  --color-violet-700: oklch(0.43 0.15 285);
+  --color-violet-800: oklch(0.35 0.12 285);
+  --color-violet-900: oklch(0.28 0.09 285);
+  --color-violet-950: oklch(0.20 0.06 285);
+
+  /* semantic aliases — the only names that carry a decision rather than a value */
+  --color-accent: var(--color-amber-400);
+  --color-on-accent: #17140d;
+  --color-success: var(--color-green-500);
+  --color-warning: var(--color-orange-400);
+  --color-danger: var(--color-red-400);
+  --color-info: var(--color-violet-400);
+
+  /* type families */
+  --font-sans: 'Inter Tight', 'SF Pro Text', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-display: 'Inter Tight', 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'Courier Prime', ui-monospace, monospace;
+
+  /* type scale — 2xs 11px -> 4xl 42px */
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 12.5px;
+  --text-base: 13.5px;
+  --text-lg: 14.5px;
+  --text-xl: 17px;
+  --text-2xl: 21px;
+  --text-3xl: 30px;
+  --text-4xl: 42px;
+
+  /* radii */
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 16px;
+
+  /* elevation */
+  --shadow-md: 0 10px 28px -14px rgba(0, 0, 0, .9);
+  --shadow-lg: 0 24px 50px -20px rgba(0, 0, 0, .9);
+  --shadow-xl: 0 50px 100px -40px rgba(0, 0, 0, .95);
+  --shadow-accent: 0 2px 14px color-mix(in oklch, var(--color-amber-400) 25%, transparent);
+}
