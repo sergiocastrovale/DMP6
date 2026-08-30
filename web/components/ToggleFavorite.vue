@@ -10,8 +10,12 @@ const isFavorite = ref(false)
 
 const props = withDefaults(defineProps<{
   size?: number
+  // The persistent bottom player bar hides this on narrow screens to save space; a page that
+  // gives the toggle its own room (Explore's now-playing card) wants it visible everywhere.
+  alwaysVisible?: boolean
 }>(), {
   size: 18,
+  alwaysVisible: false,
 })
 
 async function checkFavorite() {
@@ -54,7 +58,7 @@ onMounted(() => {
   <button
     v-if="canCrud"
     type="button"
-    :class="cx('hidden lg:block transition-colors duration-150 cursor-pointer', isFavorite ? 'text-amber-400' : 'text-stone-100/60 hover:text-amber-400')"
+    :class="cx(alwaysVisible ? 'block' : 'hidden lg:block', 'transition-colors duration-150 cursor-pointer', isFavorite ? 'text-amber-400' : 'text-stone-100/60 hover:text-amber-400')"
     :aria-label="isFavorite ? 'Remove from favorites' : 'Add to favorites'"
     @click="toggleFavorite"
   >

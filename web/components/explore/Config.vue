@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { Play } from 'lucide-vue-next'
+import { Play, SlidersHorizontal } from 'lucide-vue-next'
 
 defineProps<{
   isLoading?: boolean
   error?: string | null
+  // Once a track has been explored, the sliders collapse into a one-line summary - re-expanded
+  // via the "Change" button below.
+  collapsed?: boolean
 }>()
 
 const emit = defineEmits<{
   explore: []
+  expand: []
 }>()
 
 const energy = defineModel<number>('energy', { required: true })
@@ -22,7 +26,20 @@ const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hyb
 </script>
 
 <template>
-  <div class="flex flex-col gap-3">
+  <div v-if="collapsed" class="flex items-center gap-3 rounded-xl bg-stone-900/50 px-5 py-3">
+    <span class="size-1.5 shrink-0 rounded-full bg-amber-400" />
+    <p class="min-w-0 flex-1 truncate text-base text-stone-100/60">
+      Exploring <span class="font-medium text-amber-400">{{ energyStops[energy] }}</span> tracks of the
+      <span class="font-medium text-stone-100">{{ eraStops[era] }}</span> ·
+      <span class="font-medium text-stone-100">{{ familiarityStops[familiarity] }}</span> discovery ·
+      <span class="font-medium text-stone-100">{{ soundStops[sound] }}</span> sound
+    </p>
+    <UiButton variant="secondary" size="sm" :icon="SlidersHorizontal" @click="emit('expand')">
+      Change
+    </UiButton>
+  </div>
+
+  <div v-else class="flex flex-col gap-3">
     <Slider
       v-model="energy"
       title="I'm feeling..."
@@ -62,6 +79,6 @@ const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hyb
       </UiButton>
     </div>
 
-    <p v-if="error" class="text-center text-sm text-red-400">{{ error }}</p>
+    <p v-if="error" class="text-center text-sm text-danger">{{ error }}</p>
   </div>
 </template>

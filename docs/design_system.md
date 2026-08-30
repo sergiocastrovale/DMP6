@@ -379,6 +379,60 @@ The biggest screen, matched against `02-artist.png`. Retokenised throughout
 - `pages/artist/[slug].vue` drops `layoutClasses: 'p-0'` from its page meta - confirmed the only
   occurrence of that key anywhere in the codebase; nothing reads it.
 
+## Explore (Stage 6)
+
+Matched against `03-explore*.png`. This screen went from four static sliders to a real
+now-playing experience: `components/explore/{Shell,Config,Card,History}.vue`, plus two new
+shared pieces.
+
+- **`components/player/SeekBar.vue` (new)** - the progress bar extracted out of
+  `player/AudioPlayer.vue` so Explore's now-playing card can use the identical control. Props
+  `currentTime`/`duration`/an optional `countDown` (Explore shows time-remaining, the mini-player
+  shows elapsed); emits `seek`. Carries the full contract from Stage 1's primitives:
+  `role="slider"` + aria value attributes, ArrowLeft/ArrowRight seek ±5s, click-to-seek via
+  `getBoundingClientRect`. `AudioPlayer.vue` now composes it instead of hand-rolling its own bar;
+  its old `progressPct`/`formatDuration`-for-the-bar plumbing is gone.
+- **Cinema mode is shared `useState`, not an `AppShell` prop.** The plan called for a `chrome`
+  prop on `AppShell`, but Nuxt layouts don't receive props from the page - `AppShell` sits in
+  `layouts/default.vue`, outside the page's own props. `composables/useChrome.ts` exposes a
+  `useState('chrome-visible', () => true)` boolean plus `hide()`/`show()`; `AppShell.vue` wraps
+  the sidebar/topbar/mobile-nav/player bar in `v-if="chromeVisible"` and renders a bare
+  `<main>` when hidden. `explore/Shell.vue` calls `hide()`/`show()` from a fullscreen toggle
+  button, captures/restores focus across the transition (same pattern as `Dialog.vue`), and exits
+  on Escape via the onMounted/non-immediate-watch SSR-safe split - `document.addEventListener`
+  only ever runs from a watch callback reacting to a client-side state change, never on the
+  initial (server) render.
+- **`explore/Config.vue` gains a `collapsed` mode.** Once a track is picked, the four sliders
+  fold into a one-line summary (`Exploring {mood} tracks of the {era} · {discovery} discovery ·
+  {sound} sound`) with a "Change" button that re-expands them - matching the reference, where the
+  sliders aren't meant to stay onscreen competing with the now-playing card.
+- **`explore/Card.vue`** rebuilt as the now-playing card: cover art, title/artist (link when
+  `artistSlug` is present, plain text otherwise)/album, the new `SeekBar` in countdown mode, a
+  transport row (previous/play-pause/next wired straight to the player store, `ToggleFavorite`
+  with its new `alwaysVisible` prop so the heart doesn't hide below `lg` here), and "Another
+  pick" wired to a re-roll.
+- **`explore/History.vue`** ("Previously Played") gained a per-row cover thumbnail and a play
+  overlay icon; the artist link is now a separate sibling `<NuxtLink aria-label="Go to {artist}">`
+  next to the play button rather than nested inside it (nested interactive elements are invalid
+  HTML and unreachable by some assistive tech).
+- **`ToggleFavorite.vue`** gained `alwaysVisible?: boolean` (default `false`) - existing call
+  sites keep the hover-to-reveal `hidden lg:block` behaviour; Explore's card passes `true` since
+  there's no hover surface to reveal it on a single focused card.
+
+**Bugs found while testing, not present in the shipped app before this stage** (both introduced
+by this stage's own rewrite, caught before commit):
+- `AudioPlayer.vue`'s new `@seek="player.seek"` passed the store method by reference. Pinia's
+  `vi.spyOn(player, 'seek')` replaces the property on the store object, but `SeekBar` had already
+  captured the pre-spy reference at its last render with no re-render in between, so the spy saw
+  zero calls. Fixed to `@seek="(time) => player.seek(time)"`, matching the original inline
+  handler's call-time-lookup behaviour. Anywhere a store action is passed as an event handler,
+  wrap it in an arrow function for this reason, not just style.
+- `Shell.test.ts`'s "config collapses" assertion first checked `wrapper.find('[role="slider"]").
+  exists()).toBe(false)` to prove the sliders were gone - false negative, because once
+  `explorerCurrentTrack` is set `ExploreCard` renders too, and its `SeekBar` is *also*
+  `role="slider"`. Not a component bug; fixed the test to check for `Config`-specific text
+  instead.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

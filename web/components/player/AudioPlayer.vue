@@ -9,7 +9,6 @@ import {
   X,
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
-import { formatDuration } from '~/helpers/functions'
 import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const player = usePlayerStore()
@@ -22,13 +21,6 @@ const showPlaylistMenu = ref(false)
 const showNewPlaylistDialog = ref(false)
 const playlists = ref<any[]>([])
 const trackPlaylistSlugs = ref<Set<string>>(new Set())
-
-function handleProgressClick(e: MouseEvent) {
-  const bar = e.currentTarget as HTMLElement
-  const rect = bar.getBoundingClientRect()
-  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-  player.seek(pct * player.duration)
-}
 
 const SHUFFLE_LABELS: Record<string, string> = {
   off: 'Shuffle: Off',
@@ -95,9 +87,6 @@ async function onPlaylistCreated() {
   await loadPlaylists()
 }
 
-const progressPct = computed(() =>
-  player.duration ? (player.currentTime / player.duration) * 100 : 0,
-)
 </script>
 
 <template>
@@ -212,19 +201,7 @@ const progressPct = computed(() =>
           </div>
         </div>
 
-        <div class="flex w-full items-center gap-2">
-          <span class="w-8 shrink-0 text-right text-2xs text-stone-100/40 tabular-nums">{{ formatDuration(player.currentTime) }}</span>
-          <div
-            class="group relative h-1.5 flex-1 cursor-pointer rounded-full bg-stone-800"
-            @click="handleProgressClick"
-          >
-            <div
-              class="h-full rounded-full bg-amber-400"
-              :style="{ width: `${progressPct}%` }"
-            />
-          </div>
-          <span class="w-8 shrink-0 text-2xs text-stone-100/40 tabular-nums">{{ formatDuration(player.duration) }}</span>
-        </div>
+        <PlayerSeekBar :current-time="player.currentTime" :duration="player.duration" @seek="(time) => player.seek(time)" />
       </div>
 
       <div class="hidden md:flex md:w-1/3 justify-end">
