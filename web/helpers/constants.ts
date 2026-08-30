@@ -1,3 +1,6 @@
+import type { ReleaseStatus } from '~/types/release'
+import type { Tone } from '~/helpers/ui'
+
 export const maxGenres = 5
 export const SKELETON_GRID_SIZE = 10
 // Rows shown per page in the /explore session history; the store retains EXPLORER_SESSION_HISTORY_CAP.
@@ -54,68 +57,80 @@ export const visibleScanActions = (isAdmin: boolean): ScanAction[] =>
 export const visibleArtistScanActions = (isAdmin: boolean): ArtistScanAction[] =>
   artistScanActions.filter(s => isAdmin || !s.admin)
 
+// The five match-score bands. Five steps need more granularity than the six semantic tones
+// (accent/success/warning/danger/info/muted) give a single status, so this walks the red ->
+// orange -> amber -> green ramps directly instead of going through a tone - kept in the same
+// {color,textColor,bgColor} shape as before so consumers (FilterScore, AverageMatchScore) don't
+// need a second change when their own page is retokenised.
 export const scoreRanges = [
-  { min: 0, max: 20, label: '0% – 20%', color: 'bg-red-500', textColor: 'text-red-400', bgColor: 'bg-red-500/20' },
-  { min: 20, max: 40, label: '20% – 40%', color: 'bg-red-400', textColor: 'text-red-300', bgColor: 'bg-red-400/20' },
-  { min: 40, max: 60, label: '40% – 60%', color: 'bg-orange-500', textColor: 'text-orange-400', bgColor: 'bg-orange-500/20' },
-  { min: 60, max: 80, label: '60% – 80%', color: 'bg-accent', textColor: 'text-accent', bgColor: 'bg-accent-soft' },
-  { min: 80, max: 100, label: '80% – 100%', color: 'bg-emerald-500', textColor: 'text-emerald-400', bgColor: 'bg-emerald-500/20' },
+  { min: 0, max: 20, label: '0% – 20%', color: 'bg-red-400', textColor: 'text-red-400', bgColor: 'bg-red-400/15' },
+  { min: 20, max: 40, label: '20% – 40%', color: 'bg-orange-500', textColor: 'text-orange-500', bgColor: 'bg-orange-500/15' },
+  { min: 40, max: 60, label: '40% – 60%', color: 'bg-orange-400', textColor: 'text-orange-400', bgColor: 'bg-orange-400/15' },
+  { min: 60, max: 80, label: '60% – 80%', color: 'bg-amber-400', textColor: 'text-amber-400', bgColor: 'bg-amber-400/15' },
+  { min: 80, max: 100, label: '80% – 100%', color: 'bg-green-500', textColor: 'text-green-500', bgColor: 'bg-green-500/15' },
 ]
 
 export const getScoreRange = (score: number) =>
   scoreRanges.find(r => score >= r.min && score < r.max) ?? scoreRanges.at(-1)!
 
-export const statuses = [
-  { 
+// The one release-status -> colour map. Every status badge in the app (release/StatusBadge.vue,
+// artist/StatusChips.vue, TrackList.vue) reads `tone` from here through helpers/ui.ts's
+// toneBg/toneFill/toneText - previously each of those three kept its own copy, and they had
+// drifted (TrackList's copy was missing MISSING_TRACKS entirely, silently falling through).
+export const statuses: { value: ReleaseStatus, label: string, tone: Tone, description: string, weight: number }[] = [
+  {
     value: 'COMPLETE',
     label: 'Complete',
-    classes: 'bg-emerald-500/20 text-emerald-400',
+    tone: 'success',
     description: 'Fully matched with MusicBrainz.',
     weight: 1,
   },
   {
     value: 'EXTRA_TRACKS',
     label: 'Extra tracks',
-    classes: 'bg-blue-500/20 text-blue-400',
+    tone: 'info',
     description: 'Local release has more tracks than MusicBrainz.',
     weight: 2,
   },
   {
     value: 'MISSING_TRACKS',
     label: 'Missing tracks',
-    classes: 'bg-orange-500/20 text-orange-400',
+    tone: 'warning',
     description: 'Local release has less tracks than MusicBrainz.',
     weight: 3,
   },
   {
     value: 'INCOMPLETE',
     label: 'Incomplete',
-    classes: 'bg-accent-soft text-accent',
+    tone: 'accent',
     description: 'Tracks present but titles could not be matched.',
     weight: 4,
   },
   {
     value: 'MISSING',
     label: 'Missing',
-    classes: 'bg-red-500/20 text-red-400',
+    tone: 'danger',
     description: 'MusicBrainz release does not exist in the local catalogue.',
     weight: 5,
   },
   {
     value: 'UNKNOWN',
     label: 'Unknown',
-    classes: 'bg-bg-3 text-ink-2',
+    tone: 'muted',
     description: 'Status not yet determined. Needs sync.',
     weight: 6,
   },
   {
     value: 'UNMATCHED',
     label: 'Unmatched',
-    classes: 'bg-accent-soft text-accent',
+    tone: 'accent',
     description: 'Local release not found in MusicBrainz.',
     weight: 7,
   },
 ]
+
+export const getStatus = (value: ReleaseStatus) =>
+  statuses.find(s => s.value === value) ?? statuses.find(s => s.value === 'UNKNOWN')!
 
 export const linkIcons: Record<string, { viewBox: string; path: string }> = {
   'discogs': {

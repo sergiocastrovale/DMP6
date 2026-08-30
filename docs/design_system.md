@@ -180,6 +180,59 @@ Grep any new interactive component for `document\.|window\.` before considering 
 confirm every hit sits inside `onMounted`, a non-immediate `watch` callback, or an event-handler
 function body - never at the top level of `<script setup>` and never inside `{ immediate: true }`.
 
+## Data primitives + the one status map (Stage 2)
+
+**One table lineage.** The app had three: div-based `Table`/`TableRow`, real-`<table>`
+`SlimTable*`, and `statistics/StatPage.vue`'s own inline table. Consolidated on the real
+`<table>` lineage — semantic, keeps Playwright's `locator('tr')` assertions working
+(`e2e/downloads.spec.ts`), and plays better with `<th>`/`aria-sort` than a div grid does.
+
+- `components/DataTable.vue` (new) — a generic component (`<script setup generic="T extends
+  object">`) built from `SlimTable`/`SlimTableHeader`/`SlimTableBody`/`SlimTableRow` +
+  `SortableTh` + the new `Checkbox`/`EmptyState`. Handles column config, sort (delegated to the
+  caller — `DataTable` emits `sort` with the clicked key and renders whatever `sort` prop it's
+  given; it does not re-order `rows` itself, matching how `IssueTable.vue` and the browse/issues
+  stores already own sorting), row selection (`selected: Set<string|number>` in, `update:selected`
+  out — the exact shape `IssueTable`/`ApprovalQueue`/`MonitoringTab`/`HistoryContent` already use,
+  so migrating those onto `DataTable` in their own stage needs no state-shape change), an inline
+  bulk-action bar, a scoped `#actions` slot, per-column `#cell-{key}` scoped slots (falling back to
+  the raw value), a loading skeleton, and an empty state via `EmptyState`.
+- `SlimTable`/`SlimTableHeader`/`SlimTableBody`/`SlimTableRow`/`SortableTh` — retokenised, kept as
+  the low-level pieces (`TrackList.vue` needs row-level control `DataTable` doesn't expose).
+  `SortableTh` now sets `aria-sort` on the `<th>` itself, not just a visual chevron.
+  `SlimTable`'s card is `overflow-x-auto overflow-y-hidden` with the table free to exceed the
+  container width, so a wide column set stays reachable by scrolling instead of being clipped —
+  clipping both axes would silently cut off whichever columns land last (status, actions).
+- **`Table.vue`/`TableRow.vue` were NOT deleted this stage**, despite the original plan calling for
+  it. They're still live in three places: `favorites/TrackTable.vue`, `playlist/TrackTable.vue`
+  (genuine div-based pseudo-tables) and `downloads/ApprovalQueue.vue` (which only uses `Table.vue`
+  as a card-styling wrapper around its own hand-rolled real `<table>` — not a structural
+  conflict). Migrating those is folded into their own page stages (7 and 12) rather than done
+  ahead of schedule here; deleting the two components now would have meant either breaking those
+  pages or doing Stage 12's status-colour reconciliation early. `TableHeader.vue`/`TableBody.vue`
+  had zero consumers and are deleted.
+- `components/Block.vue` — the catalogue tile, retokenised (drops `rounded-cover`,
+  `text-card-title`, `text-card-artist`, `text-meta`, `shadow-play`).
+- `components/TrackList.vue` — retokenised throughout; its private `statusConfig` (missing
+  `MISSING_TRACKS`, so that status silently fell through to no badge at all) is gone in favour of
+  `<ReleaseStatusBadge>`.
+
+**One status map.** `helpers/constants.ts`'s `statuses[]` now carries `tone` (one of
+`helpers/ui.ts`'s six tones) instead of a hand-written class string, and is the only place release
+status maps to a colour — `release/StatusBadge.vue` and `artist/StatusChips.vue` both read it via
+`toneBg`/`toneFill`. `release/StatusMulti.vue` (zero consumers) is deleted.
+`test/helpers/constants.test.ts` asserts the map is exhaustive over `ReleaseStatus`, every tone
+resolves in all three tone maps, weights are distinct and ascending (worst-status rollups depend
+on this), and no non-`UNKNOWN` status shares `muted` with the "nothing to report" state.
+
+`scoreRanges[]` (the five match-score bands) keeps its original `{min,max,label,color,textColor,
+bgColor}` shape — unlike `statuses[]`, five bands need more granularity than the six semantic
+tones give a single value, so it walks the red→orange→amber→green ramps directly rather than
+going through a tone. Only the ramp-step values changed (old raw `bg-red-500`/`bg-accent`/
+`bg-emerald-500` → `bg-red-400`/`bg-amber-400`/`bg-green-500`); the shape is untouched so its two
+current consumers (`browse/FilterScore.vue`, `artist/AverageMatchScore.vue`, both un-migrated
+until their own stage) don't need a second change later.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

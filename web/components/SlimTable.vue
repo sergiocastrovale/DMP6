@@ -1,6 +1,6 @@
 <template>
-  <div class="overflow-hidden border border-rule">
-    <table class="w-full text-sm">
+  <div class="overflow-x-auto overflow-y-hidden rounded-xl border border-stone-100/6 bg-stone-900">
+    <table class="w-full text-base">
       <slot />
     </table>
   </div>

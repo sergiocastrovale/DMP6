@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { artistScanActions, getScoreRange, scanActions, scoreRanges, visibleArtistScanActions, visibleScanActions } from '../../helpers/constants'
+import { artistScanActions, getScoreRange, getStatus, scanActions, scoreRanges, statuses, visibleArtistScanActions, visibleScanActions } from '../../helpers/constants'
+import { toneBg, toneFill, toneText } from '../../helpers/ui'
+import type { ReleaseStatus } from '../../types/release'
 
 describe('getScoreRange', () => {
   it('picks the matching bucket for interior values', () => {
@@ -25,6 +27,44 @@ describe('getScoreRange', () => {
 
   it('falls back to the last bucket for out-of-range negative values too (no bucket matches)', () => {
     expect(getScoreRange(-5)).toBe(scoreRanges.at(-1))
+  })
+})
+
+// The full ReleaseStatus union - kept here as a literal list (not imported from anywhere the enum
+// itself lives) so this test fails the moment the type grows a member the statuses[] map hasn't
+// caught up with yet, rather than silently passing on whatever the map happens to contain.
+const ALL_RELEASE_STATUSES: ReleaseStatus[] = ['COMPLETE', 'EXTRA_TRACKS', 'MISSING_TRACKS', 'INCOMPLETE', 'MISSING', 'UNKNOWN', 'UNMATCHED']
+
+describe('statuses', () => {
+  it('covers every ReleaseStatus exactly once', () => {
+    expect(statuses.map(s => s.value).sort()).toEqual([...ALL_RELEASE_STATUSES].sort())
+  })
+
+  it('gives every entry a tone that resolves in all three tone maps', () => {
+    for (const status of statuses) {
+      expect(toneText[status.tone]).toEqual(expect.any(String))
+      expect(toneBg[status.tone]).toEqual(expect.any(String))
+      expect(toneFill[status.tone]).toEqual(expect.any(String))
+    }
+  })
+
+  it('gives every entry a distinct, ascending weight (worst-status rollups depend on this order)', () => {
+    const weights = statuses.map(s => s.weight)
+    expect(new Set(weights).size).toBe(statuses.length)
+    expect(weights).toEqual([...weights].sort((a, b) => a - b))
+  })
+
+  it('never reuses "muted" for a status the release list should visually flag', () => {
+    // UNKNOWN is a legitimate "nothing to report yet" state; every other status describes a
+    // real mismatch and must not fade into the same low-emphasis tone.
+    const flagged = statuses.filter(s => s.value !== 'UNKNOWN')
+    expect(flagged.every(s => s.tone !== 'muted')).toBe(true)
+  })
+})
+
+describe('getStatus', () => {
+  it.each(ALL_RELEASE_STATUSES)('resolves %s to its statuses[] entry', (value) => {
+    expect(getStatus(value)).toBe(statuses.find(s => s.value === value))
   })
 })
 

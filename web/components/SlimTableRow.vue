@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { cx } from '~/helpers/ui'
+
 const props = defineProps<{
   active?: boolean
   muted?: boolean
@@ -22,12 +24,12 @@ watch(() => props.highlight, (val) => {
 <template>
   <tr
     ref="rowRef"
-    class="group border-b border-rule/50 transition-colors last:border-b-0"
-    :class="[
-      active && 'bg-bg-1/50',
-      muted ? 'opacity-50 cursor-default' : 'cursor-pointer hover:bg-bg-2/50',
+    :class="cx(
+      'group border-b border-stone-100/6 last:border-b-0 transition-colors duration-150',
+      active && 'bg-amber-400/10',
+      muted ? 'opacity-50 cursor-default' : 'cursor-pointer hover:bg-stone-800',
       flashing && 'animate-highlight-flash',
-    ]"
+    )"
   >
     <slot />
   </tr>

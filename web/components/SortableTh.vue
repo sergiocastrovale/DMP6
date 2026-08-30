@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
+import { ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-vue-next'
 import type { SortDir } from '~/helpers/functions'
+import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   label: string
@@ -16,19 +17,27 @@ const emit = defineEmits<{ sort: [key: string] }>()
 
 const active = computed(() => props.activeKey === props.sortKey)
 const icon = computed(() => (active.value ? (props.dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown))
+const ariaSort = computed<'ascending' | 'descending' | 'none'>(() =>
+  active.value ? (props.dir === 'asc' ? 'ascending' : 'descending') : 'none')
 </script>
 
 <template>
-  <th class="px-4 py-2 font-medium" :class="align === 'right' ? 'text-right' : 'text-left'">
+  <th
+    :aria-sort="ariaSort"
+    :class="cx('px-3 py-2.5', align === 'right' ? 'text-right' : 'text-left')"
+  >
     <button
       type="button"
-      class="inline-flex items-center gap-1 transition-colors hover:text-ink-2"
-      :class="[active ? 'text-ink-2' : '', align === 'right' ? 'flex-row-reverse' : '']"
+      :class="cx(
+        'inline-flex items-center gap-1 transition-colors duration-150 hover:text-stone-100',
+        active ? 'text-stone-100/60' : '',
+        align === 'right' ? 'flex-row-reverse' : '',
+      )"
       :title="`Sort by ${label}`"
       @click="emit('sort', sortKey)"
     >
       {{ label }}
-      <component :is="icon" :size="12" :class="active ? 'opacity-100' : 'opacity-40'" />
+      <component :is="icon" :size="11" :stroke-width="ICON_STROKE_WIDTH" :class="active ? 'text-amber-400' : 'text-stone-100/30'" />
     </button>
   </th>
 </template>

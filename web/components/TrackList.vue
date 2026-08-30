@@ -111,15 +111,6 @@ async function toggleFavorite(trackId: string) {
 }
 
 
-const statusConfig: Record<string, { label: string; classes: string }> = {
-  COMPLETE: { label: 'Complete', classes: 'bg-emerald-500/20 text-emerald-400' },
-  INCOMPLETE: { label: 'Incomplete', classes: 'bg-accent/20 text-accent' },
-  EXTRA_TRACKS: { label: 'Extra tracks', classes: 'bg-blue-500/20 text-blue-400' },
-  MISSING: { label: 'Missing', classes: 'bg-red-500/20 text-red-400' },
-  UNKNOWN: { label: 'Unknown', classes: 'bg-bg-3 text-ink-2' },
-  UNMATCHED: { label: 'Unmatched', classes: 'bg-accent-soft text-accent' },
-}
-
 const showInfoDialog = ref(false)
 const infoTrack = ref<Track | null>(null)
 const infoData = ref<TrackInfo | null>(null)
@@ -155,7 +146,7 @@ const formatFileSize = (bytes: number) => {
       <th v-if="hasColumn('title')" class="py-2 pl-3 text-left">Title</th>
       <th v-if="hasColumn('artist')" class="hidden py-2 pl-3 text-left md:table-cell">Artist</th>
       <th v-if="hasColumn('status')" class="hidden py-2 pl-3 text-left sm:table-cell">Status</th>
-      <th v-if="hasColumn('playCount')" class="w-16 py-2 pr-3 text-center text-ink-3">Plays</th>
+      <th v-if="hasColumn('playCount')" class="w-16 py-2 pr-3 text-center text-stone-100/40">Plays</th>
       <th v-if="hasColumn('duration')" class="w-16 py-2 pr-4 text-center">Time</th>
       <th v-if="hasColumn('favorite')" class="w-12 py-2 pr-4 text-center" />
     </SlimTableHeader>
@@ -173,14 +164,14 @@ const formatFileSize = (bytes: number) => {
             <PlayerPlayPauseButton
               :playing="isTrackPlaying(track.id)"
               size="sm"
-              :class="isCurrentTrack(track.id) ? 'text-accent' : 'text-ink-3'"
+              :class="isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100/40'"
             />
           </template>
         </td>
-        <td v-if="hasColumn('release')" class="py-2 pl-4 text-ink-2 text-xs truncate max-w-50">
+        <td v-if="hasColumn('release')" class="py-2 pl-4 text-stone-100/60 text-xs truncate max-w-50">
           {{ releaseMap?.[track.localReleaseId || '']?.title || track.album || '-' }}
         </td>
-        <td v-if="hasColumn('trackNumber')" class="py-2 pl-4 text-center text-ink-3">
+        <td v-if="hasColumn('trackNumber')" class="py-2 pl-4 text-center text-stone-100/40">
           <template v-if="hasColumn('play')">
             {{ track.trackNumber || '-' }}
           </template>
@@ -191,49 +182,43 @@ const formatFileSize = (bytes: number) => {
             <PlayerPlayPauseButton
               :playing="isTrackPlaying(track.id)"
               size="sm"
-              :class="isCurrentTrack(track.id) ? 'text-accent' : 'text-ink-3'"
+              :class="isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100/40'"
             />
           </template>
         </td>
-        <td v-if="hasColumn('title')" class="py-2 pl-3" :class="[isCurrentTrack(track.id) ? 'text-accent' : 'text-ink', track.missing && 'line-through text-ink-3']">
+        <td v-if="hasColumn('title')" class="py-2 pl-3" :class="[isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100', track.missing && 'line-through text-stone-100/40']">
           <div class="flex items-center gap-2">
             {{ track.title || 'Unknown' }}
             <Popover v-if="track.mbTitle" trigger="hover">
               <template #trigger>
-                <AlertTriangle :size="12" class="mb-0.5 ml-1 inline text-accent/70" />
+                <AlertTriangle :size="12" class="mb-0.5 ml-1 inline text-amber-400/70" />
               </template>
               <template #content>
-                <div class="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
-                  <p class="text-xs text-ink-2">Title is slightly different in MusicBrainz: <span class="text-ink-2">{{ track.mbTitle }}</span></p>
+                <div class="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-stone-100/6 bg-stone-900 p-3 shadow-xl">
+                  <p class="text-xs text-stone-100/60">Title is slightly different in MusicBrainz: <span class="text-stone-100/60">{{ track.mbTitle }}</span></p>
                 </div>
               </template>
             </Popover>
           </div>
           <template v-if="track.artists?.length">
-            <span class="text-ink-3"> Feat.
+            <span class="text-stone-100/40"> Feat.
               <template v-for="(a, i) in track.artists" :key="a.slug">
-                <NuxtLink :to="`/artist/${a.slug}`" class="text-ink-2 hover:text-accent transition-colors" @click.stop>{{ a.name }}</NuxtLink><template v-if="i < track.artists.length - 1">, </template>
+                <NuxtLink :to="`/artist/${a.slug}`" class="text-stone-100/60 hover:text-amber-400 transition-colors" @click.stop>{{ a.name }}</NuxtLink><template v-if="i < track.artists.length - 1">, </template>
               </template>
             </span>
           </template>
         </td>
-        <td v-if="hasColumn('artist')" class="hidden py-2 pl-3 text-ink-2 md:table-cell">{{ track.artist || '-' }}</td>
+        <td v-if="hasColumn('artist')" class="hidden py-2 pl-3 text-stone-100/60 md:table-cell">{{ track.artist || '-' }}</td>
         <td v-if="hasColumn('status')" class="hidden py-2 pl-3 sm:table-cell">
-          <span
-            v-if="releaseMap?.[track.localReleaseId || '']?.status"
-            :class="statusConfig[releaseMap[track.localReleaseId || '']?.status || 'UNKNOWN']?.classes"
-            class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-          >
-            {{ statusConfig[releaseMap[track.localReleaseId || '']?.status || 'UNKNOWN']?.label }}
-          </span>
+          <ReleaseStatusBadge v-if="releaseMap?.[track.localReleaseId || '']?.status" :status="releaseMap[track.localReleaseId || '']!.status" />
         </td>
-        <td v-if="hasColumn('playCount')" class="py-2 pr-3 text-center tabular-nums text-ink-3">{{ track.playCount ?? 0 }}</td>
-        <td v-if="hasColumn('duration')" class="py-2 pr-4 text-center tabular-nums text-ink-3" :class="track.missing && 'line-through'">{{ formatDuration(track.duration) }}</td>
+        <td v-if="hasColumn('playCount')" class="py-2 pr-3 text-center tabular-nums text-stone-100/40">{{ track.playCount ?? 0 }}</td>
+        <td v-if="hasColumn('duration')" class="py-2 pr-4 text-center tabular-nums text-stone-100/40" :class="track.missing && 'line-through'">{{ formatDuration(track.duration) }}</td>
         <td v-if="hasColumn('favorite')" class="py-2 pr-4 text-center">
           <div class="flex items-center justify-center gap-0.5">
             <button
-              class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
-              :class="{ 'text-accent': favoriteTracks.has(track.id) }"
+              class="rounded-full p-1.5 text-stone-100/40 transition-colors hover:text-amber-400 cursor-pointer"
+              :class="{ 'text-amber-400': favoriteTracks.has(track.id) }"
               title="Toggle favorite"
               @click.stop="toggleFavorite(track.id)"
             >
@@ -244,7 +229,7 @@ const formatFileSize = (bytes: number) => {
               :href="`https://musicbrainz.org/recording/${track.mbTrackMusicbrainzId}`"
               target="_blank"
               rel="noopener noreferrer"
-              class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
+              class="rounded-full p-1.5 text-stone-100/40 transition-colors hover:text-amber-400 cursor-pointer"
               title="View recording on MusicBrainz"
               @click.stop
             >
@@ -253,14 +238,14 @@ const formatFileSize = (bytes: number) => {
             <a
               v-if="releaseMap?.[track.localReleaseId || ''] && track.localReleaseId"
               :href="`/artist/${$route.params.slug}?release=${(releaseMap[track.localReleaseId]?.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`"
-              class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
+              class="rounded-full p-1.5 text-stone-100/40 transition-colors hover:text-amber-400 cursor-pointer"
               title="Go to release"
               @click.stop
             >
               <Link :size="14" />
             </a>
             <button
-              class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent cursor-pointer"
+              class="rounded-full p-1.5 text-stone-100/40 transition-colors hover:text-amber-400 cursor-pointer"
               title="Track info"
               @click.stop="openInfoDialog(track)"
             >
@@ -276,106 +261,106 @@ const formatFileSize = (bytes: number) => {
     <template v-if="infoTrack">
       <dl class="space-y-3 text-sm">
         <div>
-          <dt class="text-xs text-ink-2">Track ID</dt>
-          <dd class="font-mono text-xs text-ink-2">{{ infoTrack.id }}</dd>
+          <dt class="text-xs text-stone-100/60">Track ID</dt>
+          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.id }}</dd>
         </div>
         <div v-if="infoTrack.filePath">
-          <dt class="text-xs text-ink-2">File path</dt>
-          <dd class="font-mono text-xs text-ink-2 break-all">{{ infoTrack.filePath }}</dd>
+          <dt class="text-xs text-stone-100/60">File path</dt>
+          <dd class="font-mono text-xs text-stone-100/60 break-all">{{ infoTrack.filePath }}</dd>
         </div>
         <div v-if="infoTrack.artist">
-          <dt class="text-xs text-ink-2">Artist</dt>
-          <dd class="font-mono text-xs text-ink-2">{{ infoTrack.artist }}</dd>
+          <dt class="text-xs text-stone-100/60">Artist</dt>
+          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.artist }}</dd>
         </div>
         <div v-if="infoTrack.album">
-          <dt class="text-xs text-ink-2">Album</dt>
-          <dd class="font-mono text-xs text-ink-2">{{ infoTrack.album }}</dd>
+          <dt class="text-xs text-stone-100/60">Album</dt>
+          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.album }}</dd>
         </div>
         <div v-if="infoTrack.albumArtist">
-          <dt class="text-xs text-ink-2">Album artist</dt>
-          <dd class="font-mono text-xs text-ink-2">{{ infoTrack.albumArtist }}</dd>
+          <dt class="text-xs text-stone-100/60">Album artist</dt>
+          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.albumArtist }}</dd>
         </div>
         <div v-if="infoTrack.genre">
-          <dt class="text-xs text-ink-2">Genre</dt>
-          <dd class="font-mono text-xs text-ink-2">{{ infoTrack.genre }}</dd>
+          <dt class="text-xs text-stone-100/60">Genre</dt>
+          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.genre }}</dd>
         </div>
         <div v-if="infoTrack.trackNumber">
-          <dt class="text-xs text-ink-2">Track</dt>
-          <dd class="font-mono text-xs text-ink-2">{{ infoTrack.discNumber ? `Disc ${infoTrack.discNumber}, ` : '' }}Track {{ infoTrack.trackNumber }}</dd>
+          <dt class="text-xs text-stone-100/60">Track</dt>
+          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.discNumber ? `Disc ${infoTrack.discNumber}, ` : '' }}Track {{ infoTrack.trackNumber }}</dd>
         </div>
         <div v-if="infoTrack.duration">
-          <dt class="text-xs text-ink-2">Duration</dt>
-          <dd class="font-mono text-xs text-ink-2">{{ formatDuration(infoTrack.duration) }}</dd>
+          <dt class="text-xs text-stone-100/60">Duration</dt>
+          <dd class="font-mono text-xs text-stone-100/60">{{ formatDuration(infoTrack.duration) }}</dd>
         </div>
         <div v-if="infoTrack.year">
-          <dt class="text-xs text-ink-2">Year</dt>
-          <dd class="font-mono text-xs text-ink-2">{{ infoTrack.year }}</dd>
+          <dt class="text-xs text-stone-100/60">Year</dt>
+          <dd class="font-mono text-xs text-stone-100/60">{{ infoTrack.year }}</dd>
         </div>
 
         <template v-if="infoData">
           <div v-if="!infoTrack.filePath && infoData.filePath">
-            <dt class="text-xs text-ink-2">File path</dt>
-            <dd class="font-mono text-xs text-ink-2 break-all">{{ infoData.filePath }}</dd>
+            <dt class="text-xs text-stone-100/60">File path</dt>
+            <dd class="font-mono text-xs text-stone-100/60 break-all">{{ infoData.filePath }}</dd>
           </div>
           <div v-if="infoData.bitrate || infoData.sampleRate">
-            <dt class="text-xs text-ink-2">Audio</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ [infoData.bitrate ? `${Math.round(infoData.bitrate / 1000)} kbps` : '', infoData.sampleRate ? `${(infoData.sampleRate / 1000).toFixed(1)} kHz` : ''].filter(Boolean).join(' · ') }}</dd>
+            <dt class="text-xs text-stone-100/60">Audio</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ [infoData.bitrate ? `${Math.round(infoData.bitrate / 1000)} kbps` : '', infoData.sampleRate ? `${(infoData.sampleRate / 1000).toFixed(1)} kHz` : ''].filter(Boolean).join(' · ') }}</dd>
           </div>
           <div v-if="infoData.fileSize">
-            <dt class="text-xs text-ink-2">File size</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ formatFileSize(infoData.fileSize) }}</dd>
+            <dt class="text-xs text-stone-100/60">File size</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ formatFileSize(infoData.fileSize) }}</dd>
           </div>
           <div v-if="infoData.bpm">
-            <dt class="text-xs text-ink-2">BPM</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.bpm }}</dd>
+            <dt class="text-xs text-stone-100/60">BPM</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.bpm }}</dd>
           </div>
           <div v-if="infoData.key">
-            <dt class="text-xs text-ink-2">Key</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.key }}</dd>
+            <dt class="text-xs text-stone-100/60">Key</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.key }}</dd>
           </div>
           <div v-if="infoData.mood">
-            <dt class="text-xs text-ink-2">Mood</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.mood }}</dd>
+            <dt class="text-xs text-stone-100/60">Mood</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.mood }}</dd>
           </div>
           <div v-if="infoData.isrc">
-            <dt class="text-xs text-ink-2">ISRC</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.isrc }}</dd>
+            <dt class="text-xs text-stone-100/60">ISRC</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.isrc }}</dd>
           </div>
           <div v-if="infoData.label">
-            <dt class="text-xs text-ink-2">Label</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.label }}</dd>
+            <dt class="text-xs text-stone-100/60">Label</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.label }}</dd>
           </div>
           <div v-if="infoData.replayGain">
-            <dt class="text-xs text-ink-2">Replay gain</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.replayGain }}</dd>
+            <dt class="text-xs text-stone-100/60">Replay gain</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.replayGain }}</dd>
           </div>
           <div v-if="infoData.encoder">
-            <dt class="text-xs text-ink-2">Encoder</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.encoder }}</dd>
+            <dt class="text-xs text-stone-100/60">Encoder</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.encoder }}</dd>
           </div>
           <div v-if="infoData.acousticId">
-            <dt class="text-xs text-ink-2">AcoustID</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.acousticId }}</dd>
+            <dt class="text-xs text-stone-100/60">AcoustID</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.acousticId }}</dd>
           </div>
           <div v-if="infoData.playCount">
-            <dt class="text-xs text-ink-2">Play count</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.playCount }}</dd>
+            <dt class="text-xs text-stone-100/60">Play count</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.playCount }}</dd>
           </div>
           <div v-if="infoData.lastPlayedAt">
-            <dt class="text-xs text-ink-2">Last played</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ new Date(infoData.lastPlayedAt).toLocaleString() }}</dd>
+            <dt class="text-xs text-stone-100/60">Last played</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ new Date(infoData.lastPlayedAt).toLocaleString() }}</dd>
           </div>
           <div v-if="infoData.createdAt">
-            <dt class="text-xs text-ink-2">Indexed</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ new Date(infoData.createdAt).toLocaleString() }}</dd>
+            <dt class="text-xs text-stone-100/60">Indexed</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ new Date(infoData.createdAt).toLocaleString() }}</dd>
           </div>
           <div v-if="infoData.mbTrackId">
-            <dt class="text-xs text-ink-2">MusicBrainz recording</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.mbTrackId }}</dd>
+            <dt class="text-xs text-stone-100/60">MusicBrainz recording</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.mbTrackId }}</dd>
           </div>
           <div v-if="infoData.mbReleaseId">
-            <dt class="text-xs text-ink-2">MusicBrainz release</dt>
-            <dd class="font-mono text-xs text-ink-2">{{ infoData.mbReleaseId }}</dd>
+            <dt class="text-xs text-stone-100/60">MusicBrainz release</dt>
+            <dd class="font-mono text-xs text-stone-100/60">{{ infoData.mbReleaseId }}</dd>
           </div>
         </template>
       </dl>

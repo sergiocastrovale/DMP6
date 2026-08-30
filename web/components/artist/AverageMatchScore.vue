@@ -7,7 +7,7 @@ const props = defineProps<{
 
 const matchClasses = computed(() => {
   if (props.score === null) {
-    return 'bg-bg-3 text-ink-2'
+    return 'bg-stone-800 text-stone-100/60'
   }
   const { bgColor, textColor } = getScoreRange(Math.round(props.score * 100))
   return `${bgColor} ${textColor}`
