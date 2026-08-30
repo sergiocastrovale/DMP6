@@ -48,6 +48,10 @@ block:
   definition shared by every playlist tile and the playlist detail page's hero cover.
 - `.leaflet-container` / `.leaflet-control-zoom a` — Leaflet doesn't take Tailwind classes, so
   its chrome is themed globally here instead of per-page.
+- `player-bar-texture` — the persistent player bar's amber glow + pinstripe background
+  (`components/player/AudioPlayer.vue`). Layered `repeating-linear-gradient` +
+  `radial-gradient` behind a flat ground colour; no single Tailwind utility expresses a layered
+  background, so it's one rule instead of stacked wrapper divs.
 - A `prefers-reduced-motion: reduce` block that neutralises transitions/animations app-wide.
 
 **Zero `<style>` blocks exist anywhere in `web/components/**` or `web/pages/**`** (grep-verified,

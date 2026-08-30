@@ -90,6 +90,40 @@ describe('AudioPlayer.vue', () => {
     expect(wrapper.text()).toContain('Artist')
   })
 
+  it('shows a "Release" context pill by default, with no shuffle and no playlist', async () => {
+    const { wrapper, player } = await mountPlayer()
+    player.isVisible = true
+    await nextTick()
+    expect(wrapper.text()).toContain('Release')
+  })
+
+  it('shows a "Playlist" context pill when playing from a playlist with shuffle off', async () => {
+    const { wrapper, player } = await mountPlayer()
+    player.isVisible = true
+    player.currentPlaylistSlug = 'my-playlist'
+    await nextTick()
+    expect(wrapper.text()).toContain('Playlist')
+  })
+
+  it('gives the transport buttons a bordered toggle state', async () => {
+    const { wrapper, player } = await mountPlayer()
+    player.isVisible = true
+    player.shuffleMode = 'catalogue'
+    await nextTick()
+    const shuffleBtn = wrapper.find('[aria-label^="Explorer mode"], [aria-label^="Shuffle:"]')
+    expect(shuffleBtn.classes()).toContain('border-amber-400/45')
+    const prevBtn = wrapper.find('[aria-label="Previous track"]')
+    expect(prevBtn.classes()).toContain('rounded-full')
+    expect(prevBtn.classes()).toContain('border-stone-100/10')
+  })
+
+  it('renders a volume control wired to the player store', async () => {
+    const { wrapper, player } = await mountPlayer()
+    player.isVisible = true
+    await nextTick()
+    expect(wrapper.findComponent({ name: 'PlayerVolumeControl' }).exists()).toBe(true)
+  })
+
   it('clicking the progress bar seeks proportionally', async () => {
     const { wrapper, player } = await mountPlayer()
     player.isVisible = true

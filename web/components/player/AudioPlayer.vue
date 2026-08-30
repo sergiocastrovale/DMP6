@@ -2,14 +2,14 @@
 import {
   Check,
   Compass,
-  ListMusic,
+  ListPlus,
   Shuffle,
   SkipBack,
   SkipForward,
   X,
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
-import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { button, cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const player = usePlayerStore()
 const { resolve } = useImageUrl()
@@ -22,13 +22,20 @@ const showNewPlaylistDialog = ref(false)
 const playlists = ref<any[]>([])
 const trackPlaylistSlugs = ref<Set<string>>(new Set())
 
-const SHUFFLE_LABELS: Record<string, string> = {
-  off: 'Shuffle: Off',
-  release: 'Release',
-  artist: 'Artist',
-  catalogue: 'Catalogue',
+// Always-visible context pill: what queue is currently playing, not just whether shuffle is on.
+const CONTEXT_LABELS: Record<string, string> = {
   explorer: 'Explorer',
+  catalogue: 'Catalogue',
+  artist: 'Artist',
+  release: 'Release',
 }
+
+const contextLabel = computed(() => {
+  if (player.shuffleMode !== 'off') {
+    return CONTEXT_LABELS[player.shuffleMode]
+  }
+  return player.currentPlaylistSlug ? 'Playlist' : 'Release'
+})
 
 const SHUFFLE_TOOLTIPS: Record<string, string> = {
   off: 'Shuffle: Off',
@@ -92,13 +99,13 @@ async function onPlaylistCreated() {
 <template>
   <div
     v-if="player.isVisible"
-    class="flex w-full flex-col border-t border-stone-100/6 bg-stone-950 pt-3 pb-2"
+    class="player-bar-texture flex w-full flex-col border-t border-stone-100/6 pt-3 pb-2"
   >
-    <div class="flex h-16 items-center px-4">
+    <div class="flex h-20 items-center px-4">
       <div class="flex min-w-0 flex-1 items-center gap-3 md:flex-none md:w-1/3">
         <NuxtLink
           :to="player.currentTrack?.artistSlug ? `/artist/${player.currentTrack.artistSlug}` : '#'"
-          class="size-12 shrink-0 rounded-md bg-stone-800 bg-cover bg-center transition-opacity duration-150 hover:opacity-80"
+          class="size-16 shrink-0 rounded-md bg-stone-800 bg-cover bg-center transition-opacity duration-150 hover:opacity-80"
           :style="albumCover ? { backgroundImage: `url(${albumCover})` } : {}"
         />
         <div class="min-w-0 flex-1">
@@ -111,37 +118,38 @@ async function onPlaylistCreated() {
             :to="`/artist/${player.currentTrack.artistSlug}`"
             class="block truncate text-2xs text-stone-100/60 hover:text-stone-100 transition-colors duration-150"
           >
-            {{ player.currentTrack?.artist || '' }}
+            {{ player.currentTrack?.artist }}{{ player.currentTrack?.album ? ` · ${player.currentTrack.album}` : '' }}
           </NuxtLink>
           <span v-else class="block truncate text-2xs text-stone-100/60">
-            {{ player.currentTrack?.artist || '' }}
+            {{ player.currentTrack?.artist }}{{ player.currentTrack?.album ? ` · ${player.currentTrack.album}` : '' }}
           </span>
         </div>
       </div>
 
       <div class="flex flex-1 flex-col items-center justify-center gap-1.5">
-        <div class="flex items-center gap-5">
-          <div class="relative flex flex-col items-center">
-            <span
-              v-if="player.shuffleMode !== 'off'"
-              class="absolute -top-4 whitespace-nowrap rounded-sm bg-amber-400 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-on-accent"
-            >
-              {{ SHUFFLE_LABELS[player.shuffleMode] }}
-            </span>
-            <button
-              type="button"
-              :class="cx('transition-colors duration-150', player.shuffleMode !== 'off' ? 'text-amber-400' : 'text-stone-100/60 hover:text-stone-100')"
-              :title="SHUFFLE_TOOLTIPS[player.shuffleMode]"
-              :aria-label="SHUFFLE_TOOLTIPS[player.shuffleMode]"
-              @click="player.cycleShuffleMode()"
-            >
-              <Compass v-if="player.shuffleMode === 'explorer'" :size="18" :stroke-width="ICON_STROKE_WIDTH" />
-              <Shuffle v-else :size="18" :stroke-width="ICON_STROKE_WIDTH" />
-            </button>
-          </div>
+        <span class="rounded-full bg-amber-400 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-accent">
+          {{ contextLabel }}
+        </span>
 
-          <button type="button" class="text-stone-100/60 hover:text-stone-100 transition-colors duration-150" aria-label="Previous track" @click="player.previous()">
-            <SkipBack :size="20" :stroke-width="ICON_STROKE_WIDTH" />
+        <div class="flex items-center gap-4">
+          <button
+            type="button"
+            :class="button('secondary', 'md', '', player.shuffleMode !== 'off', true)"
+            :title="SHUFFLE_TOOLTIPS[player.shuffleMode]"
+            :aria-label="SHUFFLE_TOOLTIPS[player.shuffleMode]"
+            @click="player.cycleShuffleMode()"
+          >
+            <Compass v-if="player.shuffleMode === 'explorer'" :size="16" :stroke-width="ICON_STROKE_WIDTH" />
+            <Shuffle v-else :size="16" :stroke-width="ICON_STROKE_WIDTH" />
+          </button>
+
+          <button
+            type="button"
+            :class="button('secondary', 'md', '', false, true)"
+            aria-label="Previous track"
+            @click="player.previous()"
+          >
+            <SkipBack :size="16" :stroke-width="ICON_STROKE_WIDTH" />
           </button>
 
           <PlayerPlayPauseButton
@@ -151,20 +159,25 @@ async function onPlaylistCreated() {
             @click="player.togglePlay()"
           />
 
-          <button type="button" class="text-stone-100/60 hover:text-stone-100 transition-colors duration-150" aria-label="Next track" @click="player.next()">
-            <SkipForward :size="20" :stroke-width="ICON_STROKE_WIDTH" />
+          <button
+            type="button"
+            :class="button('secondary', 'md', '', false, true)"
+            aria-label="Next track"
+            @click="player.next()"
+          >
+            <SkipForward :size="16" :stroke-width="ICON_STROKE_WIDTH" />
           </button>
 
           <div class="relative">
             <button
               type="button"
-              class="text-stone-100/60 hover:text-stone-100 transition-colors duration-150"
+              :class="button('secondary', 'md', '', showPlaylistMenu, true)"
               aria-label="Add to playlist"
               aria-haspopup="menu"
               :aria-expanded="showPlaylistMenu"
               @click="showPlaylistMenu = !showPlaylistMenu; loadPlaylists()"
             >
-              <ListMusic :size="18" :stroke-width="ICON_STROKE_WIDTH" />
+              <ListPlus :size="16" :stroke-width="ICON_STROKE_WIDTH" />
             </button>
             <div
               v-if="showPlaylistMenu"
@@ -201,10 +214,11 @@ async function onPlaylistCreated() {
           </div>
         </div>
 
-        <PlayerSeekBar :current-time="player.currentTime" :duration="player.duration" @seek="(time) => player.seek(time)" />
+        <PlayerSeekBar :current-time="player.currentTime" :duration="player.duration" hover-popover @seek="(time) => player.seek(time)" />
       </div>
 
-      <div class="hidden md:flex md:w-1/3 justify-end">
+      <div class="hidden md:flex md:w-1/3 items-center justify-end gap-4">
+        <PlayerVolumeControl />
         <button
           type="button"
           class="text-stone-100/40 hover:text-stone-100 transition-colors duration-150"

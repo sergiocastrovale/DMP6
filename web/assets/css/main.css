@@ -120,3 +120,21 @@ body {
 *:hover {
   scrollbar-color: var(--color-stone-500) transparent;
 }
+
+/* Player bar background: amber glow top-left + a faint diagonal pinstripe, requested by the
+   design reference. Both layers are too low-opacity to express as stacked Tailwind utilities
+   without a third stacking-context wrapper div, so this is one rule instead. */
+@utility player-bar-texture {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      transparent 0 10px,
+      color-mix(in oklch, var(--color-stone-100) 4%, transparent) 10px 11px
+    ),
+    radial-gradient(
+      ellipse 60% 100% at 15% 0%,
+      color-mix(in oklch, var(--color-amber-400) 14%, transparent),
+      transparent 70%
+    ),
+    var(--color-stone-950);
+}
