@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { Save, CheckCircle2, AlertCircle } from 'lucide-vue-next'
+import { ChevronDown } from 'lucide-vue-next'
 
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
+
+const enabledId = useId()
+const songkongId = useId()
+const autoMergeId = useId()
 
 const { data: settings, refresh } = await useAsyncData('settings-monitoring', () =>
   $fetch<Record<string, any>>('/api/settings'),
@@ -55,29 +59,33 @@ const { saving, saved, error, save } = useFormSave(async () => {
 </script>
 
 <template>
-  <div class="max-w-2xl space-y-6">
+  <div class="flex max-w-2xl flex-col gap-6">
     <SettingsMonitoringSources />
 
     <DownloadsAcquisitionIdleBanner />
 
-    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Auto-monitoring</h2>
-      <p class="text-xs text-ink-3">
+    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Auto-monitoring</h2>
+      <p class="text-sm text-stone-100/40">
         Leave a field blank to use the environment default. Changes apply live (no restart),
         except the base reconcile tick (RECONCILE_SEC, env only).
       </p>
 
-      <div class="space-y-1.5">
-        <label class="block text-sm font-medium text-ink">Monitoring</label>
-        <p class="text-xs text-ink-3">Master switch for the download + catalogue loops.</p>
-        <select
-          v-model="enabledChoice"
-          class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
-        >
-          <option value="default">- use env default (MONITOR_ENABLED) -</option>
-          <option value="on">On</option>
-          <option value="off">Off</option>
-        </select>
+      <div class="flex flex-col gap-1.5">
+        <label :for="enabledId" class="block text-base font-medium text-stone-100">Monitoring</label>
+        <p class="text-sm text-stone-100/40">Master switch for the download + catalogue loops.</p>
+        <div class="relative">
+          <select
+            :id="enabledId"
+            v-model="enabledChoice"
+            class="h-[40px] w-full pl-[13px] pr-8 rounded-md bg-stone-950 border border-stone-100/10 text-stone-100 text-base font-sans appearance-none outline-0 transition-colors duration-150 focus:border-amber-400/45"
+          >
+            <option value="default">- use env default (MONITOR_ENABLED) -</option>
+            <option value="on">On</option>
+            <option value="off">Off</option>
+          </select>
+          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/30" />
+        </div>
       </div>
 
       <SettingsField
@@ -129,54 +137,47 @@ const { saving, saved, error, save } = useFormSave(async () => {
         placeholder="3"
       />
 
-      <div class="space-y-1.5">
-        <label class="block text-sm font-medium text-ink">SongKong enrichment</label>
-        <p class="text-xs text-ink-3">
+      <div class="flex flex-col gap-1.5">
+        <label :for="songkongId" class="block text-base font-medium text-stone-100">SongKong enrichment</label>
+        <p class="text-sm text-stone-100/40">
           Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library
           folder layout is applied. Requires the host SongKong drainer cron. (SONGKONG_ENABLED)
         </p>
-        <select
-          v-model="songkongChoice"
-          class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
-        >
-          <option value="default">- use env default (SONGKONG_ENABLED) -</option>
-          <option value="on">On</option>
-          <option value="off">Off</option>
-        </select>
+        <div class="relative">
+          <select
+            :id="songkongId"
+            v-model="songkongChoice"
+            class="h-[40px] w-full pl-[13px] pr-8 rounded-md bg-stone-950 border border-stone-100/10 text-stone-100 text-base font-sans appearance-none outline-0 transition-colors duration-150 focus:border-amber-400/45"
+          >
+            <option value="default">- use env default (SONGKONG_ENABLED) -</option>
+            <option value="on">On</option>
+            <option value="off">Off</option>
+          </select>
+          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/30" />
+        </div>
       </div>
 
-      <div class="space-y-1.5">
-        <label class="block text-sm font-medium text-ink">Auto-merge into library</label>
-        <p class="text-xs text-ink-3">
+      <div class="flex flex-col gap-1.5">
+        <label :for="autoMergeId" class="block text-base font-medium text-stone-100">Auto-merge into library</label>
+        <p class="text-sm text-stone-100/40">
           When on, ready downloads are merged into the music library automatically (no manual
           “Merge”). Off by default — merging stays a manual gate. (AUTO_MERGE)
         </p>
-        <select
-          v-model="autoMergeChoice"
-          class="w-full rounded border border-rule bg-bg-2 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
-        >
-          <option value="default">- use env default (AUTO_MERGE) -</option>
-          <option value="on">On</option>
-          <option value="off">Off</option>
-        </select>
+        <div class="relative">
+          <select
+            :id="autoMergeId"
+            v-model="autoMergeChoice"
+            class="h-[40px] w-full pl-[13px] pr-8 rounded-md bg-stone-950 border border-stone-100/10 text-stone-100 text-base font-sans appearance-none outline-0 transition-colors duration-150 focus:border-amber-400/45"
+          >
+            <option value="default">- use env default (AUTO_MERGE) -</option>
+            <option value="on">On</option>
+            <option value="off">Off</option>
+          </select>
+          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/30" />
+        </div>
       </div>
     </div>
 
-    <div class="flex items-center gap-3">
-      <button
-        :disabled="saving || !canEdit"
-        class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-        @click="save"
-      >
-        <Save :size="15" />
-        {{ saving ? 'Saving…' : 'Save Changes' }}
-      </button>
-      <span v-if="saved" class="flex items-center gap-1.5 text-sm text-emerald-400">
-        <CheckCircle2 :size="15" /> Saved
-      </span>
-      <span v-if="error" class="flex items-center gap-1.5 text-sm text-red-400">
-        <AlertCircle :size="15" /> {{ error }}
-      </span>
-    </div>
+    <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
   </div>
 </template>

@@ -547,6 +547,44 @@ Matched against `07-statistics*.png`.
   selection UI with nothing wired to it would be exactly the half-finished feature CLAUDE.md
   rules out.
 
+## Settings and scan surfaces (Stage 10)
+
+Matched against `08-settings.png`.
+
+- **New `components/settings/SaveBar.vue`** replaces the Save-button-plus-saved/error-span row
+  copy-pasted into seven of the eight settings forms (every one except `UsersForm`, which is a
+  CRUD table with no single save action). The feedback text now sits inside a permanent
+  `aria-live="polite"` region instead of a span that silently appears/disappears - a screen
+  reader only announces content that was already present in a live region when it changes, not a
+  node that gets inserted after the fact, so this was the actual bug the plan's "live region, not
+  a silently-appearing span" line was about. A default slot carries the one form
+  (`ScrobbleForm.vue`) that needs an extra action button (Connect Last.fm) alongside Save.
+- **`components/settings/SettingsField.vue`** gets a real `useId()`-linked `<label for>` (it had
+  none before - `label`/`description`/`input` were three unconnected elements) and its
+  `focus:border-blue-500` replaced with the token focus ring. Its `select` branch now uses
+  `helpers/ui.ts`'s `form.select` recipe - unused until this stage, like `DataTable` and its
+  `class` column in Stage 9 - which is `appearance-none` on purpose, so it's paired with an
+  absolutely-positioned `ChevronDown` the native arrow it removed. `MonitoringForm.vue`'s three
+  hand-rolled tri-state selects (monitoring/SongKong/auto-merge on/off/env-default) get the same
+  select+chevron treatment and a real `for`/`id` pairing they lacked entirely.
+- **`components/settings/PermissionsForm.vue`** and **`UsersForm.vue`** move their raw
+  `<table>`s onto `SlimTable`/`SlimTableHeader`/`SlimTableBody`/`SlimTableRow` (Stage 2's
+  primitives) instead of a third hand-written table implementation. `PermissionsForm`'s raw
+  `accent-blue-500` checkbox is now `UiCheckbox`; `UsersForm`'s role badges move onto
+  `toneBg.accent`/`toneBg.info`/`toneBg.muted` and its edit/delete row buttons onto `UiButton`
+  (icon-only, with a real accessible name per row instead of a bare icon).
+- **`components/ScanActions.vue`** and **`components/RealTimeStatus.vue`** retokenised; the
+  latter's inline progress bar, stale-lock banner and history rows move off `bg-bg-*`/`text-ink-*`
+  onto the stone/amber scale, and `success`/`danger` tones replace hardcoded `emerald`/`red`.
+  `ScanActions.vue`'s dead `hover:border-rule` (identical to its own idle border, so hover never
+  visibly changed anything) is fixed to `hover:border-stone-100/10`. Kept the exact button
+  count/order `test/components/ScanActions.test.ts` asserts on.
+- Every form's card wrapper (`rounded-lg border border-rule bg-bg-1 p-6 space-y-5`) becomes
+  `rounded-xl border border-stone-100/6 bg-stone-900 p-6` + `flex flex-col gap-5` - `space-y-*`
+  never appears anywhere else in the app post-overhaul, so this drops the only remaining holdout.
+
+## Adding to the system
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

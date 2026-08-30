@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Save, CheckCircle2, AlertCircle } from 'lucide-vue-next'
-
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
 
@@ -31,9 +29,9 @@ const { saving, saved, error, save } = useFormSave(async () => {
 </script>
 
 <template>
-  <div class="max-w-2xl space-y-6">
-    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Music Library</h2>
+  <div class="flex max-w-2xl flex-col gap-6">
+    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Music Library</h2>
 
       <SettingsField
         v-model="musicDir"
@@ -42,9 +40,9 @@ const { saving, saved, error, save } = useFormSave(async () => {
         placeholder="/path/to/your/music"
       />
 
-      <div class="space-y-1.5">
+      <div class="flex flex-col gap-1.5">
         <Switch v-model="autoScanEnabled" label="Scan automatically" />
-        <p class="text-xs text-ink-3">
+        <p class="text-sm text-stone-100/40">
           Runs index + sync unattended so new folders and releases appear without pressing anything.
           Only the instance started with MONITOR_PRIMARY=true runs it.
         </p>
@@ -58,34 +56,19 @@ const { saving, saved, error, save } = useFormSave(async () => {
         placeholder="12"
       />
 
-      <div class="space-y-1.5">
+      <div class="flex flex-col gap-1.5">
         <Switch v-model="showTerminal" label="Show terminal sidebar" />
-        <p class="text-xs text-ink-3">
+        <p class="text-sm text-stone-100/40">
           Stream raw output in the terminal sidebar for scans, fixes and merges. When off, a compact progress
           panel is shown instead. Overrides the SHOW_TERMINAL env var.
         </p>
       </div>
 
-      <div class="flex items-center gap-3 pt-2">
-        <button
-          :disabled="saving || !canEdit"
-          class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-          @click="save"
-        >
-          <Save :size="15" />
-          {{ saving ? 'Saving…' : 'Save' }}
-        </button>
-        <span v-if="saved" class="flex items-center gap-1.5 text-sm text-emerald-400">
-          <CheckCircle2 :size="15" /> Saved
-        </span>
-        <span v-if="error" class="flex items-center gap-1.5 text-sm text-red-400">
-          <AlertCircle :size="15" /> {{ error }}
-        </span>
-      </div>
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" label="Save" class="pt-2" @save="save" />
     </div>
 
-    <div class="rounded-lg border border-rule bg-bg-1 p-6">
-      <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-ink-2">Scan Controls</h2>
+    <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+      <h2 class="mb-4 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Scan Controls</h2>
       <RealTimeStatus />
     </div>
   </div>

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Save, CheckCircle2, AlertCircle } from 'lucide-vue-next'
-
 type PermData = {
   matrix: Record<string, string[]>
   allPermissions: string[]
@@ -68,50 +66,33 @@ const permLabel = (p: string) => {
 </script>
 
 <template>
-  <div class="max-w-3xl space-y-6">
-    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Role Permissions</h2>
+  <div class="flex max-w-3xl flex-col gap-6">
+    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Role Permissions</h2>
 
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink-3">
-            <th class="pb-2 pr-4">Permission</th>
-            <th v-for="role in roles" :key="role" class="pb-2 px-4 text-center">{{ role.toLowerCase() }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="perm in allPermissions"
-            :key="perm"
-            class="border-b border-rule"
-          >
-            <td class="py-2 pr-4">
-              <span class="text-ink-2">{{ permLabel(perm).feature }}</span>
-              <span class="text-ink-3">.{{ permLabel(perm).action }}</span>
+      <SlimTable>
+        <SlimTableHeader>
+          <th class="px-3 py-2.5 text-left">Permission</th>
+          <th v-for="role in roles" :key="role" class="px-3 py-2.5 text-center">{{ role.toLowerCase() }}</th>
+        </SlimTableHeader>
+        <SlimTableBody>
+          <SlimTableRow v-for="perm in allPermissions" :key="perm">
+            <td class="px-3 py-3">
+              <span class="text-stone-100/60">{{ permLabel(perm).feature }}</span>
+              <span class="text-stone-100/40">.{{ permLabel(perm).action }}</span>
             </td>
-            <td v-for="role in roles" :key="role" class="py-2 px-4 text-center">
-              <input
-                type="checkbox"
-                :checked="matrix[role]?.has(perm) ?? false"
-                class="h-4 w-4 rounded border-rule bg-bg-2 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer accent-blue-500"
-                @change="toggle(role, perm)"
-              >
+            <td v-for="role in roles" :key="role" class="px-3 py-3 text-center">
+              <UiCheckbox
+                :model-value="matrix[role]?.has(perm) ?? false"
+                :aria-label="`${perm} for ${role.toLowerCase()}`"
+                @update:model-value="toggle(role, perm)"
+              />
             </td>
-          </tr>
-        </tbody>
-      </table>
+          </SlimTableRow>
+        </SlimTableBody>
+      </SlimTable>
 
-      <div class="flex items-center gap-3 pt-2">
-        <UiButton :icon="Save" :loading="saving" @click="save">
-          Save
-        </UiButton>
-        <span v-if="saved" class="flex items-center gap-1.5 text-sm text-emerald-400">
-          <CheckCircle2 :size="15" /> Saved
-        </span>
-        <span v-if="error" class="flex items-center gap-1.5 text-sm text-red-400">
-          <AlertCircle :size="15" /> {{ error }}
-        </span>
-      </div>
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" label="Save" @save="save" />
     </div>
   </div>
 </template>

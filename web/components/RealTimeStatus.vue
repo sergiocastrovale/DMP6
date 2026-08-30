@@ -118,31 +118,31 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col gap-6">
-    <div class="rounded-lg border border-rule bg-bg-1 p-5">
+    <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div
             class="flex size-10 items-center justify-center rounded-full"
-            :class="terminal.isRunning ? 'bg-accent/10' : 'bg-emerald-500/10'"
+            :class="terminal.isRunning ? 'bg-amber-400/10' : 'bg-success/15'"
           >
-            <Loader2 v-if="terminal.isRunning" :size="20" class="animate-spin text-accent" />
-            <CheckCircle2 v-else :size="20" class="text-emerald-500" />
+            <Loader2 v-if="terminal.isRunning" :size="20" class="animate-spin text-amber-400" />
+            <CheckCircle2 v-else :size="20" class="text-success" />
           </div>
           <div>
-            <p class="text-sm font-medium text-ink">
+            <p class="text-base font-medium text-stone-100">
               {{ terminal.isRunning ? 'Scan in progress' : 'Idle' }}
             </p>
-            <p v-if="terminal.isRunning && settings.showTerminal" class="text-xs text-ink-3">
+            <p v-if="terminal.isRunning && settings.showTerminal" class="text-sm text-stone-100/40">
               Check the terminal for live output
             </p>
-            <p v-else-if="status" class="text-xs text-ink-3">
+            <p v-else-if="status" class="text-sm text-stone-100/40">
               Last scan: {{ formatRelativeTime(status.lastScanEndedAt) }}
             </p>
           </div>
         </div>
         <button
           v-if="terminal.isRunning"
-          class="flex items-center gap-1.5 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
+          class="flex items-center gap-1.5 rounded-md border border-danger/30 bg-danger/10 px-3 py-1.5 text-sm font-medium text-danger transition-colors duration-150 hover:bg-danger/20"
           @click="terminal.stop()"
         >
           <Square :size="12" />
@@ -152,15 +152,15 @@ onUnmounted(() => {
 
       <div v-if="terminal.isRunning && progress" class="mt-4 space-y-2">
         <div class="flex items-center justify-between text-xs">
-          <span class="text-ink-2">
+          <span class="text-stone-100/60">
             {{ progress.phase === 'index' ? 'Indexing' : 'Syncing' }}:
-            <span class="text-ink">{{ progress.folder || progress.artist }}</span>
+            <span class="text-stone-100">{{ progress.folder || progress.artist }}</span>
           </span>
-          <span class="text-ink-3">{{ progress.current }} / {{ progress.total }}</span>
+          <span class="text-stone-100/40">{{ progress.current }} / {{ progress.total }}</span>
         </div>
-        <div class="h-1.5 w-full rounded-full bg-bg-2">
+        <div class="h-1.5 w-full rounded-full bg-stone-800">
           <div
-            class="h-1.5 rounded-full bg-accent transition-all duration-300"
+            class="h-1.5 rounded-full bg-amber-400 transition-all duration-300"
             :style="{ width: `${Math.min(100, (progress.current / Math.max(1, progress.total)) * 100)}%` }"
           />
         </div>
@@ -170,7 +170,7 @@ onUnmounted(() => {
 
       <div
         v-if="terminal.isRunning && terminal.lines.length > 0 && settings.showTerminal"
-        class="mt-4 max-h-24 overflow-hidden rounded border border-rule bg-bg p-3 font-mono text-xs leading-5 text-ink-2 cursor-pointer"
+        class="mt-4 max-h-24 overflow-hidden rounded-md border border-stone-100/6 bg-stone-950 p-3 font-mono text-xs leading-5 text-stone-100/60 cursor-pointer"
         @click="terminal.open()"
       >
         <div v-for="(line, i) in terminal.lines.slice(-3)" :key="i" class="truncate">
@@ -181,14 +181,14 @@ onUnmounted(() => {
 
     <div
       v-if="staleLock"
-      class="flex items-center justify-between rounded-lg border border-accent/30 bg-accent/5 px-4 py-3"
+      class="flex items-center justify-between rounded-lg border border-amber-400/30 bg-amber-400/5 px-4 py-3"
     >
       <div>
-        <p class="text-sm font-medium text-accent">
+        <p class="text-base font-medium text-amber-400">
           {{ staleLock.sessionName ? 'Session running in background' : 'Lock held externally' }}
         </p>
-        <p class="text-xs text-ink-3">
-          <span class="text-ink-2">{{ staleLock.lockedBy }}</span>
+        <p class="text-sm text-stone-100/40">
+          <span class="text-stone-100/60">{{ staleLock.lockedBy }}</span>
           (pid {{ staleLock.pid }})
           <template v-if="staleLock.sessionName"> - reconnect to view output</template>
           <template v-else> - process may have died without releasing the lock</template>
@@ -198,7 +198,7 @@ onUnmounted(() => {
         <button
           v-if="staleLock.sessionName"
           :disabled="reconnecting"
-          class="flex items-center gap-1.5 rounded-md bg-accent/20 border border-accent/40 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/30 disabled:opacity-50"
+          class="flex items-center gap-1.5 rounded-md bg-amber-400/20 border border-amber-400/40 px-3 py-1.5 text-sm font-medium text-amber-400 transition-colors duration-150 hover:bg-amber-400/30 disabled:opacity-50"
           @click="reconnectSession"
         >
           <Loader2 v-if="reconnecting" :size="12" class="animate-spin" />
@@ -207,7 +207,7 @@ onUnmounted(() => {
         </button>
         <button
           :disabled="unlocking"
-          class="flex items-center gap-1.5 rounded-md border border-rule px-3 py-1.5 text-xs font-medium text-ink-2 transition-colors hover:bg-bg-2 disabled:opacity-50"
+          class="flex items-center gap-1.5 rounded-md border border-stone-100/10 px-3 py-1.5 text-sm font-medium text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 disabled:opacity-50"
           @click="forceUnlock"
         >
           <Loader2 v-if="unlocking" :size="12" class="animate-spin" />
@@ -218,28 +218,28 @@ onUnmounted(() => {
     </div>
 
     <div>
-      <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
+      <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
         Scan Library
       </h3>
       <ScanActions :disabled="!!staleLock" />
     </div>
 
     <div v-if="status && !loading">
-      <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-3">
+      <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
         History
       </h3>
-      <div class="rounded-lg border border-rule bg-bg-1 divide-y divide-rule">
+      <div class="rounded-xl border border-stone-100/6 bg-stone-900 divide-y divide-stone-100/6">
         <div class="flex items-center justify-between px-4 py-3">
-          <span class="text-sm text-ink-2">Last scan started</span>
-          <span class="text-sm text-ink">{{ formatDate(status.lastScanStartedAt) }}</span>
+          <span class="text-base text-stone-100/60">Last scan started</span>
+          <span class="text-base text-stone-100">{{ formatDate(status.lastScanStartedAt) }}</span>
         </div>
         <div class="flex items-center justify-between px-4 py-3">
-          <span class="text-sm text-ink-2">Last scan completed</span>
-          <span class="text-sm text-ink">{{ formatDate(status.lastScanEndedAt) }}</span>
+          <span class="text-base text-stone-100/60">Last scan completed</span>
+          <span class="text-base text-stone-100">{{ formatDate(status.lastScanEndedAt) }}</span>
         </div>
         <div v-if="status.lastSyncedArtist" class="flex items-center justify-between px-4 py-3">
-          <span class="text-sm text-ink-2">Last synced artist</span>
-          <span class="text-sm text-ink">{{ status.lastSyncedArtist }}</span>
+          <span class="text-base text-stone-100/60">Last synced artist</span>
+          <span class="text-base text-stone-100">{{ status.lastSyncedArtist }}</span>
         </div>
       </div>
     </div>

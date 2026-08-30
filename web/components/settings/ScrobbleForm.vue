@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Save, CheckCircle2, AlertCircle, ExternalLink, Unlink } from 'lucide-vue-next'
+import { CheckCircle2, AlertCircle, ExternalLink, Unlink } from 'lucide-vue-next'
 
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
@@ -60,21 +60,21 @@ const disconnect = async () => {
 </script>
 
 <template>
-  <div class="max-w-2xl space-y-6">
-    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Last.fm Scrobbling</h2>
+  <div class="flex max-w-2xl flex-col gap-6">
+    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Last.fm Scrobbling</h2>
 
-      <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-4 py-3">
-        <CheckCircle2 :size="18" class="text-emerald-400 shrink-0" />
+      <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
+        <CheckCircle2 :size="18" class="text-success shrink-0" />
         <div class="flex-1">
-          <p class="text-sm text-emerald-300">
+          <p class="text-base text-success">
             Connected as <span class="font-semibold">{{ connectedUsername }}</span>
           </p>
-          <p class="text-xs text-ink-3">Tracks are being scrobbled to Last.fm</p>
+          <p class="text-sm text-stone-100/40">Tracks are being scrobbled to Last.fm</p>
         </div>
         <button
           :disabled="disconnecting || !canEdit"
-          class="flex items-center gap-1.5 rounded bg-bg-2 px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-bg-3 disabled:opacity-50"
+          class="flex items-center gap-1.5 rounded-md bg-stone-800 px-3 py-1.5 text-sm font-medium text-stone-100/60 transition-colors duration-150 hover:bg-stone-700 disabled:opacity-50"
           @click="disconnect"
         >
           <Unlink :size="12" />
@@ -82,9 +82,9 @@ const disconnect = async () => {
         </button>
       </div>
 
-      <div v-else class="flex items-center gap-3 rounded-lg border border-rule/50 bg-bg-2/50 px-4 py-3">
-        <AlertCircle :size="18" class="text-ink-3 shrink-0" />
-        <p class="flex-1 text-sm text-ink-2">Not connected to Last.fm</p>
+      <div v-else class="flex items-center gap-3 rounded-lg border border-stone-100/6 bg-stone-800/50 px-4 py-3">
+        <AlertCircle :size="18" class="text-stone-100/40 shrink-0" />
+        <p class="flex-1 text-base text-stone-100/60">Not connected to Last.fm</p>
       </div>
 
       <SettingsField
@@ -102,38 +102,23 @@ const disconnect = async () => {
         :placeholder="settings?.lastfmSecretSet ? 'Set — leave blank to keep' : 'Your Last.fm shared secret'"
       />
 
-      <div class="flex items-center gap-3 pt-2">
-        <button
-          :disabled="saving || !canEdit"
-          class="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-          @click="save"
-        >
-          <Save :size="15" />
-          {{ saving ? 'Saving…' : 'Save' }}
-        </button>
-
-        <button
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" label="Save" class="pt-2" @save="save">
+        <UiButton
           v-if="!isConnected && apiKey && (secret || settings?.lastfmSecretSet)"
-          :disabled="connecting || !canEdit"
-          class="flex items-center gap-2 rounded bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
+          variant="danger"
+          :icon="ExternalLink"
+          :loading="connecting"
+          :disabled="!canEdit"
           @click="connect"
         >
-          <ExternalLink :size="15" />
           {{ connecting ? 'Redirecting…' : 'Connect Last.fm' }}
-        </button>
-
-        <span v-if="saved" class="flex items-center gap-1.5 text-sm text-emerald-400">
-          <CheckCircle2 :size="15" /> Saved
-        </span>
-        <span v-if="error" class="flex items-center gap-1.5 text-sm text-red-400">
-          <AlertCircle :size="15" /> {{ error }}
-        </span>
-      </div>
+        </UiButton>
+      </SettingsSaveBar>
     </div>
 
-    <div class="rounded-lg border border-rule bg-bg-1 p-6">
-      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-2">How it works</h2>
-      <ul class="space-y-1 text-sm text-ink-2">
+    <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+      <h2 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">How it works</h2>
+      <ul class="flex flex-col gap-1 text-base text-stone-100/60">
         <li>Tracks are scrobbled after 50% played or 4 minutes (whichever first)</li>
         <li>Tracks under 30 seconds are not scrobbled</li>
         <li>"Now Playing" updates immediately when a track starts</li>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Plus, Trash2, KeyRound, Save, AlertCircle } from 'lucide-vue-next'
+import { Plus, Trash2, Pencil, KeyRound, Save, X, AlertCircle } from 'lucide-vue-next'
+import { form, toneBg, toneText } from '~/helpers/ui'
 
 type User = {
   id: number
@@ -89,165 +90,103 @@ const roles = [
   { value: 'MANAGER', label: 'Manager' },
   { value: 'ADMIN', label: 'Admin' },
 ]
+
+const roleTone = (role: string) => role === 'ADMIN' ? toneBg.accent : role === 'MANAGER' ? toneBg.info : toneBg.muted
 </script>
 
 <template>
-  <div class="max-w-3xl space-y-6">
-    <div class="rounded-lg border border-rule bg-bg-1 p-6 space-y-5">
+  <div class="flex max-w-3xl flex-col gap-6">
+    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
       <div class="flex items-center justify-between">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-2">Users</h2>
-        <button
-          class="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
-          @click="showCreate = !showCreate"
-        >
-          <Plus :size="14" /> New User
-        </button>
+        <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Users</h2>
+        <UiButton size="sm" :icon="Plus" @click="showCreate = !showCreate">
+          New User
+        </UiButton>
       </div>
 
-      <div v-if="showCreate" class="rounded border border-rule bg-bg-2 p-4 space-y-3">
+      <div v-if="showCreate" class="flex flex-col gap-3 rounded-lg border border-stone-100/6 bg-stone-950 p-4">
         <div class="grid grid-cols-2 gap-3">
-          <input
-            v-model="newUser.username"
-            placeholder="Username"
-            class="rounded border border-rule bg-bg-1 px-3 py-2 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
-          >
-          <input
-            v-model="newUser.email"
-            placeholder="Email"
-            type="email"
-            class="rounded border border-rule bg-bg-1 px-3 py-2 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
-          >
-          <input
-            v-model="newUser.password"
-            placeholder="Password"
-            type="password"
-            class="rounded border border-rule bg-bg-1 px-3 py-2 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
-          >
-          <select
-            v-model="newUser.role"
-            class="rounded border border-rule bg-bg-1 px-3 py-2 text-sm text-ink focus:border-blue-500 focus:outline-none"
-          >
-            <option v-for="r in roles" :key="r.value" :value="r.value">{{ r.label }}</option>
-          </select>
+          <input v-model="newUser.username" placeholder="Username" :class="form.input">
+          <input v-model="newUser.email" placeholder="Email" type="email" :class="form.input">
+          <input v-model="newUser.password" placeholder="Password" type="password" :class="form.input">
+          <div class="relative">
+            <select v-model="newUser.role" :class="form.select">
+              <option v-for="r in roles" :key="r.value" :value="r.value">{{ r.label }}</option>
+            </select>
+          </div>
         </div>
-        <p v-if="createError" class="text-sm text-red-400">{{ createError }}</p>
+        <p v-if="createError" role="alert" :class="form.error">{{ createError }}</p>
         <div class="flex gap-2">
-          <button
-            :disabled="creating"
-            class="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-            @click="createUser"
-          >
-            {{ creating ? 'Creating…' : 'Create' }}
-          </button>
-          <button
-            class="rounded bg-bg-3 px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-bg-3"
-            @click="showCreate = false"
-          >
+          <UiButton size="sm" :loading="creating" @click="createUser">
+            Create
+          </UiButton>
+          <UiButton variant="secondary" size="sm" @click="showCreate = false">
             Cancel
-          </button>
+          </UiButton>
         </div>
       </div>
 
-      <p v-if="deleteError" class="flex items-center gap-1.5 text-sm text-red-400">
+      <p v-if="deleteError" role="alert" :class="[form.error, 'flex items-center gap-1.5']">
         <AlertCircle :size="14" /> {{ deleteError }}
       </p>
 
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink-3">
-            <th class="pb-2 pr-4">Username</th>
-            <th class="pb-2 pr-4">Email</th>
-            <th class="pb-2 pr-4">Role</th>
-            <th class="pb-2 pr-4">Status</th>
-            <th class="pb-2" />
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="u in users"
-            :key="u.id"
-            class="border-b border-rule"
-          >
+      <SlimTable>
+        <SlimTableHeader>
+          <th class="px-3 py-2.5 text-left">Username</th>
+          <th class="px-3 py-2.5 text-left">Email</th>
+          <th class="px-3 py-2.5 text-left">Role</th>
+          <th class="px-3 py-2.5 text-left">Status</th>
+          <th class="px-3 py-2.5 text-right">Actions</th>
+        </SlimTableHeader>
+        <SlimTableBody>
+          <SlimTableRow v-for="u in users" :key="u.id">
             <template v-if="editingId === u.id">
-              <td class="py-2 pr-4 text-ink">{{ u.username }}</td>
-              <td class="py-2 pr-4">
-                <input
-                  v-model="editForm.email"
-                  class="w-full rounded border border-rule bg-bg-2 px-2 py-1 text-sm text-ink focus:border-blue-500 focus:outline-none"
-                >
+              <td class="px-3 py-3 text-stone-100">{{ u.username }}</td>
+              <td class="px-3 py-3">
+                <input v-model="editForm.email" :class="[form.input, 'h-[34px]']">
               </td>
-              <td class="py-2 pr-4">
-                <select
-                  v-model="editForm.role"
-                  class="rounded border border-rule bg-bg-2 px-2 py-1 text-sm text-ink focus:border-blue-500 focus:outline-none"
-                >
-                  <option v-for="r in roles" :key="r.value" :value="r.value">{{ r.label }}</option>
-                </select>
+              <td class="px-3 py-3">
+                <div class="relative">
+                  <select v-model="editForm.role" :class="[form.select, 'h-[34px]']">
+                    <option v-for="r in roles" :key="r.value" :value="r.value">{{ r.label }}</option>
+                  </select>
+                </div>
               </td>
-              <td class="py-2 pr-4">
-                <input
-                  v-model="editForm.password"
-                  type="password"
-                  placeholder="New pw (optional)"
-                  class="w-full rounded border border-rule bg-bg-2 px-2 py-1 text-sm text-ink placeholder-ink-4 focus:border-blue-500 focus:outline-none"
-                >
+              <td class="px-3 py-3">
+                <input v-model="editForm.password" type="password" placeholder="New pw (optional)" :class="[form.input, 'h-[34px]']">
               </td>
-              <td class="py-2 text-right space-x-1">
-                <button
-                  :disabled="saving"
-                  class="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
-                  @click="saveEdit(u.id)"
-                >
-                  <Save :size="12" />
-                </button>
-                <button
-                  class="rounded bg-bg-3 px-2 py-1 text-xs text-ink-2 hover:bg-bg-3"
-                  @click="cancelEdit"
-                >
-                  Cancel
-                </button>
-                <p v-if="editError" class="mt-1 text-xs text-red-400">{{ editError }}</p>
+              <td class="px-3 py-3 text-right" @click.stop>
+                <div class="flex items-center justify-end gap-1.5">
+                  <UiButton size="sm" icon-only :icon="Save" :loading="saving" aria-label="Save user" @click="saveEdit(u.id)" />
+                  <UiButton variant="secondary" size="sm" icon-only :icon="X" aria-label="Cancel edit" @click="cancelEdit" />
+                </div>
+                <p v-if="editError" role="alert" class="mt-1 text-xs text-danger">{{ editError }}</p>
               </td>
             </template>
             <template v-else>
-              <td class="py-2 pr-4 text-ink">{{ u.username }}</td>
-              <td class="py-2 pr-4 text-ink-2">{{ u.email }}</td>
-              <td class="py-2 pr-4">
-                <span
-                  class="rounded-full px-2 py-0.5 text-xs font-medium"
-                  :class="{
-                    'bg-accent/20 text-accent': u.role === 'ADMIN',
-                    'bg-blue-500/20 text-blue-400': u.role === 'MANAGER',
-                    'bg-bg-3 text-ink-2': u.role === 'VIEWER',
-                  }"
-                >
+              <td class="px-3 py-3 text-stone-100">{{ u.username }}</td>
+              <td class="px-3 py-3 text-stone-100/60">{{ u.email }}</td>
+              <td class="px-3 py-3">
+                <span :class="[roleTone(u.role), 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium']">
                   {{ u.role.toLowerCase() }}
                 </span>
               </td>
-              <td class="py-2 pr-4">
-                <span v-if="u.mustChangePassword" class="flex items-center gap-1 text-xs text-yellow-500">
+              <td class="px-3 py-3">
+                <span v-if="u.mustChangePassword" :class="[toneText.warning, 'flex items-center gap-1 text-xs']">
                   <KeyRound :size="12" /> must change pw
                 </span>
-                <span v-else class="text-xs text-ink-3">active</span>
+                <span v-else class="text-xs text-stone-100/40">active</span>
               </td>
-              <td class="py-2 text-right space-x-1">
-                <button
-                  class="rounded bg-bg-3 px-2 py-1 text-xs text-ink-2 hover:bg-bg-3"
-                  @click="startEdit(u)"
-                >
-                  Edit
-                </button>
-                <button
-                  class="rounded bg-red-900/50 px-2 py-1 text-xs text-red-400 hover:bg-red-900"
-                  @click="deleteUser(u.id)"
-                >
-                  <Trash2 :size="12" />
-                </button>
+              <td class="px-3 py-3 text-right" @click.stop>
+                <div class="flex items-center justify-end gap-1.5">
+                  <UiButton variant="secondary" size="sm" icon-only :icon="Pencil" :aria-label="`Edit ${u.username}`" @click="startEdit(u)" />
+                  <UiButton variant="danger" size="sm" icon-only :icon="Trash2" :aria-label="`Delete ${u.username}`" @click="deleteUser(u.id)" />
+                </div>
               </td>
             </template>
-          </tr>
-        </tbody>
-      </table>
+          </SlimTableRow>
+        </SlimTableBody>
+      </SlimTable>
     </div>
   </div>
 </template>
