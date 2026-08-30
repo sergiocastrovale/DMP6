@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideSearch, Info } from 'lucide-vue-next'
+import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideAlertTriangle, Info, Loader2 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type { Statistics } from '~/types/stats'
 import { formatNumber, formatPlaytime, formatFileSize, formatDate } from '~/helpers/functions'
+import { surface, toneText } from '~/helpers/ui'
 
 const NuxtLink = resolveComponent('NuxtLink')
 
@@ -21,8 +22,27 @@ interface StatItem {
 interface StatSection {
   title: string
   icon: Component
+  warn?: boolean
   items: StatItem[]
 }
+
+interface StatTile {
+  label: string
+  value: string
+  icon: Component
+  link: string
+}
+
+const tiles = computed<StatTile[]>(() => {
+  const s = stats.value
+  if (!s) { return [] }
+  return [
+    { label: 'Artists', value: formatNumber(s.mainArtists), icon: LucideLibrary, link: '/statistics/artists' },
+    { label: 'Releases', value: formatNumber(s.releases), icon: LucideImage, link: '/statistics/releases' },
+    { label: 'Tracks', value: formatNumber(s.tracks), icon: LucideRefreshCw, link: '/statistics/tracks' },
+    { label: 'Total plays', value: formatNumber(s.plays), icon: LucidePlay, link: '/statistics/plays' },
+  ]
+})
 
 const sections = computed<StatSection[]>(() => {
   const s = stats.value
@@ -32,20 +52,9 @@ const sections = computed<StatSection[]>(() => {
       title: 'Library',
       icon: LucideLibrary,
       items: [
-        { label: 'Artists', value: formatNumber(s.mainArtists), link: '/statistics/artists' },
         { label: 'Linked artists', value: formatNumber(s.linkedArtists), info: 'Artists that share a MusicBrainz ID with another artist (e.g. "Artist A & B" → "Artist A"). Their catalogue is aggregated on the primary artist\'s page.' },
-        { label: 'Releases', value: formatNumber(s.releases), link: '/statistics/releases' },
-        { label: 'Tracks', value: formatNumber(s.tracks), link: '/statistics/tracks' },
         { label: 'Genres', value: formatNumber(s.genres), link: '/statistics/genres' },
         { label: 'Total size', value: formatFileSize(s.totalFileSize), link: '/statistics/size' },
-      ],
-    },
-    {
-      title: 'Playback',
-      icon: LucidePlay,
-      items: [
-        { label: 'Total plays', value: formatNumber(s.plays), link: '/statistics/plays' },
-        { label: 'Total playtime', value: formatPlaytime(s.playtime) },
       ],
     },
     {
@@ -66,14 +75,15 @@ const sections = computed<StatSection[]>(() => {
     },
     {
       title: 'Curation',
-      icon: LucideSearch,
+      icon: LucideAlertTriangle,
+      warn: true,
       items: [
         { label: 'Unmatched releases', value: formatNumber(s.unmatchedReleases), link: '/statistics/unmatched' },
         { label: 'Incomplete releases', value: formatNumber(s.incompleteReleases), link: '/statistics/incomplete' },
         { label: 'Low bitrate tracks', value: formatNumber(s.lowBitrateTracks), link: '/statistics/bitrate' },
         { label: 'Single-release artists', value: formatNumber(s.singleReleaseArtists), link: '/statistics/single-release' },
-        { label: 'Shortest releases', value: 'Browse', link: '/statistics/shortest' },
         { label: 'Missing cover art', value: formatNumber(s.missingArtReleases), link: '/statistics/missing-art' },
+        { label: 'Shortest releases', value: 'Browse', link: '/statistics/shortest' },
       ],
     },
   ]
@@ -106,41 +116,71 @@ onMounted(() => {
     />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <div class="text-ink-3">Loading...</div>
+      <Loader2 :size="24" class="animate-spin text-stone-100/40" />
     </div>
 
-    <div v-else-if="stats" class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-      <section v-for="section in sections" :key="section.title" class="rounded-lg border border-rule bg-bg-1 p-5">
-        <h2 class="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-ink-3">
-          <component :is="section.icon" class="size-4 text-accent" />
-          {{ section.title }}
-        </h2>
-        <div class="flex flex-col gap-3">
-          <component
-            :is="item.link ? NuxtLink : 'div'"
-            v-for="item in section.items"
-            :key="item.label"
-            :to="item.link"
-            class="flex items-baseline justify-between px-2 py-1"
-            :class="item.link ? 'rounded transition-colors hover:bg-bg-2' : ''"
-          >
-            <span class="flex items-center gap-1 text-sm text-ink-3">
-              {{ item.label }}
-              <Popover v-if="item.info" trigger="hover">
-                <template #trigger>
-                  <Info :size="13" class="text-ink-3/50 transition-colors hover:text-accent" />
-                </template>
-                <template #content>
-                  <div class="absolute left-0 top-full z-20 mt-1 w-64 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
-                    <p class="text-xs text-ink-2">{{ item.info }}</p>
-                  </div>
-                </template>
-              </Popover>
-            </span>
-            <span class="text-lg font-bold text-ink">{{ item.value }}</span>
-          </component>
+    <template v-else-if="stats">
+      <div class="relative overflow-hidden rounded-xl border border-amber-400/30 bg-gradient-to-b from-amber-400/10 to-transparent px-8 py-10 text-center">
+        <div class="pointer-events-none absolute left-4 top-4 size-6 border-l border-t border-amber-400/40" />
+        <div class="pointer-events-none absolute right-4 top-4 size-6 border-r border-t border-amber-400/40" />
+        <div class="flex items-center justify-center gap-3">
+          <span class="h-px w-10 bg-amber-400/30" />
+          <span class="text-2xs font-bold uppercase tracking-[0.25em] text-amber-400/70">Total Playtime</span>
+          <span class="h-px w-10 bg-amber-400/30" />
         </div>
-      </section>
-    </div>
+        <p class="mt-3 font-display text-3xl font-bold text-stone-100 sm:text-4xl">{{ formatPlaytime(stats.playtime) }}</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <NuxtLink
+          v-for="tile in tiles"
+          :key="tile.label"
+          :to="tile.link"
+          :class="[surface.card, 'flex flex-col gap-3 p-5 transition-colors duration-150 hover:border-stone-100/15']"
+        >
+          <component :is="tile.icon" class="size-5 text-amber-400" />
+          <div>
+            <p class="font-display text-2xl font-bold text-stone-100 tabular-nums">{{ tile.value }}</p>
+            <p class="text-sm text-stone-100/40">{{ tile.label }}</p>
+          </div>
+        </NuxtLink>
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <section v-for="section in sections" :key="section.title" :class="surface.card">
+          <h2
+            :class="[surface.cardHead, section.warn ? toneText.warning : 'text-stone-100/40', 'text-2xs font-bold uppercase tracking-[0.1em]']"
+          >
+            <component :is="section.icon" :class="['size-4', section.warn ? toneText.warning : 'text-amber-400']" />
+            {{ section.title }}
+          </h2>
+          <div class="flex flex-col">
+            <component
+              :is="item.link ? NuxtLink : 'div'"
+              v-for="item in section.items"
+              :key="item.label"
+              :to="item.link"
+              class="flex items-baseline justify-between px-[18px] py-3 border-b border-stone-100/6 last:border-b-0"
+              :class="item.link ? 'transition-colors duration-150 hover:bg-stone-800/50' : ''"
+            >
+              <span class="flex items-center gap-1.5 text-base text-stone-100/60">
+                {{ item.label }}
+                <Popover v-if="item.info" trigger="hover">
+                  <template #trigger>
+                    <Info :size="13" class="text-stone-100/30 transition-colors duration-150 hover:text-amber-400" />
+                  </template>
+                  <template #content>
+                    <div :class="[surface.popover, 'absolute left-0 top-full z-20 mt-1 w-64 p-3']">
+                      <p class="text-sm text-stone-100/60">{{ item.info }}</p>
+                    </div>
+                  </template>
+                </Popover>
+              </span>
+              <span class="text-lg font-bold tabular-nums" :class="item.link && item.value === 'Browse' ? toneText.warning : 'text-stone-100'">{{ item.value }}</span>
+            </component>
+          </div>
+        </section>
+      </div>
+    </template>
   </div>
 </template>

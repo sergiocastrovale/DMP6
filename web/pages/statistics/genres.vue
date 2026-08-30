@@ -1,21 +1,14 @@
 <script setup lang="ts">
+import type { DataTableColumn } from '~/components/DataTable.vue'
+
 definePageMeta({ layout: 'admin' })
 
-const columns = [
+const columns: DataTableColumn[] = [
   { key: 'name', label: 'Genre', sortable: true },
-  { key: 'artistCount', label: 'Artists', sortable: true, align: 'right' as const },
+  { key: 'artistCount', label: 'Artists', sortable: true, align: 'right' },
 ]
 </script>
 
 <template>
-  <StatisticsStatPage title="Genres" api-type="genres" label="genres" default-sort="name" :columns="columns">
-    <template #row="{ item }">
-      <td class="px-4 py-2.5">
-        <span class="text-sm text-ink">{{ item.name }}</span>
-      </td>
-      <td class="px-4 py-2.5 text-right">
-        <span class="text-xs tabular-nums text-ink-3">{{ item.artistCount }}</span>
-      </td>
-    </template>
-  </StatisticsStatPage>
+  <StatisticsStatPage title="Genres" api-type="genres" label="genres" default-sort="name" :columns="columns" />
 </template>

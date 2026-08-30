@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { DataTableColumn } from '~/components/DataTable.vue'
+
 definePageMeta({ layout: 'admin' })
 
-const columns = [
+const columns: DataTableColumn[] = [
   { key: 'title', label: 'Title', sortable: true },
   { key: 'artist', label: 'Artist', sortable: true, class: 'hidden md:table-cell' },
-  { key: 'playCount', label: 'Plays', sortable: true, align: 'right' as const },
+  { key: 'playCount', label: 'Plays', sortable: true, align: 'right' },
 ]
 </script>
 
@@ -17,16 +19,11 @@ const columns = [
     default-order="desc"
     :columns="columns"
   >
-    <template #row="{ item }">
-      <td class="px-4 py-2.5">
-        <span class="text-sm text-ink">{{ item.title }}</span>
-      </td>
-      <td class="hidden px-4 py-2.5 md:table-cell">
-        <span class="text-xs text-ink-2">{{ item.artistName }}</span>
-      </td>
-      <td class="px-4 py-2.5 text-right">
-        <span class="text-xs tabular-nums text-ink-3">{{ item.playCount?.toLocaleString() }}</span>
-      </td>
+    <template #cell-artist="{ row }">
+      {{ row.artistName }}
+    </template>
+    <template #cell-playCount="{ value }">
+      {{ (value as number)?.toLocaleString() }}
     </template>
   </StatisticsStatPage>
 </template>

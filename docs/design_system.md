@@ -499,6 +499,54 @@ Matched against `12-login.png`.
   remember-me concept and adding one would mean session-duration server work, not a restyle -
   out of scope for this stage.
 
+## Statistics (Stage 9)
+
+Matched against `07-statistics*.png`.
+
+- **`components/statistics/StatPage.vue` now composes `DataTable`** (Stage 2's shared table,
+  previously built but with zero real consumers) instead of hand-rolling its own `<table>` +
+  sort-header + skeleton/empty states a second time. Each of the 16 subpages now passes
+  `DataTableColumn[]` and, only where a cell needs more than the raw field value (a link, a
+  formatted duration/size/count, a status badge), a `#cell-{key}` scoped slot - StatPage forwards
+  every `cell-*` slot it receives straight through to `DataTable` by reading its own `$slots` via
+  `defineSlots()`, so it never needs to know the columns' shapes ahead of time.
+- **`DataTable` gained two small, generic additions** driven by this being its first real
+  consumer: an optional `class` per `DataTableColumn` (applied to both the header cell and every
+  row's cell, e.g. `hidden md:table-cell` - hiding only the cell's content would leave an empty
+  `<td>` still occupying a column) and `tabular-nums` on the default (non-slotted) cell renderer
+  when the column is right-aligned, so plain numeric columns don't jitter without every column
+  needing its own slot just for that.
+- **A pre-existing key/field mismatch surfaces once but is deliberately preserved**: `tracks`,
+  `plays` and `bitrate` sort by `artist` (the API's `sortMap` key, matching the raw track column)
+  but the row's actual field is `artistName`. Under the old hand-rolled `#row` slot this was
+  invisible - the slot always wrote `item.artistName` by hand, decoupled from the column's `key`.
+  DataTable's default cell render looks fields up **by column key**, so these three columns each
+  need a `#cell-artist` slot reading `row.artistName` explicitly; the `key: 'artist'` itself stays
+  as-is since changing it would send the wrong `sort=` value to the API.
+- **New `components/statistics/LinkedTitle.vue`** replaces the `NuxtLink`-or-`span` pair that was
+  copy-pasted into 7 of the 16 subpages' title columns (releases, shortest, incomplete,
+  missing-art, unmatched, releases-synced, releases-with-art) - one component instead of seven
+  near-identical slot bodies.
+- **`incomplete.vue`'s status column now renders `ReleaseStatusBadge`** instead of its own
+  `STATUS_LABELS` map, which only covered `INCOMPLETE`/`MISSING_TRACKS` and would have silently
+  fallen through to the raw enum value for any other status - the one true status→label→tone
+  source (`helpers/constants.ts`, Stage 2) already covers every `ReleaseStatus`.
+- **`pages/statistics/index.vue` gets the reference's hero playtime banner and four stat tiles**
+  (Artists/Releases/Tracks/Total plays, each linking to its subpage) - genuinely new UI, not a
+  restyle, since neither existed before. The remaining sections (Library, MusicBrainz Sync, Cover
+  Art, Curation) keep the label/value row layout but lose the two items promoted to tiles/hero
+  (Artists, Releases, Tracks, Total plays, Total playtime) and the now-empty Playback section is
+  removed outright. Curation - the one section listing problems, not counts - gets the `warning`
+  tone (orange) on its icon, header and the "Browse" link, instead of the neutral/accent styling
+  every other section uses; this is the one place colour alone carries meaning, but it's paired
+  with the section already being distinctly labelled "Curation" and every row underneath still
+  reads as plain text, so nothing depends on the colour to be understood. No checkboxes/bulk
+  actions or per-row play/info icons were added even though the reference screenshot shows them -
+  these are read-only informational lists with no defined bulk action or per-row detail view for
+  most of the 16 row shapes (a genre or artist row has nothing to "play"), and shipping a
+  selection UI with nothing wired to it would be exactly the half-finished feature CLAUDE.md
+  rules out.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

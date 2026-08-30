@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { DataTableColumn } from '~/components/DataTable.vue'
 import { formatFileSize } from '~/helpers/functions'
 
 definePageMeta({ layout: 'admin' })
 
-const columns = [
+const columns: DataTableColumn[] = [
   { key: 'name', label: 'Artist', sortable: true },
-  { key: 'totalSize', label: 'Size', sortable: true, align: 'right' as const },
+  { key: 'totalSize', label: 'Size', sortable: true, align: 'right' },
 ]
 </script>
 
@@ -18,15 +19,13 @@ const columns = [
     default-order="desc"
     :columns="columns"
   >
-    <template #row="{ item }">
-      <td class="px-4 py-2.5">
-        <NuxtLink :to="`/artist/${item.slug}`" class="text-sm text-ink hover:text-accent transition-colors">
-          {{ item.name }}
-        </NuxtLink>
-      </td>
-      <td class="px-4 py-2.5 text-right">
-        <span class="text-xs tabular-nums text-ink-3">{{ formatFileSize(item.totalSize ?? 0) }}</span>
-      </td>
+    <template #cell-name="{ row }">
+      <NuxtLink :to="`/artist/${row.slug}`" class="text-stone-100 hover:text-amber-400 transition-colors duration-150">
+        {{ row.name }}
+      </NuxtLink>
+    </template>
+    <template #cell-totalSize="{ value }">
+      {{ formatFileSize((value as number) ?? 0) }}
     </template>
   </StatisticsStatPage>
 </template>

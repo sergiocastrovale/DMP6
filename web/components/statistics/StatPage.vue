@@ -1,25 +1,24 @@
 <script setup lang="ts">
-import { ArrowLeft, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-vue-next'
-
-interface StatColumn {
-  key: string
-  label: string
-  sortable?: boolean
-  align?: 'left' | 'right'
-  class?: string
-}
+import { ArrowLeft, Loader2 } from 'lucide-vue-next'
+import type { DataTableColumn } from '~/components/DataTable.vue'
+import type { SortDir } from '~/helpers/functions'
+import { typography } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   title: string
   apiType: string
   label: string
-  columns: StatColumn[]
+  columns: DataTableColumn[]
   defaultSort?: string
-  defaultOrder?: 'asc' | 'desc'
+  defaultOrder?: SortDir
 }>(), {
   defaultSort: '',
   defaultOrder: 'asc',
 })
+
+const slots = defineSlots<{ [key: `cell-${string}`]: (props: { row: Record<string, any>, value: unknown }) => any }>()
+
+const cellSlotNames = computed(() => Object.keys(slots) as Array<`cell-${string}`>)
 
 const items = ref<Record<string, any>[]>([])
 const total = ref(0)
@@ -28,8 +27,7 @@ const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
 const searchQuery = ref('')
-const sortKey = ref(props.defaultSort)
-const sortOrder = ref<'asc' | 'desc'>(props.defaultOrder)
+const sort = ref<{ key: string | null, dir: SortDir }>({ key: props.defaultSort || null, dir: props.defaultOrder })
 
 const handleSearch = (value: string) => {
   searchQuery.value = value
@@ -38,14 +36,10 @@ const handleSearch = (value: string) => {
   fetchItems()
 }
 
-const toggleSort = (col: StatColumn) => {
-  if (!col.sortable) { return }
-  if (sortKey.value === col.key) {
-    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortKey.value = col.key
-    sortOrder.value = 'asc'
-  }
+const handleSort = (key: string) => {
+  sort.value = sort.value.key === key
+    ? { key, dir: sort.value.dir === 'asc' ? 'desc' : 'asc' }
+    : { key, dir: 'asc' }
   page.value = 1
   items.value = []
   fetchItems()
@@ -56,21 +50,23 @@ const fetchItems = async (append = false) => {
   else { loadingMore.value = true }
 
   try {
-    const data = await $fetch<{ items: Record<string, any>[]; total: number; hasMore: boolean }>(`/api/stats/${props.apiType}`, {
+    const data = await $fetch<{ items: Record<string, any>[], total: number, hasMore: boolean }>(`/api/stats/${props.apiType}`, {
       query: {
         page: page.value,
         pageSize: 200,
         search: searchQuery.value || undefined,
-        sort: sortKey.value || undefined,
-        order: sortOrder.value,
+        sort: sort.value.key || undefined,
+        order: sort.value.dir,
       },
     })
     items.value = append ? [...items.value, ...data.items] : data.items
     total.value = data.total
     hasMore.value = data.hasMore
-  } catch {
+  }
+  catch {
     if (!append) { items.value = [] }
-  } finally {
+  }
+  finally {
     loading.value = false
     loadingMore.value = false
   }
@@ -92,76 +88,44 @@ onMounted(() => {
   <div class="flex flex-col gap-4">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <NuxtLink to="/statistics" class="text-ink-2 hover:text-ink transition-colors">
+        <NuxtLink to="/statistics" aria-label="Back to statistics" class="text-stone-100/40 transition-colors duration-150 hover:text-stone-100">
           <ArrowLeft :size="20" />
         </NuxtLink>
-        <h1 class="text-2xl font-bold text-ink">{{ title }}</h1>
+        <h1 :class="typography.h2">{{ title }}</h1>
       </div>
-      <span class="text-sm text-ink-3">{{ total.toLocaleString() }} {{ label }}</span>
+      <span class="text-sm text-stone-100/40 tabular-nums">{{ total.toLocaleString() }} {{ label }}</span>
     </div>
 
-    <SearchInput
-      :model-value="searchQuery"
-      :placeholder="`Search ${label}...`"
-      :debounce="300"
-      wrapper-class="sm:max-w-xs"
-      @update:model-value="handleSearch"
-    />
-
-    <div v-if="!loading && items.length > 0 && items.length < total" class="text-xs text-ink-3">
-      Showing {{ items.length.toLocaleString() }} of {{ total.toLocaleString() }}
+    <div class="flex items-center gap-3">
+      <SearchInput
+        :model-value="searchQuery"
+        :placeholder="`Search ${label}...`"
+        :debounce="300"
+        wrapper-class="sm:max-w-xs"
+        @update:model-value="handleSearch"
+      />
+      <span v-if="!loading && items.length > 0 && items.length < total" class="text-xs text-stone-100/30">
+        Showing {{ items.length.toLocaleString() }} of {{ total.toLocaleString() }}
+      </span>
     </div>
 
-    <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-ink-3" />
-    </div>
-
-    <div v-else-if="items.length === 0" class="py-20 text-center text-ink-3">
-      No results found
-    </div>
-
-    <div v-else class="overflow-x-auto rounded-lg border border-rule">
-      <table class="w-full">
-        <thead>
-          <tr class="border-b border-rule bg-bg-1">
-            <th
-              v-for="col in columns"
-              :key="col.key"
-              class="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-ink-3"
-              :class="[
-                col.align === 'right' ? 'text-right' : 'text-left',
-                col.sortable ? 'cursor-pointer select-none hover:text-ink transition-colors' : '',
-                col.class,
-              ]"
-              @click="toggleSort(col)"
-            >
-              <span class="inline-flex items-center gap-1">
-                {{ col.label }}
-                <template v-if="col.sortable">
-                  <ArrowUp v-if="sortKey === col.key && sortOrder === 'asc'" :size="12" />
-                  <ArrowDown v-else-if="sortKey === col.key && sortOrder === 'desc'" :size="12" />
-                  <ArrowUpDown v-else :size="12" class="opacity-30" />
-                </template>
-              </span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="item in items"
-            :key="item.id"
-            class="border-b border-rule/50 last:border-b-0 transition-colors hover:bg-bg-1"
-          >
-            <slot name="row" :item="item" />
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      :columns="columns"
+      :rows="items"
+      :selectable="false"
+      :loading="loading"
+      :sort="sort"
+      :empty-message="`No ${label} found`"
+      @sort="handleSort"
+    >
+      <template v-for="slotName in cellSlotNames" :key="slotName" #[slotName]="slotProps">
+        <slot :name="slotName" v-bind="slotProps" />
+      </template>
+    </DataTable>
 
     <InfiniteScroll @load="loadMore" />
-
     <div v-if="loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" class="animate-spin text-ink-3" />
+      <Loader2 :size="20" class="animate-spin text-stone-100/40" />
     </div>
   </div>
 </template>

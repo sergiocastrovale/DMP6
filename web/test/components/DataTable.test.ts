@@ -148,3 +148,28 @@ describe('DataTable.vue', () => {
     expect(withActions.text()).toContain('Open Radiohead')
   })
 })
+
+describe('DataTable.vue column class passthrough', () => {
+  it('applies a column class to both header and cells for responsive hiding', async () => {
+    const columns: DataTableColumn[] = [
+      { key: 'name', label: 'Name', sortable: true, class: 'hidden md:table-cell' },
+      { key: 'releases', label: 'Releases', align: 'right' },
+    ]
+    const wrapper = await mountSuspended(DataTable, { props: { columns, rows: ROWS } })
+    const nameHeader = wrapper.findAll('th').find(th => th.text().includes('Name'))!
+    expect(nameHeader.classes()).toEqual(expect.arrayContaining(['hidden', 'md:table-cell']))
+    const nameCell = wrapper.findAll('td').find(td => td.text().includes('Radiohead'))!
+    expect(nameCell.classes()).toEqual(expect.arrayContaining(['hidden', 'md:table-cell']))
+  })
+
+  it('gives a right-aligned default cell tabular-nums', async () => {
+    const wrapper = await mountSuspended(DataTable, { props: { columns: COLUMNS, rows: ROWS } })
+    const cell = wrapper.findAll('td').find(td => td.text() === '12')!
+    expect(cell.find('span').classes()).toContain('tabular-nums')
+  })
+
+  it('hides selection entirely when selectable is false', async () => {
+    const wrapper = await mountSuspended(DataTable, { props: { columns: COLUMNS, rows: ROWS, selectable: false } })
+    expect(wrapper.find('[aria-label="Select all rows"]').exists()).toBe(false)
+  })
+})

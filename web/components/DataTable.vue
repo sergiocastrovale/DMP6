@@ -10,6 +10,10 @@ export interface DataTableColumn {
   sortable?: boolean
   align?: 'left' | 'right'
   width?: string
+  // Responsive visibility (e.g. `hidden md:table-cell`) - applied to both the header and every
+  // row's cell for this column, since hiding only the cell content would leave an empty <td>
+  // still taking up a column in the table's layout.
+  class?: string
 }
 
 export interface DataTableBulkAction<Row> {
@@ -118,6 +122,7 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
         <template v-for="col in columns" :key="col.key">
           <SortableTh
             v-if="col.sortable"
+            :class="col.class"
             :label="col.label"
             :sort-key="col.key"
             :active-key="sort?.key ?? null"
@@ -127,7 +132,7 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
           />
           <th
             v-else
-            :class="cx('px-3 py-2.5', col.align === 'right' ? 'text-right' : 'text-left')"
+            :class="cx('px-3 py-2.5', col.align === 'right' ? 'text-right' : 'text-left', col.class)"
             :style="col.width ? { width: col.width } : undefined"
           >
             {{ col.label }}
@@ -166,10 +171,10 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
             <td
               v-for="col in columns"
               :key="col.key"
-              :class="cx('px-3 py-3', col.align === 'right' && 'text-right')"
+              :class="cx('px-3 py-3', col.align === 'right' && 'text-right', col.class)"
             >
               <slot v-if="hasCellSlot(col.key)" :name="cellSlotName(col.key)" :row="row" :value="cellValue(row, col.key)" />
-              <template v-else>{{ cellValue(row, col.key) }}</template>
+              <span v-else :class="col.align === 'right' && 'tabular-nums'">{{ cellValue(row, col.key) }}</span>
             </td>
             <td v-if="hasActionsSlot" class="px-3 py-3 text-right" @click.stop>
               <slot name="actions" :row="row" />
