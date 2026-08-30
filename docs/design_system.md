@@ -623,6 +623,46 @@ Matched against `09-issues*.png`.
   recent-history link - the hover class was textually identical to the idle border, so hovering
   never visibly changed anything) to a real `hover:border-stone-100/10`.
 
+## Downloads (Stage 12)
+
+Matched against `10-downloads*.png`.
+
+- **`ApprovalQueue.vue` moves onto `SlimTable`/`SortableTh`/`UiCheckbox`**, and was the last
+  consumer of `Table.vue` (`TableRow.vue` had zero consumers already) - both are deleted now that
+  nothing renders them.
+- **Fixed the real status→colour contradiction the plan called out**: `ApprovalQueue`'s own status
+  text coloured `DOWNLOADING` blue, while `DownloadsDownloadProgress`'s bar for that same row
+  (`→ UiLoadingPanel`) rendered amber (`accent`) - two different colours for one status on one
+  row. Both now read a single `STATUS_TONE` map local to `ApprovalQueue` (the other consumer,
+  `DownloadProgress.vue`, already used the token-based `success`/`danger`/`accent`/`violet`
+  variant names and needed no change).
+- **Deep-link highlighting (`?highlight=`, `useHighlightId`) now reuses `SlimTableRow`'s own
+  `highlight` prop** instead of a hand-rolled `Map<id, HTMLElement>` + manual `scrollIntoView`.
+  The manual version had a latent bug surfaced by this stage's own table swap: a `:ref` callback
+  on a component (`SlimTableRow`) returns the component's public instance, not its root DOM node,
+  so `scrollIntoView` would have silently done nothing once the row stopped being a raw `<tr>`.
+  `SlimTableRow` already runs the identical scroll-and-flash behaviour off its own `highlight`
+  prop (built for exactly this, see Stage 2), so the fix was deleting the custom logic, not
+  patching it - it's paired with a bespoke 4s ring (`useHighlightId`'s own duration) on top of
+  `SlimTableRow`'s shorter 1s flash, so the row stays identifiable after the flash fades.
+- **`RecentIssuesPanel.vue`'s `<button>`-inside-a-`<button>` is fixed**: the collapse-toggle and
+  refresh action are now two sibling buttons in a shared non-interactive wrapper, not one nested
+  in the other (invalid HTML, and the nested click handler's `.stop` doesn't change that the
+  markup itself is malformed). Also gained a real `aria-expanded` on the toggle and a second
+  explicit toggle button next to refresh, since the chevron itself carried no accessible name.
+- **New `components/ui/BulkBar.vue` consumer**: `downloads/SelectionBar.vue` is now a thin
+  wrapper over it (Stage 11 built the shell for exactly this, the fourth of the four duplicated
+  bars it named).
+- **`downloads/RejectDialog.vue` is now a thin wrapper over `ConfirmDialog`** instead of its own
+  `Dialog` + two hand-written buttons - loses the inline colour emphasis on the release title
+  inside the confirm sentence, which brings it in line with every other confirm dialog in the app
+  (e.g. `artist/DeleteDialog.vue`), none of which highlight the subject inline either.
+- **`MonitoringTab.vue`'s monitor ON/OFF pill now uses the shared `sw('chip', on)` toggle recipe**
+  instead of its own idle/on class pair, and its bare hover-only help icon is now a real
+  `<button aria-label>` - previously unreachable by keyboard, decorative-only.
+
+## Adding to the system
+
 ## Adding to the system
 
 ## Adding to the system

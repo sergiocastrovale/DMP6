@@ -115,10 +115,10 @@ onUnmounted(() => {
 
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <span class="text-sm text-ink-2">
-              Monitoring <span class="font-semibold text-ink">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
+            <span class="text-base text-stone-100/60">
+              Monitoring <span class="font-semibold text-stone-100">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
             </span>
-            <span v-if="rtBudgetLabel" class="text-xs text-ink-3">· {{ rtBudgetLabel }}</span>
+            <span v-if="rtBudgetLabel" class="text-sm text-stone-100/40">· {{ rtBudgetLabel }}</span>
           </div>
           <div class="flex items-center gap-2">
             <UiButton
@@ -139,8 +139,8 @@ onUnmounted(() => {
 
         <div
           v-if="paused"
-          class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
-          :class="pausedReason === 'disk-full' ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-amber-500/40 bg-amber-500/10 text-amber-300'"
+          class="flex items-center gap-2 rounded-lg border px-4 py-2 text-base"
+          :class="pausedReason === 'disk-full' ? 'border-danger/40 bg-danger/10 text-danger' : 'border-amber-400/40 bg-amber-400/10 text-amber-400'"
         >
           <AlertTriangle :size="15" />
           <span v-if="pausedReason === 'disk-full'">
@@ -155,18 +155,18 @@ onUnmounted(() => {
 
         <RecentIssuesPanel ref="issuesPanel" />
 
-        <p v-if="actionMsg" class="rounded-lg border border-rule bg-bg-1 px-4 py-2 text-sm text-ink-2">
+        <p v-if="actionMsg" class="rounded-lg border border-stone-100/6 bg-stone-900 px-4 py-2 text-base text-stone-100/60">
           {{ actionMsg }}
         </p>
 
-        <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-lg border border-rule bg-bg-1 px-4 py-3" />
+        <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3" />
 
         <UiLoadingPanel
           v-if="mergeActive && !settings.showTerminal"
           :label="mergeLabel ?? `Merging ${mergingIds.size} release${mergingIds.size !== 1 ? 's' : ''}…`"
           :percent="mergePercent"
           variant="success"
-          class="rounded-lg border border-rule bg-bg-1 px-4 py-3"
+          class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3"
         />
       </div>
     </template>

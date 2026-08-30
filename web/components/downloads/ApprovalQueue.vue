@@ -4,6 +4,7 @@ import { X, Loader2, AlertCircle, AlertTriangle, Ban, RotateCw, Info, FolderInpu
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { SortDir } from '~/helpers/functions'
 import { formatDate, sortItems } from '~/helpers/functions'
+import { toneText, surface, cx } from '~/helpers/ui'
 
 // Friendly source label, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
 const sourceLabel = (s: string) => s === 'RUTRACKER' ? 'RuTracker' : 'Soulseek'
@@ -24,22 +25,6 @@ const props = withDefaults(defineProps<{
   busyIds: () => new Set(),
   selected: () => new Set(),
 })
-
-// Scroll the highlighted row into view once it renders.
-const rowEls = new Map<string, HTMLElement>()
-const setRowEl = (id: string, el: any) => {
-  if (el) {rowEls.set(id, el as HTMLElement)}
-  else {rowEls.delete(id)}
-}
-watch(
-  () => [props.highlightId, props.items.length] as const,
-  async () => {
-    if (!props.highlightId) {return}
-    await nextTick()
-    rowEls.get(props.highlightId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  },
-  { immediate: true },
-)
 
 const emit = defineEmits<{
   reject: [id: string]
@@ -106,17 +91,21 @@ const toggleRow = (id: string) => {
   emit('update:selected', next)
 }
 
-const statusClass = (s: string) => ({
-  DOWNLOADING: 'text-blue-400',
-  ENRICHING: 'text-violet-400',
-  READY: 'text-emerald-400',
-  PROMOTED: 'text-emerald-400',
-  REJECTED: 'text-ink-3',
-  FAILED: 'text-red-400',
-  ABANDONED: 'text-ink-3',
-  UNAVAILABLE: 'text-ink-3',
-  INVALID: 'text-ink-3',
-}[s] || 'text-ink-2')
+// The one status→tone map for this queue - DOWNLOADING used to render blue text next to an amber
+// progress bar (DownloadsDownloadProgress's own status-to-variant map), a real contradiction, not
+// just an inconsistent shade. Both now read the same tone here.
+const STATUS_TONE: Record<string, keyof typeof toneText> = {
+  DOWNLOADING: 'accent',
+  ENRICHING: 'info',
+  READY: 'success',
+  PROMOTED: 'success',
+  FAILED: 'danger',
+  ABANDONED: 'danger',
+  REJECTED: 'muted',
+  UNAVAILABLE: 'muted',
+  INVALID: 'muted',
+}
+const statusClass = (s: string) => toneText[STATUS_TONE[s] ?? 'muted']
 
 const { songkong } = storeToRefs(useDownloadsStore())
 
@@ -151,169 +140,158 @@ const statusLabel = (it: DownloadedReleaseItem) => {
 </script>
 
 <template>
-  <div v-if="items.length === 0" class="rounded-lg border border-rule bg-bg-1 p-8 text-center text-sm text-ink-3">
-    Nothing here.
-  </div>
-  <Table v-else>
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="border-b border-rule text-left text-xs uppercase tracking-wider text-ink-3">
-          <th v-if="selectable" class="w-10 px-4 py-2">
-            <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" >
-          </th>
-          <SortableTh label="Artist" sort-key="artist" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-          <SortableTh label="Release" sort-key="title" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-          <SortableTh label="Type" sort-key="releaseType" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-          <SortableTh label="Source" sort-key="source" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-          <SortableTh label="Status" sort-key="status" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-          <SortableTh label="Updated" sort-key="updatedAt" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-          <th class="px-4 py-2 font-medium text-right">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="it in sortedItems"
-          :key="it.id"
-          :ref="el => setRowEl(it.id, el)"
-          class="border-b border-rule/50 transition-colors last:border-0"
-          :class="highlightId === it.id ? 'bg-accent/10 ring-2 ring-inset ring-accent/60' : selected.has(it.id) ? 'bg-blue-950/20' : ''"
-        >
-          <td v-if="selectable" class="px-4 py-2">
-            <input
-              type="checkbox"
-              :checked="selected.has(it.id)"
-              class="rounded border-rule bg-bg-2"
-              @change="toggleRow(it.id)"
+  <UiEmptyState v-if="items.length === 0" message="Nothing here." />
+  <SlimTable v-else>
+    <SlimTableHeader>
+      <th v-if="selectable" class="w-10 px-3 py-2.5">
+        <UiCheckbox :model-value="allChecked" aria-label="Select all rows" @update:model-value="toggleAll" />
+      </th>
+      <SortableTh label="Artist" sort-key="artist" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+      <SortableTh label="Release" sort-key="title" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+      <SortableTh label="Type" sort-key="releaseType" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+      <SortableTh label="Source" sort-key="source" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+      <SortableTh label="Status" sort-key="status" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+      <SortableTh label="Updated" sort-key="updatedAt" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+      <th class="px-3 py-2.5 text-right">Actions</th>
+    </SlimTableHeader>
+    <SlimTableBody>
+      <SlimTableRow
+        v-for="it in sortedItems"
+        :key="it.id"
+        :active="selected.has(it.id)"
+        :highlight="highlightId === it.id"
+        :class="highlightId === it.id ? 'ring-2 ring-inset ring-amber-400/60' : ''"
+      >
+        <td v-if="selectable" class="px-3 py-3" @click.stop>
+          <UiCheckbox :model-value="selected.has(it.id)" :aria-label="`Select ${it.title}`" @update:model-value="toggleRow(it.id)" />
+        </td>
+        <td class="px-3 py-3 text-stone-100">
+          <NuxtLink v-if="it.artistSlug" :to="`/artist/${it.artistSlug}`" class="hover:text-amber-400 transition-colors duration-150">
+            {{ it.artist || '—' }}
+          </NuxtLink>
+          <span v-else>{{ it.artist || '—' }}</span>
+        </td>
+        <td class="px-3 py-3 text-stone-100/60">
+          {{ it.title }}<span v-if="it.year" class="text-stone-100/40"> ({{ it.year }})</span>
+        </td>
+        <td class="px-3 py-3 text-stone-100/40">
+          {{ it.releaseType || '—' }}
+        </td>
+        <td class="px-3 py-3 text-stone-100/40">
+          <span class="inline-flex items-center gap-1.5">
+            {{ sourceLabel(it.source) }}
+          </span>
+          <template v-if="it.quality"> · {{ it.quality }}</template>
+          <template v-if="it.slskUsername"> · {{ it.slskUsername }}</template>
+        </td>
+        <td class="px-3 py-3">
+          <Popover v-if="statusNote(it)" trigger="hover">
+            <template #trigger>
+              <span class="inline-flex cursor-help items-center gap-1.5" :class="statusClass(it.status)">
+                <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" class="animate-spin" />
+                <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
+                <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
+                <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />
+                <FileX v-else-if="it.status === 'INVALID'" :size="13" />
+                {{ statusLabel(it) }}
+                <AlertTriangle v-if="it.status === 'ENRICHING' && songkong?.stalled" :size="13" class="text-amber-400" />
+              </span>
+            </template>
+            <template #content>
+              <div :class="cx(surface.popover, 'absolute left-0 top-full z-20 mt-1 w-72 p-3')">
+                <p class="text-sm text-stone-100/60">{{ statusNote(it) }}</p>
+              </div>
+            </template>
+          </Popover>
+          <span v-else class="inline-flex items-center gap-1.5" :class="statusClass(it.status)">
+            <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" class="animate-spin" />
+            <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
+            <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
+            <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />
+            <FileX v-else-if="it.status === 'INVALID'" :size="13" />
+            {{ statusLabel(it) }}
+          </span>
+          <div v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" class="mt-1.5 flex items-center gap-2">
+            <DownloadsDownloadProgress :percent="it.percent" :status="it.status" class="w-32" />
+            <span class="text-xs text-stone-100/40 tabular-nums">{{ it.percent }}%</span>
+          </div>
+        </td>
+        <td class="px-3 py-3 whitespace-nowrap text-stone-100/40">
+          {{ formatDate(it.updatedAt) }}
+        </td>
+        <td class="px-3 py-3" @click.stop>
+          <div class="flex items-center justify-end gap-1">
+            <button
+              type="button"
+              class="rounded-full p-1.5 text-stone-100/25 transition-colors duration-150 hover:text-stone-100/60"
+              title="Info"
+              aria-label="Info"
+              @click="emit('info', it.id)"
             >
-          </td>
-          <td class="px-4 py-2.5 text-ink">
-            <NuxtLink v-if="it.artistSlug" :to="`/artist/${it.artistSlug}`" class="hover:underline">
-              {{ it.artist || '—' }}
-            </NuxtLink>
-            <span v-else>{{ it.artist || '—' }}</span>
-          </td>
-          <td class="px-4 py-2.5 text-ink-2">
-            {{ it.title }}<span v-if="it.year" class="text-ink-3"> ({{ it.year }})</span>
-          </td>
-          <td class="px-4 py-2.5 text-ink-3">
-            {{ it.releaseType || '—' }}
-          </td>
-          <td class="px-4 py-2.5 text-ink-3">
-            <span class="inline-flex items-center gap-1.5">
-              {{ sourceLabel(it.source) }}
-            </span>
-            <template v-if="it.quality"> · {{ it.quality }}</template>
-            <template v-if="it.slskUsername"> · {{ it.slskUsername }}</template>
-          </td>
-          <td class="px-4 py-2.5">
-            <Popover v-if="statusNote(it)" trigger="hover">
-              <template #trigger>
-                <span class="inline-flex cursor-help items-center gap-1.5" :class="statusClass(it.status)">
-                  <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" class="animate-spin" />
-                  <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
-                  <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
-                  <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />
-                  <FileX v-else-if="it.status === 'INVALID'" :size="13" />
-                  {{ statusLabel(it) }}
-                  <AlertTriangle v-if="it.status === 'ENRICHING' && songkong?.stalled" :size="13" class="text-amber-400" />
-                </span>
-              </template>
-              <template #content>
-                <div class="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-rule bg-bg-1 p-3 shadow-xl">
-                  <p class="text-xs text-ink-2">{{ statusNote(it) }}</p>
-                </div>
-              </template>
-            </Popover>
-            <span v-else class="inline-flex items-center gap-1.5" :class="statusClass(it.status)">
-              <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" class="animate-spin" />
-              <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
-              <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
-              <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />
-              <FileX v-else-if="it.status === 'INVALID'" :size="13" />
-              {{ statusLabel(it) }}
-            </span>
-            <div v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" class="mt-1.5 flex items-center gap-2">
-              <DownloadsDownloadProgress :percent="it.percent" :status="it.status" class="w-32" />
-              <span class="text-xs text-ink-3">{{ it.percent }}%</span>
-            </div>
-          </td>
-          <td class="px-4 py-2.5 whitespace-nowrap text-ink-3">
-            {{ formatDate(it.updatedAt) }}
-          </td>
-          <td class="px-4 py-2.5">
-            <div class="flex items-center justify-end gap-1">
-              <button
-                type="button"
-                class="rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink-2"
-                title="Info"
-                aria-label="Info"
-                @click="emit('info', it.id)"
-              >
-                <Info :size="14" />
-              </button>
-              <button
-                v-if="showActions && showRetry"
-                type="button"
-                class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent disabled:opacity-40 disabled:pointer-events-none"
-                title="Force retry"
-                aria-label="Force retry"
-                :disabled="busyId != null && busyId !== it.id"
-                @click="emit('retry', it.id)"
-              >
-                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
-                <RotateCw v-else :size="14" />
-              </button>
-              <button
-                v-if="showMerge"
-                type="button"
-                class="rounded-full p-1.5 text-emerald-400 transition-colors hover:text-emerald-300 disabled:opacity-40 disabled:pointer-events-none"
-                title="Merge into library"
-                aria-label="Merge"
-                :disabled="busyIds.has(it.id)"
-                @click="emit('merge', it.id)"
-              >
-                <Loader2 v-if="busyIds.has(it.id)" :size="14" class="animate-spin" />
-                <FolderInput v-else :size="14" />
-              </button>
-              <button
-                v-if="showCancel && (it.status === 'DOWNLOADING' || it.status === 'ENRICHING')"
-                type="button"
-                class="rounded-full p-1.5 text-red-400 transition-colors hover:text-red-300 disabled:opacity-40 disabled:pointer-events-none"
-                title="Cancel download"
-                aria-label="Cancel download"
-                :disabled="busyId != null && busyId !== it.id"
-                @click="emit('cancel', it.id)"
-              >
-                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
-                <X v-else :size="14" />
-              </button>
-              <button
-                v-if="showRequeue"
-                type="button"
-                class="rounded-full p-1.5 text-ink-3 transition-colors hover:text-accent disabled:opacity-40 disabled:pointer-events-none"
-                title="Move back to queue"
-                aria-label="Move back to queue"
-                :disabled="busyId != null && busyId !== it.id"
-                @click="emit('requeue', it.id)"
-              >
-                <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
-                <Undo2 v-else :size="14" />
-              </button>
-              <button
-                v-if="showActions"
-                type="button"
-                class="rounded-full p-1.5 text-red-400 transition-colors hover:text-red-300 disabled:opacity-40 disabled:pointer-events-none"
-                title="Reject"
-                aria-label="Reject"
-                :disabled="busyId != null || it.status === 'DOWNLOADING'"
-                @click="emit('reject', it.id)"
-              >
-                <X :size="14" />
-              </button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </Table>
+              <Info :size="14" />
+            </button>
+            <button
+              v-if="showActions && showRetry"
+              type="button"
+              class="rounded-full p-1.5 text-stone-100/40 transition-colors duration-150 hover:text-amber-400 disabled:opacity-40 disabled:pointer-events-none"
+              title="Force retry"
+              aria-label="Force retry"
+              :disabled="busyId != null && busyId !== it.id"
+              @click="emit('retry', it.id)"
+            >
+              <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
+              <RotateCw v-else :size="14" />
+            </button>
+            <button
+              v-if="showMerge"
+              type="button"
+              class="rounded-full p-1.5 text-success transition-colors duration-150 hover:brightness-125 disabled:opacity-40 disabled:pointer-events-none"
+              title="Merge into library"
+              aria-label="Merge"
+              :disabled="busyIds.has(it.id)"
+              @click="emit('merge', it.id)"
+            >
+              <Loader2 v-if="busyIds.has(it.id)" :size="14" class="animate-spin" />
+              <FolderInput v-else :size="14" />
+            </button>
+            <button
+              v-if="showCancel && (it.status === 'DOWNLOADING' || it.status === 'ENRICHING')"
+              type="button"
+              class="rounded-full p-1.5 text-danger transition-colors duration-150 hover:brightness-125 disabled:opacity-40 disabled:pointer-events-none"
+              title="Cancel download"
+              aria-label="Cancel download"
+              :disabled="busyId != null && busyId !== it.id"
+              @click="emit('cancel', it.id)"
+            >
+              <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
+              <X v-else :size="14" />
+            </button>
+            <button
+              v-if="showRequeue"
+              type="button"
+              class="rounded-full p-1.5 text-stone-100/40 transition-colors duration-150 hover:text-amber-400 disabled:opacity-40 disabled:pointer-events-none"
+              title="Move back to queue"
+              aria-label="Move back to queue"
+              :disabled="busyId != null && busyId !== it.id"
+              @click="emit('requeue', it.id)"
+            >
+              <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
+              <Undo2 v-else :size="14" />
+            </button>
+            <button
+              v-if="showActions"
+              type="button"
+              class="rounded-full p-1.5 text-danger transition-colors duration-150 hover:brightness-125 disabled:opacity-40 disabled:pointer-events-none"
+              title="Reject"
+              aria-label="Reject"
+              :disabled="busyId != null || it.status === 'DOWNLOADING'"
+              @click="emit('reject', it.id)"
+            >
+              <X :size="14" />
+            </button>
+          </div>
+        </td>
+      </SlimTableRow>
+    </SlimTableBody>
+  </SlimTable>
 </template>

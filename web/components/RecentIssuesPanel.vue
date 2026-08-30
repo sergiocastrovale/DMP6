@@ -44,34 +44,39 @@ defineExpose({ fetchEvents })
 </script>
 
 <template>
-  <div v-if="events.length" class="rounded-lg border border-rule">
-    <button
-      type="button"
-      class="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors hover:bg-bg-1"
-      :title="open ? `Collapse ${title.toLowerCase()}` : `Expand ${title.toLowerCase()}`"
-      @click="open = !open"
-    >
-      <span class="flex items-center gap-2 text-sm font-medium text-ink-2">
+  <div v-if="events.length" class="rounded-xl border border-stone-100/6">
+    <!-- Two sibling buttons, not one nested in the other - a <button> inside a <button> is
+         invalid HTML and browsers handle the nesting inconsistently. -->
+    <div class="flex w-full items-center justify-between gap-2 px-4 py-3">
+      <button
+        type="button"
+        class="flex flex-1 items-center gap-2 text-left text-base font-medium text-stone-100/60 transition-colors duration-150 hover:text-stone-100"
+        :aria-expanded="open"
+        :title="open ? `Collapse ${title.toLowerCase()}` : `Expand ${title.toLowerCase()}`"
+        @click="open = !open"
+      >
         <AlertTriangle :size="15" class="text-amber-400" />
         {{ title }}
-        <span class="rounded-full bg-bg-2 px-2 py-0.5 text-xs tabular-nums text-ink-3">{{ events.length }}</span>
-      </span>
-      <span class="flex items-center gap-2">
-        <button type="button" title="Refresh issues" class="rounded p-0.5 text-ink-4 transition-colors hover:text-ink-2 cursor-pointer" @click.stop="fetchEvents">
+        <span class="rounded-full bg-stone-800 px-2 py-0.5 text-xs tabular-nums text-stone-100/40">{{ events.length }}</span>
+      </button>
+      <div class="flex items-center gap-2">
+        <button type="button" aria-label="Refresh issues" class="rounded-md p-1 text-stone-100/25 transition-colors duration-150 hover:text-stone-100/60" @click="fetchEvents">
           <RefreshCw :size="14" :class="spinning ? 'animate-spin' : ''" />
         </button>
-        <component :is="open ? ChevronUp : ChevronDown" :size="16" class="text-ink-4" />
-      </span>
-    </button>
-    <ul v-if="open" class="divide-y divide-rule/50 border-t border-rule">
-      <li v-for="ev in events" :key="ev.id" class="flex items-start gap-2.5 px-4 py-2 text-sm">
+        <button type="button" :aria-label="open ? 'Collapse' : 'Expand'" class="rounded-md p-1 text-stone-100/25 transition-colors duration-150 hover:text-stone-100/60" @click="open = !open">
+          <component :is="open ? ChevronUp : ChevronDown" :size="16" />
+        </button>
+      </div>
+    </div>
+    <ul v-if="open" class="divide-y divide-stone-100/6 border-t border-stone-100/6">
+      <li v-for="ev in events" :key="ev.id" class="flex items-start gap-2.5 px-4 py-2.5 text-base">
         <component
           :is="ev.level === 'error' ? CircleAlert : AlertTriangle"
           :size="15"
-          :class="['mt-0.5 shrink-0', ev.level === 'error' ? 'text-red-400' : 'text-amber-400']"
+          :class="['mt-0.5 shrink-0', ev.level === 'error' ? 'text-danger' : 'text-amber-400']"
         />
-        <span class="min-w-0 flex-1 break-words text-ink-2">{{ ev.message }}</span>
-        <span class="shrink-0 whitespace-nowrap text-xs text-ink-4">{{ timeAgo(ev.createdAt) }}</span>
+        <span class="min-w-0 flex-1 break-words text-stone-100/60">{{ ev.message }}</span>
+        <span class="shrink-0 whitespace-nowrap text-xs text-stone-100/25">{{ timeAgo(ev.createdAt) }}</span>
       </li>
     </ul>
   </div>
