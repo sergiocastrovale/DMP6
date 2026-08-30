@@ -313,6 +313,26 @@ A compilation is one `LocalRelease` linked to many artists through the many-to-m
 
 Multiple editions (original, remaster, deluxe) stored as separate `MusicBrainzRelease` rows sharing a `releaseGroupId`. Each has its own `musicbrainzId` and `disambiguation` label. Cover art fetched per-release first, falling back to release-group art.
 
+## Audio-only track counting
+
+A release's `media[]` can include a non-audio bonus disc (Blu-ray, DVD) alongside its CD/vinyl/digital
+medium. `common::mb::api::flatten_audio_tracks` — the single point both `mb_get_release_tracks` and
+`mb_get_release_by_id` flatten through — drops any medium `common::mb::allowlist::is_audio_medium`
+denies (Blu-ray, DVD, VHS, and similar video carriers) before building the track list everything else
+consumes: `check_release_status`'s track counts and sibling tiebreak, the inserted
+`MusicBrainzReleaseTrack` rows, and therefore the web track list and card `trackCount`.
+
+`is_audio_medium` is a **deny-list**: an unrecognized or missing `format` defaults to audio, because
+over-counting (today's failure mode without this) is recoverable on the next sync while an allow-list's
+failure mode — silently dropping a real audio medium on an unlisted format — would delete real tracks.
+It keys on MusicBrainz's medium **format**, not the per-recording `video` boolean, which MusicBrainz
+reports `false` even on a Blu-ray-only medium. The one incident this fixed: 04 Limited Sazabys' "MOON"
+EP (release `a3b9c410…`) is a CD (4 audio tracks) + Blu-ray (1 video track) edition; a perfect 4/4 audio
+rip was scored `MISSING_TRACKS` against an inflated 5-track expectation and discarded on every merge.
+
+The composed `format` column (`format_from_media`, e.g. `"Blu-ray, CD"`) is unaffected — it reads
+`media[].format` directly and stays display metadata, not a completeness input.
+
 ## End-of-run cleanup (scoped)
 
 `delete_empty_local_releases` and `delete_orphaned_mb_releases` take an `ArtistScope`. A narrowed run
@@ -322,7 +342,20 @@ Multiple editions (original, remaster, deluxe) stored as separate `MusicBrainzRe
 This is not a micro-optimisation. Unscoped, the MB variant deletes every non-MISSING `MusicBrainzRelease`
 in the library that is unbound at that instant — so `./sync --only "One Artist"` could take out a perfectly
 real release whose `LocalRelease` index had just regrouped, for an artist the run never touched.
-`retire_owned_missing_placeholders` stays global: its predicate is fully self-contained.
+`delete_orphaned_mb_releases` also spares a release an owned-bundle claim still points at via
+`LocalReleaseTrack.mbTrackId` — see "Already owned inside another release" above; `LocalRelease.releaseId`
+alone doesn't see that link.
+
+`retire_owned_missing_placeholders` stays global, but is **not** self-contained: it only pins a
+placeholder while a `DownloadedRelease` targeting it is in a *live* state
+(`DOWNLOADING`/`ENRICHING`/`READY`/`PROMOTED`), so a merge that discards its download (`web/server/
+utils/promote.ts`'s `stampMerged`) no longer blocks the placeholder from being retired once its
+now-orphaned MB release is gone. That ordering is load-bearing: `delete_orphaned_mb_releases` must run
+**before** `retire_owned_missing_placeholders` at every call site (the end-of-run tail and the
+`--catalogue-gaps` path both do), or the orphan is still standing as a non-MISSING sibling and retire
+deletes the placeholder instead — the wrong survivor, since the placeholder is what makes the release
+re-downloadable. `stampMerged`'s own discard branch deletes the orphan synchronously instead of waiting
+for the next sync, so this ordering mostly guards the case where an older bad row already exists.
 
 ## Locking & Resumability
 

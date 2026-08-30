@@ -582,7 +582,25 @@ async fn main() {
         )
         .await
         {
-            Ok((artists, gaps)) => {
+            Ok((artists, gaps, processed_artist_ids)) => {
+                // A merge that discards a completed download (see promote.ts's stampMerged) can leave
+                // an orphaned non-MISSING MB release behind. This path had no orphan sweep at all, so
+                // that orphan lived forever. Must run BEFORE retire_owned_missing_placeholders: once a
+                // download is discarded, retire's live-status guard no longer sees a pinning row, and
+                // if the orphan (a non-MISSING sibling) is still standing, retire deletes the
+                // placeholder instead - the wrong survivor, since the placeholder is what makes the
+                // release re-downloadable. Scoped to the artists this run actually touched, matching
+                // the scoping discipline of the main sync tail (see cleanup_scope below) - unscoped
+                // would delete unbound MB releases for artists a `--only`/`--from`/`--to` run never
+                // looked at.
+                let gaps_scope: Option<Vec<String>> =
+                    (args.only.is_some() || args.from.is_some() || args.to.is_some())
+                        .then_some(processed_artist_ids);
+                if let Ok(n) = delete_orphaned_mb_releases(&pool, gaps_scope.as_deref()).await {
+                    if n > 0 {
+                        reporter.info(&format!("Cleaned up {} orphaned MB release(s)", n));
+                    }
+                }
                 if let Ok(n) = db::retire_owned_missing_placeholders(&pool).await {
                     if n > 0 {
                         reporter.info(&format!("Retired {} owned MISSING placeholder(s)", n));
@@ -2106,6 +2124,9 @@ async fn main() {
             reporter.info(&format!("Cleaned up {} empty local release(s)", n));
         }
     }
+    // Must precede retire_owned_missing_placeholders: retire only pins a placeholder while a *live*
+    // download still targets it, so a discarded-download orphan left standing here would make retire
+    // delete the placeholder instead - the wrong survivor. See retire_owned_missing_placeholders's doc.
     if let Ok(n) = delete_orphaned_mb_releases(&pool, cleanup_scope.as_deref()).await {
         if n > 0 {
             reporter.info(&format!("Cleaned up {} orphaned MB release(s)", n));

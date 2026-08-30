@@ -79,6 +79,40 @@ fn check(
     }
 }
 
+// MusicBrainz's controlled medium-format vocabulary for video carriers. Deny-list, never an
+// allow-list: an unknown/new format, or `format: None` (some releases omit it), must default to
+// *audio*. The deny-list's failure mode is over-counting a video bonus disc (the status quo before
+// this existed); an allow-list's failure mode would silently drop real audio tracks on an unlisted
+// format. Do NOT use MbTrack's per-recording `video` flag instead - MusicBrainz reports it `false`
+// even on a Blu-ray-only medium (release a3b9c410-56f0-43c4-8cd2-ded51a2cac24, "MOON" by 04 Limited
+// Sazabys: CD medium with 4 audio tracks + Blu-ray medium with a video track, recording.video=false
+// on both), which is what forced this to key off medium format instead.
+const VIDEO_CARRIER_FORMATS: &[&str] = &[
+    "dvd",
+    "dvd-video",
+    "dualdisc (dvd-video side)",
+    "blu-ray",
+    "blu-ray-r",
+    "hd-dvd",
+    "vcd",
+    "svcd",
+    "cdv",
+    "umd",
+    "vhs",
+    "betamax",
+    "laserdisc",
+    "ced",
+];
+
+/// Whether a medium's tracks should count toward a release's track list / expected track count.
+/// See `flatten_audio_tracks` in `mb_api`, which is the sole caller.
+pub fn is_audio_medium(format: Option<&str>) -> bool {
+    match format {
+        None => true,
+        Some(f) => !VIDEO_CARRIER_FORMATS.contains(&f.trim().to_lowercase().as_str()),
+    }
+}
+
 /// Whether a release group with no local copy may be recorded as a MISSING catalogue entry.
 ///
 /// A gap has no specific release, so `is_allowed` sees `status = None` and treats the group as
@@ -223,5 +257,28 @@ mod tests {
             Some("official")
         ));
         assert!(!is_allowed(Some("single"), &[], Some("official")));
+    }
+
+    #[test]
+    fn bluray_dvd_and_vhs_media_are_not_audio() {
+        assert!(!is_audio_medium(Some("Blu-ray")));
+        assert!(!is_audio_medium(Some("bLu-Ray")));
+        assert!(!is_audio_medium(Some("DVD-Video")));
+        assert!(!is_audio_medium(Some("VHS")));
+        assert!(!is_audio_medium(Some("HD-DVD")));
+    }
+
+    #[test]
+    fn missing_or_unknown_format_counts_as_audio() {
+        assert!(is_audio_medium(None));
+        assert!(is_audio_medium(Some("SACD")));
+        assert!(is_audio_medium(Some("Digital Media")));
+        assert!(is_audio_medium(Some("Some Future Format")));
+    }
+
+    #[test]
+    fn dvd_audio_is_audio_but_plain_dvd_is_not() {
+        assert!(is_audio_medium(Some("DVD-Audio")));
+        assert!(!is_audio_medium(Some("DVD")));
     }
 }

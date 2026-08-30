@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
-import { makeArtist, makeDownloadedRelease, makeLocalRelease, makeMbRelease } from '../../../test/factories'
+import { makeArtist, makeDownloadedRelease, makeLocalRelease, makeLocalTrack, makeMbRelease, makeMbTrack } from '../../../test/factories'
 
 const deleteTorrentMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('~/server/utils/qbittorrent', () => ({
@@ -458,6 +458,60 @@ describe('promote.ts (real Postgres)', () => {
 
       // The MISSING placeholder is deliberately kept — this release is still worth re-downloading.
       expect(await prisma.musicBrainzRelease.findUnique({ where: { id: placeholder.id } })).not.toBeNull()
+
+      // The matched-but-shortfall edition itself must not survive as an orphan (the MOON bug: a
+      // permanently phantom "MISSING_TRACKS" edition next to the retryable placeholder).
+      expect(await prisma.musicBrainzRelease.findUnique({ where: { id: boundMb.id } })).toBeNull()
+    })
+
+    it('MISSING_TRACKS discard: keeps the matched MusicBrainzRelease when another LocalRelease still points at it (duplicate-copy case)', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - Shared Edition Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const rgId = `rg-shared-${randomUUID()}`
+      const boundMb = await makeMbRelease(prisma, { status: 'MISSING_TRACKS', releaseGroupId: rgId })
+      // A pre-existing local copy already bound to the same edition — the merge below must not
+      // delete it out from under that other LocalRelease.
+      await makeLocalRelease(prisma, { matchStatus: 'MISSING_TRACKS', releaseId: boundMb.id })
+      const lr = await makeLocalRelease(prisma, { folderPath: rel, matchStatus: 'MISSING_TRACKS', releaseId: boundMb.id })
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'READY', stagingPath, title: 'Shared Edition Album', releaseGroupId: rgId, attempts: 0,
+      })
+
+      await mergeDownloadedRelease(dl.id)
+
+      expect(await prisma.localRelease.findUnique({ where: { id: lr.id } })).toBeNull()
+      expect(await prisma.musicBrainzRelease.findUnique({ where: { id: boundMb.id } })).not.toBeNull()
+    })
+
+    it('MISSING_TRACKS discard: keeps the matched MusicBrainzRelease when an owned-bundle LocalReleaseTrack.mbTrackId still points at one of its tracks', async () => {
+      const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
+
+      const rel = 'Some Artist/2020 - Bonus Disc Album'
+      const stagingPath = join(readyRootTmp, '_ready', rel)
+      await mkdir(stagingPath, { recursive: true })
+      await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
+
+      const rgId = `rg-bonus-${randomUUID()}`
+      const boundMb = await makeMbRelease(prisma, { status: 'MISSING_TRACKS', releaseGroupId: rgId })
+      const mbTrack = await makeMbTrack(prisma, boundMb.id)
+      // Stand-in for scripts/sync/src/owned.rs::claim_owned_bundle: a bonus-disc track linked via
+      // LocalReleaseTrack.mbTrackId while LocalRelease.releaseId points at a different container.
+      const container = await makeLocalRelease(prisma, { matchStatus: 'COMPLETE' })
+      await makeLocalTrack(prisma, { localReleaseId: container.id, mbTrackId: mbTrack.id })
+      const lr = await makeLocalRelease(prisma, { folderPath: rel, matchStatus: 'MISSING_TRACKS', releaseId: boundMb.id })
+      const dl = await makeDownloadedRelease(prisma, {
+        status: 'READY', stagingPath, title: 'Bonus Disc Album', releaseGroupId: rgId, attempts: 0,
+      })
+
+      await mergeDownloadedRelease(dl.id)
+
+      expect(await prisma.localRelease.findUnique({ where: { id: lr.id } })).toBeNull()
+      expect(await prisma.musicBrainzRelease.findUnique({ where: { id: boundMb.id } })).not.toBeNull()
     })
 
     it('EXTRA_TRACKS (deluxe/superset copy): kept and PROMOTED, not purged — and the MISSING placeholder IS retired', async () => {

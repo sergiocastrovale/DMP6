@@ -750,6 +750,30 @@ pub async fn mb_get_official_release_group_ids(
     Ok(ids)
 }
 
+/// Flattens a release's media into one track list, in medium order, skipping non-audio media (a
+/// Blu-ray/DVD bonus disc) via `allowlist::is_audio_medium` - see that fn's doc comment for why medium
+/// format (not the per-recording `video` flag) is the signal. `discNumber` is still stamped from the
+/// medium's own `position`, so an audio medium after a dropped video medium keeps MusicBrainz's
+/// original numbering rather than being renumbered.
+pub(crate) fn flatten_audio_tracks(media: &Option<Vec<MbMedia>>) -> Vec<MbTrack> {
+    let mut tracks = Vec::new();
+    if let Some(media) = media {
+        for medium in media {
+            if !super::allowlist::is_audio_medium(medium.format.as_deref()) {
+                continue;
+            }
+            if let Some(ref trks) = medium.tracks {
+                for trk in trks {
+                    let mut t = trk.clone();
+                    t.disc_number = medium.position;
+                    tracks.push(t);
+                }
+            }
+        }
+    }
+    tracks
+}
+
 pub async fn mb_get_release_tracks(
     client: &Client,
     release_group_id: &str,
@@ -781,17 +805,11 @@ pub async fn mb_get_release_tracks(
                 continue;
             }
         }
-        let mut tracks = Vec::new();
-        if let Some(ref media) = release.media {
-            for medium in media {
-                if let Some(ref trks) = medium.tracks {
-                    for trk in trks {
-                        let mut t = trk.clone();
-                        t.disc_number = medium.position;
-                        tracks.push(t);
-                    }
-                }
-            }
+        let tracks = flatten_audio_tracks(&release.media);
+        // A release whose only media are video carriers (a video-only "release") has nothing to
+        // offer the matcher and must not win an exact-track-count tiebreak against an empty folder.
+        if release.media.is_some() && tracks.is_empty() {
+            continue;
         }
         releases.push((release, tracks));
     }
@@ -850,18 +868,7 @@ pub async fn mb_get_release_by_id(
         None => (String::new(), None, Vec::new()),
     };
 
-    let mut tracks = Vec::new();
-    if let Some(ref media) = lookup.release.media {
-        for medium in media {
-            if let Some(ref trks) = medium.tracks {
-                for trk in trks {
-                    let mut t = trk.clone();
-                    t.disc_number = medium.position;
-                    tracks.push(t);
-                }
-            }
-        }
-    }
+    let tracks = flatten_audio_tracks(&lookup.release.media);
 
     Ok(ReleaseById {
         release: lookup.release,
@@ -1104,5 +1111,65 @@ mod tests {
         for name in ["AC/DC", "Sunn O)))", "!!!", "+/-", "Godspeed You! Black Emperor"] {
             assert_eq!(escape_lucene_phrase(name), name, "over-escaped: {name}");
         }
+    }
+
+    fn mb_track(id: &str, title: &str) -> MbTrack {
+        MbTrack {
+            id: id.to_string(),
+            title: title.to_string(),
+            position: Some(1),
+            length: None,
+            disc_number: None,
+        }
+    }
+
+    fn medium(position: u32, format: Option<&str>, tracks: Vec<MbTrack>) -> MbMedia {
+        MbMedia {
+            position: Some(position),
+            format: format.map(|f| f.to_string()),
+            tracks: Some(tracks),
+        }
+    }
+
+    #[test]
+    fn bonus_bluray_medium_is_excluded_from_the_track_list() {
+        // The MOON incident: CD medium (4 audio tracks) + Blu-ray medium (1 video track) must
+        // flatten to 4, not 5, or a perfect audio rip fails the completeness gate forever.
+        let media = Some(vec![
+            medium(
+                1,
+                Some("CD"),
+                vec![
+                    mb_track("t1", "magnet"),
+                    mb_track("t2", "GATE"),
+                    mb_track("t3", "Kick it"),
+                    mb_track("t4", "mott\u{f6} (JUDY AND MARY cover)"),
+                ],
+            ),
+            medium(
+                2,
+                Some("Blu-ray"),
+                vec![mb_track("t5", "YON FES 2024 Live")],
+            ),
+        ]);
+        let tracks = flatten_audio_tracks(&media);
+        assert_eq!(tracks.len(), 4);
+        assert!(tracks.iter().all(|t| t.disc_number == Some(1)));
+    }
+
+    #[test]
+    fn a_medium_with_no_format_is_kept() {
+        let media = Some(vec![medium(1, None, vec![mb_track("t1", "Untitled")])]);
+        assert_eq!(flatten_audio_tracks(&media).len(), 1);
+    }
+
+    #[test]
+    fn a_release_whose_only_medium_is_video_flattens_to_nothing() {
+        let media = Some(vec![medium(
+            1,
+            Some("DVD-Video"),
+            vec![mb_track("t1", "Bonus")],
+        )]);
+        assert!(flatten_audio_tracks(&media).is_empty());
     }
 }

@@ -299,6 +299,23 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
 
   await purgeLibraryFolder(music, rel)
   if (lr) {await prisma.localRelease.delete({ where: { id: lr.id } }).catch(() => {})}
+  if (matched && reloaded!.releaseId) {
+    // sync --release just bound this LocalRelease to a real MB edition, which we're now discarding —
+    // without this the edition becomes a permanent orphan on the artist page (nothing points at it,
+    // it's non-MISSING so it isn't retried as a catalogue gap, and no sync sweep is scoped to a
+    // download that happened after it last ran). Never touch a MISSING placeholder (that's the
+    // re-downloadable stub, kept above), another LocalRelease still bound to it (duplicate-copy case),
+    // or a release an owned-bundle claim (scripts/sync/src/owned.rs::claim_owned_bundle) has linked
+    // via LocalReleaseTrack.mbTrackId — that link doesn't show up as LocalRelease.releaseId.
+    await prisma.musicBrainzRelease.deleteMany({
+      where: {
+        id: reloaded!.releaseId,
+        status: { not: 'MISSING' },
+        localReleases: { none: {} },
+        tracks: { none: { localTracks: { some: {} } } },
+      },
+    }).catch(() => {})
+  }
   const attempts = (row.attempts ?? 0) + 1
   const abandoned = attempts >= Math.max(1, maxDownloadAttempts)
   await prisma.downloadedRelease.update({

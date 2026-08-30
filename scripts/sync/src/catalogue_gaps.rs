@@ -21,7 +21,7 @@ pub async fn fill_catalogue_gaps(
     exact: bool,
     overwrite: bool,
     verbose: bool,
-) -> Result<(u32, u32), String> {
+) -> Result<(u32, u32, Vec<String>), String> {
     let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
         r#"SELECT id, name, slug, "musicbrainzId"
            FROM "Artist"
@@ -58,6 +58,7 @@ pub async fn fill_catalogue_gaps(
     let mut seen_mb_ids: HashSet<String> = HashSet::new();
     let mut total_artists = 0u32;
     let mut total_gaps = 0u32;
+    let mut processed_artist_ids: Vec<String> = Vec::new();
 
     for (i, (artist_id, name, _slug, mb_id)) in artists.iter().enumerate() {
         if !running.load(Ordering::SeqCst) {
@@ -186,6 +187,7 @@ pub async fn fill_catalogue_gaps(
 
         total_artists += 1;
         total_gaps += gap_count;
+        processed_artist_ids.push(artist_id.clone());
 
         if gap_count > 0 {
             reporter.ok(&format!("{} missing release(s) appended to catalogue", gap_count));
@@ -201,5 +203,5 @@ pub async fn fill_catalogue_gaps(
         reporter.sync_progress(name, i + 1, total, "done");
     }
 
-    Ok((total_artists, total_gaps))
+    Ok((total_artists, total_gaps, processed_artist_ids))
 }

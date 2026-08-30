@@ -42,6 +42,26 @@ Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
   to that release's MB tracks and marks it `COMPLETE` / `statusReason = 'Owned as part of "…"'`;
   `get_covered_release_group_ids` then treats a fully track-linked group as covered. Never writes
   release-level MB ids onto a partially-matching folder — that would flip the folder's id consensus.
+- **Only audio media count toward a release's track list.** A CD+Blu-ray edition's bonus video disc
+  used to be flattened into the expected track count alongside the audio, so a perfect audio rip could
+  never pass the completeness gate (the "MOON" incident: 4/4 audio tracks scored MISSING_TRACKS against
+  a 5-track expectation that included a live-video bonus track). `common::mb::allowlist::is_audio_medium`
+  gates by MusicBrainz medium **format** (Blu-ray, DVD, VHS, …) via a deny-list, never the per-recording
+  `video` flag — MusicBrainz reports that flag `false` even on video-only media. Unknown/missing formats
+  default to audio (over-count, not silent data loss). The single flattening point is
+  `common::mb::api::flatten_audio_tracks`, called by both `mb_get_release_tracks` and
+  `mb_get_release_by_id` — every downstream count (status matching, `MusicBrainzReleaseTrack` rows, the
+  web track list, card `trackCount`) inherits the filter for free. The composed `format` column (e.g.
+  "Blu-ray, CD") intentionally stays unfiltered — it's display metadata, not a completeness input.
+- **A merge discarded for a genuine shortfall must not orphan the MB release it just bound.**
+  `stampMerged`'s discard branch (`web/server/utils/promote.ts`) deletes the failed LocalRelease and
+  also deletes the `MusicBrainzRelease` `sync --release` had just bound to it — but only when nothing
+  else still needs that row: another `LocalRelease` bound to it (duplicate-copy case), an owned-bundle
+  claim via `LocalReleaseTrack.mbTrackId` (see above), or a `MISSING` placeholder (that one is kept on
+  purpose — it's what makes the release re-downloadable). `sync::db::delete_orphaned_mb_releases` /
+  `retire_owned_missing_placeholders` are the equivalent sweeps at the end of every sync run and the
+  `--catalogue-gaps` path; the orphan sweep must run before the placeholder-retire sweep at every call
+  site, or a discarded download's orphan makes retire delete the placeholder instead of the orphan.
 - `LocalRelease` grouped one-per-folder: `groupKey` (unique) = `"folder:{folderPath}"` (root-level files fall back to `"meta:{slugTitle}:{year}:{slugArtist}"`). Per-track MB ids are NOT part of the key — folder is the physical release unit; sync matches folder→MB by embedded-id consensus, then a guarded title+artist search, binding only Official Album/EP — plus Single, but **only** when the files' own MB ids point at it (`allowlist::is_allowed_tagged`; MB files many owned 4-track CD "EP"s under a Single group). Searches and catalogue gaps never produce a Single. A candidate the allow-list rejects (bootleg edition, Single-typed search hit) gets one search-tier retry before the release is left UNMATCHED. Keying on per-track ids shredded compilations into per-track fragments — see `docs/scripts/index.md`, `docs/scripts/sync.md`.
 
 ## Standards

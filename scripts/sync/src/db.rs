@@ -186,6 +186,12 @@ pub async fn delete_mb_tracks_for_release(
 /// (some sibling release is no longer MISSING), the stub is garbage and shows up as a phantom "MISSING
 /// edition" next to the real one. Delete those — but never one a LocalRelease actually points at.
 /// Returns the number removed. Cheap, indexed; safe to run at the end of every sync.
+///
+/// The `DownloadedRelease` guard mirrors `delete_missing_releases_for_artist` below: only a *live*
+/// download (still able to consume the target) pins the placeholder. A dead row (INVALID/REJECTED/
+/// FAILED/ABANDONED/UNAVAILABLE) must not pin it forever — that turned a discarded MOON download into
+/// a permanent phantom next to the orphaned edition `delete_orphaned_mb_releases` leaves behind, until
+/// this run's caller sweeps orphans first (see the ordering comment at both call sites in main.rs).
 pub async fn retire_owned_missing_placeholders(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let res = sqlx::query(
         r#"
@@ -200,7 +206,9 @@ pub async fn retire_owned_missing_placeholders(pool: &PgPool) -> Result<u64, sql
             SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id
           )
           AND m.id NOT IN (
-            SELECT "mbReleaseId" FROM "DownloadedRelease" WHERE "mbReleaseId" IS NOT NULL
+            SELECT "mbReleaseId" FROM "DownloadedRelease"
+            WHERE "mbReleaseId" IS NOT NULL
+              AND status IN ('DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED')
           )
         "#,
     )
@@ -560,6 +568,10 @@ pub type ArtistScope<'a> = Option<&'a [String]>;
 /// `NOT EXISTS` rather than `NOT IN (... WHERE "releaseId" IS NOT NULL)`: `NOT IN` over a nullable
 /// column collapses to UNKNOWN for every row as soon as one NULL enters the subquery, which is what
 /// that `IS NOT NULL` guard existed to work around.
+///
+/// The second `NOT EXISTS` protects a release `owned::claim_owned_bundle` claimed: it links
+/// `LocalReleaseTrack.mbTrackId` to that release's tracks while `LocalRelease.releaseId` points at the
+/// *container* release, so the first `NOT EXISTS` alone sees it as unbound and would delete it.
 pub async fn delete_orphaned_mb_releases(
     pool: &PgPool,
     scope: ArtistScope<'_>,
@@ -570,6 +582,11 @@ pub async fn delete_orphaned_mb_releases(
                 r#"DELETE FROM "MusicBrainzRelease" m
                    WHERE m.status <> 'MISSING'
                      AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)
+                     AND NOT EXISTS (
+                           SELECT 1 FROM "LocalReleaseTrack" lt
+                           JOIN "MusicBrainzReleaseTrack" mt ON mt.id = lt."mbTrackId"
+                           WHERE mt."releaseId" = m.id
+                         )
                      AND EXISTS (
                            SELECT 1 FROM "MusicBrainzReleaseArtist" mra
                            WHERE mra."releaseId" = m.id AND mra."artistId" = ANY($1::text[])
@@ -583,7 +600,12 @@ pub async fn delete_orphaned_mb_releases(
             sqlx::query(
                 r#"DELETE FROM "MusicBrainzRelease" m
                    WHERE m.status <> 'MISSING'
-                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)"#,
+                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)
+                     AND NOT EXISTS (
+                           SELECT 1 FROM "LocalReleaseTrack" lt
+                           JOIN "MusicBrainzReleaseTrack" mt ON mt.id = lt."mbTrackId"
+                           WHERE mt."releaseId" = m.id
+                         )"#,
             )
             .execute(pool)
             .await?

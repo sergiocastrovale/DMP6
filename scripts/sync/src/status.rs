@@ -409,6 +409,48 @@ mod tests {
     }
 
     #[test]
+    fn four_track_folder_is_complete_against_a_cd_plus_bluray_edition() {
+        // Locks the contract `flatten_audio_tracks` (common::mb::api) relies on: once a CD+Blu-ray
+        // release is pre-filtered down to its 4 audio tracks (the MOON incident), it must win the
+        // tiebreak against a Digital Media sibling with the same count and be reported COMPLETE - not
+        // MISSING_TRACKS from counting the Blu-ray's video track as a 5th expected track.
+        let locals = vec![
+            track("magnet"),
+            track("GATE"),
+            track("Kick it"),
+            track("mott\u{f6} (JUDY AND MARY cover)"),
+        ];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(4);
+        let releases = vec![
+            (
+                mb_release("r-cd", Some("2025-01-01"), Some("CD")),
+                vec![
+                    mb_track("a1", "magnet"),
+                    mb_track("a2", "GATE"),
+                    mb_track("a3", "Kick it"),
+                    mb_track("a4", "mott\u{f6} (JUDY AND MARY cover)"),
+                ],
+            ),
+            (
+                mb_release("r-digital", Some("2025-01-01"), Some("Digital Media")),
+                vec![
+                    mb_track("b1", "magnet"),
+                    mb_track("b2", "GATE"),
+                    mb_track("b3", "Kick it"),
+                    mb_track("b4", "mott\u{f6} (JUDY AND MARY cover)"),
+                ],
+            ),
+        ];
+
+        let result = check_release_status(&local_refs, &ids, &releases, Some(2025));
+
+        assert!(result.is_confident);
+        assert_eq!(result.best_release_id, "r-cd");
+        assert_eq!(result.status, ReleaseStatus::Complete);
+    }
+
+    #[test]
     fn more_local_tracks_than_matched_edition_is_extra_tracks() {
         let locals = vec![track("Intro"), track("Outro"), track("Bonus Track")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
