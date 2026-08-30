@@ -201,8 +201,8 @@ test.describe('manager (non-admin)', () => {
     // Sign in only enables once v-model has both fields, so filling until it enables is the login
     // page's own hydration signal (a fill that lands pre-hydration never reaches the ref).
     await expect(async () => {
-      await page.getByPlaceholder('Username').fill(managerUsername)
-      await page.getByPlaceholder('Password').fill(managerPassword)
+      await page.getByLabel('Username').fill(managerUsername)
+      await page.getByLabel('Password').fill(managerPassword)
       await expect(submit).toBeEnabled({ timeout: 1000 })
     }).toPass()
     await submit.click()

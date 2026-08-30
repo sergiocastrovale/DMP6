@@ -471,6 +471,34 @@ Matched against `04-timeline.png`, `05-playlists*.png`, `06-favorites_*.png`.
 - Both `playlist/List.vue` (the Your/Genre/Region sections) and the timeline/favorites empty
   states now go through `UiEmptyState` instead of each writing its own icon+sentence block.
 
+## Login and change-password (Stage 8)
+
+Matched against `12-login.png`.
+
+- **New `components/ui/TextField.vue`** replaces the identical hand-written `<label>` +
+  `<input>` markup that was copy-pasted across both pages: a `useId()`-generated id links the
+  label and input, and an optional `error` prop renders a `role="alert"` paragraph wired to the
+  input via `aria-describedby` + `aria-invalid` - there was no programmatic association before,
+  just a plain paragraph placed near the field.
+- **Login's single "Invalid credentials" error is attached to the password field** (`useAuth`
+  doesn't say which of username/password was wrong, and attaching it to the field the user needs
+  to re-type first is the common convention). Change-password splits its one `error` ref into a
+  `fieldErrors { current, new, confirm }` object, since the three failure cases it already
+  branched on - too short, mismatch, wrong current password - map cleanly onto three different
+  fields, giving one screen-reader announcement instead of forcing a re-read of the whole form.
+- **Labels are now real, visible `<label>` elements, not placeholder-only fields** - the
+  reference screen shows exactly this (visible "Username"/"Password" labels above each input).
+  This broke two e2e specs' `page.getByPlaceholder('Username'/'Password')` login helper
+  (`artist-delete.spec.ts`, `scan-actions.spec.ts`); switched both to `page.getByLabel(...)`,
+  which is the more correct target now that the field has one.
+- `layouts/auth.vue` gets the reference's radial amber glow behind the card
+  (`bg-[radial-gradient(...,var(--color-amber-700)...)]`) - an arbitrary-value gradient built
+  from a token `var()` rather than a raw hex, which is exactly what emitting the theme as
+  `@theme static` (Stage 0) is for.
+- No "keep me signed in" checkbox: the reference shows one, but `useAuth`'s login has no
+  remember-me concept and adding one would mean session-duration server work, not a restyle -
+  out of scope for this stage.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

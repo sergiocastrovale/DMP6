@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { surface } from '~/helpers/ui'
+
 definePageMeta({ layout: 'auth' })
 
 const username = ref('')
@@ -30,33 +32,27 @@ const handleSubmit = async () => {
   <div class="flex min-h-screen items-center justify-center px-4">
     <div class="w-full max-w-sm">
       <div class="mb-8 text-center">
-        <h1 class="text-3xl font-bold tracking-tight text-accent">
+        <h1 class="font-display text-3xl font-bold tracking-[0.3em] text-amber-400">
           DMP
         </h1>
-        <p class="mt-1 text-sm text-ink-3">
+        <p class="mt-1 text-sm text-stone-100/40">
           Your music library
         </p>
       </div>
 
-      <form class="space-y-3" @submit.prevent="handleSubmit">
-        <input
+      <form :class="[surface.card, 'flex flex-col gap-4 p-8']" @submit.prevent="handleSubmit">
+        <UiTextField
           v-model="username"
-          type="text"
-          placeholder="Username"
+          label="Username"
           autocomplete="username"
-          class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        >
-        <input
+        />
+        <UiTextField
           v-model="password"
           type="password"
-          placeholder="Password"
+          label="Password"
           autocomplete="current-password"
-          class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        >
-
-        <p v-if="error" class="text-center text-sm text-red-400">
-          {{ error }}
-        </p>
+          :error="error"
+        />
 
         <UiButton type="submit" block :loading="loading" :disabled="!canSubmit">
           Sign in

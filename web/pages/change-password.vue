@@ -1,23 +1,25 @@
 <script setup lang="ts">
+import { surface } from '~/helpers/ui'
+
 definePageMeta({ layout: 'auth' })
 
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
-const error = ref('')
+const fieldErrors = ref({ current: '', new: '', confirm: '' })
 const loading = ref(false)
 
-const { user, loadMe } = useAuth()
+const { loadMe } = useAuth()
 
 const handleSubmit = async () => {
-  error.value = ''
+  fieldErrors.value = { current: '', new: '', confirm: '' }
 
   if (newPassword.value.length < 6) {
-    error.value = 'Password must be at least 6 characters'
+    fieldErrors.value.new = 'Password must be at least 6 characters'
     return
   }
   if (newPassword.value !== confirmPassword.value) {
-    error.value = 'Passwords do not match'
+    fieldErrors.value.confirm = 'Passwords do not match'
     return
   }
 
@@ -32,9 +34,11 @@ const handleSubmit = async () => {
     })
     await loadMe()
     await navigateTo('/')
-  } catch (e: any) {
-    error.value = e.data?.message || 'Failed to change password'
-  } finally {
+  }
+  catch (e: any) {
+    fieldErrors.value.current = e.data?.message || 'Failed to change password'
+  }
+  finally {
     loading.value = false
   }
 }
@@ -44,34 +48,32 @@ const handleSubmit = async () => {
   <div class="flex min-h-screen items-center justify-center px-4">
     <div class="w-full max-w-sm">
       <div class="mb-8 text-center">
-        <h1 class="text-3xl font-bold tracking-tight text-accent">DMP</h1>
-        <p class="mt-1 text-sm text-ink-3">Change your password</p>
+        <h1 class="font-display text-3xl font-bold tracking-[0.3em] text-amber-400">DMP</h1>
+        <p class="mt-1 text-sm text-stone-100/40">Change your password</p>
       </div>
 
-      <form class="space-y-3" @submit.prevent="handleSubmit">
-        <input
+      <form :class="[surface.card, 'flex flex-col gap-4 p-8']" @submit.prevent="handleSubmit">
+        <UiTextField
           v-model="currentPassword"
           type="password"
-          placeholder="Current password"
+          label="Current password"
           autocomplete="current-password"
-          class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        >
-        <input
+          :error="fieldErrors.current"
+        />
+        <UiTextField
           v-model="newPassword"
           type="password"
-          placeholder="New password"
+          label="New password"
           autocomplete="new-password"
-          class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        >
-        <input
+          :error="fieldErrors.new"
+        />
+        <UiTextField
           v-model="confirmPassword"
           type="password"
-          placeholder="Confirm new password"
+          label="Confirm new password"
           autocomplete="new-password"
-          class="w-full rounded-lg border border-rule bg-bg-1 px-4 py-3 text-sm text-ink placeholder-ink-3 transition-colors focus:border-accent focus:outline-none"
-        >
-
-        <p v-if="error" class="text-center text-sm text-red-400">{{ error }}</p>
+          :error="fieldErrors.confirm"
+        />
 
         <UiButton type="submit" block :loading="loading">
           Change Password

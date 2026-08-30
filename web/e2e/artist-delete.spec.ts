@@ -105,8 +105,8 @@ test.describe('manager (non-admin)', () => {
     await page.goto('/login')
     const submit = page.getByRole('button', { name: 'Sign in' })
     await expect(async () => {
-      await page.getByPlaceholder('Username').fill(managerUsername)
-      await page.getByPlaceholder('Password').fill(managerPassword)
+      await page.getByLabel('Username').fill(managerUsername)
+      await page.getByLabel('Password').fill(managerPassword)
       await expect(submit).toBeEnabled({ timeout: 1000 })
     }).toPass()
     await submit.click()
