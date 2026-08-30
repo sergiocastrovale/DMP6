@@ -2,6 +2,7 @@
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { IssueColumn, IssueType } from '~/types/issues'
+import { typography } from '~/helpers/ui'
 
 const props = defineProps<{ type: IssueType }>()
 
@@ -18,8 +19,8 @@ const REVERTABLE_TYPES: IssueType[] = ['corrupted', 'missing']
 const activeSubtab = ref<'detected' | 'fixed'>('detected')
 
 const subtabs = computed(() => [
-  { key: 'detected', label: 'Detected', count: issuesStore.total[props.type] ?? 0, activeColor: 'border-blue-500' },
-  { key: 'fixed', label: 'Fixed', count: issuesStore.resolvedTotal[props.type] ?? 0, activeColor: 'border-green-500' },
+  { key: 'detected', label: 'Detected', count: issuesStore.total[props.type] ?? 0, activeColor: 'border-info' },
+  { key: 'fixed', label: 'Fixed', count: issuesStore.resolvedTotal[props.type] ?? 0, activeColor: 'border-success' },
 ])
 
 onMounted(() => {
@@ -240,7 +241,7 @@ function getHistoryDate(item: any): string {
   <div class="flex flex-col gap-4">
     <div class="flex flex-col gap-3">
       <div class="flex items-center justify-between gap-4">
-        <h1 class="text-lg font-semibold text-white">{{ typeLabels[type] }}</h1>
+        <h1 :class="typography.h3">{{ typeLabels[type] }}</h1>
         <div class="flex items-center gap-2">
         <SearchInput
           v-model="searchInput"
@@ -249,15 +250,15 @@ function getHistoryDate(item: any): string {
         />
       </div>
       </div>
-      <p class="text-sm text-ink-3">
+      <p class="text-base text-stone-100/40">
         {{ typeDescriptions[type].detection }}
-        <span class="text-ink-4">Fix:</span> {{ typeDescriptions[type].fix }}
+        <span class="text-stone-100/25">Fix:</span> {{ typeDescriptions[type].fix }}
       </p>
     </div>
 
     <Subtabs v-if="REVERTABLE_TYPES.includes(type)" v-model="activeSubtab" :tabs="subtabs" />
 
-    <div v-if="activeSubtab === 'detected'" class="rounded-lg border border-rule bg-bg">
+    <div v-if="activeSubtab === 'detected'">
       <IssuesIssueTable
         :type="type"
         :columns="columns"
@@ -278,11 +279,11 @@ function getHistoryDate(item: any): string {
           <NuxtLink
             v-if="item.artist"
             :to="`/artist/${item.artist.slug}`"
-            class="text-blue-400 hover:underline"
+            class="text-stone-100 hover:text-amber-400 transition-colors duration-150"
           >
             {{ item.artist.name }}
           </NuxtLink>
-          <span v-else class="text-ink-4">-</span>
+          <span v-else class="text-stone-100/20">-</span>
         </template>
 
         <template #cell-confidence="{ item }">
@@ -290,7 +291,7 @@ function getHistoryDate(item: any): string {
         </template>
 
         <template #cell-folder="{ item }">
-          <span class="truncate text-xs text-ink-3" :title="getFolderPath(item)">
+          <span class="truncate text-xs text-stone-100/40" :title="getFolderPath(item)">
             {{ getFolderPath(item) }}
           </span>
         </template>
@@ -300,33 +301,33 @@ function getHistoryDate(item: any): string {
             <span
               v-for="part in item.proposedParts"
               :key="part"
-              class="rounded bg-bg-2 px-1.5 py-0.5 text-xs text-ink-2"
+              class="inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/6 text-xs text-stone-100/60"
             >{{ part }}</span>
           </div>
         </template>
 
         <template #cell-reason="{ item }">
-          <span class="rounded bg-bg-2 px-1.5 py-0.5 text-xs text-ink-2">{{ item.reason }}</span>
+          <span class="inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/6 text-xs text-stone-100/60">{{ item.reason }}</span>
         </template>
 
         <template #cell-artist_createdAt="{ item }">
-          <span class="text-xs text-ink-3">{{ formatDate(item.artist.createdAt) }}</span>
+          <span class="text-xs text-stone-100/40">{{ formatDate(item.artist.createdAt) }}</span>
         </template>
 
         <template #cell-artist_musicbrainzId="{ item }">
-          <span :class="item.artist.musicbrainzId ? 'text-green-500' : 'text-ink-4'">
+          <span :class="item.artist.musicbrainzId ? 'text-success' : 'text-stone-100/25'">
             {{ item.artist.musicbrainzId ? 'Yes' : 'No' }}
           </span>
         </template>
 
         <template #cell-artistA_name="{ item }">
-          <NuxtLink :to="`/artist/${item.artistA.slug}`" class="text-blue-400 hover:underline">
+          <NuxtLink :to="`/artist/${item.artistA.slug}`" class="text-stone-100 hover:text-amber-400 transition-colors duration-150">
             {{ item.artistA.name }}
           </NuxtLink>
         </template>
 
         <template #cell-artistB_name="{ item }">
-          <NuxtLink :to="`/artist/${item.artistB.slug}`" class="text-blue-400 hover:underline">
+          <NuxtLink :to="`/artist/${item.artistB.slug}`" class="text-stone-100 hover:text-amber-400 transition-colors duration-150">
             {{ item.artistB.name }}
           </NuxtLink>
         </template>
@@ -335,36 +336,36 @@ function getHistoryDate(item: any): string {
           <NuxtLink
             v-if="item.releaseA.artist"
             :to="`/artist/${item.releaseA.artist.slug}`"
-            class="text-blue-400 hover:underline"
+            class="text-stone-100 hover:text-amber-400 transition-colors duration-150"
             :title="item.releaseA.folderPath"
           >
             {{ item.releaseA.title }}
           </NuxtLink>
-          <span v-else class="truncate text-ink-3" :title="item.releaseA.folderPath">{{ item.releaseA.title }}</span>
+          <span v-else class="truncate text-stone-100/40" :title="item.releaseA.folderPath">{{ item.releaseA.title }}</span>
         </template>
 
         <template #cell-releaseB_title="{ item }">
           <NuxtLink
             v-if="item.releaseB.artist"
             :to="`/artist/${item.releaseB.artist.slug}`"
-            class="text-blue-400 hover:underline"
+            class="text-stone-100 hover:text-amber-400 transition-colors duration-150"
             :title="item.releaseB.folderPath"
           >
             {{ item.releaseB.title }}
           </NuxtLink>
-          <span v-else class="truncate text-ink-3" :title="item.releaseB.folderPath">{{ item.releaseB.title }}</span>
+          <span v-else class="truncate text-stone-100/40" :title="item.releaseB.folderPath">{{ item.releaseB.title }}</span>
         </template>
 
         <template #cell-releaseA_trackCount="{ item }">
-          <span class="text-xs text-ink-3">{{ item.releaseA.trackCount }}</span>
+          <span class="text-xs text-stone-100/40 tabular-nums">{{ item.releaseA.trackCount }}</span>
         </template>
 
         <template #cell-releaseB_trackCount="{ item }">
-          <span class="text-xs text-ink-3">{{ item.releaseB.trackCount }}</span>
+          <span class="text-xs text-stone-100/40 tabular-nums">{{ item.releaseB.trackCount }}</span>
         </template>
 
         <template #cell-releaseA_release_title="{ item }">
-          <span class="text-xs text-ink-2">{{ item.releaseA.release?.title ?? '-' }}</span>
+          <span class="text-xs text-stone-100/60">{{ item.releaseA.release?.title ?? '-' }}</span>
         </template>
 
         <template #cell-missingFields="{ item }">
@@ -380,28 +381,28 @@ function getHistoryDate(item: any): string {
               <span
                 v-for="f in item.missingFields"
                 :key="f"
-                class="rounded bg-red-900/30 px-1.5 py-0.5 text-xs text-red-400"
+                class="inline-flex items-center rounded-full bg-danger/15 px-2 py-0.5 text-xs text-danger"
               >{{ f }}</span>
             </template>
           </div>
         </template>
 
         <template #cell-proposedValues="{ item }">
-          <span v-if="item.proposedValues" class="text-xs text-green-500">
+          <span v-if="item.proposedValues" class="text-xs text-success">
             {{ Object.keys(item.proposedValues).join(', ') }}
           </span>
-          <span v-else class="text-xs text-ink-4">manual</span>
+          <span v-else class="text-xs text-stone-100/25">manual</span>
         </template>
 
         <template #cell-localRelease_title="{ item }">
           <NuxtLink
             v-if="item.localRelease"
             :to="`/artist/${item.artist?.slug}`"
-            class="text-ink hover:underline"
+            class="text-stone-100 hover:text-amber-400 transition-colors duration-150"
           >
             {{ item.localRelease.title }}
           </NuxtLink>
-          <span v-else class="text-ink-4">-</span>
+          <span v-else class="text-stone-100/20">-</span>
         </template>
 
         <template #cell-_resync="{ item }">
@@ -414,7 +415,7 @@ function getHistoryDate(item: any): string {
       </IssuesIssueTable>
     </div>
 
-    <div v-if="activeSubtab === 'fixed' && REVERTABLE_TYPES.includes(type)" class="rounded-lg border border-rule bg-bg">
+    <div v-if="activeSubtab === 'fixed' && REVERTABLE_TYPES.includes(type)">
       <IssuesIssueTable
         :type="type"
         :columns="resolvedColumns"
@@ -431,39 +432,39 @@ function getHistoryDate(item: any): string {
           <NuxtLink
             v-if="item.artist"
             :to="`/artist/${item.artist.slug}`"
-            class="text-blue-400 hover:underline"
+            class="text-stone-100 hover:text-amber-400 transition-colors duration-150"
           >
             {{ item.artist.name }}
           </NuxtLink>
-          <span v-else class="text-ink-4">-</span>
+          <span v-else class="text-stone-100/20">-</span>
         </template>
 
         <template #cell-previousValue="{ item }">
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getHistoryPreviousEntries(item)" :key="e.key" class="text-xs text-accent">
-              <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
+              <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
             </span>
-            <span v-if="!getHistoryPreviousEntries(item).length" class="text-xs text-ink-4">-</span>
+            <span v-if="!getHistoryPreviousEntries(item).length" class="text-xs text-stone-100/20">-</span>
           </div>
         </template>
 
         <template #cell-appliedValue="{ item }">
           <div class="flex flex-col gap-0.5">
-            <span v-for="e in getHistoryAppliedEntries(item)" :key="e.key" class="text-xs text-green-400">
-              <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
+            <span v-for="e in getHistoryAppliedEntries(item)" :key="e.key" class="text-xs text-success">
+              <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
             </span>
-            <span v-if="!getHistoryAppliedEntries(item).length" class="text-xs text-ink-4">-</span>
+            <span v-if="!getHistoryAppliedEntries(item).length" class="text-xs text-stone-100/20">-</span>
           </div>
         </template>
 
         <template #cell-folder="{ item }">
-          <span class="truncate text-xs text-ink-3" :title="getFolderPath(item)">
+          <span class="truncate text-xs text-stone-100/40" :title="getFolderPath(item)">
             {{ getFolderPath(item) }}
           </span>
         </template>
 
         <template #cell-fixedAt="{ item }">
-          <span class="text-xs text-ink-3">{{ getHistoryDate(item) }}</span>
+          <span class="text-xs text-stone-100/40">{{ getHistoryDate(item) }}</span>
         </template>
       </IssuesIssueTable>
     </div>

@@ -12,6 +12,8 @@ const TABS: { key: HistoryIssueType; label: string }[] = [
   { key: 'missing', label: 'Missing Metadata' },
 ]
 
+const subtabs = computed(() => TABS.map(t => ({ ...t, count: issuesStore.historyCounts[t.key] ?? 0 })))
+
 const activeTab = ref<HistoryIssueType>('corrupted')
 const selected = ref<Set<string>>(new Set())
 const dialogFolder = ref<string | null>(null)
@@ -176,122 +178,100 @@ async function undoSelected() {
   <div class="flex flex-col gap-4">
     <PageTitle text="Fix History" />
 
-    <div class="flex items-center gap-1 border-b border-rule">
-      <button
-        v-for="tab in TABS"
-        :key="tab.key"
-        type="button"
-        class="-mb-px flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors"
-        :class="activeTab === tab.key
-          ? 'border-b-2 border-accent text-ink'
-          : 'border-b-2 border-transparent text-ink-2 hover:text-ink'"
-        @click="activeTab = tab.key"
-      >
-        <span>{{ tab.label }}</span>
-        <span
-          class="inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-          :class="(issuesStore.historyCounts[tab.key] ?? 0) > 0
-            ? 'bg-accent-soft text-accent'
-            : 'bg-bg-2 text-ink-3'"
-        >
-          {{ issuesStore.historyCounts[tab.key] ?? 0 }}
-        </span>
-      </button>
-    </div>
+    <Subtabs v-model="activeTab" :tabs="subtabs" />
 
-    <div class="rounded-lg border border-rule bg-bg">
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-rule text-left">
-              <th class="w-10 px-3 py-2">
-                <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" >
-              </th>
-              <th class="px-3 py-2 text-xs font-medium text-ink-3">Folder</th>
-              <th class="px-3 py-2 text-xs font-medium text-ink-3">Previous</th>
-              <th class="px-3 py-2 text-xs font-medium text-ink-3">Applied</th>
-              <th class="w-32 px-3 py-2 text-xs font-medium text-ink-3">Applied At</th>
+    <div class="flex flex-col gap-0">
+      <SlimTable>
+        <SlimTableHeader>
+          <th class="w-10 px-3 py-2.5">
+            <UiCheckbox :model-value="allChecked" aria-label="Select all folders" @update:model-value="toggleAll" />
+          </th>
+          <th class="px-3 py-2.5 text-left">Folder</th>
+          <th class="px-3 py-2.5 text-left">Previous</th>
+          <th class="px-3 py-2.5 text-left">Applied</th>
+          <th class="w-32 px-3 py-2.5 text-left">Applied At</th>
+        </SlimTableHeader>
+        <SlimTableBody>
+          <template v-if="issuesStore.historyLoading[activeTab] && groups.length === 0">
+            <tr v-for="n in 5" :key="n" class="border-b border-stone-100/6 last:border-b-0">
+              <td class="px-3 py-3"><div class="size-4 animate-pulse rounded bg-stone-800" /></td>
+              <td v-for="c in 4" :key="c" class="px-3 py-3"><div class="h-4 w-32 animate-pulse rounded bg-stone-800" /></td>
             </tr>
-          </thead>
-          <tbody>
-            <template v-if="issuesStore.historyLoading[activeTab] && groups.length === 0">
-              <tr v-for="n in 5" :key="n" class="border-b border-rule/50">
-                <td class="px-3 py-2.5"><div class="h-4 w-4 animate-pulse rounded bg-bg-2" /></td>
-                <td v-for="c in 4" :key="c" class="px-3 py-2.5"><div class="h-4 w-32 animate-pulse rounded bg-bg-2" /></td>
-              </tr>
-            </template>
+          </template>
 
-            <tr v-else-if="!issuesStore.historyLoading[activeTab] && groups.length === 0">
-              <td colspan="5" class="px-3 py-12 text-center text-ink-3">No history records</td>
-            </tr>
+          <tr v-else-if="!issuesStore.historyLoading[activeTab] && groups.length === 0">
+            <td colspan="5">
+              <UiEmptyState message="No history records" />
+            </td>
+          </tr>
 
-            <tr
-              v-for="g in groups"
-              :key="g.folder"
-              class="border-b border-rule/50 transition-colors hover:bg-bg-1/30"
-              :class="isGroupChecked(g) ? 'bg-blue-950/20' : ''"
-            >
-              <td class="px-3 py-2">
-                <input
-                  type="checkbox"
-                  :checked="isGroupChecked(g)"
-                  :indeterminate="isGroupPartial(g)"
-                  class="rounded border-rule bg-bg-2"
-                  @change="toggleGroup(g)"
+          <SlimTableRow
+            v-for="g in groups"
+            :key="g.folder"
+            :active="isGroupChecked(g)"
+          >
+            <td class="px-3 py-3" @click.stop>
+              <UiCheckbox
+                :model-value="isGroupChecked(g)"
+                :indeterminate="isGroupPartial(g)"
+                :aria-label="`Select all files in ${g.folder}`"
+                @update:model-value="toggleGroup(g)"
+              />
+            </td>
+            <td class="px-3 py-3">
+              <div class="flex flex-col gap-1">
+                <span class="truncate text-xs text-stone-100/60" :title="g.folder">{{ g.folder }}</span>
+                <button
+                  type="button"
+                  class="flex w-fit items-center gap-1.5 rounded-full bg-stone-800 px-2 py-0.5 text-[11px] transition-colors duration-150 hover:bg-stone-700"
+                  @click.stop="dialogFolder = g.folder"
                 >
-              </td>
-              <td class="px-3 py-2">
-                <div class="flex flex-col gap-1">
-                  <span class="truncate text-xs text-ink-2" :title="g.folder">{{ g.folder }}</span>
-                  <button
-                    class="flex w-fit items-center gap-1.5 rounded-full bg-bg-2 px-2 py-0.5 text-[11px] transition-colors hover:bg-bg-3"
-                    @click="dialogFolder = g.folder"
-                  >
-                    <FileText :size="11" class="text-ink-2" />
-                    <span class="text-ink-2">{{ g.items.length }} file{{ g.items.length !== 1 ? 's' : '' }}</span>
-                    <span v-if="selectedInGroup(g) > 0" class="text-blue-400">/ {{ selectedInGroup(g) }} selected</span>
-                  </button>
-                </div>
-              </td>
-              <td class="px-3 py-2">
-                <div class="flex flex-col gap-0.5">
-                  <span v-for="e in getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {}))" :key="e.key" class="text-xs text-accent">
-                    <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
-                  </span>
-                  <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-ink-4">-</span>
-                </div>
-              </td>
-              <td class="px-3 py-2">
-                <div class="flex flex-col gap-0.5">
-                  <span v-for="e in getStateEntries(g.items[0]!.appliedState)" :key="e.key" class="text-xs text-green-400">
-                    <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
-                  </span>
-                  <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-ink-4">-</span>
-                </div>
-              </td>
-              <td class="px-3 py-2">
-                <span class="text-xs text-ink-3">{{ formatDate(g.items[0]!.appliedAt) }}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                  <FileText :size="11" class="text-stone-100/60" />
+                  <span class="text-stone-100/60">{{ g.items.length }} file{{ g.items.length !== 1 ? 's' : '' }}</span>
+                  <span v-if="selectedInGroup(g) > 0" class="text-amber-400">/ {{ selectedInGroup(g) }} selected</span>
+                </button>
+              </div>
+            </td>
+            <td class="px-3 py-3">
+              <div class="flex flex-col gap-0.5">
+                <span v-for="e in getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {}))" :key="e.key" class="text-xs text-amber-400">
+                  <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
+                </span>
+                <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-stone-100/20">-</span>
+              </div>
+            </td>
+            <td class="px-3 py-3">
+              <div class="flex flex-col gap-0.5">
+                <span v-for="e in getStateEntries(g.items[0]!.appliedState)" :key="e.key" class="text-xs text-success">
+                  <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
+                </span>
+                <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-stone-100/20">-</span>
+              </div>
+            </td>
+            <td class="px-3 py-3">
+              <span class="text-xs text-stone-100/40">{{ formatDate(g.items[0]!.appliedAt) }}</span>
+            </td>
+          </SlimTableRow>
+        </SlimTableBody>
+      </SlimTable>
 
       <div
         v-if="(issuesStore.historyTotal[activeTab] ?? 0) > 50"
-        class="flex items-center justify-between border-t border-rule px-4 py-2 text-xs text-ink-3"
+        class="flex items-center justify-between border-t border-stone-100/6 px-4 py-2.5 text-sm text-stone-100/40"
       >
-        <span>{{ issuesStore.historyTotal[activeTab] }} total</span>
+        <span class="tabular-nums">{{ issuesStore.historyTotal[activeTab] }} total</span>
         <div class="flex items-center gap-2">
           <button
+            type="button"
             :disabled="(issuesStore.historyPage[activeTab] ?? 1) <= 1"
-            class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
+            class="rounded-md px-2 py-1 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100 disabled:opacity-40"
             @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) - 1)"
           >Prev</button>
-          <span>{{ issuesStore.historyPage[activeTab] ?? 1 }} / {{ Math.ceil((issuesStore.historyTotal[activeTab] ?? 0) / 50) }}</span>
+          <span class="tabular-nums">{{ issuesStore.historyPage[activeTab] ?? 1 }} / {{ Math.ceil((issuesStore.historyTotal[activeTab] ?? 0) / 50) }}</span>
           <button
+            type="button"
             :disabled="(issuesStore.historyPage[activeTab] ?? 1) >= Math.ceil((issuesStore.historyTotal[activeTab] ?? 0) / 50)"
-            class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
+            class="rounded-md px-2 py-1 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100 disabled:opacity-40"
             @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) + 1)"
           >Next</button>
         </div>
@@ -303,19 +283,18 @@ async function undoSelected() {
         <div
           v-for="item in dialogGroup.items"
           :key="item.id"
-          class="flex items-center gap-3 border-b border-rule/50 px-1 py-2 last:border-0"
-          :class="selected.has(item.id) ? 'bg-blue-950/20' : ''"
+          class="flex items-center gap-3 border-b border-stone-100/6 px-1 py-2 last:border-0"
+          :class="selected.has(item.id) ? 'bg-amber-400/10' : ''"
         >
-          <input
-            type="checkbox"
-            :checked="selected.has(item.id)"
-            class="rounded border-rule bg-bg-2"
-            @change="toggleFile(item.id)"
-          >
-          <span class="flex-1 truncate text-xs text-ink-2" :title="item.filePath">{{ fileName(item.filePath) }}</span>
+          <UiCheckbox
+            :model-value="selected.has(item.id)"
+            :aria-label="`Select ${fileName(item.filePath)}`"
+            @update:model-value="toggleFile(item.id)"
+          />
+          <span class="flex-1 truncate text-xs text-stone-100/60" :title="item.filePath">{{ fileName(item.filePath) }}</span>
           <div class="flex flex-col gap-0.5">
-            <span v-for="e in getStateEntries(item.appliedState)" :key="e.key" class="text-[11px] text-green-400">
-              <span class="text-ink-3">{{ e.key }}:</span> {{ e.value }}
+            <span v-for="e in getStateEntries(item.appliedState)" :key="e.key" class="text-[11px] text-success">
+              <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
             </span>
           </div>
         </div>

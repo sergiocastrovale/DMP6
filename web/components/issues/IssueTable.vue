@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
 import type { IssueColumn, IssueType } from '~/types/issues'
+import { cx } from '~/helpers/ui'
 
 const props = defineProps<{
   type: IssueType
@@ -21,6 +21,23 @@ const emit = defineEmits<{
   page: [page: number]
   edit: [id: string, key: string, value: unknown]
 }>()
+
+const slots = defineSlots<{ [key: `cell-${string}`]: (props: { item: any, value: unknown }) => any }>()
+
+const sanitizeKey = (key: string) => key.replace(/[^a-zA-Z0-9]/g, '_')
+const cellSlotName = (key: string) => `cell-${sanitizeKey(key)}` as const
+
+// A column rename in `columns` that isn't mirrored in the consumer's `#cell-*` slot names fails
+// silently otherwise: Vue just ignores an unused named slot, and the cell quietly falls back to
+// the plain-value renderer instead of the custom one the consumer thought it was still wiring up.
+watchEffect(() => {
+  const validNames = new Set(props.columns.map(col => cellSlotName(col.key)))
+  for (const slotName of Object.keys(slots)) {
+    if (!validNames.has(slotName as `cell-${string}`)) {
+      console.warn(`[IssueTable] slot "${slotName}" does not match any column key for type "${props.type}" - it will never render. Columns: ${props.columns.map(c => c.key).join(', ')}`)
+    }
+  }
+})
 
 const allChecked = computed(() =>
   props.items.length > 0 && props.items.every(i => props.selected.has(i.id))
@@ -67,110 +84,104 @@ function commitEdit(item: any, col: IssueColumn) {
 
 <template>
   <div class="flex flex-col gap-0">
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-rule text-left">
-            <th v-if="type !== 'enrichment'" class="w-10 px-3 py-2">
-              <input type="checkbox" :checked="allChecked" class="rounded border-rule bg-bg-2" @change="toggleAll" >
-            </th>
-            <th
-              v-for="col in columns"
-              :key="col.key"
-              class="px-3 py-2 text-xs font-medium text-ink-3"
-              :class="[col.width, col.sortable ? 'cursor-pointer select-none hover:text-ink-2' : '']"
-              @click="col.sortable && emit('sort', col.key)"
-            >
-              <span class="flex items-center gap-1">
-                {{ col.label }}
-                <template v-if="col.sortable">
-                  <ChevronUp v-if="sort === col.key && order === 'asc'" :size="12" />
-                  <ChevronDown v-else-if="sort === col.key && order === 'desc'" :size="12" />
-                  <ChevronsUpDown v-else :size="12" class="opacity-30" />
-                </template>
-              </span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-if="loading && items.length === 0">
-            <tr v-for="n in 5" :key="n" class="border-b border-rule/50">
-              <td v-if="type !== 'enrichment'" class="px-3 py-2.5">
-                <div class="h-4 w-4 animate-pulse rounded bg-bg-2" />
-              </td>
-              <td v-for="col in columns" :key="col.key" class="px-3 py-2.5">
-                <div class="h-4 animate-pulse rounded bg-bg-2" :class="col.width ?? 'w-32'" />
-              </td>
-            </tr>
-          </template>
-
-          <tr v-else-if="!loading && items.length === 0">
-            <td :colspan="type !== 'enrichment' ? columns.length + 1 : columns.length" class="px-3 py-12 text-center text-ink-3">
-              No issues found
+    <SlimTable>
+      <SlimTableHeader>
+        <th v-if="type !== 'enrichment'" class="w-10 px-3 py-2.5">
+          <UiCheckbox :model-value="allChecked" aria-label="Select all rows" @update:model-value="toggleAll" />
+        </th>
+        <template v-for="col in columns" :key="col.key">
+          <SortableTh
+            v-if="col.sortable"
+            :class="col.width"
+            :label="col.label"
+            :sort-key="col.key"
+            :active-key="sort ?? null"
+            :dir="order ?? 'asc'"
+            @sort="emit('sort', $event)"
+          />
+          <th v-else :class="cx('px-3 py-2.5 text-left', col.width)">
+            {{ col.label }}
+          </th>
+        </template>
+      </SlimTableHeader>
+      <SlimTableBody>
+        <template v-if="loading && items.length === 0">
+          <tr v-for="n in 5" :key="n" class="border-b border-stone-100/6 last:border-b-0">
+            <td v-if="type !== 'enrichment'" class="px-3 py-3">
+              <div class="size-4 animate-pulse rounded bg-stone-800" />
+            </td>
+            <td v-for="col in columns" :key="col.key" class="px-3 py-3">
+              <div class="h-4 animate-pulse rounded bg-stone-800" :class="col.width ?? 'w-32'" />
             </td>
           </tr>
+        </template>
 
-          <tr
-            v-for="item in items"
-            :key="item.id"
-            class="border-b border-rule/50 transition-colors hover:bg-bg-1/30"
-            :class="type !== 'enrichment' && selected.has(item.id) ? 'bg-blue-950/20' : ''"
+        <tr v-else-if="!loading && items.length === 0">
+          <td :colspan="type !== 'enrichment' ? columns.length + 1 : columns.length">
+            <UiEmptyState message="No issues found" />
+          </td>
+        </tr>
+
+        <SlimTableRow
+          v-for="item in items"
+          :key="item.id"
+          :active="type !== 'enrichment' && selected.has(item.id)"
+        >
+          <td v-if="type !== 'enrichment'" class="px-3 py-3" @click.stop>
+            <UiCheckbox
+              :model-value="selected.has(item.id)"
+              :aria-label="`Select row ${item.id}`"
+              @update:model-value="toggleRow(item.id)"
+            />
+          </td>
+          <td
+            v-for="col in columns"
+            :key="col.key"
+            class="px-3 py-3 text-stone-100/60"
+            :class="col.width"
           >
-            <td v-if="type !== 'enrichment'" class="px-3 py-2">
-              <input
-                type="checkbox"
-                :checked="selected.has(item.id)"
-                class="rounded border-rule bg-bg-2"
-                @change="toggleRow(item.id)"
-              >
-            </td>
-            <td
-              v-for="col in columns"
-              :key="col.key"
-              class="px-3 py-2 text-ink-2"
-              :class="col.width"
-            >
-              <slot :name="`cell-${col.key.replace(/[^a-zA-Z0-9]/g, '_')}`" :item="item" :value="getNestedValue(item, col.key)">
-                <template v-if="col.editable">
-                  <input
-                    v-if="editingCell !== null && editingCell.id === item.id && editingCell.key === (col.editKey ?? col.key)"
-                    v-model="editValue"
-                    class="w-full rounded border border-blue-500 bg-bg-1 px-2 py-0.5 text-sm outline-none"
-                    autofocus
-                    @blur="commitEdit(item, col)"
-                    @keydown.enter="commitEdit(item, col)"
-                    @keydown.esc="editingCell = null"
-                  >
-                  <span
-                    v-else
-                    class="cursor-pointer rounded px-1 py-0.5 hover:bg-bg-2"
-                    @click="startEdit(item, col)"
-                  >
-                    {{ getNestedValue(item, col.key) ?? '-' }}
-                  </span>
-                </template>
-                <span v-else class="truncate">{{ getNestedValue(item, col.key) ?? '-' }}</span>
-              </slot>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            <slot :name="cellSlotName(col.key)" :item="item" :value="getNestedValue(item, col.key)">
+              <template v-if="col.editable">
+                <input
+                  v-if="editingCell !== null && editingCell.id === item.id && editingCell.key === (col.editKey ?? col.key)"
+                  v-model="editValue"
+                  class="w-full rounded-md border border-amber-400/45 bg-stone-950 px-2 py-1 text-base text-stone-100 outline-0"
+                  autofocus
+                  @blur="commitEdit(item, col)"
+                  @keydown.enter="commitEdit(item, col)"
+                  @keydown.esc="editingCell = null"
+                >
+                <span
+                  v-else
+                  class="cursor-pointer rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-stone-800"
+                  @click="startEdit(item, col)"
+                >
+                  {{ getNestedValue(item, col.key) ?? '-' }}
+                </span>
+              </template>
+              <span v-else class="truncate">{{ getNestedValue(item, col.key) ?? '-' }}</span>
+            </slot>
+          </td>
+        </SlimTableRow>
+      </SlimTableBody>
+    </SlimTable>
 
-    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-rule px-4 py-2 text-xs text-ink-3">
-      <span>{{ total }} total</span>
+    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-stone-100/6 px-4 py-2.5 text-sm text-stone-100/40">
+      <span class="tabular-nums">{{ total }} total</span>
       <div class="flex items-center gap-2">
         <button
+          type="button"
           :disabled="page <= 1"
-          class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
+          class="rounded-md px-2 py-1 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100 disabled:opacity-40"
           @click="emit('page', page - 1)"
         >
           Prev
         </button>
-        <span>{{ page }} / {{ totalPages }}</span>
+        <span class="tabular-nums">{{ page }} / {{ totalPages }}</span>
         <button
+          type="button"
           :disabled="page >= totalPages"
-          class="rounded px-2 py-1 hover:bg-bg-2 disabled:opacity-40"
+          class="rounded-md px-2 py-1 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100 disabled:opacity-40"
           @click="emit('page', page + 1)"
         >
           Next

@@ -583,6 +583,48 @@ Matched against `08-settings.png`.
   `rounded-xl border border-stone-100/6 bg-stone-900 p-6` + `flex flex-col gap-5` - `space-y-*`
   never appears anywhere else in the app post-overhaul, so this drops the only remaining holdout.
 
+## Issues (Stage 11)
+
+Matched against `09-issues*.png`.
+
+- **`IssueTable.vue` stays its own primitive, not `DataTable`** - the Stage 2 decision holds:
+  its column keys are dotted paths (`artist.name`, `releaseA.trackCount`) and its per-column cell
+  override slots sanitize those into `cell-artist_name` etc., since a dot isn't a valid character
+  in Vue's static `#slot-name` shorthand. `DataTable`'s own slot naming (`cell-${key}`) doesn't do
+  that sanitization, so it can't take dotted keys without a bigger change to a component several
+  other pages will adopt as-is in later stages. Retokenised onto the same `SlimTable`/
+  `SortableTh`/`UiCheckbox` primitives `DataTable` itself is built from, so it still reads as the
+  same table language everywhere - just with the row-level editable-cell and dotted-slot
+  mechanics `DataTable` deliberately doesn't own.
+- **New dev-time warning for the exact bug the plan called out**: `IssueTable` now diffs the
+  `cell-*` slot names it was actually given against the sanitized names its current `columns` prop
+  would produce, and `console.warn`s about any slot that doesn't match one - the case where
+  `TypeContent.vue` renames a column `key` but a `#cell-oldKey` slot is left behind, which
+  previously failed silently (Vue drops an unused named slot) and the cell would quietly render
+  the plain-value fallback instead of the custom one the author still thought was wired up.
+- **New `components/ui/BulkBar.vue`** is the shared shell for the fixed, bottom-of-viewport bulk-
+  action bar - one definition instead of four near-identical copies
+  (`issues/{SelectionBar,RevertSelectionBar,HistorySelectionBar}.vue` here, plus
+  `downloads/SelectionBar.vue` which moves onto it in Stage 12). All four had drifted: a stale
+  `lg:left-56` (224px) held over from before the sidebar became 240px wide (Stage 3), and each
+  reacted to `terminal.isOpen` alone where the shell itself only reserves the drawer's 500px when
+  `terminal.isOpen && settings.showTerminal` - so a bar could shrink itself for a terminal that
+  wasn't actually visible. Both are real, not cosmetic: the offset was 16px short of the sidebar
+  edge, and the second was a visible empty gap whenever `showTerminal` was off.
+- **`HistoryContent.vue`'s hand-rolled tab bar is now `Subtabs`** (the shared component
+  `TypeContent.vue` already used) instead of a second implementation of the exact same
+  underline-tab-with-count-pill pattern; its table moves onto `SlimTable`/`UiCheckbox` like
+  `IssueTable`.
+- **Deleted `issues/IssueStatusBadge.vue`** - confirmed zero consumers (only auto-generated
+  component-type registrations referenced it). `ConfidenceBadge`/`EnrichmentFieldBadge`'s colour
+  maps move onto `toneBg` (`high`→success, `medium`→warning, `low`→danger) instead of their own
+  `bg-green-900/40`-style literals.
+- Fixed two dead `hover:border-rule` states (`pages/issues/index.vue`'s issue-type cards and
+  recent-history link - the hover class was textually identical to the idle border, so hovering
+  never visibly changed anything) to a real `hover:border-stone-100/10`.
+
+## Adding to the system
+
 ## Adding to the system
 
 ## Adding to the system
