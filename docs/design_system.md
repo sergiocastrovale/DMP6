@@ -338,6 +338,47 @@ picks up real behavioural fixes alongside the retokenise:
 - `ArtistGrid.vue`/`ListSummarized.vue` now render their "no results" state through
   `UiEmptyState` instead of a bare line of text.
 
+## Artist page (Stage 5)
+
+The biggest screen, matched against `02-artist.png`. Retokenised throughout
+(`components/artist/*`, `components/release/{TracksTable,StatusBadge}.vue`,
+`pages/artist/[slug].vue`), plus:
+
+- **Deleted, confirmed zero real consumers**: `artist/{Cover,Links,TotalPlays,TotalTracks,
+  Initial}.vue`, `release/Cover.vue`. `artist/DialogLinks.vue` is also deleted - it was only ever
+  reachable through `ArtistHeader.vue`'s `showAllLinks` ref, which nothing ever set to `true`
+  (the trigger for it lived in `artist/Links.vue`, itself dead). `ArtistHeader.vue` also drops an
+  `imgUrl` computed that resolved an artist photo never rendered anywhere in its template - the
+  reference header has no artist avatar either, so this wasn't a gap to fill, just dead code to
+  remove.
+- **A second instance of the Stage 1 SSR bug, this time in `ArtistReleases.vue`.** Its deep-link
+  handler (`?releaseId=…` expands and scrolls to a release) ran off an
+  `watch(() => props.releases, ..., { immediate: true })`. The common case (no query param)
+  returns before touching the DOM, so this shipped for a long time without incident - but a real
+  deep-linked page load reaches `await nextTick()` then `document.querySelector(...).
+  scrollIntoView(...)`, and an immediate watcher's callback runs synchronously at the `watch()`
+  call site, i.e. during server-side `setup()`, where `document` doesn't exist. Fixed with the
+  same `onMounted` (first run) + non-immediate `watch` (later changes) split used in Stage 1/3.
+  Prompted a repo-wide grep for every other `{ immediate: true }` watcher - the rest either don't
+  touch `document`/`window` at all, or already guard the access with optional chaining against an
+  empty/unmounted ref (`downloads/ApprovalQueue.vue`'s highlight-scroll does this correctly).
+  Two of the untouched instances (`issues/TypeContent.vue`, `downloads/HistoryContent.vue`) are
+  logic-only and outside this stage's files, checked but not modified.
+- **`browse/FilterSort.vue`'s sibling in this screen** - the release sort control in
+  `ReleaseFilterBar.vue` - is now also a `Dropdown` with `allow-clear="false"`, replacing its own
+  hand-rolled trigger+listbox (which had neither Escape nor a click-outside backdrop). Its trigger
+  now shows the active sort's label instead of a static "Sort", matching Browse's pattern.
+- **`RadioGroup.vue`/`artist/ListToggle.vue`'s shared wrapper is `ui.segmentGroup`** (introduced
+  in Stage 4) - `ListToggle` (the catalogue grid/list switch) picks up the same
+  `role="radiogroup"`/roving-tabindex contract, plus `title`/`aria-label` on each icon-only
+  option, which it previously had neither of.
+- Status/severity colour in `ReleaseGroupDetails.vue` (the downloading pill, the awaiting-merge
+  pill) now reads `helpers/ui.ts`'s `toneBg.info`/`toneBg.warning` instead of hand-written
+  `bg-blue-500/10 text-blue-400` / `bg-amber-500/10 text-amber-400` literals - one fewer place
+  duplicating the download-status palette Stage 12 has to reconcile.
+- `pages/artist/[slug].vue` drops `layoutClasses: 'p-0'` from its page meta - confirmed the only
+  occurrence of that key anywhere in the codebase; nothing reads it.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

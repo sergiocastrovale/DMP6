@@ -26,7 +26,13 @@ const VIEW_OPTIONS = [
   { value: 'list', icon: LayoutList, title: 'List view' },
 ]
 
-const sortOpen = ref(false)
+// Sort always has exactly one active value - never null - so update:modelValue's value is never
+// actually null here despite Dropdown's nullable contract (see allow-clear="false" below).
+const onSortSelect = (value: string | null) => {
+  if (value) {
+    sortKey.value = value
+  }
+}
 </script>
 
 <template>
@@ -44,32 +50,13 @@ const sortOpen = ref(false)
 
     <div class="flex-1" />
 
-    <div class="relative">
-      <button
-        type="button"
-        class="flex items-center gap-1.5 rounded-lg border border-rule bg-bg-1 px-3 py-1.5 text-xs text-ink-2 transition-colors hover:text-ink"
-        @click="sortOpen = !sortOpen"
-      >
-        <ListFilter :size="12" />
-        <span>Sort</span>
-      </button>
-      <div
-        v-if="sortOpen"
-        class="absolute right-0 top-full z-20 mt-1 min-w-[200px] rounded-lg border border-rule bg-bg-1 p-1 shadow-xl"
-      >
-        <button
-          v-for="opt in SORT_OPTIONS"
-          :key="opt.value"
-          type="button"
-          class="flex w-full items-center rounded px-3 py-2 text-left text-xs transition-colors"
-          :class="sortKey === opt.value ? 'bg-bg-2 text-ink' : 'text-ink-2 hover:bg-bg-2 hover:text-ink'"
-          @click="sortKey = opt.value; sortOpen = false"
-        >
-          {{ opt.label }}
-        </button>
-      </div>
-      <div v-if="sortOpen" class="fixed inset-0 z-10" @click="sortOpen = false" />
-    </div>
+    <Dropdown
+      :model-value="sortKey"
+      :options="[...SORT_OPTIONS]"
+      :icon="ListFilter"
+      :allow-clear="false"
+      @update:model-value="onSortSelect"
+    />
 
     <ArtistListToggle v-model="viewMode" :options="VIEW_OPTIONS" />
   </div>

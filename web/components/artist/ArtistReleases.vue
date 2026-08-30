@@ -267,11 +267,23 @@ async function handleReleaseDeepLink() {
     ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
+// onMounted (not an immediate watcher) for the initial run: handleReleaseDeepLink ends in
+// document.querySelector, and an immediate watcher's callback runs synchronously at the
+// watch() call site - during Nuxt's server-side setup(), where `document` doesn't exist. A
+// deep-linked release (?releaseId=...) would reach that call once its `await nextTick()`
+// resumed, throwing on the server. onMounted is client-only; the plain watch below only ever
+// fires for a later, client-side change to `releases` (e.g. slower-arriving async data).
+onMounted(() => {
+  if (props.releases.length) {
+    handleReleaseDeepLink()
+  }
+})
+
 watch(() => props.releases, () => {
   if (props.releases.length) {
     handleReleaseDeepLink()
   }
-}, { immediate: true })
+})
 </script>
 
 <template>
@@ -302,18 +314,14 @@ watch(() => props.releases, () => {
         />
       </div>
 
-      <div v-if="sortedGroups.length === 0" class="py-8 text-center text-sm text-ink-3">
-        No releases match your filters
-      </div>
+      <UiEmptyState v-if="sortedGroups.length === 0" message="No releases match your filters." hint="Try clearing a status, type or search filter." />
     </template>
 
     <template v-else>
-      <div v-if="allTracksLoading" class="py-8 text-center text-sm text-ink-3">
+      <div v-if="allTracksLoading" class="py-8 text-center text-base text-stone-100/40">
         Loading all tracks...
       </div>
-      <div v-else-if="filteredAllTracks.length === 0" class="py-8 text-center text-sm text-ink-3">
-        No tracks found
-      </div>
+      <UiEmptyState v-else-if="filteredAllTracks.length === 0" message="No tracks found." hint="Try clearing a status or search filter." />
       <TrackList
         v-else
         :tracks="filteredAllTracks"

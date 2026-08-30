@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { Play } from 'lucide-vue-next'
 import type { Artist } from '~/types/artist'
-import DialogLinks from '~/components/artist/DialogLinks.vue'
 import DialogGenres from '~/components/artist/DialogGenres.vue'
 import Genres from '~/components/artist/Genres.vue'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 import type { ReleaseProgress } from '~/types/download'
+import { typography } from '~/helpers/ui'
 
 const props = defineProps<{
   artist: Artist
@@ -18,13 +18,9 @@ const emit = defineEmits<{
   playAll: []
 }>()
 
-const { artistImage } = useImageUrl()
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
 
 const showAllGenres = ref(false)
-const showAllLinks = ref(false)
-
-const imgUrl = computed(() => artistImage(props.artist))
 
 const statsLine = computed(() => {
   const v = catalogue.visibleCounts.value
@@ -48,11 +44,11 @@ const statsLine = computed(() => {
   <div class="relative rounded-xl">
     <div class="relative flex flex-col gap-6 px-6 py-8">
       <div class="flex flex-col gap-3">
-        <h1 class="text-4xl font-bold tracking-tight text-ink sm:text-5xl">
+        <h1 :class="typography.h1">
           {{ artist.name }}
         </h1>
 
-        <div v-if="statsLine" class="text-sm text-ink-2">
+        <div v-if="statsLine" class="text-base text-stone-100/60">
           {{ statsLine }}
         </div>
 
@@ -68,7 +64,6 @@ const statsLine = computed(() => {
       </div>
 
       <DialogGenres v-model="showAllGenres" :genres="artist.genres" />
-      <DialogLinks v-model="showAllLinks" :links="artist.urls" />
     </div>
 
     <div class="absolute right-4 top-4">

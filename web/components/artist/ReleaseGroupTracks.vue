@@ -16,7 +16,7 @@ const columns: TrackListColumn[] = [
 </script>
 
 <template>
-  <div class="border-t border-rule px-3 pb-3" @click.stop>
+  <div class="border-t border-stone-100/6 px-3 pb-3" @click.stop>
     <ReleaseTracksTable
       :release-id="releaseId"
       :columns="columns"

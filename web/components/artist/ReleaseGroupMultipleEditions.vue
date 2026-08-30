@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ReleaseGroup, UnifiedRelease } from '~/types/release'
+import { cx } from '~/helpers/ui'
 
 defineProps<{
   group: ReleaseGroup
@@ -23,11 +24,13 @@ const emit = defineEmits<{
 <template>
   <div class="relative">
     <span
-      class="absolute right-full top-12 translate-x-[23px] -translate-y-1/2 -rotate-90 whitespace-nowrap rounded-sm rounded-b-none border border-b-0 border-accent/20 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent"
+      class="absolute right-full top-12 translate-x-[23px] -translate-y-1/2 -rotate-90 whitespace-nowrap rounded-sm rounded-b-none border border-b-0 border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-2xs font-medium text-amber-400"
     >{{ group.releases.length }} editions</span>
     <div
-      class="rounded-lg border border-rule bg-bg-1 overflow-hidden"
-      :class="group.primary.status === 'MISSING' ? 'bg-red-500/3' : ''"
+      :class="cx(
+        'rounded-lg border border-stone-100/6 bg-stone-900 overflow-hidden',
+        group.primary.status === 'MISSING' && 'bg-danger/5',
+      )"
     >
       <ArtistReleaseGroupDetails
         v-for="edition in group.releases"

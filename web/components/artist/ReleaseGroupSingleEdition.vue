@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ReleaseGroup } from '~/types/release'
+import { cx } from '~/helpers/ui'
 
 const props = defineProps<{
   group: ReleaseGroup
@@ -27,8 +28,10 @@ const connectedArtistNames = computed(() => {
 
 <template>
   <div
-    class="rounded-lg border border-rule bg-bg-1 overflow-hidden"
-    :class="group.primary.status === 'MISSING' ? 'bg-red-500/3' : ''"
+    :class="cx(
+      'rounded-lg border border-stone-100/6 bg-stone-900 overflow-hidden',
+      group.primary.status === 'MISSING' && 'bg-danger/5',
+    )"
   >
     <ArtistReleaseGroupDetails
       :release="group.primary"
