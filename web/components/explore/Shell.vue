@@ -83,7 +83,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl px-4 py-8 pb-32">
+  <!-- Left-aligned and wide, like every other page: the reference puts the Explore title at the same
+       x as Browse's and Statistics', and gives the dial card most of the content width. Centring it
+       in a narrow column made the four sliders read as a modal rather than the page's content. -->
+  <div class="max-w-5xl px-4 py-8 pb-32">
     <PageTitle
       :icon="Compass"
       text="Explore"

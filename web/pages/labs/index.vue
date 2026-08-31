@@ -22,7 +22,9 @@ const labs = computed<Lab[]>(() => [
   {
     to: '/labs/mosaic',
     title: 'Album Mosaic',
-    description: `Stitches ${global.stats.releases.toLocaleString()} covers in the library into a single giant image. Chronological sorts by release year; Gradient arranges covers by colour temperature.`,
+    // The count is dropped until app-stats has actually loaded - on first paint it is 0, and
+    // "Stitches 0 covers" reads as a broken feature rather than a pending fetch.
+    description: `Stitches ${global.stats.releases > 0 ? `${global.stats.releases.toLocaleString()} covers` : 'every cover'} in the library into a single giant image. Chronological sorts by release year; Gradient arranges covers by colour temperature.`,
     maturity: 'Stable',
     tone: 'success',
   },

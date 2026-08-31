@@ -33,4 +33,12 @@ describe('pages/labs/index.vue', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.text()).toContain('142,140 covers')
   })
+
+  it('says "every cover" until app-stats has loaded, never "0 covers"', async () => {
+    const { wrapper, global } = await mountLabs()
+    global.stats.releases = 0
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('every cover')
+    expect(wrapper.text()).not.toContain('0 covers')
+  })
 })
