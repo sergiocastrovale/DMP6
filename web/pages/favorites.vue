@@ -14,7 +14,7 @@ const {
 
 <template>
   <div class="flex flex-col gap-6">
-    <PageTitle :icon="LucideHeart" text="Favorites" subtext="Your favorite releases and tracks" />
+    <PageTitle text="Favorites" subtext="Your favorite releases and tracks" />
 
     <Tabs v-model="activeTab" :tabs="favTabs" />
 
@@ -50,7 +50,7 @@ const {
             </template>
           </Block>
         </div>
-        <UiEmptyState v-else :icon="LucideDisc" message="No favorite releases yet">
+        <UiEmptyState v-else message="No favorite releases yet">
           <template #action>
             <UiButton variant="secondary" size="sm" to="/browse">
               Browse releases

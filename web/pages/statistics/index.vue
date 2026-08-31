@@ -119,7 +119,6 @@ onMounted(() => {
 <template>
   <div class="flex flex-col gap-8">
     <PageTitle
-      :icon="LucideBarChart3"
       text="Statistics"
       :subtext="!loading && stats ? `Last scanned: ${formatDate(stats.lastScanEndedAt)}` : undefined"
     />

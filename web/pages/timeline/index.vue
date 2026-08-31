@@ -115,7 +115,7 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-6">
-    <PageTitle :icon="LucideClock" text="Timeline" subtext="Browse your library by decade and year" />
+    <PageTitle text="Timeline" subtext="Browse your library by decade and year" />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
       <Loader2 :size="24" class="animate-spin text-stone-100/55" />
@@ -213,6 +213,6 @@ onMounted(() => {
       </div>
     </template>
 
-    <UiEmptyState v-else :icon="LucideClock" message="No releases with year information found" />
+    <UiEmptyState v-else message="No releases with year information found" />
   </div>
 </template>
