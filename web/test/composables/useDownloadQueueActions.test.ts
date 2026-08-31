@@ -132,4 +132,36 @@ describe('useDownloadQueueActions', () => {
     expect(mergeSelectedSpy).toHaveBeenCalledWith(['a', 'b'])
     expect(actions.bulkMergeOpen.value).toBe(false)
   })
+
+  it('retryMany retries every selected id and clears busy state', async () => {
+    const store = useDownloadsStore()
+    const retrySpy = vi.spyOn(store, 'retry').mockResolvedValue(undefined)
+    const actions = useDownloadQueueActions()
+    await actions.retryMany(['a', 'b', 'c'])
+    expect(retrySpy).toHaveBeenCalledTimes(3)
+    expect(retrySpy).toHaveBeenCalledWith('b')
+    expect(actions.bulkBusy.value).toBe(false)
+  })
+
+  it('retryMany keeps going when one row fails, rather than abandoning the rest', async () => {
+    // There is no bulk retry endpoint, so this fans out. Promise.all would drop the remaining
+    // retries the moment any single one rejected.
+    const store = useDownloadsStore()
+    const retrySpy = vi.spyOn(store, 'retry').mockImplementation(async (id: string) => {
+      if (id === 'b') {
+        throw new Error('nope')
+      }
+    })
+    const actions = useDownloadQueueActions()
+    await actions.retryMany(['a', 'b', 'c'])
+    expect(retrySpy).toHaveBeenCalledTimes(3)
+    expect(actions.bulkBusy.value).toBe(false)
+  })
+
+  it('retryMany is a no-op for an empty selection', async () => {
+    const store = useDownloadsStore()
+    const retrySpy = vi.spyOn(store, 'retry')
+    await useDownloadQueueActions().retryMany([])
+    expect(retrySpy).not.toHaveBeenCalled()
+  })
 })

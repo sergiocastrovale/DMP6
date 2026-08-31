@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { Trash2 } from 'lucide-vue-next'
+import { RotateCw, Trash2 } from 'lucide-vue-next'
 import { filterQueue } from '~/helpers/functions'
 
 const {
-  store, busyId, retry, reject, rejectOpen, rejectTitle, confirmReject,
+  store, busyId, retry, retryMany, reject, rejectOpen, rejectTitle, confirmReject,
   bulkBusy, bulkRejectIds, bulkRejectOpen, askBulkReject, confirmBulkReject,
   openInfo, showInfo, infoRelease,
 } = useDownloadQueueActions()
@@ -18,14 +18,19 @@ const items = computed(() => filterQueue(unavailable.value, search.value))
 const selected = ref<Set<string>>(new Set())
 
 const bulkActions = [
-  { key: 'reject', label: 'Reject selected', icon: Trash2, variant: 'danger' as const },
+  { key: 'retry', label: 'Retry', icon: RotateCw, variant: 'quiet' as const },
+  { key: 'reject', label: 'Reject', icon: Trash2, variant: 'danger' as const },
 ]
-const onBulkAction = () => {
+const onBulkAction = (key: string) => {
   const ids = [...selected.value]
   if (!ids.length) {
     return
   }
   selected.value = new Set()
+  if (key === 'retry') {
+    retryMany(ids)
+    return
+  }
   askBulkReject(ids)
 }
 

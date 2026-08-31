@@ -79,6 +79,30 @@ export const useDownloadQueueActions = () => {
 
   // Bulk reject dialog (Failed / Unavailable / Ready-to-merge multi-select)
   const bulkBusy = ref(false)
+  // Retrying a selection is non-destructive (it just moves rows back to the front of the queue), so
+  // it needs no confirm dialog - same precedent as the per-row "Force retry". There is no bulk
+  // endpoint, so this fans out; a row that fails is reported and the rest still go.
+  const retryMany = async (ids: string[]) => {
+    if (!ids.length) {
+      return
+    }
+    bulkBusy.value = true
+    try {
+      const results = await Promise.allSettled(ids.map(id => store.retry(id)))
+      const failures = results.filter(r => r.status === 'rejected').length
+      const retried = ids.length - failures
+      if (retried > 0) {
+        toast.success(`Retrying ${retried} download${retried === 1 ? '' : 's'}`)
+      }
+      if (failures > 0) {
+        toast.error(`${failures} download${failures === 1 ? '' : 's'} could not be retried`)
+      }
+    }
+    finally {
+      bulkBusy.value = false
+    }
+  }
+
   const bulkRejectIds = ref<string[]>([])
   const bulkRejectOpen = ref(false)
   const askBulkReject = (ids: string[]) => {
@@ -178,6 +202,7 @@ export const useDownloadQueueActions = () => {
     busyIds,
     actionMsg,
     retry,
+    retryMany,
     requeue,
     requeueAll,
     merge,

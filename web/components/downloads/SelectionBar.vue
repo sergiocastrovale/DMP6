@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
+import type { ButtonVariant } from '~/helpers/ui'
 
 interface BarAction {
   key: string
   label: string
   icon?: Component
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+  // The button recipe's own union rather than a local copy of it - the copy had already drifted,
+  // missing `quiet`, which is the variant the bar's own amber strip calls for.
+  variant?: ButtonVariant
 }
 
 withDefaults(defineProps<{

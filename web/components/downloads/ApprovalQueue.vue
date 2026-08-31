@@ -4,7 +4,7 @@ import { X, Loader2, AlertCircle, AlertTriangle, Ban, RotateCw, Info, FolderInpu
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { SortDir } from '~/helpers/functions'
 import { formatDate, sortItems } from '~/helpers/functions'
-import { toneText, surface, cx } from '~/helpers/ui'
+import { toneText, surface, cx, typography } from '~/helpers/ui'
 
 // Friendly source label, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
 const sourceLabel = (s: string) => s === 'RUTRACKER' ? 'RuTracker' : 'Soulseek'
@@ -94,6 +94,13 @@ const toggleRow = (id: string) => {
 // The one status→tone map for this queue - DOWNLOADING used to render blue text next to an amber
 // progress bar (DownloadsDownloadProgress's own status-to-variant map), a real contradiction, not
 // just an inconsistent shade. Both now read the same tone here.
+//
+// This is deliberately not identical to handoff/vue/DmpStatusLabel.vue's generic map, which puts
+// DOWNLOADING on `info`: the reference *screen* (handoff/screenshots/10-downloads.png) shows
+// "downloading" amber above an amber bar and "enriching" violet above a violet bar, and the screen
+// wins over the standalone primitive. UNAVAILABLE and INVALID follow the primitive - "no source
+// found yet, retried automatically" is a warning rather than a shrug, and an invalid merge is a
+// failure the same way a failed download is.
 const STATUS_TONE: Record<string, keyof typeof toneText> = {
   DOWNLOADING: 'accent',
   ENRICHING: 'info',
@@ -102,8 +109,8 @@ const STATUS_TONE: Record<string, keyof typeof toneText> = {
   FAILED: 'danger',
   ABANDONED: 'danger',
   REJECTED: 'muted',
-  UNAVAILABLE: 'muted',
-  INVALID: 'muted',
+  UNAVAILABLE: 'warning',
+  INVALID: 'danger',
 }
 const statusClass = (s: string) => toneText[STATUS_TONE[s] ?? 'muted']
 
@@ -177,7 +184,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
         <td class="px-3 py-3 text-stone-100/40">
           {{ it.releaseType || '—' }}
         </td>
-        <td class="px-3 py-3 text-stone-100/40">
+        <td class="px-3 py-3 text-amber-400/80">
           <span class="inline-flex items-center gap-1.5">
             {{ sourceLabel(it.source) }}
           </span>
@@ -213,10 +220,10 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           </span>
           <div v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" class="mt-1.5 flex items-center gap-2">
             <DownloadsDownloadProgress :percent="it.percent" :status="it.status" class="w-32" />
-            <span class="text-xs text-stone-100/40 tabular-nums">{{ it.percent }}%</span>
+            <span :class="typography.meta">{{ it.percent }}%</span>
           </div>
         </td>
-        <td class="px-3 py-3 whitespace-nowrap text-stone-100/40">
+        <td :class="cx('px-3 py-3 whitespace-nowrap', typography.meta)">
           {{ formatDate(it.updatedAt) }}
         </td>
         <td class="px-3 py-3" @click.stop>

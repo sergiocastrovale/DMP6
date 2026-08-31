@@ -47,6 +47,19 @@ describe('downloads/ApprovalQueue.vue', () => {
     expect(statusSpan.classes().join(' ')).not.toContain('blue')
   })
 
+  it.each([
+    ['UNAVAILABLE', 'text-warning'],
+    ['INVALID', 'text-danger'],
+    ['REJECTED', 'text-stone-100/40'],
+    ['READY', 'text-success'],
+  ])('tones %s as %s', async (status, expected) => {
+    // "No source found yet, retried automatically" is a warning rather than a shrug, and an invalid
+    // merge is a failure the same way a failed download is - both used to render as muted grey.
+    const wrapper = await mountSuspended(ApprovalQueue, { props: { items: [item({ status: status as any })] } })
+    const statusSpan = wrapper.findAll('span').find(s => s.text().includes(status.toLowerCase()))!
+    expect(statusSpan.classes()).toContain(expected)
+  })
+
   it('selecting a row emits an updated selected set', async () => {
     const wrapper = await mountSuspended(ApprovalQueue, {
       props: { items: [item({ id: 'd1' })], selectable: true },
