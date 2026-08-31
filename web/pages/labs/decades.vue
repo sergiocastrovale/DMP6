@@ -12,11 +12,11 @@ import {
 } from 'chart.js'
 import type { DecadeStats } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
-import { sw } from '~/helpers/ui'
+import { surface, sw, typography } from '~/helpers/ui'
 
 Chart.register(RadarController, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'labs' })
 
 const { data: decades, status } = useFetch<DecadeStats[]>('/api/labs/decades/stats')
 
@@ -26,12 +26,28 @@ let chart: Chart | null = null
 
 const availableDecades = computed(() => decades.value?.map((d) => d.decade) || [])
 
+// One ramp per selectable decade slot, in this order.
+const SERIES_TOKENS = ['amber-400', 'green-500', 'orange-400', 'red-400', 'violet-400'] as const
+// The same five as literal utilities for the breakdown dots and the legend. They have to be written
+// out rather than interpolated: Tailwind scans source text, so `bg-${token}` produces no class.
+// cssVar() below reads computed style, which only exists on the client - the chart is rendered on
+// mount, but the dots render during SSR too, so they cannot share that path.
+const SERIES_DOTS = ['bg-amber-400', 'bg-green-500', 'bg-orange-400', 'bg-red-400', 'bg-violet-400'] as const
+
 // Read live off the theme instead of hard-coded rgba() literals, so a token change here
-// doesn't silently drift from the rest of the app - one ramp per selectable decade slot.
-const colors = computed(() => ['amber-400', 'green-500', 'orange-400', 'red-400', 'violet-400'].map((token) => {
+// doesn't silently drift from the rest of the app.
+const colors = computed(() => SERIES_TOKENS.map((token) => {
   const border = cssVar(`--color-${token}`)
   return { bg: `color-mix(in oklch, ${border} 20%, transparent)`, border }
 }))
+
+// The breakdown rows and the legend both key off the chart's dataset order, so a decade's dot is
+// the colour of its line.
+const selectedSeries = computed(() =>
+  (decades.value ?? [])
+    .filter(d => selectedDecades.value.includes(d.decade))
+    .map((decade, i) => ({ decade, dot: SERIES_DOTS[i % SERIES_DOTS.length]! })),
+)
 
 const normalize = (value: number, max: number) => (max > 0 ? (value / max) * 100 : 0)
 
@@ -165,7 +181,7 @@ onUnmounted(() => {
           </div>
 
           <p class="mb-4 text-base leading-relaxed text-stone-100/60">
-            Select decades to compare on the radar chart. Each axis is normalized to the max value across all decades.
+            Pick up to four decades to overlay. Every axis is normalised to the strongest decade in the library.
           </p>
 
           <div v-if="status === 'pending'" class="flex items-center gap-2 text-base text-stone-100/60">
@@ -186,30 +202,33 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-if="decades && decades.length > 0" class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
-          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
-            Breakdown
-          </h3>
-          <div class="divide-y divide-stone-100/6">
+        <div v-if="selectedSeries.length > 0" :class="surface.card">
+          <div :class="surface.cardHead">
+            <span :class="typography.sectionLabel">Breakdown</span>
+          </div>
+          <div class="flex flex-col gap-3 p-[18px]">
             <div
-              v-for="d in decades.filter((d) => selectedDecades.includes(d.decade))"
+              v-for="{ decade: d, dot } in selectedSeries"
               :key="d.decade"
-              class="py-3 first:pt-0 last:pb-0"
+              :class="[surface.panel, 'p-4']"
             >
-              <div class="mb-1 text-base font-medium text-stone-100">{{ d.decade }}</div>
-              <div class="grid grid-cols-3 gap-2 text-sm text-stone-100/60 tabular-nums">
-                <div>{{ d.releaseCount }} releases</div>
-                <div>{{ d.trackCount }} tracks</div>
-                <div>{{ d.artistCount }} artists</div>
+              <div class="mb-2 flex items-center gap-2">
+                <span class="size-2 shrink-0 rounded-full" :class="dot" />
+                <span class="text-base font-semibold text-stone-100">{{ d.decade }}</span>
+              </div>
+              <div :class="[typography.meta, 'grid grid-cols-2 gap-x-4 gap-y-1']">
+                <div>{{ d.releaseCount.toLocaleString() }} releases</div>
+                <div>{{ d.trackCount.toLocaleString() }} tracks</div>
+                <div>{{ d.artistCount.toLocaleString() }} artists</div>
                 <div>{{ formatDuration(d.avgDuration) }} avg</div>
                 <div>{{ d.avgBitrate }} kbps</div>
-                <div>{{ d.totalPlayCount }} plays</div>
+                <div>{{ d.totalPlayCount.toLocaleString() }} plays</div>
               </div>
-              <div v-if="d.topGenres.length > 0" class="mt-1.5 flex flex-wrap gap-1">
+              <div v-if="d.topGenres.length > 0" class="mt-2.5 flex flex-wrap gap-1">
                 <span
                   v-for="g in d.topGenres.slice(0, 3)"
                   :key="g.name"
-                  class="rounded-full bg-stone-800 px-2 py-0.5 text-[10px] text-stone-100/60"
+                  class="rounded-full bg-stone-800 px-2 py-0.5 text-2xs text-stone-100/60"
                 >
                   {{ g.name }}
                 </span>
@@ -220,9 +239,15 @@ onUnmounted(() => {
       </div>
 
       <div class="lg:col-span-3">
-        <div class="sticky top-20 flex h-[600px] items-center justify-center rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-          <UiEmptyState v-if="selectedDecades.length === 0" message="Select decades to compare" />
-          <canvas v-show="selectedDecades.length > 0" ref="radarCanvas" class="h-full w-full" />
+        <div class="sticky top-20 flex h-[600px] flex-col rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+          <UiEmptyState v-if="selectedDecades.length === 0" class="m-auto" message="Select decades to compare" />
+          <canvas v-show="selectedDecades.length > 0" ref="radarCanvas" class="min-h-0 w-full flex-1" />
+          <div v-if="selectedSeries.length > 0" class="mt-4 flex flex-wrap items-center justify-center gap-4">
+            <span v-for="{ decade: d, dot } in selectedSeries" :key="d.decade" class="flex items-center gap-1.5 text-sm text-stone-100/60">
+              <span class="size-2 rounded-full" :class="dot" />
+              {{ d.decade }}
+            </span>
+          </div>
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@ import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 const terminal = useTerminalStore()
 const settings = useSettingsStore()
 const { collapsed } = useSidebar()
-const { visible: chromeVisible } = useChrome()
+const { visible: chromeVisible, topbar: topbarVisible } = useChrome()
 
 const gridCols = computed(() =>
   collapsed.value ? 'grid-cols-1 lg:grid-cols-[64px_1fr]' : 'grid-cols-1 lg:grid-cols-[240px_1fr]',
@@ -28,7 +28,9 @@ const gridCols = computed(() =>
         <LayoutSidebar class="hidden lg:flex" />
 
         <div class="flex flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-[500px]': terminal.isOpen && settings.showTerminal }">
-          <div class="sticky top-0 z-30 border-b border-stone-100/6 bg-stone-950/85 backdrop-blur-[14px]">
+          <!-- Labs drops the search bar: its experiments are canvases, not lists, so there is
+               nothing on the page for a query to filter. The rest of the shell stays. -->
+          <div v-if="topbarVisible" class="sticky top-0 z-30 border-b border-stone-100/6 bg-stone-950/85 backdrop-blur-[14px]">
             <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-[56px]">
               <LayoutSearchBar />
             </div>

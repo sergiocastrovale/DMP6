@@ -15,8 +15,9 @@ import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import type { GenomeGraph } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
+import { typography } from '~/helpers/ui'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'labs' })
 
 const { artistImage } = useImageUrl()
 
@@ -45,8 +46,6 @@ const dialogLoading = ref(false)
 
 const minArtists = ref(2)
 const minWeight = ref(1)
-const minArtistsId = useId()
-const minWeightId = useId()
 
 const filteredGraph = computed(() => {
   if (!graphData.value) {
@@ -281,36 +280,11 @@ onUnmounted(() => {
           </p>
 
           <div class="flex flex-col gap-4">
-            <div>
-              <label :for="minArtistsId" class="mb-1 block text-sm font-medium text-stone-100/60">
-                Min artists per genre: {{ minArtists }}
-              </label>
-              <input
-                :id="minArtistsId"
-                v-model.number="minArtists"
-                type="range"
-                :min="1"
-                :max="20"
-                class="w-full accent-amber-400"
-              >
-            </div>
-
-            <div>
-              <label :for="minWeightId" class="mb-1 block text-sm font-medium text-stone-100/60">
-                Min shared artists: {{ minWeight }}
-              </label>
-              <input
-                :id="minWeightId"
-                v-model.number="minWeight"
-                type="range"
-                :min="1"
-                :max="10"
-                class="w-full accent-amber-400"
-              >
-            </div>
+            <Slider v-model="minArtists" title="Min artists per genre" :min="1" :max="20" />
+            <Slider v-model="minWeight" title="Min shared artists" :min="1" :max="10" />
           </div>
 
-          <div v-if="filteredGraph.nodes.length > 0" class="mt-4 text-sm text-stone-100/60 tabular-nums">
+          <div v-if="filteredGraph.nodes.length > 0" :class="[typography.meta, 'mt-4']">
             {{ filteredGraph.nodes.length }} genres · {{ filteredGraph.links.length }} connections
           </div>
         </div>

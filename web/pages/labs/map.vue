@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { Map as LeafletMap, GeoJSON as LeafletGeoJSON, Path, Layer } from 'leaflet'
 import type { Feature } from 'geojson'
+import { Download } from 'lucide-vue-next'
 import type { MapCountry } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
+import { exportFilename, standaloneSvgMarkup } from '~/helpers/svgExport'
 
 definePageMeta({ layout: false })
 
@@ -43,6 +45,59 @@ const progressPercent = computed(() => {
   }
   return Math.round((generationProgress.value.current / generationProgress.value.total) * 100)
 })
+
+const exporting = ref(false)
+
+// The map is one Leaflet SVG whose country fills are patterns backed by data: URIs, so a serialized
+// copy needs no network at draw time and the rasterizing canvas stays untainted by cross-origin
+// data - which is what would otherwise make toBlob() throw.
+const downloadPng = async () => {
+  const svg = mapContainer.value?.querySelector('svg')
+  if (!svg || exporting.value) {
+    return
+  }
+  exporting.value = true
+  let url: string | null = null
+  try {
+    const { width, height } = svg.getBoundingClientRect()
+    const markup = standaloneSvgMarkup(
+      new XMLSerializer().serializeToString(svg),
+      Math.round(width),
+      Math.round(height),
+      cssVar('--color-stone-950'),
+    )
+
+    const image = new Image()
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new Error('Could not rasterize the map'))
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`
+    })
+
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(width)
+    canvas.height = Math.round(height)
+    canvas.getContext('2d')!.drawImage(image, 0, 0)
+
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) {
+      return
+    }
+
+    url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = exportFilename('dmp-world-map')
+    link.click()
+  }
+  catch { /* nothing to download - leave the map as it was */ }
+  finally {
+    if (url) {
+      URL.revokeObjectURL(url)
+    }
+    exporting.value = false
+  }
+}
 
 const tooltipData = computed(() => {
   if (!tooltip.value || !countryData.value) {
@@ -371,9 +426,21 @@ onUnmounted(() => {
 
       <div
         v-if="coverageStat.countries > 0"
-        class="pointer-events-none absolute bottom-4 right-4 z-[1000] rounded-lg bg-stone-900/80 px-3 py-2 text-base text-stone-100/60 backdrop-blur"
+        class="absolute bottom-4 right-4 z-[1000] flex items-center gap-3"
       >
-        Showing <strong class="text-stone-100">{{ coverageStat.artists }}</strong> artists from <strong class="text-stone-100">{{ coverageStat.countries }}</strong> countries
+        <span class="rounded-lg bg-stone-900/80 px-3 py-2 text-base text-stone-100/60 backdrop-blur">
+          Showing <strong class="text-stone-100">{{ coverageStat.artists }}</strong> artists from <strong class="text-stone-100">{{ coverageStat.countries }}</strong> countries
+        </span>
+        <UiButton
+          size="sm"
+          variant="quiet"
+          :icon="Download"
+          :loading="exporting"
+          title="Download the current view as a PNG"
+          @click="downloadPng"
+        >
+          Download PNG
+        </UiButton>
       </div>
     </div>
 

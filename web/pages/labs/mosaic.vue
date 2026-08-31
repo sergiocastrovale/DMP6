@@ -2,8 +2,9 @@
 import { Grid3x3, Loader2, Download, Eye, Trash2, Play, Square } from 'lucide-vue-next'
 import { formatDate } from '~/helpers/functions'
 import { useMosaicStore } from '~/stores/mosaic'
+import { typography } from '~/helpers/ui'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'labs' })
 
 const mosaic = useMosaicStore()
 const mode = ref('chronological')
@@ -34,6 +35,17 @@ const formatSize = (bytes: number): string =>
   bytes >= 1_048_576
     ? `${(bytes / 1_048_576).toFixed(1)} MB`
     : `${(bytes / 1024).toFixed(0)} KB`
+
+// What the preview is actually showing, matched back from the filename so the footer can describe
+// it. The mosaic record stores no sort mode or pixel dimensions, so the footer reports the two
+// facts that are real - the cover count and the file size - rather than inventing the rest.
+const previewItem = computed(() =>
+  mosaic.mosaics.find(m => (m.previewFilename || m.filename) === previewFilename.value) ?? null,
+)
+
+const modeDescription = computed(() =>
+  mode.value === 'gradient' ? 'Arranged by colour temperature' : 'Sorted by release year',
+)
 
 const handleView = (item: { previewFilename: string | null; filename: string }) => {
   previewFilename.value = item.previewFilename || item.filename
@@ -212,6 +224,13 @@ onMounted(async () => {
           <p v-else class="text-base text-stone-100/40">
             Click the view button on a mosaic to see its preview here.
           </p>
+
+          <div v-if="previewUrl" class="mt-3 flex items-baseline justify-between gap-3">
+            <span class="text-sm text-stone-100/40">{{ modeDescription }}</span>
+            <span v-if="previewItem" :class="typography.meta">
+              <template v-if="previewItem.imageCount">{{ previewItem.imageCount.toLocaleString() }} covers · </template>{{ formatSize(previewItem.size) }}
+            </span>
+          </div>
         </div>
       </div>
     </div>

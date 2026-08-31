@@ -15,8 +15,9 @@ import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import type { NetworkGraph } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
+import { typography } from '~/helpers/ui'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'labs' })
 
 interface GraphNode extends SimulationNodeDatum {
   id: string
@@ -39,7 +40,6 @@ const selectedArtist = ref<{ id: string; name: string } | null>(null)
 const loading = ref(true)
 const graphData = ref<NetworkGraph | null>(null)
 const minShared = ref(2)
-const minSharedId = useId()
 
 const svgContainer = ref<HTMLElement | null>(null)
 const tooltip = ref<{ x: number; y: number; name: string; tracks: number } | null>(null)
@@ -351,20 +351,10 @@ onUnmounted(() => {
           </SearchInput>
 
           <div v-if="!selectedArtist" class="mt-4">
-            <label :for="minSharedId" class="mb-1 block text-sm font-medium text-stone-100/60">
-              Min shared tracks: {{ minShared }}
-            </label>
-            <input
-              :id="minSharedId"
-              v-model.number="minShared"
-              type="range"
-              :min="1"
-              :max="20"
-              class="w-full accent-amber-400"
-            >
+            <Slider v-model="minShared" title="Min shared tracks" :min="1" :max="20" />
           </div>
 
-          <div v-if="graphData && graphData.nodes.length > 0" class="mt-4 text-sm text-stone-100/60 tabular-nums">
+          <div v-if="graphData && graphData.nodes.length > 0" :class="[typography.meta, 'mt-4']">
             {{ graphData.nodes.length }} artists · {{ graphData.links.length }} connections
           </div>
 
