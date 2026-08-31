@@ -21,8 +21,8 @@ const tabs = computed(() => isAdmin.value ? [...baseTabs, ...adminTabs] : baseTa
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <PageTitle :icon="Settings" text="Settings" subtext="DB values override env vars" />
+  <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-24">
+    <PageTitle text="Settings" subtext="DB values override env vars" />
     <Tabs :tabs="tabs" />
     <slot />
   </div>

@@ -9,7 +9,7 @@ withDefaults(defineProps<{
   label?: string
 }>(), {
   disabled: false,
-  label: 'Save Changes',
+  label: 'Save',
 })
 
 defineEmits<{ save: [] }>()

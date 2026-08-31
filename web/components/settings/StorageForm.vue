@@ -45,7 +45,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 </script>
 
 <template>
-  <div class="flex max-w-2xl flex-col gap-6">
+  <div class="flex w-full max-w-5xl flex-col gap-6">
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
       <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Image Storage</h2>
       <SettingsField

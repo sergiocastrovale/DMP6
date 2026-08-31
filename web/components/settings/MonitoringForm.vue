@@ -59,7 +59,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 </script>
 
 <template>
-  <div class="flex max-w-2xl flex-col gap-6">
+  <div class="flex w-full max-w-5xl flex-col gap-6">
     <SettingsMonitoringSources />
 
     <DownloadsAcquisitionIdleBanner />

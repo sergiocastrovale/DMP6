@@ -46,7 +46,38 @@ const { saving, saved, error, save } = useFormSave(async () => {
 </script>
 
 <template>
-  <div class="flex max-w-2xl flex-col gap-6">
+  <div class="flex w-full max-w-5xl flex-col gap-6">
+    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Download Settings</h2>
+      <SettingsField
+        v-model="form.downloadsPath"
+        label="Downloads Path"
+        description="Directory where downloaded files are saved. Overrides DOWNLOADS_PATH."
+        placeholder="/path/to/downloads"
+      />
+      <SettingsField
+        v-model="form.downloadDirTemplate"
+        label="Directory Template"
+        description="Folder template. Placeholders: {artist}, {album}, {year}. Overrides DOWNLOAD_DIR_TEMPLATE."
+        placeholder="{artist}/{year} - {album}"
+      />
+      <SettingsField
+        v-model="form.downloadFormats"
+        label="Allowed Formats"
+        description="Comma-separated list (e.g. flac,mp3). Overrides DOWNLOAD_FORMATS."
+        placeholder="flac,mp3"
+      />
+      <SettingsField
+        v-model="form.downloadMinBitrate"
+        label="Minimum Bitrate (kbps)"
+        description="Minimum bitrate filter. Overrides DOWNLOAD_MIN_BITRATE."
+        type="number"
+        placeholder="320"
+      />
+
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
+    </div>
+
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
       <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Soulseek (slskd)</h2>
       <SettingsField
@@ -62,6 +93,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
         type="password"
         :placeholder="settings?.slskdApiKeySet ? 'Set — leave blank to keep' : '••••••••'"
       />
+
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
     </div>
 
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
@@ -86,6 +119,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
         description="Restrict searches to a single Prowlarr indexer id (the RuTracker indexer). Blank = all. Overrides PROWLARR_INDEXER_ID."
         placeholder="e.g. 5"
       />
+
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
     </div>
 
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
@@ -114,37 +149,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
         description="qBittorrent-side path that maps to {Downloads Path}/_torrents on the shared volume. Only set this if qBittorrent mounts the volume at a different prefix. Overrides QBITTORRENT_SAVE_PATH."
         placeholder="/downloads/dmp/_torrents"
       />
+      
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
     </div>
-
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Download Settings</h2>
-      <SettingsField
-        v-model="form.downloadsPath"
-        label="Downloads Path"
-        description="Directory where downloaded files are saved. Overrides DOWNLOADS_PATH."
-        placeholder="/path/to/downloads"
-      />
-      <SettingsField
-        v-model="form.downloadDirTemplate"
-        label="Directory Template"
-        description="Folder template. Placeholders: {artist}, {album}, {year}. Overrides DOWNLOAD_DIR_TEMPLATE."
-        placeholder="{artist}/{year} - {album}"
-      />
-      <SettingsField
-        v-model="form.downloadFormats"
-        label="Allowed Formats"
-        description="Comma-separated list (e.g. flac,mp3). Overrides DOWNLOAD_FORMATS."
-        placeholder="flac,mp3"
-      />
-      <SettingsField
-        v-model="form.downloadMinBitrate"
-        label="Minimum Bitrate (kbps)"
-        description="Minimum bitrate filter. Overrides DOWNLOAD_MIN_BITRATE."
-        type="number"
-        placeholder="320"
-      />
-    </div>
-
-    <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
   </div>
 </template>
