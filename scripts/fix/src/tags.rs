@@ -68,7 +68,13 @@ pub async fn delete_artist_image(config: &Config, image_file: &str) {
     }
 }
 
-pub fn write_artist_tags(abs_path: &Path, artist: &str, album_artist: &str) -> Result<(), String> {
+pub fn write_artist_tags(
+    abs_path: &Path,
+    artist: &str,
+    album_artist: &str,
+    name_b: &str,
+    name_a: &str,
+) -> Result<(), String> {
     use lofty::prelude::*;
     use lofty::probe::Probe;
     use lofty::tag::{ItemKey, ItemValue, TagItem};
@@ -84,6 +90,27 @@ pub fn write_artist_tags(abs_path: &Path, artist: &str, album_artist: &str) -> R
             ItemKey::AlbumArtist,
             ItemValue::Text(album_artist.to_string()),
         ));
+
+        // Picard-style multi-value credited-artist frames (TXXX:ARTISTS / TXXX:ALBUM_ARTISTS -> lofty's
+        // TrackArtists/AlbumArtists) are separate items from the plain Artist/AlbumArtist frame above and
+        // hold one artist name per item. index's Tier-0 embedded-pairing reads these directly, so a leftover
+        // occurrence of name_b here resurrects it as a fresh Artist row on the next index run even after the
+        // plain tags are fixed. `take` removes every item of the key (preserving order), each value gets the
+        // same whole-word replace, then they're pushed back to preserve multiplicity (`insert` would collapse
+        // them to one).
+        for key in [ItemKey::TrackArtists, ItemKey::AlbumArtists] {
+            let items: Vec<TagItem> = tag.take(key).collect();
+            for item in items {
+                match item.value() {
+                    ItemValue::Text(v) => {
+                        let new_v = common::artists::replace_artist_word(v, name_b, name_a);
+                        tag.push_unchecked(TagItem::new(key, ItemValue::Text(new_v)));
+                    }
+                    _ => tag.push_unchecked(item),
+                }
+            }
+        }
+
         tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
             .map_err(|e| e.to_string())?;
     }

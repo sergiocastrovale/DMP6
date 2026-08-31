@@ -29,37 +29,51 @@ async function loadDecades() {
   }
 }
 
+// Clicking through decades/years fires overlapping requests - without a guard, an older request
+// that happens to resolve after a newer one silently clobbers decadeData with stale years/releases
+// (the decade chip shows the new selection while the list below still shows the old one). A request
+// token makes only the most recently issued fetch allowed to write state; the AbortController also
+// cancels the superseded request outright instead of leaving it to finish for nothing.
+let requestToken = 0
+let currentController: AbortController | null = null
+
+async function fetchDecadeData(url: string) {
+  currentController?.abort()
+  const controller = new AbortController()
+  currentController = controller
+  const token = ++requestToken
+  loadingDecade.value = true
+  try {
+    const data = await $fetch<DecadeResponse>(url, { signal: controller.signal })
+    if (token !== requestToken) {return}
+    decadeData.value = data
+  }
+  catch (error) {
+    if (token !== requestToken) {return}
+    if ((error as { name?: string })?.name !== 'AbortError') {
+      console.error('Failed to load timeline data:', error)
+    }
+  }
+  finally {
+    if (token === requestToken) {
+      loadingDecade.value = false
+    }
+  }
+}
+
 async function selectDecade(decade: number) {
   selectedDecade.value = decade
   selectedYear.value = null
-  loadingDecade.value = true
-  try {
-    decadeData.value = await $fetch<DecadeResponse>(`/api/timeline/${decade}`)
-  }
-  catch (error) {
-    console.error('Failed to load decade:', error)
-  }
-  finally {
-    loadingDecade.value = false
-  }
+  await fetchDecadeData(`/api/timeline/${decade}`)
 }
 
 async function selectYear(year: number | null) {
   if (!selectedDecade.value) {return}
   selectedYear.value = year
-  loadingDecade.value = true
-  try {
-    const url = year
-      ? `/api/timeline/${selectedDecade.value}?year=${year}`
-      : `/api/timeline/${selectedDecade.value}`
-    decadeData.value = await $fetch<DecadeResponse>(url)
-  }
-  catch (error) {
-    console.error('Failed to load year:', error)
-  }
-  finally {
-    loadingDecade.value = false
-  }
+  const url = year
+    ? `/api/timeline/${selectedDecade.value}?year=${year}`
+    : `/api/timeline/${selectedDecade.value}`
+  await fetchDecadeData(url)
 }
 
 async function loadMore() {
@@ -170,14 +184,14 @@ onMounted(() => {
             </span>
           </div>
 
-          <div class="hidden lg:block absolute -left-[11rem] top-0 w-28 text-right">
+          <div class="hidden lg:block absolute -left-[11rem] top-0 w-28 pr-4 text-right">
             <div class="font-display text-3xl font-bold text-stone-100 leading-none tabular-nums">{{ group.year || '????' }}</div>
             <div class="mt-1 text-xs font-medium text-stone-100/55">
               {{ releaseCountFor(group.year, group.releases.length) }} {{ releaseCountFor(group.year, group.releases.length) === 1 ? 'release' : 'releases' }}
             </div>
           </div>
 
-          <div class="hidden lg:block absolute left-[6.6rem] top-1.5 size-3.5 rounded-full bg-amber-400 ring-[3px] ring-amber-400/30" />
+          <div class="hidden lg:block absolute -left-[4.4375rem] top-1.5 size-3.5 rounded-full bg-amber-400 ring-[3px] ring-amber-400/30" />
 
           <div :class="grid.auto">
             <Block

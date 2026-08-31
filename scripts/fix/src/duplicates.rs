@@ -104,7 +104,9 @@ async fn merge(
             Some(t) => replace_artist_word(t, name_b, name_a),
             None => name_a.to_string(),
         };
-        if let Err(e) = tags::write_artist_tags(&abs_path, &new_artist, &new_album_artist) {
+        if let Err(e) =
+            tags::write_artist_tags(&abs_path, &new_artist, &new_album_artist, name_b, name_a)
+        {
             println!("  {} {}: {}", "⚠".yellow(), fp, e);
         } else if let Some(a) = folder_from_path(fp) {
             affected.insert(a);

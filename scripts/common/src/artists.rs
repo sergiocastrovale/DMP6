@@ -16,12 +16,18 @@ pub const SPECIAL_MB_ARTIST_IDS: &[&str] = &[
 /// substring. Used by duplicate-artist merge to rewrite embedded tags: a naive `str::replace` would
 /// turn "Amused" into garbage when merging an artist named "Muse" (substring match), and would miss
 /// "MUSE" entirely (case-sensitive). `\b` word boundaries fix both without needing to know the tag's
-/// separator style (comma/&/feat./etc.).
+/// separator style (comma/&/feat./etc.). `\b` only fires between a word char and a non-word char, so
+/// it's applied only on the side of `from` that actually borders a word char - a name ending in
+/// punctuation ("Nevershoutnever!", "M.O.O.N.") would otherwise never match on that side and silently
+/// fail to replace.
 pub fn replace_artist_word(tag: &str, from: &str, to: &str) -> String {
     if from.is_empty() {
         return tag.to_string();
     }
-    let pattern = format!(r"(?i)\b{}\b", regex::escape(from));
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let lead = if from.starts_with(is_word) { r"\b" } else { "" };
+    let trail = if from.ends_with(is_word) { r"\b" } else { "" };
+    let pattern = format!("(?i){lead}{}{trail}", regex::escape(from));
     let Ok(re) = Regex::new(&pattern) else {
         return tag.to_string();
     };
@@ -448,6 +454,26 @@ mod tests {
         assert_eq!(
             replace_artist_word("Radiohead", "Muse", "Matthew Bellamy"),
             "Radiohead"
+        );
+    }
+
+    #[test]
+    fn replace_artist_word_matches_when_from_ends_in_punctuation() {
+        assert_eq!(
+            replace_artist_word("Nevershoutnever!", "Nevershoutnever!", "Never Shout Never"),
+            "Never Shout Never"
+        );
+        assert_eq!(
+            replace_artist_word("M.O.O.N.", "M.O.O.N.", "Moon"),
+            "Moon"
+        );
+    }
+
+    #[test]
+    fn replace_artist_word_matches_when_from_starts_with_punctuation() {
+        assert_eq!(
+            replace_artist_word("...And Oceans", "...And Oceans", "And Oceans"),
+            "And Oceans"
         );
     }
 }
