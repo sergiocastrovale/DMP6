@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Disc3, RefreshCw, SkipBack, SkipForward } from 'lucide-vue-next'
+import { Disc3, Shuffle, SkipBack, SkipForward } from 'lucide-vue-next'
 import type { PlayerTrack } from '~/types/player'
 import { usePlayerStore } from '~/stores/player'
-import { ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
 
 const props = defineProps<{
   track: PlayerTrack
@@ -22,7 +22,7 @@ const image = computed(() =>
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+  <div class="explore-card-texture overflow-hidden rounded-xl border border-stone-100/6 p-6">
     <div class="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
       <div class="size-40 shrink-0 overflow-hidden rounded-lg bg-stone-800 sm:size-48">
         <img
@@ -47,7 +47,7 @@ const image = computed(() =>
             {{ track.artist }}
           </NuxtLink>
           <p v-else class="truncate text-lg font-medium text-amber-400">{{ track.artist }}</p>
-          <p class="truncate text-sm text-stone-100/40">{{ track.album }}</p>
+          <p :class="[typography.meta, 'truncate']">{{ track.album }}</p>
         </div>
 
         <PlayerSeekBar :current-time="player.currentTime" :duration="player.duration" count-down @seek="(time) => player.seek(time)" />
@@ -82,7 +82,7 @@ const image = computed(() =>
 
           <div class="flex-1" />
 
-          <UiButton variant="secondary" :icon="RefreshCw" :loading="isLoading" @click="emit('again')">
+          <UiButton variant="secondary" :icon="Shuffle" :loading="isLoading" @click="emit('again')">
             Another pick
           </UiButton>
         </div>

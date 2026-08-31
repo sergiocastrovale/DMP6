@@ -124,6 +124,8 @@ export default defineEventHandler(async (event) => {
     artist: t.artist || 'Unknown',
     album: t.album || 'Unknown',
     duration: t.duration || 0,
+    // Already selected above for the era filter; the explore history row shows it under the title.
+    year: t.year ?? null,
     artistSlug: (t.localRelease as any)?.artists?.[0]?.artist?.slug || null,
     releaseImage: img.image,
     releaseImageUrl: img.imageUrl,

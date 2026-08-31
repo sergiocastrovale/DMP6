@@ -41,6 +41,32 @@ describe('explore/Shell.vue', () => {
     expect(wrapper.text()).toContain('Change')
   })
 
+  it('Cancel changes puts the dials back where they were and re-collapses', async () => {
+    const wrapper = await mountSuspended(Shell)
+    const player = usePlayerStore()
+    vi.spyOn(player, 'pickExplorerTrack').mockImplementation(async () => {
+      player.explorerCurrentTrack = TRACK
+    })
+
+    await wrapper.findAll('button').find(b => b.text() === 'Explore')!.trigger('click')
+    await flushPromises()
+    const summaryBefore = wrapper.text()
+
+    await wrapper.findAll('button').find(b => b.text() === 'Change')!.trigger('click')
+    await wrapper.vm.$nextTick()
+    // Move a dial, then back out of it.
+    await wrapper.findAll('[role="slider"]')[0]!.trigger('keydown', { key: 'ArrowRight' })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.findAll('button').find(b => b.text() === 'Cancel changes')!.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).not.toContain('I\'m feeling...')
+    expect(wrapper.text()).toContain('Change')
+    // The summary line is built from the slider stops, so an unreverted edit would show up here.
+    expect(wrapper.text()).toBe(summaryBefore)
+  })
+
   it('entering fullscreen hides the app chrome', async () => {
     const wrapper = await mountSuspended(Shell)
     expect(useChrome().visible.value).toBe(true)

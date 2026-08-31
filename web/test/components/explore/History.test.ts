@@ -59,4 +59,18 @@ describe('explore/History.vue', () => {
     await rows(wrapper)[1]!.trigger('click')
     expect(wrapper.emitted('play')?.[0]?.[0]).toMatchObject({ id: 't1' })
   })
+
+  it('puts the artist and year on their own line under the title', async () => {
+    const withYear = [{ ...tracks(1)[0], year: 1976 }]
+    const wrapper = await mountSuspended(History, { props: { tracks: withYear as any } })
+    expect(wrapper.text()).toContain('Track 0')
+    expect(wrapper.text()).toContain('Artist · 1976')
+  })
+
+  it('omits the year segment for a track that has none, rather than printing a dangling dot', async () => {
+    // Only the explore endpoint fills `year` in; every other queue source leaves it undefined.
+    const wrapper = await mountSuspended(History, { props: { tracks: tracks(1) } })
+    expect(wrapper.text()).toContain('Artist')
+    expect(wrapper.text()).not.toContain('Artist ·')
+  })
 })

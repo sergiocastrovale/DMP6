@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { Play, SlidersHorizontal } from 'lucide-vue-next'
+import { surface } from '~/helpers/ui'
 
-defineProps<{
+const props = defineProps<{
   isLoading?: boolean
   error?: string | null
   // Once a track has been explored, the sliders collapse into a one-line summary - re-expanded
   // via the "Change" button below.
   collapsed?: boolean
+  // True while re-opened over an already-playing track: the footer then offers a way back out
+  // without committing, which a first run has nothing to return to.
+  changing?: boolean
 }>()
 
 const emit = defineEmits<{
   explore: []
   expand: []
+  cancel: []
 }>()
 
 const energy = defineModel<number>('energy', { required: true })
@@ -23,6 +28,10 @@ const energyStops = ['Sleepy', 'Melancholic', 'Calm', 'Reflective', 'Chill', 'Gr
 const eraStops = ['60s', '70s', '80s', '90s', 'Y2K', 'Late 2000s', 'Early 2010s', 'Late 2010s', '2020s', 'Now']
 const familiarityStops = ['Comfort', 'Familiar', 'Known', 'Mixed+', 'Balanced', 'Balanced-', 'Fresh', 'New', 'Hidden', 'Uncharted']
 const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hybrid', 'Produced', 'Synthy', 'Digital', 'Electronic']
+
+const exploreLabel = computed(() => (props.changing ? 'Explore with these settings' : 'Explore'))
+
+const sectionClass = 'px-6 py-5'
 </script>
 
 <template>
@@ -39,46 +48,58 @@ const soundStops = ['Acoustic', 'Unplugged', 'Natural', 'Warm', 'Balanced', 'Hyb
     </UiButton>
   </div>
 
-  <div v-else class="flex flex-col gap-3">
-    <Slider
-      v-model="energy"
-      title="I'm feeling..."
-      left-label="Tired"
-      right-label="Powerful"
-      hint="Right picks faster, louder, more aggressive songs; left keeps things slow and quiet. This one counts the most."
-      :stops="energyStops"
-    />
-    <Slider
-      v-model="era"
-      title="Era"
-      left-label="Classic"
-      right-label="Modern"
-      hint="Favours songs released around the decade you land on."
-      :stops="eraStops"
-    />
-    <Slider
-      v-model="familiarity"
-      title="Discovery"
-      left-label="Comfort Zone"
-      right-label="Uncharted"
-      hint="Left leans on songs you play often; right digs out ones you have barely touched."
-      :stops="familiarityStops"
-    />
-    <Slider
-      v-model="sound"
-      title="Sound"
-      left-label="Acoustic"
-      right-label="Electronic"
-      hint="Left favours guitars and real instruments; right favours synths and electronics."
-      :stops="soundStops"
-    />
-
-    <div class="mt-3 flex justify-center">
-      <UiButton size="lg" :icon="Play" icon-class="fill-current" :loading="isLoading" @click="emit('explore')">
-        Explore
-      </UiButton>
+  <!-- One card, four sections divided by hairlines, actions in the footer - the four dials read as
+       one decision rather than four unrelated widgets. -->
+  <div v-else :class="surface.card">
+    <div :class="[sectionClass, surface.divider]">
+      <Slider
+        v-model="energy"
+        title="I'm feeling..."
+        left-label="Tired"
+        right-label="Powerful"
+        hint="Right picks faster, louder, more aggressive songs; left keeps things slow and quiet. This one counts the most."
+        :stops="energyStops"
+      />
+    </div>
+    <div :class="[sectionClass, surface.divider]">
+      <Slider
+        v-model="era"
+        title="Era"
+        left-label="Classic"
+        right-label="Modern"
+        hint="Favours songs released around the decade you land on."
+        :stops="eraStops"
+      />
+    </div>
+    <div :class="[sectionClass, surface.divider]">
+      <Slider
+        v-model="familiarity"
+        title="Discovery"
+        left-label="Comfort zone"
+        right-label="Uncharted"
+        hint="Left leans on songs you play often; right digs out ones you have barely touched."
+        :stops="familiarityStops"
+      />
+    </div>
+    <div :class="[sectionClass, surface.divider]">
+      <Slider
+        v-model="sound"
+        title="Sound"
+        left-label="Acoustic"
+        right-label="Electronic"
+        hint="Left favours guitars and real instruments; right favours synths and electronics."
+        :stops="soundStops"
+      />
     </div>
 
-    <p v-if="error" class="text-center text-sm text-danger">{{ error }}</p>
+    <div class="flex items-center justify-end gap-3 px-6 py-5">
+      <p v-if="error" class="mr-auto text-sm text-danger">{{ error }}</p>
+      <UiButton v-if="changing" size="lg" variant="secondary" @click="emit('cancel')">
+        Cancel changes
+      </UiButton>
+      <UiButton size="lg" :icon="Play" icon-class="fill-current" :loading="isLoading" @click="emit('explore')">
+        {{ exploreLabel }}
+      </UiButton>
+    </div>
   </div>
 </template>

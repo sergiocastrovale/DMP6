@@ -138,3 +138,21 @@ body {
     ),
     var(--color-stone-950);
 }
+
+/* Explore's now-playing card gets the same treatment as the player bar - it *is* a transport, just
+   a full-size one - over the card surface rather than the page. Same reason for living here: two
+   very low-opacity layers can't stack as Tailwind utilities without an extra wrapper element. */
+@utility explore-card-texture {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      transparent 0 10px,
+      color-mix(in oklch, var(--color-stone-100) 3%, transparent) 10px 11px
+    ),
+    radial-gradient(
+      ellipse 70% 120% at 10% 0%,
+      color-mix(in oklch, var(--color-amber-400) 12%, transparent),
+      transparent 70%
+    ),
+    var(--color-stone-900);
+}

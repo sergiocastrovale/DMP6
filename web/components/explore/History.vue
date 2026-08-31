@@ -63,10 +63,10 @@ const goNewer = () => {
     </div>
 
     <div class="flex flex-col divide-y divide-stone-100/6 rounded-xl border border-stone-100/6 bg-stone-900/50">
-      <div v-for="track in visible" :key="track.id" class="flex items-center gap-3 px-3 py-2">
+      <div v-for="track in visible" :key="track.id" class="group flex items-center gap-3 px-3 py-2">
         <button
           type="button"
-          class="flex min-w-0 flex-1 items-center gap-3 rounded-md py-0.5 text-left transition-colors duration-150 hover:text-stone-100"
+          class="flex min-w-0 flex-1 items-center gap-3 rounded-md py-0.5 text-left"
           @click="emit('play', track)"
         >
           <span class="relative size-9 shrink-0 overflow-hidden rounded-md bg-stone-800">
@@ -78,13 +78,15 @@ const goNewer = () => {
               <Play :size="12" :stroke-width="ICON_STROKE_WIDTH" fill="currentColor" class="text-stone-100" />
             </span>
           </span>
-          <span class="min-w-0 flex-1 truncate text-sm text-stone-100/60">
-            {{ track.title }}
-            <span class="text-stone-100/40"> - {{ track.artist }}</span>
+          <span class="flex min-w-0 flex-1 flex-col">
+            <span class="truncate text-sm font-medium text-stone-100">{{ track.title }}</span>
+            <span class="truncate text-xs text-stone-100/40">
+              <span class="text-amber-400">{{ track.artist }}</span><template v-if="track.year"> · {{ track.year }}</template>
+            </span>
           </span>
         </button>
 
-        <span v-if="track.duration" class="shrink-0 text-xs text-stone-100/30 tabular-nums">
+        <span v-if="track.duration" :class="[typography.meta, 'shrink-0']">
           {{ formatDuration(track.duration) }}
         </span>
 

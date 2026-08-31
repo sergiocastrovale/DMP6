@@ -59,6 +59,25 @@ describe('Slider.vue', () => {
     expect(atMin.emitted('update:modelValue')).toEqual([[0]])
   })
 
+  it('falls back to the raw number when no stops are given, so Labs can use the same control', async () => {
+    // handoff/RULES.md: "One slider. Any range control is the shared Slider." Labs' thresholds have
+    // no named stops and no end labels, so both have to be optional or those screens hand-roll a
+    // native range input instead.
+    const wrapper = await mountSuspended(Slider, {
+      props: { modelValue: 7, min: 1, max: 20, title: 'Min shared tracks' },
+    })
+    expect(wrapper.text()).toContain('7')
+    expect(wrapper.get('[role="slider"]').attributes('aria-valuetext')).toBe('7')
+  })
+
+  it('omits the end labels entirely when they are not supplied', async () => {
+    const wrapper = await mountSuspended(Slider, {
+      props: { modelValue: 3, min: 1, max: 20, title: 'Min artists per genre' },
+    })
+    expect(wrapper.findAll('span').filter(s => s.text() === 'Tired')).toHaveLength(0)
+    expect(wrapper.text()).toContain('Min artists per genre')
+  })
+
   it('sets the value from a pointerdown position along the track', async () => {
     const wrapper = await mountSlider(0)
     const track = wrapper.get('[role="slider"]').element as HTMLElement

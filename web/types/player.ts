@@ -8,6 +8,9 @@ export interface PlayerTrack {
   releaseImage: string | null
   releaseImageUrl: string | null
   localReleaseId: string | null
+  // Only the explore endpoint fills this in (its history rows show "artist · year"); every other
+  // queue source leaves it undefined, so treat it as optional everywhere it is read.
+  year?: number | null
 }
 
 export type ShuffleMode = 'off' | 'release' | 'artist' | 'catalogue' | 'explorer'

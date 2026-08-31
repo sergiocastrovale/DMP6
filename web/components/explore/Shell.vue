@@ -8,9 +8,33 @@ const { visible: chromeVisible, hide, show } = useChrome()
 
 const configCollapsed = ref(false)
 
+// Re-opening the dials over an already-playing track is a reversible edit: snapshot the four values
+// on expand so "Cancel changes" can put them back. A first run has nothing to return to, so the
+// snapshot (and the Cancel button with it) only exists while a track is already playing.
+const snapshot = ref<{ energy: number, era: number, familiarity: number, sound: number } | null>(null)
+const isChanging = computed(() => snapshot.value !== null)
+
+const expandConfig = () => {
+  snapshot.value = { energy: energy.value, era: era.value, familiarity: familiarity.value, sound: sound.value }
+  configCollapsed.value = false
+}
+
+const cancelChanges = () => {
+  if (!snapshot.value) {
+    return
+  }
+  energy.value = snapshot.value.energy
+  era.value = snapshot.value.era
+  familiarity.value = snapshot.value.familiarity
+  sound.value = snapshot.value.sound
+  snapshot.value = null
+  configCollapsed.value = true
+}
+
 const onExplore = async () => {
   await explore()
   if (player.explorerCurrentTrack) {
+    snapshot.value = null
     configCollapsed.value = true
   }
 }
@@ -85,8 +109,10 @@ onBeforeUnmount(() => {
         :is-loading="isLoading"
         :error="error"
         :collapsed="configCollapsed"
+        :changing="isChanging"
         @explore="onExplore"
-        @expand="configCollapsed = false"
+        @expand="expandConfig"
+        @cancel="cancelChanges"
       />
 
       <ExploreCard
