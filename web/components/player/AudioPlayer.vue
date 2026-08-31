@@ -99,15 +99,32 @@ async function onPlaylistCreated() {
 <template>
   <div
     v-if="player.isVisible"
-    class="player-bar-texture flex w-full flex-col border-t border-stone-100/6"
+    :class="cx(
+      'relative flex w-full flex-col border-t border-amber-400/22',
+      'bg-[radial-gradient(120%_240%_at_50%_130%,color-mix(in_oklch,var(--color-amber-400)_13%,transparent)_0%,transparent_60%),linear-gradient(180deg,rgba(28,24,19,.94)_0%,rgba(16,15,13,.96)_100%)]',
+      'backdrop-blur-[28px] [backdrop-filter:blur(28px)_saturate(150%)]',
+      'shadow-[0_-20px_50px_-30px_rgba(0,0,0,.95),inset_0_1px_0_rgba(255,240,210,.05)]',
+      'after:absolute after:inset-0 after:pointer-events-none after:bg-[repeating-linear-gradient(90deg,rgba(255,240,210,.022)_0_1px,transparent_1px_7px)] after:[mask-image:linear-gradient(0deg,#000,transparent_78%)]',
+    )"
   >
-    <div class="flex h-[84px] items-center px-4">
+    <div class="relative flex h-[84px] items-center px-4">
       <div class="flex min-w-0 flex-1 items-center gap-3 md:flex-none md:w-1/3">
-        <NuxtLink
-          :to="player.currentTrack?.artistSlug ? `/artist/${player.currentTrack.artistSlug}` : '#'"
-          class="size-12 shrink-0 rounded-md bg-stone-800 bg-cover bg-center transition-opacity duration-150 hover:opacity-80"
-          :style="albumCover ? { backgroundImage: `url(${albumCover})` } : {}"
-        />
+        <div class="relative size-12 shrink-0">
+          <div
+            :class="cx(
+              'absolute -left-1.5 top-1/2 size-11 -translate-y-1/2 rounded-full shadow-[0_3px_10px_rgba(0,0,0,.6)]',
+              'bg-[radial-gradient(circle_at_50%_50%,#2a2622_0_16%,#121110_16.5%_18%,#1b1917_18.5%_100%)]',
+              'before:absolute before:inset-[8%] before:rounded-full before:bg-[repeating-radial-gradient(circle_at_50%_50%,rgba(255,245,220,.06)_0_1px,transparent_1px_3px)]',
+              'after:absolute after:inset-[40%] after:rounded-full after:bg-amber-400 after:opacity-85',
+              player.isPlaying && 'animate-[spin-slow_5.5s_linear_infinite] motion-reduce:animate-none',
+            )"
+          />
+          <NuxtLink
+            :to="player.currentTrack?.artistSlug ? `/artist/${player.currentTrack.artistSlug}` : '#'"
+            class="relative z-[1] block size-12 shrink-0 rounded-md bg-stone-800 bg-cover bg-center transition-opacity duration-150 hover:opacity-80"
+            :style="albumCover ? { backgroundImage: `url(${albumCover})` } : {}"
+          />
+        </div>
         <div class="min-w-0 flex-1">
           <div class="flex min-w-0 items-center gap-1.5 mb-0.5">
             <span class="truncate text-sm font-medium text-stone-100">{{ player.currentTrack?.title || 'No track' }}</span>

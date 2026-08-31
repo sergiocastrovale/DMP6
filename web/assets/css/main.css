@@ -59,6 +59,39 @@ body {
   animation: spin-slow 1.4s linear infinite;
 }
 
+/* Jukebox surface keyframes - shared by the player bar, Explore's now-playing panel and
+   "Exploring..." strip, and the Statistics playtime hero. See handoff/JUKEBOX_SURFACES.md. */
+@keyframes shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+}
+
+@keyframes pulse-lamp {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
 /* Animated conic-gradient border for genre/region playlists. One definition shared by every
    consumer instead of the two duplicated `<style scoped>` blocks it replaces
    (components/playlist/Block.vue, pages/playlists/[slug].vue — the latter referenced a
@@ -121,38 +154,3 @@ body {
   scrollbar-color: var(--color-stone-500) transparent;
 }
 
-/* Player bar background: amber glow top-left + a faint diagonal pinstripe, requested by the
-   design reference. Both layers are too low-opacity to express as stacked Tailwind utilities
-   without a third stacking-context wrapper div, so this is one rule instead. */
-@utility player-bar-texture {
-  background:
-    repeating-linear-gradient(
-      135deg,
-      transparent 0 10px,
-      color-mix(in oklch, var(--color-stone-100) 4%, transparent) 10px 11px
-    ),
-    radial-gradient(
-      ellipse 60% 100% at 15% 0%,
-      color-mix(in oklch, var(--color-amber-400) 14%, transparent),
-      transparent 70%
-    ),
-    var(--color-stone-950);
-}
-
-/* Explore's now-playing card gets the same treatment as the player bar - it *is* a transport, just
-   a full-size one - over the card surface rather than the page. Same reason for living here: two
-   very low-opacity layers can't stack as Tailwind utilities without an extra wrapper element. */
-@utility explore-card-texture {
-  background:
-    repeating-linear-gradient(
-      135deg,
-      transparent 0 10px,
-      color-mix(in oklch, var(--color-stone-100) 3%, transparent) 10px 11px
-    ),
-    radial-gradient(
-      ellipse 70% 120% at 10% 0%,
-      color-mix(in oklch, var(--color-amber-400) 12%, transparent),
-      transparent 70%
-    ),
-    var(--color-stone-900);
-}

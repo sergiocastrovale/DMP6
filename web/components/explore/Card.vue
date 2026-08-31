@@ -2,7 +2,7 @@
 import { Disc3, Shuffle, SkipBack, SkipForward } from 'lucide-vue-next'
 import type { PlayerTrack } from '~/types/player'
 import { usePlayerStore } from '~/stores/player'
-import { ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
 
 const props = defineProps<{
   track: PlayerTrack
@@ -22,8 +22,16 @@ const image = computed(() =>
 </script>
 
 <template>
-  <div class="explore-card-texture overflow-hidden rounded-xl border border-stone-100/6 p-6">
-    <div class="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
+  <div
+    :class="cx(
+      'relative overflow-hidden rounded-xl border border-stone-100/10 p-6',
+      'bg-[radial-gradient(120%_90%_at_50%_-18%,color-mix(in_oklch,var(--color-amber-400)_22%,transparent)_0%,transparent_62%),linear-gradient(180deg,var(--color-stone-800)_0%,var(--color-stone-900)_46%,#100f0d_100%)]',
+      'shadow-[0_40px_80px_-40px_rgba(0,0,0,.9),inset_0_1px_0_rgba(255,240,210,.07)]',
+      'before:absolute before:left-1/2 before:-top-[58%] before:-translate-x-1/2 before:w-[150%] before:aspect-[1.7/1] before:rounded-[50%] before:border before:border-amber-400/15 before:pointer-events-none',
+      'after:absolute after:inset-0 after:pointer-events-none after:bg-[repeating-linear-gradient(90deg,rgba(255,240,210,.028)_0_1px,transparent_1px_7px)] after:[mask-image:linear-gradient(180deg,transparent_62%,#000_100%)]',
+    )"
+  >
+    <div class="relative flex flex-col items-center gap-6 sm:flex-row sm:items-start">
       <div class="size-40 shrink-0 overflow-hidden rounded-lg bg-stone-800 sm:size-48">
         <img
           v-if="image"

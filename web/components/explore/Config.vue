@@ -35,8 +35,17 @@ const sectionClass = 'px-6 py-5'
 </script>
 
 <template>
-  <div v-if="collapsed" class="flex items-center gap-3 rounded-xl bg-stone-900/50 px-5 py-3">
-    <span class="size-1.5 shrink-0 rounded-full bg-amber-400" />
+  <div
+    v-if="collapsed"
+    class="flex items-center gap-3 rounded-xl border border-stone-100/10 px-5 py-3
+      shadow-[inset_0_1px_0_rgba(255,240,210,.05)]
+      bg-[linear-gradient(100deg,color-mix(in_oklch,var(--color-amber-400)_12%,var(--color-stone-900))_0%,var(--color-stone-900)_42%,var(--color-stone-900)_100%)]"
+  >
+    <span
+      class="size-2 shrink-0 rounded-full bg-amber-400
+        shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-amber-400)_16%,transparent),0_0_14px_2px_color-mix(in_oklch,var(--color-amber-400)_55%,transparent)]
+        animate-[pulse-lamp_2.6s_ease-in-out_infinite] motion-reduce:animate-none"
+    />
     <p class="min-w-0 flex-1 truncate text-base text-stone-100/60">
       Exploring <span class="font-medium text-amber-400">{{ energyStops[energy] }}</span> tracks of the
       <span class="font-medium text-stone-100">{{ eraStops[era] }}</span> ·
