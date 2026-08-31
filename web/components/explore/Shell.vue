@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { Compass, Maximize, Minimize } from 'lucide-vue-next'
+import { Maximize, Minimize } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 
 const player = usePlayerStore()
 const { energy, era, familiarity, sound, isLoading, error, explore, playFromHistory } = useExplorer()
-const { visible: chromeVisible, hide, show } = useChrome()
+const { visible: chromeVisible, hide, show, hidePlayer, showPlayer } = useChrome()
+
+// Explore has its own transport (ExploreCard), so the persistent player bar would just duplicate
+// it - hidden for the whole visit, independent of cinema mode, restored on leaving.
+hidePlayer()
 
 const configCollapsed = ref(false)
 
@@ -79,6 +83,7 @@ onBeforeUnmount(() => {
   // Safety net: leaving Explore always restores the shell, even if that happens some way other
   // than the Escape/toggle handlers above (e.g. a programmatic navigation while in cinema mode).
   show()
+  showPlayer()
 })
 </script>
 
@@ -86,24 +91,28 @@ onBeforeUnmount(() => {
   <!-- Left-aligned and wide, like every other page: the reference puts the Explore title at the same
        x as Browse's and Statistics', and gives the dial card most of the content width. Centring it
        in a narrow column made the four sliders read as a modal rather than the page's content. -->
-  <div class="max-w-5xl px-4 py-8 pb-32">
+  <div
+    class="mx-auto flex w-full flex-col gap-6 pb-24"
+    :class="isFullscreen ? 'max-w-6xl' : 'max-w-5xl'"
+  >
     <PageTitle
-      :icon="Compass"
       text="Explore"
       subtext="Tell us the mood, we pick a track from your library."
       class="mb-8"
+      :hide-text="isFullscreen"
     >
       <UiButton
         variant="secondary"
         size="sm"
         icon-only
+        :class="isFullscreen && 'fixed top-4 right-4 z-40'"
         :icon="isFullscreen ? Minimize : Maximize"
         :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
         @click="toggleFullscreen"
       />
     </PageTitle>
 
-    <div class="flex flex-col gap-8">
+    <div class="flex flex-col gap-8" :class="isFullscreen && 'mt-12'">
       <ExploreConfig
         v-model:energy="energy"
         v-model:era="era"
@@ -113,6 +122,7 @@ onBeforeUnmount(() => {
         :error="error"
         :collapsed="configCollapsed"
         :changing="isChanging"
+        :tv="isFullscreen"
         @explore="onExplore"
         @expand="expandConfig"
         @cancel="cancelChanges"
@@ -121,13 +131,13 @@ onBeforeUnmount(() => {
       <ExploreCard
         v-if="player.explorerCurrentTrack"
         :track="player.explorerCurrentTrack"
-        :is-loading="isLoading"
-        @again="onExplore"
+        :tv="isFullscreen"
       />
 
       <ExploreHistory
         v-if="player.explorerSessionHistory.length > 0"
         :tracks="player.explorerSessionHistory"
+        :tv="isFullscreen"
         @play="playFromHistory"
       />
     </div>

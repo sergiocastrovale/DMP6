@@ -2,11 +2,12 @@
 import { ChevronLeft, ChevronRight, Info, Music, Play } from 'lucide-vue-next'
 import type { PlayerTrack } from '~/types/player'
 import { clampPage, formatDuration, pageCount, paginate } from '~/helpers/functions'
-import { EXPLORE_HISTORY_PAGE_SIZE } from '~/helpers/constants'
-import { ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
+import { EXPLORE_HISTORY_PAGE_SIZE, EXPLORE_HISTORY_TV_LIMIT } from '~/helpers/constants'
+import { cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
 
 const props = defineProps<{
   tracks: PlayerTrack[]
+  tv?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,7 +25,11 @@ watch(() => props.tracks.length, (length) => {
 
 const totalPages = computed(() => pageCount(props.tracks.length, EXPLORE_HISTORY_PAGE_SIZE))
 
-const visible = computed(() => paginate(props.tracks, page.value, EXPLORE_HISTORY_PAGE_SIZE))
+// TV mode drops paging in favour of a short, always-current list - a paginated list doesn't read
+// well blown up from a couch.
+const visible = computed(() => props.tv
+  ? props.tracks.slice(0, EXPLORE_HISTORY_TV_LIMIT)
+  : paginate(props.tracks, page.value, EXPLORE_HISTORY_PAGE_SIZE))
 
 const goOlder = () => {
   page.value = clampPage(page.value + 1, props.tracks.length, EXPLORE_HISTORY_PAGE_SIZE)
@@ -38,9 +43,9 @@ const goNewer = () => {
 <template>
   <div>
     <div class="mb-3 flex items-center justify-between gap-2">
-      <span :class="typography.sectionLabel">Previously Played</span>
+      <span :class="[typography.sectionLabel, tv && 'text-xl']">Previously Played</span>
 
-      <div v-if="totalPages > 1" class="flex items-center gap-1">
+      <div v-if="totalPages > 1 && !tv" class="flex items-center gap-1">
         <UiButton
           variant="ghost"
           size="sm"
@@ -63,30 +68,30 @@ const goNewer = () => {
     </div>
 
     <div class="flex flex-col divide-y divide-stone-100/6 rounded-xl border border-stone-100/6 bg-stone-900/50">
-      <div v-for="track in visible" :key="track.id" class="group flex items-center gap-3 px-3 py-2">
+      <div v-for="track in visible" :key="track.id" :class="cx('group flex items-center gap-3', tv ? 'px-5 py-4' : 'px-3 py-2')">
         <button
           type="button"
           class="flex min-w-0 flex-1 items-center gap-3 rounded-md py-0.5 text-left"
           @click="emit('play', track)"
         >
-          <span class="relative size-9 shrink-0 overflow-hidden rounded-md bg-stone-800">
+          <span :class="cx('relative shrink-0 overflow-hidden rounded-md bg-stone-800', tv ? 'size-16' : 'size-9')">
             <img v-if="trackImage(track)" :src="trackImage(track)!" :alt="track.album" class="h-full w-full object-cover">
             <span v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
-              <Music :size="14" :stroke-width="ICON_STROKE_WIDTH" />
+              <Music :size="tv ? 22 : 14" :stroke-width="ICON_STROKE_WIDTH" />
             </span>
             <span class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-              <Play :size="12" :stroke-width="ICON_STROKE_WIDTH" fill="currentColor" class="text-stone-100" />
+              <Play :size="tv ? 20 : 12" :stroke-width="ICON_STROKE_WIDTH" fill="currentColor" class="text-stone-100" />
             </span>
           </span>
           <span class="flex min-w-0 flex-1 flex-col">
-            <span class="truncate text-sm font-medium text-stone-100">{{ track.title }}</span>
-            <span class="truncate text-xs text-stone-100/55">
+            <span :class="cx('truncate font-medium text-stone-100', tv ? 'text-xl' : 'text-sm')">{{ track.title }}</span>
+            <span :class="cx('truncate text-stone-100/55', tv ? 'text-base' : 'text-xs')">
               <span class="text-amber-400">{{ track.artist }}</span><template v-if="track.year"> · {{ track.year }}</template>
             </span>
           </span>
         </button>
 
-        <span v-if="track.duration" :class="[typography.meta, 'shrink-0']">
+        <span v-if="track.duration" :class="[typography.meta, 'shrink-0', tv && 'text-base']">
           {{ formatDuration(track.duration) }}
         </span>
 
@@ -96,7 +101,7 @@ const goNewer = () => {
           :aria-label="`Go to ${track.artist}`"
           class="shrink-0 rounded-full p-1.5 text-stone-100/50 transition-colors duration-150 hover:text-amber-400"
         >
-          <Info :size="14" :stroke-width="ICON_STROKE_WIDTH" />
+          <Info :size="tv ? 20 : 14" :stroke-width="ICON_STROKE_WIDTH" />
         </NuxtLink>
       </div>
     </div>

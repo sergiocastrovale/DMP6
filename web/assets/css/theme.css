@@ -103,8 +103,14 @@
   --text-lg: 14.5px;
   --text-xl: 17px;
   --text-2xl: 21px;
-  --text-3xl: 30px;
-  --text-4xl: 42px;
+  --text-3xl: 26px;
+  --text-3xl--line-height: 1.2;
+  --text-4xl: 36px;
+  --text-4xl--line-height: 1.15;
+  --text-5xl: 48px;
+  --text-5xl--line-height: 1.15;
+  --text-6xl: 64px;
+  --text-6xl--line-height: 1.2;  
 
   /* radii */
   --radius-sm: 6px;

@@ -6,7 +6,7 @@ import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 const terminal = useTerminalStore()
 const settings = useSettingsStore()
 const { collapsed } = useSidebar()
-const { visible: chromeVisible, topbar: topbarVisible } = useChrome()
+const { visible: chromeVisible, topbar: topbarVisible, player: playerVisible } = useChrome()
 
 const gridCols = computed(() =>
   collapsed.value ? 'grid-cols-1 lg:grid-cols-[64px_1fr]' : 'grid-cols-1 lg:grid-cols-[240px_1fr]',
@@ -23,33 +23,37 @@ const gridCols = computed(() =>
   </a>
 
   <div class="flex flex-col h-screen bg-stone-950 text-stone-100 font-sans antialiased">
-    <template v-if="chromeVisible">
-      <div :class="['grid flex-1 overflow-hidden transition-all duration-200', gridCols]">
-        <LayoutSidebar class="hidden lg:flex" />
+    <!-- `<main>` (and the page it slots in) stays a single stable element across chromeVisible
+         toggles - the sidenav/topbar/player bar mount and unmount around it instead of the page
+         living in two structurally different v-if/v-else branches. That used to unmount+remount
+         the whole page (losing its local state) every time cinema mode (Explore) toggled, because
+         Vue can't patch across a structural change in the tree, only diff same-position children. -->
+    <div
+      class="flex flex-1 overflow-hidden transition-all duration-200"
+      :class="chromeVisible && ['grid', gridCols]"
+    >
+      <LayoutSidebar v-if="chromeVisible" class="hidden lg:flex" />
 
-        <div class="flex flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-[500px]': terminal.isOpen && settings.showTerminal }">
-          <!-- Labs drops the search bar: its experiments are canvases, not lists, so there is
-               nothing on the page for a query to filter. The rest of the shell stays. -->
-          <div v-if="topbarVisible" class="sticky top-0 z-30 border-b border-stone-100/6 bg-stone-950/85 backdrop-blur-[14px]">
-            <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-[56px]">
-              <LayoutSearchBar />
-            </div>
+      <div class="flex flex-1 flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-[500px]': chromeVisible && terminal.isOpen && settings.showTerminal }">
+        <!-- Labs drops the search bar: its experiments are canvases, not lists, so there is
+             nothing on the page for a query to filter. The rest of the shell stays. -->
+        <div v-if="chromeVisible && topbarVisible" class="sticky top-0 z-30 border-b border-stone-100/6 bg-stone-950/85 backdrop-blur-[14px]">
+          <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-[56px]">
+            <LayoutSearchBar />
           </div>
-
-          <main id="main-content" class="overflow-y-auto flex-1 px-6 py-6 lg:px-8">
-            <slot />
-          </main>
         </div>
+
+        <main
+          id="main-content"
+          class="overflow-y-auto flex-1"
+          :class="chromeVisible ? 'px-6 py-6 lg:px-8' : 'flex items-center justify-center'"
+        >
+          <slot />
+        </main>
       </div>
+    </div>
 
-      <PlayerAudioPlayer />
-    </template>
-
-    <!-- Cinema mode (Explore): the page provides its own full-viewport content and transport,
-         so the sidenav/topbar/player bar would just be redundant chrome around it. -->
-    <main v-else id="main-content" class="flex-1 overflow-y-auto">
-      <slot />
-    </main>
+    <PlayerAudioPlayer v-if="chromeVisible && playerVisible" />
   </div>
 
   <template v-if="chromeVisible">

@@ -95,4 +95,16 @@ describe('explore/Shell.vue', () => {
     wrapper.unmount()
     expect(useChrome().visible.value).toBe(true)
   })
+
+  it('hides the persistent player bar for the whole visit and restores it on unmount', async () => {
+    expect(useChrome().player.value).toBe(true)
+    const wrapper = await mountSuspended(Shell)
+    expect(useChrome().player.value).toBe(false)
+    // Toggling fullscreen off while still on Explore must not bring the bar back.
+    await wrapper.get('[aria-label="Enter fullscreen"]').trigger('click')
+    await wrapper.get('[aria-label="Exit fullscreen"]').trigger('click')
+    expect(useChrome().player.value).toBe(false)
+    wrapper.unmount()
+    expect(useChrome().player.value).toBe(true)
+  })
 })

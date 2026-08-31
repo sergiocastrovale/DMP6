@@ -6,12 +6,15 @@ defineProps<{
   text: string
   subtext?: string
   icon?: Component
+  // Hides the icon/text (e.g. Explore's TV mode) while keeping the wrapper and slot mounted, so
+  // a slotted control (the fullscreen toggle) never remounts and loses focus when the text does.
+  hideText?: boolean
 }>()
 </script>
 
 <template>
   <div class="flex items-center justify-between">
-    <div class="flex items-center gap-3">
+    <div v-if="!hideText" class="flex items-center gap-3">
       <component :is="icon" v-if="icon" :size="24" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 text-amber-400" />
       <div>
         <h1 :class="typography.h1">{{ text }}</h1>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatDuration } from '~/helpers/functions'
+import { cx } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   currentTime: number
@@ -10,9 +11,12 @@ const props = withDefaults(defineProps<{
   // Shows a hover popover with "{current} / {total}" over the track - the persistent player
   // bar wants this, Explore's now-playing card already has always-visible labels and doesn't.
   hoverPopover?: boolean
+  // TV/cinema-mode Explore only: thicker rail and bigger time labels for couch legibility.
+  large?: boolean
 }>(), {
   countDown: false,
   hoverPopover: false,
+  large: false,
 })
 
 const emit = defineEmits<{
@@ -36,15 +40,15 @@ const handleClick = (event: MouseEvent) => {
 </script>
 
 <template>
-  <div class="flex w-full items-center gap-2">
-    <span class="w-8 shrink-0 text-right text-2xs text-stone-100/55 tabular-nums">{{ formatDuration(currentTime) }}</span>
+  <div :class="cx('flex w-full items-center gap-2')">
+    <span :class="cx('shrink-0 text-left text-stone-100/55 tabular-nums', large ? 'w-10 text-base' : 'w-8 text-2xs')">{{ formatDuration(currentTime) }}</span>
 
     <Popover v-if="hoverPopover" trigger="hover" class="flex-1">
       <template #trigger>
         <div
           role="slider"
           tabindex="0"
-          class="group relative h-1.5 w-full cursor-pointer rounded-full bg-stone-800"
+          :class="cx('group relative w-full cursor-pointer rounded-full bg-stone-800', large ? 'h-3' : 'h-1.5')"
           :aria-valuenow="Math.round(currentTime)"
           aria-valuemin="0"
           :aria-valuemax="Math.round(duration)"
@@ -65,7 +69,7 @@ const handleClick = (event: MouseEvent) => {
       v-else
       role="slider"
       tabindex="0"
-      class="group relative h-1.5 flex-1 cursor-pointer rounded-full bg-stone-800"
+      :class="cx('group relative flex-1 cursor-pointer rounded-full bg-stone-800', large ? 'h-3' : 'h-1.5')"
       :aria-valuenow="Math.round(currentTime)"
       aria-valuemin="0"
       :aria-valuemax="Math.round(duration)"
@@ -76,6 +80,6 @@ const handleClick = (event: MouseEvent) => {
       <div class="h-full rounded-full bg-amber-400" :style="{ width: `${progressPct}%` }" />
     </div>
 
-    <span class="w-10 shrink-0 text-2xs text-stone-100/55 tabular-nums">{{ rightLabel }}</span>
+    <span :class="cx('shrink-0 text-right text-stone-100/55 tabular-nums', large ? 'w-12 text-base' : 'w-10 text-2xs')">{{ rightLabel }}</span>
   </div>
 </template>

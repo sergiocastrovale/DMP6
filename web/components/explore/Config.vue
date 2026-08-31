@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Play, SlidersHorizontal } from 'lucide-vue-next'
-import { surface } from '~/helpers/ui'
+import { cx, surface } from '~/helpers/ui'
 
 const props = defineProps<{
   isLoading?: boolean
@@ -11,6 +11,7 @@ const props = defineProps<{
   // True while re-opened over an already-playing track: the footer then offers a way back out
   // without committing, which a first run has nothing to return to.
   changing?: boolean
+  tv?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -46,13 +47,13 @@ const sectionClass = 'px-6 py-5'
         shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-amber-400)_16%,transparent),0_0_14px_2px_color-mix(in_oklch,var(--color-amber-400)_55%,transparent)]
         animate-[pulse-lamp_2.6s_ease-in-out_infinite] motion-reduce:animate-none"
     />
-    <p class="min-w-0 flex-1 truncate text-base text-stone-100/60">
+    <p :class="cx('min-w-0 flex-1 truncate text-stone-100/60', tv ? 'text-2xl' : 'text-base')">
       Exploring <span class="font-medium text-amber-400">{{ energyStops[energy] }}</span> tracks of the
       <span class="font-medium text-stone-100">{{ eraStops[era] }}</span> ·
       <span class="font-medium text-stone-100">{{ familiarityStops[familiarity] }}</span> discovery ·
       <span class="font-medium text-stone-100">{{ soundStops[sound] }}</span> sound
     </p>
-    <UiButton variant="secondary" size="sm" :icon="SlidersHorizontal" @click="emit('expand')">
+    <UiButton variant="secondary" :size="tv ? 'lg' : 'sm'" :icon="SlidersHorizontal" @click="emit('expand')">
       Change
     </UiButton>
   </div>

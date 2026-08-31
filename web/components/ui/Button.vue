@@ -31,8 +31,8 @@ const props = withDefaults(defineProps<{
   type: 'button',
 })
 
-const ICON_PX: Record<ButtonSize, number> = { sm: 13, md: 14, lg: 16 }
-const ICON_ONLY_PX: Record<ButtonSize, number> = { sm: 15, md: 16, lg: 18 }
+const ICON_PX: Record<ButtonSize, number> = { sm: 13, md: 14, lg: 16, xl: 22 }
+const ICON_ONLY_PX: Record<ButtonSize, number> = { sm: 15, md: 16, lg: 18, xl: 26 }
 
 const isDisabled = computed(() => props.disabled || props.loading)
 const isLink = computed(() => !!props.to || !!props.href)

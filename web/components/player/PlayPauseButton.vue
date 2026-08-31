@@ -3,7 +3,7 @@ import { Pause, Play } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{
   playing?: boolean
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   highlighted?: boolean
 }>(), {
   playing: false,
@@ -15,6 +15,7 @@ const config = {
   sm: { icon: 14, circle: 'size-8' },
   md: { icon: 16, circle: 'size-10' },
   lg: { icon: 20, circle: 'size-11' },
+  xl: { icon: 32, circle: 'size-18' },
 }
 </script>
 

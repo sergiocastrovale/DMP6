@@ -12,7 +12,14 @@
 export const useChrome = () => {
   const visible = useState('chrome-visible', () => true)
   const topbar = useState('chrome-topbar', () => true)
+  // Independent of visible/topbar: Explore hides just the persistent player bar for its whole
+  // visit (it has its own transport), regardless of whether cinema mode is currently on or off -
+  // toggling fullscreen off while still on Explore must not bring the bar back.
+  const player = useState('chrome-player', () => true)
   const { setRailed } = useSidebar()
+
+  const hidePlayer = () => { player.value = false }
+  const showPlayer = () => { player.value = true }
 
   const hide = () => { visible.value = false }
 
@@ -31,5 +38,5 @@ export const useChrome = () => {
     setRailed(false)
   }
 
-  return { visible, topbar, hide, show, rail }
+  return { visible, topbar, player, hide, show, rail, hidePlayer, showPlayer }
 }

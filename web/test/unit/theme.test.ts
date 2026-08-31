@@ -71,7 +71,7 @@ describe('theme.css semantic aliases', () => {
 
 describe('theme.css type scale', () => {
   it('is ordered smallest to largest across all nine steps', () => {
-    const steps = ['2xs', 'xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl']
+    const steps = ['2xs', 'xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl']
     const sizes = steps.map(step => Number.parseFloat(resolve(`text-${step}`)))
     const sorted = [...sizes].sort((a, b) => a - b)
     expect(sizes).toEqual(sorted)

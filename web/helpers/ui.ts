@@ -11,7 +11,7 @@ export const cx = (...classes: Array<string | false | null | undefined>): string
 export const ICON_STROKE_WIDTH = 1.6
 
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'ghost'
-export type ButtonSize = 'sm' | 'md' | 'lg'
+export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl'
 export type Tone = 'accent' | 'success' | 'warning' | 'danger' | 'info' | 'muted'
 export type ToggleKey = 'tab' | 'chip' | 'keyChip' | 'switchBtn' | 'countPill' | 'underTab'
 
@@ -29,6 +29,8 @@ const BUTTON_SIZE: Record<ButtonSize, string> = {
   sm: 'h-[30px] px-[11px] text-sm',
   md: 'h-[34px] px-4 text-base',
   lg: 'h-[40px] px-5 text-lg',
+  // TV/cinema-mode Explore only, so far - a button meant to be legible and clickable from a couch.
+  xl: 'h-[60px] px-8 text-2xl',
 }
 
 // Square, label-less variant of the same heights - kept apart from BUTTON_SIZE (rather than
@@ -39,6 +41,7 @@ const BUTTON_ICON_ONLY_SIZE: Record<ButtonSize, string> = {
   sm: 'size-[30px] p-0',
   md: 'size-[34px] p-0',
   lg: 'size-[40px] p-0',
+  xl: 'size-[60px] p-0',
 }
 
 // `structural` (shape) and `idle`/`on` (colour) are kept apart on purpose: Tailwind resolves

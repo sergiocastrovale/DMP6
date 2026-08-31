@@ -46,11 +46,9 @@ describe('explore/Card.vue', () => {
     expect(toggleSpy).toHaveBeenCalledOnce()
   })
 
-  it('emits again when "Another pick" is clicked', async () => {
+  it('has no separate "Another pick" control - Next already fetches a fresh explored track', async () => {
     const wrapper = await mountSuspended(Card, { props: { track: TRACK } })
-    const again = wrapper.findAll('button').find(b => b.text().includes('Another pick'))!
-    await again.trigger('click')
-    expect(wrapper.emitted('again')).toHaveLength(1)
+    expect(wrapper.findAll('button').find(b => b.text().includes('Another pick'))).toBeUndefined()
   })
 
   it('shows the favourite toggle regardless of viewport (always-visible)', async () => {

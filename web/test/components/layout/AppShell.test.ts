@@ -1,4 +1,5 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { defineComponent, h, nextTick, onBeforeUnmount } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
 import AppShell from '../../../components/layout/AppShell.vue'
 
@@ -59,5 +60,24 @@ describe('layout/AppShell.vue', () => {
     expect(wrapper.findComponent({ name: 'PlayerAudioPlayer' }).exists()).toBe(false)
     expect(wrapper.get('main').attributes('id')).toBe('main-content')
     expect(wrapper.get('main').text()).toContain('Page body')
+  })
+
+  it('toggling chrome visibility does not unmount the slotted page (cinema mode must not lose page state)', async () => {
+    let unmountCount = 0
+    const StatefulChild = defineComponent({
+      setup() {
+        onBeforeUnmount(() => { unmountCount++ })
+        return () => null
+      },
+    })
+    await mountSuspended(AppShell, {
+      slots: { default: () => h(StatefulChild) },
+      global: { stubs: STUBS },
+    })
+    useChrome().hide()
+    await nextTick()
+    useChrome().show()
+    await nextTick()
+    expect(unmountCount).toBe(0)
   })
 })
