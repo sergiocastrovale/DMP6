@@ -170,7 +170,7 @@ export const useDownloadQueueActions = () => {
     await run(id, () => store.cancel(id), 'Cancel failed')
   }
 
-  // Info dialog (maps a download row to a partial UnifiedRelease for ArtistReleaseInfoDialog)
+  // Info dialog (maps a download row to a partial UnifiedRelease for ReleaseInfoDialog)
   const infoItem = ref<DownloadedReleaseItem | null>(null)
   const showInfo = ref(false)
   const openInfo = (id: string) => {

@@ -79,6 +79,6 @@ const rejectAll = () => askBulkReject(unavailable.value.map(i => i.id))
       :title="`${bulkRejectIds.length} unavailable download${bulkRejectIds.length === 1 ? '' : 's'}`"
       @confirm="confirmBulkReject"
     />
-    <ArtistReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
+    <ReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
   </div>
 </template>

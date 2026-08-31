@@ -36,6 +36,6 @@ const items = computed(() => filterQueue(downloading.value, search.value))
       confirm-label="Cancel & delete"
       @confirm="confirmCancel"
     />
-    <ArtistReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
+    <ReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
   </div>
 </template>

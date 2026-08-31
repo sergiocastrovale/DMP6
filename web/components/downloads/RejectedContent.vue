@@ -57,6 +57,6 @@ const moveAllBackToQueue = () => requeueAll(queueRejected.value.map(i => i.id))
       @info="openInfo"
     />
 
-    <ArtistReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
+    <ReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
   </div>
 </template>

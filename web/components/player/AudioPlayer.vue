@@ -3,6 +3,7 @@ import {
   Check,
   Compass,
   ListPlus,
+  Plus,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 import { button, cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
+import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 
 const player = usePlayerStore()
 const { resolve } = useImageUrl()
@@ -17,10 +19,49 @@ const { resolve } = useImageUrl()
 const albumCover = computed(() =>
   resolve(player.currentTrack?.releaseImage ?? null, player.currentTrack?.releaseImageUrl ?? null, 'releases'),
 )
+
+// Cover art and release title both deep-link to the artist page anchored on this exact release -
+// ArtistReleases.vue's handleReleaseDeepLink already expands/scrolls to a release from ?releaseId=.
+const releaseLink = computed(() => {
+  const slug = player.currentTrack?.artistSlug
+  if (!slug) {
+    return null
+  }
+  const localReleaseId = player.currentTrack?.localReleaseId
+  return { path: `/artist/${slug}`, query: localReleaseId ? { releaseId: localReleaseId } : undefined }
+})
+
 const showPlaylistMenu = ref(false)
 const showNewPlaylistDialog = ref(false)
 const playlists = ref<any[]>([])
 const trackPlaylistSlugs = ref<Set<string>>(new Set())
+
+const showInfoDialog = ref(false)
+const infoRelease = ref<UnifiedRelease | null>(null)
+const infoExtra = ref<ReleaseInfoExtra | null>(null)
+
+async function openTrackInfo() {
+  const localReleaseId = player.currentTrack?.localReleaseId
+  if (!localReleaseId) {
+    return
+  }
+  infoRelease.value = null
+  infoExtra.value = null
+  showInfoDialog.value = true
+  try {
+    const [release, extra] = await Promise.all([
+      $fetch<UnifiedRelease>(`/api/releases/${localReleaseId}`),
+      $fetch<ReleaseInfoExtra>(`/api/releases/${localReleaseId}/info`),
+    ])
+    infoRelease.value = release
+    infoExtra.value = extra
+  }
+  catch { /* ignore */ }
+}
+
+watch(() => player.currentTrack?.id, () => {
+  showInfoDialog.value = false
+})
 
 // Always-visible context pill: what queue is currently playing, not just whether shuffle is on.
 const CONTEXT_LABELS: Record<string, string> = {
@@ -30,12 +71,7 @@ const CONTEXT_LABELS: Record<string, string> = {
   release: 'Release',
 }
 
-const contextLabel = computed(() => {
-  if (player.shuffleMode !== 'off') {
-    return CONTEXT_LABELS[player.shuffleMode]
-  }
-  return player.currentPlaylistSlug ? 'Playlist' : 'Release'
-})
+const contextLabel = computed(() => CONTEXT_LABELS[player.shuffleMode])
 
 const SHUFFLE_TOOLTIPS: Record<string, string> = {
   off: 'Shuffle: Off',
@@ -100,14 +136,24 @@ async function onPlaylistCreated() {
   <div
     v-if="player.isVisible"
     :class="cx(
-      'relative flex w-full flex-col border-t border-amber-400/22',
+      'relative flex w-full flex-col justify-center',
       'bg-[radial-gradient(120%_240%_at_50%_130%,color-mix(in_oklch,var(--color-amber-400)_13%,transparent)_0%,transparent_60%),linear-gradient(180deg,rgba(28,24,19,.94)_0%,rgba(16,15,13,.96)_100%)]',
       'backdrop-blur-[28px] [backdrop-filter:blur(28px)_saturate(150%)]',
       'shadow-[0_-20px_50px_-30px_rgba(0,0,0,.95),inset_0_1px_0_rgba(255,240,210,.05)]',
       'after:absolute after:inset-0 after:pointer-events-none after:bg-[repeating-linear-gradient(90deg,rgba(255,240,210,.022)_0_1px,transparent_1px_7px)] after:[mask-image:linear-gradient(0deg,#000,transparent_78%)]',
     )"
   >
-    <div class="relative flex h-[84px] items-center px-4">
+    <div class="absolute inset-x-0 top-0 z-10">
+      <PlayerSeekBar
+        slim
+        hover-popover
+        :current-time="player.currentTime"
+        :duration="player.duration"
+        @seek="(time) => player.seek(time)"
+      />
+    </div>
+
+    <div class="relative flex h-[84px] items-center px-4 pt-2">
       <div class="flex min-w-0 flex-1 items-center gap-3 md:flex-none md:w-1/3">
         <div class="relative size-12 shrink-0">
           <div
@@ -120,49 +166,79 @@ async function onPlaylistCreated() {
             )"
           />
           <NuxtLink
-            :to="player.currentTrack?.artistSlug ? `/artist/${player.currentTrack.artistSlug}` : '#'"
+            v-if="releaseLink"
+            :to="releaseLink"
             class="relative z-[1] block size-12 shrink-0 rounded-md bg-stone-800 bg-cover bg-center transition-opacity duration-150 hover:opacity-80"
+            :style="albumCover ? { backgroundImage: `url(${albumCover})` } : {}"
+            :aria-label="`Go to ${player.currentTrack?.album || player.currentTrack?.title || 'release'}`"
+          />
+          <div
+            v-else
+            class="relative z-[1] block size-12 shrink-0 rounded-md bg-stone-800 bg-cover bg-center"
             :style="albumCover ? { backgroundImage: `url(${albumCover})` } : {}"
           />
         </div>
         <div class="min-w-0 flex-1">
           <div class="flex min-w-0 items-center gap-1.5 mb-0.5">
-            <span class="truncate text-sm font-medium text-stone-100">{{ player.currentTrack?.title || 'No track' }}</span>
+            <button
+              type="button"
+              :class="cx(
+                'truncate text-sm font-medium text-stone-100 text-left transition-colors duration-150',
+                player.currentTrack?.localReleaseId ? 'cursor-pointer hover:text-amber-400' : 'cursor-default',
+              )"
+              :aria-label="`${player.currentTrack?.title ?? 'Track'} info`"
+              @click="openTrackInfo"
+            >
+              {{ player.currentTrack?.title || 'No track' }}
+            </button>
             <ToggleFavorite :size="12" />
           </div>
-          <NuxtLink
-            v-if="player.currentTrack?.artistSlug"
-            :to="`/artist/${player.currentTrack.artistSlug}`"
-            :class="cx(typography.meta, 'block truncate hover:text-stone-100 transition-colors duration-150')"
-          >
-            {{ player.currentTrack?.artist }}{{ player.currentTrack?.album ? ` · ${player.currentTrack.album}` : '' }}
-          </NuxtLink>
-          <span v-else :class="cx(typography.meta, 'block truncate')">
-            {{ player.currentTrack?.artist }}{{ player.currentTrack?.album ? ` · ${player.currentTrack.album}` : '' }}
-          </span>
+          <div :class="cx(typography.meta, 'truncate')">
+            <NuxtLink
+              v-if="player.currentTrack?.artistSlug"
+              :to="`/artist/${player.currentTrack.artistSlug}`"
+              class="hover:text-stone-100 transition-colors duration-150"
+            >
+              {{ player.currentTrack?.artist }}
+            </NuxtLink>
+            <span v-else>{{ player.currentTrack?.artist }}</span>
+            <template v-if="player.currentTrack?.album">
+              &middot;
+              <NuxtLink
+                v-if="releaseLink"
+                :to="releaseLink"
+                class="hover:text-stone-100 transition-colors duration-150"
+              >
+                {{ player.currentTrack.album }}
+              </NuxtLink>
+              <span v-else>{{ player.currentTrack.album }}</span>
+            </template>
+          </div>
         </div>
       </div>
 
       <div class="flex flex-1 flex-col items-center justify-center">
-        <div class="flex items-center gap-4">
-          <!-- The badge sits over the shuffle button rather than centred over the whole transport:
-               it names what that button is currently cycling through, and centred it read as a
-               label for the play button instead. -->
-          <div class="relative">
-            <span class="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-on-accent">
+        <div :class="cx('flex items-center gap-4', player.shuffleMode !== 'off' && '-ml-16')">
+          <button
+            type="button"
+            :class="cx(
+              'flex w-8.5 h-8.5 gap-1 items-center justify-center overflow-hidden rounded-full border transition-colors duration-150 cursor-pointer bg-stone-800 hover:bg-stone-700',
+              player.shuffleMode !== 'off'
+                ? 'border-amber-400/45 text-amber-400 w-24 shrink-0 '
+                : 'border-stone-100/10 text-stone-100/60 hover:text-stone-100',
+            )"
+            :title="SHUFFLE_TOOLTIPS[player.shuffleMode]"
+            :aria-label="SHUFFLE_TOOLTIPS[player.shuffleMode]"
+            @click="player.cycleShuffleMode()"
+          >
+            <span v-if="player.shuffleMode !== 'off'" class="flex justify-center text-[9px] uppercase tracking-wider">
               {{ contextLabel }}
             </span>
-            <button
-              type="button"
-              :class="button('secondary', 'md', '', player.shuffleMode !== 'off', true)"
-              :title="SHUFFLE_TOOLTIPS[player.shuffleMode]"
-              :aria-label="SHUFFLE_TOOLTIPS[player.shuffleMode]"
-              @click="player.cycleShuffleMode()"
-            >
+            <span class="flex h-8.5 shrink-0 items-center justify-center">
               <Compass v-if="player.shuffleMode === 'explorer'" :size="16" :stroke-width="ICON_STROKE_WIDTH" />
               <Shuffle v-else :size="16" :stroke-width="ICON_STROKE_WIDTH" />
-            </button>
-          </div>
+            </span>
+          </button>
 
           <button
             type="button"
@@ -203,16 +279,14 @@ async function onPlaylistCreated() {
             <div
               v-if="showPlaylistMenu"
               role="menu"
-              class="absolute bottom-full left-0 mb-2 w-48 rounded-lg border border-stone-100/10 bg-stone-900 shadow-lg"
+              class="absolute bottom-full left-0 z-20 mb-2 w-48 rounded-lg border border-stone-100/10 bg-stone-900 shadow-lg"
             >
               <div class="max-h-64 overflow-y-auto p-2">
-                <button
-                  type="button"
-                  class="mb-2 w-full rounded-md border border-stone-100/10 bg-stone-800 px-3 py-2 text-left text-sm font-medium text-amber-400 transition-colors duration-150 hover:bg-stone-700"
-                  @click="openNewPlaylistDialog"
-                >
-                  + Create new playlist
-                </button>
+                <div class="mb-2 flex justify-center">
+                  <UiButton variant="quiet" size="sm" on :icon="Plus" @click="openNewPlaylistDialog">
+                    Create new playlist
+                  </UiButton>
+                </div>
                 <div v-if="playlists.length > 0" class="border-t border-stone-100/6 pt-2">
                   <button
                     v-for="playlist in playlists"
@@ -234,8 +308,6 @@ async function onPlaylistCreated() {
             </div>
           </div>
         </div>
-
-        <PlayerSeekBar :current-time="player.currentTime" :duration="player.duration" hover-popover @seek="(time) => player.seek(time)" />
       </div>
 
       <div class="hidden md:flex md:w-1/3 items-center justify-end gap-4">
@@ -264,5 +336,7 @@ async function onPlaylistCreated() {
       :track-id="player.currentTrack?.id ?? null"
       @created="onPlaylistCreated"
     />
+
+    <ReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />
   </div>
 </template>

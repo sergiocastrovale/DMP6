@@ -109,6 +109,6 @@ const onBulkAction = (key: string) => {
       :icon="FolderInput"
       @confirm="confirmBulkMerge"
     />
-    <ArtistReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
+    <ReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
   </div>
 </template>

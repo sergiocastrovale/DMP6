@@ -47,9 +47,9 @@ const itemClass = computed(() => cx(
   >
     <span v-if="active" :class="cx('absolute top-2 bottom-2 w-0.5 rounded-full bg-amber-400', collapsed ? 'left-0' : 'left-[-9px]')" />
     <component :is="icon" :size="20" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0" />
-    <span v-if="!collapsed" class="flex-1 truncate">{{ label }}</span>
+    <span v-if="!collapsed" class="truncate flex-1 text-left">{{ label }}</span>
     <span
-      v-if="!collapsed && count !== null && count > 0"
+      v-if="!collapsed && count"
       :class="cx('font-mono text-2xs tabular-nums', active ? 'text-amber-400/80' : 'text-stone-100/50')"
     >
       {{ formatCount(count) }}

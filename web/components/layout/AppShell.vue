@@ -34,11 +34,11 @@ const gridCols = computed(() =>
     >
       <LayoutSidebar v-if="chromeVisible" class="hidden lg:flex" />
 
-      <div class="flex flex-1 flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-[500px]': chromeVisible && terminal.isOpen && settings.showTerminal }">
+      <div class="flex flex-1 flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-125': chromeVisible && terminal.isOpen && settings.showTerminal }">
         <!-- Labs drops the search bar: its experiments are canvases, not lists, so there is
              nothing on the page for a query to filter. The rest of the shell stays. -->
-        <div v-if="chromeVisible && topbarVisible" class="sticky top-0 z-30 border-b border-stone-100/6 bg-stone-950/85 backdrop-blur-[14px]">
-          <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-[56px]">
+        <div v-if="chromeVisible && topbarVisible" class="sticky top-0 z-30 backdrop-blur-[14px]">
+          <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-20">
             <LayoutSearchBar />
           </div>
         </div>
@@ -46,7 +46,7 @@ const gridCols = computed(() =>
         <main
           id="main-content"
           class="overflow-y-auto flex-1"
-          :class="chromeVisible ? 'px-6 py-6 lg:px-8' : 'flex items-center justify-center'"
+          :class="chromeVisible ? 'px-6 py-6 lg:px-10 xl:px-12' : 'flex items-center justify-center'"
         >
           <slot />
         </main>

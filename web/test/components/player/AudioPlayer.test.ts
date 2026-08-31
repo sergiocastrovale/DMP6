@@ -16,7 +16,7 @@ let activePlayer: ReturnType<typeof usePlayerStore> | undefined
 
 const mountPlayer = async () => {
   const wrapper = await mountSuspended(AudioPlayer, {
-    global: { stubs: { PlaylistAddDialog: true, ToggleFavorite: true, NuxtLink: true } },
+    global: { stubs: { PlaylistAddDialog: true, ToggleFavorite: true, NuxtLink: true, ReleaseInfoDialog: true } },
   })
   const player = usePlayerStore()
   activePlayer = player
@@ -41,7 +41,7 @@ describe('AudioPlayer.vue', () => {
 
   it('renders nothing (v-if) when the player is not visible', async () => {
     const { wrapper } = await mountPlayer()
-    expect(wrapper.find('.border-t').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Previous track"]').exists()).toBe(false)
   })
 
   it('renders the transport controls once a track is visible', async () => {
@@ -90,19 +90,13 @@ describe('AudioPlayer.vue', () => {
     expect(wrapper.text()).toContain('Artist')
   })
 
-  it('shows a "Release" context pill by default, with no shuffle and no playlist', async () => {
-    const { wrapper, player } = await mountPlayer()
-    player.isVisible = true
-    await nextTick()
-    expect(wrapper.text()).toContain('Release')
-  })
-
-  it('shows a "Playlist" context pill when playing from a playlist with shuffle off', async () => {
+  it('shows no context pill when shuffle is off, playlist or not', async () => {
     const { wrapper, player } = await mountPlayer()
     player.isVisible = true
     player.currentPlaylistSlug = 'my-playlist'
     await nextTick()
-    expect(wrapper.text()).toContain('Playlist')
+    expect(wrapper.text()).not.toContain('Release')
+    expect(wrapper.text()).not.toContain('Playlist')
   })
 
   it('gives the transport buttons a bordered toggle state', async () => {
@@ -130,10 +124,57 @@ describe('AudioPlayer.vue', () => {
     player.duration = 200
     await nextTick()
     const seekSpy = vi.spyOn(player, 'seek').mockImplementation(() => {})
-    const bar = wrapper.find('.group.relative.h-1\\.5')
+    const bar = wrapper.find('[role="slider"]')
     vi.spyOn(bar.element, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 100, right: 100, top: 0, bottom: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) })
     await bar.trigger('click', { clientX: 50 })
     expect(seekSpy).toHaveBeenCalledWith(100) // 50% of 200s duration
+  })
+
+  it('the top progress bar is slim (no inline time labels)', async () => {
+    const { wrapper, player } = await mountPlayer()
+    player.isVisible = true
+    player.currentTime = 30
+    player.duration = 200
+    await nextTick()
+    expect(wrapper.text()).not.toContain('0:30')
+  })
+
+  it('clicking the track title opens the release info dialog when a release is bound', async () => {
+    const { wrapper, player } = await mountPlayer()
+    player.isVisible = true
+    player.currentTrack = { id: 't1', title: 'Song', artist: 'Artist', album: 'A', duration: 200, artistSlug: 'artist', releaseImage: null, releaseImageUrl: null, localReleaseId: 'r1' }
+    await nextTick()
+    fetchMock.mockResolvedValue({})
+    await wrapper.find('[aria-label="Song info"]').trigger('click')
+    expect(fetchMock).toHaveBeenCalledWith('/api/releases/r1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/releases/r1/info')
+  })
+
+  it('clicking the track title does nothing when the track has no bound release', async () => {
+    const { wrapper, player } = await mountPlayer()
+    player.isVisible = true
+    player.currentTrack = { id: 't1', title: 'Song', artist: 'Artist', album: 'A', duration: 200, artistSlug: 'artist', releaseImage: null, releaseImageUrl: null, localReleaseId: null }
+    await nextTick()
+    await wrapper.find('[aria-label="Song info"]').trigger('click')
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/releases/'))
+  })
+
+  it('cover and album title link to the artist page anchored on the exact release', async () => {
+    const { wrapper, player } = await mountPlayer()
+    player.isVisible = true
+    player.currentTrack = { id: 't1', title: 'Song', artist: 'Artist', album: 'A', duration: 200, artistSlug: 'artist', releaseImage: null, releaseImageUrl: null, localReleaseId: 'r1' }
+    await nextTick()
+    const releaseLinks = wrapper.findAllComponents({ name: 'NuxtLink' }).filter(l => JSON.stringify(l.props('to')) === JSON.stringify({ path: '/artist/artist', query: { releaseId: 'r1' } }))
+    expect(releaseLinks.length).toBe(2) // cover + album title
+  })
+
+  it('artist name links to the artist page without a release anchor', async () => {
+    const { wrapper, player } = await mountPlayer()
+    player.isVisible = true
+    player.currentTrack = { id: 't1', title: 'Song', artist: 'Artist', album: 'A', duration: 200, artistSlug: 'artist', releaseImage: null, releaseImageUrl: null, localReleaseId: 'r1' }
+    await nextTick()
+    const artistLinks = wrapper.findAllComponents({ name: 'NuxtLink' }).filter(l => l.props('to') === '/artist/artist')
+    expect(artistLinks.length).toBe(1)
   })
 
   it('dismiss button calls player.dismiss()', async () => {

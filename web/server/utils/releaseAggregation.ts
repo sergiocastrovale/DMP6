@@ -71,6 +71,77 @@ export interface ReleaseCard {
   downloadedReleaseId?: string | null
 }
 
+// Single-release field mapping shared by the batch card builders below and the single-release lookup
+// endpoint (server/api/releases/[id].get.ts) - keeps `image`/`imageUrl`/type/format/etc. derivation in
+// one place instead of re-deriving it per call site.
+export function buildReleaseCard(
+  lr: LocalReleaseRow,
+  mbr: MbReleaseRow | null,
+  resolveImage: ImageResolver,
+  extras?: { coArtists?: { name: string, slug: string }[], connectedArtistName?: string },
+): ReleaseCard {
+  const img = resolveImage(lr.image, lr.imageUrl, 'releases')
+  if (!mbr) {
+    return {
+      id: lr.id,
+      title: lr.title,
+      year: lr.year,
+      type: 'Album',
+      typeSlug: 'album',
+      mbReleaseRowId: null,
+      musicbrainzId: null,
+      releaseGroupId: null,
+      disambiguation: null,
+      editionLabel: null,
+      releaseDate: null,
+      packaging: null,
+      country: null,
+      format: null,
+      status: lr.matchStatus,
+      image: img.image,
+      imageUrl: img.imageUrl,
+      trackCount: 0,
+      totalPlayCount: lr.totalPlayCount,
+      localTrackCount: lr.tracks.length,
+      isMusicBrainz: false,
+      hasLocal: true,
+      localReleaseId: lr.id,
+      folderPath: lr.folderPath,
+      coArtists: extras?.coArtists,
+      connectedArtistName: extras?.connectedArtistName,
+    }
+  }
+  return {
+    id: lr.id,
+    title: mbr.title,
+    year: mbr.year,
+    type: mbr.type.name,
+    typeSlug: mbr.type.slug,
+    mbReleaseRowId: mbr.id,
+    musicbrainzId: mbr.musicbrainzId,
+    releaseGroupId: mbr.releaseGroupId ?? null,
+    disambiguation: mbr.disambiguation ?? null,
+    editionLabel: mbr.editionLabel ?? null,
+    releaseDate: mbr.releaseDate ?? null,
+    packaging: mbr.packaging ?? null,
+    country: mbr.country ?? null,
+    format: mbr.format ?? null,
+    status: mbr.status,
+    image: img.image,
+    imageUrl: img.imageUrl,
+    trackCount: mbr.tracks.length,
+    totalPlayCount: lr.totalPlayCount,
+    localTrackCount: lr.tracks.length,
+    isMusicBrainz: true,
+    hasLocal: true,
+    localReleaseId: lr.id,
+    folderPath: lr.folderPath,
+    coArtists: extras?.coArtists,
+    statusReason: mbr.statusReason,
+    connectedArtistName: extras?.connectedArtistName,
+  }
+}
+
 // For each local release, the names of other credited artists (excluding the page's own artist and
 // any of its connected/duplicate artists) - shown as "feat. X" style co-artist chips.
 export function buildCoArtistMap(
@@ -129,36 +200,9 @@ export function buildLocalAndGapCards(params: {
   const appearsOnLocal: LocalReleaseRow[] = []
 
   for (const lr of localReleases) {
-    const localImg = resolveImage(lr.image, lr.imageUrl, 'releases')
+    const extras = { coArtists: coArtistMap.get(lr.id), connectedArtistName: connectedArtistByRelease.get(lr.id) }
     if (!lr.releaseId) {
-      cards.push({
-        id: lr.id,
-        title: lr.title,
-        year: lr.year,
-        type: 'Album',
-        typeSlug: 'album',
-        mbReleaseRowId: null,
-        musicbrainzId: null,
-        releaseGroupId: null,
-        disambiguation: null,
-        editionLabel: null,
-        releaseDate: null,
-        packaging: null,
-        country: null,
-        format: null,
-        status: lr.matchStatus,
-        image: localImg.image,
-        imageUrl: localImg.imageUrl,
-        trackCount: 0,
-        totalPlayCount: lr.totalPlayCount,
-        localTrackCount: lr.tracks.length,
-        isMusicBrainz: false,
-        hasLocal: true,
-        localReleaseId: lr.id,
-        folderPath: lr.folderPath,
-        coArtists: coArtistMap.get(lr.id),
-        connectedArtistName: connectedArtistByRelease.get(lr.id),
-      })
+      cards.push(buildReleaseCard(lr, null, resolveImage, extras))
       continue
     }
 
@@ -169,35 +213,7 @@ export function buildLocalAndGapCards(params: {
     }
 
     coveredMbIds.add(mbr.id)
-    cards.push({
-      id: lr.id,
-      title: mbr.title,
-      year: mbr.year,
-      type: mbr.type.name,
-      typeSlug: mbr.type.slug,
-      mbReleaseRowId: mbr.id,
-      musicbrainzId: mbr.musicbrainzId,
-      releaseGroupId: mbr.releaseGroupId ?? null,
-      disambiguation: mbr.disambiguation ?? null,
-      editionLabel: mbr.editionLabel ?? null,
-      releaseDate: mbr.releaseDate ?? null,
-      packaging: mbr.packaging ?? null,
-      country: mbr.country ?? null,
-      format: mbr.format ?? null,
-      status: mbr.status,
-      image: localImg.image,
-      imageUrl: localImg.imageUrl,
-      trackCount: mbr.tracks.length,
-      totalPlayCount: lr.totalPlayCount,
-      localTrackCount: lr.tracks.length,
-      isMusicBrainz: true,
-      hasLocal: true,
-      localReleaseId: lr.id,
-      folderPath: lr.folderPath,
-      coArtists: coArtistMap.get(lr.id),
-      statusReason: mbr.statusReason,
-      connectedArtistName: connectedArtistByRelease.get(lr.id),
-    })
+    cards.push(buildReleaseCard(lr, mbr, resolveImage, extras))
   }
 
   for (const mbr of mbById.values()) {
@@ -248,39 +264,10 @@ export function buildAppearsOnCards(params: {
   resolveImage: ImageResolver
 }): ReleaseCard[] {
   const { appearsOnLocal, appearsOnMbById, coArtistMap, connectedArtistByRelease, resolveImage } = params
-  return appearsOnLocal.map((lr) => {
-    const mbr = appearsOnMbById.get(lr.releaseId!)
-    const img = resolveImage(lr.image, lr.imageUrl, 'releases')
-    return {
-      id: lr.id,
-      title: mbr?.title ?? lr.title,
-      year: mbr?.year ?? lr.year,
-      type: mbr ? mbr.type.name : 'Album',
-      typeSlug: mbr ? mbr.type.slug : 'album',
-      mbReleaseRowId: mbr?.id ?? null,
-      musicbrainzId: mbr?.musicbrainzId ?? null,
-      releaseGroupId: mbr?.releaseGroupId ?? null,
-      disambiguation: mbr?.disambiguation ?? null,
-      editionLabel: mbr?.editionLabel ?? null,
-      releaseDate: mbr?.releaseDate ?? null,
-      packaging: mbr?.packaging ?? null,
-      country: mbr?.country ?? null,
-      format: mbr?.format ?? null,
-      status: mbr?.status ?? lr.matchStatus,
-      image: img.image,
-      imageUrl: img.imageUrl,
-      trackCount: mbr?.tracks.length ?? 0,
-      totalPlayCount: lr.totalPlayCount,
-      localTrackCount: lr.tracks.length,
-      isMusicBrainz: !!mbr,
-      hasLocal: true,
-      localReleaseId: lr.id,
-      folderPath: lr.folderPath,
-      coArtists: coArtistMap.get(lr.id),
-      statusReason: mbr?.statusReason ?? null,
-      connectedArtistName: connectedArtistByRelease.get(lr.id),
-    }
-  })
+  return appearsOnLocal.map(lr => buildReleaseCard(lr, appearsOnMbById.get(lr.releaseId!) ?? null, resolveImage, {
+    coArtists: coArtistMap.get(lr.id),
+    connectedArtistName: connectedArtistByRelease.get(lr.id),
+  }))
 }
 
 // The caller builds the unified list as locals+gaps (already year-ascending) followed by appears-on

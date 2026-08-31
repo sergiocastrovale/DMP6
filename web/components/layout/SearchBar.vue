@@ -125,7 +125,7 @@ onBeforeUnmount(() => {
         :aria-activedescendant="activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined"
         placeholder="Search artists, releases, tracks..."
         :class="cx(
-          'w-full rounded-lg border border-stone-100/10 bg-stone-900 py-2.5 pl-10 pr-3.5 text-base text-stone-100 outline-0 transition-colors duration-150',
+          'w-full rounded-lg border border-stone-100/10 bg-stone-900 py-3 pl-8 pr-3.5 text-base text-stone-100 outline-0 transition-colors duration-150',
           'placeholder:text-stone-100/50 focus:border-amber-400/45 focus:bg-stone-800',
         )"
         @focus="query && (showDropdown = true)"

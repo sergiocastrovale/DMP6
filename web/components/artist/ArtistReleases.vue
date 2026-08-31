@@ -331,7 +331,7 @@ watch(() => props.releases, () => {
       />
     </template>
 
-    <ArtistReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />
+    <ReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />
 
     <DownloadsRejectDialog
       v-model="showCancelDialog"

@@ -53,6 +53,6 @@ watch(queueHistory, () => {
       @info="openInfo"
     />
 
-    <ArtistReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
+    <ReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
   </div>
 </template>

@@ -34,4 +34,18 @@ describe('SeekBar.vue', () => {
     await bar.trigger('click', { clientX: 25 })
     expect(wrapper.emitted('seek')?.[0]).toEqual([50])
   })
+
+  it('hides the inline time labels when slim', async () => {
+    const wrapper = await mountSuspended(SeekBar, { props: { currentTime: 30, duration: 200, slim: true } })
+    expect(wrapper.text()).not.toContain('0:30')
+    expect(wrapper.text()).not.toContain('3:20')
+  })
+
+  it('opens the hover popover below the rail when popoverPlacement is bottom', async () => {
+    const wrapper = await mountSuspended(SeekBar, { props: { currentTime: 30, duration: 200, hoverPopover: true, slim: true, popoverPlacement: 'bottom' } })
+    await wrapper.find('.relative > div').trigger('mouseenter')
+    const label = wrapper.find('.rounded-md.border')
+    expect(label.text()).toBe('0:30 / 3:20')
+    expect(label.classes()).toContain('top-full')
+  })
 })
