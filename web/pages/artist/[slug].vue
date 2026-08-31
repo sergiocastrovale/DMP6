@@ -10,7 +10,7 @@ const slug = computed(() => route.params.slug as string)
 
 const {
   artist, error, pending, releases, dlInFlight,
-  monitorBusy, toggleMonitor, artistFolders, playingAll, playAll,
+  monitorBusy, toggleMonitor, artistFolders, playingAll, playAll, shufflingAll, shuffleAll,
 } = useArtistPage(slug)
 
 const catalogue = useArtistCatalogue(releases)
@@ -34,9 +34,11 @@ const deleteOpen = ref(false)
       <ArtistHeader
         :artist="artist"
         :play-disabled="playingAll || !releases.length"
+        :shuffle-disabled="shufflingAll || !releases.length"
         :active-downloads="dlInFlight"
         class="min-w-0 flex-1"
         @play-all="playAll"
+        @shuffle-all="shuffleAll"
       >
         <div class="flex shrink-0 items-center gap-2">
           <UiButton

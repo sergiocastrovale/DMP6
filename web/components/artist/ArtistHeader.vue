@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play } from 'lucide-vue-next'
+import { Play, Shuffle } from 'lucide-vue-next'
 import type { Artist } from '~/types/artist'
 import DialogGenres from '~/components/artist/DialogGenres.vue'
 import Genres from '~/components/artist/Genres.vue'
@@ -11,11 +11,13 @@ import { typography } from '~/helpers/ui'
 const props = defineProps<{
   artist: Artist
   playDisabled?: boolean
+  shuffleDisabled?: boolean
   activeDownloads?: ReleaseProgress[]
 }>()
 
 const emit = defineEmits<{
   playAll: []
+  shuffleAll: []
 }>()
 
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
@@ -56,9 +58,12 @@ const statsLine = computed(() => {
 
         <Genres :genres="artist.genres" @more="showAllGenres = true" />
 
-        <div>
-          <UiButton class="mt-2" :icon="Play" icon-class="fill-current" :disabled="playDisabled" @click="emit('playAll')">
+        <div class="mt-2 flex items-center gap-2">
+          <UiButton :icon="Play" icon-class="fill-current" :disabled="playDisabled" @click="emit('playAll')">
             Play all
+          </UiButton>
+          <UiButton :icon="Shuffle" :disabled="shuffleDisabled" @click="emit('shuffleAll')">
+            Shuffle
           </UiButton>
         </div>
       </div>

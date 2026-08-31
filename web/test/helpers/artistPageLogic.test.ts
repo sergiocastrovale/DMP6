@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { artistScanFolders, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, type DlStatusValue } from '../../helpers/artistPageLogic'
+import { artistScanFolders, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks, type DlStatusValue } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
+import type { Track } from '../../types/track'
 
 const release = (overrides: Partial<UnifiedRelease> = {}): UnifiedRelease => ({
   id: 'r1', title: 'Album', year: 2020, type: 'Album', typeSlug: 'album',
@@ -99,5 +100,33 @@ describe('artistScanFolders', () => {
   it('treats a root-level path as its own scan root', () => {
     const releases = [release({ id: 'r1', hasLocal: true, folderPath: 'Loose Album' })]
     expect(artistScanFolders(releases, 'Whoever')).toEqual(['Loose Album'])
+  })
+})
+
+const track = (overrides: Partial<Track> & { id: string }): Track => ({
+  title: 'Track', artist: 'Artist', albumArtist: 'Artist', album: 'Album', year: 2020, genre: null,
+  duration: 200, trackNumber: 1, discNumber: 1, playCount: 0, filePath: '/x', localReleaseId: 'lr1',
+  ...overrides,
+})
+
+describe('tracksToPlayerTracks', () => {
+  it('drops missing (undownloaded gap) tracks', () => {
+    const tracks = [track({ id: 't1' }), track({ id: 't2', missing: true })]
+    expect(tracksToPlayerTracks(tracks, 'artist').map(t => t.id)).toEqual(['t1'])
+  })
+
+  it('maps to the player queue shape, defaulting blank title/artist/album/duration', () => {
+    const tracks = [track({ id: 't1', title: null, artist: null, album: null, duration: null })]
+    expect(tracksToPlayerTracks(tracks, 'artist-slug')).toEqual([{
+      id: 't1', title: 'Unknown', artist: 'Unknown', album: 'Unknown', duration: 0,
+      artistSlug: 'artist-slug', releaseImage: null, releaseImageUrl: null, localReleaseId: 'lr1',
+    }])
+  })
+
+  it('preserves given title/artist/album/duration when present', () => {
+    const tracks = [track({ id: 't1', title: 'Song', artist: 'Real Artist', album: 'Real Album', duration: 180 })]
+    expect(tracksToPlayerTracks(tracks, 'artist-slug')[0]).toMatchObject({
+      title: 'Song', artist: 'Real Artist', album: 'Real Album', duration: 180,
+    })
   })
 })

@@ -3,7 +3,7 @@ import type { Artist } from '~/types/artist'
 import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import { useTerminalStore } from '~/stores/terminal'
-import { artistScanFolders, filterInFlight, mergeDownloadStatus, type DlStatusValue } from '~/helpers/artistPageLogic'
+import { artistScanFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks, type DlStatusValue } from '~/helpers/artistPageLogic'
 
 type DlStatusItem = { mbReleaseId: string | null, status: string, downloadedReleaseId: string, percent: number, bytesTransferred: number, totalBytes: number }
 
@@ -96,26 +96,36 @@ export const useArtistPage = (slug: Ref<string>) => {
     playingAll.value = true
     try {
       const tracks = await $fetch<Track[]>(`/api/artists/${slug.value}/tracks`)
-      const playable = tracks.filter(t => !t.missing)
-      if (!playable.length) {
+      const playerTracks = tracksToPlayerTracks(tracks, slug.value)
+      if (!playerTracks.length) {
         return
       }
-      const playerTracks = playable.map(t => ({
-        id: t.id,
-        title: t.title || 'Unknown',
-        artist: t.artist || 'Unknown',
-        album: t.album || 'Unknown',
-        duration: t.duration || 0,
-        artistSlug: slug.value,
-        releaseImage: null as string | null,
-        releaseImageUrl: null as string | null,
-        localReleaseId: t.localReleaseId,
-      }))
       player.setQueue(playerTracks, playerTracks[0])
     }
     catch { /* ignore */ }
     finally {
       playingAll.value = false
+    }
+  }
+
+  const shufflingAll = ref(false)
+  const shuffleAll = async () => {
+    if (shufflingAll.value) {
+      return
+    }
+    shufflingAll.value = true
+    try {
+      const tracks = await $fetch<Track[]>(`/api/artists/${slug.value}/tracks`)
+      const playerTracks = tracksToPlayerTracks(tracks, slug.value)
+      if (!playerTracks.length) {
+        return
+      }
+      player.shuffleMode = 'artist'
+      player.setQueue(playerTracks)
+    }
+    catch { /* ignore */ }
+    finally {
+      shufflingAll.value = false
     }
   }
 
@@ -130,5 +140,7 @@ export const useArtistPage = (slug: Ref<string>) => {
     artistFolders,
     playingAll,
     playAll,
+    shufflingAll,
+    shuffleAll,
   }
 }

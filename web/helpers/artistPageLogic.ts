@@ -2,6 +2,8 @@
 // rules are directly unit-testable without booting useFetch/Nuxt lifecycle.
 import type { UnifiedRelease } from '~/types/release'
 import type { DownloadedReleaseStatus } from '~/types/download'
+import type { PlayerTrack } from '~/types/player'
+import type { Track } from '~/types/track'
 
 export type DlStatusValue = { status: string, downloadedReleaseId: string, percent: number, bytesTransferred: number, totalBytes: number }
 
@@ -60,3 +62,20 @@ export const artistScanFolders = (releases: UnifiedRelease[], artistName: string
   // folder, and a miss simply scans nothing rather than scanning the wrong thing.
   return unique.length ? unique : [artistName]
 }
+
+// Shared by playAll/shuffleAll: drops missing (undownloaded gap) tracks and maps to the player queue
+// shape. Both callers only differ in how the resulting queue is played (sequential vs shuffled).
+export const tracksToPlayerTracks = (tracks: Track[], artistSlug: string): PlayerTrack[] =>
+  tracks
+    .filter(t => !t.missing)
+    .map(t => ({
+      id: t.id,
+      title: t.title || 'Unknown',
+      artist: t.artist || 'Unknown',
+      album: t.album || 'Unknown',
+      duration: t.duration || 0,
+      artistSlug,
+      releaseImage: null,
+      releaseImageUrl: null,
+      localReleaseId: t.localReleaseId,
+    }))
