@@ -258,6 +258,23 @@ function getHistoryDate(item: any): string {
 
     <Subtabs v-if="REVERTABLE_TYPES.includes(type)" v-model="activeSubtab" :tabs="subtabs" />
 
+    <IssuesSelectionBar
+      v-if="type !== 'enrichment' && type !== 'duplicate-release' && type !== 'mismatched-release-id' && activeSubtab === 'detected'"
+      :count="selected.size"
+      :type="type"
+      :loading="terminal.isRunning"
+      @fix="fixSelected"
+      @cancel="selected = new Set()"
+    />
+
+    <IssuesRevertSelectionBar
+      v-if="REVERTABLE_TYPES.includes(type) && activeSubtab === 'fixed'"
+      :count="selectedResolved.size"
+      :loading="terminal.isRunning"
+      @revert="revertSelected"
+      @cancel="selectedResolved = new Set()"
+    />
+
     <div v-if="activeSubtab === 'detected'">
       <IssuesIssueTable
         :type="type"
@@ -469,19 +486,5 @@ function getHistoryDate(item: any): string {
       </IssuesIssueTable>
     </div>
 
-    <IssuesSelectionBar
-      v-if="type !== 'enrichment' && type !== 'duplicate-release' && type !== 'mismatched-release-id' && activeSubtab === 'detected'"
-      :count="selected.size"
-      :type="type"
-      :loading="terminal.isRunning"
-      @fix="fixSelected"
-    />
-
-    <IssuesRevertSelectionBar
-      v-if="REVERTABLE_TYPES.includes(type) && activeSubtab === 'fixed'"
-      :count="selectedResolved.size"
-      :loading="terminal.isRunning"
-      @revert="revertSelected"
-    />
   </div>
 </template>

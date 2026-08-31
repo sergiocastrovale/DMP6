@@ -38,6 +38,13 @@ const moveAllBackToQueue = () => requeueAll(queueRejected.value.map(i => i.id))
       </UiButton>
     </div>
 
+    <DownloadsSelectionBar
+      :count="selected.size"
+      :actions="bulkActions"
+      @action="onBulkAction"
+      @cancel="selected = new Set()"
+    />
+
     <DownloadsApprovalQueue
       :items="items"
       :busy-id="busyId"
@@ -51,10 +58,5 @@ const moveAllBackToQueue = () => requeueAll(queueRejected.value.map(i => i.id))
     />
 
     <ArtistReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
-    <DownloadsSelectionBar
-      :count="selected.size"
-      :actions="bulkActions"
-      @action="onBulkAction"
-    />
   </div>
 </template>

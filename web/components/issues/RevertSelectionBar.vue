@@ -2,15 +2,15 @@
 import { Undo2 } from 'lucide-vue-next'
 
 defineProps<{ count: number; loading: boolean }>()
-const emit = defineEmits<{ revert: [mode: 'undo' | 'undo-resolved'] }>()
+const emit = defineEmits<{ revert: [mode: 'undo' | 'undo-resolved'], cancel: [] }>()
 </script>
 
 <template>
-  <UiBulkBar :count="count">
-    <UiButton :icon="Undo2" :loading="loading" @click="emit('revert', 'undo')">
+  <UiBulkBar :count="count" @cancel="emit('cancel')">
+    <UiButton size="sm" variant="quiet" :icon="Undo2" :loading="loading" @click="emit('revert', 'undo')">
       Undo
     </UiButton>
-    <UiButton variant="secondary" :icon="Undo2" :loading="loading" @click="emit('revert', 'undo-resolved')">
+    <UiButton size="sm" variant="quiet" :icon="Undo2" :loading="loading" @click="emit('revert', 'undo-resolved')">
       Undo (keep resolved)
     </UiButton>
   </UiBulkBar>

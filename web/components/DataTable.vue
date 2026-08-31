@@ -90,24 +90,18 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
 
 <template>
   <div class="flex flex-col gap-2.5">
-    <div v-if="selectable && selectedIds.size > 0" class="flex items-center justify-between gap-4 px-4 h-[42px] rounded-lg bg-amber-400/20 border border-amber-400/30 text-base text-amber-400">
-      <span class="font-medium">{{ selectedIds.size }} selected</span>
-      <div class="flex items-center gap-2">
-        <button
-          v-for="action in bulkActions"
-          :key="action.key"
-          type="button"
-          :class="button(action.variant ?? 'quiet', 'sm', 'bg-stone-900/60')"
-          @click="action.onClick(selectedRows)"
-        >
-          <component :is="action.icon" v-if="action.icon" :size="13" />
-          {{ action.label }}
-        </button>
-        <button type="button" :class="button('ghost', 'sm')" @click="clearSelection">
-          Cancel
-        </button>
-      </div>
-    </div>
+    <UiBulkBar v-if="selectable" :count="selectedIds.size" @cancel="clearSelection">
+      <button
+        v-for="action in bulkActions"
+        :key="action.key"
+        type="button"
+        :class="button(action.variant ?? 'quiet', 'sm', 'bg-stone-900/60')"
+        @click="action.onClick(selectedRows)"
+      >
+        <component :is="action.icon" v-if="action.icon" :size="13" />
+        {{ action.label }}
+      </button>
+    </UiBulkBar>
 
     <SlimTable>
       <SlimTableHeader>

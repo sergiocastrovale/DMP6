@@ -180,6 +180,14 @@ async function undoSelected() {
 
     <Subtabs v-model="activeTab" :tabs="subtabs" />
 
+    <IssuesHistorySelectionBar
+      :count="selected.size"
+      :loading="terminal.isRunning"
+      @clear="clearSelected"
+      @undo="undoSelected"
+      @cancel="selected = new Set()"
+    />
+
     <div class="flex flex-col gap-0">
       <SlimTable>
         <SlimTableHeader>
@@ -300,12 +308,5 @@ async function undoSelected() {
         </div>
       </div>
     </Dialog>
-
-    <IssuesHistorySelectionBar
-      :count="selected.size"
-      :loading="terminal.isRunning"
-      @clear="clearSelected"
-      @undo="undoSelected"
-    />
   </div>
 </template>

@@ -27,6 +27,16 @@ describe('DataTable.vue', () => {
     expect(wrapper.findAll('tbody tr')).toHaveLength(2)
   })
 
+  it('lets a wide column set scroll horizontally instead of compressing', async () => {
+    // `overflow-x-auto` on the card does nothing while the table is only `w-full` - it can never
+    // exceed its container, so the scroll axis never engages and columns silently compress. Both
+    // halves have to be present for a wide table to stay readable.
+    const wrapper = await mountSuspended(DataTable, { props: { columns: COLUMNS, rows: ROWS } })
+    const card = wrapper.get('table').element.parentElement!
+    expect(card.className).toContain('overflow-x-auto')
+    expect(wrapper.get('table').classes()).toContain('min-w-max')
+  })
+
   it('shows a loading skeleton instead of rows while loading', async () => {
     const wrapper = await mountSuspended(DataTable, { props: { columns: COLUMNS, rows: ROWS, loading: true, loadingRows: 3 } })
     expect(wrapper.text()).not.toContain('Radiohead')

@@ -202,6 +202,14 @@ onMounted(() => {
       </div>
     </div>
 
+    <DownloadsSelectionBar
+      :count="selected.size"
+      :loading="bulkBusy"
+      :actions="bulkActions"
+      @action="onBulkAction"
+      @cancel="selected = new Set()"
+    />
+
     <div v-if="loading" class="flex justify-center py-16">
       <Loader2 :size="22" class="animate-spin text-stone-100/40" />
     </div>
@@ -302,12 +310,6 @@ onMounted(() => {
       :confirm-label="confirmLabel"
       :icon="pendingMonitor ? Radar : EyeOff"
       @confirm="confirmBulk"
-    />
-    <DownloadsSelectionBar
-      :count="selected.size"
-      :loading="bulkBusy"
-      :actions="bulkActions"
-      @action="onBulkAction"
     />
   </div>
 </template>

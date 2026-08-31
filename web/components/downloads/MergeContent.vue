@@ -71,6 +71,14 @@ const onBulkAction = (key: string) => {
       </UiButton>
     </div>
 
+    <DownloadsSelectionBar
+      :count="selected.size"
+      :loading="busyIds.size > 0 || bulkBusy"
+      :actions="bulkActions"
+      @action="onBulkAction"
+      @cancel="selected = new Set()"
+    />
+
     <DownloadsApprovalQueue
       :items="items"
       :busy-id="busyId"
@@ -102,11 +110,5 @@ const onBulkAction = (key: string) => {
       @confirm="confirmBulkMerge"
     />
     <ArtistReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
-    <DownloadsSelectionBar
-      :count="selected.size"
-      :loading="busyIds.size > 0 || bulkBusy"
-      :actions="bulkActions"
-      @action="onBulkAction"
-    />
   </div>
 </template>

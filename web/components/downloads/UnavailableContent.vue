@@ -46,6 +46,14 @@ const rejectAll = () => askBulkReject(unavailable.value.map(i => i.id))
       </UiButton>
     </div>
 
+    <DownloadsSelectionBar
+      :count="selected.size"
+      :loading="bulkBusy"
+      :actions="bulkActions"
+      @action="onBulkAction"
+      @cancel="selected = new Set()"
+    />
+
     <DownloadsApprovalQueue
       :items="items"
       :busy-id="busyId"
@@ -67,11 +75,5 @@ const rejectAll = () => askBulkReject(unavailable.value.map(i => i.id))
       @confirm="confirmBulkReject"
     />
     <ArtistReleaseInfoDialog v-model="showInfo" :release="infoRelease" :extra="null" />
-    <DownloadsSelectionBar
-      :count="selected.size"
-      :loading="bulkBusy"
-      :actions="bulkActions"
-      @action="onBulkAction"
-    />
   </div>
 </template>

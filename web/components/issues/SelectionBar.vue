@@ -4,7 +4,7 @@ import type { IssueType } from '~/types/issues'
 import { surface } from '~/helpers/ui'
 
 const props = defineProps<{ count: number; type: IssueType; loading: boolean }>()
-const emit = defineEmits<{ fix: [] }>()
+const emit = defineEmits<{ fix: [], cancel: [] }>()
 
 const FILE_WRITING_TYPES: IssueType[] = ['corrupted', 'missing']
 
@@ -32,7 +32,7 @@ const fixDescription = computed(() => {
 </script>
 
 <template>
-  <UiBulkBar :count="count">
+  <UiBulkBar :count="count" @cancel="emit('cancel')">
     <Popover v-if="fixDescription" trigger="hover">
       <template #trigger>
         <button type="button" aria-label="What does this fix do?" class="text-stone-100/40 transition-colors duration-150 hover:text-stone-100/60">
@@ -48,7 +48,7 @@ const fixDescription = computed(() => {
         </div>
       </template>
     </Popover>
-    <UiButton :icon="Wrench" :loading="loading" @click="emit('fix')">
+    <UiButton size="sm" variant="quiet" :icon="Wrench" :loading="loading" @click="emit('fix')">
       Fix Selected
     </UiButton>
   </UiBulkBar>

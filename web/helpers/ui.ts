@@ -229,7 +229,16 @@ export const typography = {
   sub: 'text-sm text-stone-100/40',
   sectionLabel: 'text-2xs font-bold tracking-[0.12em] uppercase text-stone-100/60',
   meta: 'font-mono text-xs text-stone-100/40 tabular-nums',
+  // Wider-tracked monospace caption that sits *above* a value rather than beside it - the
+  // "TOTAL PLAYTIME" rule on Statistics, the "STATUS" lead-in on the artist page. Distinct from
+  // sectionLabel (sans, card headers) and from meta (numerals inside a row).
+  eyebrow: 'inline-flex items-center gap-2 font-mono text-2xs tracking-[0.24em] uppercase text-stone-100/40',
 }
+
+// A pill that carries its colour as a *border + tinted fill* rather than a solid one: match-score
+// bands, completeness, Labs maturity. Pair it with a toneBg entry (or a scoreRanges bg/text pair)
+// for the colour - this recipe is shape only, so the two never fight over the same property.
+export const outlinePill = 'inline-flex items-center gap-1 px-2.5 py-[3px] rounded-full border text-sm font-bold tabular-nums'
 
 export const layout = {
   page: 'w-full max-w-[1600px] mx-auto px-10 pt-[30px] pb-12',
@@ -257,4 +266,5 @@ export const ui = {
   toneBg,
   toneFill,
   iconButton,
+  outlinePill,
 }

@@ -1,40 +1,40 @@
 <script setup lang="ts">
-// Shared shell for the fixed, bottom-of-viewport bulk-action bar used wherever a page lets the
-// user select rows and act on all of them at once. One definition instead of four near-identical
-// copies (issues/{SelectionBar,RevertSelectionBar,HistorySelectionBar}.vue, downloads/
-// SelectionBar.vue - the last one moves onto this in its own stage) - each had drifted slightly,
-// including a stale lg:left-56 offset from before the sidebar became 240px wide, and reacting to
-// terminal.isOpen alone where the shell itself also checks settings.showTerminal (so a bar could
-// reserve 500px of empty space on the right while the terminal drawer wasn't actually shown).
-const props = withDefaults(defineProps<{
+// The one bulk-action bar. It sits IN FLOW, directly above the table it acts on - not pinned to the
+// viewport - so the selection count reads next to the rows it counts and the actions land where the
+// eye already is. It used to be `fixed bottom-0`, which put the count a full screen away from the
+// checkboxes and needed a running tally of the sidebar width and the terminal drawer's state just to
+// avoid covering them; DataTable.vue had quietly grown a second, in-flow copy rather than use it.
+// This is that copy, promoted - there is now one definition again.
+//
+// `label` is optional on purpose: with none, the bar reads "3 selected", which is what every screen
+// wants. Pass one only when the noun genuinely disambiguates ("3 artists selected").
+import { button } from '~/helpers/ui'
+
+withDefaults(defineProps<{
   count: number
   label?: string
 }>(), {
-  label: 'row',
+  label: undefined,
 })
 
-const terminal = useTerminalStore()
-const settings = useSettingsStore()
+// The bar owns its own Cancel: every reference screen ends the strip with one, and leaving it to
+// each caller is how four near-identical copies drifted apart last time.
+const emit = defineEmits<{ cancel: [] }>()
 </script>
 
 <template>
-  <Transition
-    enter-active-class="transition-transform duration-200 ease-out"
-    enter-from-class="translate-y-full"
-    enter-to-class="translate-y-0"
-    leave-active-class="transition-transform duration-150 ease-in"
-    leave-from-class="translate-y-0"
-    leave-to-class="translate-y-full"
+  <div
+    v-if="count > 0"
+    class="flex h-[42px] items-center justify-between gap-4 rounded-lg border border-amber-400/30 bg-amber-400/20 px-4 text-base text-amber-400"
   >
-    <div
-      v-if="count > 0"
-      class="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between border-t border-stone-100/6 bg-stone-900 px-6 py-3 transition-all duration-300 lg:left-60"
-      :class="{ 'lg:right-[500px]': terminal.isOpen && settings.showTerminal }"
-    >
-      <span class="text-base text-stone-100/60">{{ count }} {{ label }}{{ count !== 1 ? 's' : '' }} selected</span>
-      <div class="flex items-center gap-2">
-        <slot />
-      </div>
+    <span class="font-medium">
+      {{ count }}{{ label ? ` ${label}${count !== 1 ? 's' : ''}` : '' }} selected
+    </span>
+    <div class="flex items-center gap-2">
+      <slot />
+      <button type="button" :class="button('ghost', 'sm')" @click="emit('cancel')">
+        Cancel
+      </button>
     </div>
-  </Transition>
+  </div>
 </template>

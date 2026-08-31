@@ -1,24 +1,23 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import BulkBar from '../../../components/ui/BulkBar.vue'
-import { useTerminalStore } from '../../../stores/terminal'
-import { useSettingsStore } from '../../../stores/settings'
 
 describe('ui/BulkBar.vue', () => {
-  afterEach(() => {
-    useTerminalStore().isOpen = false
-    useSettingsStore().showTerminal = false
-  })
-
   it('is hidden when nothing is selected and shown once count > 0', async () => {
     const wrapper = await mountSuspended(BulkBar, { props: { count: 0 } })
     expect(wrapper.find('div').exists()).toBe(false)
 
     await wrapper.setProps({ count: 3 })
-    expect(wrapper.text()).toContain('3 rows selected')
+    expect(wrapper.text()).toContain('3 selected')
   })
 
-  it('pluralizes the label correctly and honours a custom label', async () => {
+  it('reads as a bare count with no label, which is what every screen wants', async () => {
+    const wrapper = await mountSuspended(BulkBar, { props: { count: 1 } })
+    expect(wrapper.text()).toContain('1 selected')
+    expect(wrapper.text()).not.toContain('row')
+  })
+
+  it('pluralizes an explicit label', async () => {
     const one = await mountSuspended(BulkBar, { props: { count: 1, label: 'artist' } })
     expect(one.text()).toContain('1 artist selected')
 
@@ -34,21 +33,14 @@ describe('ui/BulkBar.vue', () => {
     expect(wrapper.find('.action').exists()).toBe(true)
   })
 
-  it('only reserves space for the terminal drawer when it is both open and shown', async () => {
-    const terminal = useTerminalStore()
-    const settings = useSettingsStore()
-
+  it('sits in flow above the table rather than pinned to the viewport', async () => {
+    // The whole point of the rewrite: a `fixed` bar put the selection count a screen away from the
+    // checkboxes it counts, and needed sidebar-width and terminal-drawer bookkeeping to avoid
+    // covering them.
     const wrapper = await mountSuspended(BulkBar, { props: { count: 1 } })
-    const bar = () => wrapper.get('.fixed')
-
-    expect(bar().classes()).not.toContain('lg:right-[500px]')
-
-    terminal.isOpen = true
-    await wrapper.vm.$nextTick()
-    expect(bar().classes()).not.toContain('lg:right-[500px]')
-
-    settings.showTerminal = true
-    await wrapper.vm.$nextTick()
-    expect(bar().classes()).toContain('lg:right-[500px]')
+    const classes = wrapper.get('div').classes()
+    expect(classes).not.toContain('fixed')
+    expect(classes).toContain('rounded-lg')
+    expect(classes).toContain('bg-amber-400/20')
   })
 })
