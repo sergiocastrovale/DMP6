@@ -80,17 +80,20 @@ function playTrack(track: Track) {
     props.buildPlayerTracks(props.tracks, track)
     return
   }
-  const playerTracks = props.tracks.map(t => ({
-    id: t.id,
-    title: t.title || 'Unknown',
-    artist: t.artist || 'Unknown',
-    album: t.album || 'Unknown',
-    duration: t.duration || 0,
-    artistSlug: null,
-    releaseImage: null,
-    releaseImageUrl: null,
-    localReleaseId: t.localReleaseId,
-  }))
+  const playerTracks = props.tracks.map((t) => {
+    const release = props.releaseMap?.[t.localReleaseId || '']
+    return {
+      id: t.id,
+      title: t.title || 'Unknown',
+      artist: t.artist || 'Unknown',
+      album: t.album || 'Unknown',
+      duration: t.duration || 0,
+      artistSlug: null,
+      releaseImage: release?.image ?? null,
+      releaseImageUrl: release?.imageUrl ?? null,
+      localReleaseId: t.localReleaseId,
+    }
+  })
   const startTrack = playerTracks.find(t => t.id === track.id)
   player.setQueue(playerTracks, startTrack)
 }

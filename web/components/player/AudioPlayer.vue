@@ -2,6 +2,7 @@
 import {
   Check,
   Compass,
+  Disc3,
   ListPlus,
   Plus,
   Shuffle,
@@ -157,6 +158,7 @@ async function onPlaylistCreated() {
       <div class="flex min-w-0 flex-1 items-center gap-3 md:flex-none md:w-1/3">
         <div class="relative size-12 shrink-0">
           <div
+            v-if="albumCover"
             :class="cx(
               'absolute -left-1.5 top-1/2 size-11 -translate-y-1/2 rounded-full shadow-[0_3px_10px_rgba(0,0,0,.6)]',
               'bg-[radial-gradient(circle_at_50%_50%,#2a2622_0_16%,#121110_16.5%_18%,#1b1917_18.5%_100%)]',
@@ -168,15 +170,19 @@ async function onPlaylistCreated() {
           <NuxtLink
             v-if="releaseLink"
             :to="releaseLink"
-            class="relative z-[1] block size-12 shrink-0 rounded-md bg-stone-800 bg-cover bg-center transition-opacity duration-150 hover:opacity-80"
+            class="relative z-[1] flex size-12 shrink-0 items-center justify-center rounded-md bg-stone-800 bg-cover bg-center transition-opacity duration-150 hover:opacity-80"
             :style="albumCover ? { backgroundImage: `url(${albumCover})` } : {}"
             :aria-label="`Go to ${player.currentTrack?.album || player.currentTrack?.title || 'release'}`"
-          />
+          >
+            <Disc3 v-if="!albumCover" :size="20" class="text-stone-500" :stroke-width="ICON_STROKE_WIDTH" />
+          </NuxtLink>
           <div
             v-else
-            class="relative z-[1] block size-12 shrink-0 rounded-md bg-stone-800 bg-cover bg-center"
+            class="relative z-[1] flex size-12 shrink-0 items-center justify-center rounded-md bg-stone-800 bg-cover bg-center"
             :style="albumCover ? { backgroundImage: `url(${albumCover})` } : {}"
-          />
+          >
+            <Disc3 v-if="!albumCover" :size="20" class="text-stone-500" :stroke-width="ICON_STROKE_WIDTH" />
+          </div>
         </div>
         <div class="min-w-0 flex-1">
           <div class="flex min-w-0 items-center gap-1.5 mb-0.5">
