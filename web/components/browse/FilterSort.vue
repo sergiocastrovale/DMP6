@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ArrowUpDown } from 'lucide-vue-next'
-
 defineProps<{
   active: string
 }>()
@@ -9,8 +7,13 @@ const emit = defineEmits<{
   select: [sort: string]
 }>()
 
+// The columns the summarized table also offers as sortable headers are here too, so the two
+// controls stay interchangeable rather than each reaching a subset of the orders.
 const options = [
   { value: 'name', label: 'Name' },
+  { value: 'releases', label: 'Releases' },
+  { value: 'tracks', label: 'Tracks' },
+  { value: 'completeness', label: 'Completeness' },
   { value: 'playCount', label: 'Play count' },
   { value: 'score', label: 'Match score' },
   { value: 'recent', label: 'Recently added' },
@@ -29,7 +32,6 @@ const onUpdate = (value: string | null) => {
   <Dropdown
     :model-value="active"
     :options="options"
-    :icon="ArrowUpDown"
     :allow-clear="false"
     @update:model-value="onUpdate"
   />

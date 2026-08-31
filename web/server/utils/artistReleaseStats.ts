@@ -49,13 +49,21 @@ export function mergeReleaseStats<T extends { id: string }>(
 // `releases`/`completeness` have no DB column to `orderBy` - the route leaves the DB query at its
 // default order and sorts the already-merged page in JS instead. Undefined releaseCount (no releases)
 // sorts a completeness fraction of 0, not last-by-NaN.
-export function sortArtistsInMemory<T extends ReleaseStatsResult>(items: T[], sort: string): T[] {
-  if (sort === 'releases') {
-    return [...items].sort((a, b) => b.releaseCount - a.releaseCount)
+export function sortArtistsInMemory<T extends ReleaseStatsResult>(
+  items: T[],
+  sort: string,
+  direction: 'asc' | 'desc' = 'desc',
+): T[] {
+  const key = sort === 'releases'
+    ? (item: T) => item.releaseCount
+    : sort === 'completeness'
+      ? (item: T) => (item.releaseCount === 0 ? 0 : item.completeCount / item.releaseCount)
+      : null
+
+  if (!key) {
+    return items
   }
-  if (sort === 'completeness') {
-    const fraction = (item: T) => (item.releaseCount === 0 ? 0 : item.completeCount / item.releaseCount)
-    return [...items].sort((a, b) => fraction(b) - fraction(a))
-  }
-  return items
+
+  const sign = direction === 'asc' ? 1 : -1
+  return [...items].sort((a, b) => (key(a) - key(b)) * sign)
 }

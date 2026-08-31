@@ -57,6 +57,18 @@ describe('sortArtistsInMemory', () => {
     expect(sortArtistsInMemory(rows, 'completeness').map(r => r.id)).toEqual(['a2', 'a1', 'a3'])
   })
 
+  it('honours an ascending direction on both computed columns', () => {
+    // These two have no DB column to orderBy, so the direction the toolbar toggle sends has to be
+    // applied here or it would silently do nothing on exactly these columns.
+    expect(sortArtistsInMemory(rows, 'releases', 'asc').map(r => r.id)).toEqual(['a3', 'a1', 'a2'])
+    expect(sortArtistsInMemory(rows, 'completeness', 'asc').map(r => r.id)).toEqual(['a3', 'a1', 'a2'])
+  })
+
+  it('defaults to descending when no direction is given', () => {
+    expect(sortArtistsInMemory(rows, 'releases').map(r => r.id))
+      .toEqual(sortArtistsInMemory(rows, 'releases', 'desc').map(r => r.id))
+  })
+
   it('treats zero releases as a 0 completeness fraction, not NaN, and sorts it last', () => {
     const sorted = sortArtistsInMemory(rows, 'completeness')
     expect(sorted.at(-1)!.id).toBe('a3')

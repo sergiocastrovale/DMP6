@@ -3,11 +3,16 @@ import type { DataTableColumn } from '~/components/DataTable.vue'
 import type { ArtistListItem } from '~/types/artist'
 import { Loader2 } from 'lucide-vue-next'
 import { getScoreRange } from '~/helpers/constants'
-import { ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, outlinePill, typography } from '~/helpers/ui'
 import { useBrowseStore } from '~/stores/browse'
 
 const store = useBrowseStore()
 const { artistImage } = useImageUrl()
+
+// A bare "6" in a Releases column is ambiguous at a glance once four numeric columns sit side by
+// side; the unit carries which column you are reading without a second look at the header.
+const counted = (value: number, singular: string, plural = `${singular}s`) =>
+  `${value.toLocaleString()} ${value === 1 ? singular : plural}`
 
 const columns: DataTableColumn[] = [
   { key: 'name', label: 'Name', sortable: true },
@@ -17,10 +22,9 @@ const columns: DataTableColumn[] = [
   { key: 'playCount', label: 'Plays', sortable: true, align: 'right', width: '100px' },
 ]
 
-const sort = computed(() => ({
-  key: store.sortBy,
-  dir: store.sortBy === 'name' ? 'asc' as const : 'desc' as const,
-}))
+// The real direction, not a per-field guess: the header arrows and the toolbar's direction button
+// are two views of one piece of store state, so they can never disagree.
+const sort = computed(() => ({ key: store.sortBy, dir: store.sortDir }))
 
 const completenessPct = (artist: ArtistListItem) => {
   const releaseCount = artist.releaseCount ?? 0
@@ -30,7 +34,7 @@ const completenessPct = (artist: ArtistListItem) => {
 
 const completenessClasses = (artist: ArtistListItem) => {
   const { bgColor, textColor } = getScoreRange(completenessPct(artist))
-  return `${bgColor} ${textColor}`
+  return cx(outlinePill, 'border-transparent', bgColor, textColor)
 }
 </script>
 
@@ -65,21 +69,24 @@ const completenessClasses = (artist: ArtistListItem) => {
       </template>
 
       <template #cell-releases="{ row }">
-        <span class="tabular-nums text-stone-100/70">{{ (row.releaseCount ?? 0).toLocaleString() }}</span>
+        <span :class="typography.meta">{{ counted(row.releaseCount ?? 0, 'release') }}</span>
       </template>
 
       <template #cell-tracks="{ row }">
-        <span class="tabular-nums text-stone-100/70">{{ row.totalTracks.toLocaleString() }}</span>
+        <span :class="typography.meta">{{ counted(row.totalTracks, 'track') }}</span>
       </template>
 
       <template #cell-completeness="{ row }">
-        <span class="rounded-full px-2 py-0.5 text-xs font-medium tabular-nums" :class="completenessClasses(row)">
+        <span :class="completenessClasses(row)">
           {{ completenessPct(row) }}%
+          <!-- The fraction is what makes the percentage readable: 100% off one release and 100%
+               off forty are the same number and very different libraries. -->
+          <span class="font-normal opacity-60">({{ row.completeCount ?? 0 }}/{{ row.releaseCount ?? 0 }})</span>
         </span>
       </template>
 
       <template #cell-playCount="{ row }">
-        <span class="tabular-nums text-stone-100/70">{{ row.totalPlayCount.toLocaleString() }}</span>
+        <span :class="typography.meta">{{ counted(row.totalPlayCount, 'play') }}</span>
       </template>
     </DataTable>
 

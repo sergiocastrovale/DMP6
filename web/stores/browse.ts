@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { ArtistListItem } from '~/types/artist'
+import { defaultSortDirection, type SortDirection } from '~/helpers/browseSort'
 
 export const useBrowseStore = defineStore('browse', () => {  
   const artists = ref<ArtistListItem[]>([])
@@ -16,6 +17,7 @@ export const useBrowseStore = defineStore('browse', () => {
   const letterFilter = ref<string | null>(null)
   const genreFilter = ref<string | null>(null)
   const sortBy = ref('name')
+  const sortDir = ref<SortDirection>(defaultSortDirection('name'))
   const minScore = ref<number | null>(null)
   const maxScore = ref<number | null>(null)
   const viewMode = ref<'expanded' | 'summarized'>('expanded')
@@ -41,6 +43,7 @@ export const useBrowseStore = defineStore('browse', () => {
         page: append ? page.value : 1,
         pageSize: pageSize.value,
         sort: sortBy.value,
+        order: sortDir.value,
       }
 
       if (searchQuery.value) {params.search = searchQuery.value}
@@ -98,9 +101,26 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
+  // Choosing a different column resets to that column's own default direction; re-choosing the
+  // one already active flips it, which is what clicking its table header means.
   function setSortBy(sort: string) {
+    sortDir.value = sortBy.value === sort
+      ? (sortDir.value === 'asc' ? 'desc' : 'asc')
+      : defaultSortDirection(sort)
     sortBy.value = sort
     fetchArtists()
+  }
+
+  function setSortDir(dir: SortDirection) {
+    if (sortDir.value === dir) {
+      return
+    }
+    sortDir.value = dir
+    fetchArtists()
+  }
+
+  function toggleSortDir() {
+    setSortDir(sortDir.value === 'asc' ? 'desc' : 'asc')
   }
 
   function setSearch(query: string) {
@@ -155,6 +175,7 @@ export const useBrowseStore = defineStore('browse', () => {
     letterFilter,
     genreFilter,
     sortBy,
+    sortDir,
     minScore,
     maxScore,
     viewMode,
@@ -163,6 +184,8 @@ export const useBrowseStore = defineStore('browse', () => {
     setLetterFilter,
     setGenreFilter,
     setSortBy,
+    setSortDir,
+    toggleSortDir,
     setSearch,
     setViewMode,
     setPageSize,

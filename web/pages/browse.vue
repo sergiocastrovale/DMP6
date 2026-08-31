@@ -54,6 +54,7 @@ onMounted(() => {
         wrapper-class="flex-1 sm:max-w-xs"
         @update:model-value="handleSearch"
       />
+      <BrowseFilterSortDirection :direction="store.sortDir" @toggle="store.toggleSortDir" />
       <BrowseFilterSort :active="store.sortBy" @select="store.setSortBy" />
       <BrowseFilterGenre :active="store.genreFilter" @select="store.setGenreFilter" />
       <BrowseFilterScore

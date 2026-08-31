@@ -3,6 +3,7 @@ import { cachedResponse } from '~/server/utils/cache'
 import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 import { mergeReleaseStats, sortArtistsInMemory } from '~/server/utils/artistReleaseStats'
+import { resolveSortDirection } from '~/helpers/browseSort'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=120, stale-while-revalidate=60')
@@ -14,11 +15,14 @@ export default defineEventHandler(async (event) => {
   const letter = (query.letter as string)?.toLowerCase() || null
   const genre = query.genre as string || null
   const sort = (query.sort as string) || 'name'
+  // Browse sends this explicitly; a direct API call that omits it falls back to the field's own
+  // default (names A-Z, quantities biggest-first).
+  const order = resolveSortDirection(sort, query.order)
   const search = (query.search as string)?.trim() || null
   const minScore = query.minScore ? Number(query.minScore) : null
   const maxScore = query.maxScore ? Number(query.maxScore) : null
 
-  const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genre ?? ''}:s=${sort}:q=${search ?? ''}:min=${minScore ?? ''}:max=${maxScore ?? ''}`
+  const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genre ?? ''}:s=${sort}:o=${order}:q=${search ?? ''}:min=${minScore ?? ''}:max=${maxScore ?? ''}`
 
   return cachedResponse(cacheKey, 120, async () => {
     // Credit-only artists (MB-verified 'appears on' entries that own no release) have their own page
@@ -46,24 +50,25 @@ export default defineEventHandler(async (event) => {
     const orderBy: Record<string, string> = {}
     switch (sort) {
       case 'playCount':
-        orderBy.totalPlayCount = 'desc'
+        orderBy.totalPlayCount = order
         break
       case 'score':
-        orderBy.averageMatchScore = 'desc'
+        orderBy.averageMatchScore = order
         break
       case 'recent':
-        orderBy.createdAt = 'desc'
+        orderBy.createdAt = order
         break
       case 'tracks':
-        orderBy.totalTracks = 'desc'
+        orderBy.totalTracks = order
         break
       case 'releases':
       case 'completeness':
-        // No DB column to order by - stays at default order, JS-sorted after the release-stats merge.
+        // No DB column to order by - stays at a stable order, JS-sorted after the release-stats
+        // merge below. Kept ascending so the page a user sees is at least deterministic.
         orderBy.slug = 'asc'
         break
       default:
-        orderBy.slug = 'asc'
+        orderBy.slug = order
     }
 
     const [items, total, stats] = await Promise.all([
@@ -101,6 +106,7 @@ export default defineEventHandler(async (event) => {
         ...verifyImage(a.image, a.imageUrl, 'artists'),
       })),
       sort,
+      order,
     )
 
     return {

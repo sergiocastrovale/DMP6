@@ -23,7 +23,7 @@ describe('useBrowseStore', () => {
     store.minScore = 40
     await store.fetchArtists()
     expect(fetchMock).toHaveBeenCalledWith('/api/artists', expect.objectContaining({
-      params: { page: 1, pageSize: 48, sort: 'name', search: 'boards', letter: 'B', minScore: 40 },
+      params: { page: 1, pageSize: 48, sort: 'name', order: 'asc', search: 'boards', letter: 'B', minScore: 40 },
     }))
   })
 
@@ -105,5 +105,48 @@ describe('useBrowseStore', () => {
     resolveStale!(response({ items: [{ slug: 'stale' }] }))
     await staleCall
     expect(store.artists).toEqual([{ slug: 'fresh' }])
+  })
+
+  it('sends the sort direction so the server does not have to guess it', async () => {
+    const store = useBrowseStore()
+    await store.fetchArtists()
+    expect(fetchMock).toHaveBeenCalledWith('/api/artists', expect.objectContaining({
+      params: expect.objectContaining({ sort: 'name', order: 'asc' }),
+    }))
+  })
+
+  it('picking a different column resets to that column\'s default direction', () => {
+    const store = useBrowseStore()
+    expect(store.sortDir).toBe('asc') // name
+    store.setSortBy('playCount')
+    expect(store.sortDir).toBe('desc')
+    store.setSortBy('name')
+    expect(store.sortDir).toBe('asc')
+  })
+
+  it('re-picking the column already active flips the direction', () => {
+    // This is what clicking an already-sorted table header means.
+    const store = useBrowseStore()
+    store.setSortBy('playCount')
+    expect(store.sortDir).toBe('desc')
+    store.setSortBy('playCount')
+    expect(store.sortDir).toBe('asc')
+    store.setSortBy('playCount')
+    expect(store.sortDir).toBe('desc')
+  })
+
+  it('toggleSortDir flips and refetches', async () => {
+    const store = useBrowseStore()
+    fetchMock.mockClear()
+    store.toggleSortDir()
+    expect(store.sortDir).toBe('desc')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('setSortDir does not refetch when the direction is already what was asked for', () => {
+    const store = useBrowseStore()
+    fetchMock.mockClear()
+    store.setSortDir('asc')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
