@@ -47,11 +47,18 @@ const image = computed(() =>
             <ToggleFavorite :size="tv ? 24 : 18" always-visible :class="tv ? 'p-4' : 'p-2'" />
           </div>
           <NuxtLink
+            v-if="track.artistSlug"
             :to="`/artist/${track.artistSlug}`"
             :class="cx('block truncate font-medium text-amber-400 transition-colors duration-150 hover:text-amber-300', tv ? 'text-2xl' : 'text-lg')"
           >
             {{ track.artist }}
           </NuxtLink>
+          <p
+            v-else
+            :class="cx('truncate font-medium text-amber-400', tv ? 'text-2xl' : 'text-lg')"
+          >
+            {{ track.artist }}
+          </p>
 
           <p :class="[typography.meta, 'truncate', tv && 'text-xl', 'mt-2']">{{ track.album }}</p>
         </div>

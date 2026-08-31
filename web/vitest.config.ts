@@ -45,7 +45,7 @@ export default defineConfig({
           name: 'nuxt',
           environment: 'nuxt',
           include: ['test/stores/**/*.test.ts', 'test/composables/**/*.test.ts', 'test/components/**/*.test.ts'],
-          setupFiles: ['test/setup/localstorage-shim.ts'],
+          setupFiles: ['test/setup/localstorage-shim.ts', 'test/setup/auto-unmount.ts'],
         },
       }),
       {
