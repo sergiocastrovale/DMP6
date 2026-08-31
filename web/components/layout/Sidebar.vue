@@ -15,7 +15,7 @@ import {
   Settings,
 } from 'lucide-vue-next'
 import { useGlobalStore } from '~/stores/global'
-import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx } from '~/helpers/ui'
 
 const { logout, hasPerm, isAdmin } = useAuth()
 const global = useGlobalStore()
@@ -67,14 +67,15 @@ const isActive = (item: NavEntry) => {
   <aside class="flex h-full flex-col overflow-hidden border-r border-stone-100/6 bg-stone-950 transition-all duration-200">
     <div :class="cx('flex items-center gap-2 px-3 py-3 mb-5', collapsed ? 'flex-col' : 'justify-between')">
       <LayoutLogo />
-      <button
-        type="button"
-        class="grid size-8 place-items-center rounded-sm border border-transparent text-stone-100/50 transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800 hover:text-stone-100/60"
+      <UiButton
+        variant="ghost"
+        size="sm"
+        icon-only
+        :icon="ChevronLeft"
+        :icon-class="cx('transition-transform duration-200', collapsed && 'rotate-180')"
         :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
         @click="toggle"
-      >
-        <ChevronLeft :size="16" :stroke-width="ICON_STROKE_WIDTH" class="transition-transform duration-200" :class="collapsed && 'rotate-180'" />
-      </button>
+      />
     </div>
 
     <nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2" aria-label="Primary">

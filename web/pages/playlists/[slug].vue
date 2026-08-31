@@ -146,13 +146,15 @@ onMounted(() => loadPlaylist())
 
       <TrackTable :rows="playlist.tracks" empty-message="No tracks in this playlist yet">
         <template v-if="!isGenerated" #action="{ row }">
-          <button
-            class="rounded-full p-1.5 text-stone-100/55 opacity-0 transition-opacity duration-150 hover:text-stone-100 group-hover:opacity-100"
+          <UiButton
+            variant="ghost"
+            size="md"
+            icon-only
+            :icon="LucideX"
             :aria-label="`Remove ${row.track.title} from playlist`"
+            class="opacity-0 group-hover:opacity-100"
             @click.stop="removeTrack(row.track.id)"
-          >
-            <LucideX class="size-4" />
-          </button>
+          />
         </template>
       </TrackTable>
     </div>

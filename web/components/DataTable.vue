@@ -2,7 +2,7 @@
 import type { Component } from 'vue'
 import type { SortDir } from '~/helpers/functions'
 import type { ButtonVariant } from '~/helpers/ui'
-import { button, cx } from '~/helpers/ui'
+import { cx } from '~/helpers/ui'
 
 export interface DataTableColumn {
   key: string
@@ -91,16 +91,16 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
 <template>
   <div class="flex flex-col gap-2.5">
     <UiBulkBar v-if="selectable" :count="selectedIds.size" @cancel="clearSelection">
-      <button
+      <UiButton
         v-for="action in bulkActions"
         :key="action.key"
-        type="button"
-        :class="button(action.variant ?? 'quiet', 'sm', 'bg-stone-900/60')"
+        :variant="action.variant ?? 'quiet'"
+        size="sm"
+        :icon="action.icon"
         @click="action.onClick(selectedRows)"
       >
-        <component :is="action.icon" v-if="action.icon" :size="13" />
         {{ action.label }}
-      </button>
+      </UiButton>
     </UiBulkBar>
 
     <SlimTable>

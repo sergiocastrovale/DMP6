@@ -57,14 +57,15 @@ const lastLine = computed(() => {
         </div>
         <div class="flex items-center gap-2">
           <span v-if="determinate" class="shrink-0 text-xs text-stone-100/55 tabular-nums">{{ progress!.current }} / {{ progress!.total }}</span>
-          <button
-            type="button"
+          <UiButton
+            variant="ghost"
+            size="sm"
+            icon-only
+            :icon="Square"
             title="Stop process"
-            class="rounded-md p-1 text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-danger"
+            class="hover:text-danger"
             @click="terminal.stop()"
-          >
-            <Square :size="13" :stroke-width="ICON_STROKE_WIDTH" />
-          </button>
+          />
         </div>
       </div>
 
@@ -77,15 +78,16 @@ const lastLine = computed(() => {
 
       <p v-if="lastLine" class="mt-2 truncate font-mono text-2xs leading-4 text-stone-100/55">{{ lastLine }}</p>
 
-      <button
+      <UiButton
         v-if="terminal.hasLockError"
-        type="button"
-        class="mt-2 inline-flex items-center gap-1.5 rounded-md bg-danger/15 px-2.5 py-1 text-xs font-medium text-danger hover:bg-danger/25"
+        variant="danger"
+        size="sm"
+        :icon="LockOpen"
+        class="mt-2"
         @click="terminal.unlock()"
       >
-        <LockOpen :size="12" :stroke-width="ICON_STROKE_WIDTH" />
         Force unlock
-      </button>
+      </UiButton>
     </div>
   </Transition>
 </template>

@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
-import { button, cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
 import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 
 const player = usePlayerStore()
@@ -246,14 +246,13 @@ async function onPlaylistCreated() {
             </span>
           </button>
 
-          <button
-            type="button"
-            :class="button('secondary', 'md', '', false, true)"
+          <UiButton
+            variant="secondary"
+            icon-only
+            :icon="SkipBack"
             aria-label="Previous track"
             @click="player.previous()"
-          >
-            <SkipBack :size="16" :stroke-width="ICON_STROKE_WIDTH" />
-          </button>
+          />
 
           <PlayerPlayPauseButton
             :playing="player.isPlaying"
@@ -262,26 +261,25 @@ async function onPlaylistCreated() {
             @click="player.togglePlay()"
           />
 
-          <button
-            type="button"
-            :class="button('secondary', 'md', '', false, true)"
+          <UiButton
+            variant="secondary"
+            icon-only
+            :icon="SkipForward"
             aria-label="Next track"
             @click="player.next()"
-          >
-            <SkipForward :size="16" :stroke-width="ICON_STROKE_WIDTH" />
-          </button>
+          />
 
           <div class="relative">
-            <button
-              type="button"
-              :class="button('secondary', 'md', '', showPlaylistMenu, true)"
+            <UiButton
+              variant="secondary"
+              icon-only
+              :icon="ListPlus"
+              :on="showPlaylistMenu"
               aria-label="Add to playlist"
               aria-haspopup="menu"
               :aria-expanded="showPlaylistMenu"
               @click="showPlaylistMenu = !showPlaylistMenu; loadPlaylists()"
-            >
-              <ListPlus :size="16" :stroke-width="ICON_STROKE_WIDTH" />
-            </button>
+            />
             <div
               v-if="showPlaylistMenu"
               role="menu"
@@ -318,23 +316,24 @@ async function onPlaylistCreated() {
 
       <div class="hidden md:flex md:w-1/3 items-center justify-end gap-4">
         <PlayerVolumeControl />
-        <button
-          type="button"
-          class="text-stone-100/55 hover:text-stone-100 transition-colors duration-150"
+        <UiButton
+          variant="ghost"
+          size="lg"
+          icon-only
+          :icon="X"
           title="Dismiss player"
           @click="player.dismiss()"
-        >
-          <X :size="18" :stroke-width="ICON_STROKE_WIDTH" />
-        </button>
+        />
       </div>
-      <button
-        type="button"
-        class="ml-2 shrink-0 text-stone-100/55 hover:text-stone-100 transition-colors duration-150 md:hidden"
+      <UiButton
+        variant="ghost"
+        size="lg"
+        icon-only
+        :icon="X"
         title="Dismiss player"
+        class="ml-2 shrink-0 md:hidden"
         @click="player.dismiss()"
-      >
-        <X :size="18" :stroke-width="ICON_STROKE_WIDTH" />
-      </button>
+      />
     </div>
 
     <PlaylistAddDialog

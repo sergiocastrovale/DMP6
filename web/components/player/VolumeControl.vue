@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { Volume2, VolumeX } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
-import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const player = usePlayerStore()
 
@@ -58,15 +57,14 @@ const onKeydown = (event: KeyboardEvent) => {
 
 <template>
   <div class="flex items-center gap-2">
-    <button
-      type="button"
-      class="text-stone-100/60 transition-colors duration-150 hover:text-stone-100"
+    <UiButton
+      variant="ghost"
+      size="lg"
+      icon-only
+      :icon="player.isMuted || player.volume === 0 ? VolumeX : Volume2"
       :aria-label="player.isMuted ? 'Unmute' : 'Mute'"
       @click="player.toggleMute()"
-    >
-      <VolumeX v-if="player.isMuted || player.volume === 0" :size="18" :stroke-width="ICON_STROKE_WIDTH" />
-      <Volume2 v-else :size="18" :stroke-width="ICON_STROKE_WIDTH" />
-    </button>
+    />
     <div
       ref="trackRef"
       role="slider"

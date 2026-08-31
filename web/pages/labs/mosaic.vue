@@ -171,30 +171,31 @@ onMounted(async () => {
                 </p>
               </div>
               <div class="flex items-center gap-1">
-                <button
-                  type="button"
-                  class="rounded-md p-1.5 text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100"
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  icon-only
+                  :icon="Eye"
                   aria-label="View preview"
                   @click="handleView(item)"
-                >
-                  <Eye :size="14" />
-                </button>
-                <button
-                  type="button"
-                  class="rounded-md p-1.5 text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100"
+                />
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  icon-only
+                  :icon="Download"
                   aria-label="Download full resolution"
                   @click="handleDownload(item.filename)"
-                >
-                  <Download :size="14" />
-                </button>
-                <button
-                  type="button"
-                  class="rounded-md p-1.5 text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-danger"
+                />
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  icon-only
+                  :icon="Trash2"
                   aria-label="Delete"
+                  class="hover:text-danger"
                   @click="confirmDelete(item.filename)"
-                >
-                  <Trash2 :size="14" />
-                </button>
+                />
               </div>
             </div>
           </div>

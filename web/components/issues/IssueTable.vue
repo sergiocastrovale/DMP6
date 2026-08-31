@@ -169,23 +169,23 @@ function commitEdit(item: any, col: IssueColumn) {
     <div v-if="total > pageSize" class="flex items-center justify-between border-t border-stone-100/6 px-4 py-2.5 text-sm text-stone-100/55">
       <span class="tabular-nums">{{ total }} total</span>
       <div class="flex items-center gap-2">
-        <button
-          type="button"
+        <UiButton
+          variant="ghost"
+          size="sm"
           :disabled="page <= 1"
-          class="rounded-md px-2 py-1 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100 disabled:opacity-40"
           @click="emit('page', page - 1)"
         >
           Prev
-        </button>
+        </UiButton>
         <span class="tabular-nums">{{ page }} / {{ totalPages }}</span>
-        <button
-          type="button"
+        <UiButton
+          variant="ghost"
+          size="sm"
           :disabled="page >= totalPages"
-          class="rounded-md px-2 py-1 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100 disabled:opacity-40"
           @click="emit('page', page + 1)"
         >
           Next
-        </button>
+        </UiButton>
       </div>
     </div>
   </div>

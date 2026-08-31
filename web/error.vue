@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LucideAlertCircle, LucideHome } from 'lucide-vue-next'
-import { button, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const props = defineProps<{
   error: {
@@ -54,10 +54,9 @@ function handleError() {
         {{ description }}
       </p>
 
-      <button type="button" :class="button('primary', 'lg')" @click="handleError">
-        <LucideHome class="size-4" :stroke-width="ICON_STROKE_WIDTH" />
+      <UiButton size="lg" :icon="LucideHome" @click="handleError">
         Back to Home
-      </button>
+      </UiButton>
     </div>
   </div>
 </template>

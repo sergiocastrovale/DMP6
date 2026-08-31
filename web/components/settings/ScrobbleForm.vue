@@ -72,14 +72,16 @@ const disconnect = async () => {
           </p>
           <p class="text-sm text-stone-100/55">Tracks are being scrobbled to Last.fm</p>
         </div>
-        <button
+        <UiButton
+          variant="secondary"
+          size="sm"
+          :icon="Unlink"
+          :loading="disconnecting"
           :disabled="disconnecting || !canEdit"
-          class="flex items-center gap-1.5 rounded-md bg-stone-800 px-3 py-1.5 text-sm font-medium text-stone-100/60 transition-colors duration-150 hover:bg-stone-700 disabled:opacity-50"
           @click="disconnect"
         >
-          <Unlink :size="12" />
           {{ disconnecting ? 'Disconnecting…' : 'Disconnect' }}
-        </button>
+        </UiButton>
       </div>
 
       <div v-else class="flex items-center gap-3 rounded-lg border border-stone-100/6 bg-stone-800/50 px-4 py-3">

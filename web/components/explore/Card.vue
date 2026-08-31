@@ -64,14 +64,14 @@ const image = computed(() =>
           <PlayerSeekBar :current-time="player.currentTime" :duration="player.duration" count-down :large="tv" @seek="(time) => player.seek(time)" />
 
           <div :class="cx('flex w-full items-center justify-center', tv ? 'gap-5' : 'gap-3')">
-            <button
-              type="button"
-              :class="cx('rounded-full border bg-stone-800 border-stone-100/10 text-stone-100/60 transition-colors duration-150 hover:bg-stone-700 hover:text-stone-100', tv ? 'p-4' : 'p-2')"
+            <UiButton
+              variant="secondary"
+              :size="tv ? 'xl' : 'lg'"
+              icon-only
+              :icon="SkipBack"
               aria-label="Previous track"
               @click="player.previous()"
-            >
-              <SkipBack :size="tv ? 32 : 18" :stroke-width="ICON_STROKE_WIDTH" />
-            </button>
+            />
 
             <PlayerPlayPauseButton
               :playing="player.isPlaying"
@@ -82,14 +82,14 @@ const image = computed(() =>
 
             <!-- No "Another pick" button here: with shuffleMode 'explorer', player.next() already
                  fetches a fresh explored track (see stores/player.ts), so this is that action. -->
-            <button
-              type="button"
-              :class="cx('rounded-full border bg-stone-800 border-stone-100/10 text-stone-100/60 transition-colors duration-150 hover:bg-stone-700 hover:text-stone-100', tv ? 'p-4' : 'p-2')"
+            <UiButton
+              variant="secondary"
+              :size="tv ? 'xl' : 'lg'"
+              icon-only
+              :icon="SkipForward"
               aria-label="Next track"
               @click="player.next()"
-            >
-              <SkipForward :size="tv ? 32 : 18" :stroke-width="ICON_STROKE_WIDTH" />
-            </button>
+            />
           </div>
         </div>
       </div>

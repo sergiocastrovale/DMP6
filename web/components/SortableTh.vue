@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-vue-next'
 import type { SortDir } from '~/helpers/functions'
-import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   label: string
@@ -26,18 +26,16 @@ const ariaSort = computed<'ascending' | 'descending' | 'none'>(() =>
     :aria-sort="ariaSort"
     :class="cx('px-3 py-2.5', align === 'right' ? 'text-right' : 'text-left')"
   >
-    <button
-      type="button"
-      :class="cx(
-        'inline-flex items-center gap-1 transition-colors duration-150 hover:text-stone-100',
-        active ? 'text-stone-100/60' : '',
-        align === 'right' ? 'flex-row-reverse' : '',
-      )"
+    <UiButton
+      variant="ghost"
+      size="sm"
+      :on="active"
+      :icon="align === 'right' ? icon : undefined"
+      :trailing-icon="align === 'right' ? undefined : icon"
       :title="`Sort by ${label}`"
       @click="emit('sort', sortKey)"
     >
       {{ label }}
-      <component :is="icon" :size="11" :stroke-width="ICON_STROKE_WIDTH" :class="active ? 'text-amber-400' : 'text-stone-100/50'" />
-    </button>
+    </UiButton>
   </th>
 </template>

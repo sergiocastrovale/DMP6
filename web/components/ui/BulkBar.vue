@@ -8,7 +8,6 @@
 //
 // `label` is optional on purpose: with none, the bar reads "3 selected", which is what every screen
 // wants. Pass one only when the noun genuinely disambiguates ("3 artists selected").
-import { button } from '~/helpers/ui'
 
 withDefaults(defineProps<{
   count: number
@@ -32,9 +31,9 @@ const emit = defineEmits<{ cancel: [] }>()
     </span>
     <div class="flex items-center gap-2">
       <slot />
-      <button type="button" :class="button('ghost', 'sm')" @click="emit('cancel')">
+      <UiButton variant="ghost" size="sm" @click="emit('cancel')">
         Cancel
-      </button>
+      </UiButton>
     </div>
   </div>
 </template>

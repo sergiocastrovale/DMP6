@@ -18,15 +18,15 @@ const playing = computed(() => (props.releaseId ? isReleasePlaying(props.release
 
 <template>
   <div class="flex items-center justify-end gap-1">
-    <button
+    <UiButton
       v-if="releaseId"
-      type="button"
-      :class="[iconButton, 'size-7']"
+      variant="ghost"
+      size="sm"
+      icon-only
+      :icon="playing ? Pause : Play"
       :aria-label="playing ? `Pause ${label ?? 'release'}` : `Play ${label ?? 'release'}`"
       @click.stop="toggleOrPlay(releaseId, artistSlug ?? undefined)"
-    >
-      <component :is="playing ? Pause : Play" :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-    </button>
+    />
 
     <NuxtLink
       v-if="artistSlug"

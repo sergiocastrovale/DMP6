@@ -228,74 +228,74 @@ const statusLabel = (it: DownloadedReleaseItem) => {
         </td>
         <td class="px-3 py-3" @click.stop>
           <div class="flex items-center justify-end gap-1">
-            <button
-              type="button"
-              class="rounded-full p-1.5 text-stone-100/25 transition-colors duration-150 hover:text-stone-100/60"
+            <UiButton
+              variant="ghost"
+              size="sm"
+              icon-only
+              :icon="Info"
               title="Info"
               aria-label="Info"
               @click="emit('info', it.id)"
-            >
-              <Info :size="14" />
-            </button>
-            <button
+            />
+            <UiButton
               v-if="showActions && showRetry"
-              type="button"
-              class="rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-amber-400 disabled:opacity-40 disabled:pointer-events-none"
+              variant="ghost"
+              size="sm"
+              icon-only
+              :icon="RotateCw"
+              :loading="busyId === it.id"
+              :disabled="busyId != null && busyId !== it.id"
               title="Force retry"
               aria-label="Force retry"
-              :disabled="busyId != null && busyId !== it.id"
               @click="emit('retry', it.id)"
-            >
-              <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
-              <RotateCw v-else :size="14" />
-            </button>
-            <button
+            />
+            <UiButton
               v-if="showMerge"
-              type="button"
-              class="rounded-full p-1.5 text-success transition-colors duration-150 hover:brightness-125 disabled:opacity-40 disabled:pointer-events-none"
+              variant="ghost"
+              size="sm"
+              icon-only
+              :icon="FolderInput"
+              :loading="busyIds.has(it.id)"
+              :disabled="busyIds.has(it.id)"
               title="Merge into library"
               aria-label="Merge"
-              :disabled="busyIds.has(it.id)"
               @click="emit('merge', it.id)"
-            >
-              <Loader2 v-if="busyIds.has(it.id)" :size="14" class="animate-spin" />
-              <FolderInput v-else :size="14" />
-            </button>
-            <button
+            />
+            <UiButton
               v-if="showCancel && (it.status === 'DOWNLOADING' || it.status === 'ENRICHING')"
-              type="button"
-              class="rounded-full p-1.5 text-danger transition-colors duration-150 hover:brightness-125 disabled:opacity-40 disabled:pointer-events-none"
+              variant="danger"
+              size="sm"
+              icon-only
+              :icon="X"
+              :loading="busyId === it.id"
+              :disabled="busyId != null && busyId !== it.id"
               title="Cancel download"
               aria-label="Cancel download"
-              :disabled="busyId != null && busyId !== it.id"
               @click="emit('cancel', it.id)"
-            >
-              <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
-              <X v-else :size="14" />
-            </button>
-            <button
+            />
+            <UiButton
               v-if="showRequeue"
-              type="button"
-              class="rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-amber-400 disabled:opacity-40 disabled:pointer-events-none"
+              variant="ghost"
+              size="sm"
+              icon-only
+              :icon="Undo2"
+              :loading="busyId === it.id"
+              :disabled="busyId != null && busyId !== it.id"
               title="Move back to queue"
               aria-label="Move back to queue"
-              :disabled="busyId != null && busyId !== it.id"
               @click="emit('requeue', it.id)"
-            >
-              <Loader2 v-if="busyId === it.id" :size="14" class="animate-spin" />
-              <Undo2 v-else :size="14" />
-            </button>
-            <button
+            />
+            <UiButton
               v-if="showActions"
-              type="button"
-              class="rounded-full p-1.5 text-danger transition-colors duration-150 hover:brightness-125 disabled:opacity-40 disabled:pointer-events-none"
+              variant="danger"
+              size="sm"
+              icon-only
+              :icon="X"
+              :disabled="busyId != null || it.status === 'DOWNLOADING'"
               title="Reject"
               aria-label="Reject"
-              :disabled="busyId != null || it.status === 'DOWNLOADING'"
               @click="emit('reject', it.id)"
-            >
-              <X :size="14" />
-            </button>
+            />
           </div>
         </td>
       </SlimTableRow>

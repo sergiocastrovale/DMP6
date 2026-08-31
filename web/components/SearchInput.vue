@@ -96,29 +96,26 @@ onUnmounted(() => {
         @focus="emit('focus', $event)"
         @blur="emit('blur', $event)"
       >
-      <button
+      <UiButton
         v-if="clearable && inputValue"
-        type="button"
+        variant="ghost"
+        size="sm"
+        icon-only
+        :icon="X"
         aria-label="Clear search"
-        class="shrink-0 text-stone-100/55 transition-colors duration-150 hover:text-stone-100"
         @click="clear"
-      >
-        <X :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-      </button>
+      />
     </div>
 
-    <button
+    <UiButton
       v-if="showSubmit"
-      type="button"
-      :class="cx(
-        'shrink-0 rounded-md border border-stone-100/10 bg-stone-800 px-3 text-sm text-stone-100/60 transition-colors duration-150 hover:bg-stone-700 hover:text-stone-100',
-        sizeClass,
-      )"
+      variant="secondary"
+      :size="size"
       :disabled="disabled"
       @click="emit('submit')"
     >
       Search
-    </button>
+    </UiButton>
 
     <slot name="results" />
   </div>

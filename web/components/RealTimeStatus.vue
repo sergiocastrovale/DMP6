@@ -140,14 +140,15 @@ onUnmounted(() => {
             </p>
           </div>
         </div>
-        <button
+        <UiButton
           v-if="terminal.isRunning"
-          class="flex items-center gap-1.5 rounded-md border border-danger/30 bg-danger/10 px-3 py-1.5 text-sm font-medium text-danger transition-colors duration-150 hover:bg-danger/20"
+          variant="danger"
+          size="sm"
+          :icon="Square"
           @click="terminal.stop()"
         >
-          <Square :size="12" />
           Stop
-        </button>
+        </UiButton>
       </div>
 
       <div v-if="terminal.isRunning && progress" class="mt-4 space-y-2">
@@ -195,25 +196,27 @@ onUnmounted(() => {
         </p>
       </div>
       <div class="flex items-center gap-2">
-        <button
+        <UiButton
           v-if="staleLock.sessionName"
+          variant="primary"
+          size="sm"
+          :icon="Play"
+          :loading="reconnecting"
           :disabled="reconnecting"
-          class="flex items-center gap-1.5 rounded-md bg-amber-400/20 border border-amber-400/40 px-3 py-1.5 text-sm font-medium text-amber-400 transition-colors duration-150 hover:bg-amber-400/30 disabled:opacity-50"
           @click="reconnectSession"
         >
-          <Loader2 v-if="reconnecting" :size="12" class="animate-spin" />
-          <Play v-else :size="12" />
           Reconnect
-        </button>
-        <button
+        </UiButton>
+        <UiButton
+          variant="quiet"
+          size="sm"
+          :icon="LockOpen"
+          :loading="unlocking"
           :disabled="unlocking"
-          class="flex items-center gap-1.5 rounded-md border border-stone-100/10 px-3 py-1.5 text-sm font-medium text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 disabled:opacity-50"
           @click="forceUnlock"
         >
-          <Loader2 v-if="unlocking" :size="12" class="animate-spin" />
-          <LockOpen v-else :size="12" />
           Force Unlock
-        </button>
+        </UiButton>
       </div>
     </div>
 

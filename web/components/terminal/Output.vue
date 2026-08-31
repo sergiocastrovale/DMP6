@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { Copy, LockOpen, Square, X } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
-import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 function copySession(session: string) {
   navigator.clipboard.writeText(`tmux attach-session -t ${session}`)
@@ -44,23 +43,24 @@ watch(() => terminal.lines.length, () => {
           >
             Exit: {{ terminal.exitCode }}
           </span>
-          <button
+          <UiButton
             v-if="terminal.isRunning"
-            type="button"
+            variant="ghost"
+            size="sm"
+            icon-only
+            :icon="Square"
             title="Stop process"
-            class="rounded-md p-1 text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-danger"
+            class="hover:text-danger"
             @click="terminal.stop()"
-          >
-            <Square :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-          </button>
-          <button
-            type="button"
+          />
+          <UiButton
+            variant="ghost"
+            size="md"
+            icon-only
+            :icon="X"
             aria-label="Close terminal"
-            class="rounded-md p-1 text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100"
             @click="terminal.close()"
-          >
-            <X :size="16" :stroke-width="ICON_STROKE_WIDTH" />
-          </button>
+          />
         </div>
       </div>
 
@@ -71,15 +71,15 @@ watch(() => terminal.lines.length, () => {
         <span class="font-mono text-xs text-stone-100/55">
           tmux attach-session -t {{ terminal.currentSession ?? '...' }}
         </span>
-        <button
+        <UiButton
           v-if="terminal.currentSession"
-          type="button"
+          variant="ghost"
+          size="sm"
+          icon-only
+          :icon="Copy"
           title="Copy"
-          class="rounded-sm p-0.5 text-stone-100/50 transition-colors duration-150 hover:text-stone-100/60"
           @click="copySession(terminal.currentSession!)"
-        >
-          <Copy :size="12" :stroke-width="ICON_STROKE_WIDTH" />
-        </button>
+        />
       </div>
 
       <div v-if="!terminal.isRunning" class="px-4 pt-3">
@@ -92,15 +92,16 @@ watch(() => terminal.lines.length, () => {
       >
         <div v-for="(line, i) in terminal.lines" :key="i" class="whitespace-pre-wrap break-all">{{ typeof line === 'string' && line.startsWith('\r') ? line.slice(1) : line }}</div>
         <span v-if="terminal.isRunning" class="mt-1 inline-block h-3.5 w-1.5 animate-pulse bg-amber-400" />
-        <button
+        <UiButton
           v-if="terminal.hasLockError"
-          type="button"
-          class="mt-3 inline-flex items-center gap-1.5 rounded-md bg-danger/15 px-3 py-1.5 text-xs font-medium text-danger hover:bg-danger/25"
+          variant="danger"
+          size="sm"
+          :icon="LockOpen"
+          class="mt-3"
           @click="terminal.unlock()"
         >
-          <LockOpen :size="12" :stroke-width="ICON_STROKE_WIDTH" />
           Force unlock
-        </button>
+        </UiButton>
       </div>
     </div>
   </Transition>

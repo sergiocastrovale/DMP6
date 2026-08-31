@@ -65,15 +65,15 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
       :class="hasPlayable && 'cursor-pointer'"
       @click="hasPlayable && emit('toggle')"
     >
-      <button
+      <UiButton
         v-if="hasPlayable"
-        type="button"
-        class="flex size-5 shrink-0 items-center justify-center self-center text-stone-100/60"
+        variant="ghost"
+        size="sm"
+        icon-only
+        :icon="expanded ? ChevronDown : ChevronRight"
+        class="self-center"
         @click.stop="emit('toggle')"
-      >
-        <ChevronDown v-if="expanded" :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-        <ChevronRight v-else :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-      </button>
+      />
       <div v-else class="size-5 self-center" />
 
       <div
@@ -154,15 +154,15 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
           <Loader2 :size="12" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" /> Downloading
         </span>
 
-        <button
+        <UiButton
           v-if="isDownloading || isEnriching"
-          type="button"
-          class="rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-danger cursor-pointer"
+          variant="danger"
+          size="sm"
+          icon-only
+          :icon="X"
           title="Cancel download and delete its files"
           @click.stop="emit('cancel')"
-        >
-          <X :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-        </button>
+        />
 
         <button
           v-else-if="isAwaitingMerge"
@@ -174,16 +174,15 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
           <GitMerge :size="12" :stroke-width="ICON_STROKE_WIDTH" /> Awaiting merge
         </button>
 
-        <button
+        <UiButton
           v-else-if="release.status === 'MISSING' && downloadsStore.sourceEnabled"
-          type="button"
-          class="rounded-full p-1.5 transition-colors duration-150 hover:text-amber-400 cursor-pointer"
-          :class="downloadFailed ? 'text-danger' : isAbandoned ? 'text-stone-100/50' : 'text-stone-100/55'"
+          :variant="downloadFailed ? 'danger' : 'ghost'"
+          size="sm"
+          icon-only
+          :icon="Download"
           :title="isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
           @click.stop="emit('download')"
-        >
-          <Download :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-        </button>
+        />
 
         <button
           v-if="release.localReleaseId"
@@ -207,25 +206,25 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
           <Link :size="14" :stroke-width="ICON_STROKE_WIDTH" />
         </a>
 
-        <button
+        <UiButton
           v-if="release.localReleaseId"
-          type="button"
-          :class="actionIconClass"
+          variant="ghost"
+          size="sm"
+          icon-only
+          :icon="RefreshCw"
           title="Refresh this release"
           :disabled="terminal.isRunning"
           @click.stop="emit('refresh')"
-        >
-          <RefreshCw :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-        </button>
+        />
 
-        <button
-          type="button"
-          :class="actionIconClass"
+        <UiButton
+          variant="ghost"
+          size="sm"
+          icon-only
+          :icon="Info"
           title="Release info"
           @click.stop="emit('info')"
-        >
-          <Info :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-        </button>
+        />
       </div>
     </div>
 

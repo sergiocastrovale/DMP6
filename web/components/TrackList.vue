@@ -247,13 +247,14 @@ const formatFileSize = (bytes: number) => {
             >
               <Link :size="14" />
             </a>
-            <button
-              class="rounded-full p-1.5 text-stone-100/55 transition-colors hover:text-amber-400 cursor-pointer"
+            <UiButton
+              variant="ghost"
+              size="sm"
+              icon-only
+              :icon="Info"
               title="Track info"
               @click.stop="openInfoDialog(track)"
-            >
-              <Info :size="14" />
-            </button>
+            />
           </div>
         </td>
       </SlimTableRow>

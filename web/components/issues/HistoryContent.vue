@@ -269,19 +269,19 @@ async function undoSelected() {
       >
         <span class="tabular-nums">{{ issuesStore.historyTotal[activeTab] }} total</span>
         <div class="flex items-center gap-2">
-          <button
-            type="button"
+          <UiButton
+            variant="ghost"
+            size="sm"
             :disabled="(issuesStore.historyPage[activeTab] ?? 1) <= 1"
-            class="rounded-md px-2 py-1 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100 disabled:opacity-40"
             @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) - 1)"
-          >Prev</button>
+          >Prev</UiButton>
           <span class="tabular-nums">{{ issuesStore.historyPage[activeTab] ?? 1 }} / {{ Math.ceil((issuesStore.historyTotal[activeTab] ?? 0) / 50) }}</span>
-          <button
-            type="button"
+          <UiButton
+            variant="ghost"
+            size="sm"
             :disabled="(issuesStore.historyPage[activeTab] ?? 1) >= Math.ceil((issuesStore.historyTotal[activeTab] ?? 0) / 50)"
-            class="rounded-md px-2 py-1 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100 disabled:opacity-40"
             @click="issuesStore.setHistoryPage(activeTab, (issuesStore.historyPage[activeTab] ?? 1) + 1)"
-          >Next</button>
+          >Next</UiButton>
         </div>
       </div>
     </div>

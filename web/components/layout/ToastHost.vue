@@ -28,14 +28,15 @@ const toneFor = (kind: ToastKind) =>
       >
         <component :is="iconFor(t.kind)" :size="16" :stroke-width="ICON_STROKE_WIDTH" :class="['mt-0.5 shrink-0', toneFor(t.kind)]" />
         <p class="flex-1 text-sm text-stone-100/60 break-words">{{ t.message }}</p>
-        <button
-          type="button"
+        <UiButton
+          variant="ghost"
+          size="sm"
+          icon-only
+          :icon="X"
           aria-label="Dismiss"
-          class="shrink-0 text-stone-100/55 transition-colors duration-150 hover:text-stone-100"
+          class="shrink-0"
           @click="toast.dismiss(t.id)"
-        >
-          <X :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-        </button>
+        />
       </div>
     </TransitionGroup>
   </div>

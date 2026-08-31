@@ -124,23 +124,34 @@ defineExpose({ fetchEvents })
         >
           <List :size="14" />
         </NuxtLink>
-        <button
+        <UiButton
           v-if="canEdit"
-          type="button"
+          variant="ghost"
+          size="sm"
+          icon-only
+          :icon="Archive"
           aria-label="Clear issues"
           title="Move these issues to Archived"
-          class="rounded-md p-1 text-stone-100/50 transition-colors duration-150 hover:text-stone-100/60 disabled:opacity-40"
           :disabled="clearing"
           @click="clearShown"
-        >
-          <Archive :size="14" />
-        </button>
-        <button type="button" aria-label="Refresh issues" class="rounded-md p-1 text-stone-100/50 transition-colors duration-150 hover:text-stone-100/60" @click="fetchEvents">
-          <RefreshCw :size="14" :class="spinning ? 'animate-spin' : ''" />
-        </button>
-        <button type="button" :aria-label="open ? 'Collapse' : 'Expand'" class="rounded-md p-1 text-stone-100/50 transition-colors duration-150 hover:text-stone-100/60" @click="open = !open">
-          <component :is="open ? ChevronUp : ChevronDown" :size="16" />
-        </button>
+        />
+        <UiButton
+          variant="ghost"
+          size="sm"
+          icon-only
+          :icon="RefreshCw"
+          :icon-class="spinning ? 'animate-spin' : ''"
+          aria-label="Refresh issues"
+          @click="fetchEvents"
+        />
+        <UiButton
+          variant="ghost"
+          size="sm"
+          icon-only
+          :icon="open ? ChevronUp : ChevronDown"
+          :aria-label="open ? 'Collapse' : 'Expand'"
+          @click="open = !open"
+        />
       </div>
     </div>
     <ul v-if="open" class="divide-y divide-stone-100/6 border-t border-stone-100/6">

@@ -106,16 +106,16 @@ onMounted(fetchStatus)
           <p class="text-xs text-stone-100/60">
             Lock held by <span class="text-stone-100/60">{{ staleLock.lockedBy }}</span> (pid {{ staleLock.pid }})
           </p>
-          <button
-            type="button"
+          <UiButton
+            variant="quiet"
+            size="sm"
+            :icon="LockOpen"
+            :loading="unlocking"
             :disabled="unlocking"
-            class="flex items-center gap-1.5 rounded-md border border-stone-100/10 px-3 py-1.5 text-xs font-medium text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 disabled:opacity-50"
             @click="forceUnlock"
           >
-            <Loader2 v-if="unlocking" :size="12" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
-            <LockOpen v-else :size="12" :stroke-width="ICON_STROKE_WIDTH" />
             Force Unlock
-          </button>
+          </UiButton>
         </div>
       </div>
     </div>

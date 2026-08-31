@@ -161,24 +161,24 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
           </td>
           <td v-if="canEdit && sub === 'archived'" class="px-3 py-3 text-right" @click.stop>
             <div class="flex items-center justify-end gap-1">
-              <button
-                type="button"
-                class="rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-amber-400"
+              <UiButton
+                variant="ghost"
+                size="sm"
+                icon-only
+                :icon="Undo2"
                 title="Move back to flagged"
                 aria-label="Move back to flagged"
                 @click="restoreOne(ev.id)"
-              >
-                <Undo2 :size="14" />
-              </button>
-              <button
-                type="button"
-                class="rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-danger"
+              />
+              <UiButton
+                variant="danger"
+                size="sm"
+                icon-only
+                :icon="Trash2"
                 title="Delete permanently"
                 aria-label="Delete permanently"
                 @click="confirmDeleteId = ev.id"
-              >
-                <Trash2 :size="14" />
-              </button>
+              />
             </div>
           </td>
         </tr>
