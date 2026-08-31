@@ -69,6 +69,22 @@ test.beforeAll(async () => {
     }
   }
 
+  // Monitor events, so the Downloads → Events tab shows a populated table rather than an empty state.
+  const MESSAGES = [
+    ['error', 'transcode: rename failed Track.mp3: Command failed: ffprobe -v quiet -show_entries format_tags=track,title,disc,date /tmp/dmp-slskd-test/Test Artist/2020 - Test Album/Track.mp3'],
+    ['error', 'transcode: rename failed Track.mp3: Command failed: ffprobe -v quiet -show_entries format_tags=track,title,disc,date /tmp/dmp-slskd-test/Test Artist/2021 - Test Album/Track.mp3'],
+    ['warn', 'slskd: no source found for "Boards of Canada — Geogaddi" after 3 attempts'],
+    ['warn', 'promote: skipped merge, folder already present on disk'],
+    ['warn', 'lastfm: scrobble rejected (timestamp too old)'],
+  ] as const
+  for (const [level, message] of MESSAGES) {
+    await prisma.monitorEvent.create({ data: { level, message } })
+  }
+  // A couple already dismissed, so the Archived subtab is not empty either.
+  for (const message of ['autoScan: skipped, scan already running', 'qbittorrent: unreachable, retrying']) {
+    await prisma.monitorEvent.create({ data: { level: 'warn', message, archivedAt: new Date() } })
+  }
+
   await prisma.statistics.upsert({
     where: { id: 'main' },
     create: { id: 'main', mainArtists: NAMES.length },
@@ -99,6 +115,7 @@ const ROUTES: [string, string][] = [
   ['08-settings', '/settings/library'],
   ['09-issues', '/issues'],
   ['10-downloads', '/downloads/monitoring'],
+  ['10-downloads_events', '/downloads/events'],
   ['11-labs', '/labs'],
   ['11-labs_decades', '/labs/decades'],
 ]
@@ -118,6 +135,14 @@ test('shot 01-browse_list', async ({ page }) => {
   await page.getByTitle('List view').click().catch(() => {})
   await page.waitForTimeout(1500)
   await page.screenshot({ path: `${OUT!}/01-browse_list.png` })
+})
+
+test('shot 10-downloads_events_archived', async ({ page }) => {
+  await page.goto('/downloads/events')
+  await page.waitForLoadState('networkidle').catch(() => {})
+  await page.getByRole('tab', { name: /Archived/ }).click()
+  await page.waitForTimeout(1200)
+  await page.screenshot({ path: `${OUT!}/10-downloads_events_archived.png` })
 })
 
 test('shot 02-artist', async ({ page }) => {

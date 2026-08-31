@@ -795,11 +795,18 @@ model RolePermission {
 
 // Capped log of background monitor-loop issues (warn/error), persisted so any instance's UI can show
 // them (the loop runs on one primary instance, the DB is shared). Pruned by age in the base tick.
+//
+// `archivedAt` is "dismissed from the flagged list", not "kept forever": the age-based prune in
+// server/plugins/monitor.ts still removes archived rows once they pass the retention window, which is
+// what keeps this table bounded. A nullable timestamp rather than a boolean because it records *when*
+// something was cleared, and `archivedAt: null` is the natural "still flagged" filter.
 model MonitorEvent {
-  id        String   @id @default(cuid())
-  level     String
-  message   String
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  level      String
+  message    String
+  createdAt  DateTime  @default(now())
+  archivedAt DateTime?
 
   @@index([createdAt])
+  @@index([archivedAt, createdAt])
 }

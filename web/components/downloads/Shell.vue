@@ -11,6 +11,11 @@ const { queueActive, readyCount, queueRejected, paused, pausedReason, freeGb, mi
 const actionMsg = ref<string | null>(null)
 const issuesPanel = ref<{ fetchEvents: () => Promise<void> } | null>(null)
 
+// Shared with the panel below and the Events tab, so the tab badge drops the moment either archives
+// something rather than waiting for a reload.
+const { counts: monitorCounts, refreshCounts } = useMonitorEvents()
+onMounted(refreshCounts)
+
 watch(mergeActive, (active, was) => {
   if (was && !active) {
     issuesPanel.value?.fetchEvents()
@@ -49,6 +54,7 @@ const breadcrumbLabels: Record<string, string> = {
   unavailable: 'Unavailable',
   rejected: 'Rejected',
   history: 'History',
+  events: 'Events',
 }
 
 const tabs = computed<TabItem[]>(() => [
@@ -59,6 +65,7 @@ const tabs = computed<TabItem[]>(() => [
   { key: 'unavailable', label: 'Unavailable', href: '/downloads/unavailable', count: unavailable.value.length, countHighlight: true },
   { key: 'rejected', label: 'Rejected', href: '/downloads/rejected', count: queueRejected.value.length, countHighlight: true },
   { key: 'history', label: 'History', href: '/downloads/history' },
+  { key: 'events', label: 'Events', href: '/downloads/events', count: monitorCounts.value.flagged, countHighlight: true },
 ])
 
 const cleanupBusy = ref(false)
