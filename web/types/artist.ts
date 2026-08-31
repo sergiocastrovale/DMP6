@@ -6,6 +6,8 @@ export interface ArtistListItem extends ArtistSummary {
   averageMatchScore: number | null
   totalPlayCount: number
   totalTracks: number
+  releaseCount?: number
+  completeCount?: number
 }
 
 export interface Artist extends ArtistListItem {

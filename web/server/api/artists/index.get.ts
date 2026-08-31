@@ -2,6 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
 import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
+import { mergeReleaseStats, sortArtistsInMemory } from '~/server/utils/artistReleaseStats'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=120, stale-while-revalidate=60')
@@ -53,6 +54,14 @@ export default defineEventHandler(async (event) => {
       case 'recent':
         orderBy.createdAt = 'desc'
         break
+      case 'tracks':
+        orderBy.totalTracks = 'desc'
+        break
+      case 'releases':
+      case 'completeness':
+        // No DB column to order by - stays at default order, JS-sorted after the release-stats merge.
+        orderBy.slug = 'asc'
+        break
       default:
         orderBy.slug = 'asc'
     }
@@ -81,10 +90,18 @@ export default defineEventHandler(async (event) => {
       }),
     ])
 
-    const verifiedItems = items.map(a => ({
-      ...a,
-      ...verifyImage(a.image, a.imageUrl, 'artists'),
-    }))
+    const releaseLinks = await prisma.localReleaseArtist.findMany({
+      where: { artistId: { in: items.map(a => a.id) } },
+      select: { artistId: true, localRelease: { select: { id: true, matchStatus: true } } },
+    })
+
+    const verifiedItems = sortArtistsInMemory(
+      mergeReleaseStats(items, releaseLinks).map(a => ({
+        ...a,
+        ...verifyImage(a.image, a.imageUrl, 'artists'),
+      })),
+      sort,
+    )
 
     return {
       items: verifiedItems,
