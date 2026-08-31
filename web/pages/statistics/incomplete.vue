@@ -19,5 +19,8 @@ const columns: DataTableColumn[] = [
     <template #cell-matchStatus="{ value }">
       <ReleaseStatusBadge :status="value as any" />
     </template>
+    <template #actions="{ row }">
+      <StatisticsRowActions :release-id="row.id" :artist-slug="row.artistSlug" :label="row.title" />
+    </template>
   </StatisticsStatPage>
 </template>

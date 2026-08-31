@@ -20,5 +20,8 @@ const columns: DataTableColumn[] = [
     <template #cell-totalDuration="{ value }">
       {{ formatDuration(value as number) }}
     </template>
+    <template #actions="{ row }">
+      <StatisticsRowActions :release-id="row.id" :artist-slug="row.artistSlug" :label="row.title" />
+    </template>
   </StatisticsStatPage>
 </template>

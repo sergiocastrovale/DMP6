@@ -21,8 +21,11 @@ const emit = defineEmits<{
 }>()
 
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
+const { artistImage } = useImageUrl()
 
 const showAllGenres = ref(false)
+
+const image = computed(() => artistImage(props.artist))
 
 const statsLine = computed(() => {
   const v = catalogue.visibleCounts.value
@@ -44,8 +47,20 @@ const statsLine = computed(() => {
 
 <template>
   <div class="relative rounded-xl">
-    <div class="relative flex flex-col gap-6 px-6 py-8">
-      <div class="flex flex-col gap-3">
+    <div class="relative flex flex-col gap-6 px-6 py-8 sm:flex-row sm:items-start sm:gap-6">
+      <div class="size-28 shrink-0 overflow-hidden rounded-xl border border-stone-100/6 bg-stone-800 sm:size-36">
+        <img
+          v-if="image"
+          :src="image"
+          :alt="artist.name"
+          class="size-full object-cover"
+        >
+        <div v-else class="flex size-full items-center justify-center font-display text-4xl font-bold text-stone-100/20">
+          {{ artist.name.charAt(0).toUpperCase() }}
+        </div>
+      </div>
+
+      <div class="flex min-w-0 flex-1 flex-col gap-3">
         <h1 :class="typography.h1">
           {{ artist.name }}
         </h1>
@@ -62,7 +77,9 @@ const statsLine = computed(() => {
           <UiButton :icon="Play" icon-class="fill-current" :disabled="playDisabled" @click="emit('playAll')">
             Play all
           </UiButton>
-          <UiButton :icon="Shuffle" :disabled="shuffleDisabled" @click="emit('shuffleAll')">
+          <!-- One primary action per view (handoff/RULES.md): Play all is it, Shuffle is the
+               alternative route into the same queue. -->
+          <UiButton variant="secondary" :icon="Shuffle" :disabled="shuffleDisabled" @click="emit('shuffleAll')">
             Shuffle
           </UiButton>
         </div>

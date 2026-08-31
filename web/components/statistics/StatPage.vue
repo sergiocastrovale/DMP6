@@ -16,9 +16,15 @@ const props = withDefaults(defineProps<{
   defaultOrder: 'asc',
 })
 
-const slots = defineSlots<{ [key: `cell-${string}`]: (props: { row: Record<string, any>, value: unknown }) => any }>()
+const slots = defineSlots<{
+  [key: `cell-${string}`]: (props: { row: Record<string, any>, value: unknown }) => any
+  actions?: (props: { row: Record<string, any> }) => any
+}>()
 
-const cellSlotNames = computed(() => Object.keys(slots) as Array<`cell-${string}`>)
+// Only the cell-* slots are forwarded by name; `actions` is forwarded explicitly below, and
+// including it here would make DataTable render an empty Actions column on every stat page.
+const cellSlotNames = computed(() => Object.keys(slots).filter(name => name.startsWith('cell-')) as Array<`cell-${string}`>)
+const hasActions = computed(() => !!slots.actions)
 
 const items = ref<Record<string, any>[]>([])
 const total = ref(0)
@@ -120,6 +126,10 @@ onMounted(() => {
     >
       <template v-for="slotName in cellSlotNames" :key="slotName" #[slotName]="slotProps">
         <slot :name="slotName" v-bind="slotProps" />
+      </template>
+
+      <template v-if="hasActions" #actions="slotProps">
+        <slot name="actions" v-bind="slotProps" />
       </template>
     </DataTable>
 

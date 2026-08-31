@@ -777,17 +777,44 @@ This closes the UI overhaul: every page now sits on the single token/recipe laye
 above, with one status map, one table primitive family, one bulk-action-bar shell, and a
 documented state/accessibility contract applied to every interactive component.
 
-## Adding to the system
+## Screenshot-fidelity pass (Stage 16)
 
-## Adding to the system
+Stages 0-15 moved every screen onto the tokens and recipes, but were driven by the token layer
+rather than by `handoff/screenshots/`. A full 34-screenshot comparison against the implementation
+found the system itself sound — `assets/css/theme.css` is token-for-token identical to
+`handoff/theme.css`, `helpers/ui.ts` is a faithful port of `handoff/ui.js`, and both Inter Tight and
+Courier Prime are actually loaded — with the divergence concentrated in screen structure.
 
-## Adding to the system
+What changed, and the rules that came out of it:
 
-## Adding to the system
-
-## Adding to the system
-
-## Adding to the system
+- **Two recipes were missing from the port**: `typography.eyebrow` (wide-tracked monospace caption
+  that sits *above* a value, as opposed to `sectionLabel` for card headers and `meta` for numerals
+  inside a row) and `outlinePill` (shape only — border plus tinted fill; pair it with a `toneBg`
+  entry or a `scoreRanges` pair so the two never fight over the same property).
+- **`SlimTable` gained `min-w-max`.** `overflow-x-auto` on the card did nothing while the table was
+  only `w-full`: it can never exceed its container, so the scroll axis never engaged and wide column
+  sets silently compressed. Both halves are load-bearing (`handoff/RULES.md`); clip only the axis
+  that cannot overflow.
+- **One bulk bar.** `ui/BulkBar.vue` was fixed to the bottom of the viewport while `DataTable.vue`
+  had grown a second, in-flow copy. The in-flow one won — it sits directly above the table it acts
+  on — and the bar owns its own Cancel, which is how the four wrappers had drifted apart.
+- **One slider.** `Slider.vue`'s `leftLabel`/`rightLabel`/`stops` are optional, so Labs' thresholds
+  use it instead of native `<input type="range">`. With no stops the pill shows the raw value.
+- **A third sanctioned `@utility`**: `explore-card-texture`, beside `player-bar-texture` and
+  `genre-border`. Explore's now-playing card is a full-size transport and gets the transport's
+  treatment; two sub-5% background layers cannot stack as Tailwind utilities without an extra
+  wrapper element.
+- **Chrome has three shapes, not two.** `useChrome()` was all-or-nothing (full shell, or Explore's
+  cinema mode). `rail()` adds the Labs shape: the shell, with the sidenav narrowed to an icon rail
+  and no search topbar. The rail is a flag in `useSidebar` rather than a write to the user's own
+  `collapsed` ref — `useSidebar()` re-runs its width watcher on every call, so anything written from
+  outside is clobbered by the next call site that invokes the composable.
+- **Where a screen and a primitive disagree, the screen wins.** `ApprovalQueue`'s DOWNLOADING tone
+  stays `accent` against `handoff/vue/DmpStatusLabel.vue`'s generic `info`, because
+  `10-downloads.png` shows amber text above an amber bar and the alternative reintroduces the
+  text/bar contradiction already documented there.
+- **Numerals belong to `typography.meta`.** The recipe existed from Stage 0 but was barely adopted;
+  every reference screen sets counts, dates, IDs and durations in it.
 
 ## Adding to the system
 

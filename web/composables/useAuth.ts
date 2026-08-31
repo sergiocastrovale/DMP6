@@ -20,10 +20,10 @@ export const useAuth = () => {
     }
   }
 
-  const login = async (username: string, password: string) => {
+  const login = async (username: string, password: string, rememberMe = true) => {
     const res = await $fetch<{ ok: boolean; mustChangePassword: boolean }>('/api/auth/login', {
       method: 'POST',
-      body: { username, password },
+      body: { username, password, rememberMe },
     })
     await loadMe()
     if (res.mustChangePassword) {

@@ -15,5 +15,8 @@ const columns: DataTableColumn[] = [
     <template #cell-title="{ row }">
       <StatisticsLinkedTitle :title="row.title" :artist-slug="row.artistSlug" />
     </template>
+    <template #actions="{ row }">
+      <StatisticsRowActions :release-id="row.id" :artist-slug="row.artistSlug" :label="row.title" />
+    </template>
   </StatisticsStatPage>
 </template>

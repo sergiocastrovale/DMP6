@@ -41,7 +41,7 @@ const {
           >
             <template v-if="canCrud" #overlay>
               <button
-                class="absolute right-2 top-2 z-10 rounded-full bg-stone-900/90 p-1.5 text-amber-400 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                class="absolute right-2 top-2 z-10 rounded-full bg-stone-900/90 p-1.5 text-amber-400 transition-colors duration-150 hover:text-amber-300"
                 :aria-label="`Remove ${fav.release.title} from favorites`"
                 @click.stop="unfavoriteRelease(fav.release.id)"
               >
@@ -66,7 +66,7 @@ const {
       >
         <template v-if="canCrud" #action="{ row }">
           <button
-            class="rounded-full p-1.5 text-amber-400 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+            class="rounded-full p-1.5 text-amber-400 transition-colors duration-150 hover:text-amber-300"
             :aria-label="`Remove ${row.track.title} from favorites`"
             @click.stop="unfavoriteTrack(row.track.id)"
           >

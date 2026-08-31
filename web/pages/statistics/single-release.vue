@@ -28,5 +28,8 @@ const columns: DataTableColumn[] = [
     <template #cell-totalSize="{ value }">
       {{ formatFileSize((value as number) ?? 0) }}
     </template>
+    <template #actions="{ row }">
+      <StatisticsRowActions :artist-slug="row.slug" :label="row.name" />
+    </template>
   </StatisticsStatPage>
 </template>

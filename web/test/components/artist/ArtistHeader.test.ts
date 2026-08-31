@@ -47,6 +47,24 @@ describe('artist/ArtistHeader.vue', () => {
     expect(wrapper.emitted('playAll')).toHaveLength(1)
   })
 
+  it('shows the artist image, falling back to an initial when there is none', async () => {
+    // `imageUrl` only resolves when S3 storage is on; the local path comes from `image`.
+    const withArt = await mountHeader({ artist: { ...artist, image: 'boards.jpg' } } as any)
+    expect(withArt.get('img').attributes('src')).toBe('/img/artists/boards.jpg')
+
+    const withoutArt = await mountHeader()
+    expect(withoutArt.find('img').exists()).toBe(false)
+    expect(withoutArt.text()).toContain('B') // Boards of Canada
+  })
+
+  it('keeps one primary action: Play all is filled, Shuffle is secondary', async () => {
+    const wrapper = await mountHeader()
+    const classesOf = (label: string) =>
+      wrapper.findAll('button').find(b => b.text().includes(label))!.classes().join(' ')
+    expect(classesOf('Play all')).toContain('bg-amber-400')
+    expect(classesOf('Shuffle')).not.toContain('bg-amber-400')
+  })
+
   it('disables the Shuffle button when shuffleDisabled is true', async () => {
     const wrapper = await mountHeader({ shuffleDisabled: true })
     const buttons = wrapper.findAll('button')

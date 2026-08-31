@@ -9,7 +9,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
-import { button, cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { button, cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
 
 const player = usePlayerStore()
 const { resolve } = useImageUrl()
@@ -99,13 +99,13 @@ async function onPlaylistCreated() {
 <template>
   <div
     v-if="player.isVisible"
-    class="player-bar-texture flex w-full flex-col border-t border-stone-100/6 pt-3 pb-2"
+    class="player-bar-texture flex w-full flex-col border-t border-stone-100/6"
   >
-    <div class="flex h-20 items-center px-4">
+    <div class="flex h-[84px] items-center px-4">
       <div class="flex min-w-0 flex-1 items-center gap-3 md:flex-none md:w-1/3">
         <NuxtLink
           :to="player.currentTrack?.artistSlug ? `/artist/${player.currentTrack.artistSlug}` : '#'"
-          class="size-16 shrink-0 rounded-md bg-stone-800 bg-cover bg-center transition-opacity duration-150 hover:opacity-80"
+          class="size-12 shrink-0 rounded-md bg-stone-800 bg-cover bg-center transition-opacity duration-150 hover:opacity-80"
           :style="albumCover ? { backgroundImage: `url(${albumCover})` } : {}"
         />
         <div class="min-w-0 flex-1">
@@ -116,32 +116,36 @@ async function onPlaylistCreated() {
           <NuxtLink
             v-if="player.currentTrack?.artistSlug"
             :to="`/artist/${player.currentTrack.artistSlug}`"
-            class="block truncate text-2xs text-stone-100/60 hover:text-stone-100 transition-colors duration-150"
+            :class="cx(typography.meta, 'block truncate hover:text-stone-100 transition-colors duration-150')"
           >
             {{ player.currentTrack?.artist }}{{ player.currentTrack?.album ? ` · ${player.currentTrack.album}` : '' }}
           </NuxtLink>
-          <span v-else class="block truncate text-2xs text-stone-100/60">
+          <span v-else :class="cx(typography.meta, 'block truncate')">
             {{ player.currentTrack?.artist }}{{ player.currentTrack?.album ? ` · ${player.currentTrack.album}` : '' }}
           </span>
         </div>
       </div>
 
-      <div class="flex flex-1 flex-col items-center justify-center gap-1.5">
-        <span class="rounded-full bg-amber-400 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-accent">
-          {{ contextLabel }}
-        </span>
-
+      <div class="flex flex-1 flex-col items-center justify-center">
         <div class="flex items-center gap-4">
-          <button
-            type="button"
-            :class="button('secondary', 'md', '', player.shuffleMode !== 'off', true)"
-            :title="SHUFFLE_TOOLTIPS[player.shuffleMode]"
-            :aria-label="SHUFFLE_TOOLTIPS[player.shuffleMode]"
-            @click="player.cycleShuffleMode()"
-          >
-            <Compass v-if="player.shuffleMode === 'explorer'" :size="16" :stroke-width="ICON_STROKE_WIDTH" />
-            <Shuffle v-else :size="16" :stroke-width="ICON_STROKE_WIDTH" />
-          </button>
+          <!-- The badge sits over the shuffle button rather than centred over the whole transport:
+               it names what that button is currently cycling through, and centred it read as a
+               label for the play button instead. -->
+          <div class="relative">
+            <span class="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-amber-400 px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-on-accent">
+              {{ contextLabel }}
+            </span>
+            <button
+              type="button"
+              :class="button('secondary', 'md', '', player.shuffleMode !== 'off', true)"
+              :title="SHUFFLE_TOOLTIPS[player.shuffleMode]"
+              :aria-label="SHUFFLE_TOOLTIPS[player.shuffleMode]"
+              @click="player.cycleShuffleMode()"
+            >
+              <Compass v-if="player.shuffleMode === 'explorer'" :size="16" :stroke-width="ICON_STROKE_WIDTH" />
+              <Shuffle v-else :size="16" :stroke-width="ICON_STROKE_WIDTH" />
+            </button>
+          </div>
 
           <button
             type="button"

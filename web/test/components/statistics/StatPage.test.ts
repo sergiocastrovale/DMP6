@@ -44,6 +44,27 @@ describe('statistics/StatPage.vue', () => {
     expect(link.text()).toBe('OK Computer')
   })
 
+  it('forwards an actions slot, giving the table its Actions column', async () => {
+    const wrapper = await mountSuspended(StatPage, {
+      props: { title: 'Releases', apiType: 'releases', label: 'releases', columns: COLUMNS },
+      slots: {
+        actions: `<template #actions="{ row }"><button class="row-action">{{ row.id }}</button></template>`,
+      },
+    })
+    await flushPromises()
+    expect(wrapper.get('.row-action').text()).toBe('r1')
+    expect(wrapper.findAll('th').some(th => th.text() === 'Actions')).toBe(true)
+  })
+
+  it('renders no Actions column when no actions slot is given', async () => {
+    // Forwarding the slot unconditionally would put an empty Actions column on every stat page.
+    const wrapper = await mountSuspended(StatPage, {
+      props: { title: 'Releases', apiType: 'releases', label: 'releases', columns: COLUMNS },
+    })
+    await flushPromises()
+    expect(wrapper.findAll('th').some(th => th.text() === 'Actions')).toBe(false)
+  })
+
   it('re-fetches from page 1 with the search term on search', async () => {
     const wrapper = await mountSuspended(StatPage, {
       props: { title: 'Releases', apiType: 'releases', label: 'releases', columns: COLUMNS },

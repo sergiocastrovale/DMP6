@@ -5,6 +5,7 @@ definePageMeta({ layout: 'auth' })
 
 const username = ref('')
 const password = ref('')
+const rememberMe = ref(true)
 const error = ref('')
 const loading = ref(false)
 
@@ -17,7 +18,7 @@ const handleSubmit = async () => {
   error.value = ''
   loading.value = true
   try {
-    await login(username.value, password.value)
+    await login(username.value, password.value, rememberMe.value)
   }
   catch {
     error.value = 'Invalid credentials'
@@ -53,6 +54,8 @@ const handleSubmit = async () => {
           autocomplete="current-password"
           :error="error"
         />
+
+        <UiCheckbox v-model="rememberMe" label="Keep me signed in" />
 
         <UiButton type="submit" block :loading="loading" :disabled="!canSubmit">
           Sign in

@@ -78,6 +78,28 @@ describe('useAuth', () => {
     expect(navigateToMock).toHaveBeenCalledWith('/')
   })
 
+  it('login defaults rememberMe to true so an existing session lifetime is unchanged', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/auth/login') {return Promise.resolve({ ok: true, mustChangePassword: false })}
+      return Promise.resolve({ id: 1, username: 'admin', role: 'ADMIN', permissions: [], mustChangePassword: false })
+    })
+    await useAuth().login('admin', 'goodpass')
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({
+      body: { username: 'admin', password: 'goodpass', rememberMe: true },
+    }))
+  })
+
+  it('login forwards an unchecked "keep me signed in"', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/auth/login') {return Promise.resolve({ ok: true, mustChangePassword: false })}
+      return Promise.resolve({ id: 1, username: 'admin', role: 'ADMIN', permissions: [], mustChangePassword: false })
+    })
+    await useAuth().login('admin', 'goodpass', false)
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({
+      body: { username: 'admin', password: 'goodpass', rememberMe: false },
+    }))
+  })
+
   it('logout clears the user and navigates to /login', async () => {
     fetchMock.mockResolvedValue({ ok: true })
     const auth = useAuth()

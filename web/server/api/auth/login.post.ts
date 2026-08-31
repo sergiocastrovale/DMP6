@@ -6,7 +6,10 @@ import { clearLoginFailures, isLoginLocked, registerLoginFailure } from '~/serve
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { username, password } = body ?? {}
+  const { username, password, rememberMe } = body ?? {}
+  // Defaults to true so an existing session's lifetime is unchanged; unchecking it downgrades the
+  // cookie to a session one, which the browser drops when it closes.
+  const persist = rememberMe !== false
 
   if (!username || !password) {
     throw createError({ statusCode: 400, message: 'Missing credentials' })
@@ -33,7 +36,9 @@ export default defineEventHandler(async (event) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: SESSION_MAX_AGE_SECONDS,
+    // Omitting maxAge entirely is what makes it a session cookie - passing 0 or undefined-as-a-value
+    // would expire it immediately instead.
+    ...(persist ? { maxAge: SESSION_MAX_AGE_SECONDS } : {}),
     path: '/',
   })
 

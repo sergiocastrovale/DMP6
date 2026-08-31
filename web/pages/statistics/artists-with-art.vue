@@ -13,5 +13,8 @@ const columns: DataTableColumn[] = [{ key: 'name', label: 'Name', sortable: true
         {{ row.name }}
       </NuxtLink>
     </template>
+    <template #actions="{ row }">
+      <StatisticsRowActions :artist-slug="row.slug" :label="row.name" />
+    </template>
   </StatisticsStatPage>
 </template>
