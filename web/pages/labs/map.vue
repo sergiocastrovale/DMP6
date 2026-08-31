@@ -459,7 +459,7 @@ onUnmounted(() => {
         <div v-if="tooltipData.count > 0" class="text-sm text-stone-100/60">
           {{ tooltipData.count }} {{ tooltipData.count === 1 ? 'artist' : 'artists' }}
         </div>
-        <div v-else class="text-sm text-stone-100/40">No artists</div>
+        <div v-else class="text-sm text-stone-100/55">No artists</div>
       </div>
     </Teleport>
 

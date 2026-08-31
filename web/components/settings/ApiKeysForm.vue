@@ -20,7 +20,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 <template>
   <div class="flex max-w-2xl flex-col gap-6">
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Fanart.tv</h2>
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Fanart.tv</h2>
       <SettingsField
         v-model="fanartApiKey"
         label="API Key"

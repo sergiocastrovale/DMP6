@@ -118,7 +118,7 @@ onUnmounted(() => {
             <span class="text-base text-stone-100/60">
               Monitoring <span class="font-semibold text-stone-100">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
             </span>
-            <span v-if="rtBudgetLabel" class="text-sm text-stone-100/40">· {{ rtBudgetLabel }}</span>
+            <span v-if="rtBudgetLabel" class="text-sm text-stone-100/55">· {{ rtBudgetLabel }}</span>
           </div>
           <div class="flex items-center gap-2">
             <UiButton

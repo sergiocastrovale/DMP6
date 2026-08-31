@@ -65,15 +65,15 @@ const { saving, saved, error, save } = useFormSave(async () => {
     <DownloadsAcquisitionIdleBanner />
 
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Auto-monitoring</h2>
-      <p class="text-sm text-stone-100/40">
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Auto-monitoring</h2>
+      <p class="text-sm text-stone-100/55">
         Leave a field blank to use the environment default. Changes apply live (no restart),
         except the base reconcile tick (RECONCILE_SEC, env only).
       </p>
 
       <div class="flex flex-col gap-1.5">
         <label :for="enabledId" class="block text-base font-medium text-stone-100">Monitoring</label>
-        <p class="text-sm text-stone-100/40">Master switch for the download + catalogue loops.</p>
+        <p class="text-sm text-stone-100/55">Master switch for the download + catalogue loops.</p>
         <div class="relative">
           <select
             :id="enabledId"
@@ -84,7 +84,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
             <option value="on">On</option>
             <option value="off">Off</option>
           </select>
-          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/30" />
+          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/50" />
         </div>
       </div>
 
@@ -139,7 +139,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
       <div class="flex flex-col gap-1.5">
         <label :for="songkongId" class="block text-base font-medium text-stone-100">SongKong enrichment</label>
-        <p class="text-sm text-stone-100/40">
+        <p class="text-sm text-stone-100/55">
           Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library
           folder layout is applied. Requires the host SongKong drainer cron. (SONGKONG_ENABLED)
         </p>
@@ -153,13 +153,13 @@ const { saving, saved, error, save } = useFormSave(async () => {
             <option value="on">On</option>
             <option value="off">Off</option>
           </select>
-          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/30" />
+          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/50" />
         </div>
       </div>
 
       <div class="flex flex-col gap-1.5">
         <label :for="autoMergeId" class="block text-base font-medium text-stone-100">Auto-merge into library</label>
-        <p class="text-sm text-stone-100/40">
+        <p class="text-sm text-stone-100/55">
           When on, ready downloads are merged into the music library automatically (no manual
           “Merge”). Off by default — merging stays a manual gate. (AUTO_MERGE)
         </p>
@@ -173,7 +173,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
             <option value="on">On</option>
             <option value="off">Off</option>
           </select>
-          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/30" />
+          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/50" />
         </div>
       </div>
     </div>

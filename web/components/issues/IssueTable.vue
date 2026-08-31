@@ -166,7 +166,7 @@ function commitEdit(item: any, col: IssueColumn) {
       </SlimTableBody>
     </SlimTable>
 
-    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-stone-100/6 px-4 py-2.5 text-sm text-stone-100/40">
+    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-stone-100/6 px-4 py-2.5 text-sm text-stone-100/55">
       <span class="tabular-nums">{{ total }} total</span>
       <div class="flex items-center gap-2">
         <button

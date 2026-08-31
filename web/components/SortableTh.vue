@@ -37,7 +37,7 @@ const ariaSort = computed<'ascending' | 'descending' | 'none'>(() =>
       @click="emit('sort', sortKey)"
     >
       {{ label }}
-      <component :is="icon" :size="11" :stroke-width="ICON_STROKE_WIDTH" :class="active ? 'text-amber-400' : 'text-stone-100/30'" />
+      <component :is="icon" :size="11" :stroke-width="ICON_STROKE_WIDTH" :class="active ? 'text-amber-400' : 'text-stone-100/50'" />
     </button>
   </th>
 </template>

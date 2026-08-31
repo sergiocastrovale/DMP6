@@ -84,13 +84,13 @@ onUnmounted(() => {
         showSubmit ? 'flex-1' : 'w-full',
       )"
     >
-      <Search :size="14" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 text-stone-100/40" />
+      <Search :size="14" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 text-stone-100/55" />
       <input
         :value="inputValue"
         type="text"
         :placeholder="placeholder"
         :disabled="disabled"
-        class="w-full bg-transparent text-base text-stone-100 outline-0 placeholder:text-stone-100/30"
+        class="w-full bg-transparent text-base text-stone-100 outline-0 placeholder:text-stone-100/50"
         @input="handleInput"
         @keydown="handleKeydown"
         @focus="emit('focus', $event)"
@@ -100,7 +100,7 @@ onUnmounted(() => {
         v-if="clearable && inputValue"
         type="button"
         aria-label="Clear search"
-        class="shrink-0 text-stone-100/40 transition-colors duration-150 hover:text-stone-100"
+        class="shrink-0 text-stone-100/55 transition-colors duration-150 hover:text-stone-100"
         @click="clear"
       >
         <X :size="14" :stroke-width="ICON_STROKE_WIDTH" />

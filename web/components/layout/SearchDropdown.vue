@@ -68,7 +68,7 @@ const optionClass = (index: number) => cx(
     class="absolute left-0 right-0 top-full z-50 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-stone-100/10 bg-stone-900 shadow-lg"
   >
     <div v-if="results.artists.length > 0" class="border-b border-stone-100/6 p-2">
-      <div class="px-2 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+      <div class="px-2 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
         Artists
       </div>
       <NuxtLink
@@ -88,7 +88,7 @@ const optionClass = (index: number) => cx(
             :alt="artist.name"
             class="h-full w-full object-cover"
           >
-          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/30">
+          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
             <User :size="18" :stroke-width="ICON_STROKE_WIDTH" />
           </div>
         </div>
@@ -101,7 +101,7 @@ const optionClass = (index: number) => cx(
     </div>
 
     <div v-if="results.releases.length > 0" class="border-b border-stone-100/6 p-2">
-      <div class="px-2 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+      <div class="px-2 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
         Releases
       </div>
       <NuxtLink
@@ -121,7 +121,7 @@ const optionClass = (index: number) => cx(
             :alt="release.title"
             class="h-full w-full object-cover"
           >
-          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/30">
+          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
             <Disc :size="18" :stroke-width="ICON_STROKE_WIDTH" />
           </div>
         </div>
@@ -131,14 +131,14 @@ const optionClass = (index: number) => cx(
           </p>
           <p v-if="release.artist" class="truncate text-xs text-stone-100/60">
             {{ release.artist.name }}
-            <span v-if="release.year" class="text-stone-100/30">· {{ release.year }}</span>
+            <span v-if="release.year" class="text-stone-100/50">· {{ release.year }}</span>
           </p>
         </div>
       </NuxtLink>
     </div>
 
     <div v-if="results.tracks.length > 0" class="p-2">
-      <div class="px-2 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+      <div class="px-2 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
         Tracks
       </div>
       <NuxtLink
@@ -158,7 +158,7 @@ const optionClass = (index: number) => cx(
             :alt="track.title"
             class="h-full w-full object-cover"
           >
-          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/30">
+          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
             <Music :size="18" :stroke-width="ICON_STROKE_WIDTH" />
           </div>
         </div>
@@ -168,10 +168,10 @@ const optionClass = (index: number) => cx(
           </p>
           <p v-if="track.release?.artist" class="truncate text-xs text-stone-100/60">
             {{ track.release.artist.name }}
-            <span v-if="track.release.title" class="text-stone-100/30">· {{ track.release.title }}</span>
+            <span v-if="track.release.title" class="text-stone-100/50">· {{ track.release.title }}</span>
           </p>
         </div>
-        <span v-if="track.duration" class="text-xs text-stone-100/40 tabular-nums">
+        <span v-if="track.duration" class="text-xs text-stone-100/55 tabular-nums">
           {{ formatDuration(track.duration) }}
         </span>
       </NuxtLink>

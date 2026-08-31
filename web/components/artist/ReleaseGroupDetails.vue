@@ -52,7 +52,7 @@ const mbUrl = computed(() => musicBrainzUrl(props.release))
 
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
 
-const actionIconClass = 'rounded-full p-1.5 text-stone-100/40 transition-colors duration-150 hover:text-amber-400 cursor-pointer'
+const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-amber-400 cursor-pointer'
 </script>
 
 <template>
@@ -88,7 +88,7 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/40 transition-colors 
           class="size-full object-cover"
           loading="lazy"
         >
-        <div v-else class="flex size-full items-center justify-center text-stone-100/30">
+        <div v-else class="flex size-full items-center justify-center text-stone-100/50">
           <Disc3 :size="24" :stroke-width="ICON_STROKE_WIDTH" />
         </div>
         <div
@@ -106,7 +106,7 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/40 transition-colors 
 
       <div class="min-w-0 flex-1 self-center ml-1">
         <div class="flex items-center gap-2">
-          <span class="truncate text-lg font-medium" :class="release.status === 'MISSING' ? 'text-stone-100/40' : 'text-stone-100'">
+          <span class="truncate text-lg font-medium" :class="release.status === 'MISSING' ? 'text-stone-100/55' : 'text-stone-100'">
             {{ release.title }}
           </span>
           <span v-if="subtitle" class="shrink-0 rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60">{{ subtitle }}</span>
@@ -157,7 +157,7 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/40 transition-colors 
         <button
           v-if="isDownloading || isEnriching"
           type="button"
-          class="rounded-full p-1.5 text-stone-100/40 transition-colors duration-150 hover:text-danger cursor-pointer"
+          class="rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-danger cursor-pointer"
           title="Cancel download and delete its files"
           @click.stop="emit('cancel')"
         >
@@ -178,7 +178,7 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/40 transition-colors 
           v-else-if="release.status === 'MISSING' && downloadsStore.sourceEnabled"
           type="button"
           class="rounded-full p-1.5 transition-colors duration-150 hover:text-amber-400 cursor-pointer"
-          :class="downloadFailed ? 'text-danger' : isAbandoned ? 'text-stone-100/30' : 'text-stone-100/40'"
+          :class="downloadFailed ? 'text-danger' : isAbandoned ? 'text-stone-100/50' : 'text-stone-100/55'"
           :title="isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
           @click.stop="emit('download')"
         >

@@ -35,13 +35,13 @@ const fixDescription = computed(() => {
   <UiBulkBar :count="count" @cancel="emit('cancel')">
     <Popover v-if="fixDescription" trigger="hover">
       <template #trigger>
-        <button type="button" aria-label="What does this fix do?" class="text-stone-100/40 transition-colors duration-150 hover:text-stone-100/60">
+        <button type="button" aria-label="What does this fix do?" class="text-stone-100/55 transition-colors duration-150 hover:text-stone-100/60">
           <CircleHelp :size="14" />
         </button>
       </template>
       <template #content>
         <div :class="[surface.popover, 'absolute bottom-full right-0 z-20 mb-2 w-72 p-3 text-left']">
-          <p class="mb-2 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+          <p class="mb-2 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
             {{ fixDescription.title }}
           </p>
           <p class="text-sm text-stone-100/60">{{ fixDescription.body }}</p>

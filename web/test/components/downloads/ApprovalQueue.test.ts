@@ -50,7 +50,7 @@ describe('downloads/ApprovalQueue.vue', () => {
   it.each([
     ['UNAVAILABLE', 'text-warning'],
     ['INVALID', 'text-danger'],
-    ['REJECTED', 'text-stone-100/40'],
+    ['REJECTED', 'text-stone-100/55'],
     ['READY', 'text-success'],
   ])('tones %s as %s', async (status, expected) => {
     // "No source found yet, retried automatically" is a warning rather than a shrug, and an invalid

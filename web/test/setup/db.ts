@@ -1,5 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { PrismaClient } from '@prisma/client'
+// Extensioned: e2e/with-test-db.ts loads this under Node's own ESM resolver (type-stripped),
+// where extensionless specifiers do not resolve. Vitest resolves it either way.
+import { DEFAULT_MATRIX } from '../../shared/permissionsMatrix.ts'
 
 let prismaClient: PrismaClient | undefined
 
@@ -16,17 +19,17 @@ export const pushSchema = (databaseUrl: string): void => {
   })
 }
 
-// Mirrors prisma/seed.ts (RBAC matrix + download sources) but leaves the seeded admin ready to use
+// Seeds the same RBAC matrix as prisma/seed.ts by importing it, not by restating it. This file used
+// to keep its own hand-copied copy, which had drifted: ADMIN was missing `downloads.crud` and
+// `sync.run`, so every seeded admin got 403 on reject/requeue and the downloads e2e specs failed with
+// a row that simply never went away. shared/permissionsMatrix.ts exists precisely because a copy had
+// already drifted once before (docs audit #38) - this was the third copy.
+//
+// Otherwise as prisma/seed.ts, but leaves the seeded admin ready to use
 // (mustChangePassword: false) so integration/e2e tests don't have to run the change-password flow.
 export const seedTestData = async (): Promise<void> => {
   const prisma = getTestPrisma()
   const bcrypt = await import('bcrypt')
-
-  const DEFAULT_MATRIX: Record<string, string[]> = {
-    VIEWER: ['play.view'],
-    MANAGER: ['favorites.view', 'favorites.crud', 'playlists.view', 'playlists.crud', 'play.view', 'sync.view'],
-    ADMIN: ['favorites.view', 'favorites.crud', 'playlists.view', 'playlists.crud', 'play.view', 'sync.view', 'issues.view', 'variables.edit'],
-  }
 
   const hash = await bcrypt.hash('admin', 12)
   await prisma.user.upsert({

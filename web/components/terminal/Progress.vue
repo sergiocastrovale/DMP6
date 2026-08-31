@@ -56,7 +56,7 @@ const lastLine = computed(() => {
           <span class="truncate text-xs font-medium text-stone-100/60">{{ label }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <span v-if="determinate" class="shrink-0 text-xs text-stone-100/40 tabular-nums">{{ progress!.current }} / {{ progress!.total }}</span>
+          <span v-if="determinate" class="shrink-0 text-xs text-stone-100/55 tabular-nums">{{ progress!.current }} / {{ progress!.total }}</span>
           <button
             type="button"
             title="Stop process"
@@ -75,7 +75,7 @@ const lastLine = computed(() => {
         </div>
       </div>
 
-      <p v-if="lastLine" class="mt-2 truncate font-mono text-2xs leading-4 text-stone-100/40">{{ lastLine }}</p>
+      <p v-if="lastLine" class="mt-2 truncate font-mono text-2xs leading-4 text-stone-100/55">{{ lastLine }}</p>
 
       <button
         v-if="terminal.hasLockError"

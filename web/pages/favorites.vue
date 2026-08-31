@@ -19,7 +19,7 @@ const {
     <Tabs v-model="activeTab" :tabs="favTabs" />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-stone-100/40" />
+      <Loader2 :size="24" class="animate-spin text-stone-100/55" />
     </div>
 
     <div v-else>
@@ -77,7 +77,7 @@ const {
 
       <InfiniteScroll @load="loadMore" />
       <div v-if="loadingMore" class="flex justify-center py-4">
-        <Loader2 :size="20" class="animate-spin text-stone-100/40" />
+        <Loader2 :size="20" class="animate-spin text-stone-100/55" />
       </div>
     </div>
   </div>

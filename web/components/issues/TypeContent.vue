@@ -250,7 +250,7 @@ function getHistoryDate(item: any): string {
         />
       </div>
       </div>
-      <p class="text-base text-stone-100/40">
+      <p class="text-base text-stone-100/55">
         {{ typeDescriptions[type].detection }}
         <span class="text-stone-100/25">Fix:</span> {{ typeDescriptions[type].fix }}
       </p>
@@ -308,7 +308,7 @@ function getHistoryDate(item: any): string {
         </template>
 
         <template #cell-folder="{ item }">
-          <span class="truncate text-xs text-stone-100/40" :title="getFolderPath(item)">
+          <span class="truncate text-xs text-stone-100/55" :title="getFolderPath(item)">
             {{ getFolderPath(item) }}
           </span>
         </template>
@@ -328,7 +328,7 @@ function getHistoryDate(item: any): string {
         </template>
 
         <template #cell-artist_createdAt="{ item }">
-          <span class="text-xs text-stone-100/40">{{ formatDate(item.artist.createdAt) }}</span>
+          <span class="text-xs text-stone-100/55">{{ formatDate(item.artist.createdAt) }}</span>
         </template>
 
         <template #cell-artist_musicbrainzId="{ item }">
@@ -358,7 +358,7 @@ function getHistoryDate(item: any): string {
           >
             {{ item.releaseA.title }}
           </NuxtLink>
-          <span v-else class="truncate text-stone-100/40" :title="item.releaseA.folderPath">{{ item.releaseA.title }}</span>
+          <span v-else class="truncate text-stone-100/55" :title="item.releaseA.folderPath">{{ item.releaseA.title }}</span>
         </template>
 
         <template #cell-releaseB_title="{ item }">
@@ -370,15 +370,15 @@ function getHistoryDate(item: any): string {
           >
             {{ item.releaseB.title }}
           </NuxtLink>
-          <span v-else class="truncate text-stone-100/40" :title="item.releaseB.folderPath">{{ item.releaseB.title }}</span>
+          <span v-else class="truncate text-stone-100/55" :title="item.releaseB.folderPath">{{ item.releaseB.title }}</span>
         </template>
 
         <template #cell-releaseA_trackCount="{ item }">
-          <span class="text-xs text-stone-100/40 tabular-nums">{{ item.releaseA.trackCount }}</span>
+          <span class="text-xs text-stone-100/55 tabular-nums">{{ item.releaseA.trackCount }}</span>
         </template>
 
         <template #cell-releaseB_trackCount="{ item }">
-          <span class="text-xs text-stone-100/40 tabular-nums">{{ item.releaseB.trackCount }}</span>
+          <span class="text-xs text-stone-100/55 tabular-nums">{{ item.releaseB.trackCount }}</span>
         </template>
 
         <template #cell-releaseA_release_title="{ item }">
@@ -459,7 +459,7 @@ function getHistoryDate(item: any): string {
         <template #cell-previousValue="{ item }">
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getHistoryPreviousEntries(item)" :key="e.key" class="text-xs text-accent">
-              <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
+              <span class="text-stone-100/55">{{ e.key }}:</span> {{ e.value }}
             </span>
             <span v-if="!getHistoryPreviousEntries(item).length" class="text-xs text-stone-100/20">-</span>
           </div>
@@ -468,20 +468,20 @@ function getHistoryDate(item: any): string {
         <template #cell-appliedValue="{ item }">
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getHistoryAppliedEntries(item)" :key="e.key" class="text-xs text-success">
-              <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
+              <span class="text-stone-100/55">{{ e.key }}:</span> {{ e.value }}
             </span>
             <span v-if="!getHistoryAppliedEntries(item).length" class="text-xs text-stone-100/20">-</span>
           </div>
         </template>
 
         <template #cell-folder="{ item }">
-          <span class="truncate text-xs text-stone-100/40" :title="getFolderPath(item)">
+          <span class="truncate text-xs text-stone-100/55" :title="getFolderPath(item)">
             {{ getFolderPath(item) }}
           </span>
         </template>
 
         <template #cell-fixedAt="{ item }">
-          <span class="text-xs text-stone-100/40">{{ getHistoryDate(item) }}</span>
+          <span class="text-xs text-stone-100/55">{{ getHistoryDate(item) }}</span>
         </template>
       </IssuesIssueTable>
     </div>

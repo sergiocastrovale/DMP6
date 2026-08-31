@@ -196,7 +196,7 @@ onMounted(() => {
       <div class="flex items-center gap-4">
         <Switch v-model="showMonitored" label="Show monitored" />
         <Switch v-model="showUnmonitored" label="Show unmonitored" />
-        <span class="shrink-0 text-base text-stone-100/40">
+        <span class="shrink-0 text-base text-stone-100/55">
           {{ monitoredCount.toLocaleString() }} / {{ total.toLocaleString() }} monitored
         </span>
       </div>
@@ -211,7 +211,7 @@ onMounted(() => {
     />
 
     <div v-if="loading" class="flex justify-center py-16">
-      <Loader2 :size="22" class="animate-spin text-stone-100/40" />
+      <Loader2 :size="22" class="animate-spin text-stone-100/55" />
     </div>
 
     <UiEmptyState v-else-if="items.length === 0" message="No artists found" />
@@ -236,12 +236,12 @@ onMounted(() => {
               <component
                 :is="sortKey === 'monitored' ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown"
                 :size="12"
-                :class="sortKey === 'monitored' ? 'text-amber-400' : 'text-stone-100/30'"
+                :class="sortKey === 'monitored' ? 'text-amber-400' : 'text-stone-100/50'"
               />
             </button>
             <Popover trigger="hover">
               <template #trigger>
-                <button type="button" aria-label="What does monitoring do?" class="cursor-help text-stone-100/25 hover:text-stone-100/40">
+                <button type="button" aria-label="What does monitoring do?" class="cursor-help text-stone-100/25 hover:text-stone-100/55">
                   <CircleHelp :size="13" />
                 </button>
               </template>
@@ -274,7 +274,7 @@ onMounted(() => {
           </td>
           <td class="px-3 py-3 text-right tabular-nums">
             <template v-if="artist.totalReleases > 0">
-              <span :class="artist.missingReleases > 0 ? 'font-medium text-amber-400' : 'text-stone-100/40'">{{ artist.missingReleases }}</span>
+              <span :class="artist.missingReleases > 0 ? 'font-medium text-amber-400' : 'text-stone-100/55'">{{ artist.missingReleases }}</span>
               <span class="text-stone-100/25"> / {{ artist.totalReleases }}</span>
             </template>
             <span v-else class="text-stone-100/25">—</span>
@@ -302,7 +302,7 @@ onMounted(() => {
     <InfiniteScroll @load="loadMore" />
 
     <div v-if="loadingMore" class="flex justify-center py-6">
-      <Loader2 :size="20" class="animate-spin text-stone-100/40" />
+      <Loader2 :size="20" class="animate-spin text-stone-100/55" />
     </div>
 
     <ConfirmDialog

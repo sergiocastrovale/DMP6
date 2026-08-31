@@ -816,6 +816,28 @@ What changed, and the rules that came out of it:
 - **Numerals belong to `typography.meta`.** The recipe existed from Stage 0 but was barely adopted;
   every reference screen sets counts, dates, IDs and durations in it.
 
+### The muted-text alphas had to move (accessibility)
+
+`handoff/RULES.md` assigns tertiary text `text-stone-100/40` and the faintest tier
+`text-stone-100/30`. Both fail WCAG AA against every surface the app uses:
+
+| alpha | on `stone-950` | on `stone-900` | on `stone-800` | AA (4.5:1) |
+| --- | --- | --- | --- | --- |
+| 30% | 2.41 | 2.46 | 2.49 | fail |
+| 40% | 3.38 | 3.40 | 3.41 | fail |
+| **50%** | 4.66 | 4.64 | 4.54 | pass |
+| **55%** | 5.42 | 5.38 | 5.25 | pass |
+
+`e2e/a11y.spec.ts` asserts zero serious/critical axe violations and has no allowlist, so those two
+utilities alone accounted for **340 contrast violations across 12 of the 13 audited routes** — every
+one of them `color-contrast`, `serious`. The repo's own committed standard wins over the handoff
+sheet here, so `/40 → /55` and `/30 → /50` throughout.
+
+This compresses the text ramp (primary 100, secondary 60, tertiary 55, faintest 50) more than the
+handoff intended. That is inherent: on a near-black ground, four text tiers cannot all clear 4.5:1
+and stay visibly distinct. If a tier needs to read as fainter than this, it needs a non-text signal
+(size, weight, position) rather than less contrast.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

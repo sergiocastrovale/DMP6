@@ -31,7 +31,7 @@ const toneFor = (kind: ToastKind) =>
         <button
           type="button"
           aria-label="Dismiss"
-          class="shrink-0 text-stone-100/40 transition-colors duration-150 hover:text-stone-100"
+          class="shrink-0 text-stone-100/55 transition-colors duration-150 hover:text-stone-100"
           @click="toast.dismiss(t.id)"
         >
           <X :size="14" :stroke-width="ICON_STROKE_WIDTH" />

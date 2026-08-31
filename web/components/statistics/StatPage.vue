@@ -94,12 +94,12 @@ onMounted(() => {
   <div class="flex flex-col gap-4">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <NuxtLink to="/statistics" aria-label="Back to statistics" class="text-stone-100/40 transition-colors duration-150 hover:text-stone-100">
+        <NuxtLink to="/statistics" aria-label="Back to statistics" class="text-stone-100/55 transition-colors duration-150 hover:text-stone-100">
           <ArrowLeft :size="20" />
         </NuxtLink>
         <h1 :class="typography.h2">{{ title }}</h1>
       </div>
-      <span class="text-sm text-stone-100/40 tabular-nums">{{ total.toLocaleString() }} {{ label }}</span>
+      <span class="text-sm text-stone-100/55 tabular-nums">{{ total.toLocaleString() }} {{ label }}</span>
     </div>
 
     <div class="flex items-center gap-3">
@@ -110,7 +110,7 @@ onMounted(() => {
         wrapper-class="sm:max-w-xs"
         @update:model-value="handleSearch"
       />
-      <span v-if="!loading && items.length > 0 && items.length < total" class="text-xs text-stone-100/30">
+      <span v-if="!loading && items.length > 0 && items.length < total" class="text-xs text-stone-100/50">
         Showing {{ items.length.toLocaleString() }} of {{ total.toLocaleString() }}
       </span>
     </div>
@@ -135,7 +135,7 @@ onMounted(() => {
 
     <InfiniteScroll @load="loadMore" />
     <div v-if="loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" class="animate-spin text-stone-100/40" />
+      <Loader2 :size="20" class="animate-spin text-stone-100/55" />
     </div>
   </div>
 </template>

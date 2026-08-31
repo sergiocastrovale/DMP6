@@ -116,7 +116,7 @@ onMounted(() => {
     />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-stone-100/40" />
+      <Loader2 :size="24" class="animate-spin text-stone-100/55" />
     </div>
 
     <template v-else-if="stats">
@@ -141,7 +141,7 @@ onMounted(() => {
           <component :is="tile.icon" class="size-5 text-amber-400" />
           <div>
             <p class="font-display text-2xl font-bold text-stone-100 tabular-nums">{{ tile.value }}</p>
-            <p class="text-sm text-stone-100/40">{{ tile.label }}</p>
+            <p class="text-sm text-stone-100/55">{{ tile.label }}</p>
           </div>
         </NuxtLink>
       </div>
@@ -149,7 +149,7 @@ onMounted(() => {
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <section v-for="section in sections" :key="section.title" :class="surface.card">
           <h2
-            :class="[surface.cardHead, section.warn ? toneText.warning : 'text-stone-100/40', 'text-2xs font-bold uppercase tracking-[0.1em]']"
+            :class="[surface.cardHead, section.warn ? toneText.warning : 'text-stone-100/55', 'text-2xs font-bold uppercase tracking-[0.1em]']"
           >
             <component :is="section.icon" :class="['size-4', section.warn ? toneText.warning : 'text-amber-400']" />
             {{ section.title }}
@@ -167,7 +167,7 @@ onMounted(() => {
                 {{ item.label }}
                 <Popover v-if="item.info" trigger="hover">
                   <template #trigger>
-                    <Info :size="13" class="text-stone-100/30 transition-colors duration-150 hover:text-amber-400" />
+                    <Info :size="13" class="text-stone-100/50 transition-colors duration-150 hover:text-amber-400" />
                   </template>
                   <template #content>
                     <div :class="[surface.popover, 'absolute left-0 top-full z-20 mt-1 w-64 p-3']">

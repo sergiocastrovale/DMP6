@@ -146,7 +146,7 @@ const formatFileSize = (bytes: number) => {
       <th v-if="hasColumn('title')" class="py-2 pl-3 text-left">Title</th>
       <th v-if="hasColumn('artist')" class="hidden py-2 pl-3 text-left md:table-cell">Artist</th>
       <th v-if="hasColumn('status')" class="hidden py-2 pl-3 text-left sm:table-cell">Status</th>
-      <th v-if="hasColumn('playCount')" class="w-16 py-2 pr-3 text-center text-stone-100/40">Plays</th>
+      <th v-if="hasColumn('playCount')" class="w-16 py-2 pr-3 text-center text-stone-100/55">Plays</th>
       <th v-if="hasColumn('duration')" class="w-16 py-2 pr-4 text-center">Time</th>
       <th v-if="hasColumn('favorite')" class="w-12 py-2 pr-4 text-center" />
     </SlimTableHeader>
@@ -164,14 +164,14 @@ const formatFileSize = (bytes: number) => {
             <PlayerPlayPauseButton
               :playing="isTrackPlaying(track.id)"
               size="sm"
-              :class="isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100/40'"
+              :class="isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100/55'"
             />
           </template>
         </td>
         <td v-if="hasColumn('release')" class="py-2 pl-4 text-stone-100/60 text-xs truncate max-w-50">
           {{ releaseMap?.[track.localReleaseId || '']?.title || track.album || '-' }}
         </td>
-        <td v-if="hasColumn('trackNumber')" class="py-2 pl-4 text-center text-stone-100/40">
+        <td v-if="hasColumn('trackNumber')" class="py-2 pl-4 text-center text-stone-100/55">
           <template v-if="hasColumn('play')">
             {{ track.trackNumber || '-' }}
           </template>
@@ -182,11 +182,11 @@ const formatFileSize = (bytes: number) => {
             <PlayerPlayPauseButton
               :playing="isTrackPlaying(track.id)"
               size="sm"
-              :class="isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100/40'"
+              :class="isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100/55'"
             />
           </template>
         </td>
-        <td v-if="hasColumn('title')" class="py-2 pl-3" :class="[isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100', track.missing && 'line-through text-stone-100/40']">
+        <td v-if="hasColumn('title')" class="py-2 pl-3" :class="[isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100', track.missing && 'line-through text-stone-100/55']">
           <div class="flex items-center gap-2">
             {{ track.title || 'Unknown' }}
             <Popover v-if="track.mbTitle" trigger="hover">
@@ -201,7 +201,7 @@ const formatFileSize = (bytes: number) => {
             </Popover>
           </div>
           <template v-if="track.artists?.length">
-            <span class="text-stone-100/40"> Feat.
+            <span class="text-stone-100/55"> Feat.
               <template v-for="(a, i) in track.artists" :key="a.slug">
                 <NuxtLink :to="`/artist/${a.slug}`" class="text-stone-100/60 hover:text-amber-400 transition-colors" @click.stop>{{ a.name }}</NuxtLink><template v-if="i < track.artists.length - 1">, </template>
               </template>
@@ -212,12 +212,12 @@ const formatFileSize = (bytes: number) => {
         <td v-if="hasColumn('status')" class="hidden py-2 pl-3 sm:table-cell">
           <ReleaseStatusBadge v-if="releaseMap?.[track.localReleaseId || '']?.status" :status="releaseMap[track.localReleaseId || '']!.status" />
         </td>
-        <td v-if="hasColumn('playCount')" class="py-2 pr-3 text-center tabular-nums text-stone-100/40">{{ track.playCount ?? 0 }}</td>
-        <td v-if="hasColumn('duration')" class="py-2 pr-4 text-center tabular-nums text-stone-100/40" :class="track.missing && 'line-through'">{{ formatDuration(track.duration) }}</td>
+        <td v-if="hasColumn('playCount')" class="py-2 pr-3 text-center tabular-nums text-stone-100/55">{{ track.playCount ?? 0 }}</td>
+        <td v-if="hasColumn('duration')" class="py-2 pr-4 text-center tabular-nums text-stone-100/55" :class="track.missing && 'line-through'">{{ formatDuration(track.duration) }}</td>
         <td v-if="hasColumn('favorite')" class="py-2 pr-4 text-center">
           <div class="flex items-center justify-center gap-0.5">
             <button
-              class="rounded-full p-1.5 text-stone-100/40 transition-colors hover:text-amber-400 cursor-pointer"
+              class="rounded-full p-1.5 text-stone-100/55 transition-colors hover:text-amber-400 cursor-pointer"
               :class="{ 'text-amber-400': favoriteTracks.has(track.id) }"
               title="Toggle favorite"
               @click.stop="toggleFavorite(track.id)"
@@ -229,7 +229,7 @@ const formatFileSize = (bytes: number) => {
               :href="`https://musicbrainz.org/recording/${track.mbTrackMusicbrainzId}`"
               target="_blank"
               rel="noopener noreferrer"
-              class="rounded-full p-1.5 text-stone-100/40 transition-colors hover:text-amber-400 cursor-pointer"
+              class="rounded-full p-1.5 text-stone-100/55 transition-colors hover:text-amber-400 cursor-pointer"
               title="View recording on MusicBrainz"
               @click.stop
             >
@@ -238,14 +238,14 @@ const formatFileSize = (bytes: number) => {
             <a
               v-if="releaseMap?.[track.localReleaseId || ''] && track.localReleaseId"
               :href="`/artist/${$route.params.slug}?release=${(releaseMap[track.localReleaseId]?.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`"
-              class="rounded-full p-1.5 text-stone-100/40 transition-colors hover:text-amber-400 cursor-pointer"
+              class="rounded-full p-1.5 text-stone-100/55 transition-colors hover:text-amber-400 cursor-pointer"
               title="Go to release"
               @click.stop
             >
               <Link :size="14" />
             </a>
             <button
-              class="rounded-full p-1.5 text-stone-100/40 transition-colors hover:text-amber-400 cursor-pointer"
+              class="rounded-full p-1.5 text-stone-100/55 transition-colors hover:text-amber-400 cursor-pointer"
               title="Track info"
               @click.stop="openInfoDialog(track)"
             >

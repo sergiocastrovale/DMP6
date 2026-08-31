@@ -118,7 +118,7 @@ onMounted(() => {
     <PageTitle :icon="LucideClock" text="Timeline" subtext="Browse your library by decade and year" />
 
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-stone-100/40" />
+      <Loader2 :size="24" class="animate-spin text-stone-100/55" />
     </div>
 
     <template v-else-if="decades.length > 0">
@@ -156,7 +156,7 @@ onMounted(() => {
       </div>
 
       <div v-if="loadingDecade" class="flex items-center justify-center py-16">
-        <Loader2 :size="24" class="animate-spin text-stone-100/40" />
+        <Loader2 :size="24" class="animate-spin text-stone-100/55" />
       </div>
 
       <div v-else-if="decadeData" class="mt-6 flex flex-col gap-10 lg:gap-0 lg:relative lg:pl-[11rem]">
@@ -165,14 +165,14 @@ onMounted(() => {
         <div v-for="group in releasesByYear" :key="group.year" class="flex flex-col gap-3 lg:relative lg:gap-0 lg:pb-12">
           <div class="flex items-baseline gap-2 lg:hidden">
             <h3 class="font-display text-xl font-bold text-stone-100 tabular-nums">{{ group.year || '????' }}</h3>
-            <span class="text-sm text-stone-100/40">
+            <span class="text-sm text-stone-100/55">
               {{ releaseCountFor(group.year, group.releases.length) }} {{ releaseCountFor(group.year, group.releases.length) === 1 ? 'release' : 'releases' }}
             </span>
           </div>
 
           <div class="hidden lg:block absolute -left-[11rem] top-0 w-28 text-right">
             <div class="font-display text-3xl font-bold text-stone-100 leading-none tabular-nums">{{ group.year || '????' }}</div>
-            <div class="mt-1 text-xs font-medium text-stone-100/40">
+            <div class="mt-1 text-xs font-medium text-stone-100/55">
               {{ releaseCountFor(group.year, group.releases.length) }} {{ releaseCountFor(group.year, group.releases.length) === 1 ? 'release' : 'releases' }}
             </div>
           </div>
@@ -198,7 +198,7 @@ onMounted(() => {
 
         <div v-if="decadeData.hasMore" class="flex items-center justify-center gap-2 py-4">
           <InfiniteScroll margin="200px" @load="loadMore" />
-          <Loader2 v-if="loadingMore" :size="18" class="animate-spin text-stone-100/40" />
+          <Loader2 v-if="loadingMore" :size="18" class="animate-spin text-stone-100/55" />
         </div>
 
         <UiEmptyState
@@ -207,7 +207,7 @@ onMounted(() => {
           message="No releases in this period"
         />
 
-        <div v-if="decadeData.total > 0" class="text-center text-xs text-stone-100/30">
+        <div v-if="decadeData.total > 0" class="text-center text-xs text-stone-100/50">
           {{ decadeData.total }} {{ decadeData.total === 1 ? 'release' : 'releases' }}
         </div>
       </div>

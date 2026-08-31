@@ -98,7 +98,7 @@ const roleTone = (role: string) => role === 'ADMIN' ? toneBg.accent : role === '
   <div class="flex max-w-3xl flex-col gap-6">
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
       <div class="flex items-center justify-between">
-        <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Users</h2>
+        <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Users</h2>
         <UiButton size="sm" :icon="Plus" @click="showCreate = !showCreate">
           New User
         </UiButton>
@@ -175,7 +175,7 @@ const roleTone = (role: string) => role === 'ADMIN' ? toneBg.accent : role === '
                 <span v-if="u.mustChangePassword" :class="[toneText.warning, 'flex items-center gap-1 text-xs']">
                   <KeyRound :size="12" /> must change pw
                 </span>
-                <span v-else class="text-xs text-stone-100/40">active</span>
+                <span v-else class="text-xs text-stone-100/55">active</span>
               </td>
               <td class="px-3 py-3 text-right" @click.stop>
                 <div class="flex items-center justify-end gap-1.5">

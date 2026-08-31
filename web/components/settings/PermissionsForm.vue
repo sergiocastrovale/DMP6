@@ -68,7 +68,7 @@ const permLabel = (p: string) => {
 <template>
   <div class="flex max-w-3xl flex-col gap-6">
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Role Permissions</h2>
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Role Permissions</h2>
 
       <SlimTable>
         <SlimTableHeader>
@@ -79,7 +79,7 @@ const permLabel = (p: string) => {
           <SlimTableRow v-for="perm in allPermissions" :key="perm">
             <td class="px-3 py-3">
               <span class="text-stone-100/60">{{ permLabel(perm).feature }}</span>
-              <span class="text-stone-100/40">.{{ permLabel(perm).action }}</span>
+              <span class="text-stone-100/55">.{{ permLabel(perm).action }}</span>
             </td>
             <td v-for="role in roles" :key="role" class="px-3 py-3 text-center">
               <UiCheckbox

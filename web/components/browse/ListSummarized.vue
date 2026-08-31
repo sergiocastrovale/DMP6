@@ -60,7 +60,7 @@ const completenessClasses = (artist: ArtistListItem) => {
               class="size-full object-cover"
               loading="lazy"
             >
-            <div v-else class="flex size-full items-center justify-center text-xs font-bold text-stone-100/30">
+            <div v-else class="flex size-full items-center justify-center text-xs font-bold text-stone-100/50">
               {{ row.name.charAt(0).toUpperCase() }}
             </div>
           </div>
@@ -93,10 +93,10 @@ const completenessClasses = (artist: ArtistListItem) => {
     <InfiniteScroll @load="store.loadMore()" />
 
     <div v-if="store.loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-stone-100/40" />
+      <Loader2 :size="20" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-stone-100/55" />
     </div>
 
-    <div v-if="!store.loading && store.artists.length > 0" class="text-center text-xs text-stone-100/40">
+    <div v-if="!store.loading && store.artists.length > 0" class="text-center text-xs text-stone-100/55">
       Showing {{ store.artists.length }} of {{ store.total }} artists
     </div>
   </div>

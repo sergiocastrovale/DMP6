@@ -210,7 +210,7 @@ async function onPlaylistCreated() {
                     <Check v-if="trackPlaylistSlugs.has(playlist.slug)" :size="14" :stroke-width="ICON_STROKE_WIDTH" />
                   </button>
                 </div>
-                <div v-if="playlists.length === 0" class="px-3 py-2 text-sm text-stone-100/40">
+                <div v-if="playlists.length === 0" class="px-3 py-2 text-sm text-stone-100/55">
                   No playlists yet
                 </div>
               </div>
@@ -225,7 +225,7 @@ async function onPlaylistCreated() {
         <PlayerVolumeControl />
         <button
           type="button"
-          class="text-stone-100/40 hover:text-stone-100 transition-colors duration-150"
+          class="text-stone-100/55 hover:text-stone-100 transition-colors duration-150"
           title="Dismiss player"
           @click="player.dismiss()"
         >
@@ -234,7 +234,7 @@ async function onPlaylistCreated() {
       </div>
       <button
         type="button"
-        class="ml-2 shrink-0 text-stone-100/40 hover:text-stone-100 transition-colors duration-150 md:hidden"
+        class="ml-2 shrink-0 text-stone-100/55 hover:text-stone-100 transition-colors duration-150 md:hidden"
         title="Dismiss player"
         @click="player.dismiss()"
       >

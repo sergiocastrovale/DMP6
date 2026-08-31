@@ -23,7 +23,7 @@ const { releaseImage } = useImageUrl()
               :alt="release.title"
               class="size-full object-cover"
             >
-            <div v-else class="flex size-full items-center justify-center text-stone-100/30">
+            <div v-else class="flex size-full items-center justify-center text-stone-100/50">
               <Disc3 :size="32" />
             </div>
           </div>
@@ -42,7 +42,7 @@ const { releaseImage } = useImageUrl()
               class="rounded-full bg-stone-800 px-2 py-0.5 text-2xs text-stone-100/60"
             >{{ genre }}</span>
           </div>
-          <div v-if="release.totalPlayCount" class="text-2xs text-stone-100/30">
+          <div v-if="release.totalPlayCount" class="text-2xs text-stone-100/50">
             Played {{ release.totalPlayCount.toLocaleString() }} times
           </div>
         </div>

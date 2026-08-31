@@ -55,7 +55,7 @@ const onKeydown = (event: KeyboardEvent) => {
       :tabindex="model === option.value ? 0 : -1"
       :class="cx(
         'rounded-sm px-3 py-1.5 text-sm font-medium transition-colors duration-150',
-        model === option.value ? 'bg-stone-700 text-stone-100' : 'text-stone-100/40 hover:text-stone-100',
+        model === option.value ? 'bg-stone-700 text-stone-100' : 'text-stone-100/55 hover:text-stone-100',
       )"
       @click="model = option.value"
     >

@@ -68,14 +68,14 @@ watch(() => terminal.lines.length, () => {
         v-if="terminal.currentSession || terminal.isRunning"
         class="flex items-center gap-2 border-b border-stone-100/6 px-4 py-2"
       >
-        <span class="font-mono text-xs text-stone-100/40">
+        <span class="font-mono text-xs text-stone-100/55">
           tmux attach-session -t {{ terminal.currentSession ?? '...' }}
         </span>
         <button
           v-if="terminal.currentSession"
           type="button"
           title="Copy"
-          class="rounded-sm p-0.5 text-stone-100/30 transition-colors duration-150 hover:text-stone-100/60"
+          class="rounded-sm p-0.5 text-stone-100/50 transition-colors duration-150 hover:text-stone-100/60"
           @click="copySession(terminal.currentSession!)"
         >
           <Copy :size="12" :stroke-width="ICON_STROKE_WIDTH" />

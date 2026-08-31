@@ -91,12 +91,12 @@ function formatRelative(date: string): string {
         <div class="flex items-start justify-between">
           <div>
             <p class="font-medium text-stone-100">{{ card.label }}</p>
-            <p class="mt-1 text-sm text-stone-100/40">{{ card.description }}</p>
+            <p class="mt-1 text-sm text-stone-100/55">{{ card.description }}</p>
           </div>
           <span
             v-if="issuesStore.summary"
             class="ml-3 shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold"
-            :class="(issuesStore.summary.counts[card.key] ?? 0) > 0 ? 'bg-amber-400/20 text-amber-400' : 'bg-stone-800 text-stone-100/40'"
+            :class="(issuesStore.summary.counts[card.key] ?? 0) > 0 ? 'bg-amber-400/20 text-amber-400' : 'bg-stone-800 text-stone-100/55'"
           >
             {{ issuesStore.summary.counts[card.key] ?? 0 }}
           </span>

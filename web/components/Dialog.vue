@@ -82,7 +82,7 @@ onBeforeUnmount(() => {
         <div class="flex items-start justify-between gap-4 mb-3.5">
           <div class="min-w-0">
             <h2 :id="titleId" class="text-xl font-semibold tracking-[-0.01em] text-stone-100">{{ title }}</h2>
-            <p v-if="subtitle" class="mt-1 text-sm text-stone-100/40">{{ subtitle }}</p>
+            <p v-if="subtitle" class="mt-1 text-sm text-stone-100/55">{{ subtitle }}</p>
           </div>
           <UiButton variant="ghost" size="sm" icon-only :icon="X" aria-label="Close" @click="close" />
         </div>

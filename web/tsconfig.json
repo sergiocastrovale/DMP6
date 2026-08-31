@@ -1,3 +1,10 @@
 {
-  "extends": "./.nuxt/tsconfig.json"
+  "extends": "./.nuxt/tsconfig.json",
+  "compilerOptions": {
+    // `e2e/with-test-db.ts` runs under Node's own ESM resolver (native type stripping), not a
+    // bundler, so its imports of `test/setup/db.ts` - and that file's import of the shared
+    // permission matrix - must carry the extension or they do not resolve at runtime. This is
+    // typecheck-only (the generated config sets noEmit), so allowing the extension costs nothing.
+    "allowImportingTsExtensions": true
+  }
 }

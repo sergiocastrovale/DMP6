@@ -52,11 +52,14 @@ const gotoHydrated = async (page: Page, path: string, hydrationPoll: string) => 
   await hydrated
 }
 
+// The dropdown's options carry role="menuitem" (they live inside a role="menu"), and an explicit
+// role replaces the implicit one - so getByRole('button') cannot match them however they are
+// labelled. Querying them as buttons is why every artist-dropdown assertion here timed out.
 const openArtistMenu = async (page: Page) => {
   await gotoHydrated(page, `/artist/${artistSlug}`, `**/api/artists/${artistSlug}/download-status`)
   await page.getByRole('button', { name: 'Scan catalogue' }).click()
   // Menu contents confirm the dropdown is open before any option is addressed.
-  await expect(page.getByRole('button', { name: 'Scan for new files' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Scan for new files' })).toBeVisible()
 }
 
 const gotoLibrarySettings = async (page: Page) =>
@@ -121,7 +124,7 @@ test.describe('artist scan dropdown', () => {
   test('"Scan for new files" runs a scoped index+sync with no destructive flag', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)
-    await page.getByRole('button', { name: 'Scan for new files' }).click()
+    await page.getByRole('menuitem', { name: 'Scan for new files' }).click()
 
     await expect.poll(() => runs).toEqual([
       { command: './index', args: ['--only', artistName, '--exact'] },
@@ -133,7 +136,7 @@ test.describe('artist scan dropdown', () => {
   test('"Rebuild everything" deletes, re-indexes and re-matches', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)
-    await page.getByRole('button', { name: 'Rebuild everything' }).click()
+    await page.getByRole('menuitem', { name: 'Rebuild everything' }).click()
 
     await expect.poll(() => runs).toEqual([
       { command: './delete', args: [artistName, '--y'] },
@@ -145,7 +148,7 @@ test.describe('artist scan dropdown', () => {
   test('"Rebuild from files only" stops before MusicBrainz', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)
-    await page.getByRole('button', { name: 'Rebuild from files only' }).click()
+    await page.getByRole('menuitem', { name: 'Rebuild from files only' }).click()
 
     await expect.poll(() => runs).toEqual([
       { command: './delete', args: [artistName, '--y'] },
@@ -156,7 +159,7 @@ test.describe('artist scan dropdown', () => {
   test('"Re-match from scratch" touches MusicBrainz only', async ({ page }) => {
     const runs = await stubTerminal(page)
     await openArtistMenu(page)
-    await page.getByRole('button', { name: 'Re-match from scratch' }).click()
+    await page.getByRole('menuitem', { name: 'Re-match from scratch' }).click()
 
     await expect.poll(() => runs).toEqual([
       { command: './sync', args: ['--only', artistName, '--exact', '--overwrite'] },
@@ -195,8 +198,8 @@ test.describe('global scan grid (/settings/library)', () => {
     await gotoLibrarySettings(page)
     await expect(page.getByRole('button', { name: 'Check for new files' })).toBeVisible()
     // The rebuilds delete an artist first; there is no library-wide equivalent behind this grid.
-    await expect(page.getByRole('button', { name: 'Rebuild everything' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Rebuild from files only' })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: 'Rebuild everything' })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: 'Rebuild from files only' })).toHaveCount(0)
   })
 })
 
@@ -222,12 +225,12 @@ test.describe('manager (non-admin)', () => {
     await loginAsManager(page)
     await openArtistMenu(page)
 
-    await expect(page.getByRole('button', { name: 'Rebuild everything' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Rebuild from files only' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Re-match from scratch' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Scan for new files' })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: 'Rebuild everything' })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: 'Rebuild from files only' })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: 'Re-match from scratch' })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: 'Scan for new files' })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Scan for new files' }).click()
+    await page.getByRole('menuitem', { name: 'Scan for new files' }).click()
     await expect.poll(() => runs).toEqual([
       { command: './index', args: ['--only', artistName, '--exact'] },
       { command: './sync', args: ['--only', artistName, '--exact'] },

@@ -37,6 +37,6 @@ async function run() {
     @click="run"
   >
     Re-index + Re-sync
-    <span v-if="only?.length" class="text-xs text-stone-100/40">({{ only.length }})</span>
+    <span v-if="only?.length" class="text-xs text-stone-100/55">({{ only.length }})</span>
   </UiButton>
 </template>

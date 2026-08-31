@@ -15,8 +15,8 @@ defineSlots<{ action?: () => any }>()
   <div class="flex flex-col items-center gap-3 py-10 text-center">
     <component :is="icon" v-if="icon" :size="32" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/20" />
     <div class="flex flex-col gap-1">
-      <p class="text-base text-stone-100/40">{{ message }}</p>
-      <p v-if="hint" class="text-sm text-stone-100/30">{{ hint }}</p>
+      <p class="text-base text-stone-100/55">{{ message }}</p>
+      <p v-if="hint" class="text-sm text-stone-100/50">{{ hint }}</p>
     </div>
     <slot name="action" />
   </div>

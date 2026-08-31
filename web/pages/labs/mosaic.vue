@@ -107,7 +107,7 @@ onMounted(async () => {
             </div>
             <div>
               <h2 class="text-lg font-semibold text-stone-100">Album Mosaic</h2>
-              <p class="text-sm text-stone-100/40">All your album covers in one image</p>
+              <p class="text-sm text-stone-100/55">All your album covers in one image</p>
             </div>
           </div>
 
@@ -133,7 +133,7 @@ onMounted(async () => {
                 Building
                 <span class="text-stone-100">({{ mosaic.progress.current }}/{{ mosaic.progress.total }} images processed)</span>
               </span>
-              <span class="text-stone-100/40 tabular-nums">{{ Math.round(progressPercent) }}%</span>
+              <span class="text-stone-100/55 tabular-nums">{{ Math.round(progressPercent) }}%</span>
             </div>
             <div class="h-1.5 w-full rounded-full bg-stone-800">
               <div
@@ -152,7 +152,7 @@ onMounted(async () => {
         </div>
 
         <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
-          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
             Mosaic History
           </h3>
 
@@ -166,7 +166,7 @@ onMounted(async () => {
             >
               <div>
                 <p class="text-base text-stone-100">{{ formatDate(item.createdAt) }}</p>
-                <p class="text-sm text-stone-100/40">
+                <p class="text-sm text-stone-100/55">
                   <span v-if="item.imageCount">{{ item.imageCount }} covers · </span>{{ formatSize(item.size) }}
                 </p>
               </div>
@@ -203,7 +203,7 @@ onMounted(async () => {
 
       <div class="lg:col-span-2">
         <div class="sticky top-20 rounded-xl border border-stone-100/6 bg-stone-900 p-5">
-          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
             Preview
           </h3>
 
@@ -221,12 +221,12 @@ onMounted(async () => {
               class="w-full transition-opacity duration-150 hover:opacity-90"
             >
           </button>
-          <p v-else class="text-base text-stone-100/40">
+          <p v-else class="text-base text-stone-100/55">
             Click the view button on a mosaic to see its preview here.
           </p>
 
           <div v-if="previewUrl" class="mt-3 flex items-baseline justify-between gap-3">
-            <span class="text-sm text-stone-100/40">{{ modeDescription }}</span>
+            <span class="text-sm text-stone-100/55">{{ modeDescription }}</span>
             <span v-if="previewItem" :class="typography.meta">
               <template v-if="previewItem.imageCount">{{ previewItem.imageCount.toLocaleString() }} covers · </template>{{ formatSize(previewItem.size) }}
             </span>

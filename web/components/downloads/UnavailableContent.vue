@@ -39,7 +39,7 @@ const rejectAll = () => askBulkReject(unavailable.value.map(i => i.id))
 
 <template>
   <div class="flex flex-col gap-4">
-    <p class="text-base text-stone-100/40">
+    <p class="text-base text-stone-100/55">
       No Soulseek source found yet. These aren’t failures — they sink in priority and are retried
       automatically when slots free up. Force a retry to push one back to the front of the queue.
     </p>

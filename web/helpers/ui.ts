@@ -65,7 +65,7 @@ const BUTTON_VARIANT: Record<ButtonVariant, ButtonVariantSpec> = {
   },
   ghost: {
     structural: 'rounded-md border',
-    idle: 'bg-transparent border-transparent text-stone-100/40 hover:text-stone-100 hover:bg-stone-800',
+    idle: 'bg-transparent border-transparent text-stone-100/55 hover:text-stone-100 hover:bg-stone-800',
     on: 'border-amber-400/45 bg-amber-400/10 text-amber-400 font-medium',
   },
 }
@@ -89,7 +89,7 @@ export const button = (
   return cx(BUTTON_BASE, sizeClass, spec.structural, color, extra)
 }
 
-export const iconButton = 'grid place-items-center rounded-md bg-transparent border border-transparent text-stone-100/40 hover:text-stone-100 hover:bg-stone-800 transition-colors duration-150'
+export const iconButton = 'grid place-items-center rounded-md bg-transparent border border-transparent text-stone-100/55 hover:text-stone-100 hover:bg-stone-800 transition-colors duration-150'
 
 // Shared wrapper for a segmented control (radio group, view-mode switch): a bordered pill
 // holding tightly-packed toggle buttons.
@@ -106,7 +106,7 @@ interface ToggleSpec {
 const TOGGLE: Record<ToggleKey, ToggleSpec> = {
   tab: {
     base: 'inline-flex items-center gap-2 h-[30px] px-[13px] rounded-full text-base font-sans cursor-pointer transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100',
-    idle: 'bg-transparent text-stone-100/40',
+    idle: 'bg-transparent text-stone-100/55',
     on: 'bg-amber-400/20 text-amber-400 font-semibold',
   },
   chip: {
@@ -116,22 +116,22 @@ const TOGGLE: Record<ToggleKey, ToggleSpec> = {
   },
   keyChip: {
     base: 'h-7 min-w-7 px-2 rounded-[7px] border border-transparent text-sm font-semibold font-sans cursor-pointer transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100',
-    idle: 'bg-transparent text-stone-100/40',
+    idle: 'bg-transparent text-stone-100/55',
     on: 'bg-amber-400 text-on-accent',
   },
   switchBtn: {
     base: 'grid place-items-center size-[30px] rounded-sm border-0 cursor-pointer transition-colors duration-150 hover:text-stone-100',
-    idle: 'bg-transparent text-stone-100/40',
+    idle: 'bg-transparent text-stone-100/55',
     on: 'bg-stone-700 text-stone-100',
   },
   countPill: {
     base: 'inline-flex items-center h-[19px] px-2 rounded-full text-2xs font-bold tabular-nums',
-    idle: 'bg-stone-800 text-stone-100/40',
+    idle: 'bg-stone-800 text-stone-100/55',
     on: 'bg-amber-400/20 text-amber-400',
   },
   underTab: {
     base: 'relative inline-flex items-center gap-2 h-[40px] px-[14px] bg-transparent border-0 text-lg font-sans cursor-pointer after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full hover:text-stone-100',
-    idle: 'text-stone-100/40',
+    idle: 'text-stone-100/55',
     on: 'text-stone-100 font-semibold after:bg-amber-400',
   },
 }
@@ -150,7 +150,7 @@ export const toneText: Record<Tone, string> = {
   warning: 'text-warning',
   danger: 'text-danger',
   info: 'text-info',
-  muted: 'text-stone-100/40',
+  muted: 'text-stone-100/55',
 }
 
 export const toneBg: Record<Tone, string> = {
@@ -159,7 +159,7 @@ export const toneBg: Record<Tone, string> = {
   warning: 'bg-warning/15 text-warning',
   danger: 'bg-danger/15 text-danger',
   info: 'bg-info/15 text-info',
-  muted: 'bg-stone-800 text-stone-100/40',
+  muted: 'bg-stone-800 text-stone-100/55',
 }
 
 export const toneFill: Record<Tone, string> = {
@@ -181,15 +181,15 @@ export const surface = {
 }
 
 export const form = {
-  input: 'h-[40px] w-full px-[13px] rounded-md bg-stone-950 border border-stone-100/10 text-stone-100 text-base font-sans outline-0 transition-colors duration-150 focus:border-amber-400/45 focus:bg-stone-800 placeholder:text-stone-100/30',
+  input: 'h-[40px] w-full px-[13px] rounded-md bg-stone-950 border border-stone-100/10 text-stone-100 text-base font-sans outline-0 transition-colors duration-150 focus:border-amber-400/45 focus:bg-stone-800 placeholder:text-stone-100/50',
   inputInvalid: 'border-danger/65',
   label: 'text-base font-medium text-stone-100',
-  hint: 'text-sm text-stone-100/40 leading-[1.45] -mt-0.5',
+  hint: 'text-sm text-stone-100/55 leading-[1.45] -mt-0.5',
   error: 'text-sm text-danger',
   select: 'h-[40px] w-full pl-[13px] pr-8 rounded-md bg-stone-950 border border-stone-100/10 text-stone-100 text-base font-sans appearance-none outline-0 focus:border-amber-400/45',
   checkbox: 'relative grid place-items-center size-[18px] rounded-[5px] border border-stone-100/10 bg-stone-950 [&:has(:checked)]:bg-amber-400 [&:has(:checked)]:border-amber-400',
   search: 'flex items-center gap-[9px] h-[34px] px-3 rounded-md bg-stone-900 border border-stone-100/10 focus-within:border-amber-400/40',
-  searchInput: 'flex-1 min-w-0 bg-transparent border-0 outline-0 text-stone-100 text-base font-sans placeholder:text-stone-100/30',
+  searchInput: 'flex-1 min-w-0 bg-transparent border-0 outline-0 text-stone-100 text-base font-sans placeholder:text-stone-100/50',
 }
 
 export const nav = {
@@ -200,7 +200,7 @@ export const nav = {
 export const data = {
   row: 'flex items-center justify-between gap-3.5 w-full px-[18px] py-3 border-b border-stone-100/6 last:border-b-0 text-base',
   rowLink: 'cursor-pointer hover:bg-stone-800',
-  th: 'px-3 py-2.5 text-left text-2xs font-bold tracking-[0.1em] uppercase text-stone-100/40 border-b border-stone-100/6 whitespace-nowrap',
+  th: 'px-3 py-2.5 text-left text-2xs font-bold tracking-[0.1em] uppercase text-stone-100/55 border-b border-stone-100/6 whitespace-nowrap',
   td: 'px-3 py-3 text-base text-stone-100/60 border-b border-stone-100/6 align-middle',
   tag: 'inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/6 text-xs text-stone-100/60',
   badge: 'inline-flex items-center h-[22px] px-2.5 rounded-full text-sm font-bold tabular-nums',
@@ -209,15 +209,15 @@ export const data = {
 export const grid = {
   auto: 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-x-[22px] gap-y-[26px]',
   autoSm: 'grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-5',
-  empty: 'col-span-full py-10 text-center text-base text-stone-100/40',
+  empty: 'col-span-full py-10 text-center text-base text-stone-100/55',
 }
 
 export const tile = {
   root: 'group block min-w-0 text-left',
   art: 'w-full aspect-square rounded-lg bg-stone-800 border border-stone-100/6 overflow-hidden transition-colors duration-150 group-hover:border-stone-100/10',
   name: 'mt-2.5 text-lg font-semibold text-stone-100 truncate',
-  sub: 'mt-0.5 text-sm text-stone-100/40',
-  meta: 'mt-0.5 text-2xs text-stone-100/30',
+  sub: 'mt-0.5 text-sm text-stone-100/55',
+  meta: 'mt-0.5 text-2xs text-stone-100/50',
 }
 
 export const typography = {
@@ -226,13 +226,13 @@ export const typography = {
   h3: 'font-display text-2xl font-semibold tracking-[-0.02em]',
   title: 'text-xl font-semibold tracking-[-0.01em]',
   body: 'text-base text-stone-100/60 leading-[1.55]',
-  sub: 'text-sm text-stone-100/40',
+  sub: 'text-sm text-stone-100/55',
   sectionLabel: 'text-2xs font-bold tracking-[0.12em] uppercase text-stone-100/60',
-  meta: 'font-mono text-xs text-stone-100/40 tabular-nums',
+  meta: 'font-mono text-xs text-stone-100/55 tabular-nums',
   // Wider-tracked monospace caption that sits *above* a value rather than beside it - the
   // "TOTAL PLAYTIME" rule on Statistics, the "STATUS" lead-in on the artist page. Distinct from
   // sectionLabel (sans, card headers) and from meta (numerals inside a row).
-  eyebrow: 'inline-flex items-center gap-2 font-mono text-2xs tracking-[0.24em] uppercase text-stone-100/40',
+  eyebrow: 'inline-flex items-center gap-2 font-mono text-2xs tracking-[0.24em] uppercase text-stone-100/55',
 }
 
 // A pill that carries its colour as a *border + tinted fill* rather than a solid one: match-score

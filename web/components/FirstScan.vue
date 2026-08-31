@@ -48,7 +48,7 @@ onMounted(fetchStatus)
   <div class="flex items-center justify-center py-20">
     <div class="flex max-w-lg flex-col items-center gap-8 text-center">
       <div class="flex size-16 items-center justify-center rounded-full bg-stone-800">
-        <Disc3 :size="32" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/30" />
+        <Disc3 :size="32" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/50" />
       </div>
 
       <div>
@@ -85,7 +85,7 @@ onMounted(fetchStatus)
           <HardDriveDownload v-else :size="16" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 text-stone-100/60" />
           <div>
             <p class="text-sm font-medium text-stone-100/60">Index only</p>
-            <p class="text-xs text-stone-100/40">Scan local audio files without MusicBrainz sync</p>
+            <p class="text-xs text-stone-100/55">Scan local audio files without MusicBrainz sync</p>
           </div>
         </button>
 

@@ -65,8 +65,8 @@ onBeforeUnmount(() => {
     >
       <slot name="icon" />
       <span>{{ label }}</span>
-      <ChevronUp v-if="open" :size="14" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/40" />
-      <ChevronDown v-else :size="14" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/40" />
+      <ChevronUp v-if="open" :size="14" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/55" />
+      <ChevronDown v-else :size="14" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/55" />
     </button>
 
     <div
@@ -82,10 +82,10 @@ onBeforeUnmount(() => {
         class="flex w-full items-start gap-2.5 rounded px-3 py-2 text-left text-stone-100/60 transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100"
         @click="select(opt)"
       >
-        <component :is="opt.icon" v-if="opt.icon" :size="14" :stroke-width="ICON_STROKE_WIDTH" class="mt-0.5 shrink-0 text-stone-100/40" />
+        <component :is="opt.icon" v-if="opt.icon" :size="14" :stroke-width="ICON_STROKE_WIDTH" class="mt-0.5 shrink-0 text-stone-100/55" />
         <div class="flex flex-col">
           <span class="text-sm">{{ opt.label }}</span>
-          <span v-if="opt.description" class="text-xs text-stone-100/40">{{ opt.description }}</span>
+          <span v-if="opt.description" class="text-xs text-stone-100/55">{{ opt.description }}</span>
         </div>
       </button>
     </div>

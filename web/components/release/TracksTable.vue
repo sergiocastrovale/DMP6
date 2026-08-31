@@ -45,7 +45,7 @@ function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
 
 <template>
   <div class="mt-4 mb-1">
-    <div v-if="pending" class="py-4 text-center text-sm text-stone-100/40">Loading tracks...</div>
+    <div v-if="pending" class="py-4 text-center text-sm text-stone-100/55">Loading tracks...</div>
     <TrackList
       v-else-if="tracks.length"
       :tracks="tracks"
@@ -53,6 +53,6 @@ function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
       :build-player-tracks="buildPlayerTracks"
       :selected-track-id="selectedTrackId"
     />
-    <div v-else class="py-4 text-center text-sm text-stone-100/40">No local tracks available</div>
+    <div v-else class="py-4 text-center text-sm text-stone-100/55">No local tracks available</div>
   </div>
 </template>

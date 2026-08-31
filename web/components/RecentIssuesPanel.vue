@@ -57,7 +57,7 @@ defineExpose({ fetchEvents })
       >
         <AlertTriangle :size="15" class="text-amber-400" />
         {{ title }}
-        <span class="rounded-full bg-stone-800 px-2 py-0.5 text-xs tabular-nums text-stone-100/40">{{ events.length }}</span>
+        <span class="rounded-full bg-stone-800 px-2 py-0.5 text-xs tabular-nums text-stone-100/55">{{ events.length }}</span>
       </button>
       <div class="flex items-center gap-2">
         <button type="button" aria-label="Refresh issues" class="rounded-md p-1 text-stone-100/25 transition-colors duration-150 hover:text-stone-100/60" @click="fetchEvents">

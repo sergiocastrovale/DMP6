@@ -15,7 +15,7 @@ defineProps<{
       <component :is="icon" v-if="icon" :size="24" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 text-amber-400" />
       <div>
         <h1 :class="typography.h1">{{ text }}</h1>
-        <p v-if="subtext" class="mt-0.5 text-sm text-stone-100/40">{{ subtext }}</p>
+        <p v-if="subtext" class="mt-0.5 text-sm text-stone-100/55">{{ subtext }}</p>
       </div>
     </div>
     <slot />

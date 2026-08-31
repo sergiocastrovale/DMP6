@@ -40,7 +40,7 @@ const [ctaBefore, ctaAfter] = randomArtist.value ? pick(ctas, seed.value + 1) : 
     <h1 :class="typography.h1">
       Hello, {{ user?.username }}
     </h1>
-    <p class="text-lg text-stone-100/40">
+    <p class="text-lg text-stone-100/55">
       {{ greeting }}
       <span v-if="randomArtist">{{ ctaBefore }}<NuxtLink :to="`/artist/${randomArtist.slug}`" class="text-stone-100/60 underline decoration-stone-100/30 underline-offset-2 transition-colors duration-150 hover:text-stone-100">{{ randomArtist.name }}</NuxtLink>{{ ctaAfter }}</span>
     </p>

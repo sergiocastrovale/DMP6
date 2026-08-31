@@ -72,7 +72,7 @@ watch(route, closeMore)
       v-for="item in items"
       :key="item.to"
       :to="item.to"
-      :class="cx('flex flex-1 flex-col items-center gap-1 py-2 text-xs transition-colors duration-150', isActive(item.to) ? 'text-amber-400' : 'text-stone-100/40')"
+      :class="cx('flex flex-1 flex-col items-center gap-1 py-2 text-xs transition-colors duration-150', isActive(item.to) ? 'text-amber-400' : 'text-stone-100/55')"
     >
       <component :is="item.icon" :size="20" :stroke-width="ICON_STROKE_WIDTH" />
       <span>{{ item.label }}</span>
@@ -81,7 +81,7 @@ watch(route, closeMore)
     <button
       type="button"
       :aria-expanded="showMore"
-      :class="cx('flex flex-1 flex-col items-center gap-1 py-2 text-xs transition-colors duration-150', (showMore || moreActive) ? 'text-amber-400' : 'text-stone-100/40')"
+      :class="cx('flex flex-1 flex-col items-center gap-1 py-2 text-xs transition-colors duration-150', (showMore || moreActive) ? 'text-amber-400' : 'text-stone-100/55')"
       @click="showMore = !showMore"
     >
       <EllipsisVertical :size="20" :stroke-width="ICON_STROKE_WIDTH" />

@@ -57,7 +57,7 @@ const onKeydown = (event: KeyboardEvent) => {
       :tabindex="active === tab.key ? 0 : -1"
       :class="cx(
         'px-4 py-2 text-sm font-medium transition-colors duration-150',
-        active === tab.key ? `border-b-2 ${tab.activeColor || 'border-amber-400'} text-stone-100` : 'text-stone-100/40 hover:text-stone-100/60',
+        active === tab.key ? `border-b-2 ${tab.activeColor || 'border-amber-400'} text-stone-100` : 'text-stone-100/55 hover:text-stone-100/60',
       )"
       @click="active = tab.key"
     >

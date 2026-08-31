@@ -271,7 +271,7 @@ onUnmounted(() => {
             </div>
             <div>
               <h2 class="text-lg font-semibold text-stone-100">Genre Genome</h2>
-              <p class="text-sm text-stone-100/40">Genre relationships via shared artists</p>
+              <p class="text-sm text-stone-100/55">Genre relationships via shared artists</p>
             </div>
           </div>
 

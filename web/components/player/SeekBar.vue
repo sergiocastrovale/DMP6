@@ -37,7 +37,7 @@ const handleClick = (event: MouseEvent) => {
 
 <template>
   <div class="flex w-full items-center gap-2">
-    <span class="w-8 shrink-0 text-right text-2xs text-stone-100/40 tabular-nums">{{ formatDuration(currentTime) }}</span>
+    <span class="w-8 shrink-0 text-right text-2xs text-stone-100/55 tabular-nums">{{ formatDuration(currentTime) }}</span>
 
     <Popover v-if="hoverPopover" trigger="hover" class="flex-1">
       <template #trigger>
@@ -76,6 +76,6 @@ const handleClick = (event: MouseEvent) => {
       <div class="h-full rounded-full bg-amber-400" :style="{ width: `${progressPct}%` }" />
     </div>
 
-    <span class="w-10 shrink-0 text-2xs text-stone-100/40 tabular-nums">{{ rightLabel }}</span>
+    <span class="w-10 shrink-0 text-2xs text-stone-100/55 tabular-nums">{{ rightLabel }}</span>
   </div>
 </template>

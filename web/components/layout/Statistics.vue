@@ -24,7 +24,7 @@ const stats = computed(() => [
         <div v-else class="font-display font-semibold text-stone-100 tabular-nums">
           {{ stat.value }}
         </div>
-        <div class="mt-1.5 font-mono text-xs uppercase text-stone-100/30">
+        <div class="mt-1.5 font-mono text-xs uppercase text-stone-100/50">
           {{ stat.label }}
         </div>
       </div>

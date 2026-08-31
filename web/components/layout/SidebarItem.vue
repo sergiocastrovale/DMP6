@@ -50,7 +50,7 @@ const itemClass = computed(() => cx(
     <span v-if="!collapsed" class="flex-1 truncate">{{ label }}</span>
     <span
       v-if="!collapsed && count !== null && count > 0"
-      :class="cx('font-mono text-2xs tabular-nums', active ? 'text-amber-400/80' : 'text-stone-100/30')"
+      :class="cx('font-mono text-2xs tabular-nums', active ? 'text-amber-400/80' : 'text-stone-100/50')"
     >
       {{ formatCount(count) }}
     </span>

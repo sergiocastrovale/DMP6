@@ -65,7 +65,7 @@ const handleTrackClick = (track: TrackInContext) => {
           <PlayerPlayPauseButton
             :playing="isTrackPlaying(row.track.id)"
             size="sm"
-            :class="isCurrentTrack(row.track.id) ? 'text-amber-400' : 'text-stone-100/40'"
+            :class="isCurrentTrack(row.track.id) ? 'text-amber-400' : 'text-stone-100/55'"
           />
         </td>
         <td class="w-14 py-2 pl-2">
@@ -88,7 +88,7 @@ const handleTrackClick = (track: TrackInContext) => {
           >
             {{ row.track.title }}
           </p>
-          <div v-if="row.track.release" class="flex items-center gap-1.5 text-sm text-stone-100/40">
+          <div v-if="row.track.release" class="flex items-center gap-1.5 text-sm text-stone-100/55">
             <NuxtLink
               v-if="row.track.release.artist"
               :to="`/artist/${row.track.release.artist.slug}`"
@@ -101,7 +101,7 @@ const handleTrackClick = (track: TrackInContext) => {
             <span class="truncate">{{ row.track.release.title }}</span>
           </div>
         </td>
-        <td class="w-16 py-2 pr-4 text-center tabular-nums text-sm text-stone-100/40">
+        <td class="w-16 py-2 pr-4 text-center tabular-nums text-sm text-stone-100/55">
           {{ formatDuration(row.track.duration) }}
         </td>
         <td v-if="$slots.action" class="w-12 py-2 pr-4 text-center">

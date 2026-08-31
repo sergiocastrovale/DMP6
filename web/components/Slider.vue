@@ -94,7 +94,7 @@ const onKeydown = (event: KeyboardEvent) => {
     </div>
 
     <div class="flex items-center gap-3">
-      <span v-if="leftLabel" class="w-24 shrink-0 text-xs text-stone-100/40">{{ leftLabel }}</span>
+      <span v-if="leftLabel" class="w-24 shrink-0 text-xs text-stone-100/55">{{ leftLabel }}</span>
 
       <div
         ref="trackRef"
@@ -118,9 +118,9 @@ const onKeydown = (event: KeyboardEvent) => {
         <div class="absolute size-3.5 -ml-[7px] rounded-full bg-stone-100 shadow-md" :style="{ left: `${percent}%` }" />
       </div>
 
-      <span v-if="rightLabel" class="w-24 shrink-0 text-right text-xs text-stone-100/40">{{ rightLabel }}</span>
+      <span v-if="rightLabel" class="w-24 shrink-0 text-right text-xs text-stone-100/55">{{ rightLabel }}</span>
     </div>
 
-    <p v-if="hint" class="mt-2 text-xs leading-snug text-stone-100/40">{{ hint }}</p>
+    <p v-if="hint" class="mt-2 text-xs leading-snug text-stone-100/55">{{ hint }}</p>
   </div>
 </template>

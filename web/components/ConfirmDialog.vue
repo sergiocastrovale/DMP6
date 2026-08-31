@@ -30,7 +30,7 @@ const close = () => emit('update:modelValue', false)
   >
     <div class="flex flex-col gap-5">
       <p v-if="message" class="text-base text-stone-100/60">{{ message }}</p>
-      <p v-if="note" class="rounded-lg border border-stone-100/6 bg-stone-950 px-3 py-2 text-sm text-stone-100/40">{{ note }}</p>
+      <p v-if="note" class="rounded-lg border border-stone-100/6 bg-stone-950 px-3 py-2 text-sm text-stone-100/55">{{ note }}</p>
       <slot />
       <div class="flex justify-end gap-2.5">
         <UiButton variant="secondary" @click="close">

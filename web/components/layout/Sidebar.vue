@@ -69,7 +69,7 @@ const isActive = (item: NavEntry) => {
       <LayoutLogo />
       <button
         type="button"
-        class="grid size-8 place-items-center rounded-sm border border-transparent text-stone-100/30 transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800 hover:text-stone-100/60"
+        class="grid size-8 place-items-center rounded-sm border border-transparent text-stone-100/50 transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800 hover:text-stone-100/60"
         :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
         @click="toggle"
       >

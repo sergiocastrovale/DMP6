@@ -24,7 +24,7 @@ const deleteOpen = ref(false)
 <template>
   <div>
     <div v-if="pending" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-stone-100/40" />
+      <Loader2 :size="24" class="animate-spin text-stone-100/55" />
     </div>
     <div v-else-if="error" class="py-20 text-center">
       <p class="text-lg font-medium text-stone-100">Artist not found</p>

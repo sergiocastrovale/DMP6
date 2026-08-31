@@ -176,7 +176,7 @@ onUnmounted(() => {
             </div>
             <div>
               <h2 class="text-lg font-semibold text-stone-100">Decade DNA</h2>
-              <p class="text-sm text-stone-100/40">Compare your collection across decades</p>
+              <p class="text-sm text-stone-100/55">Compare your collection across decades</p>
             </div>
           </div>
 

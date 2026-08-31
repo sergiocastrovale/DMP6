@@ -32,7 +32,7 @@ const helpStyle = computed(() => {
 
 <template>
   <div class="flex items-center gap-2">
-    <span class="text-2xs font-semibold uppercase tracking-wider text-stone-100/30">Status</span>
+    <span class="text-2xs font-semibold uppercase tracking-wider text-stone-100/50">Status</span>
 
     <button
       v-for="s in statuses.filter(s => (statusCounts[s.value] ?? 0) > 0)"
@@ -42,7 +42,7 @@ const helpStyle = computed(() => {
         'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-2xs font-medium uppercase tracking-wide transition-colors duration-150',
         activeStatuses.has(s.value)
           ? 'border-stone-100/6 bg-stone-800 text-stone-100'
-          : 'border-transparent bg-transparent text-stone-100/30 hover:text-stone-100/60',
+          : 'border-transparent bg-transparent text-stone-100/50 hover:text-stone-100/60',
       )"
       @click="toggle(s.value)"
     >
@@ -55,7 +55,7 @@ const helpStyle = computed(() => {
       @mouseenter="helpOpen = true"
       @mouseleave="helpOpen = false"
     >
-      <button ref="helpButton" type="button" aria-label="Status legend" class="text-stone-100/40 transition-colors duration-150 hover:text-stone-100/60">
+      <button ref="helpButton" type="button" aria-label="Status legend" class="text-stone-100/55 transition-colors duration-150 hover:text-stone-100/60">
         <HelpCircle :size="14" :stroke-width="ICON_STROKE_WIDTH" />
       </button>
       <Teleport to="body">

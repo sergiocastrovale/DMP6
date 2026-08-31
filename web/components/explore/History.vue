@@ -71,7 +71,7 @@ const goNewer = () => {
         >
           <span class="relative size-9 shrink-0 overflow-hidden rounded-md bg-stone-800">
             <img v-if="trackImage(track)" :src="trackImage(track)!" :alt="track.album" class="h-full w-full object-cover">
-            <span v-else class="flex h-full w-full items-center justify-center text-stone-100/30">
+            <span v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
               <Music :size="14" :stroke-width="ICON_STROKE_WIDTH" />
             </span>
             <span class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
@@ -80,7 +80,7 @@ const goNewer = () => {
           </span>
           <span class="flex min-w-0 flex-1 flex-col">
             <span class="truncate text-sm font-medium text-stone-100">{{ track.title }}</span>
-            <span class="truncate text-xs text-stone-100/40">
+            <span class="truncate text-xs text-stone-100/55">
               <span class="text-amber-400">{{ track.artist }}</span><template v-if="track.year"> · {{ track.year }}</template>
             </span>
           </span>
@@ -94,7 +94,7 @@ const goNewer = () => {
           v-if="track.artistSlug"
           :to="`/artist/${track.artistSlug}`"
           :aria-label="`Go to ${track.artist}`"
-          class="shrink-0 rounded-full p-1.5 text-stone-100/30 transition-colors duration-150 hover:text-amber-400"
+          class="shrink-0 rounded-full p-1.5 text-stone-100/50 transition-colors duration-150 hover:text-amber-400"
         >
           <Info :size="14" :stroke-width="ICON_STROKE_WIDTH" />
         </NuxtLink>

@@ -314,7 +314,7 @@ onUnmounted(() => {
             </div>
             <div>
               <h2 class="text-lg font-semibold text-stone-100">Artist Network</h2>
-              <p class="text-sm text-stone-100/40">Collaboration connections</p>
+              <p class="text-sm text-stone-100/55">Collaboration connections</p>
             </div>
           </div>
 

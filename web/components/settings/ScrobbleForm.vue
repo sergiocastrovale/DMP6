@@ -62,7 +62,7 @@ const disconnect = async () => {
 <template>
   <div class="flex max-w-2xl flex-col gap-6">
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Last.fm Scrobbling</h2>
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Last.fm Scrobbling</h2>
 
       <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
         <CheckCircle2 :size="18" class="text-success shrink-0" />
@@ -70,7 +70,7 @@ const disconnect = async () => {
           <p class="text-base text-success">
             Connected as <span class="font-semibold">{{ connectedUsername }}</span>
           </p>
-          <p class="text-sm text-stone-100/40">Tracks are being scrobbled to Last.fm</p>
+          <p class="text-sm text-stone-100/55">Tracks are being scrobbled to Last.fm</p>
         </div>
         <button
           :disabled="disconnecting || !canEdit"
@@ -83,7 +83,7 @@ const disconnect = async () => {
       </div>
 
       <div v-else class="flex items-center gap-3 rounded-lg border border-stone-100/6 bg-stone-800/50 px-4 py-3">
-        <AlertCircle :size="18" class="text-stone-100/40 shrink-0" />
+        <AlertCircle :size="18" class="text-stone-100/55 shrink-0" />
         <p class="flex-1 text-base text-stone-100/60">Not connected to Last.fm</p>
       </div>
 
@@ -117,7 +117,7 @@ const disconnect = async () => {
     </div>
 
     <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">How it works</h2>
+      <h2 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">How it works</h2>
       <ul class="flex flex-col gap-1 text-base text-stone-100/60">
         <li>Tracks are scrobbled after 50% played or 4 minutes (whichever first)</li>
         <li>Tracks under 30 seconds are not scrobbled</li>

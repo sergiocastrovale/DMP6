@@ -36,7 +36,7 @@ const handleSubmit = async () => {
         <h1 class="font-display text-3xl font-bold tracking-[0.3em] text-amber-400">
           DMP
         </h1>
-        <p class="mt-1 text-sm text-stone-100/40">
+        <p class="mt-1 text-sm text-stone-100/55">
           Your music library
         </p>
       </div>

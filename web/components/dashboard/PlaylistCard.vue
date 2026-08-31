@@ -37,12 +37,12 @@ const coverImageUrl = (cover: { image: string | null, imageUrl: string | null })
             loading="lazy"
             class="h-full w-full object-cover"
           >
-          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/30">
+          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
             <LucideMusic class="size-8" :stroke-width="ICON_STROKE_WIDTH" />
           </div>
         </div>
       </div>
-      <div v-else class="flex h-full w-full items-center justify-center text-stone-100/30">
+      <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
         <LucideListMusic class="size-12" :stroke-width="ICON_STROKE_WIDTH" />
       </div>
     </div>
@@ -50,7 +50,7 @@ const coverImageUrl = (cover: { image: string | null, imageUrl: string | null })
       <div class="font-display font-semibold text-lg text-stone-100 truncate">
         {{ playlist.name }}
       </div>
-      <div class="font-mono text-2xs uppercase text-stone-100/30 tracking-[0.04em]">
+      <div class="font-mono text-2xs uppercase text-stone-100/50 tracking-[0.04em]">
         {{ playlist.trackCount }} {{ playlist.trackCount === 1 ? 'track' : 'tracks' }}
       </div>
     </div>

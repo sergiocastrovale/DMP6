@@ -318,7 +318,7 @@ watch(() => props.releases, () => {
     </template>
 
     <template v-else>
-      <div v-if="allTracksLoading" class="py-8 text-center text-base text-stone-100/40">
+      <div v-if="allTracksLoading" class="py-8 text-center text-base text-stone-100/55">
         Loading all tracks...
       </div>
       <UiEmptyState v-else-if="filteredAllTracks.length === 0" message="No tracks found." hint="Try clearing a status or search filter." />

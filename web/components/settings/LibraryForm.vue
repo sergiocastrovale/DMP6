@@ -31,7 +31,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 <template>
   <div class="flex max-w-2xl flex-col gap-6">
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Music Library</h2>
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Music Library</h2>
 
       <SettingsField
         v-model="musicDir"
@@ -42,7 +42,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
       <div class="flex flex-col gap-1.5">
         <Switch v-model="autoScanEnabled" label="Scan automatically" />
-        <p class="text-sm text-stone-100/40">
+        <p class="text-sm text-stone-100/55">
           Runs index + sync unattended so new folders and releases appear without pressing anything.
           Only the instance started with MONITOR_PRIMARY=true runs it.
         </p>
@@ -58,7 +58,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
       <div class="flex flex-col gap-1.5">
         <Switch v-model="showTerminal" label="Show terminal sidebar" />
-        <p class="text-sm text-stone-100/40">
+        <p class="text-sm text-stone-100/55">
           Stream raw output in the terminal sidebar for scans, fixes and merges. When off, a compact progress
           panel is shown instead. Overrides the SHOW_TERMINAL env var.
         </p>
@@ -68,7 +68,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
     </div>
 
     <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="mb-4 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Scan Controls</h2>
+      <h2 class="mb-4 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Scan Controls</h2>
       <RealTimeStatus />
     </div>
   </div>

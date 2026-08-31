@@ -19,10 +19,10 @@ const label = computed(() => (segment.value ? props.labels[segment.value] ?? seg
 
 <template>
   <nav v-if="segment" aria-label="Breadcrumb" class="flex items-center gap-1.5 text-sm">
-    <NuxtLink :to="root.to" class="text-stone-100/40 transition-colors duration-150 hover:text-stone-100/60">
+    <NuxtLink :to="root.to" class="text-stone-100/55 transition-colors duration-150 hover:text-stone-100/60">
       {{ root.label }}
     </NuxtLink>
-    <ChevronRight :size="12" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/30" />
+    <ChevronRight :size="12" :stroke-width="ICON_STROKE_WIDTH" class="text-stone-100/50" />
     <span class="text-stone-100" aria-current="page">{{ label }}</span>
   </nav>
 </template>

@@ -74,7 +74,7 @@ const labs = computed<Lab[]>(() => [
             {{ lab.maturity }}
           </span>
         </div>
-        <p class="text-sm leading-relaxed text-stone-100/40">{{ lab.description }}</p>
+        <p class="text-sm leading-relaxed text-stone-100/55">{{ lab.description }}</p>
       </NuxtLink>
     </div>
   </div>

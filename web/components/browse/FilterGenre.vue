@@ -86,7 +86,7 @@ onBeforeUnmount(() => {
         v-model="search"
         type="text"
         placeholder="Filter genres..."
-        class="mb-2 w-full rounded-md border border-stone-100/10 bg-stone-950 px-2 py-1 text-xs text-stone-100 outline-0 placeholder:text-stone-100/30 focus:border-amber-400/45"
+        class="mb-2 w-full rounded-md border border-stone-100/10 bg-stone-950 px-2 py-1 text-xs text-stone-100 outline-0 placeholder:text-stone-100/50 focus:border-amber-400/45"
       >
       <div class="max-h-48 overflow-y-auto">
         <button
@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
           @click="emit('select', genre.name); close()"
         >
           <span>{{ genre.name }}</span>
-          <span class="text-stone-100/40">{{ genre.artistCount }}</span>
+          <span class="text-stone-100/55">{{ genre.artistCount }}</span>
         </button>
       </div>
     </div>

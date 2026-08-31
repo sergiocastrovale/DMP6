@@ -28,7 +28,7 @@ const clampedPercent = computed(() => Math.max(0, Math.min(100, props.percent)))
   <div class="flex flex-col gap-1.5">
     <div v-if="label" class="flex items-center justify-between text-xs">
       <span class="text-stone-100/60">{{ label }}</span>
-      <span class="text-stone-100/40 tabular-nums">{{ clampedPercent }}%</span>
+      <span class="text-stone-100/55 tabular-nums">{{ clampedPercent }}%</span>
     </div>
     <div
       role="progressbar"

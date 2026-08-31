@@ -1,5 +1,5 @@
 <template>
-  <p class="text-sm text-stone-100/40">
+  <p class="text-sm text-stone-100/55">
     {{ playlist.trackCount }} {{ playlist.trackCount === 1 ? 'track' : 'tracks' }}
   </p>
 </template>

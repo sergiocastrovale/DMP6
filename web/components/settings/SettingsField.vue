@@ -18,7 +18,7 @@ const fieldId = useId()
 <template>
   <div class="flex flex-col gap-1.5">
     <label :for="fieldId" :class="form.label">{{ label }}</label>
-    <p v-if="description" class="text-sm text-stone-100/40">{{ description }}</p>
+    <p v-if="description" class="text-sm text-stone-100/55">{{ description }}</p>
 
     <div v-if="type === 'select' && options" class="relative">
       <select
@@ -29,7 +29,7 @@ const fieldId = useId()
         <option value="">- use env default -</option>
         <option v-for="opt in options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
-      <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/30" />
+      <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/50" />
     </div>
 
     <input

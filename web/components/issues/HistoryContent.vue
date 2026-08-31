@@ -243,7 +243,7 @@ async function undoSelected() {
             <td class="px-3 py-3">
               <div class="flex flex-col gap-0.5">
                 <span v-for="e in getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {}))" :key="e.key" class="text-xs text-amber-400">
-                  <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
+                  <span class="text-stone-100/55">{{ e.key }}:</span> {{ e.value }}
                 </span>
                 <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-stone-100/20">-</span>
               </div>
@@ -251,13 +251,13 @@ async function undoSelected() {
             <td class="px-3 py-3">
               <div class="flex flex-col gap-0.5">
                 <span v-for="e in getStateEntries(g.items[0]!.appliedState)" :key="e.key" class="text-xs text-success">
-                  <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
+                  <span class="text-stone-100/55">{{ e.key }}:</span> {{ e.value }}
                 </span>
                 <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-stone-100/20">-</span>
               </div>
             </td>
             <td class="px-3 py-3">
-              <span class="text-xs text-stone-100/40">{{ formatDate(g.items[0]!.appliedAt) }}</span>
+              <span class="text-xs text-stone-100/55">{{ formatDate(g.items[0]!.appliedAt) }}</span>
             </td>
           </SlimTableRow>
         </SlimTableBody>
@@ -265,7 +265,7 @@ async function undoSelected() {
 
       <div
         v-if="(issuesStore.historyTotal[activeTab] ?? 0) > 50"
-        class="flex items-center justify-between border-t border-stone-100/6 px-4 py-2.5 text-sm text-stone-100/40"
+        class="flex items-center justify-between border-t border-stone-100/6 px-4 py-2.5 text-sm text-stone-100/55"
       >
         <span class="tabular-nums">{{ issuesStore.historyTotal[activeTab] }} total</span>
         <div class="flex items-center gap-2">
@@ -302,7 +302,7 @@ async function undoSelected() {
           <span class="flex-1 truncate text-xs text-stone-100/60" :title="item.filePath">{{ fileName(item.filePath) }}</span>
           <div class="flex flex-col gap-0.5">
             <span v-for="e in getStateEntries(item.appliedState)" :key="e.key" class="text-[11px] text-success">
-              <span class="text-stone-100/40">{{ e.key }}:</span> {{ e.value }}
+              <span class="text-stone-100/55">{{ e.key }}:</span> {{ e.value }}
             </span>
           </div>
         </div>

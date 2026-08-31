@@ -48,8 +48,8 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-    <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Sources</h2>
-    <p class="text-sm text-stone-100/40">
+    <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Sources</h2>
+    <p class="text-sm text-stone-100/55">
       Where dmp searches for missing releases. RuTracker is tried first; Soulseek is the fallback.
     </p>
 
@@ -58,26 +58,26 @@ onUnmounted(() => {
         <Switch v-model="rtEnabled">
           <span class="flex items-center gap-2">
             RuTracker
-            <span class="inline-flex items-center gap-1 text-xs text-stone-100/40">
+            <span class="inline-flex items-center gap-1 text-xs text-stone-100/55">
               <span class="size-1.5 rounded-full" :class="rtConnected ? 'bg-success' : 'bg-stone-100/20'" />
               {{ rtHint }}
             </span>
           </span>
         </Switch>
-        <span class="rounded-md bg-stone-800 px-1.5 py-0.5 text-[10px] font-medium uppercase text-stone-100/40" title="Tried first when enabled">priority</span>
+        <span class="rounded-md bg-stone-800 px-1.5 py-0.5 text-[10px] font-medium uppercase text-stone-100/55" title="Tried first when enabled">priority</span>
       </div>
 
       <div class="flex items-center gap-2">
         <Switch v-model="slskEnabled">
           <span class="flex items-center gap-2">
             Soulseek
-            <span class="inline-flex items-center gap-1 text-xs text-stone-100/40">
+            <span class="inline-flex items-center gap-1 text-xs text-stone-100/55">
               <span class="size-1.5 rounded-full" :class="slskd.connected ? 'bg-success' : 'bg-stone-100/20'" />
               {{ slskHint }}
             </span>
           </span>
         </Switch>
-        <span class="rounded-md bg-stone-800 px-1.5 py-0.5 text-[10px] font-medium uppercase text-stone-100/40" title="Used when RuTracker has no match">fallback</span>
+        <span class="rounded-md bg-stone-800 px-1.5 py-0.5 text-[10px] font-medium uppercase text-stone-100/55" title="Used when RuTracker has no match">fallback</span>
       </div>
     </div>
   </div>

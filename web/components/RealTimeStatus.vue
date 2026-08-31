@@ -132,10 +132,10 @@ onUnmounted(() => {
             <p class="text-base font-medium text-stone-100">
               {{ terminal.isRunning ? 'Scan in progress' : 'Idle' }}
             </p>
-            <p v-if="terminal.isRunning && settings.showTerminal" class="text-sm text-stone-100/40">
+            <p v-if="terminal.isRunning && settings.showTerminal" class="text-sm text-stone-100/55">
               Check the terminal for live output
             </p>
-            <p v-else-if="status" class="text-sm text-stone-100/40">
+            <p v-else-if="status" class="text-sm text-stone-100/55">
               Last scan: {{ formatRelativeTime(status.lastScanEndedAt) }}
             </p>
           </div>
@@ -156,7 +156,7 @@ onUnmounted(() => {
             {{ progress.phase === 'index' ? 'Indexing' : 'Syncing' }}:
             <span class="text-stone-100">{{ progress.folder || progress.artist }}</span>
           </span>
-          <span class="text-stone-100/40">{{ progress.current }} / {{ progress.total }}</span>
+          <span class="text-stone-100/55">{{ progress.current }} / {{ progress.total }}</span>
         </div>
         <div class="h-1.5 w-full rounded-full bg-stone-800">
           <div
@@ -187,7 +187,7 @@ onUnmounted(() => {
         <p class="text-base font-medium text-amber-400">
           {{ staleLock.sessionName ? 'Session running in background' : 'Lock held externally' }}
         </p>
-        <p class="text-sm text-stone-100/40">
+        <p class="text-sm text-stone-100/55">
           <span class="text-stone-100/60">{{ staleLock.lockedBy }}</span>
           (pid {{ staleLock.pid }})
           <template v-if="staleLock.sessionName"> - reconnect to view output</template>
@@ -218,14 +218,14 @@ onUnmounted(() => {
     </div>
 
     <div>
-      <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+      <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
         Scan Library
       </h3>
       <ScanActions :disabled="!!staleLock" />
     </div>
 
     <div v-if="status && !loading">
-      <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">
+      <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
         History
       </h3>
       <div class="rounded-xl border border-stone-100/6 bg-stone-900 divide-y divide-stone-100/6">

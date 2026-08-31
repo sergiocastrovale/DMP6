@@ -87,7 +87,7 @@ onMounted(() => loadPlaylist())
 <template>
   <div class="flex flex-col gap-6">
     <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-stone-100/40" />
+      <Loader2 :size="24" class="animate-spin text-stone-100/55" />
     </div>
 
     <div v-else-if="playlist" class="flex flex-col gap-6">
@@ -102,7 +102,7 @@ onMounted(() => loadPlaylist())
         <div class="flex flex-1 flex-col gap-4">
           <div>
             <div class="flex items-center gap-2">
-              <p class="text-sm text-stone-100/40">Playlist</p>
+              <p class="text-sm text-stone-100/55">Playlist</p>
               <span
                 v-if="isGenerated"
                 :class="[toneBg.accent, 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium']"
@@ -116,7 +116,7 @@ onMounted(() => loadPlaylist())
             <p v-if="playlist.description" class="mt-2 text-base text-stone-100/60">{{ playlist.description }}</p>
           </div>
 
-          <div class="text-sm text-stone-100/40">
+          <div class="text-sm text-stone-100/55">
             {{ playlist.tracks.length }} {{ playlist.tracks.length === 1 ? 'track' : 'tracks' }}
           </div>
 
@@ -147,7 +147,7 @@ onMounted(() => loadPlaylist())
       <TrackTable :rows="playlist.tracks" empty-message="No tracks in this playlist yet">
         <template v-if="!isGenerated" #action="{ row }">
           <button
-            class="rounded-full p-1.5 text-stone-100/40 opacity-0 transition-opacity duration-150 hover:text-stone-100 group-hover:opacity-100"
+            class="rounded-full p-1.5 text-stone-100/55 opacity-0 transition-opacity duration-150 hover:text-stone-100 group-hover:opacity-100"
             :aria-label="`Remove ${row.track.title} from playlist`"
             @click.stop="removeTrack(row.track.id)"
           >

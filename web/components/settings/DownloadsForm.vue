@@ -48,7 +48,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 <template>
   <div class="flex max-w-2xl flex-col gap-6">
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Soulseek (slskd)</h2>
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Soulseek (slskd)</h2>
       <SettingsField
         v-model="form.slskdUrl"
         label="slskd URL"
@@ -65,8 +65,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
     </div>
 
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">RuTracker — Prowlarr (search)</h2>
-      <p class="text-sm text-stone-100/40">RuTracker is searched through Prowlarr (the RT login lives in Prowlarr, like Lidarr). When RuTracker is enabled it's tried first; Soulseek is the fallback.</p>
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">RuTracker — Prowlarr (search)</h2>
+      <p class="text-sm text-stone-100/55">RuTracker is searched through Prowlarr (the RT login lives in Prowlarr, like Lidarr). When RuTracker is enabled it's tried first; Soulseek is the fallback.</p>
       <SettingsField
         v-model="form.prowlarrUrl"
         label="Prowlarr URL"
@@ -89,7 +89,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
     </div>
 
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">RuTracker — qBittorrent (download)</h2>
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">RuTracker — qBittorrent (download)</h2>
       <SettingsField
         v-model="form.qbittorrentUrl"
         label="qBittorrent URL"
@@ -117,7 +117,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
     </div>
 
     <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/40">Download Settings</h2>
+      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Download Settings</h2>
       <SettingsField
         v-model="form.downloadsPath"
         label="Downloads Path"

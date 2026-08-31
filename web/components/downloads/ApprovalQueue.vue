@@ -179,9 +179,9 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           <span v-else>{{ it.artist || '—' }}</span>
         </td>
         <td class="px-3 py-3 text-stone-100/60">
-          {{ it.title }}<span v-if="it.year" class="text-stone-100/40"> ({{ it.year }})</span>
+          {{ it.title }}<span v-if="it.year" class="text-stone-100/55"> ({{ it.year }})</span>
         </td>
-        <td class="px-3 py-3 text-stone-100/40">
+        <td class="px-3 py-3 text-stone-100/55">
           {{ it.releaseType || '—' }}
         </td>
         <td class="px-3 py-3 text-amber-400/80">
@@ -240,7 +240,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
             <button
               v-if="showActions && showRetry"
               type="button"
-              class="rounded-full p-1.5 text-stone-100/40 transition-colors duration-150 hover:text-amber-400 disabled:opacity-40 disabled:pointer-events-none"
+              class="rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-amber-400 disabled:opacity-40 disabled:pointer-events-none"
               title="Force retry"
               aria-label="Force retry"
               :disabled="busyId != null && busyId !== it.id"
@@ -276,7 +276,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
             <button
               v-if="showRequeue"
               type="button"
-              class="rounded-full p-1.5 text-stone-100/40 transition-colors duration-150 hover:text-amber-400 disabled:opacity-40 disabled:pointer-events-none"
+              class="rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-amber-400 disabled:opacity-40 disabled:pointer-events-none"
               title="Move back to queue"
               aria-label="Move back to queue"
               :disabled="busyId != null && busyId !== it.id"

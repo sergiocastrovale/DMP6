@@ -45,12 +45,12 @@ const onKeydown = (event: KeyboardEvent) => {
 
 const countPillClass = (tab: TabItem) => cx(
   'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-2xs font-semibold',
-  tab.countHighlight && (tab.count ?? 0) > 0 ? 'bg-amber-400/20 text-amber-400' : 'bg-stone-800 text-stone-100/40',
+  tab.countHighlight && (tab.count ?? 0) > 0 ? 'bg-amber-400/20 text-amber-400' : 'bg-stone-800 text-stone-100/55',
 )
 
 const tabClass = (selected: boolean) => cx(
   '-mb-px flex items-center gap-2 px-3 py-2 text-base font-medium transition-colors duration-150',
-  selected ? 'border-b-2 border-amber-400 text-stone-100' : 'border-b-2 border-transparent text-stone-100/40 hover:text-stone-100',
+  selected ? 'border-b-2 border-amber-400 text-stone-100' : 'border-b-2 border-transparent text-stone-100/55 hover:text-stone-100',
 )
 </script>
 
