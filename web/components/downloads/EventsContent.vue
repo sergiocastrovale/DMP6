@@ -2,7 +2,7 @@
 import { Archive, AlertTriangle, CircleAlert, Trash2, Undo2 } from 'lucide-vue-next'
 import type { MonitorEventItem } from '~/composables/useMonitorEvents'
 import { timeAgo } from '~/helpers/functions'
-import { cx, toneText, typography } from '~/helpers/ui'
+import { cx, data, toneText, typography } from '~/helpers/ui'
 
 const { counts, fetchEvents, archive, restore, remove } = useMonitorEvents()
 const toast = useToastStore()
@@ -134,29 +134,29 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
     <div v-else class="overflow-hidden rounded-xl border border-stone-100/6 bg-stone-900">
       <table class="w-full text-base">
         <SlimTableHeader>
-          <th class="w-28 px-3 py-2.5 text-left">Level</th>
-          <th class="px-3 py-2.5 text-left">Message</th>
-          <th class="w-32 px-3 py-2.5 text-left">Logged</th>
-          <th v-if="canEdit && sub === 'archived'" class="w-24 px-3 py-2.5 text-right">Actions</th>
+          <th :class="cx(data.th, 'w-28 text-left')">Level</th>
+          <th :class="cx(data.th, 'text-left')">Message</th>
+          <th :class="cx(data.th, 'w-32 text-left')">Logged</th>
+          <th v-if="canEdit && sub === 'archived'" :class="cx(data.th, 'w-24 text-right')">Actions</th>
         </SlimTableHeader>
         <SlimTableBody>
         <!-- A plain row, not SlimTableRow: its two states are `muted` (opacity-50, which would dim
              the message below the contrast floor) and the default (cursor-pointer + hover, which
              implies a click that does nothing here). A log row is neither. -->
         <tr v-for="ev in visible" :key="ev.id" class="border-b border-stone-100/6 last:border-b-0">
-          <td class="px-3 py-3">
+          <td :class="data.td">
             <span :class="cx('inline-flex items-center gap-1.5 whitespace-nowrap', toneText[levelTone(ev.level)])">
               <component :is="ev.level === 'error' ? CircleAlert : AlertTriangle" :size="13" />
               {{ ev.level }}
             </span>
           </td>
-          <td class="px-3 py-3 text-stone-100/60">
+          <td :class="cx(data.td, 'text-stone-100/60')">
             <span class="break-words">{{ ev.message }}</span>
           </td>
-          <td :class="cx('px-3 py-3 whitespace-nowrap', typography.meta)">
+          <td :class="cx(data.td, 'whitespace-nowrap', typography.meta)">
             {{ timeAgo(ev.createdAt) }}
           </td>
-          <td v-if="canEdit && sub === 'archived'" class="px-3 py-3 text-right" @click.stop>
+          <td v-if="canEdit && sub === 'archived'" :class="cx(data.td, 'text-right')" @click.stop>
             <div class="flex items-center justify-end gap-1">
               <UiButton
                 variant="ghost"

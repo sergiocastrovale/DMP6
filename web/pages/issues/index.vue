@@ -93,13 +93,14 @@ function formatRelative(date: string): string {
             <p class="font-medium text-stone-100">{{ card.label }}</p>
             <p class="mt-1 text-sm text-stone-100/55">{{ card.description }}</p>
           </div>
-          <span
+          <UiBadge
             v-if="issuesStore.summary"
-            class="ml-3 shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold"
-            :class="(issuesStore.summary.counts[card.key] ?? 0) > 0 ? 'bg-amber-400/20 text-amber-400' : 'bg-stone-800 text-stone-100/55'"
+            size="md"
+            class="ml-3 shrink-0"
+            :tone="(issuesStore.summary.counts[card.key] ?? 0) > 0 ? 'accent' : 'muted'"
           >
             {{ issuesStore.summary.counts[card.key] ?? 0 }}
-          </span>
+          </UiBadge>
           <span v-else-if="issuesStore.summaryLoading" class="ml-3 h-7 w-10 animate-pulse rounded-full bg-stone-800" />
         </div>
       </NuxtLink>

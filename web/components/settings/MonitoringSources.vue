@@ -63,7 +63,7 @@ onUnmounted(() => {
             </span>
           </span>
         </Switch>
-        <span class="rounded-md bg-stone-800 px-1.5 py-0.5 text-[10px] font-medium uppercase text-stone-100/55" title="Tried first when enabled">priority</span>
+        <span class="rounded-md bg-stone-800 px-1.5 py-0.5 text-2xs font-medium uppercase text-stone-100/55" title="Tried first when enabled">priority</span>
       </div>
 
       <div class="flex items-center gap-2">
@@ -76,7 +76,7 @@ onUnmounted(() => {
             </span>
           </span>
         </Switch>
-        <span class="rounded-md bg-stone-800 px-1.5 py-0.5 text-[10px] font-medium uppercase text-stone-100/55" title="Used when RuTracker has no match">fallback</span>
+        <span class="rounded-md bg-stone-800 px-1.5 py-0.5 text-2xs font-medium uppercase text-stone-100/55" title="Used when RuTracker has no match">fallback</span>
       </div>
     </div>
   </UiCard>

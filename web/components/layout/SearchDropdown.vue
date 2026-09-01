@@ -81,7 +81,7 @@ const optionClass = (index: number) => cx(
         :class="optionClass(artistOffset + i)"
         @click="emit('select')"
       >
-        <div class="relative size-10 shrink-0 overflow-hidden rounded-md bg-stone-800">
+        <UiThumb size="sm">
           <img
             v-if="artistImage(artist)"
             :src="artistImage(artist)!"
@@ -91,7 +91,7 @@ const optionClass = (index: number) => cx(
           <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
             <User :size="18" :stroke-width="ICON_STROKE_WIDTH" />
           </div>
-        </div>
+        </UiThumb>
         <div class="flex-1 overflow-hidden">
           <p class="truncate text-base font-medium text-stone-100">
             {{ artist.name }}
@@ -114,7 +114,7 @@ const optionClass = (index: number) => cx(
         :class="cx(optionClass(releaseOffset + i), 'text-left w-full')"
         @click="emit('select')"
       >
-        <div class="relative size-10 shrink-0 overflow-hidden rounded-md bg-stone-800">
+        <UiThumb size="sm">
           <img
             v-if="releaseImage(release)"
             :src="releaseImage(release)!"
@@ -124,7 +124,7 @@ const optionClass = (index: number) => cx(
           <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
             <Disc :size="18" :stroke-width="ICON_STROKE_WIDTH" />
           </div>
-        </div>
+        </UiThumb>
         <div class="flex-1 overflow-hidden">
           <p class="truncate text-base font-medium text-stone-100">
             {{ release.title }}
@@ -151,7 +151,7 @@ const optionClass = (index: number) => cx(
         :class="cx(optionClass(trackOffset + i), 'text-left w-full')"
         @click="emit('select')"
       >
-        <div class="relative size-10 shrink-0 overflow-hidden rounded-md bg-stone-800">
+        <UiThumb size="sm">
           <img
             v-if="track.release && releaseImage(track.release)"
             :src="releaseImage(track.release)!"
@@ -161,7 +161,7 @@ const optionClass = (index: number) => cx(
           <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
             <Music :size="18" :stroke-width="ICON_STROKE_WIDTH" />
           </div>
-        </div>
+        </UiThumb>
         <div class="flex-1 overflow-hidden">
           <p class="truncate text-base font-medium text-stone-100">
             {{ track.title }}

@@ -3,6 +3,7 @@ import { FileText } from 'lucide-vue-next'
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { FixHistoryRow, HistoryIssueType } from '~/types/issues'
+import { cx, data } from '~/helpers/ui'
 
 const issuesStore = useIssuesStore()
 const terminal = useTerminalStore()
@@ -191,19 +192,19 @@ async function undoSelected() {
     <div class="flex flex-col gap-0">
       <SlimTable>
         <SlimTableHeader>
-          <th class="w-10 px-3 py-2.5">
+          <th :class="cx(data.th, 'w-10')">
             <UiCheckbox :model-value="allChecked" aria-label="Select all folders" @update:model-value="toggleAll" />
           </th>
-          <th class="px-3 py-2.5 text-left">Folder</th>
-          <th class="px-3 py-2.5 text-left">Previous</th>
-          <th class="px-3 py-2.5 text-left">Applied</th>
-          <th class="w-32 px-3 py-2.5 text-left">Applied At</th>
+          <th :class="cx(data.th, 'text-left')">Folder</th>
+          <th :class="cx(data.th, 'text-left')">Previous</th>
+          <th :class="cx(data.th, 'text-left')">Applied</th>
+          <th :class="cx(data.th, 'w-32 text-left')">Applied At</th>
         </SlimTableHeader>
         <SlimTableBody>
           <template v-if="issuesStore.historyLoading[activeTab] && groups.length === 0">
             <tr v-for="n in 5" :key="n" class="border-b border-stone-100/6 last:border-b-0">
-              <td class="px-3 py-3"><div class="size-4 animate-pulse rounded bg-stone-800" /></td>
-              <td v-for="c in 4" :key="c" class="px-3 py-3"><div class="h-4 w-32 animate-pulse rounded bg-stone-800" /></td>
+              <td :class="data.td"><div class="size-4 animate-pulse rounded bg-stone-800" /></td>
+              <td v-for="c in 4" :key="c" :class="data.td"><div class="h-4 w-32 animate-pulse rounded bg-stone-800" /></td>
             </tr>
           </template>
 
@@ -218,7 +219,7 @@ async function undoSelected() {
             :key="g.folder"
             :active="isGroupChecked(g)"
           >
-            <td class="px-3 py-3" @click.stop>
+            <td :class="data.td" @click.stop>
               <UiCheckbox
                 :model-value="isGroupChecked(g)"
                 :indeterminate="isGroupPartial(g)"
@@ -226,7 +227,7 @@ async function undoSelected() {
                 @update:model-value="toggleGroup(g)"
               />
             </td>
-            <td class="px-3 py-3">
+            <td :class="data.td">
               <div class="flex flex-col gap-1">
                 <span class="truncate text-xs text-stone-100/60" :title="g.folder">{{ g.folder }}</span>
                 <button
@@ -240,7 +241,7 @@ async function undoSelected() {
                 </button>
               </div>
             </td>
-            <td class="px-3 py-3">
+            <td :class="data.td">
               <div class="flex flex-col gap-0.5">
                 <span v-for="e in getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {}))" :key="e.key" class="text-xs text-amber-400">
                   <span class="text-stone-100/55">{{ e.key }}:</span> {{ e.value }}
@@ -248,7 +249,7 @@ async function undoSelected() {
                 <span v-if="!getStateEntries(g.items[0]!.previousState, Object.keys(g.items[0]!.appliedState ?? {})).length" class="text-xs text-stone-100/20">-</span>
               </div>
             </td>
-            <td class="px-3 py-3">
+            <td :class="data.td">
               <div class="flex flex-col gap-0.5">
                 <span v-for="e in getStateEntries(g.items[0]!.appliedState)" :key="e.key" class="text-xs text-success">
                   <span class="text-stone-100/55">{{ e.key }}:</span> {{ e.value }}
@@ -256,7 +257,7 @@ async function undoSelected() {
                 <span v-if="!getStateEntries(g.items[0]!.appliedState).length" class="text-xs text-stone-100/20">-</span>
               </div>
             </td>
-            <td class="px-3 py-3">
+            <td :class="data.td">
               <span class="text-xs text-stone-100/55">{{ formatDate(g.items[0]!.appliedAt) }}</span>
             </td>
           </SlimTableRow>

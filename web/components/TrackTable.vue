@@ -69,7 +69,7 @@ const handleTrackClick = (track: TrackInContext) => {
           />
         </td>
         <td class="w-14 py-2 pl-2">
-          <div class="relative size-10 overflow-hidden rounded-md bg-stone-800">
+          <UiThumb size="sm">
             <img
               v-if="row.track.release && releaseImage(row.track.release)"
               :src="releaseImage(row.track.release)!"
@@ -79,7 +79,7 @@ const handleTrackClick = (track: TrackInContext) => {
             <div v-else class="flex h-full w-full items-center justify-center text-stone-100/20">
               <LucideMusic class="size-5" />
             </div>
-          </div>
+          </UiThumb>
         </td>
         <td class="py-2 pl-3">
           <p

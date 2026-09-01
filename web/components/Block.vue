@@ -44,7 +44,6 @@ const handlePlay = (e: Event) => {
 
 const hasMetadata = computed(() => props.year || props.genre || (props.score !== undefined && props.score !== null))
 
-const artClass = 'aspect-square relative overflow-hidden rounded-lg bg-stone-800 border border-stone-100/6 transition-colors duration-150 group-hover:border-stone-100/10'
 const nameClass = 'font-display font-semibold text-lg text-stone-100 truncate'
 const subClass = 'text-sm text-stone-100/55 truncate'
 const metaClass = 'flex items-center gap-2 font-mono text-2xs uppercase text-stone-100/50'
@@ -52,7 +51,7 @@ const metaClass = 'flex items-center gap-2 font-mono text-2xs uppercase text-sto
 
 <template>
   <NuxtLink v-if="link" :to="link" class="cursor-pointer flex flex-col gap-3 group">
-    <div :class="artClass">
+    <UiThumb>
       <img
         v-if="image"
         :src="image"
@@ -61,7 +60,7 @@ const metaClass = 'flex items-center gap-2 font-mono text-2xs uppercase text-sto
         class="w-full h-full object-cover transition-transform duration-400 group-hover:scale-[1.04]"
       >
       <slot name="overlay" />
-    </div>
+    </UiThumb>
     <div class="flex flex-col gap-0.5 min-w-0">
       <div v-if="title" :class="nameClass">
         {{ title }}
@@ -79,7 +78,7 @@ const metaClass = 'flex items-center gap-2 font-mono text-2xs uppercase text-sto
   </NuxtLink>
 
   <article v-else class="cursor-pointer flex flex-col gap-3 group">
-    <div :class="artClass" @click="playable ? handlePlay($event) : undefined">
+    <UiThumb @click="playable ? handlePlay($event) : undefined">
       <img
         v-if="image"
         :src="image"
@@ -94,7 +93,7 @@ const metaClass = 'flex items-center gap-2 font-mono text-2xs uppercase text-sto
         class="absolute right-3 bottom-3 bg-amber-400 text-on-accent shadow-md transition-all duration-200"
         :class="isPlaying ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0'"
       />
-    </div>
+    </UiThumb>
     <div class="flex flex-col gap-0.5 min-w-0">
       <NuxtLink
         v-if="title && titleLink"

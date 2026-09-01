@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { cx, data as tableCell } from '~/helpers/ui'
+
 type PermData = {
   matrix: Record<string, string[]>
   allPermissions: string[]
@@ -70,16 +72,16 @@ const permLabel = (p: string) => {
     <UiCard title="Role Permissions">
       <SlimTable>
         <SlimTableHeader>
-          <th class="px-3 py-2.5 text-left">Permission</th>
-          <th v-for="role in roles" :key="role" class="px-3 py-2.5 text-center">{{ role.toLowerCase() }}</th>
+          <th :class="cx(tableCell.th, 'text-left')">Permission</th>
+          <th v-for="role in roles" :key="role" :class="cx(tableCell.th, 'text-center')">{{ role.toLowerCase() }}</th>
         </SlimTableHeader>
         <SlimTableBody>
           <SlimTableRow v-for="perm in allPermissions" :key="perm">
-            <td class="px-3 py-3">
+            <td :class="tableCell.td">
               <span class="text-stone-100/60">{{ permLabel(perm).feature }}</span>
               <span class="text-stone-100/55">.{{ permLabel(perm).action }}</span>
             </td>
-            <td v-for="role in roles" :key="role" class="px-3 py-3 text-center">
+            <td v-for="role in roles" :key="role" :class="cx(tableCell.td, 'text-center')">
               <UiCheckbox
                 :model-value="matrix[role]?.has(perm) ?? false"
                 :aria-label="`${perm} for ${role.toLowerCase()}`"

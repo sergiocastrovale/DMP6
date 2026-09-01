@@ -2,7 +2,7 @@
 import { LucideListMusic, LucideSparkles, LucideGlobe } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 import type { Component } from 'vue'
-import { typography, toneBg, grid } from '~/helpers/ui'
+import { typography, grid } from '~/helpers/ui'
 
 const props = defineProps<{
   playlists: PlaylistSummary[]
@@ -56,13 +56,10 @@ const sections: PlaylistSection[] = [
       <div v-if="section.items.value.length > 0" class="flex flex-col gap-4">
         <div class="flex items-center gap-2.5">
           <h2 :class="typography.h3">{{ section.label }}</h2>
-          <span
-            v-if="section.type !== 'MANUAL'"
-            :class="[toneBg.accent, 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium']"
-          >
+          <UiBadge v-if="section.type !== 'MANUAL'" tone="accent">
             <component :is="section.icon" class="size-3" />
             Auto-generated
-          </span>
+          </UiBadge>
           <PlaylistGeneratedPopover
             v-if="section.popoverTitle"
             :title="section.popoverTitle"

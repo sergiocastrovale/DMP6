@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Loader2, Radar, EyeOff, CircleHelp, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
 import type { SortDir } from '~/helpers/functions'
-import { sw, surface, cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { sw, surface, cx, ICON_STROKE_WIDTH, data } from '~/helpers/ui'
 
 interface ArtistRow {
   id: string
@@ -216,12 +216,12 @@ onMounted(() => {
 
     <SlimTable v-else>
       <SlimTableHeader>
-        <th class="w-10 px-3 py-2.5 text-left">
+        <th :class="cx(data.th, 'w-10 text-left')">
           <UiCheckbox :model-value="allChecked" aria-label="Select all rows" @update:model-value="toggleAll" />
         </th>
         <SortableTh label="Artist" sort-key="name" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
         <SortableTh label="Missing / MB total" sort-key="missingReleases" align="right" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-        <th class="px-3 py-2.5 text-right">
+        <th :class="cx(data.th, 'text-right')">
           <div class="flex items-center justify-end gap-1.5">
             <button
               type="button"
@@ -262,22 +262,22 @@ onMounted(() => {
           :key="artist.id"
           :active="selected.has(artist.id)"
         >
-          <td class="px-3 py-3" @click.stop>
+          <td :class="data.td" @click.stop>
             <UiCheckbox :model-value="selected.has(artist.id)" :aria-label="`Select ${artist.name}`" @update:model-value="toggleRow(artist.id)" />
           </td>
-          <td class="px-3 py-3">
+          <td :class="data.td">
             <NuxtLink :to="`/artist/${artist.slug}`" class="text-stone-100 transition-colors duration-150 hover:text-amber-400">
               {{ artist.name }}
             </NuxtLink>
           </td>
-          <td class="px-3 py-3 text-right tabular-nums">
+          <td :class="cx(data.td, 'text-right tabular-nums')">
             <template v-if="artist.totalReleases > 0">
               <span :class="artist.missingReleases > 0 ? 'font-medium text-amber-400' : 'text-stone-100/55'">{{ artist.missingReleases }}</span>
               <span class="text-stone-100/25"> / {{ artist.totalReleases }}</span>
             </template>
             <span v-else class="text-stone-100/25">—</span>
           </td>
-          <td class="px-3 py-3 text-right" @click.stop>
+          <td :class="cx(data.td, 'text-right')" @click.stop>
             <button
               type="button"
               :class="sw('chip', artist.monitored)"

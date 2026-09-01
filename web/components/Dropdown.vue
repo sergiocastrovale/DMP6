@@ -84,7 +84,7 @@ onBeforeUnmount(() => {
       @keydown="onTriggerKeydown"
     >
       <component :is="icon" v-if="icon" :size="12" :stroke-width="ICON_STROKE_WIDTH" />
-      <span v-if="modelValue && selectedOption?.classes" :class="selectedOption.classes" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
+      <span v-if="modelValue && selectedOption?.classes" :class="selectedOption.classes" class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium">
         {{ selectedLabel }}
       </span>
       <span v-else>{{ selectedLabel }}</span>
@@ -121,7 +121,7 @@ onBeforeUnmount(() => {
         )"
         @click="select(opt.value)"
       >
-        <span v-if="opt.classes" :class="opt.classes" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium">
+        <span v-if="opt.classes" :class="opt.classes" class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium">
           {{ opt.label }}
         </span>
         <span v-else>{{ opt.label }}</span>

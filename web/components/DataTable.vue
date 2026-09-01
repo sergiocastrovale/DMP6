@@ -2,7 +2,7 @@
 import type { Component } from 'vue'
 import type { SortDir } from '~/helpers/functions'
 import type { ButtonVariant } from '~/helpers/ui'
-import { cx } from '~/helpers/ui'
+import { cx, data } from '~/helpers/ui'
 
 export interface DataTableColumn {
   key: string
@@ -105,7 +105,7 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
 
     <SlimTable>
       <SlimTableHeader>
-        <th v-if="selectable" class="w-10 px-3 py-2.5">
+        <th v-if="selectable" :class="cx('w-10', data.th)">
           <UiCheckbox
             :model-value="allChecked"
             :indeterminate="someChecked"
@@ -126,20 +126,20 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
           />
           <th
             v-else
-            :class="cx('px-3 py-2.5', col.align === 'right' ? 'text-right' : 'text-left', col.class)"
+            :class="cx(data.th, col.align === 'right' ? 'text-right' : 'text-left', col.class)"
             :style="col.width ? { width: col.width } : undefined"
           >
             {{ col.label }}
           </th>
         </template>
-        <th v-if="hasActionsSlot" class="px-3 py-2.5 text-right">
+        <th v-if="hasActionsSlot" :class="cx(data.th, 'text-right')">
           Actions
         </th>
       </SlimTableHeader>
       <SlimTableBody>
         <template v-if="loading">
           <tr v-for="i in loadingRows" :key="i" class="border-b border-stone-100/6 last:border-b-0">
-            <td :colspan="columnCount" class="px-3 py-3">
+            <td :colspan="columnCount" :class="data.td">
               <div class="h-4 w-full max-w-xs animate-pulse rounded bg-stone-800" />
             </td>
           </tr>
@@ -155,7 +155,7 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
             :key="rowId(row)"
             :active="selectedIds.has(rowId(row))"
           >
-            <td v-if="selectable" class="w-10 px-3 py-2.5" @click.stop>
+            <td v-if="selectable" :class="cx('w-10', data.th)" @click.stop>
               <UiCheckbox
                 :model-value="selectedIds.has(rowId(row))"
                 :aria-label="`Select ${rowAriaLabel(row)}`"
@@ -165,12 +165,12 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
             <td
               v-for="col in columns"
               :key="col.key"
-              :class="cx('px-3 py-3', col.align === 'right' && 'text-right', col.class)"
+              :class="cx(data.td, col.align === 'right' && 'text-right', col.class)"
             >
               <slot v-if="hasCellSlot(col.key)" :name="cellSlotName(col.key)" :row="row" :value="cellValue(row, col.key)" />
               <span v-else :class="col.align === 'right' && 'tabular-nums'">{{ cellValue(row, col.key) }}</span>
             </td>
-            <td v-if="hasActionsSlot" class="px-3 py-3 text-right" @click.stop>
+            <td v-if="hasActionsSlot" :class="cx(data.td, 'text-right')" @click.stop>
               <slot name="actions" :row="row" />
             </td>
           </SlimTableRow>

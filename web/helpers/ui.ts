@@ -196,17 +196,22 @@ export const form = {
 }
 
 export const nav = {
-  item: 'flex items-center gap-3.5 px-3 py-2.5 rounded-md text-lg font-normal text-stone-100/60 whitespace-nowrap cursor-pointer transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100',
+  item: 'flex items-center gap-3 px-3 py-2.5 rounded-md text-lg font-normal text-stone-100/60 whitespace-nowrap cursor-pointer transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100',
   itemActive: 'bg-amber-400/20 text-amber-400 font-medium',
 }
 
 export const data = {
   row: 'flex items-center justify-between gap-3.5 w-full px-[18px] py-3 border-b border-stone-100/6 last:border-b-0 text-base',
   rowLink: 'cursor-pointer hover:bg-stone-800',
-  th: 'px-3 py-2.5 text-left text-2xs font-bold tracking-[0.1em] uppercase text-stone-100/55 border-b border-stone-100/6 whitespace-nowrap',
-  td: 'px-3 py-3 text-base text-stone-100/60 border-b border-stone-100/6 align-middle',
+  // Padding only - SlimTableHeader's <tr> already carries the header font/border/colour, and
+  // SlimTableRow's <tr> already carries the body row's border, so a per-cell recipe with either
+  // baked in would double up. Alignment is a per-column concern added by the caller with cx(),
+  // and never both text-left/text-right at once - same-property utilities resolve by stylesheet
+  // order, not DOM order, so emitting both is undefined, not "last one wins".
+  th: 'px-3 py-2.5',
+  td: 'px-3 py-3',
   tag: 'inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/6 text-xs text-stone-100/60',
-  badge: 'inline-flex items-center h-[22px] px-2.5 rounded-full text-sm font-bold tabular-nums',
+  badge: 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
 }
 
 export const grid = {

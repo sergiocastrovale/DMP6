@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { CircleHelp } from 'lucide-vue-next'
 import type { EnrichmentField } from '~/types/issues'
-import { surface, toneBg } from '~/helpers/ui'
+import { surface, type Tone } from '~/helpers/ui'
 
 const props = defineProps<{ field: EnrichmentField }>()
 
 type FieldConfig = {
   label: string
-  classes: string
+  tone: Tone
+  extraClass?: string
   fixable: boolean
   help?: string
 }
@@ -15,42 +16,43 @@ type FieldConfig = {
 const CONFIG: Record<EnrichmentField, FieldConfig> = {
   mbRelease: {
     label: 'MB unlinked',
-    classes: `${toneBg.accent} border border-amber-400/40`,
+    tone: 'accent',
+    extraClass: 'border border-amber-400/40',
     fixable: true,
   },
   bpm: {
     label: 'BPM',
-    classes: toneBg.muted,
+    tone: 'muted',
     fixable: false,
     help: 'BPM data is missing from file tags. Use a tagger with BPM analysis support (beets with the bpm plugin, SongKong, or MusicBrainz Picard with the BPM Analyser plugin).',
   },
   mood: {
     label: 'Mood',
-    classes: toneBg.muted,
+    tone: 'muted',
     fixable: false,
     help: 'Mood analysis tags (MOOD_*) are missing. Use SongKong or beets with the AcousticBrainz plugin to enrich with mood analysis.',
   },
   acousticId: {
     label: 'AcousticID',
-    classes: toneBg.muted,
+    tone: 'muted',
     fixable: false,
     help: 'AcousticID fingerprint is missing. Use MusicBrainz Picard (Lookup CD / fingerprint scan) or the fpcalc CLI to generate fingerprints.',
   },
   discogs: {
     label: 'Discogs',
-    classes: toneBg.muted,
+    tone: 'muted',
     fixable: false,
     help: 'Discogs artist/release URLs are missing. Use SongKong to tag with Discogs identifiers.',
   },
   bandcamp: {
     label: 'Bandcamp',
-    classes: toneBg.muted,
+    tone: 'muted',
     fixable: false,
     help: 'Bandcamp URL is missing from file tags. Use SongKong to add Bandcamp links where available.',
   },
   wikipedia: {
     label: 'Wikipedia',
-    classes: toneBg.muted,
+    tone: 'muted',
     fixable: false,
     help: 'Wikipedia URL is missing from file tags. Use SongKong to add Wikipedia links where available.',
   },
@@ -60,7 +62,7 @@ const cfg = computed(() => CONFIG[props.field])
 </script>
 
 <template>
-  <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium" :class="cfg.classes">
+  <UiBadge :tone="cfg.tone" :class="cfg.extraClass">
     {{ cfg.label }}
     <Popover v-if="!cfg.fixable" trigger="hover">
       <template #trigger>
@@ -74,5 +76,5 @@ const cfg = computed(() => CONFIG[props.field])
         </div>
       </template>
     </Popover>
-  </span>
+  </UiBadge>
 </template>

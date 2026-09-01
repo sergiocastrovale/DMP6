@@ -19,7 +19,7 @@ const coverImageUrl = (cover: { image: string | null, imageUrl: string | null })
     :to="`/playlists/${playlist.slug}`"
     class="cursor-pointer flex flex-col gap-3 group"
   >
-    <div class="aspect-square relative overflow-hidden rounded-lg bg-stone-800 border border-stone-100/6 transition-colors duration-150 group-hover:border-stone-100/10">
+    <UiThumb>
       <div
         v-if="hasCovers"
         class="grid h-full w-full transition-transform duration-400 group-hover:scale-[1.04]"
@@ -45,7 +45,7 @@ const coverImageUrl = (cover: { image: string | null, imageUrl: string | null })
       <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
         <LucideListMusic class="size-12" :stroke-width="ICON_STROKE_WIDTH" />
       </div>
-    </div>
+    </UiThumb>
     <div class="flex flex-col gap-0.5 min-w-0">
       <div class="font-display font-semibold text-lg text-stone-100 truncate">
         {{ playlist.name }}

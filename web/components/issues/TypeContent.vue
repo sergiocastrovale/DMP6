@@ -2,7 +2,7 @@
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { IssueColumn, IssueType } from '~/types/issues'
-import { typography } from '~/helpers/ui'
+import { data, typography } from '~/helpers/ui'
 
 const props = defineProps<{ type: IssueType }>()
 
@@ -318,13 +318,13 @@ function getHistoryDate(item: any): string {
             <span
               v-for="part in item.proposedParts"
               :key="part"
-              class="inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/6 text-xs text-stone-100/60"
+              :class="data.tag"
             >{{ part }}</span>
           </div>
         </template>
 
         <template #cell-reason="{ item }">
-          <span class="inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/6 text-xs text-stone-100/60">{{ item.reason }}</span>
+          <span :class="data.tag">{{ item.reason }}</span>
         </template>
 
         <template #cell-artist_createdAt="{ item }">

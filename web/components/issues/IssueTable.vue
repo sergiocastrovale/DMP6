@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { IssueColumn, IssueType } from '~/types/issues'
-import { cx } from '~/helpers/ui'
+import { cx, data } from '~/helpers/ui'
 
 const props = defineProps<{
   type: IssueType
@@ -86,7 +86,7 @@ function commitEdit(item: any, col: IssueColumn) {
   <div class="flex flex-col gap-0">
     <SlimTable>
       <SlimTableHeader>
-        <th v-if="type !== 'enrichment'" class="w-10 px-3 py-2.5">
+        <th v-if="type !== 'enrichment'" :class="cx(data.th, 'w-10')">
           <UiCheckbox :model-value="allChecked" aria-label="Select all rows" @update:model-value="toggleAll" />
         </th>
         <template v-for="col in columns" :key="col.key">
@@ -99,7 +99,7 @@ function commitEdit(item: any, col: IssueColumn) {
             :dir="order ?? 'asc'"
             @sort="emit('sort', $event)"
           />
-          <th v-else :class="cx('px-3 py-2.5 text-left', col.width)">
+          <th v-else :class="cx(data.th, 'text-left', col.width)">
             {{ col.label }}
           </th>
         </template>
@@ -107,10 +107,10 @@ function commitEdit(item: any, col: IssueColumn) {
       <SlimTableBody>
         <template v-if="loading && items.length === 0">
           <tr v-for="n in 5" :key="n" class="border-b border-stone-100/6 last:border-b-0">
-            <td v-if="type !== 'enrichment'" class="px-3 py-3">
+            <td v-if="type !== 'enrichment'" :class="data.td">
               <div class="size-4 animate-pulse rounded bg-stone-800" />
             </td>
-            <td v-for="col in columns" :key="col.key" class="px-3 py-3">
+            <td v-for="col in columns" :key="col.key" :class="data.td">
               <div class="h-4 animate-pulse rounded bg-stone-800" :class="col.width ?? 'w-32'" />
             </td>
           </tr>
@@ -127,7 +127,7 @@ function commitEdit(item: any, col: IssueColumn) {
           :key="item.id"
           :active="type !== 'enrichment' && selected.has(item.id)"
         >
-          <td v-if="type !== 'enrichment'" class="px-3 py-3" @click.stop>
+          <td v-if="type !== 'enrichment'" :class="data.td" @click.stop>
             <UiCheckbox
               :model-value="selected.has(item.id)"
               :aria-label="`Select row ${item.id}`"
@@ -137,8 +137,7 @@ function commitEdit(item: any, col: IssueColumn) {
           <td
             v-for="col in columns"
             :key="col.key"
-            class="px-3 py-3 text-stone-100/60"
-            :class="col.width"
+            :class="cx(data.td, 'text-stone-100/60', col.width)"
           >
             <slot :name="cellSlotName(col.key)" :item="item" :value="getNestedValue(item, col.key)">
               <template v-if="col.editable">

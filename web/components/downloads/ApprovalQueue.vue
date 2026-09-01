@@ -4,7 +4,7 @@ import { X, Loader2, AlertCircle, AlertTriangle, Ban, RotateCw, Info, FolderInpu
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { SortDir } from '~/helpers/functions'
 import { formatDate, sortItems } from '~/helpers/functions'
-import { toneText, surface, cx, typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { toneText, surface, cx, typography, ICON_STROKE_WIDTH, data } from '~/helpers/ui'
 
 // Friendly source label, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
 const sourceLabel = (s: string) => s === 'RUTRACKER' ? 'RuTracker' : 'Soulseek'
@@ -150,7 +150,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
   <UiEmptyState v-if="items.length === 0" message="Nothing here." />
   <SlimTable v-else>
     <SlimTableHeader>
-      <th v-if="selectable" class="w-10 px-3 py-2.5">
+      <th v-if="selectable" :class="cx(data.th, 'w-10')">
         <UiCheckbox :model-value="allChecked" aria-label="Select all rows" @update:model-value="toggleAll" />
       </th>
       <SortableTh label="Artist" sort-key="artist" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
@@ -159,7 +159,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
       <SortableTh label="Source" sort-key="source" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
       <SortableTh label="Status" sort-key="status" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
       <SortableTh label="Updated" sort-key="updatedAt" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-      <th class="px-3 py-2.5 text-right">Actions</th>
+      <th :class="cx(data.th, 'text-right')">Actions</th>
     </SlimTableHeader>
     <SlimTableBody>
       <SlimTableRow
@@ -169,29 +169,29 @@ const statusLabel = (it: DownloadedReleaseItem) => {
         :highlight="highlightId === it.id"
         :class="highlightId === it.id ? 'ring-2 ring-inset ring-amber-400/60' : ''"
       >
-        <td v-if="selectable" class="px-3 py-3" @click.stop>
+        <td v-if="selectable" :class="data.td" @click.stop>
           <UiCheckbox :model-value="selected.has(it.id)" :aria-label="`Select ${it.title}`" @update:model-value="toggleRow(it.id)" />
         </td>
-        <td class="px-3 py-3 text-stone-100">
+        <td :class="cx(data.td, 'text-stone-100')">
           <NuxtLink v-if="it.artistSlug" :to="`/artist/${it.artistSlug}`" class="hover:text-amber-400 transition-colors duration-150">
             {{ it.artist || '—' }}
           </NuxtLink>
           <span v-else>{{ it.artist || '—' }}</span>
         </td>
-        <td class="px-3 py-3 text-stone-100/60">
+        <td :class="cx(data.td, 'text-stone-100/60')">
           {{ it.title }}<span v-if="it.year" class="text-stone-100/55"> ({{ it.year }})</span>
         </td>
-        <td class="px-3 py-3 text-stone-100/55">
+        <td :class="cx(data.td, 'text-stone-100/55')">
           {{ it.releaseType || '—' }}
         </td>
-        <td class="px-3 py-3 text-amber-400/80">
+        <td :class="cx(data.td, 'text-amber-400/80')">
           <span class="inline-flex items-center gap-1.5">
             {{ sourceLabel(it.source) }}
           </span>
           <template v-if="it.quality"> · {{ it.quality }}</template>
           <template v-if="it.slskUsername"> · {{ it.slskUsername }}</template>
         </td>
-        <td class="px-3 py-3">
+        <td :class="data.td">
           <Popover v-if="statusNote(it)" trigger="hover">
             <template #trigger>
               <span class="inline-flex cursor-help items-center gap-1.5" :class="statusClass(it.status)">
@@ -223,10 +223,10 @@ const statusLabel = (it: DownloadedReleaseItem) => {
             <span :class="typography.meta">{{ it.percent }}%</span>
           </div>
         </td>
-        <td :class="cx('px-3 py-3 whitespace-nowrap', typography.meta)">
+        <td :class="cx(data.td, 'whitespace-nowrap', typography.meta)">
           {{ formatDate(it.updatedAt) }}
         </td>
-        <td class="px-3 py-3" @click.stop>
+        <td :class="data.td" @click.stop>
           <div class="flex items-center justify-end gap-1">
             <UiButton
               variant="ghost"

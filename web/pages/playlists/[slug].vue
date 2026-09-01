@@ -2,7 +2,7 @@
 import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles, LucideGlobe, LucideX } from 'lucide-vue-next'
 import type { PlaylistDetail } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
-import { typography, toneBg } from '~/helpers/ui'
+import { typography } from '~/helpers/ui'
 import { useToastStore } from '~/stores/toast'
 
 const route = useRoute()
@@ -101,14 +101,11 @@ onMounted(() => loadPlaylist())
           <div>
             <div class="flex items-center gap-2">
               <p class="text-sm text-stone-100/55">Playlist</p>
-              <span
-                v-if="isGenerated"
-                :class="[toneBg.accent, 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium']"
-              >
+              <UiBadge v-if="isGenerated" tone="accent">
                 <LucideGlobe v-if="isRegionPlaylist" class="size-3" />
                 <LucideSparkles v-else class="size-3" />
                 Auto-generated
-              </span>
+              </UiBadge>
             </div>
             <h1 :class="typography.h1">{{ playlist.name }}</h1>
             <p v-if="playlist.description" class="mt-2 text-base text-stone-100/60">{{ playlist.description }}</p>

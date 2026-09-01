@@ -146,13 +146,13 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
       </div>
 
       <div class="flex w-32 shrink-0 items-center justify-end gap-0.5 px-3">
-        <span
+        <UiBadge
           v-if="isDownloading"
-          :class="cx('inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs', toneBg.info)"
+          tone="info"
           title="dmp is downloading this release from Soulseek"
         >
           <Loader2 :size="12" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" /> Downloading
-        </span>
+        </UiBadge>
 
         <UiButton
           v-if="isDownloading || isEnriching"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Plus, Trash2, Pencil, KeyRound, Save, X, AlertCircle } from 'lucide-vue-next'
-import { form, toneBg, toneText } from '~/helpers/ui'
+import { cx, data, form, toneText, type Tone } from '~/helpers/ui'
 
 type User = {
   id: number
@@ -91,7 +91,7 @@ const roles = [
   { value: 'ADMIN', label: 'Admin' },
 ]
 
-const roleTone = (role: string) => role === 'ADMIN' ? toneBg.accent : role === 'MANAGER' ? toneBg.info : toneBg.muted
+const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 'MANAGER' ? 'info' : 'muted'
 </script>
 
 <template>
@@ -131,30 +131,30 @@ const roleTone = (role: string) => role === 'ADMIN' ? toneBg.accent : role === '
 
       <SlimTable>
         <SlimTableHeader>
-          <th class="px-3 py-2.5 text-left">Username</th>
-          <th class="px-3 py-2.5 text-left">Email</th>
-          <th class="px-3 py-2.5 text-left">Role</th>
-          <th class="px-3 py-2.5 text-left">Status</th>
-          <th class="px-3 py-2.5 text-right">Actions</th>
+          <th :class="cx(data.th, 'text-left')">Username</th>
+          <th :class="cx(data.th, 'text-left')">Email</th>
+          <th :class="cx(data.th, 'text-left')">Role</th>
+          <th :class="cx(data.th, 'text-left')">Status</th>
+          <th :class="cx(data.th, 'text-right')">Actions</th>
         </SlimTableHeader>
         <SlimTableBody>
           <SlimTableRow v-for="u in users" :key="u.id">
             <template v-if="editingId === u.id">
-              <td class="px-3 py-3 text-stone-100">{{ u.username }}</td>
-              <td class="px-3 py-3">
+              <td :class="cx(data.td, 'text-stone-100')">{{ u.username }}</td>
+              <td :class="data.td">
                 <input v-model="editForm.email" :class="[form.input, 'h-[34px]']">
               </td>
-              <td class="px-3 py-3">
+              <td :class="data.td">
                 <div class="relative">
                   <select v-model="editForm.role" :class="[form.select, 'h-[34px]']">
                     <option v-for="r in roles" :key="r.value" :value="r.value">{{ r.label }}</option>
                   </select>
                 </div>
               </td>
-              <td class="px-3 py-3">
+              <td :class="data.td">
                 <input v-model="editForm.password" type="password" placeholder="New pw (optional)" :class="[form.input, 'h-[34px]']">
               </td>
-              <td class="px-3 py-3 text-right" @click.stop>
+              <td :class="cx(data.td, 'text-right')" @click.stop>
                 <div class="flex items-center justify-end gap-1.5">
                   <UiButton size="sm" icon-only :icon="Save" :loading="saving" aria-label="Save user" @click="saveEdit(u.id)" />
                   <UiButton variant="secondary" size="sm" icon-only :icon="X" aria-label="Cancel edit" @click="cancelEdit" />
@@ -163,20 +163,20 @@ const roleTone = (role: string) => role === 'ADMIN' ? toneBg.accent : role === '
               </td>
             </template>
             <template v-else>
-              <td class="px-3 py-3 text-stone-100">{{ u.username }}</td>
-              <td class="px-3 py-3 text-stone-100/60">{{ u.email }}</td>
-              <td class="px-3 py-3">
-                <span :class="[roleTone(u.role), 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium']">
+              <td :class="cx(data.td, 'text-stone-100')">{{ u.username }}</td>
+              <td :class="cx(data.td, 'text-stone-100/60')">{{ u.email }}</td>
+              <td :class="data.td">
+                <UiBadge :tone="roleTone(u.role)">
                   {{ u.role.toLowerCase() }}
-                </span>
+                </UiBadge>
               </td>
-              <td class="px-3 py-3">
+              <td :class="data.td">
                 <span v-if="u.mustChangePassword" :class="[toneText.warning, 'flex items-center gap-1 text-xs']">
                   <KeyRound :size="12" /> must change pw
                 </span>
                 <span v-else class="text-xs text-stone-100/55">active</span>
               </td>
-              <td class="px-3 py-3 text-right" @click.stop>
+              <td :class="cx(data.td, 'text-right')" @click.stop>
                 <div class="flex items-center justify-end gap-1.5">
                   <UiButton variant="secondary" size="sm" icon-only :icon="Pencil" :aria-label="`Edit ${u.username}`" @click="startEdit(u)" />
                   <UiButton variant="danger" size="sm" icon-only :icon="Trash2" :aria-label="`Delete ${u.username}`" @click="deleteUser(u.id)" />

@@ -16,7 +16,7 @@ const { releaseImage } = useImageUrl()
     <template v-if="release">
       <div class="flex gap-6">
         <div class="flex w-44 shrink-0 flex-col gap-3">
-          <div class="aspect-square w-full overflow-hidden rounded-lg bg-stone-800">
+          <UiThumb>
             <img
               v-if="releaseImage(release)"
               :src="releaseImage(release)!"
@@ -26,7 +26,7 @@ const { releaseImage } = useImageUrl()
             <div v-else class="flex size-full items-center justify-center text-stone-100/50">
               <Disc3 :size="32" />
             </div>
-          </div>
+          </UiThumb>
           <div v-if="release.type || release.year" class="flex items-center gap-1.5 text-xs text-stone-100/60">
             <span v-if="release.type">{{ release.type }}</span>
             <span v-if="release.type && release.year">&middot;</span>

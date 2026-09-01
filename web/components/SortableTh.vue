@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-vue-next'
 import type { SortDir } from '~/helpers/functions'
-import { cx } from '~/helpers/ui'
+import { cx, data } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   label: string
@@ -24,7 +24,7 @@ const ariaSort = computed<'ascending' | 'descending' | 'none'>(() =>
 <template>
   <th
     :aria-sort="ariaSort"
-    :class="cx('px-3 py-2.5', align === 'right' ? 'text-right' : 'text-left')"
+    :class="cx(data.th, align === 'right' ? 'text-right' : 'text-left')"
   >
     <UiButton
       variant="ghost"
