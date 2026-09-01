@@ -3,8 +3,6 @@ import {
   Loader2,
   CheckCircle2,
   Play,
-  Square,
-  LockOpen,
 } from 'lucide-vue-next'
 import type { ScanStatus } from '~/types/scan'
 import { formatDate, parseProgress } from '~/helpers/functions'
@@ -61,22 +59,7 @@ const staleLock = computed(() =>
   !terminal.isRunning && status.value?.isRunning ? status.value : null,
 )
 
-const unlocking = ref(false)
 const reconnecting = ref(false)
-
-async function forceUnlock() {
-  unlocking.value = true
-  try {
-    await $fetch('/api/scan/unlock', { method: 'POST' })
-    await fetchStatus()
-  }
-  catch (e: any) {
-    console.error('Force unlock failed:', e)
-  }
-  finally {
-    unlocking.value = false
-  }
-}
 
 async function reconnectSession() {
   const sessionName = staleLock.value?.sessionName
@@ -141,15 +124,7 @@ onUnmounted(() => {
             </p>
           </div>
         </div>
-        <UiButton
-          v-if="terminal.isRunning"
-          variant="danger"
-          size="sm"
-          :icon="Square"
-          @click="terminal.stop()"
-        >
-          Stop
-        </UiButton>
+        <UiButtonStop v-if="terminal.isRunning" />
       </div>
 
       <UiLoadingPanel
@@ -199,16 +174,7 @@ onUnmounted(() => {
         >
           Reconnect
         </UiButton>
-        <UiButton
-          variant="quiet"
-          size="sm"
-          :icon="LockOpen"
-          :loading="unlocking"
-          :disabled="unlocking"
-          @click="forceUnlock"
-        >
-          Force Unlock
-        </UiButton>
+        <UiButtonForceUnlockScan @unlocked="fetchStatus" />
       </div>
     </div>
 
@@ -216,7 +182,7 @@ onUnmounted(() => {
       <h3 class="mb-3" :class="typography.sectionLabel">
         Scan Library
       </h3>
-      <ScanActions :disabled="!!staleLock" />
+      <SettingsScanActions :disabled="!!staleLock" />
     </div>
 
     <div v-if="status && !loading">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Disc3, HardDriveDownload, LockOpen, Loader2, RefreshCw, Square } from 'lucide-vue-next'
+import { Disc3, HardDriveDownload, Loader2, RefreshCw } from 'lucide-vue-next'
 import type { ScanStatus } from '~/types/scan'
 import { useTerminalStore } from '~/stores/terminal'
 import { ICON_STROKE_WIDTH } from '~/helpers/ui'
@@ -7,7 +7,6 @@ import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 const terminal = useTerminalStore()
 
 const status = ref<ScanStatus | null>(null)
-const unlocking = ref(false)
 
 const staleLock = computed(() =>
   !terminal.isRunning && status.value?.isRunning ? status.value : null,
@@ -18,18 +17,6 @@ const fetchStatus = async () => {
     status.value = await $fetch<ScanStatus>('/api/scan/status')
   }
   catch { /* ignore */ }
-}
-
-const forceUnlock = async () => {
-  unlocking.value = true
-  try {
-    await $fetch('/api/scan/unlock', { method: 'POST' })
-    await fetchStatus()
-  }
-  catch { /* ignore */ }
-  finally {
-    unlocking.value = false
-  }
 }
 
 const fullScan = () => terminal.run('./refresh', [])
@@ -89,15 +76,7 @@ onMounted(fetchStatus)
           </div>
         </button>
 
-        <UiButton
-          v-if="terminal.isRunning"
-          variant="danger"
-          size="sm"
-          :icon="Square"
-          @click="terminal.stop()"
-        >
-          Stop
-        </UiButton>
+        <UiButtonStop v-if="terminal.isRunning" />
 
         <div
           v-if="staleLock"
@@ -106,16 +85,7 @@ onMounted(fetchStatus)
           <p class="text-xs text-stone-100/60">
             Lock held by <span class="text-stone-100/60">{{ staleLock.lockedBy }}</span> (pid {{ staleLock.pid }})
           </p>
-          <UiButton
-            variant="quiet"
-            size="sm"
-            :icon="LockOpen"
-            :loading="unlocking"
-            :disabled="unlocking"
-            @click="forceUnlock"
-          >
-            Force Unlock
-          </UiButton>
+          <UiButtonForceUnlockScan @unlocked="fetchStatus" />
         </div>
       </div>
     </div>

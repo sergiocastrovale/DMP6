@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, LockOpen, Square } from 'lucide-vue-next'
+import { Loader2, LockOpen } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
 import { parseProgress } from '~/helpers/functions'
 import { commandLabels } from '~/helpers/constants'
@@ -57,15 +57,7 @@ const lastLine = computed(() => {
         </div>
         <div class="flex items-center gap-2">
           <span v-if="determinate" class="shrink-0 text-xs text-stone-100/55 tabular-nums">{{ progress!.current }} / {{ progress!.total }}</span>
-          <UiButton
-            variant="ghost"
-            size="sm"
-            icon-only
-            :icon="Square"
-            title="Stop process"
-            class="hover:text-danger"
-            @click="terminal.stop()"
-          />
+          <UiButtonStop icon-only />
         </div>
       </div>
 

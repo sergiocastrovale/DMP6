@@ -423,7 +423,7 @@ function getHistoryDate(item: any): string {
         </template>
 
         <template #cell-_resync="{ item }">
-          <UiRefreshButton
+          <UiButtonRefresh
             v-if="item.missingFields?.includes('mbRelease') && item.artist"
             :only="[item.artist.name]"
             :folders="item.localRelease?.folderPath ? [item.localRelease.folderPath] : undefined"

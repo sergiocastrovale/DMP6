@@ -52,7 +52,7 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-10">
-    <FirstScan v-if="isEmpty" />
+    <DashboardFirstScan v-if="isEmpty" />
     <template v-else>
       <DashboardSubheader />
 

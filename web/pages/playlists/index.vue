@@ -37,14 +37,14 @@ onMounted(() => loadPlaylists())
   <div class="flex flex-col gap-6">
     <PageTitle text="Playlists" subtext="Your custom playlists">
       <div class="flex items-center gap-2">
-        <PlaylistGenerateButton v-if="isAdmin" />
+        <UiButtonGeneratePlaylists v-if="isAdmin" />
         <UiButton v-if="canCrud" :icon="LucidePlus" @click="showCreate = true">
           New Playlist
         </UiButton>
       </div>
     </PageTitle>
 
-    <LoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
+    <PlaylistLoadingGrid v-if="loading" :count="SKELETON_GRID_SIZE" />
 
     <PlaylistList v-else :playlists="playlists" @create="showCreate = true" />
 

@@ -106,7 +106,7 @@ onMounted(async () => {
             Chronological sorts by release year. Gradient arranges covers by color temperature - cold tones top-left, warm tones bottom-right.
           </p>
 
-          <RadioGroup v-model="mode" :options="modeOptions" />
+          <LabsRadioGroup v-model="mode" :options="modeOptions" />
 
           <div>
             <UiButton v-if="!mosaic.isGenerating" :icon="Play" @click="mosaic.generate(mode)">

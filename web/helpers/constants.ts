@@ -23,7 +23,7 @@ export const commandLabels: Record<string, string> = {
   './playlists': 'Generating playlists…',
 }
 
-// The library-wide scan menu (components/ScanActions.vue). The artist dropdown has its own, narrower
+// The library-wide scan menu (components/settings/ScanActions.vue). The artist dropdown has its own, narrower
 // set below - the two surfaces stopped sharing one list once the artist actions became rebuilds
 // (delete + re-index) rather than scopes of the global ones.
 //

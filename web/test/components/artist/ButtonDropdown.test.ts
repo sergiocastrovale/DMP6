@@ -1,13 +1,13 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it, vi } from 'vitest'
-import ButtonDropdown from '../../components/ButtonDropdown.vue'
+import ButtonDropdown from '../../../components/artist/ButtonDropdown.vue'
 
 const makeOptions = () => [
   { label: 'Scan for new files', action: vi.fn() },
   { label: 'Rebuild everything', description: 'Delete and re-index', action: vi.fn() },
 ]
 
-describe('ButtonDropdown.vue', () => {
+describe('artist/ButtonDropdown.vue', () => {
   it('renders exactly one trigger button plus one per option', async () => {
     const options = makeOptions()
     const wrapper = await mountSuspended(ButtonDropdown, { props: { label: 'Scan catalogue', options } })

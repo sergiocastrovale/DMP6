@@ -53,7 +53,7 @@ const syncOptions = computed<ButtonDropdownOption[]>(() =>
 </script>
 
 <template>
-  <ButtonDropdown
+  <ArtistButtonDropdown
     label="Scan catalogue"
     :options="syncOptions"
     :disabled="terminal.isRunning"
@@ -62,5 +62,5 @@ const syncOptions = computed<ButtonDropdownOption[]>(() =>
       <Loader2 v-if="terminal.isRunning" :size="14" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
       <RefreshCw v-else :size="14" />
     </template>
-  </ButtonDropdown>
+  </ArtistButtonDropdown>
 </template>

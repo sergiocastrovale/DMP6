@@ -66,7 +66,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
     </UiCard>
 
     <UiCard title="Scan Controls">
-      <RealTimeStatus />
+      <SettingsRealTimeStatus />
     </UiCard>
   </div>
 </template>

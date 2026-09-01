@@ -760,7 +760,7 @@ Matched against `11-labs*.png`.
   `text-meta*`, `text-hero-stat`, `text-mag-title`, `spacing-sidebar*`) and zero raw-palette
   escapes (`zinc-`, `slate-`, `purple-`, `emerald-`, `blue-`, `yellow-` outside `theme.css`)
   anywhere in `components/`/`pages/`/`stores/`/`composables/`/`helpers/`. One straggler
-  (`components/ui/RefreshButton.vue`'s count badge, `text-ink-3`) had been missed by every prior
+  (`components/ui/ButtonRefresh.vue`'s count badge, `text-ink-3`) had been missed by every prior
   per-page stage since it's a small shared component with no page of its own - caught here by the
   final sweep, which is exactly what this stage is for.
 - **Zero `<style>` blocks remain in `web/components/**` or `web/pages/**`** - confirmed by grep
@@ -873,7 +873,7 @@ them kept drifting apart with no single source correcting them.
   copy-pasted — the four stay separate components (dotted-key/generic-option shapes differ enough
   that a shared base isn't worth it), only the dismiss plumbing moved.
 - **A real bug, not just duplication**: components that built their own `terminal.run()` pairs
-  instead of going through `ui/RefreshButton.vue` shared the terminal store's fixed
+  instead of going through `ui/ButtonRefresh.vue` shared the terminal store's fixed
   `dmp-<command>` session with every other caller of that command, so resyncing two different
   artists at once made the second hit the 409 `hasUnfinishedRun` guard. Extracted the session-name
   derivation into `scanSessionName()` (`helpers/functions.ts`) so every scoped caller gets it, not

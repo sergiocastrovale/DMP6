@@ -323,7 +323,7 @@ watch(() => props.releases, () => {
         Loading all tracks...
       </div>
       <UiEmptyState v-else-if="filteredAllTracks.length === 0" message="No tracks found." hint="Try clearing a status or search filter." />
-      <TrackList
+      <ArtistTrackList
         v-else
         :tracks="filteredAllTracks"
         :columns="listViewColumns"

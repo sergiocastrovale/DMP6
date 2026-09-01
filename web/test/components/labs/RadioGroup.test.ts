@@ -1,13 +1,13 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
-import RadioGroup from '../../components/RadioGroup.vue'
+import RadioGroup from '../../../components/labs/RadioGroup.vue'
 
 const OPTIONS = [
   { value: 'chronological', label: 'Chronological' },
   { value: 'gradient', label: 'Gradient' },
 ]
 
-describe('RadioGroup.vue', () => {
+describe('labs/RadioGroup.vue', () => {
   it('carries the radiogroup/radio roles and marks the checked option', async () => {
     const wrapper = await mountSuspended(RadioGroup, { props: { options: OPTIONS, modelValue: 'gradient' } })
     expect(wrapper.find('[role="radiogroup"]').exists()).toBe(true)

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Radar, Trash2 } from 'lucide-vue-next'
-
 definePageMeta({
   layout: 'default',
 })
@@ -17,17 +15,12 @@ const catalogue = useArtistCatalogue(releases)
 provide('catalogue', catalogue)
 
 const { isAdmin } = useAuth()
-
-const deleteOpen = ref(false)
 </script>
 
 <template>
   <div>
     <UiLoadingBlock v-if="pending" />
-    <div v-else-if="error" class="py-20 text-center">
-      <p class="text-lg font-medium text-stone-100">Artist not found</p>
-      <p class="mt-1 text-sm text-stone-100/60">The artist you're looking for doesn't exist.</p>
-    </div>
+    <ArtistNotFound v-else-if="error" />
     <div v-else-if="artist" class="flex flex-col gap-8">
       <ArtistHeader
         :artist="artist"
@@ -39,33 +32,11 @@ const deleteOpen = ref(false)
         @shuffle-all="shuffleAll"
       >
         <div class="flex shrink-0 items-center gap-2">
-          <UiButton
-            :variant="artist.monitored ? 'primary' : 'secondary'"
-            size="sm"
-            :icon="Radar"
-            :loading="monitorBusy"
-            :title="artist.monitored
-              ? 'Monitoring: missing releases are downloaded automatically. Click to stop.'
-              : 'Start monitoring: auto-download missing releases into the approval queue.'"
-            @click="toggleMonitor"
-          >
-            Monitor {{ artist.monitored ? 'ON' : 'OFF' }}
-          </UiButton>
+          <ArtistButtonMonitor :monitored="artist.monitored" :busy="monitorBusy" @toggle="toggleMonitor" />
           <ArtistScanActions :artist-name="artist.name" :folders="artistFolders" />
-          <UiButton
-            v-if="isAdmin"
-            variant="secondary"
-            size="sm"
-            :icon="Trash2"
-            title="Remove this artist from the catalogue, optionally deleting their files"
-            @click="deleteOpen = true"
-          >
-            Remove
-          </UiButton>
+          <ArtistButtonRemove v-if="isAdmin" :artist-name="artist.name" />
         </div>
       </ArtistHeader>
-
-      <ArtistDeleteDialog v-if="isAdmin" v-model="deleteOpen" :artist-name="artist.name" />
 
       <ArtistReleases
         :slug="artist.slug"

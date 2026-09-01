@@ -28,7 +28,7 @@ const image = computed(() =>
     )"
   >
     <div class="relative flex flex-col items-center gap-6 sm:flex-row sm:items-stretch">
-      <div :class="cx('shrink-0 overflow-hidden rounded-lg bg-stone-800', tv ? 'size-64 sm:size-80' : 'size-40 sm:size-48')">
+      <div :class="cx('shrink-0 overflow-hidden rounded-md bg-stone-800', tv ? 'size-64 sm:size-80' : 'size-40 sm:size-48')">
         <img
           v-if="image"
           :src="image"

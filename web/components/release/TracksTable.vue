@@ -46,7 +46,7 @@ function buildPlayerTracks(allTracks: Track[], startTrack: Track) {
 <template>
   <div class="mt-4 mb-1">
     <div v-if="pending" class="py-4 text-center text-sm text-stone-100/55">Loading tracks...</div>
-    <TrackList
+    <ArtistTrackList
       v-else-if="tracks.length"
       :tracks="tracks"
       :columns="columns"

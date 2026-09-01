@@ -123,7 +123,7 @@ onMounted(() => loadPlaylist())
               Delete
             </UiButton>
             <template v-if="isGenerated">
-              <PlaylistRegenerateButton />
+              <UiButtonGeneratePlaylists regenerate />
               <PlaylistGeneratedPopover
                 v-if="isGenrePlaylist"
                 title="How genre playlists work"

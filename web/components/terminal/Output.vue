@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, LockOpen, Square, X } from 'lucide-vue-next'
+import { Copy, LockOpen, X } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
 
 function copySession(session: string) {
@@ -43,16 +43,7 @@ watch(() => terminal.lines.length, () => {
           >
             Exit: {{ terminal.exitCode }}
           </span>
-          <UiButton
-            v-if="terminal.isRunning"
-            variant="ghost"
-            size="sm"
-            icon-only
-            :icon="Square"
-            title="Stop process"
-            class="hover:text-danger"
-            @click="terminal.stop()"
-          />
+          <UiButtonStop v-if="terminal.isRunning" icon-only />
           <UiButton
             variant="ghost"
             size="md"

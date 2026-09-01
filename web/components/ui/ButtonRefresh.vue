@@ -8,8 +8,6 @@ const terminal = useTerminalStore()
 
 const sessionName = computed(() => scanSessionName('refresh', (props.only ?? []).join('-')))
 
-// --exact on every --only: without it these are prefix matches, so resyncing "Air" also drags in
-// Air Supply and Airbourne. Every other call site already passes it.
 async function run() {
   terminal.open()
   const session = sessionName.value

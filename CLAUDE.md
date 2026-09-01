@@ -237,7 +237,7 @@ The web UI's scan buttons run these same binaries through `/api/terminal/run`, f
 action lists** in `helpers/constants.ts` — the surfaces stopped sharing one list once the artist
 actions became rebuilds rather than scopes of the library-wide ones:
 
-- `scanActions` → `components/ScanActions.vue`, the library-wide grid: **check for new files**
+- `scanActions` → `components/settings/ScanActions.vue`, the library-wide grid: **check for new files**
   (unflagged), **re-check changed files** (`--inspect` — the only non-destructive way to pick up files
   replaced in place, since a default index skips any known `filePath`), **index only**, **sync only**,
   all MANAGER-usable, plus ADMIN-only **full re-scan** (`--overwrite-with-images`, then `sync
@@ -258,7 +258,7 @@ files" switch is what adds `--files`. `sync --catalogue-gaps` is CLI-only — no
 
 **No UI caller passes `--skip-resolve`**, so every one of these already runs the artist-resolution pass
 and its offline tail (canonicalize + orphan sweep) — the new behaviour needs no argument changes at any
-call site (`ScanActions.vue` ×2, `ui/RefreshButton.vue`, `FirstScan.vue`, `autoScan.ts`). What matters is
+call site (`settings/ScanActions.vue`, `artist/ScanActions.vue`, `ui/ButtonRefresh.vue`, `dashboard/FirstScan.vue`, `autoScan.ts`). What matters is
 that the tail is **scoped**: `--only`/`--folders`/`--release` runs narrow it to the artists they touched,
 because `scoped_release_ids_for_filter` never returns `None` once a filter is set, and `None` means the
 whole library downstream. Flag gating is a deny-list (`DESTRUCTIVE_FLAGS`), so no allow-list needs

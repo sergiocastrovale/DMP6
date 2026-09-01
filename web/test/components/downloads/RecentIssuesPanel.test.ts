@@ -1,8 +1,8 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import RecentIssuesPanel from '../../components/RecentIssuesPanel.vue'
-import { useAuth } from '../../composables/useAuth'
+import RecentIssuesPanel from '../../../components/downloads/RecentIssuesPanel.vue'
+import { useAuth } from '../../../composables/useAuth'
 
 const EVENTS = {
   items: [
@@ -26,7 +26,7 @@ const setPerms = (permissions: string[]) => {
   }
 }
 
-describe('RecentIssuesPanel.vue', () => {
+describe('downloads/RecentIssuesPanel.vue', () => {
   beforeEach(() => {
     setPerms(['downloads.crud'])
   })
@@ -42,8 +42,8 @@ describe('RecentIssuesPanel.vue', () => {
     vi.stubGlobal('$fetch', vi.fn().mockResolvedValue(EVENTS))
     const wrapper = await mountSuspended(RecentIssuesPanel)
     await flushPromises()
-    const refreshButton = wrapper.get('[aria-label="Refresh issues"]')
-    expect(refreshButton.element.closest('button')).toBe(refreshButton.element)
+    const ButtonRefresh = wrapper.get('[aria-label="Refresh issues"]')
+    expect(ButtonRefresh.element.closest('button')).toBe(ButtonRefresh.element)
   })
 
   it('toggling open shows the event list independently of refreshing', async () => {
