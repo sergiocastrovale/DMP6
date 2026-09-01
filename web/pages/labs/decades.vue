@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { Loader2, Clock } from 'lucide-vue-next'
 
-useTitle('Labs', 'Decade DNA')
-
 import {
   Chart,
   RadarController,
@@ -16,6 +14,8 @@ import {
 import type { DecadeStats } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
 import { surface, sw, typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
+
+useTitle('Labs', 'Decade DNA')
 
 Chart.register(RadarController, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 

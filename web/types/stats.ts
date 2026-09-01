@@ -1,3 +1,5 @@
+import type { Component } from 'vue'
+
 export interface AppStats {
   artists: number
   releases: number
@@ -10,8 +12,6 @@ export interface AppStats {
   favorites: number
   issues: number
 }
-
-import type { Component } from 'vue'
 
 // /statistics index page (pages/statistics/index.vue) card shapes.
 export interface StatItem {

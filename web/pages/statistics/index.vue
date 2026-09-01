@@ -2,9 +2,9 @@
 import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideAlertTriangle, Info } from 'lucide-vue-next'
 import type { Statistics, StatItem, StatSection, StatTile } from '~/types/stats'
 import { formatNumber, formatPlaytime, formatFileSize, formatDate } from '~/helpers/functions'
+import { surface, toneText } from '~/helpers/ui'
 
 useTitle('Statistics')
-import { surface, toneText } from '~/helpers/ui'
 
 // Hand-authored, not random - a fixed table keeps the twinkle composition balanced and the
 // render stable across reloads. [top, left, animationDelay, size]

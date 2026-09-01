@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { Loader2, Network } from 'lucide-vue-next'
 
-useTitle('Labs', 'Artist Network')
-
 import {
   forceSimulation,
   forceLink,
@@ -17,6 +15,8 @@ import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import type { NetworkGraph, NetworkGraphNode as GraphNode, NetworkGraphLink as GraphLink } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
 import { cx, typography, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
+
+useTitle('Labs', 'Artist Network')
 
 definePageMeta({ layout: 'labs' })
 

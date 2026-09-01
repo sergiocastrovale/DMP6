@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { Loader2, Dna } from 'lucide-vue-next'
 
-useTitle('Labs', 'Genre Genome')
-
 import {
   forceSimulation,
   forceLink,
@@ -17,6 +15,8 @@ import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import type { GenomeGraph, GenomeGraphNode as GraphNode, GenomeGraphLink as GraphLink } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
 import { typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
+
+useTitle('Labs', 'Genre Genome')
 
 definePageMeta({ layout: 'labs' })
 
