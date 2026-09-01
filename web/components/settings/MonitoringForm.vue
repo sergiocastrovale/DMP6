@@ -1,12 +1,6 @@
 <script setup lang="ts">
-import { ChevronDown } from 'lucide-vue-next'
-
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
-
-const enabledId = useId()
-const songkongId = useId()
-const autoMergeId = useId()
 
 const { data: settings, refresh } = await useAsyncData('settings-monitoring', () =>
   $fetch<Record<string, any>>('/api/settings'),
@@ -70,22 +64,15 @@ const { saving, saved, error, save } = useFormSave(async () => {
         except the base reconcile tick (RECONCILE_SEC, env only).
       </p>
 
-      <div class="flex flex-col gap-1.5">
-        <label :for="enabledId" class="block text-base font-medium text-stone-100">Monitoring</label>
-        <p class="text-sm text-stone-100/55">Master switch for the download + catalogue loops.</p>
-        <div class="relative">
-          <select
-            :id="enabledId"
-            v-model="enabledChoice"
-            class="h-[40px] w-full pl-[13px] pr-8 rounded-md bg-stone-950 border border-stone-100/10 text-stone-100 text-base font-sans appearance-none outline-0 transition-colors duration-150 focus:border-amber-400/45"
-          >
-            <option value="default">- use env default (MONITOR_ENABLED) -</option>
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </select>
-          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/50" />
-        </div>
-      </div>
+      <UiSelect
+        v-model="enabledChoice"
+        label="Monitoring"
+        description="Master switch for the download + catalogue loops."
+      >
+        <option value="default">- use env default (MONITOR_ENABLED) -</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </UiSelect>
 
       <SettingsField
         v-model="form.maxConcurrentDownloads"
@@ -136,45 +123,25 @@ const { saving, saved, error, save } = useFormSave(async () => {
         placeholder="3"
       />
 
-      <div class="flex flex-col gap-1.5">
-        <label :for="songkongId" class="block text-base font-medium text-stone-100">SongKong enrichment</label>
-        <p class="text-sm text-stone-100/55">
-          Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library
-          folder layout is applied. Requires the host SongKong drainer cron. (SONGKONG_ENABLED)
-        </p>
-        <div class="relative">
-          <select
-            :id="songkongId"
-            v-model="songkongChoice"
-            class="h-[40px] w-full pl-[13px] pr-8 rounded-md bg-stone-950 border border-stone-100/10 text-stone-100 text-base font-sans appearance-none outline-0 transition-colors duration-150 focus:border-amber-400/45"
-          >
-            <option value="default">- use env default (SONGKONG_ENABLED) -</option>
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </select>
-          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/50" />
-        </div>
-      </div>
+      <UiSelect
+        v-model="songkongChoice"
+        label="SongKong enrichment"
+        description="Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library folder layout is applied. Requires the host SongKong drainer cron. (SONGKONG_ENABLED)"
+      >
+        <option value="default">- use env default (SONGKONG_ENABLED) -</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </UiSelect>
 
-      <div class="flex flex-col gap-1.5">
-        <label :for="autoMergeId" class="block text-base font-medium text-stone-100">Auto-merge into library</label>
-        <p class="text-sm text-stone-100/55">
-          When on, ready downloads are merged into the music library automatically (no manual
-          “Merge”). Off by default — merging stays a manual gate. (AUTO_MERGE)
-        </p>
-        <div class="relative">
-          <select
-            :id="autoMergeId"
-            v-model="autoMergeChoice"
-            class="h-[40px] w-full pl-[13px] pr-8 rounded-md bg-stone-950 border border-stone-100/10 text-stone-100 text-base font-sans appearance-none outline-0 transition-colors duration-150 focus:border-amber-400/45"
-          >
-            <option value="default">- use env default (AUTO_MERGE) -</option>
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </select>
-          <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/50" />
-        </div>
-      </div>
+      <UiSelect
+        v-model="autoMergeChoice"
+        label="Auto-merge into library"
+        description="When on, ready downloads are merged into the music library automatically (no manual “Merge”). Off by default — merging stays a manual gate. (AUTO_MERGE)"
+      >
+        <option value="default">- use env default (AUTO_MERGE) -</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </UiSelect>
     </UiCard>
 
     <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />

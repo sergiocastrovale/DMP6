@@ -2,7 +2,7 @@
 import { Disc, Music, User } from 'lucide-vue-next'
 import type { SearchResults } from '~/types/search'
 import { formatDuration } from '~/helpers/functions'
-import { cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, surface, typography } from '~/helpers/ui'
 
 interface Props {
   results: SearchResults | null
@@ -65,7 +65,7 @@ const optionClass = (index: number) => cx(
     v-if="results && hasResults"
     :id="listboxId"
     role="listbox"
-    class="absolute left-0 right-0 top-full z-50 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-stone-100/10 bg-stone-900 shadow-lg"
+    :class="cx(surface.popover, 'absolute left-0 right-0 top-full z-50 mt-1 max-h-[80vh] overflow-y-auto')"
   >
     <div v-if="results.artists.length > 0" class="border-b border-stone-100/6 p-2">
       <div :class="cx('px-2 py-1', typography.sectionLabel)">

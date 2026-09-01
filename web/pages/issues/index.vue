@@ -101,7 +101,7 @@ function formatRelative(date: string): string {
           >
             {{ issuesStore.summary.counts[card.key] ?? 0 }}
           </UiBadge>
-          <span v-else-if="issuesStore.summaryLoading" class="ml-3 h-7 w-10 animate-pulse rounded-full bg-stone-800" />
+          <UiSkeleton v-else-if="issuesStore.summaryLoading" w="w-10" h="h-7" shape="pill" class="ml-3" />
         </div>
       </NuxtLink>
     </div>

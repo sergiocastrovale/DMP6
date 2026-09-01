@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col gap-2">
-    <div class="aspect-square animate-pulse rounded-lg bg-stone-800" />
-    <div class="h-4 w-3/4 animate-pulse rounded bg-stone-800" />
-    <div class="h-3 w-1/2 animate-pulse rounded bg-stone-800" />
+    <UiSkeleton shape="tile" />
+    <UiSkeleton w="w-3/4" h="h-4" />
+    <UiSkeleton w="w-1/2" h="h-3" />
   </div>
 </template>

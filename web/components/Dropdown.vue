@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
-import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
 
 interface DropdownOption {
   value: string
@@ -26,15 +26,14 @@ const emit = defineEmits<{
   'update:modelValue': [value: string | null]
 }>()
 
-const open = ref(false)
-const triggerRef = ref<HTMLElement>()
+const { open, triggerRef, toggle, close } = useDismissable()
 
 const selectedOption = computed(() => props.options.find(o => o.value === props.modelValue))
 const selectedLabel = computed(() => selectedOption.value?.label ?? props.placeholder ?? 'All')
 
 const select = (value: string | null) => {
   emit('update:modelValue', value)
-  open.value = false
+  close()
   triggerRef.value?.focus()
 }
 
@@ -44,29 +43,6 @@ const onTriggerKeydown = (event: KeyboardEvent) => {
     open.value = true
   }
 }
-
-const onDocumentKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
-    open.value = false
-    triggerRef.value?.focus()
-  }
-}
-
-// document is undefined during SSR - open always starts false, so there is nothing to attach on
-// the very first (server) render anyway. A plain (non-immediate) watch only ever fires in
-// response to a later, client-side change, which is exactly what this needs.
-watch(open, (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('keydown', onDocumentKeydown)
-  }
-  else {
-    document.removeEventListener('keydown', onDocumentKeydown)
-  }
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onDocumentKeydown)
-})
 </script>
 
 <template>
@@ -80,7 +56,7 @@ onBeforeUnmount(() => {
         'flex items-center gap-1.5 rounded-lg border border-stone-100/10 px-3 py-1.5 text-xs transition-colors duration-150',
         modelValue ? 'bg-stone-800 text-stone-100' : 'bg-stone-900 text-stone-100/60 hover:text-stone-100',
       )"
-      @click="open = !open"
+      @click="toggle"
       @keydown="onTriggerKeydown"
     >
       <component :is="icon" v-if="icon" :size="12" :stroke-width="ICON_STROKE_WIDTH" />
@@ -94,7 +70,7 @@ onBeforeUnmount(() => {
     <div
       v-if="open"
       role="listbox"
-      class="absolute left-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-stone-100/10 bg-stone-900 p-1 shadow-lg"
+      :class="cx(surface.popover, 'absolute left-0 top-full z-20 mt-1 min-w-[180px] p-1')"
     >
       <button
         v-if="allowClear"
@@ -128,6 +104,6 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <div v-if="open" class="fixed inset-0 z-10" @click="open = false" />
+    <div v-if="open" class="fixed inset-0 z-10" @click="close" />
   </div>
 </template>

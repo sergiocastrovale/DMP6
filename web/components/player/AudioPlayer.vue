@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
-import { cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, surface, typography } from '~/helpers/ui'
 import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 
 const player = usePlayerStore()
@@ -283,7 +283,7 @@ async function onPlaylistCreated() {
             <div
               v-if="showPlaylistMenu"
               role="menu"
-              class="absolute bottom-full left-0 z-20 mb-2 w-48 rounded-lg border border-stone-100/10 bg-stone-900 shadow-lg"
+              :class="cx(surface.popover, 'absolute bottom-full left-0 z-20 mb-2 w-48')"
             >
               <div class="max-h-64 overflow-y-auto p-2">
                 <div class="mb-2 flex justify-center">

@@ -5,7 +5,7 @@ import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'
 import { musicBrainzUrl } from '~/helpers/functions'
-import { cx, ICON_STROKE_WIDTH, toneBg } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, surface, toneBg } from '~/helpers/ui'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
 const props = withDefaults(defineProps<{
@@ -138,7 +138,7 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
             <ReleaseStatusBadge :status="release.status" />
           </template>
           <template #content>
-            <div class="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-stone-100/10 bg-stone-900 p-3 shadow-lg">
+            <div :class="cx(surface.popover, 'absolute right-0 top-full z-20 mt-1 w-64 p-3')">
               <p class="text-xs text-stone-100/60">{{ release.statusReason || statusDescription(release.status) }}</p>
             </div>
           </template>

@@ -47,17 +47,7 @@ async function create() {
 <template>
   <Dialog :model-value="show" title="Create Playlist" max-width="sm" @update:model-value="show = $event">
     <form class="flex flex-col gap-4" @submit.prevent="create">
-      <div>
-        <label :class="form.label" class="mb-1 block">Name</label>
-        <input
-          v-model="name"
-          type="text"
-          placeholder="My Playlist"
-          autofocus
-          required
-          :class="form.input"
-        >
-      </div>
+      <UiTextField v-model="name" label="Name" placeholder="My Playlist" autofocus required />
       <div>
         <label :class="form.label" class="mb-1 block">Description (optional)</label>
         <textarea

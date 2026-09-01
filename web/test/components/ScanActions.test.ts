@@ -93,8 +93,8 @@ describe('artist/ScanActions.vue', () => {
     const wrapper = await openMenu()
     await wrapper.findAll('button')[1]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
-      ['./index', ['--only', 'Boards of Canada', '--exact']],
-      ['./sync', ['--only', 'Boards of Canada', '--exact']],
+      ['./index', ['--only', 'Boards of Canada', '--exact'], 'check-boards-of-canada'],
+      ['./sync', ['--only', 'Boards of Canada', '--exact'], 'check-boards-of-canada'],
     ])
   })
 
@@ -103,9 +103,9 @@ describe('artist/ScanActions.vue', () => {
     const wrapper = await openMenu()
     await wrapper.findAll('button')[2]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
-      ['./delete', ['Boards of Canada', '--y']],
-      ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite']],
-      ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite']],
+      ['./delete', ['Boards of Canada', '--y'], 'rebuild-boards-of-canada'],
+      ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite'], 'rebuild-boards-of-canada'],
+      ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite'], 'rebuild-boards-of-canada'],
     ])
   })
 
@@ -113,8 +113,8 @@ describe('artist/ScanActions.vue', () => {
     const wrapper = await openMenu()
     await wrapper.findAll('button')[3]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
-      ['./delete', ['Boards of Canada', '--y']],
-      ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite']],
+      ['./delete', ['Boards of Canada', '--y'], 'reindex-boards-of-canada'],
+      ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite'], 'reindex-boards-of-canada'],
     ])
   })
 
@@ -122,17 +122,19 @@ describe('artist/ScanActions.vue', () => {
     const wrapper = await openMenu()
     await wrapper.findAll('button')[4]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
-      ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite']],
+      ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite'], 'resync-boards-of-canada'],
     ])
   })
 
-  it('joins multiple scan roots with a semicolon', async () => {
+  // Two different artists resynced at once must not collide on the terminal store's 409
+  // hasUnfinishedRun guard - see scanSessionName in helpers/functions.ts.
+  it('scopes the session name to the artist, so two rows resynced at once do not collide', async () => {
     const wrapper = await mountSuspended(ArtistScanActions, {
       props: { artistName: 'Aphex Twin', folders: ['Aphex Twin', 'AFX'] },
     })
     await wrapper.findAll('button')[0]!.trigger('click')
     await wrapper.findAll('button')[1]!.trigger('click')
-    expect(runMock.mock.calls[0]).toEqual(['./index', ['--only', 'Aphex Twin;AFX', '--exact']])
+    expect(runMock.mock.calls[0]).toEqual(['./index', ['--only', 'Aphex Twin;AFX', '--exact'], 'check-aphex-twin'])
   })
 
   it('leaves a non-admin only the additive scan - every rebuild deletes the artist first', async () => {

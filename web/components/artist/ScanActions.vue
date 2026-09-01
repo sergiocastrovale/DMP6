@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import type { ButtonDropdownOption } from '~/types/ui'
 import { useTerminalStore } from '~/stores/terminal'
 import { visibleArtistScanActions } from '~/helpers/constants'
+import { scanSessionName } from '~/helpers/functions'
 import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const props = defineProps<{
@@ -21,20 +22,23 @@ const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownl
 // artist's on-disk folders, which is why the two take different arguments.
 const artistActions: Record<string, (name: string, folders: string[]) => () => Promise<void>> = {
   'check': (name, folders) => async () => {
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact'])
-    await terminal.run('./sync', ['--only', name, '--exact'])
+    const session = scanSessionName('check', name)
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact'], session)
+    await terminal.run('./sync', ['--only', name, '--exact'], session)
   },
   'rebuild': (name, folders) => async () => {
-    await terminal.run('./delete', [name, '--y'])
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'])
-    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
+    const session = scanSessionName('rebuild', name)
+    await terminal.run('./delete', [name, '--y'], session)
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'], session)
+    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'], session)
   },
   'reindex': (name, folders) => async () => {
-    await terminal.run('./delete', [name, '--y'])
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'])
+    const session = scanSessionName('reindex', name)
+    await terminal.run('./delete', [name, '--y'], session)
+    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'], session)
   },
   'resync': (name) => async () => {
-    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'])
+    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'], scanSessionName('resync', name))
   },
 }
 

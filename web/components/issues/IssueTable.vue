@@ -108,10 +108,10 @@ function commitEdit(item: any, col: IssueColumn) {
         <template v-if="loading && items.length === 0">
           <tr v-for="n in 5" :key="n" class="border-b border-stone-100/6 last:border-b-0">
             <td v-if="type !== 'enrichment'" :class="data.td">
-              <div class="size-4 animate-pulse rounded bg-stone-800" />
+              <UiSkeleton w="size-4" h="" />
             </td>
             <td v-for="col in columns" :key="col.key" :class="data.td">
-              <div class="h-4 animate-pulse rounded bg-stone-800" :class="col.width ?? 'w-32'" />
+              <UiSkeleton :w="col.width ?? 'w-32'" />
             </td>
           </tr>
         </template>

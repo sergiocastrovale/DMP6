@@ -9,6 +9,8 @@
 // `label` is optional on purpose: with none, the bar reads "3 selected", which is what every screen
 // wants. Pass one only when the noun genuinely disambiguates ("3 artists selected").
 
+import { cx, toneBg } from '~/helpers/ui'
+
 withDefaults(defineProps<{
   count: number
   label?: string
@@ -24,7 +26,7 @@ const emit = defineEmits<{ cancel: [] }>()
 <template>
   <div
     v-if="count > 0"
-    class="flex h-[42px] items-center justify-between gap-4 rounded-lg border border-amber-400/30 bg-amber-400/20 px-4 text-base text-amber-400"
+    :class="cx('flex h-[42px] items-center justify-between gap-4 rounded-lg border border-amber-400/30 px-4 text-base', toneBg.accent)"
   >
     <span class="font-medium">
       {{ count }}{{ label ? ` ${label}${count !== 1 ? 's' : ''}` : '' }} selected

@@ -140,7 +140,7 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
         <template v-if="loading">
           <tr v-for="i in loadingRows" :key="i" class="border-b border-stone-100/6 last:border-b-0">
             <td :colspan="columnCount" :class="data.td">
-              <div class="h-4 w-full max-w-xs animate-pulse rounded bg-stone-800" />
+              <UiSkeleton w="w-full max-w-xs" />
             </td>
           </tr>
         </template>

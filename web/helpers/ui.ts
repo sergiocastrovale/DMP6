@@ -174,6 +174,17 @@ export const toneFill: Record<Tone, string> = {
   muted: 'bg-stone-100/30',
 }
 
+// Lighter than toneBg's pill fill (/10 vs /20) - a banner is a much bigger surface, so the same
+// alpha would read as an oversaturated block rather than a subtle notice.
+export const toneBanner: Record<Tone, string> = {
+  accent: 'border-amber-400/40 bg-amber-400/10 text-amber-400',
+  success: 'border-success/40 bg-success/10 text-success',
+  warning: 'border-warning/40 bg-warning/10 text-warning',
+  danger: 'border-danger/40 bg-danger/10 text-danger',
+  info: 'border-info/40 bg-info/10 text-info',
+  muted: 'border-stone-100/10 bg-stone-800 text-stone-100/55',
+}
+
 export const surface = {
   card: 'rounded-xl border border-stone-100/6 bg-stone-900',
   cardHead: 'flex items-center justify-between gap-3 px-[18px] py-[14px] border-b border-stone-100/6',

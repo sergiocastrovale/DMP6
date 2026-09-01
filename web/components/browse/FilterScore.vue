@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { SlidersHorizontal, X } from 'lucide-vue-next'
 import { scoreRanges } from '~/helpers/constants'
-import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
 
 interface Props {
   minScore: number | null
@@ -13,8 +13,7 @@ const emit = defineEmits<{
   'update:range': [min: number | null, max: number | null]
 }>()
 
-const showDropdown = ref(false)
-const triggerRef = ref<HTMLElement>()
+const { open: showDropdown, triggerRef, close } = useDismissable()
 
 const isActive = computed(() => props.minScore !== null || props.maxScore !== null)
 
@@ -28,34 +27,13 @@ const activeLabel = computed(() => {
 
 const select = (range: typeof scoreRanges[number]) => {
   emit('update:range', range.min, range.max)
-  showDropdown.value = false
+  close()
 }
 
 const clear = () => {
   emit('update:range', null, null)
-  showDropdown.value = false
+  close()
 }
-
-const onDocumentKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
-    showDropdown.value = false
-    triggerRef.value?.focus()
-  }
-}
-
-// See FilterGenre.vue for why this is a non-immediate watch, not an immediate one.
-watch(showDropdown, (open) => {
-  if (open) {
-    document.addEventListener('keydown', onDocumentKeydown)
-  }
-  else {
-    document.removeEventListener('keydown', onDocumentKeydown)
-  }
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onDocumentKeydown)
-})
 </script>
 
 <template>
@@ -87,7 +65,7 @@ onBeforeUnmount(() => {
     <div
       v-if="showDropdown"
       role="listbox"
-      class="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-stone-100/10 bg-stone-900 p-1 shadow-lg"
+      :class="cx(surface.popover, 'absolute left-0 top-full z-20 mt-1 w-44 p-1')"
     >
       <button
         v-for="range in scoreRanges"
@@ -106,6 +84,6 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <div v-if="showDropdown" class="fixed inset-0 z-10" @click="showDropdown = false" />
+    <div v-if="showDropdown" class="fixed inset-0 z-10" @click="close" />
   </div>
 </template>

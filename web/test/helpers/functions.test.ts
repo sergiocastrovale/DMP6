@@ -14,6 +14,7 @@ import {
   paginate,
   parseDroppedLinks,
   parseProgress,
+  scanSessionName,
   sortItems,
   timeAgo,
 } from '../../helpers/functions'
@@ -349,5 +350,30 @@ describe('musicBrainzUrl', () => {
 
   it('falls back to the release page when the group is unknown', () => {
     expect(musicBrainzUrl({ musicbrainzId: 'rel-1' })).toBe('https://musicbrainz.org/release/rel-1')
+  })
+})
+
+describe('scanSessionName', () => {
+  it('returns the bare prefix with no scope', () => {
+    expect(scanSessionName('refresh')).toBe('refresh')
+    expect(scanSessionName('refresh', '')).toBe('refresh')
+  })
+
+  it('slugifies the scope and appends it to the prefix', () => {
+    expect(scanSessionName('refresh', 'Air Supply')).toBe('refresh-air-supply')
+  })
+
+  it('gives two different scopes different session names, so concurrent scoped runs of the same command do not collide', () => {
+    expect(scanSessionName('check', 'Air Supply')).not.toBe(scanSessionName('check', 'Airbourne'))
+  })
+
+  it('strips characters SESSION_NAME_RE does not allow and collapses repeats', () => {
+    expect(scanSessionName('refresh', 'Toto!! & Air/Supply')).toBe('refresh-toto-air-supply')
+  })
+
+  it('clamps to the 32-char SESSION_NAME_RE limit with no trailing dash', () => {
+    const name = scanSessionName('refresh-release', 'cljk3x9z0000qzrmn831p7wq')
+    expect(name.length).toBeLessThanOrEqual(32)
+    expect(name.endsWith('-')).toBe(false)
   })
 })

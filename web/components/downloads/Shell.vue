@@ -144,17 +144,12 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div
-          v-if="paused"
-          class="flex items-center gap-2 rounded-lg border px-4 py-2 text-base"
-          :class="pausedReason === 'disk-full' ? 'border-danger/40 bg-danger/10 text-danger' : 'border-amber-400/40 bg-amber-400/10 text-amber-400'"
-        >
-          <AlertTriangle :size="15" />
-          <span v-if="pausedReason === 'disk-full'">
+        <UiBanner v-if="paused" :tone="pausedReason === 'disk-full' ? 'danger' : 'accent'" :icon="AlertTriangle">
+          <template v-if="pausedReason === 'disk-full'">
             Downloads auto-paused — disk full ({{ freeGb }} GB free, need {{ minFreeGb }} GB). Free space, then Continue.
-          </span>
-          <span v-else>All downloads paused. New downloads, catalogue scans and auto-merge are halted until you continue.</span>
-        </div>
+          </template>
+          <template v-else>All downloads paused. New downloads, catalogue scans and auto-merge are halted until you continue.</template>
+        </UiBanner>
 
         <DownloadsAcquisitionIdleBanner />
 

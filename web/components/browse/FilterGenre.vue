@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Tag, X } from 'lucide-vue-next'
-import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
 
 const props = defineProps<{
   active: string | null
@@ -11,9 +11,8 @@ const emit = defineEmits<{
 }>()
 
 const { data: genres } = useFetch<{ id: string, name: string, artistCount: number }[]>('/api/genres')
-const showDropdown = ref(false)
+const { open: showDropdown, triggerRef, close } = useDismissable()
 const search = ref('')
-const triggerRef = ref<HTMLElement>()
 
 const filtered = computed(() => {
   if (!genres.value) { return [] }
@@ -21,33 +20,6 @@ const filtered = computed(() => {
   return genres.value
     .filter(g => g.name.toLowerCase().includes(search.value.toLowerCase()))
     .slice(0, 30)
-})
-
-const close = () => {
-  showDropdown.value = false
-}
-
-const onDocumentKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
-    close()
-    triggerRef.value?.focus()
-  }
-}
-
-// document is undefined during SSR - showDropdown always starts false, so there is nothing to
-// attach on the very first (server) render. A plain (non-immediate) watch only ever fires on a
-// later, client-side change.
-watch(showDropdown, (open) => {
-  if (open) {
-    document.addEventListener('keydown', onDocumentKeydown)
-  }
-  else {
-    document.removeEventListener('keydown', onDocumentKeydown)
-  }
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onDocumentKeydown)
 })
 </script>
 
@@ -80,7 +52,7 @@ onBeforeUnmount(() => {
     <div
       v-if="showDropdown"
       role="listbox"
-      class="absolute top-full left-0 z-20 mt-1 w-56 rounded-lg border border-stone-100/10 bg-stone-900 p-2 shadow-lg"
+      :class="cx(surface.popover, 'absolute top-full left-0 z-20 mt-1 w-56 p-2')"
     >
       <input
         v-model="search"

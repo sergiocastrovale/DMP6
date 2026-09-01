@@ -203,8 +203,8 @@ async function undoSelected() {
         <SlimTableBody>
           <template v-if="issuesStore.historyLoading[activeTab] && groups.length === 0">
             <tr v-for="n in 5" :key="n" class="border-b border-stone-100/6 last:border-b-0">
-              <td :class="data.td"><div class="size-4 animate-pulse rounded bg-stone-800" /></td>
-              <td v-for="c in 4" :key="c" :class="data.td"><div class="h-4 w-32 animate-pulse rounded bg-stone-800" /></td>
+              <td :class="data.td"><UiSkeleton w="size-4" h="" /></td>
+              <td v-for="c in 4" :key="c" :class="data.td"><UiSkeleton w="w-32" /></td>
             </tr>
           </template>
 

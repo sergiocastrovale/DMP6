@@ -39,18 +39,10 @@ const idleMessage = computed(() => {
 </script>
 
 <template>
-  <div
-    v-if="acquisitionIdle && !paused"
-    class="flex items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-2 text-base text-amber-400"
-  >
-    <PauseCircle :size="15" />
-    <span>{{ idleMessage }} Background searching is paused until a source is available.</span>
-  </div>
-  <div
-    v-if="acquisition?.noYearMissing"
-    class="flex items-center gap-2 rounded-lg border border-info/40 bg-info/10 px-4 py-2 text-base text-info"
-  >
-    <PauseCircle :size="15" />
-    <span>{{ acquisition.noYearMissing }} release{{ acquisition.noYearMissing === 1 ? '' : 's' }} have no MusicBrainz release date and can never be auto-acquired.</span>
-  </div>
+  <UiBanner v-if="acquisitionIdle && !paused" tone="accent" :icon="PauseCircle">
+    {{ idleMessage }} Background searching is paused until a source is available.
+  </UiBanner>
+  <UiBanner v-if="acquisition?.noYearMissing" tone="info" :icon="PauseCircle">
+    {{ acquisition.noYearMissing }} release{{ acquisition.noYearMissing === 1 ? '' : 's' }} have no MusicBrainz release date and can never be auto-acquired.
+  </UiBanner>
 </template>

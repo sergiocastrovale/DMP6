@@ -5,6 +5,7 @@ import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { statuses } from '~/helpers/constants'
+import { scanSessionName } from '~/helpers/functions'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 
 const props = defineProps<{
@@ -159,7 +160,7 @@ async function confirmCancelDownload() {
 }
 
 function refreshRelease(edition: UnifiedRelease) {
-  terminal.run('./refresh', ['--release', edition.localReleaseId!, '--overwrite'])
+  terminal.run('./refresh', ['--release', edition.localReleaseId!, '--overwrite'], scanSessionName('refresh-release', edition.localReleaseId!))
   terminal.open()
 }
 

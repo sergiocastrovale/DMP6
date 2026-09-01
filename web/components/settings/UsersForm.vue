@@ -105,14 +105,12 @@ const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 
 
       <div v-if="showCreate" class="flex flex-col gap-3 rounded-lg border border-stone-100/6 bg-stone-950 p-4">
         <div class="grid grid-cols-2 gap-3">
-          <input v-model="newUser.username" placeholder="Username" :class="form.input">
-          <input v-model="newUser.email" placeholder="Email" type="email" :class="form.input">
-          <input v-model="newUser.password" placeholder="Password" type="password" :class="form.input">
-          <div class="relative">
-            <select v-model="newUser.role" :class="form.select">
-              <option v-for="r in roles" :key="r.value" :value="r.value">{{ r.label }}</option>
-            </select>
-          </div>
+          <UiTextField v-model="newUser.username" label="Username" placeholder="Username" />
+          <UiTextField v-model="newUser.email" label="Email" type="email" placeholder="Email" />
+          <UiTextField v-model="newUser.password" label="Password" type="password" placeholder="Password" />
+          <UiSelect v-model="newUser.role" label="Role">
+            <option v-for="r in roles" :key="r.value" :value="r.value">{{ r.label }}</option>
+          </UiSelect>
         </div>
         <p v-if="createError" role="alert" :class="form.error">{{ createError }}</p>
         <div class="flex gap-2">

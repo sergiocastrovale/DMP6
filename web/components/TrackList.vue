@@ -5,6 +5,7 @@ import type { ReleaseStatus } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
 import { usePlayerStore } from '~/stores/player'
 import { formatDuration } from '~/helpers/functions'
+import { cx, surface } from '~/helpers/ui'
 
 interface TrackInfo {
   filePath: string
@@ -197,7 +198,7 @@ const formatFileSize = (bytes: number) => {
                 <AlertTriangle :size="12" class="mb-0.5 ml-1 inline text-amber-400/70" />
               </template>
               <template #content>
-                <div class="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-stone-100/6 bg-stone-900 p-3 shadow-xl">
+                <div :class="cx(surface.popover, 'absolute left-0 top-full z-20 mt-1 w-72 p-3')">
                   <p class="text-xs text-stone-100/60">Title is slightly different in MusicBrainz: <span class="text-stone-100/60">{{ track.mbTitle }}</span></p>
                 </div>
               </template>

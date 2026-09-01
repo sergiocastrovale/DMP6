@@ -184,3 +184,13 @@ export const musicBrainzUrl = (release: { musicbrainzId: string | null, releaseG
   const isGroupPlaceholder = release.releaseGroupId === release.musicbrainzId
   return `https://musicbrainz.org/${isGroupPlaceholder ? 'release-group' : 'release'}/${release.musicbrainzId}`
 }
+
+// With no explicit session, the terminal store's `run()` falls back to a fixed `dmp-<command>` name
+// shared by every caller of that command - two artists' `./index` runs land on the same `dmp-index`
+// session and the second hits the 409 hasUnfinishedRun guard. Scoping the session to what's being
+// scanned keeps concurrent scoped runs of the same command apart. Must satisfy SESSION_NAME_RE
+// (/^[a-zA-Z0-9_-]{1,32}$/) in server/utils/terminalCommand.ts.
+export const scanSessionName = (prefix: string, scope?: string): string => {
+  const slug = (scope ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return slug ? `${prefix}-${slug}`.slice(0, 32).replace(/-+$/, '') : prefix
+}

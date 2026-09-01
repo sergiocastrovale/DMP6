@@ -15,7 +15,7 @@ import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import type { NetworkGraph } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
-import { typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx, typography, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
 
 definePageMeta({ layout: 'labs' })
 
@@ -325,7 +325,7 @@ onUnmounted(() => {
             <template #results>
               <div
                 v-if="searchOpen && searchResults.length > 0"
-                class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-stone-100/10 bg-stone-900 shadow-lg"
+                :class="cx(surface.popover, 'absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto')"
               >
                 <button
                   v-for="result in searchResults"

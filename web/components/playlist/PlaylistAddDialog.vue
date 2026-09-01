@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { form } from '~/helpers/ui'
-
 const props = defineProps<{
   modelValue: boolean
   trackId: string | null
@@ -59,18 +57,7 @@ async function save() {
 <template>
   <Dialog :model-value="modelValue" title="New Playlist" max-width="sm" @update:model-value="emit('update:modelValue', $event)">
     <form class="flex flex-col gap-4" @submit.prevent="save">
-      <div>
-        <label for="playlist-name" :class="form.label" class="mb-1 block">Name</label>
-        <input
-          id="playlist-name"
-          v-model="name"
-          type="text"
-          :class="form.input"
-          placeholder="My playlist"
-          autofocus
-        >
-      </div>
-      <p v-if="error" role="alert" :class="form.error">{{ error }}</p>
+      <UiTextField v-model="name" label="Name" placeholder="My playlist" autofocus :error="error" />
       <div class="flex justify-end gap-2">
         <UiButton variant="ghost" @click="emit('update:modelValue', false)">
           Cancel
