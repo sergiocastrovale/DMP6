@@ -169,18 +169,8 @@ onUnmounted(() => {
 
     <div class="grid gap-6 lg:grid-cols-5">
       <div class="flex flex-col gap-6 lg:col-span-2">
-        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
-          <div class="mb-4 flex items-center gap-3">
-            <div class="flex size-10 items-center justify-center rounded-lg bg-amber-400/10">
-              <Clock :size="20" class="text-amber-400" />
-            </div>
-            <div>
-              <h2 class="text-lg font-semibold text-stone-100">Decade DNA</h2>
-              <p class="text-sm text-stone-100/55">Compare your collection across decades</p>
-            </div>
-          </div>
-
-          <p class="mb-4 text-base leading-relaxed text-stone-100/60">
+        <UiCard padding="sm" :icon="Clock" title="Decade DNA" subtitle="Compare your collection across decades">
+          <p class="text-base leading-relaxed text-stone-100/60">
             Pick up to four decades to overlay. Every axis is normalised to the strongest decade in the library.
           </p>
 
@@ -200,7 +190,7 @@ onUnmounted(() => {
               {{ decade }}
             </button>
           </div>
-        </div>
+        </UiCard>
 
         <div v-if="selectedSeries.length > 0" :class="surface.card">
           <div :class="surface.cardHead">

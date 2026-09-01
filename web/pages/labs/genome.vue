@@ -264,18 +264,8 @@ onUnmounted(() => {
 
     <div class="grid gap-6 lg:grid-cols-5">
       <div class="flex flex-col gap-6 lg:col-span-1">
-        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
-          <div class="mb-4 flex items-center gap-3">
-            <div class="flex size-10 items-center justify-center rounded-lg bg-amber-400/10">
-              <Dna :size="20" class="text-amber-400" />
-            </div>
-            <div>
-              <h2 class="text-lg font-semibold text-stone-100">Genre Genome</h2>
-              <p class="text-sm text-stone-100/55">Genre relationships via shared artists</p>
-            </div>
-          </div>
-
-          <p class="mb-4 text-base leading-relaxed text-stone-100/60">
+        <UiCard padding="sm" :icon="Dna" title="Genre Genome" subtitle="Genre relationships via shared artists">
+          <p class="text-base leading-relaxed text-stone-100/60">
             Each node is a genre. Lines connect genres that share artists - thicker lines mean more artists in common. Drag nodes to rearrange. Click a genre to see its artists.
           </p>
 
@@ -284,10 +274,10 @@ onUnmounted(() => {
             <Slider v-model="minWeight" title="Min shared artists" :min="1" :max="10" />
           </div>
 
-          <div v-if="filteredGraph.nodes.length > 0" :class="[typography.meta, 'mt-4']">
+          <div v-if="filteredGraph.nodes.length > 0" :class="typography.meta">
             {{ filteredGraph.nodes.length }} genres · {{ filteredGraph.links.length }} connections
           </div>
-        </div>
+        </UiCard>
       </div>
 
       <div class="relative lg:col-span-4">

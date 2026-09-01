@@ -19,8 +19,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
 <template>
   <div class="flex w-full max-w-5xl flex-col gap-6">
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Fanart.tv</h2>
+    <UiCard title="Fanart.tv">
       <SettingsField
         v-model="fanartApiKey"
         label="API Key"
@@ -29,7 +28,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
         placeholder="••••••••"
       />
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
-    </div>
-
+    </UiCard>
   </div>
 </template>

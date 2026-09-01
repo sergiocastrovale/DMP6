@@ -47,8 +47,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
 <template>
   <div class="flex w-full max-w-5xl flex-col gap-6">
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Download Settings</h2>
+    <UiCard title="Download Settings">
       <SettingsField
         v-model="form.downloadsPath"
         label="Downloads Path"
@@ -76,10 +75,9 @@ const { saving, saved, error, save } = useFormSave(async () => {
       />
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
-    </div>
+    </UiCard>
 
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Soulseek (slskd)</h2>
+    <UiCard title="Soulseek (slskd)">
       <SettingsField
         v-model="form.slskdUrl"
         label="slskd URL"
@@ -95,10 +93,9 @@ const { saving, saved, error, save } = useFormSave(async () => {
       />
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
-    </div>
+    </UiCard>
 
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">RuTracker — Prowlarr (search)</h2>
+    <UiCard title="RuTracker — Prowlarr (search)">
       <p class="text-sm text-stone-100/55">RuTracker is searched through Prowlarr (the RT login lives in Prowlarr, like Lidarr). When RuTracker is enabled it's tried first; Soulseek is the fallback.</p>
       <SettingsField
         v-model="form.prowlarrUrl"
@@ -121,10 +118,9 @@ const { saving, saved, error, save } = useFormSave(async () => {
       />
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
-    </div>
+    </UiCard>
 
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">RuTracker — qBittorrent (download)</h2>
+    <UiCard title="RuTracker — qBittorrent (download)">
       <SettingsField
         v-model="form.qbittorrentUrl"
         label="qBittorrent URL"
@@ -149,8 +145,8 @@ const { saving, saved, error, save } = useFormSave(async () => {
         description="qBittorrent-side path that maps to {Downloads Path}/_torrents on the shared volume. Only set this if qBittorrent mounts the volume at a different prefix. Overrides QBITTORRENT_SAVE_PATH."
         placeholder="/downloads/dmp/_torrents"
       />
-      
+
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
-    </div>
+    </UiCard>
   </div>
 </template>

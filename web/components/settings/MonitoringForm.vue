@@ -64,8 +64,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
     <DownloadsAcquisitionIdleBanner />
 
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Auto-monitoring</h2>
+    <UiCard title="Auto-monitoring">
       <p class="text-sm text-stone-100/55">
         Leave a field blank to use the environment default. Changes apply live (no restart),
         except the base reconcile tick (RECONCILE_SEC, env only).
@@ -176,7 +175,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
           <ChevronDown :size="16" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-stone-100/50" />
         </div>
       </div>
-    </div>
+    </UiCard>
 
     <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
   </div>

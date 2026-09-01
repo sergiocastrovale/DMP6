@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Info, Music, Play } from 'lucide-vue-next'
 import type { PlayerTrack } from '~/types/player'
 import { clampPage, formatDuration, pageCount, paginate } from '~/helpers/functions'
 import { EXPLORE_HISTORY_PAGE_SIZE, EXPLORE_HISTORY_TV_LIMIT } from '~/helpers/constants'
-import { cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, surface, typography } from '~/helpers/ui'
 
 const props = defineProps<{
   tracks: PlayerTrack[]
@@ -67,7 +67,7 @@ const goNewer = () => {
       </div>
     </div>
 
-    <div class="flex flex-col divide-y divide-stone-100/6 rounded-xl border border-stone-100/6 bg-stone-900/50">
+    <div :class="[surface.card, 'flex flex-col divide-y divide-stone-100/6']">
       <div v-for="track in visible" :key="track.id" :class="cx('group flex items-center gap-3', tv ? 'px-5 py-4' : 'px-3 py-2')">
         <button
           type="button"

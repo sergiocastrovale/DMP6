@@ -61,9 +61,7 @@ const disconnect = async () => {
 
 <template>
   <div class="flex w-full max-w-5xl flex-col gap-6">
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Last.fm Scrobbling</h2>
-
+    <UiCard title="Last.fm Scrobbling">
       <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
         <CheckCircle2 :size="18" class="text-success shrink-0" />
         <div class="flex-1">
@@ -116,15 +114,14 @@ const disconnect = async () => {
           {{ connecting ? 'Redirecting…' : 'Connect Last.fm' }}
         </UiButton>
       </SettingsSaveBar>
-    </div>
+    </UiCard>
 
-    <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">How it works</h2>
+    <UiCard title="How it works">
       <ul class="flex flex-col gap-1 text-base text-stone-100/60">
         <li>Tracks are scrobbled after 50% played or 4 minutes (whichever first)</li>
         <li>Tracks under 30 seconds are not scrobbled</li>
         <li>"Now Playing" updates immediately when a track starts</li>
       </ul>
-    </div>
+    </UiCard>
   </div>
 </template>

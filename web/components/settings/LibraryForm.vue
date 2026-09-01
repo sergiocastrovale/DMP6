@@ -30,9 +30,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
 <template>
   <div class="flex w-full max-w-5xl flex-col gap-6">
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Music Library</h2>
-
+    <UiCard title="Music Library">
       <SettingsField
         v-model="musicDir"
         label="Music Directory"
@@ -65,11 +63,10 @@ const { saving, saved, error, save } = useFormSave(async () => {
       </div>
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" label="Save" class="pt-2" @save="save" />
-    </div>
+    </UiCard>
 
-    <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="mb-4 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Scan Controls</h2>
+    <UiCard title="Scan Controls">
       <RealTimeStatus />
-    </div>
+    </UiCard>
   </div>
 </template>

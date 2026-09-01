@@ -46,8 +46,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
 <template>
   <div class="flex w-full max-w-5xl flex-col gap-6">
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Image Storage</h2>
+    <UiCard title="Image Storage">
       <SettingsField
         v-model="form.imageStorage"
         label="Storage Mode"
@@ -55,10 +54,9 @@ const { saving, saved, error, save } = useFormSave(async () => {
         type="select"
         :options="storageOptions"
       />
-    </div>
+    </UiCard>
 
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">S3 / Compatible Storage</h2>
+    <UiCard title="S3 / Compatible Storage">
       <SettingsField
         v-model="form.storageImageBucket"
         label="Image Bucket"
@@ -102,7 +100,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
         description="Public base URL for serving S3 images. Overrides STORAGE_PUBLIC_URL."
         placeholder="https://your-bucket.s3.us-east-1.amazonaws.com"
       />
-    </div>
+    </UiCard>
 
     <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
   </div>

@@ -8,6 +8,7 @@ import {
 } from 'lucide-vue-next'
 import type { ScanStatus } from '~/types/scan'
 import { formatDate, parseProgress } from '~/helpers/functions'
+import { surface, typography } from '~/helpers/ui'
 import { useTerminalStore } from '~/stores/terminal'
 
 const terminal = useTerminalStore()
@@ -118,7 +119,7 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col gap-6">
-    <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
+    <UiCard padding="sm" :gap="false">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div
@@ -178,7 +179,7 @@ onUnmounted(() => {
           {{ line }}
         </div>
       </div>
-    </div>
+    </UiCard>
 
     <div
       v-if="staleLock"
@@ -221,17 +222,17 @@ onUnmounted(() => {
     </div>
 
     <div>
-      <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
+      <h3 class="mb-3" :class="typography.sectionLabel">
         Scan Library
       </h3>
       <ScanActions :disabled="!!staleLock" />
     </div>
 
     <div v-if="status && !loading">
-      <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
+      <h3 class="mb-3" :class="typography.sectionLabel">
         History
       </h3>
-      <div class="rounded-xl border border-stone-100/6 bg-stone-900 divide-y divide-stone-100/6">
+      <div :class="[surface.card, 'divide-y divide-stone-100/6']">
         <div class="flex items-center justify-between px-4 py-3">
           <span class="text-base text-stone-100/60">Last scan started</span>
           <span class="text-base text-stone-100">{{ formatDate(status.lastScanStartedAt) }}</span>

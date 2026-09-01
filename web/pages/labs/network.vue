@@ -307,18 +307,8 @@ onUnmounted(() => {
 
     <div class="grid gap-6 lg:grid-cols-5">
       <div class="flex flex-col gap-6 lg:col-span-1">
-        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
-          <div class="mb-4 flex items-center gap-3">
-            <div class="flex size-10 items-center justify-center rounded-lg bg-amber-400/10">
-              <Network :size="20" class="text-amber-400" />
-            </div>
-            <div>
-              <h2 class="text-lg font-semibold text-stone-100">Artist Network</h2>
-              <p class="text-sm text-stone-100/55">Collaboration connections</p>
-            </div>
-          </div>
-
-          <p class="mb-4 text-base leading-relaxed text-stone-100/60">
+        <UiCard padding="sm" :icon="Network" title="Artist Network" subtitle="Collaboration connections">
+          <p class="text-base leading-relaxed text-stone-100/60">
             Artists connected by shared tracks. Search to focus on one artist's collaborations. Click any node to explore its network.
           </p>
 
@@ -350,21 +340,21 @@ onUnmounted(() => {
             </template>
           </SearchInput>
 
-          <div v-if="!selectedArtist" class="mt-4">
+          <div v-if="!selectedArtist">
             <Slider v-model="minShared" title="Min shared tracks" :min="1" :max="20" />
           </div>
 
-          <div v-if="graphData && graphData.nodes.length > 0" :class="[typography.meta, 'mt-4']">
+          <div v-if="graphData && graphData.nodes.length > 0" :class="typography.meta">
             {{ graphData.nodes.length }} artists · {{ graphData.links.length }} connections
           </div>
 
-          <div v-if="selectedArtist" class="mt-4 flex flex-col gap-1.5 text-sm text-stone-100/60">
+          <div v-if="selectedArtist" class="flex flex-col gap-1.5 text-sm text-stone-100/60">
             <div class="flex items-center gap-1.5">
               <div class="size-2.5 rounded-full bg-orange-400" />
               Selected
             </div>
           </div>
-        </div>
+        </UiCard>
       </div>
 
       <div class="relative lg:col-span-4">

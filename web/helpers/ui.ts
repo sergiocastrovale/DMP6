@@ -230,7 +230,7 @@ export const typography = {
   title: 'text-xl font-semibold tracking-[-0.01em]',
   body: 'text-base text-stone-100/60 leading-[1.55]',
   sub: 'text-sm text-stone-100/55',
-  sectionLabel: 'text-2xs font-bold tracking-[0.12em] uppercase text-stone-100/60',
+  sectionLabel: 'text-2xs font-bold tracking-[0.1em] uppercase text-stone-100/55',
   meta: 'font-mono text-xs text-stone-100/55 tabular-nums',
   // Wider-tracked monospace caption that sits *above* a value rather than beside it - the
   // "TOTAL PLAYTIME" rule on Statistics, the "STATUS" lead-in on the artist page. Distinct from

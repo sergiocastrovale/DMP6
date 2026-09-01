@@ -47,8 +47,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-    <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Sources</h2>
+  <UiCard title="Sources">
     <p class="text-sm text-stone-100/55">
       Where dmp searches for missing releases. RuTracker is tried first; Soulseek is the fallback.
     </p>
@@ -80,5 +79,5 @@ onUnmounted(() => {
         <span class="rounded-md bg-stone-800 px-1.5 py-0.5 text-[10px] font-medium uppercase text-stone-100/55" title="Used when RuTracker has no match">fallback</span>
       </div>
     </div>
-  </div>
+  </UiCard>
 </template>

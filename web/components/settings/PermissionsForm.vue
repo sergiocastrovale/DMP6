@@ -67,9 +67,7 @@ const permLabel = (p: string) => {
 
 <template>
   <div class="flex w-full max-w-5xl flex-col gap-6">
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Role Permissions</h2>
-
+    <UiCard title="Role Permissions">
       <SlimTable>
         <SlimTableHeader>
           <th class="px-3 py-2.5 text-left">Permission</th>
@@ -93,6 +91,6 @@ const permLabel = (p: string) => {
       </SlimTable>
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" label="Save" @save="save" />
-    </div>
+    </UiCard>
   </div>
 </template>

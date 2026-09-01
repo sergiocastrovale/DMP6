@@ -96,13 +96,12 @@ const roleTone = (role: string) => role === 'ADMIN' ? toneBg.accent : role === '
 
 <template>
   <div class="flex w-full max-w-5xl flex-col gap-6">
-    <div class="flex flex-col gap-5 rounded-xl border border-stone-100/6 bg-stone-900 p-6">
-      <div class="flex items-center justify-between">
-        <h2 class="text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">Users</h2>
+    <UiCard title="Users">
+      <template #actions>
         <UiButton size="sm" :icon="Plus" @click="showCreate = !showCreate">
           New User
         </UiButton>
-      </div>
+      </template>
 
       <div v-if="showCreate" class="flex flex-col gap-3 rounded-lg border border-stone-100/6 bg-stone-950 p-4">
         <div class="grid grid-cols-2 gap-3">
@@ -187,6 +186,6 @@ const roleTone = (role: string) => role === 'ADMIN' ? toneBg.accent : role === '
           </SlimTableRow>
         </SlimTableBody>
       </SlimTable>
-    </div>
+    </UiCard>
   </div>
 </template>

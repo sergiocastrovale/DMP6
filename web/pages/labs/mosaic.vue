@@ -100,34 +100,24 @@ onMounted(async () => {
 
     <div class="grid gap-6 lg:grid-cols-5">
       <div class="flex flex-col gap-6 lg:col-span-3">
-        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
-          <div class="mb-4 flex items-center gap-3">
-            <div class="flex size-10 items-center justify-center rounded-lg bg-amber-400/10">
-              <Grid3x3 :size="20" class="text-amber-400" />
-            </div>
-            <div>
-              <h2 class="text-lg font-semibold text-stone-100">Album Mosaic</h2>
-              <p class="text-sm text-stone-100/55">All your album covers in one image</p>
-            </div>
-          </div>
-
-          <p class="mb-4 text-base leading-relaxed text-stone-100/60">
+        <UiCard padding="sm" :icon="Grid3x3" title="Album Mosaic" subtitle="All your album covers in one image">
+          <p class="text-base leading-relaxed text-stone-100/60">
             Generates a mosaic of every album cover in your library.
             Chronological sorts by release year. Gradient arranges covers by color temperature - cold tones top-left, warm tones bottom-right.
           </p>
 
-          <div class="mb-4">
-            <RadioGroup v-model="mode" :options="modeOptions" />
+          <RadioGroup v-model="mode" :options="modeOptions" />
+
+          <div>
+            <UiButton v-if="!mosaic.isGenerating" :icon="Play" @click="mosaic.generate(mode)">
+              Generate
+            </UiButton>
+            <UiButton v-else variant="danger" :icon="Square" @click="mosaic.cancel()">
+              Cancel
+            </UiButton>
           </div>
 
-          <UiButton v-if="!mosaic.isGenerating" :icon="Play" @click="mosaic.generate(mode)">
-            Generate
-          </UiButton>
-          <UiButton v-else variant="danger" :icon="Square" @click="mosaic.cancel()">
-            Cancel
-          </UiButton>
-
-          <div v-if="mosaic.isGenerating && mosaic.progress" class="mt-4 flex flex-col gap-2">
+          <div v-if="mosaic.isGenerating && mosaic.progress" class="flex flex-col gap-2">
             <div class="flex items-center justify-between text-sm">
               <span class="text-stone-100/60">
                 Building
@@ -143,19 +133,15 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div v-if="mosaic.isGenerating && !mosaic.progress" class="mt-4 flex items-center gap-2 text-base text-stone-100/60">
+          <div v-if="mosaic.isGenerating && !mosaic.progress" class="flex items-center gap-2 text-base text-stone-100/60">
             <Loader2 :size="14" class="animate-spin text-amber-400" />
             Starting...
           </div>
 
-          <p v-if="mosaic.error" class="mt-3 text-sm text-danger">{{ mosaic.error }}</p>
-        </div>
+          <p v-if="mosaic.error" class="text-sm text-danger">{{ mosaic.error }}</p>
+        </UiCard>
 
-        <div class="rounded-xl border border-stone-100/6 bg-stone-900 p-5">
-          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
-            Mosaic History
-          </h3>
-
+        <UiCard padding="sm" title="Mosaic History">
           <UiEmptyState v-if="mosaic.mosaics.length === 0" message="No mosaics generated yet." />
 
           <div v-else class="divide-y divide-stone-100/6 rounded-lg border border-stone-100/6">
@@ -199,15 +185,11 @@ onMounted(async () => {
               </div>
             </div>
           </div>
-        </div>
+        </UiCard>
       </div>
 
       <div class="lg:col-span-2">
-        <div class="sticky top-20 rounded-xl border border-stone-100/6 bg-stone-900 p-5">
-          <h3 class="mb-3 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
-            Preview
-          </h3>
-
+        <UiCard padding="sm" title="Preview" class="sticky top-20">
           <button
             v-if="previewUrl"
             type="button"
@@ -232,7 +214,7 @@ onMounted(async () => {
               <template v-if="previewItem.imageCount">{{ previewItem.imageCount.toLocaleString() }} covers · </template>{{ formatSize(previewItem.size) }}
             </span>
           </div>
-        </div>
+        </UiCard>
       </div>
     </div>
 

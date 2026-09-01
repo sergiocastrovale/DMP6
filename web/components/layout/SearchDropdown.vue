@@ -2,7 +2,7 @@
 import { Disc, Music, User } from 'lucide-vue-next'
 import type { SearchResults } from '~/types/search'
 import { formatDuration } from '~/helpers/functions'
-import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, typography } from '~/helpers/ui'
 
 interface Props {
   results: SearchResults | null
@@ -68,7 +68,7 @@ const optionClass = (index: number) => cx(
     class="absolute left-0 right-0 top-full z-50 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-stone-100/10 bg-stone-900 shadow-lg"
   >
     <div v-if="results.artists.length > 0" class="border-b border-stone-100/6 p-2">
-      <div class="px-2 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
+      <div :class="cx('px-2 py-1', typography.sectionLabel)">
         Artists
       </div>
       <NuxtLink
@@ -101,7 +101,7 @@ const optionClass = (index: number) => cx(
     </div>
 
     <div v-if="results.releases.length > 0" class="border-b border-stone-100/6 p-2">
-      <div class="px-2 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
+      <div :class="cx('px-2 py-1', typography.sectionLabel)">
         Releases
       </div>
       <NuxtLink
@@ -138,7 +138,7 @@ const optionClass = (index: number) => cx(
     </div>
 
     <div v-if="results.tracks.length > 0" class="p-2">
-      <div class="px-2 py-1 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
+      <div :class="cx('px-2 py-1', typography.sectionLabel)">
         Tracks
       </div>
       <NuxtLink

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Wrench, CircleHelp } from 'lucide-vue-next'
 import type { IssueType } from '~/types/issues'
-import { surface } from '~/helpers/ui'
+import { cx, surface, typography } from '~/helpers/ui'
 
 const props = defineProps<{ count: number; type: IssueType; loading: boolean }>()
 const emit = defineEmits<{ fix: [], cancel: [] }>()
@@ -41,7 +41,7 @@ const fixDescription = computed(() => {
       </template>
       <template #content>
         <div :class="[surface.popover, 'absolute bottom-full right-0 z-20 mb-2 w-72 p-3 text-left']">
-          <p class="mb-2 text-2xs font-bold uppercase tracking-[0.1em] text-stone-100/55">
+          <p :class="cx('mb-2', typography.sectionLabel)">
             {{ fixDescription.title }}
           </p>
           <p class="text-sm text-stone-100/60">{{ fixDescription.body }}</p>
