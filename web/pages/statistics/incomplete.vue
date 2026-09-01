@@ -2,7 +2,7 @@
 import type { DataTableColumn } from '~/components/DataTable.vue'
 
 definePageMeta({ layout: 'admin' })
-useHead({ title: buildPageTitle('Statistics', 'Incomplete Releases') })
+useTitle('Statistics', 'Incomplete Releases')
 
 const columns: DataTableColumn[] = [
   { key: 'title', label: 'Title', sortable: true },

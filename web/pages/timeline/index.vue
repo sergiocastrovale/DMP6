@@ -3,7 +3,7 @@ import { LucideClock, LucideMusic, Loader2 } from 'lucide-vue-next'
 import type { Decade, DecadeResponse, TimelineRelease } from '~/types/timeline'
 import { grid, ICON_STROKE_WIDTH, sw } from '~/helpers/ui'
 
-useHead({ title: buildPageTitle('Timeline') })
+useTitle('Timeline')
 
 const loading = ref(true)
 const decades = ref<Decade[]>([])

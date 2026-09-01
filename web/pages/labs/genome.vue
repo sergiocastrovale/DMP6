@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Loader2, Dna } from 'lucide-vue-next'
 
-useHead({ title: buildPageTitle('Labs', 'Genre Genome') })
+useTitle('Labs', 'Genre Genome')
 
 import {
   forceSimulation,

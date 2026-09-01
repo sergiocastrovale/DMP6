@@ -4,7 +4,7 @@ import { formatDate } from '~/helpers/functions'
 import { useMosaicStore } from '~/stores/mosaic'
 import { typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
-useHead({ title: buildPageTitle('Labs', 'Album Mosaic') })
+useTitle('Labs', 'Album Mosaic')
 
 definePageMeta({ layout: 'labs' })
 

@@ -18,7 +18,7 @@ const playerStore = usePlayerStore()
 
 watch(() => playlist.value?.name, (name) => {
   if (name) {
-    useHead({ title: buildPageTitle('Playlists', name) })
+    useTitle('Playlists', name)
   }
 })
 

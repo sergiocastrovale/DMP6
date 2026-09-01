@@ -2,7 +2,7 @@
 import { LayoutGrid, LayoutList } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
 
-useHead({ title: buildPageTitle('Browse') })
+useTitle('Browse')
 
 const store = useBrowseStore()
 const { initFromUrl } = useBrowseUrl()

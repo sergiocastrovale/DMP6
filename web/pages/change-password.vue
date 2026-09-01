@@ -2,7 +2,7 @@
 import { surface } from '~/helpers/ui'
 
 definePageMeta({ layout: 'auth' })
-useHead({ title: buildPageTitle('Change Password') })
+useTitle('Change Password')
 
 const currentPassword = ref('')
 const newPassword = ref('')

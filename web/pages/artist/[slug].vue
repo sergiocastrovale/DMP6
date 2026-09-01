@@ -18,7 +18,7 @@ const { isAdmin } = useAuth()
 
 watch(() => artist.value?.name, (name) => {
   if (name) {
-    useHead({ title: buildPageTitle(name) })
+    useTitle(name)
   }
 })
 </script>

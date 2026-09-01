@@ -3,7 +3,7 @@ import type { Release } from '~/types/release'
 import type { PlaylistSummary } from '~/types/playlist'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
 
-useHead({ title: buildPageTitle('Dashboard') })
+useTitle('Dashboard')
 
 const { releaseImage } = useImageUrl()
 const loading = ref(true)

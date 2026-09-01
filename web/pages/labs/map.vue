@@ -4,7 +4,7 @@ import type { Feature } from 'geojson'
 import { Download } from 'lucide-vue-next'
 import type { MapCountry } from '~/types/labs'
 
-useHead({ title: buildPageTitle('Labs', 'World Map') })
+useTitle('Labs', 'World Map')
 import { cssVar } from '~/helpers/theme'
 import { exportFilename, standaloneSvgMarkup } from '~/helpers/svgExport'
 

@@ -16,7 +16,7 @@ definePageMeta({
 
 const route = useRoute()
 const tab = TABS[route.params.tab as string]!
-useHead({ title: buildPageTitle('Downloads', tab.title) })
+useTitle('Downloads', tab.title)
 </script>
 
 <template>

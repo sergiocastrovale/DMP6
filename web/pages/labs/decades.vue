@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Loader2, Clock } from 'lucide-vue-next'
 
-useHead({ title: buildPageTitle('Labs', 'Decade DNA') })
+useTitle('Labs', 'Decade DNA')
 
 import {
   Chart,
