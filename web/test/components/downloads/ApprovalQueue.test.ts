@@ -93,4 +93,44 @@ describe('downloads/ApprovalQueue.vue', () => {
     await wrapper.get('[aria-label="Reject"]').trigger('click')
     expect(wrapper.emitted('reject')).toEqual([['d1']])
   })
+
+  // `auto` is what lets the merged Queue tab hold downloading, failed, unavailable and rejected rows in
+  // one table: the four pages that used to hardcode their own action set are gone, so each row has to
+  // decide for itself.
+  describe('auto mode derives the actions from each row status', () => {
+    const actions = async (status: string) => {
+      const wrapper = await mountSuspended(ApprovalQueue, { props: { items: [item({ status: status as any })], auto: true } })
+      return {
+        retry: wrapper.find('[aria-label="Force retry"]').exists(),
+        reject: wrapper.find('[aria-label="Reject"]').exists(),
+        cancel: wrapper.find('[aria-label="Cancel download"]').exists(),
+        requeue: wrapper.find('[aria-label="Move back to queue"]').exists(),
+      }
+    }
+
+    it.each(['FAILED', 'ABANDONED', 'UNAVAILABLE'])('offers retry + reject on %s', async (status) => {
+      expect(await actions(status)).toEqual({ retry: true, reject: true, cancel: false, requeue: false })
+    })
+
+    it.each(['DOWNLOADING', 'ENRICHING'])('offers only cancel on %s', async (status) => {
+      expect(await actions(status)).toEqual({ retry: false, reject: false, cancel: true, requeue: false })
+    })
+
+    it('offers only "move back to queue" on REJECTED', async () => {
+      expect(await actions('REJECTED')).toEqual({ retry: false, reject: false, cancel: false, requeue: true })
+    })
+
+    it('mixes the action sets within one table', async () => {
+      const wrapper = await mountSuspended(ApprovalQueue, {
+        props: {
+          items: [item({ id: 'a', status: 'DOWNLOADING' }), item({ id: 'b', status: 'FAILED' }), item({ id: 'c', status: 'REJECTED' })],
+          auto: true,
+        },
+      })
+      const rows = wrapper.findAll('tbody tr')
+      expect(rows[0]!.find('[aria-label="Cancel download"]').exists()).toBe(true)
+      expect(rows[1]!.find('[aria-label="Force retry"]').exists()).toBe(true)
+      expect(rows[2]!.find('[aria-label="Move back to queue"]').exists()).toBe(true)
+    })
+  })
 })

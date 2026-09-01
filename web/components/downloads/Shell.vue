@@ -6,7 +6,7 @@ import type { TabItem } from '~/types/ui'
 const store = useDownloadsStore()
 const settings = useSettingsStore()
 const toast = useToastStore()
-const { queueActive, readyCount, queueRejected, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds, acquisition } = storeToRefs(store)
+const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds, acquisition } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
 const issuesPanel = ref<{ fetchEvents: () => Promise<void> } | null>(null)
@@ -28,8 +28,6 @@ const rtBudgetLabel = computed(() => {
 })
 
 const downloading = computed(() => queueActive.value.filter(i => i.status === 'DOWNLOADING' || i.status === 'ENRICHING'))
-const failed = computed(() => queueActive.value.filter(i => i.status === 'FAILED' || i.status === 'ABANDONED'))
-const unavailable = computed(() => queueActive.value.filter(i => i.status === 'UNAVAILABLE'))
 const downloadProgressItems = computed(() => downloading.value.map(i => ({
   status: i.status, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes,
 })))
@@ -49,10 +47,7 @@ const breadcrumbRoot = { label: 'Downloads', to: '/downloads' }
 const breadcrumbLabels: Record<string, string> = {
   monitoring: 'Monitoring',
   merge: 'Ready to merge',
-  downloading: 'Downloading',
-  failed: 'Failed',
-  unavailable: 'Unavailable',
-  rejected: 'Rejected',
+  queue: 'Queue',
   history: 'History',
   events: 'Events',
 }
@@ -60,10 +55,9 @@ const breadcrumbLabels: Record<string, string> = {
 const tabs = computed<TabItem[]>(() => [
   { key: 'monitoring', label: 'Monitoring', href: '/downloads/monitoring' },
   { key: 'merge', label: 'Ready to merge', href: '/downloads/merge', count: readyCount.value, countHighlight: true },
-  { key: 'downloading', label: 'Downloading', href: '/downloads/downloading', count: downloading.value.length, countHighlight: true },
-  { key: 'failed', label: 'Failed', href: '/downloads/failed', count: failed.value.length, countHighlight: true },
-  { key: 'unavailable', label: 'Unavailable', href: '/downloads/unavailable', count: unavailable.value.length, countHighlight: true },
-  { key: 'rejected', label: 'Rejected', href: '/downloads/rejected', count: queueRejected.value.length, countHighlight: true },
+  // Active only, on purpose: the badge is a "needs attention" count, and rejected rows are settled.
+  // Their count is on the tab's own Rejected subtab.
+  { key: 'queue', label: 'Queue', href: '/downloads/queue', count: queueActive.value.length, countHighlight: true },
   { key: 'history', label: 'History', href: '/downloads/history' },
   { key: 'events', label: 'Events', href: '/downloads/events', count: monitorCounts.value.flagged, countHighlight: true },
 ])

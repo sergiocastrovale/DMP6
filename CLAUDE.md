@@ -362,7 +362,7 @@ On the NAS, script error logs are at: `sudo docker exec dmp cat /app/errors.log`
 | `/favorites` | Tabbed favorites (releases/tracks) |
 | `/timeline` | Browse by decade/year |
 | `/statistics` (+ 16 subpages) | Library stats dashboard; subpages break out individual stat views (artists, releases, tracks, genres, bitrate, size, plays, shortest, incomplete, unmatched, single-release, synced/art-coverage counts) |
-| `/downloads` (+ 7 subpages) | Download queue shell; subpages are per-status tabs (downloading, failed, history, merge, monitoring, rejected, unavailable) |
+| `/downloads` (+ 5 subpages) | Download queue shell; subpages are monitoring, merge, queue (downloading/failed/unavailable/rejected as `?filter=` subtabs of one page), history, events |
 | `/labs` (+ 5 subpages) | Labs index; subpages: map (world map by artist origin country), genome, mosaic, network, decades |
 | `/issues` | Metadata issue overview - run audit, view counts per type |
 | `/issues/<type>` (7 pages) | Per-type issue table - select, edit proposed fixes, queue for fix. One page each: corrupted, duplicates, duplicate-release, enrichment, mismatched-release-id, missing, orphans |

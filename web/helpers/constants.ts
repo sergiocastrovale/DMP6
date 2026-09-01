@@ -60,6 +60,18 @@ export const visibleScanActions = (isAdmin: boolean): ScanAction[] =>
 export const visibleArtistScanActions = (isAdmin: boolean): ArtistScanAction[] =>
   artistScanActions.filter(s => isAdmin || !s.admin)
 
+// The Queue tab's subtab filters. Downloading, failed, unavailable and rejected used to be four
+// sibling pages with four near-identical copies of the same table; they are one page now, and this is
+// the only place the filter -> DownloadedRelease status mapping lives. `all` deliberately carries no
+// statuses - it means "everything the Queue tab holds".
+export const queueFilters: { key: string, label: string, statuses: string[] }[] = [
+  { key: 'all', label: 'All', statuses: [] },
+  { key: 'downloading', label: 'Downloading', statuses: ['DOWNLOADING', 'ENRICHING'] },
+  { key: 'failed', label: 'Failed', statuses: ['FAILED', 'ABANDONED'] },
+  { key: 'unavailable', label: 'Unavailable', statuses: ['UNAVAILABLE'] },
+  { key: 'rejected', label: 'Rejected', statuses: ['REJECTED'] },
+]
+
 // The five match-score bands. Five steps need more granularity than the six semantic tones
 // (accent/success/warning/danger/info/muted) give a single status, so this walks the red ->
 // orange -> amber -> green ramps directly instead of going through a tone - kept in the same

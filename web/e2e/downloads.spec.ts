@@ -54,9 +54,9 @@ test.afterAll(async () => {
   await prisma.$disconnect()
 })
 
-test('reject on the Failed tab crosses the attempts cap and the row moves to Rejected', async ({ page }) => {
-  await page.goto('/downloads/failed')
-  await page.getByPlaceholder('Search failed…').fill(failedFixtureTitle)
+test('reject on the failed slice crosses the attempts cap and the row moves to rejected', async ({ page }) => {
+  await page.goto('/downloads/queue?filter=failed')
+  await page.getByPlaceholder('Search queue…').fill(failedFixtureTitle)
 
   const row = page.locator('tr', { hasText: failedFixtureTitle })
   await expect(row).toBeVisible()
@@ -66,17 +66,17 @@ test('reject on the Failed tab crosses the attempts cap and the row moves to Rej
 
   await expect(row).toHaveCount(0)
 
-  await page.goto('/downloads/rejected')
-  await page.getByPlaceholder('Search rejected…').fill(failedFixtureTitle)
+  await page.goto('/downloads/queue?filter=rejected')
+  await page.getByPlaceholder('Search queue…').fill(failedFixtureTitle)
   await expect(page.locator('tr', { hasText: failedFixtureTitle })).toBeVisible()
 
   const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: failedFixtureId } })
   expect(after.status).toBe('REJECTED')
 })
 
-test('"Move back to queue" on the Rejected tab returns the row to Failed', async ({ page }) => {
-  await page.goto('/downloads/rejected')
-  await page.getByPlaceholder('Search rejected…').fill(rejectedFixtureTitle)
+test('"Move back to queue" on the rejected slice returns the row to failed', async ({ page }) => {
+  await page.goto('/downloads/queue?filter=rejected')
+  await page.getByPlaceholder('Search queue…').fill(rejectedFixtureTitle)
 
   const row = page.locator('tr', { hasText: rejectedFixtureTitle })
   await expect(row).toBeVisible()
@@ -85,8 +85,8 @@ test('"Move back to queue" on the Rejected tab returns the row to Failed', async
 
   await expect(row).toHaveCount(0)
 
-  await page.goto('/downloads/failed')
-  await page.getByPlaceholder('Search failed…').fill(rejectedFixtureTitle)
+  await page.goto('/downloads/queue?filter=failed')
+  await page.getByPlaceholder('Search queue…').fill(rejectedFixtureTitle)
   await expect(page.locator('tr', { hasText: rejectedFixtureTitle })).toBeVisible()
 
   const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: rejectedFixtureId } })

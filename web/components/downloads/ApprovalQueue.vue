@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia'
 import { X, Loader2, AlertCircle, AlertTriangle, Ban, RotateCw, Info, FolderInput, SearchX, FileX, Undo2 } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { SortDirection } from '~/types/common'
-import { formatDate, sortItems } from '~/helpers/functions'
+import { formatDate, sortItems, canRetryDownload, canCancelDownload, canRequeueDownload, canRejectDownload } from '~/helpers/functions'
 import { toneText, surface, cx, typography, ICON_STROKE_WIDTH, data } from '~/helpers/ui'
 
 // Friendly source label, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
@@ -14,10 +14,8 @@ const props = withDefaults(defineProps<{
   busyId?: string | null
   busyIds?: Set<string>
   showActions?: boolean
-  showRetry?: boolean
   showMerge?: boolean
-  showCancel?: boolean
-  showRequeue?: boolean
+  auto?: boolean
   highlightId?: string | null
   selectable?: boolean
   selected?: Set<string>
@@ -132,6 +130,14 @@ const statusNote = (it: DownloadedReleaseItem): string | null => {
     : `Waiting for SongKong to tag this album — it runs on a host cron every 2 min. Merges without enrichment if it takes longer than ${maxWait} min.`
 }
 
+// The merged Queue tab passes `auto`: every row in it can be a different status, so retry/cancel/requeue
+// are decided per row instead of per page. Ready-to-merge is the one caller that still says what it
+// wants outright - its rows are all READY, so there is no status rule to derive merge from.
+const canRetryRow = (it: DownloadedReleaseItem) => !!props.auto && canRetryDownload(it.status)
+const canCancelRow = (it: DownloadedReleaseItem) => !!props.auto && canCancelDownload(it.status)
+const canRequeueRow = (it: DownloadedReleaseItem) => !!props.auto && canRequeueDownload(it.status)
+const canRejectRow = (it: DownloadedReleaseItem) => props.auto ? canRejectDownload(it.status) : !!props.showActions
+
 const statusLabel = (it: DownloadedReleaseItem) => {
   if (it.status === 'ABANDONED') {
     return `gave up${it.attempts ? ` (${it.attempts} tries)` : ''}`
@@ -238,7 +244,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               @click="emit('info', it.id)"
             />
             <UiButton
-              v-if="showActions && showRetry"
+              v-if="canRetryRow(it)"
               variant="ghost"
               size="sm"
               icon-only
@@ -262,7 +268,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               @click="emit('merge', it.id)"
             />
             <UiButton
-              v-if="showCancel && (it.status === 'DOWNLOADING' || it.status === 'ENRICHING')"
+              v-if="canCancelRow(it)"
               variant="danger"
               size="sm"
               icon-only
@@ -274,7 +280,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               @click="emit('cancel', it.id)"
             />
             <UiButton
-              v-if="showRequeue"
+              v-if="canRequeueRow(it)"
               variant="ghost"
               size="sm"
               icon-only
@@ -286,7 +292,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               @click="emit('requeue', it.id)"
             />
             <UiButton
-              v-if="showActions"
+              v-if="canRejectRow(it)"
               variant="danger"
               size="sm"
               icon-only

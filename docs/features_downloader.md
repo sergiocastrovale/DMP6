@@ -75,7 +75,7 @@ release goes `UNAVAILABLE` instead of `FAILED`/`ABANDONED`, and its `priority` (
 drops by one. Real download failures (found, then stalled/no files) still decrement `priority` too,
 but keep the existing hard `ABANDONED` cap. The top-up picker orders its retry pool by `priority` DESC,
 so repeatedly-unavailable releases sink and get re-tried only as room frees up — they're never stuck
-or silently dropped, just deprioritized. "Force retry" (Failed/Unavailable tabs) resets `priority` to
+or silently dropped, just deprioritized. "Force retry" (failed/unavailable rows on the Queue tab) resets `priority` to
 10, a full boost back to the front of the queue.
 
 Two roots, three logical areas (downloads root holds only `dmp/`, `.dmp-songkong/`, `SHARED/`):
@@ -112,14 +112,32 @@ breadcrumbs + tab bar + persistent header; chrome is the generic `components/Tab
 `components/Breadcrumbs.vue`, shared with `/issues`). Tabs: **Monitoring** (`/downloads/monitoring`;
 paginated artist list with search + per-artist Turn on/off and a live "Monitoring x/y" counter) ·
 **Ready to merge** (`/downloads/merge`, READY, with Merge / Merge all; the artist page deep-links here
-via an **Awaiting merge** pill → `?highlight=<id>`, hiding the MISSING badge while acquiring) · **Downloading** (`/downloads/downloading`,
-live % bars + Cancel) · **Failed** (`/downloads/failed`, Force retry / Reject, icon actions) ·
-**Unavailable** (`/downloads/unavailable`, no Soulseek source found yet — not a failure, sinks in
-priority and auto-retries; Force retry boosts it back to the front) · **Rejected**
-(`/downloads/rejected`, terminal rejects with "Move back to queue") · **History**
-(`/downloads/history`, read-only, subtabs per terminal status: Promoted / Rejected / Abandoned /
-Invalid). Every queue page has its own client-side search box. Failed/Unavailable rows show the
-attempt count ("unavailable (N tries)" / "gave up (N tries)").
+via an **Awaiting merge** pill → `?highlight=<id>`, hiding the MISSING badge while acquiring) ·
+**Queue** (`/downloads/queue`) · **History** (`/downloads/history`, read-only, subtabs per terminal
+status: Promoted / Rejected / Abandoned / Invalid).
+
+**Queue is one page for every live row.** Downloading, Failed, Unavailable and Rejected used to be four
+sibling pages running four copies of the same table; they are now `Subtabs` on `/downloads/queue`
+(All / Downloading / Failed / Unavailable / Rejected, each with its count), and the filter is in the URL
+(`?filter=failed`) so deep links and reloads land on the right slice. The four old per-status URLs are
+gone outright — no redirect, `/downloads/failed` 404s — and everything that linked to one now links to
+the filter instead. The UI
+is identical across slices — one search box, one selection bar, one table — and only the **actions**
+differ, derived per row from its status rather than from which page you are on
+(`helpers/functions.ts`'s `canRetryDownload` / `canCancelDownload` / `canRequeueDownload` /
+`canRejectDownload`, consumed by `ApprovalQueue`'s `auto` prop):
+
+| Status | Row actions | Bulk / header |
+|--------|-------------|---------------|
+| DOWNLOADING, ENRICHING | Cancel (live % bar) | — |
+| FAILED, ABANDONED | Force retry, Reject | Retry / Reject selected, Reject all |
+| UNAVAILABLE | Force retry, Reject | Retry / Reject selected, Reject all |
+| REJECTED | Move back to queue | Move to queue selected, Move all back to queue |
+
+The bulk bar's verbs come from the selected rows, so a mixed selection on **All** offers only what
+applies to it; switching slice clears the selection rather than acting on rows you can no longer see.
+The Unavailable slice keeps its explainer paragraph. Failed/Unavailable rows show the attempt count
+("unavailable (N tries)" / "gave up (N tries)").
 The persistent header (every page) has **Pause all** and **Monitor all / Monitor none** (bulk toggle the whole catalogue; Monitor all goes active
 only when every artist is monitored). Per-row **Info** opens the release dialog (folder path, format,
 IDs). **Reject** (FAILED, Unavailable, or ready-to-merge — same outcome) deletes the staged files and, for a

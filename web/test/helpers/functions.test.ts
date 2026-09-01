@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  canCancelDownload,
+  canRejectDownload,
+  canRequeueDownload,
+  canRetryDownload,
   clampPage,
   downloadSubpage,
   filterQueue,
@@ -18,6 +22,7 @@ import {
   sortItems,
   timeAgo,
 } from '../../helpers/functions'
+import { queueFilters } from '../../helpers/constants'
 import type { DownloadedReleaseItem } from '../../types/download'
 
 describe('parseProgress', () => {
@@ -135,20 +140,60 @@ describe('sortItems', () => {
 describe('downloadSubpage', () => {
   it('maps every known state to its subpage', () => {
     expect(downloadSubpage('READY')).toBe('/downloads/merge')
-    expect(downloadSubpage('FAILED')).toBe('/downloads/failed')
-    expect(downloadSubpage('ABANDONED')).toBe('/downloads/failed')
-    expect(downloadSubpage('UNAVAILABLE')).toBe('/downloads/unavailable')
+    expect(downloadSubpage('FAILED')).toBe('/downloads/queue?filter=failed')
+    expect(downloadSubpage('ABANDONED')).toBe('/downloads/queue?filter=failed')
+    expect(downloadSubpage('UNAVAILABLE')).toBe('/downloads/queue?filter=unavailable')
+    expect(downloadSubpage('REJECTED')).toBe('/downloads/queue?filter=rejected')
     expect(downloadSubpage('PROMOTED')).toBe('/downloads/history')
-    expect(downloadSubpage('REJECTED')).toBe('/downloads/history')
     expect(downloadSubpage('INVALID')).toBe('/downloads/history')
   })
 
-  it('defaults to the downloading tab for DOWNLOADING/ENRICHING/unknown/null', () => {
-    expect(downloadSubpage('DOWNLOADING')).toBe('/downloads/downloading')
-    expect(downloadSubpage('ENRICHING')).toBe('/downloads/downloading')
-    expect(downloadSubpage(null)).toBe('/downloads/downloading')
-    expect(downloadSubpage(undefined)).toBe('/downloads/downloading')
-    expect(downloadSubpage('SOMETHING_ELSE')).toBe('/downloads/downloading')
+  it('defaults to the queue tab, downloading slice, for DOWNLOADING/ENRICHING/unknown/null', () => {
+    expect(downloadSubpage('DOWNLOADING')).toBe('/downloads/queue?filter=downloading')
+    expect(downloadSubpage('ENRICHING')).toBe('/downloads/queue?filter=downloading')
+    expect(downloadSubpage(null)).toBe('/downloads/queue?filter=downloading')
+    expect(downloadSubpage(undefined)).toBe('/downloads/queue?filter=downloading')
+    expect(downloadSubpage('SOMETHING_ELSE')).toBe('/downloads/queue?filter=downloading')
+  })
+
+  it('points every filter it emits at a real Queue subtab', () => {
+    const filters = ['failed', 'unavailable', 'rejected', 'downloading']
+    filters.forEach(f => expect(queueFilters.some(q => q.key === f)).toBe(true))
+  })
+})
+
+describe('download row capabilities', () => {
+  it('lets failed, abandoned and unavailable rows be retried and rejected', () => {
+    ;['FAILED', 'ABANDONED', 'UNAVAILABLE'].forEach((s) => {
+      expect(canRetryDownload(s)).toBe(true)
+      expect(canRejectDownload(s)).toBe(true)
+      expect(canCancelDownload(s)).toBe(false)
+      expect(canRequeueDownload(s)).toBe(false)
+    })
+  })
+
+  it('offers cancel - never reject - while a row is still in flight', () => {
+    ;['DOWNLOADING', 'ENRICHING'].forEach((s) => {
+      expect(canCancelDownload(s)).toBe(true)
+      expect(canRejectDownload(s)).toBe(false)
+      expect(canRetryDownload(s)).toBe(false)
+    })
+  })
+
+  it('offers only "move back to queue" on a rejected row', () => {
+    expect(canRequeueDownload('REJECTED')).toBe(true)
+    expect(canRetryDownload('REJECTED')).toBe(false)
+    expect(canRejectDownload('REJECTED')).toBe(false)
+    expect(canCancelDownload('REJECTED')).toBe(false)
+  })
+
+  it('gives a settled row no queue actions at all', () => {
+    ;['PROMOTED', 'READY', 'INVALID'].forEach((s) => {
+      expect(canRetryDownload(s)).toBe(false)
+      expect(canRejectDownload(s)).toBe(false)
+      expect(canCancelDownload(s)).toBe(false)
+      expect(canRequeueDownload(s)).toBe(false)
+    })
   })
 })
 

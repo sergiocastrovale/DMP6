@@ -70,22 +70,38 @@ export const sortItems = <T>(items: T[], accessor: (item: T) => string | number 
   return dir === 'desc' ? out.reverse() : out
 }
 
+// What a queue row can be acted on, by status. Downloading, failed, unavailable and rejected share one
+// tab, so the row/bulk actions are derived from the status instead of from which page you are on.
+// REJECTED rows are moved back to the queue rather than rejected again; an in-flight row is cancelled
+// rather than rejected (rejecting mid-transfer would leave the staging folder behind).
+export const canRetryDownload = (status: string): boolean =>
+  status === 'FAILED' || status === 'ABANDONED' || status === 'UNAVAILABLE'
+
+export const canCancelDownload = (status: string): boolean =>
+  status === 'DOWNLOADING' || status === 'ENRICHING'
+
+export const canRequeueDownload = (status: string): boolean => status === 'REJECTED'
+
+export const canRejectDownload = (status: string): boolean => canRetryDownload(status)
+
 // Maps a release's download state to the /downloads subpage that lists it (for "Verify download").
+// The active/failed/unavailable/rejected slices all live on the one Queue tab, pre-filtered by ?filter.
 export const downloadSubpage = (state?: string | null): string => {
   switch (state) {
     case 'READY':
       return '/downloads/merge'
     case 'FAILED':
     case 'ABANDONED':
-      return '/downloads/failed'
+      return '/downloads/queue?filter=failed'
     case 'UNAVAILABLE':
-      return '/downloads/unavailable'
-    case 'PROMOTED':
+      return '/downloads/queue?filter=unavailable'
     case 'REJECTED':
+      return '/downloads/queue?filter=rejected'
+    case 'PROMOTED':
     case 'INVALID':
       return '/downloads/history'
     default:
-      return '/downloads/downloading'
+      return '/downloads/queue?filter=downloading'
   }
 }
 
