@@ -194,3 +194,7 @@ export const scanSessionName = (prefix: string, scope?: string): string => {
   const slug = (scope ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
   return slug ? `${prefix}-${slug}`.slice(0, 32).replace(/-+$/, '') : prefix
 }
+
+export const buildPageTitle = (page: string, subpage?: string): string => {
+  return subpage ? `DMP - ${page} - ${subpage}` : `DMP - ${page}`
+}

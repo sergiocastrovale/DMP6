@@ -15,6 +15,12 @@ const catalogue = useArtistCatalogue(releases)
 provide('catalogue', catalogue)
 
 const { isAdmin } = useAuth()
+
+watch(() => artist.value?.name, (name) => {
+  if (name) {
+    useHead({ title: buildPageTitle(name) })
+  }
+})
 </script>
 
 <template>

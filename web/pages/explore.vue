@@ -1,5 +1,5 @@
 <script setup lang="ts">
-useHead({ title: 'Explore' })
+useHead({ title: buildPageTitle('Explore') })
 </script>
 
 <template>

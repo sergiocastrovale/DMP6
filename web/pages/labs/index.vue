@@ -3,6 +3,8 @@ import type { Tone } from '~/helpers/ui'
 import { useGlobalStore } from '~/stores/global'
 import { cx, outlinePill, toneBg, typography } from '~/helpers/ui'
 
+useHead({ title: buildPageTitle('Labs') })
+
 definePageMeta({ layout: 'labs' })
 
 const global = useGlobalStore()

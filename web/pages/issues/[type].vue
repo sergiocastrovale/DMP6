@@ -17,7 +17,7 @@ definePageMeta({
 
 const route = useRoute()
 const type = route.params.type as string
-useHead({ title: `Issues · ${TITLES[type]}` })
+useHead({ title: buildPageTitle('Issues', TITLES[type]) })
 </script>
 
 <template>

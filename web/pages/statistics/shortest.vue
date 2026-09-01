@@ -3,6 +3,7 @@ import type { DataTableColumn } from '~/components/DataTable.vue'
 import { formatDuration } from '~/helpers/functions'
 
 definePageMeta({ layout: 'admin' })
+useHead({ title: buildPageTitle('Statistics', 'Shortest Releases') })
 
 const columns: DataTableColumn[] = [
   { key: 'title', label: 'Title', sortable: true },

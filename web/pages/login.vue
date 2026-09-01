@@ -2,6 +2,7 @@
 import { surface } from '~/helpers/ui'
 
 definePageMeta({ layout: 'auth' })
+useHead({ title: buildPageTitle('Login') })
 
 const username = ref('')
 const password = ref('')

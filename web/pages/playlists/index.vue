@@ -3,6 +3,8 @@ import { LucidePlus } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
 
+useHead({ title: buildPageTitle('Playlists') })
+
 const { hasPerm, isAdmin } = useAuth()
 const canCrud = hasPerm('playlists.crud')
 const terminal = useTerminalStore()

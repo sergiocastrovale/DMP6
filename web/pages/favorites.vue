@@ -2,6 +2,8 @@
 import { LucideHeart, LucideDisc } from 'lucide-vue-next'
 import { grid } from '~/helpers/ui'
 
+useHead({ title: buildPageTitle('Favorites') })
+
 const { releaseImage } = useImageUrl()
 const { hasPerm } = useAuth()
 const canCrud = hasPerm('favorites.crud')

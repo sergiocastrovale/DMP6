@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { Loader2, Clock } from 'lucide-vue-next'
+
+useHead({ title: buildPageTitle('Labs', 'Decade DNA') })
+
 import {
   Chart,
   RadarController,

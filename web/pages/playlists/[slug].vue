@@ -16,6 +16,12 @@ const showDeleteConfirm = ref(false)
 
 const playerStore = usePlayerStore()
 
+watch(() => playlist.value?.name, (name) => {
+  if (name) {
+    useHead({ title: buildPageTitle('Playlists', name) })
+  }
+})
+
 const isGenrePlaylist = computed(() => playlist.value?.type === 'GENRE')
 const isRegionPlaylist = computed(() => playlist.value?.type === 'REGION')
 const isGenerated = computed(() => playlist.value?.type !== 'MANUAL')

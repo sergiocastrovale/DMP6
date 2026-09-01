@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { Loader2, Network } from 'lucide-vue-next'
+
+useHead({ title: buildPageTitle('Labs', 'Artist Network') })
+
 import {
   forceSimulation,
   forceLink,

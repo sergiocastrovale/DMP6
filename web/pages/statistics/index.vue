@@ -3,6 +3,8 @@ import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImag
 import type { Component } from 'vue'
 import type { Statistics } from '~/types/stats'
 import { formatNumber, formatPlaytime, formatFileSize, formatDate } from '~/helpers/functions'
+
+useHead({ title: buildPageTitle('Statistics') })
 import { surface, toneText } from '~/helpers/ui'
 
 // Hand-authored, not random - a fixed table keeps the twinkle composition balanced and the

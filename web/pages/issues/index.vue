@@ -5,7 +5,7 @@ import { useTerminalStore } from '~/stores/terminal'
 import type { IssueType } from '~/types/issues'
 
 definePageMeta({ layout: 'admin', middleware: 'admin' })
-useHead({ title: 'Issues' })
+useHead({ title: buildPageTitle('Issues') })
 
 const issuesStore = useIssuesStore()
 const terminal = useTerminalStore()

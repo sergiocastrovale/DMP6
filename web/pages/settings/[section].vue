@@ -18,7 +18,7 @@ definePageMeta({
 
 const route = useRoute()
 const section = SECTIONS[route.params.section as string]!
-useHead({ title: `Settings · ${section.title}` })
+useHead({ title: buildPageTitle('Settings', section.title) })
 </script>
 
 <template>
