@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Tone } from '~/helpers/ui'
+import type { Lab } from '~/types/labs'
 import { useGlobalStore } from '~/stores/global'
 import { cx, outlinePill, toneBg, typography } from '~/helpers/ui'
 
@@ -12,14 +12,6 @@ const global = useGlobalStore()
 // Each experiment says how much to trust it. A force graph you can drag into a knot and a mosaic
 // that has run against the whole library are not the same promise, and the card is the only place
 // that difference is visible before you click.
-interface Lab {
-  to: string
-  title: string
-  description: string
-  maturity: 'Stable' | 'Beta' | 'Experimental'
-  tone: Tone
-}
-
 const labs = computed<Lab[]>(() => [
   {
     to: '/labs/mosaic',

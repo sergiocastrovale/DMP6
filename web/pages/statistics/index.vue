@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideAlertTriangle, Info } from 'lucide-vue-next'
-import type { Component } from 'vue'
-import type { Statistics } from '~/types/stats'
+import type { Statistics, StatItem, StatSection, StatTile } from '~/types/stats'
 import { formatNumber, formatPlaytime, formatFileSize, formatDate } from '~/helpers/functions'
 
 useTitle('Statistics')
@@ -22,27 +21,6 @@ definePageMeta({ layout: 'admin' })
 
 const loading = ref(true)
 const stats = ref<Statistics | null>(null)
-
-interface StatItem {
-  label: string
-  value: string
-  link?: string
-  info?: string
-}
-
-interface StatSection {
-  title: string
-  icon: Component
-  warn?: boolean
-  items: StatItem[]
-}
-
-interface StatTile {
-  label: string
-  value: string
-  icon: Component
-  link: string
-}
 
 const tiles = computed<StatTile[]>(() => {
   const s = stats.value

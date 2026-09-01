@@ -1,14 +1,10 @@
 <script setup lang="ts">
+import type { ScoreRangeFilterProps } from '~/types/ui'
 import { SlidersHorizontal, X } from 'lucide-vue-next'
 import { scoreRanges } from '~/helpers/constants'
 import { cx, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
 
-interface Props {
-  minScore: number | null
-  maxScore: number | null
-}
-
-const props = defineProps<Props>()
+const props = defineProps<ScoreRangeFilterProps>()
 const emit = defineEmits<{
   'update:range': [min: number | null, max: number | null]
 }>()

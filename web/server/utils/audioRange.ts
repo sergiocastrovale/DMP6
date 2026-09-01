@@ -1,5 +1,6 @@
 // Pure helpers for the audio streaming endpoint. Kept dependency-free (no h3/prisma) so the
 // streaming contract - Range parsing, ETag, MIME - is unit-testable in isolation.
+import type { ByteRange } from '~/types/track'
 
 const MIME_TYPES: Record<string, string> = {
   mp3: 'audio/mpeg',
@@ -18,11 +19,6 @@ export const mimeForFile = (filePath: string): string => {
 
 export const buildEtag = (size: number, mtimeMs: number): string => `"${size}-${mtimeMs}"`
 
-export interface ByteRange {
-  start: number
-  end: number
-  chunkSize: number
-}
 
 // Parse an HTTP Range header against a known file size. Returns null when the header is absent or
 // unsatisfiable, in which case the caller should serve the full 200 response.

@@ -1,10 +1,6 @@
 <script setup lang="ts">
+import type { RadioOption } from '~/types/ui'
 import { cx, segmentGroup } from '~/helpers/ui'
-
-interface RadioOption {
-  value: string
-  label: string
-}
 
 const props = defineProps<{
   options: RadioOption[]

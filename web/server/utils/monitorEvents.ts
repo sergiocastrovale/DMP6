@@ -1,13 +1,9 @@
+import type { MonitorEventCounts } from '~/types/download'
 import { prisma } from '~/server/utils/prisma'
 
 // Queries behind the monitor-event endpoints. Extracted from the route handlers so the rules that
 // actually matter - archive is idempotent, "delete all archived" can never reach a flagged row - are
 // testable against a real database without standing up an HTTP layer.
-
-export interface MonitorEventCounts {
-  flagged: number
-  archived: number
-}
 
 const EVENT_FIELDS = { id: true, level: true, message: true, createdAt: true, archivedAt: true } as const
 

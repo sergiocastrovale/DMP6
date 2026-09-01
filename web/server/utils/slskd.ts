@@ -4,11 +4,7 @@ import { resolveDownloadSettings, resolveDownloadDir } from '~/server/utils/down
 import { transcodeDirToMp3320 } from '~/server/utils/transcode'
 import { monitorLog } from '~/server/utils/monitorLog'
 import { streamCopyFile } from '~/server/utils/safeMove'
-
-interface SlskdConfig {
-  url: string
-  apiKey: string
-}
+import type { SlskdConfig, SlskdSearchResponse, SlskdFile, SlskdTransfer, SlskdMoveArgs, SlskdMoveResult } from '~/types/download'
 
 let configCache: (SlskdConfig & { cachedAt: number }) | null = null
 const CACHE_TTL = 60_000
@@ -83,24 +79,6 @@ export async function slskdSearch(query: string, timeout = 60000): Promise<strin
   return data.id
 }
 
-export interface SlskdSearchResponse {
-  username: string
-  fileCount: number
-  freeUploadSlots: number
-  uploadSpeed: number
-  queueLength: number
-  files: SlskdFile[]
-}
-
-export interface SlskdFile {
-  filename: string
-  size: number
-  bitRate?: number
-  sampleRate?: number
-  bitDepth?: number
-  length?: number // seconds
-}
-
 export async function getSlskdSearchResults(searchId: string): Promise<SlskdSearchResponse[]> {
   const response = await slskdFetch(`/searches/${searchId}/responses`)
   if (response.status === 404) {return []}
@@ -119,17 +97,6 @@ export async function startSlskdDownload(
     method: 'POST',
     body: JSON.stringify(files),
   })
-}
-
-export interface SlskdTransfer {
-  id: string
-  username: string
-  filename: string
-  size: number
-  state: string
-  bytesTransferred: number
-  percentComplete: number
-  averageSpeed: number
 }
 
 export async function getSlskdActiveDownloads(): Promise<SlskdTransfer[]> {
@@ -239,28 +206,6 @@ export function scoreSlskdResult(
 // (typically mounted at DOWNLOADS_PATH when DMP and slskd share storage).
 // After transfers complete we relocate the files into the templated
 // Artist/Album folder so all three sources share one layout.
-
-interface SlskdMoveArgs {
-  username: string
-  files: { filename: string; size: number }[] // remote filenames + sizes as queued
-  downloadsPath: string
-  dirTemplate: string
-  artistName: string
-  albumTitle: string
-  year: number | null
-  // Where to look for the source files. Defaults to downloadsPath (slsk). Torrents pass the specific
-  // album folder under DOWNLOADS_PATH/_torrents so basename matching can't collide across a pack.
-  scanRoot?: string
-}
-
-export interface SlskdMoveResult {
-  targetDir: string
-  movedCount: number
-  // Convertible (non-mp3) files that failed to transcode (ffmpeg missing/errored) and are left in
-  // their original codec — the library layout only recognizes .mp3, so these are NOT usable tracks.
-  // Callers must treat a nonzero count as a failed attempt, not a successful relocate.
-  transcodeFailed: number
-}
 
 /**
  * Move this download's files (located by basename+size under downloadsPath) into the templated

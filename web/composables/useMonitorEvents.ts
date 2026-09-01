@@ -1,20 +1,4 @@
-export interface MonitorEventItem {
-  id: string
-  level: 'warn' | 'error'
-  message: string
-  createdAt: string
-  archivedAt: string | null
-}
-
-interface MonitorEventCounts {
-  flagged: number
-  archived: number
-}
-
-interface MonitorEventsResponse {
-  items: MonitorEventItem[]
-  counts: MonitorEventCounts
-}
+import type { MonitorEventCounts, MonitorEventsResponse } from '~/types/download'
 
 // Monitor issues, shared across the three surfaces that show them: the Downloads shell's tab badge,
 // the Events tab itself, and the "Recent issues" panel. The counts live in `useState` so all three

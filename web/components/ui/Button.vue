@@ -3,7 +3,7 @@ import type { Component } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { Loader2 } from 'lucide-vue-next'
 import { button, cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
-import type { ButtonSize, ButtonVariant } from '~/helpers/ui'
+import type { ButtonSize, ButtonVariant } from '~/types/ui'
 
 const props = withDefaults(defineProps<{
   variant?: ButtonVariant

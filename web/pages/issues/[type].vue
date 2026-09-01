@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { IssueType } from '~/types/issues'
+
 const TITLES: Record<string, string> = {
   corrupted: 'Corrupted TPE2',
   'duplicate-release': 'Duplicate Releases',
@@ -16,7 +18,7 @@ definePageMeta({
 })
 
 const route = useRoute()
-const type = route.params.type as string
+const type = route.params.type as IssueType
 useTitle('Issues', TITLES[type])
 </script>
 

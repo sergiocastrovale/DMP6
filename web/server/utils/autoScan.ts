@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import type { AutoScanSettings } from '~/types/scan'
 import { prisma } from '~/server/utils/prisma'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { monitorLog } from '~/server/utils/monitorLog'
@@ -10,12 +11,6 @@ const execFileAsync = promisify(execFile)
 // misconfigured "every 0 hours" would keep the Rust binaries' exclusive DB lock permanently held and
 // starve manual runs and the downloader's own index passes.
 export const MIN_AUTO_SCAN_INTERVAL_HOURS = 1
-
-export interface AutoScanSettings {
-  enabled: boolean
-  intervalHours: number
-  lastRunAt: Date | null
-}
 
 const envInt = (name: string, def: number): number => {
   const raw = process.env[name]

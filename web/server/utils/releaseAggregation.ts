@@ -3,73 +3,7 @@
 // shared-releaseId dedup/coverage logic (the systemic sync-matcher bug this app has) for direct unit
 // testing without spinning up a database.
 
-export interface MbReleaseRow {
-  id: string
-  title: string
-  year: number | null
-  musicbrainzId: string
-  releaseGroupId: string | null
-  disambiguation: string | null
-  editionLabel: string | null
-  releaseDate: string | null
-  packaging: string | null
-  country: string | null
-  format: string | null
-  status: string
-  statusReason: string | null
-  type: { name: string, slug: string }
-  tracks: { id: string }[]
-}
-
-export interface LocalReleaseRow {
-  id: string
-  title: string
-  year: number | null
-  folderPath: string | null
-  image: string | null
-  imageUrl: string | null
-  matchStatus: string
-  releaseId: string | null
-  totalPlayCount: number
-  tracks: { id: string }[]
-  artists: { artist: { name: string, slug: string } }[]
-}
-
-export interface ImageResolver {
-  (image: string | null, imageUrl: string | null, kind: 'releases'): { image: string | null, imageUrl: string | null }
-}
-
-export interface ReleaseCard {
-  id: string
-  title: string
-  year: number | null
-  type: string
-  typeSlug: string
-  mbReleaseRowId: string | null
-  musicbrainzId: string | null
-  releaseGroupId: string | null
-  disambiguation: string | null
-  editionLabel: string | null
-  releaseDate: string | null
-  packaging: string | null
-  country: string | null
-  format: string | null
-  status: string
-  image: string | null
-  imageUrl: string | null
-  trackCount: number
-  totalPlayCount: number
-  localTrackCount: number
-  isMusicBrainz: boolean
-  hasLocal: boolean
-  localReleaseId: string | null
-  folderPath: string | null
-  coArtists?: { name: string, slug: string }[]
-  statusReason?: string | null
-  connectedArtistName?: string | null
-  downloadState?: string | null
-  downloadedReleaseId?: string | null
-}
+import type { MbReleaseRow, LocalReleaseRow, ImageResolver, UnifiedRelease, LocalAndGapCardsResult } from '~/types/release'
 
 // Single-release field mapping shared by the batch card builders below and the single-release lookup
 // endpoint (server/api/releases/[id].get.ts) - keeps `image`/`imageUrl`/type/format/etc. derivation in
@@ -79,7 +13,7 @@ export function buildReleaseCard(
   mbr: MbReleaseRow | null,
   resolveImage: ImageResolver,
   extras?: { coArtists?: { name: string, slug: string }[], connectedArtistName?: string },
-): ReleaseCard {
+): UnifiedRelease {
   const img = resolveImage(lr.image, lr.imageUrl, 'releases')
   if (!mbr) {
     return {
@@ -97,7 +31,7 @@ export function buildReleaseCard(
       packaging: null,
       country: null,
       format: null,
-      status: lr.matchStatus,
+      status: lr.matchStatus as UnifiedRelease['status'],
       image: img.image,
       imageUrl: img.imageUrl,
       trackCount: 0,
@@ -126,7 +60,7 @@ export function buildReleaseCard(
     packaging: mbr.packaging ?? null,
     country: mbr.country ?? null,
     format: mbr.format ?? null,
-    status: mbr.status,
+    status: mbr.status as UnifiedRelease['status'],
     image: img.image,
     imageUrl: img.imageUrl,
     trackCount: mbr.tracks.length,
@@ -175,12 +109,6 @@ export function buildConnectedArtistByRelease(
   return map
 }
 
-export interface LocalAndGapCardsResult {
-  cards: ReleaseCard[]
-  coveredMbIds: Set<string>
-  appearsOnLocal: LocalReleaseRow[]
-}
-
 const ALLOWED_GAP_TYPES = new Set(['album', 'ep'])
 
 // Loop 1 (local releases -> either a local card, an appears-on candidate, or matched to a catalogue
@@ -195,7 +123,7 @@ export function buildLocalAndGapCards(params: {
   resolveImage: ImageResolver
 }): LocalAndGapCardsResult {
   const { localReleases, mbById, coArtistMap, connectedArtistByRelease, resolveImage } = params
-  const cards: ReleaseCard[] = []
+  const cards: UnifiedRelease[] = []
   const coveredMbIds = new Set<string>()
   const appearsOnLocal: LocalReleaseRow[] = []
 
@@ -235,7 +163,7 @@ export function buildLocalAndGapCards(params: {
       packaging: mbr.packaging ?? null,
       country: mbr.country ?? null,
       format: mbr.format ?? null,
-      status: mbr.status,
+      status: mbr.status as UnifiedRelease['status'],
       image: gapImg.image,
       imageUrl: gapImg.imageUrl,
       trackCount: mbr.tracks.length,
@@ -262,7 +190,7 @@ export function buildAppearsOnCards(params: {
   coArtistMap: Map<string, { name: string, slug: string }[]>
   connectedArtistByRelease: Map<string, string>
   resolveImage: ImageResolver
-}): ReleaseCard[] {
+}): UnifiedRelease[] {
   const { appearsOnLocal, appearsOnMbById, coArtistMap, connectedArtistByRelease, resolveImage } = params
   return appearsOnLocal.map(lr => buildReleaseCard(lr, appearsOnMbById.get(lr.releaseId!) ?? null, resolveImage, {
     coArtists: coArtistMap.get(lr.id),
@@ -274,6 +202,6 @@ export function buildAppearsOnCards(params: {
 // (unsorted, appended after). Sort the whole thing by year before paginating so page 2+ can't show an
 // old gap release after a recent local one. Undated releases sort last. Stable sort (ES2019+) keeps
 // same-year cards in their original relative order.
-export function sortReleaseCards(cards: ReleaseCard[]): ReleaseCard[] {
+export function sortReleaseCards(cards: UnifiedRelease[]): UnifiedRelease[] {
   return [...cards].sort((a, b) => (a.year ?? Number.MAX_SAFE_INTEGER) - (b.year ?? Number.MAX_SAFE_INTEGER))
 }

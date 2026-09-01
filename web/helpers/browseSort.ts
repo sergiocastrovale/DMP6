@@ -1,11 +1,9 @@
 // Browse's sort contract, shared by the store and /api/artists so the default direction is stated
 // once. Deliberately dependency-free: it is the only module imported from both `helpers/` and
 // `server/`, and it stays that way by having nothing to drag along.
-
-export type SortDirection = 'asc' | 'desc'
+import type { SortDirection } from '~/types/common'
 
 export const BROWSE_SORT_FIELDS = ['name', 'releases', 'tracks', 'completeness', 'playCount', 'score', 'recent'] as const
-export type BrowseSortField = (typeof BROWSE_SORT_FIELDS)[number]
 
 // Picking a new column should show its most useful end first: names read A→Z, every other column is
 // a quantity, where the interesting rows are the big ones.

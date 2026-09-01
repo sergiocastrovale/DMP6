@@ -1,16 +1,8 @@
 <script setup lang="ts">
 import { Loader2, Radar, EyeOff, CircleHelp, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
-import type { SortDir } from '~/helpers/functions'
+import type { SortDirection } from '~/types/common'
+import type { MonitoringArtistRow as ArtistRow } from '~/types/artist'
 import { sw, surface, cx, ICON_STROKE_WIDTH, data } from '~/helpers/ui'
-
-interface ArtistRow {
-  id: string
-  name: string
-  slug: string
-  monitored: boolean
-  missingReleases: number
-  totalReleases: number
-}
 
 const store = useDownloadsStore()
 const toast = useToastStore()
@@ -28,7 +20,7 @@ const showMonitored = ref(true)
 const showUnmonitored = ref(true)
 
 const sortKey = ref<'name' | 'missingReleases' | 'totalReleases' | 'monitored'>('name')
-const sortDir = ref<SortDir>('asc')
+const sortDir = ref<SortDirection>('asc')
 
 const selected = ref<Set<string>>(new Set())
 const bulkBusy = ref(false)

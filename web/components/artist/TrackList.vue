@@ -1,35 +1,11 @@
 <script setup lang="ts">
 import { Heart, AlertTriangle, ExternalLink, Info, Link } from 'lucide-vue-next'
-import type { Track } from '~/types/track'
+import type { Track, TrackInfo } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
 import { usePlayerStore } from '~/stores/player'
 import { formatDuration } from '~/helpers/functions'
 import { cx, surface } from '~/helpers/ui'
-
-interface TrackInfo {
-  filePath: string
-  genre: string | null
-  bitrate: number | null
-  sampleRate: number | null
-  fileSize: number | null
-  discNumber: number | null
-  trackNumber: number | null
-  playCount: number
-  lastPlayedAt: string | null
-  createdAt: string
-  mbTrackId: string | null
-  mbReleaseId: string | null
-  mbReleaseGroupId: string | null
-  bpm: string | null
-  isrc: string | null
-  label: string | null
-  acousticId: string | null
-  mood: string | null
-  key: string | null
-  replayGain: string | null
-  encoder: string | null
-}
 
 const props = withDefaults(defineProps<{
   tracks: Track[]

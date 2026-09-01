@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import type { DownloadSource } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
+import type { DownloadSourceConfigItem, Acquisition } from '~/types/download'
 
 // The DownloadSources config rows + the source-routing rule. RuTracker is tried first (higher priority
 // band); Soulseek is the fallback. A source with retry=false is never re-searched for a release once it
@@ -17,19 +18,12 @@ export const SLSK_PRIORITY = 5
 export const RT_DAILY_BUDGET = Math.max(1, parseInt(process.env.RT_SEARCHES_PER_DAY || '20', 10) || 20)
 const DAY_MS = 24 * 60 * 60 * 1000
 
-export interface SourceConfig {
-  name: 'SLSKD' | 'RUTRACKER'
-  url: string | null
-  retry: boolean
-  enabled: boolean
-}
-
-const DEFAULTS: SourceConfig[] = [
+const DEFAULTS: DownloadSourceConfigItem[] = [
   { name: 'RUTRACKER', url: 'https://rutracker.org', retry: false, enabled: true },
   { name: 'SLSKD', url: null, retry: true, enabled: true },
 ]
 
-let cache: SourceConfig[] | null = null
+let cache: DownloadSourceConfigItem[] | null = null
 let cacheAt = 0
 const TTL = 15_000
 
@@ -44,7 +38,7 @@ export async function ensureDownloadSources(): Promise<void> {
   }
 }
 
-export async function getDownloadSources(): Promise<SourceConfig[]> {
+export async function getDownloadSources(): Promise<DownloadSourceConfigItem[]> {
   if (cache && Date.now() - cacheAt < TTL) {return cache}
   let rows = await prisma.downloadSourceConfig.findMany().catch(() => [])
   if (rows.length === 0) {
@@ -52,7 +46,7 @@ export async function getDownloadSources(): Promise<SourceConfig[]> {
     rows = await prisma.downloadSourceConfig.findMany().catch(() => [])
   }
   cache = (rows.length ? rows : DEFAULTS).map(r => ({
-    name: r.name as SourceConfig['name'], url: r.url ?? null, retry: r.retry, enabled: r.enabled,
+    name: r.name as DownloadSourceConfigItem['name'], url: r.url ?? null, retry: r.retry, enabled: r.enabled,
   }))
   cacheAt = Date.now()
   return cache
@@ -63,7 +57,7 @@ export function invalidateDownloadSourcesCache(): void {
   cacheAt = 0
 }
 
-const find = (configs: SourceConfig[], name: SourceConfig['name']) => configs.find(c => c.name === name)
+const find = (configs: DownloadSourceConfigItem[], name: DownloadSourceConfigItem['name']) => configs.find(c => c.name === name)
 
 // --- RuTracker daily search budget (persisted, so it survives restarts/deploys) ---
 
@@ -108,13 +102,6 @@ export async function downloadWorkPossible(): Promise<boolean> {
   return false
 }
 
-export interface AcquisitionStatus {
-  canAcquire: boolean
-  rt: { enabled: boolean; used: number; limit: number; remaining: number; resetsAt: string | null }
-  slsk: { enabled: boolean }
-  noYearMissing: number
-}
-
 // MISSING album/EP releases of monitored artists that MusicBrainz gave no release date for. pickFresh
 // (autoDownload.ts) requires `year IS NOT NULL` to lay a release out as `YYYY - title`, so these are
 // silently skipped forever — surfaced here so they're at least visible instead of invisible.
@@ -133,7 +120,7 @@ export async function countNoYearMissing(): Promise<number> {
 
 // Snapshot of why acquisition is (or isn't) running, for the /downloads idle banner. Mirrors the gate
 // the monitor plugin uses (downloadWorkPossible) plus the RuTracker daily-budget detail.
-export async function getAcquisitionStatus(): Promise<AcquisitionStatus> {
+export async function getAcquisitionStatus(): Promise<Acquisition> {
   const configs = await getDownloadSources()
   const rt = find(configs, 'RUTRACKER')
   const slsk = find(configs, 'SLSKD')
@@ -178,7 +165,7 @@ export async function consumeRtBudget(): Promise<void> {
 export function chooseSource(
   priority: number,
   triedSources: DownloadSource[],
-  configs: SourceConfig[],
+  configs: DownloadSourceConfigItem[],
   rtBudgetOk = true,
 ): 'RUTRACKER' | 'SLSKD' | null {
   const rt = find(configs, 'RUTRACKER')

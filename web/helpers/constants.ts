@@ -1,5 +1,5 @@
 import type { ReleaseStatus } from '~/types/release'
-import type { Tone } from '~/helpers/ui'
+import type { Tone } from '~/types/ui'
 
 export const maxGenres = 5
 export const SKELETON_GRID_SIZE = 10

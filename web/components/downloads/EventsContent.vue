@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Archive, AlertTriangle, CircleAlert, Trash2, Undo2 } from 'lucide-vue-next'
-import type { MonitorEventItem } from '~/composables/useMonitorEvents'
+import type { MonitorEventItem } from '~/types/download'
 import { timeAgo } from '~/helpers/functions'
 import { cx, data, toneText, typography } from '~/helpers/ui'
 

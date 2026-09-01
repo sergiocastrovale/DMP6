@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createMediaSession, type MediaSessionControls } from '../../../composables/useMediaSession'
+import { createMediaSession } from '../../../composables/useMediaSession'
+import type { MediaSessionControls, MediaSessionActionDetails } from '../../../types/player'
 
 class FakeMediaMetadata {
   title?: string
@@ -17,8 +18,7 @@ let mediaSession: {
   setActionHandler: ReturnType<typeof vi.fn>
   setPositionState: ReturnType<typeof vi.fn>
 }
-type ActionDetails = { seekTime?: number, seekOffset?: number }
-let handlers: Record<string, (details: ActionDetails) => void>
+let handlers: Record<string, (details: MediaSessionActionDetails) => void>
 
 const installMediaSession = (): void => {
   handlers = {}
@@ -33,7 +33,7 @@ const installMediaSession = (): void => {
 }
 
 // Fire a registered action handler (throws if it was never registered).
-const fire = (action: string, details: ActionDetails = {}): void => {
+const fire = (action: string, details: MediaSessionActionDetails = {}): void => {
   const handler = handlers[action]
   if (!handler) {
     throw new Error(`handler not registered: ${action}`)

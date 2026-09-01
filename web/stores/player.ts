@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useDebounceFn, useThrottleFn } from '@vueuse/core'
-import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState } from '~/types/player'
+import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState, MediaSessionTrackMeta } from '~/types/player'
 import { EXPLORER_SESSION_HISTORY_CAP, nextIndexWrap, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
 
 export const usePlayerStore = defineStore('player', () => { 

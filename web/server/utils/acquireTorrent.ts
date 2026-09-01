@@ -9,7 +9,8 @@ import {
   startTorrent,
   deleteTorrent,
 } from '~/server/utils/qbittorrent'
-import { matchTorrentFolders, type MatchableRelease } from '~/server/utils/torrentMatch'
+import { matchTorrentFolders } from '~/server/utils/torrentMatch'
+import type { MatchableRelease, TorrentAcquireParams } from '~/types/download'
 import { monitorLog } from '~/server/utils/monitorLog'
 
 // Statuses meaning "this release is already being handled" — used to avoid creating a duplicate row
@@ -17,15 +18,6 @@ import { monitorLog } from '~/server/utils/monitorLog'
 const ACTIVE = ['DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] as const
 
 const MAX_RESULTS_TRIED = 6 // how many Prowlarr hits to inspect before giving up on this release
-
-export interface TorrentAcquireParams {
-  artistId: string
-  artistName: string
-  albumTitle: string
-  year: number | null
-  mbReleaseId: string | null
-  releaseGroupId: string | null
-}
 
 // MISSING album/EP releases for this artist — candidates to fill from a pack in one grab. At most one
 // edition per release group: sync/catalogue-gaps normally write one MISSING row per group, but a stray

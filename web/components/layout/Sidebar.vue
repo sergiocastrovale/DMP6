@@ -14,6 +14,7 @@ import {
   LogOut,
   Settings,
 } from 'lucide-vue-next'
+import type { NavEntry } from '~/types/ui'
 import { useGlobalStore } from '~/stores/global'
 import { cx } from '~/helpers/ui'
 
@@ -26,15 +27,6 @@ const canViewIssues = hasPerm('issues.view')
 const canViewPlaylists = hasPerm('playlists.view')
 const canViewFavorites = hasPerm('favorites.view')
 const canViewDownloads = hasPerm('sync.view')
-
-interface NavEntry {
-  to?: string
-  activePath?: string
-  label: string
-  icon: typeof Home
-  count?: number | null
-  action?: () => void
-}
 
 const navItems = computed<NavEntry[]>(() => [
   { to: '/', label: 'Home', icon: Home },

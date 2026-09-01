@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft } from 'lucide-vue-next'
-import type { DataTableColumn } from '~/components/DataTable.vue'
-import type { SortDir } from '~/helpers/functions'
+import type { DataTableColumn } from '~/types/ui'
+import type { SortDirection } from '~/types/common'
 import { typography } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
@@ -10,7 +10,7 @@ const props = withDefaults(defineProps<{
   label: string
   columns: DataTableColumn[]
   defaultSort?: string
-  defaultOrder?: SortDir
+  defaultOrder?: SortDirection
 }>(), {
   defaultSort: '',
   defaultOrder: 'asc',
@@ -33,7 +33,7 @@ const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
 const searchQuery = ref('')
-const sort = ref<{ key: string | null, dir: SortDir }>({ key: props.defaultSort || null, dir: props.defaultOrder })
+const sort = ref<{ key: string | null, dir: SortDirection }>({ key: props.defaultSort || null, dir: props.defaultOrder })
 
 const handleSearch = (value: string) => {
   searchQuery.value = value

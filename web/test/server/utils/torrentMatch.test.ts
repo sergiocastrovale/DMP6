@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { matchTorrentFolders, normalizeTitle, type MatchableRelease } from '../../../server/utils/torrentMatch'
-import type { QbitFile } from '../../../server/utils/qbittorrent'
+import { matchTorrentFolders, normalizeTitle } from '../../../server/utils/torrentMatch'
+import type { MatchableRelease } from '../../../types/download'
+import type { QbitFile } from '../../../types/download'
 
 describe('normalizeTitle', () => {
   it('lowercases and strips punctuation', () => {

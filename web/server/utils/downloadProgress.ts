@@ -1,10 +1,5 @@
 import type { DownloadStatus } from '@prisma/client'
-
-export interface DownloadProgressFields {
-  percent: number
-  bytesTransferred: number
-  totalBytes: number
-}
+import type { DownloadProgressFields } from '~/types/download'
 
 // Statuses where the transfer is finished (download complete) -> bar is full.
 const COMPLETED: ReadonlySet<DownloadStatus> = new Set<DownloadStatus>([

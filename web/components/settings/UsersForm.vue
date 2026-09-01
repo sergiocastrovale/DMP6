@@ -1,18 +1,11 @@
 <script setup lang="ts">
 import { Plus, Trash2, Pencil, KeyRound, Save, X, AlertCircle } from 'lucide-vue-next'
-import { cx, data, form, toneText, type Tone } from '~/helpers/ui'
-
-type User = {
-  id: number
-  username: string
-  email: string
-  role: string
-  mustChangePassword: boolean
-  createdAt: string
-}
+import type { AdminUser } from '~/types/auth'
+import type { Tone } from '~/types/ui'
+import { cx, data, form, toneText } from '~/helpers/ui'
 
 const { data: users, refresh } = await useAsyncData('settings-users', () =>
-  $fetch<User[]>('/api/users'),
+  $fetch<AdminUser[]>('/api/users'),
 )
 
 const showCreate = ref(false)
@@ -45,7 +38,7 @@ const createUser = async () => {
   }
 }
 
-const startEdit = (u: User) => {
+const startEdit = (u: AdminUser) => {
   editingId.value = u.id
   editForm.email = u.email
   editForm.role = u.role

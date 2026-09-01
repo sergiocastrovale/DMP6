@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Confidence } from '~/types/issues'
-import type { Tone } from '~/helpers/ui'
+import type { Tone } from '~/types/ui'
 
 const props = defineProps<{ confidence: Confidence }>()
 

@@ -1,13 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-
-export interface RandomTrackRow {
-  id: string
-  title: string | null
-  artist: string | null
-  album: string | null
-  duration: number | null
-  localReleaseId: string | null
-}
+import type { RandomTrackRow } from '~/types/track'
 
 /**
  * Random track sampling with an escalating fallback: BERNOULLI(0.05) is cheap but can come up short on

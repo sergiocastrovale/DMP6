@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { isQbitComplete, isQbitErrored, type QbitTorrentInfo } from '../../../server/utils/qbittorrent'
+import { isQbitComplete, isQbitErrored } from '../../../server/utils/qbittorrent'
+import type { QbitTorrentInfo } from '../../../types/download'
 
 const info = (overrides: Partial<QbitTorrentInfo> = {}): QbitTorrentInfo => ({
   hash: 'h', name: 'n', state: 'downloading', progress: 0, size: 100, completed: 0, downloaded: 0, tags: '',

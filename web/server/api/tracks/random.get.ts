@@ -1,14 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
-
-interface RawTrack {
-  id: string
-  title: string | null
-  artist: string | null
-  album: string | null
-  duration: number | null
-  localReleaseId: string | null
-}
+import type { RandomTrackRow as RawTrack } from '~/types/track'
 
 export default defineEventHandler(async () => {
   // TABLESAMPLE BERNOULLI: O(1) random selection regardless of table size

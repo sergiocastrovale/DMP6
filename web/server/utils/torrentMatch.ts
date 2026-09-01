@@ -1,24 +1,10 @@
 import { isAudioFile } from '~/server/utils/slskd'
-import type { QbitFile } from '~/server/utils/qbittorrent'
+import type { QbitFile, MatchableRelease, FolderMatch } from '~/types/download'
 
 // Match the album folders inside a torrent (often a whole discography pack) against an artist's MISSING
 // MusicBrainz releases, so one torrent can fill several gaps at once. Moderate strictness: a folder
 // matches a release on normalized title (artist is implicit — the torrent is already artist-scoped);
 // the year is only a tiebreaker. The torrent is already known to belong to the searched artist.
-
-export interface MatchableRelease {
-  id: string
-  title: string
-  year: number | null
-  releaseGroupId: string | null
-}
-
-export interface FolderMatch {
-  release: MatchableRelease
-  folder: string // torrent-relative directory of this album (what relocate scans / torrentFolder)
-  fileIndexes: number[] // qBit file indexes belonging to this folder (for selective download)
-  files: { filename: string; size: number }[] // audio files (basenames matter for relocate)
-}
 
 // Strip diacritics, bracketed qualifiers (FLAC), and punctuation; collapse to single spaces.
 export const normalizeTitle = (s: string): string =>

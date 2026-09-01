@@ -2,7 +2,7 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import StatPage from '../../../components/statistics/StatPage.vue'
-import type { DataTableColumn } from '../../../components/DataTable.vue'
+import type { DataTableColumn } from '../../../types/ui'
 
 const COLUMNS: DataTableColumn[] = [
   { key: 'title', label: 'Title', sortable: true },

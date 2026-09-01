@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { LucideListMusic, LucideSparkles, LucideGlobe } from 'lucide-vue-next'
-import type { PlaylistSummary } from '~/types/playlist'
-import type { Component } from 'vue'
+import type { PlaylistSummary, PlaylistSection } from '~/types/playlist'
 import { typography, grid } from '~/helpers/ui'
 
 const props = defineProps<{
@@ -14,15 +13,6 @@ const emit = defineEmits<{
 
 const { hasPerm } = useAuth()
 const canCrud = hasPerm('playlists.crud')
-
-interface PlaylistSection {
-  type: PlaylistSummary['type']
-  label: string
-  icon: Component
-  popoverTitle?: string
-  popoverText?: string
-  items: ComputedRef<PlaylistSummary[]>
-}
 
 const sections: PlaylistSection[] = [
   {

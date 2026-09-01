@@ -1,16 +1,10 @@
 <script setup lang="ts">
 import { Disc, Music, User } from 'lucide-vue-next'
-import type { SearchResults } from '~/types/search'
+import type { SearchDropdownProps } from '~/types/ui'
 import { formatDuration } from '~/helpers/functions'
 import { cx, ICON_STROKE_WIDTH, surface, typography } from '~/helpers/ui'
 
-interface Props {
-  results: SearchResults | null
-  listboxId?: string
-  activeIndex?: number
-}
-
-const props = withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<SearchDropdownProps>(), {
   listboxId: undefined,
   activeIndex: -1,
 })

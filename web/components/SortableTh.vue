@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-vue-next'
-import type { SortDir } from '~/helpers/functions'
+import type { SortDirection } from '~/types/common'
 import { cx, data } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   label: string
   sortKey: string
   activeKey: string | null
-  dir: SortDir
+  dir: SortDirection
   align?: 'left' | 'right'
 }>(), {
   align: 'left',

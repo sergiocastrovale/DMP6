@@ -66,3 +66,46 @@ export interface ReleaseInfoExtra {
   isrc: string | null
   people: Record<string, string[]>
 }
+
+// Raw DB row shapes consumed by server/utils/releaseAggregation.ts to build UnifiedRelease cards.
+export interface MbReleaseRow {
+  id: string
+  title: string
+  year: number | null
+  musicbrainzId: string
+  releaseGroupId: string | null
+  disambiguation: string | null
+  editionLabel: string | null
+  releaseDate: string | null
+  packaging: string | null
+  country: string | null
+  format: string | null
+  status: string
+  statusReason: string | null
+  type: { name: string, slug: string }
+  tracks: { id: string }[]
+}
+
+export interface LocalReleaseRow {
+  id: string
+  title: string
+  year: number | null
+  folderPath: string | null
+  image: string | null
+  imageUrl: string | null
+  matchStatus: string
+  releaseId: string | null
+  totalPlayCount: number
+  tracks: { id: string }[]
+  artists: { artist: { name: string, slug: string } }[]
+}
+
+export interface ImageResolver {
+  (image: string | null, imageUrl: string | null, kind: 'releases'): { image: string | null, imageUrl: string | null }
+}
+
+export interface LocalAndGapCardsResult {
+  cards: UnifiedRelease[]
+  coveredMbIds: Set<string>
+  appearsOnLocal: LocalReleaseRow[]
+}

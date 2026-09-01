@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { chooseSource, RT_PRIORITY, SLSK_PRIORITY, type SourceConfig } from '../../../server/utils/downloadSources'
+import { chooseSource, RT_PRIORITY, SLSK_PRIORITY } from '../../../server/utils/downloadSources'
+import type { DownloadSourceConfigItem } from '../../../types/download'
 
-const configs = (overrides: Partial<Record<'RUTRACKER' | 'SLSKD', Partial<SourceConfig>>> = {}): SourceConfig[] => [
+const configs = (overrides: Partial<Record<'RUTRACKER' | 'SLSKD', Partial<DownloadSourceConfigItem>>> = {}): DownloadSourceConfigItem[] => [
   { name: 'RUTRACKER', url: 'https://rutracker.org', retry: false, enabled: true, ...overrides.RUTRACKER },
   { name: 'SLSKD', url: null, retry: true, enabled: true, ...overrides.SLSKD },
 ]

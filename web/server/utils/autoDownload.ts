@@ -8,6 +8,7 @@ import { getDownloadSources, chooseSource, RT_PRIORITY, SLSK_PRIORITY, rtBudgetA
 import { prowlarrRtLimited } from '~/server/utils/prowlarr'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
+import type { TorrentAcquireParams, MissingPick } from '~/types/download'
 
 // Mark a search-miss: slskd had no result. NOT a failure — never abandons. Bumps the tries counter
 // (shown in the UI) and lowers priority (floor 0) so the release sinks behind fresher candidates and
@@ -46,20 +47,11 @@ async function revertRtLimited(rowId: string) {
   }).catch(() => {})
 }
 
-export interface AcquireParamsLite {
-  artistId: string
-  artistName: string
-  albumTitle: string
-  year: number | null
-  mbReleaseId: string | null
-  releaseGroupId: string | null
-}
-
 // Run the source-appropriate acquire for an already-created DOWNLOADING row. Returns true on a hit
 // (transfer/torrent enqueued), false on a search miss (caller records the miss per source).
 export async function routeAcquire(
   src: 'RUTRACKER' | 'SLSKD',
-  p: AcquireParamsLite,
+  p: TorrentAcquireParams,
   rowId: string,
   formats: string,
   minBitrate: number | null,
@@ -133,19 +125,6 @@ export async function forceRetryDownload(id: string): Promise<void> {
           }).catch(() => {})
     }
   })().catch(e => monitorLog('error', `force-retry ${row.title}: ${e?.message || e}`))
-}
-
-interface MissingPick {
-  id: string
-  title: string
-  year: number | null
-  releaseGroupId: string | null
-  artistId: string
-  artistName: string
-  rowId: string | null     // existing DownloadedRelease row (retry pool); null = fresh, create one
-  attempts: number         // carried from the existing row (0 for fresh)
-  priority: number         // carried from the existing row (10 for fresh)
-  triedSources: ('SLSKD' | 'RUTRACKER')[] // no-retry sources already missed (carried; [] for fresh)
 }
 
 let lastTopUpAt = 0

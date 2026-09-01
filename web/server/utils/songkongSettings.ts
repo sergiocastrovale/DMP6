@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
+import type { SongkongHealthInput } from '~/types/download'
 
 /**
  * SongKong enrichment runs OUTSIDE the dmp container (no docker socket): the dmp container can't
@@ -40,12 +41,6 @@ export const songkongMaxWaitMin = (): number => {
 // into ENRICHING (they'd otherwise each sit the full max-wait before self-promoting unenriched) — see
 // docs/downloader_issues.md #9.
 export const SONGKONG_STALE_AFTER_MIN = 10
-
-export interface SongkongHealthInput {
-  enrichingRows: { updatedAt: Date }[] // rows currently ENRICHING
-  lastDrainedAt: Date | null // last time any row was observed successfully enriched
-  now?: Date
-}
 
 /** Pure predicate — no DB/FS access — so the staleness rule is independently testable. */
 export const isSongkongStalled = ({ enrichingRows, lastDrainedAt, now = new Date() }: SongkongHealthInput): boolean => {

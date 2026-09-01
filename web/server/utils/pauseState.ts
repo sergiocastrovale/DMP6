@@ -1,8 +1,7 @@
 import { statfs } from 'node:fs/promises'
 import { prisma } from '~/server/utils/prisma'
 import { monitorLog } from '~/server/utils/monitorLog'
-
-export type PauseReason = 'manual' | 'disk-full'
+import type { PauseReason } from '~/types/download'
 
 /** Free space (GB) under a path; -1 if unavailable (never block on a stat error). */
 export const freeGb = async (path: string): Promise<number> => {

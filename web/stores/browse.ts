@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { ArtistListItem } from '~/types/artist'
-import { defaultSortDirection, type SortDirection } from '~/helpers/browseSort'
+import { defaultSortDirection } from '~/helpers/browseSort'
+import type { SortDirection } from '~/types/common'
 
 export const useBrowseStore = defineStore('browse', () => {  
   const artists = ref<ArtistListItem[]>([])

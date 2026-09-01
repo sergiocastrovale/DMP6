@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DataTableColumn } from '~/components/DataTable.vue'
+import type { DataTableColumn } from '~/types/ui'
 import type { ArtistListItem } from '~/types/artist'
 import { getScoreRange } from '~/helpers/constants'
 import { cx, outlinePill, typography } from '~/helpers/ui'

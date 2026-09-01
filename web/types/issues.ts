@@ -1,14 +1,11 @@
-import type { ArtistRef } from './common'
+import type { Tone } from './ui'
 
-export type IssueStatus = 'DETECTED' | 'PENDING' | 'PENDING_REVERT' | 'RESOLVED' | 'FAILED'
-export type IssueType = 'corrupted' | 'orphans' | 'duplicates' | 'missing' | 'enrichment' | 'duplicate-release' | 'mismatched-release-id'
+export type IssueType ='corrupted' | 'orphans' | 'duplicates' | 'missing' | 'enrichment' | 'duplicate-release' | 'mismatched-release-id'
 export type HistoryIssueType = Extract<IssueType, 'corrupted' | 'missing'>
+// Types that flow through the /api/issues/[type] patch+queue endpoints (a strict subset of IssueType —
+// duplicate-release/mismatched-release-id/enrichment are audit-only, never individually patched/queued).
+export type FixableIssueType = Extract<IssueType, 'corrupted' | 'orphans' | 'duplicates' | 'missing'>
 export type Confidence = 'high' | 'medium' | 'low'
-
-interface IssueRowBase {
-  id: string
-  status: IssueStatus
-}
 
 export interface AuditRun {
   id: string
@@ -22,35 +19,6 @@ export interface IssueSummary {
   counts: Record<IssueType, number>
 }
 
-export interface IssueCorruptedTPE2Row extends IssueRowBase {
-  currentValue: string
-  proposedValue: string
-  confidence: Confidence
-  track: {
-    id: string
-    filePath: string
-    title: string | null
-    album: string | null
-    localRelease: { artists: { artist: { name: string; slug: string } }[] } | null
-  }
-}
-
-export interface IssueOrphanArtistRow extends IssueRowBase {
-  reason: string
-  artist: ArtistRef & { createdAt: string; musicbrainzId: string | null }
-}
-
-export interface IssueDuplicateArtistRow extends IssueRowBase {
-  artistA: ArtistRef & { totalTracks: number }
-  artistB: ArtistRef & { totalTracks: number }
-}
-
-export interface IssueMissingMetadataRow extends IssueRowBase {
-  missingFields: string[]
-  proposedValues: Record<string, unknown> | null
-  track: { id: string; filePath: string; title: string | null; album: string | null; artist: string | null }
-}
-
 export interface IssueColumn {
   key: string
   label: string
@@ -62,31 +30,18 @@ export interface IssueColumn {
 
 export type EnrichmentField = 'bpm' | 'mood' | 'acousticId' | 'mbRelease' | 'discogs' | 'bandcamp' | 'wikipedia'
 
-export interface IssueEnrichmentGapRow extends IssueRowBase {
-  missingFields: EnrichmentField[]
-  artist: { name: string; slug: string } | null
-  localRelease: { id: string; title: string; year: number | null }
+export interface EnrichmentFieldConfig {
+  label: string
+  tone: Tone
+  extraClass?: string
+  fixable: boolean
+  help?: string
 }
 
-interface ReleasePairRef {
-  id: string
-  title: string
-  year: number | null
-  totalDuration: number | null
-  folderPath: string | null
-  trackCount: number
-  artist: { name: string; slug: string } | null
-  release?: { title: string } | null
-}
-
-export interface IssueDuplicateReleaseRow extends IssueRowBase {
-  releaseA: ReleasePairRef
-  releaseB: ReleasePairRef
-}
-
-export interface IssueMismatchedReleaseIdRow extends IssueRowBase {
-  releaseA: ReleasePairRef
-  releaseB: ReleasePairRef
+export interface HistoryFolderGroup {
+  folder: string
+  items: FixHistoryRow[]
+  ids: string[]
 }
 
 export interface FixHistoryRow {

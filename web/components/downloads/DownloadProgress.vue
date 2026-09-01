@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ReleaseProgress } from '~/types/download'
 import { formatFileSize } from '~/helpers/functions'
-import type { Tone } from '~/helpers/ui'
+import type { Tone } from '~/types/ui'
 
 const props = defineProps<{
   items?: ReleaseProgress[] // aggregate mode: a batch of in-flight releases

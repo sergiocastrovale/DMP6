@@ -1,5 +1,6 @@
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { SongkongHealth } from '~/types/download'
 import { songkongDirs, songkongMaxWaitMin, resolveSongkongEnabled, SONGKONG_STALE_AFTER_MIN } from '~/server/utils/songkongSettings'
 
 /**
@@ -12,18 +13,6 @@ import { songkongDirs, songkongMaxWaitMin, resolveSongkongEnabled, SONGKONG_STAL
  * This is the failure the downloads page had no way to explain: rows sat in ENRICHING with no hint
  * that the thing meant to drain them was never running.
  */
-export interface SongkongHealth {
-  /** Enrichment is switched on (DB setting wins over SONGKONG_ENABLED). */
-  enabled: boolean
-  /** Albums spooled and not yet enriched. */
-  spoolCount: number
-  /** Age of the oldest spool entry, minutes. Null when the spool is empty/unreadable. */
-  oldestSpoolMin: number | null
-  /** Nothing has consumed the spool for at least SONGKONG_STALE_AFTER_MIN. */
-  stalled: boolean
-  /** How long a row waits before it merges unenriched anyway. */
-  maxWaitMin: number
-}
 
 /** Pure rule, so the staleness threshold is testable without a filesystem. */
 export const isDrainerStalled = (oldestSpoolMin: number | null): boolean =>

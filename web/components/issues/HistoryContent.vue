@@ -2,7 +2,7 @@
 import { FileText } from 'lucide-vue-next'
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
-import type { FixHistoryRow, HistoryIssueType } from '~/types/issues'
+import type { FixHistoryRow, HistoryIssueType, HistoryFolderGroup } from '~/types/issues'
 import { cx, data } from '~/helpers/ui'
 
 const issuesStore = useIssuesStore()
@@ -19,13 +19,7 @@ const activeTab = ref<HistoryIssueType>('corrupted')
 const selected = ref<Set<string>>(new Set())
 const dialogFolder = ref<string | null>(null)
 
-interface FolderGroup {
-  folder: string
-  items: FixHistoryRow[]
-  ids: string[]
-}
-
-const groups = computed<FolderGroup[]>(() => {
+const groups = computed<HistoryFolderGroup[]>(() => {
   const raw = issuesStore.historyItems[activeTab.value] ?? []
   const map = new Map<string, FixHistoryRow[]>()
   for (const item of raw) {
@@ -66,20 +60,20 @@ function toggleAll() {
   selected.value = next
 }
 
-function isGroupChecked(g: FolderGroup): boolean {
+function isGroupChecked(g: HistoryFolderGroup): boolean {
   return g.ids.every((id) => selected.value.has(id))
 }
 
-function isGroupPartial(g: FolderGroup): boolean {
+function isGroupPartial(g: HistoryFolderGroup): boolean {
   const count = g.ids.filter((id) => selected.value.has(id)).length
   return count > 0 && count < g.ids.length
 }
 
-function selectedInGroup(g: FolderGroup): number {
+function selectedInGroup(g: HistoryFolderGroup): number {
   return g.ids.filter((id) => selected.value.has(id)).length
 }
 
-function toggleGroup(g: FolderGroup) {
+function toggleGroup(g: HistoryFolderGroup) {
   const next = new Set(selected.value)
   if (isGroupChecked(g)) {
     for (const id of g.ids) {

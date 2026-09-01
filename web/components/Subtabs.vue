@@ -1,12 +1,6 @@
 <script setup lang="ts">
+import type { SubtabItem } from '~/types/ui'
 import { cx } from '~/helpers/ui'
-
-interface SubtabItem {
-  key: string
-  label: string
-  count?: number
-  activeColor?: string
-}
 
 const props = defineProps<{
   tabs: SubtabItem[]

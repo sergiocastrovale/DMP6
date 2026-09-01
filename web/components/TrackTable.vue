@@ -3,12 +3,8 @@ import { LucideMusic } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type { TrackInContext } from '~/types/common'
 import type { PlayerTrack } from '~/types/player'
+import type { TrackTableRow } from '~/types/track'
 import { formatDuration } from '~/helpers/functions'
-
-export interface TrackTableRow {
-  id: string
-  track: TrackInContext
-}
 
 const props = withDefaults(defineProps<{
   rows: TrackTableRow[]

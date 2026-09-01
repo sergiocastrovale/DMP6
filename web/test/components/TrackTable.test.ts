@@ -2,7 +2,7 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import TrackTable from '../../components/TrackTable.vue'
 import { usePlayerStore } from '../../stores/player'
-import type { TrackTableRow } from '../../components/TrackTable.vue'
+import type { TrackTableRow } from '../../types/track'
 
 const row = (id: string, overrides: Partial<TrackTableRow['track']> = {}): TrackTableRow => ({
   id: `pt-${id}`,

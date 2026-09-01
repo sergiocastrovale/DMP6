@@ -6,7 +6,7 @@ import { slskdSearch, deleteSlskdSearch, startSlskdDownload } from '~/server/uti
 import { getSlskdResults } from '~/server/utils/downloads'
 import { sanitize } from '~/server/utils/transcode'
 import { normalizeTitle } from '~/server/utils/torrentMatch'
-import type { DownloadSearchResult } from '~/types/download'
+import type { DownloadSearchResult, AcquireResult, AcquireParams } from '~/types/download'
 
 function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms))
@@ -58,21 +58,6 @@ export async function findBestSlskdResult(
     deleteSlskdSearch(searchId).catch(() => {})
   }
   return best
-}
-
-// Only the fields acquireRelease actually needs — a result that knows just the peer + files
-// can route through the same recording path as a full search hit.
-export type AcquireResult = Pick<DownloadSearchResult, 'username' | 'files'> &
-  Partial<Pick<DownloadSearchResult, 'format' | 'avgBitrate'>>
-
-export interface AcquireParams {
-  result: AcquireResult
-  artistId?: string | null
-  artistName: string
-  albumTitle: string
-  year?: number | null
-  mbReleaseId?: string | null
-  releaseGroupId?: string | null
 }
 
 /**

@@ -1,15 +1,10 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it, vi } from 'vitest'
 import DataTable from '../../components/DataTable.vue'
-import type { DataTableColumn } from '../../components/DataTable.vue'
+import type { DataTableColumn } from '../../types/ui'
+import type { DataTableTestArtist } from '../../types/common'
 
-interface Artist {
-  id: string
-  name: string
-  releases: number
-}
-
-const ROWS: Artist[] = [
+const ROWS: DataTableTestArtist[] = [
   { id: 'a', name: 'Radiohead', releases: 12 },
   { id: 'b', name: 'Boards of Canada', releases: 4 },
 ]
@@ -87,9 +82,9 @@ describe('DataTable.vue', () => {
   it('selecting a single row emits a set containing just that row', async () => {
     const wrapper = await mountSuspended(DataTable, {
       // Vue's generic <script setup> components don't carry their type parameter through when
-      // mounted directly (as opposed to used in a template), so TS can't unify T with Artist
+      // mounted directly (as opposed to used in a template), so TS can't unify T with DataTableTestArtist
       // here - a test-only cast, not something app code needs to do.
-      props: { columns: COLUMNS, rows: ROWS, rowLabel: ((row: Artist) => row.name) as (row: object) => string },
+      props: { columns: COLUMNS, rows: ROWS, rowLabel: ((row: DataTableTestArtist) => row.name) as (row: object) => string },
     })
     const radioheadCheckbox = wrapper.get('[aria-label="Select Radiohead"] input').element as HTMLInputElement
     checkInput(radioheadCheckbox, true)

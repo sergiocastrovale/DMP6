@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-vue-next'
-import type { SortDirection } from '~/helpers/browseSort'
+import type { SortDirection } from '~/types/common'
 
 // Direction is its own control rather than extra entries in the sort dropdown: the dropdown answers
 // "by what", this answers "which end first", and folding them together doubles that list every time

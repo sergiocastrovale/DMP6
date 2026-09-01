@@ -1,20 +1,4 @@
-import type { DecadeStats } from '~/types/labs'
-
-interface DecadeRow {
-  decade: number
-  release_count: bigint
-  track_count: bigint
-  artist_count: bigint
-  avg_duration: number | null
-  avg_bitrate: number | null
-  total_play_count: bigint
-}
-
-interface GenreRow {
-  decade: number
-  genre: string
-  cnt: bigint
-}
+import type { DecadeStats, DecadeRow, GenreRow } from '~/types/labs'
 
 export default defineEventHandler(async (): Promise<DecadeStats[]> => {
   const rows = await prisma.$queryRaw<DecadeRow[]>`

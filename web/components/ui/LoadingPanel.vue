@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import type { Tone } from '~/helpers/ui'
+import type { Tone, LoadingPanelSize } from '~/types/ui'
 import { toneFill } from '~/helpers/ui'
-
-type Size = 'sm' | 'md'
 
 const props = withDefaults(defineProps<{
   label?: string
   percent: number
   variant?: Tone
-  size?: Size
+  size?: LoadingPanelSize
 }>(), {
   variant: 'accent',
   size: 'md',

@@ -1,5 +1,6 @@
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { ScanProgress } from '~/types/scan'
+import type { SortDirection } from '~/types/common'
 
 // Scan the terminal output backwards for the latest structured `PROGRESS:{json}` line emitted by the
 // index/sync/refresh scripts (--web mode). Returns null when no structured progress is present.
@@ -46,11 +47,9 @@ export const filterQueue = (items: DownloadedReleaseItem[], query: string): Down
   )
 }
 
-export type SortDir = 'asc' | 'desc'
-
 // Generic client-side sort: nulls always sink to the bottom, numbers compare numerically, everything
 // else by locale string. Returns a new array (never mutates the input).
-export const sortItems = <T>(items: T[], accessor: (item: T) => string | number | null | undefined, dir: SortDir): T[] => {
+export const sortItems = <T>(items: T[], accessor: (item: T) => string | number | null | undefined, dir: SortDirection): T[] => {
   const out = [...items].sort((a, b) => {
     const av = accessor(a)
     const bv = accessor(b)

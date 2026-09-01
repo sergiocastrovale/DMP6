@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DataTableColumn } from '~/components/DataTable.vue'
+import type { DataTableColumn } from '~/types/ui'
 
 definePageMeta({ layout: 'admin' })
 useTitle('Statistics', 'Releases Synced')

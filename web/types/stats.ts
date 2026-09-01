@@ -11,6 +11,30 @@ export interface AppStats {
   issues: number
 }
 
+import type { Component } from 'vue'
+
+// /statistics index page (pages/statistics/index.vue) card shapes.
+export interface StatItem {
+  label: string
+  value: string
+  link?: string
+  info?: string
+}
+
+export interface StatSection {
+  title: string
+  icon: Component
+  warn?: boolean
+  items: StatItem[]
+}
+
+export interface StatTile {
+  label: string
+  value: string
+  icon: Component
+  link: string
+}
+
 export interface Statistics {
   artists: number
   mainArtists: number

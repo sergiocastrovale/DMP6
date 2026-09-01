@@ -9,31 +9,16 @@ import {
   forceManyBody,
   forceCenter,
   forceCollide,
-  type SimulationNodeDatum,
-  type SimulationLinkDatum,
 } from 'd3-force'
 import { scaleLinear, scaleSqrt } from 'd3-scale'
 import { select } from 'd3-selection'
 import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
-import type { NetworkGraph } from '~/types/labs'
+import type { NetworkGraph, NetworkGraphNode as GraphNode, NetworkGraphLink as GraphLink } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
 import { cx, typography, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
 
 definePageMeta({ layout: 'labs' })
-
-interface GraphNode extends SimulationNodeDatum {
-  id: string
-  name: string
-  slug: string
-  trackCount: number
-  isFocus: boolean
-}
-
-interface GraphLink extends SimulationLinkDatum<GraphNode> {
-  sharedTracks: number
-  tracks: { id: string; title: string }[]
-}
 
 const searchQuery = ref('')
 const searchResults = ref<{ id: string; name: string; slug: string }[]>([])

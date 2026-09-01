@@ -1,28 +1,10 @@
+import type { ResolvedDownloadSettings } from '~/types/download'
 import { prisma } from '~/server/utils/prisma'
 
 /**
  * Resolves download-related settings, with DB values taking precedence over env vars.
  * Every setting can be configured in either place; DB wins if both are set.
  */
-export interface ResolvedDownloadSettings {
-  slskdUrl: string
-  slskdApiKey: string
-  downloadFormats: string
-  downloadMinBitrate: number | null
-  downloadsPath: string
-  downloadDirTemplate: string
-  downloadsReadyPath: string
-  downloadsTorrentsPath: string
-  autoMergeDownloads: boolean
-  // RuTracker via Prowlarr (search) + qBittorrent (download)
-  prowlarrUrl: string
-  prowlarrApiKey: string
-  prowlarrIndexerId: string
-  qbittorrentUrl: string
-  qbittorrentUser: string
-  qbittorrentPass: string
-  qbittorrentSavePath: string
-}
 
 export const DEFAULT_DOWNLOAD_DIR_TEMPLATE = '{artist}/{year} - {album}'
 

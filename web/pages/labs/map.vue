@@ -2,7 +2,7 @@
 import type { Map as LeafletMap, GeoJSON as LeafletGeoJSON, Path, Layer } from 'leaflet'
 import type { Feature } from 'geojson'
 import { Download } from 'lucide-vue-next'
-import type { MapCountry } from '~/types/labs'
+import type { MapCountry, MapTextureEntry } from '~/types/labs'
 
 useTitle('Labs', 'World Map')
 import { cssVar } from '~/helpers/theme'
@@ -122,9 +122,8 @@ const loadImage = (src: string): Promise<HTMLImageElement> =>
     img.src = src
   })
 
-interface TextureEntry { dataUrl: string; cols: number; rows: number }
 
-const generateTexture = async (entry: MapCountry): Promise<TextureEntry | null> => {
+const generateTexture = async (entry: MapCountry): Promise<MapTextureEntry | null> => {
   const urls: string[] = []
   for (const img of entry.images) {
     const url = resolveImage(img.image, img.imageUrl, 'releases')
@@ -158,9 +157,9 @@ const generateTexture = async (entry: MapCountry): Promise<TextureEntry | null> 
   return { dataUrl: canvas.toDataURL('image/png'), cols, rows }
 }
 
-const textureData = ref<Record<string, TextureEntry>>({})
+const textureData = ref<Record<string, MapTextureEntry>>({})
 
-const applyPatternFill = (layer: Path, code: string, tex: TextureEntry) => {
+const applyPatternFill = (layer: Path, code: string, tex: MapTextureEntry) => {
   if (!map || !geoLayer) {
     return
   }

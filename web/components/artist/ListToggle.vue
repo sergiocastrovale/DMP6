@@ -1,12 +1,6 @@
 <script setup lang="ts">
-import type { Component } from 'vue'
+import type { ToggleOption } from '~/types/ui'
 import { segmentGroup, sw } from '~/helpers/ui'
-
-interface ToggleOption {
-  value: string
-  icon: Component
-  title: string
-}
 
 defineProps<{
   options: ToggleOption[]

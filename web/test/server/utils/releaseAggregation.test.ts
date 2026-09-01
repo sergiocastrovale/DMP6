@@ -4,11 +4,9 @@ import {
   buildCoArtistMap,
   buildConnectedArtistByRelease,
   buildLocalAndGapCards,
-  type ReleaseCard,
   sortReleaseCards,
-  type LocalReleaseRow,
-  type MbReleaseRow,
 } from '../../../server/utils/releaseAggregation'
+import type { UnifiedRelease, LocalReleaseRow, MbReleaseRow } from '../../../types/release'
 
 const resolveImage = (image: string | null, imageUrl: string | null) => ({ image, imageUrl })
 
@@ -222,7 +220,7 @@ describe('buildAppearsOnCards', () => {
 })
 
 describe('sortReleaseCards', () => {
-  const card = (id: string, year: number | null): ReleaseCard => ({
+  const card = (id: string, year: number | null): UnifiedRelease => ({
     id, title: id, year, type: 'Album', typeSlug: 'album', mbReleaseRowId: null, musicbrainzId: null,
     releaseGroupId: null, disambiguation: null, editionLabel: null, releaseDate: null, packaging: null,
     country: null, format: null, status: 'COMPLETE', image: null, imageUrl: null, trackCount: 0,

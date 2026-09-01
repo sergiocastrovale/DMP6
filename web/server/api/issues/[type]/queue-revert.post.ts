@@ -1,12 +1,11 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import type { HistoryIssueType as RevertableType } from '~/types/issues'
 
 const REVERTABLE_MODELS = {
   corrupted: 'issueCorruptedTpe2',
   missing: 'issueMissingMetadata',
-} as const
-
-type RevertableType = keyof typeof REVERTABLE_MODELS
+} as const satisfies Record<RevertableType, string>
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.view')

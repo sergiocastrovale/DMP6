@@ -1,11 +1,5 @@
+import type { BrowseFilterParam } from '~/types/common'
 import { useBrowseStore } from '~/stores/browse'
-
-interface BrowseFilterParam {
-  key: string
-  storeKey: keyof ReturnType<typeof useBrowseStore>
-  default?: string
-  type?: 'number'
-}
 
 const params: BrowseFilterParam[] = [
   { key: 'search', storeKey: 'searchQuery' },

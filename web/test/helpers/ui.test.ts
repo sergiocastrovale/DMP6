@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { button, cx, sw, toneBg, toneFill, toneText } from '../../helpers/ui'
-import type { ButtonSize, ButtonVariant, ToggleKey, Tone } from '../../helpers/ui'
+import type { ButtonSize, ButtonVariant, ToggleKey, Tone } from '../../types/ui'
 
 const VARIANTS: ButtonVariant[] = ['primary', 'secondary', 'quiet', 'danger', 'ghost']
 const SIZES: ButtonSize[] = ['sm', 'md', 'lg']

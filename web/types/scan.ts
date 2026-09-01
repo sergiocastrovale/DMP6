@@ -1,3 +1,14 @@
+export interface AutoScanSettings {
+  enabled: boolean
+  intervalHours: number
+  lastRunAt: Date | null
+}
+
+export interface CapturedRun {
+  command: string
+  args: string[]
+}
+
 export interface ScanProgress {
   phase: 'index' | 'sync'
   folder?: string

@@ -9,30 +9,18 @@ import {
   forceManyBody,
   forceCenter,
   forceCollide,
-  type SimulationNodeDatum,
-  type SimulationLinkDatum,
 } from 'd3-force'
 import { scaleLinear, scaleSqrt } from 'd3-scale'
 import { select } from 'd3-selection'
 import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
-import type { GenomeGraph } from '~/types/labs'
+import type { GenomeGraph, GenomeGraphNode as GraphNode, GenomeGraphLink as GraphLink } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
 import { typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 definePageMeta({ layout: 'labs' })
 
 const { artistImage } = useImageUrl()
-
-interface GraphNode extends SimulationNodeDatum {
-  id: string
-  name: string
-  artistCount: number
-}
-
-interface GraphLink extends SimulationLinkDatum<GraphNode> {
-  weight: number
-}
 
 const { data: graphData, status } = useFetch<GenomeGraph>('/api/labs/genome/graph')
 

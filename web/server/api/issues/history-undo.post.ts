@@ -1,12 +1,11 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import type { HistoryIssueType as HistoryType } from '~/types/issues'
 
 const MODELS = {
   corrupted: 'issueCorruptedTpe2',
   missing: 'issueMissingMetadata',
-} as const
-
-type HistoryType = keyof typeof MODELS
+} as const satisfies Record<HistoryType, string>
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'issues.view')

@@ -1,13 +1,9 @@
 <script setup lang="ts">
+import type { PermissionsMatrixResponse } from '~/types/auth'
 import { cx, data as tableCell } from '~/helpers/ui'
 
-type PermData = {
-  matrix: Record<string, string[]>
-  allPermissions: string[]
-}
-
 const { data, refresh } = await useAsyncData('settings-perms', () =>
-  $fetch<PermData>('/api/permissions'),
+  $fetch<PermissionsMatrixResponse>('/api/permissions'),
 )
 
 const matrix = ref<Record<string, Set<string>>>({

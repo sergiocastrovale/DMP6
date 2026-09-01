@@ -3,11 +3,7 @@
 // Extracted here so the framing/parsing itself is unit-testable without a real stream or fetch.
 
 import { TERMINAL_LINES_CAP } from '~/helpers/constants'
-
-export interface SseEvent {
-  event: string
-  data: string
-}
+import type { SseEvent } from '~/types/common'
 
 // Splits a growing text buffer on the `\n\n` frame separator. The trailing partial frame (if any) is
 // returned as `remainder` - the caller should prepend it to the next decoded chunk before calling

@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcrypt'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import type { CapturedRun } from '~/types/scan'
 import { createReadyGuard, onlyId } from './helpers/fixtures'
 
 // "Remove artist" is the only UI that can delete audio files from MUSIC_DIR (./delete --files). What
@@ -16,7 +17,6 @@ import { createReadyGuard, onlyId } from './helpers/fixtures'
 const prisma = new PrismaClient()
 const { markReady, isReady } = createReadyGuard()
 
-interface CapturedRun { command: string, args: string[] }
 
 let artistName: string
 let artistSlug: string

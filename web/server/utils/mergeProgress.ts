@@ -1,13 +1,7 @@
-export type MergeStep = 'moving' | 'indexing' | 'syncing'
+import type { MergeProgressEntry } from '~/types/download'
 
-interface ProgressEntry {
-  step: MergeStep
-  title: string
-  destPath?: string
-}
+const progress = new Map<string, MergeProgressEntry>()
 
-const progress = new Map<string, ProgressEntry>()
-
-export const setMergeProgress = (id: string, entry: ProgressEntry) => progress.set(id, entry)
+export const setMergeProgress = (id: string, entry: MergeProgressEntry) => progress.set(id, entry)
 export const clearMergeProgress = (id: string) => progress.delete(id)
-export const getAllMergeProgress = (): Record<string, ProgressEntry> => Object.fromEntries(progress.entries())
+export const getAllMergeProgress = (): Record<string, MergeProgressEntry> => Object.fromEntries(progress.entries())

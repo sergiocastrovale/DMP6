@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { access, readdir, rename, unlink } from 'node:fs/promises'
 import { join, dirname, extname, basename } from 'node:path'
+import type { AudioTags } from '~/types/track'
 import { monitorLog } from '~/server/utils/monitorLog'
 
 const execFileAsync = promisify(execFile)
@@ -82,14 +83,6 @@ export async function transcodeDirToMp3320(dir: string): Promise<{ converted: nu
 
   if (converted || failed) {log(`${dir}: converted ${converted}, failed ${failed}`)}
   return { converted, failed }
-}
-
-export interface AudioTags {
-  track?: string
-  title?: string
-  disc?: string
-  discTotal?: string
-  year?: string
 }
 
 /** Read track/disc/title/year tags via ffprobe (checks both format and stream tags). */

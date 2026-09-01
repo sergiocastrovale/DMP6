@@ -7,10 +7,8 @@ import {
   setCachedPool,
   sweepExpiredPools,
   weightedRandomPick,
-  type CachedPool,
-  type ExploreParams,
-  type TrackCandidate,
 } from '../../../server/utils/explore'
+import type { CachedPool, ExploreParams, TrackCandidate } from '../../../types/player'
 
 const track = (overrides: Partial<TrackCandidate> = {}): TrackCandidate => ({
   id: 't1',

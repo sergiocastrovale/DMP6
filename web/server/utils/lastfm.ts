@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { Settings } from '@prisma/client'
+import type { LastfmSettings } from '~/types/api'
 import { monitorLog } from '~/server/utils/monitorLog'
 
 const LASTFM_API_URL = 'https://ws.audioscrobbler.com/2.0/'
@@ -21,8 +21,6 @@ export const describeLastfmProblem = (response: Record<string, unknown> | null):
   }
   return null
 }
-
-export type LastfmSettings = Pick<Settings, 'lastfmApiKey' | 'lastfmSecret' | 'lastfmSessionKey' | 'lastfmUsername'>
 
 export const isLastfmConfigured = (s: LastfmSettings): boolean => {
   return !!(s.lastfmApiKey && s.lastfmSecret && s.lastfmSessionKey)

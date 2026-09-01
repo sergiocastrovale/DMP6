@@ -1,22 +1,5 @@
 import { Prisma } from '@prisma/client'
-import type { NetworkGraph, NetworkNode, NetworkLink } from '~/types/labs'
-
-interface FullPairRow {
-  main_artist_id: string
-  related_artist_id: string
-  shared_tracks: bigint
-}
-
-interface FocusPairRow {
-  other_artist_id: string
-  shared_tracks: bigint
-}
-
-interface TrackRow {
-  artist_id: string
-  track_id: string
-  track_title: string
-}
+import type { NetworkGraph, NetworkNode, NetworkLink, FullPairRow, FocusPairRow, NetworkTrackRow } from '~/types/labs'
 
 export default defineEventHandler(async (event): Promise<NetworkGraph> => {
   const query = getQuery(event)
@@ -126,7 +109,7 @@ const getFocusedGraph = async (artistId: string): Promise<NetworkGraph> => {
 
   const otherIds = pairs.map((p) => p.other_artist_id)
 
-  const trackRows = await prisma.$queryRaw<TrackRow[]>`
+  const trackRows = await prisma.$queryRaw<NetworkTrackRow[]>`
     SELECT
       tra."artistId" AS artist_id,
       tra."trackId" AS track_id,

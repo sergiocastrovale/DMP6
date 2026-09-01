@@ -1,22 +1,5 @@
+import type { CachedSettings } from '~/types/api'
 import { prisma } from '~/server/utils/prisma'
-
-export interface CachedSettings {
-  musicDir: string
-  imageStorage: string
-  storageImageBucket: string
-  storageBackupsBucket: string
-  awsRegion: string
-  awsAccessKeyId: string
-  awsSecretAccessKey: string
-  storageEndpoint: string
-  storagePublicUrl: string
-  fanartApiKey: string
-  lastfmApiKey: string | null
-  lastfmSecret: string | null
-  lastfmSessionKey: string | null
-  lastfmUsername: string | null
-  showTerminal: boolean
-}
 
 const CACHE_TTL = 30_000
 

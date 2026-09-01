@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DataTableColumn } from '~/components/DataTable.vue'
+import type { DataTableColumn } from '~/types/ui'
 import { formatFileSize } from '~/helpers/functions'
 
 definePageMeta({ layout: 'admin' })

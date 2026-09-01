@@ -1,12 +1,5 @@
 import { defineStore } from 'pinia'
-
-export type ToastKind = 'error' | 'success' | 'info'
-
-export interface ToastItem {
-  id: number
-  kind: ToastKind
-  message: string
-}
+import type { ToastKind, ToastItem } from '~/types/ui'
 
 // Global ephemeral notifications. Any component/composable can push a toast; the single
 // LayoutToastHost (mounted in AppShell) renders the stack. Auto-dismiss after a timeout.

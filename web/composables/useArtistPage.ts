@@ -2,10 +2,9 @@ import type { Ref } from 'vue'
 import type { Artist } from '~/types/artist'
 import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
+import type { DlStatusValue, DlStatusItem } from '~/types/download'
 import { useTerminalStore } from '~/stores/terminal'
-import { artistScanFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks, type DlStatusValue } from '~/helpers/artistPageLogic'
-
-type DlStatusItem = { mbReleaseId: string | null, status: string, downloadedReleaseId: string, percent: number, bytesTransferred: number, totalBytes: number }
+import { artistScanFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '~/helpers/artistPageLogic'
 
 // Data fetching + polling for the artist detail page: artist/releases fetch, per-release download
 // status polling (acquisition pipeline), the monitor toggle, and "play all". Extracted out of

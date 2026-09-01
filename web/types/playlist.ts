@@ -1,3 +1,4 @@
+import type { Component } from 'vue'
 import type { TrackInContext, PlaylistType } from './common'
 
 interface PlaylistBase {
@@ -29,4 +30,13 @@ export interface PlaylistTrack {
 
 export interface PlaylistDetail extends PlaylistBase {
   tracks: PlaylistTrack[]
+}
+
+export interface PlaylistSection {
+  type: PlaylistSummary['type']
+  label: string
+  icon: Component
+  popoverTitle?: string
+  popoverText?: string
+  items: import('vue').ComputedRef<PlaylistSummary[]>
 }

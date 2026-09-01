@@ -2,16 +2,7 @@
 // many-to-many `LocalReleaseArtist` join, not a direct FK, so per-artist release count and
 // completeness can't come from a single `_count`/`orderBy` at the DB level - the route runs one
 // follow-up query scoped to the current page's artist ids and merges the result in JS via this module.
-
-export interface ArtistReleaseLink {
-  artistId: string
-  localRelease: { id: string, matchStatus: string }
-}
-
-export interface ReleaseStatsResult {
-  releaseCount: number
-  completeCount: number
-}
+import type { ArtistReleaseLink, ReleaseStatsResult } from '~/types/artist'
 
 // Dedupes by localRelease.id within each artist - a compilation ties the same release to multiple
 // co-owners, and without the dedupe a shared release would inflate one owner's own releaseCount if the

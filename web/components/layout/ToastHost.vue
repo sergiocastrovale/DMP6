@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-vue-next'
-import type { ToastKind } from '~/stores/toast'
+import type { ToastKind } from '~/types/ui'
 import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const toast = useToastStore()

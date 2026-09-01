@@ -1,13 +1,7 @@
 <script setup lang="ts">
 import { AlertTriangle, Archive, CircleAlert, ChevronUp, ChevronDown, List, RefreshCw } from 'lucide-vue-next'
+import type { IssueEvent } from '~/types/download'
 import { timeAgo } from '~/helpers/functions'
-
-interface IssueEvent {
-  id: string
-  level: 'warn' | 'error'
-  message: string
-  createdAt: string
-}
 
 const props = withDefaults(defineProps<{
   endpoint?: string

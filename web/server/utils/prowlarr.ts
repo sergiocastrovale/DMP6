@@ -1,15 +1,9 @@
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
-import type { TorrentResult } from '~/types/download'
+import type { TorrentResult, ProwlarrConfig, ProwlarrRelease } from '~/types/download'
 
 // Prowlarr is the *arr Torznab indexer proxy (the same instance Lidarr uses). RuTracker has no public
 // API, so we search it through Prowlarr's normalized search endpoint and let qBittorrent fetch the
 // torrent. The RT login lives in Prowlarr, not here — dmp only needs Prowlarr's URL + API key.
-
-interface ProwlarrConfig {
-  url: string
-  apiKey: string
-  indexerId: string
-}
 
 let configCache: (ProwlarrConfig & { cachedAt: number }) | null = null
 const CACHE_TTL = 60_000
@@ -86,19 +80,6 @@ const guessFormat = (title: string): string => {
   if (/\b(flac|lossless|ape|wav|alac)\b/.test(t)) {return 'FLAC'}
   if (/\b(mp3|320|256|cbr|vbr|v0)\b/.test(t)) {return 'MP3'}
   return 'Unknown'
-}
-
-interface ProwlarrRelease {
-  title?: string
-  size?: number
-  seeders?: number
-  leechers?: number
-  downloadUrl?: string
-  magnetUrl?: string
-  guid?: string
-  infoHash?: string
-  indexer?: string
-  protocol?: string
 }
 
 /**

@@ -1,20 +1,4 @@
-export interface MediaSessionControls {
-  isPlaying: () => boolean
-  currentTime: () => number
-  duration: () => number
-  play: () => void
-  pause: () => void
-  next: () => void
-  previous: () => void
-  seek: (time: number) => void
-}
-
-export interface MediaSessionTrackMeta {
-  title: string
-  artist: string
-  album: string
-  artwork: string | null
-}
+import type { MediaSessionControls, MediaSessionTrackMeta } from '~/types/player'
 
 const POSITION_THROTTLE_MS = 1000
 

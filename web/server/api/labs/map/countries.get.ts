@@ -1,14 +1,7 @@
 import { cachedResponse } from '~/server/utils/cache'
 import { COUNTRY_NAMES } from '~/server/utils/countries'
 import { verifyImage } from '~/server/utils/images'
-import type { MapCountry } from '~/types/labs'
-
-interface CountryRow {
-  country: string
-  artist_count: string
-  images: string[] | null
-  image_urls: string[] | null
-}
+import type { MapCountry, CountryRow } from '~/types/labs'
 
 export default defineEventHandler(async (event) => {
   if (!event.context.user) {

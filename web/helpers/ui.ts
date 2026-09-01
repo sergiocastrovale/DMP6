@@ -3,25 +3,14 @@
 // new builds it from utilities in place, and only gets promoted here once it repeats a second
 // time (see docs/design_system.md). Never redefine a recipe locally; extend with cx().
 
+import type { ButtonVariant, ButtonSize, Tone, ToggleKey, ButtonVariantSpec, ToggleSpec } from '~/types/ui'
+
 export const cx = (...classes: Array<string | false | null | undefined>): string =>
   classes.filter(Boolean).join(' ')
 
 // The system's icon weight (lucide-vue-next defaults to 2). Pass to every Lucide icon so the
 // whole app reads as one stroke weight instead of whatever each call site happened to leave.
 export const ICON_STROKE_WIDTH = 1.6
-
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'ghost'
-export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl'
-export type Tone = 'accent' | 'success' | 'warning' | 'danger' | 'info' | 'muted'
-export type ToggleKey = 'tab' | 'chip' | 'keyChip' | 'switchBtn' | 'countPill' | 'underTab'
-
-interface ButtonVariantSpec {
-  // Shape only - never a colour, so it can sit next to either `idle` or `on` below it.
-  structural: string
-  idle: string
-  // Only variants that are ever used as a toggle (filter/toolbar buttons) define this.
-  on?: string
-}
 
 const BUTTON_BASE = 'inline-flex items-center justify-center gap-2 font-sans whitespace-nowrap cursor-pointer transition-colors duration-150 disabled:opacity-40 disabled:cursor-default'
 
@@ -97,12 +86,6 @@ export const iconButton = 'grid place-items-center rounded-md bg-transparent bor
 // Shared wrapper for a segmented control (radio group, view-mode switch): a bordered pill
 // holding tightly-packed toggle buttons.
 export const segmentGroup = 'inline-flex items-center gap-0.5 rounded-md border border-stone-100/10 bg-stone-900 p-0.5'
-
-interface ToggleSpec {
-  base: string
-  idle: string
-  on: string
-}
 
 // Non-button toggles (pill tabs, filter chips, letter keys, segmented switches, count badges,
 // underline tabs). Same idle/on-replaces-idle contract as the button recipe above.

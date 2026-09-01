@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { artistScanFolders, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks, type DlStatusValue } from '../../helpers/artistPageLogic'
+import { artistScanFolders, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
+import type { DlStatusValue } from '../../types/download'
 
 const release = (overrides: Partial<UnifiedRelease> = {}): UnifiedRelease => ({
   id: 'r1', title: 'Album', year: 2020, type: 'Album', typeSlug: 'album',

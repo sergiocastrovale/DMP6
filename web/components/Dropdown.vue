@@ -1,13 +1,8 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
+import type { DropdownOption } from '~/types/ui'
 import { ChevronDown } from 'lucide-vue-next'
 import { cx, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
-
-interface DropdownOption {
-  value: string
-  label: string
-  classes?: string
-}
 
 const props = withDefaults(defineProps<{
   options: DropdownOption[]

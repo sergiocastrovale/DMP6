@@ -2,7 +2,7 @@
 // theme.test.ts can verify the colour ramps in assets/css/theme.css actually meet contrast
 // requirements, instead of trusting the numbers by eye.
 
-export type Rgb = [number, number, number]
+import type { Rgb } from '../../types/common'
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n))
 

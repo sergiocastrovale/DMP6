@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { cx, ICON_STROKE_WIDTH, toneBg, type Tone } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, toneBg } from '~/helpers/ui'
+import type { Tone } from '~/types/ui'
 
 withDefaults(defineProps<{
   tone?: Tone

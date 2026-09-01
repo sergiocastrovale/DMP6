@@ -2,16 +2,7 @@
 // browser (PWA) or inside the native WebView, so every call is guarded: in a plain browser
 // window.Capacitor is undefined and these are no-ops. Inside the Android WebView the custom
 // ForegroundService plugin keeps audio alive while backgrounded (see docs/pwa_capacitor_android.md).
-
-interface ForegroundServicePlugin {
-  start: (options?: { title?: string }) => Promise<void>
-  stop: () => Promise<void>
-}
-
-interface CapacitorGlobal {
-  isNativePlatform?: () => boolean
-  Plugins?: { ForegroundService?: ForegroundServicePlugin }
-}
+import type { ForegroundServicePlugin, CapacitorGlobal } from '~/types/player'
 
 const capacitor = (): CapacitorGlobal | undefined => {
   if (typeof window === 'undefined') {

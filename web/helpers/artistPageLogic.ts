@@ -1,18 +1,9 @@
 // Pure logic extracted from composables/useArtistPage.ts so the download-status merge/filter/dedup
 // rules are directly unit-testable without booting useFetch/Nuxt lifecycle.
 import type { UnifiedRelease } from '~/types/release'
-import type { DownloadedReleaseStatus } from '~/types/download'
+import type { DownloadedReleaseStatus, DlStatusValue, DlInFlightItem } from '~/types/download'
 import type { PlayerTrack } from '~/types/player'
 import type { Track } from '~/types/track'
-
-export type DlStatusValue = { status: string, downloadedReleaseId: string, percent: number, bytesTransferred: number, totalBytes: number }
-
-export interface DlInFlightItem {
-  status: DownloadedReleaseStatus
-  percent: number
-  bytesTransferred: number
-  totalBytes: number
-}
 
 // Attach live download status onto whichever release shares its mbReleaseRowId. Releases with no
 // matching in-flight download pass through unchanged.

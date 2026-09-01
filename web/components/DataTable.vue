@@ -1,28 +1,7 @@
 <script setup lang="ts" generic="T extends object">
-import type { Component } from 'vue'
-import type { SortDir } from '~/helpers/functions'
-import type { ButtonVariant } from '~/helpers/ui'
+import type { SortDirection } from '~/types/common'
+import type { DataTableColumn, DataTableBulkAction } from '~/types/ui'
 import { cx, data } from '~/helpers/ui'
-
-export interface DataTableColumn {
-  key: string
-  label: string
-  sortable?: boolean
-  align?: 'left' | 'right'
-  width?: string
-  // Responsive visibility (e.g. `hidden md:table-cell`) - applied to both the header and every
-  // row's cell for this column, since hiding only the cell content would leave an empty <td>
-  // still taking up a column in the table's layout.
-  class?: string
-}
-
-export interface DataTableBulkAction<Row> {
-  key: string
-  label: string
-  icon?: Component
-  variant?: ButtonVariant
-  onClick: (rows: Row[]) => void
-}
 
 const props = withDefaults(defineProps<{
   columns: DataTableColumn[]
@@ -34,7 +13,7 @@ const props = withDefaults(defineProps<{
   loadingRows?: number
   emptyMessage?: string
   emptyHint?: string
-  sort?: { key: string | null, dir: SortDir }
+  sort?: { key: string | null, dir: SortDirection }
   selected?: Set<string | number>
   bulkActions?: DataTableBulkAction<T>[]
 }>(), {

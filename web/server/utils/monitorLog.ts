@@ -1,8 +1,7 @@
 import { appendFile, mkdir, stat, rename } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { MonitorLevel } from '~/types/download'
 import { prisma } from '~/server/utils/prisma'
-
-export type MonitorLevel = 'error' | 'warn' | 'notice'
 
 // Single sink for the whole monitoring workflow (plugin tick, reconcile, top-up, gaps, auto-merge,
 // move/transcode/layout, pause guard). Every line is `[{timestamp}][{type}] {message}` and is both

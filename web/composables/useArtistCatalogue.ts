@@ -1,12 +1,6 @@
 import type { UnifiedRelease, ReleaseGroup } from '~/types/release'
+import type { CatalogueCounts } from '~/types/artist'
 import { statuses } from '~/helpers/constants'
-
-export interface CatalogueCounts {
-  total: number
-  albums: number
-  eps: number
-  singles: number
-}
 
 const countReleases = (releases: UnifiedRelease[]): CatalogueCounts => {
   const counts: CatalogueCounts = { total: 0, albums: 0, eps: 0, singles: 0 }

@@ -1,20 +1,11 @@
-import type { Role } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
+import type { CachedAuthUser } from '~/types/auth'
 
 // Per-request auth middleware hit before this cache: 1 User lookup EVERY request (every audio range
 // chunk, every downloads-page poll tick). This trades a small staleness window (role/email changes,
 // same as settingsCache.ts's precedent) for cutting that to ~once per 30s per active user. Anything
 // security-sensitive (password change, logout/session-revoke, user delete) explicitly invalidates
 // instead of waiting out the TTL - see invalidateAuthUserCache callers.
-export interface CachedAuthUser {
-  id: number
-  username: string
-  email: string
-  role: Role
-  mustChangePassword: boolean
-  passwordHash: string
-  tokenVersion: number
-}
 
 const CACHE_TTL = 30_000
 

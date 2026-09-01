@@ -2,8 +2,9 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdir, readdir, rename, unlink, rm, rmdir, access } from 'node:fs/promises'
 import { join, basename, dirname, relative, sep } from 'node:path'
-import { Prisma, type DownloadSource } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
+import type { MergeRow } from '~/types/download'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getSlskdActiveDownloads, cancelSlskdDownload } from '~/server/utils/slskd'
@@ -107,19 +108,6 @@ export async function moveToReady(id: string): Promise<void> {
   const dest = join(downloadsReadyPath, relUnder(downloadsPath, row.stagingPath))
   await moveDir(row.stagingPath, dest)
   await prisma.downloadedRelease.update({ where: { id }, data: { status: 'READY', stagingPath: dest } })
-}
-
-type MergeRow = {
-  id: string
-  title: string
-  stagingPath: string | null
-  mbReleaseId: string | null
-  releaseGroupId: string | null
-  attempts: number
-  priority: number
-  source: DownloadSource
-  artistId: string | null
-  artist: { name: string } | null
 }
 
 // Trailing disc subfolder (cd1 / disc 2 / disk3) — LocalRelease.folderPath is the rel path with this stripped.

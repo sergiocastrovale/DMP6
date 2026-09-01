@@ -1,14 +1,13 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import type { FixableIssueType as IssueType } from '~/types/issues'
 
 const MODEL_MAP = {
   corrupted: 'issueCorruptedTpe2',
   orphans: 'issueOrphanArtist',
   duplicates: 'issueDuplicateArtist',
   missing: 'issueMissingMetadata',
-} as const
-
-type IssueType = keyof typeof MODEL_MAP
+} as const satisfies Record<IssueType, string>
 
 const ALLOWED_FIELDS: Record<IssueType, string[]> = {
   corrupted: ['proposedValue'],

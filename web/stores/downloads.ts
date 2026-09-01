@@ -1,10 +1,7 @@
 import { defineStore } from 'pinia'
 import { useSettingsStore } from '~/stores/settings'
 import { useTerminalStore } from '~/stores/terminal'
-import type { ActiveDownload, DownloadSourceStatus, DownloadSourceConfigItem, DownloadedReleaseItem, Acquisition, SongkongHealth } from '~/types/download'
-
-type MergeStep = 'moving' | 'indexing' | 'syncing'
-type MergeProgressMap = Record<string, { step: MergeStep; title: string }>
+import type { ActiveDownload, DownloadSourceStatus, DownloadSourceConfigItem, DownloadedReleaseItem, Acquisition, SongkongHealth, MergeStep, MergeProgressMap } from '~/types/download'
 
 const MERGE_STEPS: MergeStep[] = ['moving', 'indexing', 'syncing']
 const MERGE_STEP_LABELS: Record<MergeStep, (title: string) => string> = {

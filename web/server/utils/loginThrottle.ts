@@ -1,7 +1,7 @@
-// In-memory per-(username+IP) login throttle. Personal single-instance app — no Redis needed.
-type Entry = { failures: number; lockedUntil: number }
+import type { LoginThrottleEntry } from '~/types/auth'
 
-const attempts = new Map<string, Entry>()
+// In-memory per-(username+IP) login throttle. Personal single-instance app — no Redis needed.
+const attempts = new Map<string, LoginThrottleEntry>()
 
 const MAX_FREE_ATTEMPTS = 5
 const BASE_DELAY_MS = 1000

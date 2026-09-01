@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Release } from '~/types/release'
 import type { PlaylistSummary } from '~/types/playlist'
+import type { DashboardSection } from '~/types/common'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
 
 useTitle('Dashboard')
@@ -8,11 +9,7 @@ useTitle('Dashboard')
 const { releaseImage } = useImageUrl()
 const loading = ref(true)
 
-type Section =
-  | { title: string, type: 'release', items: Ref<Release[]> }
-  | { title: string, type: 'playlist', items: Ref<PlaylistSummary[]> }
-
-const sections: Section[] = [
+const sections: DashboardSection[] = [
   { title: 'Latest Additions', type: 'release', items: ref([]) },
   { title: 'Recently Played', type: 'release', items: ref([]) },
   { title: 'Your Playlists', type: 'playlist', items: ref([]) },

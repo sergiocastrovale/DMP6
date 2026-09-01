@@ -1,9 +1,9 @@
+import type { TrackCandidate, ExploreParams } from '~/types/player'
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import {
   scoreTrack, weightedRandomPick,
   getPoolCacheKey, getCachedPool, setCachedPool, removeFromPool,
-  type TrackCandidate, type ExploreParams,
 } from '~/server/utils/explore'
 
 export default defineEventHandler(async (event) => {

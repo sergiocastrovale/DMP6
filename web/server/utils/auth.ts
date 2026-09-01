@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { SESSION_MAX_AGE_SECONDS } from '~/helpers/constants'
 import { prisma } from '~/server/utils/prisma'
 import { invalidateAuthUserCache } from '~/server/utils/userCache'
+import type { SessionTokenPayload as Payload } from '~/types/auth'
 
 const TTL = SESSION_MAX_AGE_SECONDS * 1000
 
@@ -11,7 +12,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
 
 const SECRET = process.env.SESSION_SECRET ?? 'dmp-insecure-dev-secret'
 
-type Payload = { userId: number; exp: number; ph: string; tv: number }
+
 
 const phash = (passwordHash: string): string =>
   createHmac('sha256', SECRET).update(passwordHash).digest('hex').slice(0, 16)

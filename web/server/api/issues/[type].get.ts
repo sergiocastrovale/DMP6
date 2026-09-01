@@ -2,9 +2,9 @@ import { prisma } from '~/server/utils/prisma'
 import { parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
 import type { PaginatedResponse } from '~/types/api'
+import type { IssueType } from '~/types/issues'
 
-const VALID_TYPES = ['corrupted', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id'] as const
-type IssueType = typeof VALID_TYPES[number]
+const VALID_TYPES: readonly IssueType[] = ['corrupted', 'orphans', 'duplicates', 'missing', 'enrichment', 'duplicate-release', 'mismatched-release-id']
 
 const VALID_STATUSES = ['DETECTED', 'PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'] as const
 

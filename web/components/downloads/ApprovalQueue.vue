@@ -2,7 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { X, Loader2, AlertCircle, AlertTriangle, Ban, RotateCw, Info, FolderInput, SearchX, FileX, Undo2 } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
-import type { SortDir } from '~/helpers/functions'
+import type { SortDirection } from '~/types/common'
 import { formatDate, sortItems } from '~/helpers/functions'
 import { toneText, surface, cx, typography, ICON_STROKE_WIDTH, data } from '~/helpers/ui'
 
@@ -38,7 +38,7 @@ const emit = defineEmits<{
 
 // Client-side column sort (the queue is fully loaded in the store, so no server round-trip needed).
 const sortKey = ref<string | null>(null)
-const sortDir = ref<SortDir>('asc')
+const sortDir = ref<SortDirection>('asc')
 
 const sortAccessors: Record<string, (i: DownloadedReleaseItem) => string | number | null | undefined> = {
   artist: i => i.artist,

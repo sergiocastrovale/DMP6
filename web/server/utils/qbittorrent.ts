@@ -1,15 +1,10 @@
+import type { QbitConfig, QbitTorrentInfo, QbitFile } from '~/types/download'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 
 // qBittorrent WebUI API (v2) client. Mirrors the slskd client pattern: a small cached session (here a
 // SID cookie from /auth/login) + a typed fetch wrapper. Used to add torrents PAUSED (so we can inspect
 // the file tree before downloading), selectively download only the folders we want, poll progress, and
 // delete the torrent + its data the moment it's no longer needed.
-
-interface QbitConfig {
-  url: string
-  user: string
-  pass: string
-}
 
 let cookie: string | null = null
 let cookieAt = 0
@@ -87,17 +82,6 @@ export async function checkQbittorrentConnection(): Promise<{ ok: boolean; error
   }
 }
 
-export interface QbitTorrentInfo {
-  hash: string
-  name: string
-  state: string
-  progress: number // 0..1
-  size: number
-  completed: number
-  downloaded: number
-  tags: string
-}
-
 async function torrentsInfo(query: string): Promise<QbitTorrentInfo[]> {
   const res = await qbitFetch(`/torrents/info?${query}`)
   const data = (await res.json().catch(() => [])) as any[]
@@ -140,13 +124,6 @@ export async function addTorrentPaused(urlOrMagnet: string, savePath: string, ta
   throw createError({ statusCode: 504, message: 'qBittorrent did not register the torrent within 30s' })
 }
 
-export interface QbitFile {
-  index: number
-  name: string // path within the torrent
-  size: number
-  progress: number // 0..1
-  priority: number
-}
 
 export async function getTorrentFiles(hash: string): Promise<QbitFile[]> {
   const res = await qbitFetch(`/torrents/files?hash=${hash}`)

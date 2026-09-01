@@ -1,6 +1,4 @@
-export type ParsedIntField =
-  | { ok: true, value: number | null | undefined }
-  | { ok: false }
+import type { ParsedIntField } from '~/types/api'
 
 /**
  * Parses a nullable/optional integer settings field from a PUT body.

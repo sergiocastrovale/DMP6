@@ -1,19 +1,11 @@
 <script setup lang="ts">
 import { CircleHelp } from 'lucide-vue-next'
-import type { EnrichmentField } from '~/types/issues'
-import { surface, type Tone } from '~/helpers/ui'
+import type { EnrichmentField, EnrichmentFieldConfig } from '~/types/issues'
+import { surface } from '~/helpers/ui'
 
 const props = defineProps<{ field: EnrichmentField }>()
 
-type FieldConfig = {
-  label: string
-  tone: Tone
-  extraClass?: string
-  fixable: boolean
-  help?: string
-}
-
-const CONFIG: Record<EnrichmentField, FieldConfig> = {
+const CONFIG: Record<EnrichmentField, EnrichmentFieldConfig> = {
   mbRelease: {
     label: 'MB unlinked',
     tone: 'accent',

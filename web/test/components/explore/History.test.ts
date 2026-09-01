@@ -1,17 +1,15 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
-import type { DOMWrapper } from '@vue/test-utils'
 import History from '../../../components/explore/History.vue'
 import { EXPLORE_HISTORY_PAGE_SIZE } from '../../../helpers/constants'
+import type { TestButtons } from '../../../types/common'
 
 const tracks = (count: number) => Array.from({ length: count }, (_, i) => ({
   id: `t${i}`, title: `Track ${i}`, artist: 'Artist', album: 'Album', duration: 200,
   artistSlug: 'artist', releaseImage: null, releaseImageUrl: null, localReleaseId: 'r1',
 })) as any
 
-type Buttons = DOMWrapper<HTMLButtonElement>[]
-
-const rows = (wrapper: { findAll: (selector: string) => Buttons }): Buttons =>
+const rows = (wrapper: { findAll: (selector: string) => TestButtons }): TestButtons =>
   wrapper.findAll('button').filter(b => b.text().includes('Track'))
 
 describe('explore/History.vue', () => {

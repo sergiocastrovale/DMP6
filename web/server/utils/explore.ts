@@ -1,3 +1,5 @@
+import type { EnergyConfig, ExploreGenreSignals, TrackCandidate, ExploreParams, ScoredTrack, CachedPool } from '~/types/player'
+
 // Genre → Energy score (0-100). Used as fallback when BPM/mood tags are missing.
 const GENRE_ENERGY_MAP: Record<string, number> = {
   // Very low (0-20)
@@ -64,12 +66,6 @@ const GENRE_ACOUSTIC_MAP: Record<string, number> = {
 
 // Energy slider configs: [bpmMin, bpmMax, moodTargets]
 // Mood targets: { dimension: targetValue (0-99) }
-interface EnergyConfig {
-  bpmMin: number
-  bpmMax: number
-  moods: Partial<Record<string, number>>
-}
-
 const ENERGY_CONFIGS: EnergyConfig[] = [
   // 0: Sleepy
   { bpmMin: 60, bpmMax: 85, moods: { MOOD_RELAXED: 90, MOOD_SAD: 30, MOOD_HAPPY: 10, MOOD_AGGRESSIVE: 0, MOOD_PARTY: 0 } },
@@ -182,48 +178,13 @@ function getBpm(meta: Record<string, string | number> | null): number | null {
 }
 
 // Pre-computed genre signals passed to sub-scorers to prevent double-counting
-interface GenreSignals {
-  energy: number | null // 0-100
-  acoustic: number | null // 0-100 (0=acoustic, 100=electronic)
-}
-
-export interface TrackCandidate {
-  id: string
-  title: string | null
-  artist: string | null
-  album: string | null
-  duration: number | null
-  year: number | null
-  genre: string | null
-  playCount: number
-  lastPlayedAt: Date | null
-  metadata: Record<string, unknown> | null
-  localReleaseId: string | null
-  localRelease: {
-    image: string | null
-    imageUrl: string | null
-    artists: { artist: { slug: string } }[]
-  } | null
-}
-
-export interface ExploreParams {
-  energy: number
-  era: number
-  familiarity: number
-  sound: number
-}
-
-interface ScoredTrack {
-  track: TrackCandidate
-  score: number
-}
 
 export function scoreTrack(track: TrackCandidate, params: ExploreParams): number {
   const meta = track.metadata as Record<string, string | number> | null
   const genreTokens = track.genre ? tokenizeGenre(track.genre) : []
 
   // Pre-compute genre signals once to avoid double-counting in energy + sound
-  const genreSignals: GenreSignals = {
+  const genreSignals: ExploreGenreSignals = {
     energy: lookupGenre(genreTokens, GENRE_ENERGY_MAP),
     acoustic: lookupGenre(genreTokens, GENRE_ACOUSTIC_MAP),
   }
@@ -236,7 +197,7 @@ export function scoreTrack(track: TrackCandidate, params: ExploreParams): number
   return (energyScore * 0.40) + (eraScore * 0.20) + (familiarityScore * 0.20) + (soundScore * 0.20)
 }
 
-function scoreEnergy(meta: Record<string, string | number> | null, genre: GenreSignals, slider: number): number {
+function scoreEnergy(meta: Record<string, string | number> | null, genre: ExploreGenreSignals, slider: number): number {
   const config = ENERGY_CONFIGS[slider]!
   const bpm = getBpm(meta)
   const hasMood = hasMoodData(meta)
@@ -319,7 +280,7 @@ function scoreFamiliarity(playCount: number, lastPlayedAt: Date | null, slider: 
   return 1 - distance
 }
 
-function scoreSound(meta: Record<string, string | number> | null, genre: GenreSignals, slider: number): number {
+function scoreSound(meta: Record<string, string | number> | null, genre: ExploreGenreSignals, slider: number): number {
   const [targetAcoustic, targetElectronic] = SOUND_CONFIGS[slider]!
   const hasAcousticMood = getMeta(meta, 'MOOD_ACOUSTIC') !== undefined
 
@@ -354,11 +315,6 @@ function scoreSound(meta: Record<string, string | number> | null, genre: GenreSi
 // In-memory candidate pool cache
 // Keyed by slider params, avoids re-querying 500 rows per song transition
 // ---------------------------------------------------------------------------
-
-export interface CachedPool {
-  candidates: TrackCandidate[]
-  createdAt: number
-}
 
 const POOL_TTL = 5 * 60 * 1000 // 5 minutes
 const poolCache = new Map<string, CachedPool>()

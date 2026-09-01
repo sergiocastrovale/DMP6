@@ -1,11 +1,6 @@
 import { defineStore } from 'pinia'
-import type { MosaicItem } from '~/types/labs'
+import type { MosaicItem, MosaicProgress } from '~/types/labs'
 import { parseSseEvents } from '~/helpers/sse'
-
-interface MosaicProgress {
-  current: number
-  total: number
-}
 
 export const useMosaicStore = defineStore('mosaic', () => {
   const isGenerating = ref(false)
