@@ -60,7 +60,7 @@ const disconnect = async () => {
 </script>
 
 <template>
-  <div class="flex w-full max-w-5xl flex-col gap-6">
+  <div class="flex w-full max-w-7xl flex-col gap-6">
     <UiCard title="Last.fm Scrobbling">
       <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
         <CheckCircle2 :size="18" class="text-success shrink-0" />

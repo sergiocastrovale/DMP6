@@ -46,7 +46,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
 </script>
 
 <template>
-  <div class="flex w-full max-w-5xl flex-col gap-6">
+  <div class="flex w-full max-w-7xl flex-col gap-6">
     <UiCard title="Download Settings">
       <SettingsField
         v-model="form.downloadsPath"

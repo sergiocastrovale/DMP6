@@ -64,7 +64,7 @@ const permLabel = (p: string) => {
 </script>
 
 <template>
-  <div class="flex w-full max-w-5xl flex-col gap-6">
+  <div class="flex w-full max-w-7xl flex-col gap-6">
     <UiCard title="Role Permissions">
       <SlimTable>
         <SlimTableHeader>

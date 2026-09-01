@@ -88,7 +88,7 @@ const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 
 </script>
 
 <template>
-  <div class="flex w-full max-w-5xl flex-col gap-6">
+  <div class="flex w-full max-w-7xl flex-col gap-6">
     <UiCard title="Users">
       <template #actions>
         <UiButton size="sm" :icon="Plus" @click="showCreate = !showCreate">

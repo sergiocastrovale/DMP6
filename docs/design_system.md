@@ -19,6 +19,13 @@ each `50`→`950`) plus six semantic aliases that name a decision rather than a 
 `on-accent`, `success`, `warning`, `danger`, `info`. Also the type scale (`--text-2xs`…
 `--text-4xl`), radii (`--radius-sm`…`2xl`) and elevation (`--shadow-md/lg/xl/accent`).
 
+Plus one layout token: `--container-7xl: 80rem`, the standard page column. Every shell that caps its
+width — `components/TabShell.vue` (issues/downloads/labs/statistics), `components/settings/Shell.vue`
+and each settings form, `components/explore/Shell.vue` — uses `max-w-7xl`; nothing uses `5xl`/`6xl` any
+more. Explore's fullscreen mode used to widen the column from `5xl` to `6xl`; with `7xl` as the base
+that swap would have made fullscreen *narrower*, so the width is now constant and fullscreen is purely
+about hiding chrome.
+
 `static` matters: it forces every token to also exist as a real custom property at runtime, so
 `getComputedStyle` reads `var(--color-amber-400)` correctly from the non-Tailwind rendering
 surfaces in the app — Leaflet (`pages/labs/map.vue`), d3 (`genome.vue`, `network.vue`) and

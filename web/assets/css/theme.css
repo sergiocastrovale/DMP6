@@ -112,6 +112,11 @@
   --text-6xl: 64px;
   --text-6xl--line-height: 1.2;  
 
+  /* content widths — the page column. 7xl is the standard shell width (settings, tab shells,
+     explore); Tailwind ships the rest of the scale, this one is named here because it is a layout
+     decision the app makes, not a default it inherits. */
+  --container-7xl: 80rem;
+
   /* radii */
   --radius-sm: 6px;
   --radius-md: 9px;

@@ -91,10 +91,7 @@ onBeforeUnmount(() => {
   <!-- Left-aligned and wide, like every other page: the reference puts the Explore title at the same
        x as Browse's and Statistics', and gives the dial card most of the content width. Centring it
        in a narrow column made the four sliders read as a modal rather than the page's content. -->
-  <div
-    class="mx-auto flex w-full flex-col gap-6 pb-24"
-    :class="isFullscreen ? 'max-w-6xl' : 'max-w-5xl'"
-  >
+  <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 pb-24">
     <PageTitle
       text="Explore"
       subtext="Tell us the mood, we pick a track from your library."
