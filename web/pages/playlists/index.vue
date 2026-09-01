@@ -39,7 +39,7 @@ onMounted(() => loadPlaylists())
   <div class="flex flex-col gap-6">
     <PageTitle text="Playlists" subtext="Your custom playlists">
       <div class="flex items-center gap-2">
-        <UiButtonGeneratePlaylists v-if="isAdmin" />
+        <PlaylistButtonGeneratePlaylists v-if="isAdmin" />
         <UiButton v-if="canCrud" :icon="LucidePlus" @click="showCreate = true">
           New Playlist
         </UiButton>

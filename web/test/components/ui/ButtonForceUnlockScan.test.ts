@@ -1,9 +1,9 @@
-import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ButtonForceUnlockScan from '../../../components/ui/ButtonForceUnlockScan.vue'
 
 const fetchMock = vi.fn().mockResolvedValue(undefined)
-mockNuxtImport('$fetch', () => fetchMock)
+vi.stubGlobal('$fetch', fetchMock)
 
 describe('ui/ButtonForceUnlockScan.vue', () => {
   afterEach(() => vi.clearAllMocks())
