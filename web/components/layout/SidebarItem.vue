@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, nav } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   to?: string
@@ -28,8 +28,8 @@ const formatCount = (n: number) => n.toLocaleString()
 const tag = computed(() => (props.to ? resolveComponent('NuxtLink') : 'button'))
 
 const itemClass = computed(() => cx(
-  'relative flex items-center gap-3 rounded-md px-3 py-2.5 text-lg font-normal whitespace-nowrap transition-colors duration-150',
-  props.active ? 'bg-amber-400/20 text-amber-400 font-medium' : 'text-stone-100/60 hover:bg-stone-800 hover:text-stone-100',
+  nav.base,
+  props.active ? nav.active : nav.idle,
   props.collapsed && 'justify-center px-0',
 ))
 </script>

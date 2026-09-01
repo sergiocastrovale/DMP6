@@ -45,13 +45,14 @@ block:
 
 - `animate-highlight-flash` / `animate-spin-slow` — shared animation utilities.
 - `genre-border` — the animated conic-gradient border for genre/region playlists. One
-  definition shared by every playlist tile and the playlist detail page's hero cover.
+  definition shared by every playlist tile and the playlist detail page's hero cover. These
+  three are the only `@utility` rules in the file — the player bar's amber glow + pinstripe
+  texture (`components/player/AudioPlayer.vue`) and Explore's now-playing card texture are
+  layered `bg-[repeating-linear-gradient(...)]`/`bg-[radial-gradient(...)]` arbitrary-value
+  utilities written inline at their one call site each, not promoted here — see the promotion
+  rule above.
 - `.leaflet-container` / `.leaflet-control-zoom a` — Leaflet doesn't take Tailwind classes, so
   its chrome is themed globally here instead of per-page.
-- `player-bar-texture` — the persistent player bar's amber glow + pinstripe background
-  (`components/player/AudioPlayer.vue`). Layered `repeating-linear-gradient` +
-  `radial-gradient` behind a flat ground colour; no single Tailwind utility expresses a layered
-  background, so it's one rule instead of stacked wrapper divs.
 - A `prefers-reduced-motion: reduce` block that neutralises transitions/animations app-wide.
 
 **Zero `<style>` blocks exist anywhere in `web/components/**` or `web/pages/**`** (grep-verified,
@@ -76,17 +77,20 @@ patterns that repeat in this app get a recipe; a one-off stays inline utilities 
 site and only gets promoted here the second time it repeats.
 
 - `cx(...)` — joins truthy class fragments.
-- `button(variant, size, extra, on)` — every `<button>` in the app. Variants
-  `primary | secondary | quiet | danger | ghost`, sizes `sm 30px | md 34px | lg 40px`.
+- `button(variant, size, extra, on, iconOnly)` — every `<button>` in the app. Variants
+  `primary | secondary | quiet | danger | ghost`, sizes `sm 30px | md 34px | lg 40px | xl 60px`
+  (`xl` is the TV/cinema-mode Explore size). `iconOnly` swaps the text-mode height/padding for a
+  square, never both at once — see `BUTTON_ICON_ONLY_SIZE`'s comment in `helpers/ui.ts`.
 - `sw(key, on)` — the same idle/on pattern for non-button toggles (`tab`, `chip`, `keyChip`,
   `switchBtn`, `countPill`, `underTab`).
 - `toneText` / `toneBg` / `toneFill` — the one status/severity→colour map (`accent`, `success`,
   `warning`, `danger`, `info`, `muted`). Consumed by `helpers/constants.ts`'s `statuses[]` and
   `scoreRanges[]` — see the next stage of the overhaul for where those retire their duplicates.
 - `surface`, `form`, `nav`, `data`, `grid`, `tile`, `typography`, `layout` — smaller namespaces
-  for cards, inputs, table cells, catalogue tiles, headings and page chrome.
-- `ui` — a single bundle of all of the above, for `ui.card` / `ui.form.input` call-site
-  ergonomics; the named exports are the source of truth if a component only needs one namespace.
+  for cards, inputs, table cells, catalogue tiles, headings and page chrome. Each is a named
+  export; import the one a component needs (`import { form } from '~/helpers/ui'`) rather than a
+  combined bundle — an earlier `ui.card` / `ui.form.input` bundle export was removed once a grep
+  showed it had zero consumers in app code, only in this file's own test.
 
 **Why `idle`/`on` are never combined with a class-string helper alone:** Tailwind resolves two
 utilities that touch the same CSS property by *stylesheet order*, not by which one appears later
@@ -329,7 +333,7 @@ picks up real behavioural fixes alongside the retokenise:
   button), each independently focusable. Both also gained the click-outside backdrop and Escape
   handling every other dropdown in the app already has, via the same non-immediate-watch pattern.
 - **`components/RadioGroup.vue` and `artist/ListToggle.vue` share one wrapper now**
-  (`ui.segmentGroup`, new) - both are the same bordered-pill-of-toggle-buttons shape, previously
+  (`segmentGroup`, new) - both are the same bordered-pill-of-toggle-buttons shape, previously
   hand-written twice. `ListToggle.vue` (the catalogue grid/list switch) also gained the
   `role="radiogroup"`/`role="radio"` + roving-tabindex contract `RadioGroup.vue` already had, plus
   a real accessible name (`title`/`aria-label`) on each icon-only option - it had neither before.
@@ -366,7 +370,7 @@ The biggest screen, matched against `02-artist.png`. Retokenised throughout
   `ReleaseFilterBar.vue` - is now also a `Dropdown` with `allow-clear="false"`, replacing its own
   hand-rolled trigger+listbox (which had neither Escape nor a click-outside backdrop). Its trigger
   now shows the active sort's label instead of a static "Sort", matching Browse's pattern.
-- **`RadioGroup.vue`/`artist/ListToggle.vue`'s shared wrapper is `ui.segmentGroup`** (introduced
+- **`RadioGroup.vue`/`artist/ListToggle.vue`'s shared wrapper is `segmentGroup`** (introduced
   in Stage 4) - `ListToggle` (the catalogue grid/list switch) picks up the same
   `role="radiogroup"`/roving-tabindex contract, plus `title`/`aria-label` on each icon-only
   option, which it previously had neither of.
@@ -800,10 +804,11 @@ What changed, and the rules that came out of it:
   on — and the bar owns its own Cancel, which is how the four wrappers had drifted apart.
 - **One slider.** `Slider.vue`'s `leftLabel`/`rightLabel`/`stops` are optional, so Labs' thresholds
   use it instead of native `<input type="range">`. With no stops the pill shows the raw value.
-- **A third sanctioned `@utility`**: `explore-card-texture`, beside `player-bar-texture` and
-  `genre-border`. Explore's now-playing card is a full-size transport and gets the transport's
-  treatment; two sub-5% background layers cannot stack as Tailwind utilities without an extra
-  wrapper element.
+- **Explore's now-playing card gets the player bar's texture treatment**: it's a full-size
+  transport, so the same two sub-5% `bg-[repeating-linear-gradient(...)]` /
+  `bg-[radial-gradient(...)]` arbitrary-value layers apply at this call site too - inline, like
+  the player bar's, not a fourth `@utility` (only `animate-highlight-flash`, `animate-spin-slow`
+  and `genre-border` are promoted that far; see "Global CSS" above).
 - **Chrome has three shapes, not two.** `useChrome()` was all-or-nothing (full shell, or Explore's
   cinema mode). `rail()` adds the Labs shape: the shell, with the sidenav narrowed to an icon rail
   and no search topbar. The rail is a flag in `useSidebar` rather than a write to the user's own
@@ -837,6 +842,53 @@ This compresses the text ramp (primary 100, secondary 60, tertiary 55, faintest 
 handoff intended. That is inherent: on a near-black ground, four text tiers cannot all clear 4.5:1
 and stay visibly distinct. If a tier needs to read as fainter than this, it needs a non-text signal
 (size, weight, position) rather than less contrast.
+
+## Post-adoption sweep (Stage 17)
+
+Stages 0-16 built the system and moved every *known* screen onto it. This stage audited actual
+adoption after the fact — grepping call sites against each recipe/component, rather than reading
+the recipes and assuming they were used — and found several were defined, documented, and used
+nowhere: worse than not existing, because the hand-rolled duplicates that should have consumed
+them kept drifting apart with no single source correcting them.
+
+- **`data.th`/`data.td` were unusable as documented.** They bundled header/body font, border and
+  colour — but every real `<th>`/`<td>` sits inside `SlimTableHeader`/`SlimTableRow`, which already
+  own that styling on the `<tr>`. Using the recipes as written would have doubled borders and
+  fonts on every cell, which is exactly why nothing used them. Redefined both as padding-only (the
+  one property actually shared) and routed ~26 hand-rolled cells across `DataTable`, `SortableTh`,
+  `IssueTable` and five settings/downloads tables through them.
+- **`typography.sectionLabel` had drifted from all 26 of its call sites** (`tracking-[0.12em]`/
+  `/60` in the recipe vs. `tracking-[0.1em]`/`/55` everywhere it shipped) — the recipe was the
+  outlier, not the screens; fixed the recipe to match, per "where a screen and a primitive
+  disagree, the screen wins" above.
+- **New primitives** for patterns that had real duplication but no component: `ui/Card.vue`
+  (39 raw copies of `surface.card`'s exact string), `ui/Spinner.vue` + `ui/LoadingBlock.vue` (32
+  hand-rolled spinners, 23 missing `ICON_STROKE_WIDTH`), `ui/Badge.vue` (23 status/role/count
+  pills), `ui/Thumb.vue` (the `tile.art` shape, hand-copied byte-for-byte in two files despite this
+  file's own "never redefine a recipe locally" header), `ui/Banner.vue` (3 status strips, three
+  different border alphas for the same tone), `ui/Select.vue` (the relative-wrapper + chevron
+  pattern, missing the chevron entirely on two `UsersForm.vue` selects), `ui/Skeleton.vue`.
+- **`useDismissable`** (a composable, not a recipe) replaces the open-state/Escape/backdrop-div
+  boilerplate that `Dropdown`, `ButtonDropdown`, `FilterGenre` and `FilterScore` had each
+  copy-pasted — the four stay separate components (dotted-key/generic-option shapes differ enough
+  that a shared base isn't worth it), only the dismiss plumbing moved.
+- **A real bug, not just duplication**: components that built their own `terminal.run()` pairs
+  instead of going through `ui/RefreshButton.vue` shared the terminal store's fixed
+  `dmp-<command>` session with every other caller of that command, so resyncing two different
+  artists at once made the second hit the 409 `hasUnfinishedRun` guard. Extracted the session-name
+  derivation into `scanSessionName()` (`helpers/functions.ts`) so every scoped caller gets it, not
+  just the one component that happened to need it first. Library-wide scan buttons are
+  deliberately left on the single shared session — only one full-library scan should run at a
+  time, which the fixed name already enforces correctly.
+- **The `ui` bundle export was dead** — zero app consumers, only this file's own test. Removed it
+  rather than leave a second dead-on-arrival recipe surface; import the named export a component
+  actually needs (`import { form } from '~/helpers/ui'`).
+- **Doc/code drift**: `player-bar-texture` and `explore-card-texture` were documented as sanctioned
+  `@utility` rules; neither exists — both are inline arbitrary-value Tailwind classes at their one
+  call site, and only `animate-highlight-flash`, `animate-spin-slow` and `genre-border` are
+  actually promoted to `main.css`. `button()`'s documented signature was missing the `iconOnly`
+  param and the `xl` size added for cinema-mode Explore. `ui.segmentGroup` was referenced twice in
+  this doc but was never actually on the bundle object — fixed to the named export, `segmentGroup`.
 
 ## Adding to the system
 

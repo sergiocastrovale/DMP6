@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { button, cx, data, form, grid, layout, nav, sw, surface, tile, toneBg, toneFill, toneText, typography, ui } from '../../helpers/ui'
+import { button, cx, sw, toneBg, toneFill, toneText } from '../../helpers/ui'
 import type { ButtonSize, ButtonVariant, ToggleKey, Tone } from '../../helpers/ui'
 
 const VARIANTS: ButtonVariant[] = ['primary', 'secondary', 'quiet', 'danger', 'ghost']
@@ -111,22 +111,4 @@ describe('tone maps', () => {
     }
   })
 
-  it('bundles the tone maps onto the combined ui export', () => {
-    expect(ui.toneText).toBe(toneText)
-    expect(ui.toneBg).toBe(toneBg)
-    expect(ui.toneFill).toBe(toneFill)
-  })
-})
-
-describe('ui bundle', () => {
-  it('re-exports every namespace used by call sites', () => {
-    expect(ui.card).toBe(surface.card)
-    expect(ui.form).toBe(form)
-    expect(ui.nav).toBe(nav)
-    expect(ui.data).toBe(data)
-    expect(ui.grid).toBe(grid)
-    expect(ui.tile).toBe(tile)
-    expect(ui.typography).toBe(typography)
-    expect(ui.layout).toBe(layout)
-  })
 })

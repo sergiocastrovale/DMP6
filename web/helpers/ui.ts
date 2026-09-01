@@ -139,7 +139,7 @@ const TOGGLE: Record<ToggleKey, ToggleSpec> = {
   },
 }
 
-// sw('tab', active) -> ui.tab base classes + (active ? on : idle)
+// sw('tab', active) -> the 'tab' toggle's base classes + (active ? on : idle)
 export const sw = (key: ToggleKey, on: boolean): string => {
   const spec = TOGGLE[key]
   return cx(spec.base, on ? spec.on : spec.idle)
@@ -206,9 +206,12 @@ export const form = {
   searchInput: 'flex-1 min-w-0 bg-transparent border-0 outline-0 text-stone-100 text-base font-sans placeholder:text-stone-100/50',
 }
 
+// Structural/idle/active kept apart for the same reason as BUTTON_VARIANT above: idle and active
+// both set text colour, so active must replace idle rather than sit next to it.
 export const nav = {
-  item: 'flex items-center gap-3 px-3 py-2.5 rounded-md text-lg font-normal text-stone-100/60 whitespace-nowrap cursor-pointer transition-colors duration-150 hover:bg-stone-800 hover:text-stone-100',
-  itemActive: 'bg-amber-400/20 text-amber-400 font-medium',
+  base: 'relative flex items-center gap-3 rounded-md px-3 py-2.5 text-lg font-normal whitespace-nowrap cursor-pointer transition-colors duration-150',
+  idle: 'text-stone-100/60 hover:bg-stone-800 hover:text-stone-100',
+  active: 'bg-amber-400/20 text-amber-400 font-medium',
 }
 
 export const data = {
@@ -267,23 +270,4 @@ export const layout = {
   pageHead: 'flex items-baseline justify-between gap-4 mb-[22px]',
   toolbar: 'flex items-center gap-2.5 flex-wrap mb-4',
   spacer: 'flex-1 min-w-0',
-}
-
-// Single bundle for call sites that want `ui.card` / `ui.form.input` ergonomics instead of one
-// import per namespace. Named exports above stay the source of truth for anything that imports
-// a single group directly (e.g. `import { form } from '~/helpers/ui'`).
-export const ui = {
-  ...surface,
-  form,
-  nav,
-  data,
-  grid,
-  tile,
-  typography,
-  layout,
-  toneText,
-  toneBg,
-  toneFill,
-  iconButton,
-  outlinePill,
 }
