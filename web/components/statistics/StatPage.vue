@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Loader2 } from 'lucide-vue-next'
+import { ArrowLeft } from 'lucide-vue-next'
 import type { DataTableColumn } from '~/components/DataTable.vue'
 import type { SortDir } from '~/helpers/functions'
 import { typography } from '~/helpers/ui'
@@ -134,8 +134,6 @@ onMounted(() => {
     </DataTable>
 
     <InfiniteScroll @load="loadMore" />
-    <div v-if="loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="loadingMore" size="inline" />
   </div>
 </template>

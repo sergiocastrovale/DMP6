@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Archive, AlertTriangle, CircleAlert, Loader2, Trash2, Undo2 } from 'lucide-vue-next'
+import { Archive, AlertTriangle, CircleAlert, Trash2, Undo2 } from 'lucide-vue-next'
 import type { MonitorEventItem } from '~/composables/useMonitorEvents'
 import { timeAgo } from '~/helpers/functions'
 import { cx, toneText, typography } from '~/helpers/ui'
@@ -120,10 +120,7 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
 
     <Subtabs v-model="sub" :tabs="tabs" />
 
-    <!-- Same spinner shape the Monitoring tab uses, so a loading Events tab reads identically. -->
-    <div v-if="loading" class="flex justify-center py-16">
-      <Loader2 :size="22" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="loading" />
 
     <UiEmptyState
       v-else-if="!visible.length"

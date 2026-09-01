@@ -8,7 +8,7 @@ import {
 } from 'lucide-vue-next'
 import type { ScanStatus } from '~/types/scan'
 import { formatDate, parseProgress } from '~/helpers/functions'
-import { surface, typography } from '~/helpers/ui'
+import { ICON_STROKE_WIDTH, surface, typography } from '~/helpers/ui'
 import { useTerminalStore } from '~/stores/terminal'
 
 const terminal = useTerminalStore()
@@ -126,7 +126,7 @@ onUnmounted(() => {
             class="flex size-10 items-center justify-center rounded-full"
             :class="terminal.isRunning ? 'bg-amber-400/10' : 'bg-success/15'"
           >
-            <Loader2 v-if="terminal.isRunning" :size="20" class="animate-spin text-amber-400" />
+            <Loader2 v-if="terminal.isRunning" :size="20" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-amber-400" />
             <CheckCircle2 v-else :size="20" class="text-success" />
           </div>
           <div>
@@ -152,21 +152,12 @@ onUnmounted(() => {
         </UiButton>
       </div>
 
-      <div v-if="terminal.isRunning && progress" class="mt-4 space-y-2">
-        <div class="flex items-center justify-between text-xs">
-          <span class="text-stone-100/60">
-            {{ progress.phase === 'index' ? 'Indexing' : 'Syncing' }}:
-            <span class="text-stone-100">{{ progress.folder || progress.artist }}</span>
-          </span>
-          <span class="text-stone-100/55">{{ progress.current }} / {{ progress.total }}</span>
-        </div>
-        <div class="h-1.5 w-full rounded-full bg-stone-800">
-          <div
-            class="h-1.5 rounded-full bg-amber-400 transition-all duration-300"
-            :style="{ width: `${Math.min(100, (progress.current / Math.max(1, progress.total)) * 100)}%` }"
-          />
-        </div>
-      </div>
+      <UiLoadingPanel
+        v-if="terminal.isRunning && progress"
+        class="mt-4"
+        :label="`${progress.phase === 'index' ? 'Indexing' : 'Syncing'}: ${progress.folder || progress.artist} (${progress.current} / ${progress.total})`"
+        :percent="Math.min(100, (progress.current / Math.max(1, progress.total)) * 100)"
+      />
 
       <DroppedLinksNotice v-if="!terminal.isRunning" class="mt-4" />
 

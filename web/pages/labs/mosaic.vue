@@ -2,7 +2,7 @@
 import { Grid3x3, Loader2, Download, Eye, Trash2, Play, Square } from 'lucide-vue-next'
 import { formatDate } from '~/helpers/functions'
 import { useMosaicStore } from '~/stores/mosaic'
-import { typography } from '~/helpers/ui'
+import { typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 definePageMeta({ layout: 'labs' })
 
@@ -117,24 +117,14 @@ onMounted(async () => {
             </UiButton>
           </div>
 
-          <div v-if="mosaic.isGenerating && mosaic.progress" class="flex flex-col gap-2">
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-stone-100/60">
-                Building
-                <span class="text-stone-100">({{ mosaic.progress.current }}/{{ mosaic.progress.total }} images processed)</span>
-              </span>
-              <span class="text-stone-100/55 tabular-nums">{{ Math.round(progressPercent) }}%</span>
-            </div>
-            <div class="h-1.5 w-full rounded-full bg-stone-800">
-              <div
-                class="h-1.5 rounded-full bg-amber-400 transition-all duration-300"
-                :style="{ width: `${progressPercent}%` }"
-              />
-            </div>
-          </div>
+          <UiLoadingPanel
+            v-if="mosaic.isGenerating && mosaic.progress"
+            :label="`Building (${mosaic.progress.current}/${mosaic.progress.total} images processed)`"
+            :percent="progressPercent"
+          />
 
           <div v-if="mosaic.isGenerating && !mosaic.progress" class="flex items-center gap-2 text-base text-stone-100/60">
-            <Loader2 :size="14" class="animate-spin text-amber-400" />
+            <Loader2 :size="14" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-amber-400" />
             Starting...
           </div>
 

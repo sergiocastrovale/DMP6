@@ -1,27 +1,21 @@
 <script setup lang="ts">
-type Variant = 'accent' | 'success' | 'violet' | 'danger' | 'neutral'
+import type { Tone } from '~/helpers/ui'
+import { toneFill } from '~/helpers/ui'
+
 type Size = 'sm' | 'md'
 
 const props = withDefaults(defineProps<{
   label?: string
   percent: number
-  variant?: Variant
+  variant?: Tone
   size?: Size
 }>(), {
   variant: 'accent',
   size: 'md',
 })
 
-const VARIANT_FILL: Record<Variant, string> = {
-  accent: 'bg-amber-400',
-  success: 'bg-success',
-  violet: 'bg-info',
-  danger: 'bg-danger',
-  neutral: 'bg-stone-100/30',
-}
-
 const barHeight = computed(() => (props.size === 'sm' ? 'h-1' : 'h-1.5'))
-const clampedPercent = computed(() => Math.max(0, Math.min(100, props.percent)))
+const clampedPercent = computed(() => Math.round(Math.max(0, Math.min(100, props.percent))))
 </script>
 
 <template>
@@ -41,7 +35,7 @@ const clampedPercent = computed(() => Math.max(0, Math.min(100, props.percent)))
     >
       <div
         class="rounded-full transition-[width] duration-300"
-        :class="[barHeight, VARIANT_FILL[variant]]"
+        :class="[barHeight, toneFill[variant]]"
         :style="{ width: `${clampedPercent}%` }"
       />
     </div>

@@ -15,7 +15,7 @@ import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import type { GenomeGraph } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
-import { typography } from '~/helpers/ui'
+import { typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 definePageMeta({ layout: 'labs' })
 
@@ -286,7 +286,7 @@ onUnmounted(() => {
           class="flex h-full items-center justify-center rounded-xl border border-stone-100/6 bg-stone-900"
         >
           <div class="flex items-center gap-2 text-base text-stone-100/60">
-            <Loader2 :size="16" class="animate-spin text-amber-400" />
+            <Loader2 :size="16" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-amber-400" />
             Loading genre data...
           </div>
         </div>

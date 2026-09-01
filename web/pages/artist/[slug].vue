@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Radar, Trash2 } from 'lucide-vue-next'
+import { Radar, Trash2 } from 'lucide-vue-next'
 
 definePageMeta({
   layout: 'default',
@@ -23,9 +23,7 @@ const deleteOpen = ref(false)
 
 <template>
   <div>
-    <div v-if="pending" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="pending" />
     <div v-else-if="error" class="py-20 text-center">
       <p class="text-lg font-medium text-stone-100">Artist not found</p>
       <p class="mt-1 text-sm text-stone-100/60">The artist you're looking for doesn't exist.</p>

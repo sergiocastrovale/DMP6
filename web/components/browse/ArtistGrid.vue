@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Loader2, SearchX } from 'lucide-vue-next'
+import { SearchX } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
 import type { Artist } from '~/types/artist'
-import { grid, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { grid } from '~/helpers/ui'
 
 const store = useBrowseStore()
 const { artistImage } = useImageUrl()
@@ -10,9 +10,7 @@ const { artistImage } = useImageUrl()
 
 <template>
   <div>
-    <div v-if="store.loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="store.loading" />
 
     <UiEmptyState v-else-if="store.artists.length === 0" :icon="SearchX" message="No artists found." hint="Try a different search term or filter." />
 
@@ -31,9 +29,7 @@ const { artistImage } = useImageUrl()
 
     <InfiniteScroll @load="store.loadMore()" />
 
-    <div v-if="store.loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="store.loadingMore" size="inline" />
 
     <div v-if="!store.loading && store.artists.length > 0" class="mt-4 text-center text-xs text-stone-100/55">
       Showing {{ store.artists.length }} of {{ store.total }} artists

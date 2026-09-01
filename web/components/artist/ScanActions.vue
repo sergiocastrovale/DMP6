@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import type { ButtonDropdownOption } from '~/types/ui'
 import { useTerminalStore } from '~/stores/terminal'
 import { visibleArtistScanActions } from '~/helpers/constants'
+import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 const props = defineProps<{
   artistName: string
@@ -54,7 +55,7 @@ const syncOptions = computed<ButtonDropdownOption[]>(() =>
     :disabled="terminal.isRunning"
   >
     <template #icon>
-      <Loader2 v-if="terminal.isRunning" :size="14" class="animate-spin" />
+      <Loader2 v-if="terminal.isRunning" :size="14" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
       <RefreshCw v-else :size="14" />
     </template>
   </ButtonDropdown>

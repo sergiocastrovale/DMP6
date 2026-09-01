@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ReleaseProgress } from '~/types/download'
 import { formatFileSize } from '~/helpers/functions'
+import type { Tone } from '~/helpers/ui'
 
 const props = defineProps<{
   items?: ReleaseProgress[] // aggregate mode: a batch of in-flight releases
@@ -8,15 +9,15 @@ const props = defineProps<{
   status?: string // single mode: one release's status
 }>()
 
-const statusVariant = (status?: string) => ({
+const statusVariant = (status?: string): Tone => ({
   DOWNLOADING: 'accent',
-  ENRICHING: 'violet',
+  ENRICHING: 'info',
   READY: 'success',
   PROMOTED: 'success',
   FAILED: 'danger',
   ABANDONED: 'danger',
-  REJECTED: 'neutral',
-}[status ?? 'DOWNLOADING'] || 'accent') as 'accent' | 'success' | 'violet' | 'danger' | 'neutral'
+  REJECTED: 'muted',
+}[status ?? 'DOWNLOADING'] || 'accent') as Tone
 
 const aggregate = computed(() => props.items != null)
 

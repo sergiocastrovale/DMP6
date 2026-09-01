@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Loader2, Radar, EyeOff, CircleHelp, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
 import type { SortDir } from '~/helpers/functions'
-import { sw, surface, cx } from '~/helpers/ui'
+import { sw, surface, cx, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 interface ArtistRow {
   id: string
@@ -210,9 +210,7 @@ onMounted(() => {
       @cancel="selected = new Set()"
     />
 
-    <div v-if="loading" class="flex justify-center py-16">
-      <Loader2 :size="22" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="loading" />
 
     <UiEmptyState v-else-if="items.length === 0" message="No artists found" />
 
@@ -291,7 +289,7 @@ onMounted(() => {
               <!-- No icon on the settled states: the whole column is these two words, so an icon
                    on only one of them makes the pair look like different controls rather than one
                    toggle's two positions. The spinner is the exception - it is a third state. -->
-              <Loader2 v-if="busyIds.has(artist.id)" :size="13" class="animate-spin" />
+              <Loader2 v-if="busyIds.has(artist.id)" :size="13" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
               {{ artist.monitored ? 'ON' : 'OFF' }}
             </button>
           </td>
@@ -301,9 +299,7 @@ onMounted(() => {
 
     <InfiniteScroll @load="loadMore" />
 
-    <div v-if="loadingMore" class="flex justify-center py-6">
-      <Loader2 :size="20" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="loadingMore" size="inline" />
 
     <ConfirmDialog
       v-model="confirmOpen"

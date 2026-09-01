@@ -12,7 +12,7 @@ import {
 } from 'chart.js'
 import type { DecadeStats } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
-import { surface, sw, typography } from '~/helpers/ui'
+import { surface, sw, typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 Chart.register(RadarController, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
@@ -175,7 +175,7 @@ onUnmounted(() => {
           </p>
 
           <div v-if="status === 'pending'" class="flex items-center gap-2 text-base text-stone-100/60">
-            <Loader2 :size="14" class="animate-spin text-amber-400" />
+            <Loader2 :size="14" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-amber-400" />
             Loading...
           </div>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles, LucideGlobe, LucideX, Loader2 } from 'lucide-vue-next'
+import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles, LucideGlobe, LucideX } from 'lucide-vue-next'
 import type { PlaylistDetail } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
 import { typography, toneBg } from '~/helpers/ui'
@@ -86,9 +86,7 @@ onMounted(() => loadPlaylist())
 
 <template>
   <div class="flex flex-col gap-6">
-    <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="loading" />
 
     <div v-else-if="playlist" class="flex flex-col gap-6">
       <div class="flex flex-col gap-6 sm:flex-row sm:items-start">

@@ -4,7 +4,7 @@ import { X, Loader2, AlertCircle, AlertTriangle, Ban, RotateCw, Info, FolderInpu
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { SortDir } from '~/helpers/functions'
 import { formatDate, sortItems } from '~/helpers/functions'
-import { toneText, surface, cx, typography } from '~/helpers/ui'
+import { toneText, surface, cx, typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 // Friendly source label, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
 const sourceLabel = (s: string) => s === 'RUTRACKER' ? 'RuTracker' : 'Soulseek'
@@ -195,7 +195,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           <Popover v-if="statusNote(it)" trigger="hover">
             <template #trigger>
               <span class="inline-flex cursor-help items-center gap-1.5" :class="statusClass(it.status)">
-                <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" class="animate-spin" />
+                <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
                 <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
                 <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
                 <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />
@@ -211,7 +211,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
             </template>
           </Popover>
           <span v-else class="inline-flex items-center gap-1.5" :class="statusClass(it.status)">
-            <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" class="animate-spin" />
+            <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
             <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
             <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
             <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />

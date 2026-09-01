@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideAlertTriangle, Info, Loader2 } from 'lucide-vue-next'
+import { LucideBarChart3, LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideAlertTriangle, Info } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type { Statistics } from '~/types/stats'
 import { formatNumber, formatPlaytime, formatFileSize, formatDate } from '~/helpers/functions'
@@ -123,9 +123,7 @@ onMounted(() => {
       :subtext="!loading && stats ? `Last scanned: ${formatDate(stats.lastScanEndedAt)}` : undefined"
     />
 
-    <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="loading" />
 
     <template v-else-if="stats">
       <div

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { LucideClock, LucideMusic, Loader2 } from 'lucide-vue-next'
 import type { Decade, DecadeResponse, TimelineRelease } from '~/types/timeline'
-import { grid, sw } from '~/helpers/ui'
+import { grid, ICON_STROKE_WIDTH, sw } from '~/helpers/ui'
 
 const loading = ref(true)
 const decades = ref<Decade[]>([])
@@ -131,9 +131,7 @@ onMounted(() => {
   <div class="flex flex-col gap-6">
     <PageTitle text="Timeline" subtext="Browse your library by decade and year" />
 
-    <div v-if="loading" class="flex items-center justify-center py-20">
-      <Loader2 :size="24" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="loading" />
 
     <template v-else-if="decades.length > 0">
       <div class="flex flex-wrap gap-2">
@@ -169,9 +167,7 @@ onMounted(() => {
         </button>
       </div>
 
-      <div v-if="loadingDecade" class="flex items-center justify-center py-16">
-        <Loader2 :size="24" class="animate-spin text-stone-100/55" />
-      </div>
+      <UiLoadingBlock v-if="loadingDecade" />
 
       <div v-else-if="decadeData" class="mt-6 flex flex-col gap-10 lg:gap-0 lg:relative lg:pl-[11rem]">
         <div class="hidden lg:block absolute left-28 top-1 bottom-0 w-px bg-stone-800" />
@@ -212,7 +208,7 @@ onMounted(() => {
 
         <div v-if="decadeData.hasMore" class="flex items-center justify-center gap-2 py-4">
           <InfiniteScroll margin="200px" @load="loadMore" />
-          <Loader2 v-if="loadingMore" :size="18" class="animate-spin text-stone-100/55" />
+          <Loader2 v-if="loadingMore" :size="18" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-stone-100/55" />
         </div>
 
         <UiEmptyState

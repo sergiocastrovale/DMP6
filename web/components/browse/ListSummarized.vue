@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import type { DataTableColumn } from '~/components/DataTable.vue'
 import type { ArtistListItem } from '~/types/artist'
-import { Loader2 } from 'lucide-vue-next'
 import { getScoreRange } from '~/helpers/constants'
-import { cx, ICON_STROKE_WIDTH, outlinePill, typography } from '~/helpers/ui'
+import { cx, outlinePill, typography } from '~/helpers/ui'
 import { useBrowseStore } from '~/stores/browse'
 
 const store = useBrowseStore()
@@ -92,9 +91,7 @@ const completenessClasses = (artist: ArtistListItem) => {
 
     <InfiniteScroll @load="store.loadMore()" />
 
-    <div v-if="store.loadingMore" class="flex items-center justify-center py-8">
-      <Loader2 :size="20" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-stone-100/55" />
-    </div>
+    <UiLoadingBlock v-if="store.loadingMore" size="inline" />
 
     <div v-if="!store.loading && store.artists.length > 0" class="text-center text-xs text-stone-100/55">
       Showing {{ store.artists.length }} of {{ store.total }} artists

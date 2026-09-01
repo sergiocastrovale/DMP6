@@ -3,6 +3,7 @@ import { Search, RefreshCw, HardDriveDownload, Globe, FileSearch, Loader2 } from
 import type { Component } from 'vue'
 import { useTerminalStore } from '~/stores/terminal'
 import { visibleScanActions } from '~/helpers/constants'
+import { ICON_STROKE_WIDTH } from '~/helpers/ui'
 
 withDefaults(defineProps<{
   disabled?: boolean
@@ -43,7 +44,7 @@ const visibleActions = computed(() => visibleScanActions(isAdmin.value))
       class="flex items-center gap-3 rounded-xl border border-stone-100/6 bg-stone-900 p-4 text-left transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
       @click="globalActions[scan.id]!()"
     >
-      <Loader2 v-if="terminal.isRunning" :size="20" class="shrink-0 animate-spin text-amber-400" />
+      <Loader2 v-if="terminal.isRunning" :size="20" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 animate-spin text-amber-400" />
       <component :is="scanIcons[scan.icon]" v-else :size="20" class="shrink-0 text-amber-400" />
       <div>
         <p class="text-base font-medium text-stone-100">{{ scan.text }}</p>
