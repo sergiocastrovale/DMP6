@@ -7,7 +7,7 @@ import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
 import { scanSessionName } from '~/helpers/functions'
-import { acquireFailureMessage } from '~/helpers/artistPageLogic'
+import { acquireFailureMessage, favoriteTargetId, findBundleParentRelease } from '~/helpers/artistPageLogic'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 
 const props = defineProps<{
@@ -268,10 +268,10 @@ function buildPlayerTracks(tracks: Track[], startTrack: Track) {
 }
 
 async function toggleFavoriteRelease(release: UnifiedRelease) {
-  if (!release.localReleaseId) {
+  const localId = favoriteTargetId(release)
+  if (!localId) {
     return
   }
-  const localId = release.localReleaseId!
   const isFavorite = favoriteReleases.value.has(localId)
   try {
     await $fetch(`/api/favorites/releases/${localId}`, {
@@ -288,6 +288,15 @@ async function toggleFavoriteRelease(release: UnifiedRelease) {
 
 const selectedTrackId = ref<string | null>(null)
 
+async function expandAndScrollTo(release: UnifiedRelease) {
+  const groupKey = release.releaseGroupId || `solo:${release.id}`
+  expandedGroup.value = groupKey
+  expandedEdition.value = release.id
+  await nextTick()
+  document.querySelector(`[data-group-key="${groupKey}"]`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
 async function handleReleaseDeepLink() {
   const targetSlug = route.query.release as string | undefined
   const targetId = route.query.releaseId as string | undefined
@@ -301,14 +310,16 @@ async function handleReleaseDeepLink() {
   if (!release) {
     return
   }
-  await nextTick()
-  const groupKey = release.releaseGroupId || `solo:${release.id}`
-  expandedGroup.value = groupKey
-  expandedEdition.value = release.id
   selectedTrackId.value = (route.query.trackId as string) || null
-  await nextTick()
-  document.querySelector(`[data-group-key="${groupKey}"]`)
-    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  await expandAndScrollTo(release)
+}
+
+async function goToBundleParent(release: UnifiedRelease) {
+  const parent = findBundleParentRelease(props.releases, release)
+  if (!parent) {
+    return
+  }
+  await expandAndScrollTo(parent)
 }
 
 // onMounted (not an immediate watcher) for the initial run: handleReleaseDeepLink ends in
@@ -357,6 +368,7 @@ watch(() => props.releases, () => {
           @toggle-favorite="toggleFavoriteRelease"
           @refresh="refreshRelease"
           @info="openInfoDialog"
+          @go-to-bundle="goToBundleParent"
         />
       </div>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Disc3, Download, DownloadCloud, Eye, FolderInput, Heart, Info, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Disc3, Download, DownloadCloud, Eye, FolderInput, Heart, Info, Layers, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
@@ -37,6 +37,7 @@ const emit = defineEmits<{
   refresh: []
   info: []
   cancel: []
+  goToBundle: []
 }>()
 
 const { releaseImage } = useImageUrl()
@@ -47,7 +48,7 @@ const terminal = useTerminalStore()
 const { merge: mergeNow, busyIds: mergeBusyIds } = useDownloadQueueActions()
 const onMergeNow = () => mergeNow(props.release.downloadedReleaseId!)
 
-const releaseId = computed(() => props.release.localReleaseId || props.release.id)
+const releaseId = computed(() => props.release.localReleaseId || props.release.bundleParentReleaseId || props.release.id)
 const isCurrent = computed(() => isCurrentReleaseId(releaseId.value))
 const isPlaying = computed(() => isReleasePlayingId(releaseId.value))
 const hasPlayable = computed(() => !!props.release.localReleaseId || props.release.localTrackCount > 0)
@@ -114,6 +115,16 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
             {{ release.title }}
           </span>
           <span v-if="subtitle" class="shrink-0 rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60">{{ subtitle }}</span>
+          <button
+            v-if="release.bundleParentReleaseId"
+            type="button"
+            class="flex shrink-0 items-center gap-1 truncate rounded bg-amber-400/10 px-1.5 py-0.5 text-2xs font-medium text-amber-400 transition-colors duration-150 hover:bg-amber-400/20"
+            :title="release.statusReason || 'View the release this is bundled in'"
+            @click.stop="emit('goToBundle')"
+          >
+            <Layers :size="10" :stroke-width="ICON_STROKE_WIDTH" />
+            <span class="truncate">{{ release.statusReason || 'Owned as part of another release' }}</span>
+          </button>
         </div>
         <div class="mt-0.5 flex items-center gap-3 text-xs text-stone-100/60">
           <span v-if="release.type">{{ release.type }}</span>
@@ -221,9 +232,9 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         />
 
         <DataTableAction
-          v-if="release.localReleaseId"
+          v-if="release.localReleaseId || release.bundleParentReleaseId"
           :icon="Heart"
-          label="Toggle favorite"
+          :label="release.localReleaseId ? 'Toggle favorite' : 'Favorite the release this is bundled in'"
           :icon-class="isFavorite ? 'text-amber-400 fill-current' : ''"
           @click.stop="emit('toggleFavorite')"
         />
@@ -236,6 +247,9 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           @click.stop
         />
 
+        <!-- Intentionally not shown for bundle-owned sub-releases (bundleParentReleaseId set, no
+             localReleaseId): there's no separate folder to re-scan, the parent row's own Refresh
+             already covers those files. -->
         <DataTableAction
           v-if="release.localReleaseId"
           :icon="RefreshCw"

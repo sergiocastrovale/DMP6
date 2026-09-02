@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ReleaseGroup, UnifiedRelease } from '~/types/release'
+import { favoriteTargetId } from '~/helpers/artistPageLogic'
 
 const props = defineProps<{
   group: ReleaseGroup
@@ -21,11 +22,13 @@ const emit = defineEmits<{
   refresh: [release: UnifiedRelease]
   info: [release: UnifiedRelease]
   cancel: [release: UnifiedRelease]
+  goToBundle: [release: UnifiedRelease]
 }>()
 
 const isSingle = computed(() => props.group.releases.length === 1)
+const primaryFavoriteTargetId = computed(() => favoriteTargetId(props.group.primary))
 const primaryFavorite = computed(() =>
-  !!props.group.primary.localReleaseId && props.favoriteReleases.has(props.group.primary.localReleaseId))
+  !!primaryFavoriteTargetId.value && props.favoriteReleases.has(primaryFavoriteTargetId.value))
 </script>
 
 <template>
@@ -46,6 +49,7 @@ const primaryFavorite = computed(() =>
       @refresh="emit('refresh', group.primary)"
       @info="emit('info', group.primary)"
       @cancel="emit('cancel', group.primary)"
+      @go-to-bundle="emit('goToBundle', group.primary)"
     />
     <ArtistReleaseGroupMultipleEditions
       v-else
@@ -63,6 +67,7 @@ const primaryFavorite = computed(() =>
       @refresh="emit('refresh', $event)"
       @info="emit('info', $event)"
       @cancel="emit('cancel', $event)"
+      @go-to-bundle="emit('goToBundle', $event)"
     />
   </div>
 </template>

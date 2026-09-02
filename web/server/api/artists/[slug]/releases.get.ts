@@ -49,7 +49,12 @@ export default defineEventHandler(async (event) => {
           status: true,
           statusReason: true,
           type: { select: { name: true, slug: true } },
-          tracks: { select: { id: true } },
+          tracks: {
+            select: {
+              id: true,
+              localTracks: { select: { localReleaseId: true } },
+            },
+          },
         },
       },
     },

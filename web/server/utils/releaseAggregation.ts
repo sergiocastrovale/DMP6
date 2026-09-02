@@ -148,6 +148,12 @@ export function buildLocalAndGapCards(params: {
     if (coveredMbIds.has(mbr.id)) {continue}
     if (!ALLOWED_GAP_TYPES.has(mbr.type.slug)) {continue}
     const gapImg = resolveImage(null, null, 'releases')
+    // Tracks may be individually claimed into another folder's local release without this MB
+    // release ever getting its own LocalRelease row (claim_owned_bundle, see CLAUDE.md) - detect
+    // that via the mbTrackId reverse join so the card can still surface play/favorite/link actions.
+    const linkedTracks = mbr.tracks.flatMap(t => t.localTracks ?? [])
+    const bundleParentReleaseId = linkedTracks.find(t => t.localReleaseId)?.localReleaseId ?? null
+    const linkedTrackCount = mbr.tracks.filter(t => (t.localTracks ?? []).length > 0).length
     cards.push({
       id: mbr.id,
       title: mbr.title,
@@ -168,10 +174,11 @@ export function buildLocalAndGapCards(params: {
       imageUrl: gapImg.imageUrl,
       trackCount: mbr.tracks.length,
       totalPlayCount: 0,
-      localTrackCount: 0,
+      localTrackCount: linkedTrackCount,
       isMusicBrainz: true,
       hasLocal: false,
       localReleaseId: null,
+      bundleParentReleaseId,
       folderPath: null,
       statusReason: mbr.statusReason,
     })

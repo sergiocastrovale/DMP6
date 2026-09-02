@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { ReleaseGroup, UnifiedRelease } from '~/types/release'
+import { favoriteTargetId } from '~/helpers/artistPageLogic'
 import { cx } from '~/helpers/ui'
 
-defineProps<{
+const props = defineProps<{
   group: ReleaseGroup
   slug: string
   expandedEdition: string | null
@@ -20,7 +21,13 @@ const emit = defineEmits<{
   refresh: [edition: UnifiedRelease]
   info: [edition: UnifiedRelease]
   cancel: [edition: UnifiedRelease]
+  goToBundle: [edition: UnifiedRelease]
 }>()
+
+const isEditionFavorite = (edition: UnifiedRelease) => {
+  const target = favoriteTargetId(edition)
+  return !!target && props.favoriteReleases.has(target)
+}
 </script>
 
 <template>
@@ -39,7 +46,7 @@ const emit = defineEmits<{
         :key="edition.id"
         :release="edition"
         :expanded="expandedEdition === edition.id"
-        :is-favorite="!!edition.localReleaseId && favoriteReleases.has(edition.localReleaseId)"
+        :is-favorite="isEditionFavorite(edition)"
         :slug="slug"
         :selected-track-id="expandedEdition === edition.id ? selectedTrackId : null"
         :subtitle="edition.disambiguation || edition.editionLabel"
@@ -52,6 +59,7 @@ const emit = defineEmits<{
         @refresh="emit('refresh', edition)"
         @info="emit('info', edition)"
         @cancel="emit('cancel', edition)"
+        @go-to-bundle="emit('goToBundle', edition)"
       />
     </div>
   </div>

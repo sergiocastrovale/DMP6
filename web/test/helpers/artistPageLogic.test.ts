@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { acquireFailureMessage, artistScanFolders, canRedownload, dedupeLocalFolders, dlPollNeeded, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
+import { acquireFailureMessage, artistScanFolders, canRedownload, dedupeLocalFolders, dlPollNeeded, favoriteTargetId, filterInFlight, findBundleParentRelease, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
 import type { DlStatusValue } from '../../types/download'
@@ -173,6 +173,38 @@ describe('acquireFailureMessage', () => {
 
   it('returns null when the download actually started', () => {
     expect(acquireFailureMessage('DOWNLOADING')).toBeNull()
+  })
+})
+
+describe('favoriteTargetId', () => {
+  it('uses the release\'s own localReleaseId when it has one', () => {
+    expect(favoriteTargetId(release({ localReleaseId: 'lr1', bundleParentReleaseId: null }))).toBe('lr1')
+  })
+
+  it('falls back to bundleParentReleaseId for an owned-bundle sub-release with no LocalRelease of its own', () => {
+    expect(favoriteTargetId(release({ localReleaseId: null, bundleParentReleaseId: 'parent-lr' }))).toBe('parent-lr')
+  })
+
+  it('is null for a plain gap release (neither id set)', () => {
+    expect(favoriteTargetId(release({ localReleaseId: null, bundleParentReleaseId: null }))).toBeNull()
+  })
+})
+
+describe('findBundleParentRelease', () => {
+  it('finds the parent card by matching localReleaseId to bundleParentReleaseId', () => {
+    const parent = release({ id: 'parent', localReleaseId: 'parent-lr' })
+    const sub = release({ id: 'sub', localReleaseId: null, bundleParentReleaseId: 'parent-lr' })
+    expect(findBundleParentRelease([parent, sub], sub)).toBe(parent)
+  })
+
+  it('returns null when the release has no bundleParentReleaseId', () => {
+    const sub = release({ id: 'sub', bundleParentReleaseId: null })
+    expect(findBundleParentRelease([sub], sub)).toBeNull()
+  })
+
+  it('returns null when the parent id points at nothing in the current list', () => {
+    const sub = release({ id: 'sub', localReleaseId: null, bundleParentReleaseId: 'missing-lr' })
+    expect(findBundleParentRelease([sub], sub)).toBeNull()
   })
 })
 

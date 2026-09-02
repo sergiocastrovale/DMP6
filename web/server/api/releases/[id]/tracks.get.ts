@@ -1,5 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
+import { mapBundleMbTracks } from '~/server/utils/bundleTracks'
 
 function normalizeTitle(title: string): string {
   return title
@@ -44,6 +45,32 @@ export default defineEventHandler(async (event) => {
   }
 
   if (mbRelease) {
+    // No dedicated LocalRelease for this MB release, but its tracks may still be individually
+    // claimed into another folder's local release (claim_owned_bundle, see CLAUDE.md) - resolve
+    // those directly by mbTrackId rather than reusing getLocalReleaseTracks, which scopes by
+    // localReleaseId and would pull in every track from the whole bundle folder.
+    const linkedLocalTracks = await prisma.localReleaseTrack.findMany({
+      where: { mbTrackId: { in: mbRelease.tracks.map(t => t.id) } },
+      select: {
+        id: true,
+        title: true,
+        artist: true,
+        albumArtist: true,
+        album: true,
+        year: true,
+        genre: true,
+        duration: true,
+        trackNumber: true,
+        discNumber: true,
+        playCount: true,
+        filePath: true,
+        localReleaseId: true,
+        mbTrackId: true,
+        trackRelatedArtists: {
+          select: { artist: { select: { name: true, slug: true } } },
+        },
+      },
+    })
     return {
       release: {
         id: mbRelease.id,
@@ -53,25 +80,7 @@ export default defineEventHandler(async (event) => {
         artistName: 'Unknown',
         artistSlug: '',
       },
-      tracks: (mbRelease.tracks ?? []).map(mbt => ({
-        id: mbt.id,
-        title: mbt.title,
-        artist: null,
-        albumArtist: null,
-        album: null,
-        year: null,
-        genre: null,
-        duration: mbt.durationMs ? Math.round(mbt.durationMs / 1000) : null,
-        trackNumber: mbt.position,
-        discNumber: mbt.discNumber,
-        playCount: 0,
-        filePath: '',
-        localReleaseId: null,
-        artists: [],
-        missing: true,
-        mbTitle: null,
-        mbTrackMusicbrainzId: mbt.musicbrainzId || null,
-      })),
+      tracks: mapBundleMbTracks(mbRelease.tracks ?? [], linkedLocalTracks),
     }
   }
 

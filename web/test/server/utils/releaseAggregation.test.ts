@@ -144,6 +144,35 @@ describe('buildLocalAndGapCards - core aggregation', () => {
     expect(cards[0]).toMatchObject({ hasLocal: false, isMusicBrainz: true, mbReleaseRowId: 'mb1' })
   })
 
+  it('an uncovered MB release whose tracks are individually claimed into another folder (owned bundle) exposes bundleParentReleaseId + a real track count', () => {
+    const mb = mbRelease({
+      id: 'mb1',
+      statusReason: 'Owned as part of "Bing With a Beat"',
+      tracks: [
+        { id: 't1', localTracks: [{ localReleaseId: 'parent-lr' }] },
+        { id: 't2', localTracks: [{ localReleaseId: 'parent-lr' }] },
+      ],
+    })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toMatchObject({
+      hasLocal: false,
+      localReleaseId: null,
+      bundleParentReleaseId: 'parent-lr',
+      localTrackCount: 2,
+    })
+  })
+
+  it('an uncovered MB release with no linked local tracks stays a plain gap (bundleParentReleaseId null, localTrackCount 0)', () => {
+    const mb = mbRelease({ id: 'mb1', tracks: [{ id: 't1', localTracks: [] }] })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    expect(cards[0]).toMatchObject({ bundleParentReleaseId: null, localTrackCount: 0 })
+  })
+
   it('non-album/ep types (e.g. single, compilation) never generate a gap card', () => {
     const mb = mbRelease({ id: 'mb1', type: { name: 'Single', slug: 'single' } })
     const { cards } = buildLocalAndGapCards({

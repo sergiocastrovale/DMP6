@@ -29,6 +29,7 @@ export interface UnifiedRelease {
   isMusicBrainz: boolean
   hasLocal: boolean
   localReleaseId: string | null
+  bundleParentReleaseId?: string | null
   folderPath: string | null
   coArtists?: { name: string; slug: string }[]
   statusReason?: string | null
@@ -83,7 +84,7 @@ export interface MbReleaseRow {
   status: string
   statusReason: string | null
   type: { name: string, slug: string }
-  tracks: { id: string }[]
+  tracks: { id: string, localTracks?: { localReleaseId: string | null }[] }[]
 }
 
 export interface LocalReleaseRow {

@@ -20,6 +20,7 @@ const emit = defineEmits<{
   refresh: []
   info: []
   cancel: []
+  goToBundle: []
 }>()
 
 const connectedArtistNames = computed(() => {
@@ -54,6 +55,7 @@ const connectedArtistNames = computed(() => {
       @refresh="emit('refresh')"
       @info="emit('info')"
       @cancel="emit('cancel')"
+      @go-to-bundle="emit('goToBundle')"
     />
   </div>
 </template>
