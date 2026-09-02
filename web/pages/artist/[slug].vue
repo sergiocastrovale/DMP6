@@ -7,12 +7,13 @@ const route = useRoute()
 const slug = computed(() => route.params.slug as string)
 
 const {
-  artist, error, pending, releases, dlInFlight,
+  artist, error, pending, releases, dlInFlight, refreshDownloadStatus,
   monitorBusy, toggleMonitor, artistFolders, playingAll, playAll, shufflingAll, shuffleAll,
 } = useArtistPage(slug)
 
 const catalogue = useArtistCatalogue(releases)
 provide('catalogue', catalogue)
+provide('refreshDownloadStatus', refreshDownloadStatus)
 
 const { isAdmin } = useAuth()
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { acquireFailureMessage, artistScanFolders, canRedownload, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
+import { acquireFailureMessage, artistScanFolders, canRedownload, dedupeLocalFolders, dlPollNeeded, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
 import type { DlStatusValue } from '../../types/download'
@@ -62,6 +62,29 @@ describe('filterInFlight', () => {
       ['mb3', dlStatus({ status: 'SEARCHING' })],
     ])
     expect(filterInFlight(map)).toHaveLength(2)
+  })
+})
+
+describe('dlPollNeeded', () => {
+  it('is false for an empty map - an idle page must not poll', () => {
+    expect(dlPollNeeded(new Map())).toBe(false)
+  })
+
+  it.each(['SEARCHING', 'DOWNLOADING', 'ENRICHING'])('is true while a row is %s', (status) => {
+    expect(dlPollNeeded(new Map([['mb1', dlStatus({ status })]]))).toBe(true)
+  })
+
+  it.each(['READY', 'FAILED', 'ABANDONED', 'PROMOTED'])('is false for terminal status %s', (status) => {
+    expect(dlPollNeeded(new Map([['mb1', dlStatus({ status })]]))).toBe(false)
+  })
+
+  it('is true when a single transient row sits among terminal ones', () => {
+    const map = new Map([
+      ['mb1', dlStatus({ status: 'READY' })],
+      ['mb2', dlStatus({ status: 'FAILED' })],
+      ['mb3', dlStatus({ status: 'ENRICHING' })],
+    ])
+    expect(dlPollNeeded(map)).toBe(true)
   })
 })
 

@@ -27,6 +27,14 @@ export const filterInFlight = (dlStatusMap: Map<string, DlStatusValue>): DlInFli
     .filter(d => d.status === 'DOWNLOADING' || d.status === 'ENRICHING')
     .map(d => ({ status: d.status as DownloadedReleaseStatus, percent: d.percent, bytesTransferred: d.bytesTransferred, totalBytes: d.totalBytes }))
 
+// Transient acquisition states: the row will change again on its own, so the page must keep polling.
+// READY/FAILED/ABANDONED are terminal - they only move through a user action, and every such action
+// kicks a fetch itself, so an idle page has nothing to watch.
+const TRANSIENT_DL_STATUSES = ['SEARCHING', 'DOWNLOADING', 'ENRICHING']
+
+export const dlPollNeeded = (dlStatusMap: Map<string, DlStatusValue>): boolean =>
+  [...dlStatusMap.values()].some(d => TRANSIENT_DL_STATUSES.includes(d.status))
+
 // Manual-download acquire returns a status even when it didn't start a download (no source, no
 // match, bad MB data) - those cases resolve silently server-side (no thrown error) so the button
 // click would otherwise look like a no-op. Maps the non-DOWNLOADING statuses to a toast message;

@@ -4,7 +4,9 @@ import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { DlStatusValue, DlStatusItem } from '~/types/download'
 import { useTerminalStore } from '~/stores/terminal'
-import { artistScanFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '~/helpers/artistPageLogic'
+import { artistScanFolders, dlPollNeeded, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '~/helpers/artistPageLogic'
+import { DL_POLL_LIVE_MS, DL_POLL_MONITORED_MS } from '~/helpers/constants'
+import { useDownloadsStore } from '~/stores/downloads'
 
 // Data fetching + polling for the artist detail page: artist/releases fetch, per-release download
 // status polling (acquisition pipeline), the monitor toggle, and "play all". Extracted out of
@@ -12,6 +14,7 @@ import { artistScanFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerT
 export const useArtistPage = (slug: Ref<string>) => {
   const terminal = useTerminalStore()
   const player = usePlayerStore()
+  const downloads = useDownloadsStore()
 
   const { data: artist, pending: artistPending, error } = useFetch<Artist>(() => `/api/artists/${slug.value}`, {
     key: () => `artist-${slug.value}`,
@@ -23,7 +26,51 @@ export const useArtistPage = (slug: Ref<string>) => {
   })
 
   const dlStatusMap = ref<Map<string, DlStatusValue>>(new Map())
-  let dlPoll: ReturnType<typeof setInterval> | null = null
+  let dlPoll: ReturnType<typeof setTimeout> | null = null
+
+  // Something is mid-flight: an acquisition row that moves on its own, or a merge that will retire
+  // one. mergeActive covers the READY -> merged -> row-gone transition kicked from ReleaseGroupDetails.
+  const dlLive = computed(() => dlPollNeeded(dlStatusMap.value) || downloads.mergeActive)
+
+  // How long until the next fetch - null means stop entirely. A monitored artist keeps a slow
+  // heartbeat because background auto-acquisition can create rows with no click in this tab.
+  const dlPollDelay = computed(() =>
+    dlLive.value ? DL_POLL_LIVE_MS : artist.value?.monitored ? DL_POLL_MONITORED_MS : null,
+  )
+
+  const stopDlPolling = () => {
+    if (dlPoll) {
+      clearTimeout(dlPoll)
+      dlPoll = null
+    }
+  }
+
+  // Demand-driven, self-terminating chain (same shape as the downloads store's queue/merge polls):
+  // every tick re-reads the delay, so the cadence follows the state and the loop stops on its own
+  // once an idle unmonitored artist has nothing left to watch.
+  const startDlPolling = () => {
+    if (dlPoll) {
+      return
+    }
+    const tick = async () => {
+      await fetchDownloadStatus()
+      const delay = dlPollDelay.value
+      dlPoll = delay === null ? null : setTimeout(tick, delay)
+    }
+    const delay = dlPollDelay.value
+    if (delay !== null) {
+      dlPoll = setTimeout(tick, delay)
+    }
+  }
+
+  // Any fetch (mount, user action, monitor toggle) re-arms or tears down the loop as needed.
+  const ensureDlPolling = () => {
+    if (dlPollDelay.value === null) {
+      stopDlPolling()
+      return
+    }
+    startDlPolling()
+  }
 
   const fetchDownloadStatus = async () => {
     try {
@@ -43,13 +90,11 @@ export const useArtistPage = (slug: Ref<string>) => {
       dlStatusMap.value = next
     }
     catch { /* ignore */ }
+    ensureDlPolling()
   }
 
-  onMounted(() => {
-    fetchDownloadStatus()
-    dlPoll = setInterval(fetchDownloadStatus, 2000)
-  })
-  onUnmounted(() => { if (dlPoll) { clearInterval(dlPoll) } })
+  onMounted(() => { fetchDownloadStatus() })
+  onUnmounted(() => { stopDlPolling() })
 
   const releases = computed(() =>
     mergeDownloadStatus((releasesData.value?.releases ?? []) as UnifiedRelease[], dlStatusMap.value),
@@ -73,13 +118,21 @@ export const useArtistPage = (slug: Ref<string>) => {
       artist.value.monitored = !target // revert
     }
     finally {
+      ensureDlPolling() // monitoring off (or the revert) tears the heartbeat down
       monitorBusy.value = false
     }
   }
 
+  // A merge (started from a release card) retires the READY row it merges - poll until it's gone.
+  watch(() => downloads.mergeActive, () => { ensureDlPolling() })
+
+  // monitored arrives with the artist fetch, after the mount kick has already run.
+  watch(() => artist.value?.monitored, () => { ensureDlPolling() })
+
   watch(() => terminal.isRunning, (running, wasRunning) => {
     if (wasRunning && !running) {
       refreshReleases()
+      fetchDownloadStatus() // a scan/merge run can create or retire acquisition rows
     }
   })
 
@@ -134,6 +187,7 @@ export const useArtistPage = (slug: Ref<string>) => {
     pending,
     releases,
     dlInFlight,
+    refreshDownloadStatus: fetchDownloadStatus,
     monitorBusy,
     toggleMonitor,
     artistFolders,

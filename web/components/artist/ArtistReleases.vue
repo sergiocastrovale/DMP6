@@ -24,6 +24,9 @@ const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
 const toast = useToastStore()
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
+// The artist page polls download status on demand only - acquiring or cancelling here is what
+// creates/kills a row, so it has to kick the poll back into life.
+const refreshDownloadStatus = inject<() => void>('refreshDownloadStatus', () => {})
 
 const {
   showLinked, searchQuery, typeFilter, activeStatuses, sortKey,
@@ -156,6 +159,7 @@ const acquireRelease = async (release: UnifiedRelease, replacesLocalReleaseId?: 
     if (message) {
       toast.error(message)
     }
+    refreshDownloadStatus()
   }
   catch (e: any) {
     toast.error(e?.data?.message || e?.message || 'Download request failed')
@@ -195,6 +199,7 @@ async function confirmCancelDownload() {
     return
   }
   await downloadsStore.cancel(id)
+  refreshDownloadStatus()
 }
 
 function refreshRelease(edition: UnifiedRelease) {

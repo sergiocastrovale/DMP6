@@ -13,6 +13,13 @@ export const SESSION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
 // capping keeps the reactive array (and every component re-scanning it per chunk) bounded (audit #92).
 export const TERMINAL_LINES_CAP = 5000
 
+// Artist page download-status poll cadences. Live: a row is mid-acquisition (or a merge is running),
+// so it changes on its own every couple of seconds. Monitored: nothing is in flight, but background
+// auto-acquisition can create rows with no click in this tab, so keep a slow heartbeat. An
+// unmonitored, idle artist polls not at all.
+export const DL_POLL_LIVE_MS = 2000
+export const DL_POLL_MONITORED_MS = 30000
+
 // Friendly labels for the terminal/progress panel, keyed by the running command (or stream label).
 export const commandLabels: Record<string, string> = {
   './index': 'Indexing library…',
