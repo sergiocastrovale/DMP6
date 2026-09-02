@@ -102,6 +102,12 @@ const clearSelection = () => {
   <div class="flex flex-col gap-4">
     <Subtabs v-model="filter" :tabs="tabs" />
 
+    <DownloadsTabHint>
+      Failed downloads retry themselves — a cooldown of a few days, then up to a handful of attempts,
+      before one is marked abandoned (defaults: 7 days, 3 attempts — Settings → Downloads). Force
+      retry skips the wait; Reject drops a release out of the queue for good.
+    </DownloadsTabHint>
+
     <p v-if="filter === 'unavailable'" class="text-base text-stone-100/55">
       No Soulseek source found yet. These aren’t failures — they sink in priority and are retried
       automatically when slots free up. Force a retry to push one back to the front of the queue.

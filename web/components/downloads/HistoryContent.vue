@@ -40,6 +40,12 @@ watch(queueHistory, () => {
 
 <template>
   <div class="flex flex-col gap-4">
+    <DownloadsTabHint>
+      A permanent record of every merge outcome. Promoted releases made it into your library;
+      Invalid ones were discarded after a genuine shortfall (see Events for why). Nothing here can
+      be retried directly — a discarded release becomes downloadable again on its own.
+    </DownloadsTabHint>
+
     <div class="flex items-center justify-end">
       <SearchInput v-model="search" placeholder="Search history…" />
     </div>

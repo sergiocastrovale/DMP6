@@ -186,6 +186,12 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-4">
+    <DownloadsTabHint>
+      Monitored artists are checked for missing releases on a recurring schedule and queued
+      automatically; unmonitored artists are left alone. Toggle ON/OFF here to add or remove an
+      artist from that rotation.
+    </DownloadsTabHint>
+
     <div class="flex items-center justify-between gap-3">
       <SearchInput
         model-value=""

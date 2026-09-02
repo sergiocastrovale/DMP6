@@ -61,6 +61,14 @@ const onBulkAction = (key: string) => {
 
 <template>
   <div class="flex flex-col gap-4">
+    <DownloadsTabHint>
+      Merging moves a release's files into your library, then re-indexes and re-syncs it against
+      MusicBrainz to confirm the match. A confirmed match is promoted (see History → Promoted); a
+      genuine shortfall discards the files instead — e.g. merge: "Albert King - The Best of Albert
+      King: I'll Play the Blues for You" incomplete: 1/17 tracks (MISSING_TRACKS) -> INVALID — and
+      logs to History → Invalid, or to Queue → Failed as abandoned once attempts run out.
+    </DownloadsTabHint>
+
     <div class="flex items-center justify-between gap-4">
       <div class="flex items-center gap-2">
         <SearchInput v-model="search" placeholder="Search ready to merge…" />

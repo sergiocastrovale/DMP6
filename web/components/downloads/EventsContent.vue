@@ -90,6 +90,12 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
 
 <template>
   <div class="flex flex-col gap-4">
+    <DownloadsTabHint>
+      Warnings and errors raised anywhere in the download pipeline — failed merges, stalled
+      enrichment, sync hiccups — land here instead of only in the server logs. Flagged is what
+      still needs a look; archive one once you've dealt with it.
+    </DownloadsTabHint>
+
     <div class="flex items-center justify-between gap-4">
       <SearchInput v-model="search" placeholder="Search events…" />
 
