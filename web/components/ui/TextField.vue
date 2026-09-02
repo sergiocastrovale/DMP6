@@ -5,7 +5,6 @@ const props = withDefaults(defineProps<{
   modelValue: string
   label: string
   description?: string
-  descriptionClass?: string
   type?: string
   placeholder?: string
   autocomplete?: string
@@ -14,7 +13,6 @@ const props = withDefaults(defineProps<{
   error?: string
 }>(), {
   description: undefined,
-  descriptionClass: undefined,
   type: 'text',
   placeholder: undefined,
   autocomplete: undefined,
@@ -32,20 +30,22 @@ const errorId = computed(() => props.error ? `${fieldId}-error` : undefined)
 <template>
   <div class="flex flex-col gap-1.5">
     <label :for="fieldId" :class="form.label">{{ label }}</label>
-    <p v-if="description" :class="cx(form.hint, descriptionClass)">{{ description }}</p>
-    <input
-      :id="fieldId"
-      :type="type"
-      :value="modelValue"
-      :placeholder="placeholder"
-      :autocomplete="autocomplete"
-      :autofocus="autofocus"
-      :required="required"
-      :aria-invalid="!!error || undefined"
-      :aria-describedby="errorId"
-      :class="cx(form.input, error && form.inputInvalid)"
-      @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
-    >
-    <p v-if="error" :id="errorId" role="alert" :class="form.error">{{ error }}</p>
+    <p v-if="description" :class="form.hint">{{ description }}</p>
+    <div class="mt-auto flex flex-col gap-1.5">
+      <input
+        :id="fieldId"
+        :type="type"
+        :value="modelValue"
+        :placeholder="placeholder"
+        :autocomplete="autocomplete"
+        :autofocus="autofocus"
+        :required="required"
+        :aria-invalid="!!error || undefined"
+        :aria-describedby="errorId"
+        :class="cx(form.input, error && form.inputInvalid)"
+        @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+      >
+      <p v-if="error" :id="errorId" role="alert" :class="form.error">{{ error }}</p>
+    </div>
   </div>
 </template>
