@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { grid } from '~/helpers/ui'
+
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
 
@@ -57,37 +59,39 @@ const { saving, saved, error, save } = useFormSave(async () => {
     </UiCard>
 
     <UiCard title="S3 / Compatible Storage">
-      <SettingsField
-        v-model="form.storageImageBucket"
-        label="Image Bucket"
-        description="S3 bucket for release and artist images. Overrides STORAGE_IMAGE_BUCKET."
-        placeholder="my-dmp-images"
-      />
-      <SettingsField
-        v-model="form.storageBackupsBucket"
-        label="Backups Bucket"
-        description="S3 bucket for backups. Overrides STORAGE_BACKUPS_BUCKET."
-        placeholder="my-dmp-backups"
-      />
-      <SettingsField
-        v-model="form.awsRegion"
-        label="AWS Region"
-        description="Overrides AWS_REGION."
-        placeholder="us-east-1"
-      />
-      <SettingsField
-        v-model="form.awsAccessKeyId"
-        label="Access Key ID"
-        description="Overrides AWS_ACCESS_KEY_ID."
-        placeholder="AKIAIOSFODNN7EXAMPLE"
-      />
-      <SettingsField
-        v-model="form.awsSecretAccessKey"
-        label="Secret Access Key"
-        description="Overrides AWS_SECRET_ACCESS_KEY."
-        type="password"
-        :placeholder="settings?.awsSecretAccessKeySet ? 'Set — leave blank to keep' : '••••••••'"
-      />
+      <div :class="grid.halfRow">
+        <SettingsField
+          v-model="form.storageImageBucket"
+          label="Image Bucket"
+          description="S3 bucket for release and artist images. Overrides STORAGE_IMAGE_BUCKET."
+          placeholder="my-dmp-images"
+        />
+        <SettingsField
+          v-model="form.storageBackupsBucket"
+          label="Backups Bucket"
+          description="S3 bucket for backups. Overrides STORAGE_BACKUPS_BUCKET."
+          placeholder="my-dmp-backups"
+        />
+        <SettingsField
+          v-model="form.awsRegion"
+          label="AWS Region"
+          description="Overrides AWS_REGION."
+          placeholder="us-east-1"
+        />
+        <SettingsField
+          v-model="form.awsAccessKeyId"
+          label="Access Key ID"
+          description="Overrides AWS_ACCESS_KEY_ID."
+          placeholder="AKIAIOSFODNN7EXAMPLE"
+        />
+        <SettingsField
+          v-model="form.awsSecretAccessKey"
+          label="Secret Access Key"
+          description="Overrides AWS_SECRET_ACCESS_KEY."
+          type="password"
+          :placeholder="settings?.awsSecretAccessKeySet ? 'Set — leave blank to keep' : '••••••••'"
+        />
+      </div>
       <SettingsField
         v-model="form.storageEndpoint"
         label="S3 Endpoint"
