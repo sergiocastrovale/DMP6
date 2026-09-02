@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { CheckCircle2, AlertCircle, ExternalLink, Unlink } from 'lucide-vue-next'
+import { CheckCircle2, AlertCircle, ExternalLink, Unlink, CircleHelp } from 'lucide-vue-next'
+import { cx, surface } from '~/helpers/ui'
 
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
@@ -82,7 +83,27 @@ const disconnect = async () => {
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
     </UiCard>
 
-    <UiCard title="Last.fm Scrobbling">
+    <UiCard>
+      <template #header>
+        <h2 class="text-lg font-semibold text-stone-100">Last.fm Scrobbling</h2>
+        <Popover trigger="hover" placement="bottom-start">
+          <template #trigger>
+            <button type="button" aria-label="How scrobbling works" class="cursor-help text-stone-100/25 hover:text-stone-100/55">
+              <CircleHelp :size="15" />
+            </button>
+          </template>
+          <template #content>
+            <div :class="cx(surface.popover, 'w-72 p-3 text-left')">
+              <ul class="flex flex-col gap-1 text-sm font-normal normal-case tracking-normal text-stone-100/60">
+                <li>Tracks are scrobbled after 50% played or 4 minutes (whichever first)</li>
+                <li>Tracks under 30 seconds are not scrobbled</li>
+                <li>"Now Playing" updates immediately when a track starts</li>
+              </ul>
+            </div>
+          </template>
+        </Popover>
+      </template>
+
       <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
         <CheckCircle2 :size="18" class="text-success shrink-0" />
         <div class="flex-1">
@@ -135,14 +156,6 @@ const disconnect = async () => {
           {{ connecting ? 'Redirecting…' : 'Connect Last.fm' }}
         </UiButton>
       </SettingsSaveBar>
-    </UiCard>
-
-    <UiCard title="How scrobbling works">
-      <ul class="flex flex-col gap-1 text-base text-stone-100/60">
-        <li>Tracks are scrobbled after 50% played or 4 minutes (whichever first)</li>
-        <li>Tracks under 30 seconds are not scrobbled</li>
-        <li>"Now Playing" updates immediately when a track starts</li>
-      </ul>
     </UiCard>
   </div>
 </template>
