@@ -6,7 +6,7 @@ const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
 
 const { data: settings, refresh } = await useAsyncData('settings-db', () =>
-  $fetch<Record<string, any>>('/api/settings'),
+  useCookieFetch<Record<string, any>>('/api/settings'),
 )
 
 const form = reactive({

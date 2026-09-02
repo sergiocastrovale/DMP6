@@ -5,7 +5,7 @@ import type { Tone } from '~/types/ui'
 import { cx, data, form, toneText } from '~/helpers/ui'
 
 const { data: users, refresh } = await useAsyncData('settings-users', () =>
-  $fetch<AdminUser[]>('/api/users'),
+  useCookieFetch<AdminUser[]>('/api/users'),
 )
 
 const showCreate = ref(false)

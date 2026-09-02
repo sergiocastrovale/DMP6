@@ -5,8 +5,8 @@ import { grid } from '~/helpers/ui'
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
 
-const { data: settings, refresh } = useAsyncData('settings-db', () =>
-  $fetch<Record<string, any>>('/api/settings'),
+const { data: settings, refresh } = await useAsyncData('settings-db', () =>
+  useCookieFetch<Record<string, any>>('/api/settings'),
 )
 
 const fanartApiKey = ref(settings.value?.fanartApiKey ?? '')

@@ -3,7 +3,7 @@ import type { PermissionsMatrixResponse } from '~/types/auth'
 import { cx, data as tableCell } from '~/helpers/ui'
 
 const { data, refresh } = await useAsyncData('settings-perms', () =>
-  $fetch<PermissionsMatrixResponse>('/api/permissions'),
+  useCookieFetch<PermissionsMatrixResponse>('/api/permissions'),
 )
 
 const matrix = ref<Record<string, Set<string>>>({
