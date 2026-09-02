@@ -6,10 +6,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
 import { makeArtist, makeDownloadedRelease, makeLocalRelease, makeLocalTrack, makeMbRelease, makeMbTrack } from '../../../test/factories'
 
-const deleteTorrentMock = vi.fn().mockResolvedValue(undefined)
-vi.mock('~/server/utils/qbittorrent', () => ({
-  deleteTorrent: (...args: unknown[]) => deleteTorrentMock(...args),
-}))
 vi.mock('~/server/utils/slskd', () => ({
   getSlskdActiveDownloads: vi.fn().mockResolvedValue([]),
   cancelSlskdDownload: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +25,6 @@ describe('promote.ts (real Postgres)', () => {
 
   beforeEach(async () => {
     await resetDb()
-    deleteTorrentMock.mockClear()
   })
 
   afterAll(async () => {
@@ -67,30 +62,6 @@ describe('promote.ts (real Postgres)', () => {
 
     const stillThere = await prisma.downloadedRelease.findUnique({ where: { id: orphan.id } })
     expect(stillThere).not.toBeNull()
-  })
-
-  it('cancelDownloadedRelease: does NOT delete the shared torrent while a sibling from the same pack is still downloading', async () => {
-    const { cancelDownloadedRelease } = await import('../../../server/utils/promote')
-    const torrentHash = `hash-${randomUUID()}`
-    const a = await makeDownloadedRelease(prisma, { source: 'RUTRACKER', status: 'DOWNLOADING', torrentHash, attempts: 0 })
-    await makeDownloadedRelease(prisma, { source: 'RUTRACKER', status: 'DOWNLOADING', torrentHash })
-
-    await cancelDownloadedRelease(a.id)
-
-    expect(deleteTorrentMock).not.toHaveBeenCalled()
-    const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: a.id } })
-    expect(after.status).toBe('FAILED') // attempts 0 -> 1, below the default cap of 3
-  })
-
-  it('cancelDownloadedRelease: DOES delete the torrent once no sibling from the pack remains in flight', async () => {
-    const { cancelDownloadedRelease } = await import('../../../server/utils/promote')
-    const torrentHash = `hash-${randomUUID()}`
-    const a = await makeDownloadedRelease(prisma, { source: 'RUTRACKER', status: 'DOWNLOADING', torrentHash })
-    await makeDownloadedRelease(prisma, { source: 'RUTRACKER', status: 'PROMOTED', torrentHash })
-
-    await cancelDownloadedRelease(a.id)
-
-    expect(deleteTorrentMock).toHaveBeenCalledWith(torrentHash, true)
   })
 
   it('rejectDownloadedRelease: crosses the attempts cap into REJECTED (terminal) instead of FAILED (retryable)', async () => {
@@ -309,17 +280,17 @@ describe('promote.ts (real Postgres)', () => {
       await rm(readyRootTmp, { recursive: true, force: true })
     })
 
-    it('stamps downloadedFrom as "rutracker" (not hardcoded "slskd") for a RUTRACKER-sourced merge', async () => {
+    it('stamps downloadedFrom as "slskd" on a completed merge', async () => {
       const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
 
-      const rel = 'Some Artist/2020 - RT Album'
+      const rel = 'Some Artist/2020 - Slskd Album'
       const stagingPath = join(readyRootTmp, '_ready', rel)
       await mkdir(stagingPath, { recursive: true })
       await writeFile(join(stagingPath, 'track.flac'), 'fake-audio')
 
       const mbRelease = await makeMbRelease(prisma, { status: 'COMPLETE' })
       const dl = await makeDownloadedRelease(prisma, {
-        status: 'READY', stagingPath, title: 'RT Album', source: 'RUTRACKER',
+        status: 'READY', stagingPath, title: 'Slskd Album',
       })
       // Stand-in for what a real (mocked-away) `sync --release` run would have bound.
       await makeLocalRelease(prisma, {
@@ -330,7 +301,7 @@ describe('promote.ts (real Postgres)', () => {
 
       expect(localReleaseId).not.toBeNull()
       const lr = await prisma.localRelease.findUniqueOrThrow({ where: { id: localReleaseId! } })
-      expect(lr.downloadedFrom).toBe('rutracker')
+      expect(lr.downloadedFrom).toBe('slskd')
     })
 
     it('passes the download\'s artistId as --artist-hint to sync --release, so a collab release validates under the artist it was downloaded for', async () => {

@@ -4,7 +4,7 @@ import { computeDownloadPercent } from '~/server/utils/downloadProgress'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getPauseState, freeGb } from '~/server/utils/pauseState'
-import { getAcquisitionStatus } from '~/server/utils/downloadSources'
+import { getAcquisitionStatus } from '~/server/utils/acquisitionStatus'
 import { fetchActiveQueueRows, fetchRejectedQueueRows, fetchHistoryQueueRows } from '~/server/utils/downloadQueue'
 import { readSongkongHealth } from '~/server/utils/songkongHealth'
 
@@ -44,9 +44,7 @@ export default defineEventHandler(async (event) => {
     artistSlug: r.artist?.slug ?? null,
     title: r.title,
     year: r.year,
-    source: r.source,
     slskUsername: r.slskUsername,
-    torrentHash: r.torrentHash,
     quality: r.quality,
     status: r.status,
     attempts: r.attempts,

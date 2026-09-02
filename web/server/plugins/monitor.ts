@@ -1,9 +1,9 @@
-import { runGapsCycle, runAutoMergeCycle, reconcileDownloads, reconcileTorrentDownloads } from '~/server/utils/monitorLoop'
+import { runGapsCycle, runAutoMergeCycle, reconcileDownloads } from '~/server/utils/monitorLoop'
 import { sweepDanglingDownloads, rejectOwnedElsewhereDownloads } from '~/server/utils/promote'
 import { topUpDownloads } from '~/server/utils/autoDownload'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
-import { ensureDownloadSources, downloadWorkPossible } from '~/server/utils/downloadSources'
+import { isDownloadsEnabled } from '~/server/utils/acquisitionStatus'
 import { enforceDiskGuard } from '~/server/utils/pauseState'
 import { resolveAutoScanSettings, runAutoScan, shouldRunAutoScan } from '~/server/utils/autoScan'
 import { monitorLog } from '~/server/utils/monitorLog'
@@ -55,9 +55,6 @@ export default defineNitroPlugin(() => {
   const tickSec = Math.max(2, Number(process.env.RECONCILE_SEC) || 5)
   monitorLog('notice', `enabled: base tick ${tickSec}s; cadences/caps from Settings (DB overrides env)`)
 
-  // Make sure the DownloadSources config rows (RuTracker + Soulseek) exist before any routing runs.
-  ensureDownloadSources().catch(e => monitorLog('error', `ensure download sources: ${e?.message || e}`))
-
   setInterval(() => {
     tick().catch(e => monitorLog('error', `tick crashed (recovered, retrying next tick): ${e?.message || e}`))
   }, tickSec * 1000)
@@ -85,9 +82,8 @@ export default defineNitroPlugin(() => {
       rejectOwnedElsewhereDownloads().catch(e => monitorLog('error', `owned-elsewhere sweep error: ${e?.message || e}`))
     }
 
-    // Always reconcile (cheap, bounded, internally guarded). Soulseek + torrent finalizers both run.
+    // Always reconcile (cheap, bounded, internally guarded).
     reconcileDownloads().catch(e => monitorLog('error', `reconcile error: ${e?.message || e}`))
-    reconcileTorrentDownloads().catch(e => monitorLog('error', `torrent reconcile error: ${e?.message || e}`))
 
     // Unattended library scan. Deliberately ahead of the monitorEnabled gate below: it is a library
     // concern, not a downloader one, so it still runs with acquisition disabled. Off unless the user
@@ -115,21 +111,20 @@ export default defineNitroPlugin(() => {
     // it runs regardless of acquisition state (no-op + off by default anyway).
     runAutoMergeCycle().catch(e => monitorLog('error', `auto-merge error: ${e?.message || e}`))
 
-    // Poll gate: only run the acquisition workers (trickle + catalogue-gap refresh) when some source
-    // could actually produce a download. With no source enabled, or RuTracker-only with its daily cap
-    // spent, there's nothing to gain from searching/refreshing on a fixed interval — so we stop until a
-    // source switch is flipped on or the RT window rolls. Logged once on each transition.
-    const canAcquire = await downloadWorkPossible()
+    // Poll gate: only run the acquisition workers (trickle + catalogue-gap refresh) when downloads are
+    // switched on. With downloads off, there's nothing to gain from searching/refreshing on a fixed
+    // interval — so we stop until the switch is flipped back on. Logged once on each transition.
+    const canAcquire = await isDownloadsEnabled()
     if (!canAcquire) {
       if (!acquisitionIdle) {
         acquisitionIdle = true
-        monitorLog('notice', 'acquisition idle: no enabled source with budget — pausing trickle + gaps')
+        monitorLog('notice', 'acquisition idle: downloads disabled — pausing trickle + gaps')
       }
       return
     }
     if (acquisitionIdle) {
       acquisitionIdle = false
-      monitorLog('notice', 'acquisition resumed: a source is available again')
+      monitorLog('notice', 'acquisition resumed: downloads enabled again')
     }
 
     // Fire-and-forget; each self-throttles + self-guards against overlap.

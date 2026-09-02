@@ -13,14 +13,6 @@ describe('useDownloadsStore - pure getters (seeded state)', () => {
     fetchMock.mockReset()
   })
 
-  it('sourceEnabled is true when at least one source is enabled', () => {
-    const store = useDownloadsStore()
-    store.sources = [{ name: 'RUTRACKER', enabled: false } as any, { name: 'SLSKD', enabled: true } as any]
-    expect(store.sourceEnabled).toBe(true)
-    store.sources = [{ name: 'RUTRACKER', enabled: false } as any, { name: 'SLSKD', enabled: false } as any]
-    expect(store.sourceEnabled).toBe(false)
-  })
-
   it('readyCount mirrors queueReady length', () => {
     const store = useDownloadsStore()
     store.queueReady = [{ id: '1' } as any, { id: '2' } as any]
@@ -98,18 +90,6 @@ describe('useDownloadsStore - actions', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     fetchMock.mockReset()
-  })
-
-  it('toggleSource PUTs the new state and refetches the queue', async () => {
-    fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/sources') {return Promise.resolve({ sources: [{ name: 'SLSKD', enabled: true }] })}
-      if (url === '/api/downloads/queue') {return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: { canAcquire: false } })}
-      return Promise.resolve({})
-    })
-    const store = useDownloadsStore()
-    await store.toggleSource('SLSKD', true)
-    expect(store.sources).toEqual([{ name: 'SLSKD', enabled: true }])
-    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/sources', expect.objectContaining({ method: 'PUT', body: { name: 'SLSKD', enabled: true } }))
   })
 
   it('setPaused returns null on success', async () => {
@@ -311,11 +291,9 @@ describe('useDownloadsStore - simple fetch/action wrappers', () => {
     })
   })
 
-  it('checkStatus populates the three source statuses and marks statusChecked', async () => {
+  it('checkStatus populates the slskd status and marks statusChecked', async () => {
     fetchMock.mockResolvedValueOnce({
       slskd: { configured: true, connected: true },
-      prowlarr: { configured: false, connected: false },
-      qbittorrent: { configured: true, connected: false },
     })
     const store = useDownloadsStore()
 
@@ -334,13 +312,13 @@ describe('useDownloadsStore - simple fetch/action wrappers', () => {
     expect(store.statusChecked).toBe(true)
   })
 
-  it('fetchSources populates sources from the server', async () => {
-    fetchMock.mockResolvedValueOnce({ sources: [{ name: 'SLSKD', enabled: true }] })
+  it('fetchDownloadsEnabled populates downloadsEnabled from the server', async () => {
+    fetchMock.mockResolvedValueOnce({ enabled: false })
     const store = useDownloadsStore()
 
-    await store.fetchSources()
+    await store.fetchDownloadsEnabled()
 
-    expect(store.sources).toEqual([{ name: 'SLSKD', enabled: true }])
+    expect(store.downloadsEnabled).toBe(false)
   })
 
   it('fetchActive populates activeDownloads', async () => {

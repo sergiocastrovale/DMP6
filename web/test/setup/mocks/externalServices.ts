@@ -14,19 +14,6 @@ export const makeSlskdMock = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
-export const makeQbittorrentMock = (overrides: Record<string, unknown> = {}) => ({
-  isQbitComplete: (state: string) => state === 'uploading' || state === 'stalledUP' || state === 'pausedUP',
-  addTorrent: vi.fn().mockResolvedValue({ ok: true }),
-  deleteTorrent: vi.fn().mockResolvedValue({ ok: true }),
-  getTorrentFiles: vi.fn().mockResolvedValue([]),
-  ...overrides,
-})
-
-export const makeProwlarrMock = (overrides: Record<string, unknown> = {}) => ({
-  searchProwlarr: vi.fn().mockResolvedValue([]),
-  ...overrides,
-})
-
 export const makeLastfmMock = (overrides: Record<string, unknown> = {}) => ({
   isLastfmConfigured: () => true,
   scrobble: vi.fn().mockResolvedValue({ ok: true }),

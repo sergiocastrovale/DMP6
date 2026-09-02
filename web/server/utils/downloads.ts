@@ -8,9 +8,6 @@ import {
   detectFormat,
   scoreSlskdResult,
 } from '~/server/utils/slskd'
-import { checkProwlarrConnection } from '~/server/utils/prowlarr'
-import { checkQbittorrentConnection } from '~/server/utils/qbittorrent'
-
 const toStatus = (r: { ok: boolean; error?: string }) => ({
   configured: r.ok || !r.error?.includes('not configured'),
   connected: r.ok,
@@ -18,17 +15,8 @@ const toStatus = (r: { ok: boolean; error?: string }) => ({
 })
 
 export async function getDownloadStatus() {
-  const [slskd, prowlarr, qbittorrent] = await Promise.all([
-    checkSlskdConnection().catch(() => ({ ok: false, error: 'Connection failed' })),
-    checkProwlarrConnection().catch(() => ({ ok: false, error: 'Connection failed' })),
-    checkQbittorrentConnection().catch(() => ({ ok: false, error: 'Connection failed' })),
-  ])
-
-  return {
-    slskd: toStatus(slskd),
-    prowlarr: toStatus(prowlarr),
-    qbittorrent: toStatus(qbittorrent),
-  }
+  const slskd = await checkSlskdConnection().catch(() => ({ ok: false, error: 'Connection failed' }))
+  return { slskd: toStatus(slskd) }
 }
 
 // --- Search ---

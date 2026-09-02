@@ -52,8 +52,8 @@ export const acquireFailureMessage = (status: string): string | null =>
 // MISSING_TRACKS (fewer tracks than MB) or INCOMPLETE (tracks present, titles unmatched) - the same
 // two shortfall states the merge gate itself discards a download for (server/utils/promote.ts).
 // MISSING has no local copy at all - that's the plain download action, not a replacement.
-export const canRedownload = (release: UnifiedRelease, sourceEnabled: boolean): boolean =>
-  sourceEnabled
+export const canRedownload = (release: UnifiedRelease, downloadsEnabled: boolean): boolean =>
+  downloadsEnabled
   && !!release.localReleaseId
   && !!release.mbReleaseRowId
   && (release.status === 'MISSING_TRACKS' || release.status === 'INCOMPLETE')

@@ -8,10 +8,6 @@ import { prisma } from '~/server/utils/prisma'
 
 export const DEFAULT_DOWNLOAD_DIR_TEMPLATE = '{artist}/{year} - {album}'
 
-// Subfolder under DOWNLOADS_PATH where qBittorrent saves torrents (dmp side of the shared mount).
-// Excluded from the slsk relocate scan, alongside _ready / .dmp-songkong.
-export const TORRENTS_SUBDIR = '_torrents'
-
 export async function resolveDownloadSettings(): Promise<ResolvedDownloadSettings> {
   const settings = await prisma.settings.findUnique({ where: { id: 'main' } })
 
@@ -34,20 +30,7 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
       || DEFAULT_DOWNLOAD_DIR_TEMPLATE,
     // Derived, non-configurable: finished downloads auto-land here awaiting manual merge.
     downloadsReadyPath: downloadsPath ? `${cleanDownloads}/_ready` : '',
-    // Derived (dmp side): where qBittorrent's torrent data lands on the shared mount.
-    downloadsTorrentsPath: downloadsPath ? `${cleanDownloads}/${TORRENTS_SUBDIR}` : '',
     autoMergeDownloads: autoMerge,
-    prowlarrUrl: settings?.prowlarrUrl || process.env.PROWLARR_URL || '',
-    prowlarrApiKey: settings?.prowlarrApiKey || process.env.PROWLARR_API_KEY || '',
-    prowlarrIndexerId: settings?.prowlarrIndexerId || process.env.PROWLARR_INDEXER_ID || '',
-    qbittorrentUrl: settings?.qbittorrentUrl || process.env.QBITTORRENT_URL || '',
-    qbittorrentUser: settings?.qbittorrentUser || process.env.QBITTORRENT_USER || '',
-    qbittorrentPass: settings?.qbittorrentPass || process.env.QBITTORRENT_PASS || '',
-    // qBit-side save prefix; defaults to the dmp-side path (works when both share the host folder
-    // at the same container path). Override when qBit mounts the volume at a different prefix.
-    qbittorrentSavePath: settings?.qbittorrentSavePath
-      || process.env.QBITTORRENT_SAVE_PATH
-      || (downloadsPath ? `${cleanDownloads}/${TORRENTS_SUBDIR}` : ''),
   }
 }
 

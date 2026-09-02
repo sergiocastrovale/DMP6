@@ -47,23 +47,11 @@ export const seedTestData = async (): Promise<void> => {
       })
     }
   }
-
-  const sources: { name: 'RUTRACKER' | 'SLSKD'; retry: boolean; url: string | null }[] = [
-    { name: 'RUTRACKER', retry: false, url: 'https://rutracker.org' },
-    { name: 'SLSKD', retry: true, url: null },
-  ]
-  for (const s of sources) {
-    await prisma.downloadSourceConfig.upsert({
-      where: { name: s.name },
-      create: { name: s.name, retry: s.retry, url: s.url, enabled: true },
-      update: {},
-    })
-  }
 }
 
 // Truncates every non-migration table between integration tests, preserving seeded rows
-// (User, RolePermission, DownloadSourceConfig, Settings) so each test starts from a clean-but-seeded DB.
-const PRESERVE_TABLES = new Set(['User', 'RolePermission', 'DownloadSources', 'Settings', '_prisma_migrations'])
+// (User, RolePermission, Settings) so each test starts from a clean-but-seeded DB.
+const PRESERVE_TABLES = new Set(['User', 'RolePermission', 'Settings', '_prisma_migrations'])
 
 export const resetDb = async (): Promise<void> => {
   const prisma = getTestPrisma()

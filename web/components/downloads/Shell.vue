@@ -6,7 +6,7 @@ import type { TabItem } from '~/types/ui'
 const store = useDownloadsStore()
 const settings = useSettingsStore()
 const toast = useToastStore()
-const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds, acquisition } = storeToRefs(store)
+const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
 const issuesPanel = ref<{ fetchEvents: () => Promise<void> } | null>(null)
@@ -20,11 +20,6 @@ watch(mergeActive, (active, was) => {
   if (was && !active) {
     issuesPanel.value?.fetchEvents()
   }
-})
-
-const rtBudgetLabel = computed(() => {
-  const a = acquisition.value
-  return a?.rt.enabled ? `RuTracker ${a.rt.used}/${a.rt.limit} searches today` : null
 })
 
 const downloading = computed(() => queueActive.value.filter(i => i.status === 'DOWNLOADING' || i.status === 'ENRICHING'))
@@ -119,7 +114,6 @@ onUnmounted(() => {
             <span class="text-base text-stone-100/60">
               Monitoring <span class="font-semibold text-stone-100">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
             </span>
-            <span v-if="rtBudgetLabel" class="text-sm text-stone-100/55">· {{ rtBudgetLabel }}</span>
           </div>
           <div class="flex items-center gap-2">
             <UiButton

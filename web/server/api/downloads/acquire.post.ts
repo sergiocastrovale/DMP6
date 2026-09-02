@@ -2,12 +2,10 @@ import type { Prisma } from '@prisma/client'
 import { requirePermission } from '~/server/utils/permissions'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
-import { getDownloadSources, chooseSource, rtBudgetAvailable } from '~/server/utils/downloadSources'
-import { routeAcquire, failRtMiss } from '~/server/utils/autoDownload'
+import { isDownloadsEnabled } from '~/server/utils/acquisitionStatus'
+import { routeAcquire } from '~/server/utils/autoDownload'
 
-// One-click manual grab for a single MISSING release. Routes through the same source picker as the
-// monitor: RuTracker first (while it has daily budget), Soulseek fallback — honoring the enabled
-// sources, so it works whichever source(s) the user has switched on.
+// One-click manual grab for a single MISSING release.
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
 
@@ -65,19 +63,15 @@ export default defineEventHandler(async (event) => {
   const artist = mb.artists[0]?.artist
   if (!artist) {throw createError({ statusCode: 409, message: 'release has no artist' })}
 
+  if (!(await isDownloadsEnabled())) {return { id: null, status: 'NO_SOURCE' as const }}
+
   // Manual override: reuse a prior FAILED/ABANDONED/UNAVAILABLE/INVALID row and reset the attempt cap
   // (a human deliberately forced this) so it isn't immediately re-abandoned.
   const prior = await prisma.downloadedRelease.findFirst({
     where: { ...dedupKey, status: { in: ['FAILED', 'ABANDONED', 'REJECTED', 'UNAVAILABLE', 'INVALID'] } },
-    select: { id: true, triedSources: true, attempts: true },
+    select: { id: true, attempts: true },
     orderBy: { updatedAt: 'desc' },
   })
-
-  // Pick the source (RuTracker first within its band + budget, Soulseek fallback). Manual picks enter
-  // at the top priority band; triedSources still excludes a no-retry source already exhausted.
-  const configs = await getDownloadSources()
-  const src = chooseSource(10, prior?.triedSources ?? [], configs, await rtBudgetAvailable())
-  if (!src) {return { id: null, status: 'NO_SOURCE' as const }}
 
   const settings = await resolveDownloadSettings()
   const data = {
@@ -86,7 +80,6 @@ export default defineEventHandler(async (event) => {
     releaseGroupId: mb.releaseGroupId ?? null,
     title: mb.title,
     year: mb.year ?? null,
-    source: src,
     status: 'SEARCHING' as const,
     error: null,
     slskUsername: null,
@@ -109,12 +102,9 @@ export default defineEventHandler(async (event) => {
     mbReleaseId: mb.id,
     releaseGroupId: mb.releaseGroupId ?? null,
   }
-  // routeAcquire spends the RuTracker budget + runs the torrent/slsk path as appropriate.
-  const hit = await routeAcquire(src, params, row.id, settings.downloadFormats, settings.downloadMinBitrate)
+  const hit = await routeAcquire(params, row.id, settings.downloadFormats, settings.downloadMinBitrate)
   if (!hit) {
-    src === 'RUTRACKER'
-      ? await failRtMiss(row.id, 0, 'no RuTracker match (search miss)')
-      : await prisma.downloadedRelease.update({ where: { id: row.id }, data: { status: 'FAILED', error: 'no Soulseek result found' } })
+    await prisma.downloadedRelease.update({ where: { id: row.id }, data: { status: 'FAILED', error: 'no Soulseek result found' } })
     return { id: null, status: 'NO_RESULT' as const }
   }
   return { id: row.id, status: 'DOWNLOADING' as const }

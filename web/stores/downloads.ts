@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { useSettingsStore } from '~/stores/settings'
 import { useTerminalStore } from '~/stores/terminal'
-import type { ActiveDownload, DownloadSourceStatus, DownloadSourceConfigItem, DownloadedReleaseItem, Acquisition, SongkongHealth, MergeStep, MergeProgressMap } from '~/types/download'
+import type { ActiveDownload, DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth, MergeStep, MergeProgressMap } from '~/types/download'
 
 const MERGE_STEPS: MergeStep[] = ['moving', 'indexing', 'syncing']
 const MERGE_STEP_LABELS: Record<MergeStep, (title: string) => string> = {
@@ -12,15 +12,11 @@ const MERGE_STEP_LABELS: Record<MergeStep, (title: string) => string> = {
 
 export const useDownloadsStore = defineStore('downloads', () => {
   const slskd = ref<DownloadSourceStatus>({ configured: false, connected: false })
-  const prowlarr = ref<DownloadSourceStatus>({ configured: false, connected: false })
-  const qbittorrent = ref<DownloadSourceStatus>({ configured: false, connected: false })
   const activeDownloads = ref<ActiveDownload[]>([])
   const statusChecked = ref(false)
 
-  // DownloadSources config (the header on/off switches: RuTracker + Soulseek).
-  const sources = ref<DownloadSourceConfigItem[]>([])
-  // Any source enabled => a manual download can be queued (gates the per-release Download button).
-  const sourceEnabled = computed(() => sources.value.some(s => s.enabled))
+  // Soulseek on/off switch (Settings.downloadsEnabled). Gates the per-release Download button.
+  const downloadsEnabled = ref(true)
 
   // Download queue (DownloadedRelease rows)
   const queueActive = ref<DownloadedReleaseItem[]>([])
@@ -35,7 +31,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
   const freeGb = ref<number | null>(null)
   const minFreeGb = ref<number | null>(null)
 
-  // Why background acquisition is/ isn't running (RuTracker budget, source switches) — for the idle banner.
+  // Why background acquisition is/ isn't running (downloads on/off) — for the idle banner.
   const acquisition = ref<Acquisition | null>(null)
 
   // Host SongKong drainer liveness — explains why rows sit in ENRICHING (see EnrichmentStalledBanner).
@@ -106,10 +102,8 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   const checkStatus = async () => {
     try {
-      const data = await $fetch<{ slskd: DownloadSourceStatus; prowlarr: DownloadSourceStatus; qbittorrent: DownloadSourceStatus }>('/api/downloads/status')
+      const data = await $fetch<{ slskd: DownloadSourceStatus }>('/api/downloads/status')
       slskd.value = data.slskd
-      prowlarr.value = data.prowlarr
-      qbittorrent.value = data.qbittorrent
       statusChecked.value = true
     }
     catch {
@@ -117,22 +111,12 @@ export const useDownloadsStore = defineStore('downloads', () => {
     }
   }
 
-  const fetchSources = async () => {
+  const fetchDownloadsEnabled = async () => {
     try {
-      const data = await $fetch<{ sources: DownloadSourceConfigItem[] }>('/api/downloads/sources')
-      sources.value = data.sources
+      const data = await $fetch<{ enabled: boolean }>('/api/downloads/enabled')
+      downloadsEnabled.value = data.enabled
     }
     catch { /* ignore */ }
-  }
-
-  // Flip a source's on/off switch. RuTracker takes priority; Soulseek is the fallback.
-  const toggleSource = async (name: 'RUTRACKER' | 'SLSKD', enabled: boolean) => {
-    const data = await $fetch<{ sources: DownloadSourceConfigItem[] }>('/api/downloads/sources', {
-      method: 'PUT', body: { name, enabled },
-    })
-    sources.value = data.sources
-    // Enabling a source can make acquisition possible again -> refresh + (re)start the live poll.
-    await fetchQueue()
   }
 
   const fetchActive = async () => {
@@ -379,12 +363,8 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   return {
     slskd,
-    prowlarr,
-    qbittorrent,
-    sources,
-    sourceEnabled,
-    fetchSources,
-    toggleSource,
+    downloadsEnabled,
+    fetchDownloadsEnabled,
     activeDownloads,
     statusChecked,
     activeCount,

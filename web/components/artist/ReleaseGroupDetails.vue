@@ -167,7 +167,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         <UiBadge
           v-else-if="isSearching"
           :tone="downloadStatusTone.SEARCHING"
-          title="Searching Soulseek/RuTracker for a source..."
+          title="Searching Soulseek for a source..."
         >
           <Loader2 :size="12" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" /> Searching
         </UiBadge>
@@ -221,7 +221,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         </template>
 
         <DataTableAction
-          v-else-if="release.status === 'MISSING' && downloadsStore.sourceEnabled"
+          v-else-if="release.status === 'MISSING' && downloadsStore.downloadsEnabled"
           :icon="Download"
           :loading="isAcquiring"
           :label="isAcquiring ? 'Requesting download…' : isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
@@ -229,7 +229,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         />
 
         <DataTableAction
-          v-else-if="canRedownload(release, downloadsStore.sourceEnabled)"
+          v-else-if="canRedownload(release, downloadsStore.downloadsEnabled)"
           :icon="DownloadCloud"
           :loading="isAcquiring"
           :label="isAcquiring ? 'Requesting download…' : 'Re-download this release'"

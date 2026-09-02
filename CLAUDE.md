@@ -321,7 +321,7 @@ On the NAS, script error logs are at: `sudo docker exec dmp cat /app/errors.log`
 - `GET /api/downloads/queue`, `/active`, `/status` - queue state (gated `sync.view`)
 - `POST /api/downloads/acquire`, `/merge/[id]`, `/merge-all`, `/pause`, `/cleanup` - acquisition/merge pipeline (gated `downloads.crud`)
 - `POST /api/downloads/cancel/[id]`, `/reject/[id]`, `/reject-all`, `/requeue/[id]`, `/requeue-all`, `/retry/[id]` - per-row/bulk state transitions (gated `downloads.crud`)
-- `/api/downloads/sources` - per-source (slskd/RuTracker) config: GET gated `sync.view`, PUT gated `variables.edit`
+- `GET /api/downloads/enabled` - Soulseek on/off switch (`Settings.downloadsEnabled`), gated `sync.view`; written via `/api/settings`
 - `GET /api/artists/monitoring` - monitored-artist list for the downloads Monitoring tab
 - `PATCH /api/artists/[slug]` - toggle `monitored`
 

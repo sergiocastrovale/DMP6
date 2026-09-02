@@ -6,9 +6,6 @@ vi.mock('~/server/utils/acquire', () => ({
   findBestSlskdResult: vi.fn().mockResolvedValue(null),
   acquireRelease: vi.fn(),
 }))
-vi.mock('~/server/utils/acquireTorrent', () => ({
-  acquireTorrentRelease: vi.fn().mockResolvedValue(null),
-}))
 
 const prisma = getTestPrisma()
 
@@ -19,15 +16,10 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
     // otherwise persist across tests/iterations in this file and silently no-op every call after the
     // first (within the same 60s search interval) — reset the module so each test gets a fresh worker.
     vi.resetModules()
-    // Isolate the picker to Soulseek only, so source routing doesn't depend on RuTracker/Prowlarr.
-    // DownloadSourceConfig is a preserved table (not wiped by resetDb), so explicitly set BOTH —
-    // an earlier test in this file may have left SLSKD disabled (e.g. the "no source eligible" case).
-    await prisma.downloadSourceConfig.update({ where: { name: 'RUTRACKER' }, data: { enabled: false } })
-    await prisma.downloadSourceConfig.update({ where: { name: 'SLSKD' }, data: { enabled: true } })
     await prisma.settings.upsert({
       where: { id: 'main' },
-      create: { id: 'main', downloadsPath: '/tmp/dmp-test-downloads' },
-      update: { downloadsPath: '/tmp/dmp-test-downloads' },
+      create: { id: 'main', downloadsPath: '/tmp/dmp-test-downloads', downloadsEnabled: true },
+      update: { downloadsPath: '/tmp/dmp-test-downloads', downloadsEnabled: true },
     })
   })
 
@@ -61,7 +53,7 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
         year: currentMbRelease.year,
         status: retryStatus,
         attempts: 1,
-        priority: 5, // SLSK band, so RuTracker (disabled anyway) never contends for it
+        priority: 5,
         updatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // past the default retryCooldownDays
       })
 
@@ -153,11 +145,10 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
     expect(rows[0]!.mbReleaseId).toBe(editionA.id)
   })
 
-  it('creates no row at all when chooseSource has nothing eligible (both sources disabled)', async () => {
+  it('creates no row at all when downloads are disabled', async () => {
     const { topUpDownloads } = await import('../../../server/utils/autoDownload')
 
-    await prisma.downloadSourceConfig.update({ where: { name: 'SLSKD' }, data: { enabled: false } })
-    // RUTRACKER is already disabled in beforeEach — nothing can be picked, chooseSource always returns null.
+    await prisma.settings.update({ where: { id: 'main' }, data: { downloadsEnabled: false } })
 
     const artist = await makeArtist(prisma, { monitored: true })
     const mb = await makeMbRelease(prisma, { releaseGroupId: 'rg-no-source', status: 'MISSING' })
@@ -194,14 +185,10 @@ describe('autoDownload.ts pickRetry: retryCooldownDays gate (real Postgres)', ()
   beforeEach(async () => {
     await resetDb()
     vi.resetModules()
-    // DownloadSourceConfig is a preserved table (not wiped by resetDb) — explicitly set BOTH, since
-    // an earlier test file/describe may have left SLSKD disabled.
-    await prisma.downloadSourceConfig.update({ where: { name: 'RUTRACKER' }, data: { enabled: false } })
-    await prisma.downloadSourceConfig.update({ where: { name: 'SLSKD' }, data: { enabled: true } })
     await prisma.settings.upsert({
       where: { id: 'main' },
-      create: { id: 'main', downloadsPath: '/tmp/dmp-test-downloads' },
-      update: { downloadsPath: '/tmp/dmp-test-downloads' },
+      create: { id: 'main', downloadsPath: '/tmp/dmp-test-downloads', downloadsEnabled: true },
+      update: { downloadsPath: '/tmp/dmp-test-downloads', downloadsEnabled: true },
     })
   })
 

@@ -42,7 +42,8 @@ release. `AuditRun` groups a detection pass; `FixHistory` records what a `./fix`
 
 `DownloadedRelease` is the acquisition-pipeline queue row (one per release being fetched), with
 `DownloadStatus` tracking its lifecycle (`SEARCHING → DOWNLOADING → ENRICHING → READY → PROMOTED`, or
-the various terminal failure states). `DownloadSources` holds per-source (SLSKD/RUTRACKER) config toggles.
+the various terminal failure states). Downloads are Soulseek-only; `Settings.downloadsEnabled` is the
+on/off switch.
 
 ## Auth / permissions
 

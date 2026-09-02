@@ -81,7 +81,7 @@ test.beforeAll(async () => {
     await prisma.monitorEvent.create({ data: { level, message } })
   }
   // A couple already dismissed, so the Archived subtab is not empty either.
-  for (const message of ['autoScan: skipped, scan already running', 'qbittorrent: unreachable, retrying']) {
+  for (const message of ['autoScan: skipped, scan already running', 'slskd: unreachable, retrying']) {
     await prisma.monitorEvent.create({ data: { level: 'warn', message, archivedAt: new Date() } })
   }
 

@@ -100,7 +100,6 @@ export const makeDownloadedRelease = (
   data: {
     title: uid('Downloaded Release'),
     year: 2020,
-    source: 'SLSKD',
     status: 'DOWNLOADING',
     ...overrides,
   },

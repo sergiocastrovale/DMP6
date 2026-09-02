@@ -2,16 +2,9 @@
 
 Download missing releases from an artist page via [Soulseek](downloads_slskd.md) (slskd), auto-transcode to MP3-320, optionally enrich with SongKong, and file into a Lidarr-style library layout. This doc is the **full rebuild guide** — everything needed to stand the feature up on a fresh NAS.
 
-> A second source, **RuTracker** (via Prowlarr + qBittorrent), can run alongside Soulseek and is tried
-> first when enabled (Soulseek is the fallback). It can fill a whole discography pack's missing albums
-> in one grab. Toggle both via the **Sources** switches on Settings → Monitoring. See
-> [feature_rutracker.md](feature_rutracker.md) for setup (`PROWLARR_*` / `QBITTORRENT_*` env or
-> Settings → Downloads).
-
-Provenance: the slskd integration (endpoint shapes, search polling, download monitoring, rate limiting),
-the quality-scoring heuristic (format weight + bitrate + peer speed + queue penalty) and the
-source-agnostic orchestrator pattern were modelled on
-[SoulSync](https://github.com/Nezreka/SoulSync). Its other sources (Deezer/Tidal/Qobuz/YouTube),
+Provenance: the slskd integration (endpoint shapes, search polling, download monitoring, rate limiting)
+and the quality-scoring heuristic (format weight + bitrate + peer speed + queue penalty) were modelled
+on [SoulSync](https://github.com/Nezreka/SoulSync). Its other sources (Deezer/Tidal/Qobuz/YouTube),
 AcoustID fingerprinting and metadata-enrichment workers were deliberately not adopted — DMP has its own
 MusicBrainz sync.
 
@@ -53,8 +46,8 @@ SEARCHING → DOWNLOADING → ENRICHING → READY ─(manual merge / merge all)�
                                                                         └─(unmatched)──→ INVALID
 ```
 
-A row is created `SEARCHING` the moment it's picked/requested, before the source search has actually
-found anything — it flips to `DOWNLOADING` only once a real slskd/RuTracker match is confirmed and the
+A row is created `SEARCHING` the moment it's picked/requested, before the Soulseek search has actually
+found anything — it flips to `DOWNLOADING` only once a real slskd match is confirmed and the
 transfer starts. Distinguishes "nothing found yet" from "actively transferring" in the UI (Queue page,
 artist-page pill); both are the same "in flight, occupying a concurrency slot" state everywhere else.
 
@@ -165,6 +158,7 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 | `DOWNLOAD_DIR_TEMPLATE` | `{artist}/{year} - {album}` | Initial staging layout. `{artist}` `{album}` `{year}`; `/` nests, each segment sanitized |
 | `DOWNLOAD_FORMATS` | `flac,mp3` | Accepted source formats |
 | `DOWNLOAD_MIN_BITRATE` | — | kbps minimum |
+| `Settings.downloadsEnabled` (DB only) | on | Soulseek acquisition on/off (Settings → Downloads); `null` = on |
 | `MONITOR_ENABLED` | `true` | Master switch for the background workers (trickle + gaps + auto-merge), shared via DB |
 | `MONITOR_PRIMARY` | `false` | **Per-instance, env only.** Only the instance with this `=true` runs the loop; everything else pointed at the shared DB is UI-only. Set on the NAS compose; leave unset on dev |
 | `RECONCILE_SEC` | `5` | Base tick: finalize in-flight downloads to READY (env only, needs restart) |

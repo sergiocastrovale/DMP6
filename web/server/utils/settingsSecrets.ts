@@ -1,8 +1,6 @@
 // Settings fields that hold credentials — never sent to the browser as plaintext.
 export const SECRET_SETTINGS_FIELDS = [
   'slskdApiKey',
-  'prowlarrApiKey',
-  'qbittorrentPass',
   'awsSecretAccessKey',
   'lastfmSecret',
   'lastfmSessionKey',

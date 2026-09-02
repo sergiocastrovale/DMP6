@@ -1,6 +1,4 @@
-import type { DownloadSource as PrismaDownloadSource } from '@prisma/client'
-
-export type DownloadSource = 'slskd' | 'rutracker'
+export type DownloadSource = 'slskd'
 
 export type PauseReason = 'manual' | 'disk-full'
 
@@ -52,31 +50,6 @@ export interface MergeProgressEntry {
 
 export type MergeProgressMap = Record<string, { step: MergeStep, title: string }>
 
-export interface QbitConfig {
-  url: string
-  user: string
-  pass: string
-}
-
-export interface QbitTorrentInfo {
-  hash: string
-  name: string
-  state: string
-  progress: number // 0..1
-  size: number
-  completed: number
-  downloaded: number
-  tags: string
-}
-
-export interface QbitFile {
-  index: number
-  name: string // path within the torrent
-  size: number
-  progress: number // 0..1
-  priority: number
-}
-
 export interface ResolvedDownloadSettings {
   slskdUrl: string
   slskdApiKey: string
@@ -85,16 +58,7 @@ export interface ResolvedDownloadSettings {
   downloadsPath: string
   downloadDirTemplate: string
   downloadsReadyPath: string
-  downloadsTorrentsPath: string
   autoMergeDownloads: boolean
-  // RuTracker via Prowlarr (search) + qBittorrent (download)
-  prowlarrUrl: string
-  prowlarrApiKey: string
-  prowlarrIndexerId: string
-  qbittorrentUrl: string
-  qbittorrentUser: string
-  qbittorrentPass: string
-  qbittorrentSavePath: string
 }
 
 export interface MatchableRelease {
@@ -104,61 +68,14 @@ export interface MatchableRelease {
   releaseGroupId: string | null
 }
 
-export interface ProwlarrConfig {
-  url: string
-  apiKey: string
-  indexerId: string
-}
-
-export interface ProwlarrRelease {
-  title?: string
-  size?: number
-  seeders?: number
-  leechers?: number
-  downloadUrl?: string
-  magnetUrl?: string
-  guid?: string
-  infoHash?: string
-  indexer?: string
-  protocol?: string
-}
-
-export interface TorrentAcquireParams {
+// The album target for a background/manual acquisition pick (autoDownload.ts, acquire.post.ts).
+export interface AcquisitionTarget {
   artistId: string
   artistName: string
   albumTitle: string
   year: number | null
   mbReleaseId: string | null
   releaseGroupId: string | null
-}
-
-export interface FolderMatch {
-  release: MatchableRelease
-  folder: string // torrent-relative directory of this album (what relocate scans / torrentFolder)
-  fileIndexes: number[] // qBit file indexes belonging to this folder (for selective download)
-  files: { filename: string, size: number }[] // audio files (basenames matter for relocate)
-}
-
-// A torrent search hit normalized from Prowlarr's Torznab feed.
-export interface TorrentResult {
-  title: string
-  size: number
-  seeders: number
-  leechers: number
-  // What we hand to qBittorrent: a magnet link or a Prowlarr-proxied .torrent download URL.
-  downloadUrl: string
-  infoHash: string | null
-  indexer: string
-  // crude quality/format guess derived from the title (FLAC > MP3 > unknown)
-  format: string
-}
-
-// One DownloadSourceConfig row (the /downloads header switches + retry policy).
-export interface DownloadSourceConfigItem {
-  name: 'SLSKD' | 'RUTRACKER'
-  url: string | null
-  retry: boolean
-  enabled: boolean
 }
 
 export interface DownloadSearchResult {
@@ -211,9 +128,7 @@ export interface DownloadedReleaseItem {
   artistSlug: string | null
   title: string
   year: number | null
-  source: string
   slskUsername: string | null
-  torrentHash: string | null
   quality: string | null
   status: DownloadedReleaseStatus
   attempts?: number
@@ -263,8 +178,7 @@ export interface DlInFlightItem {
 
 export interface Acquisition {
   canAcquire: boolean
-  rt: { enabled: boolean; used: number; limit: number; remaining: number; resetsAt: string | null }
-  slsk: { enabled: boolean }
+  enabled: boolean
   // MISSING album/EP releases (of monitored artists) MusicBrainz gave no release date for — the
   // trickle worker requires a year to lay a release out as `YYYY - title`, so these are permanently
   // unacquirable and otherwise invisible. See docs/downloader_issues.md #15.
@@ -296,7 +210,6 @@ export interface MissingPick {
   rowId: string | null     // existing DownloadedRelease row (retry pool); null = fresh, create one
   attempts: number         // carried from the existing row (0 for fresh)
   priority: number         // carried from the existing row (10 for fresh)
-  triedSources: ('SLSKD' | 'RUTRACKER')[] // no-retry sources already missed (carried; [] for fresh)
 }
 
 export interface DownloadProgressFields {
@@ -353,9 +266,6 @@ export interface SlskdMoveArgs {
   artistName: string
   albumTitle: string
   year: number | null
-  // Where to look for the source files. Defaults to downloadsPath (slsk). Torrents pass the specific
-  // album folder under DOWNLOADS_PATH/_torrents so basename matching can't collide across a pack.
-  scanRoot?: string
 }
 
 export interface SlskdMoveResult {
@@ -375,7 +285,6 @@ export type MergeRow = {
   releaseGroupId: string | null
   attempts: number
   priority: number
-  source: PrismaDownloadSource
   artistId: string | null
   artist: { name: string } | null
   // Set when this download was requested as a replacement for an incomplete local copy - that

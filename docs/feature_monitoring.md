@@ -20,12 +20,9 @@ Designed to run **always-on at full-catalogue scale** (~19K artists): bounded co
 trickle search, random fairness. The **merge** step is the only human gate (Soulseek results aren't
 fully trusted) — everything up to READY is automatic; nothing enters the library until you merge.
 
-> **Two sources.** Acquisition can use **RuTracker** (via Prowlarr + qBittorrent) in addition to
-> Soulseek. When both are enabled RuTracker is tried first and Soulseek is the fallback; the
-> Settings → Monitoring **Sources** switches toggle each. Routing is driven by the existing `priority`
-> field (fresh picks → RuTracker at priority 10; an RT miss is recorded in `triedSources`, drops the
-> release to priority 5, and falls through to Soulseek). Everything below stays the same regardless of
-> source. See [feature_rutracker.md](feature_rutracker.md).
+> **Soulseek only.** Acquisition has a single source, gated by one on/off switch
+> (`Settings.downloadsEnabled`, editable on Settings → Downloads). When it's off, `topUpDownloads` and
+> the catalogue-gap worker stay idle and the `/downloads` header shows an idle banner.
 
 ## Steps
 
@@ -63,10 +60,10 @@ dismissed.
 ## Data model
 
 - **`DownloadedRelease`** — one row per acquisition. Tracks the MISSING target (`mbReleaseId` /
-  `releaseGroupId`), `artistId`, `source` (`SLSKD`), `slskUsername`, `quality`, `stagingPath`,
+  `releaseGroupId`), `artistId`, `slskUsername`, `quality`, `stagingPath`,
   `status` (`SEARCHING | DOWNLOADING | ENRICHING | READY | REJECTED | PROMOTED | FAILED | ABANDONED |
-  UNAVAILABLE | INVALID`; SEARCHING = row created/picked, source search running, no match confirmed
-  yet (no bytes/files — a row stuck here past the orphan timeout is failed the same way a hashless
+  UNAVAILABLE | INVALID`; SEARCHING = row created/picked, Soulseek search running, no match confirmed
+  yet (no bytes/files — a row stuck here past the orphan timeout is failed the same way a stalled
   DOWNLOADING row is), READY = in the _ready folder/Ready-to-merge, PROMOTED = merged into the
   library, REJECTED = user-rejected at the attempt cap (terminal), UNAVAILABLE = no Soulseek result
   found yet (search miss, never counts toward the attempt cap), INVALID = merged but MusicBrainz
@@ -177,8 +174,8 @@ finalization — it reads slskd's real transfer state, so a refresh/poll always 
 ## Provenance / trust
 
 - Pristine catalogue release → `LocalRelease.downloadedFrom IS NULL`.
-- Soulseek-sourced release → `downloadedFrom = 'slskd'`, with the complete history (source,
-  username, quality, timestamps) in `DownloadedRelease`.
+- Soulseek-sourced release → `downloadedFrom = 'slskd'`, with the complete history (username,
+  quality, timestamps) in `DownloadedRelease`.
 - Query "show me everything that came from Soulseek":
   `SELECT * FROM "LocalRelease" WHERE "downloadedFrom" = 'slskd'`.
 
@@ -189,8 +186,7 @@ Set via the Settings UI (DB) or `.env` (DB wins, env is fallback):
 | Setting | Purpose |
 |---------|---------|
 | `SLSKD_URL`, `SLSKD_API_KEY` | slskd connection |
-| `PROWLARR_URL`, `PROWLARR_API_KEY`, `PROWLARR_INDEXER_ID` | RuTracker search (see [feature_rutracker.md](feature_rutracker.md)) |
-| `QBITTORRENT_URL`, `QBITTORRENT_USER`, `QBITTORRENT_PASS`, `QBITTORRENT_SAVE_PATH` | RuTracker torrent download |
+| `Settings.downloadsEnabled` | on/off switch for acquisition (DB only, no env fallback; null = on) |
 | `DOWNLOADS_PATH` | staging area (NOT the library); READY downloads auto-land in its derived `_ready` subfolder |
 | `MUSIC_DIR` | the real library (`mainstream`) |
 | `DOWNLOAD_DIR_TEMPLATE` | initial staging layout, e.g. `{artist}/{year} - {album}` |

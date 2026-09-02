@@ -5,7 +5,7 @@ import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { slskdSearch, deleteSlskdSearch, startSlskdDownload } from '~/server/utils/slskd'
 import { getSlskdResults } from '~/server/utils/downloads'
 import { sanitize } from '~/server/utils/transcode'
-import { normalizeTitle } from '~/server/utils/torrentMatch'
+import { normalizeTitle } from '~/server/utils/releaseTitle'
 import type { DownloadSearchResult, AcquireResult, AcquireParams } from '~/types/download'
 
 function sleep(ms: number) {
@@ -81,7 +81,6 @@ export async function acquireRelease(params: AcquireParams, existingRowId?: stri
     releaseGroupId: params.releaseGroupId ?? null,
     title: params.albumTitle,
     year: params.year ?? null,
-    source: 'SLSKD' as const,
     slskUsername: params.result.username,
     quality,
     files,

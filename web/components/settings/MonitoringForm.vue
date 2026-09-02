@@ -54,8 +54,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
 
 <template>
   <div class="flex w-full max-w-7xl flex-col gap-6">
-    <SettingsMonitoringSources />
-
     <DownloadsAcquisitionIdleBanner />
 
     <UiCard title="Auto-monitoring">

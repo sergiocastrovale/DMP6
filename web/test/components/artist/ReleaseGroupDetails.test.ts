@@ -4,7 +4,7 @@ import ArtistReleaseGroupDetails from '../../../components/artist/ReleaseGroupDe
 import type { UnifiedRelease } from '../../../types/release'
 
 vi.mock('~/stores/downloads', () => ({
-  useDownloadsStore: () => ({ sourceEnabled: false }),
+  useDownloadsStore: () => ({ downloadsEnabled: false }),
 }))
 vi.mock('~/stores/terminal', () => ({
   useTerminalStore: () => ({ isRunning: false }),

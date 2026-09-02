@@ -3,12 +3,10 @@ import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { findBestSlskdResult, acquireRelease } from '~/server/utils/acquire'
-import { acquireTorrentRelease } from '~/server/utils/acquireTorrent'
-import { getDownloadSources, chooseSource, RT_PRIORITY, SLSK_PRIORITY, rtBudgetAvailable, consumeRtBudget, exhaustRtBudget } from '~/server/utils/downloadSources'
-import { prowlarrRtLimited } from '~/server/utils/prowlarr'
+import { isDownloadsEnabled } from '~/server/utils/acquisitionStatus'
 import { isDownloadsPaused } from '~/server/utils/pauseState'
 import { monitorLog } from '~/server/utils/monitorLog'
-import type { TorrentAcquireParams, MissingPick } from '~/types/download'
+import type { AcquisitionTarget, MissingPick } from '~/types/download'
 
 // Mark a search-miss: slskd had no result. NOT a failure — never abandons. Bumps the tries counter
 // (shown in the UI) and lowers priority (floor 0) so the release sinks behind fresher candidates and
@@ -20,48 +18,14 @@ async function failNoResult(rowId: string, attempts: number, priority: number, e
   }).catch(() => {})
 }
 
-// Mark a RuTracker miss: no torrent contained the release. RT has retry=false, so we record it in
-// triedSources (never search RT for this release again) and drop the release into the Soulseek priority
-// band so the next pick falls through to slsk. Status UNAVAILABLE keeps it in the retry pool.
-export async function failRtMiss(rowId: string, attempts: number, error: string) {
-  await prisma.downloadedRelease.update({
-    where: { id: rowId },
-    data: {
-      attempts: attempts + 1,
-      priority: SLSK_PRIORITY,
-      status: 'UNAVAILABLE',
-      triedSources: { push: 'RUTRACKER' },
-      error,
-    },
-  }).catch(() => {})
-}
-
-// The RuTracker search was REFUSED by Prowlarr's daily-cap, not a real no-match: revert the row to a
-// retryable state WITHOUT recording RuTracker in triedSources (so it's searched on RT again once the
-// cap resets) and WITHOUT bumping attempts. Keep it in the RT priority band. The caller has already
-// flagged the budget spent, so it falls through to Soulseek meanwhile if that source is enabled.
-async function revertRtLimited(rowId: string) {
-  await prisma.downloadedRelease.update({
-    where: { id: rowId },
-    data: { priority: RT_PRIORITY, status: 'UNAVAILABLE', error: 'RuTracker daily query limit reached' },
-  }).catch(() => {})
-}
-
-// Run the source-appropriate acquire for an already-created SEARCHING row. Returns true on a hit
-// (transfer/torrent enqueued), false on a search miss (caller records the miss per source).
+// Run the Soulseek acquire for an already-created SEARCHING row. Returns true on a hit (transfer
+// enqueued), false on a search miss (caller records the miss).
 export async function routeAcquire(
-  src: 'RUTRACKER' | 'SLSKD',
-  p: TorrentAcquireParams,
+  p: AcquisitionTarget,
   rowId: string,
   formats: string,
   minBitrate: number | null,
 ): Promise<boolean> {
-  if (src === 'RUTRACKER') {
-    // One Prowlarr /search per call — spend a unit of the daily RuTracker budget up-front.
-    await consumeRtBudget()
-    const res = await acquireTorrentRelease(p, rowId).catch(() => null)
-    return !!res
-  }
   const best = await findBestSlskdResult(
     p.artistName, p.albumTitle, formats || undefined, minBitrate ?? undefined,
   ).catch(() => null)
@@ -90,22 +54,17 @@ export async function forceRetryDownload(id: string): Promise<void> {
   if (!row.artist?.name) {throw createError({ statusCode: 409, message: 'download has no artist' })}
   if (!row.artistId) {throw createError({ statusCode: 409, message: 'download has no artist' })}
 
-  // Route by source, honouring triedSources (a no-retry RuTracker miss is never re-tried even on a
-  // force retry). Resets priority to 10 but keeps triedSources, so RT stays excluded once exhausted.
-  const configs = await getDownloadSources()
-  const src = chooseSource(10, row.triedSources, configs, await rtBudgetAvailable())
-
-  await prisma.downloadedRelease.update({
-    where: { id },
-    data: { status: 'SEARCHING', attempts: 0, priority: 10, error: null, bytesTransferred: BigInt(0), lastProgressAt: new Date(), slskUsername: null, torrentHash: null, torrentFolder: null, files: [], ...(src ? { source: src } : {}) },
-  })
-
-  if (!src) {
+  if (!(await isDownloadsEnabled())) {
     await prisma.downloadedRelease.update({
-      where: { id }, data: { status: 'UNAVAILABLE', error: 'no download source enabled' },
+      where: { id }, data: { status: 'UNAVAILABLE', error: 'downloads disabled' },
     }).catch(() => {})
     return
   }
+
+  await prisma.downloadedRelease.update({
+    where: { id },
+    data: { status: 'SEARCHING', attempts: 0, priority: 10, error: null, bytesTransferred: BigInt(0), lastProgressAt: new Date(), slskUsername: null, files: [] },
+  })
 
   const artistName = row.artist.name
   const artistId = row.artistId
@@ -115,14 +74,12 @@ export async function forceRetryDownload(id: string): Promise<void> {
       artistId, artistName, albumTitle: row.title,
       year: row.year, mbReleaseId: row.mbReleaseId, releaseGroupId: row.releaseGroupId,
     }
-    const hit = await routeAcquire(src, params, row.id, settings.downloadFormats, settings.downloadMinBitrate)
+    const hit = await routeAcquire(params, row.id, settings.downloadFormats, settings.downloadMinBitrate)
     if (!hit) {
-      src === 'RUTRACKER'
-        ? await failRtMiss(row.id, row.attempts, 'no RuTracker match (search miss)')
-        : await prisma.downloadedRelease.update({
-            where: { id },
-            data: { status: 'UNAVAILABLE', attempts: 1, priority: 9, error: 'no Soulseek result (search miss)' },
-          }).catch(() => {})
+      await prisma.downloadedRelease.update({
+        where: { id },
+        data: { status: 'UNAVAILABLE', attempts: 1, priority: 9, error: 'no Soulseek result (search miss)' },
+      }).catch(() => {})
     }
   })().catch(e => monitorLog('error', `force-retry ${row.title}: ${e?.message || e}`))
 }
@@ -167,8 +124,7 @@ async function pickFresh(slots: number): Promise<MissingPick[]> {
     const rel = await prisma.$queryRaw<MissingPick[]>(Prisma.sql`
       SELECT mr.id, mr.title, mr.year, mr."releaseGroupId",
              ${a.id} AS "artistId", ${a.name} AS "artistName",
-             NULL::text AS "rowId", 0 AS attempts, 10 AS priority,
-             ARRAY[]::"DownloadSource"[] AS "triedSources"
+             NULL::text AS "rowId", 0 AS attempts, 10 AS priority
       FROM "MusicBrainzRelease" mr
       JOIN "ReleaseType" rt ON rt.id = mr."typeId" AND rt.slug IN ('album', 'ep')
       JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mr.id AND mra."artistId" = ${a.id}
@@ -202,8 +158,7 @@ async function pickRetry(slots: number, cooldownDays: number): Promise<MissingPi
     WITH matched AS (
       SELECT DISTINCT ON (dr.id)
              mr.id, mr.title, mr.year, mr."releaseGroupId",
-             dr."artistId", dr.id AS "rowId", dr.attempts AS attempts, dr.priority AS priority,
-             dr."triedSources" AS "triedSources"
+             dr."artistId", dr.id AS "rowId", dr.attempts AS attempts, dr.priority AS priority
       FROM "DownloadedRelease" dr
       JOIN "MusicBrainzRelease" mr ON (
         (dr."releaseGroupId" IS NOT NULL AND mr."releaseGroupId" = dr."releaseGroupId")
@@ -215,7 +170,7 @@ async function pickRetry(slots: number, cooldownDays: number): Promise<MissingPi
     )
     SELECT m.id, m.title, m.year, m."releaseGroupId",
            a.id AS "artistId", a.name AS "artistName",
-           m."rowId", m.attempts, m.priority, m."triedSources"
+           m."rowId", m.attempts, m.priority
     FROM matched m
     JOIN "Artist" a ON a.id = m."artistId" AND a.monitored = true AND a.name NOT LIKE '%;%'
     ORDER BY m.priority DESC, random() LIMIT ${slots}
@@ -243,6 +198,7 @@ export async function topUpDownloads(): Promise<void> {
   if (topUpRunning) {return}
   const settings = await resolveDownloadSettings()
   if (!settings.downloadsPath) {return}
+  if (!(await isDownloadsEnabled())) {return}
   const mon = await resolveMonitorSettings()
 
   if (Date.now() - lastTopUpAt < Math.max(5, mon.searchIntervalSec) * 1000) {return}
@@ -259,56 +215,35 @@ export async function topUpDownloads(): Promise<void> {
     const picks = await pickCandidates(slots, mon.retryCooldownDays)
     if (picks.length === 0) {return}
 
-    const configs = await getDownloadSources()
-
-  for (const p of picks) {
-    // Route by source: RuTracker first (while it has daily budget), Soulseek fallback. Re-check the
-    // budget per pick since each RT search spends a unit. Skip if nothing eligible.
-    const rtOk = await rtBudgetAvailable()
-    const src = chooseSource(p.priority, p.triedSources, configs, rtOk)
-    if (!src) {continue}
-
-    // Retry-pool picks carry their existing row (and attempts/priority); fresh picks create a new one.
-    const data = {
-      artistId: p.artistId,
-      mbReleaseId: p.id,
-      releaseGroupId: p.releaseGroupId,
-      title: p.title,
-      year: p.year,
-      source: src,
-      status: 'SEARCHING' as const,
-      error: null,
-      slskUsername: null,
-      quality: null,
-      files: [] as Prisma.InputJsonValue,
-      bytesTransferred: BigInt(0),
-      lastProgressAt: new Date(),
-    }
-    const row = p.rowId
-      ? await prisma.downloadedRelease.update({ where: { id: p.rowId }, data })
-      : await prisma.downloadedRelease.create({ data })
-
-    const params = {
-      artistId: p.artistId, artistName: p.artistName, albumTitle: p.title,
-      year: p.year, mbReleaseId: p.id, releaseGroupId: p.releaseGroupId,
-    }
-    const hit = await routeAcquire(src, params, row.id, settings.downloadFormats, settings.downloadMinBitrate)
-    if (!hit) {
-      if (src === 'RUTRACKER' && await prowlarrRtLimited()) {
-        // Refused by Prowlarr's shared 25/day cap, not a real miss: stop wasting RT searches today and
-        // keep the release retryable on RT. Surfaces in the /downloads Recent issues panel.
-        await exhaustRtBudget()
-        await revertRtLimited(row.id)
-        monitorLog('warn', 'RuTracker daily query limit reached (shared with Lidarr) — backing off until reset')
+    for (const p of picks) {
+      // Retry-pool picks carry their existing row (and attempts/priority); fresh picks create a new one.
+      const data = {
+        artistId: p.artistId,
+        mbReleaseId: p.id,
+        releaseGroupId: p.releaseGroupId,
+        title: p.title,
+        year: p.year,
+        status: 'SEARCHING' as const,
+        error: null,
+        slskUsername: null,
+        quality: null,
+        files: [] as Prisma.InputJsonValue,
+        bytesTransferred: BigInt(0),
+        lastProgressAt: new Date(),
       }
-      else if (src === 'RUTRACKER') {
-        await failRtMiss(row.id, p.attempts, 'no RuTracker match (search miss)')
+      const row = p.rowId
+        ? await prisma.downloadedRelease.update({ where: { id: p.rowId }, data })
+        : await prisma.downloadedRelease.create({ data })
+
+      const params = {
+        artistId: p.artistId, artistName: p.artistName, albumTitle: p.title,
+        year: p.year, mbReleaseId: p.id, releaseGroupId: p.releaseGroupId,
       }
-      else {
+      const hit = await routeAcquire(params, row.id, settings.downloadFormats, settings.downloadMinBitrate)
+      if (!hit) {
         await failNoResult(row.id, p.attempts, p.priority, 'no Soulseek result (search miss)')
       }
     }
-  }
   }
   finally {
     topUpRunning = false

@@ -6,9 +6,6 @@ import type { SortDirection } from '~/types/common'
 import { formatDate, sortItems, canRetryDownload, canCancelDownload, canRequeueDownload, canRejectDownload, toggleRowSelection } from '~/helpers/functions'
 import { toneText, surface, cx, typography, ICON_STROKE_WIDTH, data } from '~/helpers/ui'
 
-// Friendly source label, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
-const sourceLabel = (s: string) => s === 'RUTRACKER' ? 'RuTracker' : 'Soulseek'
-
 const props = withDefaults(defineProps<{
   items: DownloadedReleaseItem[]
   busyId?: string | null
@@ -42,7 +39,7 @@ const sortAccessors: Record<string, (i: DownloadedReleaseItem) => string | numbe
   artist: i => i.artist,
   title: i => i.title,
   releaseType: i => i.releaseType,
-  source: i => i.source,
+  quality: i => i.quality,
   status: i => i.status,
   updatedAt: i => i.updatedAt,
 }
@@ -127,7 +124,7 @@ const statusNote = (it: DownloadedReleaseItem): string | null => {
     return it.error
   }
   if (it.status === 'SEARCHING') {
-    return 'Searching Soulseek/RuTracker for a matching source...'
+    return 'Searching Soulseek for a matching source...'
   }
   if (it.status !== 'ENRICHING') {
     return null
@@ -170,7 +167,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
       <SortableTh label="Artist" sort-key="artist" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
       <SortableTh label="Release" sort-key="title" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
       <SortableTh label="Type" sort-key="releaseType" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-      <SortableTh label="Source" sort-key="source" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+      <SortableTh label="Quality" sort-key="quality" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
       <SortableTh label="Status" sort-key="status" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
       <SortableTh label="Updated" sort-key="updatedAt" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
       <th :class="cx(data.th, 'text-right')">Actions</th>
@@ -199,10 +196,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           {{ it.releaseType || '—' }}
         </td>
         <td :class="cx(data.td, 'text-amber-400/80')">
-          <span class="inline-flex items-center gap-1.5">
-            {{ sourceLabel(it.source) }}
-          </span>
-          <template v-if="it.quality"> · {{ it.quality }}</template>
+          {{ it.quality || '—' }}
           <template v-if="it.slskUsername"> · {{ it.slskUsername }}</template>
         </td>
         <td :class="data.td">

@@ -10,7 +10,7 @@ Working conventions, data model and the day-to-day command reference live in [CL
 
 * [Catalogue management](docs/features_catalogue.md)
 * [Tagging](docs/features_tagging.md)
-* [Downloader](docs/features_downloader.md) — [Soulseek/slskd](docs/downloads_slskd.md), [RuTracker](docs/feature_rutracker.md), [monitoring](docs/feature_monitoring.md)
+* [Downloader](docs/features_downloader.md) — [Soulseek/slskd](docs/downloads_slskd.md), [monitoring](docs/feature_monitoring.md)
 * [Explore](docs/feature_explore.md)
 * [Generated playlists](docs/feature_generated_playlists.md)
 * [PWA](docs/pwa_overview.md) — [setup](docs/pwa_setup.md), [service worker](docs/pwa_serviceworker.md), [networking](docs/pwa_networking.md), [media session](docs/pwa_mediasession.md), [Android/Capacitor](docs/pwa_capacitor_android.md), [testing](docs/pwa_testing.md)

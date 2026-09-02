@@ -50,7 +50,6 @@ describe('monitorLoop.ts: SongKong backlog gate (real Postgres)', () => {
     // (nothing drains it in this test) — this is what makes the drainer look stalled.
     await makeDownloadedRelease(prisma, {
       artistId: artist.id,
-      source: 'SLSKD',
       status: 'ENRICHING',
       stagingPath: '/fake/stuck/staging',
       updatedAt: new Date(Date.now() - 20 * 60_000),
@@ -58,7 +57,6 @@ describe('monitorLoop.ts: SongKong backlog gate (real Postgres)', () => {
 
     const fresh = await makeDownloadedRelease(prisma, {
       artistId: artist.id,
-      source: 'SLSKD',
       status: 'DOWNLOADING',
       slskUsername: 'peer1',
       files: [{ filename: 'track01.flac', size: 123 }],

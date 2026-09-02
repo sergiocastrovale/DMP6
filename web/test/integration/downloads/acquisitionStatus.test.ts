@@ -14,7 +14,7 @@ describe('countNoYearMissing (real Postgres)', () => {
   })
 
   it('counts MISSING album/EP releases of monitored artists with no MusicBrainz year', async () => {
-    const { countNoYearMissing } = await import('../../../server/utils/downloadSources')
+    const { countNoYearMissing } = await import('../../../server/utils/acquisitionStatus')
 
     const artist = await makeArtist(prisma, { monitored: true })
     const noYear = await makeMbRelease(prisma, { status: 'MISSING', year: null })
@@ -24,7 +24,7 @@ describe('countNoYearMissing (real Postgres)', () => {
   })
 
   it('excludes releases that DO have a year, unmonitored artists, and non-MISSING releases', async () => {
-    const { countNoYearMissing } = await import('../../../server/utils/downloadSources')
+    const { countNoYearMissing } = await import('../../../server/utils/acquisitionStatus')
 
     const monitored = await makeArtist(prisma, { monitored: true })
     const unmonitored = await makeArtist(prisma, { monitored: false })

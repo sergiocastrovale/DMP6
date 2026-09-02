@@ -227,10 +227,9 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
   )
   await mkdir(targetDir, { recursive: true })
 
-  // Locate files by basename+size (under scanRoot when given, else the downloads root) and move them.
-  const scanRoot = args.scanRoot || args.downloadsPath
-  const found = await findFilesByBasename(scanRoot, expected, 10)
-  log(`found ${found.length}/${expected.size} files under ${scanRoot} -> ${targetDir}`)
+  // Locate files by basename+size under the downloads root and move them.
+  const found = await findFilesByBasename(args.downloadsPath, expected, 10)
+  log(`found ${found.length}/${expected.size} files under ${args.downloadsPath} -> ${targetDir}`)
   if (found.length === 0) {
     return { targetDir, movedCount: 0, transcodeFailed: 0 }
   }
@@ -306,8 +305,8 @@ async function findFilesByBasename(
   // Match on the suffix-stripped basename so slskd collision tokens don't defeat the lookup.
   const wanted = new Map([...names].map(([name, size]) => [stripSlskdSuffix(name), size]))
   // Internal subtrees under the downloads root that must never be scanned as slsk transfer sources:
-  // the ready/merge staging area, the SongKong spool/state dir, and qBittorrent's torrent data
-  // (torrent relocation passes the specific album folder as scanRoot, so this skip only affects slsk).
+  // the ready/merge staging area, the SongKong spool/state dir, and the legacy torrent staging dir
+  // (may still exist on disk from before RuTracker was removed).
   const skipNames = new Set(['_ready', '.dmp-songkong', '_torrents'])
 
   async function walk(dir: string, depth: number) {

@@ -30,12 +30,12 @@ test.beforeAll(async () => {
   rejectedFixtureTitle = `E2E Rejected Fixture ${suffix}`
 
   const failed = await prisma.downloadedRelease.create({
-    data: { title: failedFixtureTitle, year: 2020, source: 'SLSKD', status: 'FAILED', attempts: REJECT_CAP_ATTEMPTS, error: 'e2e fixture' },
+    data: { title: failedFixtureTitle, year: 2020, status: 'FAILED', attempts: REJECT_CAP_ATTEMPTS, error: 'e2e fixture' },
   })
   failedFixtureId = failed.id
 
   const rejected = await prisma.downloadedRelease.create({
-    data: { title: rejectedFixtureTitle, year: 2021, source: 'SLSKD', status: 'REJECTED', attempts: 3, error: 'rejected by user' },
+    data: { title: rejectedFixtureTitle, year: 2021, status: 'REJECTED', attempts: 3, error: 'rejected by user' },
   })
   rejectedFixtureId = rejected.id
 

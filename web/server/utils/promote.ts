@@ -8,7 +8,6 @@ import type { MergeRow } from '~/types/download'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { getSlskdActiveDownloads, cancelSlskdDownload } from '~/server/utils/slskd'
-import { deleteTorrent } from '~/server/utils/qbittorrent'
 import { runExclusive } from '~/server/utils/scriptLock'
 import { monitorLog } from '~/server/utils/monitorLog'
 import { setMergeProgress, clearMergeProgress } from '~/server/utils/mergeProgress'
@@ -249,7 +248,7 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
   if (complete) {
     try {
       await prisma.$transaction([
-        prisma.localRelease.update({ where: { id: reloaded!.id }, data: { downloadedFrom: row.source === 'RUTRACKER' ? 'rutracker' : 'slskd' } }),
+        prisma.localRelease.update({ where: { id: reloaded!.id }, data: { downloadedFrom: 'slskd' } }),
         prisma.downloadedRelease.update({
           where: { id: row.id },
           data: { status: 'PROMOTED', stagingPath: join(music, rel), localReleaseId: reloaded!.id },
@@ -676,14 +675,7 @@ export async function cancelDownloadedRelease(id: string): Promise<void> {
   if (!row) {throw createError({ statusCode: 404, message: 'download not found' })}
 
   const files = (row.files as Array<{ filename: string }> | null) ?? []
-  if (row.source === 'RUTRACKER' && row.torrentHash) {
-    // Delete the torrent + its data, but only if no other album from the same pack still needs it.
-    const siblings = await prisma.downloadedRelease.count({
-      where: { torrentHash: row.torrentHash, status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING'] }, id: { not: row.id } },
-    })
-    if (siblings === 0) {await deleteTorrent(row.torrentHash, true)}
-  }
-  else if (row.slskUsername && files.length) {
+  if (row.slskUsername && files.length) {
     const transfers = await getSlskdActiveDownloads().catch(() => [])
     const expected = new Set(files.map(f => baseName(String(f.filename))))
     const ours = transfers.filter(t => t.username === row.slskUsername && expected.has(baseName(t.filename)))

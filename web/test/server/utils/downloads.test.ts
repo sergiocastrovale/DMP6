@@ -19,16 +19,6 @@ vi.mock('~/server/utils/slskd', async () => {
   }
 })
 
-vi.mock('~/server/utils/prowlarr', () => ({
-  checkProwlarrConnection: vi.fn(),
-}))
-
-vi.mock('~/server/utils/qbittorrent', () => ({
-  checkQbittorrentConnection: vi.fn(),
-}))
-
-const { checkProwlarrConnection } = await import('~/server/utils/prowlarr')
-const { checkQbittorrentConnection } = await import('~/server/utils/qbittorrent')
 const {
   getDownloadStatus,
   getSlskdResults,
@@ -39,8 +29,6 @@ const {
 describe('getDownloadStatus', () => {
   it('marks a connected source as configured and connected', async () => {
     slskdMocks.checkSlskdConnection.mockResolvedValue({ ok: true })
-    vi.mocked(checkProwlarrConnection).mockResolvedValue({ ok: true })
-    vi.mocked(checkQbittorrentConnection).mockResolvedValue({ ok: true })
 
     const status = await getDownloadStatus()
 
@@ -49,8 +37,6 @@ describe('getDownloadStatus', () => {
 
   it('treats a non-"not configured" error as configured but disconnected', async () => {
     slskdMocks.checkSlskdConnection.mockResolvedValue({ ok: false, error: 'Connection failed' })
-    vi.mocked(checkProwlarrConnection).mockResolvedValue({ ok: true })
-    vi.mocked(checkQbittorrentConnection).mockResolvedValue({ ok: true })
 
     const status = await getDownloadStatus()
 
@@ -59,8 +45,6 @@ describe('getDownloadStatus', () => {
 
   it('treats a "not configured" error as unconfigured', async () => {
     slskdMocks.checkSlskdConnection.mockResolvedValue({ ok: false, error: 'slskd is not configured' })
-    vi.mocked(checkProwlarrConnection).mockResolvedValue({ ok: true })
-    vi.mocked(checkQbittorrentConnection).mockResolvedValue({ ok: true })
 
     const status = await getDownloadStatus()
 
@@ -69,8 +53,6 @@ describe('getDownloadStatus', () => {
 
   it('swallows a rejected connection check as a generic failure', async () => {
     slskdMocks.checkSlskdConnection.mockRejectedValue(new Error('boom'))
-    vi.mocked(checkProwlarrConnection).mockResolvedValue({ ok: true })
-    vi.mocked(checkQbittorrentConnection).mockResolvedValue({ ok: true })
 
     const status = await getDownloadStatus()
 
