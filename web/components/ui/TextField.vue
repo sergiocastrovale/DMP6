@@ -5,6 +5,7 @@ const props = withDefaults(defineProps<{
   modelValue: string
   label: string
   description?: string
+  descriptionClass?: string
   type?: string
   placeholder?: string
   autocomplete?: string
@@ -13,6 +14,7 @@ const props = withDefaults(defineProps<{
   error?: string
 }>(), {
   description: undefined,
+  descriptionClass: undefined,
   type: 'text',
   placeholder: undefined,
   autocomplete: undefined,
@@ -30,7 +32,7 @@ const errorId = computed(() => props.error ? `${fieldId}-error` : undefined)
 <template>
   <div class="flex flex-col gap-1.5">
     <label :for="fieldId" :class="form.label">{{ label }}</label>
-    <p v-if="description" :class="form.hint">{{ description }}</p>
+    <p v-if="description" :class="cx(form.hint, descriptionClass)">{{ description }}</p>
     <input
       :id="fieldId"
       :type="type"
