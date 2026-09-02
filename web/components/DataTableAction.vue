@@ -12,6 +12,8 @@ defineProps<{
   disabled?: boolean
   to?: RouteLocationRaw
   href?: string
+  on?: boolean
+  iconClass?: string
 }>()
 </script>
 
@@ -21,11 +23,13 @@ defineProps<{
     size="sm"
     icon-only
     :icon="icon"
+    :icon-class="iconClass"
     :title="label"
     :aria-label="label"
     :loading="loading"
     :disabled="disabled"
     :to="to"
     :href="href"
+    :on="on"
   />
 </template>

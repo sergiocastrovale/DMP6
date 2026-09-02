@@ -196,40 +196,29 @@ const formatFileSize = (bytes: number) => {
         <td v-if="hasColumn('duration')" class="py-2 pr-4 text-center tabular-nums text-stone-100/55" :class="track.missing && 'line-through'">{{ formatDuration(track.duration) }}</td>
         <td v-if="hasColumn('favorite')" class="py-2 pr-4 text-center">
           <div class="flex items-center justify-center gap-0.5">
-            <button
-              class="rounded-full p-1.5 text-stone-100/55 transition-colors hover:text-amber-400 cursor-pointer"
-              :class="{ 'text-amber-400': favoriteTracks.has(track.id) }"
-              title="Toggle favorite"
+            <DataTableAction
+              :icon="Heart"
+              label="Toggle favorite"
+              :icon-class="favoriteTracks.has(track.id) ? 'text-amber-400 fill-current' : ''"
               @click.stop="toggleFavorite(track.id)"
-            >
-              <Heart :size="14" :fill="favoriteTracks.has(track.id) ? 'currentColor' : 'none'" />
-            </button>
-            <a
+            />
+            <DataTableAction
               v-if="track.mbTrackMusicbrainzId"
+              :icon="ExternalLink"
+              label="View recording on MusicBrainz"
               :href="`https://musicbrainz.org/recording/${track.mbTrackMusicbrainzId}`"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="rounded-full p-1.5 text-stone-100/55 transition-colors hover:text-amber-400 cursor-pointer"
-              title="View recording on MusicBrainz"
               @click.stop
-            >
-              <ExternalLink :size="14" />
-            </a>
-            <a
+            />
+            <DataTableAction
               v-if="releaseMap?.[track.localReleaseId || ''] && track.localReleaseId"
+              :icon="Link"
+              label="Go to release"
               :href="`/artist/${$route.params.slug}?release=${(releaseMap[track.localReleaseId]?.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`"
-              class="rounded-full p-1.5 text-stone-100/55 transition-colors hover:text-amber-400 cursor-pointer"
-              title="Go to release"
               @click.stop
-            >
-              <Link :size="14" />
-            </a>
-            <UiButton
-              variant="ghost"
-              size="sm"
-              icon-only
+            />
+            <DataTableAction
               :icon="Info"
-              title="Track info"
+              label="Track info"
               @click.stop="openInfoDialog(track)"
             />
           </div>
