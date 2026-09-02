@@ -220,6 +220,26 @@ describe('useDownloadsStore - actions', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('retryAll batches through retry-all (not one retry/:id call per release) and refreshes the queue once', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/downloads/retry-all') {return Promise.resolve({ retried: 2, failed: 0 })}
+      return Promise.resolve({ active: [], ready: [], rejected: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
+    })
+    const store = useDownloadsStore()
+    const result = await store.retryAll(['a', 'b'])
+    expect(result).toEqual({ retried: 2, failed: 0 })
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/retry-all', expect.objectContaining({ method: 'POST', body: { ids: ['a', 'b'] } }))
+    const individualRetryCalls = fetchMock.mock.calls.filter(c => /^\/api\/downloads\/retry\//.test(String(c[0])))
+    expect(individualRetryCalls).toHaveLength(0)
+  })
+
+  it('retryAll is a no-op for an empty selection', async () => {
+    const store = useDownloadsStore()
+    const result = await store.retryAll([])
+    expect(result).toEqual({ retried: 0, failed: 0 })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('requeue (single) POSTs to /api/downloads/requeue/:id', async () => {
     fetchMock.mockResolvedValue({ active: [], ready: [], rejected: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     const store = useDownloadsStore()

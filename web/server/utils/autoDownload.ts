@@ -127,6 +127,28 @@ export async function forceRetryDownload(id: string): Promise<void> {
   })().catch(e => monitorLog('error', `force-retry ${row.title}: ${e?.message || e}`))
 }
 
+/**
+ * Bulk "Retry" for a multi-select. Awaits each row's synchronous DB flip to DOWNLOADING in turn
+ * (the search itself still runs detached, same as the single-row path) so the endpoint doesn't
+ * return until every row is genuinely retried - a client that fired one `forceRetryDownload` POST
+ * per id and refetched the queue after each would race those refetches against each other and
+ * could land on a snapshot that missed rows retried later in the batch.
+ */
+export async function forceRetryDownloads(ids: string[]): Promise<{ retried: number, failed: number }> {
+  let retried = 0
+  let failed = 0
+  for (const id of ids) {
+    try {
+      await forceRetryDownload(id)
+      retried++
+    }
+    catch {
+      failed++
+    }
+  }
+  return { retried, failed }
+}
+
 let lastTopUpAt = 0
 let topUpRunning = false
 

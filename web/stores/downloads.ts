@@ -244,6 +244,15 @@ export const useDownloadsStore = defineStore('downloads', () => {
     await fetchQueue()
   }
 
+  const retryAll = async (ids: string[]): Promise<{ retried: number, failed: number }> => {
+    if (!ids.length) {
+      return { retried: 0, failed: 0 }
+    }
+    const result = await $fetch<{ retried: number, failed: number }>('/api/downloads/retry-all', { method: 'POST', body: { ids } })
+    await fetchQueue()
+    return result
+  }
+
   const cancel = async (id: string) => {
     await $fetch(`/api/downloads/cancel/${id}`, { method: 'POST' })
     await fetchQueue()
@@ -400,6 +409,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     requeue,
     requeueAll,
     retry,
+    retryAll,
     cancel,
     merge,
     rejectAll,

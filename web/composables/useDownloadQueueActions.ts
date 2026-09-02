@@ -80,23 +80,27 @@ export const useDownloadQueueActions = () => {
   // Bulk reject dialog (Failed / Unavailable / Ready-to-merge multi-select)
   const bulkBusy = ref(false)
   // Retrying a selection is non-destructive (it just moves rows back to the front of the queue), so
-  // it needs no confirm dialog - same precedent as the per-row "Force retry". There is no bulk
-  // endpoint, so this fans out; a row that fails is reported and the rest still go.
+  // it needs no confirm dialog - same precedent as the per-row "Force retry". Goes through the bulk
+  // endpoint (one request, one queue refetch) rather than fanning out a `store.retry()` per id -
+  // that used to fire one queue refetch per id in parallel, and whichever refetch happened to land
+  // last could reflect a snapshot taken before a slower row's retry had landed in the DB, making the
+  // batch look like only one or two downloads actually retried.
   const retryMany = async (ids: string[]) => {
     if (!ids.length) {
       return
     }
     bulkBusy.value = true
     try {
-      const results = await Promise.allSettled(ids.map(id => store.retry(id)))
-      const failures = results.filter(r => r.status === 'rejected').length
-      const retried = ids.length - failures
+      const { retried, failed } = await store.retryAll(ids)
       if (retried > 0) {
         toast.success(`Retrying ${retried} download${retried === 1 ? '' : 's'}`)
       }
-      if (failures > 0) {
-        toast.error(`${failures} download${failures === 1 ? '' : 's'} could not be retried`)
+      if (failed > 0) {
+        toast.error(`${failed} download${failed === 1 ? '' : 's'} could not be retried`)
       }
+    }
+    catch (e: any) {
+      toast.error(e?.data?.message || e?.message || 'Retry failed')
     }
     finally {
       bulkBusy.value = false

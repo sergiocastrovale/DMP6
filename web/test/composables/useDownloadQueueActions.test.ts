@@ -133,35 +133,28 @@ describe('useDownloadQueueActions', () => {
     expect(actions.bulkMergeOpen.value).toBe(false)
   })
 
-  it('retryMany retries every selected id and clears busy state', async () => {
+  it('retryMany calls the bulk retry endpoint once with every selected id and clears busy state', async () => {
     const store = useDownloadsStore()
-    const retrySpy = vi.spyOn(store, 'retry').mockResolvedValue(undefined)
+    const retryAllSpy = vi.spyOn(store, 'retryAll').mockResolvedValue({ retried: 3, failed: 0 })
     const actions = useDownloadQueueActions()
     await actions.retryMany(['a', 'b', 'c'])
-    expect(retrySpy).toHaveBeenCalledTimes(3)
-    expect(retrySpy).toHaveBeenCalledWith('b')
+    expect(retryAllSpy).toHaveBeenCalledTimes(1)
+    expect(retryAllSpy).toHaveBeenCalledWith(['a', 'b', 'c'])
     expect(actions.bulkBusy.value).toBe(false)
   })
 
-  it('retryMany keeps going when one row fails, rather than abandoning the rest', async () => {
-    // There is no bulk retry endpoint, so this fans out. Promise.all would drop the remaining
-    // retries the moment any single one rejected.
+  it('retryMany reports a partial failure via toast without throwing', async () => {
     const store = useDownloadsStore()
-    const retrySpy = vi.spyOn(store, 'retry').mockImplementation(async (id: string) => {
-      if (id === 'b') {
-        throw new Error('nope')
-      }
-    })
+    vi.spyOn(store, 'retryAll').mockResolvedValue({ retried: 2, failed: 1 })
     const actions = useDownloadQueueActions()
     await actions.retryMany(['a', 'b', 'c'])
-    expect(retrySpy).toHaveBeenCalledTimes(3)
     expect(actions.bulkBusy.value).toBe(false)
   })
 
   it('retryMany is a no-op for an empty selection', async () => {
     const store = useDownloadsStore()
-    const retrySpy = vi.spyOn(store, 'retry')
+    const retryAllSpy = vi.spyOn(store, 'retryAll')
     await useDownloadQueueActions().retryMany([])
-    expect(retrySpy).not.toHaveBeenCalled()
+    expect(retryAllSpy).not.toHaveBeenCalled()
   })
 })
