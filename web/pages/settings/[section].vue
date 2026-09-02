@@ -2,20 +2,16 @@
 import type { Component } from 'vue'
 import SettingsLibraryForm from '~/components/settings/LibraryForm.vue'
 import SettingsDownloadsForm from '~/components/settings/DownloadsForm.vue'
-import SettingsMonitoringForm from '~/components/settings/MonitoringForm.vue'
 import SettingsStorageForm from '~/components/settings/StorageForm.vue'
 import SettingsApiKeysForm from '~/components/settings/ApiKeysForm.vue'
-import SettingsScrobbleForm from '~/components/settings/ScrobbleForm.vue'
 import SettingsUsersForm from '~/components/settings/UsersForm.vue'
 import SettingsPermissionsForm from '~/components/settings/PermissionsForm.vue'
 
 const SECTIONS: Record<string, { title: string; component: Component }> = {
   library: { title: 'Library', component: SettingsLibraryForm },
   downloads: { title: 'Downloads', component: SettingsDownloadsForm },
-  monitoring: { title: 'Monitoring', component: SettingsMonitoringForm },
   storage: { title: 'Storage', component: SettingsStorageForm },
   'api-keys': { title: 'API Keys', component: SettingsApiKeysForm },
-  scrobble: { title: 'Scrobble', component: SettingsScrobbleForm },
   users: { title: 'Users', component: SettingsUsersForm },
   permissions: { title: 'Permissions', component: SettingsPermissionsForm },
 }

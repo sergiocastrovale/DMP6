@@ -222,6 +222,10 @@ export const grid = {
   auto: 'grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] sm:gap-x-[22px] sm:gap-y-[26px]',
   autoSm: 'grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-5',
   empty: 'col-span-full py-10 text-center text-base text-stone-100/55',
+  // Stacked single column until `xl`, then two fields per row - for a run of short fields
+  // (e.g. numeric settings) where one-per-row wastes space on wide viewports but a phone/tablet
+  // column is too narrow for two.
+  halfRow: 'flex flex-col gap-5 xl:grid xl:grid-cols-2 xl:gap-x-4',
 }
 
 export const tile = {

@@ -42,5 +42,5 @@ export default defineEventHandler(async (event) => {
 
   invalidateSettingsCache()
 
-  return sendRedirect(event, '/settings/scrobble')
+  return sendRedirect(event, '/settings/api-keys')
 })
