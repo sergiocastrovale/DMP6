@@ -86,7 +86,7 @@ const disconnect = async () => {
     <UiCard>
       <template #header>
         <h2 class="text-lg font-semibold text-stone-100">Last.fm Scrobbling</h2>
-        <Popover trigger="hover" placement="bottom-start">
+        <Popover trigger="hover" teleport placement="bottom-start">
           <template #trigger>
             <button type="button" aria-label="How scrobbling works" class="cursor-help text-stone-100/25 hover:text-stone-100/55">
               <CircleHelp :size="15" />
