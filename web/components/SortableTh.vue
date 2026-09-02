@@ -29,13 +29,13 @@ const ariaSort = computed<'ascending' | 'descending' | 'none'>(() =>
     <UiButton
       variant="ghost"
       size="sm"
-      :on="active"
       :icon="align === 'right' ? icon : undefined"
       :trailing-icon="align === 'right' ? undefined : icon"
+      :icon-class="active ? 'text-stone-100' : undefined"
       :title="`Sort by ${label}`"
       @click="emit('sort', sortKey)"
     >
-      {{ label }}
+      <span :class="active && 'text-stone-100'">{{ label }}</span>
     </UiButton>
   </th>
 </template>
