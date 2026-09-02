@@ -2,20 +2,27 @@
 import { cx } from '~/helpers/ui'
 
 const model = defineModel<boolean>({ required: true })
-defineProps<{ label?: string }>()
+const props = withDefaults(defineProps<{ label?: string; disabled?: boolean }>(), { disabled: false })
 </script>
 
 <template>
-  <label class="flex cursor-pointer items-center gap-2.5 text-base text-stone-100/60 select-none">
+  <label
+    :class="cx(
+      'flex items-center gap-2.5 text-base text-stone-100/60 select-none',
+      disabled ? 'cursor-default opacity-50' : 'cursor-pointer',
+    )"
+  >
     <button
       type="button"
       role="switch"
       :aria-checked="model"
+      :disabled="disabled"
       :class="cx(
         'relative inline-flex h-[19px] w-[34px] shrink-0 rounded-full border transition-colors duration-150',
         model ? 'bg-amber-400 border-amber-400' : 'bg-stone-700 border-stone-100/10',
+        disabled && 'cursor-default',
       )"
-      @click="model = !model"
+      @click="!props.disabled && (model = !model)"
     >
       <span
         :class="cx(

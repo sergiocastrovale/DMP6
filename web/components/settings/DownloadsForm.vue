@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { grid } from '~/helpers/ui'
+import { urlField, positiveIntField, nonNegativeIntField, validateField } from '~/helpers/settingsValidation'
 
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
@@ -30,6 +31,19 @@ const monitoring = reactive({
   retryCooldownDays: num(settings.value?.retryCooldownDays),
   noProgressSec: num(settings.value?.noProgressSec),
   maxDownloadAttempts: num(settings.value?.maxDownloadAttempts),
+})
+
+const fieldErrors = reactive({
+  slskdUrl: '',
+  downloadMinBitrate: '',
+  maxConcurrentDownloads: '',
+  searchPicksPerInterval: '',
+  searchIntervalSec: '',
+  gapsPicksPerRun: '',
+  gapsIntervalMin: '',
+  retryCooldownDays: '',
+  noProgressSec: '',
+  maxDownloadAttempts: '',
 })
 
 const triState = (v: boolean | null | undefined): 'default' | 'on' | 'off' =>
@@ -69,6 +83,21 @@ const { saving, saved, error, save } = useFormSave(async () => {
   })
   await refresh()
 })
+
+const onTextBlur = <K extends keyof typeof fieldErrors>(field: K, schema: Parameters<typeof validateField>[0], value: string) => {
+  fieldErrors[field] = validateField(schema, value)
+  if (!fieldErrors[field]) {save()}
+}
+
+const onChoiceChange = (setter: (v: string) => void, v: string) => {
+  setter(v)
+  save()
+}
+
+const onSwitchChange = (v: boolean) => {
+  downloadsEnabled.value = v
+  save()
+}
 </script>
 
 <template>
@@ -76,12 +105,15 @@ const { saving, saved, error, save } = useFormSave(async () => {
     <DownloadsAcquisitionIdleBanner />
 
     <UiCard title="Download Settings">
-      <Switch v-model="downloadsEnabled" label="Downloads enabled" />
+      <Switch :model-value="downloadsEnabled" label="Downloads enabled" :disabled="!canEdit" @update:model-value="onSwitchChange" />
       <SettingsField
         v-model="form.slskdUrl"
         label="slskd URL"
         description="REST API base URL. Overrides SLSKD_URL."
         placeholder="http://localhost:5030"
+        :error="fieldErrors.slskdUrl"
+        :disabled="!canEdit"
+        @blur="onTextBlur('slskdUrl', urlField, form.slskdUrl)"
       />
       <SettingsField
         v-model="form.slskdApiKey"
@@ -89,24 +121,32 @@ const { saving, saved, error, save } = useFormSave(async () => {
         description="X-API-Key header value. Overrides SLSKD_API_KEY."
         type="password"
         :placeholder="settings?.slskdApiKeySet ? 'Set — leave blank to keep' : '••••••••'"
+        :disabled="!canEdit"
+        @blur="save"
       />
       <SettingsField
         v-model="form.downloadsPath"
         label="Downloads Path"
         description="Directory where downloaded files are saved. Overrides DOWNLOADS_PATH."
         placeholder="/path/to/downloads"
+        :disabled="!canEdit"
+        @blur="save"
       />
       <SettingsField
         v-model="form.downloadDirTemplate"
         label="Directory Template"
         description="Folder template. Placeholders: {artist}, {album}, {year}. Overrides DOWNLOAD_DIR_TEMPLATE."
         placeholder="{artist}/{year} - {album}"
+        :disabled="!canEdit"
+        @blur="save"
       />
       <SettingsField
         v-model="form.downloadFormats"
         label="Allowed Formats"
         description="Comma-separated list (e.g. flac,mp3). Overrides DOWNLOAD_FORMATS."
         placeholder="flac,mp3"
+        :disabled="!canEdit"
+        @blur="save"
       />
       <SettingsField
         v-model="form.downloadMinBitrate"
@@ -114,6 +154,9 @@ const { saving, saved, error, save } = useFormSave(async () => {
         description="Minimum bitrate filter. Overrides DOWNLOAD_MIN_BITRATE."
         type="number"
         placeholder="320"
+        :error="fieldErrors.downloadMinBitrate"
+        :disabled="!canEdit"
+        @blur="onTextBlur('downloadMinBitrate', nonNegativeIntField, form.downloadMinBitrate)"
       />
 
       <p class="text-sm text-stone-100/55">
@@ -122,9 +165,11 @@ const { saving, saved, error, save } = useFormSave(async () => {
       </p>
 
       <UiSelect
-        v-model="enabledChoice"
+        :model-value="enabledChoice"
         label="Monitoring"
         description="Master switch for the download + catalogue loops."
+        :disabled="!canEdit"
+        @update:model-value="onChoiceChange(v => enabledChoice = v as any, $event)"
       >
         <option value="default">- use env default (MONITOR_ENABLED) -</option>
         <option value="on">On</option>
@@ -137,55 +182,81 @@ const { saving, saved, error, save } = useFormSave(async () => {
           label="Max concurrent downloads"
           description="Cap on simultaneous active Soulseek transfers. The worker tops up to this. Default 5. (MAX_CONCURRENT_DOWNLOADS)" type="number"
           placeholder="5"
+          :error="fieldErrors.maxConcurrentDownloads"
+          :disabled="!canEdit"
+          @blur="onTextBlur('maxConcurrentDownloads', positiveIntField, monitoring.maxConcurrentDownloads)"
         />
         <SettingsField
           v-model="monitoring.searchPicksPerInterval"
           label="Search picks per interval"
           description="How many new missing releases the worker searches each top-up. Default 3. (SEARCH_PICKS_PER_INTERVAL)" type="number"
           placeholder="3"
+          :error="fieldErrors.searchPicksPerInterval"
+          :disabled="!canEdit"
+          @blur="onTextBlur('searchPicksPerInterval', positiveIntField, monitoring.searchPicksPerInterval)"
         />
         <SettingsField
           v-model="monitoring.searchIntervalSec"
           label="Search interval (seconds)"
           description="Minimum seconds between download top-up runs (throttle). Default 60. (SEARCH_INTERVAL_SEC)" type="number"
           placeholder="60"
+          :error="fieldErrors.searchIntervalSec"
+          :disabled="!canEdit"
+          @blur="onTextBlur('searchIntervalSec', positiveIntField, monitoring.searchIntervalSec)"
         />
         <SettingsField
           v-model="monitoring.gapsPicksPerRun"
           label="Catalogue-gap picks per run"
           description="Monitored artists whose MusicBrainz catalogue is refreshed each gap run (round-robin). Default 20. (GAPS_PICKS_PER_RUN)" type="number"
           placeholder="20"
+          :error="fieldErrors.gapsPicksPerRun"
+          :disabled="!canEdit"
+          @blur="onTextBlur('gapsPicksPerRun', positiveIntField, monitoring.gapsPicksPerRun)"
         />
         <SettingsField
           v-model="monitoring.gapsIntervalMin"
           label="Catalogue-gap interval (minutes)"
           description="Minutes between catalogue-gap runs. Default 5. (GAPS_INTERVAL_MIN)" type="number"
           placeholder="5"
+          :error="fieldErrors.gapsIntervalMin"
+          :disabled="!canEdit"
+          @blur="onTextBlur('gapsIntervalMin', positiveIntField, monitoring.gapsIntervalMin)"
         />
         <SettingsField
           v-model="monitoring.retryCooldownDays"
           label="Retry cooldown (days)"
           description="Wait this many days before retrying a FAILED/UNAVAILABLE/INVALID release. Default 7. (RETRY_COOLDOWN_DAYS)" type="number"
           placeholder="7"
+          :error="fieldErrors.retryCooldownDays"
+          :disabled="!canEdit"
+          @blur="onTextBlur('retryCooldownDays', positiveIntField, monitoring.retryCooldownDays)"
         />
         <SettingsField
           v-model="monitoring.noProgressSec"
           label="No-progress timeout (seconds)"
           description="Kill a download making no byte progress for this long. Default 60. (NO_PROGRESS_SEC)" type="number"
           placeholder="60"
+          :error="fieldErrors.noProgressSec"
+          :disabled="!canEdit"
+          @blur="onTextBlur('noProgressSec', positiveIntField, monitoring.noProgressSec)"
         />
         <SettingsField
           v-model="monitoring.maxDownloadAttempts"
           label="Max attempts before giving up"
           description="After this many failed attempts a release is abandoned (never auto-retried). Default 3. (MAX_DOWNLOAD_ATTEMPTS)" type="number"
           placeholder="3"
+          :error="fieldErrors.maxDownloadAttempts"
+          :disabled="!canEdit"
+          @blur="onTextBlur('maxDownloadAttempts', positiveIntField, monitoring.maxDownloadAttempts)"
         />
       </div>
 
       <UiSelect
-        v-model="songkongChoice"
+        :model-value="songkongChoice"
         label="SongKong enrichment"
         description="Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library folder layout is applied. Requires the host SongKong drainer cron. (SONGKONG_ENABLED)"
+        :disabled="!canEdit"
+        @update:model-value="onChoiceChange(v => songkongChoice = v as any, $event)"
       >
         <option value="default">- use env default (SONGKONG_ENABLED) -</option>
         <option value="on">On</option>
@@ -193,16 +264,18 @@ const { saving, saved, error, save } = useFormSave(async () => {
       </UiSelect>
 
       <UiSelect
-        v-model="autoMergeChoice"
+        :model-value="autoMergeChoice"
         label="Auto-merge into library"
         description="When on, ready downloads are merged into the music library automatically (no manual “Merge”). Off by default — merging stays a manual gate. (AUTO_MERGE)"
+        :disabled="!canEdit"
+        @update:model-value="onChoiceChange(v => autoMergeChoice = v as any, $event)"
       >
         <option value="default">- use env default (AUTO_MERGE) -</option>
         <option value="on">On</option>
         <option value="off">Off</option>
       </UiSelect>
 
-      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
     </UiCard>
   </div>
 </template>

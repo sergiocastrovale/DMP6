@@ -5,7 +5,11 @@ defineProps<{
   placeholder?: string
   type?: 'text' | 'password' | 'number' | 'select'
   options?: { value: string; label: string }[]
+  error?: string
+  disabled?: boolean
 }>()
+
+defineEmits<{ blur: [] }>()
 
 const model = defineModel<string | number | null>()
 </script>
@@ -16,6 +20,8 @@ const model = defineModel<string | number | null>()
     :model-value="(model as string) ?? ''"
     :label="label"
     :description="description"
+    :error="error"
+    :disabled="disabled"
     @update:model-value="model = $event"
   >
     <option value="">- use env default -</option>
@@ -27,8 +33,11 @@ const model = defineModel<string | number | null>()
     :model-value="(model as string) ?? ''"
     :label="label"
     :description="description"
+    :error="error"
+    :disabled="disabled"
     :type="type === 'password' ? 'password' : type === 'number' ? 'number' : 'text'"
     :placeholder="placeholder"
     @update:model-value="model = $event"
+    @blur="$emit('blur')"
   />
 </template>

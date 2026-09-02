@@ -3,18 +3,14 @@ import { describe, expect, it } from 'vitest'
 import SaveBar from '../../../components/settings/SaveBar.vue'
 
 describe('settings/SaveBar.vue', () => {
-  it('emits save when the button is clicked', async () => {
+  it('renders no button - status is autosave-driven, not user-triggered', async () => {
     const wrapper = await mountSuspended(SaveBar, { props: { saving: false, saved: false, error: '' } })
-    await wrapper.get('button').trigger('click')
-    expect(wrapper.emitted('save')).toHaveLength(1)
+    expect(wrapper.find('button').exists()).toBe(false)
   })
 
-  it('disables the button while saving or when disabled is set', async () => {
-    const saving = await mountSuspended(SaveBar, { props: { saving: true, saved: false, error: '' } })
-    expect(saving.get('button').attributes('disabled')).toBeDefined()
-
-    const disabled = await mountSuspended(SaveBar, { props: { saving: false, saved: false, error: '', disabled: true } })
-    expect(disabled.get('button').attributes('disabled')).toBeDefined()
+  it('shows a saving indicator while saving', async () => {
+    const wrapper = await mountSuspended(SaveBar, { props: { saving: true, saved: false, error: '' } })
+    expect(wrapper.get('[aria-live="polite"]').text()).toContain('Saving')
   })
 
   it('announces saved/error state through a live region', async () => {
@@ -26,12 +22,11 @@ describe('settings/SaveBar.vue', () => {
     expect(wrapper.get('[aria-live="polite"]').text()).toContain('Save failed')
   })
 
-  it('renders a custom label and extra slot content', async () => {
+  it('renders extra slot content', async () => {
     const wrapper = await mountSuspended(SaveBar, {
-      props: { saving: false, saved: false, error: '', label: 'Save' },
+      props: { saving: false, saved: false, error: '' },
       slots: { default: '<button class="extra">Extra</button>' },
     })
-    expect(wrapper.get('button').text()).toBe('Save')
     expect(wrapper.find('.extra').exists()).toBe(true)
   })
 })

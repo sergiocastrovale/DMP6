@@ -10,6 +10,7 @@ const props = withDefaults(defineProps<{
   autocomplete?: string
   autofocus?: boolean
   required?: boolean
+  disabled?: boolean
   error?: string
 }>(), {
   description: undefined,
@@ -18,10 +19,11 @@ const props = withDefaults(defineProps<{
   autocomplete: undefined,
   autofocus: false,
   required: false,
+  disabled: false,
   error: undefined,
 })
 
-defineEmits<{ 'update:modelValue': [value: string] }>()
+defineEmits<{ 'update:modelValue': [value: string]; blur: [] }>()
 
 const fieldId = useId()
 const errorId = computed(() => props.error ? `${fieldId}-error` : undefined)
@@ -40,10 +42,12 @@ const errorId = computed(() => props.error ? `${fieldId}-error` : undefined)
         :autocomplete="autocomplete"
         :autofocus="autofocus"
         :required="required"
+        :disabled="disabled"
         :aria-invalid="!!error || undefined"
         :aria-describedby="errorId"
-        :class="cx(form.input, error && form.inputInvalid)"
+        :class="cx(form.input, error && form.inputInvalid, disabled && 'opacity-50 cursor-default')"
         @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+        @blur="$emit('blur')"
       >
       <p v-if="error" :id="errorId" role="alert" :class="form.error">{{ error }}</p>
     </div>

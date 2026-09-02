@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { CheckCircle2, AlertCircle, ExternalLink, Unlink, CircleHelp } from 'lucide-vue-next'
-import { cx, surface } from '~/helpers/ui'
+import { CheckCircle2, AlertCircle, ExternalLink, Unlink } from 'lucide-vue-next'
+import { grid } from '~/helpers/ui'
 
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
 
-const { data: settings, refresh } = await useAsyncData('settings-db', () =>
+const { data: settings, refresh } = useAsyncData('settings-db', () =>
   $fetch<Record<string, any>>('/api/settings'),
 )
 
@@ -73,36 +73,27 @@ const disconnect = async () => {
 <template>
   <div class="flex w-full max-w-7xl flex-col gap-6">
     <UiCard title="Fanart.tv">
-      <SettingsField
-        v-model="fanartApiKey"
-        label="API Key"
-        description="Used by the sync script to fetch artist images. Overrides FANART_API_KEY."
-        type="password"
-        placeholder="••••••••"
-      />
-      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" :disabled="!canEdit" @save="save" />
+      <div :class="grid.halfRow">
+        <SettingsField
+          v-model="fanartApiKey"
+          label="API Key"
+          description="Used by the sync script to fetch artist images. Overrides FANART_API_KEY."
+          type="password"
+          placeholder="••••••••"
+          :disabled="!canEdit"
+          @blur="save"
+        />
+      </div>
+
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
     </UiCard>
 
-    <UiCard>
-      <template #header>
-        <h2 class="text-lg font-semibold text-stone-100">Last.fm Scrobbling</h2>
-        <Popover trigger="hover" teleport placement="bottom-start">
-          <template #trigger>
-            <button type="button" aria-label="How scrobbling works" class="cursor-help text-stone-100/25 hover:text-stone-100/55">
-              <CircleHelp :size="15" />
-            </button>
-          </template>
-          <template #content>
-            <div :class="cx(surface.popover, 'w-72 p-3 text-left')">
-              <ul class="flex flex-col gap-1 text-sm font-normal normal-case tracking-normal text-stone-100/60">
-                <li>Tracks are scrobbled after 50% played or 4 minutes (whichever first)</li>
-                <li>Tracks under 30 seconds are not scrobbled</li>
-                <li>"Now Playing" updates immediately when a track starts</li>
-              </ul>
-            </div>
-          </template>
-        </Popover>
-      </template>
+    <UiCard title="Last.fm" description="Scrobble tracks to Last.fm">
+      <div>
+        <p class="text-sm text-stone-100/60">Scrobble tracks to last.fm.
+          Create your API key <a href="https://www.last.fm/api/authentication" target="_blank" class="text-sm text-stone-100/60 underline">here</a>.
+        </p>
+      </div>
 
       <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
         <CheckCircle2 :size="18" class="text-success shrink-0" />
@@ -129,22 +120,26 @@ const disconnect = async () => {
         <p class="flex-1 text-base text-stone-100/60">Not connected to Last.fm</p>
       </div>
 
-      <SettingsField
-        v-model="lastfmApiKey"
-        label="API Key"
-        description="From your Last.fm API application"
-        placeholder="Your Last.fm API key"
-      />
+      <div :class="grid.halfRow" class="mt-4">
+        <SettingsField
+          v-model="lastfmApiKey"
+          label="API Key"
+          placeholder="Last.fm API key"
+          :disabled="!canEdit"
+          @blur="lastfmSave"
+        />
 
-      <SettingsField
-        v-model="lastfmSecret"
-        label="Shared Secret"
-        description="From your Last.fm API application"
-        type="password"
-        :placeholder="settings?.lastfmSecretSet ? 'Set — leave blank to keep' : 'Your Last.fm shared secret'"
-      />
+        <SettingsField
+          v-model="lastfmSecret"
+          label="Shared Secret"
+          type="password"
+          :placeholder="settings?.lastfmSecretSet ? 'Already set - leave blank to keep' : 'Last.fm shared secret'"
+          :disabled="!canEdit"
+          @blur="lastfmSave"
+        />
+      </div>
 
-      <SettingsSaveBar :saving="lastfmSaving" :saved="lastfmSaved" :error="lastfmError" :disabled="!canEdit" label="Save" class="pt-2" @save="lastfmSave">
+      <SettingsSaveBar :saving="lastfmSaving" :saved="lastfmSaved" :error="lastfmError" class="pt-2">
         <UiButton
           v-if="!isConnected && lastfmApiKey && (lastfmSecret || settings?.lastfmSecretSet)"
           variant="danger"

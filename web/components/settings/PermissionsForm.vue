@@ -31,6 +31,7 @@ const toggle = (role: string, perm: string) => {
   } else {
     s.add(perm)
   }
+  save()
 }
 
 const saving = ref(false)
@@ -88,7 +89,7 @@ const permLabel = (p: string) => {
         </SlimTableBody>
       </SlimTable>
 
-      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" label="Save" @save="save" />
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
     </UiCard>
   </div>
 </template>

@@ -6,10 +6,12 @@ const props = withDefaults(defineProps<{
   modelValue: string
   label?: string
   description?: string
+  disabled?: boolean
   error?: string
 }>(), {
   label: undefined,
   description: undefined,
+  disabled: false,
   error: undefined,
 })
 
@@ -28,9 +30,10 @@ const errorId = computed(() => props.error ? `${fieldId}-error` : undefined)
         <select
           :id="fieldId"
           :value="modelValue"
+          :disabled="disabled"
           :aria-invalid="!!error || undefined"
           :aria-describedby="errorId"
-          :class="cx(form.select, error && form.inputInvalid)"
+          :class="cx(form.select, error && form.inputInvalid, disabled && 'opacity-50 cursor-default')"
           @change="$emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
         >
           <slot />
