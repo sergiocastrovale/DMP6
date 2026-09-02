@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Disc3 } from 'lucide-vue-next'
+import { Disc3, Link } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 
 defineProps<{
@@ -92,11 +92,31 @@ const { releaseImage } = useImageUrl()
           </template>
           <div v-if="release.musicbrainzId">
             <dt class="text-xs text-stone-100/60">MusicBrainz release ID</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ release.musicbrainzId }}</dd>
+            <dd class="flex items-center gap-1.5 font-mono text-xs text-stone-100/60">
+              {{ release.musicbrainzId }}
+              <a
+                :href="`https://musicbrainz.org/release/${release.musicbrainzId}`"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-stone-100/60 hover:text-stone-100"
+              >
+                <Link :size="12" />
+              </a>
+            </dd>
           </div>
           <div v-if="release.releaseGroupId">
             <dt class="text-xs text-stone-100/60">MusicBrainz release group ID</dt>
-            <dd class="font-mono text-xs text-stone-100/60">{{ release.releaseGroupId }}</dd>
+            <dd class="flex items-center gap-1.5 font-mono text-xs text-stone-100/60">
+              {{ release.releaseGroupId }}
+              <a
+                :href="`https://musicbrainz.org/release-group/${release.releaseGroupId}`"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-stone-100/60 hover:text-stone-100"
+              >
+                <Link :size="12" />
+              </a>
+            </dd>
           </div>
           <div v-if="release.localReleaseId">
             <dt class="text-xs text-stone-100/60">Local release ID</dt>

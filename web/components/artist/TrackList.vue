@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Heart, AlertTriangle, ExternalLink, Info, Link } from 'lucide-vue-next'
+import { AlertTriangle, ExternalLink, Info, Link } from 'lucide-vue-next'
 import type { Track, TrackInfo } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
@@ -196,11 +196,11 @@ const formatFileSize = (bytes: number) => {
         <td v-if="hasColumn('duration')" class="py-2 pr-4 text-center tabular-nums text-stone-100/55" :class="track.missing && 'line-through'">{{ formatDuration(track.duration) }}</td>
         <td v-if="hasColumn('favorite')" class="py-2 pr-4 text-center">
           <div class="flex items-center justify-center gap-0.5">
-            <DataTableAction
-              :icon="Heart"
+            <ToggleFavorite
+              :size="16"
+              :active="favoriteTracks.has(track.id)"
               label="Toggle favorite"
-              :icon-class="favoriteTracks.has(track.id) ? 'text-amber-400 fill-current' : ''"
-              @click.stop="toggleFavorite(track.id)"
+              @toggle="toggleFavorite(track.id)"
             />
             <DataTableAction
               v-if="track.mbTrackMusicbrainzId"

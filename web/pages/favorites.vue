@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideHeart, LucideDisc } from 'lucide-vue-next'
+import { LucideDisc } from 'lucide-vue-next'
 import { grid } from '~/helpers/ui'
 
 useTitle('Favorites')
@@ -40,13 +40,13 @@ const {
             :artist-slug="fav.release.artist!.slug"
           >
             <template v-if="canCrud" #overlay>
-              <button
-                class="absolute right-2 top-2 z-10 rounded-full bg-stone-900/90 p-1.5 text-amber-400 transition-colors duration-150 hover:text-amber-300"
-                :aria-label="`Remove ${fav.release.title} from favorites`"
-                @click.stop="unfavoriteRelease(fav.release.id)"
-              >
-                <LucideHeart class="size-4" fill="currentColor" />
-              </button>
+              <ToggleFavorite
+                active
+                :size="16"
+                :label="`Remove ${fav.release.title} from favorites`"
+                class="absolute right-2 top-2 z-10"
+                @toggle="unfavoriteRelease(fav.release.id)"
+              />
             </template>
           </Block>
         </div>
@@ -65,13 +65,12 @@ const {
         empty-message="No favorite tracks yet"
       >
         <template v-if="canCrud" #action="{ row }">
-          <button
-            class="rounded-full p-1.5 text-amber-400 transition-colors duration-150 hover:text-amber-300"
-            :aria-label="`Remove ${row.track.title} from favorites`"
-            @click.stop="unfavoriteTrack(row.track.id)"
-          >
-            <LucideHeart class="size-4" fill="currentColor" />
-          </button>
+          <ToggleFavorite
+            active
+            :size="16"
+            :label="`Remove ${row.track.title} from favorites`"
+            @toggle="unfavoriteTrack(row.track.id)"
+          />
         </template>
       </TrackTable>
 

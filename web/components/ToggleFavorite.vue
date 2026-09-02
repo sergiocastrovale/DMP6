@@ -3,13 +3,13 @@ import { Heart } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 import { cx } from '~/helpers/ui'
 
-const player = usePlayerStore()
-const { hasPerm } = useAuth()
-const canCrud = hasPerm('favorites.crud')
-const isFavorite = ref(false)
-
 const props = withDefaults(defineProps<{
+  // Controlled mode: parent already knows the favorite state (release/track rows) - pass it in and
+  // no internal fetch happens, just an emitted `toggle`. Leave unset for the player bar / explore
+  // card, which have no such prop to hand in and self-fetch/toggle favorite state for the current track.
+  active?: boolean
   size?: number
+  label?: string
   // The persistent bottom player bar hides this on narrow screens to save space; a page that
   // gives the toggle its own room (Explore's now-playing card) wants it visible everywhere.
   alwaysVisible?: boolean
@@ -18,37 +18,54 @@ const props = withDefaults(defineProps<{
   alwaysVisible: false,
 })
 
+const emit = defineEmits<{ toggle: [] }>()
+
+const isControlled = computed(() => props.active !== undefined)
+
+const player = usePlayerStore()
+const { hasPerm } = useAuth()
+const canCrud = hasPerm('favorites.crud')
+const selfFavorite = ref(false)
+const isFavorite = computed(() => isControlled.value ? props.active! : selfFavorite.value)
+
 async function checkFavorite() {
-  if (!player.currentTrack?.id) { return }
+  if (!player.currentTrack?.id) {
+     return
+  }
+  
   try {
     const { isFavorite: fav } = await $fetch<{ isFavorite: boolean }>(`/api/favorites/tracks/${player.currentTrack.id}`)
-    isFavorite.value = fav
+    selfFavorite.value = fav
   }
   catch (error) {
     console.error('Failed to check favorite:', error)
   }
 }
 
-async function toggleFavorite() {
+async function toggleSelf() {
   try {
     await $fetch(`/api/favorites/tracks/${player.currentTrack?.id}`, {
-      method: isFavorite.value ? 'DELETE' : 'POST',
+      method: selfFavorite.value ? 'DELETE' : 'POST',
     })
-    isFavorite.value = !isFavorite.value
+    selfFavorite.value = !selfFavorite.value
   }
   catch (error) {
     console.error('Failed to toggle favorite:', error)
   }
 }
 
+function handleClick() {
+  isControlled.value ? emit('toggle') : toggleSelf()
+}
+
 watch(() => player.currentTrack?.id, () => {
-  if (player.currentTrack) {
+  if (!isControlled.value && player.currentTrack) {
     checkFavorite()
   }
 })
 
 onMounted(() => {
-  if (player.currentTrack) {
+  if (!isControlled.value && player.currentTrack) {
     checkFavorite()
   }
 })
@@ -56,11 +73,16 @@ onMounted(() => {
 
 <template>
   <button
-    v-if="canCrud"
+    v-if="isControlled || canCrud"
     type="button"
-    :class="cx(alwaysVisible ? 'block' : 'hidden lg:block', 'transition-colors duration-150 cursor-pointer', isFavorite ? 'text-amber-400' : 'text-stone-100/60 hover:text-amber-400')"
-    :aria-label="isFavorite ? 'Remove from favorites' : 'Add to favorites'"
-    @click="toggleFavorite"
+    :class="cx(
+      !isControlled && !alwaysVisible ? 'hidden lg:block' : '',
+      'transition-colors duration-150 cursor-pointer',
+      isFavorite ? 'text-amber-400' : 'text-stone-100/60 hover:text-amber-400',
+    )"
+    :aria-label="label ?? (isFavorite ? 'Remove from favorites' : 'Add to favorites')"
+    :title="label"
+    @click.stop="handleClick"
   >
     <Heart :size="props.size" :fill="isFavorite ? 'currentColor' : 'none'" />
   </button>

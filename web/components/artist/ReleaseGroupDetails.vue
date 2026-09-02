@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Disc3, Download, DownloadCloud, Eye, FolderInput, Heart, Info, Layers, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Disc3, Download, DownloadCloud, Eye, FolderInput, Info, Layers, Loader2, RefreshCw, X } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { downloadStatusTone, statuses } from '~/helpers/constants'
-import { musicBrainzUrl } from '~/helpers/functions'
 import { canRedownload } from '~/helpers/artistPageLogic'
 import { cx, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
@@ -55,7 +54,6 @@ const hasPlayable = computed(() => !!props.release.localReleaseId || props.relea
 const coArtists = computed(() => props.coArtists ?? props.release.coArtists ?? [])
 const displayTrackCount = computed(() => props.trackCount ?? props.release.trackCount)
 const displayPlayCount = computed(() => props.playCount ?? props.release.totalPlayCount)
-const mbUrl = computed(() => musicBrainzUrl(props.release))
 
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
 </script>
@@ -115,6 +113,13 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
             {{ release.title }}
           </span>
           <span v-if="subtitle" class="shrink-0 rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60">{{ subtitle }}</span>
+          <ToggleFavorite
+            v-if="release.localReleaseId || release.bundleParentReleaseId"
+            :size="16"
+            :active="isFavorite"
+            :label="release.localReleaseId ? 'Toggle favorite' : 'Favorite the release this is bundled in'"
+            @toggle="emit('toggleFavorite')"
+          />
           <button
             v-if="release.bundleParentReleaseId"
             type="button"
@@ -229,22 +234,6 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           :loading="isAcquiring"
           :label="isAcquiring ? 'Requesting download…' : 'Re-download this release'"
           @click.stop="emit('redownload')"
-        />
-
-        <DataTableAction
-          v-if="release.localReleaseId || release.bundleParentReleaseId"
-          :icon="Heart"
-          :label="release.localReleaseId ? 'Toggle favorite' : 'Favorite the release this is bundled in'"
-          :icon-class="isFavorite ? 'text-amber-400 fill-current' : ''"
-          @click.stop="emit('toggleFavorite')"
-        />
-
-        <DataTableAction
-          v-if="mbUrl"
-          :icon="Link"
-          label="View on MusicBrainz"
-          :href="mbUrl"
-          @click.stop
         />
 
         <!-- Intentionally not shown for bundle-owned sub-releases (bundleParentReleaseId set, no
