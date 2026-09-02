@@ -12,7 +12,7 @@ const { releaseImage } = useImageUrl()
 </script>
 
 <template>
-  <Dialog v-model="model" :title="release?.title ?? 'Release Info'" max-width="lg">
+  <Dialog v-model="model" :title="release?.title ?? 'Release Info'" size="lg">
     <template v-if="release">
       <div class="flex gap-6">
         <div class="flex w-44 shrink-0 flex-col gap-3">

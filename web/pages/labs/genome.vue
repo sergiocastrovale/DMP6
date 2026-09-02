@@ -315,7 +315,7 @@ onUnmounted(() => {
     <Dialog
       v-model="dialogOpen"
       :title="dialogGenre ? `${dialogGenre.name} (${dialogGenre.count})` : ''"
-      max-width="lg"
+      size="lg"
     >
       <div class="-mx-6 -my-4 max-h-[70vh] overflow-y-auto px-6 py-4">
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">

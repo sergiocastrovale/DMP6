@@ -55,7 +55,7 @@ async function save() {
 </script>
 
 <template>
-  <Dialog :model-value="modelValue" title="New Playlist" max-width="sm" @update:model-value="emit('update:modelValue', $event)">
+  <Dialog :model-value="modelValue" title="New Playlist" size="sm" @update:model-value="emit('update:modelValue', $event)">
     <form class="flex flex-col gap-4" @submit.prevent="save">
       <UiTextField v-model="name" label="Name" placeholder="My playlist" autofocus :error="error" />
       <div class="flex justify-end gap-2">

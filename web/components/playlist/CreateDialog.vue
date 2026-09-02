@@ -45,7 +45,7 @@ async function create() {
 </script>
 
 <template>
-  <Dialog :model-value="show" title="Create Playlist" max-width="sm" @update:model-value="show = $event">
+  <Dialog :model-value="show" title="Create Playlist" size="sm" @update:model-value="show = $event">
     <form class="flex flex-col gap-4" @submit.prevent="create">
       <UiTextField v-model="name" label="Name" placeholder="My Playlist" autofocus required />
       <div>

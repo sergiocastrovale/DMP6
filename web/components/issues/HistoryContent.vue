@@ -307,7 +307,7 @@ async function undoSelected() {
       </div>
     </div>
 
-    <Dialog :model-value="dialogFolder !== null" :title="dialogGroup?.folder ?? ''" max-width="lg" @update:model-value="!$event && (dialogFolder = null)">
+    <Dialog :model-value="dialogFolder !== null" :title="dialogGroup?.folder ?? ''" size="lg" @update:model-value="!$event && (dialogFolder = null)">
       <div v-if="dialogGroup" class="flex flex-col gap-0">
         <div
           v-for="item in dialogGroup.items"

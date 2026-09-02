@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { DownloadCloud } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseGroup, ReleaseInfoExtra, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/types/ui'
@@ -391,13 +390,10 @@ watch(() => props.releases, () => {
 
     <ReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />
 
-    <ConfirmDialog
+    <ArtistRedownloadDialog
       v-model="showRedownloadDialog"
-      title="Re-download release"
-      message="Are you sure you want to re-download this release? The current release will be removed IF we manage to download it again; the new one will then replace it once you approve the merge."
-      :note="redownloadRelease?.title ?? undefined"
-      confirm-label="Re-download"
-      :icon="DownloadCloud"
+      :release="redownloadRelease"
+      :artist-name="artistName"
       @confirm="confirmRedownload"
     />
 

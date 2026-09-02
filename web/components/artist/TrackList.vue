@@ -227,7 +227,7 @@ const formatFileSize = (bytes: number) => {
     </SlimTableBody>
   </SlimTable>
 
-  <Dialog v-model="showInfoDialog" :title="infoTrack?.title ?? 'Track Info'" max-width="md">
+  <Dialog v-model="showInfoDialog" :title="infoTrack?.title ?? 'Track Info'" size="md">
     <template v-if="infoTrack">
       <dl class="space-y-3 text-sm">
         <div>

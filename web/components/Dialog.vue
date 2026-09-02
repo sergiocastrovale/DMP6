@@ -5,10 +5,10 @@ import { cx, layout } from '~/helpers/ui'
 const props = withDefaults(defineProps<{
   modelValue: boolean
   title: string
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
   subtitle?: string
 }>(), {
-  maxWidth: 'lg',
+  size: 'lg',
 })
 
 const emit = defineEmits<{
@@ -25,7 +25,7 @@ const MAX_WIDTH_CLASS: Record<'sm' | 'md' | 'lg' | 'xl' | '2xl', string> = {
   '2xl': 'max-w-4xl',
 }
 
-const maxWidthClass = computed(() => MAX_WIDTH_CLASS[props.maxWidth])
+const maxWidthClass = computed(() => MAX_WIDTH_CLASS[props.size])
 const titleId = useId()
 const isOpen = computed(() => props.modelValue)
 
