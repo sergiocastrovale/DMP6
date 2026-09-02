@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Disc3, Download, GitMerge, Heart, Info, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Disc3, Download, Eye, FolderInput, Heart, Info, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { downloadStatusTone, statuses } from '~/helpers/constants'
 import { musicBrainzUrl } from '~/helpers/functions'
-import { cx, ICON_STROKE_WIDTH, surface, toneBg } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
 const props = withDefaults(defineProps<{
@@ -42,6 +42,8 @@ const { isCurrentRelease: isCurrentReleaseId, isReleasePlaying: isReleasePlaying
 const { isSearching, isDownloading, isEnriching, isAwaitingMerge, downloadFailed, isAbandoned, verifyDownload } = useReleaseDownloadState(() => props.release)
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
+const { merge: mergeNow, busyIds: mergeBusyIds } = useDownloadQueueActions()
+const onMergeNow = () => mergeNow(props.release.downloadedReleaseId!)
 
 const releaseId = computed(() => props.release.localReleaseId || props.release.id)
 const isCurrent = computed(() => isCurrentReleaseId(releaseId.value))
@@ -168,15 +170,13 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           <Loader2 :size="12" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" /> Enriching
         </UiBadge>
 
-        <button
+        <UiBadge
           v-else-if="isAwaitingMerge"
-          type="button"
-          :class="cx('inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs transition-colors duration-150 hover:bg-warning/25 cursor-pointer', toneBg.warning)"
-          title="Awaiting merge - review & merge on the Downloads page"
-          @click.stop="verifyDownload"
+          :tone="downloadStatusTone.READY"
+          title="Ready to merge - use the Merge action"
         >
-          <GitMerge :size="12" :stroke-width="ICON_STROKE_WIDTH" /> Awaiting merge
-        </button>
+          Ready to merge
+        </UiBadge>
       </div>
 
       <div class="flex w-32 shrink-0 items-center justify-end gap-0.5 px-3">
@@ -186,6 +186,21 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           label="Cancel download and delete its files"
           @click.stop="emit('cancel')"
         />
+
+        <template v-else-if="isAwaitingMerge">
+          <DataTableAction
+            variant="success"
+            :icon="FolderInput"
+            :loading="mergeBusyIds.has(release.downloadedReleaseId ?? '')"
+            label="Merge this release now"
+            @click.stop="onMergeNow"
+          />
+          <DataTableAction
+            :icon="Eye"
+            label="Review on the Downloads page"
+            @click.stop="verifyDownload"
+          />
+        </template>
 
         <DataTableAction
           v-else-if="release.status === 'MISSING' && downloadsStore.sourceEnabled"

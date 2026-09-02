@@ -55,6 +55,10 @@ const BUTTON_VARIANT: Record<ButtonVariant, ButtonVariantSpec> = {
     structural: 'rounded-full font-semibold border-0',
     idle: 'bg-danger text-white hover:brightness-110',
   },
+  success: {
+    structural: 'rounded-full font-semibold border-0',
+    idle: 'bg-success text-white hover:brightness-110',
+  },
   ghost: {
     structural: 'rounded-md border',
     idle: 'bg-transparent border-transparent text-stone-100/55 hover:text-stone-100 hover:bg-stone-800',

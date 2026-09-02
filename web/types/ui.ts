@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'ghost'
+export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'success' | 'ghost'
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl'
 export type Tone = 'accent' | 'success' | 'warning' | 'danger' | 'info' | 'muted'
 export type ToggleKey = 'tab' | 'chip' | 'keyChip' | 'switchBtn' | 'countPill' | 'underTab'
