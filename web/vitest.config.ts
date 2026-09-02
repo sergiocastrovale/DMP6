@@ -44,6 +44,11 @@ export default defineConfig({
         test: {
           name: 'nuxt',
           environment: 'nuxt',
+          // Disables the app-manifest outdated-build poller: it schedules a real (non-fake) timer that
+          // can fire after a later test file's Nuxt app has already torn down $fetch, throwing an
+          // uncaught "Cannot read properties of undefined (reading 'catch')" that fails the whole run
+          // even though every test passed.
+          environmentOptions: { nuxt: { overrides: { experimental: { appManifest: false } } } },
           include: ['test/stores/**/*.test.ts', 'test/composables/**/*.test.ts', 'test/components/**/*.test.ts'],
           setupFiles: ['test/setup/localstorage-shim.ts', 'test/setup/auto-unmount.ts'],
         },
