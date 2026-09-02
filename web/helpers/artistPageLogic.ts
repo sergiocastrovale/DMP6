@@ -19,7 +19,9 @@ export const mergeDownloadStatus = (
 }
 
 // Only DOWNLOADING/ENRICHING count as "in flight" for the header aggregate bar - READY/PROMOTED/etc.
-// have already left the acquisition pipeline.
+// have already left the acquisition pipeline. SEARCHING is deliberately excluded too, even though it
+// counts as "in flight" everywhere else (Queue tab, poll-keepalive) - this feeds a byte-progress bar
+// (DownloadProgress.vue), and a SEARCHING release has no bytes to show a fraction of.
 export const filterInFlight = (dlStatusMap: Map<string, DlStatusValue>): DlInFlightItem[] =>
   [...dlStatusMap.values()]
     .filter(d => d.status === 'DOWNLOADING' || d.status === 'ENRICHING')

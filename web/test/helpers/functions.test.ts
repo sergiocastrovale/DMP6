@@ -149,7 +149,8 @@ describe('downloadSubpage', () => {
     expect(downloadSubpage('INVALID')).toBe('/downloads/history')
   })
 
-  it('defaults to the queue tab, downloading slice, for DOWNLOADING/ENRICHING/unknown/null', () => {
+  it('defaults to the queue tab, downloading slice, for SEARCHING/DOWNLOADING/ENRICHING/unknown/null', () => {
+    expect(downloadSubpage('SEARCHING')).toBe('/downloads/queue?filter=downloading')
     expect(downloadSubpage('DOWNLOADING')).toBe('/downloads/queue?filter=downloading')
     expect(downloadSubpage('ENRICHING')).toBe('/downloads/queue?filter=downloading')
     expect(downloadSubpage(null)).toBe('/downloads/queue?filter=downloading')
@@ -174,7 +175,7 @@ describe('download row capabilities', () => {
   })
 
   it('offers cancel - never reject - while a row is still in flight', () => {
-    ;['DOWNLOADING', 'ENRICHING'].forEach((s) => {
+    ;['SEARCHING', 'DOWNLOADING', 'ENRICHING'].forEach((s) => {
       expect(canCancelDownload(s)).toBe(true)
       expect(canRejectDownload(s)).toBe(false)
       expect(canRetryDownload(s)).toBe(false)

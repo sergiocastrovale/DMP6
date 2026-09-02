@@ -66,7 +66,7 @@ export const visibleArtistScanActions = (isAdmin: boolean): ArtistScanAction[] =
 // statuses - it means "everything the Queue tab holds".
 export const queueFilters: { key: string, label: string, statuses: string[] }[] = [
   { key: 'all', label: 'All', statuses: [] },
-  { key: 'downloading', label: 'Downloading', statuses: ['DOWNLOADING', 'ENRICHING'] },
+  { key: 'downloading', label: 'Downloading', statuses: ['SEARCHING', 'DOWNLOADING', 'ENRICHING'] },
   { key: 'failed', label: 'Failed', statuses: ['FAILED', 'ABANDONED'] },
   { key: 'unavailable', label: 'Unavailable', statuses: ['UNAVAILABLE'] },
   { key: 'rejected', label: 'Rejected', statuses: ['REJECTED'] },
@@ -91,6 +91,7 @@ export const getScoreRange = (score: number) =>
 // DownloadedRelease.status -> colour, shared by DownloadProgress's bar and any per-release
 // "Downloading"/"Enriching" pill (artist/ReleaseGroupDetails.vue) so the two always agree.
 export const downloadStatusTone: Record<string, Tone> = {
+  SEARCHING: 'muted',
   DOWNLOADING: 'accent',
   ENRICHING: 'info',
   READY: 'success',

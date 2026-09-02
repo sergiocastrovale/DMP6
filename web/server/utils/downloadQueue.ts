@@ -16,7 +16,7 @@ const artistSelect = { artist: { select: { name: true, slug: true } } } as const
 export async function fetchActiveQueueRows() {
   const [inFlight, failed, unavailable] = await Promise.all([
     prisma.downloadedRelease.findMany({
-      where: { status: { in: ['DOWNLOADING', 'ENRICHING'] } },
+      where: { status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING'] } },
       include: artistSelect,
       orderBy: { createdAt: 'desc' },
       take: ACTIVE_TAKE,

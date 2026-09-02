@@ -41,7 +41,7 @@ export default defineEventHandler(async (event) => {
 
   // Already in flight / ready to merge / promoted? Don't double-grab.
   const existing = await prisma.downloadedRelease.findFirst({
-    where: { ...dedupKey, status: { in: ['DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] } },
+    where: { ...dedupKey, status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] } },
     select: { id: true, status: true },
   })
   if (existing) {return { id: existing.id, status: existing.status, alreadyQueued: true }}
@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
     title: mb.title,
     year: mb.year ?? null,
     source: src,
-    status: 'DOWNLOADING' as const,
+    status: 'SEARCHING' as const,
     error: null,
     slskUsername: null,
     quality: null,

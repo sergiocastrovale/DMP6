@@ -39,7 +39,7 @@ const emit = defineEmits<{
 
 const { releaseImage } = useImageUrl()
 const { isCurrentRelease: isCurrentReleaseId, isReleasePlaying: isReleasePlayingId } = usePlayRelease()
-const { isDownloading, isEnriching, isAwaitingMerge, downloadFailed, isAbandoned, verifyDownload } = useReleaseDownloadState(() => props.release)
+const { isSearching, isDownloading, isEnriching, isAwaitingMerge, downloadFailed, isAbandoned, verifyDownload } = useReleaseDownloadState(() => props.release)
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
 
@@ -53,8 +53,6 @@ const displayPlayCount = computed(() => props.playCount ?? props.release.totalPl
 const mbUrl = computed(() => musicBrainzUrl(props.release))
 
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
-
-const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors duration-150 hover:text-amber-400 cursor-pointer'
 </script>
 
 <template>
@@ -135,7 +133,7 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
       </div>
 
       <div class="flex w-24 shrink-0 items-center justify-center">
-        <Popover v-if="!(isDownloading || isEnriching || isAwaitingMerge)" trigger="hover">
+        <Popover v-if="!(isSearching || isDownloading || isEnriching || isAwaitingMerge)" trigger="hover">
           <template #trigger>
             <ReleaseStatusBadge :status="release.status" />
           </template>
@@ -147,9 +145,17 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
         </Popover>
 
         <UiBadge
+          v-else-if="isSearching"
+          :tone="downloadStatusTone.SEARCHING"
+          title="Searching Soulseek/RuTracker for a source..."
+        >
+          <Loader2 :size="12" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" /> Searching
+        </UiBadge>
+
+        <UiBadge
           v-else-if="isDownloading"
           :tone="downloadStatusTone.DOWNLOADING"
-          title="dmp is downloading this release from Soulseek"
+          title="Downloading from Soulseek..."
         >
           <Loader2 :size="12" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" /> Downloading
         </UiBadge>
@@ -174,66 +180,48 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
       </div>
 
       <div class="flex w-32 shrink-0 items-center justify-end gap-0.5 px-3">
-        <UiButton
-          v-if="isDownloading || isEnriching"
-          variant="danger"
-          size="sm"
-          icon-only
+        <DataTableAction
+          v-if="isSearching || isDownloading || isEnriching"
           :icon="X"
-          title="Cancel download and delete its files"
+          label="Cancel download and delete its files"
           @click.stop="emit('cancel')"
         />
 
-        <UiButton
+        <DataTableAction
           v-else-if="release.status === 'MISSING' && downloadsStore.sourceEnabled"
-          :variant="downloadFailed ? 'danger' : 'ghost'"
-          size="sm"
-          icon-only
           :icon="Download"
           :loading="isAcquiring"
-          :title="isAcquiring ? 'Requesting download…' : isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
+          :label="isAcquiring ? 'Requesting download…' : isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
           @click.stop="emit('download')"
         />
 
-        <button
+        <DataTableAction
           v-if="release.localReleaseId"
-          type="button"
-          :class="cx(actionIconClass, isFavorite && 'text-amber-400')"
-          title="Toggle favorite"
+          :icon="Heart"
+          label="Toggle favorite"
+          :icon-class="isFavorite ? 'text-amber-400 fill-current' : ''"
           @click.stop="emit('toggleFavorite')"
-        >
-          <Heart :size="14" :stroke-width="ICON_STROKE_WIDTH" :fill="isFavorite ? 'currentColor' : 'none'" />
-        </button>
+        />
 
-        <a
+        <DataTableAction
           v-if="mbUrl"
+          :icon="Link"
+          label="View on MusicBrainz"
           :href="mbUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          :class="actionIconClass"
-          title="View on MusicBrainz"
           @click.stop
-        >
-          <Link :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-        </a>
+        />
 
-        <UiButton
+        <DataTableAction
           v-if="release.localReleaseId"
-          variant="ghost"
-          size="sm"
-          icon-only
           :icon="RefreshCw"
-          title="Refresh this release"
+          label="Refresh this release"
           :disabled="terminal.isRunning"
           @click.stop="emit('refresh')"
         />
 
-        <UiButton
-          variant="ghost"
-          size="sm"
-          icon-only
+        <DataTableAction
           :icon="Info"
-          title="Release info"
+          label="Release info"
           @click.stop="emit('info')"
         />
       </div>

@@ -186,6 +186,25 @@ describe('monitorLoop.ts reconcileTorrentDownloads: proportional byte-progress s
     expect(after.status).toBe('DOWNLOADING')
     expect(after.attempts).toBe(0)
   })
+
+  it('fails a RUTRACKER row stuck SEARCHING past the orphan threshold, same as a hashless DOWNLOADING row', async () => {
+    const { reconcileTorrentDownloads } = await import('../../../server/utils/monitorLoop')
+
+    const artist = await makeArtist(prisma)
+    const old = new Date(Date.now() - 10 * 60_000) // 10 min ago, past the 3-min orphan threshold
+    const orphan = await makeDownloadedRelease(prisma, {
+      artistId: artist.id, source: 'RUTRACKER', status: 'SEARCHING', torrentHash: null,
+      attempts: 0, priority: 10, updatedAt: old,
+    })
+
+    getTorrentInfoMock.mockResolvedValue([])
+
+    await reconcileTorrentDownloads()
+
+    const after = await prisma.downloadedRelease.findUniqueOrThrow({ where: { id: orphan.id } })
+    expect(after.status).toBe('FAILED')
+    expect(after.attempts).toBe(1)
+  })
 })
 
 describe('monitorLoop.ts drainEnriching (via reconcileDownloads, audit item 9)', () => {

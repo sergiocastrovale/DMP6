@@ -54,6 +54,15 @@ describe('filterInFlight', () => {
     const map = new Map([['mb1', dlStatus({ status: 'READY' })]])
     expect(filterInFlight(map)).toEqual([])
   })
+
+  it('excludes SEARCHING - it feeds a byte-progress bar and a searching release has no bytes yet', () => {
+    const map = new Map([
+      ['mb1', dlStatus({ status: 'DOWNLOADING' })],
+      ['mb2', dlStatus({ status: 'ENRICHING' })],
+      ['mb3', dlStatus({ status: 'SEARCHING' })],
+    ])
+    expect(filterInFlight(map)).toHaveLength(2)
+  })
 })
 
 describe('dedupeLocalFolders', () => {

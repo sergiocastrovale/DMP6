@@ -86,7 +86,7 @@ export async function reconcileDownloads(): Promise<void> {
   let finalized = 0
   try {
     const rows = await prisma.downloadedRelease.findMany({
-      where: { status: { in: ['DOWNLOADING', 'ENRICHING'] }, source: 'SLSKD' },
+      where: { status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING'] }, source: 'SLSKD' },
       include: { artist: { select: { name: true } } },
     })
     if (rows.length === 0) {return}
@@ -96,7 +96,9 @@ export async function reconcileDownloads(): Promise<void> {
     const mon = await resolveMonitorSettings()
     const maxAttempts = Math.max(1, mon.maxDownloadAttempts)
     const enrichRows = rows.filter(r => r.status === 'ENRICHING')
-    const downloadingRows = rows.filter(r => r.status === 'DOWNLOADING')
+    // SEARCHING rows have no files yet, same as a fresh DOWNLOADING row before its search resolves —
+    // they fall straight into this loop's "not yet enqueued" orphan-timeout branch below.
+    const downloadingRows = rows.filter(r => r.status === 'DOWNLOADING' || r.status === 'SEARCHING')
     if (enrichRows.length > 0) {
       finalized += await drainEnriching(enrichRows, maxAttempts)
     }
@@ -353,7 +355,7 @@ export async function reconcileTorrentDownloads(): Promise<void> {
   torrentReconcileRunning = true
   try {
     const rows = await prisma.downloadedRelease.findMany({
-      where: { status: { in: ['DOWNLOADING', 'ENRICHING'] }, source: 'RUTRACKER' },
+      where: { status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING'] }, source: 'RUTRACKER' },
       include: { artist: { select: { name: true } } },
     })
     if (rows.length === 0) {return}
@@ -368,11 +370,11 @@ export async function reconcileTorrentDownloads(): Promise<void> {
     const enrichRows = rows.filter(r => r.status === 'ENRICHING')
     if (enrichRows.length > 0) {await drainEnriching(enrichRows, maxAttempts)}
 
-    const downloadingRows = rows.filter(r => r.status === 'DOWNLOADING')
+    const downloadingRows = rows.filter(r => r.status === 'DOWNLOADING' || r.status === 'SEARCHING')
 
     // A row crashed before addTorrentPaused ever returned a hash (dead mid-search/mid-add) sits at
-    // DOWNLOADING with torrentHash null forever - neither this reconciler (needs a hash to group by)
-    // nor the slsk one (source SLSKD only) ever picks it up otherwise.
+    // SEARCHING or DOWNLOADING with torrentHash null forever - neither this reconciler (needs a hash to
+    // group by) nor the slsk one (source SLSKD only) ever picks it up otherwise.
     const hashlessOrphans = downloadingRows.filter(r => !r.torrentHash)
     for (const row of hashlessOrphans) {
       const ageMin = (Date.now() - row.updatedAt.getTime()) / 60000

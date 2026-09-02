@@ -71,4 +71,37 @@ describe('acquireTorrentRelease: sibling dedup (real Postgres)', () => {
     expect(siblingRows[0]!.id).toBe(siblingRow.id)
     expect(siblingRows[0]!.mbReleaseId).toBe('dead-cuid-no-longer-exists') // untouched
   })
+
+  it('does not re-fulfill a sibling album that is only SEARCHING (search in flight, no match confirmed yet)', async () => {
+    const { acquireTorrentRelease } = await import('../../../server/utils/acquireTorrent')
+
+    const artist = await makeArtist(prisma)
+    const trigger = await makeMbRelease(prisma, { title: 'Trigger Album', status: 'MISSING' })
+    const siblingGroupId = 'rg-sibling-searching'
+    const sibling = await makeMbRelease(prisma, { title: 'Sibling Album', status: 'MISSING', releaseGroupId: siblingGroupId })
+    await prisma.musicBrainzReleaseArtist.createMany({
+      data: [
+        { releaseId: trigger.id, artistId: artist.id },
+        { releaseId: sibling.id, artistId: artist.id },
+      ],
+    })
+
+    const triggerRow = await makeDownloadedRelease(prisma, {
+      artistId: artist.id, mbReleaseId: trigger.id, title: trigger.title, year: trigger.year, status: 'DOWNLOADING',
+    })
+    const siblingRow = await makeDownloadedRelease(prisma, {
+      artistId: artist.id, mbReleaseId: sibling.id, releaseGroupId: siblingGroupId,
+      title: sibling.title, year: sibling.year, status: 'SEARCHING',
+    })
+
+    await acquireTorrentRelease(
+      { artistId: artist.id, artistName: artist.name, albumTitle: trigger.title, year: trigger.year, mbReleaseId: trigger.id, releaseGroupId: trigger.releaseGroupId },
+      triggerRow.id,
+    )
+
+    const siblingRows = await prisma.downloadedRelease.findMany({ where: { releaseGroupId: siblingGroupId } })
+    expect(siblingRows).toHaveLength(1)
+    expect(siblingRows[0]!.id).toBe(siblingRow.id)
+    expect(siblingRows[0]!.status).toBe('SEARCHING') // untouched, not re-fulfilled
+  })
 })

@@ -45,6 +45,11 @@ describe('computeDownloadPercent', () => {
     expect(result.totalBytes).toBe(0)
   })
 
+  it('reports 0% for SEARCHING - no bytes/files exist yet', () => {
+    const result = computeDownloadPercent({ status: 'SEARCHING', bytesTransferred: 0, files: [] })
+    expect(result.percent).toBe(0)
+  })
+
   it('reports a best-effort fraction for FAILED/ABANDONED (not capped at 99)', () => {
     const result = computeDownloadPercent({
       status: 'FAILED',

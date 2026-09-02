@@ -104,6 +104,7 @@ const toggleRow = (id: string) => {
 // found yet, retried automatically" is a warning rather than a shrug, and an invalid merge is a
 // failure the same way a failed download is.
 const STATUS_TONE: Record<string, keyof typeof toneText> = {
+  SEARCHING: 'muted',
   DOWNLOADING: 'accent',
   ENRICHING: 'info',
   READY: 'success',
@@ -124,6 +125,9 @@ const { songkong } = storeToRefs(useDownloadsStore())
 const statusNote = (it: DownloadedReleaseItem): string | null => {
   if (it.error) {
     return it.error
+  }
+  if (it.status === 'SEARCHING') {
+    return 'Searching Soulseek/RuTracker for a matching source...'
   }
   if (it.status !== 'ENRICHING') {
     return null
@@ -205,7 +209,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           <Popover v-if="statusNote(it)" trigger="hover" teleport>
             <template #trigger>
               <span class="inline-flex cursor-help items-center gap-1.5" :class="statusClass(it.status)">
-                <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
+                <Loader2 v-if="it.status === 'SEARCHING' || it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
                 <AlertCircle v-else-if="it.status === 'FAILED'" :size="13" />
                 <Ban v-else-if="it.status === 'ABANDONED'" :size="13" />
                 <SearchX v-else-if="it.status === 'UNAVAILABLE'" :size="13" />
@@ -279,7 +283,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               v-if="canRejectRow(it)"
               :icon="X"
               label="Reject"
-              :disabled="busyId != null || it.status === 'DOWNLOADING'"
+              :disabled="busyId != null || it.status === 'DOWNLOADING' || it.status === 'SEARCHING'"
               @click="emit('reject', it.id)"
             />
           </div>

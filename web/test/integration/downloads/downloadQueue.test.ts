@@ -41,6 +41,16 @@ describe('downloadQueue.ts fetchActiveQueueRows (real Postgres)', () => {
     const rows = await fetchActiveQueueRows()
     expect(rows.filter(r => r.status === 'FAILED').length).toBe(ACTIVE_TAKE)
   })
+
+  it('includes SEARCHING rows in the same bucket as DOWNLOADING/ENRICHING', async () => {
+    const { fetchActiveQueueRows } = await import('../../../server/utils/downloadQueue')
+
+    const searching = await makeDownloadedRelease(prisma, { status: 'SEARCHING' })
+
+    const rows = await fetchActiveQueueRows()
+
+    expect(rows.some(r => r.id === searching.id)).toBe(true)
+  })
 })
 
 describe('downloadQueue.ts fetchHistoryQueueRows (real Postgres)', () => {

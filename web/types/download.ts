@@ -203,7 +203,7 @@ export interface DownloadSourceStatus {
 }
 
 export type DownloadedReleaseStatus =
-  | 'DOWNLOADING' | 'ENRICHING' | 'READY' | 'REJECTED' | 'PROMOTED' | 'FAILED' | 'ABANDONED' | 'UNAVAILABLE' | 'INVALID'
+  | 'SEARCHING' | 'DOWNLOADING' | 'ENRICHING' | 'READY' | 'REJECTED' | 'PROMOTED' | 'FAILED' | 'ABANDONED' | 'UNAVAILABLE' | 'INVALID'
 
 export interface DownloadedReleaseItem {
   id: string

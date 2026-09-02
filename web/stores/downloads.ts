@@ -55,7 +55,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
   // flight, or acquisition able to spawn new downloads any tick. When NONE of these hold there's nothing
   // to refresh, so the queue poll stops entirely (no point hammering /queue while idle/paused).
   const hasInFlight = computed(() =>
-    queueActive.value.some(i => i.status === 'DOWNLOADING' || i.status === 'ENRICHING'),
+    queueActive.value.some(i => i.status === 'DOWNLOADING' || i.status === 'ENRICHING' || i.status === 'SEARCHING'),
   )
   const queuePollNeeded = computed(() =>
     hasInFlight.value || mergeActive.value || (!paused.value && !!acquisition.value?.canAcquire),

@@ -30,6 +30,7 @@ const item = (id: string, status: string, title = id): DownloadedReleaseItem => 
 } as unknown as DownloadedReleaseItem)
 
 const ACTIVE = [
+  item('d0', 'SEARCHING', 'A Moon Shaped Pool'),
   item('d1', 'DOWNLOADING', 'In Rainbows'),
   item('d2', 'ENRICHING', 'Kid A'),
   item('f1', 'FAILED', 'Amnesiac'),
@@ -76,13 +77,13 @@ describe('downloads/QueueContent.vue', () => {
   it('holds every non-ready queue row, counted per subtab', async () => {
     const wrapper = await mountQueue()
     expect(subtabs(wrapper).map((t: any) => [t.key, t.count])).toEqual([
-      ['all', 6],
-      ['downloading', 2],
+      ['all', 7],
+      ['downloading', 3],
       ['failed', 2],
       ['unavailable', 1],
       ['rejected', 1],
     ])
-    expect(rowTitles(wrapper)).toHaveLength(6)
+    expect(rowTitles(wrapper)).toHaveLength(7)
   })
 
   it('narrows the table to the picked slice', async () => {

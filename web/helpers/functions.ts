@@ -78,7 +78,7 @@ export const canRetryDownload = (status: string): boolean =>
   status === 'FAILED' || status === 'ABANDONED' || status === 'UNAVAILABLE'
 
 export const canCancelDownload = (status: string): boolean =>
-  status === 'DOWNLOADING' || status === 'ENRICHING'
+  status === 'DOWNLOADING' || status === 'ENRICHING' || status === 'SEARCHING'
 
 export const canRequeueDownload = (status: string): boolean => status === 'REJECTED'
 

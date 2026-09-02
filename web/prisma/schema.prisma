@@ -542,6 +542,7 @@ enum DownloadStatus {
   ABANDONED
   UNAVAILABLE
   INVALID
+  SEARCHING
 }
 
 model DownloadedRelease {

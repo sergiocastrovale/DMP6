@@ -15,7 +15,7 @@ import { monitorLog } from '~/server/utils/monitorLog'
 
 // Statuses meaning "this release is already being handled" — used to avoid creating a duplicate row
 // for a sibling album when extracting it from a pack.
-const ACTIVE = ['DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] as const
+const ACTIVE = ['SEARCHING', 'DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] as const
 
 const MAX_RESULTS_TRIED = 6 // how many Prowlarr hits to inspect before giving up on this release
 

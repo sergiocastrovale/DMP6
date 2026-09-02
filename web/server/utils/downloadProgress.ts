@@ -34,6 +34,10 @@ export const computeDownloadPercent = (row: {
   else if (row.status === 'DOWNLOADING') {
     percent = totalBytes > 0 ? Math.min(99, Math.round((bytesTransferred / totalBytes) * 100)) : 0
   }
+  else if (row.status === 'SEARCHING') {
+    // No files/bytes yet - nothing to show a fraction of.
+    percent = 0
+  }
   else {
     // FAILED / ABANDONED: best-effort last known fraction.
     percent = totalBytes > 0 ? Math.min(100, Math.round((bytesTransferred / totalBytes) * 100)) : 0

@@ -12,6 +12,7 @@ const release = (downloadState: string | null, downloadedReleaseId = 'dl1') =>
 
 describe('useReleaseDownloadState', () => {
   it('maps each downloadState to its flag', () => {
+    expect(useReleaseDownloadState(release('SEARCHING')).isSearching.value).toBe(true)
     expect(useReleaseDownloadState(release('DOWNLOADING')).isDownloading.value).toBe(true)
     expect(useReleaseDownloadState(release('ENRICHING')).isEnriching.value).toBe(true)
     expect(useReleaseDownloadState(release('READY')).isAwaitingMerge.value).toBe(true)
@@ -21,6 +22,7 @@ describe('useReleaseDownloadState', () => {
 
   it('all flags are false for an unrelated state', () => {
     const s = useReleaseDownloadState(release('PROMOTED'))
+    expect(s.isSearching.value).toBe(false)
     expect(s.isDownloading.value).toBe(false)
     expect(s.isEnriching.value).toBe(false)
     expect(s.isAwaitingMerge.value).toBe(false)

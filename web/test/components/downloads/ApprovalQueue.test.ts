@@ -48,6 +48,7 @@ describe('downloads/ApprovalQueue.vue', () => {
   })
 
   it.each([
+    ['SEARCHING', 'text-stone-100/55'],
     ['UNAVAILABLE', 'text-warning'],
     ['INVALID', 'text-danger'],
     ['REJECTED', 'text-stone-100/55'],
@@ -112,7 +113,7 @@ describe('downloads/ApprovalQueue.vue', () => {
       expect(await actions(status)).toEqual({ retry: true, reject: true, cancel: false, requeue: false })
     })
 
-    it.each(['DOWNLOADING', 'ENRICHING'])('offers only cancel on %s', async (status) => {
+    it.each(['SEARCHING', 'DOWNLOADING', 'ENRICHING'])('offers only cancel on %s', async (status) => {
       expect(await actions(status)).toEqual({ retry: false, reject: false, cancel: true, requeue: false })
     })
 

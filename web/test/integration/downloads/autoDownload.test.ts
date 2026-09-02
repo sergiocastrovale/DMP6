@@ -168,6 +168,26 @@ describe('autoDownload.ts topUpDownloads (real Postgres): stable releaseGroupId 
     const rows = await prisma.downloadedRelease.findMany({ where: { artistId: artist.id } })
     expect(rows).toHaveLength(0)
   })
+
+  it('counts SEARCHING rows against maxConcurrentDownloads, same as DOWNLOADING - a search in flight still occupies a slot', async () => {
+    const { topUpDownloads } = await import('../../../server/utils/autoDownload')
+
+    // Default maxConcurrentDownloads is 5 — fill every slot with SEARCHING rows (a search kicked off,
+    // no match confirmed yet). If the concurrency gate only counted DOWNLOADING, these would be invisible
+    // to it and the trickle worker would exceed the configured limit.
+    for (let i = 0; i < 5; i++) {
+      await makeDownloadedRelease(prisma, { status: 'SEARCHING' })
+    }
+
+    const artist = await makeArtist(prisma, { monitored: true })
+    const mb = await makeMbRelease(prisma, { releaseGroupId: 'rg-slots-full', status: 'MISSING' })
+    await prisma.musicBrainzReleaseArtist.create({ data: { releaseId: mb.id, artistId: artist.id } })
+
+    await topUpDownloads()
+
+    const rows = await prisma.downloadedRelease.findMany({ where: { artistId: artist.id } })
+    expect(rows).toHaveLength(0)
+  })
 })
 
 describe('autoDownload.ts pickRetry: retryCooldownDays gate (real Postgres)', () => {

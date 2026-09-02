@@ -47,7 +47,7 @@ async function revertRtLimited(rowId: string) {
   }).catch(() => {})
 }
 
-// Run the source-appropriate acquire for an already-created DOWNLOADING row. Returns true on a hit
+// Run the source-appropriate acquire for an already-created SEARCHING row. Returns true on a hit
 // (transfer/torrent enqueued), false on a search miss (caller records the miss per source).
 export async function routeAcquire(
   src: 'RUTRACKER' | 'SLSKD',
@@ -80,7 +80,7 @@ export async function routeAcquire(
 
 /**
  * Force an immediate re-download of a FAILED/ABANDONED release, bypassing the retry cooldown and the
- * per-cycle cap entirely. Flips the row to DOWNLOADING synchronously (so it leaves the Failed tab at
+ * per-cycle cap entirely. Flips the row to SEARCHING synchronously (so it leaves the Failed tab at
  * once), then runs a fresh Soulseek search + acquire detached. `files: []` parks it in the reconcile
  * loop's "not yet enqueued" grace window so it can't be failed before the search completes.
  */
@@ -97,7 +97,7 @@ export async function forceRetryDownload(id: string): Promise<void> {
 
   await prisma.downloadedRelease.update({
     where: { id },
-    data: { status: 'DOWNLOADING', attempts: 0, priority: 10, error: null, bytesTransferred: BigInt(0), lastProgressAt: new Date(), slskUsername: null, torrentHash: null, torrentFolder: null, files: [], ...(src ? { source: src } : {}) },
+    data: { status: 'SEARCHING', attempts: 0, priority: 10, error: null, bytesTransferred: BigInt(0), lastProgressAt: new Date(), slskUsername: null, torrentHash: null, torrentFolder: null, files: [], ...(src ? { source: src } : {}) },
   })
 
   if (!src) {
@@ -237,7 +237,7 @@ async function pickCandidates(slots: number, cooldownDays: number): Promise<Miss
  * Trickle worker (Search-Sniper style) for always-on, 19K-scale acquisition. Keeps at most
  * `maxConcurrentDownloads` active slskd transfers; each run tops up by picking a few eligible MISSING
  * album/EP releases of random monitored artists, skipping handled / recently-failed. Creates each row
- * DOWNLOADING before searching so the next tick excludes it. Run-guarded + throttled + disk-gated.
+ * SEARCHING before searching so the next tick excludes it. Run-guarded + throttled + disk-gated.
  */
 export async function topUpDownloads(): Promise<void> {
   if (topUpRunning) {return}
@@ -252,7 +252,7 @@ export async function topUpDownloads(): Promise<void> {
   lastTopUpAt = Date.now()
   try {
     const maxConc = Math.max(1, mon.maxConcurrentDownloads)
-    const inFlight = await prisma.downloadedRelease.count({ where: { status: 'DOWNLOADING' } })
+    const inFlight = await prisma.downloadedRelease.count({ where: { status: { in: ['DOWNLOADING', 'SEARCHING'] } } })
     const slots = Math.min(maxConc - inFlight, Math.max(1, mon.searchPicksPerInterval))
     if (slots <= 0) {return}
 
@@ -276,7 +276,7 @@ export async function topUpDownloads(): Promise<void> {
       title: p.title,
       year: p.year,
       source: src,
-      status: 'DOWNLOADING' as const,
+      status: 'SEARCHING' as const,
       error: null,
       slskUsername: null,
       quality: null,

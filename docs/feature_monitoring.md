@@ -8,7 +8,7 @@ track's origin is always known (pristine vs Soulseek-sourced). Artists can be **
 ## Pipeline
 
 ```
-MusicBrainz catalogue ─► (missing?) ─► slskd search+download ─► MP3-320 ─► enrich ─► layout ─► STAGING
+MusicBrainz catalogue ─► (missing?) ─► SEARCHING ─► slskd search+download ─► MP3-320 ─► enrich ─► layout ─► STAGING
    ─► DownloadedRelease ─(automatic)─► READY (_ready folder, "Ready to merge")
    ─► [user merges] ─► move into MUSIC_DIR ─► index + targeted sync --release ─┬─(MB-matched)─► PROMOTED
                                                                               └─(unmatched)──► INVALID
@@ -56,12 +56,18 @@ fully trusted) — everything up to READY is automatic; nothing enters the libra
    a failure: the release goes `UNAVAILABLE` instead, never counts toward the cap, and just loses one
    point of `priority`.
 
+**Cancel also works on a `SEARCHING` row** — a search-in-flight release, no transfer to kill yet, but
+the row still counts against the concurrency limit and shouldn't need to wait for a result to be
+dismissed.
+
 ## Data model
 
 - **`DownloadedRelease`** — one row per acquisition. Tracks the MISSING target (`mbReleaseId` /
   `releaseGroupId`), `artistId`, `source` (`SLSKD`), `slskUsername`, `quality`, `stagingPath`,
-  `status` (`DOWNLOADING | ENRICHING | READY | REJECTED | PROMOTED | FAILED | ABANDONED |
-  UNAVAILABLE | INVALID`; READY = in the _ready folder/Ready-to-merge, PROMOTED = merged into the
+  `status` (`SEARCHING | DOWNLOADING | ENRICHING | READY | REJECTED | PROMOTED | FAILED | ABANDONED |
+  UNAVAILABLE | INVALID`; SEARCHING = row created/picked, source search running, no match confirmed
+  yet (no bytes/files — a row stuck here past the orphan timeout is failed the same way a hashless
+  DOWNLOADING row is), READY = in the _ready folder/Ready-to-merge, PROMOTED = merged into the
   library, REJECTED = user-rejected at the attempt cap (terminal), UNAVAILABLE = no Soulseek result
   found yet (search miss, never counts toward the attempt cap), INVALID = merged but MusicBrainz
   couldn't identify it so the files were discarded (retryable until the cap, shown terminal in
@@ -157,10 +163,10 @@ finalization — it reads slskd's real transfer state, so a refresh/poll always 
 
 - The artist page polls a lightweight `GET /api/artists/<slug>/download-status` (5 s) and merges
   the state into the release cards; badges update without reload.
-- While a release is acquiring (`DOWNLOADING` / `ENRICHING` / `READY`) the MISSING status badge is
-  hidden so the acquisition pill takes its slot: MISSING → blue **Downloading** pill → amber
-  **Awaiting merge** pill (the `READY` state, shown with a `GitMerge` icon — UI label only, the DB
-  status stays `READY`).
+- While a release is acquiring (`SEARCHING` / `DOWNLOADING` / `ENRICHING` / `READY`) the MISSING status
+  badge is hidden so the acquisition pill takes its slot: MISSING → grey **Searching** pill (no % bar
+  yet — nothing found to transfer) → amber **Downloading** pill → amber **Awaiting merge** pill (the
+  `READY` state, shown with a `GitMerge` icon — UI label only, the DB status stays `READY`).
 - **Awaiting-merge** rows (`READY`) show an **Awaiting merge** action → `/downloads/merge?highlight=<id>`
   (merge tab, row scrolled into view and highlighted via `useHighlightId`).
 - Merging promotes the files into the library; the artist page detects the transition and

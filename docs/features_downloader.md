@@ -49,9 +49,14 @@ Downloads page re-queues a failed one immediately.
 ## Pipeline & folders
 
 ```
-DOWNLOADING → ENRICHING → READY ─(manual merge / merge all)─┬─(MB-matched)──→ PROMOTED
-                                                            └─(unmatched)──→ INVALID
+SEARCHING → DOWNLOADING → ENRICHING → READY ─(manual merge / merge all)─┬─(MB-matched)──→ PROMOTED
+                                                                        └─(unmatched)──→ INVALID
 ```
+
+A row is created `SEARCHING` the moment it's picked/requested, before the source search has actually
+found anything — it flips to `DOWNLOADING` only once a real slskd/RuTracker match is confirmed and the
+transfer starts. Distinguishes "nothing found yet" from "actively transferring" in the UI (Queue page,
+artist-page pill); both are the same "in flight, occupying a concurrency slot" state everywhere else.
 
 Finished downloads land in the `_ready` folder automatically (`status = READY`) — there is no
 approval step. The only required human action is the merge.
@@ -70,8 +75,9 @@ matching is disabled), so:
   `MAX_DOWNLOAD_ATTEMPTS` → `ABANDONED`. INVALID is retryable (in `pickRetry`) but shown terminal in
   History → Invalid.
 
-**No Soulseek result ≠ failure.** A search miss never counts toward `MAX_DOWNLOAD_ATTEMPTS` — the
-release goes `UNAVAILABLE` instead of `FAILED`/`ABANDONED`, and its `priority` (starts at 10, the max)
+**No Soulseek result ≠ failure.** A search miss (from `SEARCHING`) never counts toward
+`MAX_DOWNLOAD_ATTEMPTS` — the release goes `UNAVAILABLE` instead of `FAILED`/`ABANDONED`, and its
+`priority` (starts at 10, the max)
 drops by one. Real download failures (found, then stalled/no files) still decrement `priority` too,
 but keep the existing hard `ABANDONED` cap. The top-up picker orders its retry pool by `priority` DESC,
 so repeatedly-unavailable releases sink and get re-tried only as room frees up — they're never stuck
@@ -129,6 +135,7 @@ differ, derived per row from its status rather than from which page you are on
 
 | Status | Row actions | Bulk / header |
 |--------|-------------|---------------|
+| SEARCHING | Cancel (no % bar — nothing transferring yet) | — |
 | DOWNLOADING, ENRICHING | Cancel (live % bar) | — |
 | FAILED, ABANDONED | Force retry, Reject | Retry / Reject selected, Reject all |
 | UNAVAILABLE | Force retry, Reject | Retry / Reject selected, Reject all |

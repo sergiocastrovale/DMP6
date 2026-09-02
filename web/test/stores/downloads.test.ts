@@ -286,4 +286,17 @@ describe('useDownloadsStore - queue polling', () => {
     const calls = fetchMock.mock.calls.filter(c => c[0] === '/api/downloads/queue').length
     expect(calls).toBeGreaterThanOrEqual(2)
   })
+
+  it('keeps polling while a download is searching', async () => {
+    fetchMock.mockResolvedValue({
+      active: [{ id: '1', status: 'SEARCHING' }], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null,
+      acquisition: { canAcquire: false },
+    })
+    const store = useDownloadsStore()
+    store.startQueuePolling()
+    await vi.advanceTimersByTimeAsync(2000)
+    await vi.advanceTimersByTimeAsync(2000)
+    const calls = fetchMock.mock.calls.filter(c => c[0] === '/api/downloads/queue').length
+    expect(calls).toBeGreaterThanOrEqual(2)
+  })
 })

@@ -640,9 +640,10 @@ export async function cleanupReadyDownloads(): Promise<{ removed: number; checke
 }
 
 /**
- * Cancel an in-flight download (DOWNLOADING/ENRICHING): kill the live slskd transfers and remove all of
- * its files, then count it against the same attempts cap as reject (below cap -> FAILED/re-downloadable,
- * at cap -> REJECTED/terminal). Same N-bounded outcome as FAILED/READY rejection.
+ * Cancel an in-flight download (SEARCHING/DOWNLOADING/ENRICHING): kill the live slskd transfers and
+ * remove all of its files, then count it against the same attempts cap as reject (below cap ->
+ * FAILED/re-downloadable, at cap -> REJECTED/terminal). Same N-bounded outcome as FAILED/READY
+ * rejection.
  */
 export async function cancelDownloadedRelease(id: string): Promise<void> {
   const row = await prisma.downloadedRelease.findUnique({ where: { id } })
@@ -652,7 +653,7 @@ export async function cancelDownloadedRelease(id: string): Promise<void> {
   if (row.source === 'RUTRACKER' && row.torrentHash) {
     // Delete the torrent + its data, but only if no other album from the same pack still needs it.
     const siblings = await prisma.downloadedRelease.count({
-      where: { torrentHash: row.torrentHash, status: { in: ['DOWNLOADING', 'ENRICHING'] }, id: { not: row.id } },
+      where: { torrentHash: row.torrentHash, status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING'] }, id: { not: row.id } },
     })
     if (siblings === 0) {await deleteTorrent(row.torrentHash, true)}
   }
