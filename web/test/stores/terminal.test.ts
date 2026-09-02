@@ -96,4 +96,35 @@ describe('useTerminalStore', () => {
       body: JSON.stringify({ session: 'sess-stop' }),
     }))
   })
+
+  it('reconnect() resumes streaming an existing session', async () => {
+    const fakeFetch = vi.fn().mockResolvedValue(sseResponse('data: "resumed"\n\n'))
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+
+    await store.reconnect('sess-reconnect')
+
+    expect(fakeFetch).toHaveBeenCalledWith('/api/terminal/reconnect', expect.objectContaining({
+      body: JSON.stringify({ session: 'sess-reconnect' }),
+    }))
+    expect(store.lines).toEqual(['resumed'])
+  })
+
+  it('unlock() clears the lock and appends a confirmation line', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+    const store = useTerminalStore()
+
+    await store.unlock()
+
+    expect(store.lines).toContain('Lock cleared.')
+  })
+
+  it('unlock() appends a failure line when the request throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+    const store = useTerminalStore()
+
+    await store.unlock()
+
+    expect(store.lines).toContain('Failed to clear lock.')
+  })
 })

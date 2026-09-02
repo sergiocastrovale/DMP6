@@ -1,8 +1,17 @@
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import {
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('~/server/utils/downloadSettings', async () => {
+  const actual = await vi.importActual<typeof import('../../../server/utils/downloadSettings')>('../../../server/utils/downloadSettings')
+  return {
+    ...actual,
+    resolveDownloadSettings: vi.fn().mockResolvedValue({ slskdUrl: 'http://slskd.local:5030', slskdApiKey: 'key123' }),
+  }
+})
+
+const {
   detectFormat,
   isAudioFile,
   isSlskdFailed,
@@ -11,7 +20,16 @@ import {
   relocateDownloadedFiles,
   scoreSlskdResult,
   stripSlskdSuffix,
-} from '../../../server/utils/slskd'
+  clearSlskdConfigCache,
+  checkSlskdConnection,
+  slskdSearch,
+  getSlskdSearchResults,
+  deleteSlskdSearch,
+  startSlskdDownload,
+  getSlskdActiveDownloads,
+  cancelSlskdDownload,
+  purgeDownloadedSourceFiles,
+} = await import('../../../server/utils/slskd')
 
 describe('isAudioFile', () => {
   it('recognizes known audio extensions case-insensitively', () => {
@@ -170,5 +188,153 @@ describe('scoreSlskdResult', () => {
   it('never goes below zero', () => {
     const worst = scoreSlskdResult('OTHER', 0, 0, 0, 999, false)
     expect(worst).toBeGreaterThanOrEqual(0)
+  })
+})
+
+const jsonResponse = (body: unknown, status = 200): Response => ({
+  ok: status >= 200 && status < 300,
+  status,
+  json: async () => body,
+  text: async () => JSON.stringify(body),
+} as unknown as Response)
+
+describe('slskd network calls (mocked fetch)', () => {
+  afterEach(() => {
+    clearSlskdConfigCache()
+    vi.unstubAllGlobals()
+  })
+
+  it('checkSlskdConnection reports connected when logged in', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ isLoggedIn: true })))
+
+    expect(await checkSlskdConnection()).toEqual({ ok: true })
+  })
+
+  it('checkSlskdConnection reports not-logged-in distinctly from a connection failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ isLoggedIn: false })))
+
+    const result = await checkSlskdConnection()
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/not logged in/)
+  })
+
+  it('checkSlskdConnection surfaces a non-ok status', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, 500)))
+
+    const result = await checkSlskdConnection()
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/500/)
+  })
+
+  it('slskdSearch posts the query and returns the search id', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({ id: 'search-123' }))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const id = await slskdSearch('some album', 5000)
+
+    expect(id).toBe('search-123')
+    const [url, init] = fetchSpy.mock.calls[0]!
+    expect(String(url)).toContain('/searches')
+    expect(JSON.parse(init.body).searchText).toBe('some album')
+  })
+
+  it('getSlskdSearchResults returns an empty array on a 404 (search expired)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(null, 404)))
+
+    expect(await getSlskdSearchResults('search-123')).toEqual([])
+  })
+
+  it('getSlskdSearchResults returns the parsed responses', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([{ username: 'peer1' }])))
+
+    expect(await getSlskdSearchResults('search-123')).toEqual([{ username: 'peer1' }])
+  })
+
+  it('deleteSlskdSearch swallows a failed delete', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+
+    await expect(deleteSlskdSearch('search-123')).resolves.toBeUndefined()
+  })
+
+  it('startSlskdDownload posts the file list to the username-scoped endpoint', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({}))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await startSlskdDownload('peer 1', [{ filename: 'a.flac', size: 10 }])
+
+    const [url, init] = fetchSpy.mock.calls[0]!
+    expect(String(url)).toContain('/transfers/downloads/peer%201')
+    expect(JSON.parse(init.body)).toEqual([{ filename: 'a.flac', size: 10 }])
+  })
+
+  it('getSlskdActiveDownloads flattens the nested user/directory/file structure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([
+      {
+        username: 'peer1',
+        directories: [{
+          files: [{ id: 'f1', filename: 'track.flac', size: 100, state: 'InProgress', bytesTransferred: 50, percentComplete: 50, averageSpeed: 1000 }],
+        }],
+      },
+    ])))
+
+    const transfers = await getSlskdActiveDownloads()
+
+    expect(transfers).toEqual([{
+      id: 'f1', username: 'peer1', filename: 'track.flac', size: 100,
+      state: 'InProgress', bytesTransferred: 50, percentComplete: 50, averageSpeed: 1000,
+    }])
+  })
+
+  it('getSlskdActiveDownloads defaults missing fields', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([
+      { username: 'peer1', directories: [{ files: [{ filename: 'track.flac' }] }] },
+    ])))
+
+    const transfers = await getSlskdActiveDownloads()
+
+    expect(transfers).toEqual([{
+      id: 'track.flac', username: 'peer1', filename: 'track.flac', size: 0,
+      state: 'Unknown', bytesTransferred: 0, percentComplete: 0, averageSpeed: 0,
+    }])
+  })
+
+  it('cancelSlskdDownload calls the remove endpoint for the given username/id', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(jsonResponse({}))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await cancelSlskdDownload('peer 1', 'file 1')
+
+    const [url] = fetchSpy.mock.calls[0]!
+    expect(String(url)).toContain('/transfers/downloads/peer%201/file%201')
+    expect(String(url)).toContain('remove=true')
+  })
+})
+
+describe('purgeDownloadedSourceFiles', () => {
+  const roots: string[] = []
+  afterEach(async () => {
+    await Promise.all(roots.splice(0).map(r => rm(r, { recursive: true, force: true })))
+  })
+
+  it('deletes matching source files and prunes the now-empty directory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dmp-slskd-purge-'))
+    roots.push(root)
+    const peerDir = join(root, 'peer1')
+    await mkdir(peerDir, { recursive: true })
+    await writeFile(join(peerDir, 'Track.mp3'), 'x'.repeat(10))
+
+    const removed = await purgeDownloadedSourceFiles(root, [{ filename: 'Track.mp3', size: 10 }])
+
+    expect(removed).toBe(1)
+    await expect(readFile(join(peerDir, 'Track.mp3'))).rejects.toThrow()
+  })
+
+  it('returns 0 without touching the filesystem when there is nothing to purge', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dmp-slskd-purge-'))
+    roots.push(root)
+
+    expect(await purgeDownloadedSourceFiles(root, [])).toBe(0)
   })
 })

@@ -64,4 +64,18 @@ describe('useMosaicStore', () => {
     await store.deleteMosaic('a.jpg')
     expect(store.mosaics.map(m => m.filename)).toEqual(['b.jpg'])
   })
+
+  it('cancel aborts the in-flight stream, hits the cancel endpoint, and resets generating state', async () => {
+    const cancelFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', cancelFetch)
+    const store = useMosaicStore()
+    store.isGenerating = true
+    store.progress = { current: 1, total: 10 } as any
+
+    await store.cancel()
+
+    expect(cancelFetch).toHaveBeenCalledWith('/api/labs/mosaic/cancel', { method: 'POST' })
+    expect(store.isGenerating).toBe(false)
+    expect(store.progress).toBeNull()
+  })
 })

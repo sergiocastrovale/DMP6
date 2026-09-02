@@ -1,8 +1,10 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildTrackFilename, ext, ffmpegAvailable, sanitize, transcodeDirToMp3320 } from '../../../server/utils/transcode'
+import {
+  buildTrackFilename, collectAudioFiles, ext, ffmpegAvailable, probeTags, sanitize, transcodeDirToMp3320,
+} from '../../../server/utils/transcode'
 
 const execFileMock = vi.fn()
 vi.mock('node:child_process', () => {
@@ -101,6 +103,34 @@ describe('transcodeDirToMp3320: ffmpeg pre-flight gate (audit item 2)', () => {
     expect(execFileMock.mock.calls[0]![1]).toEqual(['-version'])
   })
 
+  it('converts a lossless file to mp3 and removes the source on success', async () => {
+    await writeFile(join(dir, 'track1.flac'), 'fake-audio')
+
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const cb = args[args.length - 1] as (e: Error | null, o: string, err: string) => void
+      const cmd = args[0]
+      const cmdArgs = args[1] as string[]
+      if (cmd === 'ffmpeg' && cmdArgs.includes('-version')) {
+        cb(null, 'ffmpeg version 6.0', '')
+        return
+      }
+      if (cmd === 'ffmpeg') {
+        // Simulate ffmpeg actually producing the .part output file before reporting success.
+        const part = cmdArgs[cmdArgs.length - 1]!
+        writeFile(part, 'fake-mp3-data').then(() => cb(null, '', ''), e => cb(e, '', ''))
+        return
+      }
+      // ffprobe: report no usable tags so renameFromTags is a no-op.
+      cb(null, JSON.stringify({ format: { tags: {} }, streams: [] }), '')
+    })
+
+    const result = await transcodeDirToMp3320(dir)
+
+    expect(result).toEqual({ converted: 1, failed: 0 })
+    await expect(readFile(join(dir, 'track1.mp3'), 'utf8')).resolves.toBe('fake-mp3-data')
+    await expect(readFile(join(dir, 'track1.flac'), 'utf8')).rejects.toThrow() // source removed
+  })
+
   it('no convertible files present (empty dir): skips the ffmpeg pre-flight entirely', async () => {
     const result = await transcodeDirToMp3320(dir)
 
@@ -121,5 +151,65 @@ describe('transcodeDirToMp3320: ffmpeg pre-flight gate (audit item 2)', () => {
 
     execFileMock.mockImplementation(withCb([new Error('ENOENT'), '', '']))
     expect(await ffmpegAvailable()).toBe(false)
+  })
+})
+
+describe('collectAudioFiles', () => {
+  let dir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'dmp-collect-'))
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('recursively lists files across nested subdirectories', async () => {
+    await mkdir(join(dir, 'sub'), { recursive: true })
+    await writeFile(join(dir, 'a.mp3'), 'x')
+    await writeFile(join(dir, 'sub', 'b.flac'), 'x')
+
+    const files = await collectAudioFiles(dir)
+
+    expect(files.sort()).toEqual([join(dir, 'a.mp3'), join(dir, 'sub', 'b.flac')].sort())
+  })
+
+  it('returns an empty list for a directory that does not exist', async () => {
+    expect(await collectAudioFiles(join(dir, 'missing'))).toEqual([])
+  })
+
+  it('gives up past the recursion depth guard', async () => {
+    expect(await collectAudioFiles(dir, 7)).toEqual([])
+  })
+})
+
+describe('probeTags', () => {
+  beforeEach(() => execFileMock.mockReset())
+
+  const stubFfprobe = (formatTags: Record<string, string>) => {
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const cb = args.find(a => typeof a === 'function') as ((e: Error | null, o: { stdout: string; stderr: string }) => void) | undefined
+      if (!cb) { return }
+      const stdout = JSON.stringify({ format: { tags: formatTags }, streams: [] })
+      // execFileAsync (promisify) invokes the callback with (err, {stdout, stderr}).
+      cb(null, { stdout, stderr: '' } as any)
+    })
+  }
+
+  it('reads track/title/disc/year tags, case-insensitively', async () => {
+    stubFfprobe({ TRACK: '3', Title: 'Intro', date: '2007-11-20' })
+
+    const tags = await probeTags('/music/track.mp3')
+
+    expect(tags).toEqual({ track: '3', title: 'Intro', disc: undefined, discTotal: undefined, year: '2007' })
+  })
+
+  it('returns undefined fields when no tags are present', async () => {
+    stubFfprobe({})
+
+    expect(await probeTags('/music/track.mp3')).toEqual({
+      track: undefined, title: undefined, disc: undefined, discTotal: undefined, year: undefined,
+    })
   })
 })

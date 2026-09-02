@@ -116,4 +116,107 @@ describe('useIssuesStore', () => {
     expect(store.items.corrupted).toEqual([{ id: 'corrupted-item' }])
     expect(store.items.orphans).toEqual([{ id: 'orphans-item' }])
   })
+
+  it('fetchSummary populates summary and toggles the loading flag', async () => {
+    fetchMock.mockResolvedValue({ corrupted: 3 })
+    const store = useIssuesStore()
+
+    const promise = store.fetchSummary()
+    expect(store.summaryLoading).toBe(true)
+    await promise
+
+    expect(store.summary).toEqual({ corrupted: 3 })
+    expect(store.summaryLoading).toBe(false)
+  })
+
+  it('fetchResolved populates the resolved list, scoped from the live list', async () => {
+    fetchMock.mockResolvedValue(paginated([{ id: 'r1' }]))
+    const store = useIssuesStore()
+
+    await store.fetchResolved('corrupted' as any)
+
+    expect(store.resolvedItems.corrupted).toEqual([{ id: 'r1' }])
+    expect(store.resolvedLoading.corrupted).toBe(false)
+  })
+
+  it('setPage updates the page then refetches', async () => {
+    fetchMock.mockResolvedValue(paginated([{ id: 'p2' }]))
+    const store = useIssuesStore()
+
+    await store.setPage('corrupted' as any, 2)
+
+    expect(store.page.corrupted).toBe(2)
+    expect(store.items.corrupted).toEqual([{ id: 'p2' }])
+  })
+
+  it('setResolvedPage updates the resolved page then refetches', async () => {
+    fetchMock.mockResolvedValue(paginated([{ id: 'rp2' }]))
+    const store = useIssuesStore()
+
+    await store.setResolvedPage('corrupted' as any, 2)
+
+    expect(store.resolvedPage.corrupted).toBe(2)
+    expect(store.resolvedItems.corrupted).toEqual([{ id: 'rp2' }])
+  })
+
+  it('setSearch resets to page 1 and refetches', async () => {
+    fetchMock.mockResolvedValue(paginated([{ id: 'found' }]))
+    const store = useIssuesStore()
+    store.page.corrupted = 5
+
+    await store.setSearch('corrupted' as any, 'query text')
+
+    expect(store.search.corrupted).toBe('query text')
+    expect(store.page.corrupted).toBe(1)
+    expect(store.items.corrupted).toEqual([{ id: 'found' }])
+  })
+
+  it('queueRevert returns the queued count', async () => {
+    fetchMock.mockResolvedValue({ queued: 4, mode: 'undo' })
+    const store = useIssuesStore()
+
+    const queued = await store.queueRevert('corrupted' as any, ['a', 'b'], 'undo')
+
+    expect(queued).toBe(4)
+  })
+
+  it('fetchHistoryCounts populates historyCounts', async () => {
+    fetchMock.mockResolvedValue({ counts: { corrupted: 2, missing: 1 }, total: 3 })
+    const store = useIssuesStore()
+
+    await store.fetchHistoryCounts()
+
+    expect(store.historyCounts).toEqual({ corrupted: 2, missing: 1 })
+  })
+
+  it('fetchHistory resets page/items on reset=true and toggles loading', async () => {
+    fetchMock.mockResolvedValue(paginated([{ id: 'h1' }]))
+    const store = useIssuesStore()
+    store.historyPage.corrupted = 3
+    store.historyItems.corrupted = [{ id: 'stale' } as any]
+
+    await store.fetchHistory('corrupted' as any, true)
+
+    expect(store.historyItems.corrupted).toEqual([{ id: 'h1' }])
+    expect(store.historyLoading.corrupted).toBe(false)
+  })
+
+  it('setHistoryPage updates the page then refetches history', async () => {
+    fetchMock.mockResolvedValue(paginated([{ id: 'h2' }]))
+    const store = useIssuesStore()
+
+    await store.setHistoryPage('corrupted' as any, 2)
+
+    expect(store.historyPage.corrupted).toBe(2)
+    expect(store.historyItems.corrupted).toEqual([{ id: 'h2' }])
+  })
+
+  it('clearHistoryItems calls the delete endpoint with the given ids', async () => {
+    fetchMock.mockResolvedValue(undefined)
+    const store = useIssuesStore()
+
+    await store.clearHistoryItems(['h1', 'h2'])
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/issues/history', { method: 'DELETE', body: { ids: ['h1', 'h2'] } })
+  })
 })

@@ -58,4 +58,15 @@ describe('useToastStore', () => {
     vi.advanceTimersByTime(1)
     expect(store.toasts).toHaveLength(0)
   })
+
+  it('cancels every pending auto-dismiss timer when the store is disposed', () => {
+    const store = useToastStore()
+    store.push('info', 'pending')
+
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout')
+    store.$dispose()
+
+    expect(clearSpy).toHaveBeenCalled()
+    clearSpy.mockRestore()
+  })
 })

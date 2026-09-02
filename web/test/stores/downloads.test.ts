@@ -300,3 +300,116 @@ describe('useDownloadsStore - queue polling', () => {
     expect(calls).toBeGreaterThanOrEqual(2)
   })
 })
+
+describe('useDownloadsStore - simple fetch/action wrappers', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue({
+      active: [], ready: [], rejected: [], history: [], paused: false, pausedReason: null,
+      freeGb: null, minFreeGb: null, acquisition: { canAcquire: false }, songkong: null,
+    })
+  })
+
+  it('checkStatus populates the three source statuses and marks statusChecked', async () => {
+    fetchMock.mockResolvedValueOnce({
+      slskd: { configured: true, connected: true },
+      prowlarr: { configured: false, connected: false },
+      qbittorrent: { configured: true, connected: false },
+    })
+    const store = useDownloadsStore()
+
+    await store.checkStatus()
+
+    expect(store.slskd).toEqual({ configured: true, connected: true })
+    expect(store.statusChecked).toBe(true)
+  })
+
+  it('checkStatus still marks statusChecked when the request fails', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('network down'))
+    const store = useDownloadsStore()
+
+    await store.checkStatus()
+
+    expect(store.statusChecked).toBe(true)
+  })
+
+  it('fetchSources populates sources from the server', async () => {
+    fetchMock.mockResolvedValueOnce({ sources: [{ name: 'SLSKD', enabled: true }] })
+    const store = useDownloadsStore()
+
+    await store.fetchSources()
+
+    expect(store.sources).toEqual([{ name: 'SLSKD', enabled: true }])
+  })
+
+  it('fetchActive populates activeDownloads', async () => {
+    fetchMock.mockResolvedValueOnce({ downloads: [{ id: 'd1' }] })
+    const store = useDownloadsStore()
+
+    await store.fetchActive()
+
+    expect(store.activeDownloads).toEqual([{ id: 'd1' }])
+  })
+
+  it('reject posts to the reject endpoint then refreshes the queue', async () => {
+    const store = useDownloadsStore()
+
+    await store.reject('id1')
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/reject/id1', { method: 'POST' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/queue')
+  })
+
+  it('requeue posts to the requeue endpoint then refreshes the queue', async () => {
+    const store = useDownloadsStore()
+
+    await store.requeue('id1')
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/requeue/id1', { method: 'POST' })
+  })
+
+  it('retry posts to the retry endpoint then refreshes the queue', async () => {
+    const store = useDownloadsStore()
+
+    await store.retry('id1')
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/retry/id1', { method: 'POST' })
+  })
+
+  it('cancel posts to the cancel endpoint then refreshes the queue', async () => {
+    const store = useDownloadsStore()
+
+    await store.cancel('id1')
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/cancel/id1', { method: 'POST' })
+  })
+
+  it('cleanupReady returns the server sweep result and refreshes the queue', async () => {
+    fetchMock.mockResolvedValueOnce({ removed: 2, checked: 5, danglingRemoved: 1 })
+    const store = useDownloadsStore()
+
+    const result = await store.cleanupReady()
+
+    expect(result).toEqual({ removed: 2, checked: 5, danglingRemoved: 1 })
+  })
+
+  it('fetchMergeProgress seeds mergeTotal from an in-progress server-side merge on refresh', async () => {
+    fetchMock.mockResolvedValueOnce({ row1: { step: 'moving', title: 'Album' } })
+    const store = useDownloadsStore()
+
+    await store.fetchMergeProgress()
+
+    expect(store.mergeProgress).toEqual({ row1: { step: 'moving', title: 'Album' } })
+    expect(store.mergePercent).toBeGreaterThanOrEqual(0)
+  })
+
+  it('fetchMergeProgress resets mergeTotal to 0 once nothing is in flight', async () => {
+    fetchMock.mockResolvedValueOnce({})
+    const store = useDownloadsStore()
+
+    await store.fetchMergeProgress()
+
+    expect(store.mergeProgress).toEqual({})
+  })
+})
