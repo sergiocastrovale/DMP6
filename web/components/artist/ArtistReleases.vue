@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { DownloadCloud } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseGroup, ReleaseInfoExtra, ReleaseStatus } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/types/ui'
@@ -38,6 +39,8 @@ const allTracksLoading = ref(false)
 const allTracksLoaded = ref(false)
 const cancelRelease = ref<UnifiedRelease | null>(null)
 const showCancelDialog = ref(false)
+const redownloadRelease = ref<UnifiedRelease | null>(null)
+const showRedownloadDialog = ref(false)
 const infoRelease = ref<UnifiedRelease | null>(null)
 const showInfoDialog = ref(false)
 const infoExtra = ref<ReleaseInfoExtra | null>(null)
@@ -137,13 +140,18 @@ function toReleaseSlug(title: string) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
-const acquireRelease = async (release: UnifiedRelease) => {
+// replacesLocalReleaseId is set only by the re-download flow: the server stamps it on the download
+// row so the merge deletes this incomplete copy before moving the new one in.
+const acquireRelease = async (release: UnifiedRelease, replacesLocalReleaseId?: string) => {
   if (!release.mbReleaseRowId || acquiringIds.value.has(release.id)) {
     return
   }
   acquiringIds.value = new Set(acquiringIds.value).add(release.id)
   try {
-    const result = await $fetch<{ status: string }>('/api/downloads/acquire', { method: 'POST', body: { mbReleaseRowId: release.mbReleaseRowId } })
+    const result = await $fetch<{ status: string }>('/api/downloads/acquire', {
+      method: 'POST',
+      body: { mbReleaseRowId: release.mbReleaseRowId, replacesLocalReleaseId },
+    })
     const message = acquireFailureMessage(result.status)
     if (message) {
       toast.error(message)
@@ -157,6 +165,21 @@ const acquireRelease = async (release: UnifiedRelease) => {
     next.delete(release.id)
     acquiringIds.value = next
   }
+}
+
+const openRedownloadDialog = (release: UnifiedRelease) => {
+  redownloadRelease.value = release
+  showRedownloadDialog.value = true
+}
+
+const confirmRedownload = async () => {
+  showRedownloadDialog.value = false
+  const release = redownloadRelease.value
+  redownloadRelease.value = null
+  if (!release?.localReleaseId) {
+    return
+  }
+  await acquireRelease(release, release.localReleaseId)
 }
 
 function openCancelDialog(release: UnifiedRelease) {
@@ -324,6 +347,7 @@ watch(() => props.releases, () => {
           @toggle-edition="toggleEdition"
           @play="handleReleaseClick"
           @download="acquireRelease"
+          @redownload="openRedownloadDialog"
           @cancel="openCancelDialog"
           @toggle-favorite="toggleFavoriteRelease"
           @refresh="refreshRelease"
@@ -349,6 +373,16 @@ watch(() => props.releases, () => {
     </template>
 
     <ReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />
+
+    <ConfirmDialog
+      v-model="showRedownloadDialog"
+      title="Re-download release"
+      message="Are you sure you want to re-download this release? The current release will be removed IF we manage to download it again; the new one will then replace it once you approve the merge."
+      :note="redownloadRelease?.title ?? undefined"
+      confirm-label="Re-download"
+      :icon="DownloadCloud"
+      @confirm="confirmRedownload"
+    />
 
     <DownloadsRejectDialog
       v-model="showCancelDialog"

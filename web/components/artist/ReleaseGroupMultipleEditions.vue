@@ -15,6 +15,7 @@ const emit = defineEmits<{
   toggleEdition: [id: string]
   play: [edition: UnifiedRelease]
   download: [edition: UnifiedRelease]
+  redownload: [edition: UnifiedRelease]
   toggleFavorite: [edition: UnifiedRelease]
   refresh: [edition: UnifiedRelease]
   info: [edition: UnifiedRelease]
@@ -46,6 +47,7 @@ const emit = defineEmits<{
         @toggle="emit('toggleEdition', edition.id)"
         @play="emit('play', edition)"
         @download="emit('download', edition)"
+        @redownload="emit('redownload', edition)"
         @toggle-favorite="emit('toggleFavorite', edition)"
         @refresh="emit('refresh', edition)"
         @info="emit('info', edition)"

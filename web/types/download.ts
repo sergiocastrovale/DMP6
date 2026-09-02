@@ -378,4 +378,7 @@ export type MergeRow = {
   source: PrismaDownloadSource
   artistId: string | null
   artist: { name: string } | null
+  // Set when this download was requested as a replacement for an incomplete local copy - that
+  // LocalRelease (row + files) is purged right before the new copy is moved into the library.
+  replacesLocalReleaseId: string | null
 }

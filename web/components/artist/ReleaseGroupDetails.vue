@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Disc3, Download, Eye, FolderInput, Heart, Info, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Disc3, Download, DownloadCloud, Eye, FolderInput, Heart, Info, Link, Loader2, RefreshCw, X } from 'lucide-vue-next'
 import type { UnifiedRelease } from '~/types/release'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { downloadStatusTone, statuses } from '~/helpers/constants'
 import { musicBrainzUrl } from '~/helpers/functions'
+import { canRedownload } from '~/helpers/artistPageLogic'
 import { cx, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   toggle: []
   play: []
   download: []
+  redownload: []
   toggleFavorite: []
   refresh: []
   info: []
@@ -208,6 +210,14 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           :loading="isAcquiring"
           :label="isAcquiring ? 'Requesting download…' : isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
           @click.stop="emit('download')"
+        />
+
+        <DataTableAction
+          v-else-if="canRedownload(release, downloadsStore.sourceEnabled)"
+          :icon="DownloadCloud"
+          :loading="isAcquiring"
+          :label="isAcquiring ? 'Requesting download…' : 'Re-download this release'"
+          @click.stop="emit('redownload')"
         />
 
         <DataTableAction

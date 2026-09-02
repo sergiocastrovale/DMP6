@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { acquireFailureMessage, artistScanFolders, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
+import { acquireFailureMessage, artistScanFolders, canRedownload, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
 import type { DlStatusValue } from '../../types/download'
@@ -150,5 +150,31 @@ describe('acquireFailureMessage', () => {
 
   it('returns null when the download actually started', () => {
     expect(acquireFailureMessage('DOWNLOADING')).toBeNull()
+  })
+})
+
+describe('canRedownload', () => {
+  const incomplete = (overrides: Partial<UnifiedRelease> = {}) =>
+    release({ status: 'MISSING_TRACKS', mbReleaseRowId: 'mb1', localReleaseId: 'lr1', ...overrides })
+
+  it('allows a re-download for both shortfall statuses', () => {
+    expect(canRedownload(incomplete(), true)).toBe(true)
+    expect(canRedownload(incomplete({ status: 'INCOMPLETE' }), true)).toBe(true)
+  })
+
+  it('rejects statuses that are not a shortfall', () => {
+    expect(canRedownload(incomplete({ status: 'COMPLETE' }), true)).toBe(false)
+    expect(canRedownload(incomplete({ status: 'EXTRA_TRACKS' }), true)).toBe(false)
+    // MISSING has no local copy to replace - that is the plain download action.
+    expect(canRedownload(incomplete({ status: 'MISSING' }), true)).toBe(false)
+  })
+
+  it('needs a local copy and a MusicBrainz release to download against', () => {
+    expect(canRedownload(incomplete({ localReleaseId: null }), true)).toBe(false)
+    expect(canRedownload(incomplete({ mbReleaseRowId: null }), true)).toBe(false)
+  })
+
+  it('is off when no download source is enabled', () => {
+    expect(canRedownload(incomplete(), false)).toBe(false)
   })
 })

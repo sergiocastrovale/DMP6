@@ -129,6 +129,30 @@ async function purgeLibraryFolder(music: string, rel: string): Promise<void> {
   }
 }
 
+/**
+ * Re-download of an incomplete copy: delete the LocalRelease this download replaces (row + files)
+ * right before the new copy is moved in. Both copies would otherwise share a library folder -
+ * moveDir's copy fallback merges into an existing directory file-by-file, leaving the old copy's
+ * stale tracks behind and defeating the completeness gate the re-download was meant to pass.
+ * The bound MusicBrainzRelease is deliberately left alone: it's the real edition `sync --release`
+ * re-binds the new copy to in stampMerged.
+ */
+async function purgeReplacedRelease(row: MergeRow, music: string): Promise<void> {
+  if (!row.replacesLocalReleaseId) {return}
+  const old = await prisma.localRelease.findUnique({
+    where: { id: row.replacesLocalReleaseId },
+    select: { id: true, folderPath: true },
+  })
+  if (old) {
+    if (old.folderPath) {await purgeLibraryFolder(music, old.folderPath)}
+    // Tracks cascade with the release row.
+    await prisma.localRelease.delete({ where: { id: old.id } }).catch(() => {})
+    monitorLog('notice', `merge: "${row.artist?.name ?? '?'} - ${row.title}" replaces local release ${old.id} ("${old.folderPath ?? '?'}") - old copy removed`)
+  }
+  // Consumed either way (a stale id is a no-op) so a retried merge can't run this twice.
+  await prisma.downloadedRelease.update({ where: { id: row.id }, data: { replacesLocalReleaseId: null } }).catch(() => {})
+}
+
 // Move one ready release into MUSIC_DIR (idempotent: skip if already there) and return its rel path.
 async function moveIntoLibrary(row: MergeRow, music: string, readyPath: string): Promise<string> {
   if (row.stagingPath!.startsWith(music + sep) || row.stagingPath === music) {
@@ -343,6 +367,7 @@ export async function mergeDownloadedRelease(id: string, emit?: (line: string) =
   try {
     setMergeProgress(id, { step: 'moving', title })
     emit?.(`Moving "${title}" to library…`)
+    await purgeReplacedRelease(row, music)
     const rel = await moveIntoLibrary(row, music, downloadsReadyPath)
     setMergeProgress(id, { step: 'indexing', title })
     emit?.(`Indexing "${title}"…`)
@@ -397,6 +422,7 @@ export async function mergeManyDownloadedReleases(ids: string[], emit?: (line: s
       setMergeProgress(row.id, { step: 'moving', title: row.title })
       emit?.(`Moving "${row.title}" to library…`)
       try {
+        await purgeReplacedRelease(row, music)
         moved.push({ row, rel: await moveIntoLibrary(row, music, downloadsReadyPath) })
       }
       catch (e: any) {

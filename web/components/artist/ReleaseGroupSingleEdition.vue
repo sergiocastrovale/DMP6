@@ -15,6 +15,7 @@ const emit = defineEmits<{
   toggle: []
   play: []
   download: []
+  redownload: []
   toggleFavorite: []
   refresh: []
   info: []
@@ -48,6 +49,7 @@ const connectedArtistNames = computed(() => {
       @toggle="emit('toggle')"
       @play="emit('play')"
       @download="emit('download')"
+      @redownload="emit('redownload')"
       @toggle-favorite="emit('toggleFavorite')"
       @refresh="emit('refresh')"
       @info="emit('info')"

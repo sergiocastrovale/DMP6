@@ -40,6 +40,16 @@ const ACQUIRE_FAILURE_MESSAGES: Record<string, string> = {
 export const acquireFailureMessage = (status: string): string | null =>
   ACQUIRE_FAILURE_MESSAGES[status] ?? null
 
+// A local copy can be re-downloaded when it fell short of the MusicBrainz edition it matched:
+// MISSING_TRACKS (fewer tracks than MB) or INCOMPLETE (tracks present, titles unmatched) - the same
+// two shortfall states the merge gate itself discards a download for (server/utils/promote.ts).
+// MISSING has no local copy at all - that's the plain download action, not a replacement.
+export const canRedownload = (release: UnifiedRelease, sourceEnabled: boolean): boolean =>
+  sourceEnabled
+  && !!release.localReleaseId
+  && !!release.mbReleaseRowId
+  && (release.status === 'MISSING_TRACKS' || release.status === 'INCOMPLETE')
+
 // Deduplicated folder paths for releases that actually have local files - the exact album directories,
 // used when refreshing one known release.
 export const dedupeLocalFolders = (releases: UnifiedRelease[]): string[] => {

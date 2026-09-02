@@ -15,6 +15,15 @@ export default defineEventHandler(async (event) => {
   const mbReleaseRowId = body?.mbReleaseRowId as string | undefined
   if (!mbReleaseRowId) {throw createError({ statusCode: 400, message: 'mbReleaseRowId required' })}
 
+  // Re-download of an incomplete copy: the caller names the LocalRelease this download replaces.
+  // Validate it here so a bad id can never reach merge, where it would silently no-op and leave two
+  // copies fighting over the same library folder.
+  const replacesLocalReleaseId = body?.replacesLocalReleaseId as string | undefined
+  if (replacesLocalReleaseId) {
+    const target = await prisma.localRelease.findUnique({ where: { id: replacesLocalReleaseId }, select: { id: true } })
+    if (!target) {throw createError({ statusCode: 404, message: 'local release to replace not found' })}
+  }
+
   const mb = await prisma.musicBrainzRelease.findUnique({
     where: { id: mbReleaseRowId },
     include: { artists: { include: { artist: true } } },
@@ -44,7 +53,14 @@ export default defineEventHandler(async (event) => {
     where: { ...dedupKey, status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] } },
     select: { id: true, status: true },
   })
-  if (existing) {return { id: existing.id, status: existing.status, alreadyQueued: true }}
+  if (existing) {
+    // An in-flight row that predates this click knows nothing about the copy it should replace -
+    // stamp it now, or the merge would leave the incomplete copy sitting next to the new one.
+    if (replacesLocalReleaseId) {
+      await prisma.downloadedRelease.update({ where: { id: existing.id }, data: { replacesLocalReleaseId } })
+    }
+    return { id: existing.id, status: existing.status, alreadyQueued: true }
+  }
 
   const artist = mb.artists[0]?.artist
   if (!artist) {throw createError({ statusCode: 409, message: 'release has no artist' })}
@@ -79,6 +95,7 @@ export default defineEventHandler(async (event) => {
     bytesTransferred: BigInt(0),
     lastProgressAt: new Date(),
     attempts: 0,
+    replacesLocalReleaseId: replacesLocalReleaseId ?? null,
   }
   const row = prior
     ? await prisma.downloadedRelease.update({ where: { id: prior.id }, data })

@@ -436,7 +436,7 @@ model SearchSource {
 }
 
 model Settings {
-  id                     String   @id @default("main")
+  id                     String    @id @default("main")
   // Library
   musicDir               String?
   // Opt-in unattended library scan (index + sync) run by the monitor plugin on the primary instance.
@@ -475,7 +475,7 @@ model Settings {
   searchIntervalSec      Int? // min seconds between download top-up runs (default 60)
   gapsPicksPerRun        Int? // monitored artists refreshed per catalogue-gap run (default 20)
   gapsIntervalMin        Int? // minutes between catalogue-gap runs (default 5)
-  downloadsPaused        Boolean  @default(false) // global halt: no new queue/search/gaps/auto-merge
+  downloadsPaused        Boolean   @default(false) // global halt: no new queue/search/gaps/auto-merge
   downloadsPausedReason  String? // why paused: 'manual' | 'disk-full' | null
   // Storage
   imageStorage           String?
@@ -498,8 +498,8 @@ model Settings {
   lastfmUsername         String?
   // UI (null = use env/default)
   showTerminal           Boolean? // show raw terminal sidebar instead of the friendly progress panel
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -546,31 +546,35 @@ enum DownloadStatus {
 }
 
 model DownloadedRelease {
-  id               String           @id @default(cuid())
-  artistId         String?
-  mbReleaseId      String? // MusicBrainzRelease.id this fills (the MISSING target)
-  releaseGroupId   String? // MB release-group id (denormalized)
-  title            String           @db.VarChar(500)
-  year             Int?
-  source           DownloadSource   @default(SLSKD)
-  triedSources     DownloadSource[] @default([]) // sources searched-and-missed whose retry=false; never re-searched
-  slskUsername     String?
-  torrentHash      String? // qBittorrent infohash (shared by sibling rows extracted from one pack)
-  torrentFolder    String?          @db.Text // this release's folder inside the torrent (what relocate grabs)
-  quality          String? // source format/bitrate, e.g. "MP3 320"
-  files            Json? // [{filename,size}] queued from slskd — lets the reconciler finalize
-  stagingPath      String?          @db.Text // folder under DOWNLOADS_PATH
-  status           DownloadStatus   @default(READY)
-  attempts         Int              @default(0) // failed/no-result attempts; >= max -> ABANDONED (download-fail path only)
-  priority         Int              @default(10) // 10 = freshest/highest; decremented per failure, floor 0; drives retry order
-  bytesTransferred BigInt           @default(0) // progress watermark for no-progress death
-  lastProgressAt   DateTime? // last time bytes increased
-  error            String?          @db.Text
-  localReleaseId   String?          @unique // set on promote
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  artist           Artist?          @relation(fields: [artistId], references: [id], onDelete: SetNull)
-  localRelease     LocalRelease?    @relation(fields: [localReleaseId], references: [id], onDelete: SetNull)
+  id                     String           @id @default(cuid())
+  artistId               String?
+  mbReleaseId            String? // MusicBrainzRelease.id this fills (the MISSING target)
+  releaseGroupId         String? // MB release-group id (denormalized)
+  title                  String           @db.VarChar(500)
+  year                   Int?
+  source                 DownloadSource   @default(SLSKD)
+  triedSources           DownloadSource[] @default([]) // sources searched-and-missed whose retry=false; never re-searched
+  slskUsername           String?
+  torrentHash            String? // qBittorrent infohash (shared by sibling rows extracted from one pack)
+  torrentFolder          String?          @db.Text // this release's folder inside the torrent (what relocate grabs)
+  quality                String? // source format/bitrate, e.g. "MP3 320"
+  files                  Json? // [{filename,size}] queued from slskd — lets the reconciler finalize
+  stagingPath            String?          @db.Text // folder under DOWNLOADS_PATH
+  status                 DownloadStatus   @default(READY)
+  attempts               Int              @default(0) // failed/no-result attempts; >= max -> ABANDONED (download-fail path only)
+  priority               Int              @default(10) // 10 = freshest/highest; decremented per failure, floor 0; drives retry order
+  bytesTransferred       BigInt           @default(0) // progress watermark for no-progress death
+  lastProgressAt         DateTime? // last time bytes increased
+  error                  String?          @db.Text
+  localReleaseId         String?          @unique // set on promote
+  // Re-download of an incomplete copy: the LocalRelease this download replaces, deleted (DB + files)
+  // right before the new copy is moved into the library. Deliberately not a relation - a stale id
+  // must degrade to a no-op at merge time, not a constraint error.
+  replacesLocalReleaseId String?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+  artist                 Artist?          @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  localRelease           LocalRelease?    @relation(fields: [localReleaseId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([status, priority])

@@ -16,6 +16,7 @@ const emit = defineEmits<{
   toggleEdition: [id: string]
   play: [release: UnifiedRelease]
   download: [release: UnifiedRelease]
+  redownload: [release: UnifiedRelease]
   toggleFavorite: [release: UnifiedRelease]
   refresh: [release: UnifiedRelease]
   info: [release: UnifiedRelease]
@@ -40,6 +41,7 @@ const primaryFavorite = computed(() =>
       @toggle="emit('toggleGroup', group.key)"
       @play="emit('play', group.primary)"
       @download="emit('download', group.primary)"
+      @redownload="emit('redownload', group.primary)"
       @toggle-favorite="emit('toggleFavorite', group.primary)"
       @refresh="emit('refresh', group.primary)"
       @info="emit('info', group.primary)"
@@ -56,6 +58,7 @@ const primaryFavorite = computed(() =>
       @toggle-edition="emit('toggleEdition', $event)"
       @play="emit('play', $event)"
       @download="emit('download', $event)"
+      @redownload="emit('redownload', $event)"
       @toggle-favorite="emit('toggleFavorite', $event)"
       @refresh="emit('refresh', $event)"
       @info="emit('info', $event)"
