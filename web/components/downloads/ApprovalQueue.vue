@@ -202,7 +202,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
           <template v-if="it.slskUsername"> · {{ it.slskUsername }}</template>
         </td>
         <td :class="data.td">
-          <Popover v-if="statusNote(it)" trigger="hover">
+          <Popover v-if="statusNote(it)" trigger="hover" teleport>
             <template #trigger>
               <span class="inline-flex cursor-help items-center gap-1.5" :class="statusClass(it.status)">
                 <Loader2 v-if="it.status === 'DOWNLOADING' || it.status === 'ENRICHING'" :size="13" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
@@ -215,7 +215,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               </span>
             </template>
             <template #content>
-              <div :class="cx(surface.popover, 'absolute left-0 top-full z-20 mt-1 w-72 p-3')">
+              <div :class="cx(surface.popover, 'w-72 p-3')">
                 <p class="text-sm text-stone-100/60">{{ statusNote(it) }}</p>
               </div>
             </template>

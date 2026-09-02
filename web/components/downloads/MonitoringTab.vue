@@ -244,18 +244,18 @@ onMounted(() => {
                 :class="sortKey === 'monitored' ? 'text-amber-400' : 'text-stone-100/50'"
               />
             </button>
-            <Popover trigger="hover">
+            <Popover trigger="hover" teleport placement="bottom-end">
               <template #trigger>
                 <button type="button" aria-label="What does monitoring do?" class="cursor-help text-stone-100/25 hover:text-stone-100/55">
                   <CircleHelp :size="13" />
                 </button>
               </template>
               <template #content>
-                <div :class="cx(surface.popover, 'absolute right-0 top-full z-20 mt-1 w-72 p-3 text-left')">
+                <div :class="cx(surface.popover, 'w-72 p-3 text-left')">
                   <p class="text-sm font-normal normal-case tracking-normal text-stone-100/60">
                     Monitoring an artist lets dmp automatically search Soulseek for the releases
                     missing from your library and download them in the background. Approved
-                    downloads wait in “Ready to merge” until you merge them in.
+                    downloads wait in "Ready to merge" until you merge them in.
                   </p>
                 </div>
               </template>

@@ -169,12 +169,12 @@ const formatFileSize = (bytes: number) => {
         <td v-if="hasColumn('title')" class="py-2 pl-3" :class="[isCurrentTrack(track.id) ? 'text-amber-400' : 'text-stone-100', track.missing && 'line-through text-stone-100/55']">
           <div class="flex items-center gap-2">
             {{ track.title || 'Unknown' }}
-            <Popover v-if="track.mbTitle" trigger="hover">
+            <Popover v-if="track.mbTitle" trigger="hover" teleport>
               <template #trigger>
                 <AlertTriangle :size="12" class="mb-0.5 ml-1 inline text-amber-400/70" />
               </template>
               <template #content>
-                <div :class="cx(surface.popover, 'absolute left-0 top-full z-20 mt-1 w-72 p-3')">
+                <div :class="cx(surface.popover, 'w-72 p-3')">
                   <p class="text-xs text-stone-100/60">Title is slightly different in MusicBrainz: <span class="text-stone-100/60">{{ track.mbTitle }}</span></p>
                 </div>
               </template>

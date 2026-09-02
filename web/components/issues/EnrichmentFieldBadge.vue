@@ -56,14 +56,14 @@ const cfg = computed(() => CONFIG[props.field])
 <template>
   <UiBadge :tone="cfg.tone" :class="cfg.extraClass">
     {{ cfg.label }}
-    <Popover v-if="!cfg.fixable" trigger="hover">
+    <Popover v-if="!cfg.fixable" trigger="hover" teleport>
       <template #trigger>
         <button type="button" :aria-label="`Why is ${cfg.label} missing?`" class="opacity-60 hover:opacity-100">
           <CircleHelp :size="11" />
         </button>
       </template>
       <template #content>
-        <div :class="[surface.popover, 'absolute left-0 top-full z-20 mt-1 w-64 p-3']">
+        <div :class="[surface.popover, 'w-64 p-3']">
           <p class="text-sm text-stone-100/60">{{ cfg.help }}</p>
         </div>
       </template>
