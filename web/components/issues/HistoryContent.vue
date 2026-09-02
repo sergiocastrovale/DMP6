@@ -4,6 +4,7 @@ import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { FixHistoryRow, HistoryIssueType, HistoryFolderGroup } from '~/types/issues'
 import { cx, data } from '~/helpers/ui'
+import { toggleRowSelection } from '~/helpers/functions'
 
 const issuesStore = useIssuesStore()
 const terminal = useTerminalStore()
@@ -73,28 +74,53 @@ function selectedInGroup(g: HistoryFolderGroup): number {
   return g.ids.filter((id) => selected.value.has(id)).length
 }
 
+const groupAnchor = ref<string | null>(null)
+let pendingGroupShiftKey = false
+
+function captureGroupClick(event: MouseEvent) {
+  pendingGroupShiftKey = event.shiftKey
+}
+
 function toggleGroup(g: HistoryFolderGroup) {
+  const folders = groups.value.map((gr) => gr.folder)
+  const wasChecked = isGroupChecked(g)
   const next = new Set(selected.value)
-  if (isGroupChecked(g)) {
-    for (const id of g.ids) {
-      next.delete(id)
+  const applyGroup = (folder: string, select: boolean) => {
+    const target = groups.value.find((gr) => gr.folder === folder)
+    if (!target) {
+      return
     }
-  } else {
-    for (const id of g.ids) {
-      next.add(id)
+    for (const id of target.ids) {
+      select ? next.add(id) : next.delete(id)
     }
   }
+  const from = pendingGroupShiftKey && groupAnchor.value !== null ? folders.indexOf(groupAnchor.value) : -1
+  const to = folders.indexOf(g.folder)
+  if (from !== -1 && to !== -1) {
+    const [start, end] = from < to ? [from, to] : [to, from]
+    for (let i = start; i <= end; i++) {
+      applyGroup(folders[i]!, true)
+    }
+  } else {
+    applyGroup(g.folder, !wasChecked)
+  }
+  groupAnchor.value = g.folder
+  pendingGroupShiftKey = false
   selected.value = next
 }
 
+const fileAnchor = ref<string | null>(null)
+let pendingFileShiftKey = false
+
+function captureFileClick(event: MouseEvent) {
+  pendingFileShiftKey = event.shiftKey
+}
+
 function toggleFile(id: string) {
-  const next = new Set(selected.value)
-  if (next.has(id)) {
-    next.delete(id)
-  } else {
-    next.add(id)
-  }
-  selected.value = next
+  const ids = dialogGroup.value?.items.map((item) => item.id) ?? [id]
+  selected.value = toggleRowSelection(ids, selected.value, id, { shiftKey: pendingFileShiftKey }, fileAnchor.value)
+  fileAnchor.value = id
+  pendingFileShiftKey = false
 }
 
 const dialogGroup = computed(() =>
@@ -213,7 +239,7 @@ async function undoSelected() {
             :key="g.folder"
             :active="isGroupChecked(g)"
           >
-            <td :class="data.td" @click.stop>
+            <td :class="data.td" @click.stop="captureGroupClick">
               <UiCheckbox
                 :model-value="isGroupChecked(g)"
                 :indeterminate="isGroupPartial(g)"
@@ -288,6 +314,7 @@ async function undoSelected() {
           :key="item.id"
           class="flex items-center gap-3 border-b border-stone-100/6 px-1 py-2 last:border-0"
           :class="selected.has(item.id) ? 'bg-amber-400/10' : ''"
+          @click.stop="captureFileClick"
         >
           <UiCheckbox
             :model-value="selected.has(item.id)"

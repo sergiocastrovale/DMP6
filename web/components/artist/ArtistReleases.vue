@@ -4,8 +4,9 @@ import type { Track } from '~/types/track'
 import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
-import { statuses } from '~/helpers/constants'
+import { useToastStore } from '~/stores/toast'
 import { scanSessionName } from '~/helpers/functions'
+import { acquireFailureMessage } from '~/helpers/artistPageLogic'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 
 const props = defineProps<{
@@ -20,6 +21,7 @@ const player = usePlayerStore()
 const { toggleOrPlay } = usePlayRelease()
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
+const toast = useToastStore()
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
 
 const {
@@ -40,6 +42,7 @@ const infoRelease = ref<UnifiedRelease | null>(null)
 const showInfoDialog = ref(false)
 const infoExtra = ref<ReleaseInfoExtra | null>(null)
 const favoriteReleases = ref<Set<string>>(new Set())
+const acquiringIds = ref<Set<string>>(new Set())
 
 onMounted(() => {
   downloadsStore.checkStatus()
@@ -90,7 +93,7 @@ const releaseMap = computed(() => {
 
 const filteredAllTracks = computed(() => {
   let tracks = allTracks.value
-  if (activeStatuses.value.size < statuses.length) {
+  if (activeStatuses.value.size > 0) {
     const matchingReleaseIds = new Set(
       props.releases
         .filter(r => activeStatuses.value.has(r.status) && r.localReleaseId)
@@ -135,13 +138,25 @@ function toReleaseSlug(title: string) {
 }
 
 const acquireRelease = async (release: UnifiedRelease) => {
-  if (!release.mbReleaseRowId) {
+  if (!release.mbReleaseRowId || acquiringIds.value.has(release.id)) {
     return
   }
+  acquiringIds.value = new Set(acquiringIds.value).add(release.id)
   try {
-    await $fetch('/api/downloads/acquire', { method: 'POST', body: { mbReleaseRowId: release.mbReleaseRowId } })
+    const result = await $fetch<{ status: string }>('/api/downloads/acquire', { method: 'POST', body: { mbReleaseRowId: release.mbReleaseRowId } })
+    const message = acquireFailureMessage(result.status)
+    if (message) {
+      toast.error(message)
+    }
   }
-  catch { /* ignore */ }
+  catch (e: any) {
+    toast.error(e?.data?.message || e?.message || 'Download request failed')
+  }
+  finally {
+    const next = new Set(acquiringIds.value)
+    next.delete(release.id)
+    acquiringIds.value = next
+  }
 }
 
 function openCancelDialog(release: UnifiedRelease) {
@@ -304,6 +319,7 @@ watch(() => props.releases, () => {
           :expanded-edition="expandedEdition"
           :favorite-releases="favoriteReleases"
           :selected-track-id="selectedTrackId"
+          :acquiring-ids="acquiringIds"
           @toggle-group="toggleGroup"
           @toggle-edition="toggleEdition"
           @play="handleReleaseClick"

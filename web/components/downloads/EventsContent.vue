@@ -158,22 +158,14 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
           </td>
           <td v-if="canEdit && sub === 'archived'" :class="cx(data.td, 'text-right')" @click.stop>
             <div class="flex items-center justify-end gap-1">
-              <UiButton
-                variant="ghost"
-                size="sm"
-                icon-only
+              <DataTableAction
                 :icon="Undo2"
-                title="Move back to flagged"
-                aria-label="Move back to flagged"
+                label="Move back to flagged"
                 @click="restoreOne(ev.id)"
               />
-              <UiButton
-                variant="danger"
-                size="sm"
-                icon-only
+              <DataTableAction
                 :icon="Trash2"
-                title="Delete permanently"
-                aria-label="Delete permanently"
+                label="Delete permanently"
                 @click="confirmDeleteId = ev.id"
               />
             </div>

@@ -8,6 +8,7 @@ const props = defineProps<{
   expandedEdition: string | null
   favoriteReleases: Set<string>
   selectedTrackId?: string | null
+  acquiringIds: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -35,6 +36,7 @@ const primaryFavorite = computed(() =>
       :is-favorite="primaryFavorite"
       :slug="slug"
       :selected-track-id="selectedTrackId"
+      :is-acquiring="acquiringIds.has(group.primary.id)"
       @toggle="emit('toggleGroup', group.key)"
       @play="emit('play', group.primary)"
       @download="emit('download', group.primary)"
@@ -50,6 +52,7 @@ const primaryFavorite = computed(() =>
       :expanded-edition="expandedEdition"
       :favorite-releases="favoriteReleases"
       :selected-track-id="selectedTrackId"
+      :acquiring-ids="acquiringIds"
       @toggle-edition="emit('toggleEdition', $event)"
       @play="emit('play', $event)"
       @download="emit('download', $event)"

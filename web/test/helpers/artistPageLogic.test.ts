@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { artistScanFolders, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
+import { acquireFailureMessage, artistScanFolders, dedupeLocalFolders, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
 import type { DlStatusValue } from '../../types/download'
@@ -129,5 +129,17 @@ describe('tracksToPlayerTracks', () => {
     expect(tracksToPlayerTracks(tracks, 'artist-slug')[0]).toMatchObject({
       title: 'Song', artist: 'Real Artist', album: 'Real Album', duration: 180,
     })
+  })
+})
+
+describe('acquireFailureMessage', () => {
+  it('returns a message for each non-started acquire status', () => {
+    expect(acquireFailureMessage('NO_SOURCE')).toMatch(/source/i)
+    expect(acquireFailureMessage('NO_RESULT')).toMatch(/match/i)
+    expect(acquireFailureMessage('NO_YEAR')).toMatch(/year/i)
+  })
+
+  it('returns null when the download actually started', () => {
+    expect(acquireFailureMessage('DOWNLOADING')).toBeNull()
   })
 })

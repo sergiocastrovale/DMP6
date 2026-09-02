@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { IssueColumn, IssueType } from '~/types/issues'
 import { cx, data } from '~/helpers/ui'
+import { toggleRowSelection } from '~/helpers/functions'
 
 const props = defineProps<{
   type: IssueType
@@ -55,10 +56,18 @@ function toggleAll() {
   emit('update:selected', next)
 }
 
+const anchorId = ref<string | null>(null)
+let pendingShiftKey = false
+
+function captureRowClick(event: MouseEvent) {
+  pendingShiftKey = event.shiftKey
+}
+
 function toggleRow(id: string) {
-  const next = new Set(props.selected)
-  if (next.has(id)) {next.delete(id)}
-  else {next.add(id)}
+  const ids = props.items.map(i => i.id)
+  const next = toggleRowSelection(ids, props.selected, id, { shiftKey: pendingShiftKey }, anchorId.value)
+  anchorId.value = id
+  pendingShiftKey = false
   emit('update:selected', next)
 }
 
@@ -127,7 +136,7 @@ function commitEdit(item: any, col: IssueColumn) {
           :key="item.id"
           :active="type !== 'enrichment' && selected.has(item.id)"
         >
-          <td v-if="type !== 'enrichment'" :class="data.td" @click.stop>
+          <td v-if="type !== 'enrichment'" :class="data.td" @click.stop="captureRowClick">
             <UiCheckbox
               :model-value="selected.has(item.id)"
               :aria-label="`Select row ${item.id}`"

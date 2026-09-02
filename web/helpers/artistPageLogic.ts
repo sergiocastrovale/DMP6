@@ -25,6 +25,19 @@ export const filterInFlight = (dlStatusMap: Map<string, DlStatusValue>): DlInFli
     .filter(d => d.status === 'DOWNLOADING' || d.status === 'ENRICHING')
     .map(d => ({ status: d.status as DownloadedReleaseStatus, percent: d.percent, bytesTransferred: d.bytesTransferred, totalBytes: d.totalBytes }))
 
+// Manual-download acquire returns a status even when it didn't start a download (no source, no
+// match, bad MB data) - those cases resolve silently server-side (no thrown error) so the button
+// click would otherwise look like a no-op. Maps the non-DOWNLOADING statuses to a toast message;
+// null means the request genuinely started a download and needs no message.
+const ACQUIRE_FAILURE_MESSAGES: Record<string, string> = {
+  NO_SOURCE: 'No download source available right now',
+  NO_RESULT: 'No match found on the enabled source(s)',
+  NO_YEAR: 'Release has no MusicBrainz year - cannot download',
+}
+
+export const acquireFailureMessage = (status: string): string | null =>
+  ACQUIRE_FAILURE_MESSAGES[status] ?? null
+
 // Deduplicated folder paths for releases that actually have local files - the exact album directories,
 // used when refreshing one known release.
 export const dedupeLocalFolders = (releases: UnifiedRelease[]): string[] => {

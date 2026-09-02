@@ -59,14 +59,12 @@ const handleClick = (event: MouseEvent) => {
           :class="cx(
             'relative w-full cursor-pointer bg-stone-800',
             slim ? 'rounded-r-full' : 'rounded-full',
-            large ? 'h-3' : 'h-2',
+            large ? 'h-2.75' : 'h-1.25',
           )"
           :aria-valuenow="Math.round(currentTime)"
           aria-valuemin="0"
           :aria-valuemax="Math.round(duration)"
           @click="handleClick"
-          @keydown.left="emit('seek', Math.max(0, currentTime - 5))"
-          @keydown.right="emit('seek', Math.min(duration, currentTime + 5))"
         >
           <div class="h-full bg-gradient-to-b from-amber-600 to-amber-400" :class="slim ? 'rounded-r-full' : 'rounded-full'" :style="{ width: `${progressPct}%` }" />
         </div>

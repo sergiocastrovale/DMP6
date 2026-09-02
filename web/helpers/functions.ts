@@ -209,3 +209,30 @@ export const scanSessionName = (prefix: string, scope?: string): string => {
   const slug = (scope ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
   return slug ? `${prefix}-${slug}`.slice(0, 32).replace(/-+$/, '') : prefix
 }
+
+// Shift-click range select / ctrl-click independent toggle for row checkboxes, mirroring the
+// selection UX of native file managers and Gmail-style tables. `anchorId` is the last row a plain
+// or shift click landed on; shift-click selects every row between there and `id` (never
+// deselects), ctrl/meta-click and a plain click both just flip `id` alone.
+export const toggleRowSelection = <T extends string | number>(
+  ids: T[],
+  selected: Set<T>,
+  id: T,
+  event: { shiftKey: boolean },
+  anchorId: T | null,
+): Set<T> => {
+  const next = new Set(selected)
+  if (event.shiftKey && anchorId !== null) {
+    const from = ids.indexOf(anchorId)
+    const to = ids.indexOf(id)
+    if (from !== -1 && to !== -1) {
+      const [start, end] = from < to ? [from, to] : [to, from]
+      for (let i = start; i <= end; i++) {
+        next.add(ids[i]!)
+      }
+      return next
+    }
+  }
+  next.has(id) ? next.delete(id) : next.add(id)
+  return next
+}

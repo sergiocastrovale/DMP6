@@ -8,6 +8,7 @@ const props = defineProps<{
   isFavorite: boolean
   slug: string
   selectedTrackId?: string | null
+  isAcquiring: boolean
 }>()
 
 const emit = defineEmits<{
@@ -43,6 +44,7 @@ const connectedArtistNames = computed(() => {
       :connected-artist-names="connectedArtistNames"
       :track-count="group.totalTracks"
       :play-count="group.totalPlayCount"
+      :is-acquiring="isAcquiring"
       @toggle="emit('toggle')"
       @play="emit('play')"
       @download="emit('download')"

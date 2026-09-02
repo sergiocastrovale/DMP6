@@ -2,6 +2,7 @@
 import type { SortDirection } from '~/types/common'
 import type { DataTableColumn, DataTableBulkAction } from '~/types/ui'
 import { cx, data } from '~/helpers/ui'
+import { toggleRowSelection } from '~/helpers/functions'
 
 const props = withDefaults(defineProps<{
   columns: DataTableColumn[]
@@ -46,14 +47,17 @@ const toggleAll = () => {
   emit('update:selected', allChecked.value ? new Set() : new Set(allIds.value))
 }
 
+const anchorId = ref<string | number | null>(null)
+let pendingShiftKey = false
+
+const captureRowClick = (event: MouseEvent) => {
+  pendingShiftKey = event.shiftKey
+}
+
 const toggleRow = (id: string | number) => {
-  const next = new Set(selectedIds.value)
-  if (next.has(id)) {
-    next.delete(id)
-  }
-  else {
-    next.add(id)
-  }
+  const next = toggleRowSelection(allIds.value, selectedIds.value, id, { shiftKey: pendingShiftKey }, anchorId.value)
+  anchorId.value = id
+  pendingShiftKey = false
   emit('update:selected', next)
 }
 
@@ -134,7 +138,7 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
             :key="rowId(row)"
             :active="selectedIds.has(rowId(row))"
           >
-            <td v-if="selectable" :class="cx('w-10', data.th)" @click.stop>
+            <td v-if="selectable" :class="cx('w-10', data.th)" @click.stop="captureRowClick">
               <UiCheckbox
                 :model-value="selectedIds.has(rowId(row))"
                 :aria-label="`Select ${rowAriaLabel(row)}`"

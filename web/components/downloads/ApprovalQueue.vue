@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia'
 import { X, Loader2, AlertCircle, AlertTriangle, Ban, RotateCw, Info, FolderInput, SearchX, FileX, Undo2 } from 'lucide-vue-next'
 import type { DownloadedReleaseItem } from '~/types/download'
 import type { SortDirection } from '~/types/common'
-import { formatDate, sortItems, canRetryDownload, canCancelDownload, canRequeueDownload, canRejectDownload } from '~/helpers/functions'
+import { formatDate, sortItems, canRetryDownload, canCancelDownload, canRequeueDownload, canRejectDownload, toggleRowSelection } from '~/helpers/functions'
 import { toneText, surface, cx, typography, ICON_STROKE_WIDTH, data } from '~/helpers/ui'
 
 // Friendly source label, tied to DownloadedRelease.source (SLSKD | RUTRACKER).
@@ -78,14 +78,18 @@ const toggleAll = () => {
   emit('update:selected', next)
 }
 
+const anchorId = ref<string | null>(null)
+let pendingShiftKey = false
+
+const captureRowClick = (event: MouseEvent) => {
+  pendingShiftKey = event.shiftKey
+}
+
 const toggleRow = (id: string) => {
-  const next = new Set(props.selected)
-  if (next.has(id)) {
-    next.delete(id)
-  }
-  else {
-    next.add(id)
-  }
+  const ids = sortedItems.value.map(i => i.id)
+  const next = toggleRowSelection(ids, props.selected, id, { shiftKey: pendingShiftKey }, anchorId.value)
+  anchorId.value = id
+  pendingShiftKey = false
   emit('update:selected', next)
 }
 
@@ -175,7 +179,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
         :highlight="highlightId === it.id"
         :class="highlightId === it.id ? 'ring-2 ring-inset ring-amber-400/60' : ''"
       >
-        <td v-if="selectable" :class="data.td" @click.stop>
+        <td v-if="selectable" :class="data.td" @click.stop="captureRowClick">
           <UiCheckbox :model-value="selected.has(it.id)" :aria-label="`Select ${it.title}`" @update:model-value="toggleRow(it.id)" />
         </td>
         <td :class="cx(data.td, 'text-stone-100')">
@@ -234,72 +238,48 @@ const statusLabel = (it: DownloadedReleaseItem) => {
         </td>
         <td :class="data.td" @click.stop>
           <div class="flex items-center justify-end gap-1">
-            <UiButton
-              variant="ghost"
-              size="sm"
-              icon-only
+            <DataTableAction
               :icon="Info"
-              title="Info"
-              aria-label="Info"
+              label="Info"
               @click="emit('info', it.id)"
             />
-            <UiButton
+            <DataTableAction
               v-if="canRetryRow(it)"
-              variant="ghost"
-              size="sm"
-              icon-only
               :icon="RotateCw"
+              label="Force retry"
               :loading="busyId === it.id"
               :disabled="busyId != null && busyId !== it.id"
-              title="Force retry"
-              aria-label="Force retry"
               @click="emit('retry', it.id)"
             />
-            <UiButton
+            <DataTableAction
               v-if="showMerge"
-              variant="ghost"
-              size="sm"
-              icon-only
               :icon="FolderInput"
+              label="Merge"
               :loading="busyIds.has(it.id)"
               :disabled="busyIds.has(it.id)"
-              title="Merge into library"
-              aria-label="Merge"
               @click="emit('merge', it.id)"
             />
-            <UiButton
+            <DataTableAction
               v-if="canCancelRow(it)"
-              variant="danger"
-              size="sm"
-              icon-only
               :icon="X"
+              label="Cancel download"
               :loading="busyId === it.id"
               :disabled="busyId != null && busyId !== it.id"
-              title="Cancel download"
-              aria-label="Cancel download"
               @click="emit('cancel', it.id)"
             />
-            <UiButton
+            <DataTableAction
               v-if="canRequeueRow(it)"
-              variant="ghost"
-              size="sm"
-              icon-only
               :icon="Undo2"
+              label="Move back to queue"
               :loading="busyId === it.id"
               :disabled="busyId != null && busyId !== it.id"
-              title="Move back to queue"
-              aria-label="Move back to queue"
               @click="emit('requeue', it.id)"
             />
-            <UiButton
+            <DataTableAction
               v-if="canRejectRow(it)"
-              variant="danger"
-              size="sm"
-              icon-only
               :icon="X"
+              label="Reject"
               :disabled="busyId != null || it.status === 'DOWNLOADING'"
-              title="Reject"
-              aria-label="Reject"
               @click="emit('reject', it.id)"
             />
           </div>

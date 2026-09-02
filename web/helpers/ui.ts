@@ -212,7 +212,10 @@ export const data = {
 }
 
 export const grid = {
-  auto: 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-x-[22px] gap-y-[26px]',
+  // Fixed 2 columns below `sm`: auto-fill's 190px minimum never fits two on a phone-width column
+  // (page padding + gap leaves well under 380px), so every card fell back to one per row. `sm:` hands
+  // back to auto-fill once there's room for it to size columns itself.
+  auto: 'grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] sm:gap-x-[22px] sm:gap-y-[26px]',
   autoSm: 'grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-5',
   empty: 'col-span-full py-10 text-center text-base text-stone-100/55',
 }

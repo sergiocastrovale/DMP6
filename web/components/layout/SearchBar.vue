@@ -113,7 +113,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="search-container relative w-full">
     <div class="relative">
-      <Search :size="15" :stroke-width="ICON_STROKE_WIDTH" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-100/55" />
+      <Search :size="17" :stroke-width="ICON_STROKE_WIDTH" class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-100/55 sm:left-3 sm:size-[15px]" />
       <input
         ref="inputRef"
         v-model="query"
@@ -125,8 +125,11 @@ onBeforeUnmount(() => {
         :aria-activedescendant="activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined"
         placeholder="Search artists, releases, tracks..."
         :class="cx(
-          'w-full rounded-md border border-stone-100/10 bg-stone-900 py-3 pl-8 pr-3.5 text-base text-stone-100 outline-0 transition-colors duration-150',
-          'placeholder:text-stone-100/50 focus:border-amber-400/45 focus:bg-stone-800',
+          // Full-bleed on mobile: no side/top border or radius (the page itself frames it), bigger
+          // touch target and type. sm: restores the boxed pill look once there's room around it.
+          'w-full rounded-none border-x-0 border-t-0 border-b bg-stone-900 py-4 pl-10 pr-4 text-lg text-stone-100 outline-0 transition-colors duration-150',
+          'sm:rounded-md sm:border sm:py-3 sm:pl-8 sm:pr-3.5 sm:text-base',
+          'border-stone-100/10 placeholder:text-stone-100/50 focus:border-amber-400/45 focus:bg-stone-800',
         )"
         @focus="query && (showDropdown = true)"
         @keydown="onInputKeydown"
@@ -135,14 +138,14 @@ onBeforeUnmount(() => {
         v-if="query"
         type="button"
         aria-label="Clear search"
-        class="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-100/55 transition-colors duration-150 hover:text-stone-100"
+        class="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-100/55 transition-colors duration-150 hover:text-stone-100 sm:right-2.5"
         @click="clear"
       >
         <X :size="14" :stroke-width="ICON_STROKE_WIDTH" />
       </button>
       <div
         v-else
-        class="pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-sm border border-stone-100/10 px-1.5 py-0.5 font-mono text-2xs text-stone-100/50"
+        class="pointer-events-none absolute right-3.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-sm border border-stone-100/10 px-1.5 py-0.5 font-mono text-2xs text-stone-100/50 sm:right-2.5 sm:flex"
       >
         ⌘ K
       </div>

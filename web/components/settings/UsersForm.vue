@@ -147,8 +147,8 @@ const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 
               </td>
               <td :class="cx(data.td, 'text-right')" @click.stop>
                 <div class="flex items-center justify-end gap-1.5">
-                  <UiButton size="sm" icon-only :icon="Save" :loading="saving" aria-label="Save user" @click="saveEdit(u.id)" />
-                  <UiButton variant="secondary" size="sm" icon-only :icon="X" aria-label="Cancel edit" @click="cancelEdit" />
+                  <DataTableAction :icon="Save" label="Save user" :loading="saving" @click="saveEdit(u.id)" />
+                  <DataTableAction :icon="X" label="Cancel edit" @click="cancelEdit" />
                 </div>
                 <p v-if="editError" role="alert" class="mt-1 text-xs text-danger">{{ editError }}</p>
               </td>
@@ -169,8 +169,8 @@ const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 
               </td>
               <td :class="cx(data.td, 'text-right')" @click.stop>
                 <div class="flex items-center justify-end gap-1.5">
-                  <UiButton variant="secondary" size="sm" icon-only :icon="Pencil" :aria-label="`Edit ${u.username}`" @click="startEdit(u)" />
-                  <UiButton variant="danger" size="sm" icon-only :icon="Trash2" :aria-label="`Delete ${u.username}`" @click="deleteUser(u.id)" />
+                  <DataTableAction :icon="Pencil" :label="`Edit ${u.username}`" @click="startEdit(u)" />
+                  <DataTableAction :icon="Trash2" :label="`Delete ${u.username}`" @click="deleteUser(u.id)" />
                 </div>
               </td>
             </template>

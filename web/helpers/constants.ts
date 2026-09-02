@@ -88,6 +88,18 @@ export const scoreRanges = [
 export const getScoreRange = (score: number) =>
   scoreRanges.find(r => score >= r.min && score < r.max) ?? scoreRanges.at(-1)!
 
+// DownloadedRelease.status -> colour, shared by DownloadProgress's bar and any per-release
+// "Downloading"/"Enriching" pill (artist/ReleaseGroupDetails.vue) so the two always agree.
+export const downloadStatusTone: Record<string, Tone> = {
+  DOWNLOADING: 'accent',
+  ENRICHING: 'info',
+  READY: 'success',
+  PROMOTED: 'success',
+  FAILED: 'danger',
+  ABANDONED: 'danger',
+  REJECTED: 'muted',
+}
+
 // The one release-status -> colour map. Every status badge in the app (release/StatusBadge.vue,
 // artist/StatusChips.vue, TrackList.vue) reads `tone` from here through helpers/ui.ts's
 // toneBg/toneFill/toneText - previously each of those three kept its own copy, and they had

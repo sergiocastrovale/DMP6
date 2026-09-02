@@ -8,6 +8,7 @@ defineProps<{
   expandedEdition: string | null
   favoriteReleases: Set<string>
   selectedTrackId?: string | null
+  acquiringIds: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -41,6 +42,7 @@ const emit = defineEmits<{
         :slug="slug"
         :selected-track-id="expandedEdition === edition.id ? selectedTrackId : null"
         :subtitle="edition.disambiguation || edition.editionLabel"
+        :is-acquiring="acquiringIds.has(edition.id)"
         @toggle="emit('toggleEdition', edition.id)"
         @play="emit('play', edition)"
         @download="emit('download', edition)"

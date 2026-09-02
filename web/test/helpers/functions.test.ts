@@ -21,6 +21,7 @@ import {
   scanSessionName,
   sortItems,
   timeAgo,
+  toggleRowSelection,
 } from '../../helpers/functions'
 import { queueFilters } from '../../helpers/constants'
 import type { DownloadedReleaseItem } from '../../types/download'
@@ -420,5 +421,44 @@ describe('scanSessionName', () => {
     const name = scanSessionName('refresh-release', 'cljk3x9z0000qzrmn831p7wq')
     expect(name.length).toBeLessThanOrEqual(32)
     expect(name.endsWith('-')).toBe(false)
+  })
+})
+
+describe('toggleRowSelection', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e']
+
+  it('toggles a single row on a plain click', () => {
+    const next = toggleRowSelection(ids, new Set(), 'b', { shiftKey: false }, null)
+    expect(next).toEqual(new Set(['b']))
+  })
+
+  it('toggles a single row back off on a plain click', () => {
+    const next = toggleRowSelection(ids, new Set(['b']), 'b', { shiftKey: false }, 'b')
+    expect(next).toEqual(new Set())
+  })
+
+  it('selects the whole range between the anchor and the shift-clicked row', () => {
+    const next = toggleRowSelection(ids, new Set(['b']), 'd', { shiftKey: true }, 'b')
+    expect(next).toEqual(new Set(['b', 'c', 'd']))
+  })
+
+  it('selects the range regardless of click direction', () => {
+    const next = toggleRowSelection(ids, new Set(['d']), 'b', { shiftKey: true }, 'd')
+    expect(next).toEqual(new Set(['b', 'c', 'd']))
+  })
+
+  it('keeps existing selections outside the range untouched', () => {
+    const next = toggleRowSelection(ids, new Set(['a', 'b']), 'd', { shiftKey: true }, 'b')
+    expect(next).toEqual(new Set(['a', 'b', 'c', 'd']))
+  })
+
+  it('falls back to a plain toggle when there is no anchor yet', () => {
+    const next = toggleRowSelection(ids, new Set(), 'c', { shiftKey: true }, null)
+    expect(next).toEqual(new Set(['c']))
+  })
+
+  it('falls back to a plain toggle when the anchor row is no longer in the list', () => {
+    const next = toggleRowSelection(ids, new Set(), 'c', { shiftKey: true }, 'z')
+    expect(next).toEqual(new Set(['c']))
   })
 })

@@ -3,6 +3,7 @@ import { Loader2, Radar, EyeOff, CircleHelp, ChevronUp, ChevronDown, ChevronsUpD
 import type { SortDirection } from '~/types/common'
 import type { MonitoringArtistRow as ArtistRow } from '~/types/artist'
 import { sw, surface, cx, ICON_STROKE_WIDTH, data } from '~/helpers/ui'
+import { toggleRowSelection } from '~/helpers/functions'
 
 const store = useDownloadsStore()
 const toast = useToastStore()
@@ -128,10 +129,18 @@ const toggleAll = () => {
   allChecked.value ? items.value.forEach(a => next.delete(a.id)) : items.value.forEach(a => next.add(a.id))
   selected.value = next
 }
+const anchorId = ref<string | null>(null)
+let pendingShiftKey = false
+
+const captureRowClick = (event: MouseEvent) => {
+  pendingShiftKey = event.shiftKey
+}
+
 const toggleRow = (id: string) => {
-  const next = new Set(selected.value)
-  next.has(id) ? next.delete(id) : next.add(id)
-  selected.value = next
+  const ids = items.value.map(a => a.id)
+  selected.value = toggleRowSelection(ids, selected.value, id, { shiftKey: pendingShiftKey }, anchorId.value)
+  anchorId.value = id
+  pendingShiftKey = false
 }
 
 const onBulkAction = (key: string) => {
@@ -254,7 +263,7 @@ onMounted(() => {
           :key="artist.id"
           :active="selected.has(artist.id)"
         >
-          <td :class="data.td" @click.stop>
+          <td :class="data.td" @click.stop="captureRowClick">
             <UiCheckbox :model-value="selected.has(artist.id)" :aria-label="`Select ${artist.name}`" @update:model-value="toggleRow(artist.id)" />
           </td>
           <td :class="data.td">

@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Disc3, Download, GitMerge, Heart, Info, Link
 import type { UnifiedRelease } from '~/types/release'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
-import { statuses } from '~/helpers/constants'
+import { downloadStatusTone, statuses } from '~/helpers/constants'
 import { musicBrainzUrl } from '~/helpers/functions'
 import { cx, ICON_STROKE_WIDTH, surface, toneBg } from '~/helpers/ui'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
@@ -19,10 +19,12 @@ const props = withDefaults(defineProps<{
   connectedArtistNames?: string[]
   trackCount?: number
   playCount?: number
+  isAcquiring?: boolean
 }>(), {
   selectedTrackId: null,
   subtitle: null,
   connectedArtistNames: () => [],
+  isAcquiring: false,
 })
 
 const emit = defineEmits<{
@@ -143,26 +145,22 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
             </div>
           </template>
         </Popover>
-      </div>
 
-      <div class="flex w-32 shrink-0 items-center justify-end gap-0.5 px-3">
         <UiBadge
-          v-if="isDownloading"
-          tone="info"
+          v-else-if="isDownloading"
+          :tone="downloadStatusTone.DOWNLOADING"
           title="dmp is downloading this release from Soulseek"
         >
           <Loader2 :size="12" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" /> Downloading
         </UiBadge>
 
-        <UiButton
-          v-if="isDownloading || isEnriching"
-          variant="danger"
-          size="sm"
-          icon-only
-          :icon="X"
-          title="Cancel download and delete its files"
-          @click.stop="emit('cancel')"
-        />
+        <UiBadge
+          v-else-if="isEnriching"
+          :tone="downloadStatusTone.ENRICHING"
+          title="Tagging and organizing before merge"
+        >
+          <Loader2 :size="12" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" /> Enriching
+        </UiBadge>
 
         <button
           v-else-if="isAwaitingMerge"
@@ -173,6 +171,18 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
         >
           <GitMerge :size="12" :stroke-width="ICON_STROKE_WIDTH" /> Awaiting merge
         </button>
+      </div>
+
+      <div class="flex w-32 shrink-0 items-center justify-end gap-0.5 px-3">
+        <UiButton
+          v-if="isDownloading || isEnriching"
+          variant="danger"
+          size="sm"
+          icon-only
+          :icon="X"
+          title="Cancel download and delete its files"
+          @click.stop="emit('cancel')"
+        />
 
         <UiButton
           v-else-if="release.status === 'MISSING' && downloadsStore.sourceEnabled"
@@ -180,7 +190,8 @@ const actionIconClass = 'rounded-full p-1.5 text-stone-100/55 transition-colors 
           size="sm"
           icon-only
           :icon="Download"
-          :title="isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
+          :loading="isAcquiring"
+          :title="isAcquiring ? 'Requesting download…' : isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
           @click.stop="emit('download')"
         />
 

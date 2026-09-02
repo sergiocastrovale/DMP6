@@ -1,6 +1,5 @@
 import type { UnifiedRelease, ReleaseGroup } from '~/types/release'
 import type { CatalogueCounts } from '~/types/artist'
-import { statuses } from '~/helpers/constants'
 
 const countReleases = (releases: UnifiedRelease[]): CatalogueCounts => {
   const counts: CatalogueCounts = { total: 0, albums: 0, eps: 0, singles: 0 }
@@ -43,7 +42,7 @@ export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>) => {
   const showLinked = ref(true)
   const searchQuery = ref('')
   const typeFilter = ref<string | null>(null)
-  const activeStatuses = ref<Set<string>>(new Set(statuses.map(s => s.value)))
+  const activeStatuses = ref<Set<string>>(new Set())
   const sortKey = ref<string>('year-asc')
 
   const hasLinkedReleases = computed(() => releases.value.some(r => r.connectedArtistName))
@@ -65,7 +64,7 @@ export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>) => {
 
   const filteredReleases = computed(() => {
     let r = visibleReleases.value
-    if (activeStatuses.value.size < statuses.length) {
+    if (activeStatuses.value.size > 0) {
       r = r.filter(x => activeStatuses.value.has(x.status))
     }
     if (typeFilter.value) {
