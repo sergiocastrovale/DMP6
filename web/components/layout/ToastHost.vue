@@ -24,9 +24,9 @@ const toneFor = (kind: ToastKind) =>
       <div
         v-for="t in toasts"
         :key="t.id"
-        class="flex items-start gap-2 rounded-lg border border-stone-100/10 bg-stone-900 px-3 py-2.5 shadow-lg"
+        class="flex items-center gap-2 rounded-lg border border-stone-100/10 bg-stone-900 px-3 py-2.5 shadow-lg"
       >
-        <component :is="iconFor(t.kind)" :size="16" :stroke-width="ICON_STROKE_WIDTH" :class="['mt-0.5 shrink-0', toneFor(t.kind)]" />
+        <component :is="iconFor(t.kind)" :size="16" :stroke-width="ICON_STROKE_WIDTH" :class="['shrink-0', toneFor(t.kind)]" />
         <p class="flex-1 text-sm text-stone-100/60 break-words">{{ t.message }}</p>
         <UiButton
           variant="ghost"
