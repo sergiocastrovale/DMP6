@@ -17,6 +17,23 @@ export const themes = [
 
 export type ThemeId = (typeof themes)[number]['id']
 export const DEFAULT_THEME: ThemeId = 'amber'
+
+// UI size (Settings → Themes). Each id matches an `html[data-size=…]` block in themes.css that sets
+// `--ui-scale`; theme.css's whole type scale is `calc(<px> * var(--ui-scale))`, so one multiplier
+// resizes every `text-*` utility in the app. Order is the slider's order, small → large.
+export const uiSizes = [
+  { id: 'xs', label: '-15%', scale: 0.85 },
+  { id: 'sm', label: '-5%', scale: 0.95 },
+  { id: 'default', label: 'Default', scale: 1 },
+  { id: 'lg', label: '+10%', scale: 1.1 },
+  { id: 'xl', label: '+20%', scale: 1.2 },
+  { id: '2xl', label: '+25%', scale: 1.25 },
+] as const
+
+export type UiSizeId = (typeof uiSizes)[number]['id']
+export const DEFAULT_UI_SIZE: UiSizeId = 'default'
+
+// One localStorage entry holds the whole appearance choice: `{"accent":"violet","size":"lg"}`.
 export const THEME_STORAGE_KEY = 'dmp-theme'
 // Shared by the FLAC->MP3 conversion target bitrate and the download source minimum-bitrate filter
 // (both Settings → Downloads dropdowns) - same value set, two different meanings.

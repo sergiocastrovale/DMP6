@@ -96,22 +96,24 @@
   --font-display: 'Inter Tight', 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: 'Courier Prime', ui-monospace, monospace;
 
-  /* type scale — 2xs 11px -> 4xl 42px */
-  --text-2xs: 11px;
-  --text-xs: 12px;
-  --text-sm: 12.5px;
-  --text-base: 13.5px;
-  --text-lg: 14.5px;
-  --text-xl: 17px;
-  --text-2xl: 21px;
-  --text-3xl: 26px;
+  /* type scale — 2xs 11px -> 6xl 64px, every step multiplied by --ui-scale so Settings → Themes'
+     UI-size stepper resizes all text at once (themes.css sets the multiplier per html[data-size];
+     the fallback keeps this file standalone). Line heights stay unitless, so they scale for free. */
+  --text-2xs: calc(11px * var(--ui-scale, 1));
+  --text-xs: calc(12px * var(--ui-scale, 1));
+  --text-sm: calc(12.5px * var(--ui-scale, 1));
+  --text-base: calc(13.5px * var(--ui-scale, 1));
+  --text-lg: calc(14.5px * var(--ui-scale, 1));
+  --text-xl: calc(17px * var(--ui-scale, 1));
+  --text-2xl: calc(21px * var(--ui-scale, 1));
+  --text-3xl: calc(26px * var(--ui-scale, 1));
   --text-3xl--line-height: 1.2;
-  --text-4xl: 36px;
+  --text-4xl: calc(36px * var(--ui-scale, 1));
   --text-4xl--line-height: 1.15;
-  --text-5xl: 48px;
+  --text-5xl: calc(48px * var(--ui-scale, 1));
   --text-5xl--line-height: 1.15;
-  --text-6xl: 64px;
-  --text-6xl--line-height: 1.2;  
+  --text-6xl: calc(64px * var(--ui-scale, 1));
+  --text-6xl--line-height: 1.2;
 
   /* content widths — the page column. 7xl is the standard shell width (settings, tab shells,
      explore); Tailwind ships the rest of the scale, this one is named here because it is a layout

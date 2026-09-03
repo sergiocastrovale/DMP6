@@ -69,13 +69,30 @@ text on both `stone-950` and `stone-900`, and a per-theme `on-accent` ≥4.5:1 o
 The `:root` block also carries `--swatch-*` preview values — each theme's own 400 step, held fixed
 so the picker's squares keep their colours whatever theme is active.
 
-**Applying it:** the choice lives in `localStorage` under `dmp-theme` (no DB, no account setting).
-An inline script in `nuxt.config.ts`'s `app.head` sets `document.documentElement.dataset.theme`
-**before first paint** — a `.client` plugin would run after hydration and flash the default amber
-first. `composables/useTheme.ts` mirrors that into SSR-safe `useState` for the picker and writes
-both back on change. Known gap: the Labs canvases read colours once on mount via `cssVar`, so a
-theme switch doesn't repaint an already-mounted chart (unreachable in practice — the picker is in
-Settings, and navigating to Labs mounts fresh).
+### UI size
+
+The same page carries a six-step size stepper (`-15% · -5% · Default · +10% · +20% · +25%`), built
+on the shared `components/Slider.vue` — the same control Explore's mood dials use, passed `stops`.
+
+The type scale is **px**, not rem, so scaling the root font-size would do nothing to it. Instead
+every step in `theme.css` is declared as `calc(<px> * var(--ui-scale, 1))`, and `themes.css` sets
+that one multiplier per `html[data-size='…']` (`default` is the `:root` value and needs no block).
+Tailwind compiles `text-base` to `font-size: var(--text-base)`, so one number resizes all text at
+once. Only text scales: control heights and paddings stay put (`h-[40px]` inputs hold 17px text at
++25% comfortably), which keeps the layout stable instead of compounding two scales against each
+other. `test/unit/theme.test.ts` asserts every step still carries the multiplier, so a new type
+step can't quietly opt out of the stepper.
+
+**Applying it:** both choices live in one `localStorage` entry under `dmp-theme`, as
+`{"accent":"violet","size":"lg"}` (no DB, no account setting). `decodeThemePreference` in
+`composables/useTheme.ts` also reads the pre-size format, where the entry was a bare accent id, so
+an existing browser keeps its colour.
+An inline script in `nuxt.config.ts`'s `app.head` sets both `dataset.theme` and `dataset.size`
+**before first paint** — a `.client` plugin would run after hydration and flash the defaults first.
+`useTheme()` mirrors them into SSR-safe `useState` for the pickers and writes back on change. Known
+gap: the Labs canvases read colours once on mount via `cssVar`, so a theme switch doesn't repaint
+an already-mounted chart (unreachable in practice — the pickers are in Settings, and navigating to
+Labs mounts fresh).
 
 ### `main.css` — base layer
 

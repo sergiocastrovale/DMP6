@@ -116,12 +116,13 @@ export default defineNuxtConfig({
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
       ],
       script: [
-        // Accent theme (Settings → Themes), applied before first paint. A .client plugin would run
-        // after hydration, so the app would flash the default amber before the chosen palette
-        // landed. Kept inline, tiny and try/catch'd: localStorage throws in some privacy modes, and
-        // this runs before anything else on the page.
+        // Appearance (Settings → Themes: accent + UI size), applied before first paint. A .client
+        // plugin would run after hydration, so the app would flash the defaults before the chosen
+        // look landed. Kept inline, tiny and try/catch'd: localStorage throws in some privacy
+        // modes, and this runs before anything else on the page. The bare-string branch reads the
+        // pre-UI-size format, where the entry held just an accent id.
         {
-          innerHTML: 'try{var t=localStorage.getItem("dmp-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}',
+          innerHTML: 'try{var r=localStorage.getItem("dmp-theme"),p=r&&r[0]==="{"?JSON.parse(r):{accent:r},d=document.documentElement.dataset;if(p.accent)d.theme=p.accent;if(p.size)d.size=p.size}catch(e){}',
           tagPosition: 'head',
         },
       ],

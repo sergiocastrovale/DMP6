@@ -14,6 +14,13 @@ const gotoThemes = async (page: Page) => {
 const accentColour = (page: Page) =>
   page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--color-amber-400').trim())
 
+// Resolved font-size of a real rendered heading - proves the --ui-scale multiplier reaches painted
+// text, not just the custom property. `body` itself carries no text-* utility, so it would always
+// report the browser default.
+const headingPx = (page: Page) =>
+  page.getByRole('heading', { name: 'Theme', exact: true })
+    .evaluate(el => Number.parseFloat(getComputedStyle(el).fontSize))
+
 test.describe('settings themes', () => {
   test('offers one swatch per theme, amber active by default', async ({ page }) => {
     await gotoThemes(page)
@@ -57,5 +64,52 @@ test.describe('settings themes', () => {
 
     await gotoThemes(page)
     await page.getByRole('button', { name: 'Amber' }).click()
+  })
+})
+
+test.describe('settings UI size', () => {
+  test('stepping the size bar rescales rendered text and survives a reload', async ({ page }) => {
+    await gotoThemes(page)
+    const defaultPx = await headingPx(page)
+
+    const slider = page.getByRole('slider')
+    await slider.focus()
+    await slider.press('End') // largest step (+25%)
+
+    await expect(page.locator('html')).toHaveAttribute('data-size', '2xl')
+    const largestPx = await headingPx(page)
+    expect(largestPx).toBeGreaterThan(defaultPx)
+    expect(largestPx / defaultPx).toBeCloseTo(1.25, 2)
+
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('data-size', '2xl')
+    expect(await headingPx(page)).toBeCloseTo(largestPx, 1)
+
+    // …and back down again, leaving the suite on the default.
+    await page.getByRole('slider').press('Home')
+    await expect(page.locator('html')).toHaveAttribute('data-size', 'xs')
+    expect(await headingPx(page)).toBeLessThan(defaultPx)
+
+    await page.getByRole('slider').press('ArrowRight')
+    await page.getByRole('slider').press('ArrowRight')
+    await expect(page.locator('html')).toHaveAttribute('data-size', 'default')
+    expect(await headingPx(page)).toBeCloseTo(defaultPx, 1)
+  })
+
+  test('accent and size are stored together and applied together', async ({ page }) => {
+    await gotoThemes(page)
+    await page.getByRole('button', { name: 'Cyan' }).click()
+    await page.getByRole('slider').press('ArrowRight')
+
+    const stored = await page.evaluate(() => localStorage.getItem('dmp-theme'))
+    expect(JSON.parse(stored!)).toEqual({ accent: 'cyan', size: 'lg' })
+
+    await page.goto('/browse')
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'cyan')
+    await expect(page.locator('html')).toHaveAttribute('data-size', 'lg')
+
+    await gotoThemes(page)
+    await page.getByRole('button', { name: 'Amber' }).click()
+    await page.getByRole('slider').press('ArrowLeft')
   })
 })

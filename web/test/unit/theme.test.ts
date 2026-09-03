@@ -70,11 +70,40 @@ describe('theme.css semantic aliases', () => {
 })
 
 describe('theme.css type scale', () => {
-  it('is ordered smallest to largest across all nine steps', () => {
-    const steps = ['2xs', 'xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl']
-    const sizes = steps.map(step => Number.parseFloat(resolve(`text-${step}`)))
-    const sorted = [...sizes].sort((a, b) => a - b)
-    expect(sizes).toEqual(sorted)
+  const STEPS_BY_NAME = ['2xs', 'xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl']
+
+  // Every step is `calc(<px> * var(--ui-scale, 1))` so Settings → Themes' size stepper can rescale
+  // the lot - pull the base px back out rather than parseFloat'ing the calc() (which yields NaN and
+  // would make the ordering assertion below pass vacuously).
+  const basePx = (step: string): number => {
+    const value = resolve(`text-${step}`)
+    const match = /calc\(\s*([\d.]+)px\s*\*\s*var\(--ui-scale/.exec(value)
+    expect(match, `--text-${step} must scale with --ui-scale, got: ${value}`).not.toBeNull()
+    return Number(match![1])
+  }
+
+  it('is ordered smallest to largest across all eleven steps', () => {
+    const sizes = STEPS_BY_NAME.map(basePx)
+    expect(sizes.every(Number.isFinite)).toBe(true)
+    expect(sizes).toEqual([...sizes].sort((a, b) => a - b))
+  })
+
+  it('every step multiplies by --ui-scale, so the size stepper misses nothing', () => {
+    // basePx() asserts the shape; this just pins the intent for anyone adding a step later.
+    expect(STEPS_BY_NAME.map(basePx)).toHaveLength(11)
+  })
+})
+
+describe('themes.css UI sizes', () => {
+  it('declares a --ui-scale default plus one block per non-default size', () => {
+    const source = readFileSync(resolvePath(process.cwd(), 'assets/css/themes.css'), 'utf-8')
+    expect(source).toMatch(/:root\s*\{[^}]*--ui-scale:\s*1;/)
+
+    const sizes = [...source.matchAll(/html\[data-size='([\w-]+)']\s*\{\s*--ui-scale:\s*([\d.]+);/g)]
+      .map(m => [m[1], Number(m[2])] as const)
+    // `default` is the :root value and needs no block; the rest span smaller -> larger.
+    expect(sizes.map(([id]) => id)).toEqual(['xs', 'sm', 'lg', 'xl', '2xl'])
+    expect(sizes.map(([, scale]) => scale)).toEqual([0.85, 0.95, 1.1, 1.2, 1.25])
   })
 })
 

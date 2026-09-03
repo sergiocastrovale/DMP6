@@ -2,7 +2,15 @@
 import { Check } from 'lucide-vue-next'
 import { cx } from '~/helpers/ui'
 
-const { theme, themes, setTheme } = useTheme()
+const { accent, size, themes, uiSizes, setAccent, setSize } = useTheme()
+
+// Slider works in indices; the stored value is the size id, so translate at the boundary.
+const sizeIndex = computed({
+  get: () => Math.max(0, uiSizes.findIndex(s => s.id === size.value)),
+  set: (index: number) => setSize(uiSizes[index]!.id),
+})
+
+const sizeStops = uiSizes.map(s => s.label)
 </script>
 
 <template>
@@ -14,19 +22,31 @@ const { theme, themes, setTheme } = useTheme()
           :key="t.id"
           type="button"
           :aria-label="t.label"
-          :aria-pressed="theme === t.id"
+          :aria-pressed="accent === t.id"
           :title="t.label"
           :class="cx(
             'grid size-16 place-items-center rounded-lg border-2 transition-colors duration-150 cursor-pointer',
             'outline-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-100',
-            theme === t.id ? 'border-stone-100' : 'border-stone-100/10 hover:border-stone-100/40',
+            accent === t.id ? 'border-stone-100' : 'border-stone-100/10 hover:border-stone-100/40',
           )"
           :style="{ backgroundColor: `var(${t.swatchVar})` }"
-          @click="setTheme(t.id)"
+          @click="setAccent(t.id)"
         >
-          <Check v-if="theme === t.id" :size="26" class="text-stone-950" />
+          <Check v-if="accent === t.id" :size="26" class="text-stone-950" />
         </button>
       </div>
+    </UiCard>
+
+    <UiCard title="UI size">
+      <Slider
+        v-model="sizeIndex"
+        title="Text size"
+        left-label="Smaller"
+        right-label="Larger"
+        hint="Scales every text size in the app. Applies immediately and is kept in this browser."
+        :max="uiSizes.length - 1"
+        :stops="sizeStops"
+      />
     </UiCard>
   </div>
 </template>

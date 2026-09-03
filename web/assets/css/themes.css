@@ -17,6 +17,10 @@
    ramp here is complete, monotonic, and contrast-safe on both dark surfaces. */
 
 :root {
+  /* Type-scale multiplier for the UI-size stepper. theme.css declares every --text-* step as
+     `calc(<px> * var(--ui-scale))`, so setting this one number resizes all text in the app. */
+  --ui-scale: 1;
+
   /* Swatch previews for the theme picker: each theme's own 400 step, fixed regardless of the
      active theme (the ramp vars above/below are what actually change). */
   --swatch-amber: oklch(0.78 0.16 75);
@@ -85,3 +89,11 @@ html[data-theme='rose'] {
   --color-amber-950: oklch(0.24 0.06 350);
   --color-on-accent: #1d1217;
 }
+
+/* UI size — the stepper in Settings → Themes. Ids and percentages mirror `uiSizes` in
+   helpers/constants.ts; `default` needs no block (that's the :root value above). */
+html[data-size='xs'] { --ui-scale: 0.85; }
+html[data-size='sm'] { --ui-scale: 0.95; }
+html[data-size='lg'] { --ui-scale: 1.1; }
+html[data-size='xl'] { --ui-scale: 1.2; }
+html[data-size='2xl'] { --ui-scale: 1.25; }
