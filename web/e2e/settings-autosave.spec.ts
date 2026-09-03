@@ -88,7 +88,7 @@ test.describe('settings autosave', () => {
     expect(consoleErrors).toEqual([])
   })
 
-  test('api-keys: fanart and last.fm keys save on blur', async ({ page }) => {
+  test('api-keys: fanart key saves on blur', async ({ page }) => {
     await gotoSettings(page, 'api-keys')
 
     const fanart = page.getByLabel('API Key').first()
@@ -96,6 +96,32 @@ test.describe('settings autosave', () => {
     await fanart.blur()
     await expectSaved(page)
 
+    expect(consoleErrors).toEqual([])
+  })
+
+  test('api-keys: Connect Last.fm saves the key first, then succeeds immediately', async ({ page }) => {
+    // Regression test for a cache-invalidation race: connect() persists the API key via a PUT,
+    // then immediately calls GET /api/scrobble/connect, which reads the key back through
+    // server/utils/settingsCache.ts. invalidateSettingsCache() used to just null the cache and
+    // kick a background refresh, so this immediate read raced it and returned env-only defaults
+    // (no DB key) - "Last.fm API key not configured" even though the key had just been saved.
+    await gotoSettings(page, 'api-keys')
+
+    // Block the external hop so the test never leaves localhost; connect() still runs our own
+    // /api/scrobble/connect for real, which is what exercises the cache fix.
+    await page.route('https://www.last.fm/**', route => route.fulfill({ status: 200, body: 'stubbed' }))
+
+    const apiKey = page.getByLabel('API Key').nth(1)
+    const secret = page.getByLabel('Shared Secret')
+    await apiKey.fill('lastfm-e2e-key')
+    await secret.fill('lastfm-e2e-secret')
+
+    const connectResponse = page.waitForResponse(r => r.url().includes('/api/scrobble/connect'))
+    await page.getByRole('button', { name: /Connect Last\.fm/ }).click()
+    const resp = await connectResponse
+    expect(resp.status()).toBe(200)
+
+    await expect(page.getByText('Last.fm API key not configured')).not.toBeVisible()
     expect(consoleErrors).toEqual([])
   })
 
