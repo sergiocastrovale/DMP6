@@ -7,6 +7,7 @@ breakdown; this doc describes what has actually landed, not what's planned.
 
 ```
 web/assets/css/theme.css   design data — colour ramps, type scale, radii, shadows
+web/assets/css/themes.css  accent themes — per-theme overrides of the amber ramp
 web/assets/css/main.css    imports + base layer (resets, keyframes, the @utility rules that
                             replace what used to be component <style> blocks)
 web/helpers/ui.ts          recipe layer: typed Tailwind utility-string builders
@@ -36,13 +37,55 @@ Never hand-edit `theme.css`'s values without updating this doc — there is no s
 for it in this codebase (unlike the reference design handoff this system was seeded from); the
 file itself is the source of truth.
 
+### `themes.css` — the accent themes
+
+Settings → Themes lets each viewer pick one of five accent colours (`amber` — the default —
+`green`, `cyan`, `violet`, `rose`). It works by **redefining the amber ramp's eleven custom
+properties**, per theme, in an `html[data-theme='…']` block:
+
+```css
+html[data-theme='violet'] {
+  --color-amber-400: oklch(0.78 0.14 305);
+  /* …all eleven steps, plus a hue-tinted --color-on-accent… */
+}
+```
+
+**Why the ramp and not `--color-accent`.** The alias exists, but the app names `amber-*` directly
+in ~170 places — every entry in `helpers/ui.ts`'s `BUTTON_VARIANT`/`TOGGLE`/`tone*` maps, every
+active tab, the player bar, `genre-border`. Refactoring those onto `bg-accent` would also break the
+idle/`on` mutual-exclusion invariant `test/helpers/ui.test.ts` enforces (see "Why `idle`/`on` are
+never combined" below). Tailwind v4 compiles `bg-amber-400` and `text-amber-400/70` to
+`var(--color-amber-400)` (opacity variants via `color-mix` on the same var), so overriding the
+property re-colours every call site — plus `--shadow-accent` and `genre-border`, which read the
+ramp too — with zero component churn. `html[data-theme=…]` is specificity (0,1,1) against
+`@theme static`'s `:root` (0,1,0), so the override wins.
+
+Each palette reuses amber's lightness curve with the hue rotated and chroma trimmed per step to
+stay inside sRGB; hues sit clear of the semantic ramps (success 155, warning ~50, danger 20, info
+285) so an accent never reads as a status colour. `test/unit/theme.test.ts` parses this file and
+holds every palette to the same bar as the default: eleven steps, monotonic luminance, ≥4.5:1 as
+text on both `stone-950` and `stone-900`, and a per-theme `on-accent` ≥4.5:1 on its own accent.
+
+The `:root` block also carries `--swatch-*` preview values — each theme's own 400 step, held fixed
+so the picker's squares keep their colours whatever theme is active.
+
+**Applying it:** the choice lives in `localStorage` under `dmp-theme` (no DB, no account setting).
+An inline script in `nuxt.config.ts`'s `app.head` sets `document.documentElement.dataset.theme`
+**before first paint** — a `.client` plugin would run after hydration and flash the default amber
+first. `composables/useTheme.ts` mirrors that into SSR-safe `useState` for the picker and writes
+both back on change. Known gap: the Labs canvases read colours once on mount via `cssVar`, so a
+theme switch doesn't repaint an already-mounted chart (unreachable in practice — the picker is in
+Settings, and navigating to Labs mounts fresh).
+
 ### `main.css` — base layer
 
-Import order (`@import` must precede all other rules):
+Import order (`@import` must precede all other rules; `themes.css` must follow `theme.css`, since
+it overrides that file's ramp):
 
 ```css
 @import "tailwindcss";
 @import "./theme.css";
+@import "./themes.css";
 ```
 
 Everything after that is hand-written CSS, and everything here is either a base-element reset

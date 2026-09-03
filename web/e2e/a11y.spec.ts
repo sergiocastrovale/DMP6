@@ -52,6 +52,7 @@ const AUTHENTICATED_ROUTES = [
   '/labs',
   '/labs/decades',
   '/settings/library',
+  '/settings/themes',
 ]
 
 for (const route of AUTHENTICATED_ROUTES) {

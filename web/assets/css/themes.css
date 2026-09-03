@@ -1,0 +1,87 @@
+/* Accent themes — Settings → Themes.
+
+   The app names `amber-*` directly in ~170 places (helpers/ui.ts's button/toggle/tone recipes,
+   every active tab, the player bar, genre-border…), so the accent is themed by redefining the
+   amber ramp's custom properties rather than by refactoring those call sites onto `bg-accent`.
+   Tailwind v4 compiles `bg-amber-400` / `text-amber-400/70` to `var(--color-amber-400)` (opacity
+   variants via color-mix on the same var), so overriding the 11 properties below re-colours
+   everything — including `--shadow-accent` (theme.css) and `genre-border` (main.css), which both
+   read the ramp too.
+
+   `html[data-theme="x"]` is specificity (0,1,1) against the `@theme static` defaults' `:root`
+   (0,1,0), so these win. `amber` needs no block — it IS the default in theme.css.
+
+   Each ramp reuses amber's lightness curve with the hue rotated, chroma trimmed per step to stay
+   inside sRGB. Hues sit clear of the semantic ramps (success 155, warning ~50, danger 20,
+   info 285) so an accent never reads as a status colour. test/unit/theme.test.ts asserts every
+   ramp here is complete, monotonic, and contrast-safe on both dark surfaces. */
+
+:root {
+  /* Swatch previews for the theme picker: each theme's own 400 step, fixed regardless of the
+     active theme (the ramp vars above/below are what actually change). */
+  --swatch-amber: oklch(0.78 0.16 75);
+  --swatch-green: oklch(0.78 0.16 165);
+  --swatch-cyan: oklch(0.78 0.14 220);
+  --swatch-violet: oklch(0.78 0.14 305);
+  --swatch-rose: oklch(0.78 0.15 350);
+}
+
+html[data-theme='green'] {
+  --color-amber-50: oklch(0.97 0.02 165);
+  --color-amber-100: oklch(0.94 0.05 165);
+  --color-amber-200: oklch(0.89 0.09 165);
+  --color-amber-300: oklch(0.86 0.13 165);
+  --color-amber-400: oklch(0.78 0.16 165);
+  --color-amber-500: oklch(0.72 0.15 165);
+  --color-amber-600: oklch(0.64 0.13 165);
+  --color-amber-700: oklch(0.54 0.11 165);
+  --color-amber-800: oklch(0.44 0.09 165);
+  --color-amber-900: oklch(0.34 0.07 165);
+  --color-amber-950: oklch(0.24 0.05 165);
+  --color-on-accent: #0d1914;
+}
+
+html[data-theme='cyan'] {
+  --color-amber-50: oklch(0.97 0.02 220);
+  --color-amber-100: oklch(0.94 0.04 220);
+  --color-amber-200: oklch(0.89 0.07 220);
+  --color-amber-300: oklch(0.86 0.10 220);
+  --color-amber-400: oklch(0.78 0.14 220);
+  --color-amber-500: oklch(0.72 0.13 220);
+  --color-amber-600: oklch(0.64 0.12 220);
+  --color-amber-700: oklch(0.54 0.10 220);
+  --color-amber-800: oklch(0.44 0.08 220);
+  --color-amber-900: oklch(0.34 0.06 220);
+  --color-amber-950: oklch(0.24 0.04 220);
+  --color-on-accent: #0b181c;
+}
+
+html[data-theme='violet'] {
+  --color-amber-50: oklch(0.97 0.01 305);
+  --color-amber-100: oklch(0.94 0.04 305);
+  --color-amber-200: oklch(0.89 0.07 305);
+  --color-amber-300: oklch(0.86 0.09 305);
+  --color-amber-400: oklch(0.78 0.14 305);
+  --color-amber-500: oklch(0.72 0.16 305);
+  --color-amber-600: oklch(0.64 0.15 305);
+  --color-amber-700: oklch(0.54 0.13 305);
+  --color-amber-800: oklch(0.44 0.10 305);
+  --color-amber-900: oklch(0.34 0.08 305);
+  --color-amber-950: oklch(0.24 0.06 305);
+  --color-on-accent: #18141d;
+}
+
+html[data-theme='rose'] {
+  --color-amber-50: oklch(0.97 0.01 350);
+  --color-amber-100: oklch(0.94 0.04 350);
+  --color-amber-200: oklch(0.89 0.07 350);
+  --color-amber-300: oklch(0.86 0.09 350);
+  --color-amber-400: oklch(0.78 0.15 350);
+  --color-amber-500: oklch(0.72 0.16 350);
+  --color-amber-600: oklch(0.64 0.15 350);
+  --color-amber-700: oklch(0.54 0.13 350);
+  --color-amber-800: oklch(0.44 0.10 350);
+  --color-amber-900: oklch(0.34 0.08 350);
+  --color-amber-950: oklch(0.24 0.06 350);
+  --color-on-accent: #1d1217;
+}

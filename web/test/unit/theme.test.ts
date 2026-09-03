@@ -118,3 +118,70 @@ describe('theme.css contrast', () => {
     expect(contrastRatio(accent, stone900)).toBeGreaterThanOrEqual(4.5)
   })
 })
+
+// Settings → Themes swaps the accent by redefining the amber ramp per `html[data-theme=…]` block
+// (see assets/css/themes.css), so each alternate palette has to clear the same bar the default one
+// does above - otherwise picking a theme silently drops the app below AA.
+const themesSource = readFileSync(resolvePath(process.cwd(), 'assets/css/themes.css'), 'utf-8')
+
+const themeBlocks: Record<string, Record<string, string>> = {}
+for (const block of themesSource.matchAll(/html\[data-theme='([\w-]+)']\s*\{([^}]*)\}/g)) {
+  const [, name, body] = block
+  if (!name || !body) {
+    continue
+  }
+  const tokens: Record<string, string> = {}
+  for (const decl of body.matchAll(/--([\w-]+):\s*([^;]+);/g)) {
+    const [, token, value] = decl
+    if (token && value) {
+      tokens[token] = value.trim()
+    }
+  }
+  themeBlocks[name] = tokens
+}
+
+const THEME_IDS = Object.keys(themeBlocks)
+
+describe('themes.css alternate accent palettes', () => {
+  const stone950 = parseColor(resolve('color-stone-950'))
+  const stone900 = parseColor(resolve('color-stone-900'))
+
+  it('defines a block for every non-default theme', () => {
+    // `amber` is the default and deliberately has no block - it IS theme.css's ramp.
+    expect(THEME_IDS.sort()).toEqual(['cyan', 'green', 'rose', 'violet'])
+  })
+
+  it.each(THEME_IDS)('%s redefines all eleven amber steps plus on-accent', (id) => {
+    for (const step of STEPS) {
+      expect(themeBlocks[id]![`color-amber-${step}`], `${id}: --color-amber-${step}`).toBeDefined()
+    }
+    expect(themeBlocks[id]!['color-on-accent'], `${id}: --color-on-accent`).toBeDefined()
+  })
+
+  it.each(THEME_IDS)('%s steps are parseable colours in darkest-to-lightest order', (id) => {
+    let previousLuminance = Number.POSITIVE_INFINITY
+    for (const step of STEPS) {
+      const rgb = parseColor(themeBlocks[id]![`color-amber-${step}`]!)
+      const luminance = rgb.reduce((sum, c) => sum + c, 0)
+      expect(luminance).toBeLessThanOrEqual(previousLuminance)
+      previousLuminance = luminance
+    }
+  })
+
+  it.each(THEME_IDS)('%s accent clears 4.5:1 on both page and card surfaces', (id) => {
+    const themeAccent = parseColor(themeBlocks[id]!['color-amber-400']!)
+    expect(contrastRatio(themeAccent, stone950)).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(themeAccent, stone900)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(THEME_IDS)('%s on-accent text clears 4.5:1 on its own accent fill', (id) => {
+    const themeAccent = parseColor(themeBlocks[id]!['color-amber-400']!)
+    const themeOnAccent = parseColor(themeBlocks[id]!['color-on-accent']!)
+    expect(contrastRatio(themeOnAccent, themeAccent)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('every theme has a swatch preview var, including the default', () => {
+    const swatches = [...themesSource.matchAll(/--swatch-([\w-]+):/g)].map(m => m[1])
+    expect(swatches.sort()).toEqual(['amber', 'cyan', 'green', 'rose', 'violet'])
+  })
+})

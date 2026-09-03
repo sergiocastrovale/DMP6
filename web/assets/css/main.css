@@ -1,6 +1,8 @@
 /* @import statements must stay first (CSS requirement). */
 @import "tailwindcss";
 @import "./theme.css";
+/* Must follow theme.css: it overrides that file's amber ramp per accent theme. */
+@import "./themes.css";
 
 html,
 body {

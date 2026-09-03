@@ -17,7 +17,8 @@
   --color-stone-900: #15130f;
   --color-stone-950: #0e0d0c;
 
-  /* amber — brand hue */
+  /* amber — brand hue. This ramp IS the accent: themes.css redefines these 11 properties per
+     accent theme (Settings → Themes), so anything naming amber-* follows the chosen theme. */
   --color-amber-50: oklch(0.97 0.02 80);
   --color-amber-100: oklch(0.94 0.05 80);
   --color-amber-200: oklch(0.89 0.09 78);

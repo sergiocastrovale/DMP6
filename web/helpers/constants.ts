@@ -2,6 +2,22 @@ import type { ReleaseStatus } from '~/types/release'
 import type { Tone } from '~/types/ui'
 
 export const maxGenres = 5
+
+// Accent themes (Settings → Themes). Each id matches an `html[data-theme=…]` block in
+// assets/css/themes.css, which redefines the amber ramp - `amber` is the default and needs no
+// block. `swatchVar` is that theme's own 400 step, held fixed so the picker's squares keep their
+// own colours whatever theme is active. Persisted client-side only, no DB.
+export const themes = [
+  { id: 'amber', label: 'Amber', swatchVar: '--swatch-amber' },
+  { id: 'green', label: 'Green', swatchVar: '--swatch-green' },
+  { id: 'cyan', label: 'Cyan', swatchVar: '--swatch-cyan' },
+  { id: 'violet', label: 'Violet', swatchVar: '--swatch-violet' },
+  { id: 'rose', label: 'Rose', swatchVar: '--swatch-rose' },
+] as const
+
+export type ThemeId = (typeof themes)[number]['id']
+export const DEFAULT_THEME: ThemeId = 'amber'
+export const THEME_STORAGE_KEY = 'dmp-theme'
 // Shared by the FLAC->MP3 conversion target bitrate and the download source minimum-bitrate filter
 // (both Settings → Downloads dropdowns) - same value set, two different meanings.
 export const bitrateOptions = [320, 256, 192, 128] as const

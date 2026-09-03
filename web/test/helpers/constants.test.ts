@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { artistScanActions, getScoreRange, getStatus, scanActions, scoreRanges, statuses, visibleArtistScanActions, visibleScanActions } from '../../helpers/constants'
+import { artistScanActions, DEFAULT_THEME, getScoreRange, getStatus, scanActions, scoreRanges, statuses, themes, visibleArtistScanActions, visibleScanActions } from '../../helpers/constants'
 import { toneBg, toneFill, toneText } from '../../helpers/ui'
 import type { ReleaseStatus } from '../../types/release'
 
@@ -98,5 +98,24 @@ describe('visibleArtistScanActions', () => {
     const subtexts = new Set(artistScanActions.map(s => s.subtext))
     expect(titles.size).toBe(artistScanActions.length)
     expect(subtexts.size).toBe(artistScanActions.length)
+  })
+})
+
+describe('themes', () => {
+  it('has a unique id and swatch var per theme', () => {
+    expect(new Set(themes.map(t => t.id)).size).toBe(themes.length)
+    expect(new Set(themes.map(t => t.swatchVar)).size).toBe(themes.length)
+  })
+
+  it('defaults to a theme that actually exists', () => {
+    expect(themes.some(t => t.id === DEFAULT_THEME)).toBe(true)
+  })
+
+  // The picker renders one square per entry; every id needs a matching html[data-theme] block in
+  // assets/css/themes.css (asserted there by test/unit/theme.test.ts).
+  it('names each swatch var after its own id', () => {
+    for (const theme of themes) {
+      expect(theme.swatchVar).toBe(`--swatch-${theme.id}`)
+    }
   })
 })
