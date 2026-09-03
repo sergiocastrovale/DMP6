@@ -88,6 +88,16 @@ test.describe('settings autosave', () => {
     expect(consoleErrors).toEqual([])
   })
 
+  test('downloads: SongKong and Auto-merge are separate panels, Auto-merge shows the merge path', async ({ page }) => {
+    await gotoSettings(page, 'downloads')
+
+    await expect(page.getByRole('heading', { name: 'SongKong enrichment' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Auto-merge', exact: true })).toBeVisible()
+    await expect(page.getByText(/Merges into/)).toBeVisible()
+
+    expect(consoleErrors).toEqual([])
+  })
+
   test('downloads: Conversion select saves on change', async ({ page }) => {
     await gotoSettings(page, 'downloads')
 

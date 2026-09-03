@@ -302,33 +302,42 @@ const onChoiceChange = (setter: (v: string) => void, v: string) => {
             @blur="onTextBlur('maxDownloadAttempts', positiveIntField, monitoring.maxDownloadAttempts)"
           />
         </div>
-
-        <div :class="grid.halfRow">
-          <UiSelect
-            :model-value="songkongChoice"
-            label="SongKong enrichment"
-            description="Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library folder layout is applied. Requires the host SongKong drainer cron. (SONGKONG_ENABLED)"
-            :disabled="!canEdit"
-            @update:model-value="onChoiceChange(v => songkongChoice = v as any, $event)"
-          >
-            <option value="default">- use env default (SONGKONG_ENABLED) -</option>
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </UiSelect>
-
-          <UiSelect
-            :model-value="autoMergeChoice"
-            label="Auto-merge into library"
-            description="When on, ready downloads are merged into the music library automatically (no manual “Merge”). Off by default — merging stays a manual gate. (AUTO_MERGE)"
-            :disabled="!canEdit"
-            @update:model-value="onChoiceChange(v => autoMergeChoice = v as any, $event)"
-          >
-            <option value="default">- use env default (AUTO_MERGE) -</option>
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </UiSelect>
-        </div>
       </template>
+
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
+    </UiCard>
+
+    <UiCard title="SongKong enrichment">
+      <UiSelect
+        :model-value="songkongChoice"
+        label="SongKong enrichment"
+        description="Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library folder layout is applied. Requires a dedicated, ephemeral SongKong Docker instance (its own config/DB - never the live GUI server) driven by a host cron that runs the drainer script every 2 minutes; DMP's bundled enrich-only profile (no rename/move) is deployed automatically, so SongKong only tags files - it never touches file placement. See docs/features_downloader.md#songkong-setup for the full rebuild guide. Overrides SONGKONG_ENABLED."
+        :disabled="!canEdit"
+        @update:model-value="onChoiceChange(v => songkongChoice = v as any, $event)"
+      >
+        <option value="default">- use env default (SONGKONG_ENABLED) -</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </UiSelect>
+
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
+    </UiCard>
+
+    <UiCard title="Auto-merge">
+      <UiSelect
+        :model-value="autoMergeChoice"
+        label="Auto-merge into library"
+        description="When on, ready downloads are merged into the music library automatically (no manual “Merge”). Off by default — merging stays a manual gate. Overrides AUTO_MERGE."
+        :disabled="!canEdit"
+        @update:model-value="onChoiceChange(v => autoMergeChoice = v as any, $event)"
+      >
+        <option value="default">- use env default (AUTO_MERGE) -</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </UiSelect>
+      <p class="text-sm text-stone-100/55">
+        Merges into <span class="font-mono text-stone-100/70">{{ settings?.musicDir || 'MUSIC_DIR (not set)' }}</span>.
+      </p>
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
     </UiCard>
