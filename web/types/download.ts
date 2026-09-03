@@ -60,6 +60,7 @@ export interface ResolvedDownloadSettings {
   downloadsReadyPath: string
   autoMergeDownloads: boolean
   flacToMp3: boolean
+  flacToMp3Bitrate: number
 }
 
 export interface MatchableRelease {

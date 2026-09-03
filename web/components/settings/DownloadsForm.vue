@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { grid } from '~/helpers/ui'
-import { urlField, positiveIntField, nonNegativeIntField, validateField } from '~/helpers/settingsValidation'
+import { urlField, positiveIntField, validateField } from '~/helpers/settingsValidation'
+import { bitrateOptions } from '~/helpers/constants'
 
 const { hasPerm } = useAuth()
 const canEdit = hasPerm('variables.edit')
@@ -15,7 +16,7 @@ const form = reactive({
   downloadsPath: settings.value?.downloadsPath ?? '',
   downloadDirTemplate: settings.value?.downloadDirTemplate ?? '',
   downloadFormats: settings.value?.downloadFormats ?? '',
-  downloadMinBitrate: settings.value?.downloadMinBitrate ?? '',
+  downloadMinBitrate: String(settings.value?.downloadMinBitrate ?? 320),
 })
 
 // Empty string = "use env default" (sent as null). Numbers kept as strings in the inputs.
@@ -33,7 +34,6 @@ const monitoring = reactive({
 
 const fieldErrors = reactive({
   slskdUrl: '',
-  downloadMinBitrate: '',
   maxConcurrentDownloads: '',
   searchPicksPerInterval: '',
   searchIntervalSec: '',
@@ -50,6 +50,7 @@ const triState = (v: boolean | null | undefined): 'default' | 'on' | 'off' =>
 // Tri-state: default (env) / on / off
 const downloadsEnabledChoice = ref(triState(settings.value?.downloadsEnabled))
 const flacToMp3Choice = ref(triState(settings.value?.flacToMp3))
+const flacToMp3Bitrate = ref(String(settings.value?.flacToMp3Bitrate ?? 320))
 const enabledChoice = ref(triState(settings.value?.monitorEnabled))
 const songkongChoice = ref(triState(settings.value?.songkongEnabled))
 const autoMergeChoice = ref(triState(settings.value?.autoMergeDownloads))
@@ -57,6 +58,7 @@ const autoMergeChoice = ref(triState(settings.value?.autoMergeDownloads))
 // Each master switch hides its own section's fields when explicitly turned off - "default"/"on"
 // both leave them visible since the feature may still be running via the env default.
 const downloadsFieldsVisible = computed(() => downloadsEnabledChoice.value !== 'off')
+const flacToMp3FieldsVisible = computed(() => flacToMp3Choice.value !== 'off')
 const monitoringFieldsVisible = computed(() => enabledChoice.value !== 'off')
 
 const toNull = (v: string) => v === '' ? null : Number(v)
@@ -71,9 +73,10 @@ const { saving, saved, error, save } = useFormSave(async () => {
       downloadsPath: form.downloadsPath || null,
       downloadDirTemplate: form.downloadDirTemplate || null,
       downloadFormats: form.downloadFormats || null,
-      downloadMinBitrate: form.downloadMinBitrate ? Number(form.downloadMinBitrate) : null,
+      downloadMinBitrate: Number(form.downloadMinBitrate),
       downloadsEnabled: fromChoice(downloadsEnabledChoice.value),
       flacToMp3: fromChoice(flacToMp3Choice.value),
+      flacToMp3Bitrate: Number(flacToMp3Bitrate.value),
       monitorEnabled: fromChoice(enabledChoice.value),
       songkongEnabled: fromChoice(songkongChoice.value),
       autoMergeDownloads: fromChoice(autoMergeChoice.value),
@@ -95,6 +98,7 @@ const onTextBlur = <K extends keyof typeof fieldErrors>(field: K, schema: Parame
   if (!fieldErrors[field]) {save()}
 }
 
+// Also used for the plain (non-tri-state) bitrate dropdowns - same set-then-save shape.
 const onChoiceChange = (setter: (v: string) => void, v: string) => {
   setter(v)
   save()
@@ -162,16 +166,15 @@ const onChoiceChange = (setter: (v: string) => void, v: string) => {
             :disabled="!canEdit"
             @blur="save"
           />
-          <SettingsField
-            v-model="form.downloadMinBitrate"
+          <UiSelect
+            :model-value="form.downloadMinBitrate"
             label="Minimum Bitrate (kbps)"
             description="Minimum bitrate filter. Overrides DOWNLOAD_MIN_BITRATE."
-            type="number"
-            placeholder="320"
-            :error="fieldErrors.downloadMinBitrate"
             :disabled="!canEdit"
-            @blur="onTextBlur('downloadMinBitrate', nonNegativeIntField, form.downloadMinBitrate)"
-          />
+            @update:model-value="onChoiceChange(v => form.downloadMinBitrate = v, $event)"
+          >
+            <option v-for="b in bitrateOptions" :key="b" :value="String(b)">{{ b }} kbps</option>
+          </UiSelect>
         </div>
 
         <p class="text-sm text-stone-100/55">
@@ -193,6 +196,17 @@ const onChoiceChange = (setter: (v: string) => void, v: string) => {
         <option value="default">- use env default (FLAC_TO_MP3) -</option>
         <option value="on">On</option>
         <option value="off">Off</option>
+      </UiSelect>
+
+      <UiSelect
+        v-if="flacToMp3FieldsVisible"
+        :model-value="flacToMp3Bitrate"
+        label="Conversion bitrate"
+        description="Target kbps for the FLAC->MP3 conversion. Overrides FLAC_TO_MP3_BITRATE."
+        :disabled="!canEdit"
+        @update:model-value="onChoiceChange(v => flacToMp3Bitrate = v, $event)"
+      >
+        <option v-for="b in bitrateOptions" :key="b" :value="String(b)">{{ b }} kbps</option>
       </UiSelect>
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />

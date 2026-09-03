@@ -97,6 +97,42 @@ test.describe('settings autosave', () => {
     expect(consoleErrors).toEqual([])
   })
 
+  test('downloads: Conversion bitrate saves on change, and hides when conversion is off', async ({ page }) => {
+    await gotoSettings(page, 'downloads')
+
+    // Other tests in this file toggle Convert FLAC to MP3 too (they share one DB, not reset
+    // between tests) - force it back on first so this test doesn't depend on run order.
+    await page.getByLabel('Convert FLAC to MP3').selectOption('on')
+    await expectSaved(page)
+
+    const bitrate = page.getByLabel('Conversion bitrate')
+    await expect(bitrate).toBeVisible()
+    await bitrate.selectOption('192')
+    await expectSaved(page)
+
+    await page.getByLabel('Convert FLAC to MP3').selectOption('off')
+    await expectSaved(page)
+    await expect(page.getByLabel('Conversion bitrate')).toBeHidden()
+
+    expect(consoleErrors).toEqual([])
+  })
+
+  test('downloads: Minimum Bitrate is a dropdown', async ({ page }) => {
+    await gotoSettings(page, 'downloads')
+
+    // Other tests in this file toggle Downloads enabled too - force it back on first so this
+    // test doesn't depend on run order.
+    await page.getByLabel('Downloads enabled').selectOption('on')
+    await expectSaved(page)
+
+    const minBitrate = page.getByLabel('Minimum Bitrate (kbps)')
+    await expect(minBitrate).toBeVisible()
+    await minBitrate.selectOption('128')
+    await expectSaved(page)
+
+    expect(consoleErrors).toEqual([])
+  })
+
   test('storage: S3 Endpoint validates and saves', async ({ page }) => {
     await gotoSettings(page, 'storage')
 

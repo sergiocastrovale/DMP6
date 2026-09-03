@@ -27,13 +27,14 @@ export const sanitize = (s: string) => s
   .slice(0, 200)
 
 /**
- * Normalize every audio file in `dir` (recursively) to MP3 CBR 320, then rename each
- * resulting mp3 to `NN. Track Title.mp3` based on its track-number/title tags.
+ * Normalize every audio file in `dir` (recursively) to MP3 CBR `bitrate` (default 320,
+ * Settings.flacToMp3Bitrate/FLAC_TO_MP3_BITRATE), then rename each resulting mp3 to
+ * `NN. Track Title.mp3` based on its track-number/title tags.
  * - existing .mp3 files are kept as-is (but still renamed from tags)
  * - other audio formats are re-encoded (tags + embedded cover preserved) and the source removed
  * Returns the number of files converted. ffmpeg/ffprobe must be on PATH.
  */
-export async function transcodeDirToMp3320(dir: string): Promise<{ converted: number; failed: number }> {
+export async function transcodeDirToMp3320(dir: string, bitrate = 320): Promise<{ converted: number; failed: number }> {
   const log = (msg: string) => monitorLog('notice', `transcode: ${msg}`)
   const warn = (msg: string) => monitorLog('warn', `transcode: ${msg}`)
   let converted = 0
@@ -64,7 +65,7 @@ export async function transcodeDirToMp3320(dir: string): Promise<{ converted: nu
         '-map_metadata', '0',
         '-id3v2_version', '3',
         '-c:a', 'libmp3lame',
-        '-b:a', '320k',
+        '-b:a', `${bitrate}k`,
         '-f', 'mp3', // required: muxer can't be inferred from the .part extension
         part,
       ], { maxBuffer: 1024 * 1024 * 16 })

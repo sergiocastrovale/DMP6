@@ -18,6 +18,8 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
   const autoMerge = settings?.autoMergeDownloads
     ?? (process.env.AUTO_MERGE === 'true' || process.env.AUTO_MERGE === '1')
   const flacToMp3 = settings?.flacToMp3 ?? (process.env.FLAC_TO_MP3 !== 'false')
+  const flacToMp3Bitrate = settings?.flacToMp3Bitrate
+    ?? (process.env.FLAC_TO_MP3_BITRATE ? parseInt(process.env.FLAC_TO_MP3_BITRATE, 10) : 320)
   const cleanDownloads = downloadsPath.replace(/\/+$/, '')
 
   return {
@@ -33,6 +35,7 @@ export async function resolveDownloadSettings(): Promise<ResolvedDownloadSetting
     downloadsReadyPath: downloadsPath ? `${cleanDownloads}/_ready` : '',
     autoMergeDownloads: autoMerge,
     flacToMp3,
+    flacToMp3Bitrate,
   }
 }
 

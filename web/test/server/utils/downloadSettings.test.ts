@@ -84,3 +84,34 @@ describe('resolveDownloadSettings: flacToMp3', () => {
     expect((await resolveDownloadSettings()).flacToMp3).toBe(true)
   })
 })
+
+describe('resolveDownloadSettings: flacToMp3Bitrate', () => {
+  const originalEnv = process.env.FLAC_TO_MP3_BITRATE
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    delete process.env.FLAC_TO_MP3_BITRATE
+  })
+
+  afterEach(() => {
+    if (originalEnv === undefined) {delete process.env.FLAC_TO_MP3_BITRATE}
+    else {process.env.FLAC_TO_MP3_BITRATE = originalEnv}
+  })
+
+  it('is 320 when the DB value is null and FLAC_TO_MP3_BITRATE is unset (default)', async () => {
+    prismaMocks.findUnique.mockResolvedValue({ flacToMp3Bitrate: null })
+    expect((await resolveDownloadSettings()).flacToMp3Bitrate).toBe(320)
+  })
+
+  it('falls back to FLAC_TO_MP3_BITRATE when the DB value is null', async () => {
+    process.env.FLAC_TO_MP3_BITRATE = '192'
+    prismaMocks.findUnique.mockResolvedValue({ flacToMp3Bitrate: null })
+    expect((await resolveDownloadSettings()).flacToMp3Bitrate).toBe(192)
+  })
+
+  it('DB value wins over FLAC_TO_MP3_BITRATE when explicitly set', async () => {
+    process.env.FLAC_TO_MP3_BITRATE = '192'
+    prismaMocks.findUnique.mockResolvedValue({ flacToMp3Bitrate: 128 })
+    expect((await resolveDownloadSettings()).flacToMp3Bitrate).toBe(128)
+  })
+})

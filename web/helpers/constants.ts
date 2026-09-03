@@ -2,6 +2,9 @@ import type { ReleaseStatus } from '~/types/release'
 import type { Tone } from '~/types/ui'
 
 export const maxGenres = 5
+// Shared by the FLAC->MP3 conversion target bitrate and the download source minimum-bitrate filter
+// (both Settings → Downloads dropdowns) - same value set, two different meanings.
+export const bitrateOptions = [320, 256, 192, 128] as const
 export const SKELETON_GRID_SIZE = 10
 // Rows shown per page in the /explore session history; the store retains EXPLORER_SESSION_HISTORY_CAP.
 export const EXPLORE_HISTORY_PAGE_SIZE = 15

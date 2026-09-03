@@ -142,6 +142,34 @@ describe('transcodeDirToMp3320: ffmpeg pre-flight gate (audit item 2)', () => {
     expect(result).toEqual({ converted: 1, failed: 0 })
     await expect(readFile(join(dir, 'track1.mp3'), 'utf8')).resolves.toBe('fake-mp3-data')
     await expect(readFile(join(dir, 'track1.flac'), 'utf8')).rejects.toThrow() // source removed
+    // Default bitrate when the caller doesn't pass one.
+    const ffmpegCall = execFileMock.mock.calls.find(c => c[0] === 'ffmpeg' && (c[1] as string[]).includes('-b:a'))
+    expect(ffmpegCall![1]).toEqual(expect.arrayContaining(['-b:a', '320k']))
+  })
+
+  it('encodes at the requested bitrate (Settings.flacToMp3Bitrate/FLAC_TO_MP3_BITRATE) instead of hardcoded 320', async () => {
+    await writeFile(join(dir, 'track1.flac'), 'fake-audio')
+
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const cb = args[args.length - 1] as (e: Error | null, o: string, err: string) => void
+      const cmd = args[0]
+      const cmdArgs = args[1] as string[]
+      if (cmd === 'ffmpeg' && cmdArgs.includes('-version')) {
+        cb(null, 'ffmpeg version 6.0', '')
+        return
+      }
+      if (cmd === 'ffmpeg') {
+        const part = cmdArgs[cmdArgs.length - 1]!
+        writeFile(part, 'fake-mp3-data').then(() => cb(null, '', ''), e => cb(e, '', ''))
+        return
+      }
+      cb(null, JSON.stringify({ format: { tags: {} }, streams: [] }), '')
+    })
+
+    await transcodeDirToMp3320(dir, 192)
+
+    const ffmpegCall = execFileMock.mock.calls.find(c => c[0] === 'ffmpeg' && (c[1] as string[]).includes('-b:a'))
+    expect(ffmpegCall![1]).toEqual(expect.arrayContaining(['-b:a', '192k']))
   })
 
   it('no convertible files present (empty dir): skips the ffmpeg pre-flight entirely', async () => {

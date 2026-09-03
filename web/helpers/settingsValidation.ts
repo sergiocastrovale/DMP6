@@ -12,11 +12,6 @@ export const positiveIntField = z.string().refine(
   'Must be a positive whole number',
 )
 
-export const nonNegativeIntField = z.string().refine(
-  v => v.trim() === '' || (/^\d+$/.test(v.trim()) && Number(v.trim()) >= 0),
-  'Must be zero or a positive whole number',
-)
-
 export const absolutePathField = z.string().refine(
   v => v.trim() === '' || v.trim().startsWith('/'),
   'Must be an absolute path (starting with /)',

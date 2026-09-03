@@ -162,8 +162,10 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 | `DOWNLOAD_MIN_BITRATE` | — | kbps minimum |
 | `Settings.downloadsEnabled` | on | Soulseek acquisition on/off (Settings → Downloads); `null` falls back to `DOWNLOADS_ENABLED` |
 | `DOWNLOADS_ENABLED` | `true` | Env default for acquisition on/off; DB value wins when set |
-| `Settings.flacToMp3` | on | Convert FLAC downloads to MP3-320, deleting the original (Settings → Downloads → Conversion); `null` falls back to `FLAC_TO_MP3` |
+| `Settings.flacToMp3` | on | Convert FLAC downloads to MP3, deleting the original (Settings → Downloads → Conversion); `null` falls back to `FLAC_TO_MP3` |
 | `FLAC_TO_MP3` | `true` | Env default for the FLAC→MP3 conversion step; DB value wins when set |
+| `Settings.flacToMp3Bitrate` | `320` | Target kbps for the conversion (Settings → Downloads → Conversion, one of 320/256/192/128); falls back to `FLAC_TO_MP3_BITRATE` |
+| `FLAC_TO_MP3_BITRATE` | `320` | Env default target kbps; DB value wins when set |
 | `MONITOR_ENABLED` | `true` | Master switch for the background workers (trickle + gaps + auto-merge), shared via DB |
 | `MONITOR_PRIMARY` | `false` | **Per-instance, env only.** Only the instance with this `=true` runs the loop; everything else pointed at the shared DB is UI-only. Set on the NAS compose; leave unset on dev |
 | `RECONCILE_SEC` | `5` | Base tick: finalize in-flight downloads to READY (env only, needs restart) |
