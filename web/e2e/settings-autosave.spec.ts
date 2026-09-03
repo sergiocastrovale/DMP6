@@ -20,7 +20,8 @@ const gotoSettings = async (page: Page, section: string) => {
 }
 
 const expectSaved = async (page: Page) => {
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible()
+  // Downloads settings has two Save bars (one per panel) - at least one shows "Saved".
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible()
 }
 
 test.describe('settings autosave', () => {
@@ -56,6 +57,24 @@ test.describe('settings autosave', () => {
     await url.fill('http://localhost:5030')
     await url.blur()
     await expectSaved(page)
+
+    expect(consoleErrors).toEqual([])
+  })
+
+  test('downloads: turning a switch off hides its own section, not the other', async ({ page }) => {
+    await gotoSettings(page, 'downloads')
+
+    await expect(page.getByLabel('slskd URL')).toBeVisible()
+    await expect(page.getByLabel('Max concurrent downloads')).toBeVisible()
+
+    await page.getByLabel('Downloads enabled').selectOption('off')
+    await expectSaved(page)
+    await expect(page.getByLabel('slskd URL')).toBeHidden()
+    await expect(page.getByLabel('Max concurrent downloads')).toBeVisible()
+
+    await page.getByLabel('Monitoring').selectOption('off')
+    await expectSaved(page)
+    await expect(page.getByLabel('Max concurrent downloads')).toBeHidden()
 
     expect(consoleErrors).toEqual([])
   })
