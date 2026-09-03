@@ -88,7 +88,7 @@ const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 
 </script>
 
 <template>
-  <div class="flex w-full max-w-7xl flex-col gap-6">
+  <form class="flex w-full max-w-7xl flex-col gap-6" @submit.prevent>
     <UiCard title="Users">
       <template #actions>
         <UiButton size="sm" :icon="Plus" @click="showCreate = !showCreate">
@@ -178,5 +178,5 @@ const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 
         </SlimTableBody>
       </SlimTable>
     </UiCard>
-  </div>
+  </form>
 </template>

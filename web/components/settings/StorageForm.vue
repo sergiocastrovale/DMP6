@@ -63,7 +63,7 @@ const onUrlBlur = (field: 'storageEndpoint' | 'storagePublicUrl') => {
 </script>
 
 <template>
-  <div class="flex w-full max-w-7xl flex-col gap-6">
+  <form class="flex w-full max-w-7xl flex-col gap-6" @submit.prevent>
     <UiCard title="Image Storage">
       <SettingsField
         :model-value="form.imageStorage"
@@ -144,5 +144,5 @@ const onUrlBlur = (field: 'storageEndpoint' | 'storagePublicUrl') => {
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" class="pt-2" />
     </UiCard>
-  </div>
+  </form>
 </template>

@@ -101,7 +101,7 @@ const onSwitchChange = (v: boolean) => {
 </script>
 
 <template>
-  <div class="flex w-full max-w-7xl flex-col gap-6">
+  <form class="flex w-full max-w-7xl flex-col gap-6" @submit.prevent>
     <DownloadsAcquisitionIdleBanner />
 
     <UiCard title="Download Settings">
@@ -277,5 +277,5 @@ const onSwitchChange = (v: boolean) => {
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
     </UiCard>
-  </div>
+  </form>
 </template>

@@ -71,7 +71,7 @@ const disconnect = async () => {
 </script>
 
 <template>
-  <div class="flex w-full max-w-7xl flex-col gap-6">
+  <form class="flex w-full max-w-7xl flex-col gap-6" @submit.prevent>
     <UiCard title="Fanart.tv">
       <div :class="grid.halfRow">
         <SettingsField
@@ -152,5 +152,5 @@ const disconnect = async () => {
         </UiButton>
       </SettingsSaveBar>
     </UiCard>
-  </div>
+  </form>
 </template>
