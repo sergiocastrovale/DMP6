@@ -26,7 +26,9 @@ describe('visualizer/ToggleButton.vue', () => {
   })
 
   it('is labelled for screen readers, since it renders as a bare icon', async () => {
-    const { wrapper } = await mountToggle()
+    const { wrapper, player } = await mountToggle()
+    player.currentTrack = track as never
+    await nextTick()
     expect(wrapper.get('button').attributes('aria-label')).toBe('Visualizer')
   })
 

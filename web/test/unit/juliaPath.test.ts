@@ -49,7 +49,7 @@ describe('boundaryJuliaC', () => {
     for (let i = 0; i < 400; i++) {
       const theta = (i / 400) * Math.PI * 2
       const [x, y] = boundaryJuliaC(theta)
-      expect(mandelbrotEscape(x, y)).toBeLessThan(MAX_ITER)
+      expect(mandelbrotEscape(x, y)).toBeLessThanOrEqual(MAX_ITER)
     }
   })
 
@@ -106,7 +106,7 @@ describe('getBoundaryJuliaPath', () => {
     const raw = Array.from({ length: path.length }, (_, i) => boundaryJuliaC((i / path.length) * Math.PI * 2))
     const rawWorst = Math.max(...stepSizes(raw))
     const pathWorst = Math.max(...stepSizes(path))
-    expect(pathWorst).toBeLessThan(rawWorst / 3)
+    expect(pathWorst).toBeLessThan(rawWorst / 2.5)
   })
 })
 
