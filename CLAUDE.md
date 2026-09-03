@@ -393,6 +393,67 @@ that wiped state right back to localStorage, corrupting the next restore too.
 `e2e/player-persistence.spec.ts` is the regression test; it must do a real `page.reload()`
 (a component-tree unit test never round-trips through SSR, so it can't see this).
 
+## Visualizer
+
+Fullscreen WebGL visualizer over whatever is playing. Opened from the player bar (before the volume
+slider), from Explore's header (beside the TV-mode button), or with `v` from anywhere; `Esc` exits.
+Four fragment-shader presets — chaos, fractal, tunnel, spectrum — switchable in the auto-hiding HUD
+or with `1`–`4`/`n`. The chosen preset persists in `localStorage['dmp-visualizer']`. Chaos and
+Fractal are both Julia sets but deliberately unlike each other: Fractal orbits `c` on a clean
+circle with a 6-fold polar fold and an orbit-trap glow, reading as a slow rotating kaleidoscope
+flower. Chaos gets its `c` from `helpers/visualizer/juliaPath.ts` on the CPU, one search per frame,
+and the invariant that search enforces is the whole preset: **`c` must land just outside the
+Mandelbrot set**. Inside it, the filled Julia set has interior, which renders as one flat slab of
+colour that fills the screen as soon as you zoom — the "giant blob". Just outside, there is no
+interior at all (the set is a dendrite), so every pixel carries an escape gradient and the frame is
+spiral filigree throughout; too far outside and everything escapes in a few iterations and flattens
+to a gradient, hence an escape-count *window*, not merely "outside". Radially scaling a cardioid
+boundary point outward does **not** achieve this and was the original bug: at θ≈π that gives
+-0.7875, deep inside the period-2 bulb. The search instead steps along the cardioid's outward normal
+until it is clear of whatever component it started in (bulbs vary hugely — the period-2 one is 0.5
+across), then bisects for the escape window. It runs CPU-side because `c` is one number shared by
+every pixel. The view spins while it breathes in and out (bounded, not a one-way zoom, which would
+eventually blow through float precision left open a while) — that's the "spiraling into infinity"
+motion. Chaos's whole camera transform (zoom, spin) is audio-blind by design - it used to swell
+zoom with loudness, which made the frame visibly jump in scale on every snare/kick hit. Its colour
+is its own thing too, not Fractal/Tunnel's shared `freeColor()`/`hueBase()` drift: at the speed
+Chaos's shape already moves, that drift read as the colour jumping rather than gliding. Instead
+`components/visualizer/Canvas.vue` runs an explicit CPU-side hue morph
+(`helpers/visualizer/hueMorph.ts`) - ease from one random hue to another over a random 5-11s, then
+pick the next target and repeat - uploaded as `uChaosHue`, read by `chaosColor()` in the shader.
+
+Fractal is the only preset still wired to `uBass` (its shape and zoom both read it directly), and
+that used to mean it reacted to every single kick. `components/visualizer/Canvas.vue` gates that:
+
+Fractal is the only preset still wired to `uBass` (its shape and zoom both read it directly), and
+that used to mean it reacted to every single kick. `components/visualizer/Canvas.vue` gates that:
+`isBeat()` (`helpers/audioBands.ts`) flags a real onset (bass clearing both a ratio over its own
+rolling baseline and an absolute floor, so a quiet verse's kicks still register), and the bass
+value actually sent to Fractal's shader is held constant except right after a beat that lands once
+a random 5-9s freeze window has elapsed - a quiet stretch, one clean jump on the beat, then quiet
+again, instead of continuous jitter. Tunnel and Spectrum's own smaller `uBass` touches are
+untouched.
+
+- **The Web Audio tap is one-shot and permanent.** `composables/useAudioAnalyser.ts` holds
+  module-level `AudioContext`/`MediaElementAudioSourceNode`/`AnalyserNode` singletons because
+  `createMediaElementSource()` may be called **once per element, ever** — a second call throws
+  `InvalidStateError`. Once called, the element's output routes through that graph, so the source
+  must stay connected to `ctx.destination` or **playback goes silent app-wide**. Hence no
+  `dispose()`, and hence the graph is built lazily on first visualizer open rather than at store
+  init: a user who never opens it keeps the untouched plain-element path. `/api/audio/[id]` is
+  same-origin and `crossOrigin` is never set, so the tap doesn't silence output for CORS reasons.
+- `stores/player.ts`'s `getAudioElement()` returns `null` until first playback, so the toggle is
+  gated on `player.currentTrack` — there is nothing to tap before then.
+- The overlay is a teleported `fixed inset-0` layer, **not** `useChrome().hide()`: it must be able to
+  stack above Explore's cinema mode, and `requestFullscreen` needs a real element. See
+  `docs/design_system.md` → "Full-screen surfaces". iOS Safari rejects `requestFullscreen` on a
+  non-`<video>`; the CSS-only fallback is why the overlay handles Escape itself.
+- `prefers-reduced-motion` is honoured in `components/visualizer/Canvas.vue` by damping the clock —
+  `main.css`'s app-wide reduced-motion block only neutralises CSS animation and cannot reach a
+  `requestAnimationFrame` loop.
+- Accent colour reaches the shader as `themes[].hue` (`helpers/constants.ts`), not a parsed CSS
+  variable: `getComputedStyle` serializes the ramp back as `oklch(…)`, not resolved sRGB.
+
 ## Caching (Redis)
 
 Optional Redis sidecar. Falls through to DB silently if unavailable.

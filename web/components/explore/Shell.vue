@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Maximize, Minimize } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
+import { cx } from '~/helpers/ui'
 
 const player = usePlayerStore()
 const { energy, era, familiarity, sound, isLoading, error, explore, playFromHistory } = useExplorer()
@@ -98,15 +99,19 @@ onBeforeUnmount(() => {
       class="mb-8"
       :hide-text="isFullscreen"
     >
-      <UiButton
-        variant="secondary"
-        size="sm"
-        icon-only
-        :class="isFullscreen && 'fixed top-4 right-4 z-40'"
-        :icon="isFullscreen ? Minimize : Maximize"
-        :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
-        @click="toggleFullscreen"
-      />
+      <!-- In cinema mode the pair floats over the page as one cluster; pinning each button
+           individually would stack them on the same coordinates. -->
+      <div :class="cx('flex items-center gap-2', isFullscreen && 'fixed top-4 right-4 z-40')">
+        <VisualizerToggleButton variant="secondary" size="sm" />
+        <UiButton
+          variant="secondary"
+          size="sm"
+          icon-only
+          :icon="isFullscreen ? Minimize : Maximize"
+          :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
+          @click="toggleFullscreen"
+        />
+      </div>
     </PageTitle>
 
     <div class="flex flex-col gap-8" :class="isFullscreen && 'mt-12'">

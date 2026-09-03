@@ -957,6 +957,32 @@ them kept drifting apart with no single source correcting them.
   param and the `xl` size added for cinema-mode Explore. `ui.segmentGroup` was referenced twice in
   this doc but was never actually on the bundle object — fixed to the named export, `segmentGroup`.
 
+## Full-screen surfaces — two sanctioned patterns
+
+There are now two, and which one applies is decided by whether the browser's own Fullscreen API is
+involved:
+
+1. **Chrome collapse** (`useChrome().hide()`) — Explore's cinema mode. `AppShell` unmounts the
+   sidenav, topbar, mobile nav and player bar around a stable `<main>`; the page renders itself
+   full-bleed *inside the document*. No API call, no overlay, no z-index. Use this when a page wants
+   the whole viewport but is still a page.
+2. **Teleported overlay** (`components/visualizer/Overlay.vue`) — the fullscreen visualizer. A
+   `Teleport to="body"` + `fixed inset-0 z-100` layer that calls `requestFullscreen()` on its own
+   container. Two things force it: `requestFullscreen` needs a real element to promote, which
+   pattern 1 has nowhere to point at; and the visualizer is launched *from* Explore while cinema
+   mode may already be on, so it has to stack above that rather than replace it.
+
+The overlay carries the same exit contract as `Dialog.vue` — Escape closes, focus is captured on
+enter and restored on leave — plus a `fullscreenchange` listener, because F11 and the browser's own
+fullscreen control are exits the app never sees as a keypress. `requestFullscreen()` is awaited in a
+try/catch: iOS Safari rejects it on anything but a `<video>`, and the fallback is simply the fixed
+layer without the browser chrome going away.
+
+No new `main.css` rule was needed for any of this — a `<canvas>` is not styled, it is drawn, and the
+shaders live in `helpers/visualizer/shaders.ts`. The accent reaches the GPU as `themes[].hue` (a
+number on the existing theme constant) rather than a parsed CSS custom property, because
+`getComputedStyle` serializes the ramp back as `oklch(…)` rather than resolved sRGB.
+
 ## Adding to the system
 
 - **New colour, radius, shadow or type size** → it's a token discussion, not a one-off. Add it

@@ -314,26 +314,12 @@ async function onPlaylistCreated() {
         </div>
       </div>
 
-      <div class="hidden md:flex md:w-1/3 items-center justify-end gap-4">
+      <div class="hidden md:flex md:w-1/3 items-center justify-end gap-2">
+        <VisualizerToggleButton />
         <PlayerVolumeControl />
-        <UiButton
-          variant="ghost"
-          size="lg"
-          icon-only
-          :icon="X"
-          title="Dismiss player"
-          @click="player.dismiss()"
-        />
+        <PlayerClose />
       </div>
-      <UiButton
-        variant="ghost"
-        size="lg"
-        icon-only
-        :icon="X"
-        title="Dismiss player"
-        class="ml-2 shrink-0 md:hidden"
-        @click="player.dismiss()"
-      />
+      <PlayerClose class="ml-2 shrink-0 md:hidden" />
     </div>
 
     <PlaylistAddDialog

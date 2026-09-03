@@ -14,6 +14,7 @@ const gridCols = computed(() =>
 
 // Global space-to-play/pause and left/right-to-seek, TV-remote style.
 const player = usePlayerStore()
+const visualizer = useVisualizer()
 
 const isTypingTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
@@ -54,6 +55,14 @@ const onGlobalKeydown = (event: KeyboardEvent) => {
   if (event.code === 'Space' && !event.repeat && player.currentTrack && !isActivatableTarget(event.target)) {
     event.preventDefault()
     player.togglePlay()
+    return
+  }
+
+  // The visualizer's own Escape/preset keys live in its overlay; this is only the way in and out
+  // from anywhere else in the app.
+  if (event.code === 'KeyV' && !event.repeat && player.currentTrack) {
+    event.preventDefault()
+    visualizer.toggle()
     return
   }
 
@@ -143,6 +152,10 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKeydown))
       <span>Terminal running</span>
     </button>
   </template>
+
+  <!-- Outside the chromeVisible block on purpose: the visualizer is reachable from Explore while
+       its cinema mode is on, and must survive route changes like the player bar does. -->
+  <VisualizerOverlay />
 
   <LayoutToastHost />
 </template>
