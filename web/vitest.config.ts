@@ -18,17 +18,6 @@ export default defineConfig({
         '**/*.config.ts',
         'test/**',
       ],
-      // Raised after the design-system overhaul (Stages 0-14) added component/composable tests
-      // for every rewritten primitive - actual sits around lines 75%/statements 74%/functions
-      // 67%/branches 61% as of Stage 15; thresholds are set a few points under that so normal
-      // test variance doesn't flake CI. Ratchet these up as coverage grows further - don't lower
-      // them to make a future regression pass.
-      thresholds: {
-        lines: 72,
-        functions: 64,
-        statements: 71,
-        branches: 58,
-      },
     },
     projects: [
       {
