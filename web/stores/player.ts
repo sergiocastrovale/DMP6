@@ -408,8 +408,20 @@ export const usePlayerStore = defineStore('player', () => {
 
   // Persist state
   if (import.meta.client) {
-    const saved = localStorage.getItem('dmp-player')
-    if (saved) {
+    // Nuxt's Pinia SSR hydration patches every ref on this store back to the server-rendered
+    // value immediately after setup() returns (createSetupStore does `prop.value =
+    // initialState[key]` for each ref, using the payload captured before setup ran) - and the
+    // server always renders this store empty, since `import.meta.client` is false there. Doing
+    // the restore inline here used to work for a single synchronous tick and then get silently
+    // clobbered back to null/[] before any component had even mounted, so a reload only "restored"
+    // the bar for a flash before wiping it - and then the debounced watch below persisted that
+    // wiped state right back to localStorage. onMounted always runs after that hydration patch is
+    // done, which is why useTheme.ts reads its own localStorage entry the same way.
+    onMounted(() => {
+      const saved = localStorage.getItem('dmp-player')
+      if (!saved) {
+        return
+      }
       try {
         const state: PersistedPlayerState = JSON.parse(saved)
         volume.value = state.volume ?? 0.75
@@ -437,7 +449,7 @@ export const usePlayerStore = defineStore('player', () => {
         }
       }
       catch { /* ignore corrupt state */ }
-    }
+    })
 
     const buildPersistedState = (): PersistedPlayerState => ({
       trackId: currentTrack.value?.id ?? null,

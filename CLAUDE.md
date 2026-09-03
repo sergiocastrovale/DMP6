@@ -381,7 +381,17 @@ The player (`stores/player.ts`) supports 5 shuffle modes:
 - `catalogue` - random tracks from entire library (prefetched buffer)
 - `explorer` - score-based discovery using 4 sliders
 
-State persisted to localStorage (queue capped at 200 tracks).
+State persisted to localStorage (queue capped at 200 tracks). **The restore read runs in
+`onMounted`, never inline in the store's `setup()` body** — Nuxt's Pinia SSR hydration patches
+every ref on a store back to the server-rendered value immediately after `setup()` returns
+(`createSetupStore` does `prop.value = initialState[key]` per ref, from the payload captured
+before `setup()` ran), and this store always renders empty server-side since the restore is
+`import.meta.client`-gated. An inline restore worked for one synchronous tick and then got
+silently clobbered back to `null`/`[]` before any component had mounted — a reload only
+"restored" the bar for a flash before wiping it, and the debounced save watcher then persisted
+that wiped state right back to localStorage, corrupting the next restore too.
+`e2e/player-persistence.spec.ts` is the regression test; it must do a real `page.reload()`
+(a component-tree unit test never round-trips through SSR, so it can't see this).
 
 ## Caching (Redis)
 

@@ -1,7 +1,34 @@
+import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { createPinia, setActivePinia } from 'pinia'
+import { defineComponent } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePlayerStore } from '../../stores/player'
 import { EXPLORER_SESSION_HISTORY_CAP } from '../../helpers/playerLogic'
+
+// The store's localStorage restore runs in onMounted (see stores/player.ts) because Nuxt's Pinia
+// SSR hydration overwrites every ref back to the server-rendered value immediately after setup()
+// returns - onMounted is what runs after that patch, in the real app as much as here. A bare
+// `usePlayerStore()` call has no active component instance, so Vue no-ops onMounted and the
+// restore silently never runs; mounting a throwaway host is what makes it fire, exactly as
+// AudioPlayer.vue mounting for real does.
+//
+// mountSuspended mounts into @nuxt/test-utils' own persistent app/Pinia, not into whatever
+// setActivePinia(createPinia()) made active in beforeEach - so without passing this test's pinia
+// in explicitly, every call in the file after the first would resolve the SAME cached store
+// (setup(), and its one-time onMounted registration, only ever runs once) instead of a fresh one,
+// and every localStorage seeded by a later test would silently never be read.
+const usePlayerStoreMounted = async () => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  let store!: ReturnType<typeof usePlayerStore>
+  await mountSuspended(defineComponent({
+    setup() {
+      store = usePlayerStore()
+      return () => null
+    },
+  }), { global: { plugins: [pinia] } })
+  return store
+}
 
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- stubs the real MediaMetadata constructor for vi.stubGlobal
 class FakeMediaMetadata {
@@ -352,29 +379,33 @@ describe('usePlayerStore', () => {
     vi.useRealTimers()
   })
 
-  it('restoring from localStorage coerces a persisted explorer shuffleMode to off', () => {
+  it('restoring from localStorage coerces a persisted explorer shuffleMode to off', async () => {
+    // Volume is set to something other than the ref's own default (0.75) so this test fails
+    // honestly if restoration silently doesn't run, instead of passing by coincidence the way it
+    // did when shuffleMode's restored value happened to match its unrestored default.
     localStorage.setItem('dmp-player', JSON.stringify({
-      trackId: null, currentTime: 0, volume: 0.5, isMuted: false,
+      trackId: null, currentTime: 0, volume: 0.4, isMuted: false,
       shuffleMode: 'explorer', queue: [], originalQueue: [], explorerParams: null,
     }))
-    const store = usePlayerStore()
+    const store = await usePlayerStoreMounted()
+    expect(store.volume).toBe(0.4)
     expect(store.shuffleMode).toBe('off')
   })
 
-  it('restoring from localStorage sets currentTrack paused at the saved position without auto-playing', () => {
+  it('restoring from localStorage sets currentTrack paused at the saved position without auto-playing', async () => {
     const savedTrack = track({ id: 'restored' })
     localStorage.setItem('dmp-player', JSON.stringify({
       trackId: 'restored', currentTime: 42, volume: 0.5, isMuted: false,
       shuffleMode: 'off', queue: [savedTrack], originalQueue: [savedTrack], explorerParams: null,
     }))
-    const store = usePlayerStore()
+    const store = await usePlayerStoreMounted()
     expect(store.currentTrack?.id).toBe('restored')
     expect(store.isPlaying).toBe(false)
     expect(store.isVisible).toBe(true)
   })
 
-  it('swallows corrupt persisted JSON without throwing', () => {
+  it('swallows corrupt persisted JSON without throwing', async () => {
     localStorage.setItem('dmp-player', '{not valid json')
-    expect(() => usePlayerStore()).not.toThrow()
+    await expect(usePlayerStoreMounted()).resolves.toBeDefined()
   })
 })
