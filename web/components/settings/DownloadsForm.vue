@@ -186,28 +186,30 @@ const onChoiceChange = (setter: (v: string) => void, v: string) => {
     </UiCard>
 
     <UiCard title="Conversion">
-      <UiSelect
-        :model-value="flacToMp3Choice"
-        label="Convert FLAC to MP3"
-        description="Convert FLAC downloads to mp3 automatically. Deletes original FLAC files after converting. Overrides FLAC_TO_MP3."
-        :disabled="!canEdit"
-        @update:model-value="onChoiceChange(v => flacToMp3Choice = v as any, $event)"
-      >
-        <option value="default">- use env default (FLAC_TO_MP3) -</option>
-        <option value="on">On</option>
-        <option value="off">Off</option>
-      </UiSelect>
+      <div :class="flacToMp3FieldsVisible ? grid.halfRow : undefined">
+        <UiSelect
+          :model-value="flacToMp3Choice"
+          label="Convert FLAC to MP3"
+          description="Convert FLAC downloads to mp3 automatically. Deletes original FLAC files after converting. Overrides FLAC_TO_MP3."
+          :disabled="!canEdit"
+          @update:model-value="onChoiceChange(v => flacToMp3Choice = v as any, $event)"
+        >
+          <option value="default">- use env default (FLAC_TO_MP3) -</option>
+          <option value="on">On</option>
+          <option value="off">Off</option>
+        </UiSelect>
 
-      <UiSelect
-        v-if="flacToMp3FieldsVisible"
-        :model-value="flacToMp3Bitrate"
-        label="Conversion bitrate"
-        description="Target kbps for the FLAC->MP3 conversion. Overrides FLAC_TO_MP3_BITRATE."
-        :disabled="!canEdit"
-        @update:model-value="onChoiceChange(v => flacToMp3Bitrate = v, $event)"
-      >
-        <option v-for="b in bitrateOptions" :key="b" :value="String(b)">{{ b }} kbps</option>
-      </UiSelect>
+        <UiSelect
+          v-if="flacToMp3FieldsVisible"
+          :model-value="flacToMp3Bitrate"
+          label="Conversion bitrate"
+          description="Target kbps for the FLAC->MP3 conversion. Overrides FLAC_TO_MP3_BITRATE."
+          :disabled="!canEdit"
+          @update:model-value="onChoiceChange(v => flacToMp3Bitrate = v, $event)"
+        >
+          <option v-for="b in bitrateOptions" :key="b" :value="String(b)">{{ b }} kbps</option>
+        </UiSelect>
+      </div>
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
     </UiCard>
