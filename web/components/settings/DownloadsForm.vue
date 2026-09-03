@@ -9,8 +9,6 @@ const { data: settings, refresh } = await useAsyncData('settings-db', () =>
   useCookieFetch<Record<string, any>>('/api/settings'),
 )
 
-const downloadsEnabled = ref(settings.value?.downloadsEnabled ?? true)
-
 const form = reactive({
   slskdUrl: settings.value?.slskdUrl ?? '',
   slskdApiKey: settings.value?.slskdApiKey ?? '',
@@ -50,6 +48,7 @@ const triState = (v: boolean | null | undefined): 'default' | 'on' | 'off' =>
   v === null || v === undefined ? 'default' : v ? 'on' : 'off'
 
 // Tri-state: default (env) / on / off
+const downloadsEnabledChoice = ref(triState(settings.value?.downloadsEnabled))
 const enabledChoice = ref(triState(settings.value?.monitorEnabled))
 const songkongChoice = ref(triState(settings.value?.songkongEnabled))
 const autoMergeChoice = ref(triState(settings.value?.autoMergeDownloads))
@@ -67,7 +66,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
       downloadDirTemplate: form.downloadDirTemplate || null,
       downloadFormats: form.downloadFormats || null,
       downloadMinBitrate: form.downloadMinBitrate ? Number(form.downloadMinBitrate) : null,
-      downloadsEnabled: downloadsEnabled.value,
+      downloadsEnabled: fromChoice(downloadsEnabledChoice.value),
       monitorEnabled: fromChoice(enabledChoice.value),
       songkongEnabled: fromChoice(songkongChoice.value),
       autoMergeDownloads: fromChoice(autoMergeChoice.value),
@@ -93,11 +92,6 @@ const onChoiceChange = (setter: (v: string) => void, v: string) => {
   setter(v)
   save()
 }
-
-const onSwitchChange = (v: boolean) => {
-  downloadsEnabled.value = v
-  save()
-}
 </script>
 
 <template>
@@ -105,7 +99,17 @@ const onSwitchChange = (v: boolean) => {
     <DownloadsAcquisitionIdleBanner />
 
     <UiCard title="Download Settings">
-      <Switch :model-value="downloadsEnabled" label="Downloads enabled" :disabled="!canEdit" @update:model-value="onSwitchChange" />
+      <UiSelect
+        :model-value="downloadsEnabledChoice"
+        label="Downloads enabled"
+        description="Master switch for Soulseek acquisition."
+        :disabled="!canEdit"
+        @update:model-value="onChoiceChange(v => downloadsEnabledChoice = v as any, $event)"
+      >
+        <option value="default">- use env default (DOWNLOADS_ENABLED) -</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </UiSelect>
       <SettingsField
         v-model="form.slskdUrl"
         label="slskd URL"

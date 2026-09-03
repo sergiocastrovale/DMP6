@@ -186,7 +186,7 @@ Set via the Settings UI (DB) or `.env` (DB wins, env is fallback):
 | Setting | Purpose |
 |---------|---------|
 | `SLSKD_URL`, `SLSKD_API_KEY` | slskd connection |
-| `Settings.downloadsEnabled` | on/off switch for acquisition (DB only, no env fallback; null = on) |
+| `Settings.downloadsEnabled` | on/off switch for acquisition; `null` falls back to `DOWNLOADS_ENABLED` (default true unless explicitly `false`) |
 | `DOWNLOADS_PATH` | staging area (NOT the library); READY downloads auto-land in its derived `_ready` subfolder |
 | `MUSIC_DIR` | the real library (`mainstream`) |
 | `DOWNLOAD_DIR_TEMPLATE` | initial staging layout, e.g. `{artist}/{year} - {album}` |

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const prismaMocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
@@ -17,10 +17,32 @@ vi.mock('~/server/utils/prisma', () => ({
 const { isDownloadsEnabled, countNoYearMissing, getAcquisitionStatus } = await import('../../../server/utils/acquisitionStatus')
 
 describe('isDownloadsEnabled', () => {
-  beforeEach(() => vi.clearAllMocks())
+  const originalEnv = process.env.DOWNLOADS_ENABLED
 
-  it('is true when Settings.downloadsEnabled is null (default)', async () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    delete process.env.DOWNLOADS_ENABLED
+  })
+
+  afterEach(() => {
+    if (originalEnv === undefined) {delete process.env.DOWNLOADS_ENABLED}
+    else {process.env.DOWNLOADS_ENABLED = originalEnv}
+  })
+
+  it('is true when Settings.downloadsEnabled is null and DOWNLOADS_ENABLED is unset (default)', async () => {
     prismaMocks.findUnique.mockResolvedValue({ downloadsEnabled: null })
+    expect(await isDownloadsEnabled()).toBe(true)
+  })
+
+  it('falls back to DOWNLOADS_ENABLED=false when the DB value is null', async () => {
+    process.env.DOWNLOADS_ENABLED = 'false'
+    prismaMocks.findUnique.mockResolvedValue({ downloadsEnabled: null })
+    expect(await isDownloadsEnabled()).toBe(false)
+  })
+
+  it('DB value wins over DOWNLOADS_ENABLED when explicitly set', async () => {
+    process.env.DOWNLOADS_ENABLED = 'false'
+    prismaMocks.findUnique.mockResolvedValue({ downloadsEnabled: true })
     expect(await isDownloadsEnabled()).toBe(true)
   })
 

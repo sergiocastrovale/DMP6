@@ -158,7 +158,8 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 | `DOWNLOAD_DIR_TEMPLATE` | `{artist}/{year} - {album}` | Initial staging layout. `{artist}` `{album}` `{year}`; `/` nests, each segment sanitized |
 | `DOWNLOAD_FORMATS` | `flac,mp3` | Accepted source formats |
 | `DOWNLOAD_MIN_BITRATE` | — | kbps minimum |
-| `Settings.downloadsEnabled` (DB only) | on | Soulseek acquisition on/off (Settings → Downloads); `null` = on |
+| `Settings.downloadsEnabled` | on | Soulseek acquisition on/off (Settings → Downloads); `null` falls back to `DOWNLOADS_ENABLED` |
+| `DOWNLOADS_ENABLED` | `true` | Env default for acquisition on/off; DB value wins when set |
 | `MONITOR_ENABLED` | `true` | Master switch for the background workers (trickle + gaps + auto-merge), shared via DB |
 | `MONITOR_PRIMARY` | `false` | **Per-instance, env only.** Only the instance with this `=true` runs the loop; everything else pointed at the shared DB is UI-only. Set on the NAS compose; leave unset on dev |
 | `RECONCILE_SEC` | `5` | Base tick: finalize in-flight downloads to READY (env only, needs restart) |

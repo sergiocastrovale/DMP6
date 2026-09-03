@@ -2,10 +2,13 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import type { Acquisition } from '~/types/download'
 
-// Downloads are Soulseek-only. Settings.downloadsEnabled is the single on/off switch; null = enabled.
+// Downloads are Soulseek-only. Settings.downloadsEnabled is the single on/off switch; null falls
+// back to DOWNLOADS_ENABLED (default true unless explicitly "false"), matching MONITOR_ENABLED's
+// env-default-then-DB-override pattern (server/utils/monitorSettings.ts).
 export async function isDownloadsEnabled(): Promise<boolean> {
+  const envEnabled = process.env.DOWNLOADS_ENABLED !== 'false'
   const settings = await prisma.settings.findUnique({ where: { id: 'main' }, select: { downloadsEnabled: true } }).catch(() => null)
-  return settings?.downloadsEnabled ?? true
+  return settings?.downloadsEnabled ?? envEnabled
 }
 
 // MISSING album/EP releases of monitored artists that MusicBrainz gave no release date for. pickFresh
