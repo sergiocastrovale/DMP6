@@ -22,7 +22,7 @@ describe('Dialog.vue', () => {
   it('renders the title, subtitle and default slot when open', async () => {
     wrapper = await mountSuspended(Dialog, {
       props: { modelValue: true, title: 'Delete release?', subtitle: 'This cannot be undone.' },
-      slots: { default: 'Body content' },
+      slots: { content: 'Body content' },
     })
     expect(document.body.textContent).toContain('Delete release?')
     expect(document.body.textContent).toContain('This cannot be undone.')
@@ -77,7 +77,7 @@ describe('Dialog.vue', () => {
   it('traps Tab focus between the first and last focusable elements in the panel', async () => {
     wrapper = await mountSuspended(Dialog, {
       props: { modelValue: true, title: 'Settings' },
-      slots: { default: '<button>First</button><button>Second</button>' },
+      slots: { content: '<button>First</button><button>Second</button>' },
     })
     await new Promise(resolve => setTimeout(resolve, 0))
     const buttons = [...document.body.querySelectorAll('button')]

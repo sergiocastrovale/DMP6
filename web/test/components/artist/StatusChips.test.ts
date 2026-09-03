@@ -42,7 +42,7 @@ describe('artist/StatusChips.vue', () => {
     })
     // mouseenter doesn't bubble - the listener is on the wrapper div around the help button, not
     // the button itself.
-    await wrapper.get('.relative').trigger('mouseenter')
+    await wrapper.get('[aria-label="Status legend"]').element.parentElement!.dispatchEvent(new MouseEvent('mouseenter'))
     for (const status of statuses) {
       expect(document.body.textContent).toContain(status.description)
     }

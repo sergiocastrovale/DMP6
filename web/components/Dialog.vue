@@ -84,9 +84,9 @@ onBeforeUnmount(() => {
             <h2 :id="titleId" class="text-xl font-semibold text-stone-200">{{ title }}</h2>
             <p v-if="subtitle" class="mt-1 text-sm text-stone-100/55">{{ subtitle }}</p>
           </div>
-          <div aria-label="Close" @click="close" class="cursor-pointer">
+          <button type="button" aria-label="Close" @click="close" class="cursor-pointer">
             <X :size="20" class="" />
-          </div>
+          </button>
         </div>
         <div :class="cx(layout.dialogActions)">
           <slot name="actions" />

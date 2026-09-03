@@ -317,6 +317,7 @@ onUnmounted(() => {
       :title="dialogGenre ? `${dialogGenre.name} (${dialogGenre.count})` : ''"
       size="lg"
     >
+      <template #content>
       <div class="-mx-6 -my-4 max-h-[70vh] overflow-y-auto px-6 py-4">
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           <Block
@@ -334,6 +335,7 @@ onUnmounted(() => {
         </div>
         <UiEmptyState v-if="!dialogLoading && dialogArtists.length === 0" message="No artists found" />
       </div>
+      </template>
     </Dialog>
   </div>
 </template>

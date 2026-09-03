@@ -28,11 +28,13 @@ const ctas: [string, string][] = [
 
 const pick = <T,>(arr: T[], seed: number): T => arr[seed % arr.length]!
 
-const seed = Math.floor(Math.random() * 1000)
-const greeting = pick(greetings, seed)
+// useState (not a plain Math.random() call): the seed must match between SSR and client hydration,
+// or the greeting text differs between passes and Vue flags a hydration mismatch.
+const seed = useState('dashboard-hello-seed', () => Math.floor(Math.random() * 1000))
+const greeting = pick(greetings, seed.value)
 
 const { data: randomArtist } = useFetch('/api/artists/random')
-const [ctaBefore, ctaAfter] = randomArtist ? pick(ctas, seed + 1) : ['', '']
+const [ctaBefore, ctaAfter] = randomArtist ? pick(ctas, seed.value + 1) : ['', '']
 </script>
 
 <template>
