@@ -88,6 +88,15 @@ test.describe('settings autosave', () => {
     expect(consoleErrors).toEqual([])
   })
 
+  test('downloads: Conversion select saves on change', async ({ page }) => {
+    await gotoSettings(page, 'downloads')
+
+    await page.getByLabel('Convert FLAC to MP3').selectOption('off')
+    await expectSaved(page)
+
+    expect(consoleErrors).toEqual([])
+  })
+
   test('storage: S3 Endpoint validates and saves', async ({ page }) => {
     await gotoSettings(page, 'storage')
 

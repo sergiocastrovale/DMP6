@@ -1,13 +1,29 @@
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const downloadSettingsMocks = vi.hoisted(() => ({
+  resolveDownloadSettings: vi.fn().mockResolvedValue({ slskdUrl: 'http://slskd.local:5030', slskdApiKey: 'key123', flacToMp3: true }),
+}))
 
 vi.mock('~/server/utils/downloadSettings', async () => {
   const actual = await vi.importActual<typeof import('../../../server/utils/downloadSettings')>('../../../server/utils/downloadSettings')
   return {
     ...actual,
-    resolveDownloadSettings: vi.fn().mockResolvedValue({ slskdUrl: 'http://slskd.local:5030', slskdApiKey: 'key123' }),
+    resolveDownloadSettings: downloadSettingsMocks.resolveDownloadSettings,
+  }
+})
+
+const transcodeMocks = vi.hoisted(() => ({
+  transcodeDirToMp3320: vi.fn().mockResolvedValue({ converted: 0, failed: 0 }),
+}))
+
+vi.mock('~/server/utils/transcode', async () => {
+  const actual = await vi.importActual<typeof import('../../../server/utils/transcode')>('../../../server/utils/transcode')
+  return {
+    ...actual,
+    transcodeDirToMp3320: transcodeMocks.transcodeDirToMp3320,
   }
 })
 
@@ -157,6 +173,59 @@ describe('relocateDownloadedFiles: basename collisions across concurrent downloa
     })
 
     expect(res.movedCount).toBe(1)
+  })
+})
+
+describe('relocateDownloadedFiles: flacToMp3 gate', () => {
+  const roots: string[] = []
+  beforeEach(() => {
+    transcodeMocks.transcodeDirToMp3320.mockClear()
+  })
+  afterEach(async () => {
+    await Promise.all(roots.splice(0).map(r => rm(r, { recursive: true, force: true })))
+    transcodeMocks.transcodeDirToMp3320.mockClear()
+    downloadSettingsMocks.resolveDownloadSettings.mockResolvedValue({ slskdUrl: 'http://slskd.local:5030', slskdApiKey: 'key123', flacToMp3: true })
+  })
+
+  it('skips transcoding and leaves the FLAC file in place when flacToMp3 is false', async () => {
+    downloadSettingsMocks.resolveDownloadSettings.mockResolvedValueOnce({ slskdUrl: 'http://slskd.local:5030', slskdApiKey: 'key123', flacToMp3: false })
+
+    const root = await mkdtemp(join(tmpdir(), 'dmp-slskd-test-'))
+    roots.push(root)
+    await writeFile(join(root, 'Track.flac'), 'f'.repeat(10))
+
+    const res = await relocateDownloadedFiles({
+      username: 'peer1',
+      files: [{ filename: 'Track.flac', size: 10 }],
+      downloadsPath: root,
+      dirTemplate: '{artist}/{year} - {album}',
+      artistName: 'Test Artist',
+      albumTitle: 'Test Album',
+      year: 2022,
+    })
+
+    expect(res.movedCount).toBe(1)
+    expect(transcodeMocks.transcodeDirToMp3320).not.toHaveBeenCalled()
+    const dest = join(root, 'Test Artist', '2022 - Test Album', 'Track.flac')
+    expect((await readFile(dest, 'utf8')).length).toBe(10)
+  })
+
+  it('transcodes when flacToMp3 is true (default)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dmp-slskd-test-'))
+    roots.push(root)
+    await writeFile(join(root, 'Track.flac'), 'f'.repeat(10))
+
+    await relocateDownloadedFiles({
+      username: 'peer1',
+      files: [{ filename: 'Track.flac', size: 10 }],
+      downloadsPath: root,
+      dirTemplate: '{artist}/{year} - {album}',
+      artistName: 'Test Artist',
+      albumTitle: 'Test Album',
+      year: 2023,
+    })
+
+    expect(transcodeMocks.transcodeDirToMp3320).toHaveBeenCalledTimes(1)
   })
 })
 

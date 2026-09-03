@@ -132,7 +132,8 @@ monitored artists, see [features_downloader.md](features_downloader.md) and
 slskd writes to its `directories.downloads` (`/downloads/dmp` in the container = `/mnt/SSD/Downloads/dmp`
 on the host). When a transfer finishes, DMP's reconcile loop detects completion and **moves** the files
 into the templated `{artist}/{year} - {album}` folder inside the same `dmp/` root, transcoding to
-MP3-320 — see [features_downloader.md](features_downloader.md#where-files-go).
+MP3-320 (gated by `FLAC_TO_MP3`, default on) — see
+[features_downloader.md](features_downloader.md#where-files-go).
 
 The move works because the web container identity-mounts `/mnt/SSD/Downloads` and slskd writes into the
 same host dataset. If you ever point slskd at a dataset DMP can't see, the move silently no-ops and files

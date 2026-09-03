@@ -92,6 +92,8 @@ Steps:
    under `DOWNLOADS_PATH` (`DOWNLOAD_DIR_TEMPLATE`). slskd + dmp share the same real path
    (`/mnt/SSD/Downloads` is identity-mounted into both), so the move is local.
 2. **Transcode + rename** — every audio file → MP3-320 (existing MP3s kept), renamed `NN. Track Title.mp3`.
+   Gated by `FLAC_TO_MP3` (default on, Settings → Downloads → Conversion); off leaves FLAC (or
+   whatever the source format was) in place, renamed `NN. Track Title.<ext>` instead.
 3. **Enrich** (optional, SongKong) — tags get AcoustID/MBID/genres/cover art. Row sits in `ENRICHING`.
 4. **Transform** — DMP lays it out by MusicBrainz album type:
    `{artist}/{type}/{year} - {album}/NN. Title.mp3` (multi-disc nests under `CD 01/`, `CD 02/`…).
@@ -160,6 +162,8 @@ Configurable in `.env` / compose env **and** the Settings DB table (DB wins). UI
 | `DOWNLOAD_MIN_BITRATE` | — | kbps minimum |
 | `Settings.downloadsEnabled` | on | Soulseek acquisition on/off (Settings → Downloads); `null` falls back to `DOWNLOADS_ENABLED` |
 | `DOWNLOADS_ENABLED` | `true` | Env default for acquisition on/off; DB value wins when set |
+| `Settings.flacToMp3` | on | Convert FLAC downloads to MP3-320, deleting the original (Settings → Downloads → Conversion); `null` falls back to `FLAC_TO_MP3` |
+| `FLAC_TO_MP3` | `true` | Env default for the FLAC→MP3 conversion step; DB value wins when set |
 | `MONITOR_ENABLED` | `true` | Master switch for the background workers (trickle + gaps + auto-merge), shared via DB |
 | `MONITOR_PRIMARY` | `false` | **Per-instance, env only.** Only the instance with this `=true` runs the loop; everything else pointed at the shared DB is UI-only. Set on the NAS compose; leave unset on dev |
 | `RECONCILE_SEC` | `5` | Base tick: finalize in-flight downloads to READY (env only, needs restart) |

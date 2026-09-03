@@ -10,6 +10,11 @@ const execFileAsync = promisify(execFile)
 // Lossless/other formats we re-encode to MP3-320. MP3 is left untouched.
 const CONVERT_EXTENSIONS = new Set(['flac', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'ape', 'alac', 'wma'])
 
+// Every extension layout.ts should treat as a track rather than a non-audio "extra" - mp3 plus
+// everything transcodeDirToMp3320 *would* convert, since FLAC_TO_MP3=off leaves those formats
+// passed through untouched instead of converted.
+export const TRACK_EXTENSIONS = new Set(['mp3', ...CONVERT_EXTENSIONS])
+
 export function ext(name: string): string {
   return extname(name).slice(1).toLowerCase()
 }

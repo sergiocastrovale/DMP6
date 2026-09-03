@@ -3,13 +3,26 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  buildTrackFilename, collectAudioFiles, ext, ffmpegAvailable, probeTags, sanitize, transcodeDirToMp3320,
+  buildTrackFilename, collectAudioFiles, ext, ffmpegAvailable, probeTags, sanitize, transcodeDirToMp3320, TRACK_EXTENSIONS,
 } from '../../../server/utils/transcode'
 
 const execFileMock = vi.fn()
 vi.mock('node:child_process', () => {
   const execFile = (...args: unknown[]) => execFileMock(...args)
   return { execFile, default: { execFile } }
+})
+
+describe('TRACK_EXTENSIONS', () => {
+  it('includes mp3 plus every convertible lossless format', () => {
+    expect(TRACK_EXTENSIONS.has('mp3')).toBe(true)
+    expect(TRACK_EXTENSIONS.has('flac')).toBe(true)
+    expect(TRACK_EXTENSIONS.has('wav')).toBe(true)
+  })
+
+  it('excludes non-audio extensions', () => {
+    expect(TRACK_EXTENSIONS.has('jpg')).toBe(false)
+    expect(TRACK_EXTENSIONS.has('txt')).toBe(false)
+  })
 })
 
 describe('ext', () => {

@@ -32,8 +32,9 @@ fully trusted) — everything up to READY is automatic; nothing enters the libra
    two pools: **fresh** MISSING albums/EPs of monitored artists never yet attempted (random, fair), and
    a **retry** pool of previously-attempted releases ordered by `priority` DESC (at least one slot
    reserved per tick) → search → enqueue.
-3. **Transcode + enrich + layout.** On completion: move to `DOWNLOADS_PATH`, MP3-320, rename
-   `NN. Title.mp3`, optional SongKong enrich, then lay out `{artist}/{type}/{year} - {album}/…`.
+3. **Transcode + enrich + layout.** On completion: move to `DOWNLOADS_PATH`, MP3-320 (gated by
+   `FLAC_TO_MP3`, default on), rename `NN. Title.mp3`, optional SongKong enrich, then lay out
+   `{artist}/{type}/{year} - {album}/…`.
 4. **Ready.** Automatic: the release moves into the derived `{DOWNLOADS_PATH}/_ready` folder and
    shows in the **Ready to merge** tab (`status = READY`). No approval step.
 5. **Merge = validity gate.** **Merge** / **Merge all** moves `_ready → MUSIC_DIR`, runs

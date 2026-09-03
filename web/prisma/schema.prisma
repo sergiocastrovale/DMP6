@@ -452,6 +452,7 @@ model Settings {
   downloadFormats        String?
   downloadMinBitrate     Int?
   downloadsEnabled       Boolean? // Soulseek acquisition on/off; null = enabled
+  flacToMp3              Boolean? // convert FLAC downloads to MP3-320; null = env/default (FLAC_TO_MP3)
   // Monitoring (all override the matching env var; null = use env/default)
   monitorEnabled         Boolean?
   monitorIntervalMin     Int?

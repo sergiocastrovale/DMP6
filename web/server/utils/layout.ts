@@ -3,7 +3,7 @@ import { join, dirname, basename, sep } from 'node:path'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import type { AudioTags } from '~/types/track'
-import { collectAudioFiles, ext, probeTags, sanitize } from '~/server/utils/transcode'
+import { collectAudioFiles, ext, probeTags, sanitize, TRACK_EXTENSIONS } from '~/server/utils/transcode'
 import { monitorLog } from '~/server/utils/monitorLog'
 import { safeMoveFile } from '~/server/utils/safeMove'
 
@@ -17,13 +17,17 @@ const parseLeadingInt = (s?: string): number => {
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-/** Final `NN. Title.mp3` from tags, falling back to the existing basename when tags are missing. */
-const fileNameFromTags = (tags: AudioTags, fallback: string): string => {
+/**
+ * Final `NN. Title.<ext>` from tags (extension taken from the source file, since FLAC_TO_MP3=off
+ * leaves non-mp3 tracks as their original format), falling back to the existing basename when tags
+ * are missing.
+ */
+export const fileNameFromTags = (tags: AudioTags, sourceFile: string): string => {
   const track = parseLeadingInt(tags.track)
   if (track > 0 && tags.title) {
-    return `${pad2(track)}. ${sanitize(tags.title)}.mp3`
+    return `${pad2(track)}. ${sanitize(tags.title)}.${ext(sourceFile)}`
   }
-  return fallback
+  return basename(sourceFile)
 }
 
 /** Resolve the MusicBrainz album type name for a download, defaulting to "Album". */
@@ -80,7 +84,7 @@ export const transformToLibraryLayout = async (
   if (!downloadsPath) {throw new Error('DOWNLOADS_PATH not configured')}
 
   // Pass 1: probe every track (multi-disc detection + year fallback).
-  const files = (await collectAudioFiles(stagingDir)).filter(f => ext(f) === 'mp3')
+  const files = (await collectAudioFiles(stagingDir)).filter(f => TRACK_EXTENSIONS.has(ext(f)))
   const probed = await Promise.all(files.map(async f => ({ file: f, tags: await probeTags(f) })))
   const discTotal = probed.reduce(
     (max, p) => Math.max(max, parseLeadingInt(p.tags.discTotal), parseLeadingInt(p.tags.disc)),
@@ -100,7 +104,7 @@ export const transformToLibraryLayout = async (
   for (const { file, tags } of probed) {
     const discNo = parseLeadingInt(tags.disc) || 1
     const subDir = discTotal > 1 ? `CD ${pad2(discNo)}` : ''
-    const dest = join(releaseRoot, subDir, fileNameFromTags(tags, basename(file)))
+    const dest = join(releaseRoot, subDir, fileNameFromTags(tags, file))
     try {
       await safeMoveFile(file, dest)
       moved++
@@ -111,7 +115,7 @@ export const transformToLibraryLayout = async (
   }
 
   // Carry over any non-audio extras (cover art, etc.) sitting alongside the tracks.
-  for (const f of (await collectAudioFiles(stagingDir)).filter(f => ext(f) !== 'mp3')) {
+  for (const f of (await collectAudioFiles(stagingDir)).filter(f => !TRACK_EXTENSIONS.has(ext(f)))) {
     await safeMoveFile(f, join(releaseRoot, basename(f))).catch(() => {})
   }
 

@@ -274,8 +274,13 @@ export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<Slsk
     await removeEmptyDirsUp(dir, args.downloadsPath)
   }
 
-  // Normalize everything in the target folder to MP3-320 (keeps existing mp3s as-is).
-  const { failed: transcodeFailed } = await transcodeDirToMp3320(targetDir)
+  // Normalize everything in the target folder to MP3-320 (keeps existing mp3s as-is) - gated by
+  // Settings.flacToMp3/FLAC_TO_MP3. Off leaves FLAC (or whatever the source format was) in place;
+  // layout.ts's TRACK_EXTENSIONS handles those as tracks too, not just .mp3.
+  const { flacToMp3 } = await resolveDownloadSettings()
+  const { failed: transcodeFailed } = flacToMp3
+    ? await transcodeDirToMp3320(targetDir)
+    : { failed: 0 }
 
   return { targetDir, movedCount, transcodeFailed }
 }

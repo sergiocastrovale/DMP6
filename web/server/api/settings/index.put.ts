@@ -39,6 +39,7 @@ export default defineEventHandler(async (event) => {
     downloadFormats: body.downloadFormats ?? undefined,
     downloadMinBitrate: ints.downloadMinBitrate,
     downloadsEnabled: typeof body.downloadsEnabled === 'boolean' ? body.downloadsEnabled : body.downloadsEnabled === null ? null : undefined,
+    flacToMp3: typeof body.flacToMp3 === 'boolean' ? body.flacToMp3 : body.flacToMp3 === null ? null : undefined,
     // Monitoring knobs (null clears the override -> env/default)
     monitorEnabled: typeof body.monitorEnabled === 'boolean' ? body.monitorEnabled : body.monitorEnabled === null ? null : undefined,
     monitorIntervalMin: ints.monitorIntervalMin,

@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { DEFAULT_DOWNLOAD_DIR_TEMPLATE, resolveDownloadDir } from '../../../server/utils/downloadSettings'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const prismaMocks = vi.hoisted(() => ({ findUnique: vi.fn() }))
+
+vi.mock('~/server/utils/prisma', () => ({
+  prisma: { settings: { findUnique: prismaMocks.findUnique } },
+}))
+
+const { DEFAULT_DOWNLOAD_DIR_TEMPLATE, resolveDownloadDir, resolveDownloadSettings } = await import('../../../server/utils/downloadSettings')
 
 describe('resolveDownloadDir', () => {
   it('renders artist/album/year placeholders', () => {
@@ -44,5 +51,36 @@ describe('resolveDownloadDir', () => {
   it('preserves slashes as path segment separators while sanitizing each segment', () => {
     const result = resolveDownloadDir('{artist}/sub:dir/{album}', 'Artist', 'Al*bum', undefined)
     expect(result).toBe('Artist/sub_dir/Al_bum')
+  })
+})
+
+describe('resolveDownloadSettings: flacToMp3', () => {
+  const originalEnv = process.env.FLAC_TO_MP3
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    delete process.env.FLAC_TO_MP3
+  })
+
+  afterEach(() => {
+    if (originalEnv === undefined) {delete process.env.FLAC_TO_MP3}
+    else {process.env.FLAC_TO_MP3 = originalEnv}
+  })
+
+  it('is true when the DB value is null and FLAC_TO_MP3 is unset (default)', async () => {
+    prismaMocks.findUnique.mockResolvedValue({ flacToMp3: null })
+    expect((await resolveDownloadSettings()).flacToMp3).toBe(true)
+  })
+
+  it('falls back to FLAC_TO_MP3=false when the DB value is null', async () => {
+    process.env.FLAC_TO_MP3 = 'false'
+    prismaMocks.findUnique.mockResolvedValue({ flacToMp3: null })
+    expect((await resolveDownloadSettings()).flacToMp3).toBe(false)
+  })
+
+  it('DB value wins over FLAC_TO_MP3 when explicitly set', async () => {
+    process.env.FLAC_TO_MP3 = 'false'
+    prismaMocks.findUnique.mockResolvedValue({ flacToMp3: true })
+    expect((await resolveDownloadSettings()).flacToMp3).toBe(true)
   })
 })

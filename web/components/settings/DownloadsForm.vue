@@ -49,6 +49,7 @@ const triState = (v: boolean | null | undefined): 'default' | 'on' | 'off' =>
 
 // Tri-state: default (env) / on / off
 const downloadsEnabledChoice = ref(triState(settings.value?.downloadsEnabled))
+const flacToMp3Choice = ref(triState(settings.value?.flacToMp3))
 const enabledChoice = ref(triState(settings.value?.monitorEnabled))
 const songkongChoice = ref(triState(settings.value?.songkongEnabled))
 const autoMergeChoice = ref(triState(settings.value?.autoMergeDownloads))
@@ -72,6 +73,7 @@ const { saving, saved, error, save } = useFormSave(async () => {
       downloadFormats: form.downloadFormats || null,
       downloadMinBitrate: form.downloadMinBitrate ? Number(form.downloadMinBitrate) : null,
       downloadsEnabled: fromChoice(downloadsEnabledChoice.value),
+      flacToMp3: fromChoice(flacToMp3Choice.value),
       monitorEnabled: fromChoice(enabledChoice.value),
       songkongEnabled: fromChoice(songkongChoice.value),
       autoMergeDownloads: fromChoice(autoMergeChoice.value),
@@ -176,6 +178,22 @@ const onChoiceChange = (setter: (v: string) => void, v: string) => {
           Leave a field blank to use the environment default. Changes apply live (no restart).
         </p>
       </template>
+
+      <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
+    </UiCard>
+
+    <UiCard title="Conversion">
+      <UiSelect
+        :model-value="flacToMp3Choice"
+        label="Convert FLAC to MP3"
+        description="Convert FLAC downloads to mp3 automatically. Deletes original FLAC files after converting. Overrides FLAC_TO_MP3."
+        :disabled="!canEdit"
+        @update:model-value="onChoiceChange(v => flacToMp3Choice = v as any, $event)"
+      >
+        <option value="default">- use env default (FLAC_TO_MP3) -</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
+      </UiSelect>
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
     </UiCard>
