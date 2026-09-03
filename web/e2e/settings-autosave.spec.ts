@@ -100,15 +100,16 @@ test.describe('settings autosave', () => {
   })
 
   test('api-keys: Connect Last.fm saves the key first, then succeeds immediately', async ({ page }) => {
-    // Regression test for a cache-invalidation race: connect() persists the API key via a PUT,
-    // then immediately calls GET /api/scrobble/connect, which reads the key back through
-    // server/utils/settingsCache.ts. invalidateSettingsCache() used to just null the cache and
-    // kick a background refresh, so this immediate read raced it and returned env-only defaults
-    // (no DB key) - "Last.fm API key not configured" even though the key had just been saved.
+    // Regression test: connect() persists the API key via a PUT, then immediately calls
+    // GET /api/scrobble/connect. That handler used to read the key back through
+    // server/utils/settingsCache.ts (a 30s-TTL cache meant for hot paths like audio/image
+    // serving), so this immediate read could still see the pre-save value - "Last.fm API key not
+    // configured" even though the key had just been saved. connect.get.ts now reads the DB
+    // directly instead.
     await gotoSettings(page, 'api-keys')
 
     // Block the external hop so the test never leaves localhost; connect() still runs our own
-    // /api/scrobble/connect for real, which is what exercises the cache fix.
+    // /api/scrobble/connect for real, which is what exercises the fix.
     await page.route('https://www.last.fm/**', route => route.fulfill({ status: 200, body: 'stubbed' }))
 
     const apiKey = page.getByLabel('API Key').nth(1)

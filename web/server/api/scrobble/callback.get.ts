@@ -1,6 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { requireRole } from '~/server/utils/permissions'
-import { getCachedSettings, invalidateSettingsCache  } from '~/server/utils/settingsCache'
+import { invalidateSettingsCache } from '~/server/utils/settingsCache'
 import { getLastfmSession } from '~/server/utils/lastfm'
 
 export default defineEventHandler(async (event) => {
@@ -16,12 +16,17 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Missing token' })
   }
 
-  const settings = await getCachedSettings()
-  if (!settings?.lastfmApiKey || !settings?.lastfmSecret) {
+  // Straight from the DB, not settingsCache: same reasoning as connect.get.ts - this runs once,
+  // right after the settings form just saved the key/secret, and the cache's staleness window
+  // could still serve the pre-save (null) values here.
+  const settings = await prisma.settings.findUnique({ where: { id: 'main' } })
+  const lastfmApiKey = settings?.lastfmApiKey || process.env.LASTFM_API_KEY
+  const lastfmSecret = settings?.lastfmSecret || process.env.LASTFM_SECRET
+  if (!lastfmApiKey || !lastfmSecret) {
     throw createError({ statusCode: 400, message: 'Last.fm not configured' })
   }
 
-  const session = await getLastfmSession(token, settings.lastfmApiKey, settings.lastfmSecret)
+  const session = await getLastfmSession(token, lastfmApiKey, lastfmSecret)
   if (!session) {
     throw createError({ statusCode: 400, message: 'Failed to get Last.fm session' })
   }
@@ -29,8 +34,8 @@ export default defineEventHandler(async (event) => {
   await prisma.settings.upsert({
     where: { id: 'main' },
     create: {
-      lastfmApiKey: settings.lastfmApiKey,
-      lastfmSecret: settings.lastfmSecret,
+      lastfmApiKey,
+      lastfmSecret,
       lastfmSessionKey: session.sessionKey,
       lastfmUsername: session.username,
     },
