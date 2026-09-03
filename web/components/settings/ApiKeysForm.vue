@@ -41,6 +41,14 @@ const connecting = ref(false)
 const connect = async () => {
   connecting.value = true
   try {
+    // The API key/secret fields save on blur, which may not have landed yet if the user tabbed
+    // straight from the field to this button - persist explicitly first so connect always sees
+    // the values currently on screen, not whatever was last saved.
+    await lastfmSave()
+    if (lastfmError.value) {
+      connecting.value = false
+      return
+    }
     const { url } = await $fetch<{ url: string }>('/api/scrobble/connect')
     window.location.href = url
   } catch (e: any) {
