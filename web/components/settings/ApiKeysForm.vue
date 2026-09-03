@@ -134,7 +134,6 @@ const disconnect = async () => {
           label="API Key"
           placeholder="Last.fm API key"
           :disabled="!canEdit"
-          @blur="lastfmSave"
         />
 
         <SettingsField
@@ -143,7 +142,6 @@ const disconnect = async () => {
           type="password"
           :placeholder="settings?.lastfmSecretSet ? 'Already set - leave blank to keep' : 'Last.fm shared secret'"
           :disabled="!canEdit"
-          @blur="lastfmSave"
         />
       </div>
 
