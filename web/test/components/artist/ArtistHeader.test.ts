@@ -1,7 +1,7 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { computed } from 'vue'
 import { describe, expect, it } from 'vitest'
-import ArtistHeader from '../../../components/artist/ArtistHeader.vue'
+import ArtistHeader from '../../../components/artist/Header.vue'
 import type { Artist } from '../../../types/artist'
 
 const artist: Artist = {

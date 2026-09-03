@@ -64,20 +64,21 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
     :class="cx('border-b border-dashed border-stone-100/10 last:border-b-0', release.status !== 'MISSING' && 'hover:bg-stone-800/30')"
   >
     <div
-      class="group/edition flex items-stretch gap-3 px-3"
+      class="group/edition flex items-stretch gap-3 pl-3 pr-1 lg:px-3"
       :class="hasPlayable && 'cursor-pointer'"
       @click="hasPlayable && emit('toggle')"
     >
-      <UiButton
-        v-if="hasPlayable"
-        variant="ghost"
-        size="sm"
-        icon-only
-        :icon="expanded ? ChevronDown : ChevronRight"
-        class="self-center"
-        @click.stop="emit('toggle')"
-      />
-      <div v-else class="size-5 self-center" />
+      <div class="hidden self-center md:block">
+        <UiButton
+          v-if="hasPlayable"
+          variant="ghost"
+          size="sm"
+          icon-only
+          :icon="expanded ? ChevronDown : ChevronRight"
+          @click.stop="emit('toggle')"
+        />
+        <div v-else class="size-5" />
+      </div>
 
       <div
         class="group/cover relative my-3 size-15 shrink-0 self-center bg-stone-800"
@@ -115,6 +116,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           <span v-if="subtitle" class="shrink-0 rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60">{{ subtitle }}</span>
           <ToggleFavorite
             v-if="release.localReleaseId || release.bundleParentReleaseId"
+            class="hidden md:inline-flex"
             :size="16"
             :active="isFavorite"
             :label="release.localReleaseId ? 'Toggle favorite' : 'Favorite the release this is bundled in'"
@@ -132,9 +134,9 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           </button>
         </div>
         <div class="mt-0.5 flex items-center gap-3 text-xs text-stone-100/60">
-          <span v-if="release.type">{{ release.type }}</span>
+          <span v-if="release.type" class="hidden md:inline">{{ release.type }}</span>
           <span v-if="release.year">{{ release.year }}</span>
-          <span v-if="displayTrackCount">{{ displayTrackCount }} tracks</span>
+          <span v-if="displayTrackCount" class="hidden md:inline">{{ displayTrackCount }} tracks</span>
           <span v-if="coArtists.length">Feat.
             <template v-for="(co, i) in coArtists" :key="co.slug">
               <NuxtLink
@@ -152,7 +154,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         </div>
       </div>
 
-      <div class="flex w-24 shrink-0 items-center justify-center">
+      <div class="hidden w-24 shrink-0 items-center justify-center md:flex">
         <Popover v-if="!(isSearching || isDownloading || isEnriching || isAwaitingMerge)" trigger="hover">
           <template #trigger>
             <ReleaseStatusBadge :status="release.status" />
@@ -197,7 +199,8 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         </UiBadge>
       </div>
 
-      <div class="flex w-32 shrink-0 items-center justify-end gap-0.5 px-3">
+      <div class="flex lg:w-32 lg:shrink-0 items-center justify-end gap-0.5 pr-0 pl-1 lg:px-3">
+        <div class="hidden items-center gap-0.5 md:flex">
         <DataTableAction
           v-if="isSearching || isDownloading || isEnriching"
           :icon="X"
@@ -246,6 +249,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           :disabled="terminal.isRunning"
           @click.stop="emit('refresh')"
         />
+        </div>
 
         <DataTableAction
           :icon="Info"

@@ -46,25 +46,27 @@ async function create() {
 
 <template>
   <Dialog :model-value="show" title="Create Playlist" size="sm" @update:model-value="show = $event">
-    <form class="flex flex-col gap-4" @submit.prevent="create">
-      <UiTextField v-model="name" label="Name" placeholder="My Playlist" autofocus required />
-      <div>
-        <label :class="form.label" class="mb-1 block">Description (optional)</label>
-        <textarea
-          v-model="description"
-          placeholder="Add a description..."
-          rows="3"
-          :class="[form.input, 'h-auto py-2.5']"
-        />
-      </div>
-      <div class="flex justify-end gap-2">
-        <UiButton variant="ghost" @click="show = false">
-          Cancel
-        </UiButton>
-        <UiButton type="submit" :loading="creating" :disabled="!name.trim()">
-          Create
-        </UiButton>
-      </div>
-    </form>
+    <template #content>
+      <form class="flex flex-col gap-4" @submit.prevent="create">
+        <UiTextField v-model="name" label="Name" placeholder="My Playlist" autofocus required />
+        <div>
+          <label :class="form.label" class="mb-1 block">Description (optional)</label>
+          <textarea
+            v-model="description"
+            placeholder="Add a description..."
+            rows="3"
+            :class="[form.input, 'h-auto py-2.5']"
+          />
+        </div>
+        <div class="flex justify-end gap-2">
+          <UiButton variant="ghost" @click="show = false">
+            Cancel
+          </UiButton>
+          <UiButton type="submit" :loading="creating" :disabled="!name.trim()">
+            Create
+          </UiButton>
+        </div>
+      </form>
+    </template>
   </Dialog>
 </template>

@@ -57,7 +57,7 @@ const gotoHydrated = async (page: Page, path: string, hydrationPoll: string) => 
 // labelled. Querying them as buttons is why every artist-dropdown assertion here timed out.
 const openArtistMenu = async (page: Page) => {
   await gotoHydrated(page, `/artist/${artistSlug}`, `**/api/artists/${artistSlug}/download-status`)
-  await page.getByRole('button', { name: 'Scan catalogue' }).click()
+  await page.getByRole('button', { name: 'Scan' }).click()
   // Menu contents confirm the dropdown is open before any option is addressed.
   await expect(page.getByRole('menuitem', { name: 'Scan for new files' })).toBeVisible()
 }

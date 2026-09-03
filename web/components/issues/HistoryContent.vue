@@ -308,27 +308,29 @@ async function undoSelected() {
     </div>
 
     <Dialog :model-value="dialogFolder !== null" :title="dialogGroup?.folder ?? ''" size="lg" @update:model-value="!$event && (dialogFolder = null)">
-      <div v-if="dialogGroup" class="flex flex-col gap-0">
-        <div
-          v-for="item in dialogGroup.items"
-          :key="item.id"
-          class="flex items-center gap-3 border-b border-stone-100/6 px-1 py-2 last:border-0"
-          :class="selected.has(item.id) ? 'bg-amber-400/10' : ''"
-          @click.stop="captureFileClick"
-        >
-          <UiCheckbox
-            :model-value="selected.has(item.id)"
-            :aria-label="`Select ${fileName(item.filePath)}`"
-            @update:model-value="toggleFile(item.id)"
-          />
-          <span class="flex-1 truncate text-xs text-stone-100/60" :title="item.filePath">{{ fileName(item.filePath) }}</span>
-          <div class="flex flex-col gap-0.5">
-            <span v-for="e in getStateEntries(item.appliedState)" :key="e.key" class="text-[11px] text-success">
-              <span class="text-stone-100/55">{{ e.key }}:</span> {{ e.value }}
-            </span>
+      <template #content>
+        <div v-if="dialogGroup" class="flex flex-col gap-0">
+          <div
+            v-for="item in dialogGroup.items"
+            :key="item.id"
+            class="flex items-center gap-3 border-b border-stone-100/6 px-1 py-2 last:border-0"
+            :class="selected.has(item.id) ? 'bg-amber-400/10' : ''"
+            @click.stop="captureFileClick"
+          >
+            <UiCheckbox
+              :model-value="selected.has(item.id)"
+              :aria-label="`Select ${fileName(item.filePath)}`"
+              @update:model-value="toggleFile(item.id)"
+            />
+            <span class="flex-1 truncate text-xs text-stone-100/60" :title="item.filePath">{{ fileName(item.filePath) }}</span>
+            <div class="flex flex-col gap-0.5">
+              <span v-for="e in getStateEntries(item.appliedState)" :key="e.key" class="text-[11px] text-success">
+                <span class="text-stone-100/55">{{ e.key }}:</span> {{ e.value }}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      </template>
     </Dialog>
   </div>
 </template>

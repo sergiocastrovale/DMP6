@@ -1,8 +1,6 @@
 import type { ReleaseStatus } from '~/types/release'
 import type { Tone } from '~/types/ui'
 
-export const maxGenres = 5
-
 // Accent themes (Settings → Themes). Each id matches an `html[data-theme=…]` block in
 // assets/css/themes.css, which redefines the amber ramp - `amber` is the default and needs no
 // block. `swatchVar` is that theme's own 400 step, held fixed so the picker's squares keep their

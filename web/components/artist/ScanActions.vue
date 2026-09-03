@@ -54,7 +54,7 @@ const syncOptions = computed<ButtonDropdownOption[]>(() =>
 
 <template>
   <ArtistButtonDropdown
-    label="Scan catalogue"
+    label="Scan"
     :options="syncOptions"
     :disabled="terminal.isRunning"
   >

@@ -77,17 +77,23 @@ onBeforeUnmount(() => {
         aria-modal="true"
         tabindex="-1"
         :aria-labelledby="titleId"
-        :class="cx(layout.dialog, maxWidthClass, 'max-h-[80vh] flex flex-col outline-none')"
+        :class="cx(layout.dialog, maxWidthClass)"
       >
-        <div class="flex items-start justify-between gap-4 mb-3.5">
+        <div  :class="cx(layout.dialogTitle)">
           <div class="min-w-0">
-            <h2 :id="titleId" class="text-xl font-semibold tracking-[-0.01em] text-stone-100">{{ title }}</h2>
+            <h2 :id="titleId" class="text-xl font-semibold text-stone-200">{{ title }}</h2>
             <p v-if="subtitle" class="mt-1 text-sm text-stone-100/55">{{ subtitle }}</p>
           </div>
-          <UiButton variant="ghost" size="sm" icon-only :icon="X" aria-label="Close" @click="close" />
+          <div aria-label="Close" @click="close" class="cursor-pointer">
+            <X :size="20" class="" />
+          </div>
         </div>
-        <div class="flex-1 overflow-y-auto">
-          <slot />
+        <div :class="cx(layout.dialogActions)">
+          <slot name="actions" />
+        </div>
+
+        <div :class="cx(layout.dialogContent)">
+          <slot name="content" />
         </div>
       </div>
     </div>

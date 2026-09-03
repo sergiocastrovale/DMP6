@@ -82,7 +82,7 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKeydown))
   <a
     v-if="chromeVisible"
     href="#main-content"
-    class="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-[100] focus-visible:rounded-md focus-visible:bg-amber-400 focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-on-accent"
+    class="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-100 focus-visible:rounded-md focus-visible:bg-amber-400 focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-on-accent"
   >
     Skip to content
   </a>
@@ -117,7 +117,7 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKeydown))
         <main
           id="main-content"
           class="overflow-y-auto flex-1"
-          :class="chromeVisible ? 'px-6 py-6 lg:px-10 xl:px-12' : 'flex items-center justify-center'"
+          :class="chromeVisible ? 'md:p-6 lg:px-10 xl:px-12' : 'flex items-center justify-center'"
         >
           <slot />
         </main>

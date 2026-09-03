@@ -34,7 +34,7 @@ watch(() => artist.value?.name, (name) => {
         :play-disabled="playingAll || !releases.length"
         :shuffle-disabled="shufflingAll || !releases.length"
         :active-downloads="dlInFlight"
-        class="min-w-0 flex-1"
+        class="hidden min-w-0 flex-1 md:flex"
         @play-all="playAll"
         @shuffle-all="shuffleAll"
       >
@@ -44,6 +44,20 @@ watch(() => artist.value?.name, (name) => {
           <ArtistButtonRemove v-if="isAdmin" :artist-name="artist.name" />
         </div>
       </ArtistHeader>
+
+      <ArtistMobileHeader
+        :artist="artist"
+        :play-disabled="playingAll || !releases.length"
+        :shuffle-disabled="shufflingAll || !releases.length"
+        :active-downloads="dlInFlight"
+        class="md:hidden"
+        @play-all="playAll"
+        @shuffle-all="shuffleAll"
+      >
+        <ArtistButtonMonitor :monitored="artist.monitored" :busy="monitorBusy" @toggle="toggleMonitor" />
+        <ArtistScanActions :artist-name="artist.name" :folders="artistFolders" />
+        <ArtistButtonRemove v-if="isAdmin" :artist-name="artist.name" />
+      </ArtistMobileHeader>
 
       <ArtistReleases
         :slug="artist.slug"

@@ -97,10 +97,9 @@ const disconnect = async () => {
     </UiCard>
 
     <UiCard title="Last.fm" description="Scrobble tracks to Last.fm">
-      <div>
-        <p class="text-sm text-stone-100/60">Scrobble tracks to last.fm.
-          Create your API key <a href="https://www.last.fm/api/authentication" target="_blank" class="text-sm text-stone-100/60 underline">here</a>.
-        </p>
+      <div class="text-sm text-stone-100/60">
+        Scrobble tracks to last.fm.
+        Create your API key <a href="https://www.last.fm/api/authentication" target="_blank" class="underline">here</a>.
       </div>
 
       <div v-if="isConnected" class="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3">
@@ -112,7 +111,7 @@ const disconnect = async () => {
           <p class="text-sm text-stone-100/55">Tracks are being scrobbled to Last.fm</p>
         </div>
         <UiButton
-          variant="secondary"
+          variant="danger"
           size="sm"
           :icon="Unlink"
           :loading="disconnecting"

@@ -341,7 +341,7 @@ watch(() => props.releases, () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 px-8">
+  <div class="flex flex-col gap-4 p-3 md:px-6">
     <ArtistStatusChips v-model:active-statuses="activeStatuses" :status-counts="statusCounts" />
 
     <ArtistReleaseFilterBar v-model:view-mode="viewMode" />
@@ -388,7 +388,16 @@ watch(() => props.releases, () => {
       />
     </template>
 
-    <ReleaseInfoDialog v-model="showInfoDialog" :release="infoRelease" :extra="infoExtra" />
+    <ReleaseInfoDialog
+      v-model="showInfoDialog"
+      :release="infoRelease"
+      :extra="infoExtra"
+      :is-favorite="infoRelease ? favoriteReleases.has(favoriteTargetId(infoRelease) ?? '') : false"
+      :is-acquiring="infoRelease ? acquiringIds.has(infoRelease.id) : false"
+      @toggle-favorite="infoRelease && toggleFavoriteRelease(infoRelease)"
+      @refresh="infoRelease && refreshRelease(infoRelease)"
+      @redownload="infoRelease && openRedownloadDialog(infoRelease)"
+    />
 
     <ArtistRedownloadDialog
       v-model="showRedownloadDialog"

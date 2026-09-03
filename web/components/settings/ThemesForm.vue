@@ -16,7 +16,8 @@ const sizeStops = uiSizes.map(s => s.label)
 <template>
   <div class="flex w-full max-w-7xl flex-col gap-6">
     <UiCard title="Theme">
-      <div class="flex flex-wrap gap-3">
+      <span class="text-base font-medium text-stone-100">Accent color</span>
+      <div class="flex flex-wrap gap-3 mb-4">
         <button
           v-for="t in themes"
           :key="t.id"
@@ -25,7 +26,7 @@ const sizeStops = uiSizes.map(s => s.label)
           :aria-pressed="accent === t.id"
           :title="t.label"
           :class="cx(
-            'grid size-16 place-items-center rounded-lg border-2 transition-colors duration-150 cursor-pointer',
+            'grid size-12 place-items-center rounded-lg border-2 transition-colors duration-150 cursor-pointer',
             'outline-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-100',
             accent === t.id ? 'border-stone-100' : 'border-stone-100/10 hover:border-stone-100/40',
           )"
@@ -35,15 +36,12 @@ const sizeStops = uiSizes.map(s => s.label)
           <Check v-if="accent === t.id" :size="26" class="text-stone-950" />
         </button>
       </div>
-    </UiCard>
-
-    <UiCard title="UI size">
+      
       <Slider
         v-model="sizeIndex"
         title="Text size"
         left-label="Smaller"
         right-label="Larger"
-        hint="Scales every text size in the app. Applies immediately and is kept in this browser."
         :max="uiSizes.length - 1"
         :stops="sizeStops"
       />
