@@ -9,8 +9,16 @@ const tracks = (count: number) => Array.from({ length: count }, (_, i) => ({
   artistSlug: 'artist', releaseImage: null, releaseImageUrl: null, localReleaseId: 'r1',
 })) as any
 
-const rows = (wrapper: { findAll: (selector: string) => TestButtons }): TestButtons =>
-  wrapper.findAll('button').filter(b => b.text().includes('Track'))
+const rows = (wrapper: { findAll: (selector: string) => any[] }): any[] => {
+  // Find the track row divs (the main container for each track)
+  const allDivs = wrapper.findAll('div')
+  const trackRows = allDivs.filter(div => {
+    const classes = div.attributes('class') || ''
+    return classes.includes('flex items-center gap-3')
+  })
+  // Get the first button (thumbnail) from each row
+  return trackRows.map(row => row.findAll('button')[0]).filter(Boolean)
+}
 
 describe('explore/History.vue', () => {
   it('shows at most one page of rows', async () => {

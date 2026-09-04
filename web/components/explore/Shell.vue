@@ -11,7 +11,7 @@ const { visible: chromeVisible, hide, show, hidePlayer, showPlayer } = useChrome
 // it - hidden for the whole visit, independent of cinema mode, restored on leaving.
 hidePlayer()
 
-const configCollapsed = ref(false)
+const configCollapsed = ref(!!player.explorerCurrentTrack)
 
 // Re-opening the dials over an already-playing track is a reversible edit: snapshot the four values
 // on expand so "Cancel changes" can put them back. A first run has nothing to return to, so the
