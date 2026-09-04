@@ -6,11 +6,12 @@ const player = usePlayerStore()
 </script>
 
 <template>
-  <div
+  <button
     class="text-stone-100/60 cursor-pointer"
+    aria-label="Dismiss player"
     title="Dismiss player"
     @click="player.dismiss()"
   >
     <X :size="16" />
-  </div>
+  </button>
 </template>
