@@ -179,6 +179,31 @@ export const surface = {
   panel: 'rounded-lg border border-stone-100/6 bg-stone-950',
   popover: 'rounded-lg border border-stone-100/10 bg-stone-900 shadow-lg',
   divider: 'border-b border-stone-100/6',
+  // The persistent player bar's chrome - gradient wash, blur, groove overlay. Shared by the
+  // desktop bar and the mobile collapsed bar/expanded sheet, so it lives here rather than inline.
+  playerBar: cx(
+    'bg-[radial-gradient(120%_240%_at_50%_130%,color-mix(in_oklch,var(--color-amber-400)_13%,transparent)_0%,transparent_60%),linear-gradient(180deg,rgba(28,24,19,.94)_0%,rgba(16,15,13,.96)_100%)]',
+    'backdrop-blur-[28px] [backdrop-filter:blur(28px)_saturate(150%)]',
+    'shadow-[0_-20px_50px_-30px_rgba(0,0,0,.95),inset_0_1px_0_rgba(255,240,210,.05)]',
+    'after:absolute after:inset-0 after:pointer-events-none after:bg-[repeating-linear-gradient(90deg,rgba(255,240,210,.022)_0_1px,transparent_1px_7px)] after:[mask-image:linear-gradient(0deg,#000,transparent_78%)]',
+  ),
+}
+
+// Named <Transition> prop bundles - bind with v-bind="transitions.x" rather than hand-writing the
+// class quartet at a second call site (see MobileNav.vue's More sheet, the first occurrence).
+export const transitions = {
+  fade: {
+    enterActiveClass: 'transition-opacity duration-200 ease',
+    enterFromClass: 'opacity-0',
+    leaveActiveClass: 'transition-opacity duration-200 ease',
+    leaveToClass: 'opacity-0',
+  },
+  slideUp: {
+    enterActiveClass: 'transition-transform duration-[250ms] ease',
+    enterFromClass: 'translate-y-full',
+    leaveActiveClass: 'transition-transform duration-[250ms] ease',
+    leaveToClass: 'translate-y-full',
+  },
 }
 
 export const form = {

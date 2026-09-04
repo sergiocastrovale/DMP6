@@ -10,6 +10,7 @@ const STUBS = {
   LayoutMobileNav: true,
   LayoutToastHost: true,
   PlayerAudioPlayer: true,
+  PlayerAudioPlayerMobile: true,
   TerminalOutput: true,
   TerminalProgress: true,
   VisualizerOverlay: true,
@@ -64,6 +65,7 @@ describe('layout/AppShell.vue', () => {
     expect(wrapper.findComponent({ name: 'LayoutSearchBar' }).exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'LayoutMobileNav' }).exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'PlayerAudioPlayer' }).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'PlayerAudioPlayerMobile' }).exists()).toBe(false)
     expect(wrapper.get('main').attributes('id')).toBe('main-content')
     expect(wrapper.get('main').text()).toContain('Page body')
   })

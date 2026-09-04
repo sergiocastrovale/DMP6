@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { Volume2, VolumeX } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
+import { cx } from '~/helpers/ui'
+
+// Fixed w-20 fits the desktop bar's right-hand cluster; the mobile sheet gives volume its own
+// full-width row, where fluid stretches the track to fill it. A class on the component tag can't
+// reach the inner track (attrs fall through to the outer wrapper), hence a real prop.
+withDefaults(defineProps<{ fluid?: boolean }>(), { fluid: false })
 
 const player = usePlayerStore()
 
@@ -56,7 +62,7 @@ const onKeydown = (event: KeyboardEvent) => {
 </script>
 
 <template>
-  <div class="flex items-center">
+  <div :class="cx('flex items-center', fluid && 'w-full gap-2')">
     <UiButton
       variant="ghost"
       size="lg"
@@ -69,7 +75,7 @@ const onKeydown = (event: KeyboardEvent) => {
       ref="trackRef"
       role="slider"
       tabindex="0"
-      class="relative h-1.5 w-20 cursor-pointer touch-none rounded-full bg-stone-800"
+      :class="cx('relative h-1.5 cursor-pointer touch-none rounded-full bg-stone-800', fluid ? 'flex-1' : 'w-20')"
       aria-label="Volume"
       :aria-valuenow="Math.round(percent)"
       aria-valuemin="0"

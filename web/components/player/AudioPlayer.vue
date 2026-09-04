@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import {
-  Check,
   Compass,
   Disc3,
-  ListPlus,
-  Plus,
   Shuffle,
   SkipBack,
   SkipForward,
-  X,
 } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 import { cx, ICON_STROKE_WIDTH, surface, typography } from '~/helpers/ui'
-import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
+import { SHUFFLE_CONTEXT_LABELS, SHUFFLE_TOOLTIPS } from '~/helpers/constants'
 
 const player = usePlayerStore()
 const { resolve } = useImageUrl()
+const {
+  showPlaylistMenu, showNewPlaylistDialog, playlists, trackPlaylistSlugs,
+  showInfoDialog, infoRelease, infoExtra,
+  loadPlaylists, togglePlaylist, openNewPlaylistDialog, onPlaylistCreated, openTrackInfo,
+} = usePlayerActions()
 
 const albumCover = computed(() =>
   resolve(player.currentTrack?.releaseImage ?? null, player.currentTrack?.releaseImageUrl ?? null, 'releases'),
@@ -32,117 +33,14 @@ const releaseLink = computed(() => {
   return { path: `/artist/${slug}`, query: localReleaseId ? { releaseId: localReleaseId } : undefined }
 })
 
-const showPlaylistMenu = ref(false)
-const showNewPlaylistDialog = ref(false)
-const playlists = ref<any[]>([])
-const trackPlaylistSlugs = ref<Set<string>>(new Set())
-
-const showInfoDialog = ref(false)
-const infoRelease = ref<UnifiedRelease | null>(null)
-const infoExtra = ref<ReleaseInfoExtra | null>(null)
-
-async function openTrackInfo() {
-  const localReleaseId = player.currentTrack?.localReleaseId
-  if (!localReleaseId) {
-    return
-  }
-  infoRelease.value = null
-  infoExtra.value = null
-  showInfoDialog.value = true
-  try {
-    const [release, extra] = await Promise.all([
-      $fetch<UnifiedRelease>(`/api/releases/${localReleaseId}`),
-      $fetch<ReleaseInfoExtra>(`/api/releases/${localReleaseId}/info`),
-    ])
-    infoRelease.value = release
-    infoExtra.value = extra
-  }
-  catch { /* ignore */ }
-}
-
-watch(() => player.currentTrack?.id, () => {
-  showInfoDialog.value = false
-})
-
 // Always-visible context pill: what queue is currently playing, not just whether shuffle is on.
-const CONTEXT_LABELS: Record<string, string> = {
-  explorer: 'Explorer',
-  catalogue: 'Catalogue',
-  artist: 'Artist',
-  release: 'Release',
-}
-
-const contextLabel = computed(() => CONTEXT_LABELS[player.shuffleMode])
-
-const SHUFFLE_TOOLTIPS: Record<string, string> = {
-  off: 'Shuffle: Off',
-  release: 'Shuffle: Release',
-  artist: 'Shuffle: Artist',
-  catalogue: 'Shuffle: Catalogue',
-  explorer: 'Explorer mode - click to turn off',
-}
-
-async function loadPlaylists() {
-  try {
-    const [all, slugs] = await Promise.all([
-      $fetch<any[]>('/api/playlists'),
-      player.currentTrack
-        ? $fetch<string[]>(`/api/tracks/${player.currentTrack.id}/playlists`)
-        : Promise.resolve([]),
-    ])
-    playlists.value = all.filter((p: any) => p.type === 'MANUAL')
-    trackPlaylistSlugs.value = new Set(slugs)
-  }
-  catch (error) {
-    console.error('Failed to load playlists:', error)
-  }
-}
-
-async function togglePlaylist(playlistSlug: string) {
-  if (!player.currentTrack)
-    {return}
-  const isIn = trackPlaylistSlugs.value.has(playlistSlug)
-  try {
-    if (isIn) {
-      await $fetch(`/api/playlists/${playlistSlug}/tracks/${player.currentTrack.id}`, {
-        method: 'DELETE',
-      })
-      trackPlaylistSlugs.value.delete(playlistSlug)
-    }
-    else {
-      await $fetch(`/api/playlists/${playlistSlug}/tracks`, {
-        method: 'POST',
-        body: { trackId: player.currentTrack.id },
-      })
-      trackPlaylistSlugs.value.add(playlistSlug)
-    }
-  }
-  catch (error) {
-    console.error('Failed to update playlist:', error)
-  }
-}
-
-function openNewPlaylistDialog() {
-  showPlaylistMenu.value = false
-  showNewPlaylistDialog.value = true
-}
-
-async function onPlaylistCreated() {
-  await loadPlaylists()
-}
-
+const contextLabel = computed(() => SHUFFLE_CONTEXT_LABELS[player.shuffleMode])
 </script>
 
 <template>
   <div
     v-if="player.isVisible"
-    :class="cx(
-      'relative flex w-full flex-col justify-center',
-      'bg-[radial-gradient(120%_240%_at_50%_130%,color-mix(in_oklch,var(--color-amber-400)_13%,transparent)_0%,transparent_60%),linear-gradient(180deg,rgba(28,24,19,.94)_0%,rgba(16,15,13,.96)_100%)]',
-      'backdrop-blur-[28px] [backdrop-filter:blur(28px)_saturate(150%)]',
-      'shadow-[0_-20px_50px_-30px_rgba(0,0,0,.95),inset_0_1px_0_rgba(255,240,210,.05)]',
-      'after:absolute after:inset-0 after:pointer-events-none after:bg-[repeating-linear-gradient(90deg,rgba(255,240,210,.022)_0_1px,transparent_1px_7px)] after:[mask-image:linear-gradient(0deg,#000,transparent_78%)]',
-    )"
+    :class="cx('relative hidden w-full flex-col justify-center lg:flex', surface.playerBar)"
   >
     <div class="absolute inset-x-0 top-0 z-10">
       <PlayerSeekBar
@@ -155,7 +53,7 @@ async function onPlaylistCreated() {
     </div>
 
     <div class="relative flex h-[84px] items-center px-4 pt-2">
-      <div class="flex min-w-0 flex-1 items-center gap-3 md:flex-none md:w-1/3">
+      <div class="flex w-1/3 items-center gap-3">
         <div class="relative size-12 shrink-0">
           <div
             v-if="albumCover"
@@ -269,57 +167,23 @@ async function onPlaylistCreated() {
             @click="player.next()"
           />
 
-          <div class="relative">
-            <UiButton
-              variant="secondary"
-              icon-only
-              :icon="ListPlus"
-              :on="showPlaylistMenu"
-              aria-label="Add to playlist"
-              aria-haspopup="menu"
-              :aria-expanded="showPlaylistMenu"
-              @click="showPlaylistMenu = !showPlaylistMenu; loadPlaylists()"
-            />
-            <div
-              v-if="showPlaylistMenu"
-              role="menu"
-              :class="cx(surface.popover, 'absolute bottom-full left-0 z-20 mb-2 w-48')"
-            >
-              <div class="max-h-64 overflow-y-auto p-2">
-                <div class="mb-2 flex justify-center">
-                  <UiButton variant="quiet" size="sm" on :icon="Plus" @click="openNewPlaylistDialog">
-                    Create new playlist
-                  </UiButton>
-                </div>
-                <div v-if="playlists.length > 0" class="border-t border-stone-100/6 pt-2">
-                  <button
-                    v-for="playlist in playlists"
-                    :key="playlist.id"
-                    type="button"
-                    role="menuitemcheckbox"
-                    :aria-checked="trackPlaylistSlugs.has(playlist.slug)"
-                    :class="cx('flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-stone-800', trackPlaylistSlugs.has(playlist.slug) ? 'text-amber-400' : 'text-stone-100/60')"
-                    @click="togglePlaylist(playlist.slug)"
-                  >
-                    {{ playlist.name }}
-                    <Check v-if="trackPlaylistSlugs.has(playlist.slug)" :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-                  </button>
-                </div>
-                <div v-if="playlists.length === 0" class="px-3 py-2 text-sm text-stone-100/55">
-                  No playlists yet
-                </div>
-              </div>
-            </div>
-          </div>
+          <PlayerPlaylistMenu
+            :open="showPlaylistMenu"
+            :playlists="playlists"
+            :selected-slugs="trackPlaylistSlugs"
+            placement="up"
+            @toggle-open="showPlaylistMenu = !showPlaylistMenu; loadPlaylists()"
+            @toggle="togglePlaylist"
+            @create-new="openNewPlaylistDialog"
+          />
         </div>
       </div>
 
-      <div class="hidden md:flex md:w-1/3 items-center justify-end gap-2">
+      <div class="flex w-1/3 items-center justify-end gap-2">
         <VisualizerToggleButton />
         <PlayerVolumeControl />
         <PlayerClose />
       </div>
-      <PlayerClose class="ml-2 shrink-0 md:hidden" />
     </div>
 
     <PlaylistAddDialog

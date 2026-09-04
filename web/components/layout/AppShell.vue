@@ -134,6 +134,7 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKeydown))
     </div>
 
     <PlayerAudioPlayer v-if="chromeVisible && playerVisible" />
+    <PlayerAudioPlayerMobile v-if="chromeVisible && playerVisible" />
   </div>
 
   <template v-if="chromeVisible">

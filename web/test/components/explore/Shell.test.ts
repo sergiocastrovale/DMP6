@@ -20,6 +20,9 @@ const TRACK = {
 describe('explore/Shell.vue', () => {
   beforeEach(() => {
     useChrome().show()
+    // configCollapsed reads player.explorerCurrentTrack at setup() time, so a track left over
+    // from a previous test would mount the next Shell already-collapsed with no "Explore" button.
+    usePlayerStore().explorerCurrentTrack = null
   })
 
   it('collapses the config sliders into a summary once a track is explored', async () => {

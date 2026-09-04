@@ -76,6 +76,20 @@ export const EXPLORE_HISTORY_PAGE_SIZE = 15
 // read well blown up from a couch.
 export const EXPLORE_HISTORY_TV_LIMIT = 3
 export const SESSION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
+// Shared by the desktop player bar's shuffle pill and the mobile expanded sheet's transport row.
+export const SHUFFLE_CONTEXT_LABELS: Record<string, string> = {
+  explorer: 'Explorer',
+  catalogue: 'Catalogue',
+  artist: 'Artist',
+  release: 'Release',
+}
+export const SHUFFLE_TOOLTIPS: Record<string, string> = {
+  off: 'Shuffle: Off',
+  release: 'Shuffle: Release',
+  artist: 'Shuffle: Artist',
+  catalogue: 'Shuffle: Catalogue',
+  explorer: 'Explorer mode - click to turn off',
+}
 // Ring-buffer cap for the terminal store's line buffer - a full ./index run can stream 19K+ lines;
 // capping keeps the reactive array (and every component re-scanning it per chunk) bounded (audit #92).
 export const TERMINAL_LINES_CAP = 5000
