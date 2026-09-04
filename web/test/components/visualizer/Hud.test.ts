@@ -58,7 +58,7 @@ describe('visualizer/Hud.vue', () => {
 
   it('drives the transport from the same player store as the bar', async () => {
     const { wrapper, player } = await mountHud()
-    const next = vi.spyOn(player, 'next').mockImplementation(() => {})
+    const next = vi.spyOn(player, 'next').mockResolvedValue(undefined)
 
     await wrapper.get('[aria-label="Next track"]').trigger('click')
 

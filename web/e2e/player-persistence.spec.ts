@@ -65,7 +65,10 @@ test.afterAll(async () => {
 test('the player bar survives a full reload, not just a client-side navigation', async ({ page }) => {
   await page.goto(`/artist/${artistSlug}`)
   await page.getByRole('button', { name: 'Play', exact: true }).first().click()
-  await expect(page.getByText(trackTitle)).toBeVisible()
+  // The mobile player bar mounts alongside the desktop one (CSS-hidden at this desktop viewport,
+  // not removed from the DOM), so a plain getByText matches both bars' identical title text -
+  // .and(':visible') narrows to the one actually on screen.
+  await expect(page.getByText(trackTitle).and(page.locator(':visible'))).toBeVisible()
 
   // stores/player.ts debounces the save to localStorage by 500ms (see the comment on saveState) -
   // reloading before that fires would discard a queue that was never written yet, which is a gap
@@ -80,7 +83,7 @@ test('the player bar survives a full reload, not just a client-side navigation',
   // navigation, unlike a Vue Router push.
   await page.reload()
 
-  await expect(page.getByText(trackTitle)).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText(trackTitle).and(page.locator(':visible'))).toBeVisible({ timeout: 15000 })
   await expect(page.getByRole('button', { name: 'Dismiss player' })).toBeVisible()
 
   // The regression left the persisted state nulled out too, so a second reload would already come

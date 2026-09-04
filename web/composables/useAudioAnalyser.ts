@@ -12,8 +12,8 @@ import { VISUALIZER_FFT_SIZE } from '~/helpers/constants'
 let ctx: AudioContext | null = null
 let source: MediaElementAudioSourceNode | null = null
 let analyser: AnalyserNode | null = null
-let freq: Uint8Array | null = null
-let time: Uint8Array | null = null
+let freq: Uint8Array<ArrayBuffer> | null = null
+let time: Uint8Array<ArrayBuffer> | null = null
 
 export const useAudioAnalyser = () => {
   /**
@@ -68,7 +68,7 @@ export const useAudioAnalyser = () => {
 
   // Returns the same two arrays every frame, refilled in place: at 60fps a fresh pair would be
   // 120 short-lived allocations a second for no benefit.
-  const read = (): { freq: Uint8Array, time: Uint8Array } | null => {
+  const read = (): { freq: Uint8Array<ArrayBuffer>, time: Uint8Array<ArrayBuffer> } | null => {
     if (!analyser || !freq || !time) {
       return null
     }

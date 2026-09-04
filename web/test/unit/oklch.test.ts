@@ -45,7 +45,7 @@ describe('oklchToHueDegrees', () => {
   })
 
   it('keeps every accent theme in its own part of the wheel', () => {
-    const hues = themes.map(t => oklchToHueDegrees(...t.oklch))
+    const hues = themes.map(t => oklchToHueDegrees(t.oklch[0], t.oklch[1], t.oklch[2]))
     expect(new Set(hues.map(Math.round)).size).toBe(themes.length)
     for (const hue of hues) {
       expect(hue).toBeGreaterThanOrEqual(0)
@@ -54,7 +54,10 @@ describe('oklchToHueDegrees', () => {
   })
 
   it('places each accent where its name says it should be', () => {
-    const hueOf = (id: string) => oklchToHueDegrees(...themes.find(t => t.id === id)!.oklch)
+    const hueOf = (id: string) => {
+      const oklch = themes.find(t => t.id === id)!.oklch
+      return oklchToHueDegrees(oklch[0], oklch[1], oklch[2])
+    }
     expect(hueOf('amber')).toBeLessThan(60)
     expect(hueOf('green')).toBeGreaterThan(90)
     expect(hueOf('green')).toBeLessThan(180)
