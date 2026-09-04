@@ -36,7 +36,7 @@ describe('decodeVisualizerPreset', () => {
   })
 
   it('reads a known preset id', () => {
-    expect(decodeVisualizerPreset('tunnel')).toBe('tunnel')
+    expect(decodeVisualizerPreset('buddhabrot')).toBe('buddhabrot')
   })
 
   it('falls back on an id with no shader behind it', () => {
@@ -98,9 +98,9 @@ describe('useVisualizer', () => {
 
   it('ignores an unknown preset rather than storing one with no shader', () => {
     const { preset, setPreset } = useVisualizer()
-    setPreset('tunnel')
+    setPreset('buddhabrot')
     setPreset('milkdrop2' as never)
-    expect(preset.value).toBe('tunnel')
+    expect(preset.value).toBe('buddhabrot')
   })
 
   it('nextPreset walks the switcher order and wraps', () => {
@@ -118,8 +118,8 @@ describe('useVisualizer', () => {
       throw new Error('QuotaExceededError')
     })
 
-    expect(() => setPreset('tunnel')).not.toThrow()
-    expect(preset.value).toBe('tunnel')
+    expect(() => setPreset('buddhabrot')).not.toThrow()
+    expect(preset.value).toBe('buddhabrot')
 
     setItem.mockRestore()
   })

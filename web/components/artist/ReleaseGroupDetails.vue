@@ -154,7 +154,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
         </div>
       </div>
 
-      <div class="hidden w-24 shrink-0 items-center justify-center md:flex">
+      <div class="hidden w-36 shrink-0 items-center justify-center md:flex">
         <Popover v-if="!(isSearching || isDownloading || isEnriching || isAwaitingMerge)" trigger="hover">
           <template #trigger>
             <ReleaseStatusBadge :status="release.status" />

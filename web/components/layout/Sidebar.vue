@@ -36,12 +36,12 @@ const navItems = computed<NavEntry[]>(() => [
   ...(canViewPlaylists.value ? [{ to: '/playlists', label: 'Playlists', icon: ListMusic, count: global.stats.playlists }] : []),
   ...(canViewFavorites.value ? [{ to: '/favorites', label: 'Favorites', icon: Heart, count: global.stats.favorites }] : []),
   ...(canViewDownloads.value ? [{ to: '/downloads', label: 'Downloads', icon: DownloadCloud }] : []),
-  { to: '/labs', label: 'Labs', icon: FlaskConical },
 ])
 
 const footerItems = computed<NavEntry[]>(() => [
   { to: '/statistics', label: 'Statistics', icon: BarChart3 },
   ...(canViewIssues.value ? [{ to: '/issues', label: 'Issues', icon: AlertTriangle, count: global.stats.issues }] : []),
+  { to: '/labs', label: 'Labs', icon: FlaskConical },
   ...(isAdmin.value ? [{ to: '/settings/library', activePath: '/settings', label: 'Settings', icon: Settings }] : []),
   { label: 'Sign out', icon: LogOut, action: logout },
 ])

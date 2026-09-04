@@ -1,5 +1,42 @@
 import { describe, expect, it } from 'vitest'
-import { hueDelta, lerpHue } from '../../helpers/visualizer/hueMorph'
+import { easeSmoothstep, hueDelta, lerpEased, lerpHue } from '../../helpers/visualizer/hueMorph'
+
+describe('easeSmoothstep', () => {
+  it('starts at 0 and ends at 1', () => {
+    expect(easeSmoothstep(0)).toBe(0)
+    expect(easeSmoothstep(1)).toBe(1)
+  })
+
+  it('clamps outside 0-1', () => {
+    expect(easeSmoothstep(-5)).toBe(0)
+    expect(easeSmoothstep(5)).toBe(1)
+  })
+
+  it('is not linear - the midpoint of time is not the midpoint of the curve', () => {
+    expect(easeSmoothstep(0.25)).toBeLessThan(0.25)
+  })
+
+  it('is symmetric around the midpoint', () => {
+    expect(easeSmoothstep(0.5)).toBeCloseTo(0.5, 10)
+  })
+})
+
+describe('lerpEased', () => {
+  it('starts at `from` and ends at `to`', () => {
+    expect(lerpEased(2, 6, 0)).toBeCloseTo(2, 10)
+    expect(lerpEased(2, 6, 1)).toBeCloseTo(6, 10)
+  })
+
+  it('does not wrap - unlike lerpHue, going from a high value to a low one moves down, not around', () => {
+    expect(lerpEased(6, 2, 0.5)).toBeLessThan(6)
+    expect(lerpEased(6, 2, 0.5)).toBeGreaterThan(2)
+  })
+
+  it('eases rather than moving linearly', () => {
+    const quarter = lerpEased(0, 4, 0.25)
+    expect(quarter).toBeLessThan(1)
+  })
+})
 
 describe('hueDelta', () => {
   it('is zero for identical hues', () => {

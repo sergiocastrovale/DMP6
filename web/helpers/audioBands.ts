@@ -55,15 +55,3 @@ export const smoothTowards = (prev: number, next: number, attack: number, releas
 // tiny and their ratio is noise, not signal.
 export const isBeat = (raw: number, baseline: number, ratio: number, floor: number): boolean =>
   raw > floor && raw > baseline * ratio
-
-// Peak caps for a bar visualizer: each bin holds its own maximum and sinks by `fall` bytes per
-// frame until the signal catches it again. Mutates `peaks` in place - it's a per-frame texture
-// upload, so allocating a new array 60 times a second would be pure garbage pressure.
-export const decayPeaks = (peaks: Uint8Array, freq: Uint8Array, fall: number): Uint8Array => {
-  for (let i = 0; i < peaks.length; i++) {
-    const current = freq[i] ?? 0
-    const sunk = Math.max(0, (peaks[i] ?? 0) - fall)
-    peaks[i] = Math.max(current, sunk)
-  }
-  return peaks
-}

@@ -6,12 +6,14 @@ import type { Tone } from '~/types/ui'
 // block. `swatchVar` is that theme's own 400 step, held fixed so the picker's squares keep their
 // own colours whatever theme is active. Persisted client-side only, no DB.
 //
-// `oklch` mirrors that ramp's 400 step exactly as theme.css / themes.css declare it. Only the
-// visualizer needs it: a WebGL shader can't read a CSS custom property, and getComputedStyle
-// serializes these back as `oklch(…)` rather than resolved sRGB, so there is nothing to parse at
-// runtime either. helpers/oklch.ts turns the triple into the HSV hue a shader palette wants -
-// which is a different angle from the oklch one (amber is 75 in oklch, ~40 in HSV), so this must
-// stay the authored triple and never be pre-reduced to a single number.
+// `oklch` mirrors that ramp's 400 step exactly as theme.css / themes.css declare it - a WebGL
+// shader can't read a CSS custom property, and getComputedStyle serializes these back as
+// `oklch(…)` rather than resolved sRGB, so there is nothing to parse at runtime either. No
+// visualizer preset currently reads it (the last one that did, Spectrum's accent()-locked level
+// meter, was replaced - see the Visualizer section below), but the conversion this exists to feed,
+// helpers/oklch.ts's oklchToHueDegrees(), stays: a different angle from the oklch one (amber is 75
+// in oklch, ~40 in HSV) is exactly the kind of thing a future accent-locked preset would need
+// again, so this stays the authored triple rather than being pre-reduced to a single number.
 export const themes = [
   { id: 'amber', label: 'Amber', swatchVar: '--swatch-amber', oklch: [0.78, 0.16, 75] },
   { id: 'green', label: 'Green', swatchVar: '--swatch-green', oklch: [0.78, 0.16, 165] },
@@ -46,8 +48,8 @@ export const THEME_STORAGE_KEY = 'dmp-theme'
 export const visualizerPresets = [
   { id: 'chaos', label: 'Chaos', description: 'Spiraling Julia set on the Mandelbrot boundary, no bass dependence', key: '1' },
   { id: 'fractal', label: 'Fractal', description: 'Kaleidoscopic Julia set orbiting on the bass', key: '2' },
-  { id: 'tunnel', label: 'Tunnel', description: 'Demoscene ring tunnel racing to the beat', key: '3' },
-  { id: 'spectrum', label: 'Spectrum', description: 'Classic FFT bars with peak caps and a scope', key: '4' },
+  { id: 'buddhabrot', label: 'Buddhabrot', description: 'Accumulated density of escaping Mandelbrot orbits, builds up over time', key: '3' },
+  { id: 'julia', label: 'Julia', description: 'Julia set whose power drifts, morphing its symmetry order', key: '4' },
 ] as const
 
 export type VisualizerPresetId = (typeof visualizerPresets)[number]['id']
@@ -58,8 +60,11 @@ export const VISUALIZER_STORAGE_KEY = 'dmp-visualizer'
 // How long the overlay sits still before its HUD fades out. Long enough to read a track title,
 // short enough that the visuals aren't permanently framed by chrome.
 export const VISUALIZER_HUD_IDLE_MS = 3000
-// FFT size fed to the AnalyserNode. 256 bins is the resolution old-school bar visualizers actually
-// used, and halves to a 128-texel spectrum texture - plenty for a shader, cheap to upload per frame.
+// FFT size fed to the AnalyserNode. Halves to 128 frequency bins (`AnalyserNode.frequencyBinCount`)
+// - plenty of resolution for splitBands()/rms() (helpers/audioBands.ts) to derive the three scalar
+// bass/mid/treble bands and overall level every preset actually reads; no preset uploads the raw
+// curve itself any more (the FFT/waveform data textures that once did belonged to presets that
+// have since been replaced - see CLAUDE.md's Visualizer section).
 export const VISUALIZER_FFT_SIZE = 256
 // Shared by the FLAC->MP3 conversion target bitrate and the download source minimum-bitrate filter
 // (both Settings → Downloads dropdowns) - same value set, two different meanings.

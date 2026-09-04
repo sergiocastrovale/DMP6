@@ -397,11 +397,46 @@ that wiped state right back to localStorage, corrupting the next restore too.
 
 Fullscreen WebGL visualizer over whatever is playing. Opened from the player bar (before the volume
 slider), from Explore's header (beside the TV-mode button), or with `v` from anywhere; `Esc` exits.
-Four fragment-shader presets — chaos, fractal, tunnel, spectrum — switchable in the auto-hiding HUD
-or with `1`–`4`/`n`. The chosen preset persists in `localStorage['dmp-visualizer']`. Chaos and
-Fractal are both Julia sets but deliberately unlike each other: Fractal orbits `c` on a clean
-circle with a 6-fold polar fold and an orbit-trap glow, reading as a slow rotating kaleidoscope
-flower. Chaos gets its `c` from `helpers/visualizer/juliaPath.ts` on the CPU, one search per frame,
+Four fragment-shader presets — chaos, fractal, buddhabrot, julia — switchable in the auto-hiding
+HUD or with `1`–`4`/`n`. All four registered in one place, `helpers/constants.ts`'s
+`visualizerPresets` (id/label/description/key) - `Overlay.vue`'s digit shortcuts, `Hud.vue`'s
+buttons and `useVisualizer.ts`'s cycling/persistence are all driven off that array generically, so
+adding or renaming a preset touches only `helpers/constants.ts` and its shader/uniform wiring, never
+those three. `decodeVisualizerPreset` falls back to `chaos` for any unrecognised
+`localStorage['dmp-visualizer']` value, so swapping a preset's id never needs a migration.
+`buddhabrot`/`julia` replaced an earlier `tunnel` (demoscene ring corridor) and `spectrum` (FFT
+bars + oscilloscope) once the preset lineup became fractal-only by design; removing them also
+removed `accent()`/`uHue`, `freeColor()`/`hueBase()`/`uSeed`, and the three FFT/waveform/peak data
+textures (`uSpectrum`/`uWaveform`/`uPeaks`, `helpers/audioBands.ts`'s `decayPeaks`) - nothing left
+in this file reads the accent theme colour or literal audio curves, only the three scalar bands
+(`uBass`/`uMid`/`uTreble`) and level.
+
+Chaos, Fractal and Julia are all Julia sets but deliberately unlike each other. Fractal is one
+centred 6-fold-polar-fold kaleidoscope with an orbit-trap glow, normalised by viewport **height
+only** (not `centered()`'s shorter-edge normalisation) with no wrapping - so on anything wider than
+square it naturally extends past the left/right edges rather than being scaled down to fit inside
+them. (A scattered-multi-copy version, then a horizontally-tiled-repeat version, were both tried and
+reverted - neither was wanted; it's one fractal, cropped by the viewport, not repeated.) Julia
+iterates `z <- z^n + c` with `n` drifting between validated targets (`uJuliaPower`; see
+`pickJuliaTarget()` a few paragraphs down for "validated" and why it matters), so its symmetry order
+visibly changes over time - the thing that makes it a distinct third Julia set next to Chaos's
+dendrite and Fractal's fixed six-fold kaleidoscope. The first cut computed `z^n` directly via polar
+form (`r^n·(cos nθ, sin
+nθ)`, i.e. `atan2` + `pow`) inside the iteration loop every step - mathematically the standard way
+to raise a complex number to a real power, but `atan2` has a genuine branch-cut discontinuity at
+θ=±π, and re-deriving `z^n` from it on every one of 48 iterations re-triggers that cut every step:
+across that many compounding iterations, pixels a hair apart at the start could land on opposite
+sides of the cut at different steps and diverge completely, which read as literal tears sheared
+across the whole frame, not the hoped-for organic filigree - a real bug the user caught, not a
+matter of taste. There is no smooth version of a genuinely fractional complex power; the fix
+instead is `zpow()`/`juliaField()` in the shader: raise `z` to an *integer* power via repeated
+complex multiplication (pure polynomial, no `atan` anywhere, hence no branch cut, ever), run the
+full escape iteration once at `floor(n)` and once at `ceil(n)` - two clean, independent, cut-free
+Julia sets one integer apart - and cross-fade their escape/trap fields by `fract(n)`. That isn't a
+literal `z^5.5`; it draws the real power-5 and power-6 sets and blends how brightly each pixel
+reads between them, which looks like a continuous morph with none of the artifact - the standard
+real-time technique for animating a Multibrot's power. Chaos gets its `c` from
+`helpers/visualizer/juliaPath.ts` on the CPU, one search per frame,
 and the invariant that search enforces is the whole preset: **`c` must land just outside the
 Mandelbrot set**. Inside it, the filled Julia set has interior, which renders as one flat slab of
 colour that fills the screen as soon as you zoom — the "giant blob". Just outside, there is no
@@ -416,23 +451,151 @@ every pixel. The view spins while it breathes in and out (bounded, not a one-way
 eventually blow through float precision left open a while) — that's the "spiraling into infinity"
 motion. Chaos's whole camera transform (zoom, spin) is audio-blind by design - it used to swell
 zoom with loudness, which made the frame visibly jump in scale on every snare/kick hit. Its colour
-is its own thing too, not Fractal/Tunnel's shared `freeColor()`/`hueBase()` drift: at the speed
-Chaos's shape already moves, that drift read as the colour jumping rather than gliding. Instead
-`components/visualizer/Canvas.vue` runs an explicit CPU-side hue morph
-(`helpers/visualizer/hueMorph.ts`) - ease from one random hue to another over a random 5-11s, then
+is its own thing: `components/visualizer/Canvas.vue` runs an explicit CPU-side hue morph
+(`helpers/visualizer/hueMorph.ts`) - ease from one random hue to another over a random 5-9s, then
 pick the next target and repeat - uploaded as `uChaosHue`, read by `chaosColor()` in the shader.
+Chaos's palette is 3-5 anchors spread evenly round the wheel off that one morphed hue (ground:
+dark/saturated, mid: pale filigree, core: hot highlight - `uChaosPalette`, re-rolled alongside the
+hue target), composited by `chaosMix()` keyed on escape depth/trap proximity rather than additive
+layering - additive layering was tried first and is why every region still read as one dominant
+colour with thin accents; mixing resolves each pixel toward one anchor, the way a real
+orbit-trap-coloured fractal render does. `chaosColor()`/`chaosRole()`/`chaosAnchor()`/`chaosMix()`
+live in the shared, exported `PRELUDE` (not inside Chaos's own preset string) precisely so Fractal,
+Julia and Buddhabrot's present pass can all reuse the identical strategy off the *same*
+`uChaosHue`/`uChaosPalette` state Chaos drifts, so switching between any of the four presets stays
+visually continuous rather than jumping to an unrelated palette.
 
-Fractal is the only preset still wired to `uBass` (its shape and zoom both read it directly), and
-that used to mean it reacted to every single kick. `components/visualizer/Canvas.vue` gates that:
+Fractal's `c` also walks Chaos's own boundary path (`helpers/visualizer/juliaPath.ts`), eased
+between two random points on it over a random 7-14s (`FRACTAL_MORPH_MIN_S`/`MAX_S` in `Canvas.vue`,
+the same `lerpHue`-eased A-to-B idiom Chaos's hue morph uses, just applied to a path phase) - that's
+the "seamlessly transitions to another fractal" shape change, independent of Chaos's own continuous
+`JULIA_SWEEP` crawl along the same path. Unlike Chaos, Fractal *wants* interior sometimes (that's
+what its orbit-trap glow textures), so a straight interpolation between two path points briefly
+dipping inside the set during a transition just reads as a kaleidoscope petal closing up, not a bug.
+Julia's own `c` used to orbit a plain live circle instead (radius grows with `n`, bass nudges the
+angle, mid the radius - the design Fractal itself used before Fractal moved onto Chaos's boundary
+path), but that circle's radius (0.35-0.8) turned out to sit squarely in the regime where a Julia
+set is mostly interior: c=0 is the *exact* unit disk, entirely interior, and every |c| that small
+stays close enough to that regime that huge connected areas of the visible frame land inside the
+filled set - one flat colour filling the screen, a real bug the user caught with a screenshot, not
+a matter of taste. A numeric sweep (not intuition - a naive "did every probe fail to escape" check
+never found a near-100% blob anywhere in that radius range) traced the actual mechanism to the
+shader's own structure/colour formula: it saturates to a single constant (`chaosMix()` picks the
+same anchor) for any point whose smooth escape value climbs past roughly 0.6, which a much wider
+swath of the frame does at small `|c|` even though most of those points technically do escape
+eventually - the bug was never really about points literally getting stuck. `c` and `n` are now
+both picked together and validated on the CPU by `helpers/visualizer/juliaField.ts`'s
+`pickJuliaTarget()` - the same idea as Chaos/Fractal's boundary-path validation, adapted to Julia's
+own iteration and to probing a whole grid across the visible frame rather than one curve, since
+Julia's `z` starts at the pixel's own position, not always the origin the way a Mandelbrot-style
+search assumes. The view itself is also tighter than the original (`JULIA_VIEW_SCALE = 0.35`,
+`c`'s radius restricted to `[JULIA_RADIUS_MIN, JULIA_RADIUS_MAX] = [0.75, 1.05]`, both found by the
+same sweep) - a wide flat view of a valid Julia dendrite reads as sparse/empty regardless of `c`,
+the same reason Chaos's own zoom is "0.5x to 5x" rather than one flat wide shot. The picked target
+holds still for a random 5-12s, then eases to a freshly-picked one over a few seconds -
+`Canvas.vue`'s `juliaHoldUntil`/`juliaFrom`/`juliaTo`, no beat involved, just a timer; a beat-gated
+version (wait for the next kick after the hold elapses) was built and then explicitly asked to be
+removed in favour of this simpler always-on-a-timer version.
 
-Fractal is the only preset still wired to `uBass` (its shape and zoom both read it directly), and
-that used to mean it reacted to every single kick. `components/visualizer/Canvas.vue` gates that:
-`isBeat()` (`helpers/audioBands.ts`) flags a real onset (bass clearing both a ratio over its own
-rolling baseline and an absolute floor, so a quiet verse's kicks still register), and the bass
-value actually sent to Fractal's shader is held constant except right after a beat that lands once
-a random 5-9s freeze window has elapsed - a quiet stretch, one clean jump on the beat, then quiet
-again, instead of continuous jitter. Tunnel and Spectrum's own smaller `uBass` touches are
-untouched.
+Fractal is the only preset still wired to `uBass` at all (its shape/zoom reads it directly) - Julia
+used to as well (bass nudged its old live orbit's angle) until that whole orbit was replaced by the
+validated target picker above, and Buddhabrot never has. Fractal reacting to `uBass` used to mean
+it reacted to every single kick. `components/visualizer/Canvas.vue` gates that: `isBeat()`
+(`helpers/audioBands.ts`) flags a real onset (bass clearing both a ratio over its own rolling
+baseline and an absolute floor, so a quiet verse's kicks still register), and the bass value
+actually sent to Fractal's shader is held constant except right after a beat that lands once a
+random 5-9s freeze window has elapsed - a quiet stretch, one clean jump on the beat, then quiet
+again, instead of continuous jitter. `isBeat()`'s only remaining use in this file is that one
+gate - the "wait for the next beat" idea was tried for Julia/Buddhabrot's own target changes too
+and explicitly asked to be removed in favour of a plain timer, so nothing else in the visualizer
+reads a beat at all.
+
+**Buddhabrot** (`helpers/visualizer/buddhabrot.ts`) is structurally unlike the other three: a
+histogram of escaping Mandelbrot orbits' *trajectories*, which isn't a function of a pixel's own
+position, so it can't be one fragment shader like the rest - it's this app's first render-to-texture
+use, first blending, first multi-frame GPU state, and `renderer.ts` only ever calls its four exported
+functions (`resize`/`draw`/`reset`/`dispose`), never touching its GL state directly.
+
+**Nothing may be plotted until an orbit is known to escape.** That is the whole algorithm, and the
+one thing every earlier version of this file got wrong. Canonically: iterate `z <- z² + c` to
+`maxIter` plotting *nothing*, and only if it escaped, re-run it and plot every step. Interior orbits
+must contribute exactly zero - that is what leaves the set's interior a void and makes the
+silhouette hollow. The original design instead plotted orbits *as they iterated*, guarded only by a
+50-iteration Mandelbrot-membership test inside the GPU reseed. 50 iterations does not remotely
+resolve a near-boundary `c`, which is precisely what reseeding draws, so interior and near-periodic
+orbits were admitted constantly and each then splatted for its whole ~400-frame lifetime - depositing
+density exactly where the image has to stay black. That is the *anti*-Buddhabrot filling in the void,
+and it rendered as an opaque cloud with no structure whatsoever. Several rounds of exposure, decay,
+palette and seed-entropy tuning each changed the colour of the mush and none produced a shape,
+because by then the wrong points are already in the buffer.
+
+The fix moves the test to where it can be done properly. `helpers/visualizer/buddhabrotMath.ts`'s
+`generateSeedPool()` builds seeds on the CPU, iterating each candidate to `SEED_MAX_ITER` (2000) and
+keeping only those escaping with a count of at least `SEED_MIN_ESCAPE` (40 - below that a `c` is far
+outside and draws a short featureless arc). Crucially it **quantises before verifying**
+(`quantizeStateValue`/`stateLevel`, the exact JS mirror of the GLSL codec, `Math.fround` included):
+near the boundary a 1e-4 nudge moves an escaping `c` inside the set, so the value proven to escape
+must be the value the GPU actually iterates, not a float64 near-miss of it. Because every live `c`
+provably escapes, plotting an orbit as it iterates is *mathematically identical* to the canonical
+replay pass - the test simply already happened, once per seed, on the CPU. Escape is then the only
+thing that ends an orbit; `SAFETY_RESEED_PROB` (1/900) survives purely as a backstop against
+fixed-point drift on the fallback path, far too rare to bias the histogram. The pool reaches the GPU
+through `VisualizerFrame.buddhabrotSeeds` and is refilled a slice per frame in `Canvas.vue`
+(`BUDDHABROT_SEEDS_PER_FRAME`), which both amortises the verification cost and keeps rotating which
+constants are in play.
+
+Passes per frame: **advance** (one `z <- z² + c` step per live sample, ping-ponged between two state
+texture pairs - `z` and `c` each get their own, since a fragment shader can't write two targets
+without MRT, so both passes recompute the identical escape verdict from identical inputs; on escape
+the texel reseeds from the pool), **splat** (one `gl.POINTS` vertex per state texel, additively
+blended into a canvas-proportioned accumulation texture - `O(live samples)` per frame, deliberately
+not the `O(samples × orbit length)` "re-iterate the whole orbit every frame" scheme, tried and
+rejected for that quadratic blowup - drawn **twice**, the second time mirrored in the real axis,
+which the Buddhabrot is symmetric about, for a free doubling of effective samples), **decay**
+(always on, not fallback-only - see below), and **present** (log tonemap + the shared `chaosMix()`
+palette).
+
+**Motion.** The sampled region Canvas.vue draws seeds from walks Chaos's own boundary path
+continuously, every frame (`BUDDHABROT_SWEEP`, `= JULIA_SWEEP * 5`) - the same idiom as Chaos's own
+`uJuliaC` - rather than holding still and jumping. Holding still for 60-120s and jumping, with the
+accumulation integrating with no decay at all so detail could keep sharpening indefinitely, was the
+original design and was explicitly rejected: once a histogram is a few seconds old it barely changes
+frame to frame, so the whole preset read as a slideshow of static photographs popping to a new one
+occasionally, not something alive the way Chaos's continuously-morphing dendrite is. `DECAY_HALF_LIFE_S`
+(2.5s, always applied now - not RGBA8-fallback-only as an earlier version of this file had it) is
+short specifically so the accumulated image can actually follow that continuous drift instead of
+blurring into an average of everywhere it has ever pointed; the seed pool in Canvas.vue fully turns
+over in about a second for the same reason, tracking the region rather than lagging it.
+
+Two more things the references made unavoidable. **The projection must be aspect-corrected**
+(`projectionScale()`): clip space maps to each viewport axis independently, so a single shared
+divisor stretches the entire plane by the canvas aspect - on a 2.4:1 canvas that smears the
+silhouette 2.4× wide and no colour tuning can make it recognisable. `VIEW_SCALE` frames the short
+edge at `1.45 / 4` - 4x tighter than the silhouette's own full extent, deliberately overflowing the
+frame per request, rather than the whole shape sitting centred with room around it. **And the
+accumulation must hold real dynamic range**: the reference renders span orders of magnitude between
+core and filaments, while RGBA8 holds only 256 levels; a per-frame decay on top of that pins every
+pixel to a steady state proportional to its hit rate, compressing everything into a handful of
+levels of flat mush. Where WebGL2 + `EXT_color_buffer_float` allow it, this accumulates into
+`RGBA32F`/`RGBA16F` instead (`EXT_float_blend` and `OES_texture_float_linear` gate which of those,
+and whether the result is filterable - see `detectFloatSupport()`), which holds enough range that
+the same short decay still resolves real filament detail instead of banding.
+`estimateNormalisation()` predicts the hottest density from elapsed frames and the decay factor
+(rather than a pipeline-stalling `readPixels` or a reduction pass) and `logTone()`'s curve lifts the
+faint filaments against it - linear exposure cannot render this image, it either clips the core flat
+or leaves the filaments at zero. Audio touches exposure only, never the density field - same
+reasoning as Chaos's audio-blind camera.
+
+This module is the only thing in the app that ever turns blending on or touches a non-default
+framebuffer, so its `draw()` must leave blending disabled and the default framebuffer/full-canvas
+viewport restored on every return - no other preset resets that state itself, they all just assume
+it. `createBuddhabrotPass()` returns `null` (checked via `checkFramebufferStatus` on its render
+targets, and `MAX_VERTEX_TEXTURE_IMAGE_UNITS` for the splat pass's per-vertex texture read) if this
+GPU can't support it, and `renderer.ts` falls back to a single-pass
+Mandelbrot-with-orbit-trap-glow approximation compiled from the normal `FRAGMENT_SHADERS.buddhabrot`
+entry - the same subject, same shared palette, degrading to "the same preset, softer" rather than a
+black screen. The RGBA8 + 16-bit-fixed-point path is a complete second tier below that, decay
+included: it cannot look like the references, but it renders.
 
 - **The Web Audio tap is one-shot and permanent.** `composables/useAudioAnalyser.ts` holds
   module-level `AudioContext`/`MediaElementAudioSourceNode`/`AnalyserNode` singletons because
@@ -451,8 +614,6 @@ untouched.
 - `prefers-reduced-motion` is honoured in `components/visualizer/Canvas.vue` by damping the clock —
   `main.css`'s app-wide reduced-motion block only neutralises CSS animation and cannot reach a
   `requestAnimationFrame` loop.
-- Accent colour reaches the shader as `themes[].hue` (`helpers/constants.ts`), not a parsed CSS
-  variable: `getComputedStyle` serializes the ramp back as `oklch(…)`, not resolved sRGB.
 
 ## Caching (Redis)
 

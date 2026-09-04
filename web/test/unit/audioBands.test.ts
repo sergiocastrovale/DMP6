@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decayPeaks, isBeat, rms, smoothTowards, splitBands } from '../../helpers/audioBands'
+import { isBeat, rms, smoothTowards, splitBands } from '../../helpers/audioBands'
 
 // Frequency data shaped so each band's slice of the array is a different constant - lets the
 // assertions name an expected value rather than just "bass > mid". The bounds are the floored
@@ -67,25 +67,6 @@ describe('smoothTowards', () => {
       value = smoothTowards(value, 1, 0.5, 0.1)
     }
     expect(value).toBeCloseTo(1, 5)
-  })
-})
-
-describe('decayPeaks', () => {
-  it('latches a new maximum immediately', () => {
-    const peaks = new Uint8Array([0, 0, 0])
-    decayPeaks(peaks, new Uint8Array([200, 10, 0]), 3)
-    expect(Array.from(peaks)).toEqual([200, 10, 0])
-  })
-
-  it('sinks by the fall rate once the signal drops, and never below zero', () => {
-    const peaks = new Uint8Array([10, 1])
-    decayPeaks(peaks, new Uint8Array([0, 0]), 3)
-    expect(Array.from(peaks)).toEqual([7, 0])
-  })
-
-  it('mutates in place - the array is a per-frame texture upload, not a fresh allocation', () => {
-    const peaks = new Uint8Array([5])
-    expect(decayPeaks(peaks, new Uint8Array([100]), 1)).toBe(peaks)
   })
 })
 
