@@ -79,6 +79,13 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: mkdir -p /tmp/music
+      # e2e/audio.spec.ts's range-request test needs a real file on disk at this exact path (its
+      # DB fixture's filePath) - the handler 404s with no ETag before either assertion otherwise.
+      # Content doesn't need to be a decodable MP3, just >=100 bytes for the Range: bytes=0-99 slice.
+      - name: Seed the audio range-request fixture file
+        run: |
+          mkdir -p "/tmp/music/'68/EP/2020 - Love is Ain't Dead. (EP)"
+          head -c 4096 /dev/urandom > "/tmp/music/'68/EP/2020 - Love is Ain't Dead. (EP)/03 - Rock On.mp3"
       - run: pnpm db:generate
       - run: pnpm db:push
       - run: pnpm db:seed
