@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { Loader2, LockOpen } from 'lucide-vue-next'
+import { Loader2, Maximize } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
 import { parseProgress } from '~/helpers/functions'
 import { commandLabels } from '~/helpers/constants'
 import { ICON_STROKE_WIDTH } from '~/helpers/ui'
+import type { ToastSize } from '~/types/ui'
+
+const props = withDefaults(defineProps<{ size?: ToastSize }>(), { size: 'lg' })
+
+const WIDTH: Record<ToastSize, string> = { sm: 'w-72', md: 'w-80', lg: 'w-[26rem]' }
+const MAX_LINES: Record<ToastSize, number> = { sm: 1, md: 1, lg: 6 }
 
 const terminal = useTerminalStore()
-const settings = useSettingsStore()
-
-const visible = computed(() => !settings.showTerminal && terminal.isRunning)
 
 const progress = computed(() => parseProgress(terminal.lines))
 
@@ -30,10 +33,11 @@ const label = computed(() => {
   return (terminal.currentCommand && commandLabels[terminal.currentCommand]) || 'Running…'
 })
 
-const lastLine = computed(() => {
-  const lines = terminal.lines.filter(l => typeof l === 'string' && !l.startsWith('PROGRESS:'))
-  const last = lines[lines.length - 1]
-  return typeof last === 'string' ? (last.startsWith('\r') ? last.slice(1) : last) : ''
+const recentLines = computed(() => {
+  const lines = terminal.lines
+    .filter(l => typeof l === 'string' && !l.startsWith('PROGRESS:'))
+    .map(l => (l.startsWith('\r') ? l.slice(1) : l))
+  return lines.slice(-MAX_LINES[props.size])
 })
 </script>
 
@@ -47,18 +51,27 @@ const lastLine = computed(() => {
     leave-to-class="translate-y-2 opacity-0"
   >
     <div
-      v-if="visible"
-      class="fixed bottom-24 right-4 z-50 w-80 rounded-lg border border-stone-100/10 bg-stone-900 p-3 shadow-lg"
+      v-if="terminal.isToastVisible"
+      class="fixed bottom-24 right-4 z-50 rounded-lg border border-stone-100/10 bg-stone-900 p-3 shadow-lg"
+      :class="WIDTH[size]"
     >
       <div class="flex items-center justify-between gap-2">
         <div class="flex min-w-0 items-center gap-2">
           <Loader2 :size="14" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 animate-spin text-amber-400" />
+          
           <span class="truncate text-xs font-medium text-stone-100/60">{{ label }}</span>
+          
+          <span v-if="determinate" class="mr-2 shrink-0 text-2xs text-stone-100/55 tabular-nums">
+            ({{ progress!.current }}/{{ progress!.total }})
+          </span>
         </div>
-        <div class="flex items-center gap-2">
-          <span v-if="determinate" class="shrink-0 text-xs text-stone-100/55 tabular-nums">{{ progress!.current }} / {{ progress!.total }}</span>
-          <UiButtonStop icon-only />
-        </div>
+        
+        <TerminalActions
+          toggle-label="Expand"
+          :toggle-icon="Maximize"
+          @toggle="terminal.expand()"
+          @stop="terminal.stopAndClose()"
+        />
       </div>
 
       <div class="mt-2">
@@ -68,18 +81,11 @@ const lastLine = computed(() => {
         </div>
       </div>
 
-      <p v-if="lastLine" class="mt-2 truncate font-mono text-2xs leading-4 text-stone-100/55">{{ lastLine }}</p>
+      <div v-if="recentLines.length" class="mt-2 space-y-0.5 font-mono text-2xs leading-4 text-stone-100/55">
+        <p v-for="(line, i) in recentLines" :key="i" class="truncate">{{ line }}</p>
+      </div>
 
-      <UiButton
-        v-if="terminal.hasLockError"
-        variant="danger"
-        size="sm"
-        :icon="LockOpen"
-        class="mt-2"
-        @click="terminal.unlock()"
-      >
-        Force unlock
-      </UiButton>
+      <TerminalForceUnlock class="mt-2" />
     </div>
   </Transition>
 </template>

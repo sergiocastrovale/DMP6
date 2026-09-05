@@ -1,14 +1,6 @@
 import { defineStore } from 'pinia'
-import { useSettingsStore } from '~/stores/settings'
 import { useTerminalStore } from '~/stores/terminal'
-import type { ActiveDownload, DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth, MergeStep, MergeProgressMap } from '~/types/download'
-
-const MERGE_STEPS: MergeStep[] = ['moving', 'indexing', 'syncing']
-const MERGE_STEP_LABELS: Record<MergeStep, (title: string) => string> = {
-  moving: title => `Moving "${title}" to library…`,
-  indexing: title => `Indexing "${title}"…`,
-  syncing: title => `Syncing "${title}"…`,
-}
+import type { ActiveDownload, DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth } from '~/types/download'
 
 export const useDownloadsStore = defineStore('downloads', () => {
   const slskd = ref<DownloadSourceStatus>({ configured: false, connected: false })
@@ -37,15 +29,12 @@ export const useDownloadsStore = defineStore('downloads', () => {
   // Host SongKong drainer liveness — explains why rows sit in ENRICHING (see EnrichmentStalledBanner).
   const songkong = ref<SongkongHealth | null>(null)
 
-  // Merge progress (server-driven, so it persists across tab switches + page refresh).
-  const mergeProgress = ref<MergeProgressMap>({})
-  const mergeInitiated = ref<Set<string>>(new Set()) // optimistic per-row/selected ids (instant spinner, lag-free count)
-  const mergeBatchRunning = ref(false) // batched "Merge all" request is in flight (opaque, server-tracked)
-  const mergeTotal = ref(0) // batch size for the X-of-Y denominator
+  // Optimistic per-row/selected ids, set while a merge (always terminal-routed) is in flight -
+  // instant spinner, lag-free count.
+  const mergeInitiated = ref<Set<string>>(new Set())
 
-  // Per-row merge-button spinner: union of locally-initiated + server-reported ids.
-  const mergingIds = computed(() => new Set([...mergeInitiated.value, ...Object.keys(mergeProgress.value)]))
-  const mergeActive = computed(() => mergingIds.value.size > 0 || mergeBatchRunning.value)
+  const mergingIds = computed(() => mergeInitiated.value)
+  const mergeActive = computed(() => mergingIds.value.size > 0)
 
   // Is there anything live to watch? Downloads finalizing (reconcile runs even while paused), a merge in
   // flight, or acquisition able to spawn new downloads any tick. When NONE of these hold there's nothing
@@ -57,41 +46,7 @@ export const useDownloadsStore = defineStore('downloads', () => {
     hasInFlight.value || mergeActive.value || (!paused.value && !!acquisition.value?.canAcquire),
   )
 
-  // In-flight item count: the per-row/selected path knows it precisely; the batched path relies on the
-  // server map, falling back to "nothing done yet" during the poll-lag windows at start/end.
-  const mergeInFlightCount = computed(() => {
-    if (mergeInitiated.value.size > 0) {
-      return mergeInitiated.value.size
-    }
-    const mapCount = Object.keys(mergeProgress.value).length
-    if (mapCount > 0) {
-      return mapCount
-    }
-    return mergeBatchRunning.value ? mergeTotal.value : 0
-  })
-
-  const mergeStepIndex = (step: MergeStep) => MERGE_STEPS.indexOf(step)
-  const mergeLabel = computed(() => {
-    const entries = Object.values(mergeProgress.value)
-    if (!entries.length) {
-      return null
-    }
-    const highest = entries.reduce((a, b) => mergeStepIndex(a.step) >= mergeStepIndex(b.step) ? a : b)
-    return MERGE_STEP_LABELS[highest.step](highest.title)
-  })
-  const mergePercent = computed(() => {
-    const total = mergeTotal.value * 3
-    if (!total) {
-      return 0
-    }
-    const doneItems = mergeTotal.value - mergeInFlightCount.value
-    const doneSteps = doneItems * 3
-    const inFlightSteps = Object.values(mergeProgress.value).reduce((sum, p) => sum + mergeStepIndex(p.step), 0)
-    return Math.round(Math.min(Math.max(doneSteps + inFlightSteps, 0) / total * 100, 99))
-  })
-
   let pollInterval: ReturnType<typeof setInterval> | null = null
-  let mergePollTimer: ReturnType<typeof setInterval> | null = null
   let queuePollTimer: ReturnType<typeof setInterval> | null = null
 
   const activeCount = computed(() =>
@@ -242,78 +197,28 @@ export const useDownloadsStore = defineStore('downloads', () => {
     await fetchQueue()
   }
 
-  const fetchMergeProgress = async () => {
-    try {
-      mergeProgress.value = await $fetch<MergeProgressMap>('/api/downloads/merge-progress')
-    }
-    catch { /* ignore */ }
-    // Refresh-recovery: a merge running server-side with no local total -> seed it so the panel renders.
-    const active = Object.keys(mergeProgress.value).length
-    if (active > 0 && mergeTotal.value === 0) {
-      mergeTotal.value = active
-    }
-    if (active === 0 && mergeInitiated.value.size === 0) {
-      mergeTotal.value = 0
-    }
-  }
-
-  const stopMergePolling = () => {
-    if (mergePollTimer) {
-      clearTimeout(mergePollTimer)
-      mergePollTimer = null
-    }
-  }
-
-  // Demand-driven: poll merge-progress ONLY while a merge is actually in flight, then stop. Idempotent.
-  // Avoids the endless idle merge-progress requests — nothing polls until a merge starts (or one is
-  // already running on load), and it self-stops one tick after the merge finishes.
-  const startMergePolling = () => {
-    if (mergePollTimer) {
-      return
-    }
-    const tick = async () => {
-      await fetchMergeProgress()
-      if (mergeActive.value) {
-        mergePollTimer = setTimeout(tick, 2000)
-      }
-      else {
-        mergePollTimer = null
-      }
-    }
-    mergePollTimer = setTimeout(tick, 2000)
-  }
-
-  // showTerminal=true routes merges through the terminal sidebar (one SSE stream per batch) instead of
-  // the merge-progress panel; the merge-progress map is still updated server-side but nothing polls it.
+  // Every merge streams through the terminal (toast by default, expandable to the sidebar) - one
+  // normalized pattern for all terminal-invoking actions. `mergeInitiated` tracks the ids in flight
+  // for this call so per-row/selection-bar busy state and mergeActive work the same for a single
+  // merge as for a batch.
   const mergeViaTerminal = async (ids: string[]) => {
     if (!ids.length) {
       return
     }
+    mergeInitiated.value = new Set([...mergeInitiated.value, ...ids])
     try {
       await useTerminalStore().runStream('/api/downloads/merge-stream', { ids }, 'merge', 'Merging…')
     }
     finally {
+      const next = new Set(mergeInitiated.value)
+      ids.forEach(id => next.delete(id))
+      mergeInitiated.value = next
       await fetchQueue()
     }
   }
 
   // Concurrent: many merges can be in flight at once, each tracked independently.
-  const merge = async (id: string) => {
-    if (useSettingsStore().showTerminal) {
-      return mergeViaTerminal([id])
-    }
-    mergeInitiated.value = new Set(mergeInitiated.value).add(id)
-    startMergePolling()
-    try {
-      await $fetch(`/api/downloads/merge/${id}`, { method: 'POST' })
-    }
-    finally {
-      const next = new Set(mergeInitiated.value)
-      next.delete(id)
-      mergeInitiated.value = next
-      await fetchQueue()
-    }
-  }
+  const merge = async (id: string) => mergeViaTerminal([id])
 
   // Multi-select merge: route through the batched merge-all endpoint (one index pass + one sync per
   // distinct artist) instead of fanning out N individual merge/[id] calls (N index+sync spawns,
@@ -336,21 +241,8 @@ export const useDownloadsStore = defineStore('downloads', () => {
     return rejected
   }
   const mergeAll = async (ids: string[]): Promise<{ merged: number; errors: string[] }> => {
-    if (useSettingsStore().showTerminal) {
-      await mergeViaTerminal(ids)
-      return { merged: 0, errors: [] }
-    }
-    mergeTotal.value = ids.length
-    mergeBatchRunning.value = true // keep panel visible through the poll-lag windows
-    startMergePolling()
-    try {
-      return await $fetch<{ merged: number; errors: string[] }>('/api/downloads/merge-all', { method: 'POST', body: { ids } })
-    }
-    finally {
-      mergeBatchRunning.value = false
-      mergeTotal.value = 0
-      await fetchQueue()
-    }
+    await mergeViaTerminal(ids)
+    return { merged: 0, errors: [] }
   }
 
   // Sweep ready-to-merge orphans (staged files gone) + dangling/terminal rows whose release is no
@@ -395,15 +287,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
     rejectAll,
     mergeAll,
     cleanupReady,
-    mergeProgress,
     mergingIds,
     mergeActive,
-    mergeLabel,
-    mergePercent,
     mergeSelected,
-    fetchMergeProgress,
-    startMergePolling,
-    stopMergePolling,
     startQueuePolling,
     stopQueuePolling,
   }

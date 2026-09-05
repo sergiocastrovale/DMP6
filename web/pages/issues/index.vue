@@ -25,7 +25,6 @@ watch(() => terminal.exitCode, (code) => {
 
 function runAudit() {
   terminal.run('./audit', [], 'audit')
-  terminal.open()
 }
 
 async function fetchHistoryCount() {

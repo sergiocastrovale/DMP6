@@ -5,6 +5,5 @@ export default defineEventHandler(() => {
   return {
     imageStorage: s.imageStorage,
     storagePublicUrl: s.storagePublicUrl,
-    showTerminal: s.showTerminal,
   }
 })

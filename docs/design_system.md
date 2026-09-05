@@ -676,10 +676,11 @@ Matched against `09-issues*.png`.
   (`issues/{SelectionBar,RevertSelectionBar,HistorySelectionBar}.vue` here, plus
   `downloads/SelectionBar.vue` which moves onto it in Stage 12). All four had drifted: a stale
   `lg:left-56` (224px) held over from before the sidebar became 240px wide (Stage 3), and each
-  reacted to `terminal.isOpen` alone where the shell itself only reserves the drawer's 500px when
-  `terminal.isOpen && settings.showTerminal` - so a bar could shrink itself for a terminal that
-  wasn't actually visible. Both are real, not cosmetic: the offset was 16px short of the sidebar
-  edge, and the second was a visible empty gap whenever `showTerminal` was off.
+  reacted to a sidebar-open flag alone where the shell itself only reserves the drawer's 500px when
+  the sidebar is actually the visible terminal view (today: `terminal.isSidebarVisible`) - so a bar
+  could shrink itself for a terminal that wasn't actually visible. Both are real, not cosmetic: the
+  offset was 16px short of the sidebar edge, and the second was a visible empty gap whenever the
+  terminal was showing as a toast instead.
 - **`HistoryContent.vue`'s hand-rolled tab bar is now `Subtabs`** (the shared component
   `TypeContent.vue` already used) instead of a second implementation of the exact same
   underline-tab-with-count-pill pattern; its table moves onto `SlimTable`/`UiCheckbox` like

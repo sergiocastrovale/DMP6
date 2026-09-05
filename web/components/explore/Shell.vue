@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Maximize, Minimize } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
 import { cx, layout } from '~/helpers/ui'
 

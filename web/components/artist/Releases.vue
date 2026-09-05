@@ -203,7 +203,6 @@ async function confirmCancelDownload() {
 
 function refreshRelease(edition: UnifiedRelease) {
   terminal.run('./refresh', ['--release', edition.localReleaseId!, '--overwrite'], scanSessionName('refresh-release', edition.localReleaseId!))
-  terminal.open()
 }
 
 async function openInfoDialog(edition: UnifiedRelease) {

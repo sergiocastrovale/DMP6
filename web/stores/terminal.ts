@@ -3,14 +3,13 @@ import { useGlobalStore } from '~/stores/global'
 import { appendTerminalLine, parseDoneExitCode, parseSseEvents } from '~/helpers/sse'
 
 export const useTerminalStore = defineStore('terminal', () => {
-  const isOpen = ref(false)
+  const viewMode = ref<'toast' | 'sidebar'>('toast')
+  const dismissed = ref(false)
   const isRunning = ref(false)
   const lines = ref<string[]>([])
   const exitCode = ref<number | null>(null)
   const currentSession = ref<string | null>(null)
   const currentCommand = ref<string | null>(null)
-
-  const hasBackground = computed(() => isRunning.value && !isOpen.value)
 
   let abortController: AbortController | null = null
 
@@ -18,7 +17,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     lines.value = []
     exitCode.value = null
     isRunning.value = true
-    isOpen.value = true
+    dismissed.value = false
+    viewMode.value = 'toast'
 
     abortController = new AbortController()
 
@@ -98,12 +98,12 @@ export const useTerminalStore = defineStore('terminal', () => {
     return streamSSE(url, body)
   }
 
-  function open() {
-    isOpen.value = true
+  function expand() {
+    viewMode.value = 'sidebar'
   }
 
-  function close() {
-    isOpen.value = false
+  function minimize() {
+    viewMode.value = 'toast'
   }
 
   // Stops THIS session only. Does not touch the global scan lock - stop.post.ts only clears it when
@@ -131,6 +131,21 @@ export const useTerminalStore = defineStore('terminal', () => {
     && lines.value.some(l => typeof l === 'string' && l.includes('lock held')),
   )
 
+  async function stopAndClose() {
+    if (isRunning.value) {
+      await stop()
+    }
+    dismissed.value = true
+  }
+
+  const isSidebarVisible = computed(() =>
+    viewMode.value === 'sidebar' && !dismissed.value && (isRunning.value || exitCode.value !== null),
+  )
+
+  const isToastVisible = computed(() =>
+    viewMode.value === 'toast' && !dismissed.value && (isRunning.value || hasLockError.value),
+  )
+
   async function unlock() {
     try {
       await fetch('/api/terminal/unlock', { method: 'POST' })
@@ -141,5 +156,24 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
 
-  return { isOpen, isRunning, lines, exitCode, currentSession, currentCommand, hasBackground, hasLockError, run, runStream, reconnect, open, close, stop, unlock }
+  return {
+    viewMode,
+    dismissed,
+    isRunning,
+    lines,
+    exitCode,
+    currentSession,
+    currentCommand,
+    hasLockError,
+    isSidebarVisible,
+    isToastVisible,
+    run,
+    runStream,
+    reconnect,
+    expand,
+    minimize,
+    stop,
+    stopAndClose,
+    unlock,
+  }
 })

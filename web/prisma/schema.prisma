@@ -491,8 +491,6 @@ model Settings {
   lastfmSecret           String?
   lastfmSessionKey       String?
   lastfmUsername         String?
-  // UI (null = use env/default)
-  showTerminal           Boolean? // show raw terminal sidebar instead of the friendly progress panel
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 }

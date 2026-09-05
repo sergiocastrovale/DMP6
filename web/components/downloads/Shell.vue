@@ -5,9 +5,8 @@ import type { TabItem } from '~/types/ui'
 import { cx, layout } from '~/helpers/ui'
 
 const store = useDownloadsStore()
-const settings = useSettingsStore()
 const toast = useToastStore()
-const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive, mergeLabel, mergePercent, mergingIds } = storeToRefs(store)
+const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
 const issuesPanel = ref<{ fetchEvents: () => Promise<void> } | null>(null)
@@ -83,24 +82,16 @@ const togglePause = async () => {
   pauseBusy.value = false
 }
 
-onMounted(async () => {
+onMounted(() => {
   store.checkStatus()
   fetchMonitorCounts()
   // One-shot queue read: fetchQueue self-starts the live poll only if there's work to watch (in-flight
   // downloads, or acquisition possible). When idle/paused it stays off until a source is enabled or the
   // page is reloaded — no endless /queue hammering.
   store.fetchQueue()
-  // One-shot merge-progress read: only start the merge poll loop if a merge is already running
-  // server-side (e.g. after a refresh mid-merge). Otherwise nothing polls merge-progress until the
-  // user starts a merge.
-  await store.fetchMergeProgress()
-  if (store.mergeActive) {
-    store.startMergePolling()
-  }
 })
 onUnmounted(() => {
   store.stopQueuePolling()
-  store.stopMergePolling()
 })
 </script>
 
@@ -151,14 +142,6 @@ onUnmounted(() => {
         </p>
 
         <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3" />
-
-        <UiLoadingPanel
-          v-if="mergeActive && !settings.showTerminal"
-          :label="mergeLabel ?? `Merging ${mergingIds.size} release${mergingIds.size !== 1 ? 's' : ''}…`"
-          :percent="mergePercent"
-          variant="success"
-          class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3"
-        />
       </div>
     </template>
 

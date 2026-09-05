@@ -21,7 +21,6 @@ export interface CachedSettings {
   lastfmSecret: string | null
   lastfmSessionKey: string | null
   lastfmUsername: string | null
-  showTerminal: boolean
 }
 
 export type ParsedIntField =

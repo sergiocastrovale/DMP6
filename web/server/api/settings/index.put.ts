@@ -70,7 +70,6 @@ export default defineEventHandler(async (event) => {
     lastfmSecret: parseSecretField(body.lastfmSecret),
     lastfmSessionKey: parseSecretField(body.lastfmSessionKey),
     lastfmUsername: body.lastfmUsername ?? undefined,
-    showTerminal: typeof body.showTerminal === 'boolean' ? body.showTerminal : body.showTerminal === null ? null : undefined,
   }
 
   // Remove undefined keys

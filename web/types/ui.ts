@@ -60,6 +60,8 @@ export interface DropdownOption {
 
 export type LoadingPanelSize = 'sm' | 'md'
 
+export type ToastSize = 'sm' | 'md' | 'lg'
+
 export interface NavEntry {
   to?: string
   activePath?: string

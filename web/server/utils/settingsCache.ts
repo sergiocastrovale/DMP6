@@ -22,7 +22,6 @@ function defaults(): CachedSettings {
     lastfmSecret: process.env.LASTFM_SECRET || null,
     lastfmSessionKey: process.env.LASTFM_SESSION_KEY || null,
     lastfmUsername: process.env.LASTFM_USERNAME || null,
-    showTerminal: process.env.SHOW_TERMINAL === 'true',
   }
 }
 
@@ -45,7 +44,6 @@ async function refreshCache(): Promise<void> {
       lastfmSecret: s?.lastfmSecret || d.lastfmSecret,
       lastfmSessionKey: s?.lastfmSessionKey || d.lastfmSessionKey,
       lastfmUsername: s?.lastfmUsername || d.lastfmUsername,
-      showTerminal: s?.showTerminal ?? d.showTerminal,
     }
     cacheExpiry = Date.now() + CACHE_TTL
   }

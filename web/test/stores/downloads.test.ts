@@ -1,11 +1,31 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useDownloadsStore } from '../../stores/downloads'
-import { useSettingsStore } from '../../stores/settings'
 
 const fetchMock = vi.fn()
 vi.stubGlobal('$fetch', fetchMock)
 vi.stubGlobal('fetch', vi.fn())
+
+// Merges stream through the terminal store's raw fetch()-based SSE, not $fetch - build a minimal
+// SSE-shaped Response for tests that drive merge()/mergeAll() to completion.
+const sseResponse = (body: string, ok = true) => ({
+  ok,
+  status: ok ? 200 : 500,
+  statusText: ok ? 'OK' : 'Error',
+  body: {
+    getReader: () => {
+      let sent = false
+      return {
+        read: async () => {
+          if (sent) {return { done: true, value: undefined }}
+          sent = true
+          return { done: false, value: new TextEncoder().encode(body) }
+        },
+      }
+    },
+  },
+})
+const doneSse = () => sseResponse('event: done\ndata: 0\n\n')
 
 describe('useDownloadsStore - pure getters (seeded state)', () => {
   beforeEach(() => {
@@ -31,58 +51,17 @@ describe('useDownloadsStore - pure getters (seeded state)', () => {
     expect(store.activeCount).toBe(3)
   })
 
-  it('mergingIds is the union of optimistic (mergeInitiated) and server-reported (mergeProgress) ids', () => {
-    const store = useDownloadsStore()
-    store.mergeProgress = { a: { step: 'moving', title: 'A' } }
-    // mergeInitiated is not exposed directly, so drive it via merge() and inspect mergingIds mid-flight.
-    fetchMock.mockImplementation(() => new Promise(() => {})) // never resolves - stay "in flight"
-    void store.merge('b')
-    expect(store.mergingIds.has('a')).toBe(true)
-    expect(store.mergingIds.has('b')).toBe(true)
-  })
-
-  it('mergeActive is true whenever mergingIds is non-empty', () => {
+  it('mergingIds/mergeActive reflect ids while a merge streams through the terminal, then clear', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise(() => {}))) // never resolves - stay "in flight"
+    fetchMock.mockResolvedValue({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     const store = useDownloadsStore()
     expect(store.mergeActive).toBe(false)
-    store.mergeProgress = { a: { step: 'moving', title: 'A' } }
-    expect(store.mergeActive).toBe(true)
-  })
 
-  it('mergeLabel picks the highest-step entry across in-flight merges', () => {
-    const store = useDownloadsStore()
-    store.mergeProgress = {
-      a: { step: 'moving', title: 'Album A' },
-      b: { step: 'syncing', title: 'Album B' },
-    }
-    expect(store.mergeLabel).toContain('Syncing')
-    expect(store.mergeLabel).toContain('Album B')
-  })
-
-  it('mergeLabel is null when nothing is merging', () => {
-    expect(useDownloadsStore().mergeLabel).toBeNull()
-  })
-
-  it('mergePercent: 3-steps-per-item math, clamped to 99% even when everything appears done', () => {
-    const store = useDownloadsStore()
-    // Simulate a batch of 2 via mergeAll's internal state through the exported surface: seed
-    // mergeProgress with both items at their final step so mergeInFlightCount stays > 0.
-    store.mergeProgress = {
-      a: { step: 'syncing', title: 'A' },
-      b: { step: 'syncing', title: 'B' },
-    }
-    // mergeTotal is internal; without driving it via mergeAll it stays 0, so percent is 0 (no crash).
-    expect(store.mergePercent).toBe(0)
-  })
-
-  it('mergePercent never exceeds 99 during an in-flight batch merge', async () => {
-    const store = useDownloadsStore()
-    fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/merge-all') {return new Promise(() => {})} // stay in-flight
-      return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
-    })
-    void store.mergeAll(['a', 'b'])
+    void store.merge('b')
     await Promise.resolve()
-    expect(store.mergePercent).toBeLessThanOrEqual(99)
+
+    expect(store.mergingIds.has('b')).toBe(true)
+    expect(store.mergeActive).toBe(true)
   })
 })
 
@@ -111,45 +90,39 @@ describe('useDownloadsStore - actions', () => {
     expect(store.freeGb).toBe(1)
   })
 
-  it('merge does NOT hit the direct merge endpoint when settings.showTerminal is true (routes via terminal instead)', async () => {
-    setActivePinia(createPinia())
-    useSettingsStore().showTerminal = true
-    // mergeViaTerminal ultimately drives the terminal store's raw fetch()-based SSE stream, not $fetch -
-    // the only thing worth asserting from here (without reaching into the terminal store's internals)
-    // is that the direct $fetch merge endpoint is skipped entirely.
+  it('merge streams through the terminal (not the direct merge endpoint) and clears mergingIds afterwards', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(doneSse()))
     fetchMock.mockResolvedValue({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     const store = useDownloadsStore()
-    await store.merge('id1').catch(() => {})
+
+    await store.merge('id1')
+
     const directMergeCalled = fetchMock.mock.calls.some(c => c[0] === '/api/downloads/merge/id1')
     expect(directMergeCalled).toBe(false)
-  })
-
-  it('merge (direct path) POSTs to /api/downloads/merge/:id and clears mergeInitiated afterwards', async () => {
-    fetchMock.mockResolvedValue({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
-    const store = useDownloadsStore()
-    await store.merge('id1')
-    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/merge/id1', expect.objectContaining({ method: 'POST' }))
     expect(store.mergingIds.has('id1')).toBe(false)
   })
 
-  it('mergeAll returns {merged, errors} from the server without throwing on partial failure', async () => {
-    fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/merge-all') {return Promise.resolve({ merged: 1, errors: ['release X: no MB match'] })}
-      return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
-    })
+  it('mergeAll streams the batch through the terminal and always returns {merged: 0, errors: []}', async () => {
+    const streamFetch = vi.fn().mockResolvedValue(doneSse())
+    vi.stubGlobal('fetch', streamFetch)
+    fetchMock.mockResolvedValue({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     const store = useDownloadsStore()
+
     const result = await store.mergeAll(['a', 'b'])
-    expect(result).toEqual({ merged: 1, errors: ['release X: no MB match'] })
+
+    expect(streamFetch).toHaveBeenCalledWith('/api/downloads/merge-stream', expect.objectContaining({ body: JSON.stringify({ ids: ['a', 'b'] }) }))
+    expect(result).toEqual({ merged: 0, errors: [] })
   })
 
-  it('mergeSelected batches through merge-all instead of one merge/:id call per release', async () => {
-    fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/downloads/merge-all') {return Promise.resolve({ merged: 2, errors: [] })}
-      return Promise.resolve({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
-    })
+  it('mergeSelected batches through the terminal merge stream instead of one merge/:id call per release', async () => {
+    const streamFetch = vi.fn().mockResolvedValue(doneSse())
+    vi.stubGlobal('fetch', streamFetch)
+    fetchMock.mockResolvedValue({ active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
     const store = useDownloadsStore()
+
     await store.mergeSelected(['a', 'b', 'c'])
-    expect(fetchMock).toHaveBeenCalledWith('/api/downloads/merge-all', expect.objectContaining({ method: 'POST', body: { ids: ['a', 'b', 'c'] } }))
+
+    expect(streamFetch).toHaveBeenCalledWith('/api/downloads/merge-stream', expect.objectContaining({ body: JSON.stringify({ ids: ['a', 'b', 'c'] }) }))
     const individualMergeCalls = fetchMock.mock.calls.filter(c => /^\/api\/downloads\/merge\//.test(String(c[0])))
     expect(individualMergeCalls).toHaveLength(0)
   })
@@ -370,24 +343,5 @@ describe('useDownloadsStore - simple fetch/action wrappers', () => {
     const result = await store.cleanupReady()
 
     expect(result).toEqual({ removed: 2, checked: 5, danglingRemoved: 1 })
-  })
-
-  it('fetchMergeProgress seeds mergeTotal from an in-progress server-side merge on refresh', async () => {
-    fetchMock.mockResolvedValueOnce({ row1: { step: 'moving', title: 'Album' } })
-    const store = useDownloadsStore()
-
-    await store.fetchMergeProgress()
-
-    expect(store.mergeProgress).toEqual({ row1: { step: 'moving', title: 'Album' } })
-    expect(store.mergePercent).toBeGreaterThanOrEqual(0)
-  })
-
-  it('fetchMergeProgress resets mergeTotal to 0 once nothing is in flight', async () => {
-    fetchMock.mockResolvedValueOnce({})
-    const store = useDownloadsStore()
-
-    await store.fetchMergeProgress()
-
-    expect(store.mergeProgress).toEqual({})
   })
 })

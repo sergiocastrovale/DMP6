@@ -44,7 +44,6 @@ async function fixSelected() {
   await issuesStore.queueIds(props.type, ids)
   awaitingTerminal.value = true
   terminal.run('./fix', [`--${props.type}`], `fix`)
-  terminal.open()
 }
 
 async function revertSelected(mode: 'undo' | 'undo-resolved') {
@@ -56,7 +55,6 @@ async function revertSelected(mode: 'undo' | 'undo-resolved') {
   await issuesStore.queueRevert(props.type, ids, mode)
   awaitingTerminal.value = true
   terminal.run('./fix', ['--revert', `--${props.type}`, `--mode=${mode}`], `fix`)
-  terminal.open()
 }
 
 watch(

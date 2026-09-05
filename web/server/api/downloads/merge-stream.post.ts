@@ -2,7 +2,7 @@ import { requirePermission } from '~/server/utils/permissions'
 import { prisma } from '~/server/utils/prisma'
 import { mergeManyDownloadedReleases } from '~/server/utils/promote'
 
-// SSE variant of merge-all: streams merge step lines to the terminal store (used when showTerminal=true).
+// SSE variant of merge-all: streams merge step lines to the terminal store (every merge routes here).
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
 

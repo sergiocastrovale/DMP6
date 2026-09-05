@@ -191,7 +191,6 @@ async function undoSelected() {
   }
 
   terminal.run('./fix', ['--revert', ...types.map((t) => `--${t}`), '--mode=undo'], 'fix')
-  terminal.open()
 }
 </script>
 

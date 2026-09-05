@@ -11,7 +11,6 @@ const { data: settings, refresh } = await useAsyncData('settings-db', () =>
 const settingsStore = useSettingsStore()
 
 const musicDir = ref(settings.value?.musicDir ?? '')
-const showTerminal = ref(settingsStore.showTerminal)
 const autoScanEnabled = ref(settings.value?.autoScanEnabled ?? false)
 const autoScanIntervalHours = ref(String(settings.value?.autoScanIntervalHours ?? 12))
 
@@ -22,7 +21,6 @@ const { saving, saved, error, save } = useFormSave(async () => {
     method: 'PUT',
     body: {
       musicDir: musicDir.value || null,
-      showTerminal: showTerminal.value,
       autoScanEnabled: autoScanEnabled.value,
       autoScanIntervalHours: autoScanIntervalHours.value === '' ? null : autoScanIntervalHours.value,
     },
@@ -46,10 +44,6 @@ const onAutoScanEnabledChange = (v: boolean) => {
   save()
 }
 
-const onShowTerminalChange = (v: boolean) => {
-  showTerminal.value = v
-  save()
-}
 </script>
 
 <template>
@@ -84,14 +78,6 @@ const onShowTerminalChange = (v: boolean) => {
         :disabled="!canEdit"
         @blur="onIntervalBlur"
       />
-
-      <div class="flex flex-col gap-1.5">
-        <Switch :model-value="showTerminal" label="Show terminal sidebar" :disabled="!canEdit" @update:model-value="onShowTerminalChange" />
-        <p class="text-sm text-stone-100/55">
-          Stream raw output in the terminal sidebar for scans, fixes and merges. When off, a compact progress
-          panel is shown instead. Overrides the SHOW_TERMINAL env var.
-        </p>
-      </div>
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" class="pt-2" />
     </UiCard>

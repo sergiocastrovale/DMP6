@@ -42,6 +42,18 @@ describe('useTerminalStore', () => {
     expect(store.currentSession).toBeNull()
   })
 
+  it('run() always seeds viewMode to toast and clears dismissed', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse('event: done\ndata: 0\n\n')))
+    const store = useTerminalStore()
+    store.expand()
+    store.dismissed = true
+
+    await store.run('./sync', [], 'sess-seed')
+
+    expect(store.viewMode).toBe('toast')
+    expect(store.dismissed).toBe(false)
+  })
+
   it('a non-ok response records an error line and stops', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse('', false)))
     const store = useTerminalStore()
@@ -68,20 +80,63 @@ describe('useTerminalStore', () => {
     expect(store.hasLockError).toBe(false)
   })
 
-  it('open/close toggle isOpen', () => {
+  it('expand/minimize toggle viewMode', () => {
     const store = useTerminalStore()
-    store.close()
-    expect(store.isOpen).toBe(false)
-    store.open()
-    expect(store.isOpen).toBe(true)
+    store.minimize()
+    expect(store.viewMode).toBe('toast')
+    store.expand()
+    expect(store.viewMode).toBe('sidebar')
   })
 
-  it('hasBackground is true only when running but not open', async () => {
+  it('isSidebarVisible is true while running or after completion, false once dismissed', () => {
     const store = useTerminalStore()
-    expect(store.hasBackground).toBe(false)
+    store.expand()
+    expect(store.isSidebarVisible).toBe(false)
     store.isRunning = true
-    store.isOpen = false
-    expect(store.hasBackground).toBe(true)
+    expect(store.isSidebarVisible).toBe(true)
+    store.isRunning = false
+    store.exitCode = 0
+    expect(store.isSidebarVisible).toBe(true)
+    store.dismissed = true
+    expect(store.isSidebarVisible).toBe(false)
+  })
+
+  it('isToastVisible is true while running or while a lock error is showing, false once dismissed', () => {
+    const store = useTerminalStore()
+    store.minimize()
+    expect(store.isToastVisible).toBe(false)
+    store.isRunning = true
+    expect(store.isToastVisible).toBe(true)
+    store.isRunning = false
+    store.exitCode = 1
+    store.lines = ['sync: lock held by another process']
+    expect(store.isToastVisible).toBe(true)
+    store.dismissed = true
+    expect(store.isToastVisible).toBe(false)
+  })
+
+  it('stopAndClose() stops a running session and always dismisses', async () => {
+    const fakeFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+    store.currentSession = 'sess-stop-close'
+    store.isRunning = true
+
+    await store.stopAndClose()
+
+    expect(fakeFetch).toHaveBeenCalledWith('/api/terminal/stop', expect.objectContaining({ method: 'POST' }))
+    expect(store.dismissed).toBe(true)
+  })
+
+  it('stopAndClose() just dismisses when nothing is running', async () => {
+    const fakeFetch = vi.fn()
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+
+    await store.stopAndClose()
+
+    expect(fakeFetch).not.toHaveBeenCalled()
+    expect(store.dismissed).toBe(true)
   })
 
   it('stop() only hits /api/terminal/stop, never force-clears the lock itself', async () => {

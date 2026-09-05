@@ -10,7 +10,6 @@ import { cx, ICON_STROKE_WIDTH, layout, surface, typography } from '~/helpers/ui
 import { useTerminalStore } from '~/stores/terminal'
 
 const terminal = useTerminalStore()
-const settings = useSettingsStore()
 
 const status = ref<ScanStatus | null>(null)
 const loading = ref(true)
@@ -116,7 +115,7 @@ onUnmounted(() => {
             <p class="text-base font-medium text-stone-100">
               {{ terminal.isRunning ? 'Scan in progress' : 'Idle' }}
             </p>
-            <p v-if="terminal.isRunning && settings.showTerminal" class="text-sm text-stone-100/55">
+            <p v-if="terminal.isRunning" class="text-sm text-stone-100/55">
               Check the terminal for live output
             </p>
             <p v-else-if="status" class="text-sm text-stone-100/55">
@@ -137,9 +136,9 @@ onUnmounted(() => {
       <DroppedLinksNotice v-if="!terminal.isRunning" class="mt-4" />
 
       <div
-        v-if="terminal.isRunning && terminal.lines.length > 0 && settings.showTerminal"
+        v-if="terminal.isRunning && terminal.lines.length > 0"
         class="mt-4 max-h-24 overflow-hidden rounded-md border border-stone-100/6 bg-stone-950 p-3 font-mono text-xs leading-5 text-stone-100/60 cursor-pointer"
-        @click="terminal.open()"
+        @click="terminal.expand()"
       >
         <div v-for="(line, i) in terminal.lines.slice(-3)" :key="i" class="truncate">
           {{ line }}

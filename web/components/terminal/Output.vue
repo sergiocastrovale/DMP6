@@ -1,10 +1,6 @@
 <script setup lang="ts">
-import { Copy, LockOpen, X } from 'lucide-vue-next'
+import { Minimize } from 'lucide-vue-next'
 import { useTerminalStore } from '~/stores/terminal'
-
-function copySession(session: string) {
-  navigator.clipboard.writeText(`tmux attach-session -t ${session}`)
-}
 
 const terminal = useTerminalStore()
 
@@ -29,7 +25,7 @@ watch(() => terminal.lines.length, () => {
     leave-to-class="translate-x-full"
   >
     <div
-      v-if="terminal.isOpen"
+      v-if="terminal.isSidebarVisible"
       class="fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-stone-100/10 bg-stone-950 lg:w-[500px]"
     >
       <div class="flex items-center justify-between border-b border-stone-100/6 px-4 py-3">
@@ -43,14 +39,12 @@ watch(() => terminal.lines.length, () => {
           >
             Exit: {{ terminal.exitCode }}
           </span>
-          <UiButtonStop v-if="terminal.isRunning" icon-only />
-          <UiButton
-            variant="ghost"
-            size="md"
-            icon-only
-            :icon="X"
-            aria-label="Close terminal"
-            @click="terminal.close()"
+
+          <TerminalActions
+            toggle-label="Minimize"
+            :toggle-icon="Minimize"
+            @toggle="terminal.minimize()"
+            @stop="terminal.stopAndClose()"
           />
         </div>
       </div>
@@ -59,18 +53,7 @@ watch(() => terminal.lines.length, () => {
         v-if="terminal.currentSession || terminal.isRunning"
         class="flex items-center gap-2 border-b border-stone-100/6 px-4 py-2"
       >
-        <span class="font-mono text-xs text-stone-100/55">
-          tmux attach-session -t {{ terminal.currentSession ?? '...' }}
-        </span>
-        <UiButton
-          v-if="terminal.currentSession"
-          variant="ghost"
-          size="sm"
-          icon-only
-          :icon="Copy"
-          title="Copy"
-          @click="copySession(terminal.currentSession!)"
-        />
+        <TerminalCopySession :session="terminal.currentSession" />
       </div>
 
       <div v-if="!terminal.isRunning" class="px-4 pt-3">
@@ -83,16 +66,7 @@ watch(() => terminal.lines.length, () => {
       >
         <div v-for="(line, i) in terminal.lines" :key="i" class="whitespace-pre-wrap break-all">{{ typeof line === 'string' && line.startsWith('\r') ? line.slice(1) : line }}</div>
         <span v-if="terminal.isRunning" class="mt-1 inline-block h-3.5 w-1.5 animate-pulse bg-amber-400" />
-        <UiButton
-          v-if="terminal.hasLockError"
-          variant="danger"
-          size="sm"
-          :icon="LockOpen"
-          class="mt-3"
-          @click="terminal.unlock()"
-        >
-          Force unlock
-        </UiButton>
+        <TerminalForceUnlock class="mt-3" />
       </div>
     </div>
   </Transition>
