@@ -3,7 +3,7 @@ import { FileText } from 'lucide-vue-next'
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { FixHistoryRow, HistoryIssueType, HistoryFolderGroup } from '~/types/issues'
-import { cx, data } from '~/helpers/ui'
+import { cx, data, layout } from '~/helpers/ui'
 import { toggleRowSelection } from '~/helpers/functions'
 
 const issuesStore = useIssuesStore()
@@ -196,7 +196,7 @@ async function undoSelected() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <PageTitle text="Fix History" />
 
     <Subtabs v-model="activeTab" :tabs="subtabs" />

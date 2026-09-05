@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { LucideClock, LucideMusic, Loader2 } from 'lucide-vue-next'
 import type { Decade, DecadeResponse, TimelineRelease } from '~/types/timeline'
-import { grid, ICON_STROKE_WIDTH, sw } from '~/helpers/ui'
+import { cx, grid, ICON_STROKE_WIDTH, layout, sw } from '~/helpers/ui'
 
 useTitle('Timeline')
 
@@ -31,11 +31,6 @@ async function loadDecades() {
   }
 }
 
-// Clicking through decades/years fires overlapping requests - without a guard, an older request
-// that happens to resolve after a newer one silently clobbers decadeData with stale years/releases
-// (the decade chip shows the new selection while the list below still shows the old one). A request
-// token makes only the most recently issued fetch allowed to write state; the AbortController also
-// cancels the superseded request outright instead of leaving it to finish for nothing.
 let requestToken = 0
 let currentController: AbortController | null = null
 
@@ -130,8 +125,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <PageTitle text="Timeline" subtext="Browse your library by decade and year" />
+  <div :class="cx(layout.page)">
+    <PageTitle text="Timeline" />
 
     <UiLoadingBlock v-if="loading" />
 

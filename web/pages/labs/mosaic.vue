@@ -2,7 +2,7 @@
 import { Grid3x3, Loader2, Download, Eye, Trash2, Play, Square } from 'lucide-vue-next'
 import { formatDate } from '~/helpers/functions'
 import { useMosaicStore } from '~/stores/mosaic'
-import { typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx, typography, ICON_STROKE_WIDTH, layout } from '~/helpers/ui'
 
 useTitle('Labs', 'Album Mosaic')
 
@@ -97,7 +97,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <LabsBackLink />
 
     <div class="grid gap-6 lg:grid-cols-5">

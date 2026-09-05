@@ -2,7 +2,7 @@
 import { Loader2, Radar, EyeOff, CircleHelp, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
 import type { SortDirection } from '~/types/common'
 import type { MonitoringArtistRow as ArtistRow } from '~/types/artist'
-import { sw, surface, cx, ICON_STROKE_WIDTH, data } from '~/helpers/ui'
+import { sw, surface, cx, ICON_STROKE_WIDTH, data, layout } from '~/helpers/ui'
 import { toggleRowSelection } from '~/helpers/functions'
 
 const store = useDownloadsStore()
@@ -185,7 +185,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <DownloadsTabHint>
       Monitored artists are checked for missing releases on a recurring schedule and queued
       automatically; unmonitored artists are left alone. Toggle ON/OFF here to add or remove an

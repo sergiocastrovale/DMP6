@@ -14,6 +14,6 @@ const terminal = useTerminalStore()
     :loading="terminal.isRunning"
     @click="terminal.run('./playlists', [])"
   >
-    {{ regenerate ? 'Regenerate' : 'Generate Playlists' }}
+    <span class="hidden lg:block">{{ regenerate ? 'Regenerate' : 'Generate Playlists' }}</span>
   </UiButton>
 </template>

@@ -60,11 +60,9 @@ const image = computed(() =>
             {{ track.artist }}
           </p>
 
-          <p :class="[typography.meta, 'truncate', tv && 'text-xl', 'mt-2']">{{ track.album }}</p>
+          <p :class="[typography.meta, 'truncate', tv && 'text-xl', 'mt-1']">{{ track.album }}</p>
         </div>
 
-        <!-- Grows to push the seek bar + transport to the bottom of the card, matching the album
-             art's height, instead of the gap being spread evenly across every row. -->
         <div class="flex-1" />
 
         <div class="flex flex-col gap-4">

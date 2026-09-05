@@ -101,7 +101,7 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKeydown))
        the nav instead of above it. 57px matches the nav's own bottom-[57px] "More" sheet offset. -->
   <div
     class="flex flex-col h-screen bg-stone-950 text-stone-100 font-sans antialiased"
-    :class="chromeVisible && 'pb-[57px] lg:pb-0'"
+    :class="chromeVisible && 'pb-14.25 lg:pb-0'"
   >
     <!-- `<main>` (and the page it slots in) stays a single stable element across chromeVisible
          toggles - the sidenav/topbar/player bar mount and unmount around it instead of the page

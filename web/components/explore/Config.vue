@@ -5,11 +5,7 @@ import { cx, surface } from '~/helpers/ui'
 const props = defineProps<{
   isLoading?: boolean
   error?: string | null
-  // Once a track has been explored, the sliders collapse into a one-line summary - re-expanded
-  // via the "Change" button below.
   collapsed?: boolean
-  // True while re-opened over an already-playing track: the footer then offers a way back out
-  // without committing, which a first run has nothing to return to.
   changing?: boolean
   tv?: boolean
 }>()
@@ -38,28 +34,26 @@ const sectionClass = 'px-6 py-5'
 <template>
   <div
     v-if="collapsed"
-    class="flex items-center gap-3 rounded-xl border border-stone-100/10 px-5 py-3
+    class="flex items-center justify-between gap-2 lg:gap-3 rounded-xl border border-stone-100/10 px-3 py-2 lg:px-5 lg:py-3
       shadow-[inset_0_1px_0_rgba(255,240,210,.05)]
       bg-[linear-gradient(100deg,color-mix(in_oklch,var(--color-amber-400)_12%,var(--color-stone-900))_0%,var(--color-stone-900)_42%,var(--color-stone-900)_100%)]"
   >
     <span
-      class="size-2 shrink-0 rounded-full bg-amber-400
+      class="hidden lg:block size-2 shrink-0 rounded-full bg-amber-400
         shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-amber-400)_16%,transparent),0_0_14px_2px_color-mix(in_oklch,var(--color-amber-400)_55%,transparent)]
         animate-[pulse-lamp_2.6s_ease-in-out_infinite] motion-reduce:animate-none"
     />
-    <p :class="cx('min-w-0 flex-1 truncate text-stone-100/60', tv ? 'text-2xl' : 'text-base')">
+    <div :class="cx('min-w-0 flex-1 text-stone-100/60', tv ? 'text-2xl' : 'text-base')">
       Exploring <span class="font-medium text-amber-400">{{ energyStops[energy] }}</span> tracks of the
-      <span class="font-medium text-stone-100">{{ eraStops[era] }}</span> ·
-      <span class="font-medium text-stone-100">{{ familiarityStops[familiarity] }}</span> discovery ·
-      <span class="font-medium text-stone-100">{{ soundStops[sound] }}</span> sound
-    </p>
+      <span>{{ eraStops[era] }}</span> ·
+      <span>{{ familiarityStops[familiarity] }}</span> discovery ·
+      <span>{{ soundStops[sound] }}</span> sound
+    </div>
     <UiButton variant="secondary" :size="tv ? 'lg' : 'sm'" :icon="SlidersHorizontal" @click="emit('expand')">
-      Change
+      <span class="hidden lg:block">Change</span>
     </UiButton>
   </div>
 
-  <!-- One card, four sections divided by hairlines, actions in the footer - the four dials read as
-       one decision rather than four unrelated widgets. -->
   <div v-else :class="surface.card">
     <div :class="[sectionClass, surface.divider]">
       <Slider

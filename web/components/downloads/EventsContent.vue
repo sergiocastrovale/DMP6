@@ -2,7 +2,7 @@
 import { Archive, AlertTriangle, CircleAlert, Trash2, Undo2 } from 'lucide-vue-next'
 import type { MonitorEventItem } from '~/types/download'
 import { timeAgo } from '~/helpers/functions'
-import { cx, data, toneText, typography } from '~/helpers/ui'
+import { cx, data, layout, toneText, typography } from '~/helpers/ui'
 
 const { counts, fetchEvents, archive, restore, remove } = useMonitorEvents()
 const toast = useToastStore()
@@ -89,7 +89,7 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <DownloadsTabHint>
       Warnings and errors raised anywhere in the download pipeline — failed merges, stalled
       enrichment, sync hiccups — land here instead of only in the server logs. Flagged is what

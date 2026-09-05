@@ -2,6 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { Brush, Pause, Play, AlertTriangle } from 'lucide-vue-next'
 import type { TabItem } from '~/types/ui'
+import { cx, layout } from '~/helpers/ui'
 
 const store = useDownloadsStore()
 const settings = useSettingsStore()
@@ -106,7 +107,7 @@ onUnmounted(() => {
 <template>
   <TabShell :breadcrumb-root="breadcrumbRoot" :breadcrumb-labels="breadcrumbLabels" :tabs="tabs">
     <template #header>
-      <div class="flex flex-col gap-4">
+      <div :class="cx(layout.page)">
         <PageTitle text="Downloads" />
 
         <div class="flex items-center justify-between gap-4">

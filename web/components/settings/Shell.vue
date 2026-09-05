@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { cx, layout } from '~/helpers/ui'
 const { isAdmin } = useAuth()
 
 // Themes is the one settings page that isn't admin-gated (it's a per-browser preference, see
@@ -20,7 +21,7 @@ const tabs = computed(() => isAdmin.value ? [...adminTabs, themesTab] : [themesT
 </script>
 
 <template>
-  <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 pb-24">
+  <div :class="cx(layout.page)">
     <PageTitle text="Settings" subtext="DB values override env vars" />
     <Tabs :tabs="tabs" />
     <slot />

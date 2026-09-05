@@ -16,7 +16,7 @@ const { active, available, toggle } = useVisualizer()
 </script>
 
 <template>
-  <button data-testid="visualizer-toggle" :aria-label="available ? 'Visualizer' : 'Play something to use the visualizer'" :title="available ? 'Visualizer' : 'Play something to use the visualizer'" :aria-pressed="active" :disabled="!available" class="text-stone-100/60 cursor-pointer" @click="toggle()">
+  <button data-testid="visualizer-toggle" :aria-label="available ? 'Visualizer' : 'Play something to use the visualizer'" :title="available ? 'Visualizer' : 'Play something to use the visualizer'" :aria-pressed="active" :disabled="!available" class="text-stone-100/60 hover:text-white active:text-white cursor-pointer" @click="toggle()">
     <AudioLines :size="16" />
   </button>
 </template>

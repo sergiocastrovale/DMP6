@@ -34,7 +34,7 @@ export interface PlaylistDetail extends PlaylistBase {
 
 export interface PlaylistSection {
   type: PlaylistSummary['type']
-  label: string
+  label?: string
   icon: Component
   popoverTitle?: string
   popoverText?: string

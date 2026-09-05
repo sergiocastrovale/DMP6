@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LucideDisc } from 'lucide-vue-next'
-import { grid } from '~/helpers/ui'
+import { cx, grid, layout } from '~/helpers/ui'
 
 useTitle('Favorites')
 
@@ -15,8 +15,8 @@ const {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <PageTitle text="Favorites" subtext="Your favorite releases and tracks" />
+  <div :class="cx(layout.page)">
+    <PageTitle text="Favorites" />
 
     <Tabs v-model="activeTab" :tabs="favTabs" />
 

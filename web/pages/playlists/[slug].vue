@@ -2,7 +2,7 @@
 import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles, LucideGlobe, LucideX } from 'lucide-vue-next'
 import type { PlaylistDetail } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
-import { typography } from '~/helpers/ui'
+import { cx, layout, typography } from '~/helpers/ui'
 import { useToastStore } from '~/stores/toast'
 
 const route = useRoute()
@@ -91,10 +91,10 @@ onMounted(() => loadPlaylist())
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div :class="cx(layout.page)">
     <UiLoadingBlock v-if="loading" />
 
-    <div v-else-if="playlist" class="flex flex-col gap-6">
+    <div v-else-if="playlist" class="flex flex-col gap-6">  
       <div class="flex flex-col gap-6 sm:flex-row sm:items-start">
         <div
           class="size-48 shrink-0 overflow-hidden rounded-lg bg-stone-800"

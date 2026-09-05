@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { filterQueue } from '~/helpers/functions'
+import { filterQueue } from '~/helpers/functions' 
+import { cx, layout } from '~/helpers/ui'
 
 const { store, openInfo, showInfo, infoRelease } = useDownloadQueueActions()
 const { queueHistory } = storeToRefs(store)
@@ -39,7 +40,7 @@ watch(queueHistory, () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <DownloadsTabHint>
       A permanent record of every merge outcome. Promoted releases made it into your library;
       Invalid ones were discarded after a genuine shortfall (see Events for why). Nothing here can

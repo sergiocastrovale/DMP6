@@ -2,6 +2,7 @@
 import { storeToRefs } from 'pinia'
 import { FolderInput, Trash2 } from 'lucide-vue-next'
 import { filterQueue } from '~/helpers/functions'
+import { cx, layout } from '~/helpers/ui'
 
 const {
   store, busyId, busyIds, actionMsg, merge, reject, rejectOpen, rejectTitle, confirmReject,
@@ -60,7 +61,7 @@ const onBulkAction = (key: string) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <DownloadsTabHint>
       Merging moves a release's files into your library, then re-indexes and re-syncs it against
       MusicBrainz to confirm the match. A confirmed match is promoted (see History → Promoted); a

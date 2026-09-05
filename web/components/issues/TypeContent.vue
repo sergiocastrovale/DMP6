@@ -2,7 +2,7 @@
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { IssueColumn, IssueType } from '~/types/issues'
-import { data, typography } from '~/helpers/ui'
+import { cx, data, layout, typography } from '~/helpers/ui'
 
 const props = defineProps<{ type: IssueType }>()
 
@@ -238,7 +238,7 @@ function getHistoryDate(item: any): string {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <div class="flex flex-col gap-3">
       <div class="flex items-center justify-between gap-4">
         <h1 :class="typography.h3">{{ typeLabels[type] }}</h1>

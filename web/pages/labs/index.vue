@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Lab } from '~/types/labs'
 import { useGlobalStore } from '~/stores/global'
-import { cx, outlinePill, toneBg, typography } from '~/helpers/ui'
+import { cx, layout, outlinePill, toneBg, typography } from '~/helpers/ui'
 
 useTitle('Labs')
 
@@ -54,7 +54,7 @@ const labs = computed<Lab[]>(() => [
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div :class="cx(layout.page)">
     <PageTitle text="Labs" />
 
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

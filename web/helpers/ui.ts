@@ -282,7 +282,7 @@ export const typography = {
 export const outlinePill = 'inline-flex items-center gap-1 px-2.5 py-[3px] rounded-full border text-sm font-bold tabular-nums'
 
 export const layout = {
-  page: 'w-full max-w-[1600px] mx-auto px-10 pt-[30px] pb-12',
+  page: 'flex flex-col gap-5 lg:gap-8 p-4 lg:p-1',
   topbar: 'sticky top-0 z-10 flex items-center gap-3 h-[56px] px-7 bg-stone-950/85 backdrop-blur-[14px] border-b border-stone-100/6',
   scrim: 'fixed inset-0 z-50 grid place-items-center bg-black/62 backdrop-blur-[3px] p-6',
   dialog: 'w-full rounded-lg xl:rounded-xl border border-stone-100/10 bg-stone-900 shadow-xl max-h-[80vh] flex flex-col outline-none',

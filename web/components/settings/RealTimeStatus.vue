@@ -6,7 +6,7 @@ import {
 } from 'lucide-vue-next'
 import type { ScanStatus } from '~/types/scan'
 import { formatDate, parseProgress } from '~/helpers/functions'
-import { ICON_STROKE_WIDTH, surface, typography } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, layout, surface, typography } from '~/helpers/ui'
 import { useTerminalStore } from '~/stores/terminal'
 
 const terminal = useTerminalStore()
@@ -101,7 +101,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div :class="cx(layout.page)">
     <UiCard padding="sm" :gap="false">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">

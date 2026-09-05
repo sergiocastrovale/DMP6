@@ -2,7 +2,7 @@
 import { ArrowLeft } from 'lucide-vue-next'
 import type { DataTableColumn } from '~/types/ui'
 import type { SortDirection } from '~/types/common'
-import { typography } from '~/helpers/ui'
+import { layout, cx, typography } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -91,7 +91,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
         <NuxtLink to="/statistics" aria-label="Back to statistics" class="text-stone-100/55 transition-colors duration-150 hover:text-stone-100">

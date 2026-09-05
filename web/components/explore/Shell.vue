@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Maximize, Minimize } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
-import { cx } from '~/helpers/ui'
+import { cx, layout } from '~/helpers/ui'
 
 const player = usePlayerStore()
 const { energy, era, familiarity, sound, isLoading, error, explore, playFromHistory } = useExplorer()
@@ -89,32 +89,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <!-- Left-aligned and wide, like every other page: the reference puts the Explore title at the same
-       x as Browse's and Statistics', and gives the dial card most of the content width. Centring it
-       in a narrow column made the four sliders read as a modal rather than the page's content. -->
-  <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 pb-24">
+  <div :class="cx(layout.page)">
     <PageTitle
       text="Explore"
-      subtext="Tell us the mood, we pick a track from your library."
-      class="mb-8"
       :hide-text="isFullscreen"
     >
-      <!-- In cinema mode the pair floats over the page as one cluster; pinning each button
-           individually would stack them on the same coordinates. -->
-      <div :class="cx('flex items-center gap-2', isFullscreen && 'fixed top-4 right-4 z-40')">
-        <VisualizerToggleButton variant="secondary" size="sm" />
-        <UiButton
-          variant="secondary"
-          size="sm"
-          icon-only
-          :icon="isFullscreen ? Minimize : Maximize"
-          :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
-          @click="toggleFullscreen"
-        />
+      <div :class="cx('flex items-center gap-5', isFullscreen && 'fixed top-4 right-4 z-40')">
+        <VisualizerToggleButton />
+
+        <ExploreFullscreenButton class="hidden lg:block" :fullscreen="isFullscreen" @toggle-fullscreen="toggleFullscreen" />
       </div>
     </PageTitle>
 
-    <div class="flex flex-col gap-8" :class="isFullscreen && 'mt-12'">
+    <div class="flex flex-col gap-5 lg:gap-8" :class="isFullscreen && 'mt-12'">
       <ExploreConfig
         v-model:energy="energy"
         v-model:era="era"

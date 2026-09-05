@@ -13,7 +13,7 @@ import {
 } from 'chart.js'
 import type { DecadeStats } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
-import { surface, sw, typography, ICON_STROKE_WIDTH } from '~/helpers/ui'
+import { cx, surface, sw, typography, ICON_STROKE_WIDTH, layout } from '~/helpers/ui'
 
 useTitle('Labs', 'Decade DNA')
 
@@ -167,7 +167,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <LabsBackLink />
 
     <div class="grid gap-6 lg:grid-cols-5">

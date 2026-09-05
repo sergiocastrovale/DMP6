@@ -17,7 +17,7 @@ const canCrud = hasPerm('playlists.crud')
 const sections: PlaylistSection[] = [
   {
     type: 'MANUAL',
-    label: 'Your Playlists',
+    label: 'Your playlists',
     icon: LucideListMusic,
     items: computed(() => props.playlists.filter(p => p.type === 'MANUAL')),
   },
@@ -45,7 +45,7 @@ const sections: PlaylistSection[] = [
     <template v-for="section in sections" :key="section.type">
       <div v-if="section.items.value.length > 0" class="flex flex-col gap-4">
         <div class="flex items-center gap-2.5">
-          <h2 :class="typography.h3">{{ section.label }}</h2>
+          <h4 :class="typography.sectionLabel">{{ section.label }}</h4>
           <UiBadge v-if="section.type !== 'MANUAL'" tone="accent">
             <component :is="section.icon" class="size-3" />
             Auto-generated

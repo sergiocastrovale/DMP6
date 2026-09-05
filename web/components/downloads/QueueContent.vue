@@ -5,6 +5,7 @@ import type { DownloadedReleaseItem } from '~/types/download'
 import type { SubtabItem, BarAction } from '~/types/ui'
 import { queueFilters } from '~/helpers/constants'
 import { filterQueue, canRetryDownload, canRejectDownload, canRequeueDownload } from '~/helpers/functions'
+import { cx, layout } from '~/helpers/ui'
 
 const {
   store, busyId,
@@ -98,8 +99,8 @@ const clearSelection = () => {
 }
 </script>
 
-<template>
-  <div class="flex flex-col gap-4">
+<template>  
+  <div :class="cx(layout.page)">
     <Subtabs v-model="filter" :tabs="tabs" />
 
     <DownloadsTabHint>

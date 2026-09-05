@@ -14,7 +14,7 @@ import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
 import type { NetworkGraph, NetworkGraphNode as GraphNode, NetworkGraphLink as GraphLink } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
-import { cx, typography, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
+import { cx, typography, ICON_STROKE_WIDTH, surface, layout } from '~/helpers/ui'
 
 useTitle('Labs', 'Artist Network')
 
@@ -290,7 +290,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="cx(layout.page)">
     <LabsBackLink />
 
     <div class="grid gap-6 lg:grid-cols-5">

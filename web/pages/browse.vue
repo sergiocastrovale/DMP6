@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { LayoutGrid, LayoutList } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
+import { cx, layout } from '~/helpers/ui'
 
 useTitle('Browse')
 
@@ -41,7 +42,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div :class="layout.page">
     <PageTitle text="Browse">
       <div class="flex items-center gap-2 text-sm text-stone-100/55">
         <span>{{ store.mainCount.toLocaleString() }} artists</span>

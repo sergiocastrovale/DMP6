@@ -2,6 +2,7 @@
 import { LucidePlus } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
+import { cx, layout } from '~/helpers/ui'
 
 useTitle('Playlists')
 
@@ -36,12 +37,12 @@ onMounted(() => loadPlaylists())
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
-    <PageTitle text="Playlists" subtext="Your custom playlists">
+  <div :class="cx(layout.page)">
+    <PageTitle text="Playlists">
       <div class="flex items-center gap-2">
         <PlaylistButtonGeneratePlaylists v-if="isAdmin" />
         <UiButton v-if="canCrud" :icon="LucidePlus" @click="showCreate = true">
-          New Playlist
+          <span class="hidden lg:block">New Playlist</span>
         </UiButton>
       </div>
     </PageTitle>
