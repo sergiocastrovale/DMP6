@@ -3,6 +3,7 @@ import { requirePermission } from '~/server/utils/permissions'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { isDownloadsEnabled } from '~/server/utils/acquisitionStatus'
+import { resolveReplaceTarget } from '~/server/utils/acquireDedup'
 import { routeAcquire } from '~/server/utils/autoDownload'
 
 // One-click manual grab for a single MISSING release.
@@ -49,15 +50,17 @@ export default defineEventHandler(async (event) => {
   // Already in flight / ready to merge / promoted? Don't double-grab.
   const existing = await prisma.downloadedRelease.findFirst({
     where: { ...dedupKey, status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING', 'READY', 'PROMOTED'] } },
-    select: { id: true, status: true },
+    select: { id: true, status: true, replacesLocalReleaseId: true },
   })
   if (existing) {
     // An in-flight row that predates this click knows nothing about the copy it should replace -
-    // stamp it now, or the merge would leave the incomplete copy sitting next to the new one.
-    if (replacesLocalReleaseId) {
+    // stamp it now, or the merge would leave the incomplete copy sitting next to the new one. Never
+    // overwrite a field already naming a different copy: see resolveReplaceTarget.
+    const { stamp, otherCopyInFlight } = resolveReplaceTarget(existing.replacesLocalReleaseId, replacesLocalReleaseId)
+    if (stamp) {
       await prisma.downloadedRelease.update({ where: { id: existing.id }, data: { replacesLocalReleaseId } })
     }
-    return { id: existing.id, status: existing.status, alreadyQueued: true }
+    return { id: existing.id, status: existing.status, alreadyQueued: true, otherCopyInFlight }
   }
 
   const artist = mb.artists[0]?.artist

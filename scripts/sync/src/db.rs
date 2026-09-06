@@ -170,17 +170,6 @@ pub async fn ensure_mb_release_artist_link(
 // MusicBrainzReleaseTrack batch insert
 // ---------------------------------------------------------------------------
 
-pub async fn delete_mb_tracks_for_release(
-    pool: &PgPool,
-    release_id: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(r#"DELETE FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#)
-        .bind(release_id)
-        .execute(pool)
-        .await?;
-    Ok(())
-}
-
 /// Retire stale catalogue-gap placeholders: a MISSING release whose `musicbrainzId` == its
 /// `releaseGroupId` is a release-group stub created by `--catalogue-gaps`. Once that group is owned
 /// (some sibling release is no longer MISSING), the stub is garbage and shows up as a phantom "MISSING
@@ -223,6 +212,145 @@ pub struct MbTrackRow {
     pub disc_number: Option<i32>,
     pub duration_ms: Option<i32>,
     pub mb_id: Option<String>,
+}
+
+/// Identity of an MB track *within its release*: the MB recording id when tagged, else its slot.
+/// Used to line up the incoming tracklist with the rows already stored.
+fn mb_track_key(
+    mb_id: Option<&str>,
+    disc: Option<i32>,
+    position: Option<i32>,
+    title: &str,
+) -> String {
+    match mb_id {
+        Some(id) if !id.is_empty() => format!("mb:{}", id),
+        _ => format!(
+            "slot:{}:{}:{}",
+            disc.unwrap_or(1),
+            position.unwrap_or(0),
+            title.to_lowercase()
+        ),
+    }
+}
+
+/// Reconcile a release's stored MB tracks with the tracklist MusicBrainz just returned, **keeping
+/// the ids of tracks that already exist**. Returns `(db_track_id, mb_track_id)` in input order.
+///
+/// The old path deleted every row and re-inserted, which changes `MusicBrainzReleaseTrack.id` on
+/// every run. `LocalReleaseTrack.mbTrack` is an optional relation with no `onDelete`, so Prisma
+/// defaults to SetNull: those deletes silently unlinked every local track pointing at the release.
+/// With two LocalReleases bound to one MB release (multi-disc halves, or duplicate copies) the two
+/// fought - whichever synced last kept its links and the other dropped to zero - and the churn also
+/// invalidated `get_covered_release_group_ids`'s all-tracks-linked branch and any owned-bundle claim.
+pub async fn sync_mb_tracks_for_release(
+    pool: &PgPool,
+    release_id: &str,
+    tracks: &[MbTrackRow],
+) -> Result<Vec<(String, Option<String>)>, sqlx::Error> {
+    let existing: Vec<(String, Option<String>, Option<i32>, Option<i32>, String)> = sqlx::query_as(
+        r#"SELECT id, "musicbrainzId", "discNumber", position, title
+           FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
+    )
+    .bind(release_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut by_key: HashMap<String, String> = HashMap::new();
+    for (id, mb_id, disc, position, title) in &existing {
+        by_key
+            .entry(mb_track_key(mb_id.as_deref(), *disc, *position, title))
+            .or_insert_with(|| id.clone());
+    }
+
+    let now = Utc::now().naive_utc();
+    let mut out: Vec<(String, Option<String>)> = Vec::with_capacity(tracks.len());
+    let mut keep: HashSet<String> = HashSet::new();
+    let mut to_insert: Vec<(String, &MbTrackRow)> = Vec::new();
+    let mut to_update: Vec<(String, &MbTrackRow)> = Vec::new();
+
+    for t in tracks {
+        let key = mb_track_key(t.mb_id.as_deref(), t.disc_number, t.position, &t.title);
+        match by_key.get(&key) {
+            Some(id) if keep.insert(id.clone()) => {
+                to_update.push((id.clone(), t));
+                out.push((id.clone(), t.mb_id.clone()));
+            }
+            // A repeat of a key already claimed this run (duplicate rows from an earlier import):
+            // treat it as new rather than pointing two tracklist entries at one row.
+            _ => {
+                let id = cuid2::create_id();
+                keep.insert(id.clone());
+                to_insert.push((id.clone(), t));
+                out.push((id, t.mb_id.clone()));
+            }
+        }
+    }
+
+    for (id, t) in &to_update {
+        sqlx::query(
+            r#"UPDATE "MusicBrainzReleaseTrack"
+               SET title = $2, position = $3, "discNumber" = $4, "durationMs" = $5,
+                   "musicbrainzId" = COALESCE($6, "musicbrainzId"), "updatedAt" = $7
+               WHERE id = $1"#,
+        )
+        .bind(id)
+        .bind(&t.title)
+        .bind(t.position)
+        .bind(t.disc_number)
+        .bind(t.duration_ms)
+        .bind(t.mb_id.as_deref())
+        .bind(now)
+        .execute(pool)
+        .await?;
+    }
+
+    if !to_insert.is_empty() {
+        let ids: Vec<&str> = to_insert.iter().map(|(id, _)| id.as_str()).collect();
+        let titles: Vec<&str> = to_insert.iter().map(|(_, t)| t.title.as_str()).collect();
+        let positions: Vec<Option<i32>> = to_insert.iter().map(|(_, t)| t.position).collect();
+        let discs: Vec<Option<i32>> = to_insert.iter().map(|(_, t)| t.disc_number).collect();
+        let durations: Vec<Option<i32>> = to_insert.iter().map(|(_, t)| t.duration_ms).collect();
+        let mb_ids: Vec<Option<&str>> =
+            to_insert.iter().map(|(_, t)| t.mb_id.as_deref()).collect();
+        let release_ids: Vec<&str> = vec![release_id; to_insert.len()];
+        let timestamps: Vec<NaiveDateTime> = vec![now; to_insert.len()];
+        sqlx::query(
+            r#"INSERT INTO "MusicBrainzReleaseTrack"
+                 (id, title, position, "discNumber", "durationMs", "musicbrainzId", "releaseId", "createdAt", "updatedAt")
+               SELECT * FROM UNNEST(
+                 $1::text[], $2::text[], $3::int[], $4::int[], $5::int[], $6::text[], $7::text[],
+                 $8::timestamp[], $9::timestamp[]
+               )
+               ON CONFLICT DO NOTHING"#,
+        )
+        .bind(&ids)
+        .bind(&titles)
+        .bind(&positions)
+        .bind(&discs)
+        .bind(&durations)
+        .bind(&mb_ids)
+        .bind(&release_ids)
+        .bind(&timestamps)
+        .bind(&timestamps)
+        .execute(pool)
+        .await?;
+    }
+
+    // Rows MusicBrainz no longer lists. Deleting these still SetNulls their local links, which is
+    // correct - the track genuinely left the release - and it is now the only case that does.
+    let stale: Vec<String> = existing
+        .iter()
+        .map(|(id, ..)| id.clone())
+        .filter(|id| !keep.contains(id))
+        .collect();
+    if !stale.is_empty() {
+        sqlx::query(r#"DELETE FROM "MusicBrainzReleaseTrack" WHERE id = ANY($1)"#)
+            .bind(&stale)
+            .execute(pool)
+            .await?;
+    }
+
+    Ok(out)
 }
 
 pub async fn batch_insert_mb_tracks(

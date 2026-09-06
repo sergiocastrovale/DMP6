@@ -5,15 +5,22 @@ import type { DownloadedReleaseStatus, DlStatusValue, DlInFlightItem } from '~/t
 import type { PlayerTrack } from '~/types/player'
 import type { Track } from '~/types/track'
 
-// Attach live download status onto whichever release shares its mbReleaseRowId. Releases with no
-// matching in-flight download pass through unchanged.
+// Attach live download status onto the release it belongs to. The LocalRelease is checked first:
+// several cards can share one mbReleaseRowId (duplicate folder copies, or disc halves not yet
+// merged), and keying on the MB id alone painted one download's progress bar onto every one of
+// them. A gap download (status MISSING, no local copy) has no LocalRelease, so the MB id remains
+// the fallback key. Releases with no matching in-flight download pass through unchanged.
 export const mergeDownloadStatus = (
   releases: UnifiedRelease[],
   dlStatusMap: Map<string, DlStatusValue>,
 ): UnifiedRelease[] => {
   if (dlStatusMap.size === 0) { return releases }
   return releases.map((r) => {
-    const dl = r.mbReleaseRowId ? dlStatusMap.get(r.mbReleaseRowId) : undefined
+    const local = r.localReleaseId ? dlStatusMap.get(r.localReleaseId) : undefined
+    // Only fall back to the MB key when no card-specific entry exists anywhere for this release -
+    // otherwise a sibling copy's download would leak back onto every card again.
+    const mb = r.mbReleaseRowId ? dlStatusMap.get(r.mbReleaseRowId) : undefined
+    const dl = local ?? mb
     return dl ? { ...r, downloadState: dl.status, downloadedReleaseId: dl.downloadedReleaseId, downloadPercent: dl.percent } : r
   })
 }

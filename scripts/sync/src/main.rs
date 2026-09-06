@@ -19,6 +19,7 @@ mod images;
 mod mb_api;
 mod mb_matching;
 mod mb_types;
+mod multi_disc;
 mod nuke;
 mod owned;
 mod repair;
@@ -83,7 +84,12 @@ struct SyncArgs {
     repair_shared_release_ids: bool,
     #[arg(
         long,
-        help = "With --repair-shared-release-ids: print the plan, write nothing"
+        help = "Merge LocalReleases that are discs of one release (same embedded MB release id, disjoint disc numbers) into a single row (pure SQL, no API), then exit"
+    )]
+    repair_multi_disc: bool,
+    #[arg(
+        long,
+        help = "With --repair-shared-release-ids / --repair-multi-disc: print the plan, write nothing"
     )]
     dry_run: bool,
     #[arg(
@@ -441,6 +447,40 @@ async fn main() {
                 ));
             }
             Err(e) => reporter.err(&format!("Repair error: {}", e)),
+        }
+        return;
+    }
+
+    // Standalone repair: fold split multi-disc rows back into one release. Pure SQL, no API, no
+    // lock - decided entirely from embedded MB release ids + disc numbers (see multi_disc.rs).
+    if args.repair_multi_disc {
+        reporter.header(if args.dry_run {
+            "DMP Sync - Merge Split Multi-Disc Releases (DRY RUN)"
+        } else {
+            "DMP Sync - Merge Split Multi-Disc Releases"
+        });
+        match multi_disc::run_repair(&pool, &reporter, args.dry_run).await {
+            Ok(s) => {
+                reporter.blank();
+                reporter.done(&format!(
+                    "{} group(s) seen, {} skipped (contested disc), {} {} ({} row(s) {})",
+                    s.groups_seen,
+                    s.groups_skipped_overlapping_discs,
+                    s.groups_merged,
+                    if args.dry_run {
+                        "would be merged"
+                    } else {
+                        "merged"
+                    },
+                    s.rows_absorbed,
+                    if args.dry_run {
+                        "would be absorbed"
+                    } else {
+                        "absorbed"
+                    },
+                ));
+            }
+            Err(e) => reporter.err(&format!("Multi-disc repair error: {}", e)),
         }
         return;
     }
@@ -1684,8 +1724,6 @@ async fn main() {
                 .await
                 .ok();
 
-            delete_mb_tracks_for_release(&pool, &mb_db_id).await.ok();
-
             let track_rows: Vec<MbTrackRow> = best_tracks
                 .iter()
                 .map(|t| MbTrackRow {
@@ -1697,7 +1735,8 @@ async fn main() {
                 })
                 .collect();
 
-            let inserted_tracks = match batch_insert_mb_tracks(&pool, &mb_db_id, &track_rows).await
+            let inserted_tracks = match sync_mb_tracks_for_release(&pool, &mb_db_id, &track_rows)
+                .await
             {
                 Ok(t) => t,
                 Err(e) => {

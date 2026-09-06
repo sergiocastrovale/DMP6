@@ -169,7 +169,7 @@ export interface SongkongHealth {
 
 export type DlStatusValue = { status: string, downloadedReleaseId: string, percent: number, bytesTransferred: number, totalBytes: number }
 
-export type DlStatusItem = DlStatusValue & { mbReleaseId: string | null }
+export type DlStatusItem = DlStatusValue & { mbReleaseId: string | null, replacesLocalReleaseId: string | null }
 
 export interface DlInFlightItem {
   status: DownloadedReleaseStatus

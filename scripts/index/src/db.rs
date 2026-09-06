@@ -2,7 +2,114 @@ use chrono::{NaiveDateTime, Utc};
 use common::types::TrackMeta;
 use slug::slugify;
 use sqlx::PgPool;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+
+/// What one candidate folder-release contributes to the multi-disc decision. Built from tags only -
+/// the folder path is carried along as an identity/display anchor, never parsed for meaning.
+#[derive(Debug, Clone)]
+pub struct FolderFacts {
+    pub folder_path: String,
+    /// Majority embedded MusicBrainz *release* id across the folder's tracks (already sanitized).
+    /// `None` when no track carries one - the metadata signal is simply absent for that folder.
+    pub majority_mb_release_id: Option<String>,
+    /// Distinct disc numbers claimed by the folder's tracks. An untagged track counts as disc 1,
+    /// matching how a single-disc release reads.
+    pub disc_numbers: BTreeSet<i32>,
+}
+
+/// Where a folder's tracks should actually land once multi-disc folders are merged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergeTarget {
+    pub group_key: String,
+    pub folder_path: String,
+    /// Every folder path folded into this release, the planned one included. Lets the caller adopt
+    /// (re-key + absorb) the rows a previous, unmerged index run left behind.
+    pub member_folders: Vec<String>,
+}
+
+/// Longest common ancestor of two folder paths, on `/` boundaries. `""` when they share no prefix.
+fn common_ancestor(a: &str, b: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for (sa, sb) in a.split('/').zip(b.split('/')) {
+        if sa != sb {
+            break;
+        }
+        out.push(sa);
+    }
+    out.join("/")
+}
+
+/// Decide which folders are discs of one release and therefore belong in a single `LocalRelease`.
+///
+/// **Metadata decides this, not folder names.** Two folders merge iff their tracks agree on the
+/// majority embedded MB *release* id and their disc-number sets are disjoint. That is exactly what
+/// MusicBrainz already asserts: one release, several media. Names like `CD 1 (Vol 3)`, `LP 2`,
+/// `Disc One` or `CD 2 - Live` carry no weight, and a box set whose discs are separate releases
+/// (each tagged with its own release id) is left alone for free.
+///
+/// Overlapping disc numbers mean two folders both claim the same medium - duplicate rips of one
+/// album, not two halves of it - so they stay separate and surface via the duplicate-release audit.
+///
+/// This is NOT the reverted fragmentation bug. That one put *per-track* MB ids into the group key
+/// and shredded compilations into per-track fragments. This keys on the folder exactly as before
+/// and only ever *merges* whole folders, which cannot shred anything.
+pub fn plan_disc_merges(folders: &[FolderFacts]) -> HashMap<String, MergeTarget> {
+    let mut by_release: HashMap<&str, Vec<&FolderFacts>> = HashMap::new();
+    for f in folders {
+        if let Some(id) = f.majority_mb_release_id.as_deref() {
+            by_release.entry(id).or_default().push(f);
+        }
+    }
+
+    let mut plan: HashMap<String, MergeTarget> = HashMap::new();
+    for (release_id, mut members) in by_release {
+        if members.len() < 2 {
+            continue;
+        }
+        // Stable order so the chosen folder_path/ancestor never depends on HashMap iteration.
+        members.sort_by(|a, b| a.folder_path.cmp(&b.folder_path));
+
+        // Keep only folders whose discs nothing else claims. A folder overlapping any other is a
+        // duplicate rip: drop it from the group rather than guessing which copy is canonical.
+        let mut seen: HashMap<i32, usize> = HashMap::new();
+        for f in &members {
+            for d in &f.disc_numbers {
+                *seen.entry(*d).or_insert(0) += 1;
+            }
+        }
+        let disjoint: Vec<&FolderFacts> = members
+            .iter()
+            .copied()
+            .filter(|f| f.disc_numbers.iter().all(|d| seen.get(d) == Some(&1)))
+            .collect();
+        if disjoint.len() < 2 {
+            continue;
+        }
+
+        let ancestor = disjoint
+            .iter()
+            .skip(1)
+            .fold(disjoint[0].folder_path.clone(), |acc, f| {
+                common_ancestor(&acc, &f.folder_path)
+            });
+        let folder_path = if ancestor.is_empty() {
+            disjoint[0].folder_path.clone()
+        } else {
+            ancestor
+        };
+        let member_folders: Vec<String> =
+            disjoint.iter().map(|f| f.folder_path.clone()).collect();
+        let target = MergeTarget {
+            group_key: format!("mbrelease:{}", release_id),
+            folder_path,
+            member_folders,
+        };
+        for f in disjoint {
+            plan.insert(f.folder_path.clone(), target.clone());
+        }
+    }
+    plan
+}
 
 pub fn strip_disc_subfolder(folder_path: &str) -> String {
     if let Some(last_slash) = folder_path.rfind('/') {
@@ -154,6 +261,79 @@ pub async fn ensure_local_release_cached(
     }
     let id = ensure_local_release(pool, title, year, folder_path, group_key).await?;
     cache.insert(group_key.to_string(), id.clone());
+    Ok(id)
+}
+
+/// Land a merged multi-disc release on ONE row, absorbing whatever a previous unmerged run left.
+///
+/// Without this, a re-index of an already-split release would insert a third row under the new
+/// `mbrelease:` key and leave the two `folder:` rows behind holding their tracks (a plain index
+/// skips known file paths, so it never re-links them). So: adopt the existing rows - re-key the
+/// survivor, move the others' tracks onto it, delete the emptied ones - then upsert as usual.
+pub async fn ensure_merged_local_release(
+    pool: &PgPool,
+    title: &str,
+    year: Option<i32>,
+    target: &MergeTarget,
+    cache: &mut HashMap<String, String>,
+) -> Result<String, sqlx::Error> {
+    if let Some(id) = cache.get(&target.group_key) {
+        return Ok(id.clone());
+    }
+
+    let member_keys: Vec<String> = target
+        .member_folders
+        .iter()
+        .map(|f| format!("folder:{}", f))
+        .collect();
+
+    // Oldest first: the survivor keeps the earliest row's identity (and its play counts/favourites).
+    let existing: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT id FROM "LocalRelease"
+           WHERE "groupKey" = $1 OR "groupKey" = ANY($2)
+           ORDER BY "createdAt" ASC"#,
+    )
+    .bind(&target.group_key)
+    .bind(&member_keys)
+    .fetch_all(pool)
+    .await?;
+
+    if let Some((survivor,)) = existing.first().cloned() {
+        let losers: Vec<String> = existing.into_iter().skip(1).map(|(id,)| id).collect();
+        if !losers.is_empty() {
+            let now = Utc::now().naive_utc();
+            sqlx::query(
+                r#"UPDATE "LocalReleaseTrack" SET "localReleaseId" = $1, "updatedAt" = $2
+                   WHERE "localReleaseId" = ANY($3)"#,
+            )
+            .bind(&survivor)
+            .bind(now)
+            .bind(&losers)
+            .execute(pool)
+            .await?;
+            sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = ANY($1)"#)
+                .bind(&losers)
+                .execute(pool)
+                .await?;
+        }
+        // Re-key onto the metadata-derived key and re-score on the next sync.
+        sqlx::query(
+            r#"UPDATE "LocalRelease"
+               SET "groupKey" = $1, "folderPath" = $2, "matchStatus" = 'UNKNOWN', "updatedAt" = $3
+               WHERE id = $4"#,
+        )
+        .bind(&target.group_key)
+        .bind(&target.folder_path)
+        .bind(Utc::now().naive_utc())
+        .bind(&survivor)
+        .execute(pool)
+        .await?;
+        cache.insert(target.group_key.clone(), survivor.clone());
+        return Ok(survivor);
+    }
+
+    let id = ensure_local_release(pool, title, year, &target.folder_path, &target.group_key).await?;
+    cache.insert(target.group_key.clone(), id.clone());
     Ok(id)
 }
 
@@ -587,6 +767,84 @@ mod tests {
             folder_majority_title_year(&tracks),
             ("A".to_string(), Some(2000))
         );
+    }
+
+    fn facts(folder: &str, mb: Option<&str>, discs: &[i32]) -> FolderFacts {
+        FolderFacts {
+            folder_path: folder.to_string(),
+            majority_mb_release_id: mb.map(|s| s.to_string()),
+            disc_numbers: discs.iter().copied().collect(),
+        }
+    }
+
+    #[test]
+    fn merges_two_disc_folders_that_share_a_release_id() {
+        // The Jordan Lake Sessions: two folders, one MB release, discs 1 and 2. Folder names
+        // ("CD 1 (Vol 3)") are never consulted - only the tags.
+        let plan = plan_disc_merges(&[
+            facts("MG/Album/Jordan Lake/CD 1 (Vol 3)", Some("mb-jordan"), &[1]),
+            facts("MG/Album/Jordan Lake/CD 2 (Vol 4)", Some("mb-jordan"), &[2]),
+        ]);
+
+        let a = plan.get("MG/Album/Jordan Lake/CD 1 (Vol 3)").expect("merged");
+        assert_eq!(a.group_key, "mbrelease:mb-jordan");
+        assert_eq!(a.folder_path, "MG/Album/Jordan Lake");
+        assert_eq!(a.member_folders.len(), 2);
+        assert_eq!(plan.get("MG/Album/Jordan Lake/CD 2 (Vol 4)"), Some(a));
+    }
+
+    #[test]
+    fn keeps_a_box_set_of_separate_releases_apart() {
+        // ABBA's 9CD box: CD 1 is tagged as the standalone "Ring Ring" release, CDs 2-3 as the box.
+        // Only the ones MusicBrainz actually calls one release merge.
+        let plan = plan_disc_merges(&[
+            facts("ABBA/Box/CD 1-1973 - Ring Ring", Some("mb-ringring"), &[1]),
+            facts("ABBA/Box/CD 2-1974 - Waterloo", Some("mb-box"), &[2]),
+            facts("ABBA/Box/CD 3-1975 - ABBA", Some("mb-box"), &[3]),
+        ]);
+
+        assert!(!plan.contains_key("ABBA/Box/CD 1-1973 - Ring Ring"));
+        assert_eq!(
+            plan.get("ABBA/Box/CD 2-1974 - Waterloo").map(|t| t.group_key.as_str()),
+            Some("mbrelease:mb-box"),
+        );
+        assert!(plan.contains_key("ABBA/Box/CD 3-1975 - ABBA"));
+    }
+
+    #[test]
+    fn refuses_duplicate_rips_that_claim_the_same_disc() {
+        // Same album ripped into two folders: both claim disc 1, so they are copies, not halves.
+        let plan = plan_disc_merges(&[
+            facts("A/Album [FLAC]", Some("mb-x"), &[1]),
+            facts("A/Album [MP3]", Some("mb-x"), &[1]),
+        ]);
+
+        assert!(plan.is_empty());
+    }
+
+    #[test]
+    fn a_contested_disc_holds_up_the_whole_group() {
+        // Discs 1+2 plus a third folder re-ripping disc 1. Which of the two disc-1 folders is the
+        // real half is unknowable from tags, and merging the wrong one would bury a duplicate
+        // inside the release - so the group is left alone entirely for the audit to surface.
+        let plan = plan_disc_merges(&[
+            facts("A/Album/CD1", Some("mb-x"), &[1]),
+            facts("A/Album/CD2", Some("mb-x"), &[2]),
+            facts("A/Album copy", Some("mb-x"), &[1]),
+        ]);
+
+        assert!(plan.is_empty());
+    }
+
+    #[test]
+    fn no_embedded_release_id_means_no_merge() {
+        // Nothing to go on but folder names - left to strip_disc_subfolder's fallback.
+        let plan = plan_disc_merges(&[
+            facts("A/Album/CD 1 (Live)", None, &[1]),
+            facts("A/Album/CD 2 (Studio)", None, &[2]),
+        ]);
+
+        assert!(plan.is_empty());
     }
 
     #[test]

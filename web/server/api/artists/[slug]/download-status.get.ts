@@ -15,13 +15,17 @@ export default defineEventHandler(async (event) => {
       artistId: artist.id,
       status: { in: ['SEARCHING', 'DOWNLOADING', 'ENRICHING', 'READY', 'FAILED', 'ABANDONED'] },
     },
-    select: { id: true, mbReleaseId: true, status: true, files: true, bytesTransferred: true },
+    select: { id: true, mbReleaseId: true, replacesLocalReleaseId: true, status: true, files: true, bytesTransferred: true },
     orderBy: { updatedAt: 'desc' },
   })
 
   return {
     items: items.map(i => ({
       mbReleaseId: i.mbReleaseId,
+      // Several LocalReleases can share one MB release (duplicate copies, or disc halves not yet
+      // merged). A re-download targets exactly one of them, so the row it replaces is what lets the
+      // artist page light up that card alone instead of every card carrying the MB id.
+      replacesLocalReleaseId: i.replacesLocalReleaseId,
       status: i.status,
       downloadedReleaseId: i.id,
       ...computeDownloadPercent(i),

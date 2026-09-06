@@ -103,12 +103,17 @@ describe('buildLocalAndGapCards - core aggregation', () => {
   })
 
   it('THE SHARED-releaseId BUG: two unrelated LocalReleases pointing at the same MB id both render as covering it', () => {
-    // This is the documented systemic sync-matcher bug (13k+ affected rows in prod): the DB has no
-    // unique constraint on LocalRelease.releaseId, so two different local folders can carry the same
-    // releaseId. Both cards render as "hasLocal" for the same MB release, and the gap loop sees it as
-    // covered from either one - a real gap could be masked if the "wrong" duplicate is the one that
-    // happens to match, but here we assert the current (buggy) behavior precisely so a fix is a
-    // deliberate, visible diff against this test rather than a silent regression either way.
+    // The DB has no unique constraint on LocalRelease.releaseId, so two local folders can carry the
+    // same releaseId. Both cards render as "hasLocal" for the same MB release, and the gap loop sees
+    // it as covered from either one.
+    //
+    // The multi-disc half of this is now handled upstream: index::db::plan_disc_merges folds disc
+    // folders of one release into a single LocalRelease at scan time, and `sync --repair-multi-disc`
+    // does the same for rows already in the database. What remains here is genuine duplicate copies
+    // (the same album ripped into two folders), which stay two rows on purpose - the
+    // duplicate-release audit surfaces those for a human to delete. Per-card download state no
+    // longer collides for them either (see mergeDownloadStatus). Asserting the current behaviour
+    // precisely so any further change is a deliberate, visible diff against this test.
     const mb = mbRelease({ id: 'shared-mb', title: 'Shared Release' })
     const lrA = localRelease({ id: 'lrA', releaseId: 'shared-mb' })
     const lrB = localRelease({ id: 'lrB', releaseId: 'shared-mb' })

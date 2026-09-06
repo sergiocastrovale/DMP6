@@ -33,9 +33,31 @@ describe('mergeDownloadStatus', () => {
   })
 
   it('leaves a release alone when it has no mbReleaseRowId', () => {
-    const releases = [release({ id: 'r1', mbReleaseRowId: null })]
+    const releases = [release({ id: 'r1', mbReleaseRowId: null, localReleaseId: null })]
     const map = new Map([['mb1', dlStatus()]])
     expect(mergeDownloadStatus(releases, map)[0]).not.toHaveProperty('downloadState')
+  })
+
+  it('lights up only the copy being re-downloaded, not every card sharing the MB release', () => {
+    // Two LocalReleases bound to one MB release (duplicate folder copies, or disc halves): keying
+    // on the MB id alone painted one download's progress bar onto both rows.
+    const releases = [
+      release({ id: 'r1', localReleaseId: 'lrA', mbReleaseRowId: 'mb1' }),
+      release({ id: 'r2', localReleaseId: 'lrB', mbReleaseRowId: 'mb1' }),
+    ]
+    const map = new Map([['lrA', dlStatus({ status: 'DOWNLOADING', percent: 30 })]])
+
+    const merged = mergeDownloadStatus(releases, map)
+
+    expect(merged[0]).toMatchObject({ downloadState: 'DOWNLOADING', downloadPercent: 30 })
+    expect(merged[1]).not.toHaveProperty('downloadState')
+  })
+
+  it('still falls back to the MB id for a gap download, which has no LocalRelease at all', () => {
+    const releases = [release({ id: 'r1', localReleaseId: null, mbReleaseRowId: 'mb1', status: 'MISSING' })]
+    const map = new Map([['mb1', dlStatus({ status: 'SEARCHING' })]])
+
+    expect(mergeDownloadStatus(releases, map)[0]).toMatchObject({ downloadState: 'SEARCHING' })
   })
 })
 

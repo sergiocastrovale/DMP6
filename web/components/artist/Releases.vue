@@ -150,13 +150,16 @@ const acquireRelease = async (release: UnifiedRelease, replacesLocalReleaseId?: 
   }
   acquiringIds.value = new Set(acquiringIds.value).add(release.id)
   try {
-    const result = await $fetch<{ status: string }>('/api/downloads/acquire', {
+    const result = await $fetch<{ status: string; otherCopyInFlight?: boolean }>('/api/downloads/acquire', {
       method: 'POST',
       body: { mbReleaseRowId: release.mbReleaseRowId, replacesLocalReleaseId },
     })
     const message = acquireFailureMessage(result.status)
     if (message) {
       toast.error(message)
+    }
+    else if (result.otherCopyInFlight) {
+      toast.info('A download for another copy of this release is already running - it will replace that copy, not this one.')
     }
     refreshDownloadStatus()
   }

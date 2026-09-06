@@ -77,7 +77,12 @@ export const useArtistPage = (slug: Ref<string>) => {
       const data = await $fetch<{ items: DlStatusItem[] }>(`/api/artists/${slug.value}/download-status`)
       const next = new Map<string, DlStatusValue>()
       for (const i of data.items) {
-        if (i.mbReleaseId) { next.set(i.mbReleaseId, { status: i.status, downloadedReleaseId: i.downloadedReleaseId, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes }) }
+        // Key on the LocalRelease a re-download replaces when there is one, so two downloads
+        // sharing an MB release (duplicate copies, disc halves) each keep their own entry instead
+        // of the later one overwriting the earlier. A gap download has no LocalRelease at all, so
+        // the MB id stays the key for those.
+        const key = i.replacesLocalReleaseId ?? i.mbReleaseId
+        if (key) { next.set(key, { status: i.status, downloadedReleaseId: i.downloadedReleaseId, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes }) }
       }
       // An item that was ready and is now gone was promoted (or rejected) ->
       // refresh the release list so the card flips to its final form.
