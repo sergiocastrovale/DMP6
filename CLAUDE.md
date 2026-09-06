@@ -199,7 +199,7 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when a collab release has several main artists
 ./sync --recompute-scores     # Recompute every artist's averageMatchScore from the catalogue (pure SQL), then exit
 ./sync --repair-shared-release-ids [--dry-run]  # One-off: unbind LocalReleases that lost a shared-releaseId conflict
-./sync --repair-multi-disc [--dry-run]  # Fold split multi-disc rows back into one: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then --link-box-editions
+./sync --repair-multi-disc [--dry-run] [--only "Name"] [--exact] [--verbose]  # Fold split multi-disc rows back into one: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then --link-box-editions. --only/--exact match the folder path, so a run can be scoped to one artist; --verbose narrates tier 2's candidate search
 ./sync --link-box-editions [--dry-run]  # Derive which standalone album each box-set disc reprints (MusicBrainzReleaseMedium.equivalentReleaseId/GroupId); also runs at the tail of --repair-multi-disc
 
 # Audit & Fix

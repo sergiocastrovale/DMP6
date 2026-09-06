@@ -86,7 +86,7 @@ struct SyncArgs {
     repair_shared_release_ids: bool,
     #[arg(
         long,
-        help = "Merge LocalReleases that are discs of one release into a single row: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then exit"
+        help = "Merge LocalReleases that are discs of one release into a single row: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then exit. Honours --only/--exact (matched against the folder path) to scope a test run; --verbose narrates tier 2's candidate search"
     )]
     repair_multi_disc: bool,
     #[arg(
@@ -491,7 +491,15 @@ async fn main() {
         } else {
             "DMP Sync - Merge Split Multi-Disc Releases"
         });
-        match multi_disc::run_repair(&pool, &reporter, args.dry_run).await {
+        match multi_disc::run_repair(
+            &pool,
+            &reporter,
+            args.dry_run,
+            args.only.as_deref().unwrap_or(""),
+            args.exact,
+        )
+        .await
+        {
             Ok(s) => {
                 reporter.blank();
                 reporter.done(&format!(
@@ -531,7 +539,18 @@ async fn main() {
             .expect("HTTP client");
         let mut limiter = RateLimiter::new();
         limiter.set_web(args.web);
-        match boxset::run_repair(&pool, &http_client, &mut limiter, &reporter, args.dry_run).await {
+        match boxset::run_repair(
+            &pool,
+            &http_client,
+            &mut limiter,
+            &reporter,
+            args.dry_run,
+            args.verbose,
+            args.only.as_deref().unwrap_or(""),
+            args.exact,
+        )
+        .await
+        {
             Ok(s) => {
                 reporter.blank();
                 reporter.done(&format!(

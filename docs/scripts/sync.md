@@ -56,7 +56,7 @@ cd scripts && cargo build --release -p sync
 ./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when the release has several main artists
 ./sync --recompute-scores        # Recompute every artist's averageMatchScore (pure SQL), then exit
 ./sync --repair-shared-release-ids [--dry-run]  # One-off repair of releases that lost a shared-releaseId conflict
-./sync --repair-multi-disc [--dry-run]  # Fold split multi-disc rows into one; tier 1 shared embedded id (SQL), tier 2 box sets by tracklist (API), then --link-box-editions
+./sync --repair-multi-disc [--dry-run] [--only "Name"] [--exact] [--verbose]  # Fold split multi-disc rows into one; tier 1 shared embedded id (SQL), tier 2 box sets by tracklist (API), then --link-box-editions
 ./sync --link-box-editions [--dry-run]  # Derive which standalone album each box-set disc reprints; also runs at the tail of --repair-multi-disc
 ```
 
@@ -84,7 +84,7 @@ cd scripts && cargo build --release -p sync
 | `--artist-hint` | String | - | With `--release`: prefer this Artist ID when the release has several main artists |
 | `--recompute-scores` | bool | false | Recompute `averageMatchScore` for all artists from the catalogue (pure SQL, no API), then exit |
 | `--repair-shared-release-ids` | bool | false | One-off: unbind LocalReleases that lost a shared-`releaseId` conflict (pure SQL), then exit |
-| `--repair-multi-disc` | bool | false | Fold LocalReleases that are discs of one release into a single row - tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls) - then runs `--link-box-editions`, then exit |
+| `--repair-multi-disc` | bool | false | Fold LocalReleases that are discs of one release into a single row - tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls) - then runs `--link-box-editions`, then exit. `--only`/`--exact` scope it (matched against the folder path, so it works without a DB join); `--verbose` narrates tier 2's candidate search - per-group "no match" reasons, which candidate release ids/searches were tried and why each was rejected |
 | `--link-box-editions` | bool | false | Derive `MusicBrainzReleaseMedium.equivalentReleaseId`/`equivalentReleaseGroupId` - which standalone album a box-set disc reprints (exact recording-set match + title/duration fallback), then exit |
 | `--dry-run` | bool | false | With `--repair-shared-release-ids` / `--repair-multi-disc` / `--link-box-editions`: print the plan, write nothing |
 

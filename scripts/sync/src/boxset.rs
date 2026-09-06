@@ -193,18 +193,39 @@ async fn candidates_from_embedded_ids(
     http_client: &Client,
     limiter: &mut RateLimiter,
     ids: &[String],
+    reporter: &Reporter,
+    verbose: bool,
 ) -> Vec<FetchedCandidate> {
     let mut out = Vec::new();
     for id in ids {
-        if let Ok(by_id) = mb_api::mb_get_release_by_id(http_client, id, limiter).await {
-            if let Some(candidate) = build_candidate(&by_id.release.id, &by_id.release.media) {
-                out.push(FetchedCandidate {
-                    candidate,
-                    release: by_id.release,
-                    rg_id: by_id.rg_id,
-                    primary_type: by_id.primary_type,
-                });
-            }
+        if verbose {
+            reporter.sub_step(&format!("tier (a): looking up embedded id {id}..."));
+        }
+        match mb_api::mb_get_release_by_id(http_client, id, limiter).await {
+            Ok(by_id) => match build_candidate(&by_id.release.id, &by_id.release.media) {
+                Some(candidate) => {
+                    if verbose {
+                        reporter.sub_step(&format!(
+                            "  -> \"{}\", {} disc(s)",
+                            by_id.release.title,
+                            candidate.media.len()
+                        ));
+                    }
+                    out.push(FetchedCandidate {
+                        candidate,
+                        release: by_id.release,
+                        rg_id: by_id.rg_id,
+                        primary_type: by_id.primary_type,
+                    });
+                }
+                None if verbose => reporter.sub_step(&format!(
+                    "  -> \"{}\" has only 1 medium, not a box",
+                    by_id.release.title
+                )),
+                None => {}
+            },
+            Err(e) if verbose => reporter.sub_step(&format!("  -> lookup failed: {e}")),
+            Err(_) => {}
         }
     }
     out
@@ -217,30 +238,112 @@ async fn candidates_from_search(
     limiter: &mut RateLimiter,
     title: &str,
     artist_name: &str,
+    reporter: &Reporter,
+    verbose: bool,
 ) -> Vec<FetchedCandidate> {
-    let Ok(hits) = mb_api::mb_search_release_groups(http_client, title, artist_name, limiter).await
-    else {
-        return Vec::new();
+    if verbose {
+        reporter.sub_step(&format!(
+            "tier (b): searching MusicBrainz for \"{title}\" by {artist_name}..."
+        ));
+    }
+    let hits = match mb_api::mb_search_release_groups(http_client, title, artist_name, limiter).await {
+        Ok(hits) => hits,
+        Err(e) => {
+            if verbose {
+                reporter.sub_step(&format!("  -> search failed: {e}"));
+            }
+            return Vec::new();
+        }
     };
+    if verbose {
+        reporter.sub_step(&format!("  -> {} release group(s) found", hits.len()));
+    }
     let mut out = Vec::new();
     for rg in hits {
         if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &rg.secondary_types, None) {
+            if verbose {
+                reporter.sub_step(&format!(
+                    "  -> \"{}\" rejected by the allow-list ({:?}, {:?})",
+                    rg.title, rg.primary_type, rg.secondary_types
+                ));
+            }
             continue;
         }
-        if let Ok(editions) = mb_api::mb_get_release_tracks(http_client, &rg.id, limiter).await {
-            for (release, _flattened) in editions {
-                if let Some(candidate) = build_candidate(&release.id, &release.media) {
-                    out.push(FetchedCandidate {
-                        candidate,
-                        release,
-                        rg_id: rg.id.clone(),
-                        primary_type: rg.primary_type.clone(),
-                    });
+        match mb_api::mb_get_release_tracks(http_client, &rg.id, limiter).await {
+            Ok(editions) => {
+                if verbose {
+                    reporter.sub_step(&format!(
+                        "  -> \"{}\": {} edition(s) to check",
+                        rg.title,
+                        editions.len()
+                    ));
+                }
+                for (release, _flattened) in editions {
+                    match build_candidate(&release.id, &release.media) {
+                        Some(candidate) => {
+                            if verbose {
+                                reporter.sub_step(&format!(
+                                    "     \"{}\" ({}), {} disc(s)",
+                                    release.title,
+                                    release.id,
+                                    candidate.media.len()
+                                ));
+                            }
+                            out.push(FetchedCandidate {
+                                candidate,
+                                release,
+                                rg_id: rg.id.clone(),
+                                primary_type: rg.primary_type.clone(),
+                            });
+                        }
+                        None if verbose => reporter.sub_step(&format!(
+                            "     \"{}\" has only 1 medium, not a box",
+                            release.title
+                        )),
+                        None => {}
+                    }
                 }
             }
+            Err(e) if verbose => reporter.sub_step(&format!("  -> \"{}\" fetch failed: {e}", rg.title)),
+            Err(_) => {}
         }
     }
     out
+}
+
+/// Why a candidate that reached `plan_box_bind` did not produce a bind - diagnostic only, computed
+/// separately from the pure decision fn so `plan_box_bind` itself stays a plain `Option` with no
+/// reporting concerns. Checked in the same order `plan_box_bind` evaluates siblings.
+fn describe_rejection(siblings: &[BoxSibling], candidate: &FetchedCandidate) -> String {
+    let mut claimed: HashMap<i32, &str> = HashMap::new();
+    for s in siblings {
+        let hits: Vec<i32> = candidate
+            .candidate
+            .media
+            .iter()
+            .filter(|m| tracks_match(&s.tracks, &m.tracks))
+            .map(|m| m.position)
+            .collect();
+        match hits.len() {
+            0 => return format!("[{}] matches no disc of \"{}\"", s.folder_path, candidate.release.title),
+            1 => {
+                let pos = hits[0];
+                if let Some(other) = claimed.insert(pos, &s.folder_path) {
+                    return format!(
+                        "[{}] and [{}] both match disc {} of \"{}\"",
+                        other, s.folder_path, pos, candidate.release.title
+                    );
+                }
+            }
+            n => {
+                return format!(
+                    "[{}] matches {} discs of \"{}\" - ambiguous",
+                    s.folder_path, n, candidate.release.title
+                )
+            }
+        }
+    }
+    "no reason found (this should not happen)".to_string()
 }
 
 /// Best-effort box title from a parent folder name: strip a leading "YYYY - " and any trailing
@@ -508,14 +611,23 @@ pub struct BoxSetSummary {
     pub rows_absorbed: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_repair(
     pool: &PgPool,
     http_client: &Client,
     limiter: &mut RateLimiter,
     reporter: &Reporter,
     dry_run: bool,
+    verbose: bool,
+    only: &str,
+    exact: bool,
 ) -> Result<BoxSetSummary, sqlx::Error> {
-    let groups = find_sibling_groups(pool).await?;
+    let mut groups = find_sibling_groups(pool).await?;
+    // The parent folder always starts with the artist's own folder name, so the same
+    // semicolon-separated prefix/exact filter every other sync mode uses works here unchanged.
+    if !only.is_empty() {
+        groups.retain(|g| common::filters::matches_filter(&g.parent, "", "", only, exact));
+    }
     let mut summary = BoxSetSummary {
         groups_seen: groups.len(),
         ..Default::default()
@@ -527,11 +639,24 @@ pub async fn run_repair(
     reporter.blank();
 
     let mut release_type_cache: HashMap<String, String> = HashMap::new();
+    let total = groups.len();
 
-    for group in groups {
+    for (idx, group) in groups.into_iter().enumerate() {
         if group.rows.len() < 2 {
             continue;
         }
+        reporter.item("Group", &group.parent, idx + 1, total);
+        if verbose {
+            reporter.sub_step(&format!("{} sibling folder(s):", group.rows.len()));
+            for r in &group.rows {
+                reporter.sub_step(&format!(
+                    "  [{}] embedded id: {}",
+                    r.folder_path,
+                    r.majority_mb_release_id.as_deref().unwrap_or("(none)")
+                ));
+            }
+        }
+
         let mut siblings: Vec<BoxSibling> = Vec::with_capacity(group.rows.len());
         for row in &group.rows {
             let tracks = sibling_tracks(pool, &row.local_id).await?;
@@ -544,6 +669,7 @@ pub async fn run_repair(
 
         let local_ids: Vec<String> = group.rows.iter().map(|r| r.local_id.clone()).collect();
         let Some((artist_id, artist_name)) = artist_for_group(pool, &local_ids).await else {
+            reporter.skip("no artist link found for this group - skipped");
             continue;
         };
 
@@ -555,10 +681,18 @@ pub async fn run_repair(
             .into_iter()
             .collect();
 
-        let mut fetched = candidates_from_embedded_ids(http_client, limiter, &embedded_ids).await;
+        let mut fetched =
+            candidates_from_embedded_ids(http_client, limiter, &embedded_ids, reporter, verbose).await;
         if fetched.is_empty() {
             let title = guess_box_title(&group.parent);
-            fetched = candidates_from_search(http_client, limiter, &title, &artist_name).await;
+            fetched =
+                candidates_from_search(http_client, limiter, &title, &artist_name, reporter, verbose)
+                    .await;
+        }
+
+        if fetched.is_empty() {
+            reporter.skip("no multi-medium candidate found");
+            continue;
         }
 
         let plan = fetched
@@ -566,6 +700,12 @@ pub async fn run_repair(
             .find_map(|f| plan_box_bind(&siblings, &f.candidate).map(|p| (f, p)));
 
         let Some((fetched, plan)) = plan else {
+            let reasons: Vec<String> = fetched.iter().map(|f| describe_rejection(&siblings, f)).collect();
+            reporter.skip(&format!(
+                "{} candidate(s) checked, none matched: {}",
+                reasons.len(),
+                reasons.join("; ")
+            ));
             continue;
         };
 

@@ -164,8 +164,19 @@ pub async fn run_repair(
     pool: &PgPool,
     reporter: &Reporter,
     dry_run: bool,
+    only: &str,
+    exact: bool,
 ) -> Result<MultiDiscSummary, sqlx::Error> {
-    let rows = find_candidate_rows(pool).await?;
+    let mut rows = find_candidate_rows(pool).await?;
+    // Folder path always starts with the artist's own folder name, so the same semicolon-separated
+    // prefix/exact filter every other sync mode uses works here unchanged - no separate artist join.
+    if !only.is_empty() {
+        rows.retain(|r| {
+            r.folder_path
+                .as_deref()
+                .is_some_and(|p| common::filters::matches_filter(p, "", "", only, exact))
+        });
+    }
     let mut by_release: HashMap<&str, Vec<&DiscRow>> = HashMap::new();
     for r in &rows {
         by_release

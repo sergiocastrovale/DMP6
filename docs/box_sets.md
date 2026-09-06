@@ -455,9 +455,13 @@ single-medium albums until they are naturally re-synced): match the medium's
       *Ring Ring — disc 1 of "The Albums"* row inside the amber *Ring Ring* editions group — once the
       repair steps below have actually run (nothing to see before that).
 - [x] Commit `458f9ac7` + push to `origin/master`
-- [ ] `./deploy` — **running now** (background), builds the image, ships it to the NAS, restarts the
-      `web` container, then runs `prisma migrate deploy` against the shared prod DB. Its own
-      `pnpm lint && pnpm typecheck` gate runs first.
+- [x] `./deploy` — first attempt failed at its own `pnpm lint` gate on **2 pre-existing errors in
+      `web/components/terminal/Actions.vue`**, unrelated to this task (a type-only import flagged by
+      `consistent-type-imports`, two `emit()` overloads eslint wants unified) — not something this diff
+      introduced, but blocking, so fixed in commit `65af10fc` and pushed. Second attempt succeeded:
+      image built, shipped to the NAS, `web` container restarted, `prisma migrate deploy` applied
+      `20260907000000_box_sets` — confirmed live via `\d "MusicBrainzReleaseMedium"` /
+      `\d "LocalReleaseMember"` / the new `mediumCount` column, all present on the prod DB.
 - [ ] Backfill media + `recordingId`: re-sync **multi-medium releases only** (`max(discNumber) > 1` → 4659 releases, not all 120k)
 - [ ] `./sync --repair-multi-disc --dry-run` → review KEEP/merge table → run for real
 - [ ] `./sync --link-box-editions --dry-run` → review → run for real (also runs automatically at the
