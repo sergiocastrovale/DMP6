@@ -194,23 +194,18 @@ async fn candidates_from_embedded_ids(
     limiter: &mut RateLimiter,
     ids: &[String],
     reporter: &Reporter,
-    verbose: bool,
 ) -> Vec<FetchedCandidate> {
     let mut out = Vec::new();
     for id in ids {
-        if verbose {
-            reporter.sub_step(&format!("tier (a): looking up embedded id {id}..."));
-        }
+        reporter.sub_step(&format!("tier (a): looking up embedded id {id}..."));
         match mb_api::mb_get_release_by_id(http_client, id, limiter).await {
             Ok(by_id) => match build_candidate(&by_id.release.id, &by_id.release.media) {
                 Some(candidate) => {
-                    if verbose {
-                        reporter.sub_step(&format!(
-                            "  -> \"{}\", {} disc(s)",
-                            by_id.release.title,
-                            candidate.media.len()
-                        ));
-                    }
+                    reporter.sub_step(&format!(
+                        "  -> \"{}\", {} disc(s)",
+                        by_id.release.title,
+                        candidate.media.len()
+                    ));
                     out.push(FetchedCandidate {
                         candidate,
                         release: by_id.release,
@@ -218,14 +213,12 @@ async fn candidates_from_embedded_ids(
                         primary_type: by_id.primary_type,
                     });
                 }
-                None if verbose => reporter.sub_step(&format!(
+                None => reporter.sub_step(&format!(
                     "  -> \"{}\" has only 1 medium, not a box",
                     by_id.release.title
                 )),
-                None => {}
             },
-            Err(e) if verbose => reporter.sub_step(&format!("  -> lookup failed: {e}")),
-            Err(_) => {}
+            Err(e) => reporter.sub_step(&format!("  -> lookup failed: {e}")),
         }
     }
     out
@@ -239,56 +232,43 @@ async fn candidates_from_search(
     title: &str,
     artist_name: &str,
     reporter: &Reporter,
-    verbose: bool,
 ) -> Vec<FetchedCandidate> {
-    if verbose {
-        reporter.sub_step(&format!(
-            "tier (b): searching MusicBrainz for \"{title}\" by {artist_name}..."
-        ));
-    }
+    reporter.sub_step(&format!(
+        "tier (b): searching MusicBrainz for \"{title}\" by {artist_name}..."
+    ));
     let hits = match mb_api::mb_search_release_groups(http_client, title, artist_name, limiter).await {
         Ok(hits) => hits,
         Err(e) => {
-            if verbose {
-                reporter.sub_step(&format!("  -> search failed: {e}"));
-            }
+            reporter.sub_step(&format!("  -> search failed: {e}"));
             return Vec::new();
         }
     };
-    if verbose {
-        reporter.sub_step(&format!("  -> {} release group(s) found", hits.len()));
-    }
+    reporter.sub_step(&format!("  -> {} release group(s) found", hits.len()));
     let mut out = Vec::new();
     for rg in hits {
         if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &rg.secondary_types, None) {
-            if verbose {
-                reporter.sub_step(&format!(
-                    "  -> \"{}\" rejected by the allow-list ({:?}, {:?})",
-                    rg.title, rg.primary_type, rg.secondary_types
-                ));
-            }
+            reporter.sub_step(&format!(
+                "  -> \"{}\" rejected by the allow-list ({:?}, {:?})",
+                rg.title, rg.primary_type, rg.secondary_types
+            ));
             continue;
         }
         match mb_api::mb_get_release_tracks(http_client, &rg.id, limiter).await {
             Ok(editions) => {
-                if verbose {
-                    reporter.sub_step(&format!(
-                        "  -> \"{}\": {} edition(s) to check",
-                        rg.title,
-                        editions.len()
-                    ));
-                }
+                reporter.sub_step(&format!(
+                    "  -> \"{}\": {} edition(s) to check",
+                    rg.title,
+                    editions.len()
+                ));
                 for (release, _flattened) in editions {
                     match build_candidate(&release.id, &release.media) {
                         Some(candidate) => {
-                            if verbose {
-                                reporter.sub_step(&format!(
-                                    "     \"{}\" ({}), {} disc(s)",
-                                    release.title,
-                                    release.id,
-                                    candidate.media.len()
-                                ));
-                            }
+                            reporter.sub_step(&format!(
+                                "     \"{}\" ({}), {} disc(s)",
+                                release.title,
+                                release.id,
+                                candidate.media.len()
+                            ));
                             out.push(FetchedCandidate {
                                 candidate,
                                 release,
@@ -296,16 +276,14 @@ async fn candidates_from_search(
                                 primary_type: rg.primary_type.clone(),
                             });
                         }
-                        None if verbose => reporter.sub_step(&format!(
+                        None => reporter.sub_step(&format!(
                             "     \"{}\" has only 1 medium, not a box",
                             release.title
                         )),
-                        None => {}
                     }
                 }
             }
-            Err(e) if verbose => reporter.sub_step(&format!("  -> \"{}\" fetch failed: {e}", rg.title)),
-            Err(_) => {}
+            Err(e) => reporter.sub_step(&format!("  -> \"{}\" fetch failed: {e}", rg.title)),
         }
     }
     out
@@ -618,7 +596,6 @@ pub async fn run_repair(
     limiter: &mut RateLimiter,
     reporter: &Reporter,
     dry_run: bool,
-    verbose: bool,
     only: &str,
     exact: bool,
 ) -> Result<BoxSetSummary, sqlx::Error> {
@@ -646,15 +623,13 @@ pub async fn run_repair(
             continue;
         }
         reporter.item("Group", &group.parent, idx + 1, total);
-        if verbose {
-            reporter.sub_step(&format!("{} sibling folder(s):", group.rows.len()));
-            for r in &group.rows {
-                reporter.sub_step(&format!(
-                    "  [{}] embedded id: {}",
-                    r.folder_path,
-                    r.majority_mb_release_id.as_deref().unwrap_or("(none)")
-                ));
-            }
+        reporter.sub_step(&format!("{} sibling folder(s):", group.rows.len()));
+        for r in &group.rows {
+            reporter.sub_step(&format!(
+                "  [{}] embedded id: {}",
+                r.folder_path,
+                r.majority_mb_release_id.as_deref().unwrap_or("(none)")
+            ));
         }
 
         let mut siblings: Vec<BoxSibling> = Vec::with_capacity(group.rows.len());
@@ -682,12 +657,11 @@ pub async fn run_repair(
             .collect();
 
         let mut fetched =
-            candidates_from_embedded_ids(http_client, limiter, &embedded_ids, reporter, verbose).await;
+            candidates_from_embedded_ids(http_client, limiter, &embedded_ids, reporter).await;
         if fetched.is_empty() {
             let title = guess_box_title(&group.parent);
             fetched =
-                candidates_from_search(http_client, limiter, &title, &artist_name, reporter, verbose)
-                    .await;
+                candidates_from_search(http_client, limiter, &title, &artist_name, reporter).await;
         }
 
         if fetched.is_empty() {

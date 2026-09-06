@@ -86,7 +86,7 @@ struct SyncArgs {
     repair_shared_release_ids: bool,
     #[arg(
         long,
-        help = "Merge LocalReleases that are discs of one release into a single row: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then exit. Honours --only/--exact (matched against the folder path) to scope a test run; --verbose narrates tier 2's candidate search"
+        help = "Merge LocalReleases that are discs of one release into a single row: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then exit. Honours --only/--exact (matched against the folder path) to scope a test run; tier 2 always narrates its candidate search"
     )]
     repair_multi_disc: bool,
     #[arg(
@@ -545,7 +545,6 @@ async fn main() {
             &mut limiter,
             &reporter,
             args.dry_run,
-            args.verbose,
             args.only.as_deref().unwrap_or(""),
             args.exact,
         )
