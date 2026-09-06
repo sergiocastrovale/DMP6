@@ -107,6 +107,28 @@ describe('useArtistCatalogue', () => {
     expect(group.primary.id).toBe('dated')
   })
 
+  it('groups: a box-edition virtual card joins the album\'s edition group via its borrowed releaseGroupId', () => {
+    // buildBoxEditionCards (server/utils/releaseAggregation.ts) gives a box disc the ALBUM's own
+    // releaseGroupId, not the box's - so the grouper needs no box-specific logic at all to place it
+    // alongside the album's real editions (docs/box_sets.md goal 2).
+    const releases = ref([
+      release({ id: 'album-1', releaseGroupId: 'rg-ringring', year: 1973 }),
+      release({
+        id: 'box1:medium:1', releaseGroupId: 'rg-ringring', year: 2008,
+        boxParent: { releaseId: 'box1', title: 'The Albums', mediumPosition: 1, mediumTitle: 'Ring Ring' },
+      }),
+    ])
+    const cat = useArtistCatalogue(releases)
+    expect(cat.groups.value).toHaveLength(1)
+    expect(cat.groups.value[0]!.releases.map(r => r.id)).toEqual(['album-1', 'box1:medium:1'])
+  })
+
+  it('groups: a box set\'s own card is a solo group carrying discCount for the discs pill', () => {
+    const releases = ref([release({ id: 'box1', releaseGroupId: 'rg-box', discCount: 9 })])
+    const cat = useArtistCatalogue(releases)
+    expect(cat.groups.value[0]!.primary.discCount).toBe(9)
+  })
+
   it('groups: totals sum trackCount/localTrackCount/totalPlayCount across the group', () => {
     const releases = ref([
       release({ id: '1', releaseGroupId: 'g', trackCount: 10, localTrackCount: 8, totalPlayCount: 5 }),

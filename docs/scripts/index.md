@@ -120,6 +120,24 @@ Display title/year for the release come from the folder's **majority (mode)** `a
 
 **Compilations link many artists to one release.** Index creates one `LocalReleaseArtist` link per distinct `albumArtist` tag in the folder (main artists). A comp tagged `albumArtist = "Various Artists"` gets one link; a per-source-tagged comp (each track credited to its original performer) gets N links to the *same* single `LocalRelease` — shared via the many-to-many table, not duplicated per artist, so it appears on each of those N artists' pages.
 
+### Multi-disc folders and box sets
+
+Sibling disc folders (`CD 1`, `CD 2`, ...) fold into one `LocalRelease` when their tracks agree on a
+majority embedded MB release id and their disc numbers are disjoint — `index::db::plan_disc_merges`,
+built from every folder's facts before the per-track loop runs. Folder names carry no weight; this is
+decided purely from tags, which is also why it can't see a box set whose discs are mis-tagged (or
+genuinely tagged) as their own standalone albums — MusicBrainz has no box-set entity, a box is one
+Release with N media, and it stores no id-level link from a disc to the album it duplicates
+(`docs/box_sets.md`). Those cases are folded afterwards by `sync --repair-multi-disc`'s tier-2
+tracklist matcher (`sync::boxset`), which writes a `LocalReleaseMember` row per disc.
+
+**`get_local_release_members` runs before both `plan_disc_merges` and `build_group_key`.** A folder
+already bound by `sync::boxset` is routed straight to its existing `LocalRelease` id and its
+title/year left untouched — without this check, a box whose discs all read `discNumber=1` in their
+own tags (nothing in the file ever said "I am part of a box") would be split straight back apart the
+next time `--overwrite`/`--prune` re-indexes those folders, since a plain index has no other way to
+know the fold happened.
+
 ## Cover Art Deduplication
 
 Cover images are content-addressed: the filename is the MD5 hash of the image file (`{hash}.jpg`). Multiple `LocalRelease` rows can share the same image - e.g. a 90-disc box set extracts one cover instead of 90.

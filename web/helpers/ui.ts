@@ -172,6 +172,22 @@ export const toneBanner: Record<Tone, string> = {
   muted: 'border-stone-100/10 bg-stone-800 text-stone-100/55',
 }
 
+// Left-edge group marker for a card that represents several rows folded into one visual container
+// (release editions, box-set discs): a full-height rule below `xl`, a rotated tab pill outside the
+// card's left edge at `xl`+. Promoted here on the second occurrence (editions, then box-set discs)
+// per this file's header rule. Full literal class strings per tone, not string interpolation - an
+// interpolated `border-${tone}/20` can't be seen by Tailwind's static content scan. The tab's own
+// vertical position (`right-full top-<n> translate-x-<n> -translate-y-1/2 -rotate-90`) stays at the
+// call site since it varies by marker; only the colour is shared here.
+export const markerPill: Record<Tone, { rule: string, tab: string }> = {
+  accent: { rule: 'bg-amber-400/15', tab: 'border-amber-400/20 bg-amber-400/10 text-amber-400' },
+  info: { rule: 'bg-info/15', tab: 'border-info/20 bg-info/10 text-info' },
+  success: { rule: 'bg-success/15', tab: 'border-success/20 bg-success/10 text-success' },
+  warning: { rule: 'bg-warning/15', tab: 'border-warning/20 bg-warning/10 text-warning' },
+  danger: { rule: 'bg-danger/15', tab: 'border-danger/20 bg-danger/10 text-danger' },
+  muted: { rule: 'bg-stone-100/15', tab: 'border-stone-100/20 bg-stone-100/10 text-stone-100/60' },
+}
+
 export const surface = {
   card: 'rounded-xl border border-stone-100/6 bg-stone-900',
   cardHead: 'flex items-center justify-between gap-3 px-[18px] py-[14px] border-b border-stone-100/6',

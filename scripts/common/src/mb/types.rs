@@ -65,6 +65,12 @@ pub struct MbReleaseList {
 pub struct MbMedia {
     pub position: Option<u32>,
     pub format: Option<String>,
+    /// Per-disc title on a multi-medium release (e.g. a 9CD box names each disc after the album it
+    /// reprints - "Ring Ring", "Waterloo", ...). `None` on a single-medium release, which has
+    /// nothing to distinguish a disc by.
+    pub title: Option<String>,
+    #[serde(rename = "track-count")]
+    pub track_count: Option<u32>,
     pub tracks: Option<Vec<MbTrack>>,
 }
 
@@ -76,6 +82,16 @@ pub struct MbTrack {
     pub length: Option<u64>,
     #[serde(default)]
     pub disc_number: Option<u32>,
+    /// The recording this track performs - stable across every release/medium that reprints the
+    /// same recording (a box-set disc and the standalone album it duplicates share this id, even
+    /// though their own `id` and release-scoped `musicbrainzId` differ). This is the join key for
+    /// MusicBrainzReleaseMedium.equivalentReleaseId - see docs/box_sets.md section 2.3.
+    pub recording: Option<MbRecordingRef>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MbRecordingRef {
+    pub id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

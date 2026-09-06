@@ -43,6 +43,7 @@ export function buildReleaseCard(
       folderPath: lr.folderPath,
       coArtists: extras?.coArtists,
       connectedArtistName: extras?.connectedArtistName,
+      discCount: null,
     }
   }
   return {
@@ -73,6 +74,7 @@ export function buildReleaseCard(
     coArtists: extras?.coArtists,
     statusReason: mbr.statusReason,
     connectedArtistName: extras?.connectedArtistName,
+    discCount: mbr.mediumCount > 1 ? mbr.mediumCount : null,
   }
 }
 
@@ -181,10 +183,61 @@ export function buildLocalAndGapCards(params: {
       bundleParentReleaseId,
       folderPath: null,
       statusReason: mbr.statusReason,
+      discCount: mbr.mediumCount > 1 ? mbr.mediumCount : null,
     })
   }
 
   return { cards, coveredMbIds, appearsOnLocal }
+}
+
+// Goal 2 of docs/box_sets.md: a box-set disc is "the same as an edition, but living in a box" - so
+// each medium `sync --link-box-editions` matched to a standalone album gets a virtual card whose
+// `releaseGroupId` is that ALBUM's release group, not the box's own. useArtistCatalogue's grouper
+// keys purely on `releaseGroupId`, so this card drops straight into that album's existing edition
+// group with no change to the grouper itself. Virtual: it has no LocalRelease/MusicBrainzRelease row
+// of its own - `id` is synthesized, `hasLocal`/`localTrackCount` are false/0 so it never renders as
+// playable (the actual audio lives on the box's own card, reached via `boxParent`).
+export function buildBoxEditionCards(
+  mbById: Map<string, MbReleaseRow>,
+  resolveImage: ImageResolver,
+): UnifiedRelease[] {
+  const cards: UnifiedRelease[] = []
+  const img = resolveImage(null, null, 'releases')
+  for (const mbr of mbById.values()) {
+    if (mbr.mediumCount <= 1) {continue}
+    for (const medium of mbr.media) {
+      if (!medium.equivalentReleaseGroupId) {continue}
+      cards.push({
+        id: `${mbr.id}:medium:${medium.position}`,
+        title: medium.title ?? mbr.title,
+        year: mbr.year,
+        type: mbr.type.name,
+        typeSlug: mbr.type.slug,
+        mbReleaseRowId: mbr.id,
+        musicbrainzId: mbr.musicbrainzId,
+        releaseGroupId: medium.equivalentReleaseGroupId,
+        disambiguation: null,
+        editionLabel: null,
+        releaseDate: mbr.releaseDate,
+        packaging: mbr.packaging,
+        country: mbr.country,
+        format: mbr.format,
+        status: mbr.status as UnifiedRelease['status'],
+        image: img.image,
+        imageUrl: img.imageUrl,
+        trackCount: 0,
+        totalPlayCount: 0,
+        localTrackCount: 0,
+        isMusicBrainz: true,
+        hasLocal: false,
+        localReleaseId: null,
+        folderPath: null,
+        discCount: null,
+        boxParent: { releaseId: mbr.id, title: mbr.title, mediumPosition: medium.position, mediumTitle: medium.title },
+      })
+    }
+  }
+  return cards
 }
 
 // Loop 3: LocalReleases whose releaseId points outside this artist's own MB catalogue (a release

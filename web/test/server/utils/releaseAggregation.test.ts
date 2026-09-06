@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAppearsOnCards,
+  buildBoxEditionCards,
   buildCoArtistMap,
   buildConnectedArtistByRelease,
   buildLocalAndGapCards,
@@ -23,6 +24,8 @@ const mbRelease = (overrides: Partial<MbReleaseRow> & { id: string }): MbRelease
   format: null,
   status: 'COMPLETE',
   statusReason: null,
+  mediumCount: 1,
+  media: [],
   type: { name: 'Album', slug: 'album' },
   tracks: [{ id: 't1' }],
   ...overrides,
@@ -250,6 +253,40 @@ describe('buildAppearsOnCards', () => {
       coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
     })
     expect(cards[0]).toMatchObject({ title: 'Local Title', year: 1999, isMusicBrainz: false, status: 'UNMATCHED', type: 'Album', typeSlug: 'album' })
+  })
+})
+
+describe('buildBoxEditionCards', () => {
+  it('emits one virtual card per medium linked to a standalone album, keyed onto that album\'s release group', () => {
+    const box = mbRelease({
+      id: 'box1', title: 'The Albums', mediumCount: 2,
+      media: [
+        { position: 1, title: 'Ring Ring', equivalentReleaseId: 'ringring1', equivalentReleaseGroupId: 'rg-ringring' },
+        { position: 2, title: 'Waterloo', equivalentReleaseId: 'waterloo1', equivalentReleaseGroupId: 'rg-waterloo' },
+      ],
+    })
+    const cards = buildBoxEditionCards(new Map([['box1', box]]), resolveImage)
+    expect(cards).toHaveLength(2)
+    expect(cards[0]).toMatchObject({
+      id: 'box1:medium:1', title: 'Ring Ring', releaseGroupId: 'rg-ringring',
+      hasLocal: false, localTrackCount: 0,
+      boxParent: { releaseId: 'box1', title: 'The Albums', mediumPosition: 1, mediumTitle: 'Ring Ring' },
+    })
+  })
+
+  it('skips a single-medium release entirely', () => {
+    const album = mbRelease({ id: 'album1', mediumCount: 1, media: [] })
+    expect(buildBoxEditionCards(new Map([['album1', album]]), resolveImage)).toEqual([])
+  })
+
+  it('skips a medium the equivalence pass has not (yet) matched to any album', () => {
+    const box = mbRelease({
+      id: 'box1', mediumCount: 2,
+      media: [
+        { position: 1, title: 'Rarities', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+      ],
+    })
+    expect(buildBoxEditionCards(new Map([['box1', box]]), resolveImage)).toEqual([])
   })
 })
 

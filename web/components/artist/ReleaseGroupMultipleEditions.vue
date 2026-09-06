@@ -28,6 +28,13 @@ const isEditionFavorite = (edition: UnifiedRelease) => {
   const target = favoriteTargetId(edition)
   return !!target && props.favoriteReleases.has(target)
 }
+
+// A box-edition virtual card (see buildBoxEditionCards) carries no disambiguation/editionLabel of
+// its own - it borrows the subtitle slot to say which box it lives in instead.
+const editionSubtitle = (edition: UnifiedRelease) =>
+  edition.boxParent
+    ? `disc ${edition.boxParent.mediumPosition} of "${edition.boxParent.title}"`
+    : edition.disambiguation || edition.editionLabel
 </script>
 
 <template>
@@ -48,7 +55,7 @@ const isEditionFavorite = (edition: UnifiedRelease) => {
         :is-favorite="isEditionFavorite(edition)"
         :slug="slug"
         :selected-track-id="expandedEdition === edition.id ? selectedTrackId : null"
-        :subtitle="edition.disambiguation || edition.editionLabel"
+        :subtitle="editionSubtitle(edition)"
         :is-acquiring="acquiringIds.has(edition.id)"
         @toggle="emit('toggleEdition', edition.id)"
         @play="emit('play', edition)"

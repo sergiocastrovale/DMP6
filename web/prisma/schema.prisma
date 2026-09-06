@@ -145,6 +145,10 @@ model MusicBrainzRelease {
   format         String?
   status         ReleaseStatus              @default(UNKNOWN)
   statusReason   String?
+  // Distinct MB media on this release (1 for a plain album, 9 for a 9CD box). Denormalized: the
+  // artist releases endpoint is a hot list route and must not join MusicBrainzReleaseMedium just to
+  // render a disc-count marker.
+  mediumCount    Int                        @default(1)
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
   localReleases  LocalRelease[]
@@ -152,9 +156,43 @@ model MusicBrainzRelease {
   type           ReleaseType                @relation(fields: [typeId], references: [id])
   genres         Genre[]                    @relation("ReleaseGenres")
   tracks         MusicBrainzReleaseTrack[]
+  media          MusicBrainzReleaseMedium[]
 
   @@index([typeId])
   @@index([releaseGroupId])
+}
+
+// ---------------------------------------------------------------------------
+// MusicBrainzReleaseMedium
+// ---------------------------------------------------------------------------
+//
+// One row per MB medium (disc) on a release. MusicBrainz has no box-set entity - a box is one
+// Release with N media - so this table is what makes a disc a first-class, queryable thing on our
+// side. `equivalentReleaseId`/`equivalentReleaseGroupId` are NOT sent by MusicBrainz - MB stores no
+// link from a box's disc to the standalone album it duplicates (`inc=release-rels` on a box returns
+// `[]`). We derive it ourselves from shared recording MBIDs (see docs/box_sets.md, section 2.3) and
+// recompute it wholesale via `sync --link-box-editions`, so a stale value self-heals on the next
+// run rather than needing a cascade.
+model MusicBrainzReleaseMedium {
+  id                       String             @id @default(cuid())
+  releaseId                String
+  position                 Int
+  title                    String?            @db.VarChar(500)
+  format                   String?
+  trackCount               Int                @default(0)
+  // md5 of this medium's recording MBIDs, sorted. Null until the release has been (re-)synced with
+  // recordingId populated on its tracks - see MusicBrainzReleaseTrack.recordingId.
+  recordingFingerprint     String?            @db.VarChar(32)
+  equivalentReleaseGroupId String?
+  equivalentReleaseId      String?
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  release                  MusicBrainzRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+
+  @@unique([releaseId, position])
+  @@index([releaseId])
+  @@index([equivalentReleaseGroupId])
+  @@index([recordingFingerprint])
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +206,11 @@ model MusicBrainzReleaseTrack {
   discNumber    Int?
   durationMs    Int?
   musicbrainzId String?
+  // MB recording id (stable across every release/medium that reprints this same recording - e.g. a
+  // box-set disc and the standalone album it duplicates). NOT the same as musicbrainzId above,
+  // which is the release-track id and is only unique within one release. Join key for
+  // MusicBrainzReleaseMedium.equivalentReleaseId.
+  recordingId   String?
   releaseId     String
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
@@ -176,6 +219,7 @@ model MusicBrainzReleaseTrack {
 
   @@index([releaseId])
   @@index([musicbrainzId])
+  @@index([recordingId])
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +247,7 @@ model LocalRelease {
   artists                    LocalReleaseArtist[]
   release                    MusicBrainzRelease?        @relation(fields: [releaseId], references: [id])
   tracks                     LocalReleaseTrack[]
+  members                    LocalReleaseMember[]
   enrichmentIssues           IssueEnrichmentGap[]
   favorite                   FavoriteRelease?
   downloadedRelease          DownloadedRelease?
@@ -218,6 +263,27 @@ model LocalRelease {
   @@index([lastPlayedAt])
   @@index([downloadedFrom])
   @@index([title]) // B-tree for ORDER BY title; trigram GIN index for ILIKE added via raw migration
+}
+
+// ---------------------------------------------------------------------------
+// LocalReleaseMember
+// ---------------------------------------------------------------------------
+//
+// Sticky folder -> LocalRelease binding for a folded multi-disc/box release. Without this, a box
+// whose disc folders are individually tagged as standalone albums (every track reads discNumber=1)
+// would be re-split by the next plain `./index` run, since it skips known file paths and can't
+// re-derive the fold from tags alone - churning the survivor row's identity (and its
+// FavoriteRelease) on every scan. `index` looks a folder up here before building a group key, and
+// `discNumber` is stamped from the MB medium position, not from the file's own tag.
+model LocalReleaseMember {
+  id             String       @id @default(cuid())
+  localReleaseId String
+  folderPath     String       @db.Text
+  discNumber     Int?
+  localRelease   LocalRelease @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
+
+  @@unique([folderPath])
+  @@index([localReleaseId])
 }
 
 // ---------------------------------------------------------------------------

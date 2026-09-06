@@ -12,8 +12,12 @@
 // **Metadata decides, never folder names.** Rows merge iff their tracks agree on the majority
 // embedded MusicBrainz *release* id and their disc-number sets are disjoint - exactly what MB
 // asserts when it calls something one release with several media. Overlapping disc numbers mean two
-// rips of the same disc (duplicate copies, left alone for the duplicate-release audit), and a box
-// set whose discs carry their own release ids is never touched.
+// rips of the same disc (duplicate copies, left alone for the duplicate-release audit). A box set
+// whose discs carry different embedded ids is left alone here too, but NOT because that is correct -
+// MusicBrainz has no box-set entity, a box IS one Release with N media (docs/box_sets.md §2) - only
+// because this pass can only see embedded ids and MB stores no id-level link from a box's disc to the
+// standalone album it duplicates. `boxset::run_repair` is the tier-2 pass that matches by tracklist
+// instead and folds those cases afterwards.
 //
 // Note `--repair-shared-release-ids` cannot do this job: it skips every group whose rows share a
 // credited artist (which is all of them), and its remedy - unbinding the loser - would just let the

@@ -24,8 +24,9 @@ use std::collections::HashMap;
 
 use crate::db::{
     batch_insert_mb_tracks, batch_link_release_genres, ensure_mb_release_artist_link,
-    ensure_release_type_cached, link_local_tracks_to_mb, reject_queued_downloads_for_group,
-    upsert_mb_release, MbReleaseExtras, MbTrackRow,
+    ensure_release_type_cached, link_local_tracks_to_mb, mb_medium_rows,
+    reject_queued_downloads_for_group, sync_mb_media_for_release, upsert_mb_release_with_media,
+    MbReleaseExtras, MbTrackRow,
 };
 use crate::mb_api::{self, RateLimiter};
 use crate::mb_types::{MbRelease, MbTrack};
@@ -60,7 +61,7 @@ const DURATION_TOLERANCE_SECS: i32 = 5;
 
 /// Unknown duration on either side cannot refute a title match — it is missing evidence, not counter-
 /// evidence. (Local durations come from the file; MB's `length` is frequently absent on older data.)
-fn durations_compatible(local_secs: Option<i32>, mb_secs: Option<i32>) -> bool {
+pub(crate) fn durations_compatible(local_secs: Option<i32>, mb_secs: Option<i32>) -> bool {
     match (local_secs, mb_secs) {
         (Some(a), Some(b)) => (a - b).abs() <= DURATION_TOLERANCE_SECS,
         _ => true,
@@ -182,7 +183,8 @@ pub async fn claim_owned_bundle(
             country: release.country.as_deref(),
             ..Default::default()
         };
-        let mb_db_id = upsert_mb_release(
+        let medium_rows = mb_medium_rows(&release.media);
+        let mb_db_id = upsert_mb_release_with_media(
             pool,
             &release.id,
             rg_id,
@@ -193,9 +195,13 @@ pub async fn claim_owned_bundle(
             Some(&reason),
             release.disambiguation.as_deref(),
             &extras,
+            medium_rows.len().max(1) as i32,
         )
         .await
         .ok()?;
+        sync_mb_media_for_release(pool, &mb_db_id, &medium_rows)
+            .await
+            .ok();
 
         let track_rows: Vec<MbTrackRow> = tracks
             .iter()
@@ -205,6 +211,7 @@ pub async fn claim_owned_bundle(
                 disc_number: t.disc_number.map(|d| d as i32),
                 duration_ms: t.length.map(|l| l as i32),
                 mb_id: Some(t.id.clone()),
+                recording_id: t.recording.as_ref().map(|r| r.id.clone()),
             })
             .collect();
         let inserted = batch_insert_mb_tracks(pool, &mb_db_id, &track_rows)

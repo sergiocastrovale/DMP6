@@ -1058,6 +1058,13 @@ async fn main() {
                     map
                 };
 
+                // Folders sync's tier-2 box-set matcher (`sync::boxset::run_repair`) already folded
+                // into one release - see `get_local_release_members`'s doc comment for why this must
+                // be consulted before disc_merge_plan/build_group_key, not merely alongside it.
+                let local_release_members = index::db::get_local_release_members(&pool)
+                    .await
+                    .unwrap_or_default();
+
                 // Multi-disc folders -> one release, decided by tags alone (see plan_disc_merges).
                 // Built before the track loop because the decision needs every folder's facts at
                 // once, not one file's.
@@ -1246,27 +1253,37 @@ async fn main() {
                         .map(|(t, y)| (t.as_str(), *y))
                         .unwrap_or((album_name, track.year));
 
-                    let release_result = match merge_target {
-                        Some(t) => {
-                            index::db::ensure_merged_local_release(
-                                &pool,
-                                release_title,
-                                release_year,
-                                t,
-                                &mut release_cache,
-                            )
-                            .await
-                        }
-                        None => {
-                            ensure_local_release_cached(
-                                &pool,
-                                release_title,
-                                release_year,
-                                &folder_path_str,
-                                &group_key,
-                                &mut release_cache,
-                            )
-                            .await
+                    // A folder sync's box-set matcher already bound to a release is pinned there -
+                    // never re-derive a group key for it, or the very next full re-index of a
+                    // shape-(b) box (every disc tagged as its own standalone album) would split it
+                    // straight back apart. See get_local_release_members's doc comment.
+                    let release_result = if let Some(existing_id) =
+                        local_release_members.get(&folder_path_str)
+                    {
+                        Ok(existing_id.clone())
+                    } else {
+                        match merge_target {
+                            Some(t) => {
+                                index::db::ensure_merged_local_release(
+                                    &pool,
+                                    release_title,
+                                    release_year,
+                                    t,
+                                    &mut release_cache,
+                                )
+                                .await
+                            }
+                            None => {
+                                ensure_local_release_cached(
+                                    &pool,
+                                    release_title,
+                                    release_year,
+                                    &folder_path_str,
+                                    &group_key,
+                                    &mut release_cache,
+                                )
+                                .await
+                            }
                         }
                     };
                     let release_id = match release_result {

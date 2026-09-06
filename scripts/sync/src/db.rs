@@ -1,5 +1,7 @@
 use chrono::{NaiveDateTime, Utc};
 use common::filters::sanitize_mb_id;
+use common::mb::api::audio_media;
+use common::mb::types::MbMedia;
 use slug::slugify;
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
@@ -97,14 +99,49 @@ pub async fn upsert_mb_release(
     disambiguation: Option<&str>,
     extras: &MbReleaseExtras<'_>,
 ) -> Result<String, sqlx::Error> {
+    upsert_mb_release_with_media(
+        pool,
+        mb_release_id,
+        release_group_id,
+        title,
+        year,
+        type_id,
+        status,
+        status_reason,
+        disambiguation,
+        extras,
+        1,
+    )
+    .await
+}
+
+/// Same as `upsert_mb_release`, plus `mediumCount` - the distinct MB media on the release (1 for a
+/// plain album, 9 for a box set). Denormalized onto the release row so the artist releases endpoint
+/// (a hot list route) never has to join `MusicBrainzReleaseMedium` just to render a disc-count
+/// marker. Kept as a separate function rather than adding a parameter to `upsert_mb_release` so the
+/// many call sites that don't yet compute a medium count (single-medium releases) aren't disturbed.
+#[allow(clippy::too_many_arguments)]
+pub async fn upsert_mb_release_with_media(
+    pool: &PgPool,
+    mb_release_id: &str,
+    release_group_id: &str,
+    title: &str,
+    year: Option<i32>,
+    type_id: &str,
+    status: &str,
+    status_reason: Option<&str>,
+    disambiguation: Option<&str>,
+    extras: &MbReleaseExtras<'_>,
+    medium_count: i32,
+) -> Result<String, sqlx::Error> {
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
     let row: (String,) = sqlx::query_as(
         r#"INSERT INTO "MusicBrainzRelease"
              (id, title, "typeId", year, "musicbrainzId", "releaseGroupId",
               disambiguation, "editionLabel", "releaseDate", packaging, country, format,
-              status, "statusReason", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::"ReleaseStatus", $14, $15, $15)
+              status, "statusReason", "mediumCount", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::"ReleaseStatus", $14, $15, $16, $16)
            ON CONFLICT ("musicbrainzId") DO UPDATE SET
              title = EXCLUDED.title,
              "typeId" = EXCLUDED."typeId",
@@ -118,6 +155,7 @@ pub async fn upsert_mb_release(
              format = EXCLUDED.format,
              status = EXCLUDED.status::"ReleaseStatus",
              "statusReason" = EXCLUDED."statusReason",
+             "mediumCount" = EXCLUDED."mediumCount",
              "updatedAt" = EXCLUDED."updatedAt"
            RETURNING id"#,
     )
@@ -135,6 +173,7 @@ pub async fn upsert_mb_release(
     .bind(extras.format)
     .bind(status)
     .bind(status_reason)
+    .bind(medium_count)
     .bind(now)
     .fetch_one(pool)
     .await?;
@@ -212,6 +251,9 @@ pub struct MbTrackRow {
     pub disc_number: Option<i32>,
     pub duration_ms: Option<i32>,
     pub mb_id: Option<String>,
+    /// MB recording id - see MusicBrainzReleaseTrack.recordingId in schema.prisma. `None` for a
+    /// release synced before this field existed; backfilled on the next natural re-sync.
+    pub recording_id: Option<String>,
 }
 
 /// Identity of an MB track *within its release*: the MB recording id when tagged, else its slot.
@@ -290,7 +332,8 @@ pub async fn sync_mb_tracks_for_release(
         sqlx::query(
             r#"UPDATE "MusicBrainzReleaseTrack"
                SET title = $2, position = $3, "discNumber" = $4, "durationMs" = $5,
-                   "musicbrainzId" = COALESCE($6, "musicbrainzId"), "updatedAt" = $7
+                   "musicbrainzId" = COALESCE($6, "musicbrainzId"),
+                   "recordingId" = COALESCE($7, "recordingId"), "updatedAt" = $8
                WHERE id = $1"#,
         )
         .bind(id)
@@ -299,6 +342,7 @@ pub async fn sync_mb_tracks_for_release(
         .bind(t.disc_number)
         .bind(t.duration_ms)
         .bind(t.mb_id.as_deref())
+        .bind(t.recording_id.as_deref())
         .bind(now)
         .execute(pool)
         .await?;
@@ -312,14 +356,19 @@ pub async fn sync_mb_tracks_for_release(
         let durations: Vec<Option<i32>> = to_insert.iter().map(|(_, t)| t.duration_ms).collect();
         let mb_ids: Vec<Option<&str>> =
             to_insert.iter().map(|(_, t)| t.mb_id.as_deref()).collect();
+        let recording_ids: Vec<Option<&str>> = to_insert
+            .iter()
+            .map(|(_, t)| t.recording_id.as_deref())
+            .collect();
         let release_ids: Vec<&str> = vec![release_id; to_insert.len()];
         let timestamps: Vec<NaiveDateTime> = vec![now; to_insert.len()];
         sqlx::query(
             r#"INSERT INTO "MusicBrainzReleaseTrack"
-                 (id, title, position, "discNumber", "durationMs", "musicbrainzId", "releaseId", "createdAt", "updatedAt")
+                 (id, title, position, "discNumber", "durationMs", "musicbrainzId", "recordingId",
+                  "releaseId", "createdAt", "updatedAt")
                SELECT * FROM UNNEST(
                  $1::text[], $2::text[], $3::int[], $4::int[], $5::int[], $6::text[], $7::text[],
-                 $8::timestamp[], $9::timestamp[]
+                 $8::text[], $9::timestamp[], $10::timestamp[]
                )
                ON CONFLICT DO NOTHING"#,
         )
@@ -329,6 +378,7 @@ pub async fn sync_mb_tracks_for_release(
         .bind(&discs)
         .bind(&durations)
         .bind(&mb_ids)
+        .bind(&recording_ids)
         .bind(&release_ids)
         .bind(&timestamps)
         .bind(&timestamps)
@@ -369,16 +419,19 @@ pub async fn batch_insert_mb_tracks(
     let disc_numbers: Vec<Option<i32>> = tracks.iter().map(|t| t.disc_number).collect();
     let durations: Vec<Option<i32>> = tracks.iter().map(|t| t.duration_ms).collect();
     let mb_ids: Vec<Option<&str>> = tracks.iter().map(|t| t.mb_id.as_deref()).collect();
+    let recording_ids: Vec<Option<&str>> =
+        tracks.iter().map(|t| t.recording_id.as_deref()).collect();
     let release_ids: Vec<&str> = vec![release_id; len];
     let now = Utc::now().naive_utc();
     let timestamps: Vec<NaiveDateTime> = vec![now; len];
 
     let rows: Vec<(String, Option<String>)> = sqlx::query_as(
         r#"INSERT INTO "MusicBrainzReleaseTrack"
-             (id, title, position, "discNumber", "durationMs", "musicbrainzId", "releaseId", "createdAt", "updatedAt")
+             (id, title, position, "discNumber", "durationMs", "musicbrainzId", "recordingId",
+              "releaseId", "createdAt", "updatedAt")
            SELECT * FROM UNNEST(
              $1::text[], $2::text[], $3::int[], $4::int[], $5::int[], $6::text[], $7::text[],
-             $8::timestamp[], $9::timestamp[]
+             $8::text[], $9::timestamp[], $10::timestamp[]
            )
            ON CONFLICT DO NOTHING
            RETURNING id, "musicbrainzId""#,
@@ -389,6 +442,7 @@ pub async fn batch_insert_mb_tracks(
     .bind(&disc_numbers)
     .bind(&durations)
     .bind(&mb_ids)
+    .bind(&recording_ids)
     .bind(&release_ids)
     .bind(&timestamps)
     .bind(&timestamps)
@@ -396,6 +450,111 @@ pub async fn batch_insert_mb_tracks(
     .await?;
 
     Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// MusicBrainzReleaseMedium
+// ---------------------------------------------------------------------------
+
+pub struct MbMediumRow {
+    pub position: i32,
+    pub title: Option<String>,
+    pub format: Option<String>,
+    pub track_count: i32,
+}
+
+/// Build the medium rows for a release from the same audio-media filter `flatten_audio_tracks` uses,
+/// so a video-only bonus disc never gets a `MusicBrainzReleaseMedium` row either. A medium with no
+/// `position` is dropped - `(releaseId, position)` is the row's identity and MB always sends one.
+pub fn mb_medium_rows(media: &Option<Vec<MbMedia>>) -> Vec<MbMediumRow> {
+    audio_media(media)
+        .into_iter()
+        .filter_map(|m| {
+            Some(MbMediumRow {
+                position: m.position? as i32,
+                title: m.title.clone(),
+                format: m.format.clone(),
+                track_count: m
+                    .track_count
+                    .map(|c| c as i32)
+                    .unwrap_or_else(|| m.tracks.as_ref().map(|t| t.len() as i32).unwrap_or(0)),
+            })
+        })
+        .collect()
+}
+
+/// Reconcile a release's stored media with what MusicBrainz just returned, keyed on `position` (MB
+/// numbers media 1..N with no gaps, and `(releaseId, position)` is unique). Reconciles rather than
+/// delete-and-reinsert for the same reason `sync_mb_tracks_for_release` does: a naive replace would
+/// destroy `equivalentReleaseGroupId`/`equivalentReleaseId` on every sync, and `--link-box-editions`
+/// would have to recompute every medium's equivalence from scratch every single run instead of only
+/// the ones that actually changed.
+pub async fn sync_mb_media_for_release(
+    pool: &PgPool,
+    release_id: &str,
+    media: &[MbMediumRow],
+) -> Result<(), sqlx::Error> {
+    let existing: Vec<(String, i32)> = sqlx::query_as(
+        r#"SELECT id, position FROM "MusicBrainzReleaseMedium" WHERE "releaseId" = $1"#,
+    )
+    .bind(release_id)
+    .fetch_all(pool)
+    .await?;
+    let by_position: HashMap<i32, String> = existing.into_iter().map(|(id, p)| (p, id)).collect();
+
+    let now = Utc::now().naive_utc();
+    let positions: Vec<i32> = media.iter().map(|m| m.position).collect();
+
+    for m in media {
+        match by_position.get(&m.position) {
+            Some(id) => {
+                sqlx::query(
+                    r#"UPDATE "MusicBrainzReleaseMedium"
+                       SET title = $2, format = $3, "trackCount" = $4, "updatedAt" = $5
+                       WHERE id = $1"#,
+                )
+                .bind(id)
+                .bind(&m.title)
+                .bind(&m.format)
+                .bind(m.track_count)
+                .bind(now)
+                .execute(pool)
+                .await?;
+            }
+            None => {
+                let id = cuid2::create_id();
+                sqlx::query(
+                    r#"INSERT INTO "MusicBrainzReleaseMedium"
+                         (id, "releaseId", position, title, format, "trackCount", "createdAt", "updatedAt")
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+                       ON CONFLICT ("releaseId", position) DO UPDATE SET
+                         title = EXCLUDED.title, format = EXCLUDED.format,
+                         "trackCount" = EXCLUDED."trackCount", "updatedAt" = EXCLUDED."updatedAt""#,
+                )
+                .bind(&id)
+                .bind(release_id)
+                .bind(m.position)
+                .bind(&m.title)
+                .bind(&m.format)
+                .bind(m.track_count)
+                .bind(now)
+                .execute(pool)
+                .await?;
+            }
+        }
+    }
+
+    // A medium MusicBrainz no longer lists (a rare release edit) - drop it. Its equivalence, if any,
+    // goes with it; the next --link-box-editions run recomputes what remains.
+    sqlx::query(
+        r#"DELETE FROM "MusicBrainzReleaseMedium" WHERE "releaseId" = $1 AND position <> ALL($2)"#,
+    )
+    .bind(release_id)
+    .bind(&positions)
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

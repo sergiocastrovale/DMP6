@@ -41,6 +41,11 @@ export default defineEventHandler(async (event) => {
           format: true,
           status: true,
           statusReason: true,
+          mediumCount: true,
+          media: {
+            select: { position: true, title: true, equivalentReleaseId: true, equivalentReleaseGroupId: true },
+            orderBy: { position: 'asc' },
+          },
           type: { select: { name: true, slug: true } },
           tracks: { select: { id: true } },
         },

@@ -3,6 +3,7 @@ import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 import {
   buildAppearsOnCards,
+  buildBoxEditionCards,
   buildCoArtistMap,
   buildConnectedArtistByRelease,
   buildLocalAndGapCards,
@@ -48,6 +49,11 @@ export default defineEventHandler(async (event) => {
           format: true,
           status: true,
           statusReason: true,
+          mediumCount: true,
+          media: {
+            select: { position: true, title: true, equivalentReleaseId: true, equivalentReleaseGroupId: true },
+            orderBy: { position: 'asc' },
+          },
           type: { select: { name: true, slug: true } },
           tracks: {
             select: {
@@ -124,6 +130,11 @@ export default defineEventHandler(async (event) => {
         year: true,
         status: true,
         statusReason: true,
+        mediumCount: true,
+        media: {
+          select: { position: true, title: true, equivalentReleaseId: true, equivalentReleaseGroupId: true },
+          orderBy: { position: 'asc' },
+        },
         type: { select: { name: true, slug: true } },
         tracks: { select: { id: true } },
       },
@@ -139,7 +150,9 @@ export default defineEventHandler(async (event) => {
     resolveImage: verifyImage,
   })
 
-  const releases = sortReleaseCards([...localAndGapCards, ...appearsOnCards])
+  const boxEditionCards = buildBoxEditionCards(mbById, verifyImage)
+
+  const releases = sortReleaseCards([...localAndGapCards, ...boxEditionCards, ...appearsOnCards])
 
   // Paginate the unified list
   const total = releases.length

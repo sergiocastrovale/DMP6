@@ -314,6 +314,7 @@ mod tests {
             position: None,
             length: None,
             disc_number: None,
+            recording: None,
         }
     }
 
@@ -330,6 +331,8 @@ mod tests {
                 vec![MbMedia {
                     position: Some(1),
                     format: Some(f.to_string()),
+                    title: None,
+                    track_count: None,
                     tracks: None,
                 }]
             }),

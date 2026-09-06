@@ -53,6 +53,26 @@ Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
   `mb_get_release_by_id` — every downstream count (status matching, `MusicBrainzReleaseTrack` rows, the
   web track list, card `trackCount`) inherits the filter for free. The composed `format` column (e.g.
   "Blu-ray, CD") intentionally stays unfiltered — it's display metadata, not a completeness input.
+- **A box set is one MusicBrainzRelease with N `MusicBrainzReleaseMedium` rows, never several
+  releases.** Verified against the live MB API (`docs/box_sets.md`): MB has no box-set entity or
+  type, `packaging = 'Box'` is not a usable signal, and MB stores **no id-level link** from a box's
+  disc to the standalone album it duplicates (`inc=release-rels` on a box returns `[]`) — the only
+  shared identity is the **recording** (`MusicBrainzReleaseTrack.recordingId`, from `track.recording.id`
+  in the MB payload, distinct from `musicbrainzId` which is the release-scoped track id). Tier 1
+  (`index::db::plan_disc_merges` / `sync::multi_disc`) only merges sibling folders that already agree
+  on an embedded release id, so a box whose discs are mis-tagged as (or genuinely tagged as) their own
+  standalone albums falls through to tier 2, `sync::boxset`: it matches siblings to *media* by
+  tracklist (title + duration ±5s, the same rule `claim_owned_bundle` uses below) and accepts only a
+  perfect matching — ambiguity rejects the whole group rather than guessing. A folded box needs a
+  `LocalReleaseMember` row per disc (`localReleaseId`, `folderPath`, `discNumber`) so a later plain
+  `./index` recognizes an already-bound folder before deriving a fresh group key — without it, a box
+  whose discs all read `discNumber=1` in their own tags would be split straight back apart on the next
+  re-scan. **Goal 2** (a box disc IS the standalone album, for search/filter/editions) is a *derived*
+  fact MB never sends: `sync --link-box-editions` sets `MusicBrainzReleaseMedium.equivalentReleaseId`/
+  `equivalentReleaseGroupId` via an exact recording-set equi-join with an artist-scoped title+duration
+  fallback, and the web layer (`buildBoxEditionCards`) turns a linked medium into a virtual card
+  carrying the *album's* `releaseGroupId` — the existing edition grouper needs no box-specific logic
+  to place it in that album's edition group.
 - **A merge discarded for a genuine shortfall must not orphan the MB release it just bound.**
   `stampMerged`'s discard branch (`web/server/utils/promote.ts`) deletes the failed LocalRelease and
   also deletes the `MusicBrainzRelease` `sync --release` had just bound to it — but only when nothing
@@ -179,6 +199,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when a collab release has several main artists
 ./sync --recompute-scores     # Recompute every artist's averageMatchScore from the catalogue (pure SQL), then exit
 ./sync --repair-shared-release-ids [--dry-run]  # One-off: unbind LocalReleases that lost a shared-releaseId conflict
+./sync --repair-multi-disc [--dry-run]  # Fold split multi-disc rows back into one: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then --link-box-editions
+./sync --link-box-editions [--dry-run]  # Derive which standalone album each box-set disc reprints (MusicBrainzReleaseMedium.equivalentReleaseId/GroupId); also runs at the tail of --repair-multi-disc
 
 # Audit & Fix
 ./audit                       # Detect metadata issues → write to DB (all types)

@@ -750,24 +750,35 @@ pub async fn mb_get_official_release_group_ids(
     Ok(ids)
 }
 
+/// The release's media, in order, with non-audio media (a Blu-ray/DVD bonus disc) dropped via
+/// `allowlist::is_audio_medium` - see that fn's doc comment for why medium format (not the
+/// per-recording `video` flag) is the signal. Shared by `flatten_audio_tracks` (per-track) and
+/// anything that needs one row per disc (`MusicBrainzReleaseMedium`), so both stay in agreement
+/// about which media exist on a release.
+pub fn audio_media(media: &Option<Vec<MbMedia>>) -> Vec<&MbMedia> {
+    media
+        .as_ref()
+        .map(|media| {
+            media
+                .iter()
+                .filter(|m| super::allowlist::is_audio_medium(m.format.as_deref()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Flattens a release's media into one track list, in medium order, skipping non-audio media (a
-/// Blu-ray/DVD bonus disc) via `allowlist::is_audio_medium` - see that fn's doc comment for why medium
-/// format (not the per-recording `video` flag) is the signal. `discNumber` is still stamped from the
-/// medium's own `position`, so an audio medium after a dropped video medium keeps MusicBrainz's
-/// original numbering rather than being renumbered.
-pub(crate) fn flatten_audio_tracks(media: &Option<Vec<MbMedia>>) -> Vec<MbTrack> {
+/// Blu-ray/DVD bonus disc) via `audio_media`. `discNumber` is still stamped from the medium's own
+/// `position`, so an audio medium after a dropped video medium keeps MusicBrainz's original
+/// numbering rather than being renumbered.
+pub fn flatten_audio_tracks(media: &Option<Vec<MbMedia>>) -> Vec<MbTrack> {
     let mut tracks = Vec::new();
-    if let Some(media) = media {
-        for medium in media {
-            if !super::allowlist::is_audio_medium(medium.format.as_deref()) {
-                continue;
-            }
-            if let Some(ref trks) = medium.tracks {
-                for trk in trks {
-                    let mut t = trk.clone();
-                    t.disc_number = medium.position;
-                    tracks.push(t);
-                }
+    for medium in audio_media(media) {
+        if let Some(ref trks) = medium.tracks {
+            for trk in trks {
+                let mut t = trk.clone();
+                t.disc_number = medium.position;
+                tracks.push(t);
             }
         }
     }
@@ -1120,6 +1131,7 @@ mod tests {
             position: Some(1),
             length: None,
             disc_number: None,
+            recording: None,
         }
     }
 
@@ -1127,6 +1139,8 @@ mod tests {
         MbMedia {
             position: Some(position),
             format: format.map(|f| f.to_string()),
+            title: None,
+            track_count: None,
             tracks: Some(tracks),
         }
     }

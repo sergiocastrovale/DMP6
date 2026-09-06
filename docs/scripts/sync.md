@@ -56,6 +56,8 @@ cd scripts && cargo build --release -p sync
 ./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when the release has several main artists
 ./sync --recompute-scores        # Recompute every artist's averageMatchScore (pure SQL), then exit
 ./sync --repair-shared-release-ids [--dry-run]  # One-off repair of releases that lost a shared-releaseId conflict
+./sync --repair-multi-disc [--dry-run]  # Fold split multi-disc rows into one; tier 1 shared embedded id (SQL), tier 2 box sets by tracklist (API), then --link-box-editions
+./sync --link-box-editions [--dry-run]  # Derive which standalone album each box-set disc reprints; also runs at the tail of --repair-multi-disc
 ```
 
 `--release` cannot combine with `--from`, `--to`, or `--only`.
@@ -82,7 +84,9 @@ cd scripts && cargo build --release -p sync
 | `--artist-hint` | String | - | With `--release`: prefer this Artist ID when the release has several main artists |
 | `--recompute-scores` | bool | false | Recompute `averageMatchScore` for all artists from the catalogue (pure SQL, no API), then exit |
 | `--repair-shared-release-ids` | bool | false | One-off: unbind LocalReleases that lost a shared-`releaseId` conflict (pure SQL), then exit |
-| `--dry-run` | bool | false | With `--repair-shared-release-ids`: print the plan, write nothing |
+| `--repair-multi-disc` | bool | false | Fold LocalReleases that are discs of one release into a single row - tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls) - then runs `--link-box-editions`, then exit |
+| `--link-box-editions` | bool | false | Derive `MusicBrainzReleaseMedium.equivalentReleaseId`/`equivalentReleaseGroupId` - which standalone album a box-set disc reprints (exact recording-set match + title/duration fallback), then exit |
+| `--dry-run` | bool | false | With `--repair-shared-release-ids` / `--repair-multi-disc` / `--link-box-editions`: print the plan, write nothing |
 
 ## Output Modes
 
@@ -332,6 +336,34 @@ rip was scored `MISSING_TRACKS` against an inflated 5-track expectation and disc
 
 The composed `format` column (`format_from_media`, e.g. `"Blu-ray, CD"`) is unaffected — it reads
 `media[].format` directly and stays display metadata, not a completeness input.
+
+## Box Sets
+
+Full investigation and rollout plan in `docs/box_sets.md`. Summary: MusicBrainz has no box-set entity
+— a box is one Release with N media, and MB stores no id-level link from a box's disc to the standalone
+album it duplicates. `MusicBrainzReleaseMedium` (one row per medium: `position`, `title`, `format`,
+`trackCount`) and `MusicBrainzReleaseTrack.recordingId` (the MB *recording* id, not the release-scoped
+`musicbrainzId`) make both facts queryable on our side.
+
+- **Binding**: `index::db::plan_disc_merges` (tier 1) only merges sibling folders that already agree on
+  an embedded release id — see "Multi-Edition Handling" above for the plain multi-disc case. A box whose
+  discs are mis-tagged, or genuinely tagged, as their own standalone albums falls through tier 1 and is
+  picked up by `sync::boxset` (tier 2, part of `--repair-multi-disc`): it matches sibling folders to
+  *media* by tracklist (title + duration ±5s, the `claim_owned_bundle` rule) and accepts only a perfect
+  matching, rejecting the whole group on any ambiguity. `LocalReleaseMember` (one row per folded disc:
+  `localReleaseId`, `folderPath`, `discNumber`) is what lets a later plain `./index` recognize an
+  already-bound folder before deriving a fresh group key from its own tags.
+- **Equivalence**: `sync::box_editions` derives which standalone album each box disc reprints — a fact
+  MB never sends — via an exact recording-set equi-join (`recordingFingerprint`, requires `recordingId`
+  on every track both sides) with an artist-scoped title+duration fallback for releases not yet
+  re-synced with `recordingId` populated. Written onto `MusicBrainzReleaseMedium.equivalentReleaseId`/
+  `equivalentReleaseGroupId`.
+- **Web**: `buildBoxEditionCards` (`web/server/utils/releaseAggregation.ts`) turns a linked medium into
+  a virtual `UnifiedRelease` card carrying the *album's* `releaseGroupId` (not the box's own), so
+  `useArtistCatalogue.ts`'s existing `releaseGroupId`-keyed grouper places it in that album's edition
+  group with no box-specific logic. The box's own card gets a `discCount`-driven "N discs" marker
+  (`components/artist/DiscsPill.vue`, `info`/violet tone) alongside the existing amber "N editions"
+  marker.
 
 ## End-of-run cleanup (scoped)
 

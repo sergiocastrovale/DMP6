@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+mod box_editions;
+mod boxset;
 mod catalogue_gaps;
 mod db;
 mod images;
@@ -84,12 +86,17 @@ struct SyncArgs {
     repair_shared_release_ids: bool,
     #[arg(
         long,
-        help = "Merge LocalReleases that are discs of one release (same embedded MB release id, disjoint disc numbers) into a single row (pure SQL, no API), then exit"
+        help = "Merge LocalReleases that are discs of one release into a single row: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then exit"
     )]
     repair_multi_disc: bool,
     #[arg(
         long,
-        help = "With --repair-shared-release-ids / --repair-multi-disc: print the plan, write nothing"
+        help = "Derive MusicBrainzReleaseMedium.equivalentReleaseId/equivalentReleaseGroupId - which standalone album a box disc reprints (pure SQL + no-API tracklist matching), then exit. Also run at the end of --repair-multi-disc"
+    )]
+    link_box_editions: bool,
+    #[arg(
+        long,
+        help = "With --repair-shared-release-ids / --repair-multi-disc / --link-box-editions: print the plan, write nothing"
     )]
     dry_run: bool,
     #[arg(
@@ -451,6 +458,31 @@ async fn main() {
         return;
     }
 
+    // Standalone maintenance pass: derive which standalone album each box-set disc reprints. Pure
+    // SQL exact pass + a no-API tracklist fallback - see box_editions.rs. No lock.
+    if args.link_box_editions {
+        reporter.header(if args.dry_run {
+            "DMP Sync - Link Box-Set Editions (DRY RUN)"
+        } else {
+            "DMP Sync - Link Box-Set Editions"
+        });
+        match box_editions::run_link_box_editions(&pool, &reporter, args.dry_run).await {
+            Ok(s) => {
+                reporter.blank();
+                reporter.done(&format!(
+                    "{} exact, {} fallback {} ({} candidate(s), {} ambiguous)",
+                    s.exact_linked,
+                    s.fallback_linked,
+                    if args.dry_run { "would link" } else { "linked" },
+                    s.fallback_candidates,
+                    s.fallback_ambiguous,
+                ));
+            }
+            Err(e) => reporter.err(&format!("Box-edition link error: {}", e)),
+        }
+        return;
+    }
+
     // Standalone repair: fold split multi-disc rows back into one release. Pure SQL, no API, no
     // lock - decided entirely from embedded MB release ids + disc numbers (see multi_disc.rs).
     if args.repair_multi_disc {
@@ -481,6 +513,61 @@ async fn main() {
                 ));
             }
             Err(e) => reporter.err(&format!("Multi-disc repair error: {}", e)),
+        }
+
+        // Tier 2: box sets. Tier 1 above only merges siblings that already agree on an embedded MB
+        // release id; a box set's discs frequently don't (see docs/box_sets.md), so this needs
+        // MusicBrainz lookups - hence its own http client + limiter, built here rather than earlier,
+        // since every other --repair-* mode above is deliberately network-free and returns first.
+        reporter.blank();
+        reporter.header(if args.dry_run {
+            "DMP Sync - Bind Box Sets (DRY RUN)"
+        } else {
+            "DMP Sync - Bind Box Sets"
+        });
+        let http_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("HTTP client");
+        let mut limiter = RateLimiter::new();
+        limiter.set_web(args.web);
+        match boxset::run_repair(&pool, &http_client, &mut limiter, &reporter, args.dry_run).await {
+            Ok(s) => {
+                reporter.blank();
+                reporter.done(&format!(
+                    "{} sibling group(s) seen, {} box(es) {}  ({} row(s) {})",
+                    s.groups_seen,
+                    s.groups_bound,
+                    if args.dry_run { "would be bound" } else { "bound" },
+                    s.rows_absorbed,
+                    if args.dry_run { "would be absorbed" } else { "absorbed" },
+                ));
+            }
+            Err(e) => reporter.err(&format!("Box-set repair error: {}", e)),
+        }
+
+        // Tail: now that any box discs just bound above have MusicBrainzReleaseMedium rows, derive
+        // which standalone album each one reprints - the "same as an edition, but living in a box"
+        // link goal 2 of docs/box_sets.md needs. Pure SQL + no-API tracklist fallback.
+        reporter.blank();
+        reporter.header(if args.dry_run {
+            "DMP Sync - Link Box-Set Editions (DRY RUN)"
+        } else {
+            "DMP Sync - Link Box-Set Editions"
+        });
+        match box_editions::run_link_box_editions(&pool, &reporter, args.dry_run).await {
+            Ok(s) => {
+                reporter.blank();
+                reporter.done(&format!(
+                    "{} exact, {} fallback {} ({} candidate(s), {} ambiguous)",
+                    s.exact_linked,
+                    s.fallback_linked,
+                    if args.dry_run { "would link" } else { "linked" },
+                    s.fallback_candidates,
+                    s.fallback_ambiguous,
+                ));
+            }
+            Err(e) => reporter.err(&format!("Box-edition link error: {}", e)),
         }
         return;
     }
@@ -1692,7 +1779,8 @@ async fn main() {
                 format: format_str.as_deref(),
             };
 
-            let mb_db_id = match upsert_mb_release(
+            let medium_rows = mb_medium_rows(&best_release.media);
+            let mb_db_id = match upsert_mb_release_with_media(
                 &pool,
                 &final_release_id,
                 &rg_id,
@@ -1703,6 +1791,7 @@ async fn main() {
                 None,
                 disambiguation,
                 &extras,
+                medium_rows.len().max(1) as i32,
             )
             .await
             {
@@ -1713,6 +1802,9 @@ async fn main() {
                     continue;
                 }
             };
+            sync_mb_media_for_release(&pool, &mb_db_id, &medium_rows)
+                .await
+                .ok();
 
             // (Removed) shared-releaseId guard: it unmatched any LocalRelease whose MB release was
             // already bound to another LocalRelease. That was a band-aid for the old fragmentation
@@ -1732,6 +1824,7 @@ async fn main() {
                     disc_number: t.disc_number.map(|d| d as i32),
                     duration_ms: t.length.map(|l| l as i32),
                     mb_id: Some(t.id.clone()),
+                    recording_id: t.recording.as_ref().map(|r| r.id.clone()),
                 })
                 .collect();
 

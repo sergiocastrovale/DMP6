@@ -37,6 +37,13 @@ export interface UnifiedRelease {
   downloadState?: string | null
   downloadedReleaseId?: string | null
   downloadPercent?: number | null
+  // Distinct MB media on this release (null/1 for a plain album, >1 for a box set) - see
+  // MusicBrainzRelease.mediumCount and docs/box_sets.md.
+  discCount?: number | null
+  // Set only on a virtual "this disc IS that standalone album" card (see buildBoxEditionCards) -
+  // never on a real LocalRelease/MusicBrainzRelease-backed card. Lets the album's own edition group
+  // show the box disc as an extra edition without a second LocalRelease row existing for it.
+  boxParent?: { releaseId: string, title: string, mediumPosition: number, mediumTitle: string | null } | null
 }
 
 export type ReleaseStatus =
@@ -83,6 +90,8 @@ export interface MbReleaseRow {
   format: string | null
   status: string
   statusReason: string | null
+  mediumCount: number
+  media: { position: number, title: string | null, equivalentReleaseId: string | null, equivalentReleaseGroupId: string | null }[]
   type: { name: string, slug: string }
   tracks: { id: string, localTracks?: { localReleaseId: string | null }[] }[]
 }

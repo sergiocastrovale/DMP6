@@ -44,8 +44,14 @@ fn common_ancestor(a: &str, b: &str) -> String {
 /// **Metadata decides this, not folder names.** Two folders merge iff their tracks agree on the
 /// majority embedded MB *release* id and their disc-number sets are disjoint. That is exactly what
 /// MusicBrainz already asserts: one release, several media. Names like `CD 1 (Vol 3)`, `LP 2`,
-/// `Disc One` or `CD 2 - Live` carry no weight, and a box set whose discs are separate releases
-/// (each tagged with its own release id) is left alone for free.
+/// `Disc One` or `CD 2 - Live` carry no weight.
+///
+/// A box set whose discs each carry a *different* embedded id (mis-tagged as their own standalone
+/// albums, or genuinely tagged as their own albums - see docs/box_sets.md §2) is left unmerged here,
+/// not because that is correct - MusicBrainz models a box as one Release with N media, so those discs
+/// really do belong together - but because this function can only see embedded ids, and MB stores no
+/// id-level link from a box's disc to the album it duplicates. `sync::boxset::run_repair` is the
+/// tier-2 pass that matches by tracklist instead and folds those cases afterwards.
 ///
 /// Overlapping disc numbers mean two folders both claim the same medium - duplicate rips of one
 /// album, not two halves of it - so they stay separate and surface via the duplicate-release audit.
@@ -335,6 +341,24 @@ pub async fn ensure_merged_local_release(
     let id = ensure_local_release(pool, title, year, &target.folder_path, &target.group_key).await?;
     cache.insert(target.group_key.clone(), id.clone());
     Ok(id)
+}
+
+/// Every folder `sync::boxset::run_repair` has already folded into a box-set `LocalRelease`, keyed
+/// by folder path. `plan_disc_merges` cannot rediscover these on its own - it only ever sees embedded
+/// MB release ids, and MB stores no id-level link from a box's disc to the standalone album it
+/// duplicates (docs/box_sets.md §2) - so a folder found here must be routed straight to its existing
+/// release, never through `build_group_key`/`ensure_local_release_cached`. Without this, a box whose
+/// discs are individually tagged as their own standalone albums (every track reads discNumber=1,
+/// shape (b) in docs/box_sets.md) would have its title/year rewritten from that disc's own tags and,
+/// worse, its folderPath's `groupKey` regenerated fresh on the very next full re-index that touches
+/// it - splitting the box straight back apart. One query, small table, fetched once per index run.
+pub async fn get_local_release_members(pool: &PgPool) -> Result<HashMap<String, String>, sqlx::Error> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        r#"SELECT "folderPath", "localReleaseId" FROM "LocalReleaseMember""#,
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().collect())
 }
 
 /// Batch upsert tracks. Returns map of filePath → track id.
@@ -794,9 +818,16 @@ mod tests {
     }
 
     #[test]
-    fn keeps_a_box_set_of_separate_releases_apart() {
+    fn defers_a_mis_tagged_box_disc_to_the_tier_2_matcher() {
         // ABBA's 9CD box: CD 1 is tagged as the standalone "Ring Ring" release, CDs 2-3 as the box.
-        // Only the ones MusicBrainz actually calls one release merge.
+        // Verified against the live MusicBrainz API (docs/box_sets.md §2): a box set is NOT a
+        // collection of separate releases - it is one Release with N media, and MB stores no link
+        // from a box's disc to the standalone album it duplicates. So CD 1 genuinely belongs in this
+        // box too; plan_disc_merges just can't see that from tags alone, since it only ever merges
+        // folders that already agree on an embedded release id. It correctly merges the two that do
+        // agree (CD 2+3) and leaves CD 1 as its own row - not because that is the right final state,
+        // but so `sync::boxset::run_repair`'s tier-2 tracklist matcher (which has no such blind spot)
+        // can pick it up afterwards and fold all three into the box.
         let plan = plan_disc_merges(&[
             facts("ABBA/Box/CD 1-1973 - Ring Ring", Some("mb-ringring"), &[1]),
             facts("ABBA/Box/CD 2-1974 - Waterloo", Some("mb-box"), &[2]),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { button, cx, sw, toneBg, toneFill, toneText } from '../../helpers/ui'
+import { button, cx, markerPill, sw, toneBg, toneFill, toneText } from '../../helpers/ui'
 import type { ButtonSize, ButtonVariant, ToggleKey, Tone } from '../../types/ui'
 
 const VARIANTS: ButtonVariant[] = ['primary', 'secondary', 'quiet', 'danger', 'ghost']
@@ -111,4 +111,17 @@ describe('tone maps', () => {
     }
   })
 
+})
+
+describe('markerPill', () => {
+  it('defines a rule and a tab for every tone, each naming that tone\'s own colour', () => {
+    // Literal per-tone strings, not string interpolation - Tailwind's static content scan can't see
+    // through a built `border-${tone}/20`, so this guards against that regression creeping back in.
+    for (const tone of TONES) {
+      expect(markerPill[tone].rule).toEqual(expect.any(String))
+      expect(markerPill[tone].tab).toEqual(expect.any(String))
+    }
+    expect(markerPill.accent.tab).toContain('amber-400')
+    expect(markerPill.info.tab).toContain('info')
+  })
 })

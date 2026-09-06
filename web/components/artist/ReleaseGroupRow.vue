@@ -33,6 +33,7 @@ const primaryFavorite = computed(() =>
 
 <template>
   <div :data-group-key="group.key" class="relative my-2">
+    <ArtistDiscsPill v-if="isSingle && (group.primary.discCount ?? 0) > 1" :count="group.primary.discCount!" />
     <ArtistReleaseGroupSingleEdition
       v-if="isSingle"
       :group="group"
