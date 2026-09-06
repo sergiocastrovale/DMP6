@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Maximize, Minimize, X } from 'lucide-vue-next'
+import { X } from 'lucide-vue-next'
+import type { Maximize, Minimize } from 'lucide-vue-next'
 
 const props = defineProps<{
   toggleLabel: string
@@ -7,8 +8,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'toggle'): void
-  (e: 'stop'): void
+  (e: 'toggle' | 'stop'): void
 }>()
 </script>
 

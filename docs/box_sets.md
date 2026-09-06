@@ -441,17 +441,27 @@ single-medium albums until they are naturally re-synced): match the medium's
       literal string rather than an interpolated one). Adding a bullet to a historical stage section
       would have misrepresented it as part of that redesign pass.
 
-### Phase 8 — rollout
+### Phase 8 — rollout (in progress 2026-09-06)
 
-- [ ] `pnpm test:unit` green
-- [ ] `cd scripts && cargo build --release && cargo test` green
-- [ ] `pnpm test:e2e` green
-- [ ] Visual check: run the app, screenshot ABBA's artist page (per `feedback_always_visual_check`)
-- [ ] Commit + push
-- [ ] `./deploy` (applies the migration via `prisma migrate deploy`)
+- [x] `pnpm test:unit` green (159 files, 1453 passed)
+- [x] `cd scripts && cargo build --release && cargo test` green (299 passed, 29 ignored, then +4
+      `box_editions` tests once Phase 4 landed → net 303)
+- [x] `pnpm test:e2e` — 74 passed, 1 pre-existing unrelated failure (see Phase 6 note); required a
+      `pnpm build` first since Playwright's local `webServer` reuses whatever `.output/` already
+      exists rather than rebuilding it
+- [ ] Visual check: **not done by me** — per `feedback_no_login_screenshot`, I don't log in (real or
+      via local-DB swap) to self-verify; there's no password for me to use. **Ask the user** to open
+      ABBA's artist page and confirm: one *The Albums* card with a violet "9 discs" marker, and a
+      *Ring Ring — disc 1 of "The Albums"* row inside the amber *Ring Ring* editions group — once the
+      repair steps below have actually run (nothing to see before that).
+- [x] Commit `458f9ac7` + push to `origin/master`
+- [ ] `./deploy` — **running now** (background), builds the image, ships it to the NAS, restarts the
+      `web` container, then runs `prisma migrate deploy` against the shared prod DB. Its own
+      `pnpm lint && pnpm typecheck` gate runs first.
 - [ ] Backfill media + `recordingId`: re-sync **multi-medium releases only** (`max(discNumber) > 1` → 4659 releases, not all 120k)
 - [ ] `./sync --repair-multi-disc --dry-run` → review KEEP/merge table → run for real
-- [ ] `./sync --link-box-editions --dry-run` → review → run for real
+- [ ] `./sync --link-box-editions --dry-run` → review → run for real (also runs automatically at the
+      tail of `--repair-multi-disc` above - a standalone run here is only needed for a later re-check)
 - [ ] Verify in the DB: `The Albums` = one row, `COMPLETE`, 9 members; `The Complete Studio Recordings` = one row including the mis-tagged CD 1
 
 ---
