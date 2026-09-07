@@ -8,11 +8,54 @@ import type { MbReleaseRow, LocalReleaseRow, ImageResolver, UnifiedRelease, Loca
 // Single-release field mapping shared by the batch card builders below and the single-release lookup
 // endpoint (server/api/releases/[id].get.ts) - keeps `image`/`imageUrl`/type/format/etc. derivation in
 // one place instead of re-deriving it per call site.
+// docs/multidisk.md §8: which box (if any) this local release's disc lives in, and which of the
+// box's own media it is - either bound to an equivalent standalone album (boxMbr is the box, mbr is
+// the album) or bound directly to the box itself as a rarities/no-equivalent disc (mbr IS the box,
+// no separate boxMbr needed). Pure, no I/O, so it's unit-testable in isolation from the DB layer.
+//
+// `mediumPosition` is renumbered sequentially (1-based rank in the box's own ascending-ordered
+// `media` list), never the raw stored MB position: `is_audio_medium` filters video media out of a
+// box's medium rows but deliberately does not renumber (flatten_audio_tracks's own contract, see
+// CLAUDE.md), so a box that interleaves audio with a bonus video disc has real gaps in its stored
+// positions (e.g. discs 1, 2, 4, 5) - showing "disc 4 of 4" would raise the obvious "where's 3?".
+function computeBoxParent(
+  lr: LocalReleaseRow,
+  mbr: MbReleaseRow,
+  boxMbr: MbReleaseRow | null | undefined,
+): UnifiedRelease['boxParent'] {
+  if (lr.boxReleaseId && boxMbr && lr.boxMediumPosition != null) {
+    const idx = boxMbr.media.findIndex(m => m.position === lr.boxMediumPosition)
+    if (idx === -1) { return null }
+    return {
+      releaseId: boxMbr.id,
+      title: boxMbr.title,
+      mediumPosition: idx + 1,
+      mediumTitle: boxMbr.media[idx]!.title ?? null,
+      mediumCount: boxMbr.mediumCount,
+    }
+  }
+  if (lr.mediumPosition != null && mbr.mediumCount > 1 && !lr.boxReleaseId) {
+    // Bound directly to the box (a rarities/no-equivalent disc) - mbr IS the box. `releaseId ===
+    // mbr.id` here is also the self-reference isBoxSetRow() (helpers/artistPageLogic.ts) uses to
+    // tell this case apart from a dissolved disc bound to a *different* release.
+    const idx = mbr.media.findIndex(m => m.position === lr.mediumPosition)
+    if (idx === -1) { return null }
+    return {
+      releaseId: mbr.id,
+      title: mbr.title,
+      mediumPosition: idx + 1,
+      mediumTitle: mbr.media[idx]!.title ?? null,
+      mediumCount: mbr.mediumCount,
+    }
+  }
+  return null
+}
+
 export function buildReleaseCard(
   lr: LocalReleaseRow,
   mbr: MbReleaseRow | null,
   resolveImage: ImageResolver,
-  extras?: { coArtists?: { name: string, slug: string }[], connectedArtistName?: string },
+  extras?: { coArtists?: { name: string, slug: string }[], connectedArtistName?: string, boxMbr?: MbReleaseRow | null, alsoPartOf?: { title: string, year: number | null }[] },
 ): UnifiedRelease {
   const img = resolveImage(lr.image, lr.imageUrl, 'releases')
   if (!mbr) {
@@ -46,9 +89,15 @@ export function buildReleaseCard(
       discCount: null,
     }
   }
+  const boxParent = computeBoxParent(lr, mbr, extras?.boxMbr)
+  // A rarities/no-equivalent box disc self-references (boxParent.releaseId === mbr.id, since mbr IS
+  // the box) - its row title borrows the box's medium title so several such discs from the same box
+  // don't all render under the box's own bare title (docs/multidisk.md §8).
+  const isBoxSetRow = boxParent?.releaseId === mbr.id
+  const title = isBoxSetRow ? `${mbr.title} — ${boxParent!.mediumTitle ?? `Disc ${boxParent!.mediumPosition}`}` : mbr.title
   return {
     id: lr.id,
-    title: mbr.title,
+    title,
     year: mbr.year,
     type: mbr.type.name,
     typeSlug: mbr.type.slug,
@@ -74,7 +123,11 @@ export function buildReleaseCard(
     coArtists: extras?.coArtists,
     statusReason: mbr.statusReason,
     connectedArtistName: extras?.connectedArtistName,
-    discCount: mbr.mediumCount > 1 ? mbr.mediumCount : null,
+    // A dissolved box disc's own row represents ONE disc, not the whole release - the "N discs"
+    // pill belongs only on a folded multi-disc release's single survivor row (docs/multidisk.md §8).
+    discCount: mbr.mediumCount > 1 && lr.mediumPosition == null ? mbr.mediumCount : null,
+    boxParent,
+    alsoPartOf: extras?.alsoPartOf,
   }
 }
 
@@ -123,14 +176,20 @@ export function buildLocalAndGapCards(params: {
   coArtistMap: Map<string, { name: string, slug: string }[]>
   connectedArtistByRelease: Map<string, string>
   resolveImage: ImageResolver
+  alsoPartOfByGroupId?: Map<string, { title: string, year: number | null }[]>
 }): LocalAndGapCardsResult {
-  const { localReleases, mbById, coArtistMap, connectedArtistByRelease, resolveImage } = params
+  const { localReleases, mbById, coArtistMap, connectedArtistByRelease, resolveImage, alsoPartOfByGroupId } = params
   const cards: UnifiedRelease[] = []
   const coveredMbIds = new Set<string>()
   const appearsOnLocal: LocalReleaseRow[] = []
 
   for (const lr of localReleases) {
-    const extras = { coArtists: coArtistMap.get(lr.id), connectedArtistName: connectedArtistByRelease.get(lr.id) }
+    const extras = {
+      coArtists: coArtistMap.get(lr.id),
+      connectedArtistName: connectedArtistByRelease.get(lr.id),
+      boxMbr: lr.boxReleaseId ? mbById.get(lr.boxReleaseId) ?? null : null,
+      alsoPartOf: lr.releaseId ? alsoPartOfByGroupId?.get(mbById.get(lr.releaseId)?.releaseGroupId ?? '') : undefined,
+    }
     if (!lr.releaseId) {
       cards.push(buildReleaseCard(lr, null, resolveImage, extras))
       continue
@@ -184,6 +243,7 @@ export function buildLocalAndGapCards(params: {
       folderPath: null,
       statusReason: mbr.statusReason,
       discCount: mbr.mediumCount > 1 ? mbr.mediumCount : null,
+      alsoPartOf: mbr.releaseGroupId ? alsoPartOfByGroupId?.get(mbr.releaseGroupId) : undefined,
     })
   }
 
@@ -200,12 +260,18 @@ export function buildAppearsOnCards(params: {
   coArtistMap: Map<string, { name: string, slug: string }[]>
   connectedArtistByRelease: Map<string, string>
   resolveImage: ImageResolver
+  alsoPartOfByGroupId?: Map<string, { title: string, year: number | null }[]>
 }): UnifiedRelease[] {
-  const { appearsOnLocal, appearsOnMbById, coArtistMap, connectedArtistByRelease, resolveImage } = params
-  return appearsOnLocal.map(lr => buildReleaseCard(lr, appearsOnMbById.get(lr.releaseId!) ?? null, resolveImage, {
-    coArtists: coArtistMap.get(lr.id),
-    connectedArtistName: connectedArtistByRelease.get(lr.id),
-  }))
+  const { appearsOnLocal, appearsOnMbById, coArtistMap, connectedArtistByRelease, resolveImage, alsoPartOfByGroupId } = params
+  return appearsOnLocal.map((lr) => {
+    const mbr = appearsOnMbById.get(lr.releaseId!) ?? null
+    return buildReleaseCard(lr, mbr, resolveImage, {
+      coArtists: coArtistMap.get(lr.id),
+      connectedArtistName: connectedArtistByRelease.get(lr.id),
+      boxMbr: lr.boxReleaseId ? appearsOnMbById.get(lr.boxReleaseId) ?? null : null,
+      alsoPartOf: mbr?.releaseGroupId ? alsoPartOfByGroupId?.get(mbr.releaseGroupId) : undefined,
+    })
+  })
 }
 
 // The caller builds the unified list as locals+gaps (already year-ascending) followed by appears-on

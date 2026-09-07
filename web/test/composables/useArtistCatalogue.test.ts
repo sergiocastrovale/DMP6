@@ -115,7 +115,7 @@ describe('useArtistCatalogue', () => {
       release({ id: 'album-1', releaseGroupId: 'rg-ringring', year: 1973 }),
       release({
         id: 'box1:medium:1', releaseGroupId: 'rg-ringring', year: 2008,
-        boxParent: { releaseId: 'box1', title: 'The Albums', mediumPosition: 1, mediumTitle: 'Ring Ring' },
+        boxParent: { releaseId: 'box1', title: 'The Albums', mediumPosition: 1, mediumTitle: 'Ring Ring', mediumCount: 9 },
       }),
     ])
     const cat = useArtistCatalogue(releases)

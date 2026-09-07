@@ -78,6 +78,24 @@ export const findBundleParentRelease = (releases: UnifiedRelease[], release: Uni
     ? releases.find(r => r.localReleaseId === release.bundleParentReleaseId) ?? null
     : null
 
+// Box-set row display (docs/multidisk.md §8). A dissolved disc's boxParent points at the *box*
+// release it lives in; a rarities/no-equivalent disc's boxParent self-references (releaseId equals
+// its own mbReleaseRowId, since mbr IS the box there) - that self-reference is what marks a row as
+// needing the "Box Set" pill instead of the dissolved-disc subtitle/disc-label pair.
+export const isBoxSetRow = (release: UnifiedRelease): boolean =>
+  !!release.boxParent && release.boxParent.releaseId === release.mbReleaseRowId
+
+// Edition-label-style badge for a dissolved box disc: the box's own title stands in for the
+// disambiguation/editionLabel a normal edition would carry.
+export const boxRowSubtitle = (release: UnifiedRelease): string | null =>
+  release.boxParent && !isBoxSetRow(release) ? release.boxParent.title : null
+
+// "disc 3 of 9" - only meaningful for a dissolved disc, which carries the box's own medium count.
+export const boxRowDiscLabel = (release: UnifiedRelease): string | null =>
+  release.boxParent && !isBoxSetRow(release)
+    ? `disc ${release.boxParent.mediumPosition} of ${release.boxParent.mediumCount}`
+    : null
+
 // Deduplicated folder paths for releases that actually have local files - the exact album directories,
 // used when refreshing one known release.
 export const dedupeLocalFolders = (releases: UnifiedRelease[]): string[] => {

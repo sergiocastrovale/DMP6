@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ReleaseGroup, UnifiedRelease } from '~/types/release'
-import { favoriteTargetId } from '~/helpers/artistPageLogic'
+import { favoriteTargetId, boxRowSubtitle, boxRowDiscLabel, isBoxSetRow } from '~/helpers/artistPageLogic'
 import { cx } from '~/helpers/ui'
 
 const props = defineProps<{
@@ -30,11 +30,10 @@ const isEditionFavorite = (edition: UnifiedRelease) => {
 }
 
 // A dissolved box disc (boxParent set, docs/multidisk.md §8) carries no disambiguation/editionLabel
-// of its own - it borrows the subtitle slot to say which box it lives in instead.
+// of its own - it borrows the subtitle slot for the box's title instead, plus a separate disc-label
+// slot for its position within the box.
 const editionSubtitle = (edition: UnifiedRelease) =>
-  edition.boxParent
-    ? `disc ${edition.boxParent.mediumPosition} of "${edition.boxParent.title}"`
-    : edition.disambiguation || edition.editionLabel
+  boxRowSubtitle(edition) || edition.disambiguation || edition.editionLabel
 </script>
 
 <template>
@@ -56,6 +55,8 @@ const editionSubtitle = (edition: UnifiedRelease) =>
         :slug="slug"
         :selected-track-id="expandedEdition === edition.id ? selectedTrackId : null"
         :subtitle="editionSubtitle(edition)"
+        :disc-label="boxRowDiscLabel(edition)"
+        :is-box-set="isBoxSetRow(edition)"
         :is-acquiring="acquiringIds.has(edition.id)"
         @toggle="emit('toggleEdition', edition.id)"
         @play="emit('play', edition)"

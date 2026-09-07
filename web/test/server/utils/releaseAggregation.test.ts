@@ -41,6 +41,9 @@ const localRelease = (overrides: Partial<LocalReleaseRow> & { id: string }): Loc
   totalPlayCount: 0,
   tracks: [],
   artists: [],
+  mediumPosition: null,
+  boxReleaseId: null,
+  boxMediumPosition: null,
   ...overrides,
 })
 
@@ -229,6 +232,146 @@ describe('buildLocalAndGapCards - core aggregation', () => {
       coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
     })
     expect(cards.map(c => c.id)).toEqual(['lr1', 'mb-gap'])
+  })
+})
+
+describe('buildLocalAndGapCards - box sets (docs/multidisk.md §8)', () => {
+  it('a dissolved disc (boxReleaseId set) gets boxParent pointing at the box, and discCount stays null', () => {
+    const box = mbRelease({
+      id: 'box1',
+      title: 'The Box',
+      mediumCount: 3,
+      media: [
+        { position: 1, title: 'Disc 1', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+        { position: 2, title: 'Rarities', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+        { position: 3, title: 'Disc 3', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+      ],
+    })
+    const album = mbRelease({ id: 'album1', title: 'Standalone Album', mediumCount: 1 })
+    const lr = localRelease({ id: 'lr1', releaseId: 'album1', boxReleaseId: 'box1', boxMediumPosition: 1 })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr],
+      mbById: new Map([['album1', album], ['box1', box]]),
+      coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    const localCard = cards.find(c => c.hasLocal)
+    expect(localCard).toMatchObject({
+      title: 'Standalone Album',
+      discCount: null,
+      boxParent: { releaseId: 'box1', title: 'The Box', mediumPosition: 1, mediumTitle: 'Disc 1' },
+    })
+  })
+
+  it('a rarities disc (mediumPosition set, no boxReleaseId, mbr IS the box) gets boxParent pointing at itself', () => {
+    const box = mbRelease({
+      id: 'box1',
+      title: 'The Box',
+      mediumCount: 3,
+      media: [
+        { position: 1, title: 'Disc 1', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+        { position: 2, title: 'Rarities', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+        { position: 3, title: 'Disc 3', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+      ],
+    })
+    const lr = localRelease({ id: 'lr1', releaseId: 'box1', mediumPosition: 2 })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr],
+      mbById: new Map([['box1', box]]),
+      coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    expect(cards[0]).toMatchObject({
+      title: 'The Box — Rarities',
+      discCount: null,
+      boxParent: { releaseId: 'box1', title: 'The Box', mediumPosition: 2, mediumTitle: 'Rarities' },
+    })
+  })
+
+  it('an ordinary single-medium release has boxParent null and discCount null', () => {
+    const mb = mbRelease({ id: 'mb1', mediumCount: 1 })
+    const lr = localRelease({ id: 'lr1', releaseId: 'mb1' })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    expect(cards[0]).toMatchObject({ boxParent: null, discCount: null })
+  })
+
+  it('a genuinely folded multi-disc release (no box fields set) keeps its discCount pill', () => {
+    const mb = mbRelease({ id: 'mb1', mediumCount: 2 })
+    const lr = localRelease({ id: 'lr1', releaseId: 'mb1' })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    expect(cards[0]).toMatchObject({ discCount: 2, boxParent: null })
+  })
+
+  it('renumbers a gapped stored position sequentially - a bonus video disc filtered out of media leaves a real gap (docs/multidisk.md §8)', () => {
+    // audio_media() drops video media from `media` but does not renumber the survivors' stored
+    // `position` - disc 3 here was a video disc, so the box's own media positions read 1, 2, 4.
+    const box = mbRelease({
+      id: 'box1',
+      title: 'The Box',
+      mediumCount: 3,
+      media: [
+        { position: 1, title: 'Disc 1', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+        { position: 2, title: 'Disc 2', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+        { position: 4, title: 'Disc 4', equivalentReleaseId: null, equivalentReleaseGroupId: null },
+      ],
+    })
+    const album = mbRelease({ id: 'album1', title: 'Standalone Album', mediumCount: 1 })
+    const lr = localRelease({ id: 'lr1', releaseId: 'album1', boxReleaseId: 'box1', boxMediumPosition: 4 })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr],
+      mbById: new Map([['album1', album], ['box1', box]]),
+      coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    const localCard = cards.find(c => c.hasLocal)
+    // Raw stored position is 4 (3rd surviving audio medium), but display renumbers to 3 of 3.
+    expect(localCard!.boxParent).toMatchObject({ mediumPosition: 3, mediumCount: 3 })
+  })
+})
+
+describe('buildLocalAndGapCards / buildAppearsOnCards - "Also part of" (docs/multidisk.md §7)', () => {
+  it('attaches alsoPartOf entries looked up by the covered release\'s own releaseGroupId', () => {
+    const mb = mbRelease({ id: 'mb1', releaseGroupId: 'rg1' })
+    const lr = localRelease({ id: 'lr1', releaseId: 'mb1' })
+    const alsoPartOfByGroupId = new Map([['rg1', [{ title: 'The Box', year: 2008 }]]])
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+      alsoPartOfByGroupId,
+    })
+    expect(cards[0]!.alsoPartOf).toEqual([{ title: 'The Box', year: 2008 }])
+  })
+
+  it('attaches alsoPartOf to a gap card by its own releaseGroupId', () => {
+    const mb = mbRelease({ id: 'mb1', releaseGroupId: 'rg1', type: { name: 'Album', slug: 'album' } })
+    const alsoPartOfByGroupId = new Map([['rg1', [{ title: 'The Box', year: 2008 }]]])
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+      alsoPartOfByGroupId,
+    })
+    expect(cards[0]!.alsoPartOf).toEqual([{ title: 'The Box', year: 2008 }])
+  })
+
+  it('is undefined when the release group has no matching box entries', () => {
+    const mb = mbRelease({ id: 'mb1', releaseGroupId: 'rg-nobox' })
+    const lr = localRelease({ id: 'lr1', releaseId: 'mb1' })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+      alsoPartOfByGroupId: new Map([['rg1', [{ title: 'The Box', year: 2008 }]]]),
+    })
+    expect(cards[0]!.alsoPartOf).toBeUndefined()
+  })
+
+  it('buildAppearsOnCards attaches alsoPartOf by the appears-on MB row\'s releaseGroupId', () => {
+    const lr = localRelease({ id: 'lr1', releaseId: 'mb1' })
+    const mb = mbRelease({ id: 'mb1', releaseGroupId: 'rg1' })
+    const cards = buildAppearsOnCards({
+      appearsOnLocal: [lr],
+      appearsOnMbById: new Map([['mb1', mb]]),
+      coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+      alsoPartOfByGroupId: new Map([['rg1', [{ title: 'The Box', year: 2008 }]]]),
+    })
+    expect(cards[0]!.alsoPartOf).toEqual([{ title: 'The Box', year: 2008 }])
   })
 })
 

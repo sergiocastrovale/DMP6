@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { acquireFailureMessage, artistScanFolders, canRedownload, dedupeLocalFolders, dlPollNeeded, favoriteTargetId, filterInFlight, findBundleParentRelease, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
+import { acquireFailureMessage, artistScanFolders, boxRowDiscLabel, boxRowSubtitle, canRedownload, dedupeLocalFolders, dlPollNeeded, favoriteTargetId, filterInFlight, findBundleParentRelease, isBoxSetRow, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
 import type { DlStatusValue } from '../../types/download'
@@ -253,5 +253,47 @@ describe('canRedownload', () => {
 
   it('is off when no download source is enabled', () => {
     expect(canRedownload(incomplete(), false)).toBe(false)
+  })
+})
+
+describe('box-set row helpers (docs/multidisk.md §8)', () => {
+  const dissolved = release({
+    id: 'album-1', mbReleaseRowId: 'album-1',
+    boxParent: { releaseId: 'box1', title: 'The Albums', mediumPosition: 3, mediumTitle: 'Ring Ring', mediumCount: 9 },
+  })
+  const rarities = release({
+    id: 'box1', mbReleaseRowId: 'box1',
+    boxParent: { releaseId: 'box1', title: 'The Albums', mediumPosition: 5, mediumTitle: 'Rarities', mediumCount: 9 },
+  })
+  const plain = release({ id: 'plain-1', mbReleaseRowId: 'plain-1', boxParent: null })
+
+  describe('isBoxSetRow', () => {
+    it('is true only when boxParent self-references (mbr IS the box)', () => {
+      expect(isBoxSetRow(rarities)).toBe(true)
+      expect(isBoxSetRow(dissolved)).toBe(false)
+      expect(isBoxSetRow(plain)).toBe(false)
+    })
+  })
+
+  describe('boxRowSubtitle', () => {
+    it('is the box title for a dissolved disc', () => {
+      expect(boxRowSubtitle(dissolved)).toBe('The Albums')
+    })
+
+    it('is null for a rarities row and for a plain release', () => {
+      expect(boxRowSubtitle(rarities)).toBeNull()
+      expect(boxRowSubtitle(plain)).toBeNull()
+    })
+  })
+
+  describe('boxRowDiscLabel', () => {
+    it('is "disc X of N" for a dissolved disc', () => {
+      expect(boxRowDiscLabel(dissolved)).toBe('disc 3 of 9')
+    })
+
+    it('is null for a rarities row and for a plain release', () => {
+      expect(boxRowDiscLabel(rarities)).toBeNull()
+      expect(boxRowDiscLabel(plain)).toBeNull()
+    })
   })
 })

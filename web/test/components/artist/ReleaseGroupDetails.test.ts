@@ -58,13 +58,14 @@ const baseRelease: UnifiedRelease = {
   statusReason: null,
 }
 
-const mountRelease = (overrides: Partial<UnifiedRelease>) =>
+const mountRelease = (overrides: Partial<UnifiedRelease>, extraProps: Record<string, unknown> = {}) =>
   mountSuspended(ArtistReleaseGroupDetails, {
     props: {
       release: { ...baseRelease, ...overrides },
       expanded: false,
       isFavorite: false,
       slug: 'bing-crosby',
+      ...extraProps,
     },
   })
 
@@ -105,5 +106,34 @@ describe('artist/ReleaseGroupDetails.vue - owned-bundle sub-release', () => {
     const wrapper = await mountRelease({})
     await wrapper.find('[class*="group/edition"]').trigger('click')
     expect(wrapper.emitted('toggle')).toBeUndefined()
+  })
+})
+
+describe('artist/ReleaseGroupDetails.vue - box sets (docs/multidisk.md §8)', () => {
+  it('renders the subtitle and disc-label slots for a dissolved box disc', async () => {
+    const wrapper = await mountRelease({}, { subtitle: 'The Albums', discLabel: 'disc 1 of 9' })
+    expect(wrapper.text()).toContain('The Albums')
+    expect(wrapper.text()).toContain('disc 1 of 9')
+    expect(wrapper.text()).not.toContain('Box Set')
+  })
+
+  it('renders the "Box Set" marker pill for a rarities/no-equivalent disc', async () => {
+    const wrapper = await mountRelease({}, { isBoxSet: true })
+    expect(wrapper.text()).toContain('Box Set')
+  })
+
+  it('renders none of the box-set slots for an ordinary release', async () => {
+    const wrapper = await mountRelease({})
+    expect(wrapper.text()).not.toContain('Box Set')
+  })
+
+  it('shows an "Also part of" chip when the release group is reprinted by a box set (§7)', async () => {
+    const wrapper = await mountRelease({ alsoPartOf: [{ title: 'The Legacy Edition Box', year: 2008 }] })
+    expect(wrapper.text()).toContain('Also part of: The Legacy Edition Box (2008)')
+  })
+
+  it('shows no "Also part of" chip when alsoPartOf is empty/absent', async () => {
+    const wrapper = await mountRelease({})
+    expect(wrapper.text()).not.toContain('Also part of')
   })
 })

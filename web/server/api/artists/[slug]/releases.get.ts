@@ -93,6 +93,9 @@ export default defineEventHandler(async (event) => {
           artist: { select: { name: true, slug: true } },
         },
       },
+      mediumPosition: true,
+      boxReleaseId: true,
+      boxMediumPosition: true,
     },
     orderBy: [{ year: 'asc' }, { title: 'asc' }],
   })
@@ -101,12 +104,28 @@ export default defineEventHandler(async (event) => {
   const connectedSlugs = new Set(connectedArtists.map(a => a.slug))
   const coArtistMap = buildCoArtistMap(localReleases, slug, connectedSlugs)
 
+  // docs/multidisk.md §7: box sets in the catalogue that reprint any of this page's release groups -
+  // a pure catalogue fact, independent of ownership. Batched once across every group id on the page.
+  const releaseGroupIds = [...new Set(mbReleases.map(r => r.releaseGroupId).filter((id): id is string => !!id))]
+  const alsoPartOfMedia = releaseGroupIds.length > 0
+    ? await prisma.musicBrainzReleaseMedium.findMany({
+      where: { equivalentReleaseGroupId: { in: releaseGroupIds } },
+      select: { equivalentReleaseGroupId: true, release: { select: { title: true, year: true } } },
+    })
+    : []
+  const alsoPartOfByGroupId = new Map<string, { title: string, year: number | null }[]>()
+  for (const m of alsoPartOfMedia) {
+    const list = alsoPartOfByGroupId.get(m.equivalentReleaseGroupId!)
+    if (list) { list.push(m.release) } else { alsoPartOfByGroupId.set(m.equivalentReleaseGroupId!, [m.release]) }
+  }
+
   const { cards: localAndGapCards, appearsOnLocal } = buildLocalAndGapCards({
     localReleases,
     mbById,
     coArtistMap,
     connectedArtistByRelease,
     resolveImage: verifyImage,
+    alsoPartOfByGroupId,
   })
 
   // Appears-On: LocalReleases whose MB release is NOT in this artist's catalogue.
@@ -141,12 +160,26 @@ export default defineEventHandler(async (event) => {
     : []
   const appearsOnMbById = new Map(appearsOnMbReleases.map(r => [r.id, r]))
 
+  const appearsOnGroupIds = [...new Set(appearsOnMbReleases.map(r => r.releaseGroupId).filter((id): id is string => !!id))]
+    .filter(id => !alsoPartOfByGroupId.has(id))
+  if (appearsOnGroupIds.length > 0) {
+    const extraMedia = await prisma.musicBrainzReleaseMedium.findMany({
+      where: { equivalentReleaseGroupId: { in: appearsOnGroupIds } },
+      select: { equivalentReleaseGroupId: true, release: { select: { title: true, year: true } } },
+    })
+    for (const m of extraMedia) {
+      const list = alsoPartOfByGroupId.get(m.equivalentReleaseGroupId!)
+      if (list) { list.push(m.release) } else { alsoPartOfByGroupId.set(m.equivalentReleaseGroupId!, [m.release]) }
+    }
+  }
+
   const appearsOnCards = buildAppearsOnCards({
     appearsOnLocal,
     appearsOnMbById,
     coArtistMap,
     connectedArtistByRelease,
     resolveImage: verifyImage,
+    alsoPartOfByGroupId,
   })
 
   const releases = sortReleaseCards([...localAndGapCards, ...appearsOnCards])

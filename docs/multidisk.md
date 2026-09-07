@@ -222,13 +222,13 @@ FROM "LocalRelease" lr WHERE lr."folderPath" LIKE 'ABBA/%(9CD)%';
 - [x] §11: `./repair-box-sets` — scope/reset/`./sync --artist-ids`, no dry-run, resumable via `./sync`'s existing `syncRunHash` (no new checkpoint mechanism needed)
 
 ### Phase 7 — web
-- [ ] Delete `buildBoxEditionCards`+tests
-- [ ] `boxParent` from provenance columns; edition label = box title
-- [ ] Rarities row + `Box Set` pill
-- [ ] `DiscsPill` fold-only
-- [ ] "Also part of" chip (§7)
-- [ ] Disc-number renumbering at render time
-- [ ] Tests incl. renumbering fixture (gapped position → sequential display)
+- [x] Delete `buildBoxEditionCards`+tests
+- [x] `boxParent` from provenance columns; edition label = box title
+- [x] Rarities row + `Box Set` pill
+- [x] `DiscsPill` fold-only
+- [x] "Also part of" chip (§7)
+- [x] Disc-number renumbering at render time
+- [x] Tests incl. renumbering fixture (gapped position → sequential display)
 
 ### Phase 8 — docs
 - [ ] `docs/box_sets.md` → pointer to this file

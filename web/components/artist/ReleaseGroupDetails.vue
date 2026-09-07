@@ -5,7 +5,7 @@ import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { downloadStatusTone, statuses } from '~/helpers/constants'
 import { canRedownload } from '~/helpers/artistPageLogic'
-import { cx, ICON_STROKE_WIDTH, surface } from '~/helpers/ui'
+import { cx, ICON_STROKE_WIDTH, surface, toneBg } from '~/helpers/ui'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
 const props = withDefaults(defineProps<{
@@ -15,6 +15,8 @@ const props = withDefaults(defineProps<{
   slug: string
   selectedTrackId?: string | null
   subtitle?: string | null
+  discLabel?: string | null
+  isBoxSet?: boolean
   coArtists?: { name: string, slug: string }[]
   connectedArtistNames?: string[]
   trackCount?: number
@@ -23,6 +25,8 @@ const props = withDefaults(defineProps<{
 }>(), {
   selectedTrackId: null,
   subtitle: null,
+  discLabel: null,
+  isBoxSet: false,
   connectedArtistNames: () => [],
   isAcquiring: false,
 })
@@ -56,6 +60,10 @@ const displayTrackCount = computed(() => props.trackCount ?? props.release.track
 const displayPlayCount = computed(() => props.playCount ?? props.release.totalPlayCount)
 
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
+// docs/multidisk.md §7: box sets in the catalogue reprinting this release's whole group - a pure
+// catalogue fact, shown regardless of whether this artist owns a copy of the box.
+const alsoPartOfLabel = computed(() =>
+  (props.release.alsoPartOf ?? []).map(a => a.year ? `${a.title} (${a.year})` : a.title).join(', ') || null)
 </script>
 
 <template>
@@ -114,6 +122,8 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
             {{ release.title }}
           </span>
           <span v-if="subtitle" class="shrink-0 rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60">{{ subtitle }}</span>
+          <span v-if="discLabel" class="shrink-0 text-2xs text-stone-100/40">{{ discLabel }}</span>
+          <span v-if="isBoxSet" :class="cx('shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium', toneBg.info)">Box Set</span>
           <ToggleFavorite
             v-if="release.localReleaseId || release.bundleParentReleaseId"
             class="hidden md:inline-flex"
@@ -137,6 +147,7 @@ const statusDescription = (status: string) => statuses.find(s => s.value === sta
           <span v-if="release.type" class="hidden md:inline">{{ release.type }}</span>
           <span v-if="release.year">{{ release.year }}</span>
           <span v-if="displayTrackCount" class="hidden md:inline">{{ displayTrackCount }} tracks</span>
+          <span v-if="alsoPartOfLabel" class="hidden truncate lg:inline">Also part of: {{ alsoPartOfLabel }}</span>
           <span v-if="coArtists.length">Feat.
             <template v-for="(co, i) in coArtists" :key="co.slug">
               <NuxtLink

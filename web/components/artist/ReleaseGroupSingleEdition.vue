@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ReleaseGroup } from '~/types/release'
 import { cx } from '~/helpers/ui'
+import { boxRowSubtitle, boxRowDiscLabel, isBoxSetRow } from '~/helpers/artistPageLogic'
 
 const props = defineProps<{
   group: ReleaseGroup
@@ -42,6 +43,9 @@ const connectedArtistNames = computed(() => {
       :is-favorite="isFavorite"
       :slug="slug"
       :selected-track-id="selectedTrackId"
+      :subtitle="boxRowSubtitle(group.primary)"
+      :disc-label="boxRowDiscLabel(group.primary)"
+      :is-box-set="isBoxSetRow(group.primary)"
       :co-artists="group.primary.coArtists"
       :connected-artist-names="connectedArtistNames"
       :track-count="group.totalTracks"

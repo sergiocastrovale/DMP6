@@ -26,6 +26,9 @@ export default defineEventHandler(async (event) => {
           artist: { select: { name: true, slug: true } },
         },
       },
+      mediumPosition: true,
+      boxReleaseId: true,
+      boxMediumPosition: true,
       release: {
         select: {
           id: true,
@@ -57,5 +60,42 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Release not found' })
   }
 
-  return buildReleaseCard(lr, lr.release, verifyImage)
+  const boxMbr = lr.boxReleaseId
+    ? await prisma.musicBrainzRelease.findUnique({
+      where: { id: lr.boxReleaseId },
+      select: {
+        id: true,
+        title: true,
+        year: true,
+        musicbrainzId: true,
+        releaseGroupId: true,
+        disambiguation: true,
+        editionLabel: true,
+        releaseDate: true,
+        packaging: true,
+        country: true,
+        format: true,
+        status: true,
+        statusReason: true,
+        mediumCount: true,
+        media: {
+          select: { position: true, title: true, equivalentReleaseId: true, equivalentReleaseGroupId: true },
+          orderBy: { position: 'asc' },
+        },
+        type: { select: { name: true, slug: true } },
+        tracks: { select: { id: true } },
+      },
+    })
+    : null
+
+  // docs/multidisk.md §7: box sets in the catalogue that reprint this release's whole release group -
+  // a pure catalogue fact, independent of whether this artist owns any copy of them.
+  const alsoPartOf = lr.release?.releaseGroupId
+    ? (await prisma.musicBrainzReleaseMedium.findMany({
+      where: { equivalentReleaseGroupId: lr.release.releaseGroupId },
+      select: { release: { select: { title: true, year: true } } },
+    })).map(m => m.release)
+    : undefined
+
+  return buildReleaseCard(lr, lr.release, verifyImage, { boxMbr, alsoPartOf })
 })
