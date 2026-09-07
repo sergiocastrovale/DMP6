@@ -231,6 +231,20 @@ fn get_majority_id(
     majority_from_counts(&counts)
 }
 
+/// An artist is only stamped "done" for this run when it isn't a total failure - otherwise a resume
+/// would skip it despite it having accomplished nothing. `release_failures > 0` alone used to be the
+/// only signal, which missed a real case (docs/multidisk.md §16): a failed release-groups fetch
+/// leaves an artist whose local releases have no embedded MB id with `processed_count == 0` AND
+/// `release_failures == 0` (nothing ever called a per-release API function to fail), silently
+/// stamping it complete. `release_groups_fetch_failed` closes that gap.
+fn is_artist_total_failure(
+    processed_count: u32,
+    release_failures: u32,
+    release_groups_fetch_failed: bool,
+) -> bool {
+    processed_count == 0 && (release_failures > 0 || release_groups_fetch_failed)
+}
+
 /// The consensus id for a folder-release, or None if the tracks don't agree.
 /// - Exactly one distinct id (a unanimous album, or a genuine single-file folder) => that id.
 /// - Multiple competing ids => the mode, but only if it occurs at least twice AND strictly more than
@@ -1249,25 +1263,49 @@ async fn main() {
             (artist_genre_ids, country_code)
         };
 
-        // 4. Release groups (cached for duplicates sharing same MB artist)
+        // 4. Release groups (cached for duplicates sharing same MB artist). `release_groups_fetch_failed`
+        // feeds `is_total_failure` below: a failed fetch must never be indistinguishable from an
+        // artist that genuinely has zero release groups on MB, or the artist gets stamped "done" for
+        // this run having accomplished nothing (see docs/multidisk.md §16 - caught live during the
+        // box-set backfill, artists whose only releases lack an embedded MB id never call any other
+        // fallible API function, so processed_count and release_failures both stay 0 and the old gate
+        // silently marked them complete). Only a successful fetch is cached, so a duplicate artist
+        // sharing this MB id doesn't inherit a poisoned empty cache entry either - it retries the
+        // fetch itself instead.
+        let mut release_groups_fetch_failed = false;
         let release_groups = if is_duplicate {
-            release_group_cache
-                .get(&mb_artist.id)
-                .cloned()
-                .unwrap_or_default()
+            match release_group_cache.get(&mb_artist.id).cloned() {
+                Some(rgs) => rgs,
+                None => {
+                    reporter.step("Fetching releases...");
+                    match mb_api::mb_get_release_groups(&http_client, &mb_artist.id, &mut limiter)
+                        .await
+                    {
+                        Ok(rgs) => {
+                            release_group_cache.insert(mb_artist.id.clone(), rgs.clone());
+                            rgs
+                        }
+                        Err(e) => {
+                            reporter.err(&format!("Release groups error: {}", e));
+                            release_groups_fetch_failed = true;
+                            vec![]
+                        }
+                    }
+                }
+            }
         } else {
             reporter.step("Fetching releases...");
-            let rgs = match mb_api::mb_get_release_groups(&http_client, &mb_artist.id, &mut limiter)
-                .await
-            {
-                Ok(rgs) => rgs,
+            match mb_api::mb_get_release_groups(&http_client, &mb_artist.id, &mut limiter).await {
+                Ok(rgs) => {
+                    release_group_cache.insert(mb_artist.id.clone(), rgs.clone());
+                    rgs
+                }
                 Err(e) => {
                     reporter.err(&format!("Release groups error: {}", e));
+                    release_groups_fetch_failed = true;
                     vec![]
                 }
-            };
-            release_group_cache.insert(mb_artist.id.clone(), rgs.clone());
-            rgs
+            }
         };
 
         let mut processed_count = 0u32;
@@ -2064,7 +2102,8 @@ async fn main() {
             }
         }
 
-        let is_total_failure = processed_count == 0 && release_failures > 0;
+        let is_total_failure =
+            is_artist_total_failure(processed_count, release_failures, release_groups_fetch_failed);
         if !is_total_failure {
             if let Some(ref h) = run_hash {
                 stamp_sync_hash(&pool, &artist.id, h).await;
@@ -2209,8 +2248,39 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::majority_from_counts;
+    use super::{is_artist_total_failure, majority_from_counts};
     use std::collections::HashMap;
+
+    #[test]
+    fn total_failure_when_every_release_actively_failed() {
+        assert!(is_artist_total_failure(0, 3, false));
+    }
+
+    #[test]
+    fn not_total_failure_when_something_processed_despite_other_failures() {
+        assert!(!is_artist_total_failure(2, 1, false));
+    }
+
+    #[test]
+    fn not_total_failure_when_nothing_processed_and_nothing_failed() {
+        // A real "artist has zero release groups on MB" outcome - not a failure.
+        assert!(!is_artist_total_failure(0, 0, false));
+    }
+
+    #[test]
+    fn total_failure_when_release_groups_fetch_itself_failed_even_with_zero_release_failures() {
+        // docs/multidisk.md §16: an artist whose only local releases have no embedded MB id never
+        // calls a per-release API function, so release_failures stays 0 even though the artist
+        // accomplished nothing this run - the old gate stamped it "done" regardless.
+        assert!(is_artist_total_failure(0, 0, true));
+    }
+
+    #[test]
+    fn not_total_failure_when_release_groups_fetch_failed_but_something_still_processed() {
+        // A duplicate artist reusing a cached (successful, from a prior artist) release-group list,
+        // or a release matched via embedded id despite the group-list fetch failing.
+        assert!(!is_artist_total_failure(1, 0, true));
+    }
 
     fn counts(pairs: &[(&'static str, usize)]) -> HashMap<&'static str, usize> {
         pairs.iter().copied().collect()
