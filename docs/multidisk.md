@@ -187,36 +187,36 @@ FROM "LocalRelease" lr WHERE lr."folderPath" LIKE 'ABBA/%(9CD)%';
 ## 14. Task checklist
 
 ### Phase 0 — cleanup
-- [ ] Delete per §9's delete-list; verify against real `git diff`, not memory
-- [ ] `cargo build --release` + `pnpm typecheck` clean
-- [ ] Preserve §9's "preserve exactly" list untouched
+- [x] Delete per §9's delete-list; verify against real `git diff`, not memory
+- [x] `cargo build --release` + `pnpm typecheck` clean
+- [x] Preserve §9's "preserve exactly" list untouched
 
 ### Phase 1 — schema
-- [ ] Idempotent `20260907000000_box_sets`
-- [ ] New `20260908000000_multidisk`: §2's fields
-- [ ] `pnpm prisma generate`, confirm no drift, never `db push`
+- [x] Idempotent `20260907000000_box_sets`
+- [x] New `20260908000000_multidisk`: §2's fields
+- [x] `pnpm prisma generate`, confirm no drift, never `db push`
 
 ### Phase 2 — index stops folding
-- [ ] Delete `plan_disc_merges` + `ensure_merged_local_release` + their tests
-- [ ] Keep `get_local_release_members` lookup ahead of `build_group_key`
+- [x] Delete `plan_disc_merges` + `ensure_merged_local_release` + their tests
+- [x] Keep `get_local_release_members` lookup ahead of `build_group_key`
 
 ### Phase 3 — sync: medium binding + equivalence
-- [ ] Thread `mediumPosition` through bind path
-- [ ] `check_release_status` scoped to one medium when `mediumPosition` set
-- [ ] Tier 1: drop target `mediumCount=1` filter, drop ≥3-track floor, write `equivalentMediumPosition`, deterministic tie-break
-- [ ] Persist `releaseGroupSecondaryTypes` at bind time (already-fetched data, no new API call)
-- [ ] Tier 3: null-title skip; `MusicBrainzReleaseArtist`-join scoping (not credit-string); substring-containment title narrowing; `find_owning_bundle` reuse; secondary-types tie-break
-- [ ] Tests: medium-scoped scoring; single-medium never enters equivalence; tier-1 multi-medium-target fixture; tier-1 2-track-medium fixture (regression guard for floor removal); tier-3 bonus-track containment fixture; tier-3 substring-title fixture; tier-3 cross-credit-string fixture; tier-3 type tie-break; tier-3 null-title no-op; tier-1 deterministic tie-break
+- [x] Thread `mediumPosition` through bind path
+- [x] `check_release_status` scoped to one medium when `mediumPosition` set
+- [x] Tier 1: drop target `mediumCount=1` filter, drop ≥3-track floor, write `equivalentMediumPosition`, deterministic tie-break
+- [x] Persist `releaseGroupSecondaryTypes` at bind time (already-fetched data, no new API call)
+- [x] Tier 3: null-title skip; `MusicBrainzReleaseArtist`-join scoping (not credit-string); substring-containment title narrowing; `find_owning_bundle` reuse; secondary-types tie-break
+- [x] Tests: medium-scoped scoring; single-medium never enters equivalence; tier-1 multi-medium-target fixture; tier-1 2-track-medium fixture (regression guard for floor removal); tier-3 bonus-track containment fixture; tier-3 substring-title fixture; tier-3 cross-credit-string fixture; tier-3 type tie-break; tier-3 null-title no-op; tier-1 deterministic tie-break
 
 ### Phase 4 — fold vs dissolve
-- [ ] Fold branch: merge, `LocalReleaseMember` undo rows, folder-derived `groupKey`
-- [ ] Dissolve branch: bind to `equivalentReleaseId`/`equivalentMediumPosition` + provenance, or box + position
-- [ ] Delete `multi_disc.rs` + `--repair-multi-disc` dispatch; move `--link-box-editions` to scoped sync-tail step
-- [ ] Tests: fold at 0–1 equivalent, dissolve at ≥2 regardless of total media count, two-copies-of-one-box no `groupKey` collision, partial ownership binds independently
+- [x] Fold branch: merge, `LocalReleaseMember` undo rows, folder-derived `groupKey`
+- [x] Dissolve branch: bind to `equivalentReleaseId`/`equivalentMediumPosition` + provenance, or box + position
+- [x] Delete `multi_disc.rs` + `--repair-multi-disc` dispatch; move `--link-box-editions` to scoped sync-tail step
+- [x] Tests: fold at 0–1 equivalent, dissolve at ≥2 regardless of total media count, two-copies-of-one-box no `groupKey` collision, partial ownership binds independently
 
 ### Phase 5 — coverage
-- [ ] Third branch in `get_covered_release_group_ids` (§6)
-- [ ] Test: dissolved box's RG reads covered; genuinely-missing box does not
+- [x] Third branch in `get_covered_release_group_ids` (§6)
+- [x] Test: dissolved box's RG reads covered; genuinely-missing box does not
 
 ### Phase 6 — one-off repair script
 - [x] §11: `./repair-box-sets` — scope/reset/`./sync --artist-ids`, no dry-run, resumable via `./sync`'s existing `syncRunHash` (no new checkpoint mechanism needed)
@@ -236,6 +236,111 @@ FROM "LocalRelease" lr WHERE lr."folderPath" LIKE 'ABBA/%(9CD)%';
 - [x] `docs/scripts/index.md`, `docs/scripts/sync.md` rewritten (flags table, Box Sets section)
 
 ### Phase 9 — rollout
-- [ ] Per §12, sequentially, with backup gates and completion confirmation at each step
+- [x] Per §12 steps 0-2 done (see §15 below); steps 3-4 run automatically inside the same sync (step 2); confirmation still pending
 - [x] `cargo test`, `pnpm test:unit`, `pnpm test:e2e` (never bare `playwright test`) all green before Phase 9 starts
 - [ ] User visual check post-rollout (no self-verification via login)
+
+## 15. Rollout status (2026-09-07) — resume point after reboot/session close
+
+Phases 0-8 are done, committed, and pushed to master (see `git log --oneline --grep=multidisk -i`
+for the per-phase commit list). All committed under normal working tree, nothing pending in git.
+
+**Step 0 (cleanup verify)**: done. `cargo build --release`, `pnpm typecheck`, `cargo test`,
+`pnpm test:unit`, `pnpm test:e2e` all green. One unrelated pre-existing e2e test fixed along the way
+(stale "Show terminal sidebar" switch label → "Scan automatically", commit `28321cbd`).
+
+**Step 1 (deploy + migrate)**: done, 2026-09-07 ~17:18 UTC. `./deploy` ran clean (lint, typecheck,
+docker build, transfer, restart, migrate). Verified on prod DB directly (`psql "$DATABASE_URL"`,
+same URL as `web/.env` - it points at prod, 192.168.1.241):
+- `MusicBrainzReleaseTrack.recordingId` column exists.
+- `LocalRelease.mediumPosition`/`boxReleaseId`/`boxMediumPosition` columns + FK + index exist.
+- `MusicBrainzReleaseMedium.equivalentMediumPosition` exists.
+- `_prisma_migrations` has both `20260907000000_box_sets` and `20260908000000_multidisk` recorded
+  (finished_at 2026-09-07 17:18:35 UTC).
+- `dmp` container healthy post-restart (`docker ps`, `/api/health` → 200).
+
+User's own `./backup` (manual, prior to this session's Phase 9 work) is the recovery point - no
+`./backup` was run by me per user's explicit instruction ("no need to backup, already backed up
+myself").
+
+**Step 2 (backfill) — RUNNING, this is the long one**:
+
+- **All new `MusicBrainzRelease` rows currently read `mediumCount = 1`** (120,703/120,703 at deploy
+  time) - the pre-multidisk sync never populated it, so `mediumCount > 1` is USELESS for finding scope
+  right now. Scope instead came from the same folder-sibling heuristic `./repair-box-sets` §11 uses:
+  `LocalRelease.folderPath` with ≥4 path segments (`Artist/Type/Album/SubFolder...`) whose parent
+  directory (path minus last segment) has >1 sibling `LocalRelease` - i.e. genuine nested disc/box
+  subfolders, not two different top-level albums. Sanity-checked with a random sample before trusting
+  it (real box sets: T. Rex 5CD, Rainbow 10CD, Pink Floyd "Shine On" 7CD, Linda Ronstadt 4CD, etc.) -
+  see this session's transcript if the heuristic itself is ever in doubt.
+- **Scope size**: 10,230 `LocalRelease` rows (bigger than this doc's old "~4700" estimate - that
+  number was a rough figure from a *prior, differently-scoped* comparable run, not a prediction for
+  this exact library), across **1,986 distinct artists** (2,047 counting the sync's own internal
+  numbering, which starts from 1 and may count a couple of special-case names differently - the
+  artist-ids file itself has exactly 1986 lines).
+- Reset ran (SQL): all 10,230 scoped rows set to `matchStatus='UNKNOWN'`,
+  `mediumPosition`/`boxReleaseId`/`boxMediumPosition` cleared.
+- Artist-ids file: generated locally, copied to the NAS at
+  `/mnt/SSD/web/dmp/logs/repair-artist-ids.txt` (== `/app/data/logs/repair-artist-ids.txt` inside the
+  `dmp` container - `${DMP_DATA}/logs` is a real bind mount, see `docker-compose.yml`).
+- **Kicked off inside a detached tmux session named `multi` on the NAS itself** (not this dev
+  machine, not this Claude Code session) so it survives a reboot of this machine, this session
+  closing, or an SSH disconnect:
+  ```
+  ssh -i ~/.ssh/nas Kp@192.168.1.241
+  tmux attach -t multi        # reattach to watch live; Ctrl-b d to detach again without killing it
+  ```
+  Full output is also being teed to `/mnt/SSD/web/dmp/logs/repair-box-sets-run.log` on the NAS host,
+  so it can be read/grepped without attaching tmux at all:
+  ```
+  ssh -i ~/.ssh/nas Kp@192.168.1.241 "tail -f /mnt/SSD/web/dmp/logs/repair-box-sets-run.log"
+  ```
+  The exact command running inside `multi`:
+  `sudo docker exec dmp sync --artist-ids /app/data/logs/repair-artist-ids.txt`
+- This *is* steps 2+3+4 combined: box-set fold/dissolve + equivalence derivation now run
+  automatically at the tail of every `./sync` invocation (Phase 4), so this one sync run backfills
+  mediumCount/media rows (step 2), derives equivalences (step 3), and folds/dissolves (step 4) per
+  artist as it goes - there is no separate manual step 3, and `./repair-box-sets` itself was not
+  invoked directly (its logic was run by hand instead, since its `ENV_FILE`/`SYNC_BIN` assumptions
+  are written for local execution and this DB write needs to happen against files that only exist on
+  the NAS - see below).
+- **Resumable for free** if interrupted (crash, NAS reboot, etc.): `./sync`'s own `syncRunHash`
+  mechanism skips already-processed artists. To resume after any interruption, re-run the exact same
+  command against the exact same ids file:
+  `ssh -i ~/.ssh/nas Kp@192.168.1.241 "sudo docker exec dmp sync --artist-ids /app/data/logs/repair-artist-ids.txt"`
+  (wrap in a fresh `tmux new-session -d -s multi '<cmd> 2>&1 | tee -a /app/data/logs/repair-box-sets-run.log'`
+  if the `multi` session itself died too).
+- **Timing**: MB-rate-limit-bound (~1.1s/request floor), not compute-bound. ~2000 artists, several
+  releases each, several API calls per release → expect this to run for hours to a few days.
+  Un-babysat by design; check back per below.
+
+**Why `./repair-box-sets` wasn't run as-is**: the checked-in script assumes it's executed from the
+repo root on a machine where `$SCRIPT_DIR/web/.env` exists and `$SCRIPT_DIR/sync` resolves to either
+a local release binary or (its own docker-fallback branch) `docker exec dmp sync`. Locally, the
+first branch wins (a local release binary was built this session for `cargo test`), which would have
+written MusicBrainz tag data to `MUSIC_DIR` paths that don't exist on this dev machine (`MUSIC_DIR`
+is NAS-only, per `reference_nas_sync` memory) - silently wrong, not merely slow. Splitting the script's
+three pieces by hand (SQL scope/reset run locally against the same prod `DATABASE_URL`; the actual
+`sync --artist-ids` call run via SSH+`docker exec` on the NAS, where `MUSIC_DIR` is really mounted)
+gets the identical effect without that failure mode. The script itself is unchanged and still correct
+for its intended one-time interactive use directly on the NAS; nothing here implies it needs fixing.
+
+**What to do when resuming this session (after reboot)**:
+1. Check whether `multi` is still running: `ssh -i ~/.ssh/nas Kp@192.168.1.241 tmux ls` (look for
+   `multi`) and/or `tail -n 50 /mnt/SSD/web/dmp/logs/repair-box-sets-run.log`.
+2. If it finished (no more `tmux` session, or the log ends with the sync's own summary/exit line and
+   no further artists pending), confirm via the §13 verification queries - **run the ABBA spot-check
+   first** (§13's last query): ABBA has both box shapes in this library ("The Complete Studio
+   Recordings" 9CD, shape (a); "The Albums" 9CD, shape (b) per this doc's baseline census) and was
+   mid-run as of this note, so it is a real, already-touched example, not a cold guess.
+3. Also spot-check the regression query (§13, "rows bound to a multi-medium release still
+   MISSING_TRACKS") - should trend toward zero for the backfilled scope, not exactly zero (§10's known
+   limitations mean some rows correctly stay unresolved).
+4. If everything checks out: mark §12 step 2-4 checkboxes done in this file, do a normal UI
+   spot-check (browse to ABBA, a couple of other box-set artists, confirm cards render sensibly -
+   "Box Set" pill, disc-of-N subtitle, no duplicate/ghost cards), then report back to the user rather
+   than proceeding further automatically. Re-enabling anything is the user's call - `Settings →
+   Library` auto-scan was OFF before this rollout and was **not** turned on by this work (explicit
+   user instruction) - leave it exactly as found.
+5. If `multi` died mid-run (NAS reboot, crash, etc.): just re-run the exact resume command above:
+   `./sync`'s `syncRunHash` mechanism guarantees it only re-does artists it never finished.
