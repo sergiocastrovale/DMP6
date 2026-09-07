@@ -215,7 +215,7 @@ export function scoreSlskdResult(
 export async function relocateDownloadedFiles(args: SlskdMoveArgs): Promise<SlskdMoveResult> {
   const log = (msg: string) => monitorLog('notice', `slskd move: ${msg}`)
   // slskd writes all downloads flat under one shared root (no per-transfer subfolder to scope a scan
-  // to — see docs/downloads_slskd.md), so two concurrent downloads can share a same-named track. Match
+  // to — see docs/downloader/downloads_slskd.md), so two concurrent downloads can share a same-named track. Match
   // on basename AND exact byte size (from the queued search result) to avoid one download's finalize
   // capturing a same-named file that belongs to a different, still-in-flight download.
   const expected = new Map<string, number>()
@@ -300,7 +300,7 @@ export const stripSlskdSuffix = (name: string): string => {
 // same-named file on disk must match it exactly to count as a hit — this is the only signal available
 // to tell apart two concurrent downloads that happen to share a track filename, since slskd writes
 // every transfer flat under one shared root with no per-transfer subfolder (see
-// docs/downloads_slskd.md). A size of 0/unknown falls back to name-only matching (legacy rows / sizes
+// docs/downloader/downloads_slskd.md). A size of 0/unknown falls back to name-only matching (legacy rows / sizes
 // slskd didn't report).
 async function findFilesByBasename(
   root: string,

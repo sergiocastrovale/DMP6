@@ -131,7 +131,7 @@ describe('relocateDownloadedFiles: basename collisions across concurrent downloa
     const root = await mkdtemp(join(tmpdir(), 'dmp-slskd-test-'))
     roots.push(root)
 
-    // Two concurrent "downloads" (slskd writes everything flat, per docs/downloads_slskd.md) that
+    // Two concurrent "downloads" (slskd writes everything flat, per docs/downloader/downloads_slskd.md) that
     // happen to share a track basename but are genuinely different files/sizes.
     const otherDownloadDir = join(root, 'peerA')
     const ourDownloadDir = join(root, 'peerB')

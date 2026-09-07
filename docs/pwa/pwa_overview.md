@@ -14,7 +14,7 @@ separate build pipeline. Wrong tool.
 
 - **Android first.** iOS is deferred (see "iOS, later" below).
 - **Test-first**, because the maintainer cannot manually test on devices. Audio + background
-  behaviour is gated by automated tests on CI. See [pwa_testing.md](./pwa_testing.md).
+  behaviour is gated by automated tests on CI. See [pwa_testing.md](docs/pwa/pwa_testing.md).
 
 ## The one key insight
 
@@ -31,11 +31,11 @@ This is why we use Capacitor `server.url` instead of bundling/exporting a static
 
 | Piece | Where | Doc |
 |-------|-------|-----|
-| Installable PWA (manifest + service worker) | `web/nuxt.config.ts`, `web/public/pwa-*.png` | [pwa_serviceworker.md](./pwa_serviceworker.md) |
-| Lock-screen / background media controls | `web/composables/useMediaSession.ts`, `web/stores/player.ts` | [pwa_mediasession.md](./pwa_mediasession.md) |
-| Android native shell + foreground service | `mobile/` (Capacitor) | [pwa_capacitor_android.md](./pwa_capacitor_android.md) |
-| Reaching the backend over HTTPS | Tailscale / Cloudflare Tunnel | [pwa_networking.md](./pwa_networking.md) |
-| Automated tests (the gate) | `web/test/`, `.github/workflows/` | [pwa_testing.md](./pwa_testing.md) |
+| Installable PWA (manifest + service worker) | `web/nuxt.config.ts`, `web/public/pwa-*.png` | [pwa_serviceworker.md](docs/pwa/pwa_serviceworker.md) |
+| Lock-screen / background media controls | `web/composables/useMediaSession.ts`, `web/stores/player.ts` | [pwa_mediasession.md](docs/pwa/pwa_mediasession.md) |
+| Android native shell + foreground service | `mobile/` (Capacitor) | [pwa_capacitor_android.md](docs/pwa/pwa_capacitor_android.md) |
+| Reaching the backend over HTTPS | Tailscale / Cloudflare Tunnel | [pwa_networking.md](docs/pwa/pwa_networking.md) |
+| Automated tests (the gate) | `web/test/`, `.github/workflows/` | [pwa_testing.md](docs/pwa/pwa_testing.md) |
 
 ## Status
 

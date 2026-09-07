@@ -1,7 +1,7 @@
 // Bridge to the Capacitor Android shell. The web app is the SAME bundle whether served in a
 // browser (PWA) or inside the native WebView, so every call is guarded: in a plain browser
 // window.Capacitor is undefined and these are no-ops. Inside the Android WebView the custom
-// ForegroundService plugin keeps audio alive while backgrounded (see docs/pwa_capacitor_android.md).
+// ForegroundService plugin keeps audio alive while backgrounded (see docs/pwa/pwa_capacitor_android.md).
 import type { ForegroundServicePlugin, CapacitorGlobal } from '~/types/player'
 
 const capacitor = (): CapacitorGlobal | undefined => {

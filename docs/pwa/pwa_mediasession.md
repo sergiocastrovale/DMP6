@@ -4,7 +4,7 @@ The OS media UI (Android notification + lock screen, desktop media keys) is driv
 W3C **MediaSession API**. This is what makes hardware/lock-screen play-pause-next-prev and the
 "now playing" card work, and it is honoured by the Android WebView — so it covers the Android
 app's media controls without native code (the foreground service in
-[pwa_capacitor_android.md](./pwa_capacitor_android.md) keeps the audio *alive*; MediaSession
+[pwa_capacitor_android.md](docs/pwa/pwa_capacitor_android.md) keeps the audio *alive*; MediaSession
 provides the *controls + metadata*).
 
 ## Design

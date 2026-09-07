@@ -194,8 +194,8 @@ Set via the Settings UI (DB) or `.env` (DB wins, env is fallback):
 | `DOWNLOAD_FORMATS`, `DOWNLOAD_MIN_BITRATE` | search filters |
 | `AUTO_MERGE` | auto-merge READY downloads into the library (off = manual merge gate) |
 
-See [features_downloader.md](features_downloader.md) for the full env table, the Downloads-page tabs,
-and SongKong setup.
+See [downloads.md](downloads.md) for the full env table and Downloads-page tabs, and
+[downloads_songkong.md](downloads_songkong.md) for tag-enrichment setup.
 
 ## Safety
 

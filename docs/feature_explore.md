@@ -43,22 +43,3 @@ Scoring quality depends on available file metadata:
 | Genre | `genre` field (always available) | All tracks |
 
 Both MP3 (`MOOD_*`) and iTunes (`----:com.apple.iTunes:MOOD_*`) key formats are handled automatically. Tracks without mood/BPM data fall back to genre-based estimation.
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `web/server/utils/explore.ts` | Scoring functions, genre maps, pool cache, softmax selection |
-| `web/server/api/tracks/explore.post.ts` | API endpoint - fetches candidates, scores, returns pick |
-| `web/composables/useExplorer.ts` | Client-side slider state, loading/error handling |
-| `web/pages/explore.vue` | Page - sliders, explore button, current track card, session history |
-| `web/components/explore/Card.vue` | Currently playing track display |
-| `web/components/explore/History.vue` | Session history list |
-| `web/stores/player.ts` | Explorer state (`explorerCurrentTrack`, `explorerSessionHistory`, shuffle mode) |
-
-## Player Integration
-
-- Pressing Explore sets shuffle mode to `explorer`
-- `next()` in explorer mode auto-fetches the next scored track (no manual button press needed)
-- Session history tracks are clickable to replay
-- Toggling off explorer shuffle reverts to sequential playback within the current track's release

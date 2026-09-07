@@ -311,7 +311,7 @@ const onChoiceChange = (setter: (v: string) => void, v: string) => {
       <UiSelect
         :model-value="songkongChoice"
         label="SongKong enrichment"
-        description="Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library folder layout is applied. Requires a dedicated, ephemeral SongKong Docker instance (its own config/DB - never the live GUI server) driven by a host cron that runs the drainer script every 2 minutes; DMP's bundled enrich-only profile (no rename/move) is deployed automatically, so SongKong only tags files - it never touches file placement. See docs/features_downloader.md#songkong-setup for the full rebuild guide. Overrides SONGKONG_ENABLED."
+        description="Enrich finished downloads (AcoustID, MusicBrainz IDs, genres, cover art) before the library folder layout is applied. Requires a dedicated, ephemeral SongKong Docker instance (its own config/DB - never the live GUI server) driven by a host cron that runs the drainer script every 2 minutes; DMP's bundled enrich-only profile (no rename/move) is deployed automatically, so SongKong only tags files - it never touches file placement. See docs/downloader/downloads_songkong.md for the full rebuild guide. Overrides SONGKONG_ENABLED."
         :disabled="!canEdit"
         @update:model-value="onChoiceChange(v => songkongChoice = v as any, $event)"
       >

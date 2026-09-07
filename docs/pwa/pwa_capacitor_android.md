@@ -28,7 +28,7 @@ Top-level `mobile/` directory (sibling of `web/`, kept out of the Nuxt Docker/de
 `npx cap add android` generates the project, then `node scripts/apply-android-overrides.mjs`
 injects the native pieces, then Gradle assembles the APK. Automated by
 `.github/workflows/android-build.yml` (one run per origin variant — see
-[pwa_networking.md](./pwa_networking.md)). Android builds on Linux/CI; no Mac needed.
+[pwa_networking.md](docs/pwa/pwa_networking.md)). Android builds on Linux/CI; no Mac needed.
 
 Release signing: create a keystore, add a signing config, run `build:release`. Self-signed
 sideload is fine for personal multi-device use. Icons/splash via `@capacitor/assets` from the
@@ -53,7 +53,7 @@ holds an ongoing media notification.
   `mediaPlayback`. Manifest permissions (added by the apply script): `FOREGROUND_SERVICE`,
   `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (Android 14+), `POST_NOTIFICATIONS`.
 - The media controls + metadata themselves come from the WebView MediaSession (see
-  [pwa_mediasession.md](./pwa_mediasession.md)); the service only keeps audio alive.
+  [pwa_mediasession.md](docs/pwa/pwa_mediasession.md)); the service only keeps audio alive.
 - OEM battery killers (Xiaomi/Samsung) may still need "don't optimize" toggled by the user.
 
 ### Backgrounded-fetch gotcha

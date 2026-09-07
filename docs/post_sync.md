@@ -43,7 +43,7 @@ Alternatively, from the command line:
 After any tag-writing fix, re-index and re-sync:
 
 ```bash
-./refresh --only="Artist1;Artist2"
+./refresh --only="Artist1;Artist2" --exact
 # or use the "Refresh" button in the /issues UI
 ```
 

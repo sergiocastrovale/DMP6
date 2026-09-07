@@ -405,9 +405,38 @@ same `sudo docker exec dmp sync --artist-ids /app/data/logs/repair-artist-ids.tx
 confirmed picked up correctly ("Resuming run... Skipping N already-processed artist(s)" with N
 reflecting the corrected, smaller stamped set).
 
-**Not fixed in code**: the `stamp_sync_hash` gap itself (root cause 2) is still live in
-`scripts/sync/src/main.rs` - this rollout's one-off SQL correction does not prevent it from
-recurring on some *other* future sync run that hits a similar MB outage. Whether to harden
-`is_total_failure` (e.g. also treat "the release-groups fetch itself failed" as an automatic
-total-failure signal, independent of per-release counters) is a separate decision - flag it to the
-user rather than silently patching sync's general-purpose resumability logic under rollout pressure.
+**Update: root cause 2 fixed in code too** (user: "i dont want any bugs pending... leave no zombie
+artists behind"). `scripts/sync/src/main.rs` gained `is_artist_total_failure(processed_count,
+release_failures, release_groups_fetch_failed) -> bool` (extracted as a pure, unit-tested function -
+5 new tests covering all four quadrants: active release failures, partial success despite failures,
+a genuine zero-release-groups artist, a failed fetch with zero other counters, a failed fetch that
+still processed something via a cached/embedded-id path). `release_groups_fetch_failed` is set on
+*any* error from the release-groups fetch (regardless of `classify_mb_error`'s Transient/Hard
+verdict - a retry-exhausted "still unavailable after N retries" counts too, not just a first-attempt
+hard failure) and now feeds `is_total_failure` directly. Only a *successful* fetch is cached for
+duplicate/linked artists sharing one MB id, so a duplicate no longer silently inherits a sibling's
+failed fetch as if it were a legitimate empty result.
+
+Deployed as a third `./deploy` mid-rollout. Before resuming after this deploy, re-ran the same
+stamped-done-but-still-`UNKNOWN` check for the run segment that happened between the 502 fix and this
+one (502s were already retried by then, so the window for new zombies was much smaller: 49 artists
+got stamped done in that segment, only 4 were zombies) - cleared those 4 the same way, then resumed
+with the same `--artist-ids` file. Log-file `tee` target was also corrected on this resume: earlier
+attempts used the container-internal path (`/app/data/logs/...`) as the *host*-side `tee` argument,
+which silently failed to write (see the correction above in the main status section) - this resume
+uses the real host path, `/mnt/SSD/web/dmp/logs/repair-box-sets-run.log`, confirmed non-empty and
+growing immediately after restart.
+
+**Net effect**: no known way remains for this (or any future) sync run to mark an artist "done"
+without having actually processed it. Nothing pending from this incident.
+
+## 17. Current status
+
+Total: 563 zombie artists found and fixed. For each one I ran UPDATE Artist SET syncHash = NULL — that un-marks them as "done", so the running sync picks
+them right back up and retries them for real. That already happened, twice, before each resume. They are not skipped, not lost — they're back in the
+queue and will get processed again, now with the actual fix in place so they'll succeed this time (assuming MB cooperates).
+
+The 89 genuine successes were left alone — no need to redo work that already worked.
+
+So: nothing from before is being silently left broken. Every artist that got a fake "done" stamp has already been reset and requeued. If you want to double check yourself: syncHash on Artist is NULL again for all 563 of them, and the currently-running sync will hit them again in its normal pass
+through the 2047-artist list.

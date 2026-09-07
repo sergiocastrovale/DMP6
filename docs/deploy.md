@@ -61,9 +61,6 @@ Shell wrappers are deployed alongside `docker-compose.yml`. They invoke binaries
 ```bash
 cd "$DEPLOY_PATH"   # /mnt/SSD/web/dmp
 ./index --from=a --to=z
-./sync --only="Artist Name"
-./audit
-./fix --corrupted
 ```
 
 For long-running commands, use tmux on the NAS host:

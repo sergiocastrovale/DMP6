@@ -34,7 +34,7 @@ grep -oE "NetworkOnly|CacheFirst|/api/|/img/|NavigationRoute|index\.html" web/.o
 
 Expected: `/api/` + `NetworkOnly` present; `/img/` + fonts present; **`NavigationRoute` and
 `index.html` absent.** This is asserted automatically by the Playwright test (see
-[pwa_testing.md](./pwa_testing.md)).
+[pwa_testing.md](docs/pwa/pwa_testing.md)).
 
 ## Manifest
 

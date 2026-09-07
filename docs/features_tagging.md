@@ -20,7 +20,7 @@ Five detector types, each writing typed rows to the DB (`IssueCorruptedTpe2`, `I
   variants) and should be merged.
 - **Missing metadata** — tracks missing core fields (title, artist, album, track number, year).
 - **Enrichment gaps** — missing BPM, mood, AcoustID, or other enrichment-only fields (SongKong's job,
-  see `docs/features_downloader.md`'s SongKong section).
+  see `docs/downloader/downloads_songkong.md`).
 
 Full detector detail (exact regex patterns, thresholds): `docs/scripts/audit.md`.
 

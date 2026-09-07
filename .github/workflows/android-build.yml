@@ -3,7 +3,7 @@ name: android-build
 # Builds an installable APK pointing at a chosen HTTPS origin. Run once per variant:
 #   - public  -> Cloudflare Tunnel domain
 #   - tailnet -> https://<host>.<tailnet>.ts.net
-# Set server_url to that origin. See docs/pwa_networking.md.
+# Set server_url to that origin. See docs/pwa/pwa_networking.md.
 on:
   workflow_dispatch:
     inputs:

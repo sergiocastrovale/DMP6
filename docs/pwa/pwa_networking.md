@@ -27,7 +27,7 @@ and LAN-fast.
 ## Which origin does the native APK use?
 
 `server.url` is **baked into the Capacitor build** (see
-[pwa_capacitor_android.md](./pwa_capacitor_android.md)). Drive it with an env var and build two
+[pwa_capacitor_android.md](docs/pwa/pwa_capacitor_android.md)). Drive it with an env var and build two
 variants:
 
 | APK | `MOBILE_SERVER_URL` | Use |
