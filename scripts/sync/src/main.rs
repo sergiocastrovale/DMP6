@@ -2147,6 +2147,36 @@ async fn main() {
             reporter.info(&format!("Retired {} owned MISSING placeholder(s)", n));
         }
     }
+
+    // Box-set detection/binding + equivalence derivation, scoped the same way the rest of this run
+    // was (--only/--exact) - no longer a standalone --repair-multi-disc/--link-box-editions flag,
+    // runs automatically at the tail of every normal sync (docs/multidisk.md §5/§12).
+    if running.load(Ordering::SeqCst) {
+        let box_http_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("HTTP client");
+        let mut box_limiter = RateLimiter::new();
+        box_limiter.set_web(args.web);
+        match boxset::run_repair(
+            &pool,
+            &box_http_client,
+            &mut box_limiter,
+            &reporter,
+            args.only.as_deref().unwrap_or(""),
+            args.exact,
+        )
+        .await
+        {
+            Ok(s) if s.groups_bound > 0 => reporter.info(&format!(
+                "Box sets: {} group(s) bound ({} folded, {} dissolved)",
+                s.groups_bound, s.groups_folded, s.groups_dissolved
+            )),
+            Ok(_) => {}
+            Err(e) => reporter.warn(&format!("Box-set repair error: {}", e)),
+        }
+    }
+
     update_statistics(&pool).await.ok();
     if run_hash.is_some() && running.load(Ordering::SeqCst) {
         clear_run_hash(&pool, "syncRunHash").await;

@@ -1,7 +1,6 @@
-//! Tier-2 box-set binding: folds sibling disc folders that tier 1
-//! (`index::db::plan_disc_merges` / `multi_disc::plan_group`) could not merge, because MusicBrainz
-//! box sets don't carry the discipline tier 1 relies on - see `docs/box_sets.md` for the full
-//! investigation. Two shapes tier 1 misses:
+//! Box-set binding: matches sibling disc folders index left unmerged (index never folds,
+//! docs/multidisk.md §4) to a box's *media* by tracklist, since MusicBrainz box sets don't carry the
+//! id discipline plain multi-disc detection relies on. Two shapes handled identically:
 //!
 //!   (a) one disc mis-tagged as the standalone album (embedded ids disjoint, not unanimous)
 //!   (b) every disc tagged as its own standalone album (embedded ids differ entirely, and often
@@ -9,15 +8,19 @@
 //!
 //! MusicBrainz has no box-set entity: a box is one Release with N media, and MB stores no link from
 //! a box's disc to the standalone release it duplicates - the only shared identity is the recording
-//! (docs/box_sets.md §2). This module therefore matches siblings to *media* by tracklist, never by
-//! any id the files carry, and accepts only a **perfect matching**: every sibling maps to exactly one
-//! medium, with equal track count and every track's title+duration (±5s) agreeing - the same rule
-//! `owned::find_owning_bundle` uses for the bonus-disc case. Any ambiguity rejects the whole group;
-//! a box with some discs not owned at all is fine (a partial match), a box where a disc could equally
+//! (docs/multidisk.md §1). This module matches siblings to *media* by tracklist, never by any id the
+//! files carry, and accepts only a **perfect matching**: every sibling maps to exactly one medium,
+//! with equal track count and every track's title+duration (±5s) agreeing - the same rule
+//! `owned::find_owning_bundle` uses for the bonus-disc case. Any ambiguity rejects the whole group; a
+//! box with some discs not owned at all is fine (a partial match), a box where a disc could equally
 //! be two different media is not.
+//!
+//! Binding a box is only half the job: `run_repair` also decides, once equivalences are known, fold
+//! (genuine multi-disc release) or dissolve (box set) - docs/multidisk.md §3/§5.
 
 use std::collections::{HashMap, HashSet};
 
+use crate::box_editions;
 use crate::db::*;
 use crate::mb_api::{self, RateLimiter};
 use crate::owned::{durations_compatible, normalize_title};
@@ -435,16 +438,18 @@ async fn artist_for_group(pool: &PgPool, local_ids: &[String]) -> Option<(String
 // Apply - persist a successful plan
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
-async fn apply_box_bind(
+/// Persist the box's own `MusicBrainzRelease` + media + tracks. Pure MB-side work, no `LocalRelease`
+/// mutation - the caller decides fold vs dissolve afterward (docs/multidisk.md §5 point 4), once
+/// `box_editions::run_link_box_editions` has had a chance to derive equivalences, which needs these
+/// media rows to exist first. Returns the box's `MusicBrainzRelease.id`.
+async fn persist_box_media(
     pool: &PgPool,
-    siblings: &[BoxSibling],
     fetched: &FetchedCandidate,
     plan: &BoxBindPlan,
     release_type_cache: &mut HashMap<String, String>,
     artist_id: &str,
     artist_genre_ids: &[String],
-) -> Result<(), sqlx::Error> {
+) -> Result<String, sqlx::Error> {
     let type_name = fetched.primary_type.as_deref().unwrap_or("Other");
     let type_id = ensure_release_type_cached(pool, type_name, release_type_cache).await?;
     let year = fetched
@@ -461,6 +466,11 @@ async fn apply_box_bind(
         format: format_str.as_deref(),
         ..Default::default()
     };
+    // Box-level status only, at this stage: whether every medium is owned by some sibling. Per-disc
+    // status (COMPLETE/MISSING_TRACKS scored against the right target, fold or dissolved) is left
+    // UNKNOWN by apply_fold/apply_dissolve below and picked up by the ordinary bind path's
+    // medium-scoped check_release_status on this artist's next sync pass - the same "next sync
+    // re-scores it" convention the old tier-1 fold already relied on.
     let complete = plan.members.len() == fetched.candidate.media.len();
     let status = if complete { "COMPLETE" } else { "MISSING_TRACKS" };
     let reason = (!complete)
@@ -498,6 +508,12 @@ async fn apply_box_bind(
         .collect();
     let inserted = sync_mb_tracks_for_release(pool, &mb_db_id, &track_rows).await?;
 
+    // Link each sibling's local tracks to the box's own MB track rows. Kept the same for both fold
+    // and dissolve outcomes as a deliberate simplification: after a dissolve the tracks conceptually
+    // belong to the equivalent target release, but re-matching them against the target's own track
+    // rows is a second matching pass this rollout doesn't do - the linked recording is identical
+    // either way (that's what the equivalence match already proved), just catalogued under the box's
+    // release-scoped track id rather than the target's.
     let track_links: Vec<(String, String)> = plan
         .track_links
         .iter()
@@ -510,10 +526,56 @@ async fn apply_box_bind(
         .collect();
     link_local_tracks_to_mb(pool, &track_links).await.ok();
 
-    let folder_by_id: HashMap<&str, &str> = siblings
-        .iter()
-        .map(|s| (s.local_id.as_str(), s.folder_path.as_str()))
+    Ok(mb_db_id)
+}
+
+// ---------------------------------------------------------------------------
+// Fold vs dissolve (docs/multidisk.md §3, §5 point 4)
+// ---------------------------------------------------------------------------
+
+enum BoxOutcome {
+    Fold,
+    Dissolve,
+}
+
+/// Flat `>= 2` threshold, no "majority" clause, at every box size - a 9-medium box with only 2
+/// confirmed equivalents still dissolves; its other 7 discs correctly render as their own box-disc
+/// rows rather than hiding 2 known editions inside one folded card.
+fn decide_outcome(equivalent_count: usize) -> BoxOutcome {
+    if equivalent_count >= 2 {
+        BoxOutcome::Dissolve
+    } else {
+        BoxOutcome::Fold
+    }
+}
+
+async fn count_equivalents(pool: &PgPool, mb_db_id: &str) -> Result<usize, sqlx::Error> {
+    let (count,): (i64,) = sqlx::query_as(
+        r#"SELECT count(*) FROM "MusicBrainzReleaseMedium"
+           WHERE "releaseId" = $1 AND "equivalentReleaseId" IS NOT NULL"#,
+    )
+    .bind(mb_db_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(count.max(0) as usize)
+}
+
+/// Genuine multi-disc release (0 or 1 equivalent medium): merge every sibling into one `LocalRelease`,
+/// bound to the box itself. Folder-derived `groupKey` (`"folder:{ancestor}"`, never
+/// `"mbrelease:{id}"` - the latter collides when two local copies of one box both plan the same key,
+/// which is exactly what `./audit --duplicate-release` needs to be able to tell apart).
+async fn apply_fold(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Result<(), sqlx::Error> {
+    let local_ids: Vec<String> = plan.members.iter().map(|(id, _)| id.clone()).collect();
+    let folder_rows: Vec<(String, Option<String>)> =
+        sqlx::query_as(r#"SELECT id, "folderPath" FROM "LocalRelease" WHERE id = ANY($1)"#)
+            .bind(&local_ids)
+            .fetch_all(pool)
+            .await?;
+    let folder_by_id: HashMap<String, String> = folder_rows
+        .into_iter()
+        .map(|(id, fp)| (id, fp.unwrap_or_default()))
         .collect();
+
     let now = Utc::now().naive_utc();
     let mut tx = pool.begin().await?;
 
@@ -543,14 +605,14 @@ async fn apply_box_bind(
         .await?;
     sqlx::query(
         r#"UPDATE "LocalRelease"
-           SET "groupKey" = $1, "folderPath" = $2, "releaseId" = $3,
-               "matchStatus" = $4::"ReleaseStatus", "updatedAt" = $5
-           WHERE id = $6"#,
+           SET "groupKey" = $1, "folderPath" = $2, "releaseId" = $3, "mediumPosition" = NULL,
+               "boxReleaseId" = NULL, "boxMediumPosition" = NULL, "matchStatus" = 'UNKNOWN',
+               "updatedAt" = $4
+           WHERE id = $5"#,
     )
-    .bind(format!("mbrelease:{}", plan.release_id))
+    .bind(format!("folder:{}", plan.folder_path))
     .bind(&plan.folder_path)
-    .bind(&mb_db_id)
-    .bind(status)
+    .bind(mb_db_id)
     .bind(now)
     .bind(&plan.survivor)
     .execute(&mut *tx)
@@ -559,7 +621,7 @@ async fn apply_box_bind(
     // One LocalReleaseMember per sibling (survivor included) so a plain re-index recognises every
     // folder next time instead of re-splitting a box whose discs all tag discNumber=1 (shape (b)).
     for (local_id, position) in &plan.members {
-        let folder = folder_by_id.get(local_id.as_str()).copied().unwrap_or_default();
+        let folder = folder_by_id.get(local_id.as_str()).map(String::as_str).unwrap_or_default();
         let member_id = cuid2::create_id();
         sqlx::query(
             r#"INSERT INTO "LocalReleaseMember" (id, "localReleaseId", "folderPath", "discNumber")
@@ -578,6 +640,60 @@ async fn apply_box_bind(
     tx.commit().await
 }
 
+/// Box set (>=2 equivalent media): leave every sibling as its own `LocalRelease` row. Each disc binds
+/// individually - to the standalone album it reprints (provenance recorded via `boxReleaseId`/
+/// `boxMediumPosition`), or to the box itself when it has no equivalent (a rarities/bonus disc, or one
+/// below tier 3's title/track-count gates). No `LocalReleaseMember` rows - dissolve never folds.
+async fn apply_dissolve(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Result<(), sqlx::Error> {
+    let now = Utc::now().naive_utc();
+    for (local_id, position) in &plan.members {
+        let row: Option<(Option<String>, Option<i32>)> = sqlx::query_as(
+            r#"SELECT "equivalentReleaseId", "equivalentMediumPosition" FROM "MusicBrainzReleaseMedium"
+               WHERE "releaseId" = $1 AND "position" = $2"#,
+        )
+        .bind(mb_db_id)
+        .bind(position)
+        .fetch_optional(pool)
+        .await?;
+        let equivalent: Option<(String, Option<i32>)> =
+            row.and_then(|(release_id, medium_position)| release_id.map(|r| (r, medium_position)));
+
+        match equivalent {
+            Some((equivalent_release_id, equivalent_medium_position)) => {
+                sqlx::query(
+                    r#"UPDATE "LocalRelease"
+                       SET "releaseId" = $1, "mediumPosition" = $2, "boxReleaseId" = $3,
+                           "boxMediumPosition" = $4, "matchStatus" = 'UNKNOWN', "updatedAt" = $5
+                       WHERE id = $6"#,
+                )
+                .bind(&equivalent_release_id)
+                .bind(equivalent_medium_position)
+                .bind(mb_db_id)
+                .bind(position)
+                .bind(now)
+                .bind(local_id)
+                .execute(pool)
+                .await?;
+            }
+            None => {
+                sqlx::query(
+                    r#"UPDATE "LocalRelease"
+                       SET "releaseId" = $1, "mediumPosition" = $2, "boxReleaseId" = NULL,
+                           "boxMediumPosition" = NULL, "matchStatus" = 'UNKNOWN', "updatedAt" = $3
+                       WHERE id = $4"#,
+                )
+                .bind(mb_db_id)
+                .bind(position)
+                .bind(now)
+                .bind(local_id)
+                .execute(pool)
+                .await?;
+            }
+        }
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
@@ -587,15 +703,30 @@ pub struct BoxSetSummary {
     pub groups_seen: usize,
     pub groups_bound: usize,
     pub rows_absorbed: usize,
+    pub groups_folded: usize,
+    pub groups_dissolved: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Two phases, in order:
+///
+///   1. Bind every matched sibling group's box to its own `MusicBrainzRelease` + media + tracks
+///      (`persist_box_media`) - no `LocalRelease` writes yet, that decision needs equivalences.
+///   2. Once every box in this run has its media persisted, derive equivalences once
+///      (`box_editions::run_link_box_editions`, whole-catalogue but cheap - pure SQL for tier 1,
+///      artist-scoped for tiers 2/3) and only then decide fold vs dissolve per box and write it
+///      (docs/multidisk.md §5 point 4).
+///
+/// No dry-run (docs/multidisk.md §11/§12 - the user's `./backup` is the recovery path). `only`/
+/// `exact` scope which sibling groups are considered, matching every other sync mode's convention -
+/// called once per sync invocation with that invocation's own scope, not once per artist inside a
+/// loop (this pass' own group-discovery query is a whole-table scan; looping it per-artist would
+/// repeat that scan for every artist synced).
 pub async fn run_repair(
     pool: &PgPool,
     http_client: &Client,
     limiter: &mut RateLimiter,
     reporter: &Reporter,
-    dry_run: bool,
     only: &str,
     exact: bool,
 ) -> Result<BoxSetSummary, sqlx::Error> {
@@ -617,6 +748,7 @@ pub async fn run_repair(
 
     let mut release_type_cache: HashMap<String, String> = HashMap::new();
     let total = groups.len();
+    let mut bound: Vec<(BoxBindPlan, String)> = Vec::new();
 
     for (idx, group) in groups.into_iter().enumerate() {
         if group.rows.len() < 2 {
@@ -684,40 +816,64 @@ pub async fn run_repair(
         };
 
         println!(
-            "{} {} -> {} ({} row(s) absorbed, {}/{} discs owned)",
+            "{} {} -> {} ({} sibling(s) matched, {}/{} discs owned)",
             "▸".cyan(),
             plan.release_id,
             plan.folder_path,
-            plan.absorbed.len(),
+            plan.members.len(),
             plan.members.len(),
             fetched.candidate.media.len(),
         );
         for s in &siblings {
-            let mark = if s.local_id == plan.survivor {
-                "KEEP ".green().bold()
-            } else {
-                "merge".yellow()
-            };
+            let owned = plan.members.iter().any(|(id, _)| id == &s.local_id);
+            let mark = if owned { "OWN  ".green().bold() } else { "skip ".yellow() };
             println!("    {} {} [{}]", mark, s.local_id, s.folder_path);
         }
 
         summary.groups_bound += 1;
         summary.rows_absorbed += plan.absorbed.len();
-        if dry_run {
-            continue;
-        }
 
         let artist_genre_ids = get_artist_genre_ids(pool, &artist_id).await;
-        apply_box_bind(
-            pool,
-            &siblings,
-            fetched,
-            &plan,
-            &mut release_type_cache,
-            &artist_id,
-            &artist_genre_ids,
-        )
-        .await?;
+        let mb_db_id =
+            persist_box_media(pool, fetched, &plan, &mut release_type_cache, &artist_id, &artist_genre_ids)
+                .await?;
+        bound.push((plan, mb_db_id));
+    }
+
+    if bound.is_empty() {
+        return Ok(summary);
+    }
+
+    reporter.blank();
+    reporter.header("Deriving box-set equivalences");
+    box_editions::run_link_box_editions(pool, reporter).await?;
+
+    reporter.blank();
+    reporter.header("Fold vs dissolve");
+    for (plan, mb_db_id) in &bound {
+        let equivalents = count_equivalents(pool, mb_db_id).await?;
+        match decide_outcome(equivalents) {
+            BoxOutcome::Fold => {
+                apply_fold(pool, plan, mb_db_id).await?;
+                summary.groups_folded += 1;
+                println!(
+                    "{} {} -> fold ({} equivalent medium/media)",
+                    "▸".cyan(),
+                    plan.folder_path,
+                    equivalents
+                );
+            }
+            BoxOutcome::Dissolve => {
+                apply_dissolve(pool, plan, mb_db_id).await?;
+                summary.groups_dissolved += 1;
+                println!(
+                    "{} {} -> dissolve ({} equivalent medium/media)",
+                    "▸".cyan(),
+                    plan.folder_path,
+                    equivalents
+                );
+            }
+        }
     }
 
     Ok(summary)
@@ -876,5 +1032,34 @@ mod tests {
             "The Complete Studio Recordings"
         );
         assert_eq!(guess_box_title("ABBA/Compilation/No Year Box (3CD)"), "No Year Box");
+    }
+
+    // -----------------------------------------------------------------------
+    // Fold vs dissolve (docs/multidisk.md §3)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn folds_at_zero_equivalents() {
+        assert!(matches!(decide_outcome(0), BoxOutcome::Fold));
+    }
+
+    #[test]
+    fn folds_at_exactly_one_equivalent() {
+        // The E-special-edition case: a lone equivalent medium is deliberately not enough to
+        // dissolve a genuine multi-disc release over one coincidental link.
+        assert!(matches!(decide_outcome(1), BoxOutcome::Fold));
+    }
+
+    #[test]
+    fn dissolves_at_two_equivalents() {
+        assert!(matches!(decide_outcome(2), BoxOutcome::Dissolve));
+    }
+
+    #[test]
+    fn dissolves_at_two_equivalents_regardless_of_total_medium_count() {
+        // A 9-medium box with only 2 confirmed equivalents still dissolves - folding it would hide
+        // 2 known editions to avoid showing 7 unrecognised discs, which is strictly worse.
+        assert!(matches!(decide_outcome(2), BoxOutcome::Dissolve));
+        assert!(matches!(decide_outcome(9), BoxOutcome::Dissolve));
     }
 }

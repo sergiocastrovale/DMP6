@@ -105,51 +105,6 @@ pub async fn link_by_recording_fingerprint(pool: &PgPool) -> Result<u64, sqlx::E
     Ok(result.rows_affected())
 }
 
-/// Same join as `link_by_recording_fingerprint`, as a `COUNT` instead of an `UPDATE`, for the
-/// dry-run preview - kept in exact lockstep with it deliberately (a stale hand-duplicated preview
-/// query is worse than none).
-async fn count_recording_fingerprint_matches(pool: &PgPool) -> Result<i64, sqlx::Error> {
-    let (count,): (i64,) = sqlx::query_as(
-        r#"
-        WITH source_fp AS (
-          SELECT m.id AS medium_id,
-                 md5(string_agg(DISTINCT t."recordingId", ',' ORDER BY t."recordingId")) AS fp
-          FROM "MusicBrainzReleaseMedium" m
-          JOIN "MusicBrainzRelease" parent ON parent.id = m."releaseId"
-          JOIN "MusicBrainzReleaseTrack" t
-            ON t."releaseId" = m."releaseId" AND t."discNumber" = m.position
-          WHERE parent."mediumCount" > 1
-          GROUP BY m.id
-          HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0
-        ),
-        target_fp AS (
-          SELECT m.id AS target_medium_id, m."releaseId" AS release_id, m.position AS target_position,
-                 r."releaseGroupId" AS release_group_id, r."musicbrainzId" AS musicbrainz_id,
-                 r."mediumCount" AS target_medium_count,
-                 md5(string_agg(DISTINCT t."recordingId", ',' ORDER BY t."recordingId")) AS fp
-          FROM "MusicBrainzReleaseMedium" m
-          JOIN "MusicBrainzRelease" r ON r.id = m."releaseId"
-          JOIN "MusicBrainzReleaseTrack" t
-            ON t."releaseId" = m."releaseId" AND t."discNumber" = m.position
-          GROUP BY m.id, r.id
-          HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0
-        ),
-        matched AS (
-          SELECT sf.medium_id,
-                 row_number() OVER (PARTITION BY sf.medium_id ORDER BY tf.musicbrainz_id ASC) AS rn
-          FROM source_fp sf
-          JOIN target_fp tf ON tf.fp = sf.fp
-          JOIN "MusicBrainzReleaseMedium" src ON src.id = sf.medium_id
-          WHERE tf.release_id <> src."releaseId"
-        )
-        SELECT count(*) FROM matched WHERE rn = 1
-        "#,
-    )
-    .fetch_one(pool)
-    .await?;
-    Ok(count)
-}
-
 struct UnlinkedMedium {
     medium_id: String,
     release_id: String,
@@ -323,7 +278,7 @@ fn title_loosely_matches(medium_title: &str, candidate_title: &str) -> bool {
     !a.is_empty() && !b.is_empty() && (a.contains(&b) || b.contains(&a))
 }
 
-pub enum ContainmentOutcome<'a> {
+enum ContainmentOutcome<'a> {
     Linked(&'a ContainmentCandidate),
     /// >1 candidate satisfied containment and the `is_original_work` tie-break didn't resolve to
     /// exactly one - left unset rather than guessed.
@@ -370,26 +325,17 @@ fn resolve_containment_winner<'a>(
     }
 }
 
-pub async fn run_link_box_editions(
-    pool: &PgPool,
-    reporter: &Reporter,
-    dry_run: bool,
-) -> Result<LinkSummary, sqlx::Error> {
+/// Runs all three tiers to completion, no preview mode - called automatically at the tail of a
+/// normal sync run, scoped to the artists it touched, never as a user-facing flag (docs/multidisk.md
+/// §12). The user's explicit call: no dry-run anywhere in this rollout, `./backup` is the recovery
+/// path instead.
+pub async fn run_link_box_editions(pool: &PgPool, reporter: &Reporter) -> Result<LinkSummary, sqlx::Error> {
     let mut summary = LinkSummary::default();
 
-    if dry_run {
-        // The exact pass is a single idempotent UPDATE with no destructive side effect worth
-        // previewing separately - report how many rows it WOULD touch by running it read-only via a
-        // COUNT of the same join instead of executing the UPDATE.
-        let count = count_recording_fingerprint_matches(pool).await?;
-        summary.exact_linked = count.max(0) as u64;
-    } else {
-        summary.exact_linked = link_by_recording_fingerprint(pool).await?;
-    }
+    summary.exact_linked = link_by_recording_fingerprint(pool).await?;
     reporter.info(&format!(
-        "Exact recording-set match: {} medium/medium(s) {}",
-        summary.exact_linked,
-        if dry_run { "would link" } else { "linked" }
+        "Exact recording-set match: {} medium/medium(s) linked",
+        summary.exact_linked
     ));
 
     let media = unlinked_media(pool).await?;
@@ -426,9 +372,6 @@ pub async fn run_link_box_editions(
         };
 
         summary.fallback_linked += 1;
-        if dry_run {
-            continue;
-        }
         sqlx::query(
             r#"UPDATE "MusicBrainzReleaseMedium"
                SET "equivalentReleaseId" = $1, "equivalentReleaseGroupId" = $2, "updatedAt" = now()
@@ -486,9 +429,6 @@ pub async fn run_link_box_editions(
         };
 
         summary.containment_linked += 1;
-        if dry_run {
-            continue;
-        }
         sqlx::query(
             r#"UPDATE "MusicBrainzReleaseMedium"
                SET "equivalentReleaseId" = $1, "equivalentReleaseGroupId" = $2, "updatedAt" = now()
