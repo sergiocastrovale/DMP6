@@ -983,11 +983,18 @@ pub async fn delete_missing_releases_for_artist(
 // "uncovered" here, so catalogue-gaps created a MISSING placeholder and the trickle worker
 // re-downloaded an album the library already had (landing under the connected artist's folder).
 pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> HashSet<String> {
-    // Two ways a group counts as owned:
+    // Three ways a group counts as owned:
     //   1. a LocalRelease is bound to one of its releases (the ordinary case), or
     //   2. every one of its MB tracks is linked to a local track (`owned.rs`'s bundle claim) — a
     //      bonus disc that lives inside a bigger local folder has no bind of its own, and without
-    //      this it would come back as a MISSING gap on every run and be downloaded again.
+    //      this it would come back as a MISSING gap on every run and be downloaded again, or
+    //   3. it is a dissolved box (docs/multidisk.md §5 point 4/§6): a box's own release has no bind
+    //      on its own release group once its discs are dissolved onto their equivalent albums, so
+    //      without this branch every dissolved box reads MISSING and gets re-downloaded whole. A
+    //      multi-medium release counts covered when EVERY one of its media is covered — bound at
+    //      that mediumPosition directly, OR its equivalentReleaseId itself has a bind, OR a
+    //      LocalRelease carries boxReleaseId/boxMediumPosition pointing at it (a rarities disc bound
+    //      straight to the box).
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"SELECT DISTINCT mbr."releaseGroupId"
            FROM "MusicBrainzRelease" mbr
@@ -1009,6 +1016,34 @@ pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> Ha
                WHERE t."releaseId" = mbr.id
                  AND NOT EXISTS (
                    SELECT 1 FROM "LocalReleaseTrack" lt WHERE lt."mbTrackId" = t.id
+                 )
+             )
+           UNION
+           SELECT DISTINCT mbr."releaseGroupId"
+           FROM "MusicBrainzRelease" mbr
+           JOIN "MusicBrainzReleaseArtist" mra3 ON mra3."releaseId" = mbr.id
+           JOIN "Artist" a3 ON a3.id = mra3."artistId"
+           WHERE (mra3."artistId" = $1 OR a3."primaryArtistId" = $1)
+             AND mbr."releaseGroupId" IS NOT NULL
+             AND mbr."mediumCount" > 1
+             AND NOT EXISTS (
+               SELECT 1 FROM "MusicBrainzReleaseMedium" m
+               WHERE m."releaseId" = mbr.id
+                 AND NOT (
+                   EXISTS (
+                     SELECT 1 FROM "LocalRelease" lr2
+                     WHERE lr2."releaseId" = mbr.id AND lr2."mediumPosition" = m.position
+                   )
+                   OR (
+                     m."equivalentReleaseId" IS NOT NULL
+                     AND EXISTS (
+                       SELECT 1 FROM "LocalRelease" lr3 WHERE lr3."releaseId" = m."equivalentReleaseId"
+                     )
+                   )
+                   OR EXISTS (
+                     SELECT 1 FROM "LocalRelease" lr4
+                     WHERE lr4."boxReleaseId" = mbr.id AND lr4."boxMediumPosition" = m.position
+                   )
                  )
              )"#,
     )
