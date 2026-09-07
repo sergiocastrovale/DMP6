@@ -228,6 +228,8 @@ pub fn classify_mb_error(e: &str) -> MbErrorKind {
         || e.contains("unavailable")
         || e.contains("503")
         || e.contains("429")
+        || e.contains("502")
+        || e.contains("504")
     {
         MbErrorKind::Transient
     } else {
@@ -290,7 +292,13 @@ pub async fn mb_get(
                 .map_err(|e| format!("Read body failed: {}", e));
         }
 
-        if status == 503 || status == 429 {
+        if matches!(status, 502 | 503 | 504 | 429) {
+            // 502/504 are the reverse proxy in front of MB, not MB itself - never carry a rate-limit
+            // body or X-RateLimit-* headers, so classify_throttle always reads them as Overloaded
+            // (immediate retry, no pacing penalty). A sustained run previously hard-failed the whole
+            // artist on the first 502/504 with zero retry - during a long backfill these are common
+            // enough (bursts of them, not isolated blips) to abort a large fraction of artists outright.
+            //
             // The body is what separates MB's rate-limit 503 from a plain overload 503. It is small,
             // and this branch is already the slow path, so reading it costs nothing that matters.
             let body = resp.text().await.unwrap_or_default();
@@ -1062,6 +1070,20 @@ mod tests {
         assert_eq!(
             classify_mb_error("HTTP 429 for https://musicbrainz.org/..."),
             MbErrorKind::Transient
+        );
+    }
+
+    #[test]
+    fn classifies_bad_gateway_and_gateway_timeout_as_transient() {
+        // The reverse proxy in front of MB, not MB's own app - previously fell through to Hard with
+        // zero retry, aborting the whole artist on the first blip during a long-running backfill.
+        assert_eq!(
+            classify_mb_error("HTTP 502 for https://musicbrainz.org/..."),
+            MbErrorKind::Transient,
+        );
+        assert_eq!(
+            classify_mb_error("HTTP 504 for https://musicbrainz.org/..."),
+            MbErrorKind::Transient,
         );
     }
 
