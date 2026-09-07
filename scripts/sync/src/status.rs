@@ -93,11 +93,28 @@ fn release_has_cd_format(release: &MbRelease) -> bool {
     })
 }
 
+/// Restrict a release's flattened tracklist to one medium's tracks (`discNumber = position`), when
+/// `medium_position` is set. A folder bound to one disc of a multi-medium release must be scored
+/// against that disc alone - scoring it against the release's full, every-disc tracklist reads a
+/// complete single disc as `MISSING_TRACKS` (docs/multidisk.md §5 point 2). `None` (a single-medium
+/// release, or the whole-release case a fold uses) leaves the tracklist untouched.
+fn scope_to_medium(tracks: &[MbTrack], medium_position: Option<i32>) -> Vec<MbTrack> {
+    match medium_position {
+        Some(pos) => tracks
+            .iter()
+            .filter(|t| t.disc_number == Some(pos as u32))
+            .cloned()
+            .collect(),
+        None => tracks.to_vec(),
+    }
+}
+
 pub fn check_release_status(
     local_tracks: &[&TrackMeta],
     local_track_ids: &[String],
     mb_releases: &[(MbRelease, Vec<MbTrack>)],
     local_year: Option<i32>,
+    medium_position: Option<i32>,
 ) -> StatusCheck {
     if mb_releases.is_empty() {
         return StatusCheck {
@@ -112,10 +129,15 @@ pub fn check_release_status(
 
     let local_count = local_tracks.len();
 
-    let exact_matches: Vec<usize> = mb_releases
+    let scoped: Vec<Vec<MbTrack>> = mb_releases
+        .iter()
+        .map(|(_, tracks)| scope_to_medium(tracks, medium_position))
+        .collect();
+
+    let exact_matches: Vec<usize> = scoped
         .iter()
         .enumerate()
-        .filter(|(_, (_, tracks))| tracks.len() == local_count)
+        .filter(|(_, tracks)| tracks.len() == local_count)
         .map(|(i, _)| i)
         .collect();
 
@@ -163,7 +185,7 @@ pub fn check_release_status(
 
     let best_release = &mb_releases[best_idx];
 
-    let mb_tracks = &best_release.1;
+    let mb_tracks = &scoped[best_idx];
     let mb_count = mb_tracks.len();
 
     // Match local tracks → MB tracks by title
@@ -318,6 +340,13 @@ mod tests {
         }
     }
 
+    fn mb_track_disc(id: &str, title: &str, disc_number: u32) -> MbTrack {
+        MbTrack {
+            disc_number: Some(disc_number),
+            ..mb_track(id, title)
+        }
+    }
+
     fn mb_release(id: &str, date: Option<&str>, format: Option<&str>) -> MbRelease {
         MbRelease {
             id: id.to_string(),
@@ -349,7 +378,7 @@ mod tests {
             vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")],
         )];
 
-        let result = check_release_status(&local_refs, &ids, &releases, None);
+        let result = check_release_status(&local_refs, &ids, &releases, None, None);
 
         assert!(result.is_confident);
         assert_eq!(result.status, ReleaseStatus::Complete);
@@ -376,7 +405,7 @@ mod tests {
             ),
         ];
 
-        let result = check_release_status(&local_refs, &ids, &releases, None);
+        let result = check_release_status(&local_refs, &ids, &releases, None, None);
 
         assert!(result.is_confident);
         assert_eq!(result.best_release_id, "r-2tracks");
@@ -404,7 +433,7 @@ mod tests {
             ),
         ];
 
-        let result = check_release_status(&local_refs, &ids, &releases, Some(2010));
+        let result = check_release_status(&local_refs, &ids, &releases, Some(2010), None);
 
         assert!(result.is_confident);
         // Same year (2010) narrows to the two 2010 releases; CD narrows to the CD one.
@@ -446,7 +475,7 @@ mod tests {
             ),
         ];
 
-        let result = check_release_status(&local_refs, &ids, &releases, Some(2025));
+        let result = check_release_status(&local_refs, &ids, &releases, Some(2025), None);
 
         assert!(result.is_confident);
         assert_eq!(result.best_release_id, "r-cd");
@@ -463,7 +492,7 @@ mod tests {
             vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")],
         )];
 
-        let result = check_release_status(&local_refs, &ids, &releases, None);
+        let result = check_release_status(&local_refs, &ids, &releases, None, None);
 
         assert_eq!(result.status, ReleaseStatus::ExtraTracks);
     }
@@ -478,7 +507,7 @@ mod tests {
             vec![mb_track("t1", "Intro"), mb_track("t2", "Outro")],
         )];
 
-        let result = check_release_status(&local_refs, &ids, &releases, None);
+        let result = check_release_status(&local_refs, &ids, &releases, None, None);
 
         assert_eq!(result.status, ReleaseStatus::MissingTracks);
     }
@@ -509,7 +538,7 @@ mod tests {
             ),
         ];
 
-        let result = check_release_status(&local_refs, &ids, &releases, None);
+        let result = check_release_status(&local_refs, &ids, &releases, None, None);
 
         assert!(!result.is_confident);
     }
@@ -520,9 +549,106 @@ mod tests {
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(1);
 
-        let result = check_release_status(&local_refs, &ids, &[], None);
+        let result = check_release_status(&local_refs, &ids, &[], None, None);
 
         assert!(!result.is_confident);
         assert_eq!(result.status, ReleaseStatus::Incomplete);
+    }
+
+    // -----------------------------------------------------------------------
+    // Medium-scoped scoring (docs/multidisk.md §5 point 2)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn medium_position_none_scores_against_the_whole_release_unchanged() {
+        // Baseline: no medium_position behaves exactly as before this change.
+        let locals = vec![track("Disc 1 Track"), track("Disc 2 Track")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(2);
+        let releases = vec![(
+            mb_release("box1", None, None),
+            vec![
+                mb_track_disc("t1", "Disc 1 Track", 1),
+                mb_track_disc("t2", "Disc 2 Track", 2),
+            ],
+        )];
+
+        let result = check_release_status(&local_refs, &ids, &releases, None, None);
+        assert_eq!(result.status, ReleaseStatus::Complete);
+    }
+
+    #[test]
+    fn a_complete_disc_reads_complete_when_scored_against_its_own_medium_only() {
+        // Without medium scoping this single, fully-present disc would read MISSING_TRACKS against
+        // the box's full 2-disc tracklist - the false positive this fix exists to close.
+        let locals = vec![track("Disc 2 Track A"), track("Disc 2 Track B")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(2);
+        let releases = vec![(
+            mb_release("box1", None, None),
+            vec![
+                mb_track_disc("t1", "Disc 1 Track", 1),
+                mb_track_disc("t2", "Disc 2 Track A", 2),
+                mb_track_disc("t3", "Disc 2 Track B", 2),
+            ],
+        )];
+
+        let result = check_release_status(&local_refs, &ids, &releases, None, Some(2));
+        assert_eq!(result.status, ReleaseStatus::Complete);
+        assert_eq!(result.matched_mb_tracks.len(), 2);
+    }
+
+    #[test]
+    fn medium_scoped_missing_tracks_still_detected_within_that_medium() {
+        let locals = vec![track("Disc 2 Track A")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(1);
+        let releases = vec![(
+            mb_release("box1", None, None),
+            vec![
+                mb_track_disc("t1", "Disc 1 Track", 1),
+                mb_track_disc("t2", "Disc 2 Track A", 2),
+                mb_track_disc("t3", "Disc 2 Track B", 2),
+            ],
+        )];
+
+        let result = check_release_status(&local_refs, &ids, &releases, None, Some(2));
+        assert_eq!(result.status, ReleaseStatus::MissingTracks);
+    }
+
+    #[test]
+    fn medium_scoped_extra_tracks_still_detected_within_that_medium() {
+        let locals = vec![track("Disc 2 Track A"), track("Disc 2 Track B"), track("Disc 2 Bonus")];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(3);
+        let releases = vec![(
+            mb_release("box1", None, None),
+            vec![
+                mb_track_disc("t1", "Disc 1 Track", 1),
+                mb_track_disc("t2", "Disc 2 Track A", 2),
+                mb_track_disc("t3", "Disc 2 Track B", 2),
+            ],
+        )];
+
+        let result = check_release_status(&local_refs, &ids, &releases, None, Some(2));
+        assert_eq!(result.status, ReleaseStatus::ExtraTracks);
+    }
+
+    #[test]
+    fn scope_to_medium_is_a_noop_for_none() {
+        let tracks = vec![mb_track_disc("t1", "A", 1), mb_track_disc("t2", "B", 2)];
+        assert_eq!(scope_to_medium(&tracks, None).len(), 2);
+    }
+
+    #[test]
+    fn scope_to_medium_filters_to_exactly_one_disc() {
+        let tracks = vec![
+            mb_track_disc("t1", "A", 1),
+            mb_track_disc("t2", "B", 2),
+            mb_track_disc("t3", "C", 2),
+        ];
+        let scoped = scope_to_medium(&tracks, Some(2));
+        assert_eq!(scoped.len(), 2);
+        assert!(scoped.iter().all(|t| t.disc_number == Some(2)));
     }
 }

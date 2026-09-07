@@ -1528,6 +1528,7 @@ async fn main() {
                     &local_track_ids,
                     &candidate.releases,
                     local_release.year,
+                    local_release.medium_position,
                 );
 
                 // Strict policy: when a release-group lookup returned multiple siblings and
@@ -1605,7 +1606,7 @@ async fn main() {
                 rg_id,
                 releases: mb_release_tracks,
                 primary_type,
-                secondary_types: _,
+                secondary_types,
                 from_tags: _,
             } = candidate;
             let status_str = status_to_db_string(&status_check.status);
@@ -1652,6 +1653,7 @@ async fn main() {
                 packaging: best_release.packaging.as_deref(),
                 country: best_release.country.as_deref(),
                 format: format_str.as_deref(),
+                release_group_secondary_types: &secondary_types,
             };
 
             let medium_rows = mb_medium_rows(&best_release.media);
@@ -1898,6 +1900,7 @@ async fn main() {
                         .and_then(|y| y.parse::<i32>().ok());
                     let extras = MbReleaseExtras {
                         release_date: rg.first_release_date.as_deref(),
+                        release_group_secondary_types: rg.secondary_types.as_deref().unwrap_or_default(),
                         ..Default::default()
                     };
                     if let Ok(mb_db_id) = upsert_mb_release(

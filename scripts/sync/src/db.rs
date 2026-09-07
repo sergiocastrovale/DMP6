@@ -85,6 +85,10 @@ pub struct MbReleaseExtras<'a> {
     pub packaging: Option<&'a str>,
     pub country: Option<&'a str>,
     pub format: Option<&'a str>,
+    // The owning release-group's secondary types (Compilation, Live, Remix, Soundtrack, ...) -
+    // already fetched for allowlist::is_allowed, just not previously persisted. [] = "original
+    // work", the signal the box-set equivalence tier-3 matcher uses (docs/multidisk.md §5).
+    pub release_group_secondary_types: &'a [String],
 }
 
 pub async fn upsert_mb_release(
@@ -140,8 +144,8 @@ pub async fn upsert_mb_release_with_media(
         r#"INSERT INTO "MusicBrainzRelease"
              (id, title, "typeId", year, "musicbrainzId", "releaseGroupId",
               disambiguation, "editionLabel", "releaseDate", packaging, country, format,
-              status, "statusReason", "mediumCount", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::"ReleaseStatus", $14, $15, $16, $16)
+              status, "statusReason", "mediumCount", "releaseGroupSecondaryTypes", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::"ReleaseStatus", $14, $15, $16, $17, $17)
            ON CONFLICT ("musicbrainzId") DO UPDATE SET
              title = EXCLUDED.title,
              "typeId" = EXCLUDED."typeId",
@@ -156,6 +160,8 @@ pub async fn upsert_mb_release_with_media(
              status = EXCLUDED.status::"ReleaseStatus",
              "statusReason" = EXCLUDED."statusReason",
              "mediumCount" = EXCLUDED."mediumCount",
+             "releaseGroupSecondaryTypes" = CASE WHEN array_length(EXCLUDED."releaseGroupSecondaryTypes", 1) > 0
+               THEN EXCLUDED."releaseGroupSecondaryTypes" ELSE "MusicBrainzRelease"."releaseGroupSecondaryTypes" END,
              "updatedAt" = EXCLUDED."updatedAt"
            RETURNING id"#,
     )
@@ -174,6 +180,7 @@ pub async fn upsert_mb_release_with_media(
     .bind(status)
     .bind(status_reason)
     .bind(medium_count)
+    .bind(extras.release_group_secondary_types)
     .bind(now)
     .fetch_one(pool)
     .await?;
@@ -1142,15 +1149,19 @@ pub struct LocalReleaseRow {
     pub release_id: Option<String>,
     pub match_status: Option<String>,
     pub has_cover: bool,
+    // Which medium of release_id this folder is (docs/multidisk.md §5) - set by a prior box-dissolve
+    // bind. Must be respected on every re-sync, or a later run would re-score a dissolved box disc
+    // against its target's *whole* tracklist and silently undo the fix.
+    pub medium_position: Option<i32>,
 }
 
 pub async fn get_local_releases_for_artist(
     pool: &PgPool,
     artist_id: &str,
 ) -> Result<Vec<LocalReleaseRow>, sqlx::Error> {
-    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>)> = sqlx::query_as(
         r#"SELECT lr.id, lr.title, lr.year, lr."forcedComplete", lr."releaseId", lr."matchStatus"::text,
-                  lr.image, lr."imageUrl"
+                  lr.image, lr."imageUrl", lr."mediumPosition"
            FROM "LocalRelease" lr
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
            WHERE lra."artistId" = $1
@@ -1163,7 +1174,7 @@ pub async fn get_local_releases_for_artist(
     Ok(rows
         .into_iter()
         .map(
-            |(id, title, year, forced_complete, release_id, match_status, image, image_url)| {
+            |(id, title, year, forced_complete, release_id, match_status, image, image_url, medium_position)| {
                 LocalReleaseRow {
                     id,
                     title,
@@ -1172,6 +1183,7 @@ pub async fn get_local_releases_for_artist(
                     release_id,
                     match_status,
                     has_cover: image.is_some() || image_url.is_some(),
+                    medium_position,
                 }
             },
         )

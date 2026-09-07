@@ -1,21 +1,23 @@
-//! Derives `MusicBrainzReleaseMedium.equivalentReleaseId`/`equivalentReleaseGroupId` - the "this box
-//! disc IS that standalone album" link goal 2 of docs/box_sets.md needs, and the one MusicBrainz
-//! itself never sends us (§2.2: `inc=release-rels` on a box returns `[]`). Pure SQL + one artist-
-//! scoped Rust pass, no MusicBrainz API calls - everything needed already lives in
-//! `MusicBrainzReleaseTrack` once media/recordingId are synced (Phase 2).
+//! Derives `MusicBrainzReleaseMedium.equivalentReleaseId`/`equivalentReleaseGroupId`/
+//! `equivalentMediumPosition` - the "this box disc IS that standalone release" link MusicBrainz
+//! itself never sends us (docs/multidisk.md §1: `inc=release-rels` on a box returns `[]`). Pure SQL
+//! + two artist-scoped Rust passes, no MusicBrainz API calls - everything needed already lives in
+//! `MusicBrainzReleaseTrack` once media/recordingId are synced.
 //!
-//! Two passes, run every time:
+//! Three tiers, run every time, each only attempted on what the previous left unlinked:
 //!
-//!   1. **Exact recording-set equi-join** (SQL): a medium and a single-medium release are the same
-//!      thing if their recording-id sets are identical. Cheap and unambiguous, but only fires once a
-//!      release has been (re-)synced with `recordingId` populated on every track - which, at initial
-//!      rollout, is true for the ~4.6k multi-medium releases just backfilled and false for the ~115k
-//!      untouched single-medium releases (docs/box_sets.md Phase 8).
+//!   1. **Exact recording-set equi-join** (SQL): a medium and a release's medium are the same thing
+//!      if their recording-id sets are identical - target can be single- or multi-medium (a box can
+//!      reprint another multi-disc compilation's own editions). No minimum track count: exact
+//!      recording-MBID equality has no coincidence risk at any count, unlike tiers 2/3 below.
 //!   2. **Title+duration fallback** (Rust, artist-scoped): for a medium the exact pass couldn't place,
-//!      compare its tracklist (title, duration ±5s - the same tolerance `owned::find_owning_bundle`
-//!      uses) against every single-medium release credited to the same artist. Scoped to one artist's
-//!      releases specifically so this stays cheap without an index over the whole catalogue - a box
-//!      and the standalone album it reprints are essentially always credited to the same artist.
+//!      compare its tracklist (title, duration ±5s) *positionally* against every single-medium
+//!      release credited to the same artist - same length required.
+//!   3. **Containment match** (Rust, artist-scoped): for a medium still unlinked whose own title is
+//!      non-empty, search same-artist releases by loose (substring) title match and confirm via
+//!      `owned::find_owning_bundle`'s containment check - closes the common case where the box uses a
+//!      bonus-track edition MB hasn't also catalogued as a standalone release under the same track
+//!      count, which tiers 1-2's exact-length matching can never see.
 
 use std::collections::HashMap;
 
@@ -29,45 +31,73 @@ pub struct LinkSummary {
     pub fallback_candidates: usize,
     pub fallback_linked: usize,
     pub fallback_ambiguous: usize,
+    pub containment_candidates: usize,
+    pub containment_linked: usize,
+    pub containment_ambiguous: usize,
 }
 
-/// Step 1: exact recording-set equi-join, pure SQL. A medium's fingerprint is `md5` of its sorted,
-/// deduplicated recording ids; a release's is the same computed over its own (single-medium)
-/// tracklist. Requires every track on both sides to carry a `recordingId` and at least 3 of them -
-/// `owned::MIN_CLAIMABLE_TRACKS`'s reasoning applies equally here: a one- or two-track match is much
-/// more likely to be coincidence than a genuine shared recording set.
+/// Step 1: exact recording-set equi-join, pure SQL.
 ///
-/// A fingerprint claimed by more than one single-medium release (a genuine recording-set collision)
-/// updates the medium once per match in an arbitrary order - vanishingly rare for a 3+-track set, and
-/// not worth a dedicated ambiguity guard the way the Rust fallback below has one.
+/// Source side: media of a box (`parent.mediumCount > 1`). Target side: **any** release's medium,
+/// single- or multi-medium (docs/multidisk.md §5 - a box can reprint another multi-disc compilation's
+/// own editions; restricting the target to single-medium releases misses that entirely). A medium's
+/// fingerprint is `md5` of its sorted, deduplicated recording ids; matching a source medium's
+/// fingerprint against a target medium's identifies the reprint regardless of how either release is
+/// split into discs. `equivalentMediumPosition` records which of the target's media it is - `NULL`
+/// when the target is single-medium (the common case).
+///
+/// No minimum track count on either side. Unlike the title+duration fallback below (where a short
+/// coincidental match is a real risk), this is exact recording-MBID equality - a match at any track
+/// count, including 1-2, is a certain identity, never a coincidence. A floor here previously made
+/// every "singles box" (2-track-per-disc reissues) permanently undissolvable.
+///
+/// A fingerprint claimed by more than one target medium (a genuine recording-set collision, common
+/// for a heavily-reissued artist) is resolved deterministically - lowest MusicBrainz id wins - rather
+/// than whatever order Postgres happens to return.
 pub async fn link_by_recording_fingerprint(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         r#"
-        WITH medium_fp AS (
+        WITH source_fp AS (
           SELECT m.id AS medium_id,
                  md5(string_agg(DISTINCT t."recordingId", ',' ORDER BY t."recordingId")) AS fp
           FROM "MusicBrainzReleaseMedium" m
+          JOIN "MusicBrainzRelease" parent ON parent.id = m."releaseId"
           JOIN "MusicBrainzReleaseTrack" t
             ON t."releaseId" = m."releaseId" AND t."discNumber" = m.position
+          WHERE parent."mediumCount" > 1
           GROUP BY m.id
-          HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0 AND count(*) >= 3
-        ), release_fp AS (
-          SELECT r.id AS release_id, r."releaseGroupId",
+          HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0
+        ),
+        target_fp AS (
+          SELECT m.id AS target_medium_id, m."releaseId" AS release_id, m.position AS target_position,
+                 r."releaseGroupId" AS release_group_id, r."musicbrainzId" AS musicbrainz_id,
+                 r."mediumCount" AS target_medium_count,
                  md5(string_agg(DISTINCT t."recordingId", ',' ORDER BY t."recordingId")) AS fp
-          FROM "MusicBrainzRelease" r
-          JOIN "MusicBrainzReleaseTrack" t ON t."releaseId" = r.id
-          WHERE r."mediumCount" = 1
-          GROUP BY r.id
-          HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0 AND count(*) >= 3
+          FROM "MusicBrainzReleaseMedium" m
+          JOIN "MusicBrainzRelease" r ON r.id = m."releaseId"
+          JOIN "MusicBrainzReleaseTrack" t
+            ON t."releaseId" = m."releaseId" AND t."discNumber" = m.position
+          GROUP BY m.id, r.id
+          HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0
+        ),
+        matched AS (
+          SELECT sf.medium_id, sf.fp, tf.release_id, tf.release_group_id, tf.target_position,
+                 tf.target_medium_count,
+                 row_number() OVER (PARTITION BY sf.medium_id ORDER BY tf.musicbrainz_id ASC) AS rn
+          FROM source_fp sf
+          JOIN target_fp tf ON tf.fp = sf.fp
+          JOIN "MusicBrainzReleaseMedium" src ON src.id = sf.medium_id
+          WHERE tf.release_id <> src."releaseId"
         )
         UPDATE "MusicBrainzReleaseMedium" m
-        SET "recordingFingerprint" = mf.fp,
-            "equivalentReleaseId" = rf.release_id,
-            "equivalentReleaseGroupId" = rf."releaseGroupId",
+        SET "recordingFingerprint" = matched.fp,
+            "equivalentReleaseId" = matched.release_id,
+            "equivalentReleaseGroupId" = matched.release_group_id,
+            "equivalentMediumPosition" = CASE WHEN matched.target_medium_count > 1
+              THEN matched.target_position ELSE NULL END,
             "updatedAt" = now()
-        FROM medium_fp mf
-        JOIN release_fp rf ON rf.fp = mf.fp
-        WHERE m.id = mf.medium_id
+        FROM matched
+        WHERE m.id = matched.medium_id AND matched.rn = 1
         "#,
     )
     .execute(pool)
@@ -75,9 +105,58 @@ pub async fn link_by_recording_fingerprint(pool: &PgPool) -> Result<u64, sqlx::E
     Ok(result.rows_affected())
 }
 
+/// Same join as `link_by_recording_fingerprint`, as a `COUNT` instead of an `UPDATE`, for the
+/// dry-run preview - kept in exact lockstep with it deliberately (a stale hand-duplicated preview
+/// query is worse than none).
+async fn count_recording_fingerprint_matches(pool: &PgPool) -> Result<i64, sqlx::Error> {
+    let (count,): (i64,) = sqlx::query_as(
+        r#"
+        WITH source_fp AS (
+          SELECT m.id AS medium_id,
+                 md5(string_agg(DISTINCT t."recordingId", ',' ORDER BY t."recordingId")) AS fp
+          FROM "MusicBrainzReleaseMedium" m
+          JOIN "MusicBrainzRelease" parent ON parent.id = m."releaseId"
+          JOIN "MusicBrainzReleaseTrack" t
+            ON t."releaseId" = m."releaseId" AND t."discNumber" = m.position
+          WHERE parent."mediumCount" > 1
+          GROUP BY m.id
+          HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0
+        ),
+        target_fp AS (
+          SELECT m.id AS target_medium_id, m."releaseId" AS release_id, m.position AS target_position,
+                 r."releaseGroupId" AS release_group_id, r."musicbrainzId" AS musicbrainz_id,
+                 r."mediumCount" AS target_medium_count,
+                 md5(string_agg(DISTINCT t."recordingId", ',' ORDER BY t."recordingId")) AS fp
+          FROM "MusicBrainzReleaseMedium" m
+          JOIN "MusicBrainzRelease" r ON r.id = m."releaseId"
+          JOIN "MusicBrainzReleaseTrack" t
+            ON t."releaseId" = m."releaseId" AND t."discNumber" = m.position
+          GROUP BY m.id, r.id
+          HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0
+        ),
+        matched AS (
+          SELECT sf.medium_id,
+                 row_number() OVER (PARTITION BY sf.medium_id ORDER BY tf.musicbrainz_id ASC) AS rn
+          FROM source_fp sf
+          JOIN target_fp tf ON tf.fp = sf.fp
+          JOIN "MusicBrainzReleaseMedium" src ON src.id = sf.medium_id
+          WHERE tf.release_id <> src."releaseId"
+        )
+        SELECT count(*) FROM matched WHERE rn = 1
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
 struct UnlinkedMedium {
     medium_id: String,
     release_id: String,
+    /// The medium's own title, if MB sent one. `None`/empty for a chronological "complete
+    /// sessions"-style box with no per-disc titles - tier 3 skips those outright (docs/multidisk.md
+    /// §5, §10 limitation 4): nothing to narrow the candidate search against.
+    medium_title: Option<String>,
     tracks: Vec<(String, Option<i32>)>,
 }
 
@@ -88,8 +167,8 @@ struct ReleaseFacts {
 }
 
 async fn unlinked_media(pool: &PgPool) -> Result<Vec<UnlinkedMedium>, sqlx::Error> {
-    let rows: Vec<(String, String, String, Option<i32>, i32)> = sqlx::query_as(
-        r#"SELECT m.id, m."releaseId", t.title, t."durationMs", t.position
+    let rows: Vec<(String, String, Option<String>, String, Option<i32>, i32)> = sqlx::query_as(
+        r#"SELECT m.id, m."releaseId", m.title, t.title, t."durationMs", t.position
            FROM "MusicBrainzReleaseMedium" m
            JOIN "MusicBrainzReleaseTrack" t
              ON t."releaseId" = m."releaseId" AND t."discNumber" = m.position
@@ -100,13 +179,14 @@ async fn unlinked_media(pool: &PgPool) -> Result<Vec<UnlinkedMedium>, sqlx::Erro
     .await?;
 
     let mut media: Vec<UnlinkedMedium> = Vec::new();
-    for (medium_id, release_id, title, duration_ms, _pos) in rows {
+    for (medium_id, release_id, medium_title, title, duration_ms, _pos) in rows {
         let secs = duration_ms.map(|ms| ms / 1000);
         match media.last_mut() {
             Some(m) if m.medium_id == medium_id => m.tracks.push((title, secs)),
             _ => media.push(UnlinkedMedium {
                 medium_id,
                 release_id,
+                medium_title,
                 tracks: vec![(title, secs)],
             }),
         }
@@ -170,6 +250,126 @@ fn tracks_match(medium: &[(String, Option<i32>)], release: &[(String, Option<i32
     })
 }
 
+// ---------------------------------------------------------------------------
+// Tier 3: containment match (docs/multidisk.md §5)
+// ---------------------------------------------------------------------------
+//
+// Tiers 1-2 both require *equality*: the medium's whole tracklist must match a candidate's whole
+// tracklist. That fails whenever the box uses a bonus-track edition MB hasn't also catalogued as a
+// standalone release under the exact same track count - the common case for most artists, not an
+// edge case (ABBA's own catalogue only avoids it by having 25 editions of some albums). This tier
+// finds the base album inside a superset medium instead of requiring an exact-length match.
+
+struct ContainmentCandidate {
+    release_id: String,
+    release_group_id: Option<String>,
+    title: String,
+    /// releaseGroupSecondaryTypes = [] - an "original work," the tie-break preference when more than
+    /// one candidate satisfies containment (e.g. three same-titled release-groups, only one real).
+    is_original_work: bool,
+    tracks: Vec<(String, Option<i32>)>,
+}
+
+/// Every release credited to any of `artist_ids`, title + full tracklist + secondary-types flag.
+/// Deliberately not restricted to single-medium releases: `owned::find_owning_bundle`'s own strict-
+/// superset rule (the medium must have MORE tracks than the candidate) already excludes a
+/// multi-medium candidate from ever satisfying containment against one disc in practice.
+async fn releases_for_artists(
+    pool: &PgPool,
+    artist_ids: &[String],
+) -> Result<Vec<ContainmentCandidate>, sqlx::Error> {
+    if artist_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<(String, Option<String>, String, bool, String, Option<i32>)> = sqlx::query_as(
+        r#"SELECT r.id, r."releaseGroupId", r.title,
+                  cardinality(r."releaseGroupSecondaryTypes") = 0,
+                  t.title, t."durationMs"
+           FROM "MusicBrainzRelease" r
+           JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = r.id
+           JOIN "MusicBrainzReleaseTrack" t ON t."releaseId" = r.id
+           WHERE mra."artistId" = ANY($1)
+           ORDER BY r.id, t."discNumber" NULLS FIRST, t.position"#,
+    )
+    .bind(artist_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let mut releases: Vec<ContainmentCandidate> = Vec::new();
+    for (release_id, rg_id, title, is_original_work, track_title, duration_ms) in rows {
+        let secs = duration_ms.map(|ms| ms / 1000);
+        match releases.last_mut() {
+            Some(r) if r.release_id == release_id => r.tracks.push((track_title, secs)),
+            _ => releases.push(ContainmentCandidate {
+                release_id,
+                release_group_id: rg_id,
+                title,
+                is_original_work,
+                tracks: vec![(track_title, secs)],
+            }),
+        }
+    }
+    Ok(releases)
+}
+
+/// Substring containment either direction on `normalize_title`'s output - never equality. Confirmed
+/// necessary against two independent real cases: `"ABBA – The Album LP"` vs. the canonical
+/// `"The Album"`, and `"David Bowie a.k.a. Space Oddity"` vs. the canonical `"Space Oddity"` - both
+/// are containment, neither is equality. This only narrows the candidate pool; the acceptance test is
+/// `owned::find_owning_bundle`'s track containment below, never the title.
+fn title_loosely_matches(medium_title: &str, candidate_title: &str) -> bool {
+    let a = normalize_title(medium_title);
+    let b = normalize_title(candidate_title);
+    !a.is_empty() && !b.is_empty() && (a.contains(&b) || b.contains(&a))
+}
+
+pub enum ContainmentOutcome<'a> {
+    Linked(&'a ContainmentCandidate),
+    /// >1 candidate satisfied containment and the `is_original_work` tie-break didn't resolve to
+    /// exactly one - left unset rather than guessed.
+    Ambiguous,
+    None,
+}
+
+/// Pure decision fn, split from the DB fetch above exactly as `boxset::plan_box_bind` splits from
+/// `boxset::run_repair` - title-narrow, confirm via containment, tie-break. No I/O, so this is the
+/// unit-testable core of tier 3; the surrounding loop in `run_link_box_editions` only does DB fetch
+/// and the final UPDATE.
+fn resolve_containment_winner<'a>(
+    medium_title: &str,
+    medium_tracks: &[(String, Option<i32>)],
+    medium_release_id: &str,
+    candidates: &'a [ContainmentCandidate],
+) -> ContainmentOutcome<'a> {
+    let bundle = crate::owned::LocalBundle {
+        release_id: String::new(),
+        title: medium_title.to_string(),
+        tracks: medium_tracks
+            .iter()
+            .map(|(title, secs)| (String::new(), title.clone(), *secs))
+            .collect(),
+    };
+
+    let hits: Vec<&ContainmentCandidate> = candidates
+        .iter()
+        .filter(|c| c.release_id != medium_release_id)
+        .filter(|c| title_loosely_matches(medium_title, &c.title))
+        .filter(|c| crate::owned::find_owning_bundle(&c.tracks, std::slice::from_ref(&bundle)).is_some())
+        .collect();
+
+    match hits[..] {
+        [hit] => ContainmentOutcome::Linked(hit),
+        [] => ContainmentOutcome::None,
+        _ => {
+            let originals: Vec<&&ContainmentCandidate> = hits.iter().filter(|c| c.is_original_work).collect();
+            match originals[..] {
+                [only] => ContainmentOutcome::Linked(*only),
+                _ => ContainmentOutcome::Ambiguous,
+            }
+        }
+    }
+}
+
 pub async fn run_link_box_editions(
     pool: &PgPool,
     reporter: &Reporter,
@@ -181,30 +381,7 @@ pub async fn run_link_box_editions(
         // The exact pass is a single idempotent UPDATE with no destructive side effect worth
         // previewing separately - report how many rows it WOULD touch by running it read-only via a
         // COUNT of the same join instead of executing the UPDATE.
-        let (count,): (i64,) = sqlx::query_as(
-            r#"
-            WITH medium_fp AS (
-              SELECT m.id AS medium_id,
-                     md5(string_agg(DISTINCT t."recordingId", ',' ORDER BY t."recordingId")) AS fp
-              FROM "MusicBrainzReleaseMedium" m
-              JOIN "MusicBrainzReleaseTrack" t
-                ON t."releaseId" = m."releaseId" AND t."discNumber" = m.position
-              GROUP BY m.id
-              HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0 AND count(*) >= 3
-            ), release_fp AS (
-              SELECT r.id AS release_id,
-                     md5(string_agg(DISTINCT t."recordingId", ',' ORDER BY t."recordingId")) AS fp
-              FROM "MusicBrainzRelease" r
-              JOIN "MusicBrainzReleaseTrack" t ON t."releaseId" = r.id
-              WHERE r."mediumCount" = 1
-              GROUP BY r.id
-              HAVING count(*) FILTER (WHERE t."recordingId" IS NULL) = 0 AND count(*) >= 3
-            )
-            SELECT count(*) FROM medium_fp mf JOIN release_fp rf ON rf.fp = mf.fp
-            "#,
-        )
-        .fetch_one(pool)
-        .await?;
+        let count = count_recording_fingerprint_matches(pool).await?;
         summary.exact_linked = count.max(0) as u64;
     } else {
         summary.exact_linked = link_by_recording_fingerprint(pool).await?;
@@ -269,6 +446,66 @@ pub async fn run_link_box_editions(
         summary.fallback_linked, summary.fallback_ambiguous
     ));
 
+    // Tier 3: containment (docs/multidisk.md §5). Re-fetch what tiers 1-2 above still left unlinked.
+    let still_unlinked = unlinked_media(pool).await?;
+    summary.containment_candidates = still_unlinked
+        .iter()
+        .filter(|m| m.medium_title.as_deref().is_some_and(|t| !t.trim().is_empty()))
+        .count();
+    reporter.info(&format!(
+        "{} medium(s) still unlinked with a title - trying containment match",
+        summary.containment_candidates
+    ));
+
+    let mut containment_by_artist_key: HashMap<String, Vec<ContainmentCandidate>> = HashMap::new();
+    for m in &still_unlinked {
+        let Some(medium_title) = m.medium_title.as_deref().filter(|t| !t.trim().is_empty()) else {
+            continue;
+        };
+        let artist_ids = artist_ids_for_release(pool, &m.release_id).await?;
+        if artist_ids.is_empty() {
+            continue;
+        }
+        let mut sorted_ids = artist_ids.clone();
+        sorted_ids.sort_unstable();
+        let cache_key = sorted_ids.join(",");
+        if !containment_by_artist_key.contains_key(&cache_key) {
+            let facts = releases_for_artists(pool, &artist_ids).await?;
+            containment_by_artist_key.insert(cache_key.clone(), facts);
+        }
+        let candidates = &containment_by_artist_key[&cache_key];
+
+        let winner = match resolve_containment_winner(medium_title, &m.tracks, &m.release_id, candidates)
+        {
+            ContainmentOutcome::Linked(hit) => hit,
+            ContainmentOutcome::Ambiguous => {
+                summary.containment_ambiguous += 1;
+                continue;
+            }
+            ContainmentOutcome::None => continue,
+        };
+
+        summary.containment_linked += 1;
+        if dry_run {
+            continue;
+        }
+        sqlx::query(
+            r#"UPDATE "MusicBrainzReleaseMedium"
+               SET "equivalentReleaseId" = $1, "equivalentReleaseGroupId" = $2, "updatedAt" = now()
+               WHERE id = $3"#,
+        )
+        .bind(&winner.release_id)
+        .bind(&winner.release_group_id)
+        .bind(&m.medium_id)
+        .execute(pool)
+        .await?;
+    }
+
+    reporter.info(&format!(
+        "Containment match: {} linked, {} ambiguous (left unset)",
+        summary.containment_linked, summary.containment_ambiguous
+    ));
+
     Ok(summary)
 }
 
@@ -307,5 +544,109 @@ mod tests {
         let medium = vec![t("A", Some(100)), t("B", Some(100))];
         let release = vec![t("A", Some(100)), t("B", Some(100))];
         assert!(!tracks_match(&medium, &release));
+    }
+
+    // -----------------------------------------------------------------------
+    // Tier 3: containment (resolve_containment_winner)
+    // -----------------------------------------------------------------------
+
+    fn candidate(release_id: &str, title: &str, is_original_work: bool, tracks: &[(&str, i32)]) -> ContainmentCandidate {
+        ContainmentCandidate {
+            release_id: release_id.to_string(),
+            release_group_id: Some(format!("rg-{release_id}")),
+            title: title.to_string(),
+            is_original_work,
+            tracks: tracks.iter().map(|(title, secs)| (title.to_string(), Some(*secs))).collect(),
+        }
+    }
+
+    #[test]
+    fn title_containment_is_substring_either_direction_not_equality() {
+        // Real case: "ABBA – The Album LP" vs. the canonical "The Album".
+        assert!(title_loosely_matches("ABBA – The Album LP", "The Album"));
+        assert!(title_loosely_matches("The Album", "ABBA – The Album LP"));
+        // Real case: "David Bowie a.k.a. Space Oddity" vs. the canonical "Space Oddity".
+        assert!(title_loosely_matches("David Bowie a.k.a. Space Oddity", "Space Oddity"));
+        assert!(!title_loosely_matches("The Album", "Waterloo"));
+    }
+
+    #[test]
+    fn title_containment_never_matches_on_empty_strings() {
+        assert!(!title_loosely_matches("", "Waterloo"));
+        assert!(!title_loosely_matches("Waterloo", ""));
+    }
+
+    #[test]
+    fn finds_a_bonus_track_medium_base_album_via_containment() {
+        // "4 Original Albums"-shaped: the medium is a 4-track bonus-loaded "Ring Ring LP", the
+        // candidate is the plain 3-track album - a strict subset, not an exact-length match.
+        let medium_tracks = vec![
+            t("Ring Ring", Some(185)),
+            t("Another Town, Another Train", Some(180)),
+            t("Disillusion", Some(200)),
+            t("Bonus Remix", Some(210)),
+        ];
+        let candidates = vec![candidate(
+            "ringring1",
+            "Ring Ring",
+            true,
+            &[("Ring Ring", 186), ("Another Town, Another Train", 181), ("Disillusion", 199)],
+        )];
+        match resolve_containment_winner("ABBA – Ring Ring LP", &medium_tracks, "box1", &candidates) {
+            ContainmentOutcome::Linked(hit) => assert_eq!(hit.release_id, "ringring1"),
+            _ => panic!("expected a containment match"),
+        }
+    }
+
+    #[test]
+    fn never_matches_a_medium_against_a_sibling_of_the_same_release() {
+        // A box's own other discs must never be offered as "equivalent" to one of its own media.
+        let medium_tracks = vec![t("A", Some(100)), t("B", Some(100)), t("C", Some(100))];
+        let candidates = vec![candidate("box1", "Sibling Disc", true, &[("A", 100), ("B", 100)])];
+        assert!(matches!(
+            resolve_containment_winner("Sibling Disc", &medium_tracks, "box1", &candidates),
+            ContainmentOutcome::None
+        ));
+    }
+
+    #[test]
+    fn ambiguous_containment_tie_breaks_on_original_work() {
+        // Three same-titled candidates satisfy containment; only one is an "original work" (empty
+        // releaseGroupSecondaryTypes) - the ABBA "three release-groups titled ABBA" shape.
+        let medium_tracks = vec![t("X", Some(100)), t("Y", Some(100)), t("Z", Some(100)), t("Bonus", Some(100))];
+        let candidates = vec![
+            candidate("comp1", "ABBA", false, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate("album1", "ABBA", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate("comp2", "ABBA", false, &[("X", 100), ("Y", 100), ("Z", 100)]),
+        ];
+        match resolve_containment_winner("ABBA", &medium_tracks, "box1", &candidates) {
+            ContainmentOutcome::Linked(hit) => assert_eq!(hit.release_id, "album1"),
+            _ => panic!("expected the original-work tie-break to resolve to album1"),
+        }
+    }
+
+    #[test]
+    fn ambiguous_containment_left_unset_when_the_tie_break_cannot_resolve_it() {
+        // Two candidates, both (or neither) "original work" - genuinely ambiguous, left unset rather
+        // than guessed (the MB-side cataloguing-duplicate "Kind of Blue" shape).
+        let medium_tracks = vec![t("X", Some(100)), t("Y", Some(100)), t("Z", Some(100)), t("Bonus", Some(100))];
+        let candidates = vec![
+            candidate("kob1", "Kind of Blue", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate("kob2", "Kind of Blue", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+        ];
+        assert!(matches!(
+            resolve_containment_winner("Kind of Blue", &medium_tracks, "box1", &candidates),
+            ContainmentOutcome::Ambiguous
+        ));
+    }
+
+    #[test]
+    fn no_candidate_satisfies_containment_leaves_medium_unlinked() {
+        let medium_tracks = vec![t("X", Some(100)), t("Y", Some(100)), t("Z", Some(100))];
+        let candidates = vec![candidate("other", "Something Else", true, &[("Q", 100), ("R", 100)])];
+        assert!(matches!(
+            resolve_containment_winner("Rarities", &medium_tracks, "box1", &candidates),
+            ContainmentOutcome::None
+        ));
     }
 }

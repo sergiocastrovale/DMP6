@@ -172,6 +172,7 @@ pub async fn fill_catalogue_gaps(
                 .and_then(|y| y.parse::<i32>().ok());
             let extras = MbReleaseExtras {
                 release_date: rg.first_release_date.as_deref(),
+                release_group_secondary_types: rg.secondary_types.as_deref().unwrap_or_default(),
                 ..Default::default()
             };
             if let Ok(mb_db_id) = upsert_mb_release(
