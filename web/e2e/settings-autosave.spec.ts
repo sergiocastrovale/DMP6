@@ -34,7 +34,7 @@ test.describe('settings autosave', () => {
     await expectSaved(page)
 
     const putAfterSwitch = page.waitForResponse(r => r.url().includes('/api/settings') && r.request().method() === 'PUT')
-    await page.getByRole('switch', { name: 'Show terminal sidebar' }).click()
+    await page.getByRole('switch', { name: 'Scan automatically' }).click()
     await putAfterSwitch
     await expectSaved(page)
 
