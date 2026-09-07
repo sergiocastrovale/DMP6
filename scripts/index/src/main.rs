@@ -20,7 +20,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use jwalk::WalkDir;
 use rayon::prelude::*;
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -1065,49 +1065,11 @@ async fn main() {
                     .await
                     .unwrap_or_default();
 
-                // Multi-disc folders -> one release, decided by tags alone (see plan_disc_merges).
-                // Built before the track loop because the decision needs every folder's facts at
-                // once, not one file's.
-                let disc_merge_plan: HashMap<String, index::db::MergeTarget> = {
-                    let mut by_folder: HashMap<String, (HashMap<String, usize>, BTreeSet<i32>)> =
-                        HashMap::new();
-                    for track in &extracted {
-                        let raw = {
-                            let parts: Vec<&str> = track.file_path.rsplitn(2, '/').collect();
-                            if parts.len() > 1 {
-                                parts[1].to_string()
-                            } else {
-                                String::new()
-                            }
-                        };
-                        let entry = by_folder.entry(strip_disc_subfolder(&raw)).or_default();
-                        if let Some(id) = track
-                            .mb_release_id
-                            .as_deref()
-                            .and_then(common::filters::sanitize_mb_id)
-                        {
-                            *entry.0.entry(id).or_insert(0) += 1;
-                        }
-                        entry.1.insert(track.disc_number.unwrap_or(1));
-                    }
-                    let facts: Vec<index::db::FolderFacts> = by_folder
-                        .into_iter()
-                        .map(|(folder_path, (counts, disc_numbers))| index::db::FolderFacts {
-                            folder_path,
-                            majority_mb_release_id: counts
-                                .into_iter()
-                                .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0)))
-                                .map(|(id, _)| id),
-                            disc_numbers,
-                        })
-                        .collect();
-                    index::db::plan_disc_merges(&facts)
-                };
-
                 // Per-folder display title/year (mode album/year tag). The folder is the physical release
                 // unit: every track in a folder shares one LocalRelease keyed by folder path (see
                 // build_group_key), so the release's pre-match display name comes from the folder's majority
-                // tag rather than whichever track happens to be processed last.
+                // tag rather than whichever track happens to be processed last. Index never folds multi-disc
+                // folders together (docs/multidisk.md §4) - that decision needs MB medium data only sync has.
                 let folder_display_meta: HashMap<String, (String, Option<i32>)> = {
                     let mut by_folder: HashMap<String, Vec<(Option<String>, Option<i32>)>> =
                         HashMap::new();
@@ -1120,13 +1082,7 @@ async fn main() {
                                 String::new()
                             }
                         };
-                        // Key by the merged identity so a multi-disc release's display title/year
-                        // is the majority across all its discs, not disc 1's alone.
                         let fp = strip_disc_subfolder(&raw);
-                        let fp = disc_merge_plan
-                            .get(&fp)
-                            .map(|t| t.folder_path.clone())
-                            .unwrap_or(fp);
                         by_folder
                             .entry(fp)
                             .or_default()
@@ -1232,21 +1188,16 @@ async fn main() {
                             .map(|s| s.as_str())
                     });
 
-                    // A folder the tags place alongside its sibling discs lands on the shared,
-                    // metadata-keyed release; everything else keeps the folder key it always had.
-                    let merge_target = disc_merge_plan.get(&folder_path_str);
-                    let group_key = match merge_target {
-                        Some(t) => t.group_key.clone(),
-                        None => build_group_key(
-                            album_name,
-                            track.year,
-                            track.album_artist.as_deref().unwrap_or(""),
-                            &folder_path_str,
-                        ),
-                    };
-                    let display_key = merge_target
-                        .map(|t| t.folder_path.as_str())
-                        .unwrap_or(folder_path_str.as_str());
+                    // Index never folds multi-disc siblings together (docs/multidisk.md §4) - each
+                    // folder always keeps its own folder-derived key. Only sync, once it knows the MB
+                    // medium structure, decides whether siblings fold into one release or dissolve.
+                    let group_key = build_group_key(
+                        album_name,
+                        track.year,
+                        track.album_artist.as_deref().unwrap_or(""),
+                        &folder_path_str,
+                    );
+                    let display_key = folder_path_str.as_str();
 
                     let (release_title, release_year) = folder_display_meta
                         .get(display_key)
@@ -1262,29 +1213,15 @@ async fn main() {
                     {
                         Ok(existing_id.clone())
                     } else {
-                        match merge_target {
-                            Some(t) => {
-                                index::db::ensure_merged_local_release(
-                                    &pool,
-                                    release_title,
-                                    release_year,
-                                    t,
-                                    &mut release_cache,
-                                )
-                                .await
-                            }
-                            None => {
-                                ensure_local_release_cached(
-                                    &pool,
-                                    release_title,
-                                    release_year,
-                                    &folder_path_str,
-                                    &group_key,
-                                    &mut release_cache,
-                                )
-                                .await
-                            }
-                        }
+                        ensure_local_release_cached(
+                            &pool,
+                            release_title,
+                            release_year,
+                            &folder_path_str,
+                            &group_key,
+                            &mut release_cache,
+                        )
+                        .await
                     };
                     let release_id = match release_result {
                         Ok(id) => id,
