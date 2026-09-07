@@ -1,11 +1,16 @@
--- AlterTable
-ALTER TABLE "MusicBrainzRelease" ADD COLUMN "mediumCount" INTEGER NOT NULL DEFAULT 1;
+-- Idempotent rewrite (docs/multidisk.md §1/§12 step 1): prod applied some of these objects outside
+-- migrate deploy during the rejected first attempt, then a ./restore rolled data back to a snapshot
+-- that predates recordingId specifically. IF NOT EXISTS / duplicate_object guards let this apply
+-- cleanly whether prod has none, some, or all of these objects already.
 
 -- AlterTable
-ALTER TABLE "MusicBrainzReleaseTrack" ADD COLUMN "recordingId" TEXT;
+ALTER TABLE "MusicBrainzRelease" ADD COLUMN IF NOT EXISTS "mediumCount" INTEGER NOT NULL DEFAULT 1;
+
+-- AlterTable
+ALTER TABLE "MusicBrainzReleaseTrack" ADD COLUMN IF NOT EXISTS "recordingId" TEXT;
 
 -- CreateTable
-CREATE TABLE "MusicBrainzReleaseMedium" (
+CREATE TABLE IF NOT EXISTS "MusicBrainzReleaseMedium" (
     "id" TEXT NOT NULL,
     "releaseId" TEXT NOT NULL,
     "position" INTEGER NOT NULL,
@@ -22,7 +27,7 @@ CREATE TABLE "MusicBrainzReleaseMedium" (
 );
 
 -- CreateTable
-CREATE TABLE "LocalReleaseMember" (
+CREATE TABLE IF NOT EXISTS "LocalReleaseMember" (
     "id" TEXT NOT NULL,
     "localReleaseId" TEXT NOT NULL,
     "folderPath" TEXT NOT NULL,
@@ -32,28 +37,36 @@ CREATE TABLE "LocalReleaseMember" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "MusicBrainzReleaseMedium_releaseId_position_key" ON "MusicBrainzReleaseMedium"("releaseId", "position");
+CREATE UNIQUE INDEX IF NOT EXISTS "MusicBrainzReleaseMedium_releaseId_position_key" ON "MusicBrainzReleaseMedium"("releaseId", "position");
 
 -- CreateIndex
-CREATE INDEX "MusicBrainzReleaseMedium_releaseId_idx" ON "MusicBrainzReleaseMedium"("releaseId");
+CREATE INDEX IF NOT EXISTS "MusicBrainzReleaseMedium_releaseId_idx" ON "MusicBrainzReleaseMedium"("releaseId");
 
 -- CreateIndex
-CREATE INDEX "MusicBrainzReleaseMedium_equivalentReleaseGroupId_idx" ON "MusicBrainzReleaseMedium"("equivalentReleaseGroupId");
+CREATE INDEX IF NOT EXISTS "MusicBrainzReleaseMedium_equivalentReleaseGroupId_idx" ON "MusicBrainzReleaseMedium"("equivalentReleaseGroupId");
 
 -- CreateIndex
-CREATE INDEX "MusicBrainzReleaseMedium_recordingFingerprint_idx" ON "MusicBrainzReleaseMedium"("recordingFingerprint");
+CREATE INDEX IF NOT EXISTS "MusicBrainzReleaseMedium_recordingFingerprint_idx" ON "MusicBrainzReleaseMedium"("recordingFingerprint");
 
 -- CreateIndex
-CREATE INDEX "MusicBrainzReleaseTrack_recordingId_idx" ON "MusicBrainzReleaseTrack"("recordingId");
+CREATE INDEX IF NOT EXISTS "MusicBrainzReleaseTrack_recordingId_idx" ON "MusicBrainzReleaseTrack"("recordingId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "LocalReleaseMember_folderPath_key" ON "LocalReleaseMember"("folderPath");
+CREATE UNIQUE INDEX IF NOT EXISTS "LocalReleaseMember_folderPath_key" ON "LocalReleaseMember"("folderPath");
 
 -- CreateIndex
-CREATE INDEX "LocalReleaseMember_localReleaseId_idx" ON "LocalReleaseMember"("localReleaseId");
+CREATE INDEX IF NOT EXISTS "LocalReleaseMember_localReleaseId_idx" ON "LocalReleaseMember"("localReleaseId");
 
 -- AddForeignKey
-ALTER TABLE "MusicBrainzReleaseMedium" ADD CONSTRAINT "MusicBrainzReleaseMedium_releaseId_fkey" FOREIGN KEY ("releaseId") REFERENCES "MusicBrainzRelease"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "MusicBrainzReleaseMedium" ADD CONSTRAINT "MusicBrainzReleaseMedium_releaseId_fkey" FOREIGN KEY ("releaseId") REFERENCES "MusicBrainzRelease"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "LocalReleaseMember" ADD CONSTRAINT "LocalReleaseMember_localReleaseId_fkey" FOREIGN KEY ("localReleaseId") REFERENCES "LocalRelease"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "LocalReleaseMember" ADD CONSTRAINT "LocalReleaseMember_localReleaseId_fkey" FOREIGN KEY ("localReleaseId") REFERENCES "LocalRelease"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;

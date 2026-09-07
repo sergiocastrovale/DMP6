@@ -149,9 +149,15 @@ model MusicBrainzRelease {
   // artist releases endpoint is a hot list route and must not join MusicBrainzReleaseMedium just to
   // render a disc-count marker.
   mediumCount    Int                        @default(1)
+  // The owning release-group's secondary types (Compilation, Live, Remix, Soundtrack, ...), copied
+  // verbatim from the same MB payload allowlist::is_allowed already reads at bind time - not a new
+  // API call, just no longer discarded. [] means an "original work": the signal the box-set
+  // equivalence tier-3 matcher uses to disambiguate same-titled release-groups (docs/multidisk.md §5).
+  releaseGroupSecondaryTypes String[]       @default([])
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
   localReleases  LocalRelease[]
+  boxDiscs       LocalRelease[]             @relation("BoxDiscs")
   artists        MusicBrainzReleaseArtist[]
   type           ReleaseType                @relation(fields: [typeId], references: [id])
   genres         Genre[]                    @relation("ReleaseGenres")
@@ -185,6 +191,10 @@ model MusicBrainzReleaseMedium {
   recordingFingerprint     String?            @db.VarChar(32)
   equivalentReleaseGroupId String?
   equivalentReleaseId      String?
+  // Which medium of equivalentReleaseId this medium equals. NULL when the target is single-medium
+  // (the common case - position is implicitly 1). Only meaningful when the target itself has
+  // mediumCount > 1 (e.g. a box disc reprinting one disc of another multi-medium compilation).
+  equivalentMediumPosition Int?
   createdAt                DateTime           @default(now())
   updatedAt                DateTime           @updatedAt
   release                  MusicBrainzRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
@@ -244,6 +254,16 @@ model LocalRelease {
   createdAt                  DateTime                   @default(now())
   updatedAt                  DateTime                   @updatedAt
   downloadedFrom             String? // null = pristine library; 'slskd' = acquired via Soulseek
+  // Which medium of releaseId this folder is. NULL = whole release (single-medium album, or a
+  // folded multi-disc release whose LocalReleaseMember rows carry the disc numbers instead).
+  mediumPosition             Int?
+  // Dissolved-box-disc provenance: this folder physically sits on disc boxMediumPosition of box
+  // release boxReleaseId, while releaseId points at the standalone album it reprints (or at the box
+  // itself, for a rarities/no-equivalent disc, in which case mediumPosition also carries the disc
+  // number and these two provenance columns are null). docs/multidisk.md §2/§5.
+  boxReleaseId               String?
+  boxMediumPosition          Int?
+  box                        MusicBrainzRelease?        @relation("BoxDiscs", fields: [boxReleaseId], references: [id])
   artists                    LocalReleaseArtist[]
   release                    MusicBrainzRelease?        @relation(fields: [releaseId], references: [id])
   tracks                     LocalReleaseTrack[]
@@ -262,6 +282,7 @@ model LocalRelease {
   @@index([createdAt])
   @@index([lastPlayedAt])
   @@index([downloadedFrom])
+  @@index([boxReleaseId])
   @@index([title]) // B-tree for ORDER BY title; trigram GIN index for ILIKE added via raw migration
 }
 
