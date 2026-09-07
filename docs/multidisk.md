@@ -344,3 +344,9 @@ for its intended one-time interactive use directly on the NAS; nothing here impl
    user instruction) - leave it exactly as found.
 5. If `multi` died mid-run (NAS reboot, crash, etc.): just re-run the exact resume command above:
    `./sync`'s `syncRunHash` mechanism guarantees it only re-does artists it never finished.
+6. **Once this backfill is validated (step 4 above), delete `./repair-box-sets`.** It exists solely
+   to migrate rows created before this rework; a normal `./sync` folds/dissolves automatically for
+   every artist from now on, so there will be no future "old data" batch for this script to repair
+   against - keeping it around risks someone reaching for it later as if it were a recurring/general
+   tool, which it deliberately is not (§11: "Not a permanent CLI flag", and the script's own header
+   comment already says this). Remove the CLAUDE.md mention alongside it.
