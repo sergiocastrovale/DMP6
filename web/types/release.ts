@@ -38,11 +38,10 @@ export interface UnifiedRelease {
   downloadedReleaseId?: string | null
   downloadPercent?: number | null
   // Distinct MB media on this release (null/1 for a plain album, >1 for a box set) - see
-  // MusicBrainzRelease.mediumCount and docs/box_sets.md.
+  // MusicBrainzRelease.mediumCount and docs/multidisk.md.
   discCount?: number | null
-  // Set only on a virtual "this disc IS that standalone album" card (see buildBoxEditionCards) -
-  // never on a real LocalRelease/MusicBrainzRelease-backed card. Lets the album's own edition group
-  // show the box disc as an extra edition without a second LocalRelease row existing for it.
+  // Set on a dissolved box disc - a real LocalRelease bound to the standalone album's own
+  // MusicBrainzRelease, with provenance back to the box it physically lives in (docs/multidisk.md §8).
   boxParent?: { releaseId: string, title: string, mediumPosition: number, mediumTitle: string | null } | null
 }
 

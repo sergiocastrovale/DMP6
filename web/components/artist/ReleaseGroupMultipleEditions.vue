@@ -29,8 +29,8 @@ const isEditionFavorite = (edition: UnifiedRelease) => {
   return !!target && props.favoriteReleases.has(target)
 }
 
-// A box-edition virtual card (see buildBoxEditionCards) carries no disambiguation/editionLabel of
-// its own - it borrows the subtitle slot to say which box it lives in instead.
+// A dissolved box disc (boxParent set, docs/multidisk.md §8) carries no disambiguation/editionLabel
+// of its own - it borrows the subtitle slot to say which box it lives in instead.
 const editionSubtitle = (edition: UnifiedRelease) =>
   edition.boxParent
     ? `disc ${edition.boxParent.mediumPosition} of "${edition.boxParent.title}"`

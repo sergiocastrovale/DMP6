@@ -21,7 +21,6 @@ mod images;
 mod mb_api;
 mod mb_matching;
 mod mb_types;
-mod multi_disc;
 mod nuke;
 mod owned;
 mod repair;
@@ -86,17 +85,7 @@ struct SyncArgs {
     repair_shared_release_ids: bool,
     #[arg(
         long,
-        help = "Merge LocalReleases that are discs of one release into a single row: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then exit. Honours --only/--exact (matched against the folder path) to scope a test run; tier 2 always narrates its candidate search"
-    )]
-    repair_multi_disc: bool,
-    #[arg(
-        long,
-        help = "Derive MusicBrainzReleaseMedium.equivalentReleaseId/equivalentReleaseGroupId - which standalone album a box disc reprints (pure SQL + no-API tracklist matching), then exit. Also run at the end of --repair-multi-disc"
-    )]
-    link_box_editions: bool,
-    #[arg(
-        long,
-        help = "With --repair-shared-release-ids / --repair-multi-disc / --link-box-editions: print the plan, write nothing"
+        help = "With --repair-shared-release-ids: print the plan, write nothing"
     )]
     dry_run: bool,
     #[arg(
@@ -454,138 +443,6 @@ async fn main() {
                 ));
             }
             Err(e) => reporter.err(&format!("Repair error: {}", e)),
-        }
-        return;
-    }
-
-    // Standalone maintenance pass: derive which standalone album each box-set disc reprints. Pure
-    // SQL exact pass + a no-API tracklist fallback - see box_editions.rs. No lock.
-    if args.link_box_editions {
-        reporter.header(if args.dry_run {
-            "DMP Sync - Link Box-Set Editions (DRY RUN)"
-        } else {
-            "DMP Sync - Link Box-Set Editions"
-        });
-        match box_editions::run_link_box_editions(&pool, &reporter, args.dry_run).await {
-            Ok(s) => {
-                reporter.blank();
-                reporter.done(&format!(
-                    "{} exact, {} fallback {} ({} candidate(s), {} ambiguous)",
-                    s.exact_linked,
-                    s.fallback_linked,
-                    if args.dry_run { "would link" } else { "linked" },
-                    s.fallback_candidates,
-                    s.fallback_ambiguous,
-                ));
-            }
-            Err(e) => reporter.err(&format!("Box-edition link error: {}", e)),
-        }
-        return;
-    }
-
-    // Standalone repair: fold split multi-disc rows back into one release. Pure SQL, no API, no
-    // lock - decided entirely from embedded MB release ids + disc numbers (see multi_disc.rs).
-    if args.repair_multi_disc {
-        reporter.header(if args.dry_run {
-            "DMP Sync - Merge Split Multi-Disc Releases (DRY RUN)"
-        } else {
-            "DMP Sync - Merge Split Multi-Disc Releases"
-        });
-        match multi_disc::run_repair(
-            &pool,
-            &reporter,
-            args.dry_run,
-            args.only.as_deref().unwrap_or(""),
-            args.exact,
-        )
-        .await
-        {
-            Ok(s) => {
-                reporter.blank();
-                reporter.done(&format!(
-                    "{} group(s) seen, {} skipped (contested disc), {} {} ({} row(s) {})",
-                    s.groups_seen,
-                    s.groups_skipped_overlapping_discs,
-                    s.groups_merged,
-                    if args.dry_run {
-                        "would be merged"
-                    } else {
-                        "merged"
-                    },
-                    s.rows_absorbed,
-                    if args.dry_run {
-                        "would be absorbed"
-                    } else {
-                        "absorbed"
-                    },
-                ));
-            }
-            Err(e) => reporter.err(&format!("Multi-disc repair error: {}", e)),
-        }
-
-        // Tier 2: box sets. Tier 1 above only merges siblings that already agree on an embedded MB
-        // release id; a box set's discs frequently don't (see docs/box_sets.md), so this needs
-        // MusicBrainz lookups - hence its own http client + limiter, built here rather than earlier,
-        // since every other --repair-* mode above is deliberately network-free and returns first.
-        reporter.blank();
-        reporter.header(if args.dry_run {
-            "DMP Sync - Bind Box Sets (DRY RUN)"
-        } else {
-            "DMP Sync - Bind Box Sets"
-        });
-        let http_client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .expect("HTTP client");
-        let mut limiter = RateLimiter::new();
-        limiter.set_web(args.web);
-        match boxset::run_repair(
-            &pool,
-            &http_client,
-            &mut limiter,
-            &reporter,
-            args.dry_run,
-            args.only.as_deref().unwrap_or(""),
-            args.exact,
-        )
-        .await
-        {
-            Ok(s) => {
-                reporter.blank();
-                reporter.done(&format!(
-                    "{} sibling group(s) seen, {} box(es) {}  ({} row(s) {})",
-                    s.groups_seen,
-                    s.groups_bound,
-                    if args.dry_run { "would be bound" } else { "bound" },
-                    s.rows_absorbed,
-                    if args.dry_run { "would be absorbed" } else { "absorbed" },
-                ));
-            }
-            Err(e) => reporter.err(&format!("Box-set repair error: {}", e)),
-        }
-
-        // Tail: now that any box discs just bound above have MusicBrainzReleaseMedium rows, derive
-        // which standalone album each one reprints - the "same as an edition, but living in a box"
-        // link goal 2 of docs/box_sets.md needs. Pure SQL + no-API tracklist fallback.
-        reporter.blank();
-        reporter.header(if args.dry_run {
-            "DMP Sync - Link Box-Set Editions (DRY RUN)"
-        } else {
-            "DMP Sync - Link Box-Set Editions"
-        });
-        match box_editions::run_link_box_editions(&pool, &reporter, args.dry_run).await {
-            Ok(s) => {
-                reporter.blank();
-                reporter.done(&format!(
-                    "{} exact, {} fallback {} ({} candidate(s), {} ambiguous)",
-                    s.exact_linked,
-                    s.fallback_linked,
-                    if args.dry_run { "would link" } else { "linked" },
-                    s.fallback_candidates,
-                    s.fallback_ambiguous,
-                ));
-            }
-            Err(e) => reporter.err(&format!("Box-edition link error: {}", e)),
         }
         return;
     }

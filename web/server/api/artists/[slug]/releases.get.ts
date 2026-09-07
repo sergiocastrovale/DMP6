@@ -3,7 +3,6 @@ import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 import {
   buildAppearsOnCards,
-  buildBoxEditionCards,
   buildCoArtistMap,
   buildConnectedArtistByRelease,
   buildLocalAndGapCards,
@@ -150,9 +149,7 @@ export default defineEventHandler(async (event) => {
     resolveImage: verifyImage,
   })
 
-  const boxEditionCards = buildBoxEditionCards(mbById, verifyImage)
-
-  const releases = sortReleaseCards([...localAndGapCards, ...boxEditionCards, ...appearsOnCards])
+  const releases = sortReleaseCards([...localAndGapCards, ...appearsOnCards])
 
   // Paginate the unified list
   const total = releases.length

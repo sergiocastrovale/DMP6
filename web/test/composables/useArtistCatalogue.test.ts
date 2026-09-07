@@ -107,10 +107,10 @@ describe('useArtistCatalogue', () => {
     expect(group.primary.id).toBe('dated')
   })
 
-  it('groups: a box-edition virtual card joins the album\'s edition group via its borrowed releaseGroupId', () => {
-    // buildBoxEditionCards (server/utils/releaseAggregation.ts) gives a box disc the ALBUM's own
-    // releaseGroupId, not the box's - so the grouper needs no box-specific logic at all to place it
-    // alongside the album's real editions (docs/box_sets.md goal 2).
+  it('groups: a dissolved box disc joins the album\'s edition group via its bound releaseGroupId', () => {
+    // A dissolved box disc binds to the standalone album's own MusicBrainzRelease, so it carries that
+    // album's releaseGroupId - the grouper needs no box-specific logic at all to place it alongside
+    // the album's real editions (docs/multidisk.md §8).
     const releases = ref([
       release({ id: 'album-1', releaseGroupId: 'rg-ringring', year: 1973 }),
       release({
