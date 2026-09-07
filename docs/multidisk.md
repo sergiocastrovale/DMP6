@@ -237,5 +237,5 @@ FROM "LocalRelease" lr WHERE lr."folderPath" LIKE 'ABBA/%(9CD)%';
 
 ### Phase 9 — rollout
 - [ ] Per §12, sequentially, with backup gates and completion confirmation at each step
-- [ ] `cargo test`, `pnpm test:unit`, `pnpm test:e2e` (never bare `playwright test`) all green before Phase 9 starts
+- [x] `cargo test`, `pnpm test:unit`, `pnpm test:e2e` (never bare `playwright test`) all green before Phase 9 starts
 - [ ] User visual check post-rollout (no self-verification via login)
