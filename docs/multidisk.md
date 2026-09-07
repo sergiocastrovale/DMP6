@@ -129,14 +129,14 @@ Preserve exactly (unrelated fixes bundled into `98ac101c`, do not touch): `web/s
 
 ## 11. One-off repair (existing rows)
 
-Not a permanent CLI flag. One-off script:
+Not a permanent CLI flag. `./repair-box-sets` (repo root, bash — `scripts/scripts/` turned out to be root-owned/unwritable in the actual environment; a root-level wrapper matches `./backup`/`./restore`'s own convention anyway):
 
-1. Scope: artists owning a `LocalRelease` bound to `mediumCount > 1`, plus the ~3064 sibling-folder groups.
-2. Reset scope to unbound (`matchStatus='UNKNOWN'`, clear `mediumPosition`/provenance). No deletes except within a fold's own transaction (writes its `LocalReleaseMember` undo row same-transaction).
-3. Re-run the *normal* sync path over that scope (repair and steady-state = same code).
-4. Report KEEP/fold/dissolve table.
+1. Scope: artists owning a `LocalRelease` bound to `mediumCount > 1`, plus artists in a sibling-folder group (same shape `boxset::find_sibling_groups` uses).
+2. Reset scope (`matchStatus='UNKNOWN'`, clear `mediumPosition`/`boxReleaseId`/`boxMediumPosition`). No deletes at all in this script — a fold's `LocalReleaseMember` undo row + `DELETE` happen inside `apply_fold`'s own transaction, run by `./sync` itself in step 3, not by this script.
+3. `./sync --artist-ids <file>` over that scope — the *normal* sync path, which now folds/dissolves automatically at its tail (phase 4). Repair and steady-state are the same code.
+4. Fold/dissolve narration comes from `./sync`'s own console output (`boxset::run_repair`'s per-group "-> fold"/"-> dissolve" lines) — this script only orchestrates scope + reset + the sync call, no reporting of its own.
 
-**No `--dry-run`.** User takes `./backup` before running; that's the recovery path. Must be **resumable/checkpointed** (extend `common::checkpoint`, same module `./index --resume` uses) — process one artist/group at a time, record completion, skip done units on restart. Existing index/sync lock (`common::lock`) already blocks a concurrent `./refresh`; turn off Settings → Library auto-scan too as belt-and-braces.
+**No `--dry-run`.** User takes `./backup` before running; that's the recovery path. **Resumable for free**: `./sync`'s own `syncRunHash` mechanism (already existed, unrelated to this rework) skips already-processed artists on a re-run after an interruption — re-running this exact script after a crash/reboot/Ctrl-C picks up where it left off. No new checkpoint mechanism needed. Existing index/sync lock (`common::lock`) already blocks a concurrent `./refresh`; turn off Settings → Library auto-scan too as belt-and-braces.
 
 ## 12. Rollout — strictly sequential, no parallel work
 
@@ -219,7 +219,7 @@ FROM "LocalRelease" lr WHERE lr."folderPath" LIKE 'ABBA/%(9CD)%';
 - [ ] Test: dissolved box's RG reads covered; genuinely-missing box does not
 
 ### Phase 6 — one-off repair script
-- [ ] §11: scope/reset/re-sync/report, no dry-run, resumable via `common::checkpoint`
+- [x] §11: `./repair-box-sets` — scope/reset/`./sync --artist-ids`, no dry-run, resumable via `./sync`'s existing `syncRunHash` (no new checkpoint mechanism needed)
 
 ### Phase 7 — web
 - [ ] Delete `buildBoxEditionCards`+tests

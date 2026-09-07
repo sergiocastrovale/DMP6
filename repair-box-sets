@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#
+# One-off repair (docs/multidisk.md §11). Resets every LocalRelease affected by the box-set/
+# multi-disc rework, then lets the normal `./sync` path - which now folds/dissolves multi-disc
+# siblings automatically as part of every sync run (docs/multidisk.md §4/§5 phase 4) - redo the
+# binding correctly. Repair and steady-state are the same code: this script does no box-set logic
+# of its own, only scope selection + reset + re-sync.
+#
+# NOT a permanent CLI mode - delete this script once the repair has run and been verified.
+#
+# No --dry-run (docs/multidisk.md §11/§12): the user's own `./backup`, taken before running this,
+# is the recovery path.
+#
+# Resumable for free: `./sync`'s own syncRunHash mechanism (scripts/sync/src/main.rs) skips
+# already-processed artists on a re-run after an interruption - re-running this exact script after
+# a crash/reboot/Ctrl-C picks up where it left off, nothing extra to build here.
+#
+# Precondition (docs/multidisk.md §12), enforced by the operator, not this script: normal
+# ./refresh/sync activity and Settings -> Library auto-scan must be OFF for the entire duration.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/web/.env"
+SYNC_BIN="$SCRIPT_DIR/sync"
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "DATABASE_URL not set (expected in web/.env)" >&2
+  exit 1
+fi
+
+if [ ! -x "$SYNC_BIN" ]; then
+  echo "sync binary not found or not executable at $SYNC_BIN - build it first (cd scripts && cargo build --release)" >&2
+  exit 1
+fi
+
+# Scope (docs/multidisk.md §11 point 1): artists owning a LocalRelease bound to a multi-medium
+# release, plus artists appearing in a sibling-folder group (same shape boxset::find_sibling_groups
+# uses) - the two failure shapes the whole rework exists to fix.
+SCOPE_CTE='
+WITH affected_local AS (
+  SELECT lr.id FROM "LocalRelease" lr
+  JOIN "MusicBrainzRelease" mbr ON mbr.id = lr."releaseId"
+  WHERE mbr."mediumCount" > 1
+  UNION
+  SELECT lr.id FROM "LocalRelease" lr
+  WHERE lr."folderPath" IS NOT NULL
+    AND array_length(string_to_array(lr."folderPath", '\''/'\''), 1) >= 4
+    AND regexp_replace(lr."folderPath", '\''/[^/]+$'\'', '\'''\'') IN (
+      SELECT regexp_replace("folderPath", '\''/[^/]+$'\'', '\'''\'') AS parent
+      FROM "LocalRelease"
+      WHERE "folderPath" IS NOT NULL
+      GROUP BY parent HAVING count(*) > 1
+    )
+)'
+
+IDS_FILE=$(mktemp /tmp/dmp-repair-box-sets-XXXXXX)
+trap 'rm -f "$IDS_FILE"' EXIT
+
+echo "Scope: artists with a LocalRelease bound to a multi-medium release, or in a sibling-folder group"
+psql "$DATABASE_URL" -At -c "
+$SCOPE_CTE
+SELECT DISTINCT a.id
+FROM affected_local al
+JOIN \"LocalReleaseArtist\" lra ON lra.\"localReleaseId\" = al.id
+JOIN \"Artist\" a ON a.id = lra.\"artistId\"
+" > "$IDS_FILE"
+
+COUNT=$(wc -l < "$IDS_FILE" | tr -d ' ')
+echo "Affected artist(s): $COUNT"
+if [ "$COUNT" -eq 0 ]; then
+  echo "Nothing to repair."
+  exit 0
+fi
+
+echo "Resetting affected LocalRelease rows (matchStatus -> UNKNOWN, box-specific fields cleared)..."
+psql "$DATABASE_URL" -c "
+$SCOPE_CTE
+UPDATE \"LocalRelease\" SET
+  \"matchStatus\" = 'UNKNOWN',
+  \"mediumPosition\" = NULL,
+  \"boxReleaseId\" = NULL,
+  \"boxMediumPosition\" = NULL,
+  \"updatedAt\" = now()
+WHERE id IN (SELECT id FROM affected_local)
+"
+
+echo "Running: $SYNC_BIN --artist-ids $IDS_FILE"
+echo "(if this is interrupted, re-run this exact script - ./sync resumes on its own)"
+"$SYNC_BIN" --artist-ids "$IDS_FILE"
+
+echo
+echo "Done. Verify with the queries in docs/multidisk.md §13 before re-enabling auto-scan / normal sync."
