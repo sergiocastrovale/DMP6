@@ -290,13 +290,20 @@ myself").
   ssh -i ~/.ssh/nas Kp@192.168.1.241
   tmux attach -t multi        # reattach to watch live; Ctrl-b d to detach again without killing it
   ```
-  Full output is also being teed to `/mnt/SSD/web/dmp/logs/repair-box-sets-run.log` on the NAS host,
-  so it can be read/grepped without attaching tmux at all:
+  Output was *meant* to also tee to `/mnt/SSD/web/dmp/logs/repair-box-sets-run.log` on the NAS host,
+  but the first attempt at this used the container-internal path (`/app/data/logs/...`) as the `tee`
+  target from a command that actually runs in the NAS **host** shell (`docker exec ... | tee ...` -
+  the pipe and `tee` are host-side; only `sync` itself runs inside the container) - `tee` silently
+  errored ("No such file or directory") and passed stdin through untouched, so no log file existed
+  for the first chunk of this run (see §16). Fixed on the resume-after-502-fix restart to use the
+  real host path, `/mnt/SSD/web/dmp/logs/repair-box-sets-run.log`:
   ```
   ssh -i ~/.ssh/nas Kp@192.168.1.241 "tail -f /mnt/SSD/web/dmp/logs/repair-box-sets-run.log"
   ```
   The exact command running inside `multi`:
-  `sudo docker exec dmp sync --artist-ids /app/data/logs/repair-artist-ids.txt`
+  `sudo docker exec dmp sync --artist-ids /app/data/logs/repair-artist-ids.txt | tee /mnt/SSD/web/dmp/logs/repair-box-sets-run.log`
+  (note: **host** path after `tee`, container path as the `--artist-ids` argument - they are two
+  different mounts of the same underlying directory, do not swap them).
 - This *is* steps 2+3+4 combined: box-set fold/dissolve + equivalence derivation now run
   automatically at the tail of every `./sync` invocation (Phase 4), so this one sync run backfills
   mediumCount/media rows (step 2), derives equivalences (step 3), and folds/dissolves (step 4) per
@@ -350,3 +357,57 @@ for its intended one-time interactive use directly on the NAS; nothing here impl
    against - keeping it around risks someone reaching for it later as if it were a recurring/general
    tool, which it deliberately is not (§11: "Not a permanent CLI flag", and the script's own header
    comment already says this). Remove the CLAUDE.md mention alongside it.
+
+## 16. Incident during rollout: MB 502 burst + stale-stamp gap (2026-09-07)
+
+**Symptom**: partway through the step-2 backfill, MusicBrainz's reverse proxy started returning
+bursts of `HTTP 502` (not `503`) across many consecutive artists - `Detail error: HTTP 502 ...`,
+`Release groups error: HTTP 502 ...`, plain `Request failed: error sending request...`. User caught
+this from the tmux output and asked whether it's rate-limiting and whether it would tank the whole run.
+
+**Root cause 1 - `mb_get` never retried 502/504.** `common::mb::api::mb_get`'s retry/backoff ladder
+only triggered on `status == 503 || status == 429`. A `502`/`504` (the proxy in front of MB, not MB's
+own app - never carries a rate-limit body or `X-RateLimit-*` headers) fell straight through to a hard
+`Err` on the *first* attempt, no retry at all. `classify_mb_error` also didn't recognize `"502"`/`"504"`
+substrings, so even after the error propagated up, callers keyed on `MbErrorKind::Transient` (which
+correctly defers a release rather than treating it as genuinely absent/unmatched) misclassified it as
+`Hard` instead.
+
+**Fix**: `common::mb::api::mb_get`'s retry gate extended to `matches!(status, 502 | 503 | 504 | 429)`;
+`classify_mb_error` extended to treat `"502"`/`"504"` substrings as `Transient`, same as `"503"`/`"429"`.
+Two new tests (`classifies_bad_gateway_and_gateway_timeout_as_transient`, plus the existing 503/429
+test left unchanged). `cargo test`/`pnpm test:unit`/`pnpm test:e2e` re-run clean. Deployed via a second
+`./deploy` mid-rollout - necessary and expected, not a violation of "strictly sequential, no parallel
+work": nothing else was running against the DB at the time.
+
+**Root cause 2 - a real gap in the resumability contract, found while investigating root cause 1's
+blast radius.** `stamp_sync_hash` (marks an artist "done" for this run, so a resume skips it) is
+gated by `is_total_failure = processed_count == 0 && release_failures > 0` - correct for an artist
+whose *every* release attempt actively failed. But an artist whose **release-groups fetch itself**
+failed (the `Release groups error` branch) falls through with `release_groups = vec![]` and keeps
+going; if none of that artist's local releases had an embedded MB release id to fall back on (tier 1),
+nothing ever calls a per-release API function at all - `processed_count` stays 0 **and**
+`release_failures` stays 0, `is_total_failure` reads `false`, and the artist gets stamped "done"
+despite having accomplished nothing. `Detail error` (artist-detail fetch failure) does not have this
+gap - it `continue`s before reaching the stamp code at all, so it always self-heals on resume.
+
+**Verified against the real run, not just reasoned from code**: of the 1986 scoped artists, 603 were
+stamped done by the time the 502 burst was caught; joining that set against `LocalRelease.matchStatus`
+for their scoped releases showed **559 of the 603** still sitting at `UNKNOWN` (the value step 2's
+reset SQL set them to) - i.e. stamped complete while never actually re-evaluated. Only 44 of the 603
+were genuine, fully-processed successes.
+
+**Remediation applied**: `UPDATE "Artist" SET "syncHash" = NULL WHERE id IN (<those exact 559 ids,
+intersected with the current syncRunHash>)` - un-stamps precisely the wrongly-marked-done artists so
+the resume retries them, leaves the 44 genuine successes alone (no wasted MB calls), and leaves the
+1383 never-touched artists as they were (already retry-eligible, no stamp to clear). Resumed via the
+same `sudo docker exec dmp sync --artist-ids /app/data/logs/repair-artist-ids.txt` command in `multi`;
+confirmed picked up correctly ("Resuming run... Skipping N already-processed artist(s)" with N
+reflecting the corrected, smaller stamped set).
+
+**Not fixed in code**: the `stamp_sync_hash` gap itself (root cause 2) is still live in
+`scripts/sync/src/main.rs` - this rollout's one-off SQL correction does not prevent it from
+recurring on some *other* future sync run that hits a similar MB outage. Whether to harden
+`is_total_failure` (e.g. also treat "the release-groups fetch itself failed" as an automatic
+total-failure signal, independent of per-release counters) is a separate decision - flag it to the
+user rather than silently patching sync's general-purpose resumability logic under rollout pressure.
