@@ -112,9 +112,9 @@ describe('buildLocalAndGapCards - core aggregation', () => {
     // same releaseId. Both cards render as "hasLocal" for the same MB release, and the gap loop sees
     // it as covered from either one.
     //
-    // The multi-disc half of this is now handled upstream: index::db::plan_disc_merges folds disc
-    // folders of one release into a single LocalRelease at scan time, and `sync --repair-multi-disc`
-    // does the same for rows already in the database. What remains here is genuine duplicate copies
+    // The multi-disc half of this is now handled upstream: `sync`'s box-set repair
+    // (`boxset::run_repair`, docs/multidisk.md) folds or dissolves disc folders of one release into
+    // LocalRelease row(s) automatically at the tail of every sync run. What remains here is genuine duplicate copies
     // (the same album ripped into two folders), which stay two rows on purpose - the
     // duplicate-release audit surfaces those for a human to delete. Per-card download state no
     // longer collides for them either (see mergeDownloadStatus). Asserting the current behaviour

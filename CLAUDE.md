@@ -54,25 +54,34 @@ Link: Artist.primaryArtistId → Artist.id (duplicate → canonical)
   web track list, card `trackCount`) inherits the filter for free. The composed `format` column (e.g.
   "Blu-ray, CD") intentionally stays unfiltered — it's display metadata, not a completeness input.
 - **A box set is one MusicBrainzRelease with N `MusicBrainzReleaseMedium` rows, never several
-  releases.** Verified against the live MB API (`docs/box_sets.md`): MB has no box-set entity or
-  type, `packaging = 'Box'` is not a usable signal, and MB stores **no id-level link** from a box's
-  disc to the standalone album it duplicates (`inc=release-rels` on a box returns `[]`) — the only
-  shared identity is the **recording** (`MusicBrainzReleaseTrack.recordingId`, from `track.recording.id`
-  in the MB payload, distinct from `musicbrainzId` which is the release-scoped track id). Tier 1
-  (`index::db::plan_disc_merges` / `sync::multi_disc`) only merges sibling folders that already agree
-  on an embedded release id, so a box whose discs are mis-tagged as (or genuinely tagged as) their own
-  standalone albums falls through to tier 2, `sync::boxset`: it matches siblings to *media* by
-  tracklist (title + duration ±5s, the same rule `claim_owned_bundle` uses below) and accepts only a
-  perfect matching — ambiguity rejects the whole group rather than guessing. A folded box needs a
+  releases.** Verified against the live MB API (`docs/multidisk.md` is the full spec): MB has no
+  box-set entity or type, `packaging = 'Box'` is not a usable signal, and MB stores **no id-level
+  link** from a box's disc to the standalone album it duplicates (`inc=release-rels` on a box returns
+  `[]`) — the only shared identity is the **recording** (`MusicBrainzReleaseTrack.recordingId`, from
+  `track.recording.id` in the MB payload, distinct from `musicbrainzId` which is the release-scoped
+  track id). `index` never folds a multi-medium release on its own — `sync` decides everything
+  (binding, medium assignment, fold-vs-dissolve, equivalence) via `boxset::run_repair`, which runs
+  automatically at the tail of every sync invocation, scoped by whatever `--only`/`--exact` the run
+  was given. Binding: tags agreeing with MB bind a folder to its release + medium position for free;
+  when they don't (every disc tagged `discNumber=1`), `boxset::plan_box_bind`'s tracklist matcher
+  (title + duration ±5s, the same rule `claim_owned_bundle` uses below) decides, accepting only a
+  perfect matching — ambiguity rejects the whole group rather than guessing. Equivalence
+  (`sync::box_editions`, three tiers, each only running on what the previous left unlinked): tier 1
+  exact recording-set equi-join (`recordingFingerprint`, no track-count floor), tier 2 artist-scoped
+  title+duration positional fallback for releases synced before `recordingId` existed, tier 3
+  containment match (reusing `owned::find_owning_bundle`) for a box medium using a bonus-track edition
+  MB never catalogued as its own standalone release. Discriminator: `mediumCount > 1` with ≥2 media
+  having an equivalent **dissolves** (each disc binds independently to the standalone album it
+  reprints, via `LocalRelease.boxReleaseId`/`boxMediumPosition` provenance columns, or to the box
+  itself as a rarities/no-equivalent disc); 0-1 equivalent **folds** into one `LocalRelease` — no
+  majority clause, flat `≥2` at every box size. A folded or dissolved box needs a
   `LocalReleaseMember` row per disc (`localReleaseId`, `folderPath`, `discNumber`) so a later plain
   `./index` recognizes an already-bound folder before deriving a fresh group key — without it, a box
-  whose discs all read `discNumber=1` in their own tags would be split straight back apart on the next
-  re-scan. **Goal 2** (a box disc IS the standalone album, for search/filter/editions) is a *derived*
-  fact MB never sends: `sync --link-box-editions` sets `MusicBrainzReleaseMedium.equivalentReleaseId`/
-  `equivalentReleaseGroupId` via an exact recording-set equi-join with an artist-scoped title+duration
-  fallback, and the web layer (`buildBoxEditionCards`) turns a linked medium into a virtual card
-  carrying the *album's* `releaseGroupId` — the existing edition grouper needs no box-specific logic
-  to place it in that album's edition group.
+  whose discs all read `discNumber=1` in their own tags would be split straight back apart on the
+  next re-scan. A dissolved disc is a real bound `LocalRelease` that flows through `buildReleaseCard`
+  (`web/server/utils/releaseAggregation.ts`) and lands in its album's edition group via the existing
+  `releaseGroupId` grouper, with no box-specific logic — `UnifiedRelease.boxParent` carries its
+  provenance (which box, which renumbered disc position within it).
 - **A merge discarded for a genuine shortfall must not orphan the MB release it just bound.**
   `stampMerged`'s discard branch (`web/server/utils/promote.ts`) deletes the failed LocalRelease and
   also deletes the `MusicBrainzRelease` `sync --release` had just bound to it — but only when nothing
@@ -199,8 +208,8 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when a collab release has several main artists
 ./sync --recompute-scores     # Recompute every artist's averageMatchScore from the catalogue (pure SQL), then exit
 ./sync --repair-shared-release-ids [--dry-run]  # One-off: unbind LocalReleases that lost a shared-releaseId conflict
-./sync --repair-multi-disc [--dry-run] [--only "Name"] [--exact]  # Fold split multi-disc rows back into one: tier 1 by shared embedded MB release id (pure SQL), tier 2 box sets by MusicBrainz tracklist matching (API calls), then --link-box-editions. --only/--exact match the folder path, so a run can be scoped to one artist; tier 2 always narrates its candidate search
-./sync --link-box-editions [--dry-run]  # Derive which standalone album each box-set disc reprints (MusicBrainzReleaseMedium.equivalentReleaseId/GroupId); also runs at the tail of --repair-multi-disc
+# Box-set fold/dissolve repair is not a flag - boxset::run_repair runs automatically at the tail of
+# every sync invocation, scoped by --only/--exact. One-off backfill/repair for existing data: ./repair-box-sets (see docs/multidisk.md §11)
 
 # Audit & Fix
 ./audit                       # Detect metadata issues → write to DB (all types)
@@ -252,6 +261,7 @@ cd scripts && cargo build --release    # Must rebuild manually!
 ./dissect                     # Parse errors.log → reports/errors.xlsx (--input/--output override paths)
 ./backup                      # pg_dump + image archive from the NAS → web/dump/
 ./restore [file.sql.gz]       # Load the latest (or named) dump into local PostgreSQL
+./repair-box-sets             # One-off: backfill fold/dissolve for existing multi-medium releases (docs/multidisk.md §11) - run once during the box-set rollout, not a recurring command
 ```
 Each script has a doc in `docs/scripts/`. `mosaic` has no wrapper — it is invoked by the web app
 (`/api/labs/mosaic/generate`).

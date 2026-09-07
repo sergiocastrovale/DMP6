@@ -85,7 +85,7 @@ pub struct MbTrack {
     /// The recording this track performs - stable across every release/medium that reprints the
     /// same recording (a box-set disc and the standalone album it duplicates share this id, even
     /// though their own `id` and release-scoped `musicbrainzId` differ). This is the join key for
-    /// MusicBrainzReleaseMedium.equivalentReleaseId - see docs/box_sets.md section 2.3.
+    /// MusicBrainzReleaseMedium.equivalentReleaseId - see docs/multidisk.md §5.
     pub recording: Option<MbRecordingRef>,
 }
 

@@ -231,9 +231,9 @@ FROM "LocalRelease" lr WHERE lr."folderPath" LIKE 'ABBA/%(9CD)%';
 - [x] Tests incl. renumbering fixture (gapped position → sequential display)
 
 ### Phase 8 — docs
-- [ ] `docs/box_sets.md` → pointer to this file
-- [ ] CLAUDE.md box-set bullet
-- [ ] `docs/scripts/index.md`, `docs/scripts/sync.md`
+- [x] `docs/box_sets.md` already removed (Phase 0) - remaining stale references repointed to this file
+- [x] CLAUDE.md box-set bullet rewritten; obsolete `--repair-multi-disc`/`--link-box-editions` CLI lines removed; `./repair-box-sets` documented
+- [x] `docs/scripts/index.md`, `docs/scripts/sync.md` rewritten (flags table, Box Sets section)
 
 ### Phase 9 — rollout
 - [ ] Per §12, sequentially, with backup gates and completion confirmation at each step

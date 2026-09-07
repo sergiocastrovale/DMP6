@@ -1058,9 +1058,9 @@ async fn main() {
                     map
                 };
 
-                // Folders sync's tier-2 box-set matcher (`sync::boxset::run_repair`) already folded
-                // into one release - see `get_local_release_members`'s doc comment for why this must
-                // be consulted before disc_merge_plan/build_group_key, not merely alongside it.
+                // Folders sync's box-set repair (`sync::boxset::run_repair`) already folded into one
+                // release - see `get_local_release_members`'s doc comment for why this must be
+                // consulted before `build_group_key`, not merely alongside it.
                 let local_release_members = index::db::get_local_release_members(&pool)
                     .await
                     .unwrap_or_default();

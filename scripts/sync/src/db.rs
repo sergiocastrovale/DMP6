@@ -493,9 +493,9 @@ pub fn mb_medium_rows(media: &Option<Vec<MbMedia>>) -> Vec<MbMediumRow> {
 /// Reconcile a release's stored media with what MusicBrainz just returned, keyed on `position` (MB
 /// numbers media 1..N with no gaps, and `(releaseId, position)` is unique). Reconciles rather than
 /// delete-and-reinsert for the same reason `sync_mb_tracks_for_release` does: a naive replace would
-/// destroy `equivalentReleaseGroupId`/`equivalentReleaseId` on every sync, and `--link-box-editions`
-/// would have to recompute every medium's equivalence from scratch every single run instead of only
-/// the ones that actually changed.
+/// destroy `equivalentReleaseGroupId`/`equivalentReleaseId` on every sync, and the box-editions
+/// equivalence pass (`box_editions::run_link_box_editions`) would have to recompute every medium's
+/// equivalence from scratch every single run instead of only the ones that actually changed.
 pub async fn sync_mb_media_for_release(
     pool: &PgPool,
     release_id: &str,
@@ -552,7 +552,7 @@ pub async fn sync_mb_media_for_release(
     }
 
     // A medium MusicBrainz no longer lists (a rare release edit) - drop it. Its equivalence, if any,
-    // goes with it; the next --link-box-editions run recomputes what remains.
+    // goes with it; the next box-editions equivalence pass recomputes what remains.
     sqlx::query(
         r#"DELETE FROM "MusicBrainzReleaseMedium" WHERE "releaseId" = $1 AND position <> ALL($2)"#,
     )
