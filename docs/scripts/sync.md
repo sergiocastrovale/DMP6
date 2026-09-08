@@ -208,35 +208,46 @@ counts already understand. Search hits (Tier 3) and catalogue gaps keep using `i
 ever *invents* a Single — only a disc you own can produce one. `MatchCandidate.from_tags` is what
 selects the gate.
 
-### Already owned inside another release (`scripts/sync/src/owned.rs`)
+### Recordings already inside another release (`scripts/sync/src/owned.rs`)
 
-Coverage is computed from binds, and a `LocalRelease` can only point at one MB release — so a **bonus
-disc has no bind of its own**. `Radiohead/EP/2009 - In Rainbows Disk 2` physically holds CD 01 + CD 02
-(18 tracks, tagged `album = In Rainbows`, no MB ids), binds to the *In Rainbows* group, and leaves
-MusicBrainz's separate `In Rainbows Disk 2` group looking uncovered → MISSING gap → the trickle worker
-downloaded 8 tracks that were already on disc 2.
+Coverage is computed from binds, and a `LocalRelease` can only point at one MB release — so a release
+reissued inside something bigger **has no bind of its own**. `Radiohead/EP/2009 - In Rainbows Disk 2`
+physically holds CD 01 + CD 02 (18 tracks, tagged `album = In Rainbows`, no MB ids), binds to the *In
+Rainbows* group, and leaves MusicBrainz's separate `In Rainbows Disk 2` group looking uncovered. The
+same shape covers box sets and complete-recordings collections: a folder holding
+*The Complete Blue Note 1964-66 Jackie McLean Sessions* contains every track of `Right Now!`.
 
-Before writing a gap, `claim_owned_bundle` asks a stricter question: **is every track of this release
-already inside one local release?** A claim requires all of:
+**Containing those recordings is not owning that release.** A box set's rendition is a different
+edition, usually a different master, often different edits or takes — which is exactly why MusicBrainz
+models it as a separate release. DMP exists to tell a collector what they actually hold, so a contained
+release stays `MISSING`, stays counted as a gap, and stays acquirable. `detect_containment` only
+annotates it, so the collector can see where those songs already are before deciding.
+
+Detection requires all of:
 
 - every MB track matched to a **distinct** local track by normalized title (case/punctuation-insensitive);
 - durations within **±5s** where both are known — `In Rainbows: From the Basement` is the same ten
   songs played live and passed a title-only rule; its takes run 1–33s off the studio ones, and since
-  every track must match, one honest outlier refuses the claim;
+  every track must match, one honest outlier refuses it;
 - the local release is a **strict superset** (an exact-size match belongs to the matcher, which binds it);
 - at least 3 MB tracks (a one- or two-track "release" matches by coincidence inside any album).
 
-On a claim: the real release + its tracks are written, the local tracks are linked to them
-(`LocalReleaseTrack.mbTrackId` — so `sync --only-write-mb-to-files` puts the ids in the files), the
-release is stored `COMPLETE` with `statusReason = 'Owned as part of "<folder>"'`, dead queue rows for
-the group are rejected, and **no gap is created**. Release-level ids are deliberately *not* written to
-those files: making 8 tracks the majority `MUSICBRAINZ_ALBUMID` of an 18-track folder would rebind the
-whole folder to the bonus disc, and `In Rainbows` itself would then look missing.
+On a hit the gap is written with `statusReason = 'Recordings inside "<container>"'` and nothing else.
+`detect_containment` is read-only: no MB release rows, no track rows, **no `LocalReleaseTrack.mbTrackId`
+links**, no file writes, no queue rejections. The web side reads the note through
+`containmentContainerTitle()` (`web/helpers/functions.ts`), resolves the named container to a local
+release for the click-through, and renders a muted badge on a row that is still, visibly, a gap.
 
-`get_covered_release_group_ids` counts a group as owned when every one of its MB tracks is linked to a
-local track, so a claim survives — the check costs one MB call per group, once, and never repeats.
-The web side finishes the job: `rejectOwnedElsewhereDownloads` (monitor tick, 60s) rejects any staged
-READY download whose release carries that reason, purging its files through the normal reject path.
+Detection costs one MB call per uncovered group, so the note is carried across syncs:
+`get_contained_notes_for_artist` snapshots it before the gap pass wipes and rewrites the rows, and only
+`--overwrite` pays to re-derive it.
+
+> **History.** Until 2026-09 this was `claim_owned_bundle`, which marked the contained release
+> `COMPLETE`, rejected its queued downloads, and linked the *container's* local tracks to the contained
+> release's MB tracks — overwriting their real MB identity and making `sync --only-write-mb-to-files`
+> stamp a mismatched album/track id pair into the files. On the live library that was 1,583 releases
+> reported as owned that were not, and 11,162 mis-pointed track rows.
+> `scripts/sql/undo_owned_bundle_claims.sql` reverses both.
 
 ### Rejected candidates fall back to search
 
@@ -352,7 +363,7 @@ fold-vs-dissolve, equivalence), and does so automatically at the tail of every r
 
 - **Binding**: tags agreeing with MB bind a folder to its release + medium position for free; when they
   don't (every disc tagged `discNumber=1`), `boxset::plan_box_bind`'s tracklist matcher (title + duration
-  ±5s, the `claim_owned_bundle` rule) decides, accepting only a perfect matching.
+  ±5s, the `find_owning_bundle` rule) decides, accepting only a perfect matching.
 - **Equivalence** (`sync::box_editions`, three tiers, each only running on what the previous left
   unlinked): tier 1 exact recording-set equi-join (`recordingFingerprint`, no track-count floor - exact
   ID equality has zero coincidence risk); tier 2 artist-scoped title+duration positional fallback for
@@ -379,9 +390,9 @@ fold-vs-dissolve, equivalence), and does so automatically at the tail of every r
 This is not a micro-optimisation. Unscoped, the MB variant deletes every non-MISSING `MusicBrainzRelease`
 in the library that is unbound at that instant — so `./sync --only "One Artist"` could take out a perfectly
 real release whose `LocalRelease` index had just regrouped, for an artist the run never touched.
-`delete_orphaned_mb_releases` also spares a release an owned-bundle claim still points at via
-`LocalReleaseTrack.mbTrackId` — see "Already owned inside another release" above; `LocalRelease.releaseId`
-alone doesn't see that link.
+`delete_orphaned_mb_releases` also spares a release that local tracks still point at via
+`LocalReleaseTrack.mbTrackId` while no `LocalRelease.releaseId` does — the shape a dissolved box leaves
+behind (docs/multidisk.md §5); `LocalRelease.releaseId` alone doesn't see that link.
 
 `retire_owned_missing_placeholders` stays global, but is **not** self-contained: it only pins a
 placeholder while a `DownloadedRelease` targeting it is in a *live* state

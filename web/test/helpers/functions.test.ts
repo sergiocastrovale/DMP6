@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   canCancelDownload,
+  containmentContainerTitle,
   canRejectDownload,
   canRequeueDownload,
   canRetryDownload,
@@ -461,5 +462,26 @@ describe('toggleRowSelection', () => {
   it('falls back to a plain toggle when the anchor row is no longer in the list', () => {
     const next = toggleRowSelection(ids, new Set(), 'c', { shiftKey: true }, 'z')
     expect(next).toEqual(new Set(['c']))
+  })
+})
+
+describe('containmentContainerTitle', () => {
+  it('extracts the container title from a containment note', () => {
+    expect(containmentContainerTitle('Recordings inside "The First Four Years"')).toBe('The First Four Years')
+  })
+
+  it('handles a container title containing quotes of its own', () => {
+    expect(containmentContainerTitle('Recordings inside "Live at the "Star Club""')).toBe('Live at the "Star Club"')
+  })
+
+  it('returns null for any other statusReason', () => {
+    expect(containmentContainerTitle('incomplete: 3/9 tracks')).toBeNull()
+    expect(containmentContainerTitle('Owned as part of "The First Four Years"')).toBeNull()
+  })
+
+  it('returns null for a missing or empty reason', () => {
+    expect(containmentContainerTitle(null)).toBeNull()
+    expect(containmentContainerTitle(undefined)).toBeNull()
+    expect(containmentContainerTitle('')).toBeNull()
   })
 })

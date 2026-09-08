@@ -236,3 +236,11 @@ export const toggleRowSelection = <T extends string | number>(
   next.has(id) ? next.delete(id) : next.add(id)
   return next
 }
+
+// A MISSING gap's `statusReason` can carry the containment note sync writes when every one of the
+// release's tracks already sits inside a bigger local release - a box set, a compilation, a two-disc
+// folder (scripts/sync/src/owned.rs). Holding that container is NOT holding this release, so the row
+// stays a gap; the note only says where those recordings can already be heard. Returns the container's
+// title, or null when the reason is anything else.
+export const containmentContainerTitle = (statusReason?: string | null): string | null =>
+  statusReason?.match(/^Recordings inside "(.+)"$/)?.[1] ?? null

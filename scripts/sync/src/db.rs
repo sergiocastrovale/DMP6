@@ -410,55 +410,6 @@ pub async fn sync_mb_tracks_for_release(
     Ok(out)
 }
 
-pub async fn batch_insert_mb_tracks(
-    pool: &PgPool,
-    release_id: &str,
-    tracks: &[MbTrackRow],
-) -> Result<Vec<(String, Option<String>)>, sqlx::Error> {
-    // Returns Vec<(db_track_id, mb_track_id)>
-    if tracks.is_empty() {
-        return Ok(Vec::new());
-    }
-    let len = tracks.len();
-    let ids: Vec<String> = (0..len).map(|_| cuid2::create_id()).collect();
-    let titles: Vec<&str> = tracks.iter().map(|t| t.title.as_str()).collect();
-    let positions: Vec<Option<i32>> = tracks.iter().map(|t| t.position).collect();
-    let disc_numbers: Vec<Option<i32>> = tracks.iter().map(|t| t.disc_number).collect();
-    let durations: Vec<Option<i32>> = tracks.iter().map(|t| t.duration_ms).collect();
-    let mb_ids: Vec<Option<&str>> = tracks.iter().map(|t| t.mb_id.as_deref()).collect();
-    let recording_ids: Vec<Option<&str>> =
-        tracks.iter().map(|t| t.recording_id.as_deref()).collect();
-    let release_ids: Vec<&str> = vec![release_id; len];
-    let now = Utc::now().naive_utc();
-    let timestamps: Vec<NaiveDateTime> = vec![now; len];
-
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        r#"INSERT INTO "MusicBrainzReleaseTrack"
-             (id, title, position, "discNumber", "durationMs", "musicbrainzId", "recordingId",
-              "releaseId", "createdAt", "updatedAt")
-           SELECT * FROM UNNEST(
-             $1::text[], $2::text[], $3::int[], $4::int[], $5::int[], $6::text[], $7::text[],
-             $8::text[], $9::timestamp[], $10::timestamp[]
-           )
-           ON CONFLICT DO NOTHING
-           RETURNING id, "musicbrainzId""#,
-    )
-    .bind(&ids)
-    .bind(&titles)
-    .bind(&positions)
-    .bind(&disc_numbers)
-    .bind(&durations)
-    .bind(&mb_ids)
-    .bind(&recording_ids)
-    .bind(&release_ids)
-    .bind(&timestamps)
-    .bind(&timestamps)
-    .fetch_all(pool)
-    .await?;
-
-    Ok(rows)
-}
-
 // ---------------------------------------------------------------------------
 // MusicBrainzReleaseMedium
 // ---------------------------------------------------------------------------
@@ -863,9 +814,10 @@ pub type ArtistScope<'a> = Option<&'a [String]>;
 /// column collapses to UNKNOWN for every row as soon as one NULL enters the subquery, which is what
 /// that `IS NOT NULL` guard existed to work around.
 ///
-/// The second `NOT EXISTS` protects a release `owned::claim_owned_bundle` claimed: it links
-/// `LocalReleaseTrack.mbTrackId` to that release's tracks while `LocalRelease.releaseId` points at the
-/// *container* release, so the first `NOT EXISTS` alone sees it as unbound and would delete it.
+/// The second `NOT EXISTS` keeps a release whose tracks are referenced by `LocalReleaseTrack.mbTrackId`
+/// even though no `LocalRelease.releaseId` points at it — the shape `boxset`'s dissolved discs leave
+/// behind. Without it the first `NOT EXISTS` alone reads such a release as unbound and deletes it,
+/// nulling the track links with it.
 pub async fn delete_orphaned_mb_releases(
     pool: &PgPool,
     scope: ArtistScope<'_>,
@@ -983,12 +935,9 @@ pub async fn delete_missing_releases_for_artist(
 // "uncovered" here, so catalogue-gaps created a MISSING placeholder and the trickle worker
 // re-downloaded an album the library already had (landing under the connected artist's folder).
 pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> HashSet<String> {
-    // Three ways a group counts as owned:
+    // Two ways a group counts as owned:
     //   1. a LocalRelease is bound to one of its releases (the ordinary case), or
-    //   2. every one of its MB tracks is linked to a local track (`owned.rs`'s bundle claim) — a
-    //      bonus disc that lives inside a bigger local folder has no bind of its own, and without
-    //      this it would come back as a MISSING gap on every run and be downloaded again, or
-    //   3. it is a dissolved box (docs/multidisk.md §5 point 4/§6): a box's own release has no bind
+    //   2. it is a dissolved box (docs/multidisk.md §5 point 4/§6): a box's own release has no bind
     //      on its own release group once its discs are dissolved onto their equivalent albums, so
     //      without this branch every dissolved box reads MISSING and gets re-downloaded whole. A
     //      multi-medium release counts covered when EVERY one of its media is covered — bound at
@@ -1003,21 +952,6 @@ pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> Ha
            JOIN "Artist" a ON a.id = lra."artistId"
            WHERE (lra."artistId" = $1 OR a."primaryArtistId" = $1)
              AND mbr."releaseGroupId" IS NOT NULL
-           UNION
-           SELECT DISTINCT mbr."releaseGroupId"
-           FROM "MusicBrainzRelease" mbr
-           JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mbr.id
-           JOIN "Artist" a2 ON a2.id = mra."artistId"
-           WHERE (mra."artistId" = $1 OR a2."primaryArtistId" = $1)
-             AND mbr."releaseGroupId" IS NOT NULL
-             AND EXISTS (SELECT 1 FROM "MusicBrainzReleaseTrack" t WHERE t."releaseId" = mbr.id)
-             AND NOT EXISTS (
-               SELECT 1 FROM "MusicBrainzReleaseTrack" t
-               WHERE t."releaseId" = mbr.id
-                 AND NOT EXISTS (
-                   SELECT 1 FROM "LocalReleaseTrack" lt WHERE lt."mbTrackId" = t.id
-                 )
-             )
            UNION
            SELECT DISTINCT mbr."releaseGroupId"
            FROM "MusicBrainzRelease" mbr
@@ -1054,8 +988,33 @@ pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> Ha
     rows.into_iter().map(|(id,)| id).collect()
 }
 
+/// Release group -> containment note, for this artist's existing MISSING gaps.
+///
+/// Snapshotted before the gap pass wipes and rewrites those rows. Re-applying a note costs nothing;
+/// re-deriving it costs one MusicBrainz call per group, so an ordinary sync carries the note forward
+/// and only `--overwrite` pays to re-check it.
+pub async fn get_contained_notes_for_artist(
+    pool: &PgPool,
+    artist_id: &str,
+) -> HashMap<String, String> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        r#"SELECT DISTINCT mbr."releaseGroupId", mbr."statusReason"
+           FROM "MusicBrainzRelease" mbr
+           JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = mbr.id
+           WHERE mra."artistId" = $1
+             AND mbr.status = 'MISSING'
+             AND mbr."releaseGroupId" IS NOT NULL
+             AND mbr."statusReason" IS NOT NULL"#,
+    )
+    .bind(artist_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter().collect()
+}
+
 /// Every local release of this artist with its track ids + titles — the candidate containers for
-/// `owned::find_owning_bundle`. One query per artist; only pulled when there are gaps to test.
+/// `owned::detect_containment`. One query per artist; only pulled when there are gaps to test.
 pub async fn get_local_bundles_for_artist(
     pool: &PgPool,
     artist_id: &str,
@@ -1088,27 +1047,6 @@ pub async fn get_local_bundles_for_artist(
         }
     }
     bundles
-}
-
-/// Take an already-owned release out of the download queue. Only touches rows that are not in
-/// flight: cancelling a live transfer (or discarding files already staged for merge) is the user's
-/// call, not a side effect of a catalogue pass.
-pub async fn reject_queued_downloads_for_group(
-    pool: &PgPool,
-    release_group_id: &str,
-    reason: &str,
-) -> Result<u64, sqlx::Error> {
-    let res = sqlx::query(
-        r#"UPDATE "DownloadedRelease"
-           SET status = 'REJECTED', error = $2, "updatedAt" = NOW()
-           WHERE "releaseGroupId" = $1
-             AND status IN ('UNAVAILABLE', 'FAILED', 'INVALID', 'ABANDONED')"#,
-    )
-    .bind(release_group_id)
-    .bind(reason)
-    .execute(pool)
-    .await?;
-    Ok(res.rows_affected())
 }
 
 pub async fn get_missing_release_group_ids_for_artist(

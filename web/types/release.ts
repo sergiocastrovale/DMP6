@@ -95,7 +95,7 @@ export interface MbReleaseRow {
   mediumCount: number
   media: { position: number, title: string | null, equivalentReleaseId: string | null, equivalentReleaseGroupId: string | null }[]
   type: { name: string, slug: string }
-  tracks: { id: string, localTracks?: { localReleaseId: string | null }[] }[]
+  tracks: { id: string }[]
 }
 
 export interface LocalReleaseRow {

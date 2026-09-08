@@ -54,12 +54,7 @@ export default defineEventHandler(async (event) => {
             orderBy: { position: 'asc' },
           },
           type: { select: { name: true, slug: true } },
-          tracks: {
-            select: {
-              id: true,
-              localTracks: { select: { localReleaseId: true } },
-            },
-          },
+          tracks: { select: { id: true } },
         },
       },
     },

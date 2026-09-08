@@ -5,6 +5,7 @@ import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { downloadStatusTone, statuses } from '~/helpers/constants'
 import { canRedownload } from '~/helpers/artistPageLogic'
+import { containmentContainerTitle } from '~/helpers/functions'
 import { cx, ICON_STROKE_WIDTH, surface, toneBg } from '~/helpers/ui'
 import DownloadProgress from '~/components/downloads/DownloadProgress.vue'
 
@@ -51,10 +52,15 @@ const terminal = useTerminalStore()
 const { merge: mergeNow, busyIds: mergeBusyIds } = useDownloadQueueActions()
 const onMergeNow = () => mergeNow(props.release.downloadedReleaseId!)
 
-const releaseId = computed(() => props.release.localReleaseId || props.release.bundleParentReleaseId || props.release.id)
+// Deliberately no fall-back to bundleParentReleaseId: a gap noting that its recordings sit inside
+// another release is not that release, so the container playing must not light this row up.
+const releaseId = computed(() => props.release.localReleaseId || props.release.id)
 const isCurrent = computed(() => isCurrentReleaseId(releaseId.value))
 const isPlaying = computed(() => isReleasePlayingId(releaseId.value))
 const hasPlayable = computed(() => !!props.release.localReleaseId || props.release.localTrackCount > 0)
+// A gap whose recordings already sit inside a bigger local release says so - it stays a gap, so the
+// badge is muted, never a status pill (scripts/sync/src/owned.rs).
+const containmentNote = computed(() => containmentContainerTitle(props.release.statusReason) ? props.release.statusReason : null)
 const coArtists = computed(() => props.coArtists ?? props.release.coArtists ?? [])
 const displayTrackCount = computed(() => props.trackCount ?? props.release.trackCount)
 const displayPlayCount = computed(() => props.playCount ?? props.release.totalPlayCount)
@@ -133,15 +139,23 @@ const alsoPartOfLabel = computed(() =>
             @toggle="emit('toggleFavorite')"
           />
           <button
-            v-if="release.bundleParentReleaseId"
+            v-if="containmentNote && release.bundleParentReleaseId"
             type="button"
-            class="flex shrink-0 items-center gap-1 truncate rounded bg-amber-400/10 px-1.5 py-0.5 text-2xs font-medium text-amber-400 transition-colors duration-150 hover:bg-amber-400/20"
-            :title="release.statusReason || 'View the release this is bundled in'"
+            class="flex shrink-0 items-center gap-1 truncate rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60 transition-colors duration-150 hover:bg-stone-100/15 hover:text-stone-100"
+            :title="`${containmentNote} - this release itself is still missing`"
             @click.stop="emit('goToBundle')"
           >
             <Layers :size="10" :stroke-width="ICON_STROKE_WIDTH" />
-            <span class="truncate">{{ release.statusReason || 'Owned as part of another release' }}</span>
+            <span class="truncate">{{ containmentNote }}</span>
           </button>
+          <span
+            v-else-if="containmentNote"
+            class="flex shrink-0 items-center gap-1 truncate rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60"
+            :title="`${containmentNote} - this release itself is still missing`"
+          >
+            <Layers :size="10" :stroke-width="ICON_STROKE_WIDTH" />
+            <span class="truncate">{{ containmentNote }}</span>
+          </span>
         </div>
         <div class="mt-0.5 flex items-center gap-3 text-xs text-stone-100/60">
           <span v-if="release.type" class="hidden md:inline">{{ release.type }}</span>
@@ -253,9 +267,8 @@ const alsoPartOfLabel = computed(() =>
           @click="emit('redownload')"
         />
 
-        <!-- Intentionally not shown for bundle-owned sub-releases (bundleParentReleaseId set, no
-             localReleaseId): there's no separate folder to re-scan, the parent row's own Refresh
-             already covers those files. -->
+        <!-- Not shown for a gap noting containment (bundleParentReleaseId set, no localReleaseId):
+             there's no folder of its own to re-scan, and the container row has its own Refresh. -->
         <DataTableAction
           v-if="release.localReleaseId"
           :icon="RefreshCw"

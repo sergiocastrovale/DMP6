@@ -4,6 +4,7 @@
 // testing without spinning up a database.
 
 import type { MbReleaseRow, LocalReleaseRow, ImageResolver, UnifiedRelease, LocalAndGapCardsResult } from '~/types/release'
+import { containmentContainerTitle } from '~/helpers/functions'
 
 // Single-release field mapping shared by the batch card builders below and the single-release lookup
 // endpoint (server/api/releases/[id].get.ts) - keeps `image`/`imageUrl`/type/format/etc. derivation in
@@ -209,12 +210,14 @@ export function buildLocalAndGapCards(params: {
     if (coveredMbIds.has(mbr.id)) {continue}
     if (!ALLOWED_GAP_TYPES.has(mbr.type.slug)) {continue}
     const gapImg = resolveImage(null, null, 'releases')
-    // Tracks may be individually claimed into another folder's local release without this MB
-    // release ever getting its own LocalRelease row (claim_owned_bundle, see CLAUDE.md) - detect
-    // that via the mbTrackId reverse join so the card can still surface play/favorite/link actions.
-    const linkedTracks = mbr.tracks.flatMap(t => t.localTracks ?? [])
-    const bundleParentReleaseId = linkedTracks.find(t => t.localReleaseId)?.localReleaseId ?? null
-    const linkedTrackCount = mbr.tracks.filter(t => (t.localTracks ?? []).length > 0).length
+    // A gap whose every track already sits inside a bigger local release carries a containment note
+    // (scripts/sync/src/owned.rs). It stays a gap - a box set's rendition of an album is not that
+    // album - but the note names the container, which we resolve to its local release so the card can
+    // link across to it.
+    const containerTitle = containmentContainerTitle(mbr.statusReason)
+    const bundleParentReleaseId = containerTitle
+      ? localReleases.find(lr => lr.title === containerTitle)?.id ?? null
+      : null
     cards.push({
       id: mbr.id,
       title: mbr.title,
@@ -235,7 +238,7 @@ export function buildLocalAndGapCards(params: {
       imageUrl: gapImg.imageUrl,
       trackCount: mbr.tracks.length,
       totalPlayCount: 0,
-      localTrackCount: linkedTrackCount,
+      localTrackCount: 0,
       isMusicBrainz: true,
       hasLocal: false,
       localReleaseId: null,

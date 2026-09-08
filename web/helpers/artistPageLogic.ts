@@ -65,14 +65,14 @@ export const canRedownload = (release: UnifiedRelease, downloadsEnabled: boolean
   && !!release.mbReleaseRowId
   && (release.status === 'MISSING_TRACKS' || release.status === 'INCOMPLETE')
 
-// Favoriting/refresh act on a real LocalRelease id. A bundle-owned sub-release (claim_owned_bundle,
-// see CLAUDE.md) has no LocalRelease of its own - its tracks live in the parent bundle folder's row -
-// so favoriting falls back to that parent.
+// Favoriting/refresh act on a real LocalRelease id. A gap that only notes containment (owned.rs, see
+// CLAUDE.md) has no LocalRelease of its own, so favoriting falls back to the container it names -
+// which is what the button says it does, since the gap itself is not owned.
 export const favoriteTargetId = (release: UnifiedRelease): string | null =>
   release.localReleaseId || release.bundleParentReleaseId || null
 
-// Resolves a bundle-owned sub-release's "Owned as part of X" link to the actual parent UnifiedRelease
-// card in the current list, for expand/scroll navigation.
+// Resolves a gap's `Recordings inside "X"` note to the actual container UnifiedRelease card in the
+// current list, for expand/scroll navigation.
 export const findBundleParentRelease = (releases: UnifiedRelease[], release: UnifiedRelease): UnifiedRelease | null =>
   release.bundleParentReleaseId
     ? releases.find(r => r.localReleaseId === release.bundleParentReleaseId) ?? null

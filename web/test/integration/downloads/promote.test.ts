@@ -459,7 +459,7 @@ describe('promote.ts (real Postgres)', () => {
       expect(await prisma.musicBrainzRelease.findUnique({ where: { id: boundMb.id } })).not.toBeNull()
     })
 
-    it('MISSING_TRACKS discard: keeps the matched MusicBrainzRelease when an owned-bundle LocalReleaseTrack.mbTrackId still points at one of its tracks', async () => {
+    it('MISSING_TRACKS discard: keeps the matched MusicBrainzRelease when a LocalReleaseTrack.mbTrackId still points at one of its tracks', async () => {
       const { mergeDownloadedRelease } = await import('../../../server/utils/promote')
 
       const rel = 'Some Artist/2020 - Bonus Disc Album'
@@ -470,8 +470,8 @@ describe('promote.ts (real Postgres)', () => {
       const rgId = `rg-bonus-${randomUUID()}`
       const boundMb = await makeMbRelease(prisma, { status: 'MISSING_TRACKS', releaseGroupId: rgId })
       const mbTrack = await makeMbTrack(prisma, boundMb.id)
-      // Stand-in for scripts/sync/src/owned.rs::claim_owned_bundle: a bonus-disc track linked via
-      // LocalReleaseTrack.mbTrackId while LocalRelease.releaseId points at a different container.
+      // A track linked via LocalReleaseTrack.mbTrackId while LocalRelease.releaseId points at a
+      // different release - the shape a dissolved box leaves behind (docs/multidisk.md §5).
       const container = await makeLocalRelease(prisma, { matchStatus: 'COMPLETE' })
       await makeLocalTrack(prisma, { localReleaseId: container.id, mbTrackId: mbTrack.id })
       const lr = await makeLocalRelease(prisma, { folderPath: rel, matchStatus: 'MISSING_TRACKS', releaseId: boundMb.id })

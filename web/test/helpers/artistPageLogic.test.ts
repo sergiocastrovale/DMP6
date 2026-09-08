@@ -203,7 +203,7 @@ describe('favoriteTargetId', () => {
     expect(favoriteTargetId(release({ localReleaseId: 'lr1', bundleParentReleaseId: null }))).toBe('lr1')
   })
 
-  it('falls back to bundleParentReleaseId for an owned-bundle sub-release with no LocalRelease of its own', () => {
+  it('falls back to bundleParentReleaseId for a contained gap with no LocalRelease of its own', () => {
     expect(favoriteTargetId(release({ localReleaseId: null, bundleParentReleaseId: 'parent-lr' }))).toBe('parent-lr')
   })
 

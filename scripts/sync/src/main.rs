@@ -1882,11 +1882,13 @@ async fn main() {
                 }
             };
             if let Some(official_rg_ids) = official_rg_ids {
+                // Notes survive the wipe below: re-deriving one costs an MB call per group.
+                let contained_notes = get_contained_notes_for_artist(&pool, &artist.id).await;
                 delete_missing_releases_for_artist(&pool, &artist.id).await.ok();
-                // Candidate containers for the "already owned inside another release" check below.
+                // Candidate containers for the "recordings already inside another release" note.
                 let local_bundles = get_local_bundles_for_artist(&pool, &artist.id).await;
                 let mut gap_count = 0u32;
-                let mut owned_count = 0u32;
+                let mut contained_count = 0u32;
                 for rg in &release_groups {
                     if covered_rg_ids.contains(&rg.id) {
                         continue;
@@ -1901,27 +1903,23 @@ async fn main() {
                     ) {
                         continue;
                     }
-                    // A bonus disc has its own MB release group but no bind of its own, so coverage
-                    // cannot see it and the trickle worker would download tracks already on disk.
-                    if let Some(owner) = owned::claim_owned_bundle(
-                        &pool,
-                        &http_client,
-                        &mut limiter,
-                        &artist.id,
-                        &rg.id,
-                        rg.primary_type.as_deref(),
-                        &local_bundles,
-                        &mut release_type_cache,
-                        &artist_genre_ids,
-                    )
-                    .await
-                    {
-                        owned_count += 1;
-                        reporter.info(&format!(
-                            "        ✓ {} already owned inside \"{}\" - linked, not queued",
-                            rg.title, owner
-                        ));
-                        continue;
+                    // The recordings may already sit inside a bigger local release (a box set, a
+                    // compilation, a two-disc folder). That is not ownership of *this* release, so it
+                    // stays a gap - we only note where they are (see `owned.rs`).
+                    let contained_note = match contained_notes.get(&rg.id) {
+                        Some(note) if !args.overwrite => Some(note.clone()),
+                        _ => owned::detect_containment(
+                            &http_client,
+                            &mut limiter,
+                            &rg.id,
+                            &local_bundles,
+                        )
+                        .await
+                        .map(|container| owned::containment_note(&container)),
+                    };
+                    if let Some(note) = &contained_note {
+                        contained_count += 1;
+                        reporter.info(&format!("        · {} - {}", rg.title, note));
                     }
                     let type_name = rg.primary_type.as_deref().unwrap_or("Other");
                     let type_id =
@@ -1942,8 +1940,8 @@ async fn main() {
                         ..Default::default()
                     };
                     if let Ok(mb_db_id) = upsert_mb_release(
-                        &pool, &rg.id, &rg.id, &rg.title, year, &type_id, "MISSING", None, None,
-                        &extras,
+                        &pool, &rg.id, &rg.id, &rg.title, year, &type_id, "MISSING",
+                        contained_note.as_deref(), None, &extras,
                     )
                     .await
                     {
@@ -1962,10 +1960,10 @@ async fn main() {
                         gap_count
                     ));
                 }
-                if owned_count > 0 {
+                if contained_count > 0 {
                     reporter.ok(&format!(
-                        "{} release(s) already owned inside another release - linked, not queued",
-                        owned_count
+                        "{} gap(s) noted as recordings already inside another release",
+                        contained_count
                     ));
                 }
             }

@@ -69,41 +69,48 @@ const mountRelease = (overrides: Partial<UnifiedRelease>, extraProps: Record<str
     },
   })
 
-describe('artist/ReleaseGroupDetails.vue - owned-bundle sub-release', () => {
-  it('shows the "owned as part of" pill and emits goToBundle on click, using bundleParentReleaseId', async () => {
-    const wrapper = await mountRelease({
-      bundleParentReleaseId: 'parent-lr',
-      statusReason: 'Owned as part of "Bing With a Beat"',
-    })
-    const pill = wrapper.findAll('button').find(b => b.attributes('title') === 'Owned as part of "Bing With a Beat"')
+describe('artist/ReleaseGroupDetails.vue - gap noting containment', () => {
+  const note = 'Recordings inside "Bing With a Beat"'
+
+  it('shows the containment note and emits goToBundle on click when the container resolved', async () => {
+    const wrapper = await mountRelease({ status: 'MISSING', bundleParentReleaseId: 'parent-lr', statusReason: note })
+    const pill = wrapper.findAll('button').find(b => b.text().includes(note))
     expect(pill).toBeTruthy()
     await pill!.trigger('click')
     expect(wrapper.emitted('goToBundle')).toHaveLength(1)
   })
 
-  it('does not render the pill for a normal local release (no bundleParentReleaseId)', async () => {
+  it('still shows the note, unclickable, when the container is not on this page', async () => {
+    const wrapper = await mountRelease({ status: 'MISSING', statusReason: note })
+    expect(wrapper.text()).toContain(note)
+    expect(wrapper.findAll('button').some(b => b.text().includes(note))).toBe(false)
+  })
+
+  it('renders the title greyed as a gap, not as an owned release', async () => {
+    const contained = await mountRelease({ status: 'MISSING', bundleParentReleaseId: 'parent-lr', statusReason: note })
+    const owned = await mountRelease({ status: 'COMPLETE', localReleaseId: 'own-lr', hasLocal: true })
+    const titleClass = (w: typeof contained) => w.findAll('span').find(el => el.text() === 'Bing With a Beat, Vol. II')!.classes().join(' ')
+    expect(titleClass(contained)).toContain('text-stone-100/55')
+    expect(titleClass(owned)).not.toContain('text-stone-100/55')
+  })
+
+  it('renders no note for a release whose statusReason is not a containment note', async () => {
+    const wrapper = await mountRelease({ status: 'MISSING', statusReason: 'incomplete: 3/9 tracks' })
+    expect(wrapper.text()).not.toContain('Recordings inside')
+  })
+
+  it('does not render a note for a normal local release', async () => {
     const wrapper = await mountRelease({ localReleaseId: 'own-lr', hasLocal: true })
-    expect(wrapper.text()).not.toContain('Owned as part of')
+    expect(wrapper.text()).not.toContain('Recordings inside')
   })
 
-  it('shows Favorite (labelled as favoriting the bundle) when only bundleParentReleaseId is set', async () => {
-    const wrapper = await mountRelease({ bundleParentReleaseId: 'parent-lr' })
-    expect(wrapper.find('[title="Favorite the release this is bundled in"]').exists()).toBe(true)
-  })
-
-  it('does not show Refresh for a bundle sub-release', async () => {
-    const wrapper = await mountRelease({ bundleParentReleaseId: 'parent-lr' })
+  it('does not show Refresh for a gap that only names a container', async () => {
+    const wrapper = await mountRelease({ status: 'MISSING', bundleParentReleaseId: 'parent-lr', statusReason: note })
     expect(wrapper.find('[title="Refresh this release"]').exists()).toBe(false)
   })
 
-  it('is expandable/playable once localTrackCount is real, even with no localReleaseId', async () => {
-    const wrapper = await mountRelease({ bundleParentReleaseId: 'parent-lr', localTrackCount: 2 })
-    await wrapper.find('[class*="group/edition"]').trigger('click')
-    expect(wrapper.emitted('toggle')).toHaveLength(1)
-  })
-
-  it('is not expandable when there is no bundle link and no local tracks', async () => {
-    const wrapper = await mountRelease({})
+  it('is not expandable: the container holds the files, this release is still a gap', async () => {
+    const wrapper = await mountRelease({ status: 'MISSING', bundleParentReleaseId: 'parent-lr', statusReason: note })
     await wrapper.find('[class*="group/edition"]').trigger('click')
     expect(wrapper.emitted('toggle')).toBeUndefined()
   })

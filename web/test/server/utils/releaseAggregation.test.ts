@@ -154,33 +154,43 @@ describe('buildLocalAndGapCards - core aggregation', () => {
     expect(cards[0]).toMatchObject({ hasLocal: false, isMusicBrainz: true, mbReleaseRowId: 'mb1' })
   })
 
-  it('an uncovered MB release whose tracks are individually claimed into another folder (owned bundle) exposes bundleParentReleaseId + a real track count', () => {
+  it('a gap noting containment stays a gap, but resolves the container it names to a local release', () => {
     const mb = mbRelease({
       id: 'mb1',
-      statusReason: 'Owned as part of "Bing With a Beat"',
-      tracks: [
-        { id: 't1', localTracks: [{ localReleaseId: 'parent-lr' }] },
-        { id: 't2', localTracks: [{ localReleaseId: 'parent-lr' }] },
-      ],
+      status: 'MISSING',
+      statusReason: 'Recordings inside "Bing With a Beat"',
+      tracks: [{ id: 't1' }, { id: 't2' }],
     })
+    const container = localRelease({ id: 'parent-lr', title: 'Bing With a Beat' })
     const { cards } = buildLocalAndGapCards({
-      localReleases: [], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+      localReleases: [container], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
     })
-    expect(cards).toHaveLength(1)
-    expect(cards[0]).toMatchObject({
+    const gap = cards.find(c => c.mbReleaseRowId === 'mb1')!
+    expect(gap).toMatchObject({
+      status: 'MISSING',
       hasLocal: false,
       localReleaseId: null,
       bundleParentReleaseId: 'parent-lr',
-      localTrackCount: 2,
+      localTrackCount: 0,
     })
   })
 
-  it('an uncovered MB release with no linked local tracks stays a plain gap (bundleParentReleaseId null, localTrackCount 0)', () => {
-    const mb = mbRelease({ id: 'mb1', tracks: [{ id: 't1', localTracks: [] }] })
+  it('a containment note whose container is not in this artist list still leaves a plain gap', () => {
+    const mb = mbRelease({ id: 'mb1', status: 'MISSING', statusReason: 'Recordings inside "Some Box"' })
     const { cards } = buildLocalAndGapCards({
       localReleases: [], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
     })
     expect(cards[0]).toMatchObject({ bundleParentReleaseId: null, localTrackCount: 0 })
+  })
+
+  it('an unrelated statusReason is not read as a containment note', () => {
+    const mb = mbRelease({ id: 'mb1', status: 'MISSING', statusReason: 'incomplete: 3/9 tracks' })
+    const container = localRelease({ id: 'parent-lr', title: 'incomplete: 3/9 tracks' })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [container], mbById: new Map([['mb1', mb]]), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    const gap = cards.find(c => c.mbReleaseRowId === 'mb1')!
+    expect(gap.bundleParentReleaseId).toBeNull()
   })
 
   it('non-album/ep types (e.g. single, compilation) never generate a gap card', () => {
