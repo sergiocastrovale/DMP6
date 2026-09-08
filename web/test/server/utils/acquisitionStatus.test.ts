@@ -14,6 +14,16 @@ vi.mock('~/server/utils/prisma', () => ({
   },
 }))
 
+// getAcquisitionStatus is only about the DB-driven enabled/noYearMissing logic here — the physical
+// environment probe (mounted volumes, ffmpeg, slskd) has its own coverage in
+// downloadEnvironment.test.ts, so stub it to a fixed "healthy" reading.
+const ok = { ok: true, detail: null }
+const healthyEnv = { downloadsPath: ok, readyPath: ok, musicDir: ok, ffmpeg: ok, ffmpegRequired: true, slskd: ok }
+vi.mock('~/server/utils/downloadEnvironment', () => ({
+  checkDownloadEnvironment: vi.fn().mockResolvedValue(healthyEnv),
+  acquireBlockReasons: () => [],
+}))
+
 const { isDownloadsEnabled, countNoYearMissing, getAcquisitionStatus } = await import('../../../server/utils/acquisitionStatus')
 
 describe('isDownloadsEnabled', () => {
@@ -86,7 +96,7 @@ describe('getAcquisitionStatus', () => {
 
     const status = await getAcquisitionStatus()
 
-    expect(status).toEqual({ canAcquire: true, enabled: true, noYearMissing: 2 })
+    expect(status).toEqual({ canAcquire: true, enabled: true, noYearMissing: 2, environment: healthyEnv })
   })
 
   it('is not acquirable when downloads are disabled', async () => {
@@ -95,6 +105,6 @@ describe('getAcquisitionStatus', () => {
 
     const status = await getAcquisitionStatus()
 
-    expect(status).toEqual({ canAcquire: false, enabled: false, noYearMissing: 0 })
+    expect(status).toEqual({ canAcquire: false, enabled: false, noYearMissing: 0, environment: healthyEnv })
   })
 })

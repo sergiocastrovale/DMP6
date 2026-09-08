@@ -114,7 +114,7 @@ const clearSelection = () => {
       automatically when slots free up. Force a retry to push one back to the front of the queue.
     </p>
 
-    <div class="flex items-center justify-between gap-4">
+    <div v-if="visible.length" class="flex items-center justify-between gap-4">
       <SearchInput v-model="search" placeholder="Search queue…" />
       <div class="flex items-center gap-2">
         <UiButton

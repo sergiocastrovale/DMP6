@@ -8,7 +8,7 @@ const props = withDefaults(defineProps<{
   sortKey: string
   activeKey: string | null
   dir: SortDirection
-  align?: 'left' | 'right'
+  align?: 'left' | 'right' | 'center'
 }>(), {
   align: 'left',
 })
@@ -24,13 +24,14 @@ const ariaSort = computed<'ascending' | 'descending' | 'none'>(() =>
 <template>
   <th
     :aria-sort="ariaSort"
-    :class="cx(data.th, align === 'right' ? 'text-right' : 'text-left')"
+    :class="cx(data.th, align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left')"
   >
     <UiButton
       variant="ghost"
       size="sm"
+      :class="align === 'center' && 'mx-auto'"
       :icon="align === 'right' ? icon : undefined"
-      :trailing-icon="align === 'right' ? undefined : icon"
+      :trailing-icon="align !== 'right' ? icon : undefined"
       :icon-class="active ? 'text-stone-100' : undefined"
       :title="`Sort by ${label}`"
       @click="emit('sort', sortKey)"

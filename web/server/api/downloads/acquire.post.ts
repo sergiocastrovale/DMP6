@@ -3,12 +3,14 @@ import { requirePermission } from '~/server/utils/permissions'
 import { prisma } from '~/server/utils/prisma'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { isDownloadsEnabled } from '~/server/utils/acquisitionStatus'
+import { assertCanAcquire } from '~/server/utils/downloadEnvironment'
 import { resolveReplaceTarget } from '~/server/utils/acquireDedup'
 import { routeAcquire } from '~/server/utils/autoDownload'
 
 // One-click manual grab for a single MISSING release.
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
+  await assertCanAcquire()
 
   const body = await readBody(event)
   const mbReleaseRowId = body?.mbReleaseRowId as string | undefined

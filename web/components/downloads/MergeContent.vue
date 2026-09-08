@@ -10,7 +10,7 @@ const {
   bulkMergeIds, bulkMergeOpen, askBulkMerge, confirmBulkMerge,
   openInfo, showInfo, infoRelease,
 } = useDownloadQueueActions()
-const { queueReady, mergeActive } = storeToRefs(store)
+const { queueReady, mergeActive, mergeBlockReasons } = storeToRefs(store)
 const toast = useToastStore()
 const highlightId = useHighlightId()
 
@@ -55,6 +55,10 @@ const onBulkAction = (key: string) => {
   if (!ids.length) {
     return
   }
+  if (key === 'merge' && mergeBlockReasons.value.length) {
+    toast.error(mergeBlockReasons.value.join('; '))
+    return
+  }
   selected.value = new Set()
   key === 'merge' ? askBulkMerge(ids) : askBulkReject(ids)
 }
@@ -70,12 +74,20 @@ const onBulkAction = (key: string) => {
       logs to History → Invalid, or to Queue → Failed as abandoned once attempts run out.
     </DownloadsTabHint>
 
-    <div class="flex items-center justify-between gap-4">
+    <div v-if="queueReady.length" class="flex items-center justify-between gap-4">
       <div class="flex items-center gap-2">
         <SearchInput v-model="search" placeholder="Search ready to merge…" />
         <Dropdown v-model="selectedArtist" :options="artistOptions" placeholder="All artists" />
       </div>
-      <UiButton v-if="queueReady.length" size="sm" variant="primary" :icon="FolderInput" :loading="mergeActive" title="Merge all ready releases into the library" @click="mergeAll">
+      <UiButton
+        size="sm"
+        variant="primary"
+        :icon="FolderInput"
+        :loading="mergeActive"
+        :disabled="mergeBlockReasons.length > 0"
+        :title="mergeBlockReasons.length ? mergeBlockReasons.join('; ') : 'Merge all ready releases into the library'"
+        @click="mergeAll"
+      >
         Merge all ({{ queueReady.length }})
       </UiButton>
     </div>
@@ -97,6 +109,7 @@ const onBulkAction = (key: string) => {
       :highlight-id="highlightId"
       selectable
       :selected="selected"
+      :merge-block-reasons="mergeBlockReasons"
       @update:selected="selected = $event"
       @merge="merge"
       @reject="reject"

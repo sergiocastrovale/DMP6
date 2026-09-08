@@ -23,7 +23,8 @@ const tabs = computed(() => [
   { key: 'PROMOTED', label: 'Promoted', count: counts.value.PROMOTED },
   { key: 'INVALID', label: 'Invalid', count: counts.value.INVALID },
 ])
-const items = computed(() => filterQueue(queueHistory.value.filter(i => i.status === sub.value), search.value))
+const baseItems = computed(() => queueHistory.value.filter(i => i.status === sub.value))
+const items = computed(() => filterQueue(baseItems.value, search.value))
 
 // If deep-linked to a specific row, jump to its status subtab once the queue loads.
 let jumped = false
@@ -47,7 +48,7 @@ watch(queueHistory, () => {
       be retried directly — a discarded release becomes downloadable again on its own.
     </DownloadsTabHint>
 
-    <div class="flex items-center justify-end">
+    <div v-if="baseItems.length" class="flex items-center">
       <SearchInput v-model="search" placeholder="Search history…" />
     </div>
 

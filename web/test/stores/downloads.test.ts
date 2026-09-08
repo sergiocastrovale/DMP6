@@ -285,13 +285,33 @@ describe('useDownloadsStore - simple fetch/action wrappers', () => {
     expect(store.statusChecked).toBe(true)
   })
 
-  it('fetchDownloadsEnabled populates downloadsEnabled from the server', async () => {
-    fetchMock.mockResolvedValueOnce({ enabled: false })
+  it('fetchDownloadCapabilities populates downloadsEnabled/env from the server', async () => {
+    const environment = {
+      downloadsPath: { ok: true, detail: null },
+      readyPath: { ok: true, detail: null },
+      musicDir: { ok: true, detail: null },
+      ffmpeg: { ok: true, detail: null },
+      ffmpegRequired: true,
+      slskd: { ok: true, detail: null },
+    }
+    fetchMock.mockResolvedValueOnce({ enabled: false, canAcquire: false, canMerge: true, environment })
     const store = useDownloadsStore()
 
-    await store.fetchDownloadsEnabled()
+    await store.fetchDownloadCapabilities()
 
     expect(store.downloadsEnabled).toBe(false)
+    expect(store.env).toEqual(environment)
+    expect(store.capabilitiesChecked).toBe(true)
+  })
+
+  it('fetchDownloadCapabilities clears downloadsEnabled when the request fails', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('403'))
+    const store = useDownloadsStore()
+
+    await store.fetchDownloadCapabilities()
+
+    expect(store.downloadsEnabled).toBe(false)
+    expect(store.capabilitiesChecked).toBe(true)
   })
 
   it('fetchActive populates activeDownloads', async () => {

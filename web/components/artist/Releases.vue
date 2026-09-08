@@ -51,7 +51,7 @@ const acquiringIds = ref<Set<string>>(new Set())
 
 onMounted(() => {
   downloadsStore.checkStatus()
-  downloadsStore.fetchDownloadsEnabled()
+  downloadsStore.fetchDownloadCapabilities()
 })
 
 onMounted(async () => {

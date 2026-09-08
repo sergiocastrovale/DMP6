@@ -22,8 +22,6 @@ BUGS
 
 Artist Damageplan shows an unmatched "Uncivilization" (Feat. Corey Taylor, Slitheryn, Soulfly, Snot, Biohazard). What is this release? It should the cover image as 'Soulfly - Jumpdafuckup' album. Confirm if bad metadata or bad matching bug with MB. Cover is definitely wrong.
 
-we should only show/allow any part of the download flow (including download buttons) if both the final collection folder and any of the paths / tools (like ffmpeg) are available. E.g. locally pointed at the production DB, but without the NAS's /mnt/SSD/Downloads volume mounted (and without ffmpeg on this box's relevant PATH). The staged files aren't gone — they're just not reachable from here so we get an error when merging. 
-
 a while ago you made it so claim_owned_bundle handles the "one folder covering an extra MB release" cases. I want to revisit this as it might be tremendously flawed. First: what are we even fixing with this? Give solid examples. 
 
 scripts/common/src/tags.rs:58 writes the track MBID into ItemKey::MusicBrainzRecordingId, so ./sync --only-write-mb-to-files has been stamping the wrong kind of id into your files. It is a file-writing fix with its own blast radius and belongs in a separate change.

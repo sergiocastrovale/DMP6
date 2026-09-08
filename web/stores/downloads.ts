@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useTerminalStore } from '~/stores/terminal'
-import type { ActiveDownload, DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth } from '~/types/download'
+import type { ActiveDownload, DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth, DownloadEnvironment } from '~/types/download'
 
 export const useDownloadsStore = defineStore('downloads', () => {
   const slskd = ref<DownloadSourceStatus>({ configured: false, connected: false })
@@ -9,6 +9,45 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   // Soulseek on/off switch (Settings.downloadsEnabled). Gates the per-release Download button.
   const downloadsEnabled = ref(true)
+
+  // Whether this instance can physically acquire/merge right now (mounted volumes, ffmpeg, slskd
+  // reachability — see server/utils/downloadEnvironment.ts). null = not fetched yet ("unknown"),
+  // treated as blocked so buttons never flash live before the first check lands.
+  const env = ref<DownloadEnvironment | null>(null)
+  const capabilitiesChecked = ref(false)
+  const canAcquire = computed(() => capabilitiesChecked.value && downloadsEnabled.value && !!env.value?.downloadsPath.ok && !!env.value?.slskd.ok)
+  const canMerge = computed(() => capabilitiesChecked.value && !!env.value?.readyPath.ok && !!env.value?.musicDir.ok && (!env.value?.ffmpegRequired || !!env.value?.ffmpeg.ok))
+  const acquireBlockReasons = computed(() => {
+    if (!capabilitiesChecked.value) {return ['Checking download environment…']}
+    if (!downloadsEnabled.value) {return ['Downloads are switched off in Settings → Downloads']}
+    const reasons: string[] = []
+    if (env.value && !env.value.downloadsPath.ok) {reasons.push(env.value.downloadsPath.detail!)}
+    if (env.value && !env.value.slskd.ok) {reasons.push(env.value.slskd.detail!)}
+    return reasons
+  })
+  const mergeBlockReasons = computed(() => {
+    if (!capabilitiesChecked.value) {return ['Checking download environment…']}
+    const reasons: string[] = []
+    if (env.value && !env.value.readyPath.ok) {reasons.push(env.value.readyPath.detail!)}
+    if (env.value && !env.value.musicDir.ok) {reasons.push(env.value.musicDir.detail!)}
+    if (env.value?.ffmpegRequired && !env.value.ffmpeg.ok) {reasons.push(env.value.ffmpeg.detail!)}
+    return reasons
+  })
+
+  // Every reason the download flow can't run at all (acquire or merge), independent of the
+  // Settings.downloadsEnabled toggle — used to gate pause/continue-all, which is orthogonal to
+  // that switch (nothing to pause/resume if the environment itself can't run either way).
+  const environmentBlockReasons = computed(() => {
+    if (!capabilitiesChecked.value) {return ['Checking download environment…']}
+    if (!env.value) {return []}
+    const reasons: string[] = []
+    if (!env.value.downloadsPath.ok) {reasons.push(env.value.downloadsPath.detail!)}
+    if (!env.value.readyPath.ok) {reasons.push(env.value.readyPath.detail!)}
+    if (!env.value.musicDir.ok) {reasons.push(env.value.musicDir.detail!)}
+    if (env.value.ffmpegRequired && !env.value.ffmpeg.ok) {reasons.push(env.value.ffmpeg.detail!)}
+    if (!env.value.slskd.ok) {reasons.push(env.value.slskd.detail!)}
+    return reasons
+  })
 
   // Download queue (DownloadedRelease rows)
   const queueActive = ref<DownloadedReleaseItem[]>([])
@@ -28,6 +67,22 @@ export const useDownloadsStore = defineStore('downloads', () => {
 
   // Host SongKong drainer liveness — explains why rows sit in ENRICHING (see EnrichmentStalledBanner).
   const songkong = ref<SongkongHealth | null>(null)
+
+  // Library-wide monitored-artist counts (unfiltered by search/list toggles) — shared between the
+  // /downloads header subtext and the Monitoring tab, so toggling monitoring for one artist there
+  // updates the header count too instead of the two staying independently fetched and drifting.
+  const monitoredArtists = ref(0)
+  const totalArtists = ref(0)
+  const fetchMonitorCounts = async () => {
+    try {
+      const data = await $fetch<{ total: number; monitoredCount: number }>('/api/artists/monitoring', {
+        query: { pageSize: 1, showComplete: true },
+      })
+      monitoredArtists.value = data.monitoredCount
+      totalArtists.value = data.total
+    }
+    catch { /* ignore */ }
+  }
 
   // Optimistic per-row/selected ids, set while a merge (always terminal-routed) is in flight -
   // instant spinner, lag-free count.
@@ -66,12 +121,21 @@ export const useDownloadsStore = defineStore('downloads', () => {
     }
   }
 
-  const fetchDownloadsEnabled = async () => {
+  const fetchDownloadCapabilities = async () => {
     try {
-      const data = await $fetch<{ enabled: boolean }>('/api/downloads/enabled')
+      const data = await $fetch<{ enabled: boolean, canAcquire: boolean, canMerge: boolean, environment: DownloadEnvironment }>('/api/downloads/enabled')
       downloadsEnabled.value = data.enabled
+      env.value = data.environment
     }
-    catch { /* ignore */ }
+    catch {
+      // No permission, or the request itself failed — never leave a VIEWER (or a broken fetch)
+      // showing live download buttons. downloadsEnabled defaults true, so it must be explicitly
+      // cleared here; env stays null, which the block-reason computeds treat as "unavailable".
+      downloadsEnabled.value = false
+    }
+    finally {
+      capabilitiesChecked.value = true
+    }
   }
 
   const fetchActive = async () => {
@@ -107,6 +171,8 @@ export const useDownloadsStore = defineStore('downloads', () => {
       freeGb.value = data.freeGb
       minFreeGb.value = data.minFreeGb
       acquisition.value = data.acquisition
+      env.value = data.acquisition.environment
+      capabilitiesChecked.value = true
       songkong.value = data.songkong
     }
     catch { /* ignore */ }
@@ -256,7 +322,14 @@ export const useDownloadsStore = defineStore('downloads', () => {
   return {
     slskd,
     downloadsEnabled,
-    fetchDownloadsEnabled,
+    fetchDownloadCapabilities,
+    env,
+    capabilitiesChecked,
+    canAcquire,
+    canMerge,
+    acquireBlockReasons,
+    mergeBlockReasons,
+    environmentBlockReasons,
     activeDownloads,
     statusChecked,
     activeCount,
@@ -275,6 +348,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
     freeGb,
     minFreeGb,
     acquisition,
+    monitoredArtists,
+    totalArtists,
+    fetchMonitorCounts,
     setPaused,
     fetchQueue,
     reject,

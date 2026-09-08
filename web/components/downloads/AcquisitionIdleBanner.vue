@@ -5,8 +5,10 @@ import { PauseCircle } from 'lucide-vue-next'
 const store = useDownloadsStore()
 const { acquisition, paused } = storeToRefs(store)
 
-// Idle when downloads are switched off (and not already covered by the pause banner).
-const acquisitionIdle = computed(() => !!acquisition.value && !acquisition.value.canAcquire)
+// Idle when downloads are switched off via the Settings toggle specifically — environment
+// unavailability (unmounted volume, unreachable slskd) gets its own banner (EnvironmentBanner)
+// naming the actual cause instead of this one pointing at the wrong fix.
+const acquisitionIdle = computed(() => !!acquisition.value && !acquisition.value.enabled)
 </script>
 
 <template>

@@ -88,7 +88,7 @@ onBeforeUnmount(() => {
             <X :size="20" class="" />
           </button>
         </div>
-        <div :class="cx(layout.dialogActions)">
+        <div v-if="$slots.actions" :class="cx(layout.dialogActions)">
           <slot name="actions" />
         </div>
 

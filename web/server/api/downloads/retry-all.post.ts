@@ -1,9 +1,11 @@
 import { requirePermission } from '~/server/utils/permissions'
 import { forceRetryDownloads } from '~/server/utils/autoDownload'
+import { assertCanAcquire } from '~/server/utils/downloadEnvironment'
 
 // Bulk "Retry" for a multi-select in the Queue tab.
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
+  await assertCanAcquire()
 
   const body = await readBody(event).catch(() => ({})) as { ids?: string[] }
   const ids = Array.isArray(body.ids) ? body.ids : []

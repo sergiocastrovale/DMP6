@@ -27,7 +27,7 @@ const item = (overrides: Partial<DownloadedReleaseItem>): DownloadedReleaseItem 
 describe('downloads/ApprovalQueue.vue', () => {
   it('shows the empty state when there are no items', async () => {
     const wrapper = await mountSuspended(ApprovalQueue, { props: { items: [] } })
-    expect(wrapper.text()).toContain('Nothing here.')
+    expect(wrapper.text()).toContain('No results found')
   })
 
   it('renders a row per item with artist link and title', async () => {

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { Brush, Pause, Play, AlertTriangle } from 'lucide-vue-next'
+import { Brush, Pause, Play } from 'lucide-vue-next'
 import type { TabItem } from '~/types/ui'
 import { cx, layout } from '~/helpers/ui'
 
 const store = useDownloadsStore()
 const toast = useToastStore()
-const { queueActive, readyCount, paused, pausedReason, freeGb, minFreeGb, mergeActive } = storeToRefs(store)
+const { queueActive, readyCount, paused, mergeActive, environmentBlockReasons, monitoredArtists, totalArtists } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
 const issuesPanel = ref<{ fetchEvents: () => Promise<void> } | null>(null)
@@ -27,26 +27,6 @@ const downloadProgressItems = computed(() => downloading.value.map(i => ({
   status: i.status, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes,
 })))
 
-const monitoredArtists = ref(0)
-const totalArtists = ref(0)
-const fetchMonitorCounts = async () => {
-  try {
-    const r = await $fetch<{ total: number; monitoredCount: number }>('/api/artists/monitoring', { query: { pageSize: 1 } })
-    monitoredArtists.value = r.monitoredCount
-    totalArtists.value = r.total
-  }
-  catch { /* ignore */ }
-}
-
-const breadcrumbRoot = { label: 'Downloads', to: '/downloads' }
-const breadcrumbLabels: Record<string, string> = {
-  monitoring: 'Monitoring',
-  merge: 'Ready to merge',
-  queue: 'Queue',
-  history: 'History',
-  events: 'Events',
-}
-
 const tabs = computed<TabItem[]>(() => [
   { key: 'monitoring', label: 'Monitoring', href: '/downloads/monitoring' },
   { key: 'merge', label: 'Ready to merge', href: '/downloads/merge', count: readyCount.value, countHighlight: true },
@@ -57,7 +37,10 @@ const tabs = computed<TabItem[]>(() => [
   { key: 'events', label: 'Events', href: '/downloads/events', count: monitorCounts.value.flagged, countHighlight: true },
 ])
 
+const monitoringCount = computed(() => `${monitoredArtists.value.toLocaleString()}/${totalArtists.value.toLocaleString()} artists`)
+
 const cleanupBusy = ref(false)
+
 const cleanup = async () => {
   cleanupBusy.value = true
   try {
@@ -72,6 +55,7 @@ const cleanup = async () => {
 }
 
 const pauseBusy = ref(false)
+
 const togglePause = async () => {
   pauseBusy.value = true
   actionMsg.value = null
@@ -84,64 +68,60 @@ const togglePause = async () => {
 
 onMounted(() => {
   store.checkStatus()
-  fetchMonitorCounts()
+  store.fetchDownloadCapabilities()
+  store.fetchMonitorCounts()
   // One-shot queue read: fetchQueue self-starts the live poll only if there's work to watch (in-flight
   // downloads, or acquisition possible). When idle/paused it stays off until a source is enabled or the
   // page is reloaded — no endless /queue hammering.
   store.fetchQueue()
 })
+
 onUnmounted(() => {
   store.stopQueuePolling()
 })
 </script>
 
 <template>
-  <TabShell :breadcrumb-root="breadcrumbRoot" :breadcrumb-labels="breadcrumbLabels" :tabs="tabs">
+  <TabShell :tabs="tabs">
     <template #header>
       <div :class="cx(layout.page)">
-        <PageTitle text="Downloads" />
+        <PageTitle text="Downloads" :subtext="`Monitoring ${monitoringCount}`">
+          <div class="flex items-center justify-between gap-4">
+            <div class="flex items-center gap-2">
+              <DownloadsDownloadDisabledButton
+                :icon="paused ? Play : Pause"
+                :label="paused ? 'Resume all downloads' : 'Pause all downloads'"
+                :loading="pauseBusy"
+                :variant="paused ? 'primary' : 'secondary'"
+                :reasons="environmentBlockReasons"
+                :icon-only="false"
+                @click="togglePause"
+              >
+                {{ paused ? 'Continue all downloads' : 'Pause all downloads' }}
+              </DownloadsDownloadDisabledButton>
+              <UiButton size="sm" variant="secondary" :icon="Brush" :loading="cleanupBusy" title="Remove orphaned ready releases" @click="cleanup">
+                Cleanup
+              </UiButton>
+            </div>
+          </div>
+        </PageTitle>
+        <div class="flex flex-col gap-4">
+          <DownloadsOperationsUnavailableBanner />
 
-        <div class="flex items-center justify-between gap-4">
-          <div class="flex items-center gap-3">
-            <span class="text-base text-stone-100/60">
-              Monitoring <span class="font-semibold text-stone-100">{{ monitoredArtists.toLocaleString() }}</span>/{{ totalArtists.toLocaleString() }} artists
-            </span>
-          </div>
-          <div class="flex items-center gap-2">
-            <UiButton
-              size="sm"
-              :variant="paused ? 'primary' : 'secondary'"
-              :icon="paused ? Play : Pause"
-              :loading="pauseBusy"
-              :title="paused ? 'Resume all downloads' : 'Pause all downloads'"
-              @click="togglePause"
-            >
-              {{ paused ? 'Continue all downloads' : 'Pause all downloads' }}
-            </UiButton>
-            <UiButton size="sm" variant="secondary" :icon="Brush" :loading="cleanupBusy" title="Remove orphaned ready releases" @click="cleanup">
-              Cleanup
-            </UiButton>
-          </div>
+          <DownloadsPausedBanner />
+
+          <DownloadsAcquisitionIdleBanner />
+
+          <DownloadsEnrichmentStalledBanner />
+
+          <DownloadsRecentIssuesPanel ref="issuesPanel" />
+
+          <p v-if="actionMsg" class="rounded-lg border border-stone-100/6 bg-stone-900 px-4 py-2 text-base text-stone-100/60">
+            {{ actionMsg }}
+          </p>
+
+          <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3" />
         </div>
-
-        <UiBanner v-if="paused" :tone="pausedReason === 'disk-full' ? 'danger' : 'accent'" :icon="AlertTriangle">
-          <template v-if="pausedReason === 'disk-full'">
-            Downloads auto-paused — disk full ({{ freeGb }} GB free, need {{ minFreeGb }} GB). Free space, then Continue.
-          </template>
-          <template v-else>All downloads paused. New downloads, catalogue scans and auto-merge are halted until you continue.</template>
-        </UiBanner>
-
-        <DownloadsAcquisitionIdleBanner />
-
-        <DownloadsEnrichmentStalledBanner />
-
-        <DownloadsRecentIssuesPanel ref="issuesPanel" />
-
-        <p v-if="actionMsg" class="rounded-lg border border-stone-100/6 bg-stone-900 px-4 py-2 text-base text-stone-100/60">
-          {{ actionMsg }}
-        </p>
-
-        <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3" />
       </div>
     </template>
 

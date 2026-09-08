@@ -39,6 +39,10 @@ const tabs = computed(() => [
   { key: 'archived', label: 'Archived', count: counts.value.archived },
 ])
 
+const deleteAllArchivedMessage = computed(() => `Permanently delete ${counts.value.archived} archived event${counts.value.archived === 1 ? '' : 's'}? This cannot be undone. Flagged events are untouched.`)
+
+const deleteOneArchivedMessage = computed(() => `Permanently delete this archived event? This cannot be undone.`)
+
 const visible = computed(() => {
   const q = search.value.trim().toLowerCase()
   return q ? items.value.filter(i => i.message.toLowerCase().includes(q) || i.level.includes(q)) : items.value
@@ -184,8 +188,7 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
     <ConfirmDialog
       v-model="confirmDeleteAll"
       title="Delete all archived events"
-      :message="`Permanently delete ${counts.archived} archived event${counts.archived === 1 ? '' : 's'}?`"
-      note="This cannot be undone. Flagged events are untouched."
+      :message="deleteAllArchivedMessage"
       confirm-label="Delete"
       variant="danger"
       :icon="Trash2"
@@ -195,8 +198,7 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
     <ConfirmDialog
       :model-value="confirmDeleteId !== null"
       title="Delete event"
-      message="Permanently delete this archived event?"
-      note="This cannot be undone."
+      :message="deleteOneArchivedMessage"
       confirm-label="Delete"
       variant="danger"
       :icon="Trash2"

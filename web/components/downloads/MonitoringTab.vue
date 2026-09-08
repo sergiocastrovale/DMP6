@@ -1,24 +1,26 @@
 <script setup lang="ts">
-import { Loader2, Radar, EyeOff, CircleHelp, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-vue-next'
+import { Loader2, Radar, EyeOff, CircleHelp, ChevronUp, ChevronDown, ChevronsUpDown, CheckCircle2 } from 'lucide-vue-next'
 import type { SortDirection } from '~/types/common'
 import type { MonitoringArtistRow as ArtistRow } from '~/types/artist'
 import { sw, surface, cx, ICON_STROKE_WIDTH, data, layout } from '~/helpers/ui'
 import { toggleRowSelection } from '~/helpers/functions'
+import { storeToRefs } from 'pinia'
 
 const store = useDownloadsStore()
 const toast = useToastStore()
+const { monitoredArtists, totalArtists } = storeToRefs(store)
 
 const search = ref('')
 const page = ref(1)
 const items = ref<ArtistRow[]>([])
 const total = ref(0)
-const monitoredCount = ref(0)
 const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
 const busyIds = ref(new Set<string>())
 const showMonitored = ref(true)
 const showUnmonitored = ref(true)
+const showComplete = ref(false)
 
 const sortKey = ref<'name' | 'missingReleases' | 'totalReleases' | 'monitored'>('name')
 const sortDir = ref<SortDirection>('asc')
@@ -44,7 +46,7 @@ const onSearch = (val: string) => {
   }, 300)
 }
 
-watch([showMonitored, showUnmonitored, sortKey, sortDir], () => {
+watch([showMonitored, showUnmonitored, showComplete, sortKey, sortDir], () => {
   page.value = 1
   items.value = []
   fetchItems()
@@ -69,13 +71,14 @@ const fetchItems = async (append = false) => {
         search: search.value || undefined,
         showMonitored: showMonitored.value,
         showUnmonitored: showUnmonitored.value,
+        showComplete: showComplete.value,
         sort: sortKey.value,
         dir: sortDir.value,
       },
     })
     items.value = append ? [...items.value, ...data.items] : data.items
     total.value = data.total
-    monitoredCount.value = data.monitoredCount
+    monitoredArtists.value = data.monitoredCount
     hasMore.value = data.hasMore
   }
   catch { /* ignore */ }
@@ -94,13 +97,14 @@ const loadMore = () => {
 
 const toggleMonitor = async (artist: ArtistRow) => {
   busyIds.value.add(artist.id)
+  const wasMonitored = artist.monitored
   try {
-    await $fetch(`/api/artists/${artist.slug}`, { method: 'PATCH', body: { monitored: !artist.monitored } })
+    await $fetch(`/api/artists/${artist.slug}`, { method: 'PATCH', body: { monitored: !wasMonitored } })
     const idx = items.value.findIndex(a => a.id === artist.id)
     if (idx !== -1) {
-      items.value[idx]!.monitored = !artist.monitored
+      items.value[idx]!.monitored = !wasMonitored
     }
-    monitoredCount.value += artist.monitored ? -1 : 1
+    monitoredArtists.value += wasMonitored ? -1 : 1
   }
   catch { /* ignore */ }
   finally {
@@ -167,7 +171,7 @@ const confirmBulk = async () => {
         a.monitored = monitor
       }
     })
-    monitoredCount.value += monitor ? ids.length : -ids.length
+    monitoredArtists.value += monitor ? ids.length : -ids.length
     selected.value = new Set()
     toast.success(`${monitor ? 'Monitoring' : 'Unmonitored'} ${ids.length} artist${ids.length === 1 ? '' : 's'}`)
   }
@@ -192,7 +196,7 @@ onMounted(() => {
       artist from that rotation.
     </DownloadsTabHint>
 
-    <div class="flex items-center justify-between gap-3">
+    <div v-if="totalArtists > 0" class="flex items-center justify-between gap-3">
       <SearchInput
         model-value=""
         placeholder="Search artists..."
@@ -203,8 +207,9 @@ onMounted(() => {
       <div class="flex items-center gap-4">
         <Switch v-model="showMonitored" label="Show monitored" />
         <Switch v-model="showUnmonitored" label="Show unmonitored" />
+        <Switch v-model="showComplete" label="Show complete" />
         <span class="shrink-0 text-base text-stone-100/55">
-          {{ monitoredCount.toLocaleString() }} / {{ total.toLocaleString() }} monitored
+          {{ monitoredArtists.toLocaleString() }} / {{ total.toLocaleString() }} monitored
         </span>
       </div>
     </div>
@@ -227,7 +232,8 @@ onMounted(() => {
           <UiCheckbox :model-value="allChecked" aria-label="Select all rows" @update:model-value="toggleAll" />
         </th>
         <SortableTh label="Artist" sort-key="name" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
-        <SortableTh label="Missing / MB total" sort-key="missingReleases" align="right" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+        <SortableTh label="Missing" sort-key="missingReleases" align="center" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
+        <SortableTh label="Total" sort-key="totalReleases" align="center" :active-key="sortKey" :dir="sortDir" @sort="onSort" />
         <th :class="cx(data.th, 'text-right')">
           <div class="flex items-center justify-end gap-1.5">
             <button
@@ -273,16 +279,29 @@ onMounted(() => {
             <UiCheckbox :model-value="selected.has(artist.id)" :aria-label="`Select ${artist.name}`" @update:model-value="toggleRow(artist.id)" />
           </td>
           <td :class="data.td">
-            <NuxtLink :to="`/artist/${artist.slug}`" class="text-stone-100 transition-colors duration-150 hover:text-amber-400">
-              {{ artist.name }}
-            </NuxtLink>
+            <div class="flex items-center gap-1.5">
+              <NuxtLink
+                :to="`/artist/${artist.slug}`"
+                class="transition-colors duration-150 hover:text-amber-400"
+                :class="artist.totalReleases > 0 && artist.missingReleases === 0 ? 'text-success' : 'text-stone-100'"
+              >
+                {{ artist.name }}
+              </NuxtLink>
+              <CheckCircle2
+                v-if="artist.totalReleases > 0 && artist.missingReleases === 0"
+                :size="14"
+                :stroke-width="ICON_STROKE_WIDTH"
+                class="shrink-0 text-success"
+                title="No missing releases"
+              />
+            </div>
           </td>
-          <td :class="cx(data.td, 'text-right tabular-nums')">
-            <template v-if="artist.totalReleases > 0">
-              <span :class="artist.missingReleases > 0 ? 'font-medium text-amber-400' : 'text-stone-100/55'">{{ artist.missingReleases }}</span>
-              <span class="text-stone-100/25"> / {{ artist.totalReleases }}</span>
-            </template>
+          <td :class="cx(data.td, 'text-center tabular-nums')">
+            <span v-if="artist.totalReleases > 0" :class="artist.missingReleases > 0 ? 'font-medium text-amber-400' : 'text-stone-100/55'">{{ artist.missingReleases }}</span>
             <span v-else class="text-stone-100/25">—</span>
+          </td>
+          <td :class="cx(data.td, 'text-center tabular-nums text-stone-100/55')">
+            {{ artist.totalReleases }}
           </td>
           <td :class="cx(data.td, 'text-right')" @click.stop>
             <button

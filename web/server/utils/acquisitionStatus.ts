@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
+import { checkDownloadEnvironment, acquireBlockReasons } from '~/server/utils/downloadEnvironment'
 import type { Acquisition } from '~/types/download'
 
 // Downloads are Soulseek-only. Settings.downloadsEnabled is the single on/off switch; null falls
@@ -31,5 +32,7 @@ export async function countNoYearMissing(): Promise<number> {
 export async function getAcquisitionStatus(): Promise<Acquisition> {
   const enabled = await isDownloadsEnabled()
   const noYearMissing = await countNoYearMissing().catch(() => 0)
-  return { canAcquire: enabled, enabled, noYearMissing }
+  const environment = await checkDownloadEnvironment()
+  const canAcquire = enabled && acquireBlockReasons(environment).length === 0
+  return { canAcquire, enabled, noYearMissing, environment }
 }

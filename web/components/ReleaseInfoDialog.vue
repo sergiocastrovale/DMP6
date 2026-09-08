@@ -40,11 +40,12 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
       <ReleaseStatusBadge :status="release.status" class="mr-auto" />
       
       <div class="flex items-center gap-1">
-        <DataTableAction
+        <DownloadsDownloadDisabledButton
           v-if="canRedownload(release, downloadsStore.downloadsEnabled)"
           :icon="DownloadCloud"
           :loading="isAcquiring"
           :label="isAcquiring ? 'Requesting download...' : 'Re-download this release'"
+          :reasons="downloadsStore.acquireBlockReasons"
           @click="emit('redownload')"
         />
         <DataTableAction

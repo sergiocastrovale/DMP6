@@ -185,6 +185,26 @@ export interface Acquisition {
   // trickle worker requires a year to lay a release out as `YYYY - title`, so these are permanently
   // unacquirable and otherwise invisible. See docs/downloader_issues.md #15.
   noYearMissing: number
+  environment: DownloadEnvironment
+}
+
+// One physical prerequisite the download flow needs (a mounted path, a binary on PATH, a reachable
+// service). `detail` is null when ok, otherwise a human reason to surface directly in the UI.
+export interface DownloadEnvironmentCheck {
+  ok: boolean
+  detail: string | null
+}
+
+// Snapshot of whether this instance can physically acquire/merge downloads — see
+// server/utils/downloadEnvironment.ts. Split by capability (not one boolean) because slskd only
+// blocks acquiring and musicDir/ffmpeg only block merging.
+export interface DownloadEnvironment {
+  downloadsPath: DownloadEnvironmentCheck
+  readyPath: DownloadEnvironmentCheck
+  musicDir: DownloadEnvironmentCheck
+  ffmpeg: DownloadEnvironmentCheck
+  ffmpegRequired: boolean
+  slskd: DownloadEnvironmentCheck
 }
 
 // Only the fields acquireRelease actually needs — a result that knows just the peer + files

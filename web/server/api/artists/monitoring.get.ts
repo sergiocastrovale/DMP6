@@ -11,6 +11,7 @@ export default defineEventHandler(async (event) => {
   const search = (query.search as string)?.trim() || null
   const showMonitored = query.showMonitored !== 'false'
   const showUnmonitored = query.showUnmonitored !== 'false'
+  const showComplete = query.showComplete === 'true'
 
   const conditions = [
     Prisma.sql`a."primaryArtistId" IS NULL`,
@@ -28,6 +29,11 @@ export default defineEventHandler(async (event) => {
   }
   else if (!showMonitored && !showUnmonitored) {
     conditions.push(Prisma.sql`false`)
+  }
+  // "Complete" = has at least one MusicBrainz release and none of them are MISSING. Hidden by
+  // default — the list is for finding gaps, not celebrating artists with none.
+  if (!showComplete) {
+    conditions.push(Prisma.sql`NOT (COALESCE(c.total, 0) > 0 AND COALESCE(c.missing, 0) = 0)`)
   }
   const whereClause = Prisma.join(conditions, ' AND ')
 

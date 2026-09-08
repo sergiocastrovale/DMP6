@@ -16,9 +16,11 @@ const props = withDefaults(defineProps<{
   highlightId?: string | null
   selectable?: boolean
   selected?: Set<string>
+  mergeBlockReasons?: string[]
 }>(), {
   busyIds: () => new Set(),
   selected: () => new Set(),
+  mergeBlockReasons: () => [],
 })
 
 const emit = defineEmits<{
@@ -158,7 +160,7 @@ const statusLabel = (it: DownloadedReleaseItem) => {
 </script>
 
 <template>
-  <UiEmptyState v-if="items.length === 0" message="Nothing here." />
+  <UiEmptyState v-if="items.length === 0" message="No results found" />
   <SlimTable v-else>
     <SlimTableHeader>
       <th v-if="selectable" :class="cx(data.th, 'w-10')">
@@ -249,13 +251,13 @@ const statusLabel = (it: DownloadedReleaseItem) => {
               :disabled="busyId != null && busyId !== it.id"
               @click="emit('retry', it.id)"
             />
-            <DataTableAction
+            <DownloadsDownloadDisabledButton
               v-if="showMerge"
               :icon="FolderInput"
               label="Merge"
               :loading="busyIds.has(it.id)"
-              :disabled="busyIds.has(it.id)"
-              @click="emit('merge', it.id)"
+              :reasons="mergeBlockReasons"
+              @click="!busyIds.has(it.id) && emit('merge', it.id)"
             />
             <DataTableAction
               v-if="canCancelRow(it)"

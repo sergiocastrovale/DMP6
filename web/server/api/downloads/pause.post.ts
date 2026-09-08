@@ -2,11 +2,16 @@ import { requirePermission } from '~/server/utils/permissions'
 import { resolveDownloadSettings } from '~/server/utils/downloadSettings'
 import { resolveMonitorSettings } from '~/server/utils/monitorSettings'
 import { setDownloadsPaused, freeGb } from '~/server/utils/pauseState'
+import { assertDownloadEnvironmentOk } from '~/server/utils/downloadEnvironment'
 
-// Toggle the global downloads pause. Pausing is always allowed (manual). Resuming is refused while the
-// disk is still below the free-space floor — it re-pauses (disk-full) and returns 409.
+// Toggle the global downloads pause. Neither direction is allowed when this instance can't
+// physically reach the downloads volume, the library folder, ffmpeg, or slskd (see
+// downloadEnvironment.ts) — pausing/resuming a downloader that can't run anyway just hides the
+// real problem. Resuming is additionally refused while the disk is still below the free-space
+// floor — it re-pauses (disk-full) and returns 409.
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'downloads.crud')
+  await assertDownloadEnvironmentOk()
 
   const body = await readBody(event)
   if (typeof body?.paused !== 'boolean') {

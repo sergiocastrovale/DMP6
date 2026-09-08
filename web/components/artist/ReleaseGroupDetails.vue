@@ -220,12 +220,13 @@ const alsoPartOfLabel = computed(() =>
         />
 
         <template v-else-if="isAwaitingMerge">
-          <DataTableAction
+          <DownloadsDownloadDisabledButton
             variant="success"
             :icon="FolderInput"
             :loading="mergeBusyIds.has(release.downloadedReleaseId ?? '')"
             label="Merge this release now"
-            @click.stop="onMergeNow"
+            :reasons="downloadsStore.mergeBlockReasons"
+            @click="onMergeNow"
           />
           <DataTableAction
             :icon="Eye"
@@ -234,20 +235,22 @@ const alsoPartOfLabel = computed(() =>
           />
         </template>
 
-        <DataTableAction
+        <DownloadsDownloadDisabledButton
           v-else-if="release.status === 'MISSING' && downloadsStore.downloadsEnabled"
           :icon="Download"
           :loading="isAcquiring"
           :label="isAcquiring ? 'Requesting download…' : isAbandoned ? 'Given up after repeated failures - click to retry manually' : downloadFailed ? 'Previous download attempt failed - retry' : 'Download this release'"
-          @click.stop="emit('download')"
+          :reasons="downloadsStore.acquireBlockReasons"
+          @click="emit('download')"
         />
 
-        <DataTableAction
+        <DownloadsDownloadDisabledButton
           v-else-if="canRedownload(release, downloadsStore.downloadsEnabled)"
           :icon="DownloadCloud"
           :loading="isAcquiring"
           :label="isAcquiring ? 'Requesting download…' : 'Re-download this release'"
-          @click.stop="emit('redownload')"
+          :reasons="downloadsStore.acquireBlockReasons"
+          @click="emit('redownload')"
         />
 
         <!-- Intentionally not shown for bundle-owned sub-releases (bundleParentReleaseId set, no
