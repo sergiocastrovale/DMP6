@@ -9,7 +9,7 @@ they are excluded by `EXISTS(LocalReleaseArtist)` rather than by a stored flag. 
 ## TL;DR
 
 1. Load config, connect DB, acquire process lock (prevents concurrent runs)
-2. Select artists: `--release` (single), `--overwrite` (all), or default (pending where `lastIndexedAt > lastSyncedAt`). Skip artists already processed in current run (matching `syncHash`)
+2. Select artists: `--release` (single), `--overwrite` (all), or default (pending where `lastIndexedAt > lastSyncedAt` **or** the artist has any `LocalRelease` at `matchStatus = UNKNOWN`, e.g. left by a box dissolve - see §7 of `docs/sync_decisions.md`). Skip artists already processed in current run (matching `syncHash`)
 3. **Per artist:**
    - Skip special names (Various Artists, [unknown])
    - Find on MusicBrainz - use existing MB ID or search API; skip duplicates (same MB ID as previous artist)
@@ -56,6 +56,7 @@ cd scripts && cargo build --release -p sync
 ./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when the release has several main artists
 ./sync --recompute-scores        # Recompute every artist's averageMatchScore (pure SQL), then exit
 ./sync --repair-shared-release-ids [--dry-run]  # One-off repair of releases that lost a shared-releaseId conflict
+./sync --repair-artist-identities [--dry-run]   # Sweep artists filed under a wrong/empty duplicate row, then exit
 ```
 
 Box-set fold/dissolve repair is not a flag - `boxset::run_repair` runs automatically at the tail of every
@@ -88,7 +89,8 @@ sync invocation, scoped by whatever `--only`/`--exact` the run was given. See "B
 | `--artist-hint` | String | - | With `--release`: prefer this Artist ID when the release has several main artists |
 | `--recompute-scores` | bool | false | Recompute `averageMatchScore` for all artists from the catalogue (pure SQL, no API), then exit |
 | `--repair-shared-release-ids` | bool | false | One-off: unbind LocalReleases that lost a shared-`releaseId` conflict (pure SQL), then exit |
-| `--dry-run` | bool | false | With `--repair-shared-release-ids`: print the plan, write nothing |
+| `--repair-artist-identities` | bool | false | Sweep artist rows filed under a wrong/empty duplicate row (pure SQL, no API), then exit — see `docs/sync_decisions.md` §4 |
+| `--dry-run` | bool | false | With `--repair-shared-release-ids` or `--repair-artist-identities`: print the plan, write nothing |
 
 ## Output Modes
 

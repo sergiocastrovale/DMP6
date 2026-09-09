@@ -1,7 +1,13 @@
 # Containment ≠ ownership — rollout runbook
 
-Companion to `docs/sync_decisions.md`. **Nothing in this file runs until the multidisk rollout is finished
-and validated.** Section 1 is the gate; everything after it assumes that gate passed.
+Companion to `docs/sync_decisions.md`. **The gate (§1) is satisfied** — multidisk box-set fold/dissolve
+is live and was verified against real MusicBrainz data across 8 artists (ABBA, The Beatles, The Rolling
+Stones, Bob Dylan, Michael Jackson, Elvis Presley, Prince, Whitney Houston; see `sync_decisions.md`
+§§6-8, 10). **§§2-6 below (the actual data repair) have not been run on prod**: as of this check,
+`"MusicBrainzRelease"` still has **1,700 rows** carrying the old `Owned as part of "…"` claim, and the
+`detect_containment` replacement has independently produced 167 correct `Recordings inside "…"` notes
+alongside them. Confirm with a user before running §§2-6 — it mutates ~1.7k release rows and ~11k track
+rows and returns those releases to the download queue (§5).
 
 ## 0. What this change is
 
@@ -34,10 +40,11 @@ a muted badge on a row that is still, visibly, a gap.
 Code and tests are committed and green (Rust `cargo test`, `pnpm test:unit`). **Only the data repair
 and the deploy remain**, and both are gated on multidisk.
 
-## 1. Gate — multidisk must be done and validated first
+## 1. Gate — multidisk must be done and validated first — ✅ satisfied
 
-Read `docs/sync_decisions.md` §12 (rollout), §13 (verification queries) and §15 (rollout status / resume
-point) before touching anything here.
+`docs/sync_decisions.md` is the current reference (renamed and rewritten from `multidisk.md`; its old
+§§12/13/15 rollout/resume material no longer exists as such — see its §7-8 for the box-set mechanics and
+§10 for containment itself, both live and verified). Proceed straight to §2 below.
 
 ### Why the two cannot overlap
 

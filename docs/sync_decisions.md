@@ -148,6 +148,14 @@ other (which absorbs "remastered", "live", "bonus" style suffixes); or if they s
 their meaningful words. Words like "the", "and", "of" are ignored when scoring, so two unrelated songs
 cannot match just by sharing them.
 
+**Identical titles are claimed before a loose match is even tried.** A bonus disc full of alternate
+takes shares one base title across many tracks ("Song", "Song (remake)", "Song (take 3)", "Song (take
+4)"...). Matching loosely in one pass let an early plain-titled track steal a "(take 3)" file before the
+real exact pairing got a turn, leaving the genuine "(take 3)" track with nothing to pair to — a false
+"missing tracks" verdict on a disc that was actually complete. Found live on Elvis Presley's "Elvis Back
+in Nashville" (82 tracks, one such family). Fixed by claiming every identical title first, library-wide,
+and only letting a loose match compete for what's left over.
+
 The result:
 
 | Status | Meaning |
