@@ -66,7 +66,7 @@ const displayTrackCount = computed(() => props.trackCount ?? props.release.track
 const displayPlayCount = computed(() => props.playCount ?? props.release.totalPlayCount)
 
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
-// docs/multidisk.md §7: box sets in the catalogue reprinting this release's whole group - a pure
+// docs/sync_decisions.md: box sets in the catalogue reprinting this release's whole group - a pure
 // catalogue fact, shown regardless of whether this artist owns a copy of the box.
 const alsoPartOfLabel = computed(() =>
   (props.release.alsoPartOf ?? []).map(a => a.year ? `${a.title} (${a.year})` : a.title).join(', ') || null)

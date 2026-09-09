@@ -471,7 +471,7 @@ describe('promote.ts (real Postgres)', () => {
       const boundMb = await makeMbRelease(prisma, { status: 'MISSING_TRACKS', releaseGroupId: rgId })
       const mbTrack = await makeMbTrack(prisma, boundMb.id)
       // A track linked via LocalReleaseTrack.mbTrackId while LocalRelease.releaseId points at a
-      // different release - the shape a dissolved box leaves behind (docs/multidisk.md §5).
+      // different release - the shape a dissolved box leaves behind (docs/sync_decisions.md).
       const container = await makeLocalRelease(prisma, { matchStatus: 'COMPLETE' })
       await makeLocalTrack(prisma, { localReleaseId: container.id, mbTrackId: mbTrack.id })
       const lr = await makeLocalRelease(prisma, { folderPath: rel, matchStatus: 'MISSING_TRACKS', releaseId: boundMb.id })

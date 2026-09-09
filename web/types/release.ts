@@ -38,13 +38,13 @@ export interface UnifiedRelease {
   downloadedReleaseId?: string | null
   downloadPercent?: number | null
   // Distinct MB media on this release (null/1 for a plain album, >1 for a box set) - see
-  // MusicBrainzRelease.mediumCount and docs/multidisk.md.
+  // MusicBrainzRelease.mediumCount and docs/sync_decisions.md.
   discCount?: number | null
   // Set on a dissolved box disc - a real LocalRelease bound to the standalone album's own
-  // MusicBrainzRelease, with provenance back to the box it physically lives in (docs/multidisk.md §8).
+  // MusicBrainzRelease, with provenance back to the box it physically lives in (docs/sync_decisions.md).
   boxParent?: { releaseId: string, title: string, mediumPosition: number, mediumTitle: string | null, mediumCount: number } | null
   // Box sets in the catalogue that reprint this release's whole release group, regardless of whether
-  // this artist owns a copy of them - a pure catalogue fact, not provenance (docs/multidisk.md §7).
+  // this artist owns a copy of them - a pure catalogue fact, not provenance (docs/sync_decisions.md).
   alsoPartOf?: { title: string, year: number | null }[]
 }
 
@@ -110,7 +110,7 @@ export interface LocalReleaseRow {
   totalPlayCount: number
   tracks: { id: string }[]
   artists: { artist: { name: string, slug: string } }[]
-  // Box-set provenance (docs/multidisk.md §2/§5) - null for an ordinary, non-box-related release.
+  // Box-set provenance (docs/sync_decisions.md) - null for an ordinary, non-box-related release.
   mediumPosition: number | null
   boxReleaseId: string | null
   boxMediumPosition: number | null

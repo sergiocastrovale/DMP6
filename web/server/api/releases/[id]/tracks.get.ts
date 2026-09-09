@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
   if (mbRelease) {
     // No dedicated LocalRelease for this MB release, but its tracks may still be linked to local
     // tracks living in other folders' releases - the shape a dissolved box leaves behind, where each
-    // disc binds standalone (docs/multidisk.md §5). Resolve those directly by mbTrackId rather than
+    // disc binds standalone (docs/sync_decisions.md). Resolve those directly by mbTrackId rather than
     // reusing getLocalReleaseTracks, which scopes by localReleaseId and would pull in every track of
     // whichever folder happened to match first.
     const linkedLocalTracks = await prisma.localReleaseTrack.findMany({

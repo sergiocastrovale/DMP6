@@ -1069,7 +1069,7 @@ async fn main() {
                 // unit: every track in a folder shares one LocalRelease keyed by folder path (see
                 // build_group_key), so the release's pre-match display name comes from the folder's majority
                 // tag rather than whichever track happens to be processed last. Index never folds multi-disc
-                // folders together (docs/multidisk.md §4) - that decision needs MB medium data only sync has.
+                // folders together (docs/sync_decisions.md) - that decision needs MB medium data only sync has.
                 let folder_display_meta: HashMap<String, (String, Option<i32>)> = {
                     let mut by_folder: HashMap<String, Vec<(Option<String>, Option<i32>)>> =
                         HashMap::new();
@@ -1188,7 +1188,7 @@ async fn main() {
                             .map(|s| s.as_str())
                     });
 
-                    // Index never folds multi-disc siblings together (docs/multidisk.md §4) - each
+                    // Index never folds multi-disc siblings together (docs/sync_decisions.md) - each
                     // folder always keeps its own folder-derived key. Only sync, once it knows the MB
                     // medium structure, decides whether siblings fold into one release or dissolve.
                     let group_key = build_group_key(

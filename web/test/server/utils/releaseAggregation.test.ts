@@ -113,7 +113,7 @@ describe('buildLocalAndGapCards - core aggregation', () => {
     // it as covered from either one.
     //
     // The multi-disc half of this is now handled upstream: `sync`'s box-set repair
-    // (`boxset::run_repair`, docs/multidisk.md) folds or dissolves disc folders of one release into
+    // (`boxset::run_repair`, docs/sync_decisions.md) folds or dissolves disc folders of one release into
     // LocalRelease row(s) automatically at the tail of every sync run. What remains here is genuine duplicate copies
     // (the same album ripped into two folders), which stay two rows on purpose - the
     // duplicate-release audit surfaces those for a human to delete. Per-card download state no
@@ -245,7 +245,7 @@ describe('buildLocalAndGapCards - core aggregation', () => {
   })
 })
 
-describe('buildLocalAndGapCards - box sets (docs/multidisk.md §8)', () => {
+describe('buildLocalAndGapCards - box sets (docs/sync_decisions.md)', () => {
   it('a dissolved disc (boxReleaseId set) gets boxParent pointing at the box, and discCount stays null', () => {
     const box = mbRelease({
       id: 'box1',
@@ -314,7 +314,7 @@ describe('buildLocalAndGapCards - box sets (docs/multidisk.md §8)', () => {
     expect(cards[0]).toMatchObject({ discCount: 2, boxParent: null })
   })
 
-  it('renumbers a gapped stored position sequentially - a bonus video disc filtered out of media leaves a real gap (docs/multidisk.md §8)', () => {
+  it('renumbers a gapped stored position sequentially - a bonus video disc filtered out of media leaves a real gap (docs/sync_decisions.md)', () => {
     // audio_media() drops video media from `media` but does not renumber the survivors' stored
     // `position` - disc 3 here was a video disc, so the box's own media positions read 1, 2, 4.
     const box = mbRelease({
@@ -340,7 +340,7 @@ describe('buildLocalAndGapCards - box sets (docs/multidisk.md §8)', () => {
   })
 })
 
-describe('buildLocalAndGapCards / buildAppearsOnCards - "Also part of" (docs/multidisk.md §7)', () => {
+describe('buildLocalAndGapCards / buildAppearsOnCards - "Also part of" (docs/sync_decisions.md)', () => {
   it('attaches alsoPartOf entries looked up by the covered release\'s own releaseGroupId', () => {
     const mb = mbRelease({ id: 'mb1', releaseGroupId: 'rg1' })
     const lr = localRelease({ id: 'lr1', releaseId: 'mb1' })

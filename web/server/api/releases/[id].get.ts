@@ -88,7 +88,7 @@ export default defineEventHandler(async (event) => {
     })
     : null
 
-  // docs/multidisk.md §7: box sets in the catalogue that reprint this release's whole release group -
+  // docs/sync_decisions.md: box sets in the catalogue that reprint this release's whole release group -
   // a pure catalogue fact, independent of whether this artist owns any copy of them.
   const alsoPartOf = lr.release?.releaseGroupId
     ? (await prisma.musicBrainzReleaseMedium.findMany({

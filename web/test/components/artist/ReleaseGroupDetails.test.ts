@@ -116,7 +116,7 @@ describe('artist/ReleaseGroupDetails.vue - gap noting containment', () => {
   })
 })
 
-describe('artist/ReleaseGroupDetails.vue - box sets (docs/multidisk.md §8)', () => {
+describe('artist/ReleaseGroupDetails.vue - box sets (docs/sync_decisions.md)', () => {
   it('renders the subtitle and disc-label slots for a dissolved box disc', async () => {
     const wrapper = await mountRelease({}, { subtitle: 'The Albums', discLabel: 'disc 1 of 9' })
     expect(wrapper.text()).toContain('The Albums')

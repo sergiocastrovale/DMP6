@@ -96,7 +96,7 @@ fn release_has_cd_format(release: &MbRelease) -> bool {
 /// Restrict a release's flattened tracklist to one medium's tracks (`discNumber = position`), when
 /// `medium_position` is set. A folder bound to one disc of a multi-medium release must be scored
 /// against that disc alone - scoring it against the release's full, every-disc tracklist reads a
-/// complete single disc as `MISSING_TRACKS` (docs/multidisk.md §5 point 2). `None` (a single-medium
+/// complete single disc as `MISSING_TRACKS` (docs/sync_decisions.md). `None` (a single-medium
 /// release, or the whole-release case a fold uses) leaves the tracklist untouched.
 fn scope_to_medium(tracks: &[MbTrack], medium_position: Option<i32>) -> Vec<MbTrack> {
     match medium_position {
@@ -556,7 +556,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Medium-scoped scoring (docs/multidisk.md §5 point 2)
+    // Medium-scoped scoring (docs/sync_decisions.md)
     // -----------------------------------------------------------------------
 
     #[test]

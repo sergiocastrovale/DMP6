@@ -1,6 +1,6 @@
 // Pure mapping extracted from server/api/releases/[id]/tracks.get.ts's mbTrackId branch: an MB release
 // with no dedicated LocalRelease may still have some/all of its tracks linked to local tracks that
-// live in other folders' releases (a dissolved box, docs/multidisk.md §5). Isolated here for direct
+// live in other folders' releases (a dissolved box, docs/sync_decisions.md). Isolated here for direct
 // unit testing without a database.
 
 export interface BundleMbTrackRow {

@@ -267,7 +267,7 @@ fn get_majority_id(
 
 /// An artist is only stamped "done" for this run when it isn't a total failure - otherwise a resume
 /// would skip it despite it having accomplished nothing. `release_failures > 0` alone used to be the
-/// only signal, which missed a real case (docs/multidisk.md §16): a failed release-groups fetch
+/// only signal, which missed a real case (docs/sync_decisions.md): a failed release-groups fetch
 /// leaves an artist whose local releases have no embedded MB id with `processed_count == 0` AND
 /// `release_failures == 0` (nothing ever called a per-release API function to fail), silently
 /// stamping it complete. `release_groups_fetch_failed` closes that gap.
@@ -1433,7 +1433,7 @@ async fn main() {
         // 4. Release groups (cached for duplicates sharing same MB artist). `release_groups_fetch_failed`
         // feeds `is_total_failure` below: a failed fetch must never be indistinguishable from an
         // artist that genuinely has zero release groups on MB, or the artist gets stamped "done" for
-        // this run having accomplished nothing (see docs/multidisk.md §16 - caught live during the
+        // this run having accomplished nothing (see docs/sync_decisions.md - caught live during the
         // box-set backfill, artists whose only releases lack an embedded MB id never call any other
         // fallible API function, so processed_count and release_failures both stay 0 and the old gate
         // silently marked them complete). Only a successful fetch is cached, so a duplicate artist
@@ -1524,7 +1524,7 @@ async fn main() {
             // box pass at the tail of the run would move it off again, marking it UNKNOWN each time.
             // The disc then never settles on a score, which is what left ABBA's nine-disc box showing
             // unscored discs across three consecutive syncs. The dissolve decides where these belong
-            // (docs/multidisk.md §5), so score against that, not against the tag.
+            // (docs/sync_decisions.md), so score against that, not against the tag.
             let majority_release_id = local_release
                 .dissolved_bound_mb_id
                 .clone()
@@ -2397,7 +2397,7 @@ async fn main() {
 
     // Box-set detection/binding + equivalence derivation, scoped the same way the rest of this run
     // was (--only/--exact) - no longer a standalone --repair-multi-disc/--link-box-editions flag,
-    // runs automatically at the tail of every normal sync (docs/multidisk.md §5/§12).
+    // runs automatically at the tail of every normal sync (docs/sync_decisions.md).
     if running.load(Ordering::SeqCst) {
         let box_http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(60))
@@ -2508,7 +2508,7 @@ mod tests {
 
     #[test]
     fn total_failure_when_release_groups_fetch_itself_failed_even_with_zero_release_failures() {
-        // docs/multidisk.md §16: an artist whose only local releases have no embedded MB id never
+        // docs/sync_decisions.md: an artist whose only local releases have no embedded MB id never
         // calls a per-release API function, so release_failures stays 0 even though the artist
         // accomplished nothing this run - the old gate stamped it "done" regardless.
         assert!(is_artist_total_failure(0, 0, true));

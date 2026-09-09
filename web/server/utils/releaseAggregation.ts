@@ -9,7 +9,7 @@ import { containmentContainerTitle } from '~/helpers/functions'
 // Single-release field mapping shared by the batch card builders below and the single-release lookup
 // endpoint (server/api/releases/[id].get.ts) - keeps `image`/`imageUrl`/type/format/etc. derivation in
 // one place instead of re-deriving it per call site.
-// docs/multidisk.md §8: which box (if any) this local release's disc lives in, and which of the
+// docs/sync_decisions.md: which box (if any) this local release's disc lives in, and which of the
 // box's own media it is - either bound to an equivalent standalone album (boxMbr is the box, mbr is
 // the album) or bound directly to the box itself as a rarities/no-equivalent disc (mbr IS the box,
 // no separate boxMbr needed). Pure, no I/O, so it's unit-testable in isolation from the DB layer.
@@ -93,7 +93,7 @@ export function buildReleaseCard(
   const boxParent = computeBoxParent(lr, mbr, extras?.boxMbr)
   // A rarities/no-equivalent box disc self-references (boxParent.releaseId === mbr.id, since mbr IS
   // the box) - its row title borrows the box's medium title so several such discs from the same box
-  // don't all render under the box's own bare title (docs/multidisk.md §8).
+  // don't all render under the box's own bare title (docs/sync_decisions.md).
   const isBoxSetRow = boxParent?.releaseId === mbr.id
   const title = isBoxSetRow ? `${mbr.title} — ${boxParent!.mediumTitle ?? `Disc ${boxParent!.mediumPosition}`}` : mbr.title
   return {
@@ -125,7 +125,7 @@ export function buildReleaseCard(
     statusReason: mbr.statusReason,
     connectedArtistName: extras?.connectedArtistName,
     // A dissolved box disc's own row represents ONE disc, not the whole release - the "N discs"
-    // pill belongs only on a folded multi-disc release's single survivor row (docs/multidisk.md §8).
+    // pill belongs only on a folded multi-disc release's single survivor row (docs/sync_decisions.md).
     discCount: mbr.mediumCount > 1 && lr.mediumPosition == null ? mbr.mediumCount : null,
     boxParent,
     alsoPartOf: extras?.alsoPartOf,

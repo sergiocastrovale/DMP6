@@ -60,7 +60,7 @@ cd scripts && cargo build --release -p sync
 
 Box-set fold/dissolve repair is not a flag - `boxset::run_repair` runs automatically at the tail of every
 sync invocation, scoped by whatever `--only`/`--exact` the run was given. See "Box Sets" below and
-`docs/multidisk.md`. The one-off backfill/repair for existing data is a standalone script,
+`docs/sync_decisions.md`. The one-off backfill/repair for existing data is a standalone script,
 `./repair-box-sets` (repo root), not a `sync` flag.
 
 `--release` cannot combine with `--from`, `--to`, or `--only`.
@@ -374,7 +374,7 @@ The composed `format` column (`format_from_media`, e.g. `"Blu-ray, CD"`) is unaf
 
 ## Box Sets
 
-Full design and rollout plan in `docs/multidisk.md` (that file is the sole spec - this is a summary).
+Full design and rollout plan in `docs/sync_decisions.md` (that file is the sole spec - this is a summary).
 MusicBrainz has no box-set entity - a box is one Release with N media, and MB stores no id-level link
 from a box's disc to the standalone album it duplicates. `MusicBrainzReleaseMedium` (one row per medium:
 `position`, `title`, `format`, `trackCount`) and `MusicBrainzReleaseTrack.recordingId` (the MB
@@ -402,7 +402,7 @@ fold-vs-dissolve, equivalence), and does so automatically at the tail of every r
   `releaseGroupId` grouper, with no box-specific logic. `UnifiedRelease.boxParent` carries its
   provenance (which box, which renumbered disc position); a rarities/no-equivalent disc gets its own
   row (`"{box title} — {medium title}"`) with a `Box Set` marker pill (`info`/violet tone, same as the
-  fold-only `DiscsPill`). See `docs/multidisk.md` §7-8 for the full web contract.
+  fold-only `DiscsPill`). See `docs/sync_decisions.md` §7-8 for the full web contract.
 
 ## End-of-run cleanup (scoped)
 
@@ -415,7 +415,7 @@ in the library that is unbound at that instant — so `./sync --only "One Artist
 real release whose `LocalRelease` index had just regrouped, for an artist the run never touched.
 `delete_orphaned_mb_releases` also spares a release that local tracks still point at via
 `LocalReleaseTrack.mbTrackId` while no `LocalRelease.releaseId` does — the shape a dissolved box leaves
-behind (docs/multidisk.md §5); `LocalRelease.releaseId` alone doesn't see that link.
+behind (docs/sync_decisions.md §5); `LocalRelease.releaseId` alone doesn't see that link.
 
 `retire_owned_missing_placeholders` stays global, but is **not** self-contained: it only pins a
 placeholder while a `DownloadedRelease` targeting it is in a *live* state

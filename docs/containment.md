@@ -1,6 +1,6 @@
 # Containment ≠ ownership — rollout runbook
 
-Companion to `docs/multidisk.md`. **Nothing in this file runs until the multidisk rollout is finished
+Companion to `docs/sync_decisions.md`. **Nothing in this file runs until the multidisk rollout is finished
 and validated.** Section 1 is the gate; everything after it assumes that gate passed.
 
 ## 0. What this change is
@@ -36,7 +36,7 @@ and the deploy remain**, and both are gated on multidisk.
 
 ## 1. Gate — multidisk must be done and validated first
 
-Read `docs/multidisk.md` §12 (rollout), §13 (verification queries) and §15 (rollout status / resume
+Read `docs/sync_decisions.md` §12 (rollout), §13 (verification queries) and §15 (rollout status / resume
 point) before touching anything here.
 
 ### Why the two cannot overlap
@@ -60,11 +60,11 @@ ssh -i ~/.ssh/nas Kp@192.168.1.241 "tail -n 40 /mnt/SSD/web/dmp/logs/repair-box-
 
 Done = the log stops advancing `[n/2047]` and the tail prints
 `Box sets: N group(s) bound (F folded, D dissolved)`. If `multi` died first, resume with the exact
-command in `docs/multidisk.md` §15 — `syncRunHash` skips finished artists.
+command in `docs/sync_decisions.md` §15 — `syncRunHash` skips finished artists.
 
 ### What to check before declaring multidisk good
 
-Run `docs/multidisk.md` §13's queries, in this order:
+Run `docs/sync_decisions.md` §13's queries, in this order:
 
 1. **Fold** — one `LocalRelease` per plain multi-disc release, with its `LocalReleaseMember` rows.
 2. **Dissolve / ABBA spot-check** (§13's last query). Expected: "The Albums" 9CD — 8 rows `COMPLETE`,
@@ -73,14 +73,14 @@ Run `docs/multidisk.md` §13's queries, in this order:
 3. **Equivalences derived** for a known box (§13's second query) — `equivalentReleaseGroupId` /
    `equivalentMediumPosition` populated.
 4. **Regression** — rows bound to a `mediumCount > 1` release still `MISSING_TRACKS` should trend
-   toward zero, not reach it (`docs/multidisk.md` §10's known limitations are ceilings, not bugs).
+   toward zero, not reach it (`docs/sync_decisions.md` §10's known limitations are ceilings, not bugs).
 5. **Scope drained** — `LocalRelease.matchStatus = 'UNKNOWN'` should have fallen back toward its
    pre-reset level. Anything still `UNKNOWN` inside the 10,230-row repair scope is an artist that never
    got processed; re-run the resume command rather than proceeding.
 6. **User UI pass** — ABBA plus a couple of other box-set artists: `Box Set` pill, "disc N of M"
    subtitle, no duplicate or ghost cards. No self-verification via login.
 
-Only then tick `docs/multidisk.md` §12 steps 2-4 and continue here. `docs/multidisk.md` §15 point 6
+Only then tick `docs/sync_decisions.md` §12 steps 2-4 and continue here. `docs/sync_decisions.md` §15 point 6
 also says to delete `./repair-box-sets` at this point — do that in the same pass.
 
 ## 2. Pre-flight (still before deploy)

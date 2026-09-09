@@ -158,7 +158,7 @@ pub async fn ensure_local_release_cached(
 }
 
 /// Every folder `sync` has already folded (plain multi-disc) or dissolved (box set) into a
-/// `LocalRelease`, keyed by folder path. Index never folds on its own (docs/multidisk.md §4) - it
+/// `LocalRelease`, keyed by folder path. Index never folds on its own (docs/sync_decisions.md) - it
 /// only knows tags, and the fold-vs-dissolve decision needs MB medium data. So a folder found here
 /// must be routed straight to its existing release, never through
 /// `build_group_key`/`ensure_local_release_cached`. Without this, a folded/dissolved folder's

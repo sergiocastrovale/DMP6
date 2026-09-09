@@ -124,7 +124,7 @@ Display title/year for the release come from the folder's **majority (mode)** `a
 
 Index never folds sibling disc folders (`CD 1`, `CD 2`, ...) on its own — it only has tags, and telling
 a plain multi-disc release apart from a box set that duplicates other standalone albums needs MB medium
-data only `sync` has (`docs/multidisk.md` §3-4 is the full spec). `sync`'s `boxset::run_repair` decides
+data only `sync` has (`docs/sync_decisions.md` §3-4 is the full spec). `sync`'s `boxset::run_repair` decides
 fold vs. dissolve at the tail of every run and writes a `LocalReleaseMember` row per folded/dissolved
 disc (`folderPath`, `discNumber`).
 

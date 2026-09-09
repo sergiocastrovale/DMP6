@@ -99,7 +99,7 @@ export default defineEventHandler(async (event) => {
   const connectedSlugs = new Set(connectedArtists.map(a => a.slug))
   const coArtistMap = buildCoArtistMap(localReleases, slug, connectedSlugs)
 
-  // docs/multidisk.md §7: box sets in the catalogue that reprint any of this page's release groups -
+  // docs/sync_decisions.md: box sets in the catalogue that reprint any of this page's release groups -
   // a pure catalogue fact, independent of ownership. Batched once across every group id on the page.
   const releaseGroupIds = [...new Set(mbReleases.map(r => r.releaseGroupId).filter((id): id is string => !!id))]
   const alsoPartOfMedia = releaseGroupIds.length > 0

@@ -1,6 +1,6 @@
 //! Derives `MusicBrainzReleaseMedium.equivalentReleaseId`/`equivalentReleaseGroupId`/
 //! `equivalentMediumPosition` - the "this box disc IS that standalone release" link MusicBrainz
-//! itself never sends us (docs/multidisk.md §1: `inc=release-rels` on a box returns `[]`). Pure SQL
+//! itself never sends us (docs/sync_decisions.md: `inc=release-rels` on a box returns `[]`). Pure SQL
 //! + two artist-scoped Rust passes, no MusicBrainz API calls - everything needed already lives in
 //! `MusicBrainzReleaseTrack` once media/recordingId are synced.
 //!
@@ -39,7 +39,7 @@ pub struct LinkSummary {
 /// Step 1: exact recording-set equi-join, pure SQL.
 ///
 /// Source side: media of a box (`parent.mediumCount > 1`). Target side: **any** release's medium,
-/// single- or multi-medium (docs/multidisk.md §5 - a box can reprint another multi-disc compilation's
+/// single- or multi-medium (docs/sync_decisions.md - a box can reprint another multi-disc compilation's
 /// own editions; restricting the target to single-medium releases misses that entirely). A medium's
 /// fingerprint is `md5` of its sorted, deduplicated recording ids; matching a source medium's
 /// fingerprint against a target medium's identifies the reprint regardless of how either release is
@@ -109,7 +109,7 @@ struct UnlinkedMedium {
     medium_id: String,
     release_id: String,
     /// The medium's own title, if MB sent one. `None`/empty for a chronological "complete
-    /// sessions"-style box with no per-disc titles - tier 3 skips those outright (docs/multidisk.md
+    /// sessions"-style box with no per-disc titles - tier 3 skips those outright (docs/sync_decisions.md
     /// §5, §10 limitation 4): nothing to narrow the candidate search against.
     medium_title: Option<String>,
     tracks: Vec<(String, Option<i32>)>,
@@ -206,7 +206,7 @@ fn tracks_match(medium: &[(String, Option<i32>)], release: &[(String, Option<i32
 }
 
 // ---------------------------------------------------------------------------
-// Tier 3: containment match (docs/multidisk.md §5)
+// Tier 3: containment match (docs/sync_decisions.md)
 // ---------------------------------------------------------------------------
 //
 // Tiers 1-2 both require *equality*: the medium's whole tracklist must match a candidate's whole
@@ -326,7 +326,7 @@ fn resolve_containment_winner<'a>(
 }
 
 /// Runs all three tiers to completion, no preview mode - called automatically at the tail of a
-/// normal sync run, scoped to the artists it touched, never as a user-facing flag (docs/multidisk.md
+/// normal sync run, scoped to the artists it touched, never as a user-facing flag (docs/sync_decisions.md
 /// §12). The user's explicit call: no dry-run anywhere in this rollout, `./backup` is the recovery
 /// path instead.
 pub async fn run_link_box_editions(pool: &PgPool, reporter: &Reporter) -> Result<LinkSummary, sqlx::Error> {
@@ -389,7 +389,7 @@ pub async fn run_link_box_editions(pool: &PgPool, reporter: &Reporter) -> Result
         summary.fallback_linked, summary.fallback_ambiguous
     ));
 
-    // Tier 3: containment (docs/multidisk.md §5). Re-fetch what tiers 1-2 above still left unlinked.
+    // Tier 3: containment (docs/sync_decisions.md). Re-fetch what tiers 1-2 above still left unlinked.
     let still_unlinked = unlinked_media(pool).await?;
     summary.containment_candidates = still_unlinked
         .iter()

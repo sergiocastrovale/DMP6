@@ -87,7 +87,7 @@ pub struct MbReleaseExtras<'a> {
     pub format: Option<&'a str>,
     // The owning release-group's secondary types (Compilation, Live, Remix, Soundtrack, ...) -
     // already fetched for allowlist::is_allowed, just not previously persisted. [] = "original
-    // work", the signal the box-set equivalence tier-3 matcher uses (docs/multidisk.md §5).
+    // work", the signal the box-set equivalence tier-3 matcher uses (docs/sync_decisions.md).
     pub release_group_secondary_types: &'a [String],
 }
 
@@ -937,7 +937,7 @@ pub async fn delete_missing_releases_for_artist(
 pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> HashSet<String> {
     // Two ways a group counts as owned:
     //   1. a LocalRelease is bound to one of its releases (the ordinary case), or
-    //   2. it is a dissolved box (docs/multidisk.md §5 point 4/§6): a box's own release has no bind
+    //   2. it is a dissolved box (docs/sync_decisions.md): a box's own release has no bind
     //      on its own release group once its discs are dissolved onto their equivalent albums, so
     //      without this branch every dissolved box reads MISSING and gets re-downloaded whole. A
     //      multi-medium release counts covered when EVERY one of its media is covered — bound at
@@ -1282,7 +1282,7 @@ pub struct LocalReleaseRow {
     pub release_id: Option<String>,
     pub match_status: Option<String>,
     pub has_cover: bool,
-    // Which medium of release_id this folder is (docs/multidisk.md §5) - set by a prior box-dissolve
+    // Which medium of release_id this folder is (docs/sync_decisions.md) - set by a prior box-dissolve
     // bind. Must be respected on every re-sync, or a later run would re-score a dissolved box disc
     // against its target's *whole* tracklist and silently undo the fix.
     pub medium_position: Option<i32>,

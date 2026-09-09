@@ -1,5 +1,5 @@
 //! Box-set binding: matches sibling disc folders index left unmerged (index never folds,
-//! docs/multidisk.md §4) to a box's *media* by tracklist, since MusicBrainz box sets don't carry the
+//! docs/sync_decisions.md) to a box's *media* by tracklist, since MusicBrainz box sets don't carry the
 //! id discipline plain multi-disc detection relies on. Two shapes handled identically:
 //!
 //!   (a) one disc mis-tagged as the standalone album (embedded ids disjoint, not unanimous)
@@ -8,7 +8,7 @@
 //!
 //! MusicBrainz has no box-set entity: a box is one Release with N media, and MB stores no link from
 //! a box's disc to the standalone release it duplicates - the only shared identity is the recording
-//! (docs/multidisk.md §1). This module matches siblings to *media* by tracklist, never by any id the
+//! (docs/sync_decisions.md). This module matches siblings to *media* by tracklist, never by any id the
 //! files carry, and accepts only a **perfect matching**: every sibling maps to exactly one medium,
 //! with equal track count and every track's title+duration (±5s) agreeing - the same rule
 //! `owned::find_owning_bundle` uses for the bonus-disc case. Any ambiguity rejects the whole group; a
@@ -16,7 +16,7 @@
 //! be two different media is not.
 //!
 //! Binding a box is only half the job: `run_repair` also decides, once equivalences are known, fold
-//! (genuine multi-disc release) or dissolve (box set) - docs/multidisk.md §3/§5.
+//! (genuine multi-disc release) or dissolve (box set) - docs/sync_decisions.md.
 
 use std::collections::{HashMap, HashSet};
 
@@ -577,7 +577,7 @@ async fn artist_for_group(pool: &PgPool, local_ids: &[String]) -> Option<(String
 // ---------------------------------------------------------------------------
 
 /// Persist the box's own `MusicBrainzRelease` + media + tracks. Pure MB-side work, no `LocalRelease`
-/// mutation - the caller decides fold vs dissolve afterward (docs/multidisk.md §5 point 4), once
+/// mutation - the caller decides fold vs dissolve afterward (docs/sync_decisions.md), once
 /// `box_editions::run_link_box_editions` has had a chance to derive equivalences, which needs these
 /// media rows to exist first. Returns the box's `MusicBrainzRelease.id`.
 async fn persist_box_media(
@@ -668,7 +668,7 @@ async fn persist_box_media(
 }
 
 // ---------------------------------------------------------------------------
-// Fold vs dissolve (docs/multidisk.md §3, §5 point 4)
+// Fold vs dissolve (docs/sync_decisions.md)
 // ---------------------------------------------------------------------------
 
 enum BoxOutcome {
@@ -867,9 +867,9 @@ pub struct BoxSetSummary {
 ///   2. Once every box in this run has its media persisted, derive equivalences once
 ///      (`box_editions::run_link_box_editions`, whole-catalogue but cheap - pure SQL for tier 1,
 ///      artist-scoped for tiers 2/3) and only then decide fold vs dissolve per box and write it
-///      (docs/multidisk.md §5 point 4).
+///      (docs/sync_decisions.md).
 ///
-/// No dry-run (docs/multidisk.md §11/§12 - the user's `./backup` is the recovery path). `only`/
+/// No dry-run (docs/sync_decisions.md - the user's `./backup` is the recovery path). `only`/
 /// `exact` scope which sibling groups are considered, matching every other sync mode's convention -
 /// called once per sync invocation with that invocation's own scope, not once per artist inside a
 /// loop (this pass' own group-discovery query is a whole-table scan; looping it per-artist would
@@ -1367,7 +1367,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Fold vs dissolve (docs/multidisk.md §3)
+    // Fold vs dissolve (docs/sync_decisions.md)
     // -----------------------------------------------------------------------
 
     #[test]

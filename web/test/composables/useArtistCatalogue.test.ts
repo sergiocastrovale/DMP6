@@ -110,7 +110,7 @@ describe('useArtistCatalogue', () => {
   it('groups: a dissolved box disc joins the album\'s edition group via its bound releaseGroupId', () => {
     // A dissolved box disc binds to the standalone album's own MusicBrainzRelease, so it carries that
     // album's releaseGroupId - the grouper needs no box-specific logic at all to place it alongside
-    // the album's real editions (docs/multidisk.md §8).
+    // the album's real editions (docs/sync_decisions.md).
     const releases = ref([
       release({ id: 'album-1', releaseGroupId: 'rg-ringring', year: 1973 }),
       release({

@@ -78,7 +78,7 @@ export const findBundleParentRelease = (releases: UnifiedRelease[], release: Uni
     ? releases.find(r => r.localReleaseId === release.bundleParentReleaseId) ?? null
     : null
 
-// Box-set row display (docs/multidisk.md §8). A dissolved disc's boxParent points at the *box*
+// Box-set row display (docs/sync_decisions.md). A dissolved disc's boxParent points at the *box*
 // release it lives in; a rarities/no-equivalent disc's boxParent self-references (releaseId equals
 // its own mbReleaseRowId, since mbr IS the box there) - that self-reference is what marks a row as
 // needing the "Box Set" pill instead of the dissolved-disc subtitle/disc-label pair.

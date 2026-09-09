@@ -256,7 +256,7 @@ describe('canRedownload', () => {
   })
 })
 
-describe('box-set row helpers (docs/multidisk.md §8)', () => {
+describe('box-set row helpers (docs/sync_decisions.md)', () => {
   const dissolved = release({
     id: 'album-1', mbReleaseRowId: 'album-1',
     boxParent: { releaseId: 'box1', title: 'The Albums', mediumPosition: 3, mediumTitle: 'Ring Ring', mediumCount: 9 },

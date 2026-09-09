@@ -29,7 +29,7 @@ const isEditionFavorite = (edition: UnifiedRelease) => {
   return !!target && props.favoriteReleases.has(target)
 }
 
-// A dissolved box disc (boxParent set, docs/multidisk.md §8) carries no disambiguation/editionLabel
+// A dissolved box disc (boxParent set, docs/sync_decisions.md) carries no disambiguation/editionLabel
 // of its own - it borrows the subtitle slot for the box's title instead, plus a separate disc-label
 // slot for its position within the box.
 const editionSubtitle = (edition: UnifiedRelease) =>

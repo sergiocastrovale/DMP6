@@ -62,7 +62,7 @@ Working conventions, data model and the day-to-day command reference live in [CL
 
 * [Dev guide](docs/dev_guide.md)
 * [Design system](docs/design_system.md)
-* [Multi-disk / box sets](docs/multidisk.md)
+* [Multi-disk / box sets](docs/sync_decisions.md)
 * [Handling images](docs/images.md)
 * [Redis cache](docs/redis.md)
 * [Post-sync routine](docs/post_sync.md)
