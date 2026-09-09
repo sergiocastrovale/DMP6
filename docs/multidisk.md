@@ -479,11 +479,16 @@ tracks are Spanish-language versions. Those are tagging differences in the files
 
 ### Known pending items
 
-- [ ] **ABBA's "Complete Studio Recordings" 9CD box still won't link up.** Everything matches except
-      one song title: the files say "Ring Ring (English version)", MusicBrainz says "Ring Ring". One
-      mismatched song rejects the whole 9-disc box. Fixing it means loosening how strictly song
-      titles must match, which risks wrongly merging genuinely different recordings elsewhere -
-      deliberately left alone pending a decision.
+- [x] **ABBA's "Complete Studio Recordings" 9CD box now links up.** ~~One mismatched song title
+      rejected the whole box.~~ Two ordinary tagging differences were rejecting it - a song tagged
+      "Ring Ring (English version)" where MusicBrainz says "Ring Ring", and another six seconds
+      longer in the files than MusicBrainz lists. Matching now tries exact wording first, then allows
+      small differences, and refuses anything ambiguous rather than guessing. All nine discs bind,
+      six are recognised as the albums they reprint, and the three with no standalone equivalent stay
+      with the box.
+- [x] **Box discs never settled on a status.** Two parts of the sync were overwriting each other -
+      one reading the disc's own tags, the other the box - so every run undid the last one's work and
+      the discs stayed permanently unscored. They now agree, and the result is identical run to run.
 - [x] **"Missing album" lists could go stale when a box set was split up.** ~~The missing-album list
       is built per artist during the sync, but box sets are only split at the very end of the whole
       run.~~ Fixed - the list is now swept again after box sets are split.
