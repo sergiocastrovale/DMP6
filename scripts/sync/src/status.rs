@@ -188,11 +188,41 @@ pub fn check_release_status(
     let mb_tracks = &scoped[best_idx];
     let mb_count = mb_tracks.len();
 
-    // Match local tracks → MB tracks by title
+    // Match local tracks → MB tracks by title, exact matches claimed before loose ones are even
+    // tried.
+    //
+    // `titles_match` folds exact/substring/Jaccard into one test, and a single greedy pass over it
+    // lets an early loose match steal a track a later *exact* match needed - live case: a bonus disc
+    // full of alternate takes ("I'll Be Home on Christmas Day", "(remake)", "(take 3)", "(take 4)").
+    // MB's plain title reached the loop first and substring-matched into the local "(take 3)" file
+    // before the exact pairing (MB plain -> local plain) got a turn; MB's own "(remake)" was then
+    // forced to steal the now-only-remaining local plain file, and MB's real "(take 3)" had nothing
+    // left to pair with - a false MISSING_TRACKS on an otherwise perfect disc.
+    // Same fix already applied to box-disc pairing (`boxset::pair_tracks`): claim every identical title
+    // first, only let a loose match compete for what's left.
     let mut matched: Vec<(MbTrack, Option<String>)> = Vec::new();
     let mut used_local: std::collections::HashSet<usize> = Default::default();
+    let mut loose_pending: Vec<usize> = Vec::new(); // indices into mb_tracks left for pass 2
 
-    for mb_track in mb_tracks {
+    for (mi, mb_track) in mb_tracks.iter().enumerate() {
+        let exact = normalize_title(&mb_track.title);
+        let hit = local_tracks.iter().enumerate().find(|(i, local)| {
+            !used_local.contains(i) && normalize_title(local.title.as_deref().unwrap_or("")) == exact
+        });
+        match hit {
+            Some((idx, _)) => {
+                used_local.insert(idx);
+                matched.push((mb_track.clone(), Some(local_track_ids[idx].clone())));
+            }
+            None => {
+                loose_pending.push(mi);
+                matched.push((mb_track.clone(), None)); // placeholder, resolved (or not) below
+            }
+        }
+    }
+
+    for mi in loose_pending {
+        let mb_track = &mb_tracks[mi];
         let mut matched_idx: Option<usize> = None;
         for (i, local) in local_tracks.iter().enumerate() {
             if used_local.contains(&i) {
@@ -206,9 +236,7 @@ pub fn check_release_status(
         }
         if let Some(idx) = matched_idx {
             used_local.insert(idx);
-            matched.push((mb_track.clone(), Some(local_track_ids[idx].clone())));
-        } else {
-            matched.push((mb_track.clone(), None));
+            matched[mi].1 = Some(local_track_ids[idx].clone());
         }
     }
 
@@ -345,6 +373,38 @@ mod tests {
             disc_number: Some(disc_number),
             ..mb_track(id, title)
         }
+    }
+
+    /// The domino this exists to prevent: a bonus disc of alternate takes shares a base title across
+    /// several tracks. A single greedy pass let MB's *plain* title steal the local "(take 3)" file via
+    /// loose matching before the real exact pairing got a turn, leaving MB's real "(take 3)" homeless -
+    /// a false MISSING_TRACKS on a disc that is actually complete. Found live on Elvis Presley's "Elvis
+    /// Back in Nashville" (82/82 tracks, one "I'll Be Home on Christmas Day" family).
+    #[test]
+    fn exact_titles_are_claimed_before_a_loose_match_can_steal_one() {
+        let locals = vec![
+            track("I'll Be Home on Christmas Day"),
+            track("I'll Be Home on Christmas Day (remake)"),
+            track("I'll Be Home on Christmas Day (take 3)"),
+        ];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(3);
+        let mb_tracks = vec![
+            // Deliberately ordered so the plain title is processed before the more specific ones -
+            // the order that triggered the domino.
+            mb_track("m1", "I’ll Be Home on Christmas Day"),
+            mb_track("m2", "I’ll Be Home on Christmas Day (remake)"),
+            mb_track("m3", "I’ll Be Home on Christmas Day (take 3)"),
+        ];
+        let release = mb_release("r1", None, None);
+        let check = check_release_status(&local_refs, &ids, &[(release, mb_tracks)], None, None);
+        assert_eq!(check.status, ReleaseStatus::Complete);
+        let unmatched: Vec<_> = check
+            .matched_mb_tracks
+            .iter()
+            .filter(|(_, lid)| lid.is_none())
+            .collect();
+        assert!(unmatched.is_empty(), "every MB track should have found its exact local match");
     }
 
     fn mb_release(id: &str, date: Option<&str>, format: Option<&str>) -> MbRelease {
