@@ -376,35 +376,76 @@ mod tests {
     }
 
     /// The domino this exists to prevent: a bonus disc of alternate takes shares a base title across
-    /// several tracks. A single greedy pass let MB's *plain* title steal the local "(take 3)" file via
-    /// loose matching before the real exact pairing got a turn, leaving MB's real "(take 3)" homeless -
-    /// a false MISSING_TRACKS on a disc that is actually complete. Found live on Elvis Presley's "Elvis
-    /// Back in Nashville" (82/82 tracks, one "I'll Be Home on Christmas Day" family).
+    /// several tracks. A single greedy pass let MB's *plain* title steal a differently-ordered local
+    /// "(take 3)" file via loose matching before the real exact pairing got a turn, leaving MB's real
+    /// "(take 3)" homeless - a false MISSING_TRACKS on a disc that is actually complete.
+    ///
+    /// **The first version of this test did not actually exercise the bug.** It used matching index
+    /// order on both sides (`locals[i]` paired with `mb_tracks[i]`), under which the exact check inside
+    /// `titles_match` always won on the very first candidate - old and new code produced an identical
+    /// result. A regression test that passes under the code it is meant to catch is worse than no test:
+    /// it reads as coverage while providing none. This version uses the **real file order** from the
+    /// live case (Elvis Presley's "Elvis Back in Nashville") - by `trackNumber`, "(take 3)" sits at
+    /// position 12, the plain title at 20, "(remake)" at 25 - and the real MusicBrainz tracklist order,
+    /// confirmed by differential replay to produce MISSING_TRACKS under the pre-fix single pass and
+    /// COMPLETE under this one.
     #[test]
     fn exact_titles_are_claimed_before_a_loose_match_can_steal_one() {
         let locals = vec![
-            track("I'll Be Home on Christmas Day"),
-            track("I'll Be Home on Christmas Day (remake)"),
-            track("I'll Be Home on Christmas Day (take 3)"),
+            track("I'll Be Home on Christmas Day (take 3)"), // trackNumber 12
+            track("I'll Be Home on Christmas Day (take 4)"), // trackNumber 17
+            track("I'll Be Home on Christmas Day"),          // trackNumber 20
+            track("I'll Be Home on Christmas Day (remake)"), // trackNumber 25
         ];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
-        let ids = track_ids(3);
+        let ids = track_ids(4);
+        // MusicBrainz's own tracklist order for this disc - plain title first, "(take 3)" well after.
         let mb_tracks = vec![
-            // Deliberately ordered so the plain title is processed before the more specific ones -
-            // the order that triggered the domino.
             mb_track("m1", "I’ll Be Home on Christmas Day"),
             mb_track("m2", "I’ll Be Home on Christmas Day (remake)"),
             mb_track("m3", "I’ll Be Home on Christmas Day (take 3)"),
+            mb_track("m4", "I’ll Be Home on Christmas Day (take 4)"),
         ];
         let release = mb_release("r1", None, None);
         let check = check_release_status(&local_refs, &ids, &[(release, mb_tracks)], None, None);
         assert_eq!(check.status, ReleaseStatus::Complete);
-        let unmatched: Vec<_> = check
+
+        // Not just the status - the *pairing* must be exact-to-exact, not a swapped loose match that
+        // happens to leave the aggregate count looking fine.
+        let by_mb_id: std::collections::HashMap<&str, Option<&str>> = check
             .matched_mb_tracks
             .iter()
-            .filter(|(_, lid)| lid.is_none())
+            .map(|(t, lid)| (t.id.as_str(), lid.as_deref()))
             .collect();
-        assert!(unmatched.is_empty(), "every MB track should have found its exact local match");
+        assert_eq!(by_mb_id["m1"], Some(ids[2].as_str()), "plain title must pair with the plain file");
+        assert_eq!(by_mb_id["m2"], Some(ids[3].as_str()), "remake must pair with the remake file");
+        assert_eq!(by_mb_id["m3"], Some(ids[0].as_str()), "take 3 must pair with the take-3 file");
+        assert_eq!(by_mb_id["m4"], Some(ids[1].as_str()), "take 4 must pair with the take-4 file");
+    }
+
+    /// Even when old code got the *status* right, it could still get the *pairing* wrong - swapping
+    /// which local file a duplicate-ish MB track links to. That is a data-correctness issue on its own
+    /// (wrong recording linked to wrong file) independent of whether it happens to change the reported
+    /// completeness.
+    #[test]
+    fn exact_pairing_holds_even_when_a_loose_match_would_have_produced_the_same_status() {
+        let locals = vec![
+            track("Song A (Extended)"), // deliberately the *loose* candidate first
+            track("Song A"),
+        ];
+        let local_refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(2);
+        let mb_tracks = vec![mb_track("m1", "Song A"), mb_track("m2", "Song A (Extended)")];
+        let release = mb_release("r1", None, None);
+        let check = check_release_status(&local_refs, &ids, &[(release, mb_tracks)], None, None);
+        assert_eq!(check.status, ReleaseStatus::Complete);
+        let by_mb_id: std::collections::HashMap<&str, Option<&str>> = check
+            .matched_mb_tracks
+            .iter()
+            .map(|(t, lid)| (t.id.as_str(), lid.as_deref()))
+            .collect();
+        assert_eq!(by_mb_id["m1"], Some(ids[1].as_str()), "\"Song A\" must link to the plain file, not the Extended one it would loosely match first");
+        assert_eq!(by_mb_id["m2"], Some(ids[0].as_str()));
     }
 
     fn mb_release(id: &str, date: Option<&str>, format: Option<&str>) -> MbRelease {
