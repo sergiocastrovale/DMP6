@@ -430,7 +430,75 @@ growing immediately after restart.
 **Net effect**: no known way remains for this (or any future) sync run to mark an artist "done"
 without having actually processed it. Nothing pending from this incident.
 
-## 17. Current status
+## 17. Current status (2026-09-09)
+
+### What was wrong, in plain terms
+
+The box-set work from the earlier rollout had **never actually taken effect**. Every box set in the
+library was still sitting as a pile of unconnected disc folders, all marked "missing tracks". Four
+separate faults were behind it:
+
+1. **Box-set repair was silently switched off.** Whenever a sync was run for one named artist (the
+   normal way to run it), the box-set step matched the artist's name against the *folder path*
+   instead of the artist, so it never matched anything. It reported "0 groups found", which reads
+   exactly like "this artist has no box sets" - so nothing looked broken. It had been doing nothing
+   for every scoped sync.
+2. **Some albums were filed under the wrong artist name.** 35 artists had an empty, wrongly-named
+   row sitting in front of the real one. Bob Dylan's 72 albums were filed under "Dylan"; Erroll
+   Garner's 76 under "Wardell Gray Quintet". The artist page showed the wrong name and the real
+   entry was unreachable.
+3. **Deluxe editions were invisible to the matcher.** MusicBrainz cuts long replies short, and the
+   code mistook a short reply for "that's everything". For *OK Computer* it saw 31 of 39 editions -
+   the 8 it never saw were every OKNOTOK deluxe. That is precisely the kind of edition the matcher
+   goes looking for when a folder has more tracks than the album.
+4. **Discs had to be in the exact same order as MusicBrainz.** A disc holding all the right songs in
+   a different running order matched nothing, and one unmatched disc threw out the whole box.
+
+Separately, a full library sync was on track to take **~99 days**. The assumed cause (MusicBrainz's
+rate limit) was wrong: the real cause was that requests were sent one at a time and each one spends
+5-30 seconds waiting for a reply, so the connection sat idle roughly 85% of the time. Sync now sends
+several at once while still obeying the same one-request-per-second limit, and no longer re-asks
+MusicBrainz the same question hundreds of times per artist.
+
+### What was checked
+
+ABBA, The Beatles, The Rolling Stones and Bob Dylan were re-synced and then checked **against live
+MusicBrainz**, not just against our own database:
+
+| Check | Scope | Result |
+|---|---|---|
+| Album completeness labels (complete / missing tracks / extra tracks) | 399 albums, 292 MusicBrainz releases | all correct |
+| "Missing" albums that we actually own | 877 entries | none wrongly listed |
+| "Songs already inside a collection you own" notes | 108 notes | all 108 correct |
+| Box sets recognised and split into their albums | 13 groups | correct |
+
+The few albums still labelled "missing tracks" were checked by hand and are genuine: the files are a
+different mix or edition than the one MusicBrainz lists (2009 remaster vs 2015 remix), or the song
+title is spelled differently in the files ("Jumping Jack Flash" vs "Jumpin' Jack Flash"), or the
+tracks are Spanish-language versions. Those are tagging differences in the files, not sync faults.
+
+### Known pending items
+
+- [ ] **ABBA's "Complete Studio Recordings" 9CD box still won't link up.** Everything matches except
+      one song title: the files say "Ring Ring (English version)", MusicBrainz says "Ring Ring". One
+      mismatched song rejects the whole 9-disc box. Fixing it means loosening how strictly song
+      titles must match, which risks wrongly merging genuinely different recordings elsewhere -
+      deliberately left alone pending a decision.
+- [ ] **"Missing album" lists can go stale when a box set is split up.** The missing-album list is
+      built per artist during the sync, but box sets are only split at the very end of the whole run.
+      If an album's only copy is inside a box, it can stay listed as missing even though it is now
+      accounted for. It caused no harm for the four artists checked (they own those albums separately
+      too), but it can affect others.
+- [ ] **34 artists still filed under the wrong name.** The cause is fixed and sync repairs each one
+      as it re-syncs, so these clear themselves as those artists come round. Can be forced sooner by
+      syncing them directly.
+- [ ] **Very large artists are still slow.** The four tested own 70-140 albums each and take roughly
+      an hour apiece. That is expected - the typical artist owns 3 - but worth knowing before
+      re-syncing a big name.
+- [ ] Re-run the box-set pass across the rest of the library, now that scoped syncs actually perform
+      it (it has effectively never run for any single-artist sync).
+
+### Earlier rollout note (superseded)
 
 Total: 563 zombie artists found and fixed. For each one I ran UPDATE Artist SET syncHash = NULL — that un-marks them as "done", so the running sync picks
 them right back up and retries them for real. That already happened, twice, before each resume. They are not skipped, not lost — they're back in the
