@@ -484,14 +484,18 @@ tracks are Spanish-language versions. Those are tagging differences in the files
       mismatched song rejects the whole 9-disc box. Fixing it means loosening how strictly song
       titles must match, which risks wrongly merging genuinely different recordings elsewhere -
       deliberately left alone pending a decision.
-- [ ] **"Missing album" lists can go stale when a box set is split up.** The missing-album list is
-      built per artist during the sync, but box sets are only split at the very end of the whole run.
-      If an album's only copy is inside a box, it can stay listed as missing even though it is now
-      accounted for. It caused no harm for the four artists checked (they own those albums separately
-      too), but it can affect others.
-- [ ] **34 artists still filed under the wrong name.** The cause is fixed and sync repairs each one
+- [x] **"Missing album" lists could go stale when a box set was split up.** ~~The missing-album list
+      is built per artist during the sync, but box sets are only split at the very end of the whole
+      run.~~ Fixed - the list is now swept again after box sets are split.
+- [ ] **33 artists still filed under the wrong name.** The cause is fixed and sync repairs each one
       as it re-syncs, so these clear themselves as those artists come round. Can be forced sooner by
       syncing them directly.
+- [ ] **Some artist entries carry the wrong MusicBrainz identity.** Worse than a naming problem: a
+      near-empty entry called "Wardell Gray Quintet" was holding *Erroll Garner's* MusicBrainz
+      identity (its own is a different one), which is what pulled Garner's 76 albums under that name.
+      Sync now takes the identity off the wrong entry when it repairs one, but that only cleans up
+      cases as they surface. How the wrong identity got written in the first place - most likely an
+      album credited to two artists at once - has not been traced yet, so new ones may still appear.
 - [ ] **Very large artists are still slow.** The four tested own 70-140 albums each and take roughly
       an hour apiece. That is expected - the typical artist owns 3 - but worth knowing before
       re-syncing a big name.
