@@ -96,17 +96,92 @@ which is what drags albums onto the wrong name. When sync repairs one of these, 
 the identity up.
 
 `./sync --repair-artist-identities` sweeps all of these in one go (`--dry-run` to preview). It is
-worth re-running occasionally — the original cause of the bad identities has not been traced, so new
-ones may still appear.
+worth re-running occasionally.
+
+**Traced (2026-09-10).** Erroll Garner's 76 albums sat under "Wardell Gray Quintet" because that entry's
+files carry an embedded MusicBrainz id — but it is the wrong one, Garner's, not the Quintet's own. One
+mistagged file:
+
+```
+Wardell Gray/Album/1990 - The Chase/11. Blue Lou.mp3
+  artist tag = "Wardell Gray Quintet"      (right)
+  embedded id = 75bd5186…                  (Erroll Garner — wrong)
+```
+
+Sync treats an embedded id as definitive and writes it straight onto the entry, permanently — nothing
+ever double-checks that the id actually names the artist the tag says it does. And once written it
+sticks: the write only ever fills an *empty* slot, so no later, correct answer can overwrite it, and a
+name already seen once is never looked at again on a later run.
+
+A second, wider version of the same gap: sync's own search step deliberately tolerates loose matches
+(so "Radiohead" still finds "radiohead" or "Radio Head") — but that tolerance was also used to *accept an
+identity*, not just to find releases. "Wardell Gray Sextet" and "Wardell Gray" score close enough to
+count as the same artist under that looser rule, so the Sextet entry also ended up holding the wrong
+(person, not ensemble) identity. Measured library-wide: **1,269 entries hold an identity that
+contradicts what their own name independently resolves to**, in **149 entries pairs/groups sharing one
+identity that should not be shared**, traceable through **15,493 mistagged embedded-id pairs** in the
+files themselves.
+
+The fix (in progress): an identity may only be **claimed** — written to an entry — when it is certain:
+either the embedded id and an independent name lookup agree, or the name itself matches exactly (not
+approximately). A loose/approximate match may still be used to find and sync an artist's releases, but
+never to claim who that artist *is*. Where certainty is not there, the entry is correctly left unmatched
+rather than guessed at — consistent with this whole document's opening rule of thumb: refuse rather
+than guess. See §5 below for exactly which steps may claim an identity, and §6 for why fixing this in
+code does not, by itself, undo the damage already written.
 
 ---
 
-## 5. Matching an album to MusicBrainz
+## 5. Matching phases — what each step may and may not decide
+
+Turning a raw name into a MusicBrainz identity happens in ordered steps, cheapest and most certain
+first. Each step below either **finds** an artist's releases or **claims** their identity — those are
+different questions, and conflating them is exactly the fault §4 traces.
+
+1. **An id embedded in the files.** Normally definitive and believed directly (§14). The one exception:
+   if an independent, exact lookup of the artist's own name disagrees with the embedded id, the embedded
+   id is no longer trusted, and the independent, agreeing answer is used instead.
+2. **The artist's name, looked up exactly.** Certain. May claim.
+3. **The artist's name, searched loosely** (tolerant of spelling, spacing, word order). This step exists
+   to *find* releases for an artist already believed in, not to decide who the artist is — a loose match
+   here is used to sync releases, never to write a new identity onto an entry.
+4. **Other names found on the same tracks** (a compound tag's other half, a track's own artist field).
+   Only ever evidence about *that other name*, never about the entry being resolved — this is the step
+   that let Erroll Garner's identity leak onto the Quintet entry, since nothing checked the result
+   actually named the Quintet.
+
+**The rule this whole section boils down to: only an exact, independently-verified match may claim an
+identity.** A tolerant match is allowed to help find and sync an artist's own releases, and nothing more.
+
+---
+
+## 6. Repair vs. re-sync — a wrong identity does not fix itself
+
+**A normal sync run, even a full `--overwrite`, cannot undo a wrongly-claimed identity — it can only
+replace one wrong claim with another (or leave the first one exactly as it was).** This is
+counter-intuitive enough to state plainly: re-running sync is not the fix for §4's damage.
+
+Why: once an entry already holds an id, an ordinary sync run trusts it and never re-examines it — the
+whole point of not re-verifying embedded/stored ids (§14) is to avoid re-asking MusicBrainz the same
+question forever. A `--overwrite` run does re-ask, but if the honest answer this time is "not certain
+enough" (§5), the run correctly leaves the entry unmatched for *new* work — it does not go back and
+erase the *old* wrong answer sitting in the identity field, because clearing a value nobody asked it to
+touch is a different action from finding a new one.
+
+So undoing already-wrongly-claimed identities is a **repair**, not a **sync**: a dedicated pass that
+looks for entries whose stored identity contradicts an independent, confident answer, clears the wrong
+one, and lets the entry re-enter the normal queue to be found again — correctly, or not at all.
+`./sync --repair-artist-identities` is that pass. Running sync harder or more often is not a substitute
+for it.
+
+---
+
+## 7. Matching an album to MusicBrainz
 
 Four attempts, in order. **The file tags always win over searching.**
 
 1. **The album id in the files.** Believed directly, no second-guessing.
-2. **The album-group id in the files** — browse its editions and pick one (see §6).
+2. **The album-group id in the files** — browse its editions and pick one (see §8).
 3. **Search by album title + artist**, and *only* when the files carry no usable id at all. A search
    hit must score at least 85, have a similar title, and be an allowed type.
 4. If the files point at something the library refuses to bind (a bootleg, say), search is given one
@@ -138,7 +213,7 @@ edition with the exact count. Fewer tracks is treated as genuine incompleteness,
 
 ---
 
-## 6. Deciding whether an album is complete
+## 8. Deciding whether an album is complete
 
 Sync matches your tracks to the official track list **by title, not by position** — track order
 differs between pressings constantly.
@@ -164,7 +239,7 @@ The result:
 | **Missing tracks** | Some official tracks not found in your files |
 | **Extra tracks** | You have more tracks than the edition lists |
 | **Unmatched** | No confident match — deliberately left alone |
-| **Unknown** | "Needs re-checking" — a temporary state, see §8 |
+| **Unknown** | "Needs re-checking" — a temporary state, see §10 |
 
 **"Missing tracks" is often not a fault.** Real examples from this library: your file is the 2009
 remaster where MusicBrainz lists a 2015 remix; your file is titled "Jumping Jack Flash" where
@@ -173,7 +248,7 @@ differences, not sync errors.
 
 ---
 
-## 7. Box sets and multi-disc albums
+## 9. Box sets and multi-disc albums
 
 MusicBrainz has **no concept of a box set.** A box is one release with several discs. There is also no
 link saying "disc 3 of this box is that standalone album" — the only thing shared is the *recording*
@@ -234,7 +309,7 @@ Three methods, each tried only on what the previous left unresolved:
 
 ---
 
-## 8. Two parts of sync that used to fight
+## 10. Two parts of sync that used to fight
 
 Worth knowing, because the symptom was baffling: **box discs that never got a status**, run after run.
 
@@ -252,7 +327,7 @@ If box discs ever show "unknown" again across repeated syncs, this is the first 
 
 ---
 
-## 9. Albums you are missing
+## 11. Albums you are missing
 
 For each artist, sync lists the official albums you do not have. Filtered the same way as §5, plus a
 check that the album group actually has an official release — without that, bootleg live recordings
@@ -268,7 +343,7 @@ stay listed as missing. The list is now swept again after boxes are split.
 
 ---
 
-## 10. "You already have these songs, inside something else"
+## 12. "You already have these songs, inside something else"
 
 A missing album whose songs all sit inside a compilation or box you own gets a note saying where they
 are.
@@ -291,7 +366,7 @@ Verified against MusicBrainz for the four largest artists in the library: **108 
 
 ---
 
-## 11. Talking to MusicBrainz
+## 13. Talking to MusicBrainz
 
 MusicBrainz allows about one request per second. Sync honours that with a single shared schedule — no
 matter how many albums are being processed at once, requests leave one per 1.1 seconds.
@@ -319,7 +394,7 @@ take about an hour each. Both are normal.
 
 ---
 
-## 12. Safety rules that override everything
+## 14. Safety rules that override everything
 
 - **Metadata is the truth.** Folder and file names are never read for artist, album or year.
 - **Ids embedded in your files are believed immediately** — no second-guessing.
@@ -329,7 +404,7 @@ take about an hour each. Both are normal.
 
 ---
 
-## 13. Known limits — real ceilings, not bugs
+## 15. Known limits — real ceilings, not bugs
 
 These come from what MusicBrainz does and does not record. Changing them means guessing.
 
@@ -344,20 +419,72 @@ These come from what MusicBrainz does and does not record. Changing them means g
 
 ---
 
-## 14. Where to start digging
+## 16. Deploying and running an identity repair
+
+**Order matters, and getting it backwards undoes the fix.** The code change (§5's certainty gate) has to
+be live *before* the repair runs — repairing first, on the old code, means the very next ordinary sync
+writes the wrong identity straight back, because nothing yet stops it from doing so.
+
+**A relink or resync running at the same time is not a substitute for the repair**, and does not need to
+be stopped for it. A resync — even a full "re-check everything" pass — only ever trusts or replaces an
+entry's identity; per §6 it cannot clear a wrong one that already stuck. Nulling wrong identities and
+letting their entries fall back into the ordinary queue is only what the dedicated repair does. So an
+unrelated maintenance run and the identity repair don't conflict — they touch different columns for
+different reasons — but doing the repair first, before the fix is deployed, would immediately be undone
+by the next ordinary sync of an affected artist.
+
+Order:
+
+1. Deploy the code carrying §5's certainty gate.
+2. Run `./sync --repair-artist-identities --dry-run`, read the plan.
+3. Run it for real. This nulls the wrong identities and clears the discography that had piled up under
+   them; it does **not** itself re-sync anything.
+4. A normal, unscoped `./sync` — no special flags — picks the now-empty entries back up as ordinary
+   pending work and re-derives each one properly, or leaves it honestly unmatched. There is no need to
+   force a library-wide `--overwrite` for this: only the entries the repair actually touched need
+   re-deriving, and they already re-enter the queue on their own.
+
+## 17. Measurements taken during the 2026-09-10 identity investigation
+
+Baseline, for comparing against after the fix and repair land — re-run the same query, expect the
+"contradicts" row to fall toward zero and the "confirms" row to stay put:
+
+```sql
+SELECT CASE WHEN l.name IS NULL THEN 'unknown'
+            WHEN l.mbid IS NULL THEN 'unresolvable'
+            WHEN l.mbid = a."musicbrainzId" THEN 'CONFIRMS'
+            ELSE 'CONTRADICTS' END AS verdict,
+       count(*), sum((SELECT count(*) FROM "LocalReleaseArtist" x WHERE x."artistId"=a.id))
+  FROM "Artist" a LEFT JOIN "MbArtistLookup" l ON l.name = a.name
+ WHERE a."musicbrainzId" IS NOT NULL AND a."musicbrainzId" <> '' GROUP BY 1;
+```
+
+| Verdict | Entries | Albums |
+|---|---|---|
+| Confirms its own identity | 37,382 | 151,881 |
+| **Contradicts its own identity** | **1,269** | **1,646** |
+| No independent answer on record | 1,929 | 1,316 |
+| Independent answer says unresolvable | 104 | 408 |
+
+Also measured: **149** groups of entries sharing one identity that should not be shared, and **15,493**
+tracks whose embedded name/id pair disagrees with the independent answer for that same name.
+
+## 18. Where to start digging
 
 | Symptom | Section |
 |---|---|
 | Album on the wrong artist's page | §2, §3 |
 | Artist page under the wrong name, or duplicated | §4 |
-| Album shows unmatched but obviously exists | §5 |
-| Wrong pressing / wrong track list | §5 |
-| "Missing tracks" on an album that looks complete | §6 |
-| Box set shown as one lump, or as scattered discs | §7 |
-| Box discs stuck on "unknown" across runs | §8 |
-| Album listed missing that you own | §9, §7 |
-| "Songs inside another release" note looks wrong | §10 |
-| Sync too slow, or MusicBrainz errors | §11 |
+| One artist's albums showing on a *different, unrelated* artist's page | §4, §5, §6 |
+| Album shows unmatched but obviously exists | §7 |
+| Wrong pressing / wrong track list | §7 |
+| "Missing tracks" on an album that looks complete | §8 |
+| Box set shown as one lump, or as scattered discs | §9 |
+| Box discs stuck on "unknown" across runs | §10 |
+| Album listed missing that you own | §11, §9 |
+| "Songs inside another release" note looks wrong | §12 |
+| Sync too slow, or MusicBrainz errors | §13 |
+| Ran `--repair-artist-identities` but the wrong albums are still there | §6 — a repair clears the id, it does not re-sync the artist; that happens on the next normal run |
 
 Useful commands: `./sync --repair-artist-identities --dry-run`,
 `./sync --only "Artist" --exact --verbose`, `./audit`.
