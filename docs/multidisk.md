@@ -496,9 +496,10 @@ tracks are Spanish-language versions. Those are tagging differences in the files
       no longer creates this particular mess, but the original cause - most likely albums credited to
       two artists at once - is still unknown, so new cases may appear. Re-run the repair occasionally
       and see whether the count grows.
-- [ ] **A few artists need a re-sync to pick their identity back up.** Unlinking left some entries
-      (Erroll Garner among them) without a MusicBrainz identity of their own. They get one the next
-      time they are synced; until then their albums show but their catalogue will look empty.
+- [ ] **4,586 artists have albums but no MusicBrainz identity yet** - they have simply never been
+      synced (Tangerine Dream with 239 albums, Miles Davis with 169, and so on). Not damage; this is
+      the backlog the speed work exists to clear. A handful of the just-unlinked entries sit in here
+      too and will pick up their identity on the same pass.
 - [ ] **Very large artists are still slow.** The four tested own 70-140 albums each and take roughly
       an hour apiece. That is expected - the typical artist owns 3 - but worth knowing before
       re-syncing a big name.
