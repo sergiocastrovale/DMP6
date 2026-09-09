@@ -796,13 +796,23 @@ async fn apply_dissolve(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Re
         let equivalent: Option<(String, Option<i32>)> =
             row.and_then(|(release_id, medium_position)| release_id.map(|r| (r, medium_position)));
 
+        // `matchStatus = 'UNKNOWN'` means "score this again", so it must only be written when the
+        // binding actually moves. This pass runs at the tail of *every* sync and re-derives the same
+        // plan for a box that is already dissolved, so writing it unconditionally left those discs
+        // permanently unscored: the release loop scored them, the tail reset them, and the next run
+        // repeated it. ABBA's nine-disc box sat at UNKNOWN through three consecutive syncs that way.
+        // The `WHERE` clauses below make each write a no-op once the row already says this.
         match equivalent {
             Some((equivalent_release_id, equivalent_medium_position)) => {
                 sqlx::query(
                     r#"UPDATE "LocalRelease"
                        SET "releaseId" = $1, "mediumPosition" = $2, "boxReleaseId" = $3,
                            "boxMediumPosition" = $4, "matchStatus" = 'UNKNOWN', "updatedAt" = $5
-                       WHERE id = $6"#,
+                       WHERE id = $6
+                         AND ("releaseId" IS DISTINCT FROM $1
+                           OR "mediumPosition" IS DISTINCT FROM $2
+                           OR "boxReleaseId" IS DISTINCT FROM $3
+                           OR "boxMediumPosition" IS DISTINCT FROM $4)"#,
                 )
                 .bind(&equivalent_release_id)
                 .bind(equivalent_medium_position)
@@ -818,7 +828,11 @@ async fn apply_dissolve(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Re
                     r#"UPDATE "LocalRelease"
                        SET "releaseId" = $1, "mediumPosition" = $2, "boxReleaseId" = NULL,
                            "boxMediumPosition" = NULL, "matchStatus" = 'UNKNOWN', "updatedAt" = $3
-                       WHERE id = $4"#,
+                       WHERE id = $4
+                         AND ("releaseId" IS DISTINCT FROM $1
+                           OR "mediumPosition" IS DISTINCT FROM $2
+                           OR "boxReleaseId" IS NOT NULL
+                           OR "boxMediumPosition" IS NOT NULL)"#,
                 )
                 .bind(mb_db_id)
                 .bind(position)

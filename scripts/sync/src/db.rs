@@ -1233,10 +1233,26 @@ pub async fn get_artists_pending_sync(pool: &PgPool) -> Result<Vec<ArtistSyncRow
         Option<String>,
         Option<String>,
     )> = sqlx::query_as(
+        // An artist also counts as pending when any of its releases is sitting at UNKNOWN.
+        //
+        // UNKNOWN means "score this again": index sets it when it deletes tracks from a matched
+        // release, and dissolving a box set sets it on every disc it re-binds. The timestamp test
+        // alone never sees the second case - dissolving happens inside sync itself, long after that
+        // artist's own `lastSyncedAt` was stamped - so a freshly dissolved box stayed UNKNOWN until
+        // somebody happened to run `--overwrite` over it. ABBA's nine-disc box did exactly that:
+        // bound and dissolved correctly, then showed nine unscored discs.
         r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl"
-               FROM "Artist"
+               FROM "Artist" a
                WHERE "lastIndexedAt" IS NOT NULL
-                 AND ("lastSyncedAt" IS NULL OR "lastIndexedAt" > "lastSyncedAt")
+                 AND (
+                   "lastSyncedAt" IS NULL
+                   OR "lastIndexedAt" > "lastSyncedAt"
+                   OR EXISTS (
+                     SELECT 1 FROM "LocalRelease" lr
+                     JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+                     WHERE lra."artistId" = a.id AND lr."matchStatus" = 'UNKNOWN'
+                   )
+                 )
                ORDER BY name"#,
     )
     .fetch_all(pool)
@@ -1270,15 +1286,28 @@ pub struct LocalReleaseRow {
     // bind. Must be respected on every re-sync, or a later run would re-score a dissolved box disc
     // against its target's *whole* tracklist and silently undo the fix.
     pub medium_position: Option<i32>,
+    /// MusicBrainz id of the release this folder is already bound to, when the box pass put it there
+    /// - either dissolved onto a standalone release (`boxReleaseId`) or kept on the box itself
+    /// (`mediumPosition`). The folder's own tags name a different release than the box pass chose, so
+    /// without this the per-release matcher re-binds it from the tag on every run while the box pass
+    /// re-points it back - the two fight, and the disc never settles on a score. See its use in main.rs.
+    pub dissolved_bound_mb_id: Option<String>,
 }
 
 pub async fn get_local_releases_for_artist(
     pool: &PgPool,
     artist_id: &str,
 ) -> Result<Vec<LocalReleaseRow>, sqlx::Error> {
-    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>)> = sqlx::query_as(
+    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>)> = sqlx::query_as(
         r#"SELECT lr.id, lr.title, lr.year, lr."forcedComplete", lr."releaseId", lr."matchStatus"::text,
-                  lr.image, lr."imageUrl", lr."mediumPosition"
+                  lr.image, lr."imageUrl", lr."mediumPosition",
+                  -- Any binding the box pass owns, not just a dissolved one. A disc it kept on the
+                  -- box itself (no standalone equivalent) carries `mediumPosition` rather than
+                  -- `boxReleaseId`, and needs the same protection: disc 1 of ABBA's box is tagged
+                  -- with the standalone "Ring Ring" id, so the tag would drag it off the box.
+                  CASE WHEN lr."boxReleaseId" IS NOT NULL OR lr."mediumPosition" IS NOT NULL
+                       THEN (SELECT b."musicbrainzId" FROM "MusicBrainzRelease" b WHERE b.id = lr."releaseId")
+                  END
            FROM "LocalRelease" lr
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
            WHERE lra."artistId" = $1
@@ -1291,7 +1320,7 @@ pub async fn get_local_releases_for_artist(
     Ok(rows
         .into_iter()
         .map(
-            |(id, title, year, forced_complete, release_id, match_status, image, image_url, medium_position)| {
+            |(id, title, year, forced_complete, release_id, match_status, image, image_url, medium_position, dissolved_bound_mb_id)| {
                 LocalReleaseRow {
                     id,
                     title,
@@ -1301,6 +1330,7 @@ pub async fn get_local_releases_for_artist(
                     match_status,
                     has_cover: image.is_some() || image_url.is_some(),
                     medium_position,
+                    dissolved_bound_mb_id,
                 }
             },
         )

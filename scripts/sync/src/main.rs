@@ -1517,8 +1517,18 @@ async fn main() {
                 Err(_) => continue,
             };
 
-            // 4-tier matching: collect majority MB IDs from local tracks
-            let majority_release_id = get_majority_id(&local_tracks, |t| &t.mb_release_id);
+            // 4-tier matching: collect majority MB IDs from local tracks.
+            //
+            // A disc a box-dissolve has already placed is the exception: its files are still tagged
+            // with the *box's* id, so the tiers below would bind it straight back to the box - and the
+            // box pass at the tail of the run would move it off again, marking it UNKNOWN each time.
+            // The disc then never settles on a score, which is what left ABBA's nine-disc box showing
+            // unscored discs across three consecutive syncs. The dissolve decides where these belong
+            // (docs/multidisk.md §5), so score against that, not against the tag.
+            let majority_release_id = local_release
+                .dissolved_bound_mb_id
+                .clone()
+                .or_else(|| get_majority_id(&local_tracks, |t| &t.mb_release_id));
             let majority_rg_id = get_majority_id(&local_tracks, |t| &t.mb_release_group_id);
 
             // Tier 1: Direct release lookup via embedded MUSICBRAINZ_ALBUMID
@@ -1569,6 +1579,14 @@ async fn main() {
                 if c.release_id.is_empty() {
                     return None;
                 } // Tier 2 already ran, nothing to upgrade
+                // A dissolved box disc is already where it belongs. Hunting a bigger edition for it
+                // just restarts the tug-of-war with the box pass: the disc legitimately holds more
+                // tracks than the standalone album it reprints, so this always finds a "better"
+                // sibling, binds to it, and the tail moves the disc back and marks it UNKNOWN. Discs
+                // 7 and 8 of ABBA's box stayed unscored on exactly this loop after the tag-side fix.
+                if local_release.dissolved_bound_mb_id.is_some() {
+                    return None;
+                }
                 let track_count = c.releases.first().map(|(_, t)| t.len()).unwrap_or(0);
                 (track_count < local_tracks.len()).then(|| (c.rg_id.clone(), track_count))
             });
