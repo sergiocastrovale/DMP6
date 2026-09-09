@@ -2368,6 +2368,33 @@ async fn main() {
             Ok(_) => {}
             Err(e) => reporter.warn(&format!("Box-set repair error: {}", e)),
         }
+
+        // Sweep again, because the sweep above ran before this did.
+        //
+        // Catalogue gaps are written per artist inside the loop, and the placeholder sweep runs
+        // right after it - both finish before any box is dissolved. Dissolving binds a box's discs
+        // to the standalone releases they reprint, which is exactly what makes those release groups
+        // owned; a gap placeholder written earlier in the same run therefore survives as a phantom
+        // "missing" entry for a release the library now demonstrably has. It only stays hidden while
+        // the artist also owns those albums as separate folders (ABBA does, which is why the four
+        // test artists showed nothing) - an artist whose only copy lives inside the box would keep
+        // being told to download it.
+        //
+        // Same ordering rule as the first pair: orphans first, then retire, or retire deletes the
+        // placeholder instead of the orphan (see retire_owned_missing_placeholders' doc).
+        if let Ok(n) = delete_orphaned_mb_releases(&pool, cleanup_scope.as_deref()).await {
+            if n > 0 {
+                reporter.info(&format!("Cleaned up {} orphaned MB release(s) after box repair", n));
+            }
+        }
+        if let Ok(n) = db::retire_owned_missing_placeholders(&pool).await {
+            if n > 0 {
+                reporter.info(&format!(
+                    "Retired {} MISSING placeholder(s) covered by a dissolved box",
+                    n
+                ));
+            }
+        }
     }
 
     update_statistics(&pool).await.ok();
