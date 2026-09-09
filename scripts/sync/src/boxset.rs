@@ -115,15 +115,77 @@ fn pair_tracks(
         .map(|(i, (_, title, secs))| (i, normalize_title(title), *secs))
         .collect();
 
-    let mut links = Vec::with_capacity(local.len());
+    let mut links: Vec<(String, String)> = Vec::with_capacity(local.len());
+    let mut unresolved: Vec<(&String, String, Option<i32>)> = Vec::new();
+
+    // Pass 1 - identical title, runtimes agreeing closely. Everything placeable beyond doubt is
+    // placed first, so the looser passes never compete for a track this one had a claim on. Greedy is
+    // correct here: two tracks that share a title *and* a runtime are interchangeable.
     for (local_id, local_title, local_secs) in local {
         let want = normalize_title(local_title);
-        let pos = available.iter().position(|(_, have_title, have_secs)| {
-            *have_title == want && durations_compatible(*local_secs, *have_secs)
-        })?;
+        match available
+            .iter()
+            .position(|(_, have, hs)| *have == want && durations_compatible(*local_secs, *hs))
+        {
+            Some(pos) => {
+                let (idx, _, _) = available.remove(pos);
+                links.push((local_id.clone(), medium[idx].0.clone()));
+            }
+            None => unresolved.push((local_id, want, *local_secs)),
+        }
+    }
+
+    // Pass 1b - identical title, runtime merely in the same region. Rips, masterings and gapless
+    // trailing silence move a track by a few seconds, and the five-second tie-breaker used above is
+    // deliberately tight because `owned::find_owning_bundle` shares it for a much weaker test.
+    // Requiring it here cost ABBA's "The Complete Studio Recordings" its entire nine-disc bind over
+    // one track: disc 5's "I'm a Marionette" is 243s in the files against MusicBrainz's 249s, on a
+    // disc whose eleven titles otherwise line up exactly.
+    //
+    // Still bounded, because a shared title with a wildly different runtime is usually a different
+    // recording - a live take, an extended mix - not a different rip of the same one.
+    const SAME_TRACK_DIFFERENT_MASTER_SECS: i32 = 15;
+    let mut still_unresolved: Vec<(&String, String, Option<i32>)> = Vec::new();
+    for (local_id, want, local_secs) in unresolved {
+        let near = |hs: Option<i32>| match (local_secs, hs) {
+            (Some(a), Some(b)) => (a - b).abs() <= SAME_TRACK_DIFFERENT_MASTER_SECS,
+            _ => true,
+        };
+        match available
+            .iter()
+            .position(|(_, have, hs)| *have == want && near(*hs))
+        {
+            Some(pos) => {
+                let (idx, _, _) = available.remove(pos);
+                links.push((local_id.clone(), medium[idx].0.clone()));
+            }
+            None => still_unresolved.push((local_id, want, local_secs)),
+        }
+    }
+    let unresolved = still_unresolved;
+
+    // Pass 2 - a title that merely *contains* the other, for the leftovers. Tags routinely qualify a
+    // track MusicBrainz leaves plain, or the reverse: ABBA's "The Complete Studio Recordings" disc 1
+    // is a perfect 19-of-19 rip whose opener is tagged "Ring Ring (English version)" where
+    // MusicBrainz says "Ring Ring", and that single word rejected the entire nine-disc box.
+    //
+    // Only for leftovers, and only when exactly one candidate fits. Run greedily over every track it
+    // would be actively dangerous: that same disc also holds the Spanish, German and Swedish "Ring
+    // Ring", whose durations sit within the tolerance of the plain one - first-fit would happily pair
+    // whichever came first. Exact-first plus a uniqueness test removes both hazards.
+    for (local_id, want, local_secs) in unresolved {
+        let mut hits = available.iter().enumerate().filter(|(_, (_, have, hs))| {
+            (have.contains(want.as_str()) || want.contains(have.as_str()))
+                && durations_compatible(local_secs, *hs)
+        });
+        let (pos, _) = hits.next()?;
+        if hits.next().is_some() {
+            return None; // ambiguous - refuse rather than guess
+        }
         let (idx, _, _) = available.remove(pos);
         links.push((local_id.clone(), medium[idx].0.clone()));
     }
+
     Some(links)
 }
 
@@ -1001,6 +1063,93 @@ mod tests {
                 ("l3".to_string(), "m2".to_string()),
             ]
         );
+    }
+
+    /// ABBA's "The Complete Studio Recordings" disc 1: a perfect 19-of-19 rip whose opener is tagged
+    /// with a qualifier MusicBrainz leaves off. One word rejected the whole nine-disc box.
+    #[test]
+    fn a_qualified_title_pairs_with_the_plain_one() {
+        let local = sibling("cd1", "Box/CD 1", &[
+            ("l1", "Ring Ring (English version)", Some(184)),
+            ("l2", "Another Town, Another Train", Some(193)),
+            ("l3", "Nina, Pretty Ballerina", Some(174)),
+        ]);
+        let m = medium(1, &[
+            ("m1", "Ring Ring", Some(186)),
+            ("m2", "Another Town, Another Train", Some(193)),
+            ("m3", "Nina, Pretty Ballerina", Some(173)),
+        ]);
+        let links = pair_tracks(&local.tracks, &m.tracks).expect("qualifier must not block the pairing");
+        // Keyed, not indexed: exact matches are claimed first, so the loose pair lands last.
+        let by_local: std::collections::HashMap<_, _> = links.into_iter().collect();
+        assert_eq!(by_local["l1"], "m1");
+        assert_eq!(by_local["l2"], "m2");
+        assert_eq!(by_local["l3"], "m3");
+    }
+
+    /// The hazard the two passes exist to avoid. That same disc carries four language versions of
+    /// "Ring Ring" whose durations all sit within tolerance of the plain one, so a greedy
+    /// substring-first scan would pair whichever happened to come first. Exact titles must be claimed
+    /// before any loose match is considered.
+    #[test]
+    fn an_exact_title_is_claimed_before_a_loose_one_competes_for_it() {
+        let local = sibling("cd1", "Box/CD 1", &[
+            ("l1", "Ring Ring (Spanish version)", Some(182)),
+            ("l2", "Ring Ring (English version)", Some(184)),
+            ("l3", "Santa Rosa", Some(181)),
+        ]);
+        let m = medium(1, &[
+            ("m1", "Ring Ring", Some(186)),
+            ("m2", "Ring Ring (Spanish version)", Some(181)),
+            ("m3", "Santa Rosa", Some(181)),
+        ]);
+        let links = pair_tracks(&local.tracks, &m.tracks).expect("should pair");
+        let by_local: std::collections::HashMap<_, _> = links.into_iter().collect();
+        assert_eq!(by_local["l1"], "m2", "the Spanish tag must take the Spanish track");
+        assert_eq!(by_local["l2"], "m1", "the English tag takes the plain one that is left");
+    }
+
+    /// ABBA's disc 5: eleven titles line up exactly, one runtime is six seconds out, and that used to
+    /// reject the entire nine-disc box.
+    #[test]
+    fn a_few_seconds_of_master_drift_does_not_reject_a_disc() {
+        let local = sibling("cd5", "Box/CD 5", &[
+            ("l1", "Eagle", Some(349)),
+            ("l2", "I'm a Marionette", Some(243)),
+            ("l3", "Thank You for the Music", Some(229)),
+        ]);
+        let m = medium(5, &[
+            ("m1", "Eagle", Some(349)),
+            ("m2", "I’m a Marionette", Some(249)),
+            ("m3", "Thank You for the Music", Some(229)),
+        ]);
+        let by_local: std::collections::HashMap<_, _> =
+            pair_tracks(&local.tracks, &m.tracks).expect("six seconds is drift, not a different track")
+                .into_iter().collect();
+        assert_eq!(by_local["l2"], "m2");
+    }
+
+    /// The bound still has to mean something: a shared title with a wildly different runtime is a
+    /// different recording, not a different rip.
+    #[test]
+    fn a_wildly_different_runtime_is_still_a_different_track() {
+        let local = sibling("a", "f", &[("l1", "One", Some(100)), ("l2", "Jam", Some(120))]);
+        let m = medium(1, &[("m1", "One", Some(100)), ("m2", "Jam", Some(600))]);
+        assert!(pair_tracks(&local.tracks, &m.tracks).is_none());
+    }
+
+    /// A loose match that fits two remaining tracks equally is refused, not guessed at.
+    #[test]
+    fn an_ambiguous_loose_match_is_refused() {
+        let local = sibling("cd1", "Box/CD 1", &[
+            ("l1", "Ring Ring", Some(185)),
+            ("l2", "Filler", Some(100)),
+        ]);
+        let m = medium(1, &[
+            ("m1", "Ring Ring (English version)", Some(184)),
+            ("m2", "Ring Ring (Spanish version)", Some(186)),
+        ]);
+        assert!(pair_tracks(&local.tracks, &m.tracks).is_none());
     }
 
     #[test]
