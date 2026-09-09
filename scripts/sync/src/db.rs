@@ -1034,8 +1034,14 @@ pub async fn promote_over_empty_primary(
         .bind(artist_id)
         .execute(pool)
         .await?;
+    // The demoted row also gives up its MusicBrainz id, because that claim is what caused the
+    // mis-filing in the first place. "Wardell Gray Quintet" (0 releases) was holding Erroll Garner's
+    // MusicBrainz id - not its own, which is a different id entirely - so Erroll Garner's 76 releases
+    // resolved onto it and filed themselves under that name. Leaving the id on the demoted row lets
+    // two rows claim one artist, and the next sync can re-link them the same way round again.
     sqlx::query(
-        r#"UPDATE "Artist" SET "primaryArtistId" = $1, "updatedAt" = NOW()
+        r#"UPDATE "Artist"
+           SET "primaryArtistId" = $1, "musicbrainzId" = NULL, "updatedAt" = NOW()
            WHERE id = $2 AND id <> $1"#,
     )
     .bind(artist_id)
