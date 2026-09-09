@@ -993,6 +993,91 @@ pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> Ha
 /// Snapshotted before the gap pass wipes and rewrites those rows. Re-applying a note costs nothing;
 /// re-deriving it costs one MusicBrainz call per group, so an ordinary sync carries the note forward
 /// and only `--overwrite` pays to re-check it.
+/// Sweep `primaryArtistId` links that should never have been made, in one pass.
+///
+/// Two artist rows are the same artist only when **both names resolve to the same MusicBrainz id**
+/// (CLAUDE.md's rule for this column). The 33 links found in this library all break it, in three
+/// different ways, and they need three different answers - "the row that owns the releases wins" is
+/// not one of them:
+///
+///   * Same id on both sides - a genuine alias ("Grover Washington, Jr." / "Grover Washington").
+///     Promote the row that owns the releases.
+///   * Different ids, or either side unresolved - not the same artist at all. "Faith" was filed under
+///     "Percy Faith", "Forest" under "Deep Forest", and collaboration names like "Indica Dubs meets
+///     Vibronics" under "Indica Dubs". Swapping these would only invert the error and make the
+///     collaboration outrank the real artist, so the link is removed and both stand on their own.
+///   * A primary whose stored id contradicts its own name ("Wardell Gray Quintet" holding Erroll
+///     Garner's id) also gives that id up - it is what dragged the releases across in the first place.
+///
+/// Pure SQL, no MusicBrainz calls. Returns one row per repair for reporting.
+pub struct IdentityRepair {
+    pub artist: String,
+    pub releases: i64,
+    pub other: String,
+    pub action: &'static str,
+}
+
+pub async fn repair_all_empty_primaries(
+    pool: &PgPool,
+    dry_run: bool,
+) -> Result<Vec<IdentityRepair>, sqlx::Error> {
+    let pairs: Vec<(String, String, i64, String, String, Option<String>, Option<String>, Option<String>)> =
+        sqlx::query_as(
+            r#"SELECT d.id, d.name,
+                      (SELECT count(*) FROM "LocalReleaseArtist" x WHERE x."artistId" = d.id) AS n_local,
+                      p.id, p.name,
+                      (SELECT l.mbid FROM "MbArtistLookup" l WHERE l.name = d.name AND l.mbid IS NOT NULL LIMIT 1),
+                      (SELECT l.mbid FROM "MbArtistLookup" l WHERE l.name = p.name AND l.mbid IS NOT NULL LIMIT 1),
+                      p."musicbrainzId"
+               FROM "Artist" d
+               JOIN "Artist" p ON p.id = d."primaryArtistId"
+               WHERE EXISTS (SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = d.id)
+                 AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = p.id)
+               ORDER BY 3 DESC"#,
+        )
+        .fetch_all(pool)
+        .await?;
+
+    let mut done = Vec::new();
+    for (dup_id, dup_name, n_local, empty_id, empty_name, dup_mbid, empty_mbid, empty_stored_mbid) in pairs {
+        let same_artist = match (dup_mbid.as_deref(), empty_mbid.as_deref()) {
+            (Some(a), Some(b)) => a == b,
+            _ => false,
+        };
+
+        let action = if same_artist {
+            if !dry_run {
+                promote_over_empty_primary(pool, &dup_id).await?;
+            }
+            "promoted over an alias of itself"
+        } else {
+            if !dry_run {
+                sqlx::query(
+                    r#"UPDATE "Artist" SET "primaryArtistId" = NULL, "updatedAt" = NOW() WHERE id = $1"#,
+                )
+                .bind(&dup_id)
+                .execute(pool)
+                .await?;
+                // A stored id that contradicts the row's own name is what moved the releases across.
+                if let (Some(stored), Some(resolved)) = (empty_stored_mbid.as_deref(), empty_mbid.as_deref()) {
+                    if stored != resolved {
+                        sqlx::query(
+                            r#"UPDATE "Artist" SET "musicbrainzId" = NULL, "updatedAt" = NOW() WHERE id = $1"#,
+                        )
+                        .bind(&empty_id)
+                        .execute(pool)
+                        .await?;
+                    }
+                }
+            }
+            "unlinked - not the same artist"
+        };
+
+        done.push(IdentityRepair { artist: dup_name, releases: n_local, other: empty_name, action });
+    }
+    Ok(done)
+}
+
 /// Repair a `primaryArtistId` that points at an artist owning nothing.
 ///
 /// Duplicate detection used to accept *any* other row holding the same MusicBrainz id as the primary,

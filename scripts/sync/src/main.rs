@@ -86,9 +86,14 @@ struct SyncArgs {
     repair_shared_release_ids: bool,
     #[arg(
         long,
-        help = "With --repair-shared-release-ids: print the plan, write nothing"
+        help = "With --repair-shared-release-ids or --repair-artist-identities: print the plan, write nothing"
     )]
     dry_run: bool,
+    #[arg(
+        long,
+        help = "Repair artists filed under a near-empty duplicate row that owns no releases (pure SQL, no API), then exit"
+    )]
+    repair_artist_identities: bool,
     #[arg(
         long,
         help = "Read artist IDs from file (one per line, used by refresh)"
@@ -453,6 +458,41 @@ async fn main() {
                 n
             )),
             Err(e) => reporter.err(&format!("Recompute error: {}", e)),
+        }
+        return;
+    }
+
+    // Standalone repair: artists filed under a near-empty duplicate row. No lock, no API - pure SQL.
+    //
+    // The same repair runs automatically for any artist a sync visits, but a sync only visits artists
+    // with pending work, so rows mis-filed before that landed would wait for an `--overwrite` of each
+    // one. This sweeps them all in seconds instead.
+    if args.repair_artist_identities {
+        reporter.header(if args.dry_run {
+            "DMP Sync - Repair Artist Identities (DRY RUN)"
+        } else {
+            "DMP Sync - Repair Artist Identities"
+        });
+        match db::repair_all_empty_primaries(&pool, args.dry_run).await {
+            Ok(done) => {
+                for r in &done {
+                    reporter.ok(&format!(
+                        "{} ({} release(s)) vs \"{}\" - {}",
+                        r.artist, r.releases, r.other, r.action
+                    ));
+                }
+                reporter.blank();
+                let promoted = done.iter().filter(|r| r.action.starts_with("promoted")).count();
+                let unlinked = done.len() - promoted;
+                reporter.done(&format!(
+                    "{} artist(s) {}: {} promoted over an alias, {} unlinked as different artists",
+                    done.len(),
+                    if args.dry_run { "would be repaired" } else { "repaired" },
+                    promoted,
+                    unlinked
+                ));
+            }
+            Err(e) => reporter.err(&format!("Repair error: {}", e)),
         }
         return;
     }
