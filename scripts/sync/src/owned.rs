@@ -15,9 +15,6 @@
 //! tracks belong to the container and already carry its MB identity; repointing them at this release's
 //! tracks would destroy that identity and stamp a mismatched album/track id pair into the tags.
 
-use reqwest::Client;
-
-use crate::mb_api::{self, RateLimiter};
 
 /// Title comparison key: case-folded, punctuation- and whitespace-insensitive. Tag titles and MB
 /// titles disagree on case and punctuation constantly ("Mk 1" vs "MK 1", "Bangers + Mash").
@@ -116,23 +113,25 @@ pub fn find_owning_bundle<'a>(
 }
 
 
-/// Title of the local release whose tracks already cover every track of `rg_id`, if there is one.
+/// Title of the local release whose tracks already cover every track of this release group, if there
+/// is one.
 ///
-/// Read-only and side-effect free: costs one MusicBrainz call for the group's official editions, and
-/// returns nothing but a name for the caller to put in the gap's `statusReason`. The release is still
-/// a gap — see the module docs for why containment is not ownership.
-pub async fn detect_containment(
-    http_client: &Client,
-    limiter: &mut RateLimiter,
-    rg_id: &str,
+/// Pure and side-effect free: it returns nothing but a name for the caller to put in the gap's
+/// `statusReason`. The release is still a gap — see the module docs for why containment is not
+/// ownership.
+///
+/// `editions` arrives pre-fetched from the caller's `OfficialArtistCatalogue`. It used to fetch them
+/// itself, one paginated MusicBrainz browse per gap per artist per run, with negative results never
+/// cached — the single largest avoidable cost in a sync run (14.8 such calls for an average artist,
+/// 813 at worst, each averaging ~10s cold). The artist's whole official catalogue now arrives in the
+/// browse sync already made for `official_rg_ids`, so this costs nothing.
+pub fn detect_containment(
+    editions: &[(crate::mb_types::MbRelease, Vec<crate::mb_types::MbTrack>)],
     bundles: &[LocalBundle],
 ) -> Option<String> {
     if bundles.is_empty() {
         return None;
     }
-    let editions = mb_api::mb_get_release_tracks(http_client, rg_id, limiter)
-        .await
-        .ok()?;
 
     // Widest edition first: containment of the fullest tracklist is the strongest statement.
     let mut ordered: Vec<&(crate::mb_types::MbRelease, Vec<crate::mb_types::MbTrack>)> =

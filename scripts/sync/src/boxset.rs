@@ -86,16 +86,52 @@ fn common_ancestor(a: &str, b: &str) -> String {
     out.join("/")
 }
 
+/// Pair a folder's tracks against a medium's, one-to-one, returning `(local_track_id, mb_track_id)`
+/// for every track - or `None` when the two are not the same tracklist.
+///
+/// Same length is still required (this decides "is this folder *that* disc", not containment), but the
+/// pairing is by **content, not position**: each local track claims a distinct medium track with the
+/// same normalized title and a compatible duration, in any order.
+///
+/// Order used to be load-bearing - the two lists were `zip`ped - and that silently rejected real
+/// boxes. ABBA's "The Complete Studio Recordings (9CD)" is a perfect 9-of-9 rip whose disc 1 carries
+/// exactly MusicBrainz's 19 tracks, but sequenced differently ("Åh, vilka tider" 3rd locally vs 14th
+/// in MB, "Rock 'n Roll Band" last vs 12th). One such disc made `plan_box_bind` reject the **whole**
+/// group, so a complete box stayed nine unbound `MISSING_TRACKS` folders.
+///
+/// Greedy first-fit, matching `owned::find_owning_bundle`'s own approach: duration separates
+/// same-titled tracks, and a pathological set where only a different assignment would succeed is
+/// left unmatched rather than guessed at.
+fn pair_tracks(
+    local: &[(String, String, Option<i32>)],
+    medium: &[(String, String, Option<i32>)],
+) -> Option<Vec<(String, String)>> {
+    if local.len() != medium.len() {
+        return None;
+    }
+    let mut available: Vec<(usize, String, Option<i32>)> = medium
+        .iter()
+        .enumerate()
+        .map(|(i, (_, title, secs))| (i, normalize_title(title), *secs))
+        .collect();
+
+    let mut links = Vec::with_capacity(local.len());
+    for (local_id, local_title, local_secs) in local {
+        let want = normalize_title(local_title);
+        let pos = available.iter().position(|(_, have_title, have_secs)| {
+            *have_title == want && durations_compatible(*local_secs, *have_secs)
+        })?;
+        let (idx, _, _) = available.remove(pos);
+        links.push((local_id.clone(), medium[idx].0.clone()));
+    }
+    Some(links)
+}
+
 fn tracks_match(
     local: &[(String, String, Option<i32>)],
     medium: &[(String, String, Option<i32>)],
 ) -> bool {
-    if local.len() != medium.len() {
-        return false;
-    }
-    local.iter().zip(medium.iter()).all(|((_, lt, ls), (_, mt, ms))| {
-        normalize_title(lt) == normalize_title(mt) && durations_compatible(*ls, *ms)
-    })
+    pair_tracks(local, medium).is_some()
 }
 
 /// Decide whether `siblings` are discs of `candidate`, and how. `None` when any sibling matches zero
@@ -112,21 +148,21 @@ pub fn plan_box_bind(siblings: &[BoxSibling], candidate: &BoxCandidate) -> Optio
     let mut track_links: Vec<(String, String)> = Vec::new();
 
     for s in siblings {
-        let hits: Vec<&BoxMedium> = candidate
+        let hits: Vec<(&BoxMedium, Vec<(String, String)>)> = candidate
             .media
             .iter()
-            .filter(|m| tracks_match(&s.tracks, &m.tracks))
+            .filter_map(|m| pair_tracks(&s.tracks, &m.tracks).map(|links| (m, links)))
             .collect();
-        let [medium] = hits[..] else {
+        let [(medium, links)] = &hits[..] else {
             return None; // zero or ambiguous
         };
         if !claimed.insert(medium.position) {
             return None; // two siblings claim the same medium
         }
         members.push((s.local_id.clone(), medium.position));
-        for ((local_track_id, _, _), (mb_track_id, _, _)) in s.tracks.iter().zip(medium.tracks.iter()) {
-            track_links.push((local_track_id.clone(), mb_track_id.clone()));
-        }
+        // The pairing computed by `pair_tracks`, not a positional zip - on a disc whose sequencing
+        // differs from MusicBrainz's, zipping linked every track to the wrong recording.
+        track_links.extend(links.iter().cloned());
     }
 
     let mut ordered = members.clone();
@@ -356,6 +392,9 @@ struct SiblingRow {
 struct SiblingGroup {
     parent: String,
     rows: Vec<SiblingRow>,
+    /// Every artist credited on any folder in this group, for `--only` scoping. Resolved from
+    /// `LocalReleaseArtist`, never from the folder path - see `group_matches_filter`.
+    artist_names: Vec<String>,
 }
 
 /// Folders sharing a parent, at least two of them, none yet folded into one `LocalRelease` - the
@@ -363,7 +402,9 @@ struct SiblingGroup {
 /// since a box's siblings frequently carry entirely different (and individually correct-looking)
 /// embedded release ids (shape (b), see module docs).
 async fn find_sibling_groups(pool: &PgPool) -> Result<Vec<SiblingGroup>, sqlx::Error> {
-    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+    // `artist_names` comes along for `--only` scoping (see `group_matches_filter`) - one aggregate in
+    // the same query rather than a per-group round trip.
+    let rows: Vec<(String, String, String, Option<String>, Vec<String>)> = sqlx::query_as(
         r#"
         WITH f AS (
           SELECT lr.id, lr."folderPath" AS folder_path,
@@ -375,7 +416,13 @@ async fn find_sibling_groups(pool: &PgPool) -> Result<Vec<SiblingGroup>, sqlx::E
           WHERE lr."folderPath" IS NOT NULL
             AND array_length(string_to_array(lr."folderPath", '/'), 1) >= 4
         )
-        SELECT f.id, f.folder_path, f.parent, f.majority_mb
+        SELECT f.id, f.folder_path, f.parent, f.majority_mb,
+               COALESCE((
+                 SELECT array_agg(DISTINCT a.name)
+                 FROM "LocalReleaseArtist" lra
+                 JOIN "Artist" a ON a.id = lra."artistId"
+                 WHERE lra."localReleaseId" = f.id
+               ), ARRAY[]::text[]) AS artist_names
         FROM f
         WHERE f.parent IN (SELECT parent FROM f GROUP BY parent HAVING count(*) > 1)
         ORDER BY f.parent, f.folder_path
@@ -385,17 +432,25 @@ async fn find_sibling_groups(pool: &PgPool) -> Result<Vec<SiblingGroup>, sqlx::E
     .await?;
 
     let mut groups: Vec<SiblingGroup> = Vec::new();
-    for (id, folder_path, parent, majority_mb) in rows {
+    for (id, folder_path, parent, majority_mb, artist_names) in rows {
         let row = SiblingRow {
             local_id: id,
             folder_path,
             majority_mb_release_id: majority_mb,
         };
         match groups.last_mut() {
-            Some(g) if g.parent == parent => g.rows.push(row),
+            Some(g) if g.parent == parent => {
+                g.rows.push(row);
+                for n in artist_names {
+                    if !g.artist_names.contains(&n) {
+                        g.artist_names.push(n);
+                    }
+                }
+            }
             _ => groups.push(SiblingGroup {
                 parent,
                 rows: vec![row],
+                artist_names,
             }),
         }
     }
@@ -418,6 +473,27 @@ async fn sibling_tracks(
         .into_iter()
         .map(|(id, title, dur)| (id, title.unwrap_or_default(), dur))
         .collect())
+}
+
+/// Does this group fall inside a `--only` scope?
+///
+/// Matches against the artists actually credited on the group's folders, **not** against
+/// `group.parent`. The old code filtered on the parent path, which broke twice over:
+///
+///   * `--exact` matched nothing at all. `matches_filter` normalizes by stripping non-alphanumerics,
+///     so `ABBA/Compilation/2005 - The Complete Studio Recordings (9CD)` becomes
+///     `abbacompilation2005 the complete studio recordings 9cd`, which can never equal `abba`. Every
+///     `./sync --only X --exact` therefore skipped box-set repair silently, reporting "0 sibling-folder
+///     group(s)" as though the artist simply had none.
+///   * It read an artist off a directory name, which this codebase does not do (CLAUDE.md: metadata is
+///     the source of truth, never filesystem paths). A box filed under a collaborator's folder -
+///     `Joan Baez/Compilation/2013 - Voices Of A Generation (2CD)`, credited to Bob Dylan - was
+///     excluded from `--only "Bob Dylan"` for no reason but its path.
+fn group_matches_filter(group: &SiblingGroup, only: &str, exact: bool) -> bool {
+    group
+        .artist_names
+        .iter()
+        .any(|name| common::filters::matches_filter(name, "", "", only, exact))
 }
 
 async fn artist_for_group(pool: &PgPool, local_ids: &[String]) -> Option<(String, String)> {
@@ -731,10 +807,8 @@ pub async fn run_repair(
     exact: bool,
 ) -> Result<BoxSetSummary, sqlx::Error> {
     let mut groups = find_sibling_groups(pool).await?;
-    // The parent folder always starts with the artist's own folder name, so the same
-    // semicolon-separated prefix/exact filter every other sync mode uses works here unchanged.
     if !only.is_empty() {
-        groups.retain(|g| common::filters::matches_filter(&g.parent, "", "", only, exact));
+        groups.retain(|g| group_matches_filter(g, only, exact));
     }
     let mut summary = BoxSetSummary {
         groups_seen: groups.len(),
@@ -882,6 +956,101 @@ pub async fn run_repair(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn group_with_artists(parent: &str, artists: &[&str]) -> SiblingGroup {
+        SiblingGroup {
+            parent: parent.to_string(),
+            rows: Vec::new(),
+            artist_names: artists.iter().map(|a| a.to_string()).collect(),
+        }
+    }
+
+    /// The regression: scoping used to compare `--only` against the *parent path*, which
+    /// `matches_filter` normalizes to `abbacompilation2005 the complete...`. Under `--exact` that can
+    /// never equal `abba`, so every `--only X --exact` sync skipped box-set repair while reporting
+    /// "0 sibling-folder group(s)" - indistinguishable from the artist genuinely having none.
+    /// The regression that left ABBA's "The Complete Studio Recordings (9CD)" unbound: a perfect
+    /// 9-of-9 rip whose disc 1 holds exactly MusicBrainz's 19 tracks in a different sequence. Matching
+    /// by position rejected that disc, and one rejected sibling rejects the whole group.
+    #[test]
+    fn a_disc_sequenced_differently_still_matches_the_same_medium() {
+        let local = sibling(
+            "cd1",
+            "Box/CD 1",
+            &[
+                ("l1", "Ring Ring", Some(184)),
+                ("l2", "Åh, vilka tider", Some(153)),
+                ("l3", "Rock'n Roll Band", Some(190)),
+            ],
+        );
+        let m = medium(
+            1,
+            &[
+                ("m1", "Ring Ring", Some(186)),
+                ("m2", "Rock ’n Roll Band", Some(194)),
+                ("m3", "Åh, vilka tider", Some(153)),
+            ],
+        );
+        let links = pair_tracks(&local.tracks, &m.tracks).expect("same set, different order");
+        // Each local track links to its own recording, not to whatever sat at the same index.
+        assert_eq!(
+            links,
+            vec![
+                ("l1".to_string(), "m1".to_string()),
+                ("l2".to_string(), "m3".to_string()),
+                ("l3".to_string(), "m2".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_differing_tracklist_still_fails_to_pair() {
+        let local = sibling("a", "f", &[("l1", "One", Some(100)), ("l2", "Two", Some(100))]);
+        let wrong_title = medium(1, &[("m1", "One", Some(100)), ("m2", "Three", Some(100))]);
+        let wrong_len = medium(1, &[("m1", "One", Some(100))]);
+        let wrong_dur = medium(1, &[("m1", "One", Some(100)), ("m2", "Two", Some(400))]);
+        assert!(pair_tracks(&local.tracks, &wrong_title.tracks).is_none());
+        assert!(pair_tracks(&local.tracks, &wrong_len.tracks).is_none());
+        assert!(pair_tracks(&local.tracks, &wrong_dur.tracks).is_none());
+    }
+
+    #[test]
+    fn repeated_titles_each_claim_a_distinct_medium_track() {
+        let local = sibling("a", "f", &[("l1", "Intro", Some(60)), ("l2", "Intro", Some(60))]);
+        let m = medium(1, &[("m1", "Intro", Some(60)), ("m2", "Intro", Some(60))]);
+        let links = pair_tracks(&local.tracks, &m.tracks).unwrap();
+        assert_eq!(links.len(), 2);
+        assert_ne!(links[0].1, links[1].1, "one medium track cannot serve two local tracks");
+    }
+
+    #[test]
+    fn exact_scoping_matches_the_artist_not_the_folder_path() {
+        let g = group_with_artists(
+            "ABBA/Compilation/2005 - The Complete Studio Recordings (9CD)",
+            &["ABBA"],
+        );
+        assert!(group_matches_filter(&g, "ABBA", true), "--exact must find this box");
+        assert!(group_matches_filter(&g, "ABBA", false), "prefix mode still works");
+        assert!(!group_matches_filter(&g, "Blondie", true));
+    }
+
+    /// A box filed under a collaborator's folder still belongs to the artist credited on it. Path
+    /// scoping excluded these for no reason but their directory name.
+    #[test]
+    fn a_group_is_scoped_by_every_artist_credited_on_it() {
+        let g = group_with_artists(
+            "Joan Baez/Compilation/2013 - Voices Of A Generation (2CD)",
+            &["Joan Baez", "Bob Dylan"],
+        );
+        assert!(group_matches_filter(&g, "Bob Dylan", true));
+        assert!(group_matches_filter(&g, "Joan Baez", true));
+    }
+
+    #[test]
+    fn a_group_with_no_credited_artist_matches_no_filter() {
+        let g = group_with_artists("Unknown/Album/Box", &[]);
+        assert!(!group_matches_filter(&g, "ABBA", false));
+    }
 
     fn sibling(id: &str, folder: &str, tracks: &[(&str, &str, Option<i32>)]) -> BoxSibling {
         BoxSibling {

@@ -82,6 +82,7 @@ sync invocation, scoped by whatever `--only`/`--exact` the run was given. See "B
 | `--skip-mb-tags` | bool | false | Skip writing found MB IDs back into audio file tags |
 | `--only-write-mb-to-files` | bool | false | Backfill DB-known MB IDs into file tags (no API calls), then exit |
 | `--verbose` | bool | false | Log skipped/already-synced releases |
+| `--concurrency` | usize | 6 | Artists synced at once. Not a rate knob — see § Rate Limiting |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 | `--artist-ids` | String | - | Read artist IDs from file (one per line, used by refresh) |
 | `--artist-hint` | String | - | With `--release`: prefer this Artist ID when the release has several main artists |
@@ -128,7 +129,7 @@ Fast path for populating MISSING MusicBrainzRelease entries without re-running t
 
 **Skip logic:** Without `--overwrite`, existing MISSING releases are preserved and only new gaps are added. With `--overwrite`, all MISSING releases are deleted and re-created from scratch.
 
-**Performance:** ~2–5s per artist (rate limit; 1 release-group browse + 1–4 official-release pages). 500 artists ≈ 20–40 minutes vs ~7 days for full sync.
+**Performance:** 1 release-group browse + the artist catalogue browse (1 page for a typical artist, ~11 for a Radiohead-sized one — `inc=recordings` pages are size-capped). Both paths share the same catalogue, so containment costs no calls of its own here either.
 
 Cannot combine with `--release` or `--delete`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`/`--web`/`--verbose`.
 
@@ -223,6 +224,18 @@ models it as a separate release. DMP exists to tell a collector what they actual
 release stays `MISSING`, stays counted as a gap, and stays acquirable. `detect_containment` only
 annotates it, so the collector can see where those songs already are before deciding.
 
+`detect_containment` is pure — it scores tracklists it is handed. Those come from
+`mb_get_official_artist_catalogue`, the one artist-scoped browse sync already makes to learn which
+groups have an Official release; adding `+recordings` to it returns every one of those releases'
+tracklists for free. It used to fetch its own, one paginated browse **per gap, per artist, per run**,
+never caching a negative result — 14.8 such calls for an average artist, 184 at p99, 813 at worst,
+each averaging ~10s cold. That was the single largest avoidable cost in a sync run.
+
+One consequence: only **Official** editions are considered now, where a per-group fetch also kept
+editions whose status is absent. Every gap reaching this check has already passed `is_allowed_gap`,
+which requires the group to have an Official release, so an edition is always available; the narrowing
+is confined to `statusReason` and can never change `matchStatus` or ownership.
+
 Detection requires all of:
 
 - every MB track matched to a **distinct** local track by normalized title (case/punctuation-insensitive);
@@ -315,9 +328,19 @@ computed against a tracklist that no longer existed until someone thought to pas
 
 ## Rate Limiting
 
-Shared with `index` via `common::mb::api::RateLimiter` — one limiter per process, threaded as `&mut`, so MB calls are sequential by construction. Floor 1100ms (`MB_MIN_DELAY_MS` overrides, clamped 1100–10000), cap 10s, adjusted via `X-RateLimit-Remaining` / `X-RateLimit-Reset`. A rate limit doubles the delay; each success sheds a flat 100ms back toward the floor.
+Shared with `index` via `common::mb::api::RateLimiter`. Floor 1100ms (`MB_MIN_DELAY_MS` overrides, clamped 1100–10000), cap 10s. A rate limit doubles the delay; each success sheds a flat 100ms back toward the floor.
 
-503 is classified **rate-limit** vs **server overload** from its body and headers, and only the former slows the steady-state pace — MusicBrainz being unwell is not fixed by going slower. The penalty applies at most once per request, not once per retry. Retries up to 6x on 429/503 with a 1s → 16s ladder, or `Retry-After` when MusicBrainz sends it. Full detail in `docs/scripts/index.md` § Pacing.
+**The limiter is a token schedule, not a lock.** `wait()` claims the next issue slot from one monotonic schedule and pushes it forward by a full delay, so *however many* callers are running, requests leave at one per 1100ms. Cloning a `RateLimiter` yields another handle onto the **same** schedule — MusicBrainz's budget is per-application, so a concurrent run must never hand a worker a limiter of its own. `MB_MAX_INFLIGHT` (default 8, clamped 1–16) bounds outstanding requests; it changes nothing about the rate.
+
+**Why concurrency at all.** MusicBrainz is latency-bound for this workload, not rate-bound. Measured live: a cold `inc=recordings` browse averages ~10s (max 29.8s) and `artist?inc=url-rels+genres+tags` ~10s, while the same query warm returns in 0.2s. A strictly serial client therefore reaches only `1/latency` ≈ 0.15 req/s of its ~0.91 req/s allowance and leaves the wire idle the rest of the time. `--concurrency` overlaps the *waiting*, not the requests. At ~10s latency the schedule saturates around 9 in flight; beyond that the slot spacing binds and more workers buy nothing.
+
+**Header caution.** `X-RateLimit-Remaining` is a **shared global pool**, not this client's budget — measured at `limit: 1200` over a one-second window, drifting 886 → 619 → 511 → 472 while this client spent three requests. Nothing derived from it may return a delay below the floor; the low-budget branch backs off toward the cap instead. (It used to return 500ms — twice MusicBrainz's published rate, precisely when the server was busiest.)
+
+503 is classified **rate-limit** vs **server overload** from its body and headers, and only the former slows the steady-state pace — MusicBrainz being unwell is not fixed by going slower. The penalty applies at most once per request, not once per retry. A load-shed 503 may reuse the slot it already paid for rather than buying a new one, but **only while nothing else is queued**: under concurrency the wire is busy by definition, and letting retries jump the queue there is how "retry cheaply" turns into exceeding the rate. Retries up to 6x on 429/503 with a 1s → 16s ladder, or `Retry-After` when MusicBrainz sends it. **Transport-level failures (read timeout, connection reset, DNS) go on the same ladder** — they used to bail out of `mb_get` immediately with no retry at all, and the caller then abandoned the whole artist on a single blip. Rare while requests went out one at a time; not rare once they overlap, since a cold browse measured at 29.8s against the old 30s client timeout. The client timeout is now 60s. Full detail in `docs/scripts/index.md` § Pacing.
+
+### Browse pagination
+
+MusicBrainz caps an `inc=recordings` browse by **response size, not `limit`** — `OK Computer` reports `release-count: 39` and serves 31 for `limit=100`. Every browse loop therefore advances by the rows actually returned and stops on the reported count, never on a short page. Stopping on a short page silently dropped the tail: for `OK Computer` that was all 8 `OKNOTOK 1997 2017` editions, i.e. exactly what the deluxe-upgrade path goes looking for.
 
 ## Release Deduplication
 

@@ -8,6 +8,7 @@ use common::run_hash::{clear_run_hash, get_run_hash, new_run_hash, set_run_hash}
 use common::s3::create_s3_client;
 use common::statistics::update_statistics;
 use common::types::TrackMeta;
+use futures::stream::StreamExt;
 use reqwest::Client;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -95,6 +96,12 @@ struct SyncArgs {
     artist_ids: Option<String>,
     #[arg(long)]
     verbose: bool,
+    #[arg(
+        long,
+        default_value_t = DEFAULT_CONCURRENCY,
+        help = "How many artists to sync at once. All workers share one MusicBrainz pacing schedule, so this changes how much of the rate allowance is used, never the rate itself"
+    )]
+    concurrency: usize,
     /// Emit PROGRESS:{json} lines and plain output for the web terminal.
     /// Default is pretty colored console output.
     #[arg(long)]
@@ -105,6 +112,28 @@ struct SyncArgs {
 // to the local album, and the type passes the album/EP-only allow-list. Track-count confidence is
 // enforced later by check_release_status when the chosen edition is scored.
 const SEARCH_MIN_SCORE: u32 = 85;
+
+/// How many artists are synced at once.
+///
+/// MusicBrainz is latency-bound for this workload, not rate-bound: a cold query averages ~10s, so a
+/// strictly serial client sits idle ~85% of the time and reaches only ~0.15 req/s of its ~0.91 req/s
+/// allowance. Workers overlap that waiting. They do **not** overlap the rate: every request still
+/// takes a slot from the one shared `RateLimiter` schedule (see `common::mb::api`), so K workers
+/// issue at exactly the same requests-per-second one worker would - they just stop leaving the wire
+/// idle between them.
+///
+/// At ~10s latency the schedule saturates around 9 in flight; past that the slot spacing binds and
+/// extra workers buy nothing.
+const DEFAULT_CONCURRENCY: usize = 6;
+
+/// What one artist contributed to the run totals. Returned rather than accumulated in place so the
+/// per-artist work needs no shared counters.
+#[derive(Default)]
+struct ArtistOutcome {
+    synced: bool,
+    partial: bool,
+    failed: Option<(String, String)>,
+}
 
 fn search_match_acceptable(
     score: u32,
@@ -532,8 +561,12 @@ async fn main() {
 
     let s3_client = create_s3_client(&config).await;
 
+    // 60s, not 30: a cold `inc=recordings` browse was measured at 29.8s, so a 30s ceiling was
+    // clipping legitimate responses - and doing so more often once requests overlap. `mb_get` retries
+    // a timeout now either way, but timing out a request MusicBrainz was about to answer wastes the
+    // slot it already paid for.
     let http_client = Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .expect("HTTP client");
 
@@ -971,30 +1004,71 @@ async fn main() {
     };
     reporter.blank();
 
-    let mut release_type_cache: HashMap<String, String> = HashMap::new();
-    let mut genre_cache: HashMap<String, String> = HashMap::new();
-
-    let mut total_synced = 0usize;
-    let mut total_partial = 0usize;
-    let mut failed_artists: Vec<(String, String)> = Vec::new();
     let start_time = std::time::Instant::now();
 
     // Artist image downloads run off the critical path - they never touch MB's rate budget, so there
     // is no reason for the MusicBrainz loop to wait on them.
-    let mut image_tasks: tokio::task::JoinSet<(String, Result<bool, String>)> =
-        tokio::task::JoinSet::new();
+    let image_tasks: Arc<tokio::sync::Mutex<tokio::task::JoinSet<(String, Result<bool, String>)>>> =
+        Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new()));
+    // The `MAX_IMAGE_TASKS` cap now lives on a semaphore rather than on "block until the JoinSet
+    // drains". Blocking was fine when one artist ran at a time; with workers sharing the JoinSet it
+    // would mean holding its lock across a 30s download and stalling every other worker behind it.
+    // The permit is taken *inside* the spawned task, so the cap still holds and no lock is held
+    // across an await.
+    let image_slots = Arc::new(tokio::sync::Semaphore::new(MAX_IMAGE_TASKS));
 
-    // MB ID → DB artist ID: detect duplicate artists resolving to the same MB ID.
-    let mut synced_mb_ids: HashMap<String, String> = HashMap::new();
-    let mut release_group_cache: HashMap<String, Vec<mb_types::MbReleaseGroup>> = HashMap::new();
+    // MB ID → DB artist ID: detect duplicate artists resolving to the same MB ID. Shared, and the
+    // lock is held across the whole check-and-claim below - see there for why.
+    let synced_mb_ids: Arc<tokio::sync::Mutex<HashMap<String, String>>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    // Shared so a duplicate artist still reuses its primary's browse even when the two land on
+    // different workers - that reuse is worth a paginated MusicBrainz call. Never locked across an
+    // await: read-and-clone, or insert, and release.
+    let release_group_cache: Arc<tokio::sync::Mutex<HashMap<String, Vec<mb_types::MbReleaseGroup>>>> =
+        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
-    for (i, artist) in artists.iter().enumerate() {
+    let concurrency = args.concurrency.clamp(1, 16);
+    if concurrency > 1 {
+        reporter.kv(
+            "Concurrency",
+            &format!("{} artists at once (shared 1 req/s MusicBrainz schedule)", concurrency),
+        );
+    }
+
+    let outcomes: Vec<ArtistOutcome> = futures::stream::iter(artists.iter().enumerate())
+        .map(|(i, artist)| {
+            // Per-worker, not shared: every write behind these caches is an idempotent upsert
+            // (`ON CONFLICT (name)`), so a cache miss costs one redundant round trip to a local
+            // Postgres and never a wrong row - far cheaper than serialising workers on a shared lock
+            // held across a DB await.
+            let mut release_type_cache: HashMap<String, String> = HashMap::new();
+            let mut genre_cache: HashMap<String, String> = HashMap::new();
+            // A clone of the limiter is a handle onto the *same* pacing schedule, not a new one.
+            let mut limiter = limiter.clone();
+            let image_tasks = image_tasks.clone();
+            let image_slots = image_slots.clone();
+            let synced_mb_ids = synced_mb_ids.clone();
+            let release_group_cache = release_group_cache.clone();
+            // Cheap handle clones (Arc inside), not copies of the data.
+            let reporter = reporter.clone();
+            let pool = pool.clone();
+            let http_client = http_client.clone();
+            let s3_client = s3_client.clone();
+            let config = config.clone();
+            let running = running.clone();
+            let args = &args;
+            let warmed_artist_names = &warmed_artist_names;
+            let already_synced = &already_synced;
+            let run_hash = &run_hash;
+            let target_release_id = &target_release_id;
+            async move {
+        let mut outcome = ArtistOutcome::default();
         if !running.load(Ordering::SeqCst) {
-            break;
+            return outcome;
         }
 
         if already_synced.contains(&artist.id) {
-            continue;
+            return outcome;
         }
 
         // Skip special artists (Various Artists, [unknown], etc.)
@@ -1004,17 +1078,22 @@ async fn main() {
             if let Some(ref h) = run_hash {
                 stamp_sync_hash(&pool, &artist.id, h).await;
             }
-            continue;
+            return outcome;
         }
 
         reporter.sync_progress(&artist.name, i + 1, total, "syncing");
         reporter.item("", &artist.name, i + 1, total);
+        // Sampled either side of the artist so `--verbose` can report what it cost in MusicBrainz
+        // calls. That number is the whole point of the catalogue browse below, and the thing to
+        // watch if it ever creeps back up. Approximate under concurrency (the counter is global and
+        // other workers advance it too), so it reads as an upper bound, never an undercount.
+        let calls_before = limiter.requests_issued();
 
         let local_releases = match get_local_releases_for_artist(&pool, &artist.id).await {
             Ok(r) => r,
             Err(e) => {
                 reporter.err(&format!("DB error: {}", e));
-                continue;
+                return outcome;
             }
         };
 
@@ -1024,7 +1103,7 @@ async fn main() {
             if let Some(ref h) = run_hash {
                 stamp_sync_hash(&pool, &artist.id, h).await;
             }
-            continue;
+            return outcome;
         }
 
         // 1. Find artist on MusicBrainz
@@ -1058,7 +1137,8 @@ async fn main() {
                     Ok(result) => result,
                     Err(e) => {
                         reporter.err(&format!("Search error: {}", e));
-                        failed_artists.push((artist.name.clone(), format!("Search error: {}", e)));
+                        outcome.failed =
+                            Some((artist.name.clone(), format!("Search error: {}", e)));
                         None
                     }
                 }
@@ -1078,7 +1158,7 @@ async fn main() {
                 Ok(result) => result,
                 Err(e) => {
                     reporter.err(&format!("Search error: {}", e));
-                    failed_artists.push((artist.name.clone(), format!("Search error: {}", e)));
+                    outcome.failed = Some((artist.name.clone(), format!("Search error: {}", e)));
                     None
                 }
             }
@@ -1104,42 +1184,92 @@ async fn main() {
                 if let Some(ref h) = run_hash {
                     stamp_sync_hash(&pool, &artist.id, h).await;
                 }
-                continue;
+                return outcome;
             }
         };
 
-        // Duplicate detection: another artist already resolved to this MB ID
+        // Duplicate detection: another artist already resolved to this MB ID.
+        //
+        // The whole probe-and-claim runs under one lock, **including the `musicbrainzId` persist that
+        // used to sit further down** in the non-duplicate branch. Both probes ask "has anyone claimed
+        // this MB id?", and the DB probe can only answer yes once someone has written the id - so with
+        // workers running concurrently, two artists resolving to the same MB id could each probe
+        // before either wrote, and both would claim to be primary. Holding the lock across the write
+        // makes the claim atomic. It also closes the same read-then-write gap in the serial path.
         let mut is_duplicate = false;
         let mut primary_artist_id: Option<String> = None;
+        {
+            let mut claimed = synced_mb_ids.lock().await;
 
-        if let Some(prev_id) = synced_mb_ids.get(&mb_artist.id) {
-            if prev_id != &artist.id {
-                is_duplicate = true;
-                primary_artist_id = Some(prev_id.clone());
+            if let Some(prev_id) = claimed.get(&mb_artist.id) {
+                if prev_id != &artist.id {
+                    is_duplicate = true;
+                    primary_artist_id = Some(prev_id.clone());
+                }
             }
-        }
 
-        if !is_duplicate {
-            if let Some((db_primary_id,)) = sqlx::query_as::<_, (String,)>(
-                r#"SELECT id FROM "Artist"
-                   WHERE "musicbrainzId" = $1 AND id != $2
-                     AND "primaryArtistId" IS NULL
-                   LIMIT 1"#,
-            )
-            .bind(&mb_artist.id)
-            .bind(&artist.id)
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten()
-            {
-                is_duplicate = true;
-                primary_artist_id = Some(db_primary_id);
+            if !is_duplicate {
+                // A candidate only outranks this artist if it actually owns local releases. This
+                // query had no such condition and no `ORDER BY`, so whichever row Postgres returned
+                // first became canonical - which is how a credit-only row with zero releases ended up
+                // standing in front of the row holding the whole discography ("Dylan" over "Bob
+                // Dylan", "Wardell Gray Quintet" over "Erroll Garner"; 35 cases in this library).
+                // This artist is already known to own releases (the empty case returned earlier), so
+                // an owner-less candidate can never be the better primary.
+                //
+                // Among genuine owners, most-owned wins, then an exact match on MusicBrainz's own
+                // name for the artist, then lowest id - so the outcome is stable across runs and
+                // independent of worker scheduling.
+                if let Some((db_primary_id,)) = sqlx::query_as::<_, (String,)>(
+                    r#"SELECT a.id FROM "Artist" a
+                       WHERE a."musicbrainzId" = $1 AND a.id != $2
+                         AND a."primaryArtistId" IS NULL
+                         AND EXISTS (
+                           SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = a.id
+                         )
+                       ORDER BY (
+                         SELECT count(*) FROM "LocalReleaseArtist" x WHERE x."artistId" = a.id
+                       ) DESC, (a.name = $3) DESC, a.id ASC
+                       LIMIT 1"#,
+                )
+                .bind(&mb_artist.id)
+                .bind(&artist.id)
+                .bind(&mb_artist.name)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                {
+                    is_duplicate = true;
+                    primary_artist_id = Some(db_primary_id);
+                }
             }
-        }
 
-        if !is_duplicate {
-            synced_mb_ids.insert(mb_artist.id.clone(), artist.id.clone());
+            if !is_duplicate {
+                claimed.insert(mb_artist.id.clone(), artist.id.clone());
+                // Self-heal rows the old probe mislinked: this artist owns releases, so a primary
+                // that owns none is backwards. Swaps the two rather than leaving the discography
+                // stranded behind an empty name.
+                match promote_over_empty_primary(&pool, &artist.id).await {
+                    Ok(Some(demoted)) => reporter.ok(&format!(
+                        "Promoted over empty primary artist \"{}\" (it owns no releases)",
+                        demoted
+                    )),
+                    Ok(None) => {}
+                    Err(e) => reporter.warn(&format!("Primary-artist repair failed: {}", e)),
+                }
+                // Persist MB ID if newly found or changed - part of the claim, not of the work below.
+                if artist.mb_id.as_deref() != Some(&mb_artist.id) {
+                    sqlx::query(
+                        r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                    )
+                    .bind(&mb_artist.id)
+                    .bind(&artist.id)
+                    .execute(&pool)
+                    .await
+                    .ok();
+                }
+            }
         }
 
         if is_duplicate {
@@ -1160,17 +1290,7 @@ async fn main() {
             let genres = get_artist_genre_ids(&pool, primary_artist_id.as_ref().unwrap()).await;
             (genres, None)
         } else {
-            // Persist MB ID if newly found or changed
-            if artist.mb_id.as_deref() != Some(&mb_artist.id) {
-                sqlx::query(
-                    r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                )
-                .bind(&mb_artist.id)
-                .bind(&artist.id)
-                .execute(&pool)
-                .await
-                .ok();
-            }
+            // (the MB ID persist happens under the claim lock above)
 
             // 2. Artist detail (genres, tags, URLs)
             reporter.step("Fetching artist details...");
@@ -1180,7 +1300,7 @@ async fn main() {
                     Ok(d) => d,
                     Err(e) => {
                         reporter.err(&format!("Detail error: {}", e));
-                        continue;
+                        return outcome;
                     }
                 };
 
@@ -1242,13 +1362,8 @@ async fn main() {
             // 3. Artist image - skip if already present. Spawned, not awaited: see
             // `fetch_and_store_artist_image`.
             if !args.skip_artist_img && !artist.has_image {
-                while image_tasks.len() >= MAX_IMAGE_TASKS {
-                    match image_tasks.join_next().await {
-                        Some(Ok((name, result))) => report_image_result(&reporter, &name, &result),
-                        Some(Err(_)) | None => break,
-                    }
-                }
-                image_tasks.spawn(fetch_and_store_artist_image(
+                let slots = image_slots.clone();
+                let fetch = fetch_and_store_artist_image(
                     http_client.clone(),
                     detail.clone(),
                     artist.id.clone(),
@@ -1257,7 +1372,19 @@ async fn main() {
                     s3_client.clone(),
                     config.clone(),
                     pool.clone(),
-                ));
+                );
+                let mut tasks = image_tasks.lock().await;
+                // Report whatever has already landed. `try_join_next` never waits, so the lock is
+                // held only for as long as the bookkeeping takes.
+                while let Some(joined) = tasks.try_join_next() {
+                    if let Ok((name, result)) = joined {
+                        report_image_result(&reporter, &name, &result);
+                    }
+                }
+                tasks.spawn(async move {
+                    let _permit = slots.acquire_owned().await;
+                    fetch.await
+                });
             }
 
             (artist_genre_ids, country_code)
@@ -1273,37 +1400,28 @@ async fn main() {
         // sharing this MB id doesn't inherit a poisoned empty cache entry either - it retries the
         // fetch itself instead.
         let mut release_groups_fetch_failed = false;
-        let release_groups = if is_duplicate {
-            match release_group_cache.get(&mb_artist.id).cloned() {
-                Some(rgs) => rgs,
-                None => {
-                    reporter.step("Fetching releases...");
-                    match mb_api::mb_get_release_groups(&http_client, &mb_artist.id, &mut limiter)
-                        .await
-                    {
-                        Ok(rgs) => {
-                            release_group_cache.insert(mb_artist.id.clone(), rgs.clone());
-                            rgs
-                        }
-                        Err(e) => {
-                            reporter.err(&format!("Release groups error: {}", e));
-                            release_groups_fetch_failed = true;
-                            vec![]
-                        }
-                    }
-                }
-            }
+        let cached_release_groups = if is_duplicate {
+            release_group_cache.lock().await.get(&mb_artist.id).cloned()
         } else {
-            reporter.step("Fetching releases...");
-            match mb_api::mb_get_release_groups(&http_client, &mb_artist.id, &mut limiter).await {
-                Ok(rgs) => {
-                    release_group_cache.insert(mb_artist.id.clone(), rgs.clone());
-                    rgs
-                }
-                Err(e) => {
-                    reporter.err(&format!("Release groups error: {}", e));
-                    release_groups_fetch_failed = true;
-                    vec![]
+            None
+        };
+        let release_groups = match cached_release_groups {
+            Some(rgs) => rgs,
+            None => {
+                reporter.step("Fetching releases...");
+                match mb_api::mb_get_release_groups(&http_client, &mb_artist.id, &mut limiter).await {
+                    Ok(rgs) => {
+                        release_group_cache
+                            .lock()
+                            .await
+                            .insert(mb_artist.id.clone(), rgs.clone());
+                        rgs
+                    }
+                    Err(e) => {
+                        reporter.err(&format!("Release groups error: {}", e));
+                        release_groups_fetch_failed = true;
+                        vec![]
+                    }
                 }
             }
         };
@@ -1868,21 +1986,27 @@ async fn main() {
             // (primary Album, secondary Live - both kept on purpose for official live albums). Ask MB
             // which of this artist's groups actually have an Official release. On failure, leave the
             // existing MISSING rows alone rather than rewriting the catalogue from unfiltered data.
-            let official_rg_ids = match mb_api::mb_get_official_release_group_ids(
+            // One browse, two answers: the official-group set this gate needs, and the tracklist of
+            // every one of those releases - which is what the containment note below is derived from.
+            // Containment used to spend a paginated browse per gap here, every run.
+            let catalogue = match mb_api::mb_get_official_artist_catalogue(
                 &http_client,
                 &mb_artist.id,
                 &mut limiter,
             )
             .await
             {
-                Ok(ids) => Some(ids),
+                Ok(c) => Some(c),
                 Err(e) => {
                     reporter.warn(&format!("Official release lookup failed: {} - gaps skipped", e));
                     None
                 }
             };
-            if let Some(official_rg_ids) = official_rg_ids {
-                // Notes survive the wipe below: re-deriving one costs an MB call per group.
+            if let Some(catalogue) = catalogue {
+                let official_rg_ids = &catalogue.official_rg_ids;
+                // Notes survive the wipe below. Re-deriving one is free now (the catalogue above
+                // already carries the tracklists), but the carried note still wins on a non-overwrite
+                // run so an existing annotation is never churned.
                 let contained_notes = get_contained_notes_for_artist(&pool, &artist.id).await;
                 delete_missing_releases_for_artist(&pool, &artist.id).await.ok();
                 // Candidate containers for the "recordings already inside another release" note.
@@ -1899,22 +2023,21 @@ async fn main() {
                         rg.primary_type.as_deref(),
                         &secondary,
                         &rg.id,
-                        &official_rg_ids,
+                        official_rg_ids,
                     ) {
                         continue;
                     }
                     // The recordings may already sit inside a bigger local release (a box set, a
                     // compilation, a two-disc folder). That is not ownership of *this* release, so it
-                    // stays a gap - we only note where they are (see `owned.rs`).
+                    // stays a gap - we only note where they are (see `owned.rs`). Editions come from
+                    // the catalogue browse above; `is_allowed_gap` has just proved this group has an
+                    // Official release, so the entry is always present.
                     let contained_note = match contained_notes.get(&rg.id) {
                         Some(note) if !args.overwrite => Some(note.clone()),
                         _ => owned::detect_containment(
-                            &http_client,
-                            &mut limiter,
-                            &rg.id,
+                            catalogue.editions_by_rg.get(&rg.id).map_or(&[][..], |v| v),
                             &local_bundles,
                         )
-                        .await
                         .map(|container| owned::containment_note(&container)),
                     };
                     if let Some(note) = &contained_note {
@@ -2114,21 +2237,27 @@ async fn main() {
             } else {
                 reporter.skip(&format!("{} release(s) up to date", processed_count));
             }
-            total_synced += 1;
+            outcome.synced = true;
         } else if processed_count > 0 {
             reporter.warn(&format!(
                 "{} release(s) synced, {} failed",
                 newly_synced_count, release_failures
             ));
-            total_partial += 1;
+            outcome.partial = true;
         } else if release_failures > 0 {
             reporter.err("Failed to sync");
-            failed_artists.push((
+            outcome.failed = Some((
                 artist.name.clone(),
                 format!("{} error(s)", release_failures),
             ));
         } else {
             reporter.skip("No releases matched");
+        }
+        if args.verbose {
+            reporter.info(&format!(
+                "        · {} MusicBrainz call(s) for this artist",
+                limiter.requests_issued().saturating_sub(calls_before)
+            ));
         }
         reporter.sync_progress(&artist.name, i + 1, total, "done");
         // update_statistics is 13 full-table aggregate scans - throttle to every 50 artists instead of
@@ -2136,23 +2265,46 @@ async fn main() {
         if newly_synced_count > 0 && i % 50 == 0 {
             update_statistics(&pool).await.ok();
         }
+        outcome
+            }
+        })
+        .buffer_unordered(concurrency)
+        .collect()
+        .await;
+
+    let mut total_synced = 0usize;
+    let mut total_partial = 0usize;
+    let mut failed_artists: Vec<(String, String)> = Vec::new();
+    for o in outcomes {
+        if o.synced {
+            total_synced += 1;
+        }
+        if o.partial {
+            total_partial += 1;
+        }
+        if let Some(f) = o.failed {
+            failed_artists.push(f);
+        }
     }
 
-    if !image_tasks.is_empty() {
-        if running.load(Ordering::SeqCst) {
-            reporter.info(&format!(
-                "Finishing {} artist image download(s)...",
-                image_tasks.len()
-            ));
-            while let Some(joined) = image_tasks.join_next().await {
-                if let Ok((name, result)) = joined {
-                    report_image_result(&reporter, &name, &result);
+    {
+        let mut tasks = image_tasks.lock().await;
+        if !tasks.is_empty() {
+            if running.load(Ordering::SeqCst) {
+                reporter.info(&format!(
+                    "Finishing {} artist image download(s)...",
+                    tasks.len()
+                ));
+                while let Some(joined) = tasks.join_next().await {
+                    if let Ok((name, result)) = joined {
+                        report_image_result(&reporter, &name, &result);
+                    }
                 }
+            } else {
+                // Ctrl-C: an abandoned download costs nothing. The fetch is gated on
+                // `!artist.has_image`, so the next run simply picks it up again.
+                tasks.abort_all();
             }
-        } else {
-            // Ctrl-C: an abandoned download costs nothing. The fetch is gated on `!artist.has_image`,
-            // so the next run simply picks it up again.
-            image_tasks.abort_all();
         }
     }
 
@@ -2190,10 +2342,14 @@ async fn main() {
     // runs automatically at the tail of every normal sync (docs/multidisk.md §5/§12).
     if running.load(Ordering::SeqCst) {
         let box_http_client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(60))
             .build()
             .expect("HTTP client");
-        let mut box_limiter = RateLimiter::new();
+        // A clone, not a fresh `RateLimiter::new()`: a second limiter would be a second pacing
+        // schedule, and two schedules issue at twice MusicBrainz's rate. Harmless while this ran
+        // strictly after the artist loop, but not a pattern to leave lying around now that the run
+        // is concurrent.
+        let mut box_limiter = limiter.clone();
         box_limiter.set_web(args.web);
         match boxset::run_repair(
             &pool,

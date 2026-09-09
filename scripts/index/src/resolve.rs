@@ -179,7 +179,7 @@ impl<'a> ArtistResolver<'a> {
 
     /// Transient MusicBrainz 503s this run retried through. Not failures - see the run summary.
     pub fn absorbed_503s(&self) -> u64 {
-        self.limiter.absorbed_503s
+        self.limiter.absorbed_503s()
     }
 
     /// Phase A: ask MusicBrainz about every name in `names`, in the order given.

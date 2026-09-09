@@ -954,6 +954,7 @@ dependencies = [
  "colored",
  "cuid2",
  "dotenvy",
+ "futures",
  "image",
  "lofty",
  "md-5",

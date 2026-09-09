@@ -993,6 +993,59 @@ pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> Ha
 /// Snapshotted before the gap pass wipes and rewrites those rows. Re-applying a note costs nothing;
 /// re-deriving it costs one MusicBrainz call per group, so an ordinary sync carries the note forward
 /// and only `--overwrite` pays to re-check it.
+/// Repair a `primaryArtistId` that points at an artist owning nothing.
+///
+/// Duplicate detection used to accept *any* other row holding the same MusicBrainz id as the primary,
+/// with no `ORDER BY` and no check that it owned anything. Whichever row a sync happened to reach
+/// first won, so a stray credit-only row could - and did - end up canonical over the row holding the
+/// entire discography: 35 artists in this library, including "Dylan" (0 releases) standing in front of
+/// "Bob Dylan" (72), and "Wardell Gray Quintet" (0) in front of "Erroll Garner" (76). The artist page
+/// then renders under the wrong name and the real row is unreachable.
+///
+/// Callers reach here only once the current artist is known to own local releases, so "primary owns
+/// nothing" is unambiguous: swap the two. The empty row becomes the duplicate, which also makes it
+/// eligible for `cleanup_empty_connected_artists` to remove entirely.
+///
+/// Returns the demoted artist's name when a swap happened, for reporting.
+pub async fn promote_over_empty_primary(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    let demoted: Option<(String, String)> = sqlx::query_as(
+        r#"SELECT p.id, p.name
+           FROM "Artist" a
+           JOIN "Artist" p ON p.id = a."primaryArtistId"
+           WHERE a.id = $1
+             AND NOT EXISTS (
+               SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = p.id
+             )"#,
+    )
+    .bind(artist_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some((empty_id, empty_name)) = demoted else {
+        return Ok(None);
+    };
+
+    // Order matters: clear the current row first, or the second statement would point the empty row
+    // at an artist that is still itself marked a duplicate, making a two-row cycle.
+    sqlx::query(r#"UPDATE "Artist" SET "primaryArtistId" = NULL, "updatedAt" = NOW() WHERE id = $1"#)
+        .bind(artist_id)
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        r#"UPDATE "Artist" SET "primaryArtistId" = $1, "updatedAt" = NOW()
+           WHERE id = $2 AND id <> $1"#,
+    )
+    .bind(artist_id)
+    .bind(&empty_id)
+    .execute(pool)
+    .await?;
+
+    Ok(Some(empty_name))
+}
+
 pub async fn get_contained_notes_for_artist(
     pool: &PgPool,
     artist_id: &str,

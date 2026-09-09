@@ -38,9 +38,12 @@ pub fn escape_lucene_phrase(value: &str) -> String {
 /// The default was briefly raised to 1300ms on the theory that the 503 storm during a resolve run was
 /// us exceeding the allowance. Measured against the live API, it is not: the 503 body reads
 /// `{"error": "The MusicBrainz web server is currently busy. Please try again later."}` and arrives
-/// with `x-ratelimit-remaining: 14` of `x-ratelimit-limit: 15` and `retry-after: 0`. We were using one
-/// fifteenth of the budget. Slowing down bought nothing and cost ~15% throughput, so the floor is back
+/// with `retry-after: 0`. Slowing down bought nothing and cost ~15% throughput, so the floor is back
 /// where it was.
+///
+/// Note the `X-RateLimit-*` headers describe a **shared global pool**, not this client's allowance -
+/// currently `limit: 1200` over a one-second window (it read 15 when the note above was written).
+/// `effective_delay` explains why nothing derived from them may undercut this floor.
 const MIN_DELAY_FLOOR_MS: u64 = 1100;
 const DEFAULT_MIN_DELAY_MS: u64 = 1100;
 const MAX_DELAY_MS: u64 = 10000;
@@ -66,97 +69,206 @@ fn configured_min_delay() -> u64 {
         .unwrap_or(DEFAULT_MIN_DELAY_MS)
 }
 
-pub struct RateLimiter {
+/// How many MusicBrainz requests may be in flight at once.
+///
+/// This is **not** a rate knob. The pacing schedule below hands out one slot per `effective_delay`
+/// no matter how many callers are waiting, so N in-flight requests still consume N slots spaced
+/// 1.1s apart - concurrency raises *utilisation*, never *rate*.
+///
+/// It exists because MusicBrainz is latency-bound, not rate-bound, for this workload. Measured live:
+/// a cold `inc=recordings` browse averages ~10s (max 29.8s) and an `artist?inc=url-rels+genres+tags`
+/// lookup ~10s, while the same query warm returns in 0.2s. A strictly serial client therefore
+/// achieves ~1/latency = 0.15 req/s against an 0.91 req/s allowance - it spends about a sixth of its
+/// own budget and leaves the wire idle the rest of the time. Overlapping requests reclaims that.
+///
+/// ~9 in flight saturates the schedule at 10s latency; beyond that the slot spacing is the binding
+/// constraint and extra permits buy nothing.
+const DEFAULT_MAX_INFLIGHT: usize = 8;
+
+fn configured_max_inflight() -> usize {
+    std::env::var("MB_MAX_INFLIGHT")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .map(|v| v.clamp(1, 16))
+        .unwrap_or(DEFAULT_MAX_INFLIGHT)
+}
+
+/// Pacing state shared by every clone of a `RateLimiter`.
+struct PacingState {
     delay_ms: u64,
-    min_delay: u64,
-    max_delay: u64,
-    last_request: Instant,
+    /// The earliest instant the next request may be issued. Claiming a slot advances it, so
+    /// concurrent callers queue into distinct slots rather than compressing the schedule.
+    next_slot: Instant,
+    /// When the most recently claimed slot was scheduled - the basis for refunding a load-shed 503.
+    last_slot: Instant,
     remaining: Option<u64>,
     reset_at: Option<u64>,
-    /// Retryable 503s absorbed this run. Counted rather than logged per occurrence: on a long resolve
-    /// pass roughly a third of requests get load-shed and recover on the first retry, and warning about
-    /// each one made a healthy run read as a failing one.
-    pub absorbed_503s: u64,
-    /// Set by an overload 503 so the next `wait()` only honours a short floor - see
-    /// `OVERLOAD_RETRY_FLOOR_MS`.
+    /// Set by an overload 503 so the next `wait()` may reuse the slot that request already paid for -
+    /// see `OVERLOAD_RETRY_FLOOR_MS`.
     immediate_retry: bool,
+}
+
+struct LimiterInner {
+    min_delay: u64,
+    max_delay: u64,
+    state: tokio::sync::Mutex<PacingState>,
+    inflight: tokio::sync::Semaphore,
+    /// Retryable failures absorbed this run - load-shed 503s, plus transport-level blips that now
+    /// share their retry ladder. Counted rather than logged per occurrence: on a long resolve pass
+    /// roughly a third of requests get load-shed and recover on the first retry, and warning about
+    /// each one made a healthy run read as a failing one.
+    absorbed: std::sync::atomic::AtomicU64,
+    /// Every request actually put on the wire, retries included. Callers sample it either side of a
+    /// unit of work to report what that work cost in MusicBrainz calls - the number this whole
+    /// exercise is about, and the one to watch for a regression.
+    requests: std::sync::atomic::AtomicU64,
+}
+
+/// A handle onto one shared pacing schedule. Cloning is cheap and yields another handle onto the
+/// *same* schedule - which is the point: MusicBrainz's budget is per-application, so every worker in a
+/// concurrent run must draw from one limiter, never one each.
+#[derive(Clone)]
+pub struct RateLimiter {
+    inner: std::sync::Arc<LimiterInner>,
 }
 
 impl RateLimiter {
     pub fn new() -> Self {
         let min_delay = configured_min_delay();
+        let now = Instant::now();
         Self {
-            delay_ms: min_delay,
-            min_delay,
-            max_delay: MAX_DELAY_MS,
-            last_request: Instant::now(),
-            remaining: None,
-            reset_at: None,
-            absorbed_503s: 0,
-            immediate_retry: false,
+            inner: std::sync::Arc::new(LimiterInner {
+                min_delay,
+                max_delay: MAX_DELAY_MS,
+                state: tokio::sync::Mutex::new(PacingState {
+                    delay_ms: min_delay,
+                    next_slot: now,
+                    last_slot: now,
+                    remaining: None,
+                    reset_at: None,
+                    immediate_retry: false,
+                }),
+                inflight: tokio::sync::Semaphore::new(configured_max_inflight()),
+                absorbed: std::sync::atomic::AtomicU64::new(0),
+                requests: std::sync::atomic::AtomicU64::new(0),
+            }),
         }
     }
 
-    pub fn set_web(&mut self, _web: bool) {}
+    pub fn set_web(&self, _web: bool) {}
 
-    /// A load-shed 503 served nothing, so the retry should not queue behind a full pacing slot. This
+    /// Requests issued so far, retries included.
+    pub fn requests_issued(&self) -> u64 {
+        self.inner.requests.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Retryable 503s absorbed so far.
+    pub fn absorbed_503s(&self) -> u64 {
+        self.inner.absorbed.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn note_absorbed_503(&self) {
+        self.inner
+            .absorbed
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// A load-shed 503 served nothing, so the retry should not have to buy a fresh pacing slot. This
     /// is where most of a resolve run's lost time went: the retry itself is cheap, but re-paying the
     /// ~1.1s inter-request delay for a request MusicBrainz never answered is not.
-    pub fn allow_immediate_retry(&mut self) {
-        self.immediate_retry = true;
+    pub async fn allow_immediate_retry(&self) {
+        self.inner.state.lock().await.immediate_retry = true;
     }
 
-    pub async fn wait(&mut self) {
-        if std::mem::take(&mut self.immediate_retry) {
-            let elapsed = self.last_request.elapsed().as_millis() as u64;
-            if elapsed < OVERLOAD_RETRY_FLOOR_MS {
-                sleep(Duration::from_millis(OVERLOAD_RETRY_FLOOR_MS - elapsed)).await;
-            }
-            self.last_request = Instant::now();
-            return;
-        }
-        let effective = self.effective_delay();
-        let elapsed = self.last_request.elapsed().as_millis() as u64;
-        if elapsed < effective {
-            sleep(Duration::from_millis(effective - elapsed)).await;
-        }
-        self.last_request = Instant::now();
+    /// Claim the next issue slot, then sleep until it comes round.
+    ///
+    /// **This is the single choke point for the request rate.** Every caller - however many run
+    /// concurrently - takes a slot from one monotonic schedule and pushes `next_slot` forward by a
+    /// full `effective_delay`, so the aggregate issue rate is exactly one request per delay. Adding
+    /// workers changes when the budget is spent, never how much of it.
+    pub async fn wait(&self) {
+        let slot = {
+            let mut st = self.inner.state.lock().await;
+            let now = Instant::now();
+            let step = Duration::from_millis(self.effective_delay(&st));
+
+            // A load-shed 503 refunds the slot it already paid for, rather than buying a new one -
+            // but only while nothing else is queued. Under concurrency the wire is busy by
+            // definition, and letting retries jump the queue there is exactly how a "retry cheaply"
+            // rule turns into exceeding the rate. So when callers are waiting, a retry queues like
+            // any other request.
+            let idle = st.next_slot <= now + step;
+            let slot = if std::mem::take(&mut st.immediate_retry) && idle {
+                (st.last_slot + Duration::from_millis(OVERLOAD_RETRY_FLOOR_MS)).max(now)
+            } else if st.next_slot > now {
+                st.next_slot
+            } else {
+                now
+            };
+
+            st.last_slot = slot;
+            st.next_slot = slot + step;
+            slot
+        };
+        self.inner
+            .requests
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        tokio::time::sleep_until(slot.into()).await;
     }
 
-    fn effective_delay(&self) -> u64 {
-        if let (Some(remaining), Some(reset_at)) = (self.remaining, self.reset_at) {
+    /// The pacing slot to honour before the next request. **Never returns less than `min_delay`** -
+    /// that floor is MusicBrainz's published rate and nothing derived from a response header may
+    /// undercut it.
+    ///
+    /// `X-RateLimit-Remaining` is not our budget. It is a **shared, global** counter: measured live it
+    /// reports `x-ratelimit-limit: 1200` over a one-second window and drifts 886 -> 619 -> 511 -> 472
+    /// while this client spends three requests. So `remaining` dropping is other clients' traffic, and
+    /// the old low-budget branch returned `max_delay.min(secs_left * 1000 / 2)` = `min(10000, 500)` =
+    /// 500ms - i.e. whenever MusicBrainz was busiest globally we sped up to twice its published rate.
+    /// Now a nearly-drained pool backs us off toward `max_delay` instead, which is what the branch was
+    /// always meant to do.
+    fn effective_delay(&self, st: &PacingState) -> u64 {
+        let min_delay = self.inner.min_delay;
+        if let (Some(remaining), Some(reset_at)) = (st.remaining, st.reset_at) {
             let now = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
             let secs_left = reset_at.saturating_sub(now).max(1);
             if remaining <= 10 {
-                return self.max_delay.min(secs_left * 1000 / 2);
+                return self.inner.max_delay.max(min_delay);
             }
             let ideal = (secs_left * 1000) / (remaining * 80 / 100).max(1);
-            return ideal.max(self.min_delay).min(self.delay_ms);
+            return ideal.max(min_delay).min(st.delay_ms.max(min_delay));
         }
-        self.delay_ms
+        st.delay_ms.max(min_delay)
     }
 
-    fn update_from_headers(&mut self, remaining: Option<u64>, reset_at: Option<u64>) {
-        self.remaining = remaining;
-        self.reset_at = reset_at;
+    async fn update_from_headers(&self, remaining: Option<u64>, reset_at: Option<u64>) {
+        let mut st = self.inner.state.lock().await;
+        st.remaining = remaining;
+        st.reset_at = reset_at;
     }
 
-    fn on_success(&mut self) {
-        if self.delay_ms > self.min_delay {
-            self.delay_ms = self
-                .delay_ms
-                .saturating_sub(RECOVERY_STEP_MS)
-                .max(self.min_delay);
+    async fn on_success(&self) {
+        let mut st = self.inner.state.lock().await;
+        let min_delay = self.inner.min_delay;
+        if st.delay_ms > min_delay {
+            st.delay_ms = st.delay_ms.saturating_sub(RECOVERY_STEP_MS).max(min_delay);
         }
     }
 
-    fn on_rate_limit(&mut self) {
-        self.delay_ms = (self.delay_ms * 2).min(self.max_delay);
-        self.remaining = None;
-        self.reset_at = None;
+    async fn on_rate_limit(&self) {
+        let mut st = self.inner.state.lock().await;
+        st.delay_ms = (st.delay_ms * 2).min(self.inner.max_delay);
+        st.remaining = None;
+        st.reset_at = None;
+    }
+}
+
+impl Default for RateLimiter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -257,13 +369,44 @@ pub async fn mb_get(
     for attempt in 0..max_attempts {
         limiter.wait().await;
 
-        let resp = client
+        // Held only for the round trip. The pacing schedule above already fixed *when* this request
+        // may go out; this bounds how many may be outstanding at once so a stall on MusicBrainz's
+        // side cannot pile up unboundedly.
+        let permit = limiter
+            .inner
+            .inflight
+            .acquire()
+            .await
+            .map_err(|e| format!("Request failed: limiter closed: {}", e))?;
+
+        let sent = client
             .get(url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "application/json")
             .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .await;
+
+        // A transport-level failure - read timeout, connection reset, DNS blip - used to bail out of
+        // `mb_get` immediately via `?`, with none of the retry ladder the HTTP-level 503s get. Callers
+        // then classified it Transient and abandoned the whole artist on a single blip.
+        //
+        // Rare enough to ignore while requests went out one at a time and the wire sat idle between
+        // them. Not rare once requests overlap: a cold `inc=recordings` browse can take 29.8s against
+        // a 30s client timeout, so several in flight will occasionally cross it. Retried here on the
+        // same ladder as an overload, which is what it is - MusicBrainz served us nothing.
+        let resp = match sent {
+            Ok(r) => r,
+            Err(e) => {
+                if attempt < max_attempts - 1 {
+                    drop(permit);
+                    ladder = (ladder * 2).min(16000);
+                    limiter.note_absorbed_503();
+                    limiter.allow_immediate_retry().await;
+                    continue;
+                }
+                return Err(format!("Request failed: {}", e));
+            }
+        };
 
         let status = resp.status().as_u16();
 
@@ -282,14 +425,16 @@ pub async fn mb_get(
                 .get("Retry-After")
                 .and_then(|v| v.to_str().ok()),
         );
-        limiter.update_from_headers(rl_remaining, rl_reset);
+        limiter.update_from_headers(rl_remaining, rl_reset).await;
 
         if status == 200 {
-            limiter.on_success();
-            return resp
+            limiter.on_success().await;
+            let body = resp
                 .text()
                 .await
                 .map_err(|e| format!("Read body failed: {}", e));
+            drop(permit);
+            return body;
         }
 
         if matches!(status, 502 | 503 | 504 | 429) {
@@ -302,14 +447,15 @@ pub async fn mb_get(
             // The body is what separates MB's rate-limit 503 from a plain overload 503. It is small,
             // and this branch is already the slow path, so reading it costs nothing that matters.
             let body = resp.text().await.unwrap_or_default();
+            drop(permit);
             let kind = classify_throttle(status, rl_remaining, &body);
             if kind == ThrottleKind::RateLimited && !penalised {
-                limiter.on_rate_limit();
+                limiter.on_rate_limit().await;
                 penalised = true;
             }
             if attempt < max_attempts - 1 {
                 ladder = (ladder * 2).min(16000);
-                limiter.absorbed_503s += 1;
+                limiter.note_absorbed_503();
 
                 match kind {
                     // Load shedding, not us: MusicBrainz served nothing and says `retry-after: 0`. Do
@@ -317,7 +463,7 @@ pub async fn mb_get(
                     // report it - it recovers on the first retry and warning about each one turned a
                     // healthy run into a wall of red. The run summary carries the total instead.
                     ThrottleKind::Overloaded => {
-                        limiter.allow_immediate_retry();
+                        limiter.allow_immediate_retry().await;
                         if let Some(ms) = retry_after {
                             if ms > OVERLOAD_RETRY_FLOOR_MS {
                                 sleep(Duration::from_millis(ms)).await;
@@ -339,7 +485,7 @@ pub async fn mb_get(
                             wait_time as f64 / 1000.0,
                             attempt + 1,
                             max_attempts - 1,
-                            limiter.delay_ms,
+                            limiter.inner.state.lock().await.delay_ms,
                         );
                         sleep(Duration::from_millis(wait_time)).await;
                     }
@@ -354,10 +500,27 @@ pub async fn mb_get(
             }
         }
 
+        drop(permit);
         return Err(format!("HTTP {} for {}", status, url));
     }
 
     Err("Max retries exceeded".to_string())
+}
+
+/// Advance a browse cursor, and say whether another page is owed.
+///
+/// MusicBrainz caps a browse response by **size, not `limit`**, once `inc=recordings` is on: a
+/// `limit=100` page routinely comes back with 30-50 rows and more still to fetch. `OK Computer`
+/// reports `release-count: 39` and serves 31, so the obvious `returned < limit => last page` rule
+/// silently dropped its remaining 8 - every `OKNOTOK 1997 2017` deluxe edition, i.e. precisely the
+/// editions sync's deluxe-upgrade path exists to find.
+///
+/// So: step by what actually arrived, and stop only on the server's own total (or on an empty page,
+/// which also guards against a missing/garbage count looping forever).
+fn advance_browse(offset: &mut u32, returned: usize, total: Option<u32>) -> bool {
+    let returned = returned as u32;
+    *offset += returned;
+    returned > 0 && *offset < total.unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -685,12 +848,10 @@ pub async fn mb_get_release_groups(
         let result: MbReleaseGroupList =
             serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
 
-        let count = result.release_groups.len() as u32;
+        let count = result.release_groups.len();
+        let total = result.release_group_count;
         all_groups.extend(result.release_groups);
-
-        let total = result.release_group_count.unwrap_or(0);
-        offset += count;
-        if offset >= total || count == 0 {
+        if !advance_browse(&mut offset, count, total) {
             break;
         }
     }
@@ -712,50 +873,101 @@ pub async fn mb_get_official_release_group_ids(
     mb_id: &str,
     limiter: &mut RateLimiter,
 ) -> Result<std::collections::HashSet<String>, String> {
+    Ok(mb_get_official_artist_catalogue(client, mb_id, limiter)
+        .await?
+        .official_rg_ids)
+}
+
+/// Everything one artist-scoped browse can tell us: which release groups have an Official release,
+/// **and** the tracklist of every one of those releases.
+///
+/// The `official_rg_ids` half is what `mb_get_official_release_group_ids` always returned - same URL,
+/// same filter, same set. The second half is free: adding `+recordings` to a browse we already make
+/// once per artist returns full `media[].tracks[]` (id, title, position, length, recording).
+///
+/// That matters because `owned::detect_containment` used to spend **one paginated browse per
+/// uncovered release group, per artist, on every run**, and never cached a negative result. Measured
+/// over the live library that is 14.8 such calls for an average artist, 184 at p99 and 813 at worst -
+/// each one a cold `inc=recordings` query averaging ~10s. Serving them all from here costs a handful
+/// of extra pages: Radiohead's browse grows from ~4 pages to 11 and returns 322 releases across 39
+/// groups, every one carrying tracklists (its 39 `OK Computer` editions match that group's own
+/// `release-count` exactly).
+///
+/// Editions are filtered exactly as `mb_get_release_tracks` filters them - a release whose media are
+/// all video carriers is dropped - so a value here is indistinguishable from a per-group fetch.
+pub struct OfficialArtistCatalogue {
+    /// Release groups with at least one Official release.
+    pub official_rg_ids: std::collections::HashSet<String>,
+    /// Release group id -> its Official editions, each with its flattened audio tracklist.
+    pub editions_by_rg: std::collections::HashMap<String, Vec<(MbRelease, Vec<MbTrack>)>>,
+}
+
+pub async fn mb_get_official_artist_catalogue(
+    client: &Client,
+    mb_id: &str,
+    limiter: &mut RateLimiter,
+) -> Result<OfficialArtistCatalogue, String> {
     #[derive(serde::Deserialize)]
     struct ReleaseGroupRef {
         id: String,
     }
     #[derive(serde::Deserialize)]
-    struct ReleaseRef {
+    struct BrowsedRelease {
+        #[serde(flatten)]
+        release: MbRelease,
         #[serde(rename = "release-group")]
         release_group: Option<ReleaseGroupRef>,
     }
     #[derive(serde::Deserialize)]
-    struct ReleaseRefList {
-        releases: Vec<ReleaseRef>,
+    struct BrowsedReleaseList {
+        releases: Vec<BrowsedRelease>,
         #[serde(rename = "release-count")]
         release_count: Option<u32>,
     }
 
-    let mut ids = std::collections::HashSet::new();
+    let mut official_rg_ids = std::collections::HashSet::new();
+    let mut editions_by_rg: std::collections::HashMap<String, Vec<(MbRelease, Vec<MbTrack>)>> =
+        std::collections::HashMap::new();
     let mut offset = 0u32;
     let limit = 100u32;
 
     loop {
         let url = format!(
-            "{}/release?artist={}&status=official&type=album|ep&inc=release-groups&limit={}&offset={}&fmt=json",
+            "{}/release?artist={}&status=official&type=album|ep&inc=release-groups+recordings&limit={}&offset={}&fmt=json",
             MB_BASE, mb_id, limit, offset
         );
         let body = mb_get(client, &url, limiter).await?;
-        let result: ReleaseRefList =
+        let result: BrowsedReleaseList =
             serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
 
-        let count = result.releases.len() as u32;
-        for release in result.releases {
-            if let Some(rg) = release.release_group {
-                ids.insert(rg.id);
+        let count = result.releases.len();
+        let total = result.release_count;
+        for browsed in result.releases {
+            let Some(rg) = browsed.release_group else {
+                continue;
+            };
+            official_rg_ids.insert(rg.id.clone());
+            let tracks = flatten_audio_tracks(&browsed.release.media);
+            // Same guard as mb_get_release_tracks: a video-only release has nothing to offer a
+            // track-count comparison and must not win an exact-count tiebreak against an empty folder.
+            if browsed.release.media.is_some() && tracks.is_empty() {
+                continue;
             }
+            editions_by_rg
+                .entry(rg.id)
+                .or_default()
+                .push((browsed.release, tracks));
         }
 
-        let total = result.release_count.unwrap_or(0);
-        offset += count;
-        if offset >= total || count == 0 {
+        if !advance_browse(&mut offset, count, total) {
             break;
         }
     }
 
-    Ok(ids)
+    Ok(OfficialArtistCatalogue {
+        official_rg_ids,
+        editions_by_rg,
+    })
 }
 
 /// The release's media, in order, with non-audio media (a Blu-ray/DVD bonus disc) dropped via
@@ -809,12 +1021,12 @@ pub async fn mb_get_release_tracks(
         let body = mb_get(client, &url, limiter).await?;
         let result: MbReleaseList =
             serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
-        let batch_len = result.releases.len() as u32;
+        let count = result.releases.len();
+        let total = result.release_count;
         all_releases.extend(result.releases);
-        if batch_len < limit {
+        if !advance_browse(&mut offset, count, total) {
             break;
         }
-        offset += limit;
     }
 
     let mut releases = Vec::new();
@@ -909,54 +1121,71 @@ mod tests {
     /// Built field-by-field rather than via `RateLimiter::new()` on purpose: `new()` reads
     /// `MB_MIN_DELAY_MS`, and cargo runs these tests in parallel with the one that mutates it.
     fn limiter_at(delay_ms: u64) -> RateLimiter {
+        let now = Instant::now();
         RateLimiter {
-            delay_ms,
-            min_delay: DEFAULT_MIN_DELAY_MS,
-            max_delay: MAX_DELAY_MS,
-            last_request: Instant::now(),
-            remaining: None,
-            reset_at: None,
-            absorbed_503s: 0,
-            immediate_retry: false,
+            inner: std::sync::Arc::new(LimiterInner {
+                min_delay: DEFAULT_MIN_DELAY_MS,
+                max_delay: MAX_DELAY_MS,
+                state: tokio::sync::Mutex::new(PacingState {
+                    delay_ms,
+                    next_slot: now,
+                    last_slot: now,
+                    remaining: None,
+                    reset_at: None,
+                    immediate_retry: false,
+                }),
+                inflight: tokio::sync::Semaphore::new(DEFAULT_MAX_INFLIGHT),
+                absorbed: std::sync::atomic::AtomicU64::new(0),
+                requests: std::sync::atomic::AtomicU64::new(0),
+            }),
         }
     }
 
-    #[test]
-    fn recovery_is_additive_and_floors_at_min_delay() {
-        let mut l = limiter_at(5000);
-        l.on_success();
-        assert_eq!(l.delay_ms, 4900, "one success sheds exactly RECOVERY_STEP_MS");
-        let floor = l.min_delay;
-        let mut l = limiter_at(floor + 50);
-        l.on_success();
-        assert_eq!(l.delay_ms, floor, "recovery never undercuts the floor");
-        l.on_success();
-        assert_eq!(l.delay_ms, floor, "already at the floor is a no-op");
+    /// `delay_ms` now lives behind the shared state's mutex; these helpers keep the behavioural
+    /// assertions below reading exactly as they did when it was a plain field.
+    fn delay_of(l: &RateLimiter) -> u64 {
+        futures::executor::block_on(l.inner.state.lock()).delay_ms
+    }
+    fn min_delay_of(l: &RateLimiter) -> u64 {
+        l.inner.min_delay
     }
 
-    #[test]
-    fn rate_limit_doubles_and_caps() {
-        let mut l = limiter_at(4000);
-        l.on_rate_limit();
-        assert_eq!(l.delay_ms, 8000);
-        l.on_rate_limit();
-        assert_eq!(l.delay_ms, MAX_DELAY_MS, "capped, not 16000");
+    #[tokio::test]
+    async fn recovery_is_additive_and_floors_at_min_delay() {
+        let l = limiter_at(5000);
+        l.on_success().await;
+        assert_eq!(delay_of(&l), 4900, "one success sheds exactly RECOVERY_STEP_MS");
+        let floor = min_delay_of(&l);
+        let l = limiter_at(floor + 50);
+        l.on_success().await;
+        assert_eq!(delay_of(&l), floor, "recovery never undercuts the floor");
+        l.on_success().await;
+        assert_eq!(delay_of(&l), floor, "already at the floor is a no-op");
     }
 
-    #[test]
-    fn a_single_call_penalises_the_pace_at_most_once() {
+    #[tokio::test]
+    async fn rate_limit_doubles_and_caps() {
+        let l = limiter_at(4000);
+        l.on_rate_limit().await;
+        assert_eq!(delay_of(&l), 8000);
+        l.on_rate_limit().await;
+        assert_eq!(delay_of(&l), MAX_DELAY_MS, "capped, not 16000");
+    }
+
+    #[tokio::test]
+    async fn a_single_call_penalises_the_pace_at_most_once() {
         // Mirrors mb_get's `penalised` latch: five retries of one unlucky name must cost one doubling,
         // not five. Before this, one bad name pinned every later name at the 10s cap.
-        let mut l = limiter_at(1300);
+        let l = limiter_at(1300);
         let mut penalised = false;
         for _ in 0..5 {
             let kind = classify_throttle(503, None, RATE_LIMIT_BODY);
             if kind == ThrottleKind::RateLimited && !penalised {
-                l.on_rate_limit();
+                l.on_rate_limit().await;
                 penalised = true;
             }
         }
-        assert_eq!(l.delay_ms, 2600);
+        assert_eq!(delay_of(&l), 2600);
     }
 
     #[test]
@@ -991,9 +1220,9 @@ mod tests {
     async fn an_overload_retry_skips_the_pacing_slot() {
         // The throughput fix: a load-shed 503 served no data, so the retry must not queue behind a full
         // inter-request delay. Roughly a third of requests on a long run take this path.
-        let mut l = limiter_at(DEFAULT_MIN_DELAY_MS);
-        l.wait().await; // establishes last_request
-        l.allow_immediate_retry();
+        let l = limiter_at(DEFAULT_MIN_DELAY_MS);
+        l.wait().await; // establishes the first slot
+        l.allow_immediate_retry().await;
         let started = Instant::now();
         l.wait().await;
         let waited = started.elapsed().as_millis() as u64;
@@ -1003,7 +1232,7 @@ mod tests {
         );
 
         // ...and the flag is one-shot: the next request pays full price again.
-        l.allow_immediate_retry();
+        l.allow_immediate_retry().await;
         l.wait().await;
         let started = Instant::now();
         l.wait().await;
@@ -1011,6 +1240,106 @@ mod tests {
             started.elapsed().as_millis() as u64 > OVERLOAD_RETRY_FLOOR_MS,
             "the immediate-retry flag leaked into a normal request"
         );
+    }
+
+    /// **The guard on the whole concurrency design.** Whatever the worker count, the shared schedule
+    /// must issue no faster than one request per `min_delay` - concurrency is allowed to raise how
+    /// much of MusicBrainz's allowance we use, never the allowance itself.
+    #[tokio::test]
+    async fn concurrent_workers_never_issue_faster_than_the_floor() {
+        const WORKERS: usize = 8;
+        const PER_WORKER: usize = 3;
+        const TOTAL: usize = WORKERS * PER_WORKER;
+
+        let l = limiter_at(DEFAULT_MIN_DELAY_MS);
+        let started = Instant::now();
+        let mut set = tokio::task::JoinSet::new();
+        for _ in 0..WORKERS {
+            let l = l.clone();
+            set.spawn(async move {
+                for _ in 0..PER_WORKER {
+                    l.wait().await;
+                }
+            });
+        }
+        while set.join_next().await.is_some() {}
+
+        let elapsed = started.elapsed().as_millis() as u64;
+        let floor = (TOTAL as u64 - 1) * DEFAULT_MIN_DELAY_MS;
+        assert!(
+            elapsed >= floor,
+            "{TOTAL} requests across {WORKERS} workers took {elapsed}ms - the schedule must spread \
+             them over at least {floor}ms or we are exceeding MusicBrainz's rate"
+        );
+    }
+
+    /// A clone shares the schedule rather than starting a fresh one - the whole point of the handle.
+    /// If clones paced independently, N workers would issue at N times the allowed rate.
+    #[tokio::test]
+    async fn a_clone_shares_the_schedule_it_was_cloned_from() {
+        let a = limiter_at(DEFAULT_MIN_DELAY_MS);
+        let b = a.clone();
+        a.wait().await;
+        let started = Instant::now();
+        b.wait().await;
+        assert!(
+            started.elapsed().as_millis() as u64 >= DEFAULT_MIN_DELAY_MS - 50,
+            "a clone paced independently of its source"
+        );
+    }
+
+    /// The header-derived branches must never undercut the floor. `remaining` is a *global* pool, so a
+    /// busy minute on MusicBrainz's side used to hand back 500ms - twice the published rate, exactly
+    /// when the server could least afford it.
+    #[tokio::test]
+    async fn header_derived_pacing_never_undercuts_the_floor() {
+        let l = limiter_at(DEFAULT_MIN_DELAY_MS);
+        let reset_at = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            + 1;
+
+        // A nearly-drained shared pool: back off, never speed up.
+        l.update_from_headers(Some(3), Some(reset_at)).await;
+        let st = l.inner.state.lock().await;
+        assert!(l.effective_delay(&st) >= DEFAULT_MIN_DELAY_MS);
+        drop(st);
+
+        // A healthy pool with a 1s window: the naive ideal is ~1ms, and must still clamp to the floor.
+        l.update_from_headers(Some(1000), Some(reset_at)).await;
+        let st = l.inner.state.lock().await;
+        assert!(l.effective_delay(&st) >= DEFAULT_MIN_DELAY_MS);
+    }
+
+    /// The bug this exists to prevent: `OK Computer` says 39 releases and serves 31, so a browse must
+    /// ask for the rest instead of reading the short page as the end. Dropping those 8 dropped every
+    /// `OKNOTOK 1997 2017` edition from the matcher's view.
+    #[test]
+    fn a_short_page_is_not_the_last_page() {
+        let mut offset = 0;
+        assert!(
+            advance_browse(&mut offset, 31, Some(39)),
+            "31 of 39 is a short page, not the end"
+        );
+        assert_eq!(offset, 31, "the cursor steps by what arrived, not by `limit`");
+        assert!(!advance_browse(&mut offset, 8, Some(39)), "39 of 39 is the end");
+        assert_eq!(offset, 39);
+    }
+
+    #[test]
+    fn a_browse_terminates_on_an_empty_page_or_a_missing_count() {
+        // Both guard against looping forever: MusicBrainz occasionally answers with neither.
+        let mut offset = 50;
+        assert!(!advance_browse(&mut offset, 0, Some(999)), "an empty page ends it");
+        let mut offset = 0;
+        assert!(!advance_browse(&mut offset, 10, None), "no count means stop, not spin");
+    }
+
+    #[test]
+    fn a_single_full_page_ends_the_browse() {
+        let mut offset = 0;
+        assert!(!advance_browse(&mut offset, 12, Some(12)));
     }
 
     #[test]

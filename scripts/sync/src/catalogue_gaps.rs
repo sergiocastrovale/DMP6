@@ -99,14 +99,18 @@ pub async fn fill_catalogue_gaps(
         // Release groups carry no status; only the releases inside them do. Without this the gap pass
         // fills the catalogue with bootleg live recordings (primary Album, secondary Live - the same
         // shape as an official live album, which we keep). See `mb_get_official_release_group_ids`.
-        let official_rg_ids =
-            match mb_api::mb_get_official_release_group_ids(http_client, mb_id, limiter).await {
-                Ok(ids) => ids,
+        // One browse, two answers: the official-group set this gate needs, and the tracklist of every
+        // one of those releases - the containment note below is derived from those instead of paying
+        // a paginated browse per gap.
+        let catalogue =
+            match mb_api::mb_get_official_artist_catalogue(http_client, mb_id, limiter).await {
+                Ok(c) => c,
                 Err(e) => {
                     reporter.err(&format!("{}: {}", name, e));
                     continue;
                 }
             };
+        let official_rg_ids = &catalogue.official_rg_ids;
 
         let artist_genre_ids = get_artist_genre_ids(pool, artist_id).await;
         if overwrite {
@@ -133,7 +137,7 @@ pub async fn fill_catalogue_gaps(
                 rg.primary_type.as_deref(),
                 &secondary,
                 &rg.id,
-                &official_rg_ids,
+                official_rg_ids,
             ) {
                 continue;
             }
@@ -142,9 +146,11 @@ pub async fn fill_catalogue_gaps(
             // those recordings already are (see `owned.rs`).
             let contained_note = match contained_notes.get(&rg.id) {
                 Some(note) if !overwrite => Some(note.clone()),
-                _ => crate::owned::detect_containment(http_client, limiter, &rg.id, &local_bundles)
-                    .await
-                    .map(|container| crate::owned::containment_note(&container)),
+                _ => crate::owned::detect_containment(
+                    catalogue.editions_by_rg.get(&rg.id).map_or(&[][..], |v| v),
+                    &local_bundles,
+                )
+                .map(|container| crate::owned::containment_note(&container)),
             };
             if let Some(note) = &contained_note {
                 contained_count += 1;

@@ -59,6 +59,12 @@ pub struct MbRelease {
 #[derive(Debug, Deserialize)]
 pub struct MbReleaseList {
     pub releases: Vec<MbRelease>,
+    /// Total matching releases, not the page size. MusicBrainz caps an `inc=recordings` browse by
+    /// **response size**, not by `limit`, so a page can come back far short of `limit` with more
+    /// still to come - `OK Computer` reports 39 here and returns 31 for `limit=100`. Paging on a
+    /// short page instead of this count silently drops the tail (see `mb_get_release_tracks`).
+    #[serde(rename = "release-count")]
+    pub release_count: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
