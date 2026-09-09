@@ -487,15 +487,18 @@ tracks are Spanish-language versions. Those are tagging differences in the files
 - [x] **"Missing album" lists could go stale when a box set was split up.** ~~The missing-album list
       is built per artist during the sync, but box sets are only split at the very end of the whole
       run.~~ Fixed - the list is now swept again after box sets are split.
-- [ ] **33 artists still filed under the wrong name.** The cause is fixed and sync repairs each one
-      as it re-syncs, so these clear themselves as those artists come round. Can be forced sooner by
-      syncing them directly.
-- [ ] **Some artist entries carry the wrong MusicBrainz identity.** Worse than a naming problem: a
-      near-empty entry called "Wardell Gray Quintet" was holding *Erroll Garner's* MusicBrainz
-      identity (its own is a different one), which is what pulled Garner's 76 albums under that name.
-      Sync now takes the identity off the wrong entry when it repairs one, but that only cleans up
-      cases as they surface. How the wrong identity got written in the first place - most likely an
-      album credited to two artists at once - has not been traced yet, so new ones may still appear.
+- [x] **33 artists filed under the wrong name.** ~~Erroll Garner's 76 albums sat under "Wardell Gray
+      Quintet"~~ Fixed, all 33, via `./sync --repair-artist-identities`. Only one pair turned out to
+      be the same artist under two names (Grover Washington) and was merged; the other 32 were never
+      the same artist and were simply unlinked. A near-empty entry holding someone else's MusicBrainz
+      identity now gives it up.
+- [ ] **How the wrong identities got written has not been traced.** The damage is repaired and sync
+      no longer creates this particular mess, but the original cause - most likely albums credited to
+      two artists at once - is still unknown, so new cases may appear. Re-run the repair occasionally
+      and see whether the count grows.
+- [ ] **A few artists need a re-sync to pick their identity back up.** Unlinking left some entries
+      (Erroll Garner among them) without a MusicBrainz identity of their own. They get one the next
+      time they are synced; until then their albums show but their catalogue will look empty.
 - [ ] **Very large artists are still slow.** The four tested own 70-140 albums each and take roughly
       an hour apiece. That is expected - the typical artist owns 3 - but worth knowing before
       re-syncing a big name.
