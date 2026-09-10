@@ -7,7 +7,7 @@ import { request } from '@playwright/test'
 // by "changing" the password to itself - keeps this file the single source of a ready-to-use session
 // whether or not the caller already cleared the flag (CI's web-tests.yml does this via a DB update).
 export default async (): Promise<void> => {
-  const baseURL = process.env.BASE_URL || 'http://localhost:3000'
+  const baseURL = process.env.BASE_URL || `http://localhost:${process.env.PORT || '3300'}`
   const username = process.env.TEST_USER || 'admin'
   const password = process.env.TEST_PASS || 'admin'
   const ctx = await request.newContext({ baseURL })

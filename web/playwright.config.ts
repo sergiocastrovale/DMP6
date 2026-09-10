@@ -1,7 +1,11 @@
 import { config as loadEnv } from 'dotenv'
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.BASE_URL || 'http://localhost:3000'
+// A non-default port avoids colliding with whatever else happens to be bound to :3000 on a dev
+// machine - `reuseExistingServer` (local runs) silently adopts any server already on the port,
+// which previously made the suite log in against an unrelated app and fail on its HTML response.
+const port = process.env.PORT || '3300'
+const baseURL = process.env.BASE_URL || `http://localhost:${port}`
 
 // `node .output/server/index.mjs` is a plain Node process: unlike `nuxt dev` and vitest, nothing
 // reads `.env` for it, so a local run started with no DATABASE_URL and no SESSION_SECRET. The server
@@ -17,6 +21,7 @@ loadEnv({ override: false })
 const serverEnv = {
   ...(process.env as Record<string, string>),
   SESSION_SECRET: process.env.SESSION_SECRET || 'e2e-session-secret-fixed-for-determinism',
+  PORT: port,
 }
 
 // Runs against the PRODUCTION build (the service worker only exists in `pnpm build` output -
