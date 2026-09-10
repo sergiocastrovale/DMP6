@@ -273,6 +273,13 @@ of each song. Everything below is sync reconstructing a relationship MusicBrainz
 
 Folders sitting side by side inside a parent folder are treated as candidate discs of one thing.
 
+**Why this runs once at the end of sync, not per artist as each one is synced:** a box's siblings and
+their standalone twin can belong to *different* artist rows (compilations, VA sets) — not scoped to one
+artist. And fold/dissolve needs every release this run matched already sitting in the DB, since a disc's
+standalone twin might not even be for the same artist. Running it earlier would also revive §10's
+matcher-vs-box-pass fight, since that fix depends on the box pass being the *last* word, not one voice
+mid-loop.
+
 ### Matching folders to discs
 
 Every folder must match exactly one disc, and every match must be unambiguous — **otherwise the whole
