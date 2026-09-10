@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  accumulateAlsoPartOf,
   buildAppearsOnCards,
   buildCoArtistMap,
   buildConnectedArtistByRelease,
@@ -382,6 +383,48 @@ describe('buildLocalAndGapCards / buildAppearsOnCards - "Also part of" (docs/syn
       alsoPartOfByGroupId: new Map([['rg1', [{ title: 'The Box', year: 2008 }]]]),
     })
     expect(cards[0]!.alsoPartOf).toEqual([{ title: 'The Box', year: 2008 }])
+  })
+})
+
+describe('accumulateAlsoPartOf', () => {
+  it('dedupes a box\'s multiple discs (one MusicBrainzReleaseMedium row per disc, same releaseId) into a single entry', () => {
+    const box = { title: 'Dear Michael: The Motown Collection', year: 2011 }
+    const media = [
+      { equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box },
+      { equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box },
+      { equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box },
+    ]
+    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    accumulateAlsoPartOf(media, byGroupId, new Map())
+    expect(byGroupId.get('rg1')).toEqual([box])
+  })
+
+  it('keeps two distinct boxes reprinting the same release group as two entries', () => {
+    const boxA = { title: 'Box A', year: 2005 }
+    const boxB = { title: 'Box B', year: 2011 }
+    const media = [
+      { equivalentReleaseGroupId: 'rg1', releaseId: 'boxA', release: boxA },
+      { equivalentReleaseGroupId: 'rg1', releaseId: 'boxA', release: boxA },
+      { equivalentReleaseGroupId: 'rg1', releaseId: 'boxB', release: boxB },
+    ]
+    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    accumulateAlsoPartOf(media, byGroupId, new Map())
+    expect(byGroupId.get('rg1')).toEqual([boxA, boxB])
+  })
+
+  it('accumulates across two calls sharing the same seen map, still deduping', () => {
+    const box = { title: 'Dear Michael: The Motown Collection', year: 2011 }
+    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    const seen = new Map<string, Set<string>>()
+    accumulateAlsoPartOf([{ equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box }], byGroupId, seen)
+    accumulateAlsoPartOf([{ equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box }], byGroupId, seen)
+    expect(byGroupId.get('rg1')).toEqual([box])
+  })
+
+  it('ignores rows with a null equivalentReleaseGroupId', () => {
+    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    accumulateAlsoPartOf([{ equivalentReleaseGroupId: null, releaseId: 'box1', release: { title: 'X', year: null } }], byGroupId, new Map())
+    expect(byGroupId.size).toBe(0)
   })
 })
 

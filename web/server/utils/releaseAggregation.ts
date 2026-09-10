@@ -165,6 +165,28 @@ export function buildConnectedArtistByRelease(
   return map
 }
 
+// docs/sync_decisions.md §9: a box set is ONE MusicBrainzRelease with N MusicBrainzReleaseMedium rows
+// (one per disc), and each disc row carries the SAME equivalentReleaseGroupId. Without deduping by
+// releaseId, a box reprinting a release group is listed once per disc instead of once - "Also part
+// of: Foo Box (2011), Foo Box (2011), Foo Box (2011)...". Mutates `byGroupId`/`seen` in place so
+// multiple fetches (e.g. local-catalogue rows then appears-on rows) accumulate into one shared map.
+export function accumulateAlsoPartOf(
+  media: { equivalentReleaseGroupId: string | null, releaseId: string, release: { title: string, year: number | null } }[],
+  byGroupId: Map<string, { title: string, year: number | null }[]>,
+  seen: Map<string, Set<string>>,
+): void {
+  for (const m of media) {
+    if (!m.equivalentReleaseGroupId) {continue}
+    const groupId = m.equivalentReleaseGroupId
+    const seenForGroup = seen.get(groupId) ?? new Set<string>()
+    seen.set(groupId, seenForGroup)
+    if (seenForGroup.has(m.releaseId)) {continue}
+    seenForGroup.add(m.releaseId)
+    const list = byGroupId.get(groupId)
+    if (list) { list.push(m.release) } else { byGroupId.set(groupId, [m.release]) }
+  }
+}
+
 const ALLOWED_GAP_TYPES = new Set(['album', 'ep'])
 
 // Loop 1 (local releases -> either a local card, an appears-on candidate, or matched to a catalogue

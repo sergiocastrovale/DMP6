@@ -2,6 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 import {
+  accumulateAlsoPartOf,
   buildAppearsOnCards,
   buildCoArtistMap,
   buildConnectedArtistByRelease,
@@ -105,14 +106,12 @@ export default defineEventHandler(async (event) => {
   const alsoPartOfMedia = releaseGroupIds.length > 0
     ? await prisma.musicBrainzReleaseMedium.findMany({
       where: { equivalentReleaseGroupId: { in: releaseGroupIds } },
-      select: { equivalentReleaseGroupId: true, release: { select: { title: true, year: true } } },
+      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true } } },
     })
     : []
   const alsoPartOfByGroupId = new Map<string, { title: string, year: number | null }[]>()
-  for (const m of alsoPartOfMedia) {
-    const list = alsoPartOfByGroupId.get(m.equivalentReleaseGroupId!)
-    if (list) { list.push(m.release) } else { alsoPartOfByGroupId.set(m.equivalentReleaseGroupId!, [m.release]) }
-  }
+  const alsoPartOfSeen = new Map<string, Set<string>>()
+  accumulateAlsoPartOf(alsoPartOfMedia, alsoPartOfByGroupId, alsoPartOfSeen)
 
   const { cards: localAndGapCards, appearsOnLocal } = buildLocalAndGapCards({
     localReleases,
@@ -160,12 +159,9 @@ export default defineEventHandler(async (event) => {
   if (appearsOnGroupIds.length > 0) {
     const extraMedia = await prisma.musicBrainzReleaseMedium.findMany({
       where: { equivalentReleaseGroupId: { in: appearsOnGroupIds } },
-      select: { equivalentReleaseGroupId: true, release: { select: { title: true, year: true } } },
+      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true } } },
     })
-    for (const m of extraMedia) {
-      const list = alsoPartOfByGroupId.get(m.equivalentReleaseGroupId!)
-      if (list) { list.push(m.release) } else { alsoPartOfByGroupId.set(m.equivalentReleaseGroupId!, [m.release]) }
-    }
+    accumulateAlsoPartOf(extraMedia, alsoPartOfByGroupId, alsoPartOfSeen)
   }
 
   const appearsOnCards = buildAppearsOnCards({
