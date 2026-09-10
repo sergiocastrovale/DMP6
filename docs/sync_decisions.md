@@ -484,6 +484,23 @@ SELECT CASE WHEN l.name IS NULL THEN 'unknown'
 Also measured: **149** groups of entries sharing one identity that should not be shared, and **15,493**
 tracks whose embedded name/id pair disagrees with the independent answer for that same name.
 
+**Outcome, after §5's gate shipped and `./sync --repair-artist-identities` ran for real (same day):**
+
+| Verdict | Entries | Albums |
+|---|---|---|
+| Confirms its own identity | 37,394 | 152,124 |
+| **Contradicts its own identity** | **0** | **0** |
+| No independent answer on record | 1,908 | 1,314 |
+| Independent answer says unresolvable | 101 | 406 |
+
+Confirms held (and grew slightly — the containment relink was running concurrently), contradicts fell to
+zero. Pass B cleared 1,268 identities; Pass C resolved 17 shared-id groups (of the original 149, most had
+already collapsed to size 1 once Pass B ran — B runs first in the same invocation). **11 groups remain**:
+genuine collisions where more than one member's own name was independently confirmed for the same id —
+Pass C deliberately leaves these for a human rather than pick one, per the "no wild guesses" rule (§5/§6).
+A second, immediate re-run of the repair found 0/0/0 to do, confirming it does not re-touch what it
+already fixed.
+
 ## 18. Where to start digging
 
 | Symptom | Section |
