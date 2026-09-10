@@ -4,7 +4,8 @@ import { defineConfig, devices } from '@playwright/test'
 // A non-default port avoids colliding with whatever else happens to be bound to :3000 on a dev
 // machine - `reuseExistingServer` (local runs) silently adopts any server already on the port,
 // which previously made the suite log in against an unrelated app and fail on its HTML response.
-const port = process.env.PORT || '3300'
+// CI has :3000 free and BASE_URL is hardcoded to :3000, so use that there; locally use :3300.
+const port = process.env.PORT || (process.env.CI ? '3000' : '3300')
 const baseURL = process.env.BASE_URL || `http://localhost:${port}`
 
 // `node .output/server/index.mjs` is a plain Node process: unlike `nuxt dev` and vitest, nothing
