@@ -467,6 +467,13 @@ async fn main() {
     // The same repair runs automatically for any artist a sync visits, but a sync only visits artists
     // with pending work, so rows mis-filed before that landed would wait for an `--overwrite` of each
     // one. This sweeps them all in seconds instead.
+    //
+    // Three passes, per docs/sync_decisions.md §5/§6:
+    //   A. repair_all_empty_primaries  - primaryArtistId-linked duplicate/alias pairs
+    //   B. repair_contradicted_identities - any stored id MbArtistLookup confidently contradicts
+    //   C. repair_shared_identities    - unrelated Artist rows holding the same id
+    // Must run in this order and only after the ladder gate (§5) is deployed, or an un-gated sync
+    // re-mints exactly what B/C just cleared.
     if args.repair_artist_identities {
         reporter.header(if args.dry_run {
             "DMP Sync - Repair Artist Identities (DRY RUN)"
@@ -485,14 +492,61 @@ async fn main() {
                 let promoted = done.iter().filter(|r| r.action.starts_with("promoted")).count();
                 let unlinked = done.len() - promoted;
                 reporter.done(&format!(
-                    "{} artist(s) {}: {} promoted over an alias, {} unlinked as different artists",
+                    "Pass A: {} artist(s) {}: {} promoted over an alias, {} unlinked as different artists",
                     done.len(),
                     if args.dry_run { "would be repaired" } else { "repaired" },
                     promoted,
                     unlinked
                 ));
             }
-            Err(e) => reporter.err(&format!("Repair error: {}", e)),
+            Err(e) => reporter.err(&format!("Pass A error: {}", e)),
+        }
+
+        reporter.blank();
+        match db::repair_contradicted_identities(&pool, args.dry_run).await {
+            Ok(done) => {
+                for r in &done {
+                    reporter.ok(&format!(
+                        "{} ({} release(s)) - independent lookup contradicts {}",
+                        r.artist, r.releases, r.cleared_mbid
+                    ));
+                }
+                reporter.blank();
+                reporter.done(&format!(
+                    "Pass B: {} artist identity(-ies) {}",
+                    done.len(),
+                    if args.dry_run { "would be cleared" } else { "cleared" }
+                ));
+            }
+            Err(e) => reporter.err(&format!("Pass B error: {}", e)),
+        }
+
+        reporter.blank();
+        match db::repair_shared_identities(&pool, args.dry_run).await {
+            Ok(done) => {
+                for g in &done {
+                    match &g.kept {
+                        Some(name) => reporter.ok(&format!(
+                            "{} kept by \"{}\", cleared from: {}",
+                            g.mbid,
+                            name,
+                            g.cleared.join(", ")
+                        )),
+                        None => reporter.ok(&format!(
+                            "{} - no member confirmed, cleared from all: {}",
+                            g.mbid,
+                            g.cleared.join(", ")
+                        )),
+                    }
+                }
+                reporter.blank();
+                reporter.done(&format!(
+                    "Pass C: {} shared-id group(s) {}",
+                    done.len(),
+                    if args.dry_run { "would be resolved" } else { "resolved" }
+                ));
+            }
+            Err(e) => reporter.err(&format!("Pass C error: {}", e)),
         }
         return;
     }

@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use common::artists::split_artists;
 use common::filters::sanitize_mb_id;
 use common::mb::cache::cached_exact_artist;
+use common::mb::names::mb_artist_exact;
 use sqlx::PgPool;
 
 use crate::mb_api::*;
@@ -98,9 +99,14 @@ pub async fn find_mb_match_with_fallback(
         } else {
             match mb_lookup_artist(client, &mb_aid, limiter).await {
                 Ok(m) if is_special_mb_artist(&m.id, &m.name) => {}
-                Ok(m) => {
+                // A stored/embedded id only counts once the name it actually resolves to is
+                // certainly this row's name - never just "we had an id, so it must be right". A
+                // wrong id must fall through to the rest of the ladder (or end in None) instead of
+                // being echoed back, or it can never self-correct. See docs/sync_decisions.md §4-6.
+                Ok(m) if mb_artist_exact(artist_name, &m) => {
                     return Ok(Some(m));
                 }
+                Ok(_) => {}
                 Err(_) => {}
             }
         }
@@ -147,11 +153,13 @@ pub async fn find_mb_match_with_fallback(
         }
     }
 
-    // Step 3: search MB by stored artist name
+    // Step 3: search MB by stored artist name. Exact search only - this rung is the row's own name
+    // with nothing to disambiguate it against, so a merely-similar candidate (`mb_search_artist`'s
+    // Jaccard >= 0.5) has no independent evidence backing it at all.
     if let Some(m) = cache_hit(pool, warmed, artist_name).await {
         return Ok(Some(m));
     }
-    if let Some(m) = mb_search_artist(client, artist_name, limiter).await? {
+    if let Some(m) = mb_search_artist_exact(client, artist_name, limiter).await? {
         return Ok(Some(m));
     }
 
@@ -218,24 +226,35 @@ pub async fn find_mb_match_with_fallback(
         let tag_norm = normalize_name(tag);
         let tag_words: HashSet<&str> = tag_norm.split_whitespace().collect();
         let artist_word_refs: HashSet<&str> = artist_words.iter().map(|s| s.as_str()).collect();
-        tag_words.is_subset(&artist_word_refs)
-            || artist_word_refs.is_subset(&tag_words)
-            || names_are_similar(artist_name, tag)
+        // Deliberately one-directional: a tag whose words are a SUBSET of the artist's own name is a
+        // harmless partial spelling ("Miles" for "Miles Davis"). The other direction - the artist's
+        // name being a subset of the tag's words - is what let a compound credit like "<name> Quintet"
+        // or "<name> with <someone else>" get tried at all, and every candidate it returns still has
+        // to pass the exact-name gate below, so admitting it here bought nothing but risk. Dropped.
+        tag_words.is_subset(&artist_word_refs) || names_are_similar(artist_name, tag)
     });
 
-    // Step 4: try raw tags (excluding artist_name itself) as single artist names
+    // Step 4: try raw tags (excluding artist_name itself) as single artist names. The tag only ever
+    // picks which name to *search*; whatever comes back must still certainly be this row's own
+    // artist_name; a tag ("<name> Quintet") pulling in a candidate that is really a different act
+    // sharing the tag's words is exactly the leak this gate exists to close.
     for (tag, _) in &all_tags {
         if tag.eq_ignore_ascii_case(artist_name) {
             continue;
         }
         if let Some(m) = cache_hit(pool, warmed, tag).await {
-            return Ok(Some(m));
+            if mb_artist_exact(artist_name, &m) {
+                return Ok(Some(m));
+            }
+            continue;
         }
         if let Some(m) = mb_search_artist(client, tag, limiter).await? {
             if is_special_mb_artist(&m.id, &m.name) {
                 continue;
             }
-            return Ok(Some(m));
+            if mb_artist_exact(artist_name, &m) {
+                return Ok(Some(m));
+            }
         }
     }
 
@@ -264,13 +283,18 @@ pub async fn find_mb_match_with_fallback(
                 continue;
             }
             if let Some(m) = cache_hit(pool, warmed, part).await {
-                return Ok(Some(m));
+                if mb_artist_exact(artist_name, &m) {
+                    return Ok(Some(m));
+                }
+                continue;
             }
             if let Some(m) = mb_search_artist(client, part, limiter).await? {
                 if is_special_mb_artist(&m.id, &m.name) {
                     continue;
                 }
-                return Ok(Some(m));
+                if mb_artist_exact(artist_name, &m) {
+                    return Ok(Some(m));
+                }
             }
         }
     }
@@ -300,25 +324,12 @@ async fn try_release_group_credits(
         return Ok(None);
     }
 
-    // Find the credit that matches our artist name
-    if let Some(matched) = real_credits.iter().find(|c| {
-        names_are_similar(artist_name, &c.name) || c.name.eq_ignore_ascii_case(artist_name)
-    }) {
+    // Find the credit that certainly IS our artist name - never the tag, and never merely-similar.
+    // The removed fallback below used to hand back `real_credits[0]` whenever it was merely related to
+    // the *tag*, which is exactly how a compound credit array ("<name> Quintet" and "<someone else>")
+    // could leak another artist's id onto this row. See docs/sync_decisions.md §4-6.
+    if let Some(matched) = real_credits.iter().find(|c| mb_artist_exact(artist_name, c)) {
         return Ok(Some(matched.clone()));
-    }
-
-    // Fallback: return first credit if it's related to the tag
-    let tag_norm = normalize_name(artist_tag);
-    let tag_words: HashSet<&str> = tag_norm.split_whitespace().collect();
-    if let Some(first) = real_credits.into_iter().next() {
-        let c_norm = normalize_name(&first.name);
-        let c_words: HashSet<&str> = c_norm.split_whitespace().collect();
-        if c_words.is_subset(&tag_words)
-            || tag_words.is_subset(&c_words)
-            || names_are_similar(artist_tag, &first.name)
-        {
-            return Ok(Some(first));
-        }
     }
 
     Ok(None)

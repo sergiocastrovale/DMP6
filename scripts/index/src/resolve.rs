@@ -296,6 +296,43 @@ pub fn embedded_pairing(
     )
 }
 
+/// Does an already-memoized answer for `name` name a *different* id than the one this pairing wants
+/// to trust? (docs/sync_decisions.md §4/§5.)
+///
+/// `embedded_pairing`'s own guard only checks that the *name* matches the tag - never that the *id*
+/// belongs to that name. The one real file this traced back to had the name right and the id wrong
+/// (an embedded MusicBrainz id belonging to a different artist entirely), and the resolver's own
+/// lookup table already held the correct answer for that exact name the whole time; nothing had ever
+/// asked it. `NotFound`/`NeedsFetch`/`Transient` are not contradictions - only a `Found` answer for a
+/// *different* id counts, matching `common::mb::names::IdentityVerdict::Contradicted`.
+fn embedded_id_contradicted(memo: &HashMap<String, LookupResult>, name: &str, claimed_mbid: &str) -> bool {
+    matches!(memo.get(name), Some(LookupResult::Found { mbid: Some(known) }) if known != claimed_mbid)
+}
+
+/// `embedded_pairing`'s result, with every part checked against what the resolver already knows.
+///
+/// A single contradicted part discards the *whole* pairing rather than patching just that one part:
+/// the caller's fallback (`resolver.resolve(tag)`) re-derives every part from the same memo this
+/// function just consulted, so it lands on the correct answer for free - no extra network call, and
+/// one code path stays responsible for deciding an identity instead of two disagreeing quietly.
+fn embedded_pairing_checked(
+    memo: &HashMap<String, LookupResult>,
+    tag: &str,
+    artists: &[String],
+    mb_ids: &[String],
+    join: JoinKind,
+) -> Option<Vec<ResolvedArtist>> {
+    let parts = embedded_pairing(tag, artists, mb_ids, join)?;
+    for part in &parts {
+        if let Some(mbid) = &part.mbid {
+            if embedded_id_contradicted(memo, &part.name, mbid) {
+                return None;
+            }
+        }
+    }
+    Some(parts)
+}
+
 /// Which frame a release's owner tag came from - the pairing arrays differ, so the caller has to know.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnerTag<'a> {
@@ -391,11 +428,18 @@ pub async fn ensure_resolved_artist(
     }
     let id = common::db::ensure_artist(pool, &artist.name).await?;
     if !id.is_empty() {
-        if let Some(ref mbid) = artist.mbid {
-            // Fill only when empty - never overwrite an id sync already established.
+        if let (Some(ref mbid), true) = (&artist.mbid, artist.verified) {
+            // Fill when empty, or repair when the stored value differs from what THIS pass
+            // confirms. `verified` here means the certainty gate already passed - either
+            // `embedded_pairing_checked` found no contradiction, or this came from
+            // `resolver.resolve`'s own memo-backed lookup - so a differing stored value is not a
+            // fresher opinion to defer to, it is the very id docs/sync_decisions.md §4 traces:
+            // written once, fill-only, and never re-examined since. Without this repair path a
+            // wrong id written before this gate existed could never self-correct - the write
+            // only ever filled an empty slot, and a name seen once was never looked at again.
             sqlx::query(
                 r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW()
-                   WHERE id = $2 AND ("musicbrainzId" IS NULL OR "musicbrainzId" = '')"#,
+                   WHERE id = $2 AND ("musicbrainzId" IS NULL OR "musicbrainzId" = '' OR "musicbrainzId" <> $1)"#,
             )
             .bind(mbid)
             .bind(&id)
@@ -558,7 +602,7 @@ pub async fn resolve_and_apply(
             };
 
             if !resolved_owners.contains_key(owner) {
-                match embedded_pairing(owner, multi, mb_ids, JoinKind::CoBilling) {
+                match embedded_pairing_checked(&resolver.memo, owner, multi, mb_ids, JoinKind::CoBilling) {
                     Some(mut parts) => {
                         resolver.stats.from_embedded += 1;
                         cap_co_owners(&mut parts);
@@ -629,7 +673,8 @@ pub async fn resolve_and_apply(
 
         // --- artist tag produces track CREDITS ---------------------------------------------------
         // Tier 0 first: the file's own paired artists/MBIDs need no lookup at all.
-        let embedded = embedded_pairing(
+        let embedded = embedded_pairing_checked(
+            &resolver.memo,
             track.artist.as_deref().unwrap_or(""),
             &track.artists,
             &track.mb_artist_ids,
@@ -858,7 +903,10 @@ pub async fn distinct_tag_values(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_fully_memoized, resolve_owner_offline};
+    use super::{
+        embedded_id_contradicted, embedded_pairing, embedded_pairing_checked, is_fully_memoized,
+        resolve_owner_offline, JoinKind,
+    };
     use common::mb::resolve::LookupResult;
     use std::collections::HashMap;
 
@@ -872,6 +920,65 @@ mod tests {
             .iter()
             .map(|(k, v)| (k.to_string(), v.clone()))
             .collect()
+    }
+
+    // --- embedded_pairing_checked / embedded_id_contradicted --------------------------------------
+    //
+    // Fixtures are opaque placeholders, matching this module's own convention above ("Artist One",
+    // "mbid-one") - not a real artist name or MusicBrainz id from any real library. See
+    // docs/sync_decisions.md §4/§5 for the real, traced incident this guards against: an embedded tag
+    // whose name is right and whose id belongs to someone else, trusted because nothing checked it
+    // against what the resolver's own lookup table already knew.
+
+    #[test]
+    fn a_memoized_answer_for_a_different_id_is_a_contradiction() {
+        let memo = memo(&[("row-name", LookupResult::Found { mbid: Some("mbid-correct".into()) })]);
+        assert!(embedded_id_contradicted(&memo, "row-name", "mbid-wrong"));
+        assert!(!embedded_id_contradicted(&memo, "row-name", "mbid-correct"));
+    }
+
+    #[test]
+    fn a_miss_or_unasked_name_is_not_a_contradiction() {
+        // NotFound/NeedsFetch/absent are not evidence against a specific id - only a Found answer for
+        // a *different* id counts. Getting this wrong would make an ordinary, never-yet-cached tag
+        // fail the gate for no reason.
+        let memo = memo(&[("never-found", LookupResult::NotFound)]);
+        assert!(!embedded_id_contradicted(&memo, "never-found", "mbid-anything"));
+        assert!(!embedded_id_contradicted(&HashMap::new(), "never-asked", "mbid-anything"));
+    }
+
+    #[test]
+    fn embedded_pairing_checked_discards_the_whole_pairing_on_one_contradicted_part() {
+        // The single-pair, name-matches-the-tag shape embedded_pairing's own guard already accepts -
+        // but the memo disagrees on the id, so the checked wrapper must reject it wholesale rather
+        // than pass through a value nothing has verified.
+        let tag = "row-name";
+        let artists = vec!["row-name".to_string()];
+        let mb_ids = vec!["mbid-wrong".to_string()];
+
+        // Unchecked: passes through uncritically - this is the bug on its own.
+        assert!(embedded_pairing(tag, &artists, &mb_ids, JoinKind::CoBilling).is_some());
+
+        // Checked, against a memo that already knows better: rejected outright.
+        let memo = memo(&[("row-name", LookupResult::Found { mbid: Some("mbid-correct".into()) })]);
+        assert!(
+            embedded_pairing_checked(&memo, tag, &artists, &mb_ids, JoinKind::CoBilling).is_none(),
+            "a contradicted part must discard the whole pairing, not just patch that one part"
+        );
+    }
+
+    #[test]
+    fn embedded_pairing_checked_passes_through_when_uncontradicted() {
+        let tag = "row-name";
+        let artists = vec!["row-name".to_string()];
+        let mb_ids = vec!["mbid-correct".to_string()];
+
+        // No memo entry at all: nothing to contradict it.
+        assert!(embedded_pairing_checked(&HashMap::new(), tag, &artists, &mb_ids, JoinKind::CoBilling).is_some());
+
+        // Memo agrees: still passes.
+        let memo = memo(&[("row-name", LookupResult::Found { mbid: Some("mbid-correct".into()) })]);
+        assert!(embedded_pairing_checked(&memo, tag, &artists, &mb_ids, JoinKind::CoBilling).is_some());
     }
 
     #[test]

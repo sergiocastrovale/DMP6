@@ -95,9 +95,14 @@ async fn clear_contradicted_mbids(
     dry_run: bool,
     report: &mut CanonicalizeReport,
 ) -> Result<u64, sqlx::Error> {
+    // IS DISTINCT FROM covers both ways the cache can outweigh a stored id: no confident answer at
+    // all (m.mbid NULL - the original case) and a confident answer for a DIFFERENT id (the
+    // contradiction case, added once the certainty gate exists upstream to stop it recurring - see
+    // docs/sync_decisions.md §4-6). Clearing before that gate ships would just get re-minted by the
+    // next un-gated sync, which is why this method must not ship ahead of it.
     const SELECT: &str = r#"SELECT a.id, a.name FROM "Artist" a
            JOIN "MbArtistLookup" m ON m.name = a.name
-           WHERE m.mbid IS NULL
+           WHERE m.mbid IS DISTINCT FROM a."musicbrainzId"
              AND a."musicbrainzId" IS NOT NULL
              AND a."lastSyncedAt" IS NULL
              AND ($2::bool OR a.id = ANY($1::text[]))"#;

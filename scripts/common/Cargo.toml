@@ -9,6 +9,7 @@ path = "src/lib.rs"
 [dependencies]
 sqlx = { workspace = true }
 tokio = { workspace = true }
+unicode-normalization = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

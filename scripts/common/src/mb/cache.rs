@@ -26,6 +26,7 @@ use std::collections::HashMap;
 
 use sqlx::PgPool;
 
+use super::names::CacheAnswer;
 use super::types::MbArtistMatch;
 
 /// Shape a cached exact lookup into the match type the callers already handle.
@@ -82,6 +83,56 @@ pub async fn warm_exact_artists(
         .filter_map(|(name, mbid, mb_name)| {
             let m = match_from_cache_row(&name, mbid?, mb_name);
             Some((name, m))
+        })
+        .collect()
+}
+
+/// The three-way answer behind `names::certain_match`/`identity_verdict`: does this table have an
+/// exact-match Hit, a recorded DefiniteMiss, or nothing at all for `name`?
+///
+/// Deliberately separate from `cached_exact_artist`, which collapses Miss and Absent into one `None`
+/// - correct for its own callers (a fuzzy search must run regardless of which of the two it was), but
+/// exactly the distinction the identity-certainty gate needs: a recorded miss says something about
+/// *this string*, while "never asked" says nothing at all. See docs/sync_decisions.md §4 - the case
+/// this exists to catch is a table that already held the *right* answer, sitting unconsulted.
+pub async fn cache_answer(pool: &PgPool, name: &str) -> CacheAnswer {
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as(r#"SELECT mbid FROM "MbArtistLookup" WHERE name = $1"#)
+            .bind(name)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+    match row {
+        Some((Some(mbid),)) => CacheAnswer::Hit(mbid),
+        Some((None,)) => CacheAnswer::DefiniteMiss,
+        None => CacheAnswer::Absent,
+    }
+}
+
+/// Bulk form of `cache_answer`, for a batch of names known up front - mirrors `warm_exact_artists`.
+/// A name absent from the returned map was never looked up (`CacheAnswer::Absent`); present entries
+/// may be either a `Hit` or a `DefiniteMiss`, so callers must not treat "not in the map" and
+/// "in the map as a miss" as the same thing - that conflation is exactly what this type exists to end.
+pub async fn warm_cache_answers(pool: &PgPool, names: &[String]) -> HashMap<String, CacheAnswer> {
+    if names.is_empty() {
+        return HashMap::new();
+    }
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        r#"SELECT name, mbid FROM "MbArtistLookup" WHERE name = ANY($1::text[])"#,
+    )
+    .bind(names)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    rows.into_iter()
+        .map(|(name, mbid)| {
+            let answer = match mbid {
+                Some(id) => CacheAnswer::Hit(id),
+                None => CacheAnswer::DefiniteMiss,
+            };
+            (name, answer)
         })
         .collect()
 }
@@ -175,6 +226,53 @@ mod tests {
         assert_eq!(
             warmed[HIT_NAME].name, HIT_NAME,
             "NULL mbName falls back to the queried string"
+        );
+
+        for n in [HIT_NAME, MISS_NAME] {
+            sqlx::query(r#"DELETE FROM "MbArtistLookup" WHERE name = $1"#)
+                .bind(n)
+                .execute(&pool)
+                .await
+                .ok();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn cache_answer_distinguishes_hit_miss_and_absent() {
+        let db_url = std::env::var("SMOKE_TEST_DATABASE_URL").expect(
+            "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
+             against the production DATABASE_URL",
+        );
+        let pool = crate::db::create_pool(&db_url).await;
+        seed(&pool, HIT_NAME, Some(FIXTURE_MBID)).await;
+        seed(&pool, MISS_NAME, None).await;
+
+        assert_eq!(
+            cache_answer(&pool, HIT_NAME).await,
+            CacheAnswer::Hit(FIXTURE_MBID.to_string())
+        );
+        assert_eq!(cache_answer(&pool, MISS_NAME).await, CacheAnswer::DefiniteMiss);
+        assert_eq!(
+            cache_answer(&pool, "DMP Test Never Seen (common::mb::cache)").await,
+            CacheAnswer::Absent,
+            "no row at all must not read the same as a recorded miss"
+        );
+
+        let warmed = warm_cache_answers(
+            &pool,
+            &[
+                HIT_NAME.to_string(),
+                MISS_NAME.to_string(),
+                "DMP Test Never Seen (common::mb::cache)".to_string(),
+            ],
+        )
+        .await;
+        assert_eq!(warmed.get(HIT_NAME), Some(&CacheAnswer::Hit(FIXTURE_MBID.to_string())));
+        assert_eq!(warmed.get(MISS_NAME), Some(&CacheAnswer::DefiniteMiss));
+        assert_eq!(
+            warmed.get("DMP Test Never Seen (common::mb::cache)"), None,
+            "absent from the map, not present-as-a-miss"
         );
 
         for n in [HIT_NAME, MISS_NAME] {

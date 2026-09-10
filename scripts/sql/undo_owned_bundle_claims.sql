@@ -23,11 +23,16 @@
 
 BEGIN;
 
-UPDATE "MusicBrainzRelease"
+UPDATE "MusicBrainzRelease" m
    SET status = 'MISSING',
-       "statusReason" = 'Recordings inside ' || substring("statusReason" FROM 'Owned as part of (.*)'),
+       "statusReason" = 'Recordings inside ' || substring(m."statusReason" FROM 'Owned as part of (.*)'),
        "updatedAt" = NOW()
- WHERE "statusReason" LIKE 'Owned as part of "%"';
+ WHERE m."statusReason" LIKE 'Owned as part of "%"'
+   -- Box provenance guard (mandatory per docs/containment.md §2.2): a claim row that multidisk has
+   -- since bound as a box (LocalRelease.boxReleaseId points at it) must not be flipped back to MISSING
+   -- - that would undo days of dissolve work. 0 rows matched this at the time this ran, but the guard
+   -- stays so a re-run after further multidisk activity stays safe.
+   AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr2 WHERE lr2."boxReleaseId" = m.id);
 
 UPDATE "LocalReleaseTrack" t
    SET "mbTrackId" = NULL,
@@ -40,6 +45,8 @@ UPDATE "LocalReleaseTrack" t
    AND mt."releaseId" <> lr."releaseId"
    -- Scoped to the claim's own rows (renamed by statement 1 above), so a cross-release link any other
    -- pass legitimately made is left alone.
-   AND owner."statusReason" LIKE 'Recordings inside "%"';
+   AND owner."statusReason" LIKE 'Recordings inside "%"'
+   -- Same box-provenance guard as statement 1 - never null a link a dissolved box still depends on.
+   AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr2 WHERE lr2."boxReleaseId" = owner.id);
 
 COMMIT;

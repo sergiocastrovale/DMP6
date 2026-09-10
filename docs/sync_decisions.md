@@ -174,6 +174,21 @@ one, and lets the entry re-enter the normal queue to be found again — correctl
 `./sync --repair-artist-identities` is that pass. Running sync harder or more often is not a substitute
 for it.
 
+Three sub-passes, run in this order every time the flag is used:
+
+- **Pass A** (`repair_all_empty_primaries`) — a duplicate/alias pair linked by `primaryArtistId` where
+  the empty side's stored id contradicts its own name.
+- **Pass B** (`repair_contradicted_identities`) — any entry, linked or not, whose stored id
+  `MbArtistLookup` confidently contradicts (an exact-name row with a *different, non-null* id). A cached
+  miss or no cache entry at all is left alone — neither is evidence against the stored id, only the
+  absence of evidence for it.
+- **Pass C** (`repair_shared_identities`) — two or more unrelated entries holding the exact same id.
+  The id is kept only where exactly one member is independently confirmed; if none is confirmed, every
+  member gives it up rather than guess which one is real.
+
+Both B and C also delete the entry's derived `MusicBrainzReleaseArtist` rows, so the wrong discography
+disappears immediately instead of lingering until the next sync.
+
 ---
 
 ## 7. Matching an album to MusicBrainz

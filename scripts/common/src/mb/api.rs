@@ -593,20 +593,27 @@ pub async fn mb_lookup_artist(
     mb_artist_id: &str,
     limiter: &mut RateLimiter,
 ) -> Result<MbArtistMatch, String> {
-    let url = format!("{}/artist/{}?fmt=json", MB_BASE, mb_artist_id);
+    // `inc=aliases`, and actually parsing them: this feeds the ladder's step 1 (an embedded/stored id
+    // looked up directly), and the certainty gate needs an artist's alias set to confirm a row whose
+    // tag spells the name differently from MB's own ("N.W.W." for "Nurse With Wound"). Without aliases
+    // here, `mb_artist_exact` silently degrades to bare-name equality and rejects a real, legitimate
+    // alias spelling.
+    let url = format!("{}/artist/{}?inc=aliases&fmt=json", MB_BASE, mb_artist_id);
     let body = mb_get(client, &url, limiter).await?;
 
     #[derive(serde::Deserialize)]
     struct ArtistLookup {
         id: String,
         name: String,
+        #[serde(default)]
+        aliases: Option<Vec<MbAlias>>,
     }
     let a: ArtistLookup = serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))?;
     Ok(MbArtistMatch {
         id: a.id,
         name: a.name,
         score: Some(100),
-        aliases: None,
+        aliases: a.aliases,
     })
 }
 

@@ -1,4 +1,6 @@
 use chrono::{NaiveDateTime, Utc};
+use common::mb::cache::cache_answer;
+use common::mb::names::CacheAnswer;
 use common::types::TrackMeta;
 use slug::slugify;
 use sqlx::PgPool;
@@ -450,13 +452,17 @@ pub async fn upsert_folder_scan(
 }
 
 pub async fn propagate_mb_artist_id(pool: &PgPool, artist_id: &str) -> Result<(), sqlx::Error> {
-    let existing: Option<(Option<String>,)> =
-        sqlx::query_as(r#"SELECT "musicbrainzId" FROM "Artist" WHERE id = $1"#)
+    let existing: Option<(Option<String>, String)> =
+        sqlx::query_as(r#"SELECT "musicbrainzId", name FROM "Artist" WHERE id = $1"#)
             .bind(artist_id)
             .fetch_optional(pool)
             .await?;
 
-    if let Some((Some(ref mb_id),)) = existing {
+    let Some((existing_mbid, artist_name)) = existing else {
+        return Ok(());
+    };
+
+    if let Some(ref mb_id) = existing_mbid {
         if !mb_id.is_empty() {
             return Ok(());
         }
@@ -484,14 +490,25 @@ pub async fn propagate_mb_artist_id(pool: &PgPool, artist_id: &str) -> Result<()
     .await?;
 
     if rows.len() == 1 {
-        sqlx::query(
-            r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW()
-               WHERE id = $2 AND ("musicbrainzId" IS NULL OR "musicbrainzId" = '')"#,
-        )
-        .bind(&rows[0].0)
-        .bind(artist_id)
-        .execute(pool)
-        .await?;
+        let candidate_mbid = &rows[0].0;
+        // The row's own name is the only thing this candidate can be checked against here (no MB
+        // candidate/alias payload available offline) - reject only on an explicit cache contradiction,
+        // same rule as identity_verdict: a Hit for a DIFFERENT id outweighs the embedded tag, but an
+        // absent or definite-miss cache entry is not evidence against it. See docs/sync_decisions.md §4-6.
+        let contradicted = matches!(
+            cache_answer(pool, &artist_name).await,
+            CacheAnswer::Hit(known) if known != *candidate_mbid
+        );
+        if !contradicted {
+            sqlx::query(
+                r#"UPDATE "Artist" SET "musicbrainzId" = $1, "updatedAt" = NOW()
+                   WHERE id = $2 AND ("musicbrainzId" IS NULL OR "musicbrainzId" = '')"#,
+            )
+            .bind(candidate_mbid)
+            .bind(artist_id)
+            .execute(pool)
+            .await?;
+        }
     }
 
     Ok(())

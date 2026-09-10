@@ -1137,6 +1137,157 @@ pub async fn promote_over_empty_primary(
     Ok(Some(empty_name))
 }
 
+/// One artist whose stored id `MbArtistLookup` independently contradicts, for the dry-run report.
+#[derive(Debug, Clone)]
+pub struct ContradictedIdentity {
+    pub artist: String,
+    pub releases: i64,
+    pub cleared_mbid: String,
+}
+
+/// Pass B of `--repair-artist-identities`: null a stored id the lookup table confidently disagrees
+/// with, anywhere in the library - not just the `primaryArtistId`-linked pairs Pass A
+/// (`repair_all_empty_primaries`) handles.
+///
+/// "Confidently disagrees" means `MbArtistLookup` has a row for this artist's exact name with a
+/// **different, non-null** id - a `CONTRADICTS` row in the docs/sync_decisions.md §17 measurement.
+/// A row with no cached answer, or a cached miss (`mbid IS NULL`), is left alone: neither is evidence
+/// against the stored id, only the absence of evidence for it - see `common::mb::names::IdentityVerdict`.
+/// Same "no wild guesses" rule as the ladder gate: withhold, never invent.
+///
+/// Also deletes the artist's derived `MusicBrainzReleaseArtist` rows, so the wrong discography stops
+/// rendering immediately rather than lingering until the next sync. Must ship after the ladder gate
+/// (§5) or the next un-gated sync re-mints the same id right back - see §6.
+pub async fn repair_contradicted_identities(
+    pool: &PgPool,
+    dry_run: bool,
+) -> Result<Vec<ContradictedIdentity>, sqlx::Error> {
+    let rows: Vec<(String, String, i64, String)> = sqlx::query_as(
+        r#"SELECT a.id, a.name,
+                  (SELECT count(*) FROM "LocalReleaseArtist" x WHERE x."artistId" = a.id),
+                  a."musicbrainzId"
+           FROM "Artist" a
+           JOIN "MbArtistLookup" l ON l.name = a.name
+           WHERE l.mbid IS NOT NULL
+             AND l.mbid <> a."musicbrainzId"
+             AND a."musicbrainzId" IS NOT NULL
+             AND a."musicbrainzId" <> ''
+           ORDER BY a.name"#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut done = Vec::with_capacity(rows.len());
+    for (id, name, n_local, old_mbid) in rows {
+        if !dry_run {
+            sqlx::query(
+                r#"UPDATE "Artist" SET "musicbrainzId" = NULL, "lastSyncedAt" = NULL, "updatedAt" = NOW()
+                   WHERE id = $1"#,
+            )
+            .bind(&id)
+            .execute(pool)
+            .await?;
+            sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "artistId" = $1"#)
+                .bind(&id)
+                .execute(pool)
+                .await?;
+        }
+        done.push(ContradictedIdentity {
+            artist: name,
+            releases: n_local,
+            cleared_mbid: old_mbid,
+        });
+    }
+    Ok(done)
+}
+
+/// One shared-id group `--repair-artist-identities` Pass C resolved (or left alone), for the report.
+#[derive(Debug, Clone)]
+pub struct SharedIdentityGroup {
+    pub mbid: String,
+    pub kept: Option<String>,
+    pub cleared: Vec<String>,
+}
+
+/// Pass C of `--repair-artist-identities`: two or more *unrelated* Artist rows (no `primaryArtistId`
+/// link between them - Pass A already owns that legitimate-alias case) holding the exact same
+/// MusicBrainz id. One artist cannot correctly be two different names at once, so at most one member
+/// of the group keeps the id.
+///
+/// "No wild guesses": the id is kept only where exactly one member's own name is confirmed by
+/// `MbArtistLookup` for that exact id. If more than one member is confirmed, this is a genuine
+/// ambiguity this pass cannot resolve safely and the group is left untouched for a human to look at.
+/// If none is confirmed, every member gives the id up - an unconfirmed guess is exactly what created
+/// the shared-id bug in the first place, and this pass exists to stop repeating it, not to make a
+/// better-informed version of the same mistake.
+pub async fn repair_shared_identities(
+    pool: &PgPool,
+    dry_run: bool,
+) -> Result<Vec<SharedIdentityGroup>, sqlx::Error> {
+    let mbids: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT "musicbrainzId" FROM "Artist"
+           WHERE "musicbrainzId" IS NOT NULL AND "musicbrainzId" <> ''
+             AND "primaryArtistId" IS NULL
+           GROUP BY "musicbrainzId"
+           HAVING count(*) > 1"#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut done = Vec::with_capacity(mbids.len());
+    for (mbid,) in mbids {
+        let members: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT id, name FROM "Artist"
+               WHERE "musicbrainzId" = $1 AND "primaryArtistId" IS NULL"#,
+        )
+        .bind(&mbid)
+        .fetch_all(pool)
+        .await?;
+
+        let mut confirmed: Vec<(String, String)> = Vec::new();
+        for (id, name) in &members {
+            let hit: Option<(String,)> =
+                sqlx::query_as(r#"SELECT mbid FROM "MbArtistLookup" WHERE name = $1 AND mbid = $2"#)
+                    .bind(name)
+                    .bind(&mbid)
+                    .fetch_optional(pool)
+                    .await?;
+            if hit.is_some() {
+                confirmed.push((id.clone(), name.clone()));
+            }
+        }
+
+        if confirmed.len() > 1 {
+            continue;
+        }
+        let kept_id = confirmed.first().map(|(id, _)| id.clone());
+        let kept_name = confirmed.first().map(|(_, name)| name.clone());
+
+        let mut cleared = Vec::new();
+        for (id, name) in &members {
+            if kept_id.as_deref() == Some(id.as_str()) {
+                continue;
+            }
+            cleared.push(name.clone());
+            if !dry_run {
+                sqlx::query(
+                    r#"UPDATE "Artist" SET "musicbrainzId" = NULL, "lastSyncedAt" = NULL, "updatedAt" = NOW()
+                       WHERE id = $1"#,
+                )
+                .bind(id)
+                .execute(pool)
+                .await?;
+                sqlx::query(r#"DELETE FROM "MusicBrainzReleaseArtist" WHERE "artistId" = $1"#)
+                    .bind(id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        done.push(SharedIdentityGroup { mbid, kept: kept_name, cleared });
+    }
+    Ok(done)
+}
+
 pub async fn get_contained_notes_for_artist(
     pool: &PgPool,
     artist_id: &str,
