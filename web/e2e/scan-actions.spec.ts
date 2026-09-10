@@ -74,8 +74,8 @@ test.beforeAll(async () => {
   const artist = await prisma.artist.create({ data: { name: artistName, slug: artistSlug } })
   artistId = artist.id
 
-  // folderPath is what artistScanFolders() turns into the `--only` scan root, so the fixture needs a
-  // real local release + track for the dropdown to target anything but the artist name.
+  // folderPath is what artistScanFolders() turns into the `--folders` scan root, so the fixture needs
+  // a real local release + track for the dropdown to target anything but the artist name.
   const release = await prisma.localRelease.create({
     data: {
       title: 'E2E Scan Fixture Album',
@@ -127,7 +127,7 @@ test.describe('artist scan dropdown', () => {
     await page.getByRole('menuitem', { name: 'Scan for new files' }).click()
 
     await expect.poll(() => runs).toEqual([
-      { command: './index', args: ['--only', artistName, '--exact'] },
+      { command: './index', args: ['--folders', artistName] },
       { command: './sync', args: ['--only', artistName, '--exact'] },
     ])
   })
@@ -140,7 +140,7 @@ test.describe('artist scan dropdown', () => {
 
     await expect.poll(() => runs).toEqual([
       { command: './delete', args: [artistName, '--y'] },
-      { command: './index', args: ['--only', artistName, '--exact', '--overwrite'] },
+      { command: './index', args: ['--folders', artistName, '--overwrite'] },
       { command: './sync', args: ['--only', artistName, '--exact', '--overwrite'] },
     ])
   })
@@ -152,7 +152,7 @@ test.describe('artist scan dropdown', () => {
 
     await expect.poll(() => runs).toEqual([
       { command: './delete', args: [artistName, '--y'] },
-      { command: './index', args: ['--only', artistName, '--exact', '--overwrite'] },
+      { command: './index', args: ['--folders', artistName, '--overwrite'] },
     ])
   })
 
@@ -232,7 +232,7 @@ test.describe('manager (non-admin)', () => {
 
     await page.getByRole('menuitem', { name: 'Scan for new files' }).click()
     await expect.poll(() => runs).toEqual([
-      { command: './index', args: ['--only', artistName, '--exact'] },
+      { command: './index', args: ['--folders', artistName] },
       { command: './sync', args: ['--only', artistName, '--exact'] },
     ])
   })

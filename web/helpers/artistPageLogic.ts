@@ -105,25 +105,57 @@ export const dedupeLocalFolders = (releases: UnifiedRelease[]): string[] => {
   return [...new Set(paths)]
 }
 
-// Top-level directories to hand `index --only`, for scanning everything belonging to an artist.
+// Mirrors normalize_filter in scripts/common/src/filters.rs: lowercase, drop non-alphanumerics,
+// collapse whitespace - so "A.A. Bondy" and "AA Bondy" compare equal, exactly as the Rust side does.
+const normalizeFolderName = (s: string): string =>
+  s.toLowerCase()
+    .split('')
+    .filter(c => /[\p{L}\p{N}\s]/u.test(c))
+    .join('')
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ')
+
+// Paths to hand `index --folders`, for scanning everything belonging to an artist.
 //
-// NOT dedupeLocalFolders: those are the album directories already in the DB, and `index --folders`
-// walks exactly the paths it is given (see walk_roots in scripts/index/src/main.rs). Scanning them
-// finds nothing new by construction, so "check for new files" could never find a new album. The
-// artist's own directory is the right scan root, and `--only` also picks up connected (duplicate-
-// merged) artists' folders, which the --folders path skips.
+// The list mixes granularity on purpose - index walks each entry as given (see walk_roots in
+// scripts/index/src/main.rs), so a bare root walks that whole tree and an "Artist/Album" entry walks
+// just that album:
 //
-// The first path segment is a scan target, not artist metadata - identity still comes from tags, per
-// CLAUDE.md. Index derives the same value itself when expanding connected artists.
-export const artistScanFolders = (releases: UnifiedRelease[], artistName: string): string[] => {
-  const roots = dedupeLocalFolders(releases)
-    .map(p => p.split('/')[0])
-    .filter((s): s is string => !!s)
-  const unique = [...new Set(roots)]
+//   - The artist's OWN roots (their directory, and any connected duplicate-merged artist's) go in
+//     bare, so "scan for new files" can still find an album that isn't in the DB yet. NOT
+//     dedupeLocalFolders for these: album directories already in the DB find nothing new by
+//     construction.
+//   - Every OTHER root - a compilation, or another artist's directory holding a release this artist
+//     co-owns via a compound albumArtist tag - contributes only the exact album folders concerned.
+//     Handing the whole root over re-read a co-artist's entire catalogue (662 files for one Diana
+//     Ross duet) on every rebuild, with --overwrite, for one album.
+//
+// A path segment is a scan target, not artist metadata - identity still comes from tags, per
+// CLAUDE.md.
+export const artistScanFolders = (
+  releases: UnifiedRelease[],
+  artistName: string,
+  connectedArtistNames: string[] = [],
+): string[] => {
+  const ownNames = new Set(
+    [artistName, ...connectedArtistNames].filter(Boolean).map(normalizeFolderName),
+  )
+  const paths = dedupeLocalFolders(releases)
+  const targets = paths.map((p) => {
+    const root = p.split('/')[0]!
+    return ownNames.has(normalizeFolderName(root)) ? root : p
+  })
+  const unique = [...new Set(targets)]
   // No local releases yet (or paths with no directory part): the artist name is the best guess at the
   // folder, and a miss simply scans nothing rather than scanning the wrong thing.
   return unique.length ? unique : [artistName]
 }
+
+// The connected (duplicate-merged) artists whose releases are aggregated into this artist's page -
+// their directories count as the artist's own scan roots.
+export const connectedArtistNames = (releases: UnifiedRelease[]): string[] =>
+  [...new Set(releases.map(r => r.connectedArtistName).filter((n): n is string => !!n))]
 
 // Shared by playAll/shuffleAll: drops missing (undownloaded gap) tracks and maps to the player queue
 // shape. Both callers only differ in how the resulting queue is played (sequential vs shuffled).

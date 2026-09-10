@@ -4,7 +4,7 @@ import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { DlStatusValue, DlStatusItem } from '~/types/download'
 import { useTerminalStore } from '~/stores/terminal'
-import { artistScanFolders, dlPollNeeded, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '~/helpers/artistPageLogic'
+import { artistScanFolders, connectedArtistNames, dlPollNeeded, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '~/helpers/artistPageLogic'
 import { DL_POLL_LIVE_MS, DL_POLL_MONITORED_MS } from '~/helpers/constants'
 import { useDownloadsStore } from '~/stores/downloads'
 
@@ -143,7 +143,9 @@ export const useArtistPage = (slug: Ref<string>) => {
 
   const pending = computed(() => artistPending.value || releasesPending.value)
 
-  const artistFolders = computed(() => artistScanFolders(releases.value, artist.value?.name ?? ''))
+  const artistFolders = computed(() =>
+    artistScanFolders(releases.value, artist.value?.name ?? '', connectedArtistNames(releases.value)),
+  )
 
   const playingAll = ref(false)
   const playAll = async () => {

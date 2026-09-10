@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { acquireFailureMessage, artistScanFolders, boxRowDiscLabel, boxRowSubtitle, canRedownload, dedupeLocalFolders, dlPollNeeded, favoriteTargetId, filterInFlight, findBundleParentRelease, isBoxSetRow, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
+import { acquireFailureMessage, artistScanFolders, boxRowDiscLabel, boxRowSubtitle, canRedownload, connectedArtistNames, dedupeLocalFolders, dlPollNeeded, favoriteTargetId, filterInFlight, findBundleParentRelease, isBoxSetRow, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
 import type { DlStatusValue } from '../../types/download'
@@ -128,8 +128,20 @@ describe('dedupeLocalFolders', () => {
   })
 })
 
+describe('connectedArtistNames', () => {
+  it('collects the distinct connected artists behind the aggregated releases', () => {
+    const releases = [
+      release({ id: 'r1', hasLocal: true }),
+      release({ id: 'r2', hasLocal: true, connectedArtistName: 'AFX' }),
+      release({ id: 'r3', hasLocal: true, connectedArtistName: 'AFX' }),
+      release({ id: 'r4', hasLocal: true, connectedArtistName: 'Polygon Window' }),
+    ]
+    expect(connectedArtistNames(releases)).toEqual(['AFX', 'Polygon Window'])
+  })
+})
+
 describe('artistScanFolders', () => {
-  it('reduces album paths to their distinct top-level artist directories', () => {
+  it('reduces album paths under the artist\'s own root to that root', () => {
     // The reason this exists: `index --folders` walks exactly the paths it is handed, so passing the
     // album directories means a newly added album is never seen. The artist directory is the scan root.
     const releases = [
@@ -139,12 +151,39 @@ describe('artistScanFolders', () => {
     expect(artistScanFolders(releases, 'Miles Davis')).toEqual(['Miles Davis'])
   })
 
-  it('keeps every distinct root when an artist spans more than one directory', () => {
+  // A compilation (or another artist's directory holding a co-owned release) contributes only its own
+  // album folder: handing over the whole root re-read that artist's entire catalogue on every scan.
+  it('keeps a foreign root at album granularity, never the whole directory', () => {
     const releases = [
       release({ id: 'r1', hasLocal: true, folderPath: 'Miles Davis/Kind of Blue' }),
       release({ id: 'r2', hasLocal: true, folderPath: 'Various Artists/Jazz Comp' }),
     ]
-    expect(artistScanFolders(releases, 'Miles Davis')).toEqual(['Miles Davis', 'Various Artists'])
+    expect(artistScanFolders(releases, 'Miles Davis')).toEqual(['Miles Davis', 'Various Artists/Jazz Comp'])
+  })
+
+  it('treats a connected (duplicate-merged) artist\'s directory as one of the artist\'s own roots', () => {
+    const releases = [
+      release({ id: 'r1', hasLocal: true, folderPath: 'Aphex Twin/Drukqs' }),
+      release({ id: 'r2', hasLocal: true, folderPath: 'AFX/Analord', connectedArtistName: 'AFX' }),
+    ]
+    expect(artistScanFolders(releases, 'Aphex Twin', ['AFX'])).toEqual(['Aphex Twin', 'AFX'])
+  })
+
+  it('matches a root by normalized name, the way the Rust filter does', () => {
+    const releases = [release({ id: 'r1', hasLocal: true, folderPath: 'AA Bondy/Believers' })]
+    expect(artistScanFolders(releases, 'A.A. Bondy')).toEqual(['AA Bondy'])
+  })
+
+  it('collapses several albums under one own root, but keeps each foreign album', () => {
+    const releases = [
+      release({ id: 'r1', hasLocal: true, folderPath: 'Michael Jackson/Bad' }),
+      release({ id: 'r2', hasLocal: true, folderPath: 'Michael Jackson/Thriller' }),
+      release({ id: 'r3', hasLocal: true, folderPath: 'The Jackson 5/ABC' }),
+      release({ id: 'r4', hasLocal: true, folderPath: 'The Jackson 5/Third Album' }),
+    ]
+    expect(artistScanFolders(releases, 'Michael Jackson')).toEqual([
+      'Michael Jackson', 'The Jackson 5/ABC', 'The Jackson 5/Third Album',
+    ])
   })
 
   it('falls back to the artist name when there are no local releases yet', () => {

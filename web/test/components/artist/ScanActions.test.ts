@@ -45,7 +45,7 @@ describe('artist/ScanActions.vue', () => {
     const wrapper = await openMenu()
     await wrapper.findAll('button')[1]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
-      ['./index', ['--only', 'Boards of Canada', '--exact'], 'check-boards-of-canada'],
+      ['./index', ['--folders', 'Boards of Canada'], 'check-boards-of-canada'],
       ['./sync', ['--only', 'Boards of Canada', '--exact'], 'check-boards-of-canada'],
     ])
   })
@@ -56,7 +56,7 @@ describe('artist/ScanActions.vue', () => {
     await wrapper.findAll('button')[2]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
       ['./delete', ['Boards of Canada', '--y'], 'rebuild-boards-of-canada'],
-      ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite'], 'rebuild-boards-of-canada'],
+      ['./index', ['--folders', 'Boards of Canada', '--overwrite'], 'rebuild-boards-of-canada'],
       ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite'], 'rebuild-boards-of-canada'],
     ])
   })
@@ -66,7 +66,7 @@ describe('artist/ScanActions.vue', () => {
     await wrapper.findAll('button')[3]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
       ['./delete', ['Boards of Canada', '--y'], 'reindex-boards-of-canada'],
-      ['./index', ['--only', 'Boards of Canada', '--exact', '--overwrite'], 'reindex-boards-of-canada'],
+      ['./index', ['--folders', 'Boards of Canada', '--overwrite'], 'reindex-boards-of-canada'],
     ])
   })
 
@@ -86,7 +86,7 @@ describe('artist/ScanActions.vue', () => {
     })
     await wrapper.findAll('button')[0]!.trigger('click')
     await wrapper.findAll('button')[1]!.trigger('click')
-    expect(runMock.mock.calls[0]).toEqual(['./index', ['--only', 'Aphex Twin;AFX', '--exact'], 'check-aphex-twin'])
+    expect(runMock.mock.calls[0]).toEqual(['./index', ['--folders', 'Aphex Twin;AFX'], 'check-aphex-twin'])
   })
 
   it('leaves a non-admin only the additive scan - every rebuild deletes the artist first', async () => {

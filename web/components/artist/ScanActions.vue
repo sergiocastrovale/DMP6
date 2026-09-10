@@ -20,11 +20,16 @@ const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownl
 // `./delete` prompts for confirmation on stdin, which nothing answers in a tmux-backed run - `--y` is
 // what keeps the rebuilds from hanging there forever. It scopes by artist name; index scopes by the
 // artist's on-disk folders, which is why the two take different arguments.
+//
+// index takes `--folders`, not `--only`: `--only` matches whole top-level directories, so a release
+// this artist co-owns inside another artist's directory dragged that artist's entire catalogue into
+// every scan. artistScanFolders() hands back the artist's own roots plus the exact album folders
+// elsewhere, and index walks each entry as given.
 const artistActions: Record<string, (name: string, folders: string[]) => () => Promise<void>> = {
   'check': (name, folders) => async () => {
     const session = scanSessionName('check', name)
     await terminal.runSequence([
-      { command: './index', args: ['--only', folders.join(';'), '--exact'], session },
+      { command: './index', args: ['--folders', folders.join(';')], session },
       { command: './sync', args: ['--only', name, '--exact'], session },
     ])
   },
@@ -32,7 +37,7 @@ const artistActions: Record<string, (name: string, folders: string[]) => () => P
     const session = scanSessionName('rebuild', name)
     await terminal.runSequence([
       { command: './delete', args: [name, '--y'], session },
-      { command: './index', args: ['--only', folders.join(';'), '--exact', '--overwrite'], session },
+      { command: './index', args: ['--folders', folders.join(';'), '--overwrite'], session },
       { command: './sync', args: ['--only', name, '--exact', '--overwrite'], session },
     ])
   },
@@ -40,7 +45,7 @@ const artistActions: Record<string, (name: string, folders: string[]) => () => P
     const session = scanSessionName('reindex', name)
     await terminal.runSequence([
       { command: './delete', args: [name, '--y'], session },
-      { command: './index', args: ['--only', folders.join(';'), '--exact', '--overwrite'], session },
+      { command: './index', args: ['--folders', folders.join(';'), '--overwrite'], session },
     ])
   },
   'resync': (name) => async () => {
