@@ -11,8 +11,10 @@ const sessionName = computed(() => scanSessionName('refresh', (props.only ?? [])
 async function run() {
   const session = sessionName.value
   if (props.folders?.length && props.only?.length) {
-    await terminal.run('./index', ['--folders', props.folders.join(';')], session)
-    await terminal.run('./sync', ['--only', props.only.join(';'), '--exact'], session)
+    await terminal.runSequence([
+      { command: './index', args: ['--folders', props.folders.join(';')], session },
+      { command: './sync', args: ['--only', props.only.join(';'), '--exact'], session },
+    ])
   } else {
     const args = props.only?.length ? ['--only', props.only.join(';'), '--exact'] : []
     await terminal.run('./refresh', args, session)

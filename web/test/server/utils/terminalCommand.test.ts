@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { spawn } from 'child_process'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import { afterAll, describe, expect, it } from 'vitest'
 import {
   buildCommandLine,
   buildScript,
@@ -214,6 +218,54 @@ describe('buildScript', () => {
   it('does not set -e, so the exit sentinel is still written when the command fails', () => {
     expect(buildScript('/srv/dmp', '/bin/sync', '/tmp/x.log')).not.toMatch(/^set -e$/m)
   })
+
+  it('writes the sentinel from an EXIT trap, and turns INT/TERM into a normal exit', () => {
+    // Stop sends Ctrl-C to the pane's process group, killing bash itself - a trailing `echo` never
+    // ran, the log kept no sentinel, and every later run of that session name 409'd.
+    const script = buildScript('/srv/dmp', '/bin/sync', '/tmp/dmp-x.log')
+    expect(script).toContain(`trap 'echo "DMP_EXIT:$?" >> "/tmp/dmp-x.log"' EXIT`)
+    expect(script).toContain(`trap 'exit 130' INT TERM`)
+    expect(script.indexOf('trap')).toBeLessThan(script.indexOf('| tee'))
+  })
+})
+
+describe('buildScript (executed)', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dmp-script-'))
+
+  afterAll(() => fs.rmSync(tmpDir, { recursive: true, force: true }))
+
+  const runScript = (fullCmd: string, name: string, signal?: NodeJS.Signals) =>
+    new Promise<string>((resolve, reject) => {
+      const logFile = path.join(tmpDir, `${name}.log`)
+      const scriptFile = path.join(tmpDir, `${name}.sh`)
+      fs.writeFileSync(scriptFile, buildScript(tmpDir, fullCmd, logFile), { mode: 0o755 })
+      // detached: own process group, so a signal can be sent to the group the way tmux's Ctrl-C does.
+      const child = spawn(scriptFile, { detached: true })
+      if (signal) {
+        setTimeout(() => {
+          try {
+            process.kill(-child.pid!, signal)
+          }
+          catch { /* already gone */ }
+        }, 200)
+      }
+      child.on('error', reject)
+      child.on('close', () => resolve(fs.readFileSync(logFile, 'utf8')))
+    })
+
+  it('writes DMP_EXIT:0 for a clean run', async () => {
+    expect(await runScript('echo hello', 'clean')).toContain('DMP_EXIT:0')
+  }, 10000)
+
+  it('writes the command\'s exit code, not tee\'s, when it fails', async () => {
+    expect(await runScript('sh -c "exit 3"', 'failed')).toContain('DMP_EXIT:3')
+  }, 10000)
+
+  it('still writes a sentinel when the run is interrupted mid-command', async () => {
+    const log = await runScript('sleep 30', 'interrupted', 'SIGINT')
+    expect(log).toContain('DMP_EXIT:130')
+    expect(hasUnfinishedRun(log)).toBe(false)
+  }, 10000)
 })
 
 describe('parseExitLine', () => {

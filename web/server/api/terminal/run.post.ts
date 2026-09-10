@@ -24,6 +24,19 @@ function tmuxAvailable(): boolean {
   }
 }
 
+// The tmux session is created with the wrapper script as its command, so it disappears the moment that
+// script exits (cleanly, crashed, or killed). A live session is therefore the only proof a run is
+// still going - a sentinel-less log on its own only proves the *last* run didn't write one.
+function tmuxSessionAlive(session: string): boolean {
+  try {
+    execSync(`tmux has-session -t "${session}" 2>/dev/null`, { stdio: 'ignore' })
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody<{
     command: string
@@ -93,8 +106,11 @@ export default defineEventHandler(async (event) => {
   // A same-named session still mid-run (no DMP_EXIT sentinel yet) means another tab/user is watching
   // it - don't silently tmux-kill it out from under them (audit #84). Check BEFORE the log gets
   // truncated below.
+  // The tmux check is what keeps this from wedging: a run killed without writing its sentinel (an
+  // old-format script, an OOM kill, a `tmux kill-server`) left a log that blocked the session name
+  // permanently, with no UI route back other than deleting the file by hand.
   const prevLog = fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : null
-  if (hasUnfinishedRun(prevLog)) {
+  if (hasUnfinishedRun(prevLog) && tmuxSessionAlive(session)) {
     throw createError({
       statusCode: 409,
       message: `Session "${session}" is already running - stop it first or reconnect instead.`,

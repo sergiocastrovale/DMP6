@@ -13,6 +13,13 @@ export const useTerminalStore = defineStore('terminal', () => {
 
   let abortController: AbortController | null = null
 
+  // Multi-stage scans (delete → index → sync) run as one sequence with one generation number. Stop()
+  // marks the current generation dead so the remaining stages are skipped: without it, aborting the
+  // SSE of stage 1 just resolved run() and stage 2 started anyway - the user pressed Stop and got the
+  // rest of the rebuild regardless.
+  let sequenceGeneration = 0
+  let stoppedGeneration = -1
+
   async function streamSSE(url: string, body: Record<string, any>) {
     lines.value = []
     exitCode.value = null
@@ -86,6 +93,16 @@ export const useTerminalStore = defineStore('terminal', () => {
     return streamSSE('/api/terminal/run', { command, args, session: resolvedSession })
   }
 
+  // Runs stages back to back, stopping at the first one the user cancels.
+  async function runSequence(steps: Array<{ command: string, args: string[], session?: string }>) {
+    const gen = ++sequenceGeneration
+    for (const step of steps) {
+      if (stoppedGeneration === gen) {return}
+      await run(step.command, step.args, step.session)
+      if (stoppedGeneration === gen) {return}
+    }
+  }
+
   async function reconnect(session: string) {
     currentSession.value = session
     return streamSSE('/api/terminal/reconnect', { session })
@@ -111,6 +128,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   // different machine/container sharing the same DB) never gets its lock wiped out from under it.
   // Use the "Force unlock" button (hasLockError below) to explicitly clear a lock reported as stuck.
   async function stop() {
+    stoppedGeneration = sequenceGeneration
     if (currentSession.value) {
       try {
         await fetch('/api/terminal/stop', {
@@ -168,6 +186,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     isSidebarVisible,
     isToastVisible,
     run,
+    runSequence,
     runStream,
     reconnect,
     expand,

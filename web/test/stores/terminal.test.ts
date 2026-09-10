@@ -152,6 +152,58 @@ describe('useTerminalStore', () => {
     }))
   })
 
+  it('runSequence() runs every stage back to back when nothing stops it', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse('event: done\ndata: 0\n\n')))
+    const store = useTerminalStore()
+
+    await store.runSequence([
+      { command: './index', args: ['--overwrite'], session: 'seq' },
+      { command: './sync', args: ['--overwrite'], session: 'seq' },
+    ])
+
+    const bodies = (globalThis.fetch as any).mock.calls.map((c: any[]) => JSON.parse(c[1].body).command)
+    expect(bodies).toEqual(['./index', './sync'])
+  })
+
+  // Stopping stage 1 used to only abort its SSE: run() resolved, stage 2 fired anyway, and the user
+  // who pressed Stop got the rest of the rebuild (plus a 409 from the still-unfinished session log).
+  it('runSequence() skips the remaining stages once stop() is called', async () => {
+    const fakeFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url === '/api/terminal/stop') {return { ok: true }}
+      await useTerminalStore().stop()
+      return sseResponse('event: done\ndata: 0\n\n')
+    })
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+
+    await store.runSequence([
+      { command: './delete', args: ['X', '--y'], session: 'seq2' },
+      { command: './index', args: ['--overwrite'], session: 'seq2' },
+      { command: './sync', args: ['--overwrite'], session: 'seq2' },
+    ])
+
+    const commands = fakeFetch.mock.calls
+      .filter((c: any[]) => c[0] === '/api/terminal/run')
+      .map((c: any[]) => JSON.parse(c[1].body).command)
+    expect(commands).toEqual(['./delete'])
+  })
+
+  it('a stop only kills its own sequence - the next one runs in full', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse('event: done\ndata: 0\n\n')))
+    const store = useTerminalStore()
+    await store.stop()
+
+    await store.runSequence([
+      { command: './index', args: [], session: 'seq3' },
+      { command: './sync', args: [], session: 'seq3' },
+    ])
+
+    const commands = (globalThis.fetch as any).mock.calls
+      .filter((c: any[]) => c[0] === '/api/terminal/run')
+      .map((c: any[]) => JSON.parse(c[1].body).command)
+    expect(commands).toEqual(['./index', './sync'])
+  })
+
   it('reconnect() resumes streaming an existing session', async () => {
     const fakeFetch = vi.fn().mockResolvedValue(sseResponse('data: "resumed"\n\n'))
     vi.stubGlobal('fetch', fakeFetch)

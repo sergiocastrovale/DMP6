@@ -18,12 +18,16 @@ const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownl
 
 const globalActions: Record<string, () => Promise<void>> = {
   'check': async () => {
-    await terminal.run('./index', [])
-    await terminal.run('./sync', [])
+    await terminal.runSequence([
+      { command: './index', args: [] },
+      { command: './sync', args: [] },
+    ])
   },
   'full': async () => {
-    await terminal.run('./index', ['--overwrite-with-images'])
-    await terminal.run('./sync', ['--overwrite'])
+    await terminal.runSequence([
+      { command: './index', args: ['--overwrite-with-images'] },
+      { command: './sync', args: ['--overwrite'] },
+    ])
   },
   // --inspect re-reads tags for files already in the DB (default index skips any known filePath), so
   // replaced or re-tagged files are picked up without a destructive --overwrite pass.

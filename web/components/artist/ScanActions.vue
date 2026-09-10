@@ -23,19 +23,25 @@ const scanIcons: Record<string, Component> = { Search, RefreshCw, HardDriveDownl
 const artistActions: Record<string, (name: string, folders: string[]) => () => Promise<void>> = {
   'check': (name, folders) => async () => {
     const session = scanSessionName('check', name)
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact'], session)
-    await terminal.run('./sync', ['--only', name, '--exact'], session)
+    await terminal.runSequence([
+      { command: './index', args: ['--only', folders.join(';'), '--exact'], session },
+      { command: './sync', args: ['--only', name, '--exact'], session },
+    ])
   },
   'rebuild': (name, folders) => async () => {
     const session = scanSessionName('rebuild', name)
-    await terminal.run('./delete', [name, '--y'], session)
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'], session)
-    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'], session)
+    await terminal.runSequence([
+      { command: './delete', args: [name, '--y'], session },
+      { command: './index', args: ['--only', folders.join(';'), '--exact', '--overwrite'], session },
+      { command: './sync', args: ['--only', name, '--exact', '--overwrite'], session },
+    ])
   },
   'reindex': (name, folders) => async () => {
     const session = scanSessionName('reindex', name)
-    await terminal.run('./delete', [name, '--y'], session)
-    await terminal.run('./index', ['--only', folders.join(';'), '--exact', '--overwrite'], session)
+    await terminal.runSequence([
+      { command: './delete', args: [name, '--y'], session },
+      { command: './index', args: ['--only', folders.join(';'), '--exact', '--overwrite'], session },
+    ])
   },
   'resync': (name) => async () => {
     await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'], scanSessionName('resync', name))

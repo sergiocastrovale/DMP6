@@ -84,11 +84,17 @@ export const buildCommandLine = (binary: string, args: string[]): string => {
 // *tee's* status and a crashed ./sync streamed DMP_EXIT:0 - the UI reported every failed run as clean.
 // `set -e` stays off deliberately: the sentinel line must still be written when the command fails,
 // which is the whole point of the exit-code channel.
+// The sentinel is written from an EXIT trap, not a trailing `echo`: the terminal's Stop button sends
+// Ctrl-C to this pane's process group, which kills bash too, so a trailing echo never ran and the log
+// stayed sentinel-less forever - and hasUnfinishedRun() then rejected every later run of that session
+// name with a 409. `trap 'exit 130' INT TERM` turns the signal into a normal exit so the EXIT trap
+// fires exactly once with 130 (128 + SIGINT), matching what an interrupted shell command reports.
 export const buildScript = (workDir: string, fullCmd: string, logFile: string): string => `#!/bin/bash
 set -o pipefail
 cd "${workDir}"
+trap 'echo "DMP_EXIT:$?" >> "${logFile}"' EXIT
+trap 'exit 130' INT TERM
 ${fullCmd} 2>&1 | tee "${logFile}"
-echo "DMP_EXIT:$?" >> "${logFile}"
 `
 
 const EXIT_PREFIX = 'DMP_EXIT:'

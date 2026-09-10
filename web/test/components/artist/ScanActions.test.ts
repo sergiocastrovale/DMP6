@@ -10,8 +10,18 @@ const { runMock, auth } = vi.hoisted(() => ({
   auth: { isAdmin: true },
 }))
 
+// runSequence is what the component calls; it delegates to run() so the per-stage assertions below
+// stay written in terms of the actual commands.
 vi.mock('~/stores/terminal', () => ({
-  useTerminalStore: () => ({ run: runMock, isRunning: false }),
+  useTerminalStore: () => ({
+    run: runMock,
+    runSequence: async (steps: Array<{ command: string, args: string[], session?: string }>) => {
+      for (const s of steps) {
+        await runMock(s.command, s.args, s.session)
+      }
+    },
+    isRunning: false,
+  }),
 }))
 
 // Read at setup time, which is after each test has set the flag it wants.
