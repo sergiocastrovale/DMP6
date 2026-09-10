@@ -122,7 +122,7 @@ contradicts what their own name independently resolves to**, in **149 entries pa
 identity that should not be shared**, traceable through **15,493 mistagged embedded-id pairs** in the
 files themselves.
 
-The fix (in progress): an identity may only be **claimed** — written to an entry — when it is certain:
+The fix (shipped 2026-09-10): an identity may only be **claimed** — written to an entry — when it is certain:
 either the embedded id and an independent name lookup agree, or the name itself matches exactly (not
 approximately). A loose/approximate match may still be used to find and sync an artist's releases, but
 never to claim who that artist *is*. Where certainty is not there, the entry is correctly left unmatched
