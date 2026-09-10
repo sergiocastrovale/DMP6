@@ -1,13 +1,17 @@
 # Containment ≠ ownership — rollout runbook
 
-Companion to `docs/sync_decisions.md`. **The gate (§1) is satisfied** — multidisk box-set fold/dissolve
-is live and was verified against real MusicBrainz data across 8 artists (ABBA, The Beatles, The Rolling
-Stones, Bob Dylan, Michael Jackson, Elvis Presley, Prince, Whitney Houston; see `sync_decisions.md`
-§§6-8, 10). **§§2-6 below (the actual data repair) have not been run on prod**: as of this check,
-`"MusicBrainzRelease"` still has **1,700 rows** carrying the old `Owned as part of "…"` claim, and the
-`detect_containment` replacement has independently produced 167 correct `Recordings inside "…"` notes
-alongside them. Confirm with a user before running §§2-6 — it mutates ~1.7k release rows and ~11k track
-rows and returns those releases to the download queue (§5).
+Companion to `docs/sync_decisions.md`. **Done — §§2-6 ran on prod (verified 2026-09-10).** `deploy` shipped
+the new binary, `undo_owned_bundle_claims.sql` ran, the relink re-sync completed. §4's verification queries
+all come back clean:
+
+- `Owned as part of%` claims: **0** (was 1,700).
+- `Recordings inside "%"` notes: **2,037**.
+- Box-set state untouched by the undo: **133** dissolved discs (`boxReleaseId`), **393** fold members.
+- Cross-release `mbTrackId` mismatches are all dissolve-authored (`N of M discs present`) — none carry a
+  containment or ownership `statusReason`. No leftover mis-pointed links.
+
+Cleanup done: `./repair-box-sets` and its `CLAUDE.md`/`docs/scripts/sync.md` mentions removed
+(2026-09-10) — the one-off backfill it existed for is finished.
 
 ## 0. What this change is
 

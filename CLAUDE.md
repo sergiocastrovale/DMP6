@@ -88,7 +88,6 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./sync --recompute-scores     # pure SQL, exits
 ./sync --repair-shared-release-ids [--dry-run]
 # boxset::run_repair is automatic (tail of every sync, scoped by --only/--exact), not a flag.
-# One-off backfill for existing data: ./repair-box-sets (docs/sync_decisions.md)
 
 # Audit & Fix
 ./audit [--corrupted|--orphans|--duplicates|--missing|--enrichment|--duplicate-release|--mismatched-release-id]
@@ -108,7 +107,6 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./playlists [--dry-run|--report|--group rock]
 ./dissect                     # errors.log → reports/errors.xlsx
 ./backup / ./restore [file.sql.gz]
-./repair-box-sets             # one-off, box-set rollout only
 ```
 
 Docs per script in `docs/scripts/`. `mosaic` has no wrapper — invoked by web app (`/api/labs/mosaic/generate`).
