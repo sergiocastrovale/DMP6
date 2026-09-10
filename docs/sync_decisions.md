@@ -495,9 +495,29 @@ tracks whose embedded name/id pair disagrees with the independent answer for tha
 
 Confirms held (and grew slightly — the containment relink was running concurrently), contradicts fell to
 zero. Pass B cleared 1,268 identities; Pass C resolved 17 shared-id groups (of the original 149, most had
-already collapsed to size 1 once Pass B ran — B runs first in the same invocation). **11 groups remain**:
-genuine collisions where more than one member's own name was independently confirmed for the same id —
-Pass C deliberately leaves these for a human rather than pick one, per the "no wild guesses" rule (§5/§6).
+already collapsed to size 1 once Pass B ran — B runs first in the same invocation). **11 groups remain**,
+and inspecting them shows they are not the ambiguous-collision case Pass C's rule is written for: in
+every one, *both* members' names are independently confirmed for the same id. That is not two artists
+disputing one identity — it is one real MusicBrainz artist filed locally under two separate `Artist` rows
+(full name vs. surname, band name vs. abbreviation, an MB alias pair), each spelling correctly resolving
+to the same MB entity. Fixing that is a **duplicate-row merge** (`index --canonicalize-artists` / §4's
+`primaryArtistId` linking), not an identity de-match — nothing here is wrong, so §5/§6 has nothing to
+withhold. Left unmerged for now; not a defect this repair introduced or should touch.
+
+| Shared id | Rows (releases) |
+|---|---|
+| `19499124…` | Jorge Ben (3), Jorge Ben Jor (42) |
+| `3f8a5e5b…` | Soda (1), Soda Stereo (16) |
+| `5ae54dee…` | Glass (1), Philip Glass (1) |
+| `6f550455…` | Lukas Nelson & Promise of the Real (18), Promise of the Real (1) |
+| `786b89d8…` | King Orgasmus One (3), \Orgasmus (1) |
+| `a992aada…` | Joaquín Sabina (27), Sabina (1) |
+| `b41eef63…` | Dixon (1), Floyd Dixon (0) |
+| `b8f18583…` | Dr. Mark Benecke (1), Mark Benecke (1) |
+| `bcab8301…` | Henderson (0), Joe Henderson (37) |
+| `d1fad5a9…` | Cristina Soto (0), Soto (0) |
+| `d8451fb8…` | Prague Philharmonic Orchestra (1), The City Of Prague Philharmonic (1), The City of Prague Philharmonic Orchestra (2) |
+
 A second, immediate re-run of the repair found 0/0/0 to do, confirming it does not re-touch what it
 already fixed.
 
