@@ -143,4 +143,14 @@ describe('artist/ReleaseGroupDetails.vue - box sets (docs/sync_decisions.md)', (
     const wrapper = await mountRelease({})
     expect(wrapper.text()).not.toContain('Also part of')
   })
+
+  it('shows "N discs" inline next to type/year/tracks for a multi-disc release', async () => {
+    const wrapper = await mountRelease({ discCount: 9 })
+    expect(wrapper.text()).toContain('9 discs')
+  })
+
+  it('shows no disc count for a single-disc release', async () => {
+    const wrapper = await mountRelease({ discCount: 1 })
+    expect(wrapper.text()).not.toContain('discs')
+  })
 })

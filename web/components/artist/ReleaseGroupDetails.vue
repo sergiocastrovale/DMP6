@@ -161,6 +161,7 @@ const alsoPartOfLabel = computed(() =>
           <span v-if="release.type" class="hidden md:inline">{{ release.type }}</span>
           <span v-if="release.year">{{ release.year }}</span>
           <span v-if="displayTrackCount" class="hidden md:inline">{{ displayTrackCount }} tracks</span>
+          <span v-if="release.discCount && release.discCount > 1">{{ release.discCount }} discs</span>
           <span v-if="alsoPartOfLabel" class="hidden truncate lg:inline">Also part of: {{ alsoPartOfLabel }}</span>
           <span v-if="coArtists.length">Feat.
             <template v-for="(co, i) in coArtists" :key="co.slug">
