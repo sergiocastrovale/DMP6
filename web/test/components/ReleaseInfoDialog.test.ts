@@ -118,4 +118,22 @@ describe('ReleaseInfoDialog.vue', () => {
     // First child within its own action-row container, ahead of refresh/favorite/redownload.
     expect(trash!.previousElementSibling).toBeNull()
   })
+
+  // scripts/sync/src/owned.rs's containment note ("Recordings inside X") means nothing to a user
+  // reading the raw statusReason - this plain-language line explains it in place.
+  it('explains a containment note in plain language at the top of the right column', async () => {
+    const body = await mount(release({
+      status: 'MISSING', hasLocal: false, statusReason: 'Recordings inside "Thriller 25 (Box Set)"',
+    }))
+
+    const note = body.querySelector('dl > div:first-child')
+    expect(note?.textContent).toContain('Thriller 25 (Box Set)')
+    expect(note?.textContent).toContain('still counts as missing')
+  })
+
+  it('shows no containment note for a release with an unrelated statusReason', async () => {
+    const body = await mount(release({ status: 'MISSING', hasLocal: false, statusReason: 'No candidates found' }))
+
+    expect(body.textContent).not.toContain('still counts as missing')
+  })
 })

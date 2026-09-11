@@ -4,7 +4,7 @@ import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 import { useTerminalStore } from '~/stores/terminal'
 import { useDownloadsStore } from '~/stores/downloads'
 import { canRedownload } from '~/helpers/artistPageLogic'
-import { musicBrainzUrl } from '~/helpers/functions'
+import { containmentContainerTitle, musicBrainzUrl } from '~/helpers/functions'
 
 const props = withDefaults(defineProps<{
   release: UnifiedRelease | null
@@ -54,6 +54,12 @@ const mbReleaseId = computed(() =>
     ? props.release.musicbrainzId
     : null,
 )
+
+// "Recordings inside X" (scripts/sync/src/owned.rs's containment note): every track of this gap
+// already sits inside a bigger local release/box, but a different edition - containment isn't
+// ownership, so it stays a gap and is still downloadable. Users have no way to know that from the
+// raw statusReason string alone, hence the plain-language explanation.
+const containmentContainer = computed(() => containmentContainerTitle(props.release?.statusReason))
 
 const dtClass = 'text-xs text-stone-100/60'
 const ddClass = 'font-mono text-xs text-stone-100/60'
@@ -114,6 +120,9 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
         </div>
 
         <dl class="flex-1 space-y-3 text-sm">
+          <div v-if="containmentContainer" class="rounded-lg border border-stone-100/6 bg-stone-950 px-3 py-2 text-xs text-stone-100/55">
+            Every track of this release already appears inside <span class="text-stone-100/70">"{{ containmentContainer }}"</span> - a different edition, so this one still counts as missing and can be downloaded on its own.
+          </div>
           <div v-if="release.year">
             <dt :class="dtClass">Year</dt>
             <dd :class="dtClass">
