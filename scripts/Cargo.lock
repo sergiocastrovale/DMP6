@@ -1178,6 +1178,7 @@ dependencies = [
  "common",
  "cuid2",
  "dotenvy",
+ "index",
  "sqlx",
  "tokio",
 ]

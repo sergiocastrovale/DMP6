@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { X } from 'lucide-vue-next'
 import { cx, layout } from '~/helpers/ui'
+import { isEmpty, isTop, push, remove } from '~/helpers/dialogStack'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -29,11 +30,17 @@ const maxWidthClass = computed(() => MAX_WIDTH_CLASS[props.size])
 const titleId = useId()
 const isOpen = computed(() => props.modelValue)
 
+// Own identity in the dialog stack: two open Dialogs are DOM siblings (both teleported to body), so
+// there is no parent/child relationship to lean on for "which one is on top" - each instance registers
+// itself here instead.
+const dialogId = Symbol('dialog')
+
 const panelRef = ref<HTMLElement>()
-useFocusTrap(panelRef, isOpen)
+useFocusTrap(panelRef, isOpen, () => isTop(dialogId))
 
 const onKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
+  // A stacked dialog underneath must not also close on the Escape that closes the one on top of it.
+  if (event.key === 'Escape' && isTop(dialogId)) {
     close()
   }
 }
@@ -43,12 +50,18 @@ const onKeydown = (event: KeyboardEvent) => {
 // setup() too, where `document` doesn't exist; onMounted is guaranteed client-only.
 const applyOpenEffects = (open: boolean) => {
   if (open) {
+    push(dialogId)
     document.addEventListener('keydown', onKeydown)
     document.body.style.overflow = 'hidden'
   }
   else {
+    remove(dialogId)
     document.removeEventListener('keydown', onKeydown)
-    document.body.style.overflow = ''
+    // Only once the LAST open dialog closes - an inner confirm dialog closing must not unlock scroll
+    // out from under the info dialog still open behind it.
+    if (isEmpty()) {
+      document.body.style.overflow = ''
+    }
   }
 }
 
@@ -61,8 +74,9 @@ onMounted(() => {
 watch(isOpen, applyOpenEffects)
 
 onBeforeUnmount(() => {
+  remove(dialogId)
   document.removeEventListener('keydown', onKeydown)
-  if (isOpen.value) {
+  if (isOpen.value && isEmpty()) {
     document.body.style.overflow = ''
   }
 })

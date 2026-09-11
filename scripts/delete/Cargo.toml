@@ -21,6 +21,7 @@ aws-sdk-s3 = { workspace = true }
 aws-config = { workspace = true }
 chrono = { workspace = true }
 common = { path = "../common" }
+index = { path = "../index" }
 
 [dev-dependencies]
 cuid2 = { workspace = true }

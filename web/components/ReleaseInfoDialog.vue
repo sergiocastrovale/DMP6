@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Disc3, DownloadCloud, Heart, Link, RefreshCw } from 'lucide-vue-next'
+import { Disc3, DownloadCloud, Heart, Link, RefreshCw, Trash2 } from 'lucide-vue-next'
 import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 import { useTerminalStore } from '~/stores/terminal'
 import { useDownloadsStore } from '~/stores/downloads'
@@ -11,21 +11,35 @@ const props = withDefaults(defineProps<{
   extra: ReleaseInfoExtra | null
   isFavorite?: boolean
   isAcquiring?: boolean
+  // Opt-in: the trash icon is only offered by callers that reload their release list once a delete
+  // run finishes (artist page → Releases). Other openers of this dialog (player, Explore history,
+  // downloads pages) don't, so a deleted release there would silently keep sitting in their state.
+  removable?: boolean
 }>(), {
   isFavorite: false,
   isAcquiring: false,
+  removable: false,
 })
 
 const emit = defineEmits<{
   toggleFavorite: []
   refresh: []
   redownload: []
+  removed: []
 }>()
 
 const model = defineModel<boolean>({ required: true })
 const { releaseImage } = useImageUrl()
+const { isAdmin } = useAuth()
 const terminal = useTerminalStore()
 const downloadsStore = useDownloadsStore()
+
+const showDeleteDialog = ref(false)
+
+const onRemoved = () => {
+  model.value = false
+  emit('removed')
+}
 
 const genreList = computed(() =>
   props.extra?.genres?.flatMap(g => g.split(',').map(s => s.trim()).filter(Boolean)) ?? [],
@@ -51,6 +65,13 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
       <ReleaseStatusBadge :status="release.status" class="mr-auto" />
       
       <div class="flex items-center gap-1">
+        <DataTableAction
+          v-if="removable && isAdmin && release.localReleaseId"
+          :icon="Trash2"
+          label="Remove this release"
+          :disabled="terminal.isRunning"
+          @click="showDeleteDialog = true"
+        />
         <DownloadsDownloadDisabledButton
           v-if="canRedownload(release, downloadsStore.downloadsEnabled)"
           :icon="DownloadCloud"
@@ -207,4 +228,11 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
       </div>
     </template>
   </Dialog>
+
+  <ReleaseDeleteDialog
+    v-if="removable && release"
+    v-model="showDeleteDialog"
+    :release="release"
+    @removed="onRemoved"
+  />
 </template>

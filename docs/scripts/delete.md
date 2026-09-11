@@ -67,3 +67,43 @@ Guarded by `scripts/delete/tests/delete_plan.rs`.
 ```bash
 ./index --only "Name" && ./sync --only "Name"   # Re-add if needed
 ```
+
+## Single release (`--release`)
+
+```bash
+./delete --release "clxxx"                # Delete one LocalRelease
+./delete --release "clxxx" --dry-run      # Preview
+./delete --release "clxxx" --y            # Skip confirmation
+./delete --release "clxxx" --files        # Also delete the release's own folder(s) from MUSIC_DIR
+```
+
+`artist` and `--release` are mutually exclusive (clap `ArgGroup`, exactly one required). Also reachable
+from the UI: artist page → release info → trash icon (ADMIN only), whose dialog exposes `--files` as an
+unchecked "Remove the actual files from disk" switch. Logic lives in `delete::release` (`scripts/delete/src/release.rs`).
+
+Removes exactly one `LocalRelease` (cascading tracks, `LocalReleaseMember` rows, `LocalReleaseArtist`,
+`TrackRelatedArtist`, favorites, playlist rows, issues), leaving the rest of the owning artist's(s')
+catalogue untouched. Afterwards: totals/match-score recomputed for the release's former owners, a
+now-ownerless owner or a now-uncredited credit-only artist is swept via the same rule
+`index::deletion::delete_orphan_artists` uses (no `LocalReleaseArtist`, `MusicBrainzReleaseArtist` or
+`TrackRelatedArtist` link left), and statistics refresh.
+
+**The matched `MusicBrainzRelease` is deleted only if nothing else still needs it** - this is the
+duplicate-copy guard. A candidate (`LocalRelease.releaseId`, plus `boxReleaseId` if this was a bound box
+disc) survives when any of these are still true after this release's row is gone:
+- another `LocalRelease.releaseId`/`boxReleaseId` still points at it (a duplicate copy of the same
+  edition - deleting one copy must never take the edition down with the other),
+- a `LocalReleaseTrack.mbTrackId` elsewhere still resolves into it (a dissolved box disc's track link),
+- its `status` is `MISSING` (the re-downloadable stub - retiring one is sync's job, never this).
+
+When dropped, the next `sync` naturally re-creates the album as a `MISSING` catalogue gap. Guarded by
+`scripts/delete/tests/delete_release.rs` (duplicate-copy survival, sole-copy drop, MISSING never
+touched, sibling release untouched, owner-sweep vs. multi-release-owner survival).
+
+`--files` deletes this release's own folder(s) (`LocalRelease.folderPath` plus every
+`LocalReleaseMember.folderPath` - a folded box has one per disc) **whole, sidecars (cover art, `.cue`,
+`.log`, `.nfo`) included** - not just the tracked audio files - but only a folder left holding no other
+release's audio afterward; one still holding another release's files is kept intact. Never goes above
+the release's own folder set, so the artist folder always survives. `delete::files::delete_release_folders`,
+guarded by its own unit tests (exclusive folder removed whole, shared folder kept, multi-disc album
+folds its own boundary, outside-MUSIC_DIR skipped, dry run touches nothing).

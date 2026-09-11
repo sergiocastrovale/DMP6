@@ -396,6 +396,7 @@ watch(() => props.releases, () => {
       :extra="infoExtra"
       :is-favorite="infoRelease ? favoriteReleases.has(favoriteTargetId(infoRelease) ?? '') : false"
       :is-acquiring="infoRelease ? acquiringIds.has(infoRelease.id) : false"
+      removable
       @toggle-favorite="infoRelease && toggleFavoriteRelease(infoRelease)"
       @refresh="infoRelease && refreshRelease(infoRelease)"
       @redownload="infoRelease && openRedownloadDialog(infoRelease)"

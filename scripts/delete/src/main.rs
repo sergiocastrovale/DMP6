@@ -1,5 +1,5 @@
 use aws_sdk_s3::Client as S3Client;
-use clap::Parser;
+use clap::{ArgGroup, Parser};
 use colored::*;
 use common::{
     config::{apply_db_overrides, load_config, Config},
@@ -8,6 +8,7 @@ use common::{
     s3::create_s3_client,
     statistics::update_statistics,
 };
+use delete::images::{delete_from_s3, extract_s3_key};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -22,54 +23,31 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(
     name = "delete",
-    about = "Permanently delete an artist's catalogue. If the artist is credited on \
-             other artists' tracks, those credits are removed too - warned before confirming."
+    about = "Permanently delete an artist's catalogue, or a single release from it. If the \
+             artist is credited on other artists' tracks, those credits are removed too - \
+             warned before confirming.",
+    group(ArgGroup::new("target").required(true).args(["artist", "release"]))
 )]
 struct Args {
     /// Artist name(s), separated by ';' for multiple (case-insensitive exact match)
-    artist: String,
+    artist: Option<String>,
+
+    /// Delete a single release (LocalRelease id) instead of a whole artist - the rest of the
+    /// artist's catalogue is left untouched.
+    #[arg(long)]
+    release: Option<String>,
 
     /// Skip confirmation prompt
     #[arg(long)]
     y: bool,
 
-    /// Also delete the artist's audio files from disk (only paths inside MUSIC_DIR)
+    /// Also delete the audio files from disk (only paths inside MUSIC_DIR)
     #[arg(long)]
     files: bool,
 
     /// Show what would be deleted without changing anything
     #[arg(long)]
     dry_run: bool,
-}
-
-// ---------------------------------------------------------------------------
-// S3
-// ---------------------------------------------------------------------------
-
-async fn delete_from_s3(client: &S3Client, bucket: &str, key: &str) {
-    client
-        .delete_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await
-        .ok();
-}
-
-fn extract_s3_key(url: &str) -> Option<String> {
-    if let Some(pos) = url.find(".com/") {
-        return Some(url[pos + 5..].to_string());
-    }
-    let mut slashes = 0;
-    for (i, c) in url.char_indices() {
-        if c == '/' {
-            slashes += 1;
-            if slashes == 3 {
-                return Some(url[i + 1..].to_string());
-            }
-        }
-    }
-    None
 }
 
 // ---------------------------------------------------------------------------
@@ -505,13 +483,6 @@ async fn main() {
     let args = Args::parse();
     error_log::init("delete");
 
-    let artist_names: Vec<String> = args
-        .artist
-        .split(';')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-
     println!("{}", "DMP Delete".bright_cyan().bold());
     println!("{}", "==========".bright_black());
     if args.dry_run {
@@ -520,18 +491,6 @@ async fn main() {
             "DRY RUN (no changes will be made)".yellow().bold()
         );
     }
-    if artist_names.len() == 1 {
-        println!("Target  : {}", artist_names[0].bright_white());
-    } else {
-        println!(
-            "Targets : {} artists",
-            artist_names.len().to_string().bright_white()
-        );
-        for name in &artist_names {
-            println!("    {} {}", "•".bright_black(), name.bright_white());
-        }
-    }
-    println!();
 
     let mut config = load_config(None);
 
@@ -545,6 +504,34 @@ async fn main() {
     // this, delete never sees S3 credentials that live only in Settings and silently skips deleting
     // the artist's images from S3.
     apply_db_overrides(&mut config, &pool).await;
+
+    if let Some(release_id) = &args.release {
+        delete::release::run(&pool, &config, release_id, args.y, args.files, args.dry_run).await;
+        return;
+    }
+
+    // Reachable only in artist mode - the clap ArgGroup guarantees exactly one of `artist`/`release`.
+    let artist_names: Vec<String> = args
+        .artist
+        .as_deref()
+        .unwrap_or_default()
+        .split(';')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if artist_names.len() == 1 {
+        println!("Target  : {}", artist_names[0].bright_white());
+    } else {
+        println!(
+            "Targets : {} artists",
+            artist_names.len().to_string().bright_white()
+        );
+        for name in &artist_names {
+            println!("    {} {}", "•".bright_black(), name.bright_white());
+        }
+    }
+    println!();
 
     // Resolve target artists
     let mut target_ids: Vec<(String, String)> = Vec::new();

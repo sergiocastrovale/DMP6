@@ -47,6 +47,7 @@ Artist.primaryArtistId → Artist.id (dup → canonical)
 - **Zero custom CSS** — Tailwind utilities only, no `<style>` blocks. Two exceptions live as `@utility`/global rules in `web/assets/css/main.css`: animated conic-gradient genre border, Leaflet's own classnames. New unrepresentable need → global rule there, never component-local. See `docs/design_system.md`.
 - Design tokens (colour/type/radii/shadow) in `web/assets/css/theme.css` (`@theme static`, source of truth, update docs alongside). Reusable Tailwind builders in `web/helpers/ui.ts` (`button()`, `sw()`, `ui.*`) — reuse/extend via `cx()`, promote new one only on 2nd repeat. Status/score colour: single source `helpers/constants.ts` `statuses[]`/`scoreRanges[]` via `toneBg`/`toneText`/`toneFill`.
 - Icons: `lucide-vue-next` only. Prisma singleton: `web/server/utils/prisma.ts` only.
+- Stacked dialogs (a confirm dialog opened from within another dialog): `Dialog.vue` tracks open dialogs via `web/helpers/dialogStack.ts` so Escape/body-scroll-lock/focus-trap only act on the topmost one.
 
 ### Conventions
 - Images via `useImageUrl()`. Types in `web/types/`. No scripts logic in web app (Rust in `/scripts`).
@@ -96,6 +97,7 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 
 # Destructive
 ./delete "Artist Name" [--files] [--dry-run]   # cascade delete; "A;B" for multi
+./delete --release "clxxx" [--files] [--dry-run]   # single release, rest of artist's catalogue untouched
 ./nuke [--keep-artist-img] [--only "Name" [--dry-run]]
 
 # Other

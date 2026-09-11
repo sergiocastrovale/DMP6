@@ -111,3 +111,39 @@ describe('Dialog.vue', () => {
     opener.remove()
   })
 })
+
+// Two Dialogs open at once (a confirm dialog opened from within another dialog) are DOM siblings -
+// both teleported to <body> - so there is no parent/child relationship to lean on for "which one is
+// on top". See helpers/dialogStack.ts.
+describe('Dialog.vue stacking', () => {
+  let second: VueWrapper | undefined
+
+  afterEach(() => {
+    second?.unmount()
+    second = undefined
+  })
+
+  it('Escape with two dialogs open closes only the topmost, second-opened one', async () => {
+    wrapper = await mountSuspended(Dialog, { props: { modelValue: true, title: 'First Dialog' } })
+    second = await mountSuspended(Dialog, { props: { modelValue: true, title: 'Second Dialog' } })
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    expect(second.emitted('update:modelValue')).toEqual([[false]])
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('body scroll stays locked while any dialog is still open, and unlocks once the last one closes', async () => {
+    wrapper = await mountSuspended(Dialog, { props: { modelValue: true, title: 'First Dialog' } })
+    second = await mountSuspended(Dialog, { props: { modelValue: true, title: 'Second Dialog' } })
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Closing the top one (as a nested confirm dialog does on confirm/cancel) must not unlock scroll
+    // while the dialog underneath is still open.
+    await second.setProps({ modelValue: false })
+    expect(document.body.style.overflow).toBe('hidden')
+
+    await wrapper.setProps({ modelValue: false })
+    expect(document.body.style.overflow).toBe('')
+  })
+})

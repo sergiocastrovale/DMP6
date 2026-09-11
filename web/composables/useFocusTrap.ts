@@ -13,11 +13,18 @@ const focusableIn = (container: HTMLElement): HTMLElement[] =>
 // versa for Shift+Tab), and restores focus to whatever had it beforehand once `active` goes
 // false again. Dialogs must never leak keyboard focus onto the page behind them, and must give
 // it back to the element that opened them - a plain v-if with no trap does neither.
-export const useFocusTrap = (containerRef: Ref<HTMLElement | null | undefined>, active: Ref<boolean> | ComputedRef<boolean>) => {
+// `isTop`: for a stacked dialog (a confirm dialog opened from within another dialog), only the
+// topmost one should trap Tab - without it, two active traps fight over which one wraps focus.
+// Defaults to always-top for every other (non-stacking) caller.
+export const useFocusTrap = (
+  containerRef: Ref<HTMLElement | null | undefined>,
+  active: Ref<boolean> | ComputedRef<boolean>,
+  isTop: () => boolean = () => true,
+) => {
   let previouslyFocused: HTMLElement | null = null
 
   const onKeydown = (event: KeyboardEvent) => {
-    if (event.key !== 'Tab') {
+    if (event.key !== 'Tab' || !isTop()) {
       return
     }
     const container = containerRef.value

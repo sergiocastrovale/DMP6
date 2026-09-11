@@ -69,6 +69,112 @@ pub struct FileDeletion {
     pub skipped: Vec<String>,
 }
 
+/// True if `dir` (already known to exist) contains, anywhere below it, a file whose extension is in
+/// `common::images::RELEASE_AUDIO_EXTENSIONS` and whose canonical path is not in `excluding` - the
+/// files this run is itself in the middle of removing (needed for `dry_run`, where nothing has
+/// actually been deleted from disk yet, so a live scan would otherwise see this release's own tracks
+/// as "other" audio and refuse to remove the folder).
+fn dir_has_other_audio(dir: &Path, excluding: &std::collections::HashSet<PathBuf>) -> bool {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if dir_has_other_audio(&path, excluding) {
+                return true
+            }
+            continue
+        }
+        let is_audio = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| common::images::RELEASE_AUDIO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+            .unwrap_or(false);
+        if !is_audio {
+            continue
+        }
+        let canonical = fs::canonicalize(&path).unwrap_or(path);
+        if !excluding.contains(&canonical) {
+            return true
+        }
+    }
+    false
+}
+
+/// Deletes `track_paths` (a single release's `LocalReleaseTrack.filePath` values), then removes each
+/// of `release_dirs` (the release's own folder(s): `folderPath` plus every `LocalReleaseMember`
+/// folder) **whole, sidecars included**, but only the ones left holding no other release's audio.
+/// Never touches anything above `release_dirs` - a shared artist folder is never a candidate here,
+/// unlike `delete_files`' upward empty-dir prune.
+pub fn delete_release_folders(
+    track_paths: &[String],
+    release_dirs: &[String],
+    music_dir: &str,
+    dry_run: bool,
+) -> FileDeletion {
+    let Ok(root) = fs::canonicalize(music_dir) else {
+        return FileDeletion {
+            skipped: track_paths.to_vec(),
+            ..Default::default()
+        }
+    };
+
+    let mut result = FileDeletion::default();
+    let mut removing: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    let mut boundary_dirs: Vec<PathBuf> = Vec::new();
+
+    for raw in track_paths {
+        let Some(resolved) = resolve_in_library(raw, &root) else {
+            result.skipped.push(raw.clone());
+            continue
+        };
+        if dry_run {
+            result.files_removed += 1;
+        }
+        else if fs::remove_file(&resolved).is_ok() {
+            result.files_removed += 1;
+        }
+        else {
+            result.skipped.push(raw.clone());
+            continue
+        }
+        removing.insert(resolved.clone());
+        if let Some(parent) = resolved.parent() {
+            let parent = parent.to_path_buf();
+            if !boundary_dirs.contains(&parent) {
+                boundary_dirs.push(parent);
+            }
+        }
+    }
+
+    for raw in release_dirs {
+        if let Ok(resolved) = fs::canonicalize(raw) {
+            if is_inside(&resolved, &root) && !boundary_dirs.contains(&resolved) {
+                boundary_dirs.push(resolved);
+            }
+        }
+    }
+
+    // Deepest first, so a disc subfolder is judged (and removed) before the album folder holding it -
+    // by the time the album folder is checked, an emptied disc folder is already gone from disk.
+    boundary_dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
+
+    for dir in &boundary_dirs {
+        if !is_inside(dir, &root) || !dir.exists() {
+            continue
+        }
+        if dir_has_other_audio(dir, &removing) {
+            continue
+        }
+        if dry_run || fs::remove_dir_all(dir).is_ok() {
+            result.dirs_removed += 1;
+        }
+    }
+
+    result
+}
+
 /// Deletes `paths` (absolute `LocalReleaseTrack.filePath` values) that live inside `music_dir`, then
 /// prunes the directories they emptied. With `dry_run` nothing is touched - the counts describe what
 /// would happen. `music_dir` is canonicalised once; if that fails, nothing is deleted.
@@ -160,5 +266,138 @@ mod tests {
 
         fs::remove_dir_all(&root).ok();
         fs::remove_file(&outside).ok();
+    }
+
+    fn temp_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("dmp-delete-release-{}-{}", std::process::id(), tag))
+    }
+
+    #[test]
+    fn delete_release_folders_removes_a_folder_left_with_only_this_releases_audio() {
+        let root = temp_root("exclusive");
+        let album = root.join("Artist/Album");
+        fs::create_dir_all(&album).unwrap();
+        let track = album.join("01.flac");
+        fs::write(&track, b"x").unwrap();
+        fs::write(album.join("cover.jpg"), b"x").unwrap();
+
+        let result = delete_release_folders(
+            &[track.to_string_lossy().to_string()],
+            &[album.to_string_lossy().to_string()],
+            &root.to_string_lossy(),
+            false,
+        );
+
+        assert_eq!(result.files_removed, 1);
+        assert_eq!(result.dirs_removed, 1);
+        assert!(!album.exists(), "cover.jpg must go with the rest of the folder");
+        assert!(root.join("Artist").exists(), "the artist folder is never this call's business");
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn delete_release_folders_keeps_a_folder_still_holding_another_releases_audio() {
+        let root = temp_root("shared");
+        let album = root.join("Artist/Compilation");
+        fs::create_dir_all(&album).unwrap();
+        let mine = album.join("01.flac");
+        let theirs = album.join("02.flac");
+        fs::write(&mine, b"x").unwrap();
+        fs::write(&theirs, b"x").unwrap();
+
+        let result = delete_release_folders(
+            &[mine.to_string_lossy().to_string()],
+            &[album.to_string_lossy().to_string()],
+            &root.to_string_lossy(),
+            false,
+        );
+
+        assert_eq!(result.files_removed, 1);
+        assert_eq!(result.dirs_removed, 0);
+        assert!(!mine.exists());
+        assert!(theirs.exists(), "another release's audio must survive");
+        assert!(album.exists());
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn delete_release_folders_folds_a_multi_disc_album_up_to_its_own_boundary_only() {
+        let root = temp_root("box");
+        let album = root.join("Artist/Box Set");
+        let cd1 = album.join("CD1");
+        let cd2 = album.join("CD2");
+        fs::create_dir_all(&cd1).unwrap();
+        fs::create_dir_all(&cd2).unwrap();
+        let t1 = cd1.join("01.flac");
+        let t2 = cd2.join("01.flac");
+        fs::write(&t1, b"x").unwrap();
+        fs::write(&t2, b"x").unwrap();
+
+        // Mirrors how `release.rs` builds `folder_paths`: LocalRelease.folderPath (the album) plus
+        // every LocalReleaseMember.folderPath (each disc).
+        let result = delete_release_folders(
+            &[t1.to_string_lossy().to_string(), t2.to_string_lossy().to_string()],
+            &[
+                album.to_string_lossy().to_string(),
+                cd1.to_string_lossy().to_string(),
+                cd2.to_string_lossy().to_string(),
+            ],
+            &root.to_string_lossy(),
+            false,
+        );
+
+        assert_eq!(result.files_removed, 2);
+        assert_eq!(result.dirs_removed, 3, "CD1, CD2 and the album folder each count as one folder removed");
+        assert!(!album.exists(), "the album folder becomes empty and is pruned too");
+        assert!(root.join("Artist").exists(), "the artist folder is never touched");
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn delete_release_folders_skips_paths_outside_music_dir() {
+        let root = temp_root("outside");
+        fs::create_dir_all(&root).unwrap();
+        let outside = std::env::temp_dir().join(format!("dmp-release-outside-{}.flac", std::process::id()));
+        fs::write(&outside, b"x").unwrap();
+
+        let result = delete_release_folders(
+            &[outside.to_string_lossy().to_string()],
+            &[],
+            &root.to_string_lossy(),
+            false,
+        );
+
+        assert_eq!(result.files_removed, 0);
+        assert_eq!(result.skipped, vec![outside.to_string_lossy().to_string()]);
+        assert!(outside.exists());
+
+        fs::remove_dir_all(&root).ok();
+        fs::remove_file(&outside).ok();
+    }
+
+    #[test]
+    fn delete_release_folders_dry_run_touches_nothing() {
+        let root = temp_root("dry");
+        let album = root.join("Artist/Album");
+        fs::create_dir_all(&album).unwrap();
+        let track = album.join("01.flac");
+        fs::write(&track, b"x").unwrap();
+
+        let result = delete_release_folders(
+            &[track.to_string_lossy().to_string()],
+            &[album.to_string_lossy().to_string()],
+            &root.to_string_lossy(),
+            true,
+        );
+
+        assert_eq!(result.files_removed, 1);
+        assert_eq!(result.dirs_removed, 1);
+        assert!(track.exists(), "dry run must not delete the file");
+        assert!(album.exists(), "dry run must not delete the folder");
+
+        fs::remove_dir_all(&root).ok();
     }
 }

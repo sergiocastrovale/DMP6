@@ -54,7 +54,10 @@ fn save_resized(img: image::DynamicImage, output_path: &Path) -> bool {
 
 const COVER_FILE_STEMS: &[&str] = &["cover", "folder", "front"];
 const COVER_FILE_EXTS: &[&str] = &["jpg", "jpeg", "png"];
-const RELEASE_AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "opus", "aac", "ogg", "flac"];
+// Also used by `index::main`'s own copy (kept in sync manually - see AUDIO_EXTENSIONS there) and by
+// `delete::files` to tell a release's own audio apart from cover art / sidecars when deciding whether
+// a folder is safe to remove whole.
+pub const RELEASE_AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "opus", "aac", "ogg", "flac"];
 
 /// The cover/folder/front image file in a directory, if one exists. Case-insensitive,
 /// jpg/jpeg/png. Deterministic: `read_dir` order is not guaranteed, so matches are sorted.

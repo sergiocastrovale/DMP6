@@ -1,10 +1,17 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import type { VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed } from 'vue'
 
 import ReleaseInfoDialog from '../../components/ReleaseInfoDialog.vue'
 import type { UnifiedRelease } from '../../types/release'
+
+// Plain values, not refs: vi.hoisted runs before vue is imported.
+const { auth } = vi.hoisted(() => ({ auth: { isAdmin: false } }))
+// A real computed ref, not a plain `{ value }` object - the component's template relies on Vue's
+// auto-unwrap for a top-level script-setup binding, which only kicks in for an actual Ref.
+mockNuxtImport('useAuth', () => () => ({ isAdmin: computed(() => auth.isAdmin) }))
 
 const release = (overrides: Partial<UnifiedRelease> = {}): UnifiedRelease => ({
   id: 'lr1', title: 'Heal the World Tour 92', year: 1994, type: 'Album', typeSlug: 'album',
@@ -18,15 +25,18 @@ const release = (overrides: Partial<UnifiedRelease> = {}): UnifiedRelease => ({
 // Dialog.vue renders via <Teleport to="body">, so the content lands outside the wrapper's own subtree.
 let wrapper: VueWrapper | undefined
 
-const mount = async (r: UnifiedRelease) => {
+const mount = async (r: UnifiedRelease, extraProps: Record<string, unknown> = {}) => {
   wrapper = await mountSuspended(ReleaseInfoDialog, {
-    props: { modelValue: true, release: r, extra: null },
+    props: { modelValue: true, release: r, extra: null, ...extraProps },
   })
   return document.body
 }
 
 describe('ReleaseInfoDialog.vue', () => {
-  beforeEach(() => setActivePinia(createPinia()))
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    auth.isAdmin = false
+  })
 
   afterEach(() => {
     wrapper?.unmount()
@@ -80,5 +90,32 @@ describe('ReleaseInfoDialog.vue', () => {
 
     expect(body.textContent!).not.toContain('MusicBrainz release ID')
     expect(body.textContent!).not.toContain('MusicBrainz release group ID')
+  })
+
+  it('never shows the trash icon when the caller has not opted in via removable', async () => {
+    auth.isAdmin = true
+    const body = await mount(release({ hasLocal: true, localReleaseId: 'lr1' }))
+    expect(body.querySelector('[aria-label="Remove this release"]')).toBeNull()
+  })
+
+  it('never shows the trash icon for a non-admin, even when removable', async () => {
+    auth.isAdmin = false
+    const body = await mount(release({ hasLocal: true, localReleaseId: 'lr1' }), { removable: true })
+    expect(body.querySelector('[aria-label="Remove this release"]')).toBeNull()
+  })
+
+  it('never shows the trash icon for a release with no local copy, even when removable', async () => {
+    auth.isAdmin = true
+    const body = await mount(release({ hasLocal: false, localReleaseId: null }), { removable: true })
+    expect(body.querySelector('[aria-label="Remove this release"]')).toBeNull()
+  })
+
+  it('shows the trash icon as the first action for an admin on a removable local release', async () => {
+    auth.isAdmin = true
+    const body = await mount(release({ hasLocal: true, localReleaseId: 'lr1' }), { removable: true })
+    const trash = body.querySelector('[aria-label="Remove this release"]')
+    expect(trash).not.toBeNull()
+    // First child within its own action-row container, ahead of refresh/favorite/redownload.
+    expect(trash!.previousElementSibling).toBeNull()
   })
 })
