@@ -120,8 +120,12 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
         </div>
 
         <dl class="flex-1 space-y-3 text-sm">
-          <div v-if="containmentContainer" class="rounded-lg border border-stone-100/6 bg-stone-950 px-3 py-2 text-xs text-stone-100/55">
-            Every track of this release already appears inside <span class="text-stone-100/70">"{{ containmentContainer }}"</span> - a different edition, so this one still counts as missing and can be downloaded on its own.
+          <div v-if="containmentContainer" class="flex items-center gap-3 border border-amber-400/10 rounded-lg p-4 bg-amber-400/5">
+            <div class="text-stone-100/70 text-sm">
+              <span>Every track of this release appears inside </span>
+              <span class="text-white">{{ containmentContainer }}</span>
+              <span> (literally the same edition, as per MusicBrainz).</span>
+            </div>
           </div>
           <div v-if="release.year">
             <dt :class="dtClass">Year</dt>
