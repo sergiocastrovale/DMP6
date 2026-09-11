@@ -1,10 +1,14 @@
 //! Physical audio-file removal for `--files`.
 //!
 //! Everything here is guarded by one rule: a path only gets deleted if it resolves *inside* the
-//! configured `MUSIC_DIR`. The DB stores absolute `filePath`s written by a previous index run, so a
-//! moved library, a symlinked folder, or a hand-edited row could otherwise point the delete at
-//! anything on the host. Resolution goes through the parent directory (`canonical_parent`), so a
-//! symlinked album folder that escapes the library is caught even though the file itself is real.
+//! configured `MUSIC_DIR`. `LocalReleaseTrack.filePath` is stored RELATIVE to `MUSIC_DIR` (e.g.
+//! `"Artist/Album/01.flac"` - see `index::deletion::detect_deleted_folders`'s own
+//! `SPLIT_PART("filePath", '/', 1)` for the artist-folder segment, which only makes sense read that
+//! way), so every raw path is joined onto `MUSIC_DIR` before resolving. A raw path that already
+//! happens to be absolute (a hand-edited row, or some future indexer change) is left as-is instead of
+//! double-joined. Resolution goes through the parent directory (`canonical_parent`), so a symlinked
+//! album folder that escapes the library is caught even though the file itself is real, and a moved
+//! library or a `..` segment in a hand-edited row can't point the delete at anything outside it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -30,10 +34,13 @@ pub fn canonical_parent(path: &Path) -> Option<PathBuf> {
     fs::canonicalize(parent).ok().map(|p| p.join(name))
 }
 
-/// Resolved, in-library path for `raw`, or None when it does not exist, cannot be resolved, or falls
-/// outside `music_root` (which must already be canonical).
+/// Resolved, in-library path for `raw` (a DB `filePath`, relative to `MUSIC_DIR` in normal operation -
+/// see the module doc), or None when it does not exist, cannot be resolved, or falls outside
+/// `music_root` (which must already be canonical).
 pub fn resolve_in_library(raw: &str, music_root: &Path) -> Option<PathBuf> {
-    let resolved = canonical_parent(Path::new(raw))?;
+    let candidate = Path::new(raw);
+    let full = if candidate.is_absolute() { candidate.to_path_buf() } else { music_root.join(candidate) };
+    let resolved = canonical_parent(&full)?;
     is_inside(&resolved, music_root).then_some(resolved)
 }
 
@@ -148,8 +155,12 @@ pub fn delete_release_folders(
         }
     }
 
+    // `release_dirs` (LocalRelease.folderPath / LocalReleaseMember.folderPath) are relative to
+    // MUSIC_DIR too, same as track_paths above - see resolve_in_library's doc comment.
     for raw in release_dirs {
-        if let Ok(resolved) = fs::canonicalize(raw) {
+        let candidate = Path::new(raw);
+        let full = if candidate.is_absolute() { candidate.to_path_buf() } else { root.join(candidate) };
+        if let Ok(resolved) = fs::canonicalize(&full) {
             if is_inside(&resolved, &root) && !boundary_dirs.contains(&resolved) {
                 boundary_dirs.push(resolved);
             }
@@ -266,6 +277,27 @@ mod tests {
 
         fs::remove_dir_all(&root).ok();
         fs::remove_file(&outside).ok();
+    }
+
+    // Regression: LocalReleaseTrack.filePath is stored RELATIVE to MUSIC_DIR in real data (e.g.
+    // "Artist/Album/01.flac"), not absolute - the doc comment above claiming "absolute" was wrong.
+    // A relative raw path used to resolve `parent()` against the PROCESS CWD instead of MUSIC_DIR,
+    // fail to canonicalize, and get silently skipped - `--files` deleted nothing and re-indexing
+    // brought every "deleted" release straight back.
+    #[test]
+    fn delete_files_resolves_a_relative_filepath_against_music_dir() {
+        let root = std::env::temp_dir().join(format!("dmp-delete-relative-{}", std::process::id()));
+        let album = root.join("Artist/Album");
+        fs::create_dir_all(&album).unwrap();
+        let track = album.join("01.flac");
+        fs::write(&track, b"x").unwrap();
+
+        let real = delete_files(&["Artist/Album/01.flac".to_string()], &root.to_string_lossy(), false);
+        assert_eq!(real.files_removed, 1);
+        assert!(real.skipped.is_empty());
+        assert!(!track.exists());
+
+        fs::remove_dir_all(&root).ok();
     }
 
     fn temp_root(tag: &str) -> PathBuf {
@@ -397,6 +429,33 @@ mod tests {
         assert_eq!(result.dirs_removed, 1);
         assert!(track.exists(), "dry run must not delete the file");
         assert!(album.exists(), "dry run must not delete the folder");
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    // Same regression as delete_files_resolves_a_relative_filepath_against_music_dir, for the release
+    // path: both track_paths (filePath) and release_dirs (folderPath) are relative to MUSIC_DIR in
+    // real data.
+    #[test]
+    fn delete_release_folders_resolves_relative_paths_against_music_dir() {
+        let root = temp_root("relative");
+        let album = root.join("Artist/Album");
+        fs::create_dir_all(&album).unwrap();
+        let track = album.join("01.flac");
+        fs::write(&track, b"x").unwrap();
+
+        let result = delete_release_folders(
+            &["Artist/Album/01.flac".to_string()],
+            &["Artist/Album".to_string()],
+            &root.to_string_lossy(),
+            false,
+        );
+
+        assert_eq!(result.files_removed, 1);
+        assert_eq!(result.dirs_removed, 1);
+        assert!(result.skipped.is_empty());
+        assert!(!album.exists());
+        assert!(root.join("Artist").exists());
 
         fs::remove_dir_all(&root).ok();
     }

@@ -175,7 +175,7 @@ test.describe('manager (non-admin)', () => {
   test('the server rejects a forged ./delete --release run', async ({ page }) => {
     await loginAsManager(page)
     const forged = await page.request.post('/api/terminal/run', {
-      data: { command: './delete', args: ['--release', releaseId, '--y', '--files'], session: 'dmp-delete-release' },
+      data: { command: './delete', args: ['--release', releaseId, '--y', '--files'], session: 'delete-release-forged' },
     })
     expect(forged.status()).toBe(403)
   })

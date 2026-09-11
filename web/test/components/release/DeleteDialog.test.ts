@@ -71,7 +71,7 @@ describe('release/DeleteDialog.vue', () => {
   it('removes the catalogue entry only by default', async () => {
     await mount()
     await clickText('Remove from catalogue')
-    expect(runMock).toHaveBeenCalledWith('./delete', ['--release', 'lr1', '--y'], 'dmp-delete-release')
+    expect(runMock).toHaveBeenCalledWith('./delete', ['--release', 'lr1', '--y'], 'delete-release-lr1')
   })
 
   it('adds --files only once the opt-in is switched on', async () => {
@@ -79,7 +79,7 @@ describe('release/DeleteDialog.vue', () => {
     await document.body.querySelector('[role="switch"]')!.dispatchEvent(new Event('click'))
     await nextTick()
     await clickText('Delete release and files')
-    expect(runMock).toHaveBeenCalledWith('./delete', ['--release', 'lr1', '--y', '--files'], 'dmp-delete-release')
+    expect(runMock).toHaveBeenCalledWith('./delete', ['--release', 'lr1', '--y', '--files'], 'delete-release-lr1')
   })
 
   it('emits removed and toasts success once the run succeeds', async () => {
@@ -97,5 +97,23 @@ describe('release/DeleteDialog.vue', () => {
     await nextTick()
     expect(toast.error).toHaveBeenCalled()
     expect(wrapper!.emitted('removed')).toBeFalsy()
+  })
+
+  // A rapid double-click can fire both click handlers before Vue's reactive `open.value = false`
+  // actually removes the button from the DOM - without a guard, the second (redundant) ./delete run
+  // races the first for terminal.exitCode, and a spurious failure from the second run's "already
+  // deleted" error can make the first call read back a failure despite having succeeded.
+  it('a second click before the run resolves does not trigger a second run', async () => {
+    let resolveRun: () => void = () => {}
+    runMock.mockImplementationOnce(() => new Promise<void>((resolve) => { resolveRun = resolve }))
+    await mount()
+
+    const button = bodyButtons().find(b => b.textContent?.trim() === 'Remove from catalogue')!
+    await button.dispatchEvent(new Event('click'))
+    await button.dispatchEvent(new Event('click'))
+    resolveRun()
+    await nextTick()
+
+    expect(runMock).toHaveBeenCalledTimes(1)
   })
 })

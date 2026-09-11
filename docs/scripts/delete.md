@@ -50,11 +50,16 @@ Runs **after** the transaction commits, so a failed delete never leaves the cata
 files gone. Track paths are read before the transaction (once the rows are deleted there is nothing
 left to name the files).
 
-Every path is resolved through its parent directory (`delete::files::canonical_parent`) and must land
-inside the canonical `MUSIC_DIR`; anything else - a symlinked album folder escaping the library, a
-stale absolute path from a moved library, a `..` segment - is skipped and reported, never followed.
-Directories emptied by the deletion are pruned upward, stopping at `MUSIC_DIR` itself. `--dry-run`
-prints the counts and touches nothing. Guarded by `scripts/delete/src/files.rs` unit tests.
+`LocalReleaseTrack.filePath` (and `LocalRelease.folderPath`/`LocalReleaseMember.folderPath`) are stored
+**relative to `MUSIC_DIR`** (e.g. `"Artist/Album/01.flac"`), so every raw path is joined onto
+`MUSIC_DIR` first, then resolved through its parent directory (`delete::files::resolve_in_library` /
+`canonical_parent`) and must land inside the canonical `MUSIC_DIR`; anything else - a symlinked album
+folder escaping the library, a `..` segment, a stray already-absolute row pointing outside the library
+- is skipped and reported, never followed. Directories emptied by the deletion are pruned upward,
+stopping at `MUSIC_DIR` itself. `--dry-run` prints the counts and touches nothing. Guarded by
+`scripts/delete/src/files.rs` unit tests (including the relative-path case - this used to resolve
+against the process's CWD instead of `MUSIC_DIR`, silently skip every file, and leave `--files` a
+no-op on real data).
 
 **Steps 6/7 are scoped to the deletion set** (`delete::sweep::sweep_orphaned_releases`). The local sweep was
 previously unscoped - it deleted *every* ownerless `LocalRelease` in the library, so deleting one artist could
