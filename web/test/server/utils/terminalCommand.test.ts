@@ -89,6 +89,10 @@ describe('hasDestructiveFlag', () => {
     expect(hasDestructiveFlag(['Boards of Canada', '--y'])).toBe(false)
   })
 
+  it('flags --repair-recording-tags: it rewrites and blanks MB ids inside audio files', () => {
+    expect(hasDestructiveFlag(['--repair-recording-tags', '--dry-run'])).toBe(true)
+  })
+
   it('is false for normal args with no destructive flag', () => {
     expect(hasDestructiveFlag(['--only', 'Boards of Canada'])).toBe(false)
     expect(hasDestructiveFlag([])).toBe(false)

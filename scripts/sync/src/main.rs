@@ -24,6 +24,7 @@ mod mb_matching;
 mod mb_types;
 mod nuke;
 mod owned;
+mod recording_tags;
 mod repair;
 mod status;
 
@@ -67,6 +68,11 @@ struct SyncArgs {
         help = "Write DB-known MB IDs to file tags (no API calls), then exit"
     )]
     only_write_mb_to_files: bool,
+    #[arg(
+        long,
+        help = "Rewrite recording-id tags that hold a MusicBrainz release-track id (an old tag-writing bug) to the recording id, blank when unknown (no API calls), then exit"
+    )]
+    repair_recording_tags: bool,
     #[arg(long)]
     delete: bool,
     #[arg(
@@ -86,7 +92,7 @@ struct SyncArgs {
     repair_shared_release_ids: bool,
     #[arg(
         long,
-        help = "With --repair-shared-release-ids or --repair-artist-identities: print the plan, write nothing"
+        help = "With --repair-shared-release-ids, --repair-artist-identities or --repair-recording-tags: print the plan, write nothing"
     )]
     dry_run: bool,
     #[arg(
@@ -607,6 +613,19 @@ async fn main() {
         std::process::exit(1);
     }
 
+    if args.repair_recording_tags
+        && (args.release.is_some()
+            || args.delete
+            || args.catalogue_gaps
+            || args.only_write_mb_to_files
+            || args.overwrite)
+    {
+        let msg = "--repair-recording-tags cannot be combined with --release, --delete, --catalogue-gaps, --only-write-mb-to-files, or --overwrite";
+        common::error_log::log_error(msg);
+        eprintln!("Error: {}", msg);
+        std::process::exit(1);
+    }
+
     if clear_stale_lock_minutes(&pool, 10).await {
         reporter.warn("Cleared stale scan lock.");
     }
@@ -826,14 +845,14 @@ async fn main() {
                 if !abs_path.exists() {
                     continue;
                 }
-                match common::tags::write_mb_ids(
-                    &abs_path,
-                    Some(mb_artist_id),
-                    Some(&track.mb_release_id),
-                    Some(&track.mb_release_group_id),
-                    track.mb_track_id.as_deref(),
-                    args.overwrite,
-                ) {
+                let ids = common::tags::MbTagIds {
+                    album_artist: Some(mb_artist_id),
+                    album: Some(&track.mb_release_id),
+                    release_group: Some(&track.mb_release_group_id),
+                    release_track: track.mb_track_id.as_deref(),
+                    recording: track.mb_recording_id.as_deref(),
+                };
+                match common::tags::write_mb_ids(&abs_path, &ids, args.overwrite) {
                     Ok(true) => {
                         written += 1;
                     }
@@ -863,6 +882,56 @@ async fn main() {
             "Wrote MB IDs to {} / {} tracks across {} artists",
             total_written, total_tracks, total
         ));
+        release_lock(&pool).await;
+        return;
+    }
+
+    if args.repair_recording_tags {
+        let music_dir = config.music_dir.as_deref().unwrap_or("");
+        if music_dir.is_empty() {
+            reporter.err("No music_dir configured - cannot repair file tags");
+            release_lock(&pool).await;
+            std::process::exit(1);
+        }
+
+        reporter.header(if args.dry_run {
+            "DMP Sync - Repair Recording Tags (DRY RUN)"
+        } else {
+            "DMP Sync - Repair Recording Tags"
+        });
+
+        let filter = recording_tags::Filter {
+            from: args.from.as_deref().unwrap_or(""),
+            to: args.to.as_deref().unwrap_or(""),
+            only: args.only.as_deref().unwrap_or(""),
+            exact: args.exact,
+        };
+        match recording_tags::run(
+            &pool,
+            &reporter,
+            music_dir,
+            &filter,
+            args.dry_run,
+            args.verbose,
+        )
+        .await
+        {
+            Ok(s) => {
+                reporter.blank();
+                reporter.done(&format!(
+                    "{} file(s) read across {} artist(s) ({} missing on disk, {} failed): {} recording tag(s) {} to the recording id, {} {} (recording unknown)",
+                    s.scanned,
+                    s.artists,
+                    s.missing,
+                    s.failed,
+                    s.replaced,
+                    if args.dry_run { "would be rewritten" } else { "rewritten" },
+                    s.blanked,
+                    if args.dry_run { "would be blanked" } else { "blanked" },
+                ));
+            }
+            Err(e) => reporter.err(&format!("Repair error: {}", e)),
+        }
         release_lock(&pool).await;
         return;
     }
@@ -2012,10 +2081,17 @@ async fn main() {
             if !args.skip_mb_tags {
                 let music_dir = config.music_dir.as_deref().unwrap_or("");
                 if !music_dir.is_empty() {
-                    let mut local_to_mb_track: HashMap<&str, &str> = HashMap::new();
+                    let mut local_to_mb_track: HashMap<&str, (&str, Option<&str>)> =
+                        HashMap::new();
                     for (mb_track, local_id_opt) in &status_check.matched_mb_tracks {
                         if let Some(local_id) = local_id_opt {
-                            local_to_mb_track.insert(local_id.as_str(), mb_track.id.as_str());
+                            local_to_mb_track.insert(
+                                local_id.as_str(),
+                                (
+                                    mb_track.id.as_str(),
+                                    mb_track.recording.as_ref().map(|r| r.id.as_str()),
+                                ),
+                            );
                         }
                     }
 
@@ -2028,15 +2104,18 @@ async fn main() {
                             if !abs_path.exists() {
                                 continue;
                             }
-                            let mb_track_id = local_to_mb_track.get(track_id.as_str()).copied();
-                            match common::tags::write_mb_ids(
-                                &abs_path,
-                                Some(&mb_artist.id),
-                                Some(&final_release_id),
-                                Some(&rg_id),
-                                mb_track_id,
-                                args.overwrite,
-                            ) {
+                            let (release_track, recording) = local_to_mb_track
+                                .get(track_id.as_str())
+                                .copied()
+                                .map_or((None, None), |(rt, rec)| (Some(rt), rec));
+                            let ids = common::tags::MbTagIds {
+                                album_artist: Some(&mb_artist.id),
+                                album: Some(&final_release_id),
+                                release_group: Some(&rg_id),
+                                release_track,
+                                recording,
+                            };
+                            match common::tags::write_mb_ids(&abs_path, &ids, args.overwrite) {
                                 Ok(true) => {
                                     tags_written += 1;
                                 }

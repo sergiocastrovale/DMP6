@@ -143,15 +143,15 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
             "ffmpeg failed to generate fixture track {i}: {title}"
         );
 
-        common::tags::write_mb_ids(
-            &file,
-            Some(&artist_mb_id),
-            Some(&release_id),
-            Some(&release_group_id),
-            None, // per-track recording id isn't needed for the completeness match itself
-            false,
-        )
-        .expect("failed to write MB tags to fixture file");
+        // Per-track ids aren't needed for the completeness match itself.
+        let ids = common::tags::MbTagIds {
+            album_artist: Some(&artist_mb_id),
+            album: Some(&release_id),
+            release_group: Some(&release_group_id),
+            ..Default::default()
+        };
+        common::tags::write_mb_ids(&file, &ids, false)
+            .expect("failed to write MB tags to fixture file");
     }
 
     // 3. Seed the Artist row directly with the real MB id, matching ensure_artist_cached's own

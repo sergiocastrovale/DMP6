@@ -52,6 +52,7 @@ cd scripts && cargo build --release -p sync
 ./sync --skip-mb-tags            # Skip writing MB IDs back to file tags
 ./sync --only-write-mb-to-files  # Backfill DB-known MB IDs into file tags (no API calls)
 ./sync --only-write-mb-to-files --only "radiohead"  # Backfill specific artist
+./sync --repair-recording-tags [--dry-run] [--only x]  # Undo release-track ids left in the recording-id tag (no API calls)
 ./sync --web                     # Emit PROGRESS:{json} for the web terminal
 ./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when the release has several main artists
 ./sync --recompute-scores        # Recompute every artist's averageMatchScore (pure SQL), then exit
@@ -85,6 +86,7 @@ was deleted.
 | `--catalogue-gaps` | bool | false | Fast pass: only populate MISSING catalogue entries (few API calls/artist) |
 | `--skip-mb-tags` | bool | false | Skip writing found MB IDs back into audio file tags |
 | `--only-write-mb-to-files` | bool | false | Backfill DB-known MB IDs into file tags (no API calls), then exit |
+| `--repair-recording-tags` | bool | false | Rewrite recording-id tags holding a release-track id to the recording id, blank when unknown (no API calls), then exit. ADMIN-only from the web terminal |
 | `--verbose` | bool | false | Log skipped/already-synced releases |
 | `--concurrency` | usize | 6 | Artists synced at once. Not a rate knob — see § Rate Limiting |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
@@ -93,7 +95,7 @@ was deleted.
 | `--recompute-scores` | bool | false | Recompute `averageMatchScore` for all artists from the catalogue (pure SQL, no API), then exit |
 | `--repair-shared-release-ids` | bool | false | One-off: unbind LocalReleases that lost a shared-`releaseId` conflict (pure SQL), then exit |
 | `--repair-artist-identities` | bool | false | Sweep artist rows filed under a wrong/empty duplicate row (pure SQL, no API), then exit — see `docs/sync_decisions.md` §4 |
-| `--dry-run` | bool | false | With `--repair-shared-release-ids` or `--repair-artist-identities`: print the plan, write nothing |
+| `--dry-run` | bool | false | With `--repair-shared-release-ids`, `--repair-artist-identities` or `--repair-recording-tags`: print the plan, write nothing |
 
 ## Output Modes
 
@@ -111,7 +113,7 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
    - Tier 3: MB search by album title + artist — when the release carries no usable MB-id consensus (per-source-tagged comps), and once as a retry after the allow-list rejects a tagged candidate; gated hard so it never mis-binds
    - Every candidate passes the allow-list before binding (Official Album/EP, plus Single when the files' own ids point at it); no consensus and no confident search hit → marked Unmatched
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
-7. **Write MB IDs** back to audio file tags (`MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_TRACKID`) - only fills tags that are absent; never overwrites an existing value unless `--overwrite` is passed (deliberate re-correction, e.g. after fixing a bad match). Preserves file mtime to avoid triggering re-index. Skipped with `--skip-mb-tags`. A file with no tag block at all gets one created so IDs can still be written.
+7. **Write MB IDs** back to audio file tags (`MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_RELEASETRACKID` = release-track id, `MUSICBRAINZ_TRACKID` = recording id; ID3 uses Picard's TXXX descriptions + `UFID:http://musicbrainz.org` for the recording) - only fills tags that are absent; never overwrites an existing value unless `--overwrite` is passed (deliberate re-correction, e.g. after fixing a bad match). Preserves file mtime to avoid triggering re-index. Skipped with `--skip-mb-tags`. A file with no tag block at all gets one created so IDs can still be written.
 8. **Cover art** - download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
 9. **Set `lastSyncedAt`** on Artist, persist country code, compute average match score
 10. **Stamp run hash** on Artist for resumability
@@ -140,13 +142,23 @@ Cannot combine with `--release` or `--delete`. Compatible with `--from`/`--to`/`
 
 ## --only-write-mb-to-files Behaviour
 
-Writes DB-known MB IDs back into audio file tags. No API calls - reads entirely from DB. Only fills in **absent** tags; never overwrites existing file values. Preserves file mtime to avoid triggering re-index.
+Writes DB-known MB IDs back into audio file tags. No API calls - reads entirely from DB. Only fills in **absent** tags unless `--overwrite` is passed, which replaces existing values. Preserves file mtime to avoid triggering re-index.
 
-**Per artist:** queries all matched tracks (joined through LocalRelease → MusicBrainzRelease → MusicBrainzReleaseTrack), writes missing `MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, and `MUSICBRAINZ_TRACKID` tags.
+**Per artist:** queries all matched tracks (joined through LocalRelease → MusicBrainzRelease → MusicBrainzReleaseTrack), writes missing `MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_RELEASETRACKID` (release-track id) and `MUSICBRAINZ_TRACKID` (recording id, from `MusicBrainzReleaseTrack.recordingId`, skipped while that is NULL) tags.
 
 **Use case:** backfill tags after a full sync so files become source of truth. Run once after initial sync to persist all found MB IDs into files.
 
-Cannot combine with `--release`, `--delete`, or `--catalogue-gaps`. Compatible with `--from`/`--to`/`--only`/`--exact`.
+Cannot combine with `--release`, `--delete`, or `--catalogue-gaps`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`.
+
+## --repair-recording-tags Behaviour
+
+Until 2026-09, `common::tags::write_mb_ids` wrote each track's **release-track** id into the **recording** slot (`MUSICBRAINZ_TRACKID` / ID3 UFID / MP4 `MusicBrainz Track Id`: Picard's names, which say "track" but mean the recording). A normal sync filled it wherever the tag was empty, and `--overwrite` replaced correct Picard values with it. MP3s were spared only by accident: lofty's generic ID3v2 conversion dropped the frame, see the MP3 note in `CLAUDE.md`.
+
+This pass walks every file of every release the filtered artists own (matched or not, since a file keeps ids from an earlier match) and reads its recording tag. If the value is any `MusicBrainzReleaseTrack.musicbrainzId` in the DB, it is provably ours and wrong: MBIDs are unique across entity types. It is rewritten to that row's `recordingId`, or **blanked** when the recording is not known yet (~2/3 of rows predate `recordingId`; empty beats wrong, and the next sync or `--only-write-mb-to-files` that knows it fills it). The release-track id is also moved into `MUSICBRAINZ_RELEASETRACKID` when that is empty. No other tag is touched, mtimes are kept, no MusicBrainz calls.
+
+A normal sync also heals as it goes: `write_mb_ids` treats a recording tag equal to the track's own release-track id as absent, without `--overwrite`.
+
+Cannot combine with `--release`, `--delete`, `--catalogue-gaps`, `--only-write-mb-to-files`, or `--overwrite`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--dry-run`/`--verbose` (lists every file). ADMIN-only from the web terminal (`DESTRUCTIVE_FLAGS`).
 
 ## --delete Behaviour
 

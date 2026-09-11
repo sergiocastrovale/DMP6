@@ -2,7 +2,9 @@
 
 DMP treats **embedded audio tags as the source of truth** for artist/album/track identity — never
 filesystem paths or folder names (see `CLAUDE.md`'s Project Conventions). When a file has a valid
-`MUSICBRAINZ_ALBUMID`/`MUSICBRAINZ_TRACKID` tag, sync trusts it directly without re-verifying.
+`MUSICBRAINZ_ALBUMID`/`MUSICBRAINZ_RELEASEGROUPID` tag, sync trusts it directly without re-verifying.
+Per-track ids are written back, never read: `MUSICBRAINZ_RELEASETRACKID` holds the release-track id,
+`MUSICBRAINZ_TRACKID` (ID3: `UFID:http://musicbrainz.org`) the recording id - Picard's names.
 
 Compound artist names are no longer split by guessing at punctuation — `./index` resolves them against
 MusicBrainz instead, so "Nurse With Wound" stays one artist while "Frank Sinatra with Count Basie"
@@ -41,3 +43,7 @@ does a DB-level merge (duplicates) / delete (orphans). File-writing fix types ne
 
 `./sync --only-write-mb-to-files` writes MB IDs already known in the DB back into file tags without
 any API calls — useful after a fresh match to make future syncs skip re-verification entirely.
+
+`./sync --repair-recording-tags [--dry-run]` undoes an old tag-writing bug that put release-track ids
+into the recording slot: each such value becomes the recording id, or is blanked when that is not known
+yet. See `docs/scripts/sync.md`.

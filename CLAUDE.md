@@ -53,6 +53,8 @@ Artist.primaryArtistId → Artist.id (dup → canonical)
 - Images via `useImageUrl()`. Types in `web/types/`. No scripts logic in web app (Rust in `/scripts`).
 - Metadata is source of truth — never filesystem paths/folder names for artist/album/year.
 - Embedded MB IDs are definitive — use directly, no re-verify.
+- **MP3 tag writes: never through lofty's generic `Tag`.** lofty 0.24's generic→ID3v2 conversion silently drops `MusicBrainzReleaseId`/`ReleaseGroupId`/`TrackId` (a resave *erases* Picard's TXXX frames) and `Tag::insert` rejects `MusicBrainzRecordingId`. `common::tags` uses the concrete `Id3v2Tag` (`MbSlots`). `common::images::embed_cover_art`, `fix/src/tags.rs` and `problems/src/fix/tags.rs` still resave generically.
+- Per-track MB ids: release-track id → `MUSICBRAINZ_RELEASETRACKID`, recording id → `MUSICBRAINZ_TRACKID` / ID3 UFID (Picard's names). `common::tags::MbTagIds` keeps them apart.
 - `/img/*` is public (auth-exempt, artist/release artwork only) — don't assume access-controlled if extending that path.
 - Seed admin `admin`/`admin`, `mustChangePassword: true` — don't hardcode a different default or drop the forced change.
 
@@ -84,6 +86,7 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./sync --only "Name" [--exact] [--overwrite] | --release "clxxx" [--artist-hint "clyyy"]
 ./sync --delete | --verbose | --skip-mb-tags
 ./sync --only-write-mb-to-files [--only x]   # backfill MB ids into tags, no API calls
+./sync --repair-recording-tags [--dry-run] [--only x]   # undo release-track ids left in the recording-id tag, no API calls
 ./sync --catalogue-gaps [--overwrite]        # fast MISSING-entry pass
 ./sync --artist-ids file      # used by refresh
 ./sync --recompute-scores     # pure SQL, exits

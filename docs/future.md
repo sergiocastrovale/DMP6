@@ -16,7 +16,6 @@ remove all singles if need space
 
 FEATURES
 
-allow removing specific release (button bottom left in info dialog)
 
 BUGS
 
@@ -24,9 +23,9 @@ Artist Damageplan shows an unmatched "Uncivilization" (Feat. Corey Taylor, Slith
 
 a while ago you made it so claim_owned_bundle handles the "one folder covering an extra MB release" cases. I want to revisit this as it might be tremendously flawed. First: what are we even fixing with this? Give solid examples. 
 
-scripts/common/src/tags.rs:58 writes the track MBID into ItemKey::MusicBrainzRecordingId, so ./sync --only-write-mb-to-files has been stamping the wrong kind of id into your files. It is a file-writing fix with its own blast radius and belongs in a separate change.
+UI 
 
-UI
+If we search for 'HIM' the 5 results are not what I want. I need a new search/{artists,releases,tracks} page which shows all results for the query, with pagination.
 
 
 LIBRARY

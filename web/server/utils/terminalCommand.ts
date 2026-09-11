@@ -31,8 +31,15 @@ export const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
 // `--overwrite` passes. `--prune` belongs here too: it bypasses index's mount-blip ratio guard, so a
 // wrong scope deletes rows the guard would otherwise have saved.
 // `--files` belongs here for the same reason: it removes audio files from MUSIC_DIR, which no amount
-// of re-indexing brings back.
-const DESTRUCTIVE_FLAGS = ['--delete', '--overwrite', '--overwrite-with-images', '--prune', '--files'] as const
+// of re-indexing brings back. `--repair-recording-tags` rewrites and blanks MB ids inside audio files.
+const DESTRUCTIVE_FLAGS = [
+  '--delete',
+  '--overwrite',
+  '--overwrite-with-images',
+  '--prune',
+  '--files',
+  '--repair-recording-tags',
+] as const
 
 export const hasDestructiveFlag = (args: string[]): boolean =>
   args.some(a => (DESTRUCTIVE_FLAGS as readonly string[]).includes(a))

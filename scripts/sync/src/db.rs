@@ -1543,15 +1543,16 @@ pub struct TrackMbIds {
     pub mb_release_id: String,
     pub mb_release_group_id: String,
     pub mb_track_id: Option<String>,
+    pub mb_recording_id: Option<String>,
 }
 
 pub async fn get_tracks_with_mb_ids_for_artist(
     pool: &PgPool,
     artist_id: &str,
 ) -> Result<Vec<TrackMbIds>, sqlx::Error> {
-    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
         r#"SELECT lrt."filePath", mbr."musicbrainzId", mbr."releaseGroupId",
-                  mbrt."musicbrainzId"
+                  mbrt."musicbrainzId", mbrt."recordingId"
            FROM "LocalReleaseTrack" lrt
            JOIN "LocalRelease" lr ON lrt."localReleaseId" = lr.id
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
@@ -1567,14 +1568,53 @@ pub async fn get_tracks_with_mb_ids_for_artist(
     Ok(rows
         .into_iter()
         .map(
-            |(file_path, mb_release_id, mb_release_group_id, mb_track_id)| TrackMbIds {
-                file_path,
-                mb_release_id,
-                mb_release_group_id,
-                mb_track_id,
+            |(file_path, mb_release_id, mb_release_group_id, mb_track_id, mb_recording_id)| {
+                TrackMbIds {
+                    file_path,
+                    mb_release_id,
+                    mb_release_group_id,
+                    mb_track_id,
+                    mb_recording_id,
+                }
             },
         )
         .collect())
+}
+
+/// Every file of every release the artist owns, matched or not - a file tagged under an earlier
+/// match keeps that match's ids even after the release is re-bound or unbound.
+pub async fn get_owned_track_paths_for_artist(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"SELECT DISTINCT lrt."filePath"
+           FROM "LocalReleaseTrack" lrt
+           JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lrt."localReleaseId"
+           WHERE lra."artistId" = $1"#,
+    )
+    .bind(artist_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+
+/// Which of `values` are MusicBrainz release-track ids, each mapped to its recording id when known.
+/// A release-track id can sit on several MusicBrainzRelease rows; any row carrying the recording wins.
+pub async fn get_recordings_for_release_track_ids(
+    pool: &PgPool,
+    values: &[String],
+) -> Result<HashMap<String, Option<String>>, sqlx::Error> {
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        r#"SELECT "musicbrainzId", max("recordingId")
+           FROM "MusicBrainzReleaseTrack"
+           WHERE "musicbrainzId" = ANY($1)
+           GROUP BY "musicbrainzId""#,
+    )
+    .bind(values)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().collect())
 }
 
 pub async fn get_track_id_file_paths_for_release(
