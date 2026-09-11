@@ -2452,6 +2452,12 @@ async fn main() {
     // Box-set detection/binding + equivalence derivation, scoped the same way the rest of this run
     // was (--only/--exact) - no longer a standalone --repair-multi-disc/--link-box-editions flag,
     // runs automatically at the tail of every normal sync (docs/sync_decisions.md).
+    //
+    // `--release` (the web UI's "Refresh this release" action) has no `--only` of its own, so
+    // `args.only` is None there - falling back to `unwrap_or("")` used to read as "no filter", running
+    // this pass over the WHOLE catalogue for what's supposed to be a single-release, targeted refresh.
+    // Scope it to the release's own (single) owning artist instead, the same name-substring mechanism
+    // `--only` already uses.
     if running.load(Ordering::SeqCst) {
         let box_http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(60))
@@ -2463,12 +2469,17 @@ async fn main() {
         // is concurrent.
         let mut box_limiter = limiter.clone();
         box_limiter.set_web(args.web);
+        let box_only: String = args
+            .only
+            .clone()
+            .or_else(|| target_release_id.as_ref().and_then(|_| artists.first().map(|a| a.name.clone())))
+            .unwrap_or_default();
         match boxset::run_repair(
             &pool,
             &box_http_client,
             &mut box_limiter,
             &reporter,
-            args.only.as_deref().unwrap_or(""),
+            &box_only,
             args.exact,
         )
         .await

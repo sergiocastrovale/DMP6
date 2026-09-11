@@ -60,9 +60,12 @@ cd scripts && cargo build --release -p sync
 ```
 
 Box-set fold/dissolve repair is not a flag - `boxset::run_repair` runs automatically at the tail of every
-sync invocation, scoped by whatever `--only`/`--exact` the run was given. See "Box Sets" below and
-`docs/sync_decisions.md`. `./repair-box-sets` was a one-off backfill script for existing data; the
-rollout finished (2026-09-10, see `docs/containment.md`) and the script was deleted.
+sync invocation, scoped by whatever `--only`/`--exact` the run was given (`--release` has no `--only`
+of its own, so it derives the filter from that release's own owning artist name - fixed 2026-09-11,
+this used to read as "no filter" and run the repair pass over the whole catalogue for a single-release
+refresh). See "Box Sets" below and `docs/sync_decisions.md`. `./repair-box-sets` was a one-off backfill
+script for existing data; the rollout finished (2026-09-10, see `docs/containment.md`) and the script
+was deleted.
 
 `--release` cannot combine with `--from`, `--to`, or `--only`.
 

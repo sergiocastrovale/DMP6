@@ -88,7 +88,8 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./sync --artist-ids file      # used by refresh
 ./sync --recompute-scores     # pure SQL, exits
 ./sync --repair-shared-release-ids [--dry-run]
-# boxset::run_repair is automatic (tail of every sync, scoped by --only/--exact), not a flag.
+# boxset::run_repair is automatic (tail of every sync, scoped by --only/--exact, or by the
+# release's own artist when run via --release), not a flag.
 
 # Audit & Fix
 ./audit [--corrupted|--orphans|--duplicates|--missing|--enrichment|--duplicate-release|--mismatched-release-id]
