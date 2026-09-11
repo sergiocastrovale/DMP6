@@ -2,7 +2,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: dmp-redis
-    restart: unless-stopped
+    restart: always
     command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD}
     volumes:
       - ${DMP_DATA}/redis:/data
@@ -20,7 +20,7 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: dmp-cloudflared
-    restart: unless-stopped
+    restart: always
     command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
@@ -32,7 +32,7 @@ services:
     image: dmp:latest
     container_name: dmp
     hostname: dmp-web
-    restart: unless-stopped
+    restart: always
     # Join the shared downloads group (gid 568) so dmp can delete slskd-owned source files
     # during the post-download move — keeps DOWNLOADS_PATH fully self-cleaning (no orphan copies).
     group_add:
