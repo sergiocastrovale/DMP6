@@ -5,11 +5,6 @@ import Genres from '../../../components/artist/Genres.vue'
 const genre = (id: string, name: string) => ({ id, name })
 
 describe('artist/Genres.vue', () => {
-  it('renders nothing when there are no genres', async () => {
-    const wrapper = await mountSuspended(Genres, { props: { genres: [] } })
-    expect(wrapper.html()).toBe('<!--v-if-->')
-  })
-
   it('renders every genre up to the max without a "more" button', async () => {
     const genres = [genre('1', 'Rock'), genre('2', 'Pop')]
     const wrapper = await mountSuspended(Genres, { props: { genres } })

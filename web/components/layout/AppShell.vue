@@ -92,19 +92,10 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKeydown))
   >
     Skip to content
   </a>
-
-  <!-- pb-[57px] on mobile reserves LayoutMobileNav's height (fixed, so it doesn't take flow space):
-       without it the player bar - flush to the bottom of this h-screen column - sat directly behind
-       the nav instead of above it. 57px matches the nav's own bottom-[57px] "More" sheet offset. -->
   <div
     class="flex flex-col h-screen bg-stone-950 text-stone-100 font-sans antialiased"
     :class="chromeVisible && 'pb-14.25 lg:pb-0'"
   >
-    <!-- `<main>` (and the page it slots in) stays a single stable element across chromeVisible
-         toggles - the sidenav/topbar/player bar mount and unmount around it instead of the page
-         living in two structurally different v-if/v-else branches. That used to unmount+remount
-         the whole page (losing its local state) every time cinema mode (Explore) toggled, because
-         Vue can't patch across a structural change in the tree, only diff same-position children. -->
     <div
       class="flex flex-1 overflow-hidden transition-all duration-200"
       :class="chromeVisible && ['grid', gridCols]"
@@ -112,8 +103,6 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKeydown))
       <LayoutSidebar v-if="chromeVisible" class="hidden lg:flex" />
 
       <div class="flex flex-1 flex-col overflow-hidden min-w-0" :class="{ 'lg:mr-125': chromeVisible && terminal.isSidebarVisible }">
-        <!-- Labs drops the search bar: its experiments are canvases, not lists, so there is
-             nothing on the page for a query to filter. The rest of the shell stays. -->
         <div v-if="chromeVisible && topbarVisible" class="sticky top-0 z-30 backdrop-blur-[14px]">
           <div class="flex flex-col lg:flex-row lg:items-center lg:gap-12 lg:px-8 lg:h-20">
             <LayoutSearchBar />
@@ -140,8 +129,6 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKeydown))
     <TerminalProgress />
   </template>
 
-  <!-- Outside the chromeVisible block on purpose: the visualizer is reachable from Explore while
-       its cinema mode is on, and must survive route changes like the player bar does. -->
   <VisualizerOverlay />
 
   <LayoutToastHost />

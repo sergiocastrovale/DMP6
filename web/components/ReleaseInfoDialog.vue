@@ -4,6 +4,7 @@ import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 import { useTerminalStore } from '~/stores/terminal'
 import { useDownloadsStore } from '~/stores/downloads'
 import { canRedownload } from '~/helpers/artistPageLogic'
+import { musicBrainzUrl } from '~/helpers/functions'
 
 const props = withDefaults(defineProps<{
   release: UnifiedRelease | null
@@ -28,6 +29,16 @@ const downloadsStore = useDownloadsStore()
 
 const genreList = computed(() =>
   props.extra?.genres?.flatMap(g => g.split(',').map(s => s.trim()).filter(Boolean)) ?? [],
+)
+
+// A catalogue gap has no chosen release: sync builds the placeholder from the release *group* and
+// stores that group's MBID in both columns (musicbrainzId is the unique upsert key, so it cannot be
+// null). Showing it as a release ID printed the same id twice and linked to a /release/ URL that
+// 404s - the row belongs to the release group alone.
+const mbReleaseId = computed(() =>
+  props.release?.musicbrainzId && props.release.musicbrainzId !== props.release.releaseGroupId
+    ? props.release.musicbrainzId
+    : null,
 )
 
 const dtClass = 'text-xs text-stone-100/60'
@@ -114,7 +125,7 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
             <dt :class="dtClass">Plays</dt>
             <dd class="text-2xs text-stone-100/50">{{ release.totalPlayCount.toLocaleString() }} times</dd>
           </div>
-          <div>
+          <div v-if="release.hasLocal">
             <dt :class="dtClass">Release ID</dt>
             <dd :class="ddClass">{{ release.id }}</dd>
           </div>
@@ -156,12 +167,12 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
               <dd :class="ddClass">{{ names.join(', ') }}</dd>
             </div>
           </template>
-          <div v-if="release.musicbrainzId">
+          <div v-if="mbReleaseId">
             <dt :class="dtClass">MusicBrainz release ID</dt>
             <dd :class="[ddClass, 'flex items-center gap-1.5']">
-              {{ release.musicbrainzId }}
+              {{ mbReleaseId }}
               <a
-                :href="`https://musicbrainz.org/release/${release.musicbrainzId}`"
+                :href="musicBrainzUrl(release)!"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-stone-100/60 hover:text-stone-100"

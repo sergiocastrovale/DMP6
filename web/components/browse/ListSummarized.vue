@@ -78,8 +78,6 @@ const completenessClasses = (artist: ArtistListItem) => {
       <template #cell-completeness="{ row }">
         <span :class="completenessClasses(row)">
           {{ completenessPct(row) }}%
-          <!-- The fraction is what makes the percentage readable: 100% off one release and 100%
-               off forty are the same number and very different libraries. -->
           <span class="font-normal opacity-60">({{ row.completeCount ?? 0 }}/{{ row.releaseCount ?? 0 }})</span>
         </span>
       </template>

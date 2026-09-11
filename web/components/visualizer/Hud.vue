@@ -17,8 +17,6 @@ const albumCover = computed(() =>
 </script>
 
 <template>
-  <!-- Faded rather than v-if'd: unmounting would drop the seek bar's DOM identity (and the
-       pointer capture mid-drag with it) every time the idle timer fired. -->
   <div
     :class="cx(
       'absolute inset-x-0 bottom-0 flex flex-col gap-4 p-6 transition-opacity duration-300',

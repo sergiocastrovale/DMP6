@@ -92,8 +92,6 @@ defineExpose({ fetchEvents })
 
 <template>
   <div v-if="events.length" class="rounded-xl border border-stone-100/6">
-    <!-- Sibling buttons, not one nested in the other - a <button> inside a <button> is invalid HTML
-         and browsers handle the nesting inconsistently. -->
     <div class="flex w-full items-center justify-between gap-2 px-4 py-3">
       <button
         type="button"

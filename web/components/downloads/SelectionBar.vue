@@ -14,8 +14,6 @@ const emit = defineEmits<{ action: [key: string], cancel: [] }>()
 
 <template>
   <UiBulkBar :count="count" @cancel="emit('cancel')">
-    <!-- Quiet + sm on purpose: the strip is already amber, so a primary (amber-filled) button on it
-         reads as one flat block instead of an action. -->
     <UiButton
       v-for="action in actions"
       :key="action.key"

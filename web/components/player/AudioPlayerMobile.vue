@@ -19,9 +19,6 @@ const releaseLink = computed(() => {
   return { path: `/artist/${slug}`, query: localReleaseId ? { releaseId: localReleaseId } : undefined }
 })
 
-// Local, not useState: the trigger (this bar) and the sheet are direct parent/child in one
-// subtree with one mount point, so nothing else needs to react to it. v-if (not v-show) mounts
-// the sheet only while open - see MobileSheet.vue for why that's load-bearing, not stylistic.
 const expanded = ref(false)
 const expand = () => { expanded.value = true }
 const collapse = () => { expanded.value = false }
@@ -30,10 +27,6 @@ const collapse = () => { expanded.value = false }
 <template>
   <div v-if="player.isVisible" :class="cx('fixed inset-x-0 bottom-[57px] z-40 lg:hidden', surface.playerBar)">
     <div class="relative flex h-16 items-center">
-      <!-- Full-bleed tap target under the content layer, rather than a click-target guard on the
-           row: a real <button> is focusable and gets aria-expanded for free, which a <div> with a
-           closest()-based click handler would not (axe flags a non-interactive element used as
-           one). Interactive children opt back in with pointer-events-auto below. -->
       <button
         type="button"
         class="absolute inset-0"

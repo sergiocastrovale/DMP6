@@ -25,8 +25,6 @@ const filtered = computed(() => {
 
 <template>
   <div class="relative">
-    <!-- Two separate controls sharing one pill, not one <button> nesting another - a clear
-         icon inside the trigger button would be unreachable by keyboard and invalid HTML. -->
     <div
       :class="cx(
         'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors duration-150',

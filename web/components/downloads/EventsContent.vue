@@ -138,9 +138,6 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
       :hint="sub === 'flagged' ? 'The monitor loop logs warnings and errors here as they happen.' : 'Clearing a flagged event moves it here.'"
     />
 
-    <!-- Not SlimTable: its `min-w-max` is right for the download queue's fixed-width columns, but a
-         monitor message is long free text, so it would widen the table until the Logged column - the
-         one you actually want - scrolled off the right edge. `w-full` lets the message wrap instead. -->
     <div v-else class="overflow-hidden rounded-xl border border-stone-100/6 bg-stone-900">
       <table class="w-full text-base">
         <SlimTableHeader>
@@ -150,9 +147,6 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
           <th v-if="canEdit && sub === 'archived'" :class="cx(data.th, 'w-24 text-right')">Actions</th>
         </SlimTableHeader>
         <SlimTableBody>
-        <!-- A plain row, not SlimTableRow: its two states are `muted` (opacity-50, which would dim
-             the message below the contrast floor) and the default (cursor-pointer + hover, which
-             implies a click that does nothing here). A log row is neither. -->
         <tr v-for="ev in visible" :key="ev.id" class="border-b border-stone-100/6 last:border-b-0">
           <td :class="data.td">
             <span :class="cx('inline-flex items-center gap-1.5 whitespace-nowrap', toneText[levelTone(ev.level)])">

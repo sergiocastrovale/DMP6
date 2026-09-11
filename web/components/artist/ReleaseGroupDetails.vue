@@ -64,6 +64,7 @@ const containmentNote = computed(() => containmentContainerTitle(props.release.s
 const coArtists = computed(() => props.coArtists ?? props.release.coArtists ?? [])
 const displayTrackCount = computed(() => props.trackCount ?? props.release.trackCount)
 const displayPlayCount = computed(() => props.playCount ?? props.release.totalPlayCount)
+const playableClasses = computed(() => hasPlayable.value ? 'cursor-pointer' : 'ml-6')
 
 const statusDescription = (status: string) => statuses.find(s => s.value === status)?.description ?? ''
 // docs/sync_decisions.md: box sets in the catalogue reprinting this release's whole group - a pure
@@ -79,19 +80,11 @@ const alsoPartOfLabel = computed(() =>
   >
     <div
       class="group/edition flex items-stretch gap-3 pl-3 pr-1 lg:px-3"
-      :class="hasPlayable && 'cursor-pointer'"
+      :class="playableClasses"
       @click="hasPlayable && emit('toggle')"
     >
-      <div class="hidden self-center md:block">
-        <UiButton
-          v-if="hasPlayable"
-          variant="ghost"
-          size="sm"
-          icon-only
-          :icon="expanded ? ChevronDown : ChevronRight"
-          @click.stop="emit('toggle')"
-        />
-        <div v-else class="size-5" />
+      <div v-if="hasPlayable" class="hidden self-center md:block w-4">
+        <component :is="expanded ? ChevronDown : ChevronRight" :size="14" :stroke-width="ICON_STROKE_WIDTH" />
       </div>
 
       <div
@@ -157,30 +150,17 @@ const alsoPartOfLabel = computed(() =>
             <span class="truncate">{{ containmentNote }}</span>
           </span>
         </div>
-        <div class="mt-0.5 flex items-center gap-3 text-xs text-stone-100/60">
-          <span v-if="release.type" class="hidden md:inline">{{ release.type }}</span>
-          <span v-if="release.year">{{ release.year }}</span>
-          <span v-if="displayTrackCount" class="hidden md:inline">{{ displayTrackCount }} tracks</span>
-          <span v-if="release.discCount && release.discCount > 1">{{ release.discCount }} discs</span>
-          <span v-if="alsoPartOfLabel" class="hidden truncate lg:inline">Also part of: {{ alsoPartOfLabel }}</span>
-          <span v-if="coArtists.length">Feat.
-            <template v-for="(co, i) in coArtists" :key="co.slug">
-              <NuxtLink
-                :to="`/artist/${co.slug}`"
-                class="text-stone-100/60 transition-colors duration-150 hover:text-amber-400"
-                @click.stop
-              >{{ co.name }}</NuxtLink><template v-if="i < coArtists.length - 1">, </template>
-            </template>
-          </span>
-          <span v-if="connectedArtistNames.length" class="flex items-center gap-1 italic" :title="`Originally credited to: ${connectedArtistNames.join(', ')}`">
-            <Info :size="12" :stroke-width="ICON_STROKE_WIDTH" />
-            <span>as {{ connectedArtistNames.join(', ') }}</span>
-          </span>
-          <span v-if="displayPlayCount">· {{ displayPlayCount.toLocaleString() }} plays</span>
-        </div>
+        <ArtistReleaseSubInfo
+          :release="release"
+          :track-count="displayTrackCount"
+          :play-count="displayPlayCount"
+          :also-part-of-label="alsoPartOfLabel"
+          :co-artists="coArtists"
+          :connected-artist-names="connectedArtistNames"
+        />
       </div>
 
-      <div class="hidden w-36 shrink-0 items-center justify-center md:flex">
+      <div class="hidden shrink-0 items-center justify-end md:flex">
         <Popover v-if="!(isSearching || isDownloading || isEnriching || isAwaitingMerge)" trigger="hover">
           <template #trigger>
             <ReleaseStatusBadge :status="release.status" />
@@ -225,7 +205,7 @@ const alsoPartOfLabel = computed(() =>
         </UiBadge>
       </div>
 
-      <div class="flex lg:w-32 lg:shrink-0 items-center justify-end gap-0.5 pr-0 pl-1 lg:px-3">
+      <div class="flex shrink-0 items-center justify-end gap-0.5 pr-0 pl-1 lg:px-3">
         <div class="hidden items-center gap-0.5 md:flex">
         <DataTableAction
           v-if="isSearching || isDownloading || isEnriching"
@@ -268,8 +248,6 @@ const alsoPartOfLabel = computed(() =>
           @click="emit('redownload')"
         />
 
-        <!-- Not shown for a gap noting containment (bundleParentReleaseId set, no localReleaseId):
-             there's no folder of its own to re-scan, and the container row has its own Refresh. -->
         <DataTableAction
           v-if="release.localReleaseId"
           :icon="RefreshCw"

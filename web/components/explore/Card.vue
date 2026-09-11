@@ -85,8 +85,6 @@ const image = computed(() =>
               @click="player.togglePlay()"
             />
 
-            <!-- No "Another pick" button here: with shuffleMode 'explorer', player.next() already
-                 fetches a fresh explored track (see stores/player.ts), so this is that action. -->
             <UiButton
               variant="secondary"
               :size="tv ? 'xl' : 'lg'"

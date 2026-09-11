@@ -312,9 +312,6 @@ onMounted(() => {
               :title="artist.monitored ? `Stop monitoring ${artist.name}` : `Monitor ${artist.name}`"
               @click="toggleMonitor(artist)"
             >
-              <!-- No icon on the settled states: the whole column is these two words, so an icon
-                   on only one of them makes the pair look like different controls rather than one
-                   toggle's two positions. The spinner is the exception - it is a third state. -->
               <Loader2 v-if="busyIds.has(artist.id)" :size="13" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
               {{ artist.monitored ? 'ON' : 'OFF' }}
             </button>
