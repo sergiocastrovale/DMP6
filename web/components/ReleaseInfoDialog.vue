@@ -69,7 +69,7 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
   <Dialog v-model="model" :title="release?.title ?? 'Release Info'" size="lg">
     <template #actions v-if="release">
       <ReleaseStatusBadge :status="release.status" class="mr-auto" />
-      
+
       <div class="flex items-center gap-1">
         <DataTableAction
           v-if="removable && isAdmin && release.localReleaseId"
@@ -107,12 +107,19 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
       <div class="flex flex-col gap-6 md:flex-row">
         <div class="flex w-full shrink-0 flex-col gap-3 md:w-44">
           <UiThumb>
-            <img
+            <a
               v-if="releaseImage(release)"
-              :src="releaseImage(release)!"
-              :alt="release.title"
-              class="size-full object-cover"
+              :href="releaseImage(release)!"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="block size-full"
             >
+              <img
+                :src="releaseImage(release)!"
+                :alt="release.title"
+                class="size-full object-cover"
+              >
+            </a>
             <div v-else class="flex size-full items-center justify-center text-stone-100/50">
               <Disc3 :size="32" />
             </div>
