@@ -8,6 +8,8 @@ const props = withDefaults(defineProps<SearchDropdownProps>(), {
   listboxId: undefined,
   activeIndex: -1,
 })
+
+const searchHref = (type: 'artists' | 'releases' | 'tracks') => `/search/${type}?q=${encodeURIComponent(props.query)}`
 const emit = defineEmits<{
   select: []
 }>()
@@ -23,34 +25,56 @@ const hasResults = computed(() => {
     || props.results.tracks.length > 0
 })
 
+const hasMoreArtists = computed(() => (props.results?.counts?.artists ?? 0) > (props.results?.artists.length ?? 0))
+const hasMoreReleases = computed(() => (props.results?.counts?.releases ?? 0) > (props.results?.releases.length ?? 0))
+const hasMoreTracks = computed(() => (props.results?.counts?.tracks ?? 0) > (props.results?.tracks.length ?? 0))
+
 // One flat, ordered list backing both the roving arrow-key highlight (SearchBar owns the index,
 // this is what it counts against and reads a route from on Enter) and the per-item aria-selected
-// state below - artists, then releases, then tracks, matching render order.
+// state below - artists (+ its "view all" row when there's more), then releases, then tracks,
+// matching render order.
 const flatEntries = computed(() => {
   const entries: { to: string }[] = []
   if (props.results) {
     for (const artist of props.results.artists) {
       entries.push({ to: `/artist/${artist.slug}` })
     }
+    if (hasMoreArtists.value) {
+      entries.push({ to: searchHref('artists') })
+    }
     for (const release of props.results.releases) {
       entries.push({ to: release.artist ? `/artist/${release.artist.slug}?releaseId=${release.id}` : '#' })
     }
+    if (hasMoreReleases.value) {
+      entries.push({ to: searchHref('releases') })
+    }
     for (const track of props.results.tracks) {
       entries.push({ to: track.release?.artist ? `/artist/${track.release.artist.slug}?releaseId=${track.release.id}&trackId=${track.id}` : '#' })
+    }
+    if (hasMoreTracks.value) {
+      entries.push({ to: searchHref('tracks') })
     }
   }
   return entries
 })
 
 const artistOffset = 0
-const releaseOffset = computed(() => props.results?.artists.length ?? 0)
-const trackOffset = computed(() => releaseOffset.value + (props.results?.releases.length ?? 0))
+const artistViewAllOffset = computed(() => (props.results?.artists.length ?? 0))
+const releaseOffset = computed(() => artistViewAllOffset.value + (hasMoreArtists.value ? 1 : 0))
+const releaseViewAllOffset = computed(() => releaseOffset.value + (props.results?.releases.length ?? 0))
+const trackOffset = computed(() => releaseViewAllOffset.value + (hasMoreReleases.value ? 1 : 0))
+const trackViewAllOffset = computed(() => trackOffset.value + (props.results?.tracks.length ?? 0))
 
 defineExpose({ flatEntries })
 
 const optionClass = (index: number) => cx(
   'flex items-center gap-3 rounded-lg px-2 py-2 transition-colors duration-150',
   index === props.activeIndex ? 'bg-stone-800' : 'hover:bg-stone-800',
+)
+
+const viewAllClass = (index: number) => cx(
+  'block px-2 py-1.5 text-sm text-stone-100/60 transition-colors duration-150',
+  index === props.activeIndex ? 'text-amber-400' : 'hover:text-amber-400',
 )
 </script>
 
@@ -65,32 +89,48 @@ const optionClass = (index: number) => cx(
       <div :class="cx('px-2 py-1', typography.sectionLabel)">
         Artists
       </div>
+      <div class="lg:grid lg:grid-cols-3 lg:gap-1">
+        <NuxtLink
+          v-for="(artist, i) in results.artists"
+          :id="`${listboxId}-option-${artistOffset + i}`"
+          :key="artist.id"
+          role="option"
+          :aria-selected="artistOffset + i === activeIndex"
+          :to="`/artist/${artist.slug}`"
+          :class="optionClass(artistOffset + i)"
+          @click="emit('select')"
+        >
+          <UiThumb size="sm">
+            <img
+              v-if="artistImage(artist)"
+              :src="artistImage(artist)!"
+              :alt="artist.name"
+              class="h-full w-full object-cover"
+            >
+            <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
+              <User :size="18" :stroke-width="ICON_STROKE_WIDTH" />
+            </div>
+          </UiThumb>
+          <div class="flex-1 overflow-hidden">
+            <p class="truncate text-base font-medium text-stone-100">
+              {{ artist.name }}
+            </p>
+            <p v-if="artist.genres.length" class="truncate text-xs text-stone-100/55">
+              {{ artist.genres.join(', ') }}
+            </p>
+          </div>
+        </NuxtLink>
+      </div>
       <NuxtLink
-        v-for="(artist, i) in results.artists"
-        :id="`${listboxId}-option-${artistOffset + i}`"
-        :key="artist.id"
+        v-if="hasMoreArtists"
+        :id="`${listboxId}-option-${artistViewAllOffset}`"
         role="option"
-        :aria-selected="artistOffset + i === activeIndex"
-        :to="`/artist/${artist.slug}`"
-        :class="optionClass(artistOffset + i)"
+        :aria-selected="artistViewAllOffset === activeIndex"
+        :to="searchHref('artists')"
+        :class="viewAllClass(artistViewAllOffset)"
         @click="emit('select')"
       >
-        <UiThumb size="sm">
-          <img
-            v-if="artistImage(artist)"
-            :src="artistImage(artist)!"
-            :alt="artist.name"
-            class="h-full w-full object-cover"
-          >
-          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
-            <User :size="18" :stroke-width="ICON_STROKE_WIDTH" />
-          </div>
-        </UiThumb>
-        <div class="flex-1 overflow-hidden">
-          <p class="truncate text-base font-medium text-stone-100">
-            {{ artist.name }}
-          </p>
-        </div>
+        View all →
       </NuxtLink>
     </div>
 
@@ -98,36 +138,49 @@ const optionClass = (index: number) => cx(
       <div :class="cx('px-2 py-1', typography.sectionLabel)">
         Releases
       </div>
+      <div class="lg:grid lg:grid-cols-3 lg:gap-1">
+        <NuxtLink
+          v-for="(release, i) in results.releases"
+          :id="`${listboxId}-option-${releaseOffset + i}`"
+          :key="release.id"
+          role="option"
+          :aria-selected="releaseOffset + i === activeIndex"
+          :to="release.artist ? `/artist/${release.artist.slug}?releaseId=${release.id}` : '#'"
+          :class="cx(optionClass(releaseOffset + i), 'text-left w-full')"
+          @click="emit('select')"
+        >
+          <UiThumb size="sm">
+            <img
+              v-if="releaseImage(release)"
+              :src="releaseImage(release)!"
+              :alt="release.title"
+              class="h-full w-full object-cover"
+            >
+            <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
+              <Disc :size="18" :stroke-width="ICON_STROKE_WIDTH" />
+            </div>
+          </UiThumb>
+          <div class="flex-1 overflow-hidden">
+            <p class="truncate text-base font-medium text-stone-100">
+              {{ release.title }}
+            </p>
+            <p v-if="release.artist" class="truncate text-xs text-stone-100/60">
+              {{ release.artist.name }}
+              <span v-if="release.year" class="text-stone-100/50">· {{ release.year }}</span>
+            </p>
+          </div>
+        </NuxtLink>
+      </div>
       <NuxtLink
-        v-for="(release, i) in results.releases"
-        :id="`${listboxId}-option-${releaseOffset + i}`"
-        :key="release.id"
+        v-if="hasMoreReleases"
+        :id="`${listboxId}-option-${releaseViewAllOffset}`"
         role="option"
-        :aria-selected="releaseOffset + i === activeIndex"
-        :to="release.artist ? `/artist/${release.artist.slug}?releaseId=${release.id}` : '#'"
-        :class="cx(optionClass(releaseOffset + i), 'text-left w-full')"
+        :aria-selected="releaseViewAllOffset === activeIndex"
+        :to="searchHref('releases')"
+        :class="viewAllClass(releaseViewAllOffset)"
         @click="emit('select')"
       >
-        <UiThumb size="sm">
-          <img
-            v-if="releaseImage(release)"
-            :src="releaseImage(release)!"
-            :alt="release.title"
-            class="h-full w-full object-cover"
-          >
-          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
-            <Disc :size="18" :stroke-width="ICON_STROKE_WIDTH" />
-          </div>
-        </UiThumb>
-        <div class="flex-1 overflow-hidden">
-          <p class="truncate text-base font-medium text-stone-100">
-            {{ release.title }}
-          </p>
-          <p v-if="release.artist" class="truncate text-xs text-stone-100/60">
-            {{ release.artist.name }}
-            <span v-if="release.year" class="text-stone-100/50">· {{ release.year }}</span>
-          </p>
-        </div>
+        View all →
       </NuxtLink>
     </div>
 
@@ -135,39 +188,52 @@ const optionClass = (index: number) => cx(
       <div :class="cx('px-2 py-1', typography.sectionLabel)">
         Tracks
       </div>
+      <div class="lg:grid lg:grid-cols-3 lg:gap-1">
+        <NuxtLink
+          v-for="(track, i) in results.tracks"
+          :id="`${listboxId}-option-${trackOffset + i}`"
+          :key="track.id"
+          role="option"
+          :aria-selected="trackOffset + i === activeIndex"
+          :to="track.release?.artist ? `/artist/${track.release.artist.slug}?releaseId=${track.release.id}&trackId=${track.id}` : '#'"
+          :class="cx(optionClass(trackOffset + i), 'text-left w-full')"
+          @click="emit('select')"
+        >
+          <UiThumb size="sm">
+            <img
+              v-if="track.release && releaseImage(track.release)"
+              :src="releaseImage(track.release)!"
+              :alt="track.title"
+              class="h-full w-full object-cover"
+            >
+            <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
+              <Music :size="18" :stroke-width="ICON_STROKE_WIDTH" />
+            </div>
+          </UiThumb>
+          <div class="flex-1 overflow-hidden">
+            <p class="truncate text-base font-medium text-stone-100">
+              {{ track.title }}
+            </p>
+            <p v-if="track.release?.artist" class="truncate text-xs text-stone-100/60">
+              {{ track.release.artist.name }}
+              <span v-if="track.release.title" class="text-stone-100/50">· {{ track.release.title }}</span>
+            </p>
+          </div>
+          <span v-if="track.duration" class="text-xs text-stone-100/55 tabular-nums">
+            {{ formatDuration(track.duration) }}
+          </span>
+        </NuxtLink>
+      </div>
       <NuxtLink
-        v-for="(track, i) in results.tracks"
-        :id="`${listboxId}-option-${trackOffset + i}`"
-        :key="track.id"
+        v-if="hasMoreTracks"
+        :id="`${listboxId}-option-${trackViewAllOffset}`"
         role="option"
-        :aria-selected="trackOffset + i === activeIndex"
-        :to="track.release?.artist ? `/artist/${track.release.artist.slug}?releaseId=${track.release.id}&trackId=${track.id}` : '#'"
-        :class="cx(optionClass(trackOffset + i), 'text-left w-full')"
+        :aria-selected="trackViewAllOffset === activeIndex"
+        :to="searchHref('tracks')"
+        :class="viewAllClass(trackViewAllOffset)"
         @click="emit('select')"
       >
-        <UiThumb size="sm">
-          <img
-            v-if="track.release && releaseImage(track.release)"
-            :src="releaseImage(track.release)!"
-            :alt="track.title"
-            class="h-full w-full object-cover"
-          >
-          <div v-else class="flex h-full w-full items-center justify-center text-stone-100/50">
-            <Music :size="18" :stroke-width="ICON_STROKE_WIDTH" />
-          </div>
-        </UiThumb>
-        <div class="flex-1 overflow-hidden">
-          <p class="truncate text-base font-medium text-stone-100">
-            {{ track.title }}
-          </p>
-          <p v-if="track.release?.artist" class="truncate text-xs text-stone-100/60">
-            {{ track.release.artist.name }}
-            <span v-if="track.release.title" class="text-stone-100/50">· {{ track.release.title }}</span>
-          </p>
-        </div>
-        <span v-if="track.duration" class="text-xs text-stone-100/55 tabular-nums">
-          {{ formatDuration(track.duration) }}
-        </span>
+        View all →
       </NuxtLink>
     </div>
   </div>

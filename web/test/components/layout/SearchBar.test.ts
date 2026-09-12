@@ -6,9 +6,10 @@ const { navigateToMock } = vi.hoisted(() => ({ navigateToMock: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigateToMock)
 
 const RESULTS = {
-  artists: [{ id: 'a1', slug: 'radiohead', name: 'Radiohead', image: null, imageUrl: null }],
+  artists: [{ id: 'a1', slug: 'radiohead', name: 'Radiohead', image: null, imageUrl: null, genres: ['Alternative Rock', 'Art Rock'] }],
   releases: [{ id: 'r1', title: 'OK Computer', year: 1997, image: null, imageUrl: null, artist: { slug: 'radiohead', name: 'Radiohead' } }],
   tracks: [],
+  counts: { artists: 1, releases: 1, tracks: 0 },
 }
 
 describe('layout/SearchBar.vue', () => {
@@ -100,6 +101,22 @@ describe('layout/SearchBar.vue', () => {
     await wrapper.get('input').trigger('keydown', { key: 'Escape' })
     expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
     expect((wrapper.get('input').element as HTMLInputElement).value).toBe('radio')
+    vi.useRealTimers()
+  })
+
+  it('shows a "view all" link when a section has more results than the dropdown shows, and Enter with no selection goes to the search page', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ...RESULTS, counts: { artists: 12, releases: 1, tracks: 0 } })
+    vi.stubGlobal('$fetch', fetchMock)
+    vi.useFakeTimers()
+    const wrapper = await mountSuspended(SearchBar)
+    await wrapper.get('input').setValue('radio')
+    await vi.advanceTimersByTimeAsync(300)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('View all →')
+
+    await wrapper.get('input').trigger('keydown', { key: 'Enter' })
+    expect(navigateToMock).toHaveBeenCalledWith('/search/artists?q=radio')
     vi.useRealTimers()
   })
 

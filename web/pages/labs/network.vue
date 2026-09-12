@@ -12,6 +12,7 @@ import { scaleLinear, scaleSqrt } from 'd3-scale'
 import { select } from 'd3-selection'
 import { drag as d3Drag } from 'd3-drag'
 import { zoom as d3Zoom, zoomIdentity } from 'd3-zoom'
+import type { SearchArtist, SearchPage } from '~/types/search'
 import type { NetworkGraph, NetworkGraphNode as GraphNode, NetworkGraphLink as GraphLink } from '~/types/labs'
 import { cssVar } from '~/helpers/theme'
 import { cx, typography, ICON_STROKE_WIDTH, surface, layout } from '~/helpers/ui'
@@ -40,8 +41,8 @@ const doSearch = async (q: string) => {
     searchResults.value = []
     return
   }
-  const data = await $fetch<any>('/api/search', { query: { q, limit: 10 } })
-  searchResults.value = (data.artists || []).map((a: any) => ({
+  const data = await $fetch<SearchPage<SearchArtist>>('/api/search/artists', { query: { q, pageSize: 10 } })
+  searchResults.value = data.items.map(a => ({
     id: a.id,
     name: a.name,
     slug: a.slug,

@@ -94,6 +94,12 @@ const onInputKeydown = (e: KeyboardEvent) => {
       navigateTo(to)
     }
   }
+  else if (e.key === 'Enter') {
+    e.preventDefault()
+    const q = query.value
+    clear()
+    navigateTo(`/search/artists?q=${encodeURIComponent(q)}`)
+  }
   else if (e.key === 'Escape') {
     hideDropdown()
   }
@@ -155,6 +161,7 @@ onBeforeUnmount(() => {
       v-if="showDropdown"
       ref="dropdownRef"
       :results="searchResults"
+      :query="query"
       :listbox-id="listboxId"
       :active-index="activeIndex"
       @select="clear"

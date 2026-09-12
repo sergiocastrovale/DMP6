@@ -10,6 +10,10 @@ const activeTab = defineModel<string>()
 const route = useRoute()
 const listRef = ref<HTMLElement>()
 
+// route.path never carries a query string, but a tab's own href can (search tabs keep `?q=`
+// across tab switches) - strip it before matching or the active tab never lights up.
+const isHrefActive = (href: string) => route.path === href.split('?')[0]
+
 // WAI-ARIA tablist "manual activation" pattern: arrow keys move focus (roving tabindex) among
 // the tabs, independent of which one is selected. Works the same for the route-linked tabs and
 // the model-driven ones since both carry role="tab" + a real/virtual selected state.
@@ -63,9 +67,9 @@ const tabClass = (selected: boolean) => cx(
           v-if="tab.href"
           :to="tab.href"
           role="tab"
-          :aria-selected="route.path === tab.href"
-          :tabindex="route.path === tab.href ? 0 : -1"
-          :class="tabClass(route.path === tab.href)"
+          :aria-selected="isHrefActive(tab.href)"
+          :tabindex="isHrefActive(tab.href) ? 0 : -1"
+          :class="tabClass(isHrefActive(tab.href))"
         >
           <span>{{ tab.label }}</span>
           <span v-if="tab.count !== undefined" :class="countPillClass(tab)">{{ tab.count }}</span>

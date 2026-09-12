@@ -73,6 +73,7 @@ export interface NavEntry {
 
 export interface SearchDropdownProps {
   results: import('./search').SearchResults | null
+  query: string
   listboxId?: string
   activeIndex?: number
 }
