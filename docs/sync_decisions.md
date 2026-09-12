@@ -273,6 +273,21 @@ of each song. Everything below is sync reconstructing a relationship MusicBrainz
 
 Folders sitting side by side inside a parent folder are treated as candidate discs of one thing.
 
+Three sources feed candidate box releases, tried in order until one produces a bind:
+
+1. **The siblings' own embedded MB ids** — the majority `MUSICBRAINZ_ALBUMID` tag across each folder's
+   tracks, looked up directly.
+2. **The release any sibling is already bound to**, when it has more than one medium. A disc that was
+   bound whole-box by the ordinary album matcher (tags name the box, not the disc — see §10) already
+   names the right release; there is no reason to search for it again. This is also what makes a
+   library whose files carry no MB ids at all still discoverable, once even one sibling's `releaseId`
+   points at the box.
+3. **A MusicBrainz search on the parent folder's own title** (`guess_box_title`), for a box no sibling's
+   tag points anywhere near. Strips a leading year and any trailing `(…)` **or `[…]`** annotation —
+   `"2002 - The Single Collection [#74321 96173 2]"` searches as `"The Single Collection"` (catalogue
+   numbers in brackets used to return zero hits, since MusicBrainz's own title carries neither
+   suffix).
+
 **Why this runs once at the end of sync, not per artist as each one is synced:** a box's siblings and
 their standalone twin can belong to *different* artist rows (compilations, VA sets) — not scoped to one
 artist. And fold/dissolve needs every release this run matched already sitting in the DB, since a disc's
@@ -317,6 +332,11 @@ material from two different records. One tidy entry is the right answer there.
 
 Discs with no standalone equivalent (a rarities disc, a bonus disc) stay attached to the box.
 
+A group whose box root folder is **already its own `LocalRelease`** (a different album genuinely filed
+at that exact path — its `groupKey` is `folder:<that path>`) is left alone rather than folded: folding
+would need to delete or rehome that other release, and that is a decision for a person, not something a
+repair pass invents on its own. The group is reported and counted, not bound.
+
 ### Recognising a disc as a standalone album
 
 Three methods, each tried only on what the previous left unresolved:
@@ -328,6 +348,43 @@ Three methods, each tried only on what the previous left unresolved:
 3. **The disc contains an entire album plus extras** — for when the box uses a bonus-track version that
    MusicBrainz never catalogued separately. Only runs on discs that have a name to search with, and if
    two albums both fit, it gives up rather than choose.
+
+Before any of this runs, `MusicBrainzReleaseMedium.equivalentReleaseId`/`equivalentReleaseGroupId`/
+`equivalentMediumPosition` values that point at a `MusicBrainzRelease` row that no longer exists are
+cleared. The column has no foreign key, and the orphan-release sweep (`delete_orphaned_mb_releases`)
+does not know to touch it, so a dissolved-box target deleted for unrelated reasons (a merge, a bad
+match undone) leaves the equivalence dangling forever otherwise — tiers 1-3 only ever fill a `NULL`,
+never correct a stale value. Left dangling, it also used to fail the whole repair pass outright: see
+the next section.
+
+### One box never blocks the rest
+
+Binding and placing a box writes to the database per group, and — like any batch of independent writes
+— one group's failure must not take the rest down with it. Every group is bound, folded or dissolved
+inside its own error boundary: a failure is logged with the group's folder path and counted, and the
+pass moves on to the next group.
+
+This was not always true, and the two real failures it caused are why it matters enough to write down.
+`run_repair` used to propagate every write error straight out with `?`, which stops the loop entirely —
+not just for that group, for every group still to come, on every run, until whatever caused the first
+failure is fixed. Groups are visited in the same order each time (sorted by parent path), so the loop
+died at the same place, run after run:
+
+- **2026-09-06:** an `apply_fold` collided on `LocalRelease.groupKey` — the box's root folder was
+  already its own `LocalRelease` (now the "left alone" case above; at the time there was no such case,
+  fold just failed).
+- **2026-09-10, the rollout run itself:** `apply_dissolve` tried to write a dangling
+  `equivalentReleaseId` into `LocalRelease.releaseId` and hit its foreign key (now prevented — see
+  above).
+
+Between those two dates, and after the second, every sync's box pass silently placed **zero** further
+groups: `find_sibling_groups` visits parents in a fixed order, so a group before the one that finally
+failed the invocation blocked everything after it — including HIM's "The Single Collection", 588
+groups behind the alphabet, and every group synced after 2026-09-10. The rollout's own final counts
+(133 dissolved discs, 395 fold members, see the top of `docs/containment.md`) are frozen at whatever
+had bound before that run's abort, not the true total. `apply_dissolve` also writes every member inside
+one transaction now, so a failure partway through never leaves some of a box's discs moved and others
+not.
 
 ---
 
@@ -346,6 +403,12 @@ always "succeeded" and restarted the fight), and the box pass only writes when s
 changed.
 
 If box discs ever show "unknown" again across repeated syncs, this is the first place to look.
+
+If instead every disc of a box sits `MISSING_TRACKS` and shows the *box's own* title on every card
+(scored against every medium, not its own one), the box pass never placed it at all — check
+`logs/errors.log` for `Box-set repair error` first (§9's "one box never blocks the rest"), then the
+sync run's own `Box sets: N group(s) bound (F folded, D dissolved, K key-taken, X failed)` line for
+groups that were seen but not bound.
 
 ---
 
@@ -468,65 +531,49 @@ Order:
 
 ## 17. Measurements taken during the 2026-09-10 identity investigation
 
-Baseline, for comparing against after the fix and repair land — re-run the same query, expect the
-"contradicts" row to fall toward zero and the "confirms" row to stay put:
+**Closed — kept as a compressed record, not an open task.** Before the fix: 1,269 of 39,684 artist
+entries held an identity contradicting an independent name lookup (1,646 albums), across 149 groups of
+entries wrongly sharing one identity. After §5's certainty gate shipped and
+`./sync --repair-artist-identities` ran for real the same day: **0 contradicting entries**, confirms held
+steady (37,382 → 37,394). Pass B cleared 1,268 identities; Pass C resolved 17 of 149 shared-id groups (the
+rest had already collapsed once Pass B ran first). A second, immediate re-run found 0/0/0 to do, confirming
+the repair does not re-touch what it already fixed.
+
+**11 shared-id groups deliberately left unmerged** — inspection showed each is *not* the ambiguous
+collision Pass C's rule targets (both members independently confirm the same id), but one real
+MusicBrainz artist filed under two local `Artist` rows (full name vs. surname, an MB alias pair). That's
+a **duplicate-row merge** (`index --canonicalize-artists` / §4's `primaryArtistId` linking), a different
+job — nothing here is wrong, so §5/§6 has nothing to withhold. Examples: Jorge Ben / Jorge Ben Jor, Soda
+/ Soda Stereo, Henderson / Joe Henderson, Prague Philharmonic Orchestra's three spellings. Full list and
+the baseline query are in git history for this section if ever needed again.
+
+### Measurements taken during the 2026-09-11 box-set investigation
+
+HIM's "The Single Collection" showing as 10 identical cards led to this. Read-only, against prod:
 
 ```sql
-SELECT CASE WHEN l.name IS NULL THEN 'unknown'
-            WHEN l.mbid IS NULL THEN 'unresolvable'
-            WHEN l.mbid = a."musicbrainzId" THEN 'CONFIRMS'
-            ELSE 'CONTRADICTS' END AS verdict,
-       count(*), sum((SELECT count(*) FROM "LocalReleaseArtist" x WHERE x."artistId"=a.id))
-  FROM "Artist" a LEFT JOIN "MbArtistLookup" l ON l.name = a.name
- WHERE a."musicbrainzId" IS NOT NULL AND a."musicbrainzId" <> '' GROUP BY 1;
+WITH lr AS (SELECT lr.*, regexp_replace(lr."folderPath", '/[^/]+$', '') parent
+            FROM "LocalRelease" lr WHERE lr."folderPath" IS NOT NULL
+              AND array_length(string_to_array(lr."folderPath", '/'), 1) >= 4),
+bad AS (SELECT lr.parent FROM lr JOIN "MusicBrainzRelease" m ON m.id = lr."releaseId"
+        WHERE m."mediumCount" > 1 AND lr."mediumPosition" IS NULL AND lr."boxReleaseId" IS NULL
+        GROUP BY lr.parent HAVING count(*) > 1)
+SELECT count(DISTINCT parent) groups, count(*) rows FROM lr JOIN bad USING (parent);
 ```
 
-| Verdict | Entries | Albums |
-|---|---|---|
-| Confirms its own identity | 37,382 | 151,881 |
-| **Contradicts its own identity** | **1,269** | **1,646** |
-| No independent answer on record | 1,929 | 1,316 |
-| Independent answer says unresolvable | 104 | 408 |
-
-Also measured: **149** groups of entries sharing one identity that should not be shared, and **15,493**
-tracks whose embedded name/id pair disagrees with the independent answer for that same name.
-
-**Outcome, after §5's gate shipped and `./sync --repair-artist-identities` ran for real (same day):**
-
-| Verdict | Entries | Albums |
-|---|---|---|
-| Confirms its own identity | 37,394 | 152,124 |
-| **Contradicts its own identity** | **0** | **0** |
-| No independent answer on record | 1,908 | 1,314 |
-| Independent answer says unresolvable | 101 | 406 |
-
-Confirms held (and grew slightly — the containment relink was running concurrently), contradicts fell to
-zero. Pass B cleared 1,268 identities; Pass C resolved 17 shared-id groups (of the original 149, most had
-already collapsed to size 1 once Pass B ran — B runs first in the same invocation). **11 groups remain**,
-and inspecting them shows they are not the ambiguous-collision case Pass C's rule is written for: in
-every one, *both* members' names are independently confirmed for the same id. That is not two artists
-disputing one identity — it is one real MusicBrainz artist filed locally under two separate `Artist` rows
-(full name vs. surname, band name vs. abbreviation, an MB alias pair), each spelling correctly resolving
-to the same MB entity. Fixing that is a **duplicate-row merge** (`index --canonicalize-artists` / §4's
-`primaryArtistId` linking), not an identity de-match — nothing here is wrong, so §5/§6 has nothing to
-withhold. Left unmerged for now; not a defect this repair introduced or should touch.
-
-| Shared id | Rows (releases) |
+| Measure | Count |
 |---|---|
-| `19499124…` | Jorge Ben (3), Jorge Ben Jor (42) |
-| `3f8a5e5b…` | Soda (1), Soda Stereo (16) |
-| `5ae54dee…` | Glass (1), Philip Glass (1) |
-| `6f550455…` | Lukas Nelson & Promise of the Real (18), Promise of the Real (1) |
-| `786b89d8…` | King Orgasmus One (3), \Orgasmus (1) |
-| `a992aada…` | Joaquín Sabina (27), Sabina (1) |
-| `b41eef63…` | Dixon (1), Floyd Dixon (0) |
-| `b8f18583…` | Dr. Mark Benecke (1), Mark Benecke (1) |
-| `bcab8301…` | Henderson (0), Joe Henderson (37) |
-| `d1fad5a9…` | Cristina Soto (0), Soto (0) |
-| `d8451fb8…` | Prague Philharmonic Orchestra (1), The City Of Prague Philharmonic (1), The City of Prague Philharmonic Orchestra (2) |
+| Split-disc groups (all siblings share one parent folder) bound to a `mediumCount > 1` release but never placed on their own medium | 1,300 |
+| Unplaced disc rows inside those groups | 3,411 (2,713 `MISSING_TRACKS`, 588 `UNKNOWN`) |
+| `MusicBrainzReleaseMedium.equivalentReleaseId` pointing at a deleted release | 35 of 14,001 |
+| Groups whose box root folder already holds a `LocalRelease` at that exact path (fold key collision) | 10 |
+| Groups a Python port of `plan_box_bind` (real title+duration pairing, same three-pass rule) says bind cleanly once the abort is fixed | 988 |
+| Groups the same simulation correctly refuses (a sibling matches no disc, an ambiguous sibling, or two siblings claiming one disc) | 312 (280 / 31 / 1) |
 
-A second, immediate re-run of the repair found 0/0/0 to do, confirming it does not re-touch what it
-already fixed.
+**Expected after this fix lands and a full sync runs:** unplaced rows falling from 3,411 toward roughly
+1,000 (the 312 correctly-refused groups, §19 item 1, plus the 10 key-collision groups, minus whatever
+the item-1 edition/partial-bind work later reclaims), and no new `Box-set repair error` in
+`logs/errors.log`. Re-run the query above to check.
 
 ## 18. Where to start digging
 
@@ -540,6 +587,7 @@ already fixed.
 | "Missing tracks" on an album that looks complete | §8 |
 | Box set shown as one lump, or as scattered discs | §9 |
 | Box discs stuck on "unknown" across runs | §10 |
+| Several identical-looking cards for one release — really a box's discs, unplaced | §9, §10, §17 |
 | Album listed missing that you own | §11, §9 |
 | "Songs inside another release" note looks wrong | §12 |
 | Sync too slow, or MusicBrainz errors | §13 |
@@ -547,3 +595,163 @@ already fixed.
 
 Useful commands: `./sync --repair-artist-identities --dry-run`,
 `./sync --only "Artist" --exact --verbose`, `./audit`.
+
+## 19. To do next
+
+Left open by the 2026-09-11 box-set investigation (§17). Each item below is self-contained — symptom,
+cause, fix, safety, verification — so it can be picked up on its own, without re-deriving context.
+
+### 1. Refused split-disc groups (312, §17)
+
+**Symptom:** discs bound to the whole box, `MISSING_TRACKS`, never placed — `plan_box_bind` correctly
+refuses the group rather than guess. Re-run §17's simulation for the current count. 280 fail because "a
+sibling matches no disc", 31 because a sibling matches more than one, 1 because two siblings claim the
+same disc. Examples: 311 "Archives (1992-2014) [4 CD]", ABBA "Golden Double Album, 2LP", Andrew Bird
+"Are You Serious (Deluxe Box Set)", David Bowie's SACD hybrid discs (`…/02 - DSD`).
+
+**Two distinct causes, two distinct fixes:**
+
+- **(a) The bound release is a different edition than the rip.** The disc really is a box disc, but not
+  of *this* edition of the box — MusicBrainz catalogues several (region/label variants) and sync bound
+  whichever one the matcher happened to pick. Fix: when the currently-bound candidate fails
+  `plan_box_bind`, fetch its release group's other editions (`mb_api::mb_get_release_tracks`, one
+  paginated call, same helper §9's discovery already has available) and try each until one binds. Uses
+  the existing perfect-match rule as-is — no loosening, just more candidates.
+- **(b) An extra sibling folder that is on no disc of any edition** — a bonus DVD-audio folder, a
+  hi-res/SACD duplicate layer sitting beside the CD rip. Fix: allow a **partial** bind — at least 2
+  siblings match a distinct medium each, and every *unmatched* sibling matches zero media of the
+  chosen candidate (never "matches but ambiguously" — that still refuses). The unmatched siblings are
+  left exactly as they are; nothing about them changes.
+
+**Safety:** unit tests built from real tracklists (ABBA's box, a Bowie SACD hybrid) covering both
+causes and confirming a genuinely ambiguous sibling still refuses. Re-run §17's simulation with the new
+logic before any write, and compare its refused list to the current 312.
+
+**Verify:** the refused-group count falls; no group binds with a sibling claiming two media; the 988
+already-bindable groups still bind identically.
+
+### 2. Shared multi-medium releases across different parent folders (370 releases, 1,581 rows)
+
+**Symptom:** unlike the split-disc case above, these are folders in **different** parent directories
+all bound to one multi-medium `MusicBrainzRelease`. (`SELECT` the same query as §17's but drop the
+`GROUP BY lr.parent HAVING count(*) > 1` grouping and instead group by `lr."releaseId"` with
+`count(DISTINCT parent) > 1`.)
+
+**Cause:** almost certainly duplicate copies of the same release filed under two folder names — see
+`project_shared_releaseid_mismatch` (a prior memory/finding): measured 99.4% same-title duplicate
+copies, not real mismatches. A minority are a box's discs genuinely filed apart from each other.
+
+**Fix:** classify each release with `common::release_pairs` (already used elsewhere for this exact
+same-title-duplicate distinction):
+- A true duplicate is queued through the existing `./audit --duplicate-release` review flow — no new
+  mechanism.
+- A genuinely separated set of discs gets a medium-level bind **without folding**: `pair_tracks` each
+  folder against exactly one medium and set `LocalRelease.mediumPosition` on it directly. No folder
+  moves, no row is deleted, no `LocalReleaseMember` involved — this is a distinct, smaller repair than
+  §9's fold/dissolve.
+
+**Verify:** every one of the 370 releases ends up either queued as a duplicate or with each of its
+folders sitting on a distinct `mediumPosition`; none left as they are now.
+
+### 3. Dissolved boxes re-fetched from MusicBrainz on every unscoped run
+
+**Symptom:** the box pass's tail runtime grows with the number of already-dissolved boxes in the
+library — each one still costs a cold MB lookup (~10s) every unscoped sync, for no new information.
+
+**Cause:** `find_sibling_groups` (`boxset.rs`) doesn't exclude groups that are already fully placed,
+which is deliberate — a new equivalence appearing should be able to re-home a disc that folded before
+one existed. But a box that already dissolved cleanly has nothing left to discover.
+
+**Fix:** for a group where every sibling already has `mediumPosition` or `boxReleaseId` set and the
+box's own `MusicBrainzRelease`/media rows already exist, build the bind plan straight from those stored
+values (members = stored positions) and skip `candidates_from_embedded_ids`/`candidates_from_search`/
+`persist_box_media` entirely. Still run `box_editions::run_link_box_editions`'s re-derivation over it —
+that's what lets a disc move later when a new equivalence appears.
+
+**Verify:** a second unscoped `./sync` run makes zero MusicBrainz calls attributable to already-placed
+groups (spot-check the `--verbose` MB request log), and a disc placed on the box still relocates once
+its standalone equivalent is later added to the catalogue (regression test: run once with the
+equivalent absent, add it, run again, confirm the move).
+
+### 4. Cover-art embedding strips MusicBrainz frames from MP3s
+
+**Symptom:** an MP3 that had a Picard-written `MusicBrainz Album Id` / `Release Group Id` / `Release
+Track Id` TXXX frame loses it the first time sync embeds cover art (step 8, "Cover art"). This is the
+same lofty generic-`Tag` bug documented in `CLAUDE.md`'s MP3 note (fixed for `common::tags` in the
+2026-09-11 recording-tag-slot fix) — it was never fixed at every call site.
+
+**Where it still happens:** `common::images::embed_cover_art` (runs in every sync that downloads new
+cover art), plus `fix/src/tags.rs`'s and `problems/src/fix/tags.rs`'s writers — all three still resave
+an MP3 through lofty's generic `Tag`.
+
+**Consequence for §9:** an MP3 box disc that loses its `MUSICBRAINZ_ALBUMID` this way becomes invisible
+to tier (a) discovery again after its next cover-art embed, even after this fix and even after a
+SongKong re-tag — until the file is re-indexed and the next box pass re-derives via tier (b)/(c) or the
+already-bound-release source (§9's source 2).
+
+**Fix:** route MPEG files in each of the three writers through the concrete `Id3v2Tag` type instead of
+the generic `Tag` — the same technique `common::tags`'s `MbSlots` already uses (see `CLAUDE.md`'s MP3
+note for why: lofty's generic→ID3v2 conversion drops these three TXXX frames on save and outright
+rejects the recording-id key). `Id3v2Tag::insert_picture` covers the cover-art case;
+`fix`/`problems`'s writers need the same `open`/`save` swap `common::tags` made.
+
+**Measure first:** before touching anything, sample MP3s whose `LocalReleaseTrack.metadata` JSON
+snapshot (captured at index time) has a `MusicBrainzReleaseId` key, and check whether the *current* file
+still has it — this sizes how much has already been lost, separate from stopping further loss.
+
+**Verify:** an ffmpeg fixture carrying real TXXX frames (the pattern in
+`scripts/common/tests/tags_roundtrip.rs::mp3_resave_keeps_existing_musicbrainz_frames`), embed a cover
+through each fixed writer, confirm every MusicBrainz frame is still present afterward.
+
+### 5. Recording-tags cleanup + box-set rollout (started 2026-09-11, unfinished)
+
+A **separate, unrelated bug** from everything else in this document: `common::tags::write_mb_ids` used
+to write a track's release-track id into the recording-id tag slot. Already fixed and deployed
+(commit `3549964b`), with a new `./sync --repair-recording-tags [--dry-run] [--only x]` to rewrite
+files a past run already damaged this way. Not documented elsewhere in this file because it has nothing
+to do with box sets, artist identity, or any matching decision above — it only touches which MB id
+lands in which tag.
+
+**Status when this was written:** a library-wide `./sync --repair-recording-tags --dry-run --verbose`
+has been running in NAS tmux session `repair` since 2026-09-11 20:06 (`ssh nas`, `tmux attach -t repair`
+to watch live; output also tee'd to `/tmp/repair-dry-run.log`). It is read-only (no `--dry-run` means no
+writes happen either way at the "would fix" stage) but holds the DB scan lock
+(`Statistics.scanLockedBy = 'sync'`) for its entire run, and at last check was projected to take on the
+order of a day and a half to cover the whole library — check `tail -20 /tmp/repair-dry-run.log` and
+compare the `[n/45995]` progress line to gauge how much is left.
+
+This also blocks the box-set fix's own rollout (§9/§17/§9's earlier items), which needs the scan lock
+free. The two are independent code paths and would not corrupt anything running concurrently (the
+recording-tags pass writes nothing during a dry run), but both are disk-I/O heavy, so running them
+together just slows each down. The lock itself has no heartbeat - any binary's own
+`clear_stale_lock_minutes(pool, 10)` will silently steal a lock older than 10 minutes even from a
+process that is still very much alive, so starting a second scan doesn't even wait for the first to
+release it cleanly.
+
+**When told the script has finished (or to stop waiting for it), do this:**
+
+1. `ssh nas 'tail -20 /tmp/repair-dry-run.log; tmux ls'` - confirm it actually finished (reads a final
+   summary line: "N file(s) read across M artist(s)…") or is being killed instead.
+2. If proceeding without waiting: `ssh nas 'tmux kill-session -t repair'` - safe, it is a dry run.
+3. Run the box-set rollout: `./index --folders "HIM/Album/2002 - The Single Collection [#74321 96173 2]"`
+   (picks up the MB ids SongKong already wrote into these files, since `LocalReleaseTrack.mbReleaseId`
+   had not caught up as of 2026-09-11), then `./sync --only "HIM" --exact` (expect one bound/folded
+   box-set group in the summary line), then an unscoped `./sync` (the box pass runs its tail over every
+   group library-wide; read its `Box sets: N group(s) bound (F folded, D dissolved, K key-taken,
+   X failed)` line), then a second unscoped `./sync` to re-score the newly-`UNKNOWN` rows.
+4. Re-run §17's split-disc SQL. Expect unplaced rows to fall from 3,411 toward roughly 1,000 (§19 items
+   1's 312 correctly-refused groups plus the 10 key-collision groups), and no new `Box-set repair error`
+   in `logs/errors.log`.
+5. If the recording-tags dry-run was killed rather than finished, it can be safely re-run standalone
+   later (`--only` an artist, or unscoped) whenever the NAS is otherwise idle - it is independent of
+   everything else in this checklist.
+
+**Exact text to send when ready:**
+
+> The recording-tags script finished. Proceed with the box-set rollout (docs/sync_decisions.md §19
+> item 5).
+
+Or, to proceed without waiting for it:
+
+> Don't wait for the recording-tags script. Kill it and proceed with the box-set rollout now
+> (docs/sync_decisions.md §19 item 5).

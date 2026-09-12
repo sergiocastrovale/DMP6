@@ -27,6 +27,7 @@ use sqlx::PgPool;
 
 #[derive(Default)]
 pub struct LinkSummary {
+    pub dangling_cleared: u64,
     pub exact_linked: u64,
     pub fallback_candidates: usize,
     pub fallback_linked: usize,
@@ -34,6 +35,28 @@ pub struct LinkSummary {
     pub containment_candidates: usize,
     pub containment_linked: usize,
     pub containment_ambiguous: usize,
+}
+
+/// Step 0: clear an `equivalentReleaseId` (and its `equivalentReleaseGroupId`/
+/// `equivalentMediumPosition` companions) that points at a `MusicBrainzRelease` row that no longer
+/// exists. The column carries no foreign key, and the orphan-release sweep
+/// (`db::delete_orphaned_mb_releases`) has no reason to know this column exists, so a dissolved box's
+/// target deleted for an unrelated reason (a merge, a bad match undone) leaves the equivalence dangling
+/// forever - the tiers below only ever fill a `NULL`, never correct a stale value. Left dangling, it
+/// also fails the whole repair pass outright: `apply_dissolve` writes it straight into
+/// `LocalRelease.releaseId`, which has a real foreign key (docs/sync_decisions.md §9 "One box never
+/// blocks the rest" - this is the 2026-09-10 rollout's own abort).
+pub async fn clear_dangling_equivalences(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"UPDATE "MusicBrainzReleaseMedium" m
+           SET "equivalentReleaseId" = NULL, "equivalentReleaseGroupId" = NULL,
+               "equivalentMediumPosition" = NULL, "updatedAt" = now()
+           WHERE m."equivalentReleaseId" IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM "MusicBrainzRelease" r WHERE r.id = m."equivalentReleaseId")"#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
 }
 
 /// Step 1: exact recording-set equi-join, pure SQL.
@@ -149,7 +172,10 @@ async fn unlinked_media(pool: &PgPool) -> Result<Vec<UnlinkedMedium>, sqlx::Erro
     Ok(media)
 }
 
-async fn artist_ids_for_release(pool: &PgPool, release_id: &str) -> Result<Vec<String>, sqlx::Error> {
+async fn artist_ids_for_release(
+    pool: &PgPool,
+    release_id: &str,
+) -> Result<Vec<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"SELECT "artistId" FROM "MusicBrainzReleaseArtist" WHERE "releaseId" = $1"#,
     )
@@ -200,9 +226,12 @@ fn tracks_match(medium: &[(String, Option<i32>)], release: &[(String, Option<i32
     if medium.len() != release.len() || medium.len() < 3 {
         return false;
     }
-    medium.iter().zip(release.iter()).all(|((mt, ms), (rt, rs))| {
-        normalize_title(mt) == normalize_title(rt) && durations_compatible(*ms, *rs)
-    })
+    medium
+        .iter()
+        .zip(release.iter())
+        .all(|((mt, ms), (rt, rs))| {
+            normalize_title(mt) == normalize_title(rt) && durations_compatible(*ms, *rs)
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -309,14 +338,17 @@ fn resolve_containment_winner<'a>(
         .iter()
         .filter(|c| c.release_id != medium_release_id)
         .filter(|c| title_loosely_matches(medium_title, &c.title))
-        .filter(|c| crate::owned::find_owning_bundle(&c.tracks, std::slice::from_ref(&bundle)).is_some())
+        .filter(|c| {
+            crate::owned::find_owning_bundle(&c.tracks, std::slice::from_ref(&bundle)).is_some()
+        })
         .collect();
 
     match hits[..] {
         [hit] => ContainmentOutcome::Linked(hit),
         [] => ContainmentOutcome::None,
         _ => {
-            let originals: Vec<&&ContainmentCandidate> = hits.iter().filter(|c| c.is_original_work).collect();
+            let originals: Vec<&&ContainmentCandidate> =
+                hits.iter().filter(|c| c.is_original_work).collect();
             match originals[..] {
                 [only] => ContainmentOutcome::Linked(*only),
                 _ => ContainmentOutcome::Ambiguous,
@@ -329,8 +361,19 @@ fn resolve_containment_winner<'a>(
 /// normal sync run, scoped to the artists it touched, never as a user-facing flag (docs/sync_decisions.md
 /// §12). The user's explicit call: no dry-run anywhere in this rollout, `./backup` is the recovery
 /// path instead.
-pub async fn run_link_box_editions(pool: &PgPool, reporter: &Reporter) -> Result<LinkSummary, sqlx::Error> {
+pub async fn run_link_box_editions(
+    pool: &PgPool,
+    reporter: &Reporter,
+) -> Result<LinkSummary, sqlx::Error> {
     let mut summary = LinkSummary::default();
+
+    summary.dangling_cleared = clear_dangling_equivalences(pool).await?;
+    if summary.dangling_cleared > 0 {
+        reporter.info(&format!(
+            "Cleared {} dangling equivalence(s) (target release no longer exists)",
+            summary.dangling_cleared
+        ));
+    }
 
     summary.exact_linked = link_by_recording_fingerprint(pool).await?;
     reporter.info(&format!(
@@ -393,7 +436,11 @@ pub async fn run_link_box_editions(pool: &PgPool, reporter: &Reporter) -> Result
     let still_unlinked = unlinked_media(pool).await?;
     summary.containment_candidates = still_unlinked
         .iter()
-        .filter(|m| m.medium_title.as_deref().is_some_and(|t| !t.trim().is_empty()))
+        .filter(|m| {
+            m.medium_title
+                .as_deref()
+                .is_some_and(|t| !t.trim().is_empty())
+        })
         .count();
     reporter.info(&format!(
         "{} medium(s) still unlinked with a title - trying containment match",
@@ -418,15 +465,15 @@ pub async fn run_link_box_editions(pool: &PgPool, reporter: &Reporter) -> Result
         }
         let candidates = &containment_by_artist_key[&cache_key];
 
-        let winner = match resolve_containment_winner(medium_title, &m.tracks, &m.release_id, candidates)
-        {
-            ContainmentOutcome::Linked(hit) => hit,
-            ContainmentOutcome::Ambiguous => {
-                summary.containment_ambiguous += 1;
-                continue;
-            }
-            ContainmentOutcome::None => continue,
-        };
+        let winner =
+            match resolve_containment_winner(medium_title, &m.tracks, &m.release_id, candidates) {
+                ContainmentOutcome::Linked(hit) => hit,
+                ContainmentOutcome::Ambiguous => {
+                    summary.containment_ambiguous += 1;
+                    continue;
+                }
+                ContainmentOutcome::None => continue,
+            };
 
         summary.containment_linked += 1;
         sqlx::query(
@@ -459,8 +506,16 @@ mod tests {
 
     #[test]
     fn matches_identical_tracklists_within_duration_tolerance() {
-        let medium = vec![t("Ring Ring", Some(185)), t("Waterloo", Some(180)), t("ABBA", Some(200))];
-        let release = vec![t("ring ring", Some(186)), t("Waterloo", Some(183)), t("A.B.B.A.", Some(198))];
+        let medium = vec![
+            t("Ring Ring", Some(185)),
+            t("Waterloo", Some(180)),
+            t("ABBA", Some(200)),
+        ];
+        let release = vec![
+            t("ring ring", Some(186)),
+            t("Waterloo", Some(183)),
+            t("A.B.B.A.", Some(198)),
+        ];
         assert!(tracks_match(&medium, &release));
     }
 
@@ -490,13 +545,21 @@ mod tests {
     // Tier 3: containment (resolve_containment_winner)
     // -----------------------------------------------------------------------
 
-    fn candidate(release_id: &str, title: &str, is_original_work: bool, tracks: &[(&str, i32)]) -> ContainmentCandidate {
+    fn candidate(
+        release_id: &str,
+        title: &str,
+        is_original_work: bool,
+        tracks: &[(&str, i32)],
+    ) -> ContainmentCandidate {
         ContainmentCandidate {
             release_id: release_id.to_string(),
             release_group_id: Some(format!("rg-{release_id}")),
             title: title.to_string(),
             is_original_work,
-            tracks: tracks.iter().map(|(title, secs)| (title.to_string(), Some(*secs))).collect(),
+            tracks: tracks
+                .iter()
+                .map(|(title, secs)| (title.to_string(), Some(*secs)))
+                .collect(),
         }
     }
 
@@ -506,7 +569,10 @@ mod tests {
         assert!(title_loosely_matches("ABBA – The Album LP", "The Album"));
         assert!(title_loosely_matches("The Album", "ABBA – The Album LP"));
         // Real case: "David Bowie a.k.a. Space Oddity" vs. the canonical "Space Oddity".
-        assert!(title_loosely_matches("David Bowie a.k.a. Space Oddity", "Space Oddity"));
+        assert!(title_loosely_matches(
+            "David Bowie a.k.a. Space Oddity",
+            "Space Oddity"
+        ));
         assert!(!title_loosely_matches("The Album", "Waterloo"));
     }
 
@@ -530,9 +596,14 @@ mod tests {
             "ringring1",
             "Ring Ring",
             true,
-            &[("Ring Ring", 186), ("Another Town, Another Train", 181), ("Disillusion", 199)],
+            &[
+                ("Ring Ring", 186),
+                ("Another Town, Another Train", 181),
+                ("Disillusion", 199),
+            ],
         )];
-        match resolve_containment_winner("ABBA – Ring Ring LP", &medium_tracks, "box1", &candidates) {
+        match resolve_containment_winner("ABBA – Ring Ring LP", &medium_tracks, "box1", &candidates)
+        {
             ContainmentOutcome::Linked(hit) => assert_eq!(hit.release_id, "ringring1"),
             _ => panic!("expected a containment match"),
         }
@@ -542,7 +613,12 @@ mod tests {
     fn never_matches_a_medium_against_a_sibling_of_the_same_release() {
         // A box's own other discs must never be offered as "equivalent" to one of its own media.
         let medium_tracks = vec![t("A", Some(100)), t("B", Some(100)), t("C", Some(100))];
-        let candidates = vec![candidate("box1", "Sibling Disc", true, &[("A", 100), ("B", 100)])];
+        let candidates = vec![candidate(
+            "box1",
+            "Sibling Disc",
+            true,
+            &[("A", 100), ("B", 100)],
+        )];
         assert!(matches!(
             resolve_containment_winner("Sibling Disc", &medium_tracks, "box1", &candidates),
             ContainmentOutcome::None
@@ -553,11 +629,31 @@ mod tests {
     fn ambiguous_containment_tie_breaks_on_original_work() {
         // Three same-titled candidates satisfy containment; only one is an "original work" (empty
         // releaseGroupSecondaryTypes) - the ABBA "three release-groups titled ABBA" shape.
-        let medium_tracks = vec![t("X", Some(100)), t("Y", Some(100)), t("Z", Some(100)), t("Bonus", Some(100))];
+        let medium_tracks = vec![
+            t("X", Some(100)),
+            t("Y", Some(100)),
+            t("Z", Some(100)),
+            t("Bonus", Some(100)),
+        ];
         let candidates = vec![
-            candidate("comp1", "ABBA", false, &[("X", 100), ("Y", 100), ("Z", 100)]),
-            candidate("album1", "ABBA", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
-            candidate("comp2", "ABBA", false, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate(
+                "comp1",
+                "ABBA",
+                false,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
+            candidate(
+                "album1",
+                "ABBA",
+                true,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
+            candidate(
+                "comp2",
+                "ABBA",
+                false,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
         ];
         match resolve_containment_winner("ABBA", &medium_tracks, "box1", &candidates) {
             ContainmentOutcome::Linked(hit) => assert_eq!(hit.release_id, "album1"),
@@ -569,10 +665,25 @@ mod tests {
     fn ambiguous_containment_left_unset_when_the_tie_break_cannot_resolve_it() {
         // Two candidates, both (or neither) "original work" - genuinely ambiguous, left unset rather
         // than guessed (the MB-side cataloguing-duplicate "Kind of Blue" shape).
-        let medium_tracks = vec![t("X", Some(100)), t("Y", Some(100)), t("Z", Some(100)), t("Bonus", Some(100))];
+        let medium_tracks = vec![
+            t("X", Some(100)),
+            t("Y", Some(100)),
+            t("Z", Some(100)),
+            t("Bonus", Some(100)),
+        ];
         let candidates = vec![
-            candidate("kob1", "Kind of Blue", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
-            candidate("kob2", "Kind of Blue", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate(
+                "kob1",
+                "Kind of Blue",
+                true,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
+            candidate(
+                "kob2",
+                "Kind of Blue",
+                true,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
         ];
         assert!(matches!(
             resolve_containment_winner("Kind of Blue", &medium_tracks, "box1", &candidates),
@@ -583,7 +694,12 @@ mod tests {
     #[test]
     fn no_candidate_satisfies_containment_leaves_medium_unlinked() {
         let medium_tracks = vec![t("X", Some(100)), t("Y", Some(100)), t("Z", Some(100))];
-        let candidates = vec![candidate("other", "Something Else", true, &[("Q", 100), ("R", 100)])];
+        let candidates = vec![candidate(
+            "other",
+            "Something Else",
+            true,
+            &[("Q", 100), ("R", 100)],
+        )];
         assert!(matches!(
             resolve_containment_winner("Rarities", &medium_tracks, "box1", &candidates),
             ContainmentOutcome::None

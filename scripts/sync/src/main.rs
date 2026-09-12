@@ -200,8 +200,13 @@ async fn search_release_candidate(
     // first for an album's own name (searching "Amnesiac" by Radiohead returns the *single* at score
     // 100 and the album at score 100 behind it). Taking only the best hit meant one disallowed
     // candidate hid the correct album and the release stayed Unmatched.
-    let hits = match mb_api::mb_search_release_groups(http_client, local_title, artist_name, limiter)
-        .await
+    let hits = match mb_api::mb_search_release_groups(
+        http_client,
+        local_title,
+        artist_name,
+        limiter,
+    )
+    .await
     {
         Ok(hits) => hits,
         Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::Transient => {
@@ -495,7 +500,10 @@ async fn main() {
                     ));
                 }
                 reporter.blank();
-                let promoted = done.iter().filter(|r| r.action.starts_with("promoted")).count();
+                let promoted = done
+                    .iter()
+                    .filter(|r| r.action.starts_with("promoted"))
+                    .count();
                 let unlinked = done.len() - promoted;
                 reporter.done(&format!(
                     "Pass A: {} artist(s) {}: {} promoted over an alias, {} unlinked as different artists",
@@ -521,7 +529,11 @@ async fn main() {
                 reporter.done(&format!(
                     "Pass B: {} artist identity(-ies) {}",
                     done.len(),
-                    if args.dry_run { "would be cleared" } else { "cleared" }
+                    if args.dry_run {
+                        "would be cleared"
+                    } else {
+                        "cleared"
+                    }
                 ));
             }
             Err(e) => reporter.err(&format!("Pass B error: {}", e)),
@@ -549,7 +561,11 @@ async fn main() {
                 reporter.done(&format!(
                     "Pass C: {} shared-id group(s) {}",
                     done.len(),
-                    if args.dry_run { "would be resolved" } else { "resolved" }
+                    if args.dry_run {
+                        "would be resolved"
+                    } else {
+                        "resolved"
+                    }
                 ));
             }
             Err(e) => reporter.err(&format!("Pass C error: {}", e)),
@@ -1187,14 +1203,18 @@ async fn main() {
     // Shared so a duplicate artist still reuses its primary's browse even when the two land on
     // different workers - that reuse is worth a paginated MusicBrainz call. Never locked across an
     // await: read-and-clone, or insert, and release.
-    let release_group_cache: Arc<tokio::sync::Mutex<HashMap<String, Vec<mb_types::MbReleaseGroup>>>> =
-        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let release_group_cache: Arc<
+        tokio::sync::Mutex<HashMap<String, Vec<mb_types::MbReleaseGroup>>>,
+    > = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
     let concurrency = args.concurrency.clamp(1, 16);
     if concurrency > 1 {
         reporter.kv(
             "Concurrency",
-            &format!("{} artists at once (shared 1 req/s MusicBrainz schedule)", concurrency),
+            &format!(
+                "{} artists at once (shared 1 req/s MusicBrainz schedule)",
+                concurrency
+            ),
         );
     }
 
@@ -2551,7 +2571,11 @@ async fn main() {
         let box_only: String = args
             .only
             .clone()
-            .or_else(|| target_release_id.as_ref().and_then(|_| artists.first().map(|a| a.name.clone())))
+            .or_else(|| {
+                target_release_id
+                    .as_ref()
+                    .and_then(|_| artists.first().map(|a| a.name.clone()))
+            })
             .unwrap_or_default();
         match boxset::run_repair(
             &pool,
@@ -2563,10 +2587,12 @@ async fn main() {
         )
         .await
         {
-            Ok(s) if s.groups_bound > 0 => reporter.info(&format!(
-                "Box sets: {} group(s) bound ({} folded, {} dissolved)",
-                s.groups_bound, s.groups_folded, s.groups_dissolved
-            )),
+            Ok(s) if s.groups_bound > 0 || s.groups_key_taken > 0 || s.groups_failed > 0 => {
+                reporter.info(&format!(
+                    "Box sets: {} group(s) bound ({} folded, {} dissolved, {} key-taken, {} failed)",
+                    s.groups_bound, s.groups_folded, s.groups_dissolved, s.groups_key_taken, s.groups_failed
+                ))
+            }
             Ok(_) => {}
             Err(e) => reporter.warn(&format!("Box-set repair error: {}", e)),
         }
@@ -2586,7 +2612,10 @@ async fn main() {
         // placeholder instead of the orphan (see retire_owned_missing_placeholders' doc).
         if let Ok(n) = delete_orphaned_mb_releases(&pool, cleanup_scope.as_deref()).await {
             if n > 0 {
-                reporter.info(&format!("Cleaned up {} orphaned MB release(s) after box repair", n));
+                reporter.info(&format!(
+                    "Cleaned up {} orphaned MB release(s) after box repair",
+                    n
+                ));
             }
         }
         if let Ok(n) = db::retire_owned_missing_placeholders(&pool).await {

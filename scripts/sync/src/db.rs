@@ -361,8 +361,7 @@ pub async fn sync_mb_tracks_for_release(
         let positions: Vec<Option<i32>> = to_insert.iter().map(|(_, t)| t.position).collect();
         let discs: Vec<Option<i32>> = to_insert.iter().map(|(_, t)| t.disc_number).collect();
         let durations: Vec<Option<i32>> = to_insert.iter().map(|(_, t)| t.duration_ms).collect();
-        let mb_ids: Vec<Option<&str>> =
-            to_insert.iter().map(|(_, t)| t.mb_id.as_deref()).collect();
+        let mb_ids: Vec<Option<&str>> = to_insert.iter().map(|(_, t)| t.mb_id.as_deref()).collect();
         let recording_ids: Vec<Option<&str>> = to_insert
             .iter()
             .map(|(_, t)| t.recording_id.as_deref())
@@ -1016,7 +1015,17 @@ pub async fn repair_all_empty_primaries(
         .await?;
 
     let mut done = Vec::new();
-    for (dup_id, dup_name, n_local, empty_id, empty_name, dup_mbid, empty_mbid, empty_stored_mbid) in pairs {
+    for (
+        dup_id,
+        dup_name,
+        n_local,
+        empty_id,
+        empty_name,
+        dup_mbid,
+        empty_mbid,
+        empty_stored_mbid,
+    ) in pairs
+    {
         let same_artist = match (dup_mbid.as_deref(), empty_mbid.as_deref()) {
             (Some(a), Some(b)) => a == b,
             _ => false,
@@ -1036,7 +1045,9 @@ pub async fn repair_all_empty_primaries(
                 .execute(pool)
                 .await?;
                 // A stored id that contradicts the row's own name is what moved the releases across.
-                if let (Some(stored), Some(resolved)) = (empty_stored_mbid.as_deref(), empty_mbid.as_deref()) {
+                if let (Some(stored), Some(resolved)) =
+                    (empty_stored_mbid.as_deref(), empty_mbid.as_deref())
+                {
                     if stored != resolved {
                         sqlx::query(
                             r#"UPDATE "Artist" SET "musicbrainzId" = NULL, "updatedAt" = NOW() WHERE id = $1"#,
@@ -1050,7 +1061,12 @@ pub async fn repair_all_empty_primaries(
             "unlinked - not the same artist"
         };
 
-        done.push(IdentityRepair { artist: dup_name, releases: n_local, other: empty_name, action });
+        done.push(IdentityRepair {
+            artist: dup_name,
+            releases: n_local,
+            other: empty_name,
+            action,
+        });
     }
     Ok(done)
 }
@@ -1092,10 +1108,12 @@ pub async fn promote_over_empty_primary(
 
     // Order matters: clear the current row first, or the second statement would point the empty row
     // at an artist that is still itself marked a duplicate, making a two-row cycle.
-    sqlx::query(r#"UPDATE "Artist" SET "primaryArtistId" = NULL, "updatedAt" = NOW() WHERE id = $1"#)
-        .bind(artist_id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        r#"UPDATE "Artist" SET "primaryArtistId" = NULL, "updatedAt" = NOW() WHERE id = $1"#,
+    )
+    .bind(artist_id)
+    .execute(pool)
+    .await?;
     // The demoted row also gives up its MusicBrainz id, because that claim is what caused the
     // mis-filing in the first place. "Wardell Gray Quintet" (0 releases) was holding Erroll Garner's
     // MusicBrainz id - not its own, which is a different id entirely - so Erroll Garner's 76 releases
@@ -1223,12 +1241,13 @@ pub async fn repair_shared_identities(
 
         let mut confirmed: Vec<(String, String)> = Vec::new();
         for (id, name) in &members {
-            let hit: Option<(String,)> =
-                sqlx::query_as(r#"SELECT mbid FROM "MbArtistLookup" WHERE name = $1 AND mbid = $2"#)
-                    .bind(name)
-                    .bind(&mbid)
-                    .fetch_optional(pool)
-                    .await?;
+            let hit: Option<(String,)> = sqlx::query_as(
+                r#"SELECT mbid FROM "MbArtistLookup" WHERE name = $1 AND mbid = $2"#,
+            )
+            .bind(name)
+            .bind(&mbid)
+            .fetch_optional(pool)
+            .await?;
             if hit.is_some() {
                 confirmed.push((id.clone(), name.clone()));
             }
@@ -1260,7 +1279,11 @@ pub async fn repair_shared_identities(
                     .await?;
             }
         }
-        done.push(SharedIdentityGroup { mbid, kept: kept_name, cleared });
+        done.push(SharedIdentityGroup {
+            mbid,
+            kept: kept_name,
+            cleared,
+        });
     }
     Ok(done)
 }
@@ -1448,7 +1471,18 @@ pub async fn get_local_releases_for_artist(
     Ok(rows
         .into_iter()
         .map(
-            |(id, title, year, forced_complete, release_id, match_status, image, image_url, medium_position, dissolved_bound_mb_id)| {
+            |(
+                id,
+                title,
+                year,
+                forced_complete,
+                release_id,
+                match_status,
+                image,
+                image_url,
+                medium_position,
+                dissolved_bound_mb_id,
+            )| {
                 LocalReleaseRow {
                     id,
                     title,

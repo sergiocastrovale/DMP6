@@ -274,7 +274,13 @@ fn build_candidate(release_id: &str, media: &Option<Vec<MbMedia>>) -> Option<Box
                     .tracks
                     .as_ref()?
                     .iter()
-                    .map(|t| (t.id.clone(), t.title.clone(), t.length.map(|l| (l / 1000) as i32)))
+                    .map(|t| {
+                        (
+                            t.id.clone(),
+                            t.title.clone(),
+                            t.length.map(|l| (l / 1000) as i32),
+                        )
+                    })
                     .collect(),
             })
         })
@@ -337,17 +343,19 @@ async fn candidates_from_search(
     reporter.sub_step(&format!(
         "tier (b): searching MusicBrainz for \"{title}\" by {artist_name}..."
     ));
-    let hits = match mb_api::mb_search_release_groups(http_client, title, artist_name, limiter).await {
-        Ok(hits) => hits,
-        Err(e) => {
-            reporter.sub_step(&format!("  -> search failed: {e}"));
-            return Vec::new();
-        }
-    };
+    let hits =
+        match mb_api::mb_search_release_groups(http_client, title, artist_name, limiter).await {
+            Ok(hits) => hits,
+            Err(e) => {
+                reporter.sub_step(&format!("  -> search failed: {e}"));
+                return Vec::new();
+            }
+        };
     reporter.sub_step(&format!("  -> {} release group(s) found", hits.len()));
     let mut out = Vec::new();
     for rg in hits {
-        if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &rg.secondary_types, None) {
+        if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &rg.secondary_types, None)
+        {
             reporter.sub_step(&format!(
                 "  -> \"{}\" rejected by the allow-list ({:?}, {:?})",
                 rg.title, rg.primary_type, rg.secondary_types
@@ -404,7 +412,12 @@ fn describe_rejection(siblings: &[BoxSibling], candidate: &FetchedCandidate) -> 
             .map(|m| m.position)
             .collect();
         match hits.len() {
-            0 => return format!("[{}] matches no disc of \"{}\"", s.folder_path, candidate.release.title),
+            0 => {
+                return format!(
+                    "[{}] matches no disc of \"{}\"",
+                    s.folder_path, candidate.release.title
+                )
+            }
             1 => {
                 let pos = hits[0];
                 if let Some(other) = claimed.insert(pos, &s.folder_path) {
@@ -426,8 +439,11 @@ fn describe_rejection(siblings: &[BoxSibling], candidate: &FetchedCandidate) -> 
 }
 
 /// Best-effort box title from a parent folder name: strip a leading "YYYY - " and any trailing
-/// "(...)" annotation ("(9CD)", "(Deluxe Edition, 2014, 3 CD)"). MB search tolerates the rest, and
-/// the real gate is the track-level perfect match in `plan_box_bind`, not this string.
+/// "(...)" or "[...]" annotation ("(9CD)", "(Deluxe Edition, 2014, 3 CD)", "[#74321 96173 2]" - a
+/// catalogue number in brackets, which MusicBrainz's own title never carries, used to return zero
+/// search hits). Whichever bracket opens first is where the title ends - a folder can carry either
+/// or both, in either order. MB search tolerates the rest, and the real gate is the track-level
+/// perfect match in `plan_box_bind`, not this string.
 fn guess_box_title(parent_folder: &str) -> String {
     let last = parent_folder.rsplit('/').next().unwrap_or(parent_folder);
     let without_year = if last.len() > 4 && last.as_bytes()[..4].iter().all(u8::is_ascii_digit) {
@@ -435,7 +451,11 @@ fn guess_box_title(parent_folder: &str) -> String {
     } else {
         last
     };
-    match without_year.find('(') {
+    let cut = [without_year.find('('), without_year.find('[')]
+        .into_iter()
+        .flatten()
+        .min();
+    match cut {
         Some(idx) => without_year[..idx].trim().to_string(),
         None => without_year.trim().to_string(),
     }
@@ -558,6 +578,23 @@ fn group_matches_filter(group: &SiblingGroup, only: &str, exact: bool) -> bool {
         .any(|name| common::filters::matches_filter(name, "", "", only, exact))
 }
 
+/// The MB id(s) of any `mediumCount > 1` release a sibling in this group is *already* bound to - a
+/// disc the ordinary album matcher bound whole-box (tags name the box, not the disc; see §10) already
+/// names the right release, so re-discovering it by tag consensus or MB search is redundant, and for a
+/// library with no useful tags at all (every embedded id absent or pointing elsewhere) it is the only
+/// source that finds the box. Merged into tier (a)'s id set, so no extra MB call when the two agree.
+async fn bound_box_mb_ids(pool: &PgPool, local_ids: &[String]) -> Vec<String> {
+    sqlx::query_scalar::<_, String>(
+        r#"SELECT DISTINCT m."musicbrainzId" FROM "LocalRelease" lr
+           JOIN "MusicBrainzRelease" m ON m.id = lr."releaseId"
+           WHERE lr.id = ANY($1) AND m."mediumCount" > 1"#,
+    )
+    .bind(local_ids)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+}
+
 async fn artist_for_group(pool: &PgPool, local_ids: &[String]) -> Option<(String, String)> {
     sqlx::query_as(
         r#"SELECT a.id, a.name FROM "Artist" a
@@ -610,9 +647,18 @@ async fn persist_box_media(
     // medium-scoped check_release_status on this artist's next sync pass - the same "next sync
     // re-scores it" convention the old tier-1 fold already relied on.
     let complete = plan.members.len() == fetched.candidate.media.len();
-    let status = if complete { "COMPLETE" } else { "MISSING_TRACKS" };
-    let reason = (!complete)
-        .then(|| format!("{} of {} discs present", plan.members.len(), fetched.candidate.media.len()));
+    let status = if complete {
+        "COMPLETE"
+    } else {
+        "MISSING_TRACKS"
+    };
+    let reason = (!complete).then(|| {
+        format!(
+            "{} of {} discs present",
+            plan.members.len(),
+            fetched.candidate.media.len()
+        )
+    });
 
     let mb_db_id = upsert_mb_release_with_media(
         pool,
@@ -629,8 +675,12 @@ async fn persist_box_media(
     )
     .await?;
     sync_mb_media_for_release(pool, &mb_db_id, &mb_medium_rows(&fetched.release.media)).await?;
-    ensure_mb_release_artist_link(pool, &mb_db_id, artist_id).await.ok();
-    batch_link_release_genres(pool, &mb_db_id, artist_genre_ids).await.ok();
+    ensure_mb_release_artist_link(pool, &mb_db_id, artist_id)
+        .await
+        .ok();
+    batch_link_release_genres(pool, &mb_db_id, artist_genre_ids)
+        .await
+        .ok();
 
     let flattened = common::mb::api::flatten_audio_tracks(&fetched.release.media);
     let track_rows: Vec<MbTrackRow> = flattened
@@ -702,8 +752,28 @@ async fn count_equivalents(pool: &PgPool, mb_db_id: &str) -> Result<usize, sqlx:
 /// bound to the box itself. Folder-derived `groupKey` (`"folder:{ancestor}"`, never
 /// `"mbrelease:{id}"` - the latter collides when two local copies of one box both plan the same key,
 /// which is exactly what `./audit --duplicate-release` needs to be able to tell apart).
-async fn apply_fold(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Result<(), sqlx::Error> {
+///
+/// `Ok(false)` when the box's root folder is already its own, *different* `LocalRelease` (a real album
+/// genuinely filed at that exact path - the fold would need to delete or rehome it, which is a
+/// decision for a person, not something this repair invents on its own). Nothing is written; the
+/// group is left as it is and counted separately (`groups_key_taken`).
+async fn apply_fold(
+    pool: &PgPool,
+    plan: &BoxBindPlan,
+    mb_db_id: &str,
+) -> Result<bool, sqlx::Error> {
     let local_ids: Vec<String> = plan.members.iter().map(|(id, _)| id.clone()).collect();
+    let key_holder: Option<String> = sqlx::query_scalar(
+        r#"SELECT id FROM "LocalRelease" WHERE "groupKey" = $1 AND id <> ALL($2)"#,
+    )
+    .bind(format!("folder:{}", plan.folder_path))
+    .bind(&local_ids)
+    .fetch_optional(pool)
+    .await?;
+    if key_holder.is_some() {
+        return Ok(false);
+    }
+
     let folder_rows: Vec<(String, Option<String>)> =
         sqlx::query_as(r#"SELECT id, "folderPath" FROM "LocalRelease" WHERE id = ANY($1)"#)
             .bind(&local_ids)
@@ -759,7 +829,10 @@ async fn apply_fold(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Result
     // One LocalReleaseMember per sibling (survivor included) so a plain re-index recognises every
     // folder next time instead of re-splitting a box whose discs all tag discNumber=1 (shape (b)).
     for (local_id, position) in &plan.members {
-        let folder = folder_by_id.get(local_id.as_str()).map(String::as_str).unwrap_or_default();
+        let folder = folder_by_id
+            .get(local_id.as_str())
+            .map(String::as_str)
+            .unwrap_or_default();
         let member_id = cuid2::create_id();
         sqlx::query(
             r#"INSERT INTO "LocalReleaseMember" (id, "localReleaseId", "folderPath", "discNumber")
@@ -775,23 +848,37 @@ async fn apply_fold(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Result
         .await?;
     }
 
-    tx.commit().await
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// Box set (>=2 equivalent media): leave every sibling as its own `LocalRelease` row. Each disc binds
 /// individually - to the standalone album it reprints (provenance recorded via `boxReleaseId`/
 /// `boxMediumPosition`), or to the box itself when it has no equivalent (a rarities/bonus disc, or one
 /// below tier 3's title/track-count gates). No `LocalReleaseMember` rows - dissolve never folds.
-async fn apply_dissolve(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Result<(), sqlx::Error> {
+async fn apply_dissolve(
+    pool: &PgPool,
+    plan: &BoxBindPlan,
+    mb_db_id: &str,
+) -> Result<(), sqlx::Error> {
     let now = Utc::now().naive_utc();
+    let mut tx = pool.begin().await?;
     for (local_id, position) in &plan.members {
+        // LEFT JOINs the equivalent's own release row rather than trusting the id at face value: a
+        // dangling `equivalentReleaseId` (the target release deleted after the equivalence was
+        // derived - box_editions clears these before re-deriving, but a defensive check here costs
+        // nothing) must read as "no equivalent" and bind to the box, never reach the foreign key that
+        // column write would otherwise violate.
         let row: Option<(Option<String>, Option<i32>)> = sqlx::query_as(
-            r#"SELECT "equivalentReleaseId", "equivalentMediumPosition" FROM "MusicBrainzReleaseMedium"
-               WHERE "releaseId" = $1 AND "position" = $2"#,
+            r#"SELECT m."equivalentReleaseId", m."equivalentMediumPosition"
+               FROM "MusicBrainzReleaseMedium" m
+               LEFT JOIN "MusicBrainzRelease" target ON target.id = m."equivalentReleaseId"
+               WHERE m."releaseId" = $1 AND m."position" = $2
+                 AND (m."equivalentReleaseId" IS NULL OR target.id IS NOT NULL)"#,
         )
         .bind(mb_db_id)
         .bind(position)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *tx)
         .await?;
         let equivalent: Option<(String, Option<i32>)> =
             row.and_then(|(release_id, medium_position)| release_id.map(|r| (r, medium_position)));
@@ -820,7 +907,7 @@ async fn apply_dissolve(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Re
                 .bind(position)
                 .bind(now)
                 .bind(local_id)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
             }
             None => {
@@ -838,12 +925,12 @@ async fn apply_dissolve(pool: &PgPool, plan: &BoxBindPlan, mb_db_id: &str) -> Re
                 .bind(position)
                 .bind(now)
                 .bind(local_id)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
             }
         }
     }
-    Ok(())
+    tx.commit().await
 }
 
 // ---------------------------------------------------------------------------
@@ -857,6 +944,14 @@ pub struct BoxSetSummary {
     pub rows_absorbed: usize,
     pub groups_folded: usize,
     pub groups_dissolved: usize,
+    /// Left as-is: the box's root folder is already a different `LocalRelease` at that exact path.
+    /// See `apply_fold`.
+    pub groups_key_taken: usize,
+    /// A DB error while binding, persisting, folding or dissolving *this one* group. Logged with the
+    /// group's folder and the error (`common::error_log::log_warn`), then skipped - one bad box must
+    /// never stop every group after it (docs/sync_decisions.md §9 "One box never blocks the rest";
+    /// this is what the 2026-09-06/09-10 outages taught).
+    pub groups_failed: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -915,13 +1010,26 @@ pub async fn run_repair(
         }
 
         let mut siblings: Vec<BoxSibling> = Vec::with_capacity(group.rows.len());
+        let mut read_failed = false;
         for row in &group.rows {
-            let tracks = sibling_tracks(pool, &row.local_id).await?;
-            siblings.push(BoxSibling {
-                local_id: row.local_id.clone(),
-                folder_path: row.folder_path.clone(),
-                tracks,
-            });
+            match sibling_tracks(pool, &row.local_id).await {
+                Ok(tracks) => siblings.push(BoxSibling {
+                    local_id: row.local_id.clone(),
+                    folder_path: row.folder_path.clone(),
+                    tracks,
+                }),
+                Err(e) => {
+                    let msg = format!("box group [{}]: reading tracks failed: {}", group.parent, e);
+                    reporter.warn(&msg);
+                    common::error_log::log_warn(&msg);
+                    summary.groups_failed += 1;
+                    read_failed = true;
+                    break;
+                }
+            }
+        }
+        if read_failed {
+            continue;
         }
 
         let local_ids: Vec<String> = group.rows.iter().map(|r| r.local_id.clone()).collect();
@@ -930,13 +1038,13 @@ pub async fn run_repair(
             continue;
         };
 
-        let embedded_ids: Vec<String> = group
+        let mut embedded_ids: std::collections::BTreeSet<String> = group
             .rows
             .iter()
             .filter_map(|r| r.majority_mb_release_id.clone())
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
             .collect();
+        embedded_ids.extend(bound_box_mb_ids(pool, &local_ids).await);
+        let embedded_ids: Vec<String> = embedded_ids.into_iter().collect();
 
         let mut fetched =
             candidates_from_embedded_ids(http_client, limiter, &embedded_ids, reporter).await;
@@ -956,7 +1064,10 @@ pub async fn run_repair(
             .find_map(|f| plan_box_bind(&siblings, &f.candidate).map(|p| (f, p)));
 
         let Some((fetched, plan)) = plan else {
-            let reasons: Vec<String> = fetched.iter().map(|f| describe_rejection(&siblings, f)).collect();
+            let reasons: Vec<String> = fetched
+                .iter()
+                .map(|f| describe_rejection(&siblings, f))
+                .collect();
             reporter.skip(&format!(
                 "{} candidate(s) checked, none matched: {}",
                 reasons.len(),
@@ -976,17 +1087,37 @@ pub async fn run_repair(
         );
         for s in &siblings {
             let owned = plan.members.iter().any(|(id, _)| id == &s.local_id);
-            let mark = if owned { "OWN  ".green().bold() } else { "skip ".yellow() };
+            let mark = if owned {
+                "OWN  ".green().bold()
+            } else {
+                "skip ".yellow()
+            };
             println!("    {} {} [{}]", mark, s.local_id, s.folder_path);
         }
 
+        let artist_genre_ids = get_artist_genre_ids(pool, &artist_id).await;
+        let persisted = persist_box_media(
+            pool,
+            fetched,
+            &plan,
+            &mut release_type_cache,
+            &artist_id,
+            &artist_genre_ids,
+        )
+        .await;
+        let mb_db_id = match persisted {
+            Ok(id) => id,
+            Err(e) => {
+                let msg = format!("box group [{}]: binding failed: {}", plan.folder_path, e);
+                reporter.warn(&msg);
+                common::error_log::log_warn(&msg);
+                summary.groups_failed += 1;
+                continue;
+            }
+        };
+
         summary.groups_bound += 1;
         summary.rows_absorbed += plan.absorbed.len();
-
-        let artist_genre_ids = get_artist_genre_ids(pool, &artist_id).await;
-        let mb_db_id =
-            persist_box_media(pool, fetched, &plan, &mut release_type_cache, &artist_id, &artist_genre_ids)
-                .await?;
         bound.push((plan, mb_db_id));
     }
 
@@ -1001,27 +1132,61 @@ pub async fn run_repair(
     reporter.blank();
     reporter.header("Fold vs dissolve");
     for (plan, mb_db_id) in &bound {
-        let equivalents = count_equivalents(pool, mb_db_id).await?;
-        match decide_outcome(equivalents) {
-            BoxOutcome::Fold => {
-                apply_fold(pool, plan, mb_db_id).await?;
-                summary.groups_folded += 1;
+        let equivalents = match count_equivalents(pool, mb_db_id).await {
+            Ok(n) => n,
+            Err(e) => {
+                let msg = format!(
+                    "box group [{}]: counting equivalents failed: {}",
+                    plan.folder_path, e
+                );
+                reporter.warn(&msg);
+                common::error_log::log_warn(&msg);
+                summary.groups_failed += 1;
+                continue;
+            }
+        };
+        let outcome = match decide_outcome(equivalents) {
+            BoxOutcome::Fold => apply_fold(pool, plan, mb_db_id).await.map(|applied| {
+                if applied {
+                    "fold"
+                } else {
+                    "key-taken"
+                }
+            }),
+            BoxOutcome::Dissolve => apply_dissolve(pool, plan, mb_db_id)
+                .await
+                .map(|()| "dissolve"),
+        };
+        match outcome {
+            Ok("key-taken") => {
+                summary.groups_key_taken += 1;
+                reporter.skip(&format!(
+                    "{}: box root folder is already its own release - left as is",
+                    plan.folder_path
+                ));
+            }
+            Ok(label) => {
+                if label == "fold" {
+                    summary.groups_folded += 1;
+                } else {
+                    summary.groups_dissolved += 1;
+                }
                 println!(
-                    "{} {} -> fold ({} equivalent medium/media)",
+                    "{} {} -> {} ({} equivalent medium/media)",
                     "▸".cyan(),
                     plan.folder_path,
+                    label,
                     equivalents
                 );
             }
-            BoxOutcome::Dissolve => {
-                apply_dissolve(pool, plan, mb_db_id).await?;
-                summary.groups_dissolved += 1;
-                println!(
-                    "{} {} -> dissolve ({} equivalent medium/media)",
-                    "▸".cyan(),
-                    plan.folder_path,
-                    equivalents
+            Err(e) => {
+                let msg = format!(
+                    "box group [{}]: fold/dissolve failed: {}",
+                    plan.folder_path, e
                 );
+                reporter.warn(&msg);
+                common::error_log::log_warn(&msg);
+                summary.groups_failed += 1;
             }
         }
     }
@@ -1083,17 +1248,25 @@ mod tests {
     /// with a qualifier MusicBrainz leaves off. One word rejected the whole nine-disc box.
     #[test]
     fn a_qualified_title_pairs_with_the_plain_one() {
-        let local = sibling("cd1", "Box/CD 1", &[
-            ("l1", "Ring Ring (English version)", Some(184)),
-            ("l2", "Another Town, Another Train", Some(193)),
-            ("l3", "Nina, Pretty Ballerina", Some(174)),
-        ]);
-        let m = medium(1, &[
-            ("m1", "Ring Ring", Some(186)),
-            ("m2", "Another Town, Another Train", Some(193)),
-            ("m3", "Nina, Pretty Ballerina", Some(173)),
-        ]);
-        let links = pair_tracks(&local.tracks, &m.tracks).expect("qualifier must not block the pairing");
+        let local = sibling(
+            "cd1",
+            "Box/CD 1",
+            &[
+                ("l1", "Ring Ring (English version)", Some(184)),
+                ("l2", "Another Town, Another Train", Some(193)),
+                ("l3", "Nina, Pretty Ballerina", Some(174)),
+            ],
+        );
+        let m = medium(
+            1,
+            &[
+                ("m1", "Ring Ring", Some(186)),
+                ("m2", "Another Town, Another Train", Some(193)),
+                ("m3", "Nina, Pretty Ballerina", Some(173)),
+            ],
+        );
+        let links =
+            pair_tracks(&local.tracks, &m.tracks).expect("qualifier must not block the pairing");
         // Keyed, not indexed: exact matches are claimed first, so the loose pair lands last.
         let by_local: std::collections::HashMap<_, _> = links.into_iter().collect();
         assert_eq!(by_local["l1"], "m1");
@@ -1107,39 +1280,60 @@ mod tests {
     /// before any loose match is considered.
     #[test]
     fn an_exact_title_is_claimed_before_a_loose_one_competes_for_it() {
-        let local = sibling("cd1", "Box/CD 1", &[
-            ("l1", "Ring Ring (Spanish version)", Some(182)),
-            ("l2", "Ring Ring (English version)", Some(184)),
-            ("l3", "Santa Rosa", Some(181)),
-        ]);
-        let m = medium(1, &[
-            ("m1", "Ring Ring", Some(186)),
-            ("m2", "Ring Ring (Spanish version)", Some(181)),
-            ("m3", "Santa Rosa", Some(181)),
-        ]);
+        let local = sibling(
+            "cd1",
+            "Box/CD 1",
+            &[
+                ("l1", "Ring Ring (Spanish version)", Some(182)),
+                ("l2", "Ring Ring (English version)", Some(184)),
+                ("l3", "Santa Rosa", Some(181)),
+            ],
+        );
+        let m = medium(
+            1,
+            &[
+                ("m1", "Ring Ring", Some(186)),
+                ("m2", "Ring Ring (Spanish version)", Some(181)),
+                ("m3", "Santa Rosa", Some(181)),
+            ],
+        );
         let links = pair_tracks(&local.tracks, &m.tracks).expect("should pair");
         let by_local: std::collections::HashMap<_, _> = links.into_iter().collect();
-        assert_eq!(by_local["l1"], "m2", "the Spanish tag must take the Spanish track");
-        assert_eq!(by_local["l2"], "m1", "the English tag takes the plain one that is left");
+        assert_eq!(
+            by_local["l1"], "m2",
+            "the Spanish tag must take the Spanish track"
+        );
+        assert_eq!(
+            by_local["l2"], "m1",
+            "the English tag takes the plain one that is left"
+        );
     }
 
     /// ABBA's disc 5: eleven titles line up exactly, one runtime is six seconds out, and that used to
     /// reject the entire nine-disc box.
     #[test]
     fn a_few_seconds_of_master_drift_does_not_reject_a_disc() {
-        let local = sibling("cd5", "Box/CD 5", &[
-            ("l1", "Eagle", Some(349)),
-            ("l2", "I'm a Marionette", Some(243)),
-            ("l3", "Thank You for the Music", Some(229)),
-        ]);
-        let m = medium(5, &[
-            ("m1", "Eagle", Some(349)),
-            ("m2", "I’m a Marionette", Some(249)),
-            ("m3", "Thank You for the Music", Some(229)),
-        ]);
-        let by_local: std::collections::HashMap<_, _> =
-            pair_tracks(&local.tracks, &m.tracks).expect("six seconds is drift, not a different track")
-                .into_iter().collect();
+        let local = sibling(
+            "cd5",
+            "Box/CD 5",
+            &[
+                ("l1", "Eagle", Some(349)),
+                ("l2", "I'm a Marionette", Some(243)),
+                ("l3", "Thank You for the Music", Some(229)),
+            ],
+        );
+        let m = medium(
+            5,
+            &[
+                ("m1", "Eagle", Some(349)),
+                ("m2", "I’m a Marionette", Some(249)),
+                ("m3", "Thank You for the Music", Some(229)),
+            ],
+        );
+        let by_local: std::collections::HashMap<_, _> = pair_tracks(&local.tracks, &m.tracks)
+            .expect("six seconds is drift, not a different track")
+            .into_iter()
+            .collect();
         assert_eq!(by_local["l2"], "m2");
     }
 
@@ -1147,7 +1341,11 @@ mod tests {
     /// different recording, not a different rip.
     #[test]
     fn a_wildly_different_runtime_is_still_a_different_track() {
-        let local = sibling("a", "f", &[("l1", "One", Some(100)), ("l2", "Jam", Some(120))]);
+        let local = sibling(
+            "a",
+            "f",
+            &[("l1", "One", Some(100)), ("l2", "Jam", Some(120))],
+        );
         let m = medium(1, &[("m1", "One", Some(100)), ("m2", "Jam", Some(600))]);
         assert!(pair_tracks(&local.tracks, &m.tracks).is_none());
     }
@@ -1155,20 +1353,28 @@ mod tests {
     /// A loose match that fits two remaining tracks equally is refused, not guessed at.
     #[test]
     fn an_ambiguous_loose_match_is_refused() {
-        let local = sibling("cd1", "Box/CD 1", &[
-            ("l1", "Ring Ring", Some(185)),
-            ("l2", "Filler", Some(100)),
-        ]);
-        let m = medium(1, &[
-            ("m1", "Ring Ring (English version)", Some(184)),
-            ("m2", "Ring Ring (Spanish version)", Some(186)),
-        ]);
+        let local = sibling(
+            "cd1",
+            "Box/CD 1",
+            &[("l1", "Ring Ring", Some(185)), ("l2", "Filler", Some(100))],
+        );
+        let m = medium(
+            1,
+            &[
+                ("m1", "Ring Ring (English version)", Some(184)),
+                ("m2", "Ring Ring (Spanish version)", Some(186)),
+            ],
+        );
         assert!(pair_tracks(&local.tracks, &m.tracks).is_none());
     }
 
     #[test]
     fn a_differing_tracklist_still_fails_to_pair() {
-        let local = sibling("a", "f", &[("l1", "One", Some(100)), ("l2", "Two", Some(100))]);
+        let local = sibling(
+            "a",
+            "f",
+            &[("l1", "One", Some(100)), ("l2", "Two", Some(100))],
+        );
         let wrong_title = medium(1, &[("m1", "One", Some(100)), ("m2", "Three", Some(100))]);
         let wrong_len = medium(1, &[("m1", "One", Some(100))]);
         let wrong_dur = medium(1, &[("m1", "One", Some(100)), ("m2", "Two", Some(400))]);
@@ -1179,11 +1385,18 @@ mod tests {
 
     #[test]
     fn repeated_titles_each_claim_a_distinct_medium_track() {
-        let local = sibling("a", "f", &[("l1", "Intro", Some(60)), ("l2", "Intro", Some(60))]);
+        let local = sibling(
+            "a",
+            "f",
+            &[("l1", "Intro", Some(60)), ("l2", "Intro", Some(60))],
+        );
         let m = medium(1, &[("m1", "Intro", Some(60)), ("m2", "Intro", Some(60))]);
         let links = pair_tracks(&local.tracks, &m.tracks).unwrap();
         assert_eq!(links.len(), 2);
-        assert_ne!(links[0].1, links[1].1, "one medium track cannot serve two local tracks");
+        assert_ne!(
+            links[0].1, links[1].1,
+            "one medium track cannot serve two local tracks"
+        );
     }
 
     #[test]
@@ -1192,8 +1405,14 @@ mod tests {
             "ABBA/Compilation/2005 - The Complete Studio Recordings (9CD)",
             &["ABBA"],
         );
-        assert!(group_matches_filter(&g, "ABBA", true), "--exact must find this box");
-        assert!(group_matches_filter(&g, "ABBA", false), "prefix mode still works");
+        assert!(
+            group_matches_filter(&g, "ABBA", true),
+            "--exact must find this box"
+        );
+        assert!(
+            group_matches_filter(&g, "ABBA", false),
+            "prefix mode still works"
+        );
         assert!(!group_matches_filter(&g, "Blondie", true));
     }
 
@@ -1244,14 +1463,27 @@ mod tests {
             sibling(
                 "cd1",
                 "ABBA/Box/CD 1-1973 - Ring Ring",
-                &[("t1", "Ring Ring", Some(186)), ("t2", "Another Town, Another Train", Some(193))],
+                &[
+                    ("t1", "Ring Ring", Some(186)),
+                    ("t2", "Another Town, Another Train", Some(193)),
+                ],
             ),
-            sibling("cd2", "ABBA/Box/CD 2-1974 - Waterloo", &[("t3", "Waterloo", Some(180))]),
+            sibling(
+                "cd2",
+                "ABBA/Box/CD 2-1974 - Waterloo",
+                &[("t3", "Waterloo", Some(180))],
+            ),
         ];
         let candidate = BoxCandidate {
             release_id: "mb-box".to_string(),
             media: vec![
-                medium(1, &[("mb-t1", "Ring Ring", Some(185)), ("mb-t2", "Another Town, Another Train", Some(192))]),
+                medium(
+                    1,
+                    &[
+                        ("mb-t1", "Ring Ring", Some(185)),
+                        ("mb-t2", "Another Town, Another Train", Some(192)),
+                    ],
+                ),
                 medium(2, &[("mb-t3", "Waterloo", Some(179))]),
             ],
         };
@@ -1277,8 +1509,16 @@ mod tests {
         // Neither sibling's embedded id points at the box at all - every disc was tagged as its own
         // album. Nothing here differs mechanically from shape (a): tier 2 never looks at tags.
         let siblings = vec![
-            sibling("ringring", "ABBA/Box/1973 - Ring Ring", &[("t1", "Ring Ring", Some(186))]),
-            sibling("waterloo", "ABBA/Box/1974 - Waterloo", &[("t2", "Waterloo", Some(180))]),
+            sibling(
+                "ringring",
+                "ABBA/Box/1973 - Ring Ring",
+                &[("t1", "Ring Ring", Some(186))],
+            ),
+            sibling(
+                "waterloo",
+                "ABBA/Box/1974 - Waterloo",
+                &[("t2", "Waterloo", Some(180))],
+            ),
         ];
         let candidate = BoxCandidate {
             release_id: "mb-box".to_string(),
@@ -1290,7 +1530,11 @@ mod tests {
         };
 
         let plan = plan_box_bind(&siblings, &candidate).expect("binds");
-        assert_eq!(plan.members.len(), 2, "only the two ripped discs, the third is simply not owned");
+        assert_eq!(
+            plan.members.len(),
+            2,
+            "only the two ripped discs, the third is simply not owned"
+        );
     }
 
     #[test]
@@ -1358,12 +1602,202 @@ mod tests {
 
     #[test]
     fn guesses_a_search_title_from_the_parent_folder() {
-        assert_eq!(guess_box_title("ABBA/Compilation/2008 - The Albums (9CD)"), "The Albums");
+        assert_eq!(
+            guess_box_title("ABBA/Compilation/2008 - The Albums (9CD)"),
+            "The Albums"
+        );
         assert_eq!(
             guess_box_title("ABBA/Compilation/2005 - The Complete Studio Recordings (9CD)"),
             "The Complete Studio Recordings"
         );
-        assert_eq!(guess_box_title("ABBA/Compilation/No Year Box (3CD)"), "No Year Box");
+        assert_eq!(
+            guess_box_title("ABBA/Compilation/No Year Box (3CD)"),
+            "No Year Box"
+        );
+    }
+
+    /// A catalogue number in brackets used to search MusicBrainz for a title it never returned a hit
+    /// for - HIM's "The Single Collection" sat undiscoverable via tier (b) because of this.
+    #[test]
+    fn guess_box_title_strips_bracketed_catalogue_numbers_too() {
+        assert_eq!(
+            guess_box_title("HIM/Album/2002 - The Single Collection [#74321 96173 2]"),
+            "The Single Collection"
+        );
+        assert_eq!(
+            guess_box_title("IQ/Remastered/1985 - The Wake (3 CD) [GEPBOX2]"),
+            "The Wake"
+        );
+        // Whichever bracket opens first wins, regardless of order.
+        assert_eq!(guess_box_title("X/2020 - Title [CAT001] (Deluxe)"), "Title");
+    }
+
+    /// HIM's real "The Single Collection" (10 CDs, 44 tracks, curly-vs-straight apostrophes, one
+    /// medium with a 1-second duration drift) - the case that motivated the 2026-09-11 box-set fix.
+    /// Every disc must resolve to its own, distinct medium.
+    #[test]
+    fn hims_ten_disc_box_binds_every_medium() {
+        // (disc position, [(title, local secs, mb secs)])
+        let discs: &[(i32, &[(&str, i32, i32)])] = &[
+            (
+                1,
+                &[
+                    ("It's All Tears (Drown in This Love)", 225, 224),
+                    ("The Heartless (club remix)", 238, 238),
+                ],
+            ),
+            (
+                2,
+                &[
+                    ("Wicked Game", 234, 234),
+                    ("For You", 240, 240),
+                    ("Our Diabolikal Rapture", 321, 321),
+                    ("Wicked Game (666 remix)", 234, 234),
+                ],
+            ),
+            (
+                3,
+                &[
+                    ("When Love and Death Embrace (radio edit)", 216, 216),
+                    ("When Love and Death Embrace (AOR radio mix)", 219, 219),
+                    (
+                        "When Love and Death Embrace (original single edit)",
+                        257,
+                        257,
+                    ),
+                    ("When Love and Death Embrace (album version)", 368, 368),
+                ],
+            ),
+            (
+                4,
+                &[
+                    ("Join Me", 221, 221),
+                    ("It's All Tears (Unplugged version) (live)", 230, 230),
+                    ("Rebel Yell (live)", 313, 313),
+                    ("Dark Sekret Love", 316, 316),
+                ],
+            ),
+            (
+                5,
+                &[
+                    ("Right Here in My Arms (radio edit)", 205, 205),
+                    ("Join Me in Death (Razorblade mix)", 217, 217),
+                    ("The Heartless (Space Jazz Dubmen mix)", 239, 239),
+                    ("I've Crossed Oceans of Wine to Find You", 280, 280),
+                ],
+            ),
+            (
+                6,
+                &[
+                    ("Poison Girl", 232, 232),
+                    ("Right Here in My Arms (live)", 283, 283),
+                    ("It's All Tears (live)", 235, 235),
+                    ("Poison Girl (live)", 218, 218),
+                ],
+            ),
+            (
+                7,
+                &[
+                    ("Gone With the Sin (radio edit)", 234, 234),
+                    ("Gone With the Sin (O.D. version)", 299, 299),
+                    ("For You (acoustic version)", 249, 249),
+                    ("Bury Me Deep Inside Your Heart (live)", 252, 252),
+                    ("Gone With the Sin (album version)", 262, 262),
+                ],
+            ),
+            (
+                8,
+                &[
+                    ("Pretending", 224, 224),
+                    ("Pretending (alternative mix)", 239, 239),
+                    ("Pretending (The Cosmic Pope Jam version)", 482, 482),
+                    ("Please Don't Let It Go (acoustic version)", 281, 281),
+                    // Real drift observed on disc: 1 second, well within the ±5s tie-breaker.
+                    ("Lose You Tonight (Caravan version)", 368, 367),
+                ],
+            ),
+            (
+                9,
+                &[
+                    ("In Joy and Sorrow (radio edit)", 215, 215),
+                    ("Again", 212, 212),
+                    ("In Joy and Sorrow (string version)", 305, 305),
+                    ("Salt in Our Wounds (Thulsa Doom version)", 424, 424),
+                    ("Beautiful (Third Seal)", 286, 286),
+                ],
+            ),
+            (
+                10,
+                &[
+                    ("Heartache Every Moment", 238, 238),
+                    ("Close to the Flame", 230, 230),
+                    ("Salt in Our Wounds (acoustic)", 243, 243),
+                    ("In Joy and Sorrow (acoustic)", 242, 242),
+                    ("Pretending (acoustic)", 242, 242),
+                    ("Heartache Every Moment (acoustic)", 215, 215),
+                    ("Close to the Flame (acoustic)", 201, 201),
+                ],
+            ),
+        ];
+
+        let mut siblings = Vec::new();
+        let mut media = Vec::new();
+        let mut expected_track_count = 0usize;
+        for (position, tracks) in discs {
+            let local_tracks: Vec<(String, String, Option<i32>)> = tracks
+                .iter()
+                .enumerate()
+                .map(|(i, (title, local_secs, _))| {
+                    (
+                        format!("cd{position}-t{i}"),
+                        title.to_string(),
+                        Some(*local_secs),
+                    )
+                })
+                .collect();
+            let mb_tracks: Vec<(String, String, Option<i32>)> = tracks
+                .iter()
+                .enumerate()
+                .map(|(i, (title, _, mb_secs))| {
+                    (
+                        format!("mb-cd{position}-t{i}"),
+                        title.to_string(),
+                        Some(*mb_secs),
+                    )
+                })
+                .collect();
+            expected_track_count += local_tracks.len();
+            siblings.push(sibling(
+                &format!("cd{position}"),
+                &format!("HIM/Album/2002 - The Single Collection [#74321 96173 2]/CD {position}"),
+                &local_tracks
+                    .iter()
+                    .map(|(id, t, s)| (id.as_str(), t.as_str(), *s))
+                    .collect::<Vec<_>>(),
+            ));
+            media.push(medium(
+                *position,
+                &mb_tracks
+                    .iter()
+                    .map(|(id, t, s)| (id.as_str(), t.as_str(), *s))
+                    .collect::<Vec<_>>(),
+            ));
+        }
+        let candidate = BoxCandidate {
+            release_id: "b6bb7356-5084-4285-977b-e02ec996ca88".to_string(),
+            media,
+        };
+
+        let plan = plan_box_bind(&siblings, &candidate).expect("the real HIM box must bind");
+        assert_eq!(
+            plan.members.len(),
+            10,
+            "every disc must resolve to its own medium"
+        );
+        assert_eq!(plan.track_links.len(), expected_track_count);
+        let mut positions: Vec<i32> = plan.members.iter().map(|(_, p)| *p).collect();
+        positions.sort_unstable();
+        assert_eq!(positions, (1..=10).collect::<Vec<_>>());
     }
 
     // -----------------------------------------------------------------------
