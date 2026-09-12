@@ -4,7 +4,6 @@ import { createVisualizerRenderer } from '~/helpers/visualizer/renderer'
 import { getBoundaryJuliaPath, juliaCAlongPath } from '~/helpers/visualizer/juliaPath'
 import { lerpEased, lerpHue } from '~/helpers/visualizer/hueMorph'
 import { pickJuliaTarget } from '~/helpers/visualizer/juliaField'
-import { SEED_POOL_CAPACITY, generateSeedPool } from '~/helpers/visualizer/buddhabrotMath'
 import { isBeat, rms, smoothTowards, splitBands } from '~/helpers/audioBands'
 import type { VisualizerPresetId } from '~/helpers/constants'
 import { usePlayerStore } from '~/stores/player'
@@ -37,7 +36,7 @@ const REDUCED_MOTION_TIME_SCALE = 0.15
 // to react to every single kick, which read as the fractal jerking on every hit. This gates that
 // reaction: the bass value Fractal actually receives is held constant except right after a real
 // beat, at intervals of 5-9s - a quiet stretch, then one clean jump on the beat, then quiet again,
-// rather than constant jitter. Buddhabrot and Julia's own (much smaller) uBass touches are
+// rather than constant jitter. Flow and Julia's own (much smaller) uBass touches are
 // untouched - only Fractal was asked about.
 const FRACTAL_FREEZE_MIN_S = 5
 const FRACTAL_FREEZE_MAX_S = 9
@@ -63,13 +62,6 @@ const randomMorphDuration = () =>
 // anchor count makes no sense; landing the change on the same boundary the colour itself already
 // jumps to a new random variation at means it reads as "a new variation" rather than a glitch.
 const randomAnchorCount = () => 3 + Math.floor(Math.random() * 3)
-// Buddhabrot's own anchor count, re-rolled at the same moment as chaosAnchors above (every time the
-// shared hue morph retargets) but in a wider 6-10 range: unlike Chaos/Fractal/Julia, which are each
-// dominated by one or two escape-time bands at a time, Buddhabrot's density genuinely spans void ->
-// faint halo -> filament -> hot core in one image, so it has room for more distinct colours before
-// they start crowding each other - kept as its own count rather than widening the shared 3-5 range,
-// since 3-5 is tuned for the other three presets and this preset alone asked for more.
-const randomBuddhabrotAnchorCount = () => 6 + Math.floor(Math.random() * 5)
 
 // Fractal's own Julia constant eases from one random point on Chaos's boundary path to another -
 // the "seamlessly transitions to another fractal" behaviour - over a random 7-14s, the same
@@ -83,7 +75,7 @@ const randomFractalMorphDuration = () =>
 // helpers/visualizer/juliaField.ts for why an unvalidated target could read as one flat colour
 // filling the screen) holds still for a random 5-12s, then eases to a freshly-picked target over
 // a few seconds - "let it flow freely, then move seamlessly to something new," no beat involved,
-// just a timer. Buddhabrot's sampled region (below) follows the identical shape.
+// just a timer.
 const JULIA_POWER_MIN = 2.2
 const JULIA_POWER_MAX = 6.0
 const JULIA_HOLD_MIN_S = 5
@@ -95,34 +87,19 @@ const randomJuliaTransition = () =>
   JULIA_TRANSITION_MIN_S + Math.random() * (JULIA_TRANSITION_MAX_S - JULIA_TRANSITION_MIN_S)
 const randomJuliaTarget = () => pickJuliaTarget(JULIA_POWER_MIN, JULIA_POWER_MAX)
 
-// Buddhabrot's sampled region walks Chaos's own boundary path continuously, every frame - the same
-// idiom as Chaos's own uJuliaC (JULIA_SWEEP above) - rather than holding still and jumping. A
-// held-then-jump region was tried first and looked like "a slideshow of static photographs that
-// occasionally pop to a new one": once the histogram is a few seconds old it barely changes frame
-// to frame, so nothing on screen ever visibly MOVES the way Chaos's continuously-drifting dendrite
-// does. helpers/visualizer/buddhabrot.ts's decay (short half-life, always on) is the other half of
-// this: it is what lets the accumulated image actually follow a continuously moving region instead
-// of blurring into an average of everywhere it has ever pointed. 5x JULIA_SWEEP, i.e. faster than
-// Chaos itself moves, per request.
-const BUDDHABROT_SWEEP = JULIA_SWEEP * 5
-
-// Every seed is proven to escape before it is used (see generateSeedPool), and that proof costs up
-// to SEED_MAX_ITER iterations per candidate, so the pool is filled a slice at a time: a starter
-// batch on the first frame of the preset, then a steady trickle - both to keep the cost off any
-// single frame and to keep the pool's own contents tracking the continuously moving region above.
-const BUDDHABROT_INITIAL_SEEDS = 512
-const BUDDHABROT_SEEDS_PER_FRAME = 48
-// How tightly seeds cluster around the current boundary-path point - a close filament crop, not the
-// wide classic silhouette: at this preset's 4x view zoom (VIEW_SCALE in buddhabrot.ts) the wide
-// framing was never what was on screen anyway, and a tighter cluster reads as a coherent piece of
-// filigree that continuously morphs as its centre drifts, rather than a large, mostly-empty region.
-const BUDDHABROT_REGION_RADIUS = 0.35
-
-interface BuddhabrotRegion { cx: number, cy: number, radius: number }
-const currentBuddhabrotRegion = (path: ReadonlyArray<readonly [number, number]>, phase: number): BuddhabrotRegion => {
-  const [cx, cy] = juliaCAlongPath(path, phase)
-  return { cx, cy, radius: BUDDHABROT_REGION_RADIUS }
-}
+// Flow's warp-seed offset orbits the origin slowly and continuously - deliberately NOT a
+// hold-then-jump reroll (an earlier version held it still for 20-40s then eased to a fresh random
+// point every time, which read as "static for a while, then a fast jarring slide to a different
+// scene" - exactly the failure Buddhabrot's own sampled-region comment already warned about, see
+// BUDDHABROT_SWEEP's history in git blame). A slow perpetual orbit has no jumps at all, so there is
+// nothing to read as a sudden scene change - just an endlessly, gradually exploring path through
+// the noise field. Radius is arbitrary but large relative to the fbm's own coordinate scale, so the
+// orbit actually visits different-looking neighbourhoods rather than barely-different ones; period
+// ~650s (4x an earlier version's speed, per request) - still slow relative to the swirl/zoom in
+// helpers/visualizer/shaders.ts's FLOW, since this is background motion, not something meant to be
+// tracked frame to frame.
+const FLOW_SEED_RADIUS = 30
+const FLOW_SEED_SPEED = 0.0096
 
 const canvasRef = ref<HTMLCanvasElement>()
 const unsupported = ref(false)
@@ -150,7 +127,6 @@ let chaosHueTo = Math.random()
 let chaosMorphStart = 0
 let chaosMorphDuration = randomMorphDuration()
 let chaosAnchors = randomAnchorCount()
-let buddhabrotAnchors = randomBuddhabrotAnchorCount()
 // Fractal's own path-phase morph state - identical shape to chaosHueFrom/To above, just walking
 // Chaos's boundary path (juliaCAlongPath) instead of the hue wheel.
 let fractalFromT = Math.random()
@@ -167,25 +143,6 @@ let juliaTo = juliaFrom
 let juliaMorphStart = 0
 let juliaTransitionDuration = randomJuliaTransition()
 let juliaHoldUntil = randomJuliaHold()
-// Buddhabrot's verified seed pool - a ring buffer of `[cx, cy]` pairs written by
-// refillBuddhabrotSeeds() below and handed to the GPU whole each frame; `count` grows until the
-// ring is full, after which the cursor keeps overwriting the oldest entries. At
-// BUDDHABROT_SEEDS_PER_FRAME * 60fps the ring fully turns over in a little over a second, which is
-// what keeps its contents tracking the continuously moving region rather than lagging behind it.
-const buddhabrotPool = new Float32Array(SEED_POOL_CAPACITY * 2)
-const buddhabrotScratch = new Float32Array(BUDDHABROT_INITIAL_SEEDS * 2)
-let buddhabrotPoolCount = 0
-let buddhabrotCursor = 0
-
-const refillBuddhabrotSeeds = (region: BuddhabrotRegion, count: number) => {
-  const fresh = generateSeedPool(count, region, Math.random, buddhabrotScratch.subarray(0, count * 2))
-  for (let i = 0; i < fresh.length; i += 2) {
-    buddhabrotPool[buddhabrotCursor * 2] = fresh[i] ?? 0
-    buddhabrotPool[buddhabrotCursor * 2 + 1] = fresh[i + 1] ?? 0
-    buddhabrotCursor = (buddhabrotCursor + 1) % SEED_POOL_CAPACITY
-    buddhabrotPoolCount = Math.min(buddhabrotPoolCount + 1, SEED_POOL_CAPACITY)
-  }
-}
 
 let timeScale = 1
 
@@ -227,7 +184,6 @@ const renderFrame = (now: number) => {
     chaosMorphStart = clock
     chaosMorphDuration = randomMorphDuration()
     chaosAnchors = randomAnchorCount()
-    buddhabrotAnchors = randomBuddhabrotAnchorCount()
   }
 
   // getBoundaryJuliaPath() builds its (smoothed, always-outside) path once and caches it - this is
@@ -271,14 +227,11 @@ const renderFrame = (now: number) => {
     lerpEased(juliaFrom.cy, juliaTo.cy, juliaT),
   ]
 
-  // Buddhabrot: the sampled region walks the boundary path continuously (see BUDDHABROT_SWEEP's own
-  // comment), and the seed pool keeps tracking wherever it currently is. Only while the preset is
-  // actually showing - seed verification is real CPU work and there is nothing to spend it on
-  // otherwise.
-  if (props.preset === 'buddhabrot') {
-    const region = currentBuddhabrotRegion(juliaPath, clock * BUDDHABROT_SWEEP)
-    refillBuddhabrotSeeds(region, buddhabrotPoolCount === 0 ? BUDDHABROT_INITIAL_SEEDS : BUDDHABROT_SEEDS_PER_FRAME)
-  }
+  // Flow: a slow continuous orbit through noise-space, never a jump - see FLOW_SEED_SPEED's comment.
+  const flowSeed: readonly [number, number] = [
+    Math.cos(clock * FLOW_SEED_SPEED) * FLOW_SEED_RADIUS,
+    Math.sin(clock * FLOW_SEED_SPEED) * FLOW_SEED_RADIUS,
+  ]
 
   renderer.draw({
     time: clock,
@@ -293,8 +246,7 @@ const renderFrame = (now: number) => {
     fractalC,
     juliaPower,
     juliaSetC,
-    buddhabrotSeeds: buddhabrotPool.subarray(0, buddhabrotPoolCount * 2),
-    buddhabrotAnchors,
+    flowSeed,
     juliaC: juliaCAlongPath(juliaPath, clock * JULIA_SWEEP),
   })
 }
@@ -326,7 +278,6 @@ watch(() => props.preset, (preset) => {
   chaosMorphStart = clock
   chaosMorphDuration = randomMorphDuration()
   chaosAnchors = randomAnchorCount()
-  buddhabrotAnchors = randomBuddhabrotAnchorCount()
   fractalFromT = Math.random()
   fractalToT = Math.random()
   fractalMorphStart = clock
@@ -336,10 +287,6 @@ watch(() => props.preset, (preset) => {
   juliaMorphStart = clock
   juliaTransitionDuration = randomJuliaTransition()
   juliaHoldUntil = clock + randomJuliaHold()
-  // Empty pool, so every visit to the preset starts seeding fresh rather than splatting a batch of
-  // seeds proven against whatever region was current the last time this preset was open.
-  buddhabrotPoolCount = 0
-  buddhabrotCursor = 0
 })
 
 onMounted(() => {

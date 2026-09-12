@@ -18,8 +18,8 @@ export interface VisualizerFrame extends AudioBands {
   // The shared "N contrasting anchors" palette state (helpers/visualizer/shaders.ts' chaosAnchor())
   // - a CPU-side eased A-to-B morph (helpers/visualizer/hueMorph.ts) rather than a formula the
   // shader evolves on its own, because Chaos's shape moves fast enough that a continuous drift read
-  // as jumping. Read by Chaos, Fractal, Julia and Buddhabrot's present pass, which all share one
-  // drifting palette so switching between presets stays visually continuous.
+  // as jumping. Read by Chaos, Fractal, Julia and Flow, which all share one drifting palette so
+  // switching between presets stays visually continuous.
   chaosHue: number
   // How many anchors (3-5) the shared palette chain has this cycle - re-rolled alongside chaosHue's
   // target, not every frame, so the anchor count only ever changes at the same 5-9s boundary the
@@ -37,20 +37,12 @@ export interface VisualizerFrame extends AudioBands {
   // Julia's own picked-and-validated constant, eased in lockstep with juliaPower between the same
   // two targets - see pickJuliaTarget() and helpers/visualizer/shaders.ts's JULIA preset.
   juliaSetC: readonly [number, number]
-  // Buddhabrot's seed pool: `[cx, cy]` pairs, every one of them PROVEN on the CPU to escape within
-  // SEED_MAX_ITER (helpers/visualizer/buddhabrotMath.ts's generateSeedPool). The GPU reseeds a
-  // sample by picking from this pool and nothing else - that guarantee is what makes plotting an
-  // orbit as it iterates equivalent to the canonical "test first, then replay and plot" algorithm.
-  // The sampled region these are drawn from drifts continuously every frame (Canvas.vue's
-  // BUDDHABROT_SWEEP, the same idiom as Chaos's own uJuliaC), so the pool is refilled a slice at a
-  // time too - both to keep the cost off any single frame and to keep tracking the moving region.
-  buddhabrotSeeds: Float32Array
-  // Buddhabrot's OWN anchor count (6-10), separate from chaosAnchors' shared 3-5 - its density
-  // spans void -> halo -> filament -> hot core in one image, more range than the other three
-  // presets each show at once, so it was given room for more distinct colours rather than widening
-  // the shared range those three are tuned against. Still rides the same uChaosHue drift for
-  // continuity when switching presets - see helpers/visualizer/buddhabrot.ts's present pass.
-  buddhabrotAnchors: number
+  // Flow's warp-seed offset (helpers/visualizer/shaders.ts's FLOW): an extra additive term folded
+  // into the fbm's coordinate space, slowly orbiting the origin every frame (Canvas.vue) so the
+  // plasma keeps exploring new neighbourhoods. Deliberately a continuous orbit, never a
+  // hold-then-jump reroll - see Canvas.vue's FLOW_SEED_SPEED comment for why a jump reads as a
+  // seizure-inducing scene change.
+  flowSeed: readonly [number, number]
 }
 
 export interface VisualizerRenderer {

@@ -8,8 +8,6 @@
 // explicitly-eased A-to-B morph, helpers/visualizer/hueMorph.ts) and uChaosPalette (how many
 // anchors, 3-5). Every preset in this file reads the same drifting palette state, so switching
 // between them stays visually continuous rather than jumping to an unrelated colour scheme.
-// PRELUDE is exported so helpers/visualizer/buddhabrot.ts's own GL programs (outside the normal
-// one-shader-per-preset path below) can prepend it too, for the same palette and hash() helper.
 
 import type { VisualizerPresetId } from '~/helpers/constants'
 
@@ -43,6 +41,10 @@ uniform float uJuliaPower;
 // Julia's own picked-and-validated constant, eased between successive CPU-picked targets exactly
 // like uFractalC - see const JULIA below and helpers/visualizer/juliaField.ts.
 uniform vec2  uJuliaSetC;
+// Flow's warp-seed offset - an extra additive term folded into its fbm coordinate space, slowly
+// orbiting on the CPU (Canvas.vue's flowSeed) so the plasma keeps exploring new neighbourhoods
+// instead of ever holding still or replaying the same session - see const FLOW below.
+uniform vec2  uFlowSeed;
 
 vec3 hsv2rgb(vec3 c) {
   vec3 p = abs(fract(c.xxx + vec3(1.0, 0.6666666, 0.3333333)) * 6.0 - 3.0);
@@ -405,63 +407,148 @@ void main() {
 }
 `
 
-// Fallback only - never the normal path. The real Buddhabrot preset is a multi-pass GPU density
-// accumulation (helpers/visualizer/buddhabrot.ts: ping-pong orbit state, additive splat, decay,
-// present), which needs framebuffers and blending this renderer.ts otherwise never touches. If
-// that pass can't create its framebuffers (very old/blocked WebGL), renderer.ts compiles THIS
-// single-pass shader instead, registered under the same 'buddhabrot' id so the preset degrades to
-// something rather than a black screen. A slowly panning Mandelbrot-set render with an orbit-trap
-// glow - not a density accumulation, but the same subject (the Mandelbrot boundary) and the same
-// shared palette, so degrading to this reads as "the same preset, softer".
-const BUDDHABROT_FALLBACK = `
+// Flow: a domain-warped fBm plasma, Winamp/MilkDrop-reminiscent - deliberately the one preset here
+// NOT built on Mandelbrot/Julia escape-time maths, so it doesn't compete with Chaos/Fractal/Julia's
+// shared "spiraling dendrite" look. Replaces the old Buddhabrot preset (a multi-pass GPU histogram
+// accumulator, helpers/visualizer/buddhabrot.ts, deleted) outright - that preset's own single-pass
+// fallback shader read as visually weak even after its bugs were fixed, so rather than keep
+// investing in another fractal-family preset this is a different subject entirely.
+//
+// A single fbm layer reads as static mottled clouds - no motion, just texture. WARPING the sample
+// coordinates by a second fbm field before sampling a third time (the classic
+// `p = fbm(p + fbm(p + ...))` trick) is what turns that into something that reads as continuously
+// FLOWING: each octave's warp itself drifts over time, so the whole field never resolves into a
+// fixed texture merely panning underneath the camera.
+//
+// Same house rule as Chaos/Fractal/Julia: camera motion (swirl/zoom below) is uTime-only, NEVER
+// audio-driven - folding a beat into camera position reads as the screen jumping, not the music.
+// uBass/uMid/uTreble/uLevel only ever touch shading/turbulence-strength/brightness, and gently -
+// see the turbulence/hot comments below for why those coefficients are kept small. This preset sits
+// fullscreen with hard motion for as long as it's open, so it deliberately favours a calmer,
+// non-strobing feel over a punchier one: no full-field brightness pulsing, no hard edges that could
+// flash on a beat.
+//
+// uFlowSeed (Canvas.vue's flowSeed) is a slow continuous orbit through noise-space, not a
+// hold-then-jump reroll - an earlier version held it still for 20-40s then eased to a fresh random
+// point, which read as "static for a while, then a fast jarring slide to a different scene, then
+// static again" (the exact failure Buddhabrot's own sampled-region comment already warned about:
+// hold-then-jump reads as a slideshow, continuous sweep reads as alive). A slow perpetual orbit has
+// no jumps to begin with, so there is nothing to read as a seizure-inducing flash.
+const FLOW = `
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// 5 octaves - one more than the original 4, for busier/more chaotic detail (per request: the
+// vortex read as "boring", and one more octave of fine filigree costs little for a single preset).
+// The 2.02 (not 2.0) per-octave scale and the +17.0 offset keep successive octaves from lining up
+// into a visible repeating lattice.
+float fbm(vec2 p) {
+  float sum = 0.0;
+  float amp = 0.5;
+  mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+  for (int i = 0; i < 5; i++) {
+    sum += amp * vnoise(p);
+    p = rot * p * 2.02 + 17.0;
+    amp *= 0.5;
+  }
+  return sum;
+}
+
+// Two-layer domain warp, sampled at whatever coordinate/zoom the caller hands it - kept as its own
+// function because main() below samples it TWICE (see the zoom crossfade) and needs both calls to
+// stay identical. The warp multiplier (2.4) amplifies how much the warp bends the sampled
+// coordinate - turned back up from an earlier, more conservative 1.6 per request for a busier,
+// more chaotic field (the earlier value existed to tame how violently AUDIO-linked turbulence
+// could swing the field frame to frame - see turbulence's own comment - not to cap the field's
+// baseline complexity, which is purely uTime-driven and can run as hot as looks good).
+float flowField(vec2 q) {
+  // Internal drift, 4x an earlier version's speed (per request) - the warp itself keeps evolving
+  // even where the camera briefly isn't moving much (e.g. near the swirl's own centre), which is
+  // what keeps every part of the frame reading as alive.
+  float drift = uTime * 0.06;
+  vec2 warpA = vec2(fbm(q + drift), fbm(q + vec2(5.2, 1.3) - drift));
+  // Barely-there, on purpose: unlike Chaos's chaotic dendrite (where a warp-strength nudge blends
+  // into texture that's already busy everywhere), Flow renders ONE clean, singular, instantly-
+  // readable vortex - so ANY change to the warp strength is a change to the vortex's own visible
+  // geometry, not just its texture. An earlier version modulated this by up to +25%/+15% off
+  // mid/treble (the same order of magnitude Chaos/Fractal use for THEIR audio touches) and the
+  // whole spiral visibly bulged/deformed in sync with the beat - "twerking" - because there's only
+  // one shape on screen for that deformation to show up in. Cut an order of magnitude.
+  float turbulence = 1.0 + uMid * 0.025 + uTreble * 0.015;
+  vec2 warpB = vec2(
+    fbm(q + 2.4 * warpA * turbulence + vec2(1.7, 9.2)),
+    fbm(q + 2.4 * warpA * turbulence + vec2(8.3, 2.8))
+  );
+  return fbm(q + 2.4 * warpB);
+}
+
 void main() {
-  vec2 p = centered() * (0.9 + 0.15 * sin(uTime * 0.05));
-  p = rot2(uTime * 0.02) * p + vec2(-0.5, 0.0);
+  // Swirl: a spiral vortex, not a rigid spin - rotation strengthens toward the centre (1.1 / r) so
+  // the field looks genuinely stirred. Precession speed 4x an earlier version's (per request - it
+  // read as "a very very slow vortex, boring"). Floored well above 0 (not the usual tiny
+  // anti-division-by-zero epsilon) - an unfloored 1/r winds the angle towards infinity as r->0,
+  // which wound the centre into an ultra-tight bullseye of rings a couple of pixels wide. Noise
+  // sampled that densely aliases (no mipmapping on a procedural field), so that patch shimmered on
+  // its own regardless of audio - and it's exactly where the "hot" highlight below sits, compounding
+  // it. Flooring at 0.25 caps the extra winding at ~4.4 radians - still a multi-turn spiral, not a
+  // point singularity.
+  //
+  // A second, faster, radius-dependent wobble (0.6*sin(...)) is layered on top - a single uniform
+  // rotation rate is one big smooth vortex and nothing else, which is exactly the "boring" being
+  // complained about here; a term that oscillates over time AND varies with radius breaks the
+  // spiral into shifting, uneven eddies instead of one rigid pinwheel, without ever being a
+  // discontinuous jump (sin() is smooth everywhere) or audio-linked (still pure uTime/position, so
+  // it can't reintroduce beat-synced "twerking").
+  float r = length(centered()) + 0.25;
+  float swirl = uTime * 0.08 + 1.1 / r + 0.6 * sin(uTime * 0.15 + r * 3.0);
+  vec2 sp = rot2(swirl) * centered();
 
-  vec2 c = p;
-  vec2 z = vec2(0.0);
-  float esc = 0.0;
-  float trap = 10000.0;
-  for (int i = 0; i < 64; i++) {
-    z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
-    trap = min(trap, dot(z, z));
-    if (dot(z, z) > 16.0) {
-      break;
-    }
-    esc += 1.0;
-  }
+  // Perpetual zoom-IN, forever, via a 2-sample cross-fade one octave of zoom apart: uv2 at the end
+  // of a cycle (f -> 1) is bit-for-bit the same coordinate uv1 starts the NEXT cycle at (f -> 0), so
+  // the sampled field is continuous straight through the wrap - no pop, no jump, just an endless
+  // slow dive, the "slightly zooming in infinitely" this preset is going for without the float32
+  // precision blowup a real one-way zoom would eventually hit. Cycle speed 4x an earlier version's,
+  // same request as the swirl above.
+  float cycle = uTime * 0.072;
+  float f = fract(cycle);
+  // uFlowSeed is added to BOTH samples identically, after the *2.0 - not added once and then
+  // doubled along with the rest of uv1, which was the actual bug in an earlier version: doubling
+  // the seed term along with the coordinate broke the exact continuity this whole trick depends on,
+  // producing a real (if brief, every ~56s) discontinuity that read as a flash.
+  vec2 base = sp * pow(2.0, -f);
+  vec2 uv1 = base + uFlowSeed;
+  vec2 uv2 = base * 2.0 + uFlowSeed;
+  float field = mix(flowField(uv1), flowField(uv2), f);
 
-  float dz = dot(z, z);
-  float m = esc;
-  bool escaped = dz > 16.0;
-  if (escaped) {
-    m = esc + 1.0 - log2(max(log2(dz), 1.0001));
-  }
-  m = clamp(m / 64.0, 0.0, 1.0);
-
-  // Points that never escape are NOT static - they still spiral around an attracting periodic
-  // cycle, so trap (the closest the orbit ever came to the origin) still varies smoothly from
-  // pixel to pixel inside the set. Turning it into rings via cos() is the classic orbit-trap
-  // interior-colouring technique, and is what actually reveals that spiral structure - shading the
-  // interior by escape count alone (m pinned at ~1 for every non-escaping pixel) is exactly what
-  // read as one bare flat colour, since escape count carries zero information once nothing escapes.
-  // -uTime * 0.15 slowly rotates the rings so the interior visibly spirals over time, not just in
-  // its (still-fractal, still-nested) static shape.
-  float logTrap = log(max(trap, 1e-5));
-  float rings = 0.5 + 0.5 * cos(logTrap * 5.0 - uTime * 0.15);
-  // interior: ~1 deep inside the set (m never grew, nothing to shade by), ~0 near/past the
-  // boundary, where the existing escape-count shade already carries real structure - so the two
-  // sources hand off smoothly at the boundary rather than the ring pattern bleeding into the
-  // outside dendrite detail.
-  float interior = 1.0 - m;
-  float shade = mix(pow(m, 1.2), rings, interior);
-
-  float glow = pow(1.0 - clamp(trap * 4.0, 0.0, 1.0), 1.4);
   float count = clamp(uChaosPalette, 3.0, 5.0);
-  vec3 col = chaosMix(shade, count, 0.0);
-  float hot = clamp(pow(glow, 2.0) * (1.0 - m) * 2.0, 0.0, 1.0);
+  // No pow() contrast-reshaping and no hard fract() banding here (an earlier version had both) -
+  // fbm's output doesn't cluster near a cap the way escape counts do, and a fract()-based band is a
+  // sawtooth with a hard seam every wrap: any pixel near that seam flips between two very different
+  // colours from one frame to the next as the field drifts past it, which is exactly the kind of
+  // fast hard-edged flicker a photosensitive viewer reacts to. A smooth field with no seams reads as
+  // a slow-flowing gradient instead.
+  float structure = clamp(field, 0.0, 1.0);
+  vec3 col = chaosMix(structure, count, 0.0);
+  // Bass nudges the hot highlight only slightly (+/-8% around a 0.5 base - down from an earlier
+  // +/-25%, same reasoning as turbulence above: the vortex's centre is a single unmistakable focal
+  // point, so pulsing its brightness hard enough to notice reads as the whole shape throbbing, not
+  // a subtle accent).
+  float hot = clamp(pow(field, 4.0) * (0.5 + uBass * 0.08), 0.0, 1.0);
   col = mix(col, chaosAnchor(count - 1.0, count, 0.0), hot);
-  col *= 0.55 + 0.8 * uLevel;
+  col = mix(col, vec3(1.0), pow(hot, 4.0) * 0.4);
+  // A gentler brightness range than Chaos/Fractal/Julia's shared 0.55-1.35 (uLevel=0..1) - same
+  // reasoning again: this preset is one coherent field filling the whole frame, so a big overall
+  // brightness swing on the music's loudness envelope reads as the entire image "pumping" with the
+  // beat rather than a subtle glow response.
+  col *= 0.75 + 0.4 * uLevel;
   gl_FragColor = vec4(col, 1.0);
 }
 `
@@ -469,6 +556,6 @@ void main() {
 export const FRAGMENT_SHADERS: Record<VisualizerPresetId, string> = {
   chaos: PRELUDE + CHAOS,
   fractal: PRELUDE + FRACTAL,
-  buddhabrot: PRELUDE + BUDDHABROT_FALLBACK,
+  flow: PRELUDE + FLOW,
   julia: PRELUDE + JULIA,
 }

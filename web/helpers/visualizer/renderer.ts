@@ -2,14 +2,10 @@
 // Everything reactive lives in components/visualizer/Canvas.vue, which owns the rAF loop and calls
 // draw() with a frame; this file only knows how to put that frame on screen.
 //
-// Every preset except Buddhabrot fits the same shape: one compiled program, one fullscreen
-// triangle, one draw call, no blend/framebuffer state ever touched. Buddhabrot needs four programs
-// and its own framebuffers/blending, which doesn't fit that shape at all - so it lives entirely in
-// helpers/visualizer/buddhabrot.ts, and this file only ever calls its four exported functions
-// (never touches GL state on its behalf). See that module's own header comment for why.
+// Every preset fits the same shape: one compiled program, one fullscreen triangle, one draw call,
+// no blend/framebuffer state ever touched.
 
 import { FRAGMENT_SHADERS, VERTEX_SHADER } from '~/helpers/visualizer/shaders'
-import { createBuddhabrotPass, type BuddhabrotPass } from '~/helpers/visualizer/buddhabrot'
 import type { VisualizerPresetId } from '~/helpers/constants'
 import type { VisualizerFrame, VisualizerRenderer } from '~/types/visualizer'
 
@@ -20,7 +16,7 @@ const MAX_PIXEL_RATIO = 1.5
 
 const UNIFORM_NAMES = [
   'uResolution', 'uTime', 'uBass', 'uMid', 'uTreble', 'uLevel', 'uJuliaC',
-  'uChaosHue', 'uChaosPalette', 'uFractalC', 'uJuliaPower', 'uJuliaSetC',
+  'uChaosHue', 'uChaosPalette', 'uFractalC', 'uJuliaPower', 'uJuliaSetC', 'uFlowSeed',
 ] as const
 
 type UniformName = (typeof UNIFORM_NAMES)[number]
@@ -94,32 +90,7 @@ export const createVisualizerRenderer = (canvas: HTMLCanvasElement): VisualizerR
   const programs = new Map<VisualizerPresetId, CompiledProgram | null>()
   let current: CompiledProgram | null = null
 
-  // Buddhabrot's real multi-pass implementation, created lazily the first time that preset is
-  // selected (never eagerly - every other session never touches this). `undefined` means "not
-  // attempted yet", `null` means "attempted and this GPU can't support it, use the FRAGMENT_SHADERS
-  // fallback compiled through the normal `programs` path instead".
-  let buddhabrot: BuddhabrotPass | null | undefined
-  let usingBuddhabrot = false
-
   const setPreset = (preset: VisualizerPresetId) => {
-    if (preset === 'buddhabrot') {
-      if (buddhabrot === undefined) {
-        buddhabrot = createBuddhabrotPass(gl)
-        if (buddhabrot) {
-          buddhabrot.resize(canvas.width, canvas.height)
-        }
-      }
-      if (buddhabrot) {
-        usingBuddhabrot = true
-        buddhabrot.reset()
-        current = null
-        return
-      }
-      // Falls through to the normal single-pass path below with the fallback shader registered
-      // under this same preset id in FRAGMENT_SHADERS.
-    }
-    usingBuddhabrot = false
-
     if (!programs.has(preset)) {
       programs.set(preset, linkProgram(gl, FRAGMENT_SHADERS[preset]))
     }
@@ -144,14 +115,9 @@ export const createVisualizerRenderer = (canvas: HTMLCanvasElement): VisualizerR
     canvas.width = width
     canvas.height = height
     gl.viewport(0, 0, width, height)
-    buddhabrot?.resize(width, height)
   }
 
   const draw = (frame: VisualizerFrame) => {
-    if (usingBuddhabrot && buddhabrot) {
-      buddhabrot.draw(frame)
-      return
-    }
     if (!current) {
       return
     }
@@ -170,6 +136,7 @@ export const createVisualizerRenderer = (canvas: HTMLCanvasElement): VisualizerR
     gl.uniform2f(u.uFractalC ?? null, frame.fractalC[0], frame.fractalC[1])
     gl.uniform1f(u.uJuliaPower ?? null, frame.juliaPower)
     gl.uniform2f(u.uJuliaSetC ?? null, frame.juliaSetC[0], frame.juliaSetC[1])
+    gl.uniform2f(u.uFlowSeed ?? null, frame.flowSeed[0], frame.flowSeed[1])
 
     gl.drawArrays(gl.TRIANGLES, 0, 3)
   }
@@ -182,8 +149,6 @@ export const createVisualizerRenderer = (canvas: HTMLCanvasElement): VisualizerR
     }
     programs.clear()
     current = null
-    buddhabrot?.dispose()
-    buddhabrot = undefined
     gl.deleteBuffer(quad)
     // Browsers cap how many live WebGL contexts a page may hold, and the overlay is opened and
     // closed repeatedly - dropping the context explicitly keeps that budget from running out.

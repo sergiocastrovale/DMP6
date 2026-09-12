@@ -35,14 +35,14 @@ describe('visualizer/Hud.vue', () => {
   it('offers every preset and marks the active one', async () => {
     const { wrapper } = await mountHud()
     const { preset, setPreset } = useVisualizer()
-    setPreset('buddhabrot')
+    setPreset('flow')
     await nextTick()
 
     const buttons = wrapper.findAll('[aria-pressed]')
     expect(buttons.map(b => b.text())).toEqual(visualizerPresets.map(p => p.label))
     expect(buttons.filter(b => b.attributes('aria-pressed') === 'true').map(b => b.text()))
-      .toEqual(['Buddhabrot'])
-    expect(preset.value).toBe('buddhabrot')
+      .toEqual(['Flow'])
+    expect(preset.value).toBe('flow')
   })
 
   it('switches preset on click', async () => {

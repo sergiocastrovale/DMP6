@@ -48,7 +48,7 @@ export const THEME_STORAGE_KEY = 'dmp-theme'
 export const visualizerPresets = [
   { id: 'chaos', label: 'Chaos', description: 'Spiraling Julia set on the Mandelbrot boundary, no bass dependence', key: '1' },
   { id: 'fractal', label: 'Fractal', description: 'Kaleidoscopic Julia set orbiting on the bass', key: '2' },
-  { id: 'buddhabrot', label: 'Buddhabrot', description: 'Accumulated density of escaping Mandelbrot orbits, builds up over time', key: '3' },
+  { id: 'flow', label: 'Flow', description: 'Domain-warped noise field, continuously flowing plasma', key: '3' },
   { id: 'julia', label: 'Julia', description: 'Julia set whose power drifts, morphing its symmetry order', key: '4' },
 ] as const
 
