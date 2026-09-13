@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { LucideArrowLeft } from 'lucide-vue-next'
 import type { PlaylistGeneratorRow, PlaylistGeneratorType } from '~/types/playlistGenerator'
-import { cx, layout, grid, form } from '~/helpers/ui'
+import { cx, layout, grid } from '~/helpers/ui'
 import {
   parseTerms,
   termsToText,
@@ -62,32 +62,27 @@ const { saving, error, save: doSave } = useFormSave(async () => {
       Back to generated playlists
     </UiButton>
 
-    <PageTitle :text="isEdit ? `Edit ${name || 'playlist generator'}` : 'New playlist generator'" />
+    <div class="flex flex-col gap-2">
+      <PageTitle :text="isEdit ? `Edit ${name || 'playlist generator'}` : 'New playlist generator'" />
+      <UiBadge :tone="type === 'GENRE' ? 'accent' : 'info'" class="mt-auto self-start">
+        {{ type === 'GENRE' ? 'Genre-specific' : 'Region-specific' }}
+      </UiBadge>
+    </div>
 
     <UiLoadingBlock v-if="loading" />
 
     <form v-else class="flex w-full max-w-7xl flex-col gap-6" @submit.prevent="doSave">
-      <UiCard title="Details">
+      <UiCard>
         <div :class="grid.halfRow">
           <UiSelect v-if="!isEdit" v-model="type" label="Type" description="Genre or region playlist. Fixed once created.">
             <option value="GENRE">Genre</option>
             <option value="REGION">Region</option>
           </UiSelect>
-          <div v-else class="flex flex-col gap-1.5">
-            <span :class="form.label">Type</span>
-            <p :class="form.hint">Fixed once created.</p>
-            <UiBadge :tone="type === 'GENRE' ? 'accent' : 'info'" class="mt-auto self-start">
-              {{ type === 'GENRE' ? 'Genre' : 'Region' }}
-            </UiBadge>
-          </div>
-
           <UiTextField v-model="name" label="Name" placeholder="Rock" autofocus required />
         </div>
 
         <UiTextArea v-model="description" label="Description (optional)" placeholder="Classic and modern rock across all subgenres" />
-      </UiCard>
 
-      <UiCard title="Matching">
         <UiTextArea
           v-model="termsText"
           :label="GENERATOR_TERMS_LABEL[type]"

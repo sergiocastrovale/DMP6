@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideArrowLeft, LucidePlus, LucidePencil, LucideTrash2 } from 'lucide-vue-next'
+import { LucideArrowLeft, LucidePlus, LucidePencil, LucideRefreshCw, LucideTrash2 } from 'lucide-vue-next'
 import type { PlaylistGeneratorRow } from '~/types/playlistGenerator'
 import { cx, data, layout } from '~/helpers/ui'
 import { formatDate } from '~/helpers/functions'
@@ -48,6 +48,10 @@ const confirmDelete = async () => {
   }
 }
 
+const regenerateRow = (row: PlaylistGeneratorRow) => {
+  terminal.run('./playlists', ['--group', row.slug], `playlists-${row.slug}`)
+}
+
 const termsPreview = (row: PlaylistGeneratorRow): string => {
   const kept = row.terms.filter(t => !t.startsWith('-'))
   const shown = kept.slice(0, 4).join(', ')
@@ -63,7 +67,7 @@ onMounted(() => loadRows())
       Back to playlists
     </UiButton>
 
-    <PageTitle text="Generated playlists" subtext="Seeds for genre and region playlists, read by ./playlists on every (re)generate.">
+    <PageTitle text="Generated playlists" subtext="Configuration for genre and region playlists">
       <div class="flex items-center gap-2">
         <PlaylistButtonGeneratePlaylists :regenerate="hasGenerated" />
         <UiButton :icon="LucidePlus" to="/playlists/setup/generated/new">
@@ -72,14 +76,16 @@ onMounted(() => loadRows())
       </div>
     </PageTitle>
 
-    <UiHint>
-      A <span class="text-stone-100">Genre</span> generator's terms are keywords, one per line: a
+    <UiHint class="flex flex-col gap-2">
+      <div>A <span class="text-stone-100">Genre</span> generator's terms are keywords, one per line: a
       library genre matches if it equals a line exactly, or contains it as a whole word ("rock"
-      also catches "hard rock"). A line starting with "-" excludes an exact genre name instead
-      (e.g. "-indie rock"). A <span class="text-stone-100">Region</span> generator's terms are ISO
-      3166-1 alpha-2 country codes (e.g. "JP"), matched against each artist's country. Each run
-      selects up to 500 tracks per playlist, max 3 per release, and skips groups under 10 tracks.
-      Changes here take effect on the next Generate/Regenerate.
+      also catches "hard rock"). </div>
+
+      <div> A <span class="text-stone-100">Region</span> generator's terms are ISO 3166-1 alpha-2 country codes (e.g. "JP"), matched against each artist's country. </div>
+
+      <div> A line starting with "-" excludes an exact genre name instead (e.g. "-indie rock"). </div>
+
+      <div> Each run selects up to 500 tracks per playlist, max 3 per release, and skips groups under 10 tracks. Changes here take effect on the next Generate/Regenerate. </div>
     </UiHint>
 
     <UiLoadingBlock v-if="loading" />
@@ -119,6 +125,13 @@ onMounted(() => loadRows())
           <td :class="cx(data.td, 'text-right')" @click.stop>
             <div class="flex items-center justify-end gap-1.5">
               <DataTableAction :icon="LucidePencil" :label="`Edit ${row.name}`" :to="`/playlists/setup/generated/${row.id}`" />
+              <DataTableAction
+                :icon="LucideRefreshCw"
+                :label="`Regenerate ${row.name}`"
+                :loading="terminal.isRunning"
+                :disabled="terminal.isRunning"
+                @click="regenerateRow(row)"
+              />
               <DataTableAction :icon="LucideTrash2" :label="`Remove ${row.name}`" @click="deleteTarget = row" />
             </div>
           </td>

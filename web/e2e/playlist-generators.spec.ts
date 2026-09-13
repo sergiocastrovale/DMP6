@@ -45,14 +45,14 @@ test('lists seeded generators and offers Generate when none have run yet', async
   await stubTerminal(page)
   await page.goto('/playlists/setup/generated')
 
-  await expect(page.getByRole('link', { name: rockName })).toBeVisible()
+  await expect(page.getByRole('link', { name: rockName, exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /generate playlists/i })).toBeVisible()
 })
 
 test('editing a generator\'s terms persists', async ({ page }) => {
   await stubTerminal(page)
   await page.goto('/playlists/setup/generated')
-  await page.getByRole('link', { name: rockName }).click()
+  await page.getByRole('link', { name: rockName, exact: true }).click()
   await expect(page).toHaveURL(`/playlists/setup/generated/${rockId}`)
 
   const textarea = page.locator('textarea').nth(1)
@@ -77,7 +77,7 @@ test('adding a new generator shows it in the table', async ({ page }) => {
   await page.getByRole('button', { name: 'Save' }).click()
 
   await expect(page).toHaveURL('/playlists/setup/generated')
-  await expect(page.getByRole('link', { name })).toBeVisible()
+  await expect(page.getByRole('link', { name, exact: true })).toBeVisible()
 
   await prisma.playlistGenerator.deleteMany({ where: { name } })
 })
@@ -110,4 +110,14 @@ test('clicking Generate/Regenerate runs ./playlists', async ({ page }) => {
   await page.getByRole('button', { name: /generate playlists/i }).click()
 
   await expect.poll(() => runs.map(r => r.command)).toContain('./playlists')
+})
+
+test('row-scoped Regenerate runs ./playlists --group <slug> for just that generator', async ({ page }) => {
+  const runs = await stubTerminal(page)
+  await page.goto('/playlists/setup/generated')
+
+  const row = page.locator('tr', { has: page.getByRole('link', { name: rockName }) })
+  await row.getByRole('button', { name: `Regenerate ${rockName}` }).click()
+
+  await expect.poll(() => runs).toEqual([{ command: './playlists', args: ['--group', rockSlug] }])
 })

@@ -78,9 +78,11 @@ helper, re-validated on every write since a client could bypass the form).
 ### `/playlists/setup/generated` (admin only)
 
 A data table (pattern: `/downloads/monitoring`) of every `PlaylistGenerator`: name (links to edit),
-type badge, terms preview, track count, last generated date, edit/remove actions. Top right:
-"Add" (new generator) and "Generate playlists" / "Regenerate playlists" (labelled by whether any
-generator has produced a playlist yet) — same `./playlists` terminal run as before.
+type badge, terms preview, track count, last generated date, edit/regenerate/remove actions. Top
+right: "Add" (new generator) and "Generate playlists" / "Regenerate playlists" (labelled by
+whether any generator has produced a playlist yet, runs `./playlists` for every generator). The
+per-row Regenerate action instead runs `./playlists --group <slug>`, scoped to just that
+generator's playlist — use it to pick up an edited generator without waiting on a full run.
 
 - `/playlists/setup/generated/new` — create form (type select, name, description, terms textarea)
 - `/playlists/setup/generated/[id]` — edit form (type fixed, shown as a badge)
