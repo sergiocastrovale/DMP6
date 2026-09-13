@@ -2,7 +2,6 @@ use chrono::Utc;
 use clap::Parser;
 use colored::*;
 use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
-use serde::Deserialize;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -26,13 +25,9 @@ struct Args {
     #[arg(long)]
     report: bool,
 
-    /// Update only a specific genre group (by slug)
+    /// Update only a specific generator (by slug)
     #[arg(long)]
     group: Option<String>,
-
-    /// Path to custom genre-groups.json config file
-    #[arg(long)]
-    config: Option<String>,
 
     /// Skip genre playlists
     #[arg(long)]
@@ -44,40 +39,15 @@ struct Args {
 }
 
 // ---------------------------------------------------------------------------
-// Configuration
+// Config
 // ---------------------------------------------------------------------------
 
-#[derive(Deserialize, Debug)]
-struct GenreConfig {
-    max_tracks: usize,
-    max_per_release: usize,
-    groups: Vec<GenreGroup>,
-}
-
-#[derive(Deserialize, Debug)]
-struct GenreGroup {
-    name: String,
-    slug: String,
-    description: String,
-    roots: Vec<String>,
-    includes: Vec<String>,
-    excludes: Vec<String>,
-}
-
-#[derive(Deserialize, Debug)]
-struct RegionConfig {
-    max_tracks: usize,
-    max_per_release: usize,
-    groups: Vec<RegionGroup>,
-}
-
-#[derive(Deserialize, Debug)]
-struct RegionGroup {
-    name: String,
-    slug: String,
-    description: String,
-    countries: Vec<String>,
-}
+// Selection knobs, formerly the top-level fields of genre-groups.json. Now that groups live in
+// the DB (`PlaylistGenerator`, editable at /playlists/setup/generated), these are plain constants
+// - they were never actually varied per-deployment.
+const MAX_TRACKS: usize = 500;
+const MAX_PER_RELEASE: usize = 3;
+const MIN_TRACKS: usize = 10;
 
 struct AppConfig {
     database_url: String,
@@ -109,82 +79,76 @@ fn load_env() -> AppConfig {
     AppConfig { database_url }
 }
 
-fn load_genre_config(custom_path: Option<&str>) -> GenreConfig {
-    let config_paths = match custom_path {
-        Some(p) => vec![PathBuf::from(p)],
-        None => vec![
-            PathBuf::from("scripts/playlists/genre-groups.json"),
-            PathBuf::from("genre-groups.json"),
-            PathBuf::from("../../scripts/playlists/genre-groups.json"),
-        ],
-    };
+// ---------------------------------------------------------------------------
+// Generators (DB-backed config, see PlaylistGenerator in prisma/schema.prisma)
+// ---------------------------------------------------------------------------
 
-    for path in &config_paths {
-        if path.exists() {
-            let content = std::fs::read_to_string(path)
-                .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
-            return serde_json::from_str(&content)
-                .unwrap_or_else(|e| panic!("Failed to parse {}: {}", path.display(), e));
-        }
-    }
-
-    // Try relative to executable location
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            let path = exe_dir.join("../../genre-groups.json");
-            if path.exists() {
-                let content = std::fs::read_to_string(&path)
-                    .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
-                return serde_json::from_str(&content)
-                    .unwrap_or_else(|e| panic!("Failed to parse {}: {}", path.display(), e));
-            }
-        }
-    }
-
-    panic!(
-        "genre-groups.json not found. Tried: {:?}",
-        config_paths
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-    );
+#[derive(Debug, Clone)]
+struct Generator {
+    id: String,
+    kind: String, // "GENRE" | "REGION"
+    name: String,
+    slug: String,
+    description: Option<String>,
+    terms: Vec<String>,
 }
 
-fn load_region_config() -> RegionConfig {
-    let config_paths = vec![
-        PathBuf::from("scripts/playlists/region-groups.json"),
-        PathBuf::from("region-groups.json"),
-        PathBuf::from("../../scripts/playlists/region-groups.json"),
-    ];
+async fn fetch_generators(pool: &PgPool) -> Vec<Generator> {
+    let rows: Vec<(String, String, String, String, Option<String>, Vec<String>)> = sqlx::query_as(
+        r#"SELECT id, type::text, name, slug, description, terms FROM "PlaylistGenerator" ORDER BY type, name"#,
+    )
+    .fetch_all(pool)
+    .await
+    .expect("Failed to fetch playlist generators");
 
-    for path in &config_paths {
-        if path.exists() {
-            let content = std::fs::read_to_string(path)
-                .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
-            return serde_json::from_str(&content)
-                .unwrap_or_else(|e| panic!("Failed to parse {}: {}", path.display(), e));
-        }
-    }
+    rows.into_iter()
+        .map(|(id, kind, name, slug, description, terms)| Generator {
+            id,
+            kind,
+            name,
+            slug,
+            description,
+            terms,
+        })
+        .collect()
+}
 
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            let path = exe_dir.join("../../region-groups.json");
-            if path.exists() {
-                let content = std::fs::read_to_string(&path)
-                    .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
-                return serde_json::from_str(&content)
-                    .unwrap_or_else(|e| panic!("Failed to parse {}: {}", path.display(), e));
+/// A GENRE generator's terms, split into keyword lines and `-`-prefixed exclude lines.
+#[derive(Debug, Default)]
+struct GenreRule {
+    keywords: Vec<String>,
+    excludes: Vec<String>,
+}
+
+impl GenreRule {
+    fn from_terms(terms: &[String]) -> Self {
+        let mut keywords = Vec::new();
+        let mut excludes = Vec::new();
+        for raw in terms {
+            let t = raw.trim();
+            if t.is_empty() {
+                continue;
+            }
+            if let Some(rest) = t.strip_prefix('-') {
+                let rest = rest.trim();
+                if !rest.is_empty() {
+                    excludes.push(rest.to_lowercase());
+                }
+            } else {
+                keywords.push(t.to_lowercase());
             }
         }
+        GenreRule { keywords, excludes }
     }
+}
 
-    panic!(
-        "region-groups.json not found. Tried: {:?}",
-        config_paths
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-    );
+/// A REGION generator's terms, as uppercased ISO 3166-1 alpha-2 country codes.
+fn region_countries(terms: &[String]) -> Vec<String> {
+    terms
+        .iter()
+        .map(|c| c.trim().to_uppercase())
+        .filter(|c| !c.is_empty())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -199,45 +163,26 @@ struct GenreMatch {
     weight: f64,
 }
 
-/// Match a genre name against a genre group, returning a weight (0.0 = no match, 1.0 = exact root)
-fn match_genre(genre_name: &str, group: &GenreGroup) -> Option<f64> {
+/// Match a genre name against a genre rule, returning a weight (0.0 = no match, 1.0 = exact
+/// keyword). Two tiers only - exact and whole-word - now that groups are hand-edited via a plain
+/// textarea rather than tuned includes/excludes/substring lists.
+fn match_genre(genre_name: &str, rule: &GenreRule) -> Option<f64> {
     let name_lower = genre_name.to_lowercase();
 
-    // Check excludes first
-    for exc in &group.excludes {
-        if name_lower == exc.to_lowercase() {
-            return None;
-        }
+    if rule.excludes.iter().any(|exc| name_lower == *exc) {
+        return None;
     }
 
-    // Check exact root match (weight 1.0)
-    for root in &group.roots {
-        if name_lower == root.to_lowercase() {
-            return Some(1.0);
-        }
+    if rule.keywords.iter().any(|kw| name_lower == *kw) {
+        return Some(1.0);
     }
 
-    // Check if genre contains root as a word boundary match (weight 0.8)
-    for root in &group.roots {
-        let root_lower = root.to_lowercase();
-        if contains_as_word(&name_lower, &root_lower) {
-            return Some(0.8);
-        }
-    }
-
-    // Check includes list (weight 0.6)
-    for inc in &group.includes {
-        if name_lower == inc.to_lowercase() {
-            return Some(0.6);
-        }
-    }
-
-    // Check if genre contains root as substring (weight 0.4)
-    for root in &group.roots {
-        let root_lower = root.to_lowercase();
-        if name_lower.contains(&root_lower) && name_lower != root_lower {
-            return Some(0.4);
-        }
+    if rule
+        .keywords
+        .iter()
+        .any(|kw| contains_as_word(&name_lower, kw))
+    {
+        return Some(0.8);
     }
 
     None
@@ -370,100 +315,21 @@ async fn fetch_tracks_for_countries(
         .collect()
 }
 
-async fn upsert_region_playlist(
-    pool: &PgPool,
-    group: &RegionGroup,
-    track_ids: &[String],
-) -> Result<(), sqlx::Error> {
-    let playlist_slug = format!("region-{}", group.slug);
-
-    let existing: Option<(String,)> =
-        sqlx::query_as(r#"SELECT id FROM "Playlist" WHERE "regionGroup" = $1"#)
-            .bind(&group.slug)
-            .fetch_optional(pool)
-            .await?;
-
-    let playlist_id = if let Some((id,)) = existing {
-        sqlx::query(
-            r#"UPDATE "Playlist" SET name = $1, slug = $2, description = $3, "updatedAt" = NOW() WHERE id = $4"#,
-        )
-        .bind(&group.name)
-        .bind(&playlist_slug)
-        .bind(&group.description)
-        .bind(&id)
-        .execute(pool)
-        .await?;
-        id
-    } else {
-        let id = generate_cuid();
-        sqlx::query(
-            r#"INSERT INTO "Playlist" (id, name, slug, description, type, "regionGroup", "createdAt", "updatedAt")
-               VALUES ($1, $2, $3, $4, 'REGION', $5, NOW(), NOW())"#,
-        )
-        .bind(&id)
-        .bind(&group.name)
-        .bind(&playlist_slug)
-        .bind(&group.description)
-        .bind(&group.slug)
-        .execute(pool)
-        .await?;
-        id
-    };
-
-    // DELETE + INSERT in one transaction - a crash/error between the two previously left the
-    // playlist emptied (tracks deleted, replacement never inserted) until the next successful
-    // regen (audit #89).
-    let mut tx = pool.begin().await?;
-
-    sqlx::query(r#"DELETE FROM "PlaylistTrack" WHERE "playlistId" = $1"#)
-        .bind(&playlist_id)
-        .execute(&mut *tx)
-        .await?;
-
-    if !track_ids.is_empty() {
-        let mut ids = Vec::with_capacity(track_ids.len());
-        let mut positions = Vec::with_capacity(track_ids.len());
-        let mut playlist_ids = Vec::with_capacity(track_ids.len());
-        let mut t_ids = Vec::with_capacity(track_ids.len());
-
-        for (i, track_id) in track_ids.iter().enumerate() {
-            ids.push(generate_cuid());
-            positions.push((i + 1) as i32);
-            playlist_ids.push(playlist_id.clone());
-            t_ids.push(track_id.clone());
-        }
-
-        sqlx::query(
-            r#"
-            INSERT INTO "PlaylistTrack" (id, position, "playlistId", "trackId", "createdAt")
-            SELECT * FROM UNNEST($1::text[], $2::int[], $3::text[], $4::text[], $5::timestamp[])
-            "#,
-        )
-        .bind(&ids)
-        .bind(&positions)
-        .bind(&playlist_ids)
-        .bind(&t_ids)
-        .bind(&vec![Utc::now().naive_utc(); track_ids.len()])
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    tx.commit().await?;
-
-    Ok(())
-}
-
 async fn upsert_playlist(
     pool: &PgPool,
-    group: &GenreGroup,
+    generator: &Generator,
     track_ids: &[String],
 ) -> Result<(), sqlx::Error> {
-    let playlist_slug = format!("genre-{}", group.slug);
+    let prefix = if generator.kind == "REGION" {
+        "region"
+    } else {
+        "genre"
+    };
+    let playlist_slug = format!("{}-{}", prefix, generator.slug);
 
-    // Check if playlist exists
     let existing: Option<(String,)> =
-        sqlx::query_as(r#"SELECT id FROM "Playlist" WHERE "genreGroup" = $1"#)
-            .bind(&group.slug)
+        sqlx::query_as(r#"SELECT id FROM "Playlist" WHERE "generatorId" = $1"#)
+            .bind(&generator.id)
             .fetch_optional(pool)
             .await?;
 
@@ -472,9 +338,9 @@ async fn upsert_playlist(
         sqlx::query(
             r#"UPDATE "Playlist" SET name = $1, slug = $2, description = $3, "updatedAt" = NOW() WHERE id = $4"#,
         )
-        .bind(&group.name)
+        .bind(&generator.name)
         .bind(&playlist_slug)
-        .bind(&group.description)
+        .bind(&generator.description)
         .bind(&id)
         .execute(pool)
         .await?;
@@ -483,14 +349,15 @@ async fn upsert_playlist(
         // Create new playlist
         let id = generate_cuid();
         sqlx::query(
-            r#"INSERT INTO "Playlist" (id, name, slug, description, type, "genreGroup", "createdAt", "updatedAt")
-               VALUES ($1, $2, $3, $4, 'GENRE', $5, NOW(), NOW())"#,
+            r#"INSERT INTO "Playlist" (id, name, slug, description, type, "generatorId", "createdAt", "updatedAt")
+               VALUES ($1, $2, $3, $4, $5::"PlaylistType", $6, NOW(), NOW())"#,
         )
         .bind(&id)
-        .bind(&group.name)
+        .bind(&generator.name)
         .bind(&playlist_slug)
-        .bind(&group.description)
-        .bind(&group.slug)
+        .bind(&generator.description)
+        .bind(&generator.kind)
+        .bind(&generator.id)
         .execute(pool)
         .await?;
         id
@@ -569,7 +436,8 @@ struct ScoredTrack {
 fn select_tracks(
     tracks: Vec<TrackCandidate>,
     artist_scores: &HashMap<String, f64>,
-    config: &GenreConfig,
+    max_tracks: usize,
+    max_per_release: usize,
 ) -> Vec<String> {
     let mut candidates: Vec<ScoredTrack> = tracks
         .into_iter()
@@ -613,12 +481,12 @@ fn select_tracks(
     let mut selected = Vec::new();
 
     for track in candidates {
-        if selected.len() >= config.max_tracks {
+        if selected.len() >= max_tracks {
             break;
         }
         if let Some(ref release_id) = track.release_id {
             let count = release_counts.entry(release_id.clone()).or_insert(0);
-            if *count >= config.max_per_release {
+            if *count >= max_per_release {
                 continue;
             }
             *count += 1;
@@ -632,59 +500,20 @@ fn select_tracks(
     selected
 }
 
-fn select_region_tracks(tracks: Vec<TrackCandidate>, config: &RegionConfig) -> Vec<String> {
-    let artist_scores: HashMap<String, f64> =
-        tracks.iter().map(|t| (t.artist_id.clone(), 1.0)).collect();
-
-    let mut candidates: Vec<ScoredTrack> = tracks
-        .into_iter()
-        .map(|t| ScoredTrack {
-            track_id: t.track_id,
-            release_id: t.local_release_id,
-            score: *artist_scores.get(&t.artist_id).unwrap_or(&1.0),
-        })
-        .collect();
-
-    candidates.sort_by(|a, b| {
-        a.track_id.cmp(&b.track_id).then(
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal),
-        )
-    });
-    candidates.dedup_by(|a, b| a.track_id == b.track_id);
-
-    use rand::seq::SliceRandom;
-    candidates.shuffle(&mut rand::thread_rng());
-
-    let mut release_counts: HashMap<String, usize> = HashMap::new();
-    let mut selected = Vec::new();
-
-    for track in candidates {
-        if selected.len() >= config.max_tracks {
-            break;
-        }
-        if let Some(ref release_id) = track.release_id {
-            let count = release_counts.entry(release_id.clone()).or_insert(0);
-            if *count >= config.max_per_release {
-                continue;
-            }
-            *count += 1;
-        }
-        selected.push(track.track_id);
-    }
-
-    selected
-}
-
 // ---------------------------------------------------------------------------
 // Report Mode
 // ---------------------------------------------------------------------------
 
-fn print_report(genres: &[(String, String)], groups: &[GenreGroup]) {
+fn print_report(genres: &[(String, String)], generators: &[Generator]) {
     println!("{}", "Genre Assignment Report".bold());
     println!("{}", "=".repeat(70));
     println!();
+
+    let genre_generators: Vec<(&Generator, GenreRule)> = generators
+        .iter()
+        .filter(|g| g.kind == "GENRE")
+        .map(|g| (g, GenreRule::from_terms(&g.terms)))
+        .collect();
 
     // Build genre → groups mapping
     let mut genre_assignments: HashMap<String, Vec<(String, f64)>> = HashMap::new();
@@ -692,9 +521,9 @@ fn print_report(genres: &[(String, String)], groups: &[GenreGroup]) {
 
     for (_, genre_name) in genres {
         let mut matches = Vec::new();
-        for group in groups {
-            if let Some(weight) = match_genre(genre_name, group) {
-                matches.push((group.name.clone(), weight));
+        for (generator, rule) in &genre_generators {
+            if let Some(weight) = match_genre(genre_name, rule) {
+                matches.push((generator.name.clone(), weight));
             }
         }
         if matches.is_empty() {
@@ -705,11 +534,11 @@ fn print_report(genres: &[(String, String)], groups: &[GenreGroup]) {
     }
 
     // Print assigned genres by group
-    for group in groups {
+    for (generator, _) in &genre_generators {
         let mut group_genres: Vec<(&String, f64)> = Vec::new();
         for (genre_name, assignments) in &genre_assignments {
             for (group_name, weight) in assignments {
-                if group_name == &group.name {
+                if group_name == &generator.name {
                     group_genres.push((genre_name, *weight));
                 }
             }
@@ -719,16 +548,14 @@ fn print_report(genres: &[(String, String)], groups: &[GenreGroup]) {
         println!(
             "{} {} ({} genres)",
             "●".cyan(),
-            group.name.bold(),
+            generator.name.bold(),
             group_genres.len()
         );
 
         for (genre_name, weight) in &group_genres {
             let weight_label = match *weight {
                 w if w >= 1.0 => "exact".green(),
-                w if w >= 0.8 => "word".bright_green(),
-                w if w >= 0.6 => "include".yellow(),
-                _ => "substr".bright_black(),
+                _ => "word".bright_green(),
             };
             println!("    {:.1} [{}] {}", weight, weight_label, genre_name);
         }
@@ -766,8 +593,8 @@ async fn main() {
     let args = Args::parse();
     common::error_log::init("playlists");
 
-    println!("DMP Genre Playlists");
-    println!("===================");
+    println!("DMP Generated Playlists");
+    println!("========================");
     if args.dry_run {
         println!(
             "Mode: {} (no changes will be made)",
@@ -781,16 +608,6 @@ async fn main() {
 
     // Load config
     let app_config = load_env();
-    let genre_config = load_genre_config(args.config.as_deref());
-    let region_config = load_region_config();
-
-    println!(
-        "Config: {} genre groups, {} region groups, max {} tracks/playlist",
-        genre_config.groups.len(),
-        region_config.groups.len(),
-        genre_config.max_tracks,
-    );
-    println!();
 
     // Connect to database
     let pool = PgPoolOptions::new()
@@ -798,6 +615,13 @@ async fn main() {
         .connect(&app_config.database_url)
         .await
         .expect("Failed to connect to database. Is PostgreSQL running?");
+
+    let all_generators = fetch_generators(&pool).await;
+    println!(
+        "Config: {} playlist generators (from the database, see /playlists/setup/generated)",
+        all_generators.len(),
+    );
+    println!();
 
     // Fetch all genres
     let all_genres = fetch_all_genres(&pool).await;
@@ -807,52 +631,35 @@ async fn main() {
         all_genres.len()
     );
 
-    // Filter groups if --group is specified
-    let groups: Vec<&GenreGroup> = if let Some(ref group_slug) = args.group {
-        let filtered: Vec<&GenreGroup> = genre_config
-            .groups
+    // Filter generators if --group is specified
+    let generators: Vec<&Generator> = if let Some(ref group_slug) = args.group {
+        let filtered: Vec<&Generator> = all_generators
             .iter()
-            .filter(|g| g.slug == *group_slug)
+            .filter(|g| &g.slug == group_slug)
             .collect();
         if filtered.is_empty() {
-            // Also check region groups
-            let region_match = region_config.groups.iter().any(|g| g.slug == *group_slug);
-            if !region_match {
-                let all_slugs: Vec<&str> = genre_config
-                    .groups
-                    .iter()
-                    .map(|g| g.slug.as_str())
-                    .chain(region_config.groups.iter().map(|g| g.slug.as_str()))
-                    .collect();
-                common::error_log::log_error(&format!("No group found with slug '{}'", group_slug));
-                eprintln!(
-                    "{} No group found with slug '{}'. Available: {}",
-                    "✗".red(),
-                    group_slug,
-                    all_slugs.join(", ")
-                );
-                std::process::exit(1);
-            }
+            let all_slugs: Vec<&str> = all_generators.iter().map(|g| g.slug.as_str()).collect();
+            common::error_log::log_error(&format!("No group found with slug '{}'", group_slug));
+            eprintln!(
+                "{} No group found with slug '{}'. Available: {}",
+                "✗".red(),
+                group_slug,
+                all_slugs.join(", ")
+            );
+            std::process::exit(1);
         }
         filtered
     } else {
-        genre_config.groups.iter().collect()
+        all_generators.iter().collect()
     };
 
-    let region_groups: Vec<&RegionGroup> = if let Some(ref group_slug) = args.group {
-        region_config
-            .groups
-            .iter()
-            .filter(|g| g.slug == *group_slug)
-            .collect()
-    } else {
-        region_config.groups.iter().collect()
-    };
+    let genre_generators: Vec<&Generator> = generators.iter().filter(|g| g.kind == "GENRE").copied().collect();
+    let region_generators: Vec<&Generator> = generators.iter().filter(|g| g.kind == "REGION").copied().collect();
 
     // Report mode: just show assignments and exit
     if args.report {
         println!();
-        print_report(&all_genres, &genre_config.groups);
+        print_report(&all_genres, &all_generators);
         return;
     }
 
@@ -881,17 +688,19 @@ async fn main() {
     let mut total_tracks = 0;
 
     // --- Genre playlists ---
-    if !args.no_genres && !groups.is_empty() {
+    if !args.no_genres && !genre_generators.is_empty() {
         println!("  {} {}", "▸".bright_black(), "Genre Playlists".bold());
         println!();
 
-        for group in &groups {
-            print!("  {} {}... ", "●".cyan(), group.name.bold());
+        for generator in &genre_generators {
+            print!("  {} {}... ", "●".cyan(), generator.name.bold());
+
+            let rule = GenreRule::from_terms(&generator.terms);
 
             let genre_matches: Vec<GenreMatch> = all_genres
                 .iter()
                 .filter_map(|(id, name)| {
-                    match_genre(name, group).map(|weight| GenreMatch {
+                    match_genre(name, &rule).map(|weight| GenreMatch {
                         genre_id: id.clone(),
                         genre_name: name.clone(),
                         weight,
@@ -935,13 +744,14 @@ async fn main() {
                 continue;
             }
 
-            let selected = select_tracks(tracks, &artist_scores, &genre_config);
+            let selected = select_tracks(tracks, &artist_scores, MAX_TRACKS, MAX_PER_RELEASE);
 
-            if selected.len() < 10 {
+            if selected.len() < MIN_TRACKS {
                 println!(
-                    "{} only {} tracks (min 10 required, skipping)",
+                    "{} only {} tracks (min {} required, skipping)",
                     "○".bright_black(),
-                    selected.len()
+                    selected.len(),
+                    MIN_TRACKS
                 );
                 continue;
             }
@@ -955,7 +765,7 @@ async fn main() {
                     selected.len()
                 );
             } else {
-                match upsert_playlist(&pool, group, &selected).await {
+                match upsert_playlist(&pool, generator, &selected).await {
                     Ok(_) => {
                         println!(
                             "{} {} genres, {} artists, {} tracks",
@@ -976,15 +786,15 @@ async fn main() {
     }
 
     // --- Region playlists ---
-    if !args.no_regions && !region_groups.is_empty() {
+    if !args.no_regions && !region_generators.is_empty() {
         println!();
         println!("  {} {}", "▸".bright_black(), "Region Playlists".bold());
         println!();
 
-        for group in &region_groups {
-            print!("  {} {}... ", "●".magenta(), group.name.bold());
+        for generator in &region_generators {
+            print!("  {} {}... ", "●".magenta(), generator.name.bold());
 
-            let countries: Vec<String> = group.countries.iter().map(|c| c.clone()).collect();
+            let countries = region_countries(&generator.terms);
             let tracks = fetch_tracks_for_countries(&pool, &countries).await;
 
             if tracks.is_empty() {
@@ -992,13 +802,16 @@ async fn main() {
                 continue;
             }
 
-            let selected = select_region_tracks(tracks, &region_config);
+            let artist_scores: HashMap<String, f64> =
+                tracks.iter().map(|t| (t.artist_id.clone(), 1.0)).collect();
+            let selected = select_tracks(tracks, &artist_scores, MAX_TRACKS, MAX_PER_RELEASE);
 
-            if selected.len() < 10 {
+            if selected.len() < MIN_TRACKS {
                 println!(
-                    "{} only {} tracks (min 10 required, skipping)",
+                    "{} only {} tracks (min {} required, skipping)",
                     "○".bright_black(),
-                    selected.len()
+                    selected.len(),
+                    MIN_TRACKS
                 );
                 continue;
             }
@@ -1007,16 +820,16 @@ async fn main() {
                 println!(
                     "{} {} countries, {} tracks (dry run)",
                     "○".magenta(),
-                    group.countries.len(),
+                    countries.len(),
                     selected.len()
                 );
             } else {
-                match upsert_region_playlist(&pool, group, &selected).await {
+                match upsert_playlist(&pool, generator, &selected).await {
                     Ok(_) => {
                         println!(
                             "{} {} countries, {} tracks",
                             "✓".green(),
-                            group.countries.len(),
+                            countries.len(),
                             selected.len()
                         );
                         total_playlists += 1;
@@ -1039,11 +852,11 @@ async fn main() {
     println!("════════════════════════════════════════════════════════════");
     println!();
     if args.dry_run {
-        let total_groups = if args.no_genres { 0 } else { groups.len() }
+        let total_groups = if args.no_genres { 0 } else { genre_generators.len() }
             + if args.no_regions {
                 0
             } else {
-                region_groups.len()
+                region_generators.len()
             };
         println!(
             "{} {} group(s) would be updated",
@@ -1063,14 +876,6 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn config(max_tracks: usize, max_per_release: usize) -> GenreConfig {
-        GenreConfig {
-            max_tracks,
-            max_per_release,
-            groups: vec![],
-        }
-    }
 
     // A big equal-score candidate pool (every artist scored identically) exceeding max_tracks -
     // with a STABLE sort and no pre-sort shuffle, the same top max_tracks subset (by insertion
@@ -1093,16 +898,15 @@ mod tests {
                 .collect()
         };
 
-        let cfg = config(max_tracks, 1);
         let first: std::collections::HashSet<String> =
-            select_tracks(make_tracks(), &artist_scores, &cfg)
+            select_tracks(make_tracks(), &artist_scores, max_tracks, 1)
                 .into_iter()
                 .collect();
 
         let mut saw_a_different_subset = false;
         for _ in 0..30 {
             let selected: std::collections::HashSet<String> =
-                select_tracks(make_tracks(), &artist_scores, &cfg)
+                select_tracks(make_tracks(), &artist_scores, max_tracks, 1)
                     .into_iter()
                     .collect();
             if selected != first {
@@ -1128,8 +932,7 @@ mod tests {
             })
             .collect();
 
-        let cfg = config(5, 2);
-        let selected = select_tracks(tracks, &artist_scores, &cfg);
+        let selected = select_tracks(tracks, &artist_scores, 5, 2);
         // max_per_release=2 caps every candidate (they all share one release) well below max_tracks=5.
         assert_eq!(selected.len(), 2);
     }
@@ -1142,7 +945,49 @@ mod tests {
             artist_id: "unscored-artist".to_string(),
             local_release_id: None,
         }];
-        let cfg = config(10, 10);
-        assert!(select_tracks(tracks, &artist_scores, &cfg).is_empty());
+        assert!(select_tracks(tracks, &artist_scores, 10, 10).is_empty());
+    }
+
+    #[test]
+    fn genre_rule_splits_plain_and_dash_prefixed_lines() {
+        let terms = vec![
+            "Rock".to_string(),
+            " grunge ".to_string(),
+            "".to_string(),
+            "-Indie Rock".to_string(),
+            "- indie pop".to_string(),
+            "-".to_string(),
+        ];
+        let rule = GenreRule::from_terms(&terms);
+        assert_eq!(rule.keywords, vec!["rock", "grunge"]);
+        assert_eq!(rule.excludes, vec!["indie rock", "indie pop"]);
+    }
+
+    #[test]
+    fn match_genre_exact_and_whole_word_tiers() {
+        let rule = GenreRule::from_terms(&["rock".to_string()]);
+        assert_eq!(match_genre("Rock", &rule), Some(1.0));
+        assert_eq!(match_genre("classic rock", &rule), Some(0.8));
+        assert_eq!(match_genre("hard rock", &rule), Some(0.8));
+    }
+
+    #[test]
+    fn match_genre_no_longer_matches_bare_substrings() {
+        // The old 0.4 substring tier is gone - "electro" must not match "electronica".
+        let rule = GenreRule::from_terms(&["electro".to_string()]);
+        assert_eq!(match_genre("electronica", &rule), None);
+    }
+
+    #[test]
+    fn match_genre_exclude_wins_over_keyword_match() {
+        let rule = GenreRule::from_terms(&["rock".to_string(), "-indie rock".to_string()]);
+        assert_eq!(match_genre("indie rock", &rule), None);
+        assert_eq!(match_genre("hard rock", &rule), Some(0.8));
+    }
+
+    #[test]
+    fn region_countries_uppercases_and_drops_blank_lines() {
+        let terms = vec!["jp".to_string(), " Kr ".to_string(), "".to_string()];
+        assert_eq!(region_countries(&terms), vec!["JP", "KR"]);
     }
 }

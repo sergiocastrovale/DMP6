@@ -138,9 +138,6 @@ COPY --from=scripts-builder /build/target/release/artist-photos /usr/local/bin/
 # Note target/scan/, not target/release/ - `problems` uses the scan profile.
 COPY --from=scripts-builder /build/target/scan/problems /usr/local/bin/
 
-# Genre playlist config
-COPY scripts/playlists/genre-groups.json /app/genre-groups.json
-
 # refresh = index + sync (shell wrapper with artist ID piping)
 COPY refresh /usr/local/bin/refresh
 RUN chmod +x /usr/local/bin/refresh

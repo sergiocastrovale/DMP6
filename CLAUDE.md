@@ -111,7 +111,7 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./extract-meta-images [--dry-run] [--only "Name"]
 ./artist-photos [--dry-run] [--limit 50]       # backfill artist photos
 ./analysis /path/to/music     # standalone HTML quality report → reports/
-./playlists [--dry-run|--report|--group rock]
+./playlists [--dry-run|--report|--group rock|--no-genres|--no-regions]  # reads PlaylistGenerator rows (DB), no config file
 ./dissect                     # errors.log → reports/errors.xlsx
 ./backup / ./restore [file.sql.gz]
 ```
@@ -142,7 +142,7 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 
 **Library**: `GET /releases/latest`, `/releases/last-played`, `/releases/archive`, `/search`, `/timeline/decades`, `/timeline/[decade]`, `POST /timeline/refresh`, `GET /genres`, `/stats`, `/stats/[type]`, `/app-stats`
 
-**CRUD**: `/api/playlists/*`, `/api/favorites/*`, `/api/auth/{login,logout,change-password,me}`, `/api/users/*` (admin), `/api/permissions/*`
+**CRUD**: `/api/playlists/*`, `/api/playlist-generators/*` (admin — genre/region playlist settings, see docs/feature_generated_playlists.md), `/api/favorites/*`, `/api/auth/{login,logout,change-password,me}`, `/api/users/*` (admin), `/api/permissions/*`
 
 **Downloads** (gated `sync.view`/`downloads.crud`): `GET /downloads/{queue,active,status,enabled}`, `POST /downloads/{acquire,merge/[id],merge-all,pause,cleanup,cancel/[id],reject/[id],reject-all,requeue/[id],requeue-all,retry/[id]}`, `GET /artists/monitoring`, `PATCH /artists/[slug]` (toggle `monitored`)
 
@@ -165,6 +165,7 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 | `/artist/[slug]` | Artist detail + releases (aggregated across connected artists) + sync controls |
 | `/explore` | 4-slider discovery (energy/era/familiarity/sound) |
 | `/playlists`, `/playlists/[slug]` | Playlist library / single playlist |
+| `/playlists/setup/generated` (+`new`, `[id]`) | Admin: CRUD for `PlaylistGenerator` seeds (genre/region playlist settings) |
 | `/favorites` | Tabbed releases/tracks |
 | `/timeline` | Browse by decade/year |
 | `/statistics` (+16 subpages) | Stats dashboard |

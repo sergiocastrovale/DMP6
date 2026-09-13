@@ -42,11 +42,11 @@ watch(queueHistory, () => {
 
 <template>
   <div :class="cx(layout.page)">
-    <DownloadsTabHint>
+    <UiHint>
       A permanent record of every merge outcome. Promoted releases made it into your library;
       Invalid ones were discarded after a genuine shortfall (see Events for why). Nothing here can
       be retried directly — a discarded release becomes downloadable again on its own.
-    </DownloadsTabHint>
+    </UiHint>
 
     <div v-if="baseItems.length" class="flex items-center">
       <SearchInput v-model="search" placeholder="Search history…" />

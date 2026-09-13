@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucidePlus } from 'lucide-vue-next'
+import { LucidePlus, LucideSettings } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
 import { cx, layout } from '~/helpers/ui'
@@ -40,10 +40,18 @@ onMounted(() => loadPlaylists())
   <div :class="cx(layout.page)">
     <PageTitle text="Playlists">
       <div class="flex items-center gap-2">
-        <PlaylistButtonGeneratePlaylists v-if="isAdmin" />
         <UiButton v-if="canCrud" :icon="LucidePlus" @click="showCreate = true">
           <span class="hidden lg:block">New Playlist</span>
         </UiButton>
+        <UiButton
+          v-if="isAdmin"
+          variant="secondary"
+          icon-only
+          :icon="LucideSettings"
+          to="/playlists/setup/generated"
+          aria-label="Generated playlist settings"
+          title="Generated playlist settings"
+        />
       </div>
     </PageTitle>
 

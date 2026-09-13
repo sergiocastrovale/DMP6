@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { form } from '~/helpers/ui'
-
 const emit = defineEmits<{
   created: []
 }>()
@@ -49,15 +47,8 @@ async function create() {
     <template #content>
       <form class="flex flex-col gap-4" @submit.prevent="create">
         <UiTextField v-model="name" label="Name" placeholder="My Playlist" autofocus required />
-        <div>
-          <label :class="form.label" class="mb-1 block">Description (optional)</label>
-          <textarea
-            v-model="description"
-            placeholder="Add a description..."
-            rows="3"
-            :class="[form.input, 'h-auto py-2.5']"
-          />
-        </div>
+        <UiTextArea v-model="description" label="Description (optional)" placeholder="Add a description..." />
+
         <div class="flex justify-end gap-2">
           <UiButton variant="ghost" @click="show = false">
             Cancel

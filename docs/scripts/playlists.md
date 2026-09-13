@@ -1,8 +1,9 @@
 # Scripts: playlists
 
-Generates or updates **genre** playlists (`PlaylistType=GENRE`, from `genre-groups.json`) and **region**
-playlists (`PlaylistType=REGION`, from `region-groups.json`, keyed on `Artist.country`). Genre matching
-scores artists' MusicBrainz genres against configurable groups with weighted proximity.
+Generates or updates **genre** playlists (`PlaylistType=GENRE`) and **region** playlists
+(`PlaylistType=REGION`, keyed on `Artist.country`), driven by `PlaylistGenerator` rows in the
+database — edit them at `/playlists/setup/generated`, no code change or deploy needed. Genre
+matching scores artists' MusicBrainz genres against each generator's keyword list.
 
 ## Build
 
@@ -13,80 +14,51 @@ cd scripts/playlists && cargo build --release
 ## Usage
 
 ```bash
-./playlists                              # Update all genre playlists
-./playlists --dry-run                    # Preview without DB writes
-./playlists --group rock                 # Update single group
-./playlists --report                     # Show all genres → group assignments
-./playlists --config path/to/custom.json # Custom config file
-./playlists --no-genres                  # Skip genre playlists (regions only)
-./playlists --no-regions                 # Skip region playlists (genres only)
+./playlists                    # Update all playlists (genre + region)
+./playlists --dry-run          # Preview without DB writes
+./playlists --group rock       # Update a single generator (by its slug)
+./playlists --report           # Show all genres → generator assignments
+./playlists --no-genres        # Skip genre playlists (regions only)
+./playlists --no-regions       # Skip region playlists (genres only)
 ```
 
 ## How It Works
 
-1. Reads genre group definitions from `scripts/playlists/genre-groups.json`
-2. Fetches all genres from the database (sourced from MusicBrainz artist genres/tags)
-3. For each group, matches genres using root keyword matching + includes/excludes
-4. Scores artists by their best matching genre weight
-5. Selects up to `max_tracks` (500 in the shipped config) from highest-scored artists, capped at `max_per_release` (3) per release
-6. Creates/updates `Playlist` records with `type=GENRE`
+1. Reads every `PlaylistGenerator` row from the database
+2. For GENRE generators, matches DB genres against each generator's `terms` (keyword lines, `-`-prefixed exclude lines)
+3. Scores artists by their best matching genre weight; for REGION generators, every artist in a listed country scores 1.0
+4. Selects up to 500 tracks per group from the highest-scored artists, capped at 3 per release
+5. Creates/updates a `Playlist` row (`type=GENRE`/`REGION`, linked via `generatorId`) for each generator with ≥10 selected tracks
 
-## Genre Matching
+## Term Syntax
 
-Each genre group defines:
+A `PlaylistGenerator.terms` array is exactly what the `/playlists/setup/generated` edit page's
+textarea holds, one line each:
 
-- **roots**: Keywords for automated matching. Any DB genre containing a root as a word matches automatically.
-- **includes**: Additional genre names that don't contain root keywords but belong to the group.
-- **excludes**: Genre names that match a root but should be excluded from the group.
-
-Weight tiers by match quality:
-
-| Match Type | Weight | Example |
-|-----------|--------|---------|
-| Exact root | 1.0 | "rock" matches root "rock" |
-| Contains root as word | 0.8 | "classic rock" contains "rock" |
-| In includes list | 0.6 | "shoegaze" included in indie group |
-| Contains root as substring | 0.4 | "electronica" contains "electro" |
+- **GENRE**: a plain line is a keyword. A DB genre matches if it equals the keyword exactly
+  (weight 1.0) or contains it as a whole word (weight 0.8, e.g. "rock" also catches "hard rock").
+  A line starting with `-` excludes an exact genre name instead (e.g. `-indie rock`), checked
+  before the keyword tiers. No substring tier (the old JSON config's 0.4 weight) — that produced
+  too many surprising matches ("electro" catching "electronica") for a plain hand-edited list.
+- **REGION**: each line is an ISO 3166-1 alpha-2 country code (e.g. `JP`), matched against
+  `Artist.country`.
 
 ## Track Selection
 
-- Artists scored by best matching genre weight across all their genres
-- Tracks inherit their artist's score, with +0.05 bonus if the track's own ID3 genre tag also matches
+- Artists scored by best matching genre weight across all their genres (region: uniform 1.0)
 - Max 3 tracks per release to prevent one album dominating
 - Within same score tier, tracks are shuffled daily (date-seeded RNG)
 - Minimum 10 tracks required to create a playlist (skip otherwise)
 
-## Config Format
-
-`scripts/playlists/genre-groups.json`:
-
-```json
-{
-  "max_tracks": 500,
-  "max_per_release": 3,
-  "groups": [
-    {
-      "name": "Rock",
-      "slug": "rock",
-      "description": "Classic and modern rock across all subgenres",
-      "roots": ["rock"],
-      "includes": ["grunge", "britpop"],
-      "excludes": ["post-rock", "indie rock"]
-    }
-  ]
-}
-```
-
 ## Report Mode
 
-Use `--report` to see which genres map to which groups:
+Use `--report` to see which genres map to which GENRE generators:
 
 ```
 ● Rock (45 genres)
     1.0 [exact] rock
     0.8 [word]  classic rock
     0.8 [word]  hard rock
-    0.6 [include] grunge
     ...
 
 ○ Unmatched (12 genres)
@@ -94,11 +66,11 @@ Use `--report` to see which genres map to which groups:
     ...
 ```
 
-Use this to identify gaps and add missing genres to `includes` lists.
+Use this to identify gaps and add missing genres to a generator's terms via the setup UI.
 
 ## Workflow
 
-Run after sync to populate genre playlists:
+Run after sync to populate/refresh generated playlists:
 
 ```bash
 ./sync
@@ -109,20 +81,18 @@ Or run report first to verify assignments:
 
 ```bash
 ./playlists --report
-# review output, adjust genre-groups.json if needed
+# review output, edit the relevant generator at /playlists/setup/generated
 ./playlists
 ```
 
 ## Database
 
-Genre playlists are stored as regular `Playlist` records with:
+Generated playlists are stored as regular `Playlist` records with:
 
-- `type = 'GENRE'` (vs `MANUAL` for user-created)
-- `genreGroup` = the group slug (unique, used for upsert)
-- `slug` = `genre-{group_slug}` (e.g., `genre-rock`)
+- `type = 'GENRE'` or `'REGION'`
+- `generatorId` → the `PlaylistGenerator` row that produced it (unique — one playlist per generator)
+- `slug` = `genre-{generator_slug}` or `region-{generator_slug}`
 
-Playlists are fully replaced on each run (all tracks deleted and re-inserted).
-
-## Default Genre Groups
-
-Rock, Metal, Indie, Pop, Electronic, Classical, Acoustic, Minimal, Prog, Dance, Hip-Hop, Jazz, Soul & R&B, Punk.
+Playlists are fully replaced on each run (all tracks deleted and re-inserted). Deleting a
+`PlaylistGenerator` cascades to its `Playlist` (and that playlist's tracks) immediately — see
+[docs/feature_generated_playlists.md](../feature_generated_playlists.md).

@@ -132,38 +132,38 @@ model ReleaseType {
 // ---------------------------------------------------------------------------
 
 model MusicBrainzRelease {
-  id             String                     @id @default(cuid())
-  title          String                     @db.VarChar(500)
-  typeId         String
-  year           Int?
-  musicbrainzId  String                     @unique
-  releaseGroupId String?
-  disambiguation String?
-  editionLabel   String?
-  releaseDate    String?
-  packaging      String?
-  country        String?
-  format         String?
-  status         ReleaseStatus              @default(UNKNOWN)
-  statusReason   String?
+  id                         String                     @id @default(cuid())
+  title                      String                     @db.VarChar(500)
+  typeId                     String
+  year                       Int?
+  musicbrainzId              String                     @unique
+  releaseGroupId             String?
+  disambiguation             String?
+  editionLabel               String?
+  releaseDate                String?
+  packaging                  String?
+  country                    String?
+  format                     String?
+  status                     ReleaseStatus              @default(UNKNOWN)
+  statusReason               String?
   // Distinct MB media on this release (1 for a plain album, 9 for a 9CD box). Denormalized: the
   // artist releases endpoint is a hot list route and must not join MusicBrainzReleaseMedium just to
   // render a disc-count marker.
-  mediumCount    Int                        @default(1)
+  mediumCount                Int                        @default(1)
   // The owning release-group's secondary types (Compilation, Live, Remix, Soundtrack, ...), copied
   // verbatim from the same MB payload allowlist::is_allowed already reads at bind time - not a new
   // API call, just no longer discarded. [] means an "original work": the signal the box-set
   // equivalence tier-3 matcher uses to disambiguate same-titled release-groups (docs/multidisk.md §5).
-  releaseGroupSecondaryTypes String[]       @default([])
-  createdAt      DateTime                   @default(now())
-  updatedAt      DateTime                   @updatedAt
-  localReleases  LocalRelease[]
-  boxDiscs       LocalRelease[]             @relation("BoxDiscs")
-  artists        MusicBrainzReleaseArtist[]
-  type           ReleaseType                @relation(fields: [typeId], references: [id])
-  genres         Genre[]                    @relation("ReleaseGenres")
-  tracks         MusicBrainzReleaseTrack[]
-  media          MusicBrainzReleaseMedium[]
+  releaseGroupSecondaryTypes String[]                   @default([])
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  localReleases              LocalRelease[]
+  boxDiscs                   LocalRelease[]             @relation("BoxDiscs")
+  artists                    MusicBrainzReleaseArtist[]
+  type                       ReleaseType                @relation(fields: [typeId], references: [id])
+  genres                     Genre[]                    @relation("ReleaseGenres")
+  tracks                     MusicBrainzReleaseTrack[]
+  media                      MusicBrainzReleaseMedium[]
 
   @@index([typeId])
   @@index([releaseGroupId])
@@ -458,17 +458,32 @@ enum PlaylistType {
 }
 
 model Playlist {
-  id          String          @id @default(cuid())
+  id          String             @id @default(cuid())
   name        String
-  slug        String          @unique
-  description String?         @db.Text
+  slug        String             @unique
+  description String?            @db.Text
   image       String?
-  type        PlaylistType    @default(MANUAL)
-  genreGroup  String?         @unique
-  regionGroup String?         @unique
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  type        PlaylistType       @default(MANUAL)
+  generatorId String?            @unique
+  generator   PlaylistGenerator? @relation(fields: [generatorId], references: [id], onDelete: Cascade)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
   tracks      PlaylistTrack[]
+}
+
+// Seeds for GENRE/REGION playlists, editable at /playlists/setup/generated. `terms` holds raw
+// textarea lines: GENRE = keyword matching (a line prefixed `-` excludes), REGION = ISO 3166-1
+// alpha-2 country codes. `./playlists` reads this table directly (see scripts/playlists).
+model PlaylistGenerator {
+  id          String       @id @default(cuid())
+  type        PlaylistType
+  name        String
+  slug        String       @unique
+  description String?      @db.Text
+  terms       String[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  playlist    Playlist?
 }
 
 model PlaylistTrack {
@@ -601,31 +616,31 @@ enum DownloadStatus {
 }
 
 model DownloadedRelease {
-  id                     String           @id @default(cuid())
+  id                     String         @id @default(cuid())
   artistId               String?
   mbReleaseId            String? // MusicBrainzRelease.id this fills (the MISSING target)
   releaseGroupId         String? // MB release-group id (denormalized)
-  title                  String           @db.VarChar(500)
+  title                  String         @db.VarChar(500)
   year                   Int?
   slskUsername           String?
   quality                String? // format/bitrate, e.g. "MP3 320"
   files                  Json? // [{filename,size}] queued from slskd — lets the reconciler finalize
-  stagingPath            String?          @db.Text // folder under DOWNLOADS_PATH
-  status                 DownloadStatus   @default(READY)
-  attempts               Int              @default(0) // failed/no-result attempts; >= max -> ABANDONED (download-fail path only)
-  priority               Int              @default(10) // 10 = freshest/highest; decremented per failure, floor 0; drives retry order
-  bytesTransferred       BigInt           @default(0) // progress watermark for no-progress death
+  stagingPath            String?        @db.Text // folder under DOWNLOADS_PATH
+  status                 DownloadStatus @default(READY)
+  attempts               Int            @default(0) // failed/no-result attempts; >= max -> ABANDONED (download-fail path only)
+  priority               Int            @default(10) // 10 = freshest/highest; decremented per failure, floor 0; drives retry order
+  bytesTransferred       BigInt         @default(0) // progress watermark for no-progress death
   lastProgressAt         DateTime? // last time bytes increased
-  error                  String?          @db.Text
-  localReleaseId         String?          @unique // set on promote
+  error                  String?        @db.Text
+  localReleaseId         String?        @unique // set on promote
   // Re-download of an incomplete copy: the LocalRelease this download replaces, deleted (DB + files)
   // right before the new copy is moved into the library. Deliberately not a relation - a stale id
   // must degrade to a no-op at merge time, not a constraint error.
   replacesLocalReleaseId String?
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
-  artist                 Artist?          @relation(fields: [artistId], references: [id], onDelete: SetNull)
-  localRelease           LocalRelease?    @relation(fields: [localReleaseId], references: [id], onDelete: SetNull)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  artist                 Artist?        @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  localRelease           LocalRelease?  @relation(fields: [localReleaseId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([status, priority])

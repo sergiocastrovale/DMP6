@@ -44,6 +44,7 @@ const AUTHENTICATED_ROUTES = [
   '/explore',
   '/timeline',
   '/playlists',
+  '/playlists/setup/generated',
   '/favorites',
   '/downloads/monitoring',
   '/downloads/events',

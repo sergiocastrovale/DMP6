@@ -8,14 +8,14 @@ describe('ui/ButtonGeneratePlaylists.vue', () => {
   beforeEach(() => setActivePinia(createPinia()))
   afterEach(() => vi.restoreAllMocks())
 
-  it('labels itself "Generate Playlists" by default', async () => {
+  it('labels itself "Generate playlists" by default', async () => {
     const wrapper = await mountSuspended(ButtonGeneratePlaylists)
-    expect(wrapper.text()).toContain('Generate Playlists')
+    expect(wrapper.text()).toContain('Generate playlists')
   })
 
-  it('labels itself "Regenerate" when scoped to an existing playlist', async () => {
+  it('labels itself "Regenerate playlists" when scoped to an existing playlist', async () => {
     const wrapper = await mountSuspended(ButtonGeneratePlaylists, { props: { regenerate: true } })
-    expect(wrapper.text()).toContain('Regenerate')
+    expect(wrapper.text()).toContain('Regenerate playlists')
   })
 
   it('runs ./playlists on click', async () => {

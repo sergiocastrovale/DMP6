@@ -190,11 +190,11 @@ onMounted(() => {
 
 <template>
   <div :class="cx(layout.page)">
-    <DownloadsTabHint>
+    <UiHint>
       Monitored artists are checked for missing releases on a recurring schedule and queued
       automatically; unmonitored artists are left alone. Toggle ON/OFF here to add or remove an
       artist from that rotation.
-    </DownloadsTabHint>
+    </UiHint>
 
     <div v-if="totalArtists > 0" class="flex items-center justify-between gap-3">
       <SearchInput

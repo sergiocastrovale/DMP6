@@ -7,8 +7,6 @@ interface PlaylistBase {
   slug: string
   description: string | null
   type: PlaylistType
-  genreGroup: string | null
-  regionGroup: string | null
   createdAt: Date
   updatedAt: Date
 }
