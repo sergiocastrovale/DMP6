@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { LucideArrowLeft } from 'lucide-vue-next'
 import type { PlaylistGeneratorRow, PlaylistGeneratorType } from '~/types/playlistGenerator'
-import { cx, layout, form } from '~/helpers/ui'
+import { cx, layout, grid, form } from '~/helpers/ui'
 import {
   parseTerms,
   termsToText,
@@ -17,9 +17,6 @@ const toast = useToastStore()
 const isEdit = computed(() => !!props.id)
 
 const loading = ref(!!props.id)
-const saving = ref(false)
-const error = ref('')
-
 const type = ref<PlaylistGeneratorType>('GENRE')
 const name = ref('')
 const description = ref('')
@@ -38,35 +35,25 @@ if (props.id) {
   loading.value = false
 }
 
-const save = async () => {
-  error.value = ''
+const { saving, error, save: doSave } = useFormSave(async () => {
   const terms = parseTerms(termsText.value)
   const validationError = validateGenerator({ type: type.value, name: name.value, terms })
   if (validationError) {
-    error.value = validationError
-    return
+    throw new Error(validationError)
   }
 
-  saving.value = true
-  try {
-    const body = { type: type.value, name: name.value.trim(), description: description.value.trim() || undefined, terms }
-    if (isEdit.value) {
-      await $fetch(`/api/playlist-generators/${props.id}`, { method: 'PUT', body })
-      toast.success(`Saved "${name.value.trim()}"`)
-    }
-    else {
-      await $fetch('/api/playlist-generators', { method: 'POST', body })
-      toast.success(`Added "${name.value.trim()}"`)
-    }
-    await navigateTo('/playlists/setup/generated')
+  const trimmedName = name.value.trim()
+  const body = { type: type.value, name: trimmedName, description: description.value.trim() || undefined, terms }
+  if (isEdit.value) {
+    await $fetch(`/api/playlist-generators/${props.id}`, { method: 'PUT', body })
+    toast.success(`Saved "${trimmedName}"`)
   }
-  catch (e: any) {
-    error.value = e?.data?.statusMessage || e?.data?.message || 'Failed to save playlist generator'
+  else {
+    await $fetch('/api/playlist-generators', { method: 'POST', body })
+    toast.success(`Added "${trimmedName}"`)
   }
-  finally {
-    saving.value = false
-  }
-}
+  await navigateTo('/playlists/setup/generated')
+})
 </script>
 
 <template>
@@ -79,40 +66,46 @@ const save = async () => {
 
     <UiLoadingBlock v-if="loading" />
 
-    <form v-else class="flex max-w-xl flex-col gap-4" @submit.prevent="save">
-      <UiSelect v-if="!isEdit" v-model="type" label="Type">
-        <option value="GENRE">Genre</option>
-        <option value="REGION">Region</option>
-      </UiSelect>
-      <div v-else class="flex flex-col gap-1.5">
-        <span :class="form.label">Type</span>
-        <UiBadge :tone="type === 'GENRE' ? 'accent' : 'info'" class="self-start">
-          {{ type === 'GENRE' ? 'Genre' : 'Region' }}
-        </UiBadge>
-      </div>
+    <form v-else class="flex w-full max-w-7xl flex-col gap-6" @submit.prevent="doSave">
+      <UiCard title="Details">
+        <div :class="grid.halfRow">
+          <UiSelect v-if="!isEdit" v-model="type" label="Type" description="Genre or region playlist. Fixed once created.">
+            <option value="GENRE">Genre</option>
+            <option value="REGION">Region</option>
+          </UiSelect>
+          <div v-else class="flex flex-col gap-1.5">
+            <span :class="form.label">Type</span>
+            <p :class="form.hint">Fixed once created.</p>
+            <UiBadge :tone="type === 'GENRE' ? 'accent' : 'info'" class="mt-auto self-start">
+              {{ type === 'GENRE' ? 'Genre' : 'Region' }}
+            </UiBadge>
+          </div>
 
-      <UiTextField v-model="name" label="Name" placeholder="Rock" autofocus required />
-      <UiTextArea v-model="description" label="Description (optional)" placeholder="Classic and modern rock across all subgenres" />
+          <UiTextField v-model="name" label="Name" placeholder="Rock" autofocus required />
+        </div>
 
-      <UiTextArea
-        v-model="termsText"
-        :label="GENERATOR_TERMS_LABEL[type]"
-        :description="GENERATOR_TERMS_HINT[type]"
-        :placeholder="GENERATOR_TERMS_PLACEHOLDER[type]"
-        :rows="10"
-        required
-      />
+        <UiTextArea v-model="description" label="Description (optional)" placeholder="Classic and modern rock across all subgenres" />
+      </UiCard>
 
-      <p v-if="error" role="alert" :class="form.error">{{ error }}</p>
+      <UiCard title="Matching">
+        <UiTextArea
+          v-model="termsText"
+          :label="GENERATOR_TERMS_LABEL[type]"
+          :description="GENERATOR_TERMS_HINT[type]"
+          :placeholder="GENERATOR_TERMS_PLACEHOLDER[type]"
+          :rows="10"
+          required
+        />
 
-      <div class="flex justify-end gap-2">
-        <UiButton variant="ghost" to="/playlists/setup/generated">
-          Cancel
-        </UiButton>
-        <UiButton type="submit" :loading="saving">
-          Save
-        </UiButton>
-      </div>
+        <SettingsSaveBar :saving="saving" :saved="false" :error="error">
+          <UiButton variant="ghost" to="/playlists/setup/generated">
+            Cancel
+          </UiButton>
+          <UiButton type="submit" :loading="saving">
+            Save
+          </UiButton>
+        </SettingsSaveBar>
+      </UiCard>
     </form>
   </div>
 </template>

@@ -129,7 +129,8 @@ onMounted(() => loadRows())
     <ConfirmDialog
       :model-value="!!deleteTarget"
       title="Remove playlist generator"
-      :message="`Remove &quot;${deleteTarget?.name}&quot;? Its generated playlist is deleted immediately.`"
+      :message="`Remove &quot;${deleteTarget?.name}&quot;?`"
+      :note="`This deletes both the generator setup and its generated playlist${deleteTarget?.trackCount ? ` (${deleteTarget.trackCount} tracks)` : ''} — not just the setup.`"
       confirm-label="Remove"
       variant="danger"
       :icon="LucideTrash2"

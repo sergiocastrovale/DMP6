@@ -47,7 +47,7 @@ describe('playlist/GeneratorForm.vue', () => {
     await wrapper.get('form').trigger('submit')
 
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(wrapper.get('[role="alert"]').text()).toMatch(/keyword/i)
+    expect(wrapper.get('[aria-live="polite"]').text()).toMatch(/keyword/i)
   })
 
   it('submits parsed terms and redirects on success (create)', async () => {
