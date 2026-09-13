@@ -9,7 +9,7 @@ defineProps<{ query: string }>()
 <template>
   <SearchResultsList type="tracks" :query="query" label="tracks" :empty-icon="Music">
     <template #default="{ items }">
-      <TrackTable :rows="(items as SearchTrack[]).map(track => ({ id: track.id, track })) as TrackTableRow[]" />
+      <ArtistsTrackTable :rows="(items as SearchTrack[]).map(track => ({ id: track.id, track })) as TrackTableRow[]" />
     </template>
   </SearchResultsList>
 </template>

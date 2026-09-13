@@ -5,7 +5,6 @@
 - Standardize output format, iconography, and styling across all Rust scripts (`index`, `sync`,
   `audit`, `fix`, etc.) so terminal output looks consistent regardless of which one is running.
 
-- Playlist generation manager - edits the json which sets the rules for the generator
 
 
 GENERAL

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles, LucideGlobe, LucideX } from 'lucide-vue-next'
+import { LucideListMusic, LucidePlay, LucideTrash2, LucideSparkles, LucideGlobe } from 'lucide-vue-next'
 import type { PlaylistDetail } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
 import { cx, layout, typography } from '~/helpers/ui'
@@ -145,19 +145,18 @@ onMounted(() => loadPlaylist())
         </div>
       </div>
 
-      <TrackTable :rows="playlist.tracks" empty-message="No tracks in this playlist yet">
+      <ArtistsTrackTable :rows="playlist.tracks" empty-message="No tracks in this playlist yet">
         <template v-if="!isGenerated" #action="{ row }">
           <UiButton
             variant="ghost"
             size="md"
             icon-only
-            :icon="LucideX"
+            :icon="LucideTrash2"
             :aria-label="`Remove ${row.track.title} from playlist`"
-            class="opacity-0 group-hover:opacity-100"
             @click.stop="removeTrack(row.track.id)"
           />
         </template>
-      </TrackTable>
+      </ArtistsTrackTable>
     </div>
 
     <UiEmptyState v-else :icon="LucideListMusic" message="Playlist not found">

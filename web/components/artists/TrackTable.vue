@@ -4,7 +4,6 @@ import type { Component } from 'vue'
 import type { TrackInContext } from '~/types/common'
 import type { PlayerTrack } from '~/types/player'
 import type { TrackTableRow } from '~/types/track'
-import { formatDuration } from '~/helpers/functions'
 
 const props = withDefaults(defineProps<{
   rows: TrackTableRow[]
@@ -18,7 +17,6 @@ const props = withDefaults(defineProps<{
 defineSlots<{ action?: (props: { row: TrackTableRow }) => any }>()
 
 const playerStore = usePlayerStore()
-const { releaseImage } = useImageUrl()
 
 const toPlayerTrack = (track: TrackInContext): PlayerTrack => ({
   id: track.id,
@@ -51,59 +49,18 @@ const handleTrackClick = (track: TrackInContext) => {
 <template>
   <SlimTable v-if="rows.length > 0">
     <SlimTableBody>
-      <SlimTableRow
+      <ArtistsTrackRow
         v-for="row in rows"
         :key="row.id"
-        :active="isCurrentTrack(row.track.id)"
+        :track="row.track"
+        :playing="isTrackPlaying(row.track.id)"
+        :current="isCurrentTrack(row.track.id)"
         @click="handleTrackClick(row.track)"
       >
-        <td class="w-10 py-2 pl-4 text-center">
-          <PlayerPlayPauseButton
-            :playing="isTrackPlaying(row.track.id)"
-            size="sm"
-            :class="isCurrentTrack(row.track.id) ? 'text-amber-400' : 'text-stone-100/55'"
-          />
-        </td>
-        <td class="w-14 py-2 pl-2">
-          <UiThumb size="sm">
-            <img
-              v-if="row.track.release && releaseImage(row.track.release)"
-              :src="releaseImage(row.track.release)!"
-              :alt="row.track.title"
-              class="h-full w-full object-cover"
-            >
-            <div v-else class="flex h-full w-full items-center justify-center text-stone-100/20">
-              <LucideMusic class="size-5" />
-            </div>
-          </UiThumb>
-        </td>
-        <td class="py-2 pl-3">
-          <p
-            class="truncate text-base font-medium"
-            :class="isCurrentTrack(row.track.id) ? 'text-amber-400' : 'text-stone-100'"
-          >
-            {{ row.track.title }}
-          </p>
-          <div v-if="row.track.release" class="flex items-center gap-1.5 text-sm text-stone-100/55">
-            <NuxtLink
-              v-if="row.track.release.artist"
-              :to="`/artist/${row.track.release.artist.slug}`"
-              class="truncate hover:text-stone-100 transition-colors duration-150"
-              @click.stop
-            >
-              {{ row.track.release.artist.name }}
-            </NuxtLink>
-            <Bullet v-if="row.track.release.artist" />
-            <span class="truncate">{{ row.track.release.title }}</span>
-          </div>
-        </td>
-        <td class="w-16 py-2 pr-4 text-center tabular-nums text-sm text-stone-100/55">
-          {{ formatDuration(row.track.duration) }}
-        </td>
-        <td v-if="$slots.action" class="w-12 py-2 pr-4 text-center">
+        <template v-if="$slots.action" #action>
           <slot name="action" :row="row" />
-        </td>
-      </SlimTableRow>
+        </template>
+      </ArtistsTrackRow>
     </SlimTableBody>
   </SlimTable>
 

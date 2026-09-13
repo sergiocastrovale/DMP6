@@ -723,3 +723,94 @@ binding/fold/dissolve moved off `sync`'s own tail entirely, into a new `./tidy` 
 completion in one invocation instead of needing a second unscoped `sync` to re-score newly-`UNKNOWN`
 rows. **The current rollout checklist is docs/__plan_tidy_script.md Step 10** — follow that, not the
 procedure that used to be written here.
+
+---
+
+## 20. Stopping and restarting a NAS sync/tidy run
+
+Learned the hard way during the 2026-09-13 rollout. Two NAS quirks make the obvious commands wrong:
+
+- **`/tmp` is mounted `noexec`.** A script placed there cannot be *executed* directly
+  (`/tmp/foo.sh` or `nohup /tmp/foo.sh`) — it fails, and inside `tmux new-session -d`, that failure
+  kills the pane instantly, which kills the session, which (with no other session left) kills the
+  **tmux server itself** — so `tmux ls` right after reports "no server running", looking like tmux
+  itself is broken. It isn't. Always invoke as `bash /tmp/foo.sh`, or just don't use a script file at
+  all (see below).
+- **Killing the local shell around a `docker exec` does NOT kill the process inside the container.**
+  If a tmux session (or an SSH connection) holding a `docker exec dmp sync` dies, the `sync`/`tidy`
+  process keeps running server-side, orphaned and invisible — it keeps heartbeating the DB lock
+  (`common::lock::LockGuard`, every 60s) the whole time, so `clear_stale_lock_minutes` never fires
+  either. `ps`/`tmux ls` on the outside show nothing running; the lock is still held; the log file
+  stops growing because whatever was reading its output died. Don't assume "stopped" — check the lock.
+
+### Check what's running
+
+```bash
+ssh nas 'tmux ls; sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -c \
+  "SELECT \"scanLockedBy\", \"scanPid\", \"scanLockedAt\" FROM \"Statistics\" WHERE id='"'"'main'"'"';"'
+```
+
+Empty `scanLockedBy` = nothing running, safe to start. A `scanPid` with no matching tmux session is
+the orphan case above — the process is still alive inside the container regardless.
+
+### Stop it (graceful — releases the lock cleanly via SIGTERM)
+
+```bash
+ssh nas 'sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -t -c \
+  "SELECT \"scanPid\" FROM \"Statistics\" WHERE id='"'"'main'"'"';"'
+# take the pid printed above, then:
+ssh nas 'sudo docker exec dmp bash -c "kill -TERM <pid>"'
+# verify: scanLockedBy should now be empty
+ssh nas 'sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -t -c \
+  "SELECT \"scanLockedBy\" FROM \"Statistics\" WHERE id='"'"'main'"'"';"'
+```
+
+`kill` is not a standalone binary in the (bookworm-slim) `dmp` image — always
+`docker exec dmp bash -c "kill ..."`, never `docker exec dmp kill ...` (that tries to exec a binary
+named `kill` and fails with "not found in $PATH").
+
+**Always stop this way before `./deploy`** — a deploy recreates the `dmp` container, which kills
+whatever's running inside it (lock included) far less cleanly than a SIGTERM would.
+
+### Restart it
+
+Use the deployed wrapper scripts at `/mnt/SSD/web/dmp/{sync,tidy}` directly, with `sudo` (they live on
+the SSD mount, not `/tmp`, so `noexec` doesn't apply — and the wrapper's own `docker exec` call has no
+`sudo` baked in, so bare `./sync` 403s for user Kp, not in the docker group):
+
+```bash
+ssh nas 'tmux new-session -d -s sync "sudo /mnt/SSD/web/dmp/sync > /tmp/sync-run.log 2>&1; echo DONE_SYNC >> /tmp/sync-run.log"'
+```
+
+Sync resumes via its own run-hash (`Resuming run (hash: …)` / `Skipping N already-processed artist(s)`
+in the log) — no flags needed to pick up where an interrupted run left off.
+
+Same pattern for tidy, after sync finishes (docs/__plan_tidy_script.md Step 10):
+
+```bash
+ssh nas 'tmux new-session -d -s tidy "sudo /mnt/SSD/web/dmp/tidy > /tmp/tidy-run.log 2>&1; echo DONE_TIDY >> /tmp/tidy-run.log"'
+```
+
+(`sudo docker exec dmp sync`/`tidy` still works identically if the wrapper is ever missing or stale —
+that's what the wrapper falls back to internally anyway when no local Rust binary exists, which is
+always true on the NAS.)
+
+### Watch progress
+
+```bash
+ssh nas 'tail -30 /tmp/sync-run.log'
+# artist-level counter only (not the per-release [N/M] lines above it — same bracket shape, so the
+# double space after the bracket is what disambiguates them):
+ssh nas "grep -oE '\[[0-9]+/[0-9]+\]  [A-Za-z]' /tmp/sync-run.log | tail -1"
+ssh nas 'grep -c DONE_SYNC /tmp/sync-run.log'   # >0 once finished
+```
+
+### If a script file is genuinely needed (e.g. a scoped `--only "A;B;C"` run)
+
+Write it, `scp` it to `/tmp`, then invoke with `bash`, never bare:
+
+```bash
+ssh nas 'bash /tmp/whatever.sh'                                    # fine
+ssh nas 'tmux new-session -d -s x "bash /tmp/whatever.sh"'         # fine
+ssh nas 'tmux new-session -d -s x "/tmp/whatever.sh"'              # BREAKS — noexec, kills tmux
+```

@@ -59,7 +59,7 @@ const {
         </UiEmptyState>
       </div>
 
-      <TrackTable
+      <ArtistsTrackTable
         v-if="activeTab === 'tracks'"
         :rows="tracks"
         empty-message="No favorite tracks yet"
@@ -72,7 +72,7 @@ const {
             @toggle="unfavoriteTrack(row.track.id)"
           />
         </template>
-      </TrackTable>
+      </ArtistsTrackTable>
 
       <InfiniteScroll @load="loadMore" />
       <UiLoadingBlock v-if="loadingMore" size="inline" />
