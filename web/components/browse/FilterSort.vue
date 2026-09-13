@@ -13,7 +13,6 @@ const options = [
   { value: 'name', label: 'Name' },
   { value: 'releases', label: 'Releases' },
   { value: 'tracks', label: 'Tracks' },
-  { value: 'completeness', label: 'Completeness' },
   { value: 'playCount', label: 'Play count' },
   { value: 'score', label: 'Match score' },
   { value: 'recent', label: 'Recently added' },

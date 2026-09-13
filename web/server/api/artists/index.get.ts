@@ -47,25 +47,65 @@ export default defineEventHandler(async (event) => {
       if (maxScore !== null) {(where.averageMatchScore as Record<string, number>).lte = maxScore / 100}
     }
 
-    const orderBy: Record<string, string> = {}
+    const selectFields = {
+      id: true,
+      name: true,
+      slug: true,
+      image: true,
+      imageUrl: true,
+      averageMatchScore: true,
+      totalPlayCount: true,
+      totalTracks: true,
+    }
+
+    // `releases` has no DB column to order by - the count only exists after merging the
+    // release-stats join below. Paginating the DB query first and JS-sorting just that page (the
+    // old approach) only ever reordered whichever 48 artists a *different* column put on this
+    // page - the artist with the most releases could be sitting on page 6 and never surface. This
+    // sort must load every artist matching `where`, sort by the merged stat, then slice the page
+    // in JS.
+    if (sort === 'releases') {
+      const [allItems, stats] = await Promise.all([
+        prisma.artist.findMany({ where, orderBy: { slug: 'asc' }, select: selectFields }),
+        prisma.statistics.findUnique({ where: { id: 'main' }, select: { mainArtists: true } }),
+      ])
+
+      const releaseLinks = await prisma.localReleaseArtist.findMany({
+        where: { artistId: { in: allItems.map(a => a.id) } },
+        select: { artistId: true, localRelease: { select: { id: true } } },
+      })
+
+      const sorted = sortArtistsInMemory(mergeReleaseStats(allItems, releaseLinks), sort, order)
+      const total = sorted.length
+      const pageItems = sorted.slice((page - 1) * pageSize, page * pageSize)
+        .map(a => ({ ...a, ...verifyImage(a.image, a.imageUrl, 'artists') }))
+
+      return {
+        items: pageItems,
+        total,
+        mainCount: stats?.mainArtists ?? 0,
+        page,
+        pageSize,
+        hasMore: page * pageSize < total,
+      }
+    }
+
+    const orderBy: Record<string, unknown> = {}
     switch (sort) {
       case 'playCount':
         orderBy.totalPlayCount = order
         break
       case 'score':
-        orderBy.averageMatchScore = order
+        // Null scores (never MB-matched) must sink to the bottom regardless of direction -
+        // Postgres' default is NULLS LAST only for ASC, NULLS FIRST for DESC, which would put
+        // unmatched artists above every real score on the default (desc) sort.
+        orderBy.averageMatchScore = { sort: order, nulls: 'last' }
         break
       case 'recent':
         orderBy.createdAt = order
         break
       case 'tracks':
         orderBy.totalTracks = order
-        break
-      case 'releases':
-      case 'completeness':
-        // No DB column to order by - stays at a stable order, JS-sorted after the release-stats
-        // merge below. Kept ascending so the page a user sees is at least deterministic.
-        orderBy.slug = 'asc'
         break
       default:
         orderBy.slug = order
@@ -77,16 +117,7 @@ export default defineEventHandler(async (event) => {
         orderBy,
         skip: (page - 1) * pageSize,
         take: pageSize,
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          image: true,
-          imageUrl: true,
-          averageMatchScore: true,
-          totalPlayCount: true,
-          totalTracks: true,
-        },
+        select: selectFields,
       }),
       prisma.artist.count({ where }),
       prisma.statistics.findUnique({
@@ -97,17 +128,13 @@ export default defineEventHandler(async (event) => {
 
     const releaseLinks = await prisma.localReleaseArtist.findMany({
       where: { artistId: { in: items.map(a => a.id) } },
-      select: { artistId: true, localRelease: { select: { id: true, matchStatus: true } } },
+      select: { artistId: true, localRelease: { select: { id: true } } },
     })
 
-    const verifiedItems = sortArtistsInMemory(
-      mergeReleaseStats(items, releaseLinks).map(a => ({
-        ...a,
-        ...verifyImage(a.image, a.imageUrl, 'artists'),
-      })),
-      sort,
-      order,
-    )
+    const verifiedItems = mergeReleaseStats(items, releaseLinks).map(a => ({
+      ...a,
+      ...verifyImage(a.image, a.imageUrl, 'artists'),
+    }))
 
     return {
       items: verifiedItems,

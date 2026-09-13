@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import type { DataTableColumn } from '~/types/ui'
-import type { ArtistListItem } from '~/types/artist'
-import { getScoreRange } from '~/helpers/constants'
-import { cx, outlinePill, typography } from '~/helpers/ui'
+import { typography } from '~/helpers/ui'
 import { useBrowseStore } from '~/stores/browse'
 
 const store = useBrowseStore()
@@ -17,24 +15,12 @@ const columns: DataTableColumn[] = [
   { key: 'name', label: 'Name', sortable: true },
   { key: 'releases', label: 'Releases', sortable: true, align: 'right', width: '110px' },
   { key: 'tracks', label: 'Tracks', sortable: true, align: 'right', width: '100px' },
-  { key: 'completeness', label: 'Completeness', sortable: true, align: 'right', width: '140px' },
   { key: 'playCount', label: 'Plays', sortable: true, align: 'right', width: '100px' },
 ]
 
 // The real direction, not a per-field guess: the header arrows and the toolbar's direction button
 // are two views of one piece of store state, so they can never disagree.
 const sort = computed(() => ({ key: store.sortBy, dir: store.sortDir }))
-
-const completenessPct = (artist: ArtistListItem) => {
-  const releaseCount = artist.releaseCount ?? 0
-  const completeCount = artist.completeCount ?? 0
-  return releaseCount === 0 ? 0 : Math.round((completeCount / releaseCount) * 100)
-}
-
-const completenessClasses = (artist: ArtistListItem) => {
-  const { bgColor, textColor } = getScoreRange(completenessPct(artist))
-  return cx(outlinePill, 'border-transparent', bgColor, textColor)
-}
 </script>
 
 <template>
@@ -73,13 +59,6 @@ const completenessClasses = (artist: ArtistListItem) => {
 
       <template #cell-tracks="{ row }">
         <span :class="typography.meta">{{ counted(row.totalTracks, 'track') }}</span>
-      </template>
-
-      <template #cell-completeness="{ row }">
-        <span :class="completenessClasses(row)">
-          {{ completenessPct(row) }}%
-          <span class="font-normal opacity-60">({{ row.completeCount ?? 0 }}/{{ row.releaseCount ?? 0 }})</span>
-        </span>
       </template>
 
       <template #cell-playCount="{ row }">

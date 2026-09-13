@@ -7,7 +7,6 @@ export interface ArtistListItem extends ArtistSummary {
   totalPlayCount: number
   totalTracks: number
   releaseCount?: number
-  completeCount?: number
 }
 
 export interface Artist extends ArtistListItem {
@@ -22,12 +21,11 @@ export interface Artist extends ArtistListItem {
 
 export interface ArtistReleaseLink {
   artistId: string
-  localRelease: { id: string, matchStatus: string }
+  localRelease: { id: string }
 }
 
 export interface ReleaseStatsResult {
   releaseCount: number
-  completeCount: number
 }
 
 export interface CatalogueCounts {

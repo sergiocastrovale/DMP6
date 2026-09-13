@@ -86,7 +86,13 @@ export const useBrowseStore = defineStore('browse', () => {
   }
 
   async function loadMore() {
-    if (!hasMore.value || loadingMore.value) {return}
+    // Guard on `loading` too, not just `loadingMore`: a filter/sort change kicks off a fresh
+    // page-1 fetch, and if the sentinel is still intersecting mid-reload (list momentarily short
+    // or empty), the IntersectionObserver fires `@load` concurrently. Without this guard that
+    // races an append fetch against the fresh one - the append aborts the correct filtered
+    // request and pushes a stale-offset page onto the still-unfiltered list, so the filter/sort
+    // change appears to do nothing until picked again.
+    if (!hasMore.value || loadingMore.value || loading.value) {return}
     page.value++
     await fetchArtists(true)
   }

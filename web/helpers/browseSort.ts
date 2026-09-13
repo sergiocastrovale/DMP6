@@ -3,7 +3,7 @@
 // `server/`, and it stays that way by having nothing to drag along.
 import type { SortDirection } from '~/types/common'
 
-export const BROWSE_SORT_FIELDS = ['name', 'releases', 'tracks', 'completeness', 'playCount', 'score', 'recent'] as const
+export const BROWSE_SORT_FIELDS = ['name', 'releases', 'tracks', 'playCount', 'score', 'recent'] as const
 
 // Picking a new column should show its most useful end first: names read A→Z, every other column is
 // a quantity, where the interesting rows are the big ones.

@@ -75,6 +75,29 @@ describe('useBrowseStore', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('loadMore is a no-op while a fresh (non-append) fetch is in flight', async () => {
+    // Regression: a filter/sort change kicks off fetchArtists(page 1). If the InfiniteScroll
+    // sentinel is still intersecting mid-reload, it must not fire a concurrent append fetch that
+    // aborts the correct one and appends a stale-offset page.
+    const store = useBrowseStore()
+    store.hasMore = true
+
+    let resolveFresh: (v: unknown) => void
+    const freshPromise = new Promise((resolve) => { resolveFresh = resolve })
+    fetchMock.mockReturnValueOnce(freshPromise)
+
+    const freshCall = store.fetchArtists()
+    expect(store.loading).toBe(true)
+
+    fetchMock.mockClear()
+    await store.loadMore()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(store.page).toBe(1)
+
+    resolveFresh!(response({ items: [{ slug: 'a' }] }))
+    await freshCall
+  })
+
   it('a non-append fetch replaces the artist list and resets page to 1', async () => {
     fetchMock.mockResolvedValueOnce(response({ items: [{ slug: 'a' }] }))
     const store = useBrowseStore()
