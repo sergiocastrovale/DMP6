@@ -95,8 +95,8 @@ A related fault: an almost-empty entry can end up **holding another artist's Mus
 which is what drags albums onto the wrong name. When sync repairs one of these, the wrong entry gives
 the identity up.
 
-`./sync --repair-artist-identities` sweeps all of these in one go (`--dry-run` to preview). It is
-worth re-running occasionally.
+`./tidy` sweeps all of these in one go, every time it runs (moved off a standalone `sync
+--repair-artist-identities` flag — see docs/scripts/tidy.md, docs/__plan_tidy_script.md).
 
 **Traced (2026-09-10).** Erroll Garner's 76 albums sat under "Wardell Gray Quintet" because that entry's
 files carry an embedded MusicBrainz id — but it is the wrong one, Garner's, not the Quintet's own. One
@@ -171,10 +171,10 @@ touch is a different action from finding a new one.
 So undoing already-wrongly-claimed identities is a **repair**, not a **sync**: a dedicated pass that
 looks for entries whose stored identity contradicts an independent, confident answer, clears the wrong
 one, and lets the entry re-enter the normal queue to be found again — correctly, or not at all.
-`./sync --repair-artist-identities` is that pass. Running sync harder or more often is not a substitute
-for it.
+`./tidy` runs that pass every time (formerly a standalone `sync --repair-artist-identities` flag).
+Running sync harder or more often is not a substitute for it.
 
-Three sub-passes, run in this order every time the flag is used:
+Three sub-passes, run in this order every time `./tidy` runs:
 
 - **Pass A** (`repair_all_empty_primaries`) — a duplicate/alias pair linked by `primaryArtistId` where
   the empty side's stored id contradicts its own name.
@@ -288,12 +288,14 @@ Three sources feed candidate box releases, tried in order until one produces a b
    numbers in brackets used to return zero hits, since MusicBrainz's own title carries neither
    suffix).
 
-**Why this runs once at the end of sync, not per artist as each one is synced:** a box's siblings and
-their standalone twin can belong to *different* artist rows (compilations, VA sets) — not scoped to one
-artist. And fold/dissolve needs every release this run matched already sitting in the DB, since a disc's
-standalone twin might not even be for the same artist. Running it earlier would also revive §10's
-matcher-vs-box-pass fight, since that fix depends on the box pass being the *last* word, not one voice
-mid-loop.
+**Why this runs once, at the end of `./tidy`, not per artist as each one is synced:** a box's siblings
+and their standalone twin can belong to *different* artist rows (compilations, VA sets) — not scoped to
+one artist. And fold/dissolve needs every release this run matched already sitting in the DB, since a
+disc's standalone twin might not even be for the same artist. Running it earlier would also revive
+§10's matcher-vs-box-pass fight, since that fix depends on the box pass being the *last* word, not one
+voice mid-loop. It used to run at the tail of every `sync` invocation instead; moved to `./tidy` so a
+disc it folds/dissolves gets re-scored in the *same run* rather than sitting at `matchStatus='UNKNOWN'`
+until whatever sync happens to run next (docs/scripts/tidy.md).
 
 ### Matching folders to discs
 
@@ -396,18 +398,20 @@ The album matcher read each disc's own tags, which name the *box*, and bound the
 box pass then moved it to the album it reprints and marked it "needs re-checking". Next run, the same
 thing. ABBA's box came out of three consecutive syncs with nine unscored discs.
 
-The rule now: **once the box pass has placed a disc, that decision stands.** The album matcher scores
-the disc where the box pass put it instead of re-reading the tags, the deluxe-edition search is skipped
-for those discs (a box disc legitimately has more tracks than the standalone album, so that search
-always "succeeded" and restarted the fight), and the box pass only writes when something actually
-changed.
+The rule now: **once the box pass has placed a disc, that decision stands.** A later `sync`'s own album
+matcher scores the disc where the box pass put it instead of re-reading the tags, the deluxe-edition
+search is skipped for those discs (a box disc legitimately has more tracks than the standalone album,
+so that search always "succeeded" and restarted the fight), and the box pass only writes when something
+actually changed. `./tidy` itself never hits this at all — its own re-score (docs/scripts/tidy.md, phase
+5) scores a just-placed disc against the release the box pass bound it to, in the same run, so there is
+no round trip through a later sync to begin with.
 
-If box discs ever show "unknown" again across repeated syncs, this is the first place to look.
+If box discs ever show "unknown" again after a `./tidy` run, this is the first place to look.
 
 If instead every disc of a box sits `MISSING_TRACKS` and shows the *box's own* title on every card
 (scored against every medium, not its own one), the box pass never placed it at all — check
 `logs/errors.log` for `Box-set repair error` first (§9's "one box never blocks the rest"), then the
-sync run's own `Box sets: N group(s) bound (F folded, D dissolved, K key-taken, X failed)` line for
+`./tidy` run's own `Box groups: N seen, M bound (F folded, D dissolved, K key-taken, X failed)` line for
 groups that were seen but not bound.
 
 ---
@@ -521,10 +525,11 @@ by the next ordinary sync of an affected artist.
 Order:
 
 1. Deploy the code carrying §5's certainty gate.
-2. Run `./sync --repair-artist-identities --dry-run`, read the plan.
-3. Run it for real. This nulls the wrong identities and clears the discography that had piled up under
-   them; it does **not** itself re-sync anything.
-4. A normal, unscoped `./sync` — no special flags — picks the now-empty entries back up as ordinary
+2. Run `./tidy` (no `--dry-run` — same "no preview mode, `./backup` is the recovery path" reasoning as
+   the box pass, docs/scripts/tidy.md). This nulls the wrong identities and clears the discography that
+   had piled up under them, alongside every other library-wide repair `./tidy` does; it does **not**
+   itself re-sync anything.
+3. A normal, unscoped `./sync` — no special flags — picks the now-empty entries back up as ordinary
    pending work and re-derives each one properly, or leaves it honestly unmatched. There is no need to
    force a library-wide `--overwrite` for this: only the entries the repair actually touched need
    re-deriving, and they already re-enter the queue on their own.
@@ -591,10 +596,9 @@ the item-1 edition/partial-bind work later reclaims), and no new `Box-set repair
 | Album listed missing that you own | §11, §9 |
 | "Songs inside another release" note looks wrong | §12 |
 | Sync too slow, or MusicBrainz errors | §13 |
-| Ran `--repair-artist-identities` but the wrong albums are still there | §6 — a repair clears the id, it does not re-sync the artist; that happens on the next normal run |
+| Ran `./tidy` but the wrong albums are still there | §6 — a repair clears the id, it does not re-sync the artist; that happens on the next normal `sync` |
 
-Useful commands: `./sync --repair-artist-identities --dry-run`,
-`./sync --only "Artist" --exact --verbose`, `./audit`.
+Useful commands: `./tidy`, `./sync --only "Artist" --exact --verbose`, `./audit`.
 
 ## 19. To do next
 
@@ -703,55 +707,19 @@ still has it — this sizes how much has already been lost, separate from stoppi
 `scripts/common/tests/tags_roundtrip.rs::mp3_resave_keeps_existing_musicbrainz_frames`), embed a cover
 through each fixed writer, confirm every MusicBrainz frame is still present afterward.
 
-### 5. Recording-tags cleanup + box-set rollout (started 2026-09-11, unfinished)
+### 5. Recording-tags cleanup + box-set rollout (superseded — see docs/__plan_tidy_script.md)
 
 A **separate, unrelated bug** from everything else in this document: `common::tags::write_mb_ids` used
-to write a track's release-track id into the recording-id tag slot. Already fixed and deployed
-(commit `3549964b`), with a new `./sync --repair-recording-tags [--dry-run] [--only x]` to rewrite
-files a past run already damaged this way. Not documented elsewhere in this file because it has nothing
-to do with box sets, artist identity, or any matching decision above — it only touches which MB id
-lands in which tag.
+to write a track's release-track id into the recording-id tag slot. Fixed and deployed (commit
+`3549964b`). What originally repaired *already-damaged* files was a Rust `sync --repair-recording-tags`
+flag; that flag has since been removed entirely and replaced by a throwaway one-off,
+`oneoff/repair_recording_tags.py`, run once library-wide and then deleted (see
+docs/__plan_tidy_script.md Step 7). Not documented elsewhere in this file because it has nothing to do
+with box sets, artist identity, or any matching decision above — it only touches which MB id lands in
+which tag.
 
-**Status when this was written:** a library-wide `./sync --repair-recording-tags --dry-run --verbose`
-has been running in NAS tmux session `repair` since 2026-09-11 20:06 (`ssh nas`, `tmux attach -t repair`
-to watch live; output also tee'd to `/tmp/repair-dry-run.log`). It is read-only (no `--dry-run` means no
-writes happen either way at the "would fix" stage) but holds the DB scan lock
-(`Statistics.scanLockedBy = 'sync'`) for its entire run, and at last check was projected to take on the
-order of a day and a half to cover the whole library — check `tail -20 /tmp/repair-dry-run.log` and
-compare the `[n/45995]` progress line to gauge how much is left.
-
-This also blocks the box-set fix's own rollout (§9/§17/§9's earlier items), which needs the scan lock
-free. The two are independent code paths and would not corrupt anything running concurrently (the
-recording-tags pass writes nothing during a dry run), but both are disk-I/O heavy, so running them
-together just slows each down. The lock itself has no heartbeat - any binary's own
-`clear_stale_lock_minutes(pool, 10)` will silently steal a lock older than 10 minutes even from a
-process that is still very much alive, so starting a second scan doesn't even wait for the first to
-release it cleanly.
-
-**When told the script has finished (or to stop waiting for it), do this:**
-
-1. `ssh nas 'tail -20 /tmp/repair-dry-run.log; tmux ls'` - confirm it actually finished (reads a final
-   summary line: "N file(s) read across M artist(s)…") or is being killed instead.
-2. If proceeding without waiting: `ssh nas 'tmux kill-session -t repair'` - safe, it is a dry run.
-3. Run the box-set rollout: `./index --folders "HIM/Album/2002 - The Single Collection [#74321 96173 2]"`
-   (picks up the MB ids SongKong already wrote into these files, since `LocalReleaseTrack.mbReleaseId`
-   had not caught up as of 2026-09-11), then `./sync --only "HIM" --exact` (expect one bound/folded
-   box-set group in the summary line), then an unscoped `./sync` (the box pass runs its tail over every
-   group library-wide; read its `Box sets: N group(s) bound (F folded, D dissolved, K key-taken,
-   X failed)` line), then a second unscoped `./sync` to re-score the newly-`UNKNOWN` rows.
-4. Re-run §17's split-disc SQL. Expect unplaced rows to fall from 3,411 toward roughly 1,000 (§19 items
-   1's 312 correctly-refused groups plus the 10 key-collision groups), and no new `Box-set repair error`
-   in `logs/errors.log`.
-5. If the recording-tags dry-run was killed rather than finished, it can be safely re-run standalone
-   later (`--only` an artist, or unscoped) whenever the NAS is otherwise idle - it is independent of
-   everything else in this checklist.
-
-**Exact text to send when ready:**
-
-> The recording-tags script finished. Proceed with the box-set rollout (docs/sync_decisions.md §19
-> item 5).
-
-Or, to proceed without waiting for it:
-
-> Don't wait for the recording-tags script. Kill it and proceed with the box-set rollout now
-> (docs/sync_decisions.md §19 item 5).
+The box-set rollout this item used to block on the recording-tags dry-run is also superseded: box-set
+binding/fold/dissolve moved off `sync`'s own tail entirely, into a new `./tidy` binary that runs to
+completion in one invocation instead of needing a second unscoped `sync` to re-score newly-`UNKNOWN`
+rows. **The current rollout checklist is docs/__plan_tidy_script.md Step 10** — follow that, not the
+procedure that used to be written here.

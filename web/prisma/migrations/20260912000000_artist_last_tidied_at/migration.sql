@@ -1,0 +1,1 @@
+ALTER TABLE "Artist" ADD COLUMN "lastTidiedAt" TIMESTAMP(3);

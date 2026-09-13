@@ -28,6 +28,9 @@ const percent = computed(() => {
 const label = computed(() => {
   const p = progress.value
   if (p) {
+    if (p.phase === 'tidy') {
+      return `Tidying: ${p.step || ''}`
+    }
     return `${p.phase === 'index' ? 'Indexing' : 'Syncing'}: ${p.folder || p.artist || ''}`
   }
   return (terminal.currentCommand && commandLabels[terminal.currentCommand]) || 'Running…'

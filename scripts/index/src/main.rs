@@ -486,10 +486,13 @@ async fn main() {
         args.prune,
         args.release.as_deref().unwrap_or(""),
     );
-    if let Err(e) = acquire_lock(&pool, "index", std::process::id(), &args_str).await {
-        reporter.err(&format!("Cannot start: {}", e));
-        std::process::exit(1);
-    }
+    let _lock_guard = match acquire_lock(&pool, "index", std::process::id(), &args_str).await {
+        Ok(g) => g,
+        Err(e) => {
+            reporter.err(&format!("Cannot start: {}", e));
+            std::process::exit(1);
+        }
+    };
 
     // SIGTERM / Ctrl-C handler - release lock before exiting
     let shutdown = Arc::new(AtomicBool::new(false));

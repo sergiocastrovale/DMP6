@@ -14,6 +14,17 @@ resolve_bin() {
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INDEX_BIN=$(resolve_bin index "$SCRIPT_DIR")
 SYNC_BIN=$(resolve_bin sync "$SCRIPT_DIR")
+TIDY_BIN=$(resolve_bin tidy "$SCRIPT_DIR")
+
+# tidy picks its own scope from the lastTidiedAt watermark, which sync just moved forward for
+# whichever artists it touched - no need to hand it --only/--artist-ids. Only --web/--verbose (the
+# web terminal's own flags, not a scoping filter) are worth forwarding.
+TIDY_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --web|--verbose) TIDY_ARGS+=("$arg") ;;
+  esac
+done
 
 HAS_SCOPE=false
 for arg in "$@"; do
@@ -41,10 +52,10 @@ if $HAS_SCOPE; then
   done
 
   if [ -s "$IDS_FILE" ]; then
-    "$SYNC_BIN" "${SYNC_ARGS[@]}" --artist-ids "$IDS_FILE"
+    "$SYNC_BIN" "${SYNC_ARGS[@]}" --artist-ids "$IDS_FILE" && "$TIDY_BIN" "${TIDY_ARGS[@]}"
   else
     echo "No artists to sync."
   fi
 else
-  "$INDEX_BIN" "$@" && "$SYNC_BIN" "$@"
+  "$INDEX_BIN" "$@" && "$SYNC_BIN" "$@" && "$TIDY_BIN" "${TIDY_ARGS[@]}"
 fi

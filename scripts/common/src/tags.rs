@@ -18,7 +18,10 @@ use std::time::SystemTime;
 ///   `UFID:http://musicbrainz.org`, MP4 `MusicBrainz Track Id` - Picard's names, which say "track"
 ///   but mean the recording.
 ///
-/// Writing the release-track id into the recording slot is the bug `--repair-recording-tags` undoes.
+/// The release-track-into-recording-slot mixup this once corrected (`--repair-recording-tags`) was
+/// undone once, library-wide, by a throwaway one-off script (see docs/__plan_tidy_script.md) - not by
+/// code kept here. `write_mb_ids`'s own stale-recording self-heal below still corrects it going
+/// forward on every normal sync.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MbTagIds<'a> {
     pub album_artist: Option<&'a str>,
@@ -26,30 +29,6 @@ pub struct MbTagIds<'a> {
     pub release_group: Option<&'a str>,
     pub release_track: Option<&'a str>,
     pub recording: Option<&'a str>,
-}
-
-/// What to do with a file's recording tag.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RecordingFix {
-    Keep,
-    Replace(String),
-    Blank,
-}
-
-/// Decide a file's recording tag from what the DB knows about its current value.
-///
-/// `known` is the lookup of that value among MusicBrainz *release-track* ids: `None` when it is not
-/// one (a genuine recording id, or something we know nothing about - left alone), `Some(Some(rec))`
-/// when it is one and its recording is known, `Some(None)` when it is one but the recording is not
-/// (yet) known. MBIDs are UUIDs, unique across entity types, so a match is proof the value was
-/// written into the wrong slot - never a coincidence. An unknown recording blanks the tag: empty
-/// beats wrong, and the next sync that learns the recording fills it.
-pub fn plan_recording_fix(existing: Option<&str>, known: Option<&Option<String>>) -> RecordingFix {
-    match (existing, known) {
-        (Some(_), Some(Some(recording))) => RecordingFix::Replace(recording.clone()),
-        (Some(_), Some(None)) => RecordingFix::Blank,
-        _ => RecordingFix::Keep,
-    }
 }
 
 /// Write embedded MusicBrainz IDs into a file's tags.
@@ -101,40 +80,6 @@ pub fn write_mb_ids(abs_path: &Path, ids: &MbTagIds, force: bool) -> Result<bool
 
     if !needs_write {
         return Ok(false);
-    }
-
-    slots.save(abs_path)?;
-    warn_if_mtime_not_restored(abs_path, original_mtime);
-    Ok(true)
-}
-
-/// A file's `(recording, release-track)` ids. Empty values read as `None`.
-pub fn read_track_mb_ids(abs_path: &Path) -> Result<(Option<String>, Option<String>), String> {
-    let slots = MbSlots::open(abs_path)?;
-    Ok((slots.get(MbKey::Recording), slots.get(MbKey::ReleaseTrack)))
-}
-
-/// Apply a `RecordingFix` to a file whose recording tag holds `release_track_id`. Also moves that
-/// id into its proper slot when the release-track tag is empty. Every other tag item is untouched
-/// and the file's mtime is kept, so index does not see a change. Returns whether the file was written.
-pub fn apply_recording_fix(
-    abs_path: &Path,
-    fix: &RecordingFix,
-    release_track_id: &str,
-) -> Result<bool, String> {
-    if *fix == RecordingFix::Keep {
-        return Ok(false);
-    }
-
-    let original_mtime = mtime(abs_path)?;
-    let mut slots = MbSlots::open(abs_path)?;
-
-    match fix {
-        RecordingFix::Replace(recording) => slots.set(MbKey::Recording, recording),
-        _ => slots.remove(MbKey::Recording),
-    }
-    if slots.get(MbKey::ReleaseTrack).is_none() {
-        slots.set(MbKey::ReleaseTrack, release_track_id);
     }
 
     slots.save(abs_path)?;
@@ -332,37 +277,3 @@ fn warn_if_mtime_not_restored(abs_path: &Path, original_mtime: SystemTime) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn keeps_a_file_with_no_recording_tag() {
-        assert_eq!(plan_recording_fix(None, None), RecordingFix::Keep);
-        assert_eq!(
-            plan_recording_fix(None, Some(&Some("rec".into()))),
-            RecordingFix::Keep
-        );
-    }
-
-    #[test]
-    fn keeps_a_value_that_is_not_a_release_track_id() {
-        assert_eq!(plan_recording_fix(Some("rec"), None), RecordingFix::Keep);
-    }
-
-    #[test]
-    fn replaces_a_release_track_id_with_its_known_recording() {
-        assert_eq!(
-            plan_recording_fix(Some("rt"), Some(&Some("rec".into()))),
-            RecordingFix::Replace("rec".into())
-        );
-    }
-
-    #[test]
-    fn blanks_a_release_track_id_whose_recording_is_unknown() {
-        assert_eq!(
-            plan_recording_fix(Some("rt"), Some(&None)),
-            RecordingFix::Blank
-        );
-    }
-}

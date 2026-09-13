@@ -61,10 +61,13 @@ async fn main() {
     if clear_stale_lock_minutes(&pool, 10).await {
         eprintln!("{}", "Cleared a stale lock.".yellow());
     }
-    if let Err(e) = acquire_lock(&pool, "fix", std::process::id(), "").await {
-        eprintln!("{}: {}", "Cannot start".red(), e);
-        std::process::exit(1);
-    }
+    let _lock_guard = match acquire_lock(&pool, "fix", std::process::id(), "").await {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("{}: {}", "Cannot start".red(), e);
+            std::process::exit(1);
+        }
+    };
 
     let music_dir = config.music_dir.as_deref().unwrap_or("").to_string();
     let mut affected_folders: HashSet<String> = HashSet::new();

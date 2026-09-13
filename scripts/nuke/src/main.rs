@@ -699,10 +699,13 @@ async fn main() {
         if clear_stale_lock_minutes(&pool, 10).await {
             log!("Cleared a stale lock.");
         }
-        if let Err(e) = acquire_lock(&pool, "nuke", std::process::id(), "").await {
-            eprintln!("{}: {}", "Cannot start".red(), e);
-            std::process::exit(1);
-        }
+        let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id(), "").await {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("{}: {}", "Cannot start".red(), e);
+                std::process::exit(1);
+            }
+        };
 
         let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
         let s3_client = if use_s3 {
@@ -806,10 +809,13 @@ async fn main() {
     if clear_stale_lock_minutes(&pool, 10).await {
         log!("Cleared a stale lock.");
     }
-    if let Err(e) = acquire_lock(&pool, "nuke", std::process::id(), "").await {
-        eprintln!("{}: {}", "Cannot start".red(), e);
-        std::process::exit(1);
-    }
+    let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id(), "").await {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("{}: {}", "Cannot start".red(), e);
+            std::process::exit(1);
+        }
+    };
 
     // DB-configured S3/image settings (Settings table) override env, same as index/sync. Safe to read
     // now: Settings is preserved by this wipe (see #52), not truncated below.

@@ -10,9 +10,10 @@ export interface CapturedRun {
 }
 
 export interface ScanProgress {
-  phase: 'index' | 'sync'
+  phase: 'index' | 'sync' | 'tidy'
   folder?: string
   artist?: string
+  step?: string
   current: number
   total: number
 }

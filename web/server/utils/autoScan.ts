@@ -51,7 +51,7 @@ export const shouldRunAutoScan = (
   return elapsedMs >= Math.max(MIN_AUTO_SCAN_INTERVAL_HOURS, settings.intervalHours) * 60 * 60 * 1000
 }
 
-const runScript = async (name: 'index' | 'sync'): Promise<void> => {
+const runScript = async (name: 'index' | 'sync' | 'tidy'): Promise<void> => {
   const scriptsDir = process.env.SCRIPTS_DIR || process.env.PROJECT_ROOT || '.'
   const { stdout, stderr } = await execFileAsync(`${scriptsDir}/${name}`, [], {
     cwd: process.env.PROJECT_ROOT || scriptsDir,
@@ -62,16 +62,18 @@ const runScript = async (name: 'index' | 'sync'): Promise<void> => {
 }
 
 /**
- * One unattended `./index` + `./sync` pass. Serialized against every other in-process script run
- * (merges, gaps cycles) through runExclusive, because they all share the binaries' exclusive DB lock.
- * The timestamp is stamped even on failure: a broken scan must not retry on every tick.
+ * One unattended `./index` + `./sync` + `./tidy` pass. Serialized against every other in-process
+ * script run (merges, gaps cycles) through runExclusive, because they all share the binaries'
+ * exclusive DB lock. The timestamp is stamped even on failure: a broken scan must not retry on every
+ * tick.
  */
 export const runAutoScan = async (): Promise<void> => {
   await runExclusive(async () => {
-    monitorLog('notice', 'auto-scan: starting index + sync')
+    monitorLog('notice', 'auto-scan: starting index + sync + tidy')
     try {
       await runScript('index')
       await runScript('sync')
+      await runScript('tidy')
     }
     catch (e: any) {
       monitorLog('error', `auto-scan failed: ${e?.message ?? e}`)

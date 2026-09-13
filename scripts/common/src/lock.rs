@@ -1,9 +1,30 @@
 use chrono::Utc;
 use sqlx::PgPool;
+use tokio::task::JoinHandle;
+
+/// Keeps the scan lock's `scanLockedAt` fresh every 60s for as long as it is held, so
+/// `clear_stale_lock_minutes`'s 10-minute threshold only ever fires on a genuinely dead process, never
+/// a long-running one (a whole-library first `./tidy` run can take hours). Dropping the guard aborts
+/// the heartbeat task; it does NOT clear the lock row itself - callers still call `release_lock`
+/// explicitly, keeping this guard alive until they do.
+pub struct LockGuard {
+    heartbeat: JoinHandle<()>,
+}
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        self.heartbeat.abort();
+    }
+}
 
 /// Atomically acquire the scan lock in the Statistics singleton row.
 /// Returns Err with the current holder's info if the lock is already held.
-pub async fn acquire_lock(pool: &PgPool, binary: &str, pid: u32, args: &str) -> Result<(), String> {
+pub async fn acquire_lock(
+    pool: &PgPool,
+    binary: &str,
+    pid: u32,
+    args: &str,
+) -> Result<LockGuard, String> {
     // First ensure the Statistics row exists
     sqlx::query(
         r#"INSERT INTO "Statistics" (id, "updatedAt") VALUES ('main', NOW()) ON CONFLICT DO NOTHING"#,
@@ -23,7 +44,24 @@ pub async fn acquire_lock(pool: &PgPool, binary: &str, pid: u32, args: &str) -> 
     .await;
 
     match result {
-        Ok(r) if r.rows_affected() == 1 => Ok(()),
+        Ok(r) if r.rows_affected() == 1 => {
+            let pool = pool.clone();
+            let heartbeat = tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+                interval.tick().await; // first tick fires immediately - the UPDATE above just set it
+                loop {
+                    interval.tick().await;
+                    let _ = sqlx::query(
+                        r#"UPDATE "Statistics" SET "scanLockedAt" = NOW()
+                           WHERE id = 'main' AND "scanPid" = $1"#,
+                    )
+                    .bind(pid as i32)
+                    .execute(&pool)
+                    .await;
+                }
+            });
+            Ok(LockGuard { heartbeat })
+        }
         _ => {
             // Lock held - read who has it
             let holder: Option<(Option<String>, Option<i32>)> = sqlx::query_as(

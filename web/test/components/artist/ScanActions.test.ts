@@ -47,6 +47,7 @@ describe('artist/ScanActions.vue', () => {
     expect(runMock.mock.calls).toEqual([
       ['./index', ['--folders', 'Boards of Canada'], 'check-boards-of-canada'],
       ['./sync', ['--only', 'Boards of Canada', '--exact'], 'check-boards-of-canada'],
+      ['./tidy', [], 'check-boards-of-canada'],
     ])
   })
 
@@ -58,6 +59,7 @@ describe('artist/ScanActions.vue', () => {
       ['./delete', ['Boards of Canada', '--y'], 'rebuild-boards-of-canada'],
       ['./index', ['--folders', 'Boards of Canada', '--overwrite'], 'rebuild-boards-of-canada'],
       ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite'], 'rebuild-boards-of-canada'],
+      ['./tidy', [], 'rebuild-boards-of-canada'],
     ])
   })
 
@@ -75,6 +77,7 @@ describe('artist/ScanActions.vue', () => {
     await wrapper.findAll('button')[4]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
       ['./sync', ['--only', 'Boards of Canada', '--exact', '--overwrite'], 'resync-boards-of-canada'],
+      ['./tidy', [], 'resync-boards-of-canada'],
     ])
   })
 

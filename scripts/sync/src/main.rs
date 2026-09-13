@@ -14,28 +14,22 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-mod box_editions;
-mod boxset;
-mod catalogue_gaps;
-mod db;
-mod images;
-mod mb_api;
-mod mb_matching;
-mod mb_types;
 mod nuke;
-mod owned;
-mod recording_tags;
-mod repair;
-mod status;
 
 use common::images::download_artist_image;
-use db::*;
-use images::download_cover_art;
-use mb_api::RateLimiter;
-use mb_matching::{find_mb_match_with_fallback, is_special_artist_name};
-use mb_types::{MbArtistMatch, MbRelease, MbTrack};
+use dmp_sync::catalogue_gaps;
+use dmp_sync::db::{self, *};
+use dmp_sync::images::download_cover_art;
+use dmp_sync::mb_api;
+use dmp_sync::mb_api::RateLimiter;
+use dmp_sync::mb_matching;
+use dmp_sync::mb_matching::{find_mb_match_with_fallback, is_special_artist_name};
+use dmp_sync::mb_types;
+use dmp_sync::mb_types::{MbArtistMatch, MbRelease, MbTrack};
+use dmp_sync::owned;
+use dmp_sync::status;
+use dmp_sync::status::{check_release_status, format_from_media, status_to_db_string};
 use nuke::nuke_mb_data;
-use status::{check_release_status, status_to_db_string};
 
 #[derive(Parser, Debug)]
 #[command(name = "sync")]
@@ -68,11 +62,6 @@ struct SyncArgs {
         help = "Write DB-known MB IDs to file tags (no API calls), then exit"
     )]
     only_write_mb_to_files: bool,
-    #[arg(
-        long,
-        help = "Rewrite recording-id tags that hold a MusicBrainz release-track id (an old tag-writing bug) to the recording id, blank when unknown (no API calls), then exit"
-    )]
-    repair_recording_tags: bool,
     #[arg(long)]
     delete: bool,
     #[arg(
@@ -80,26 +69,6 @@ struct SyncArgs {
         help = "Fast pass: populate MISSING catalogue entries only (few API calls/artist)"
     )]
     catalogue_gaps: bool,
-    #[arg(
-        long,
-        help = "Recompute averageMatchScore for all artists from the catalogue (pure SQL, no API), then exit"
-    )]
-    recompute_scores: bool,
-    #[arg(
-        long,
-        help = "One-off repair (audit #24): unbind LocalReleases that lost a shared-releaseId conflict to another LocalRelease (pure SQL, no API), then exit"
-    )]
-    repair_shared_release_ids: bool,
-    #[arg(
-        long,
-        help = "With --repair-shared-release-ids, --repair-artist-identities or --repair-recording-tags: print the plan, write nothing"
-    )]
-    dry_run: bool,
-    #[arg(
-        long,
-        help = "Repair artists filed under a near-empty duplicate row that owns no releases (pure SQL, no API), then exit"
-    )]
-    repair_artist_identities: bool,
     #[arg(
         long,
         help = "Read artist IDs from file (one per line, used by refresh)"
@@ -352,55 +321,6 @@ fn year_from_date(date: &str) -> Option<i32> {
     date.split('-').next()?.parse::<i32>().ok()
 }
 
-fn format_from_media(media: &Option<Vec<mb_types::MbMedia>>) -> Option<String> {
-    let media = media.as_ref()?;
-    let mut formats: Vec<String> = media
-        .iter()
-        .filter_map(|m| m.format.as_deref())
-        .map(|s| s.to_string())
-        .collect();
-    formats.sort();
-    formats.dedup();
-    if formats.is_empty() {
-        None
-    } else {
-        Some(formats.join(", "))
-    }
-}
-
-fn local_track_to_meta(t: &LocalTrackRow) -> TrackMeta {
-    let now = chrono::Utc::now().naive_utc();
-    TrackMeta {
-        file_path: String::new(),
-        file_size: 0,
-        mtime: now,
-        title: t.title.clone(),
-        artist: t.artist.clone(),
-        album_artist: None,
-        album: None,
-        year: None,
-        genre: None,
-        track_number: t.track_number,
-        disc_number: t.disc_number,
-        duration: None,
-        bitrate: None,
-        sample_rate: None,
-        position: None,
-        content_hash: String::new(),
-        metadata_json: serde_json::Value::Null,
-        has_picture: false,
-        mb_release_id: t.mb_release_id.clone(),
-        mb_release_group_id: t.mb_release_group_id.clone(),
-        mb_album_artist_id: t.mb_album_artist_id.clone(),
-        // Sync builds this shim from a DB row purely for tag comparison; the multi-value frames are an
-        // index-time concern (artist resolution) and are never read from here.
-        artists: Vec::new(),
-        album_artists: Vec::new(),
-        mb_artist_ids: Vec::new(),
-        mb_album_artist_ids: Vec::new(),
-    }
-}
-
 /// How many artist images may be in flight at once. Small on purpose: the point is to stop the fetches
 /// blocking the MusicBrainz loop, not to hammer Wikidata/Wikipedia/Fanart.
 const MAX_IMAGE_TASKS: usize = 4;
@@ -459,153 +379,6 @@ async fn main() {
     let pool = create_pool(&config.database_url).await;
     apply_db_overrides(&mut config, &pool).await;
 
-    // Standalone maintenance pass: recompute catalogue-completeness scores for every artist. No lock, no
-    // API — just a couple of set-based UPDATEs over the MB catalogue tables.
-    if args.recompute_scores {
-        reporter.header("DMP Sync - Recompute Match Scores");
-        match recompute_all_match_scores(&pool).await {
-            Ok(n) => reporter.done(&format!(
-                "Recomputed match scores ({} artist(s) with catalogue)",
-                n
-            )),
-            Err(e) => reporter.err(&format!("Recompute error: {}", e)),
-        }
-        return;
-    }
-
-    // Standalone repair: artists filed under a near-empty duplicate row. No lock, no API - pure SQL.
-    //
-    // The same repair runs automatically for any artist a sync visits, but a sync only visits artists
-    // with pending work, so rows mis-filed before that landed would wait for an `--overwrite` of each
-    // one. This sweeps them all in seconds instead.
-    //
-    // Three passes, per docs/sync_decisions.md §5/§6:
-    //   A. repair_all_empty_primaries  - primaryArtistId-linked duplicate/alias pairs
-    //   B. repair_contradicted_identities - any stored id MbArtistLookup confidently contradicts
-    //   C. repair_shared_identities    - unrelated Artist rows holding the same id
-    // Must run in this order and only after the ladder gate (§5) is deployed, or an un-gated sync
-    // re-mints exactly what B/C just cleared.
-    if args.repair_artist_identities {
-        reporter.header(if args.dry_run {
-            "DMP Sync - Repair Artist Identities (DRY RUN)"
-        } else {
-            "DMP Sync - Repair Artist Identities"
-        });
-        match db::repair_all_empty_primaries(&pool, args.dry_run).await {
-            Ok(done) => {
-                for r in &done {
-                    reporter.ok(&format!(
-                        "{} ({} release(s)) vs \"{}\" - {}",
-                        r.artist, r.releases, r.other, r.action
-                    ));
-                }
-                reporter.blank();
-                let promoted = done
-                    .iter()
-                    .filter(|r| r.action.starts_with("promoted"))
-                    .count();
-                let unlinked = done.len() - promoted;
-                reporter.done(&format!(
-                    "Pass A: {} artist(s) {}: {} promoted over an alias, {} unlinked as different artists",
-                    done.len(),
-                    if args.dry_run { "would be repaired" } else { "repaired" },
-                    promoted,
-                    unlinked
-                ));
-            }
-            Err(e) => reporter.err(&format!("Pass A error: {}", e)),
-        }
-
-        reporter.blank();
-        match db::repair_contradicted_identities(&pool, args.dry_run).await {
-            Ok(done) => {
-                for r in &done {
-                    reporter.ok(&format!(
-                        "{} ({} release(s)) - independent lookup contradicts {}",
-                        r.artist, r.releases, r.cleared_mbid
-                    ));
-                }
-                reporter.blank();
-                reporter.done(&format!(
-                    "Pass B: {} artist identity(-ies) {}",
-                    done.len(),
-                    if args.dry_run {
-                        "would be cleared"
-                    } else {
-                        "cleared"
-                    }
-                ));
-            }
-            Err(e) => reporter.err(&format!("Pass B error: {}", e)),
-        }
-
-        reporter.blank();
-        match db::repair_shared_identities(&pool, args.dry_run).await {
-            Ok(done) => {
-                for g in &done {
-                    match &g.kept {
-                        Some(name) => reporter.ok(&format!(
-                            "{} kept by \"{}\", cleared from: {}",
-                            g.mbid,
-                            name,
-                            g.cleared.join(", ")
-                        )),
-                        None => reporter.ok(&format!(
-                            "{} - no member confirmed, cleared from all: {}",
-                            g.mbid,
-                            g.cleared.join(", ")
-                        )),
-                    }
-                }
-                reporter.blank();
-                reporter.done(&format!(
-                    "Pass C: {} shared-id group(s) {}",
-                    done.len(),
-                    if args.dry_run {
-                        "would be resolved"
-                    } else {
-                        "resolved"
-                    }
-                ));
-            }
-            Err(e) => reporter.err(&format!("Pass C error: {}", e)),
-        }
-        return;
-    }
-
-    // Standalone one-off repair (audit #24). No lock, no API - pure SQL over LocalRelease/MB tables.
-    if args.repair_shared_release_ids {
-        reporter.header(if args.dry_run {
-            "DMP Sync - Repair Shared releaseId Conflicts (DRY RUN)"
-        } else {
-            "DMP Sync - Repair Shared releaseId Conflicts"
-        });
-        match repair::run_repair(&pool, &reporter, args.dry_run).await {
-            Ok(s) => {
-                reporter.blank();
-                reporter.done(&format!(
-                    "{} group(s) seen, {} skipped (shared artist), {} {} ({} row(s) {})",
-                    s.groups_seen,
-                    s.groups_skipped_shared_artist,
-                    s.groups_repaired,
-                    if args.dry_run {
-                        "would be repaired"
-                    } else {
-                        "repaired"
-                    },
-                    s.rows_unbound,
-                    if args.dry_run {
-                        "would be unbound"
-                    } else {
-                        "unbound"
-                    },
-                ));
-            }
-            Err(e) => reporter.err(&format!("Repair error: {}", e)),
-        }
-        return;
-    }
-
     if args.release.is_some() && (args.from.is_some() || args.to.is_some() || args.only.is_some()) {
         common::error_log::log_error("--release cannot be combined with --from, --to, or --only");
         eprintln!("Error: --release cannot be combined with --from, --to, or --only");
@@ -629,19 +402,6 @@ async fn main() {
         std::process::exit(1);
     }
 
-    if args.repair_recording_tags
-        && (args.release.is_some()
-            || args.delete
-            || args.catalogue_gaps
-            || args.only_write_mb_to_files
-            || args.overwrite)
-    {
-        let msg = "--repair-recording-tags cannot be combined with --release, --delete, --catalogue-gaps, --only-write-mb-to-files, or --overwrite";
-        common::error_log::log_error(msg);
-        eprintln!("Error: {}", msg);
-        std::process::exit(1);
-    }
-
     if clear_stale_lock_minutes(&pool, 10).await {
         reporter.warn("Cleared stale scan lock.");
     }
@@ -655,10 +415,13 @@ async fn main() {
         "overwrite": args.overwrite,
     });
 
-    if let Err(e) = acquire_lock(&pool, "sync", pid, &lock_args.to_string()).await {
-        reporter.err(&format!("Cannot start: {}", e));
-        std::process::exit(1);
-    }
+    let _lock_guard = match acquire_lock(&pool, "sync", pid, &lock_args.to_string()).await {
+        Ok(g) => g,
+        Err(e) => {
+            reporter.err(&format!("Cannot start: {}", e));
+            std::process::exit(1);
+        }
+    };
 
     // SIGTERM / Ctrl-C handler - release lock before exiting
     let running = Arc::new(AtomicBool::new(true));
@@ -898,56 +661,6 @@ async fn main() {
             "Wrote MB IDs to {} / {} tracks across {} artists",
             total_written, total_tracks, total
         ));
-        release_lock(&pool).await;
-        return;
-    }
-
-    if args.repair_recording_tags {
-        let music_dir = config.music_dir.as_deref().unwrap_or("");
-        if music_dir.is_empty() {
-            reporter.err("No music_dir configured - cannot repair file tags");
-            release_lock(&pool).await;
-            std::process::exit(1);
-        }
-
-        reporter.header(if args.dry_run {
-            "DMP Sync - Repair Recording Tags (DRY RUN)"
-        } else {
-            "DMP Sync - Repair Recording Tags"
-        });
-
-        let filter = recording_tags::Filter {
-            from: args.from.as_deref().unwrap_or(""),
-            to: args.to.as_deref().unwrap_or(""),
-            only: args.only.as_deref().unwrap_or(""),
-            exact: args.exact,
-        };
-        match recording_tags::run(
-            &pool,
-            &reporter,
-            music_dir,
-            &filter,
-            args.dry_run,
-            args.verbose,
-        )
-        .await
-        {
-            Ok(s) => {
-                reporter.blank();
-                reporter.done(&format!(
-                    "{} file(s) read across {} artist(s) ({} missing on disk, {} failed): {} recording tag(s) {} to the recording id, {} {} (recording unknown)",
-                    s.scanned,
-                    s.artists,
-                    s.missing,
-                    s.failed,
-                    s.replaced,
-                    if args.dry_run { "would be rewritten" } else { "rewritten" },
-                    s.blanked,
-                    if args.dry_run { "would be blanked" } else { "blanked" },
-                ));
-            }
-            Err(e) => reporter.err(&format!("Repair error: {}", e)),
-        }
         release_lock(&pool).await;
         return;
     }
@@ -1869,8 +1582,7 @@ async fn main() {
             };
 
             let local_track_ids: Vec<String> = local_tracks.iter().map(|t| t.id.clone()).collect();
-            let local_metas: Vec<TrackMeta> =
-                local_tracks.iter().map(local_track_to_meta).collect();
+            let local_metas: Vec<TrackMeta> = status::track_metas_from_rows(&local_tracks);
             let local_meta_refs: Vec<&TrackMeta> = local_metas.iter().collect();
 
             // Score the candidate, and - when the tags point at something the library refuses to bind -
@@ -2519,115 +2231,9 @@ async fn main() {
         }
     }
 
-    // A narrowed run cleans up only after the artists it actually synced. Unscoped, `--only "X"` used
-    // to delete unbound MB releases across the whole library - collateral for artists it never touched.
-    // The default "pending" sweep and `--overwrite` still garbage-collect globally: those see everything.
-    let cleanup_scope: Option<Vec<String>> = (args.only.is_some()
-        || args.from.is_some()
-        || args.to.is_some()
-        || args.release.is_some()
-        || args.artist_ids.is_some())
-    .then(|| artists.iter().map(|a| a.id.clone()).collect());
-
-    if let Ok(n) = delete_empty_local_releases(&pool, cleanup_scope.as_deref()).await {
-        if n > 0 {
-            reporter.info(&format!("Cleaned up {} empty local release(s)", n));
-        }
-    }
-    // Must precede retire_owned_missing_placeholders: retire only pins a placeholder while a *live*
-    // download still targets it, so a discarded-download orphan left standing here would make retire
-    // delete the placeholder instead - the wrong survivor. See retire_owned_missing_placeholders's doc.
-    if let Ok(n) = delete_orphaned_mb_releases(&pool, cleanup_scope.as_deref()).await {
-        if n > 0 {
-            reporter.info(&format!("Cleaned up {} orphaned MB release(s)", n));
-        }
-    }
-    if let Ok(n) = db::retire_owned_missing_placeholders(&pool).await {
-        if n > 0 {
-            reporter.info(&format!("Retired {} owned MISSING placeholder(s)", n));
-        }
-    }
-
-    // Box-set detection/binding + equivalence derivation, scoped the same way the rest of this run
-    // was (--only/--exact) - no longer a standalone --repair-multi-disc/--link-box-editions flag,
-    // runs automatically at the tail of every normal sync (docs/sync_decisions.md).
-    //
-    // `--release` (the web UI's "Refresh this release" action) has no `--only` of its own, so
-    // `args.only` is None there - falling back to `unwrap_or("")` used to read as "no filter", running
-    // this pass over the WHOLE catalogue for what's supposed to be a single-release, targeted refresh.
-    // Scope it to the release's own (single) owning artist instead, the same name-substring mechanism
-    // `--only` already uses.
-    if running.load(Ordering::SeqCst) {
-        let box_http_client = Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
-            .build()
-            .expect("HTTP client");
-        // A clone, not a fresh `RateLimiter::new()`: a second limiter would be a second pacing
-        // schedule, and two schedules issue at twice MusicBrainz's rate. Harmless while this ran
-        // strictly after the artist loop, but not a pattern to leave lying around now that the run
-        // is concurrent.
-        let mut box_limiter = limiter.clone();
-        box_limiter.set_web(args.web);
-        let box_only: String = args
-            .only
-            .clone()
-            .or_else(|| {
-                target_release_id
-                    .as_ref()
-                    .and_then(|_| artists.first().map(|a| a.name.clone()))
-            })
-            .unwrap_or_default();
-        match boxset::run_repair(
-            &pool,
-            &box_http_client,
-            &mut box_limiter,
-            &reporter,
-            &box_only,
-            args.exact,
-        )
-        .await
-        {
-            Ok(s) if s.groups_bound > 0 || s.groups_key_taken > 0 || s.groups_failed > 0 => {
-                reporter.info(&format!(
-                    "Box sets: {} group(s) bound ({} folded, {} dissolved, {} key-taken, {} failed)",
-                    s.groups_bound, s.groups_folded, s.groups_dissolved, s.groups_key_taken, s.groups_failed
-                ))
-            }
-            Ok(_) => {}
-            Err(e) => reporter.warn(&format!("Box-set repair error: {}", e)),
-        }
-
-        // Sweep again, because the sweep above ran before this did.
-        //
-        // Catalogue gaps are written per artist inside the loop, and the placeholder sweep runs
-        // right after it - both finish before any box is dissolved. Dissolving binds a box's discs
-        // to the standalone releases they reprint, which is exactly what makes those release groups
-        // owned; a gap placeholder written earlier in the same run therefore survives as a phantom
-        // "missing" entry for a release the library now demonstrably has. It only stays hidden while
-        // the artist also owns those albums as separate folders (ABBA does, which is why the four
-        // test artists showed nothing) - an artist whose only copy lives inside the box would keep
-        // being told to download it.
-        //
-        // Same ordering rule as the first pair: orphans first, then retire, or retire deletes the
-        // placeholder instead of the orphan (see retire_owned_missing_placeholders' doc).
-        if let Ok(n) = delete_orphaned_mb_releases(&pool, cleanup_scope.as_deref()).await {
-            if n > 0 {
-                reporter.info(&format!(
-                    "Cleaned up {} orphaned MB release(s) after box repair",
-                    n
-                ));
-            }
-        }
-        if let Ok(n) = db::retire_owned_missing_placeholders(&pool).await {
-            if n > 0 {
-                reporter.info(&format!(
-                    "Retired {} MISSING placeholder(s) covered by a dissolved box",
-                    n
-                ));
-            }
-        }
-    }
-
+    // Library-wide repair (empty/orphaned release cleanup, box-set binding + equivalence, artist
+    // identity repair, score recompute) no longer lives here - `./tidy` does every library-wide pass
+    // in one run, chained after sync by every caller (docs/scripts/tidy.md).
     update_statistics(&pool).await.ok();
     if run_hash.is_some() && running.load(Ordering::SeqCst) {
         clear_run_hash(&pool, "syncRunHash").await;

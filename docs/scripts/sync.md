@@ -52,21 +52,13 @@ cd scripts && cargo build --release -p sync
 ./sync --skip-mb-tags            # Skip writing MB IDs back to file tags
 ./sync --only-write-mb-to-files  # Backfill DB-known MB IDs into file tags (no API calls)
 ./sync --only-write-mb-to-files --only "radiohead"  # Backfill specific artist
-./sync --repair-recording-tags [--dry-run] [--only x]  # Undo release-track ids left in the recording-id tag (no API calls)
 ./sync --web                     # Emit PROGRESS:{json} for the web terminal
 ./sync --release "clxxx" --artist-hint "clyyy"  # Prefer this artist when the release has several main artists
-./sync --recompute-scores        # Recompute every artist's averageMatchScore (pure SQL), then exit
-./sync --repair-shared-release-ids [--dry-run]  # One-off repair of releases that lost a shared-releaseId conflict
-./sync --repair-artist-identities [--dry-run]   # Sweep artists filed under a wrong/empty duplicate row, then exit
 ```
 
-Box-set fold/dissolve repair is not a flag - `boxset::run_repair` runs automatically at the tail of every
-sync invocation, scoped by whatever `--only`/`--exact` the run was given (`--release` has no `--only`
-of its own, so it derives the filter from that release's own owning artist name - fixed 2026-09-11,
-this used to read as "no filter" and run the repair pass over the whole catalogue for a single-release
-refresh). See "Box Sets" below and `docs/sync_decisions.md`. `./repair-box-sets` was a one-off backfill
-script for existing data; the rollout finished (2026-09-10, see `docs/containment.md`) and the script
-was deleted.
+Sync does per-artist matching only. Every library-wide repair - box-set fold/dissolve, artist identity
+repair, score recompute, empty/orphaned release cleanup - moved to `./tidy`, which every caller chains
+after `./sync` (`docs/scripts/tidy.md`). Sync itself never calls tidy.
 
 `--release` cannot combine with `--from`, `--to`, or `--only`.
 
@@ -86,16 +78,11 @@ was deleted.
 | `--catalogue-gaps` | bool | false | Fast pass: only populate MISSING catalogue entries (few API calls/artist) |
 | `--skip-mb-tags` | bool | false | Skip writing found MB IDs back into audio file tags |
 | `--only-write-mb-to-files` | bool | false | Backfill DB-known MB IDs into file tags (no API calls), then exit |
-| `--repair-recording-tags` | bool | false | Rewrite recording-id tags holding a release-track id to the recording id, blank when unknown (no API calls), then exit. ADMIN-only from the web terminal |
 | `--verbose` | bool | false | Log skipped/already-synced releases |
 | `--concurrency` | usize | 6 | Artists synced at once. Not a rate knob — see § Rate Limiting |
 | `--web` | bool | false | Emit PROGRESS:{json} for web terminal |
 | `--artist-ids` | String | - | Read artist IDs from file (one per line, used by refresh) |
 | `--artist-hint` | String | - | With `--release`: prefer this Artist ID when the release has several main artists |
-| `--recompute-scores` | bool | false | Recompute `averageMatchScore` for all artists from the catalogue (pure SQL, no API), then exit |
-| `--repair-shared-release-ids` | bool | false | One-off: unbind LocalReleases that lost a shared-`releaseId` conflict (pure SQL), then exit |
-| `--repair-artist-identities` | bool | false | Sweep artist rows filed under a wrong/empty duplicate row (pure SQL, no API), then exit — see `docs/sync_decisions.md` §4 |
-| `--dry-run` | bool | false | With `--repair-shared-release-ids`, `--repair-artist-identities` or `--repair-recording-tags`: print the plan, write nothing |
 
 ## Output Modes
 
@@ -150,15 +137,14 @@ Writes DB-known MB IDs back into audio file tags. No API calls - reads entirely 
 
 Cannot combine with `--release`, `--delete`, or `--catalogue-gaps`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`.
 
-## --repair-recording-tags Behaviour
+## Recording-tag mixup (historical)
 
 Until 2026-09, `common::tags::write_mb_ids` wrote each track's **release-track** id into the **recording** slot (`MUSICBRAINZ_TRACKID` / ID3 UFID / MP4 `MusicBrainz Track Id`: Picard's names, which say "track" but mean the recording). A normal sync filled it wherever the tag was empty, and `--overwrite` replaced correct Picard values with it. MP3s were spared only by accident: lofty's generic ID3v2 conversion dropped the frame, see the MP3 note in `CLAUDE.md`.
 
-This pass walks every file of every release the filtered artists own (matched or not, since a file keeps ids from an earlier match) and reads its recording tag. If the value is any `MusicBrainzReleaseTrack.musicbrainzId` in the DB, it is provably ours and wrong: MBIDs are unique across entity types. It is rewritten to that row's `recordingId`, or **blanked** when the recording is not known yet (~2/3 of rows predate `recordingId`; empty beats wrong, and the next sync or `--only-write-mb-to-files` that knows it fills it). The release-track id is also moved into `MUSICBRAINZ_RELEASETRACKID` when that is empty. No other tag is touched, mtimes are kept, no MusicBrainz calls.
-
-A normal sync also heals as it goes: `write_mb_ids` treats a recording tag equal to the track's own release-track id as absent, without `--overwrite`.
-
-Cannot combine with `--release`, `--delete`, `--catalogue-gaps`, `--only-write-mb-to-files`, or `--overwrite`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--dry-run`/`--verbose` (lists every file). ADMIN-only from the web terminal (`DESTRUCTIVE_FLAGS`).
+The one-off `oneoff/repair_recording_tags.py` (docs/__plan_tidy_script.md Step 7) fixed every file
+library-wide, once, then was deleted along with the rest of `oneoff/`. There is no standing flag for
+this anymore - a normal sync still heals as it goes (`write_mb_ids` treats a recording tag equal to the
+track's own release-track id as absent, without `--overwrite`), so the mixup cannot recur.
 
 ## --delete Behaviour
 
@@ -397,9 +383,10 @@ from a box's disc to the standalone album it duplicates. `MusicBrainzReleaseMedi
 `position`, `title`, `format`, `trackCount`) and `MusicBrainzReleaseTrack.recordingId` (the MB
 *recording* id, not the release-scoped `musicbrainzId`) make both facts queryable on our side.
 
-`index` never folds a multi-medium release - `sync` decides everything (binding, medium assignment,
-fold-vs-dissolve, equivalence), and does so automatically at the tail of every run, scoped by whatever
-`--only`/`--exact` that run was given (`boxset::run_repair`, `sync/src/boxset.rs`).
+`index` never folds a multi-medium release - `./tidy` decides everything (binding, medium assignment,
+fold-vs-dissolve, equivalence), scoped by whatever artist ids that tidy run was given
+(`dmp_sync::boxset::run_repair`, `scripts/sync/src/boxset.rs`, called from `scripts/tidy/src/main.rs`).
+Moved out of sync's own tail - see `docs/scripts/tidy.md`.
 
 - **Binding**: tags agreeing with MB bind a folder to its release + medium position for free; when they
   don't (every disc tagged `discNumber=1`), `boxset::plan_box_bind`'s tracklist matcher (title + duration
@@ -421,16 +408,13 @@ fold-vs-dissolve, equivalence), and does so automatically at the tail of every r
   row (`"{box title} — {medium title}"`) with a `Box Set` marker pill (`info`/violet tone, same as the
   fold-only `DiscsPill`). See `docs/sync_decisions.md` §7-8 for the full web contract.
 
-## End-of-run cleanup (scoped)
+## End-of-run cleanup
 
-`delete_empty_local_releases` and `delete_orphaned_mb_releases` take an `ArtistScope`. A narrowed run
-(`--only`, `--from`/`--to`, `--release`, `--artist-ids`) passes the artists it actually synced; the default
-"pending" sweep and `--overwrite` pass `None` and garbage-collect globally, because they saw everything.
+Moved to `./tidy` (`dmp_sync::db::delete_empty_local_releases`/`delete_orphaned_mb_releases`, both take
+an `ArtistScope`) - sync's own tail no longer runs it. Only the `--catalogue-gaps` path still does its
+own scoped orphan sweep + retire inline, since it's a per-artist fast pass that stays in `sync`.
 
-This is not a micro-optimisation. Unscoped, the MB variant deletes every non-MISSING `MusicBrainzRelease`
-in the library that is unbound at that instant — so `./sync --only "One Artist"` could take out a perfectly
-real release whose `LocalRelease` index had just regrouped, for an artist the run never touched.
-`delete_orphaned_mb_releases` also spares a release that local tracks still point at via
+`delete_orphaned_mb_releases` spares a release that local tracks still point at via
 `LocalReleaseTrack.mbTrackId` while no `LocalRelease.releaseId` does — the shape a dissolved box leaves
 behind (docs/sync_decisions.md §5); `LocalRelease.releaseId` alone doesn't see that link.
 
@@ -439,11 +423,12 @@ placeholder while a `DownloadedRelease` targeting it is in a *live* state
 (`DOWNLOADING`/`ENRICHING`/`READY`/`PROMOTED`), so a merge that discards its download (`web/server/
 utils/promote.ts`'s `stampMerged`) no longer blocks the placeholder from being retired once its
 now-orphaned MB release is gone. That ordering is load-bearing: `delete_orphaned_mb_releases` must run
-**before** `retire_owned_missing_placeholders` at every call site (the end-of-run tail and the
-`--catalogue-gaps` path both do), or the orphan is still standing as a non-MISSING sibling and retire
-deletes the placeholder instead — the wrong survivor, since the placeholder is what makes the release
-re-downloadable. `stampMerged`'s own discard branch deletes the orphan synchronously instead of waiting
-for the next sync, so this ordering mostly guards the case where an older bad row already exists.
+**before** `retire_owned_missing_placeholders` at every call site (`./tidy` runs the pair twice - once
+before the box pass, once after - and the `--catalogue-gaps` path here in `sync` does too), or the
+orphan is still standing as a non-MISSING sibling and retire deletes the placeholder instead — the
+wrong survivor, since the placeholder is what makes the release re-downloadable. `stampMerged`'s own
+discard branch deletes the orphan synchronously instead of waiting for the next sync, so this ordering
+mostly guards the case where an older bad row already exists.
 
 ## Locking & Resumability
 

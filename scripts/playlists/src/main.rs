@@ -860,15 +860,20 @@ async fn main() {
     // artist/genre/track tables that index/sync are actively writing, so a concurrent run of either
     // could otherwise interleave with this pass (audit #89, pairs #51). Skipped for --dry-run, which
     // never writes.
-    if !args.dry_run {
+    let _lock_guard = if !args.dry_run {
         if clear_stale_lock_minutes(&pool, 10).await {
             println!("{}", "Cleared a stale lock.".yellow());
         }
-        if let Err(e) = acquire_lock(&pool, "playlists", std::process::id(), "").await {
-            eprintln!("{}: {}", "Cannot start".red(), e);
-            std::process::exit(1);
+        match acquire_lock(&pool, "playlists", std::process::id(), "").await {
+            Ok(g) => Some(g),
+            Err(e) => {
+                eprintln!("{}: {}", "Cannot start".red(), e);
+                std::process::exit(1);
+            }
         }
-    }
+    } else {
+        None
+    };
 
     println!();
 

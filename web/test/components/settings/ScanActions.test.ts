@@ -61,18 +61,19 @@ describe('settings/ScanActions.vue (global)', () => {
     expect(runMock.mock.calls).toEqual([['./index', ['--inspect']]])
   })
 
-  it('runs an unflagged index+sync for "Check for new files"', async () => {
+  it('runs an unflagged index+sync+tidy for "Check for new files"', async () => {
     const wrapper = await mountSuspended(ScanActions)
     await wrapper.findAll('button')[0]!.trigger('click')
-    expect(runMock.mock.calls).toEqual([['./index', []], ['./sync', []]])
+    expect(runMock.mock.calls).toEqual([['./index', []], ['./sync', []], ['./tidy', []]])
   })
 
-  it('runs a full re-read and rematch for "Full re-scan", without --prune library-wide', async () => {
+  it('runs a full re-read, rematch and tidy for "Full re-scan", without --prune library-wide', async () => {
     const wrapper = await mountSuspended(ScanActions)
     await wrapper.findAll('button')[1]!.trigger('click')
     expect(runMock.mock.calls).toEqual([
       ['./index', ['--overwrite-with-images']],
       ['./sync', ['--overwrite']],
+      ['./tidy', []],
     ])
   })
 

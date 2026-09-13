@@ -5,7 +5,7 @@
 import type { PermissionKey } from './permissions'
 
 export const ALLOWED_COMMANDS = [
-  './index', './sync', './analysis', './nuke',
+  './index', './sync', './tidy', './analysis', './nuke',
   './playlists', './audit', './fix', './refresh',
   './delete',
 ] as const
@@ -15,6 +15,7 @@ export const ALLOWED_COMMANDS = [
 export const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
   './index': 'sync.run',
   './sync': 'sync.run',
+  './tidy': 'sync.run',
   './refresh': 'sync.run',
   './analysis': 'sync.run',
   './playlists': 'sync.run',
@@ -31,14 +32,13 @@ export const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
 // `--overwrite` passes. `--prune` belongs here too: it bypasses index's mount-blip ratio guard, so a
 // wrong scope deletes rows the guard would otherwise have saved.
 // `--files` belongs here for the same reason: it removes audio files from MUSIC_DIR, which no amount
-// of re-indexing brings back. `--repair-recording-tags` rewrites and blanks MB ids inside audio files.
+// of re-indexing brings back.
 const DESTRUCTIVE_FLAGS = [
   '--delete',
   '--overwrite',
   '--overwrite-with-images',
   '--prune',
   '--files',
-  '--repair-recording-tags',
 ] as const
 
 export const hasDestructiveFlag = (args: string[]): boolean =>
@@ -47,7 +47,7 @@ export const hasDestructiveFlag = (args: string[]): boolean =>
 export const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/
 
 // Commands that support the --web flag (structured PROGRESS:{json} output).
-export const WEB_MODE_COMMANDS = new Set(['./index', './sync', './refresh'])
+export const WEB_MODE_COMMANDS = new Set(['./index', './sync', './tidy', './refresh'])
 
 export const isAllowedCommand = (command: string): boolean =>
   (ALLOWED_COMMANDS as readonly string[]).includes(command)

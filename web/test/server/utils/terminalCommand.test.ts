@@ -19,7 +19,7 @@ import {
 
 describe('isAllowedCommand', () => {
   it('accepts every allow-listed command', () => {
-    for (const cmd of ['./index', './sync', './analysis', './nuke', './playlists', './audit', './fix', './refresh', './delete']) {
+    for (const cmd of ['./index', './sync', './tidy', './analysis', './nuke', './playlists', './audit', './fix', './refresh', './delete']) {
       expect(isAllowedCommand(cmd)).toBe(true)
     }
   })
@@ -57,6 +57,7 @@ describe('permissionForCommand', () => {
   it('maps sync-family commands to sync.run, not the sync.view VIEW permission (docs audit #29)', () => {
     expect(permissionForCommand('./index')).toBe('sync.run')
     expect(permissionForCommand('./sync')).toBe('sync.run')
+    expect(permissionForCommand('./tidy')).toBe('sync.run')
     expect(permissionForCommand('./refresh')).toBe('sync.run')
     expect(permissionForCommand('./analysis')).toBe('sync.run')
     expect(permissionForCommand('./playlists')).toBe('sync.run')
@@ -89,10 +90,6 @@ describe('hasDestructiveFlag', () => {
     expect(hasDestructiveFlag(['Boards of Canada', '--y'])).toBe(false)
   })
 
-  it('flags --repair-recording-tags: it rewrites and blanks MB ids inside audio files', () => {
-    expect(hasDestructiveFlag(['--repair-recording-tags', '--dry-run'])).toBe(true)
-  })
-
   it('is false for normal args with no destructive flag', () => {
     expect(hasDestructiveFlag(['--only', 'Boards of Canada'])).toBe(false)
     expect(hasDestructiveFlag([])).toBe(false)
@@ -110,6 +107,10 @@ describe('withWebFlag', () => {
 
   it('does not duplicate --web if already present', () => {
     expect(withWebFlag('./sync', ['--web'])).toEqual(['--web'])
+  })
+
+  it('appends --web for ./tidy too', () => {
+    expect(withWebFlag('./tidy', ['--only', 'Artist'])).toEqual(['--only', 'Artist', '--web'])
   })
 
   it('leaves ./delete alone - it has no --web mode', () => {

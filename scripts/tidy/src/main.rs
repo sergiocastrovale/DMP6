@@ -1,0 +1,537 @@
+use chrono::Utc;
+use clap::Parser;
+use common::config::{apply_db_overrides, load_config};
+use common::db::create_pool;
+use common::filters::matches_filter;
+use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
+use common::progress::Reporter;
+use common::statistics::update_statistics;
+use dmp_sync::boxset;
+use dmp_sync::db::{
+    self, delete_empty_local_releases, delete_orphaned_mb_releases,
+    retire_owned_missing_placeholders, RescoreOutcome,
+};
+use dmp_sync::mb_api::RateLimiter;
+use reqwest::Client;
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+/// Library-wide repair split out of `./sync` (docs/scripts/tidy.md, docs/__plan_tidy_script.md).
+/// Every caller chains `./tidy` after `./sync` - sync itself never calls it.
+#[derive(Parser, Debug)]
+#[command(name = "tidy")]
+struct TidyArgs {
+    #[arg(long, help = "Ignore the lastTidiedAt watermark - process every synced artist")]
+    all: bool,
+    #[arg(long, short, help = "Only tidy these artists (semicolon-separated)")]
+    only: Option<String>,
+    #[arg(long, help = "Exact match for --only (no prefix matching)")]
+    exact: bool,
+    #[arg(long, short)]
+    from: Option<String>,
+    #[arg(long, short)]
+    to: Option<String>,
+    #[arg(
+        long,
+        help = "Read artist IDs from file (one per line, used by refresh) - bypasses the watermark and --only/--from/--to"
+    )]
+    artist_ids: Option<String>,
+    #[arg(long)]
+    verbose: bool,
+    /// Emit PROGRESS:{json} lines and plain output for the web terminal.
+    #[arg(long)]
+    web: bool,
+}
+
+#[derive(Default)]
+struct TidySummary {
+    empty_local_releases_removed: u64,
+    orphans_retired_round1: u64,
+    placeholders_retired_round1: u64,
+    box_groups_seen: usize,
+    box_groups_bound: usize,
+    box_groups_folded: usize,
+    box_groups_dissolved: usize,
+    box_groups_key_taken: usize,
+    box_groups_failed: usize,
+    orphans_retired_round2: u64,
+    placeholders_retired_round2: u64,
+    rescored_complete: usize,
+    rescored_incomplete: usize,
+    rescored_extra_tracks: usize,
+    rescored_missing_tracks: usize,
+    rescored_other: usize,
+    rescore_deferred: usize,
+    identity_pass_a: usize,
+    identity_pass_b: usize,
+    identity_pass_c: usize,
+    scores_recomputed: u64,
+    artists_stamped: usize,
+}
+
+#[tokio::main]
+async fn main() {
+    let args = TidyArgs::parse();
+    common::error_log::init("tidy");
+    let reporter = Reporter::new(args.web);
+    let mut config = load_config(None);
+    let pool = create_pool(&config.database_url).await;
+    apply_db_overrides(&mut config, &pool).await;
+
+    if clear_stale_lock_minutes(&pool, 10).await {
+        reporter.warn("Cleared stale scan lock.");
+    }
+
+    let pid = std::process::id();
+    let lock_args = serde_json::json!({
+        "all": args.all,
+        "only": args.only,
+        "from": args.from,
+        "to": args.to,
+    });
+    let _lock_guard = match acquire_lock(&pool, "tidy", pid, &lock_args.to_string()).await {
+        Ok(g) => g,
+        Err(e) => {
+            reporter.err(&format!("Cannot start: {}", e));
+            std::process::exit(1);
+        }
+    };
+
+    let running = Arc::new(AtomicBool::new(true));
+    {
+        let running = running.clone();
+        let pool2 = pool.clone();
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.ok();
+            running.store(false, Ordering::SeqCst);
+            eprintln!("\nShutdown requested - finishing current phase...");
+            tokio::signal::ctrl_c().await.ok();
+            release_lock(&pool2).await;
+            std::process::exit(1);
+        });
+    }
+    {
+        let running = running.clone();
+        let pool2 = pool.clone();
+        tokio::spawn(async move {
+            let mut term =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("SIGTERM handler");
+            term.recv().await;
+            running.store(false, Ordering::SeqCst);
+            release_lock(&pool2).await;
+            std::process::exit(1);
+        });
+    }
+
+    reporter.header(if args.web { "DMP Tidy" } else { "DMP Tidy - Library Repair" });
+    let start = Utc::now().naive_utc();
+    let start_time = std::time::Instant::now();
+    let mut had_error = false;
+    let mut summary = TidySummary::default();
+
+    // ---- Phase 1: scope ----
+    let scope_ids: Vec<String> = if let Some(path) = &args.artist_ids {
+        std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("Failed to read artist IDs file '{}': {}", path, e))
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .collect()
+    } else {
+        let base: Vec<(String, String)> = if args.all {
+            db::get_all_synced_artists(&pool).await.unwrap_or_default()
+        } else {
+            db::get_artists_pending_tidy(&pool).await.unwrap_or_default()
+        };
+        let narrow = args.only.is_some() || args.from.is_some() || args.to.is_some();
+        base.into_iter()
+            .filter(|(_, name)| {
+                !narrow
+                    || matches_filter(
+                        name,
+                        args.from.as_deref().unwrap_or(""),
+                        args.to.as_deref().unwrap_or(""),
+                        args.only.as_deref().unwrap_or(""),
+                        args.exact,
+                    )
+            })
+            .map(|(id, _)| id)
+            .collect()
+    };
+
+    if scope_ids.is_empty() {
+        reporter.done("Nothing to tidy.");
+        release_lock(&pool).await;
+        return;
+    }
+
+    // Whole-library semantics: only a plain `--all` (no further narrowing) counts as truly global -
+    // unscoped queries can catch ownerless rows a scoped one deliberately leaves for this pass.
+    let is_global =
+        args.all && args.only.is_none() && args.from.is_none() && args.to.is_none() && args.artist_ids.is_none();
+    let scope: Option<&[String]> = if is_global { None } else { Some(&scope_ids) };
+
+    reporter.info(&format!("{} artist(s) in scope", scope_ids.len()));
+    reporter.blank();
+
+    // ---- Phase 2: empty local releases ----
+    match delete_empty_local_releases(&pool, scope).await {
+        Ok(n) => {
+            summary.empty_local_releases_removed = n;
+            if n > 0 {
+                reporter.info(&format!("Cleaned up {} empty local release(s)", n));
+            }
+        }
+        Err(e) => {
+            let msg = format!("delete_empty_local_releases failed: {}", e);
+            reporter.warn(&msg);
+            common::error_log::log_warn(&msg);
+            had_error = true;
+        }
+    }
+
+    // ---- Phase 3: orphans + retire (round 1) - order mandatory, see db::retire_owned_missing_placeholders ----
+    match delete_orphaned_mb_releases(&pool, scope).await {
+        Ok(n) => {
+            summary.orphans_retired_round1 = n;
+            if n > 0 {
+                reporter.info(&format!("Cleaned up {} orphaned MB release(s)", n));
+            }
+        }
+        Err(e) => {
+            let msg = format!("delete_orphaned_mb_releases (round 1) failed: {}", e);
+            reporter.warn(&msg);
+            common::error_log::log_warn(&msg);
+            had_error = true;
+        }
+    }
+    match retire_owned_missing_placeholders(&pool).await {
+        Ok(n) => {
+            summary.placeholders_retired_round1 = n;
+            if n > 0 {
+                reporter.info(&format!("Retired {} owned MISSING placeholder(s)", n));
+            }
+        }
+        Err(e) => {
+            let msg = format!("retire_owned_missing_placeholders (round 1) failed: {}", e);
+            reporter.warn(&msg);
+            common::error_log::log_warn(&msg);
+            had_error = true;
+        }
+    }
+
+    // ---- Phase 4: box pass ----
+    let mut touched_ids: Vec<String> = Vec::new();
+    if running.load(Ordering::SeqCst) {
+        let http_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .expect("HTTP client");
+        let mut limiter = RateLimiter::new();
+        limiter.set_web(args.web);
+
+        reporter.blank();
+        reporter.header("Box sets");
+        match boxset::run_repair(&pool, &http_client, &mut limiter, &reporter, scope).await {
+            Ok(s) => {
+                summary.box_groups_seen = s.groups_seen;
+                summary.box_groups_bound = s.groups_bound;
+                summary.box_groups_folded = s.groups_folded;
+                summary.box_groups_dissolved = s.groups_dissolved;
+                summary.box_groups_key_taken = s.groups_key_taken;
+                summary.box_groups_failed = s.groups_failed;
+                if s.groups_failed > 0 {
+                    had_error = true;
+                }
+                touched_ids = s.touched_local_release_ids;
+            }
+            Err(e) => {
+                let msg = format!("boxset::run_repair failed: {}", e);
+                reporter.warn(&msg);
+                common::error_log::log_warn(&msg);
+                had_error = true;
+            }
+        }
+    }
+
+    // ---- Phase 6: orphans + retire (round 2) - dissolving makes release groups owned ----
+    match delete_orphaned_mb_releases(&pool, scope).await {
+        Ok(n) => {
+            summary.orphans_retired_round2 = n;
+            if n > 0 {
+                reporter.info(&format!(
+                    "Cleaned up {} orphaned MB release(s) after box repair",
+                    n
+                ));
+            }
+        }
+        Err(e) => {
+            let msg = format!("delete_orphaned_mb_releases (round 2) failed: {}", e);
+            reporter.warn(&msg);
+            common::error_log::log_warn(&msg);
+            had_error = true;
+        }
+    }
+    match retire_owned_missing_placeholders(&pool).await {
+        Ok(n) => {
+            summary.placeholders_retired_round2 = n;
+            if n > 0 {
+                reporter.info(&format!(
+                    "Retired {} MISSING placeholder(s) covered by a dissolved box",
+                    n
+                ));
+            }
+        }
+        Err(e) => {
+            let msg = format!("retire_owned_missing_placeholders (round 2) failed: {}", e);
+            reporter.warn(&msg);
+            common::error_log::log_warn(&msg);
+            had_error = true;
+        }
+    }
+
+    // ---- Phase 5: DB-only re-score ----
+    reporter.blank();
+    reporter.header("Re-score");
+    match db::get_rescore_targets(&pool, scope, &touched_ids).await {
+        Ok(targets) => {
+            let total = targets.len();
+            for (idx, target) in targets.iter().enumerate() {
+                reporter.tidy_progress("Re-scoring", idx + 1, total);
+                if args.verbose {
+                    reporter.item("Release", &target.local_release_id, idx + 1, total);
+                }
+                match db::rescore_bound_release(&pool, target).await {
+                    Ok(RescoreOutcome::Scored(status)) => match status {
+                        "COMPLETE" => summary.rescored_complete += 1,
+                        "INCOMPLETE" => summary.rescored_incomplete += 1,
+                        "EXTRA_TRACKS" => summary.rescored_extra_tracks += 1,
+                        "MISSING_TRACKS" => summary.rescored_missing_tracks += 1,
+                        _ => summary.rescored_other += 1,
+                    },
+                    Ok(RescoreOutcome::Deferred) => summary.rescore_deferred += 1,
+                    Err(e) => {
+                        let msg = format!(
+                            "rescore_bound_release({}) failed: {}",
+                            target.local_release_id, e
+                        );
+                        reporter.warn(&msg);
+                        common::error_log::log_warn(&msg);
+                        had_error = true;
+                    }
+                }
+            }
+            reporter.done(&format!(
+                "{} release(s) re-scored, {} deferred",
+                summary.rescored_complete
+                    + summary.rescored_incomplete
+                    + summary.rescored_extra_tracks
+                    + summary.rescored_missing_tracks
+                    + summary.rescored_other,
+                summary.rescore_deferred
+            ));
+        }
+        Err(e) => {
+            let msg = format!("get_rescore_targets failed: {}", e);
+            reporter.warn(&msg);
+            common::error_log::log_warn(&msg);
+            had_error = true;
+        }
+    }
+
+    // ---- Phase 7: artist identity repair (global, pure SQL) ----
+    reporter.blank();
+    reporter.header("Artist identities");
+    match db::repair_all_empty_primaries(&pool, false).await {
+        Ok(done) => {
+            summary.identity_pass_a = done.len();
+            for r in &done {
+                reporter.ok(&format!(
+                    "{} ({} release(s)) vs \"{}\" - {}",
+                    r.artist, r.releases, r.other, r.action
+                ));
+            }
+        }
+        Err(e) => {
+            let msg = format!("repair_all_empty_primaries failed: {}", e);
+            reporter.warn(&msg);
+            common::error_log::log_warn(&msg);
+            had_error = true;
+        }
+    }
+    match db::repair_contradicted_identities(&pool, false).await {
+        Ok(done) => {
+            summary.identity_pass_b = done.len();
+            for r in &done {
+                reporter.ok(&format!(
+                    "{} ({} release(s)) - independent lookup contradicts {}",
+                    r.artist, r.releases, r.cleared_mbid
+                ));
+            }
+        }
+        Err(e) => {
+            let msg = format!("repair_contradicted_identities failed: {}", e);
+            reporter.warn(&msg);
+            common::error_log::log_warn(&msg);
+            had_error = true;
+        }
+    }
+    match db::repair_shared_identities(&pool, false).await {
+        Ok(done) => {
+            summary.identity_pass_c = done.len();
+            for g in &done {
+                match &g.kept {
+                    Some(name) => reporter.ok(&format!(
+                        "{} kept by \"{}\", cleared from: {}",
+                        g.mbid,
+                        name,
+                        g.cleared.join(", ")
+                    )),
+                    None => reporter.ok(&format!(
+                        "{} - no member confirmed, cleared from all: {}",
+                        g.mbid,
+                        g.cleared.join(", ")
+                    )),
+                }
+            }
+        }
+        Err(e) => {
+            let msg = format!("repair_shared_identities failed: {}", e);
+            reporter.warn(&msg);
+            common::error_log::log_warn(&msg);
+            had_error = true;
+        }
+    }
+    reporter.done(&format!(
+        "Pass A: {}, Pass B: {}, Pass C: {}",
+        summary.identity_pass_a, summary.identity_pass_b, summary.identity_pass_c
+    ));
+
+    // ---- Phase 8: scores ----
+    reporter.blank();
+    if is_global {
+        match db::recompute_all_match_scores(&pool).await {
+            Ok(n) => {
+                summary.scores_recomputed = n;
+                reporter.done(&format!("Recomputed match scores ({} artist(s))", n));
+            }
+            Err(e) => {
+                let msg = format!("recompute_all_match_scores failed: {}", e);
+                reporter.warn(&msg);
+                common::error_log::log_warn(&msg);
+                had_error = true;
+            }
+        }
+    } else {
+        let mut score_targets: HashSet<String> = scope_ids.iter().cloned().collect();
+        match db::get_owner_artist_ids_for_releases(&pool, &touched_ids).await {
+            Ok(owners) => score_targets.extend(owners),
+            Err(e) => {
+                let msg = format!("get_owner_artist_ids_for_releases failed: {}", e);
+                reporter.warn(&msg);
+                common::error_log::log_warn(&msg);
+                had_error = true;
+            }
+        }
+        let mut recomputed = 0u64;
+        for artist_id in &score_targets {
+            if common::totals::recompute_artist_match_score(&pool, artist_id)
+                .await
+                .is_ok()
+            {
+                recomputed += 1;
+            }
+        }
+        summary.scores_recomputed = recomputed;
+        reporter.done(&format!(
+            "Recomputed match scores ({} artist(s))",
+            recomputed
+        ));
+    }
+
+    // ---- Phase 9: statistics ----
+    update_statistics(&pool).await.ok();
+
+    // ---- Phase 10: watermark stamp ----
+    if running.load(Ordering::SeqCst) && !had_error {
+        if is_global {
+            if db::stamp_all_tidied(&pool, start).await.is_ok() {
+                summary.artists_stamped = scope_ids.len();
+            }
+        } else if db::stamp_artists_tidied(&pool, &scope_ids, start).await.is_ok() {
+            summary.artists_stamped = scope_ids.len();
+        }
+    }
+
+    release_lock(&pool).await;
+
+    let elapsed = start_time.elapsed();
+    let h = elapsed.as_secs() / 3600;
+    let m = (elapsed.as_secs() % 3600) / 60;
+    let s = elapsed.as_secs() % 60;
+
+    reporter.blank();
+    reporter.info(&"═".repeat(60));
+    reporter.blank();
+    reporter.done(&format!("Tidy complete. ({}h:{:02}m:{:02}s)", h, m, s));
+    reporter.kv("Elapsed", &format!("{:02}:{:02}:{:02}", h, m, s));
+    reporter.kv(
+        "Empty releases removed",
+        &summary.empty_local_releases_removed.to_string(),
+    );
+    reporter.kv(
+        "Orphans / placeholders",
+        &format!(
+            "{} / {} (round 1), {} / {} (round 2)",
+            summary.orphans_retired_round1,
+            summary.placeholders_retired_round1,
+            summary.orphans_retired_round2,
+            summary.placeholders_retired_round2
+        ),
+    );
+    reporter.kv(
+        "Box groups",
+        &format!(
+            "{} seen, {} bound ({} folded, {} dissolved, {} key-taken, {} failed)",
+            summary.box_groups_seen,
+            summary.box_groups_bound,
+            summary.box_groups_folded,
+            summary.box_groups_dissolved,
+            summary.box_groups_key_taken,
+            summary.box_groups_failed
+        ),
+    );
+    reporter.kv(
+        "Re-scored",
+        &format!(
+            "{} complete, {} incomplete, {} extra tracks, {} missing tracks, {} other, {} deferred",
+            summary.rescored_complete,
+            summary.rescored_incomplete,
+            summary.rescored_extra_tracks,
+            summary.rescored_missing_tracks,
+            summary.rescored_other,
+            summary.rescore_deferred
+        ),
+    );
+    reporter.kv(
+        "Identities",
+        &format!(
+            "Pass A: {}, Pass B: {}, Pass C: {}",
+            summary.identity_pass_a, summary.identity_pass_b, summary.identity_pass_c
+        ),
+    );
+    reporter.kv("Scores recomputed", &summary.scores_recomputed.to_string());
+    if running.load(Ordering::SeqCst) && !had_error {
+        reporter.kv("Artists stamped", &summary.artists_stamped.to_string());
+    } else {
+        reporter.kv(
+            "Artists stamped",
+            &format!(
+                "NOT stamped ({})",
+                if had_error { "errors" } else { "interrupted" }
+            ),
+        );
+    }
+}

@@ -474,19 +474,24 @@ struct SiblingRow {
 struct SiblingGroup {
     parent: String,
     rows: Vec<SiblingRow>,
-    /// Every artist credited on any folder in this group, for `--only` scoping. Resolved from
-    /// `LocalReleaseArtist`, never from the folder path - see `group_matches_filter`.
-    artist_names: Vec<String>,
 }
 
 /// Folders sharing a parent, at least two of them, none yet folded into one `LocalRelease` - the
 /// same directory shape `multi_disc` looks at, but grouped by path rather than a shared embedded id,
 /// since a box's siblings frequently carry entirely different (and individually correct-looking)
 /// embedded release ids (shape (b), see module docs).
-async fn find_sibling_groups(pool: &PgPool) -> Result<Vec<SiblingGroup>, sqlx::Error> {
-    // `artist_names` comes along for `--only` scoping (see `group_matches_filter`) - one aggregate in
-    // the same query rather than a per-group round trip.
-    let rows: Vec<(String, String, String, Option<String>, Vec<String>)> = sqlx::query_as(
+///
+/// `scope`, when given, is a list of artist ids: a whole sibling group is kept if **any** folder in
+/// it is owned by one of those artists (via `LocalReleaseArtist`) - siblings owned by a different,
+/// unscoped artist stay in the group rather than being dropped out of it, since the box must be
+/// bound/folded/dissolved as one unit regardless of which artist happened to trigger the run (a box
+/// filed under a collaborator's folder still belongs to the artist credited on it - see
+/// docs/sync_decisions.md). `None` scopes nothing (every group, tidy's `--all`).
+async fn find_sibling_groups(
+    pool: &PgPool,
+    scope: Option<&[String]>,
+) -> Result<Vec<SiblingGroup>, sqlx::Error> {
+    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
         r#"
         WITH f AS (
           SELECT lr.id, lr."folderPath" AS folder_path,
@@ -498,41 +503,33 @@ async fn find_sibling_groups(pool: &PgPool) -> Result<Vec<SiblingGroup>, sqlx::E
           WHERE lr."folderPath" IS NOT NULL
             AND array_length(string_to_array(lr."folderPath", '/'), 1) >= 4
         )
-        SELECT f.id, f.folder_path, f.parent, f.majority_mb,
-               COALESCE((
-                 SELECT array_agg(DISTINCT a.name)
-                 FROM "LocalReleaseArtist" lra
-                 JOIN "Artist" a ON a.id = lra."artistId"
-                 WHERE lra."localReleaseId" = f.id
-               ), ARRAY[]::text[]) AS artist_names
+        SELECT f.id, f.folder_path, f.parent, f.majority_mb
         FROM f
         WHERE f.parent IN (SELECT parent FROM f GROUP BY parent HAVING count(*) > 1)
+          AND ($1::text[] IS NULL OR f.parent IN (
+                SELECT f2.parent FROM f f2
+                JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = f2.id
+                WHERE lra."artistId" = ANY($1)
+              ))
         ORDER BY f.parent, f.folder_path
         "#,
     )
+    .bind(scope)
     .fetch_all(pool)
     .await?;
 
     let mut groups: Vec<SiblingGroup> = Vec::new();
-    for (id, folder_path, parent, majority_mb, artist_names) in rows {
+    for (id, folder_path, parent, majority_mb) in rows {
         let row = SiblingRow {
             local_id: id,
             folder_path,
             majority_mb_release_id: majority_mb,
         };
         match groups.last_mut() {
-            Some(g) if g.parent == parent => {
-                g.rows.push(row);
-                for n in artist_names {
-                    if !g.artist_names.contains(&n) {
-                        g.artist_names.push(n);
-                    }
-                }
-            }
+            Some(g) if g.parent == parent => g.rows.push(row),
             _ => groups.push(SiblingGroup {
                 parent,
                 rows: vec![row],
-                artist_names,
             }),
         }
     }
@@ -555,27 +552,6 @@ async fn sibling_tracks(
         .into_iter()
         .map(|(id, title, dur)| (id, title.unwrap_or_default(), dur))
         .collect())
-}
-
-/// Does this group fall inside a `--only` scope?
-///
-/// Matches against the artists actually credited on the group's folders, **not** against
-/// `group.parent`. The old code filtered on the parent path, which broke twice over:
-///
-///   * `--exact` matched nothing at all. `matches_filter` normalizes by stripping non-alphanumerics,
-///     so `ABBA/Compilation/2005 - The Complete Studio Recordings (9CD)` becomes
-///     `abbacompilation2005 the complete studio recordings 9cd`, which can never equal `abba`. Every
-///     `./sync --only X --exact` therefore skipped box-set repair silently, reporting "0 sibling-folder
-///     group(s)" as though the artist simply had none.
-///   * It read an artist off a directory name, which this codebase does not do (CLAUDE.md: metadata is
-///     the source of truth, never filesystem paths). A box filed under a collaborator's folder -
-///     `Joan Baez/Compilation/2013 - Voices Of A Generation (2CD)`, credited to Bob Dylan - was
-///     excluded from `--only "Bob Dylan"` for no reason but its path.
-fn group_matches_filter(group: &SiblingGroup, only: &str, exact: bool) -> bool {
-    group
-        .artist_names
-        .iter()
-        .any(|name| common::filters::matches_filter(name, "", "", only, exact))
 }
 
 /// The MB id(s) of any `mediumCount > 1` release a sibling in this group is *already* bound to - a
@@ -633,7 +609,7 @@ async fn persist_box_media(
         .as_deref()
         .and_then(|d| d.split('-').next())
         .and_then(|y| y.parse::<i32>().ok());
-    let format_str = crate::format_from_media(&fetched.release.media);
+    let format_str = crate::status::format_from_media(&fetched.release.media);
     let extras = MbReleaseExtras {
         release_date: fetched.release.date.as_deref(),
         packaging: fetched.release.packaging.as_deref(),
@@ -761,7 +737,7 @@ async fn apply_fold(
     pool: &PgPool,
     plan: &BoxBindPlan,
     mb_db_id: &str,
-) -> Result<bool, sqlx::Error> {
+) -> Result<Option<String>, sqlx::Error> {
     let local_ids: Vec<String> = plan.members.iter().map(|(id, _)| id.clone()).collect();
     let key_holder: Option<String> = sqlx::query_scalar(
         r#"SELECT id FROM "LocalRelease" WHERE "groupKey" = $1 AND id <> ALL($2)"#,
@@ -771,7 +747,7 @@ async fn apply_fold(
     .fetch_optional(pool)
     .await?;
     if key_holder.is_some() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let folder_rows: Vec<(String, Option<String>)> =
@@ -849,7 +825,7 @@ async fn apply_fold(
     }
 
     tx.commit().await?;
-    Ok(true)
+    Ok(Some(plan.survivor.clone()))
 }
 
 /// Box set (>=2 equivalent media): leave every sibling as its own `LocalRelease` row. Each disc binds
@@ -860,9 +836,10 @@ async fn apply_dissolve(
     pool: &PgPool,
     plan: &BoxBindPlan,
     mb_db_id: &str,
-) -> Result<(), sqlx::Error> {
+) -> Result<Vec<String>, sqlx::Error> {
     let now = Utc::now().naive_utc();
     let mut tx = pool.begin().await?;
+    let mut changed: Vec<String> = Vec::new();
     for (local_id, position) in &plan.members {
         // LEFT JOINs the equivalent's own release row rather than trusting the id at face value: a
         // dangling `equivalentReleaseId` (the target release deleted after the equivalence was
@@ -891,7 +868,7 @@ async fn apply_dissolve(
         // The `WHERE` clauses below make each write a no-op once the row already says this.
         match equivalent {
             Some((equivalent_release_id, equivalent_medium_position)) => {
-                sqlx::query(
+                let res = sqlx::query(
                     r#"UPDATE "LocalRelease"
                        SET "releaseId" = $1, "mediumPosition" = $2, "boxReleaseId" = $3,
                            "boxMediumPosition" = $4, "matchStatus" = 'UNKNOWN', "updatedAt" = $5
@@ -909,9 +886,12 @@ async fn apply_dissolve(
                 .bind(local_id)
                 .execute(&mut *tx)
                 .await?;
+                if res.rows_affected() > 0 {
+                    changed.push(local_id.clone());
+                }
             }
             None => {
-                sqlx::query(
+                let res = sqlx::query(
                     r#"UPDATE "LocalRelease"
                        SET "releaseId" = $1, "mediumPosition" = $2, "boxReleaseId" = NULL,
                            "boxMediumPosition" = NULL, "matchStatus" = 'UNKNOWN', "updatedAt" = $3
@@ -927,10 +907,14 @@ async fn apply_dissolve(
                 .bind(local_id)
                 .execute(&mut *tx)
                 .await?;
+                if res.rows_affected() > 0 {
+                    changed.push(local_id.clone());
+                }
             }
         }
     }
-    tx.commit().await
+    tx.commit().await?;
+    Ok(changed)
 }
 
 // ---------------------------------------------------------------------------
@@ -952,6 +936,10 @@ pub struct BoxSetSummary {
     /// never stop every group after it (docs/sync_decisions.md §9 "One box never blocks the rest";
     /// this is what the 2026-09-06/09-10 outages taught).
     pub groups_failed: usize,
+    /// Every `LocalRelease` id a fold or dissolve actually changed this run: the survivor id from a
+    /// fold, each member whose row a dissolve wrote to. Tidy re-scores exactly these, in addition to
+    /// whatever was already sitting at `matchStatus='UNKNOWN'` from a previous, interrupted run.
+    pub touched_local_release_ids: Vec<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -964,23 +952,18 @@ pub struct BoxSetSummary {
 ///      artist-scoped for tiers 2/3) and only then decide fold vs dissolve per box and write it
 ///      (docs/sync_decisions.md).
 ///
-/// No dry-run (docs/sync_decisions.md - the user's `./backup` is the recovery path). `only`/
-/// `exact` scope which sibling groups are considered, matching every other sync mode's convention -
-/// called once per sync invocation with that invocation's own scope, not once per artist inside a
-/// loop (this pass' own group-discovery query is a whole-table scan; looping it per-artist would
-/// repeat that scan for every artist synced).
+/// No dry-run (docs/sync_decisions.md - the user's `./backup` is the recovery path). `scope` (artist
+/// ids) picks which sibling groups are considered - called once per tidy invocation with that
+/// invocation's own scope, not once per artist inside a loop (this pass' own group-discovery query is
+/// a whole-table scan; looping it per-artist would repeat that scan for every artist tidied).
 pub async fn run_repair(
     pool: &PgPool,
     http_client: &Client,
     limiter: &mut RateLimiter,
     reporter: &Reporter,
-    only: &str,
-    exact: bool,
+    scope: Option<&[String]>,
 ) -> Result<BoxSetSummary, sqlx::Error> {
-    let mut groups = find_sibling_groups(pool).await?;
-    if !only.is_empty() {
-        groups.retain(|g| group_matches_filter(g, only, exact));
-    }
+    let groups = find_sibling_groups(pool, scope).await?;
     let mut summary = BoxSetSummary {
         groups_seen: groups.len(),
         ..Default::default()
@@ -1146,16 +1129,18 @@ pub async fn run_repair(
             }
         };
         let outcome = match decide_outcome(equivalents) {
-            BoxOutcome::Fold => apply_fold(pool, plan, mb_db_id).await.map(|applied| {
-                if applied {
+            BoxOutcome::Fold => apply_fold(pool, plan, mb_db_id).await.map(|folded| {
+                if let Some(survivor) = folded {
+                    summary.touched_local_release_ids.push(survivor);
                     "fold"
                 } else {
                     "key-taken"
                 }
             }),
-            BoxOutcome::Dissolve => apply_dissolve(pool, plan, mb_db_id)
-                .await
-                .map(|()| "dissolve"),
+            BoxOutcome::Dissolve => apply_dissolve(pool, plan, mb_db_id).await.map(|changed| {
+                summary.touched_local_release_ids.extend(changed);
+                "dissolve"
+            }),
         };
         match outcome {
             Ok("key-taken") => {
@@ -1197,14 +1182,6 @@ pub async fn run_repair(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn group_with_artists(parent: &str, artists: &[&str]) -> SiblingGroup {
-        SiblingGroup {
-            parent: parent.to_string(),
-            rows: Vec::new(),
-            artist_names: artists.iter().map(|a| a.to_string()).collect(),
-        }
-    }
 
     /// The regression: scoping used to compare `--only` against the *parent path*, which
     /// `matches_filter` normalizes to `abbacompilation2005 the complete...`. Under `--exact` that can
@@ -1397,41 +1374,6 @@ mod tests {
             links[0].1, links[1].1,
             "one medium track cannot serve two local tracks"
         );
-    }
-
-    #[test]
-    fn exact_scoping_matches_the_artist_not_the_folder_path() {
-        let g = group_with_artists(
-            "ABBA/Compilation/2005 - The Complete Studio Recordings (9CD)",
-            &["ABBA"],
-        );
-        assert!(
-            group_matches_filter(&g, "ABBA", true),
-            "--exact must find this box"
-        );
-        assert!(
-            group_matches_filter(&g, "ABBA", false),
-            "prefix mode still works"
-        );
-        assert!(!group_matches_filter(&g, "Blondie", true));
-    }
-
-    /// A box filed under a collaborator's folder still belongs to the artist credited on it. Path
-    /// scoping excluded these for no reason but their directory name.
-    #[test]
-    fn a_group_is_scoped_by_every_artist_credited_on_it() {
-        let g = group_with_artists(
-            "Joan Baez/Compilation/2013 - Voices Of A Generation (2CD)",
-            &["Joan Baez", "Bob Dylan"],
-        );
-        assert!(group_matches_filter(&g, "Bob Dylan", true));
-        assert!(group_matches_filter(&g, "Joan Baez", true));
-    }
-
-    #[test]
-    fn a_group_with_no_credited_artist_matches_no_filter() {
-        let g = group_with_artists("Unknown/Album/Box", &[]);
-        assert!(!group_matches_filter(&g, "ABBA", false));
     }
 
     fn sibling(id: &str, folder: &str, tracks: &[(&str, &str, Option<i32>)]) -> BoxSibling {

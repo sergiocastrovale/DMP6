@@ -1,7 +1,7 @@
 use chrono::{NaiveDateTime, Utc};
 use common::filters::sanitize_mb_id;
 use common::mb::api::audio_media;
-use common::mb::types::MbMedia;
+use common::mb::types::{MbMedia, MbRecordingRef, MbRelease, MbTrack};
 use slug::slugify;
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
@@ -407,6 +407,248 @@ pub async fn sync_mb_tracks_for_release(
     }
 
     Ok(out)
+}
+
+/// Rebuild a bound release's `(MbRelease, Vec<MbTrack>, musicbrainzId)` straight from the DB - no MB
+/// call. Used by a DB-only re-score (`tidy`), which never re-fetches a release it already synced.
+/// `None` when the release row or its track list is empty (a fold/dissolve target caught mid-repair);
+/// callers must defer rather than score against nothing.
+pub async fn load_mb_release_with_tracks(
+    pool: &PgPool,
+    mb_release_db_id: &str,
+) -> Result<Option<(MbRelease, Vec<MbTrack>, String)>, sqlx::Error> {
+    let release_row: Option<(String, Option<String>, String, Option<String>, Option<String>, Option<String>, String)> =
+        sqlx::query_as(
+            r#"SELECT title, "releaseDate", status::text, disambiguation, packaging, country, "musicbrainzId"
+               FROM "MusicBrainzRelease" WHERE id = $1"#,
+        )
+        .bind(mb_release_db_id)
+        .fetch_optional(pool)
+        .await?;
+
+    let (title, release_date, status, disambiguation, packaging, country, musicbrainz_id) =
+        match release_row {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+    let media_rows: Vec<(i32, Option<String>, Option<String>)> = sqlx::query_as(
+        r#"SELECT position, title, format FROM "MusicBrainzReleaseMedium" WHERE "releaseId" = $1
+           ORDER BY position"#,
+    )
+    .bind(mb_release_db_id)
+    .fetch_all(pool)
+    .await?;
+    let media = if media_rows.is_empty() {
+        None
+    } else {
+        Some(
+            media_rows
+                .into_iter()
+                .map(|(position, title, format)| MbMedia {
+                    position: Some(position as u32),
+                    format,
+                    title,
+                    track_count: None,
+                    tracks: None,
+                })
+                .collect(),
+        )
+    };
+
+    let track_rows: Vec<(Option<String>, Option<i32>, Option<i32>, Option<i32>, String, Option<String>)> =
+        sqlx::query_as(
+            r#"SELECT "musicbrainzId", position, "discNumber", "durationMs", title, "recordingId"
+               FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
+        )
+        .bind(mb_release_db_id)
+        .fetch_all(pool)
+        .await?;
+
+    if track_rows.is_empty() {
+        return Ok(None);
+    }
+
+    let tracks = track_rows
+        .into_iter()
+        .filter_map(
+            |(track_mb_id, position, disc_number, duration_ms, title, recording_id)| {
+                Some(MbTrack {
+                    id: track_mb_id?,
+                    title,
+                    position: position.map(|p| p as u32),
+                    length: duration_ms.map(|d| d as u64),
+                    disc_number: disc_number.map(|d| d as u32),
+                    recording: recording_id.map(|id| MbRecordingRef { id }),
+                })
+            },
+        )
+        .collect();
+
+    Ok(Some((
+        MbRelease {
+            id: musicbrainz_id.clone(),
+            title,
+            date: release_date,
+            status: Some(status),
+            disambiguation,
+            packaging,
+            country,
+            media,
+        },
+        tracks,
+        musicbrainz_id,
+    )))
+}
+
+// ---------------------------------------------------------------------------
+// Tidy: DB-only re-score of a box-touched release
+// ---------------------------------------------------------------------------
+
+/// A `LocalRelease` tidy's box pass touched (or left `UNKNOWN` from a prior interrupted run) and must
+/// re-score.
+pub struct RescoreTarget {
+    pub local_release_id: String,
+    pub mb_release_id: String,
+    pub medium_position: Option<i32>,
+    pub year: Option<i32>,
+}
+
+/// Targets = every scoped `LocalRelease` already sitting at `matchStatus='UNKNOWN'` with a release
+/// bound (a prior run's box pass that never got tidied, or index's own UNKNOWN-on-track-delete), union
+/// `touched_ids` (this run's own fold/dissolve output - almost always a subset already, but a defensive
+/// union costs nothing and guarantees this run's own work is never skipped).
+pub async fn get_rescore_targets(
+    pool: &PgPool,
+    scope: ArtistScope<'_>,
+    touched_ids: &[String],
+) -> Result<Vec<RescoreTarget>, sqlx::Error> {
+    let mut ids: Vec<String> = match scope {
+        Some(artist_ids) => {
+            sqlx::query_scalar(
+                r#"SELECT DISTINCT lr.id FROM "LocalRelease" lr
+                   JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+                   WHERE lr."matchStatus" = 'UNKNOWN' AND lr."releaseId" IS NOT NULL
+                     AND lra."artistId" = ANY($1)"#,
+            )
+            .bind(artist_ids)
+            .fetch_all(pool)
+            .await?
+        }
+        None => {
+            sqlx::query_scalar(
+                r#"SELECT id FROM "LocalRelease" WHERE "matchStatus" = 'UNKNOWN' AND "releaseId" IS NOT NULL"#,
+            )
+            .fetch_all(pool)
+            .await?
+        }
+    };
+    for id in touched_ids {
+        if !ids.contains(id) {
+            ids.push(id.clone());
+        }
+    }
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let rows: Vec<(String, Option<String>, Option<i32>, Option<i32>)> = sqlx::query_as(
+        r#"SELECT id, "releaseId", "mediumPosition", year FROM "LocalRelease" WHERE id = ANY($1) AND "releaseId" IS NOT NULL"#,
+    )
+    .bind(&ids)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|(id, release_id, medium_position, year)| {
+            Some(RescoreTarget {
+                local_release_id: id,
+                mb_release_id: release_id?,
+                medium_position,
+                year,
+            })
+        })
+        .collect())
+}
+
+/// Outcome of a DB-only re-score: `Scored` on a normal write, `Deferred` when there is nothing to
+/// score against yet (no local tracks, or the bound MB release has none) - left at `UNKNOWN`, which
+/// keeps it in `get_artists_pending_sync`'s watermark clause so a plain sync's normal per-release path
+/// picks it up and re-fetches it from MusicBrainz.
+pub enum RescoreOutcome {
+    Scored(&'static str),
+    Deferred,
+}
+
+/// Re-score one already-bound `LocalRelease` against the `MusicBrainzRelease` it already points at -
+/// no MusicBrainz call, no allow-list gate (it is bound already), no tag write (the next sync's
+/// `write_mb_ids` owns tags), and never `update_artist_sync_stats` (tidy must never stamp
+/// `lastSyncedAt` - see docs/__plan_tidy_script.md "Watermark traps").
+pub async fn rescore_bound_release(
+    pool: &PgPool,
+    target: &RescoreTarget,
+) -> Result<RescoreOutcome, sqlx::Error> {
+    let local_tracks = get_local_tracks_for_release(pool, &target.local_release_id).await?;
+    if local_tracks.is_empty() {
+        return Ok(RescoreOutcome::Deferred);
+    }
+    let local_track_ids: Vec<String> = local_tracks.iter().map(|t| t.id.clone()).collect();
+    let local_metas = crate::status::track_metas_from_rows(&local_tracks);
+    let local_meta_refs: Vec<&common::types::TrackMeta> = local_metas.iter().collect();
+
+    let Some((mb_release, mb_tracks, _mb_id)) =
+        load_mb_release_with_tracks(pool, &target.mb_release_id).await?
+    else {
+        return Ok(RescoreOutcome::Deferred);
+    };
+
+    let status_check = crate::status::check_release_status(
+        &local_meta_refs,
+        &local_track_ids,
+        &[(mb_release, mb_tracks)],
+        target.year,
+        target.medium_position,
+    );
+
+    let track_id_rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        r#"SELECT id, "musicbrainzId" FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
+    )
+    .bind(&target.mb_release_id)
+    .fetch_all(pool)
+    .await?;
+
+    let track_links: Vec<(String, String)> = status_check
+        .matched_mb_tracks
+        .iter()
+        .filter_map(|(mb_track, local_id_opt)| {
+            let local_id = local_id_opt.as_ref()?;
+            let db_id = track_id_rows
+                .iter()
+                .find(|(_, mid)| mid.as_deref() == Some(mb_track.id.as_str()))
+                .map(|(db_id, _)| db_id.clone())?;
+            Some((local_id.clone(), db_id))
+        })
+        .collect();
+    link_local_tracks_to_mb(pool, &track_links).await?;
+
+    // A fold moves tracks with stale `mbTrackId` links onto the survivor - clear whatever this score
+    // did not just re-confirm.
+    let matched_local_ids: Vec<String> = track_links.iter().map(|(l, _)| l.clone()).collect();
+    sqlx::query(
+        r#"UPDATE "LocalReleaseTrack" SET "mbTrackId" = NULL
+           WHERE "localReleaseId" = $1 AND id <> ALL($2)"#,
+    )
+    .bind(&target.local_release_id)
+    .bind(&matched_local_ids)
+    .execute(pool)
+    .await?;
+
+    let status_str = crate::status::status_to_db_string(&status_check.status);
+    update_local_release_match(pool, &target.local_release_id, &target.mb_release_id, status_str)
+        .await?;
+
+    Ok(RescoreOutcome::Scored(status_str))
 }
 
 // ---------------------------------------------------------------------------
@@ -1422,6 +1664,80 @@ pub async fn get_artists_pending_sync(pool: &PgPool) -> Result<Vec<ArtistSyncRow
 }
 
 // ---------------------------------------------------------------------------
+// Tidy watermark (Artist.lastTidiedAt)
+// ---------------------------------------------------------------------------
+
+/// Artist (id, name) pairs tidy has fresh work for: synced at least once, and either never tidied or
+/// synced again since its last tidy. `lastSyncedAt IS NOT NULL` excludes an artist sync has not reached
+/// yet - tidy runs after sync in every caller, never instead of it. Names come along so `--only`/
+/// `--from`/`--to` can narrow this set the same way sync's own filters do.
+pub async fn get_artists_pending_tidy(pool: &PgPool) -> Result<Vec<(String, String)>, sqlx::Error> {
+    sqlx::query_as(
+        r#"SELECT id, name FROM "Artist"
+           WHERE "lastSyncedAt" IS NOT NULL
+             AND ("lastTidiedAt" IS NULL OR "lastSyncedAt" > "lastTidiedAt")
+           ORDER BY name"#,
+    )
+    .fetch_all(pool)
+    .await
+}
+
+/// Every artist (id, name) sync has ever reached, for `--all` (which ignores the watermark, but can
+/// still be narrowed further by `--only`/`--from`/`--to` the same way the watermark set can).
+pub async fn get_all_synced_artists(pool: &PgPool) -> Result<Vec<(String, String)>, sqlx::Error> {
+    sqlx::query_as(r#"SELECT id, name FROM "Artist" WHERE "lastSyncedAt" IS NOT NULL ORDER BY name"#)
+        .fetch_all(pool)
+        .await
+}
+
+/// Stamp `lastTidiedAt` for exactly the artists this run scoped and finished clean. Never called for a
+/// run that was interrupted or hit a phase error - those artists must stay pending so the next tidy
+/// redoes them (docs/__plan_tidy_script.md "Watermark traps").
+pub async fn stamp_artists_tidied(
+    pool: &PgPool,
+    artist_ids: &[String],
+    at: NaiveDateTime,
+) -> Result<(), sqlx::Error> {
+    if artist_ids.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(r#"UPDATE "Artist" SET "lastTidiedAt" = $1 WHERE id = ANY($2)"#)
+        .bind(at)
+        .bind(artist_ids)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// `--all`: stamp every artist sync has ever reached, not just the ids this run happened to scope
+/// (a whole-library run's scope is implicitly "every synced artist").
+pub async fn stamp_all_tidied(pool: &PgPool, at: NaiveDateTime) -> Result<(), sqlx::Error> {
+    sqlx::query(r#"UPDATE "Artist" SET "lastTidiedAt" = $1 WHERE "lastSyncedAt" IS NOT NULL"#)
+        .bind(at)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Owning artist ids for a set of `LocalRelease` ids - step 8's score recompute must cover not just
+/// the artists this run scoped, but every owner of a release the box pass or re-score actually
+/// touched (a sibling group frequently spans more than one artist's folders).
+pub async fn get_owner_artist_ids_for_releases(
+    pool: &PgPool,
+    local_release_ids: &[String],
+) -> Result<Vec<String>, sqlx::Error> {
+    if local_release_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    sqlx::query_scalar(
+        r#"SELECT DISTINCT "artistId" FROM "LocalReleaseArtist" WHERE "localReleaseId" = ANY($1)"#,
+    )
+    .bind(local_release_ids)
+    .fetch_all(pool)
+    .await
+}
+
+// ---------------------------------------------------------------------------
 // Get local releases for an artist (to sync against MB)
 // ---------------------------------------------------------------------------
 
@@ -1613,42 +1929,6 @@ pub async fn get_tracks_with_mb_ids_for_artist(
             },
         )
         .collect())
-}
-
-/// Every file of every release the artist owns, matched or not - a file tagged under an earlier
-/// match keeps that match's ids even after the release is re-bound or unbound.
-pub async fn get_owned_track_paths_for_artist(
-    pool: &PgPool,
-    artist_id: &str,
-) -> Result<Vec<String>, sqlx::Error> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        r#"SELECT DISTINCT lrt."filePath"
-           FROM "LocalReleaseTrack" lrt
-           JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lrt."localReleaseId"
-           WHERE lra."artistId" = $1"#,
-    )
-    .bind(artist_id)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows.into_iter().map(|(p,)| p).collect())
-}
-
-/// Which of `values` are MusicBrainz release-track ids, each mapped to its recording id when known.
-/// A release-track id can sit on several MusicBrainzRelease rows; any row carrying the recording wins.
-pub async fn get_recordings_for_release_track_ids(
-    pool: &PgPool,
-    values: &[String],
-) -> Result<HashMap<String, Option<String>>, sqlx::Error> {
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        r#"SELECT "musicbrainzId", max("recordingId")
-           FROM "MusicBrainzReleaseTrack"
-           WHERE "musicbrainzId" = ANY($1)
-           GROUP BY "musicbrainzId""#,
-    )
-    .bind(values)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows.into_iter().collect())
 }
 
 pub async fn get_track_id_file_paths_for_release(

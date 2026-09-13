@@ -14,6 +14,7 @@ async function run() {
     await terminal.runSequence([
       { command: './index', args: ['--folders', props.folders.join(';')], session },
       { command: './sync', args: ['--only', props.only.join(';'), '--exact'], session },
+      { command: './tidy', args: [], session },
     ])
   } else {
     const args = props.only?.length ? ['--only', props.only.join(';'), '--exact'] : []

@@ -21,19 +21,26 @@ const globalActions: Record<string, () => Promise<void>> = {
     await terminal.runSequence([
       { command: './index', args: [] },
       { command: './sync', args: [] },
+      { command: './tidy', args: [] },
     ])
   },
   'full': async () => {
     await terminal.runSequence([
       { command: './index', args: ['--overwrite-with-images'] },
       { command: './sync', args: ['--overwrite'] },
+      { command: './tidy', args: [] },
     ])
   },
   // --inspect re-reads tags for files already in the DB (default index skips any known filePath), so
   // replaced or re-tagged files are picked up without a destructive --overwrite pass.
   'inspect': () => terminal.run('./index', ['--inspect']),
   'index': () => terminal.run('./index', []),
-  'sync': () => terminal.run('./sync', []),
+  'sync': async () => {
+    await terminal.runSequence([
+      { command: './sync', args: [] },
+      { command: './tidy', args: [] },
+    ])
+  },
 }
 
 const visibleActions = computed(() => visibleScanActions(isAdmin.value))

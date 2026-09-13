@@ -273,10 +273,13 @@ pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_co
     if clear_stale_lock_minutes(pool, 10).await {
         eprintln!("{}", "Cleared a stale lock.".yellow());
     }
-    if let Err(e) = acquire_lock(pool, "delete", std::process::id(), "").await {
-        eprintln!("{}: {}", "Cannot start".red(), e);
-        std::process::exit(1);
-    }
+    let _lock_guard = match acquire_lock(pool, "delete", std::process::id(), "").await {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("{}: {}", "Cannot start".red(), e);
+            std::process::exit(1);
+        }
+    };
 
     // Images deleted before the transaction, same ordering as the artist path - once the row is
     // gone there is nothing left telling us which files to remove.

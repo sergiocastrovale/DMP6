@@ -1,6 +1,58 @@
-use crate::mb_types::{MbRelease, MbTrack};
+use crate::db::LocalTrackRow;
+use crate::mb_types::{MbMedia, MbRelease, MbTrack};
 use common::types::TrackMeta;
 use unicode_normalization::UnicodeNormalization;
+
+/// Build tag-comparison shims from local DB rows. File path, size, mtime, content hash, and the
+/// multi-value artist frames are index-time concerns and are never read back from these shims.
+pub fn track_metas_from_rows(rows: &[LocalTrackRow]) -> Vec<TrackMeta> {
+    let now = chrono::Utc::now().naive_utc();
+    rows.iter()
+        .map(|t| TrackMeta {
+            file_path: String::new(),
+            file_size: 0,
+            mtime: now,
+            title: t.title.clone(),
+            artist: t.artist.clone(),
+            album_artist: None,
+            album: None,
+            year: None,
+            genre: None,
+            track_number: t.track_number,
+            disc_number: t.disc_number,
+            duration: None,
+            bitrate: None,
+            sample_rate: None,
+            position: None,
+            content_hash: String::new(),
+            metadata_json: serde_json::Value::Null,
+            has_picture: false,
+            mb_release_id: t.mb_release_id.clone(),
+            mb_release_group_id: t.mb_release_group_id.clone(),
+            mb_album_artist_id: t.mb_album_artist_id.clone(),
+            artists: Vec::new(),
+            album_artists: Vec::new(),
+            mb_artist_ids: Vec::new(),
+            mb_album_artist_ids: Vec::new(),
+        })
+        .collect()
+}
+
+pub fn format_from_media(media: &Option<Vec<MbMedia>>) -> Option<String> {
+    let media = media.as_ref()?;
+    let mut formats: Vec<String> = media
+        .iter()
+        .filter_map(|m| m.format.as_deref())
+        .map(|s| s.to_string())
+        .collect();
+    formats.sort();
+    formats.dedup();
+    if formats.is_empty() {
+        None
+    } else {
+        Some(formats.join(", "))
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Title normalisation
@@ -355,6 +407,37 @@ mod tests {
 
     fn track_ids(n: usize) -> Vec<String> {
         (0..n).map(|i| format!("local-track-{i}")).collect()
+    }
+
+    #[test]
+    fn track_metas_from_rows_carries_the_comparison_fields_and_drops_the_rest() {
+        let rows = vec![crate::db::LocalTrackRow {
+            id: "t1".into(),
+            title: Some("Ring Ring".into()),
+            artist: Some("ABBA".into()),
+            mb_release_id: Some("mb-release".into()),
+            mb_release_group_id: Some("mb-rg".into()),
+            mb_album_artist_id: Some("mb-artist".into()),
+            track_number: Some(1),
+            disc_number: Some(2),
+        }];
+
+        let metas = track_metas_from_rows(&rows);
+
+        assert_eq!(metas.len(), 1);
+        let m = &metas[0];
+        assert_eq!(m.title.as_deref(), Some("Ring Ring"));
+        assert_eq!(m.artist.as_deref(), Some("ABBA"));
+        assert_eq!(m.mb_release_id.as_deref(), Some("mb-release"));
+        assert_eq!(m.mb_release_group_id.as_deref(), Some("mb-rg"));
+        assert_eq!(m.mb_album_artist_id.as_deref(), Some("mb-artist"));
+        assert_eq!(m.track_number, Some(1));
+        assert_eq!(m.disc_number, Some(2));
+        // File-path/hash/multi-value fields are a DB-row shim only, never read back from here.
+        assert_eq!(m.file_path, "");
+        assert_eq!(m.content_hash, "");
+        assert!(m.artists.is_empty());
+        assert!(m.album_artists.is_empty());
     }
 
     fn mb_track(id: &str, title: &str) -> MbTrack {

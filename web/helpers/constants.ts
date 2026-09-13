@@ -105,6 +105,7 @@ export const DL_POLL_MONITORED_MS = 30000
 export const commandLabels: Record<string, string> = {
   './index': 'Indexing library…',
   './sync': 'Syncing with MusicBrainz…',
+  './tidy': 'Tidying library…',
   './refresh': 'Refreshing library…',
   './audit': 'Auditing metadata…',
   './fix': 'Applying fixes…',
@@ -119,11 +120,11 @@ export const commandLabels: Record<string, string> = {
 // rejects those for non-admins anyway (DESTRUCTIVE_FLAGS in server/utils/terminalCommand.ts); hiding
 // them here just avoids offering a button that is guaranteed to 403.
 export const scanActions = [
-  { id: 'check', icon: 'Search', text: 'Check for new files', subtext: 'Index new files & sync', admin: false },
+  { id: 'check', icon: 'Search', text: 'Check for new files', subtext: 'Index new files, sync & tidy', admin: false },
   { id: 'full', icon: 'RefreshCw', text: 'Full re-scan', subtext: 'Re-read every tag, prune missing files, rematch', admin: true },
   { id: 'inspect', icon: 'FileSearch', text: 'Re-check changed files', subtext: 'Re-read tags for files that changed on disk', admin: false },
   { id: 'index', icon: 'HardDriveDownload', text: 'Index only', subtext: 'Index new local files', admin: false },
-  { id: 'sync', icon: 'Globe', text: 'Sync only', subtext: 'Sync pending releases against MusicBrainz', admin: false },
+  { id: 'sync', icon: 'Globe', text: 'Sync only', subtext: 'Sync pending releases, then tidy', admin: false },
 ] as const
 
 export type ScanAction = (typeof scanActions)[number]

@@ -87,7 +87,7 @@ describe('runAutoScan', () => {
     cb(...result)
   }
 
-  it('runs index then sync, in order, and stamps lastRunAt', async () => {
+  it('runs index then sync then tidy, in order, and stamps lastRunAt', async () => {
     const calls: string[] = []
     execFileMock.mockImplementation((...args: unknown[]) => {
       calls.push(String(args[0]))
@@ -98,6 +98,7 @@ describe('runAutoScan', () => {
 
     expect(calls[0]).toContain('/index')
     expect(calls[1]).toContain('/sync')
+    expect(calls[2]).toContain('/tidy')
     expect(prismaMocks.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'main' } }))
   })
 

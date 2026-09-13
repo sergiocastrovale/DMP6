@@ -60,6 +60,18 @@ impl Reporter {
         }));
     }
 
+    /// `./tidy`'s own web-mode progress line - `step` names the current pipeline phase (e.g.
+    /// "Re-scoring"), since tidy has no single "current item" the way index has a folder or sync an
+    /// artist.
+    pub fn tidy_progress(&self, step: &str, current: usize, total: usize) {
+        self.emit_json(&serde_json::json!({
+            "phase": "tidy",
+            "step": step,
+            "current": current,
+            "total": total,
+        }));
+    }
+
     // ----- Structural output (both modes) -----
 
     /// Script banner. Rendered as a colored header in console mode,

@@ -1,15 +1,14 @@
 //! Real-file round trips for `common::tags`: every format the library holds, generated with ffmpeg
 //! (the `sync/tests/catalogue_smoke.rs` pattern), written through the production helpers and read
-//! back. Guards the release-track vs recording slot mix-up that `--repair-recording-tags` undoes.
-//! Skips with a message when ffmpeg is not on PATH.
+//! back. Guards the release-track vs recording slot mix-up `write_mb_ids`'s stale-recording self-heal
+//! corrects. Skips with a message when ffmpeg is not on PATH.
 
-use common::tags::{apply_recording_fix, read_track_mb_ids, write_mb_ids, MbTagIds, RecordingFix};
+use common::tags::{write_mb_ids, MbTagIds};
 use lofty::prelude::*;
 use lofty::probe::Probe;
 use lofty::tag::ItemKey;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, SystemTime};
 
 const RELEASE_TRACK: &str = "11111111-1111-4111-8111-111111111111";
 const RECORDING: &str = "22222222-2222-4222-8222-222222222222";
@@ -134,11 +133,6 @@ fn writes_release_track_and_recording_into_their_own_slots() {
             "{ext}"
         );
         assert_eq!(title(&file).as_deref(), Some("Fixture Title"), "{ext}");
-        assert_eq!(
-            read_track_mb_ids(&file).unwrap(),
-            (Some(RECORDING.to_string()), Some(RELEASE_TRACK.to_string())),
-            "{ext}"
-        );
     }
 }
 
@@ -277,56 +271,3 @@ fn keeps_a_genuine_recording_id_without_force() {
     }
 }
 
-#[test]
-fn recording_fix_touches_only_the_recording_slot_and_keeps_mtime() {
-    if !ffmpeg_available() {
-        return;
-    }
-    let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000_000);
-    for (ext, codec) in FORMATS {
-        for fix in [
-            RecordingFix::Replace(RECORDING.to_string()),
-            RecordingFix::Blank,
-        ] {
-            let file = fixture(ext, codec);
-            seed(&file, RELEASE_TRACK, Some(ALBUM));
-            std::fs::File::options()
-                .write(true)
-                .open(&file)
-                .unwrap()
-                .set_times(std::fs::FileTimes::new().set_modified(old))
-                .unwrap();
-
-            assert!(
-                apply_recording_fix(&file, &fix, RELEASE_TRACK).unwrap(),
-                "{ext}"
-            );
-
-            let expected = match &fix {
-                RecordingFix::Replace(rec) => Some(rec.clone()),
-                _ => None,
-            };
-            assert_eq!(
-                get(&file, ItemKey::MusicBrainzRecordingId),
-                expected,
-                "{ext} {fix:?}"
-            );
-            assert_eq!(
-                get(&file, ItemKey::MusicBrainzTrackId).as_deref(),
-                Some(RELEASE_TRACK),
-                "{ext}"
-            );
-            assert_eq!(
-                get(&file, ItemKey::MusicBrainzReleaseId).as_deref(),
-                Some(ALBUM),
-                "{ext}"
-            );
-            assert_eq!(title(&file).as_deref(), Some("Fixture Title"), "{ext}");
-            assert_eq!(
-                std::fs::metadata(&file).unwrap().modified().unwrap(),
-                old,
-                "{ext}"
-            );
-        }
-    }
-}

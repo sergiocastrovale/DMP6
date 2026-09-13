@@ -52,6 +52,7 @@ model Artist {
   totalTracks         Int                        @default(0)
   totalFileSize       BigInt                     @default(0)
   lastSyncedAt        DateTime?
+  lastTidiedAt        DateTime?
   lastIndexedAt       DateTime?
   createdAt           DateTime                   @default(now())
   updatedAt           DateTime                   @updatedAt

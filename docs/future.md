@@ -1,10 +1,12 @@
 # Ideas and future features
-
 - Advanced catalogue exploration: filter by decade, mood, intensity in a unified view.
 - Non-admin (VIEWER/MANAGER) users hitting a blank catalogue page in some cases — needs
   reproduction + root-causing.
 - Standardize output format, iconography, and styling across all Rust scripts (`index`, `sync`,
   `audit`, `fix`, etc.) so terminal output looks consistent regardless of which one is running.
+
+- Playlist generation manager - edits the json which sets the rules for the generator
+
 
 GENERAL
 
@@ -25,9 +27,6 @@ Artist Damageplan shows an unmatched "Uncivilization" (Feat. Corey Taylor, Slith
 a while ago you made it so claim_owned_bundle handles the "one folder covering an extra MB release" cases. I want to revisit this as it might be tremendously flawed. First: what are we even fixing with this? Give solid examples. 
 
 UI 
-
-If we search for 'HIM' the 5 results are not what I want. I need a new search/{artists,releases,tracks} page which shows all results for the query, with pagination.
-
 
 LIBRARY
 

@@ -31,6 +31,7 @@ const artistActions: Record<string, (name: string, folders: string[]) => () => P
     await terminal.runSequence([
       { command: './index', args: ['--folders', folders.join(';')], session },
       { command: './sync', args: ['--only', name, '--exact'], session },
+      { command: './tidy', args: [], session },
     ])
   },
   'rebuild': (name, folders) => async () => {
@@ -39,6 +40,7 @@ const artistActions: Record<string, (name: string, folders: string[]) => () => P
       { command: './delete', args: [name, '--y'], session },
       { command: './index', args: ['--folders', folders.join(';'), '--overwrite'], session },
       { command: './sync', args: ['--only', name, '--exact', '--overwrite'], session },
+      { command: './tidy', args: [], session },
     ])
   },
   'reindex': (name, folders) => async () => {
@@ -49,7 +51,11 @@ const artistActions: Record<string, (name: string, folders: string[]) => () => P
     ])
   },
   'resync': (name) => async () => {
-    await terminal.run('./sync', ['--only', name, '--exact', '--overwrite'], scanSessionName('resync', name))
+    const session = scanSessionName('resync', name)
+    await terminal.runSequence([
+      { command: './sync', args: ['--only', name, '--exact', '--overwrite'], session },
+      { command: './tidy', args: [], session },
+    ])
   },
 }
 

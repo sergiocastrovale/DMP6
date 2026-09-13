@@ -3,6 +3,10 @@ name = "sync"
 version = "1.0.0"
 edition = "2021"
 
+[lib]
+name = "dmp_sync"
+path = "src/lib.rs"
+
 [[bin]]
 name = "sync"
 path = "src/main.rs"

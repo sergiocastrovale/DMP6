@@ -129,6 +129,7 @@ test.describe('artist scan dropdown', () => {
     await expect.poll(() => runs).toEqual([
       { command: './index', args: ['--folders', artistName] },
       { command: './sync', args: ['--only', artistName, '--exact'] },
+      { command: './tidy', args: [] },
     ])
   })
 
@@ -142,6 +143,7 @@ test.describe('artist scan dropdown', () => {
       { command: './delete', args: [artistName, '--y'] },
       { command: './index', args: ['--folders', artistName, '--overwrite'] },
       { command: './sync', args: ['--only', artistName, '--exact', '--overwrite'] },
+      { command: './tidy', args: [] },
     ])
   })
 
@@ -163,6 +165,7 @@ test.describe('artist scan dropdown', () => {
 
     await expect.poll(() => runs).toEqual([
       { command: './sync', args: ['--only', artistName, '--exact', '--overwrite'] },
+      { command: './tidy', args: [] },
     ])
   })
 })
@@ -176,6 +179,7 @@ test.describe('global scan grid (/settings/library)', () => {
     await expect.poll(() => runs).toEqual([
       { command: './index', args: [] },
       { command: './sync', args: [] },
+      { command: './tidy', args: [] },
     ])
   })
 
@@ -187,6 +191,7 @@ test.describe('global scan grid (/settings/library)', () => {
     await expect.poll(() => runs).toEqual([
       { command: './index', args: ['--overwrite-with-images'] },
       { command: './sync', args: ['--overwrite'] },
+      { command: './tidy', args: [] },
     ])
     // A half-mounted share during a whole-library pass is exactly what the ratio guard defends
     // against, so --prune stays a per-artist tool.
@@ -234,6 +239,7 @@ test.describe('manager (non-admin)', () => {
     await expect.poll(() => runs).toEqual([
       { command: './index', args: ['--folders', artistName] },
       { command: './sync', args: ['--only', artistName, '--exact'] },
+      { command: './tidy', args: [] },
     ])
   })
 
