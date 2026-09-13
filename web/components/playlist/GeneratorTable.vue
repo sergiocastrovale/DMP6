@@ -76,16 +76,14 @@ onMounted(() => loadRows())
       </div>
     </PageTitle>
 
-    <UiHint class="flex flex-col gap-2">
-      <div>A <span class="text-stone-100">Genre</span> generator's terms are keywords, one per line: a
+    <UiHint>
+      A <span class="text-stone-100">Genre</span> generator's terms are keywords, one per line — a
       library genre matches if it equals a line exactly, or contains it as a whole word ("rock"
-      also catches "hard rock"). </div>
-
-      <div> A <span class="text-stone-100">Region</span> generator's terms are ISO 3166-1 alpha-2 country codes (e.g. "JP"), matched against each artist's country. </div>
-
-      <div> A line starting with "-" excludes an exact genre name instead (e.g. "-indie rock"). </div>
-
-      <div> Each run selects up to 500 tracks per playlist, max 3 per release, and skips groups under 10 tracks. Changes here take effect on the next Generate/Regenerate. </div>
+      also catches "hard rock"); a line starting with "-" excludes an exact genre name instead
+      (e.g. "-indie rock"). A <span class="text-stone-100">Region</span> generator's terms are
+      ISO 3166-1 alpha-2 country codes (e.g. "JP"), matched against each artist's country. Each
+      run selects up to 500 tracks per playlist, max 3 per release, and skips groups under 10
+      tracks. Changes here take effect on the next Generate/Regenerate.
     </UiHint>
 
     <UiLoadingBlock v-if="loading" />

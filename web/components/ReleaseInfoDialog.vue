@@ -131,7 +131,7 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
             <div class="text-stone-100/70 text-sm">
               <span>Every track of this release appears inside </span>
               <span class="text-white">{{ containmentContainer }}</span>
-              <span> (literally the same edition, as per MusicBrainz).</span>
+              <span> — a different edition, so this one still counts as missing and can be downloaded on its own.</span>
             </div>
           </div>
           <div v-if="release.year">
