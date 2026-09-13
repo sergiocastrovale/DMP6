@@ -1,11 +1,15 @@
 use sqlx::PgPool;
 
-// Completeness = owned album/EP releases / total album/EP catalogue. A release the artist owns
-// (matched to a non-MISSING MusicBrainzRelease) counts as 1, a MISSING gap as 0. NULL when the
-// artist has no album/EP catalogue. Pure SQL over the MB catalogue - no track/file scan, no API
-// calls. Lives in `common` (not `sync`, a bin-only crate) so `delete --release` can recompute an
-// owner's completeness too, after dropping a release changes nothing about their MB catalogue size
-// but can flip a MISSING gap back into existence.
+// Completeness = fully-COMPLETE album/EP releases / determinable album/EP catalogue.
+// UNKNOWN/UNMATCHED releases are excluded entirely (as if they don't exist yet - no verdict to
+// count either way); every other status (COMPLETE, INCOMPLETE, EXTRA_TRACKS, MISSING_TRACKS,
+// MISSING) counts toward the denominator, but only COMPLETE counts toward the numerator - a
+// MISSING_TRACKS or INCOMPLETE release is matched but not actually complete, and must not inflate
+// the score the way "anything but MISSING" used to. NULL when there is no determinable catalogue.
+// Pure SQL over the MB catalogue - no track/file scan, no API calls. Lives in `common` (not
+// `sync`, a bin-only crate) so `delete --release` can recompute an owner's completeness too, after
+// dropping a release changes nothing about their MB catalogue size but can flip a MISSING gap back
+// into existence.
 pub async fn recompute_artist_completeness(
     pool: &PgPool,
     artist_id: &str,
@@ -15,12 +19,13 @@ pub async fn recompute_artist_completeness(
            SET "completeness" = sub.completeness, "updatedAt" = NOW()
            FROM (
              SELECT CASE WHEN COUNT(*) = 0 THEN NULL
-                         ELSE COUNT(*) FILTER (WHERE mr.status::text <> 'MISSING')::float8 / COUNT(*)
+                         ELSE COUNT(*) FILTER (WHERE mr.status::text = 'COMPLETE')::float8 / COUNT(*)
                     END AS completeness
              FROM "MusicBrainzReleaseArtist" mra
              JOIN "MusicBrainzRelease" mr ON mr.id = mra."releaseId"
              JOIN "ReleaseType" rt ON rt.id = mr."typeId"
              WHERE mra."artistId" = $1 AND rt.slug IN ('album', 'ep')
+               AND mr.status::text NOT IN ('UNKNOWN', 'UNMATCHED')
            ) sub
            WHERE a.id = $1"#,
     )

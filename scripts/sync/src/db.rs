@@ -954,19 +954,23 @@ pub async fn update_artist_sync_stats(
 pub use common::totals::recompute_artist_completeness;
 
 // Set-based backfill of recompute_artist_completeness for every artist. Returns the count of
-// artists with an album/EP catalogue that got a completeness value; artists without one are reset
-// to NULL. Runs in seconds.
+// artists with a determinable album/EP catalogue that got a completeness value; artists without
+// one are reset to NULL. UNKNOWN/UNMATCHED releases are excluded from the catalogue entirely (see
+// common::totals::recompute_artist_completeness) - both queries below filter them out, or an
+// artist with only UNKNOWN/UNMATCHED releases would wrongly look like it has none. Runs in
+// seconds.
 pub async fn recompute_all_completeness(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let scored = sqlx::query(
         r#"UPDATE "Artist" a
            SET "completeness" = sub.completeness, "updatedAt" = NOW()
            FROM (
              SELECT mra."artistId" AS aid,
-                    COUNT(*) FILTER (WHERE mr.status::text <> 'MISSING')::float8 / COUNT(*) AS completeness
+                    COUNT(*) FILTER (WHERE mr.status::text = 'COMPLETE')::float8 / COUNT(*) AS completeness
              FROM "MusicBrainzReleaseArtist" mra
              JOIN "MusicBrainzRelease" mr ON mr.id = mra."releaseId"
              JOIN "ReleaseType" rt ON rt.id = mr."typeId"
              WHERE rt.slug IN ('album', 'ep')
+               AND mr.status::text NOT IN ('UNKNOWN', 'UNMATCHED')
              GROUP BY mra."artistId"
            ) sub
            WHERE a.id = sub.aid"#,
@@ -984,6 +988,7 @@ pub async fn recompute_all_completeness(pool: &PgPool) -> Result<u64, sqlx::Erro
                JOIN "MusicBrainzRelease" mr ON mr.id = mra."releaseId"
                JOIN "ReleaseType" rt ON rt.id = mr."typeId"
                WHERE mra."artistId" = a.id AND rt.slug IN ('album', 'ep')
+                 AND mr.status::text NOT IN ('UNKNOWN', 'UNMATCHED')
              )"#,
     )
     .execute(pool)
