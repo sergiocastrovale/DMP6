@@ -292,9 +292,10 @@ export const typography = {
   eyebrow: 'inline-flex items-center gap-2 font-mono text-2xs tracking-[0.24em] uppercase text-stone-100/55',
 }
 
-// A pill that carries its colour as a *border + tinted fill* rather than a solid one: match-score
-// bands, completeness, Labs maturity. Pair it with a toneBg entry (or a scoreRanges bg/text pair)
-// for the colour - this recipe is shape only, so the two never fight over the same property.
+// A pill that carries its colour as a *border + tinted fill* rather than a solid one:
+// completeness bands, Labs maturity. Pair it with a toneBg entry (or a completenessRanges
+// bg/text pair) for the colour - this recipe is shape only, so the two never fight over the
+// same property.
 export const outlinePill = 'inline-flex items-center gap-1 px-2.5 py-[3px] rounded-full border text-sm font-bold tabular-nums'
 
 export const layout = {

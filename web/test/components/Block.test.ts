@@ -32,9 +32,9 @@ describe('Block.vue', () => {
     expect(wrapper.text()).toContain('Alternative Rock')
   })
 
-  it('renders the match score pill when a score is provided', async () => {
-    const wrapper = await mountSuspended(Block, { props: { id: '1', title: 'OK Computer', score: 0.82 } })
-    expect(wrapper.text()).toContain('82% match')
+  it('renders the completeness pill when a completeness value is provided', async () => {
+    const wrapper = await mountSuspended(Block, { props: { id: '1', title: 'OK Computer', completeness: 0.82 } })
+    expect(wrapper.text()).toContain('82% complete')
   })
 
   it('renders the play/pause control only when playable with a releaseId', async () => {

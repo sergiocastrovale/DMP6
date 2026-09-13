@@ -60,10 +60,10 @@ onMounted(() => {
       <BrowseFilterSortDirection :direction="store.sortDir" @toggle="store.toggleSortDir" />
       <BrowseFilterSort :active="store.sortBy" @select="store.setSortBy" />
       <BrowseFilterGenre :active="store.genreFilter" @select="store.setGenreFilter" />
-      <BrowseFilterScore
-        :min-score="store.minScore"
-        :max-score="store.maxScore"
-        @update:range="store.setScoreRange"
+      <BrowseFilterCompleteness
+        :min-completeness="store.minCompleteness"
+        :max-completeness="store.maxCompleteness"
+        @update:range="store.setCompletenessRange"
       />
       <div class="flex-1" />
       <ArtistListToggle v-model="browseViewMode" :options="BROWSE_VIEW_OPTIONS" />

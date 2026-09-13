@@ -2135,7 +2135,7 @@ async fn main() {
                 .await
                 .ok();
             // Recompute catalogue-completeness now that this artist's MISSING gaps have been (re)written.
-            recompute_artist_match_score(&pool, &artist.id).await.ok();
+            recompute_artist_completeness(&pool, &artist.id).await.ok();
         }
 
         if !is_targeted {

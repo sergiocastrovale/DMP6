@@ -13,7 +13,7 @@ const artist = (overrides: Partial<ReturnType<typeof useBrowseStore>['artists'][
   slug: 'artist',
   image: null,
   imageUrl: null,
-  averageMatchScore: null,
+  completeness: null,
   totalPlayCount: 0,
   totalTracks: 0,
   releaseCount: 0,

@@ -6,7 +6,7 @@ import type { Artist } from '../../../types/artist'
 
 const artist: Artist = {
   id: 'a1', name: 'Boards of Canada', slug: 'boards-of-canada', image: null, imageUrl: null,
-  averageMatchScore: null, totalPlayCount: 0, totalTracks: 0, musicbrainzId: null,
+  completeness: null, totalPlayCount: 0, totalTracks: 0, musicbrainzId: null,
   totalFileSize: 0, lastSyncedAt: null, genres: [], urls: [],
 }
 

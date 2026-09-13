@@ -78,8 +78,8 @@ and `running` (Ctrl-C/SIGTERM sets this false) gate the final watermark stamp.
 7. **Artist identity repair** (global, pure SQL, always runs regardless of scope):
    `repair_all_empty_primaries` → `repair_contradicted_identities` → `repair_shared_identities`, in that
    order (docs/sync_decisions.md §5/§6). Moved verbatim from `sync --repair-artist-identities`.
-8. **Scores**: `--all` (unscoped run) → `recompute_all_match_scores` (one set-based UPDATE). Otherwise
-   `common::totals::recompute_artist_match_score` for every scoped artist **plus** every owner
+8. **Completeness**: `--all` (unscoped run) → `recompute_all_completeness` (one set-based UPDATE). Otherwise
+   `common::totals::recompute_artist_completeness` for every scoped artist **plus** every owner
    (`LocalReleaseArtist`) of a release the box pass or re-score actually touched — a sibling group
    frequently spans more than one artist's folders.
 9. **Statistics**: `common::statistics::update_statistics`.
@@ -130,7 +130,7 @@ See `CLAUDE.md`'s scan-buttons paragraph for the exact button → command-sequen
 
 One elapsed-time line, then: empty releases removed; orphans/placeholders retired (both rounds); box
 groups seen/bound/folded/dissolved/key-taken/failed; re-scored counts per status + deferred; identity
-Pass A/B/C counts; scores recomputed; artists stamped (or "NOT stamped: errors" / "NOT stamped:
+Pass A/B/C counts; completeness recomputed; artists stamped (or "NOT stamped: errors" / "NOT stamped:
 interrupted").
 
 ## Relation to sync

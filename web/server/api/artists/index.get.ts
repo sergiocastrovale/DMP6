@@ -19,10 +19,10 @@ export default defineEventHandler(async (event) => {
   // default (names A-Z, quantities biggest-first).
   const order = resolveSortDirection(sort, query.order)
   const search = (query.search as string)?.trim() || null
-  const minScore = query.minScore ? Number(query.minScore) : null
-  const maxScore = query.maxScore ? Number(query.maxScore) : null
+  const minCompleteness = query.minCompleteness ? Number(query.minCompleteness) : null
+  const maxCompleteness = query.maxCompleteness ? Number(query.maxCompleteness) : null
 
-  const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genre ?? ''}:s=${sort}:o=${order}:q=${search ?? ''}:min=${minScore ?? ''}:max=${maxScore ?? ''}`
+  const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genre ?? ''}:s=${sort}:o=${order}:q=${search ?? ''}:min=${minCompleteness ?? ''}:max=${maxCompleteness ?? ''}`
 
   return cachedResponse(cacheKey, 120, async () => {
     // Credit-only artists (MB-verified 'appears on' entries that own no release) have their own page
@@ -41,10 +41,10 @@ export default defineEventHandler(async (event) => {
       where.genres = { some: { name: genre } }
     }
 
-    if (minScore !== null || maxScore !== null) {
-      where.averageMatchScore = {}
-      if (minScore !== null) {(where.averageMatchScore as Record<string, number>).gte = minScore / 100}
-      if (maxScore !== null) {(where.averageMatchScore as Record<string, number>).lte = maxScore / 100}
+    if (minCompleteness !== null || maxCompleteness !== null) {
+      where.completeness = {}
+      if (minCompleteness !== null) {(where.completeness as Record<string, number>).gte = minCompleteness / 100}
+      if (maxCompleteness !== null) {(where.completeness as Record<string, number>).lte = maxCompleteness / 100}
     }
 
     const selectFields = {
@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
       slug: true,
       image: true,
       imageUrl: true,
-      averageMatchScore: true,
+      completeness: true,
       totalPlayCount: true,
       totalTracks: true,
     }
@@ -95,11 +95,11 @@ export default defineEventHandler(async (event) => {
       case 'playCount':
         orderBy.totalPlayCount = order
         break
-      case 'score':
-        // Null scores (never MB-matched) must sink to the bottom regardless of direction -
-        // Postgres' default is NULLS LAST only for ASC, NULLS FIRST for DESC, which would put
-        // unmatched artists above every real score on the default (desc) sort.
-        orderBy.averageMatchScore = { sort: order, nulls: 'last' }
+      case 'completeness':
+        // Null completeness (no album/EP catalogue, never MB-matched) must sink to the bottom
+        // regardless of direction - Postgres' default is NULLS LAST only for ASC, NULLS FIRST for
+        // DESC, which would put unmatched artists above every real value on the default (desc) sort.
+        orderBy.completeness = { sort: order, nulls: 'last' }
         break
       case 'recent':
         orderBy.createdAt = order

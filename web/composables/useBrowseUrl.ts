@@ -7,8 +7,8 @@ const params: BrowseFilterParam[] = [
   { key: 'genre', storeKey: 'genreFilter' },
   { key: 'sort', storeKey: 'sortBy', default: 'name' },
   { key: 'mode', storeKey: 'viewMode', default: 'expanded' },
-  { key: 'minScore', storeKey: 'minScore', type: 'number' },
-  { key: 'maxScore', storeKey: 'maxScore', type: 'number' },
+  { key: 'minCompleteness', storeKey: 'minCompleteness', type: 'number' },
+  { key: 'maxCompleteness', storeKey: 'maxCompleteness', type: 'number' },
 ]
 
 export const useBrowseUrl = () => {

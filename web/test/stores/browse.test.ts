@@ -20,10 +20,10 @@ describe('useBrowseStore', () => {
     const store = useBrowseStore()
     store.searchQuery = 'boards'
     store.letterFilter = 'B'
-    store.minScore = 40
+    store.minCompleteness = 40
     await store.fetchArtists()
     expect(fetchMock).toHaveBeenCalledWith('/api/artists', expect.objectContaining({
-      params: { page: 1, pageSize: 48, sort: 'name', order: 'asc', search: 'boards', letter: 'B', minScore: 40 },
+      params: { page: 1, pageSize: 48, sort: 'name', order: 'asc', search: 'boards', letter: 'B', minCompleteness: 40 },
     }))
   })
 

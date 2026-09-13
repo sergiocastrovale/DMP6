@@ -951,17 +951,18 @@ pub async fn update_artist_sync_stats(
 
 // Moved to `common::totals` so `delete --release` can call it too, without depending on this bin-only
 // crate - re-exported here so the `db::*` glob import in main.rs keeps working unchanged.
-pub use common::totals::recompute_artist_match_score;
+pub use common::totals::recompute_artist_completeness;
 
-// Set-based backfill of recompute_artist_match_score for every artist. Returns the count of artists with an
-// album/EP catalogue that got a score; artists without one are reset to NULL. Runs in seconds.
-pub async fn recompute_all_match_scores(pool: &PgPool) -> Result<u64, sqlx::Error> {
+// Set-based backfill of recompute_artist_completeness for every artist. Returns the count of
+// artists with an album/EP catalogue that got a completeness value; artists without one are reset
+// to NULL. Runs in seconds.
+pub async fn recompute_all_completeness(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let scored = sqlx::query(
         r#"UPDATE "Artist" a
-           SET "averageMatchScore" = sub.score, "updatedAt" = NOW()
+           SET "completeness" = sub.completeness, "updatedAt" = NOW()
            FROM (
              SELECT mra."artistId" AS aid,
-                    COUNT(*) FILTER (WHERE mr.status::text <> 'MISSING')::float8 / COUNT(*) AS score
+                    COUNT(*) FILTER (WHERE mr.status::text <> 'MISSING')::float8 / COUNT(*) AS completeness
              FROM "MusicBrainzReleaseArtist" mra
              JOIN "MusicBrainzRelease" mr ON mr.id = mra."releaseId"
              JOIN "ReleaseType" rt ON rt.id = mr."typeId"
@@ -975,8 +976,8 @@ pub async fn recompute_all_match_scores(pool: &PgPool) -> Result<u64, sqlx::Erro
 
     sqlx::query(
         r#"UPDATE "Artist" a
-           SET "averageMatchScore" = NULL, "updatedAt" = NOW()
-           WHERE a."averageMatchScore" IS NOT NULL
+           SET "completeness" = NULL, "updatedAt" = NOW()
+           WHERE a."completeness" IS NOT NULL
              AND NOT EXISTS (
                SELECT 1
                FROM "MusicBrainzReleaseArtist" mra

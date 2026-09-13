@@ -161,12 +161,12 @@ export const queueFilters: { key: string, label: string, statuses: string[] }[] 
   { key: 'rejected', label: 'Rejected', statuses: ['REJECTED'] },
 ]
 
-// The five match-score bands. Five steps need more granularity than the six semantic tones
+// The five completeness bands. Five steps need more granularity than the six semantic tones
 // (accent/success/warning/danger/info/muted) give a single status, so this walks the red ->
 // orange -> amber -> green ramps directly instead of going through a tone - kept in the same
-// {color,textColor,bgColor} shape as before so consumers (FilterScore, AverageMatchScore) don't
+// {color,textColor,bgColor} shape as before so consumers (FilterCompleteness, Completeness) don't
 // need a second change when their own page is retokenised.
-export const scoreRanges = [
+export const completenessRanges = [
   { min: 0, max: 20, label: '0% – 20%', color: 'bg-red-400', textColor: 'text-red-400', bgColor: 'bg-red-400/15' },
   { min: 20, max: 40, label: '20% – 40%', color: 'bg-orange-500', textColor: 'text-orange-500', bgColor: 'bg-orange-500/15' },
   { min: 40, max: 60, label: '40% – 60%', color: 'bg-orange-400', textColor: 'text-orange-400', bgColor: 'bg-orange-400/15' },
@@ -174,8 +174,8 @@ export const scoreRanges = [
   { min: 80, max: 100, label: '80% – 100%', color: 'bg-green-500', textColor: 'text-green-500', bgColor: 'bg-green-500/15' },
 ]
 
-export const getScoreRange = (score: number) =>
-  scoreRanges.find(r => score >= r.min && score < r.max) ?? scoreRanges.at(-1)!
+export const getCompletenessRange = (completeness: number) =>
+  completenessRanges.find(r => completeness >= r.min && completeness < r.max) ?? completenessRanges.at(-1)!
 
 // DownloadedRelease.status -> colour, shared by DownloadProgress's bar and any per-release
 // "Downloading"/"Enriching" pill (artist/ReleaseGroupDetails.vue) so the two always agree.

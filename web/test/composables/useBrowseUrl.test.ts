@@ -32,12 +32,12 @@ describe('useBrowseUrl', () => {
   })
 
   it('initFromUrl coerces number-typed params', () => {
-    routeRef.query = { minScore: '40', maxScore: '80' }
+    routeRef.query = { minCompleteness: '40', maxCompleteness: '80' }
     const { initFromUrl } = useBrowseUrl()
     initFromUrl()
     const store = useBrowseStore()
-    expect(store.minScore).toBe(40)
-    expect(store.maxScore).toBe(80)
+    expect(store.minCompleteness).toBe(40)
+    expect(store.maxCompleteness).toBe(80)
   })
 
   it('initFromUrl returns false when there are no relevant query params', () => {

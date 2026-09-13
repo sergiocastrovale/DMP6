@@ -50,8 +50,8 @@ So operators run sync twice. Other repairs hide behind standalone flags: `--repa
 7. `update_statistics`, `clear_run_hash`, `release_lock`.
 
 ### Standalone sync flags (clap `SyncArgs` main.rs:40-120)
-- **`--recompute-scores`** (464 → `db::recompute_all_match_scores` db.rs:716, pure SQL, only touches
-  `averageMatchScore`).
+- **`--recompute-scores`** (464 → `db::recompute_all_completeness` db.rs:716, pure SQL, only touches
+  `completeness`).
 - **`--repair-artist-identities`** (488 → db.rs:996/1156/1218, passes A/B/C). Pure SQL, validated
   2026-09-10, idempotent.
 - **`--repair-shared-release-ids`** (577 → repair.rs:167). **Obsolete:** the guard it paired with was
@@ -105,7 +105,7 @@ So operators run sync twice. Other repairs hide behind standalone flags: `--repa
 ### Watermark traps
 - `db::update_artist_sync_stats` (db.rs:686) **stamps `lastSyncedAt`**. Tidy must NEVER call it,
   otherwise an artist stays pending forever.
-- `common::totals::recompute_artist_match_score` only sets `averageMatchScore`, so it is safe.
+- `common::totals::recompute_artist_completeness` only sets `completeness`, so it is safe.
 
 ### Lock
 - `scripts/common/src/lock.rs`: `acquire_lock`, `release_lock`, `clear_stale_lock_minutes(10)`.
@@ -244,8 +244,8 @@ So operators run sync twice. Other repairs hide behind standalone flags: `--repa
      → `repair_shared_identities`, all global. Moved from the sync flag (keep the printing from
      main.rs:488-575).
   8. **Scores:**
-     - `--all` → `recompute_all_match_scores`.
-     - Otherwise `common::totals::recompute_artist_match_score` for each scoped artist ∪ owners
+     - `--all` → `recompute_all_completeness`.
+     - Otherwise `common::totals::recompute_artist_completeness` for each scoped artist ∪ owners
        (`LocalReleaseArtist`) of touched/re-scored releases.
   9. `update_statistics`.
   10. If `running && !had_error`:

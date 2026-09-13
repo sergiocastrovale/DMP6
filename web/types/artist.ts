@@ -3,7 +3,7 @@ import type { ArtistSummary } from './common'
 export type RelatedArtist = ArtistSummary
 
 export interface ArtistListItem extends ArtistSummary {
-  averageMatchScore: number | null
+  completeness: number | null
   totalPlayCount: number
   totalTracks: number
   releaseCount?: number

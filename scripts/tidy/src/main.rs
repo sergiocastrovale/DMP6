@@ -66,7 +66,7 @@ struct TidySummary {
     identity_pass_a: usize,
     identity_pass_b: usize,
     identity_pass_c: usize,
-    scores_recomputed: u64,
+    completeness_recomputed: u64,
     artists_stamped: usize,
 }
 
@@ -409,25 +409,25 @@ async fn main() {
         summary.identity_pass_a, summary.identity_pass_b, summary.identity_pass_c
     ));
 
-    // ---- Phase 8: scores ----
+    // ---- Phase 8: completeness ----
     reporter.blank();
     if is_global {
-        match db::recompute_all_match_scores(&pool).await {
+        match db::recompute_all_completeness(&pool).await {
             Ok(n) => {
-                summary.scores_recomputed = n;
-                reporter.done(&format!("Recomputed match scores ({} artist(s))", n));
+                summary.completeness_recomputed = n;
+                reporter.done(&format!("Recomputed completeness ({} artist(s))", n));
             }
             Err(e) => {
-                let msg = format!("recompute_all_match_scores failed: {}", e);
+                let msg = format!("recompute_all_completeness failed: {}", e);
                 reporter.warn(&msg);
                 common::error_log::log_warn(&msg);
                 had_error = true;
             }
         }
     } else {
-        let mut score_targets: HashSet<String> = scope_ids.iter().cloned().collect();
+        let mut completeness_targets: HashSet<String> = scope_ids.iter().cloned().collect();
         match db::get_owner_artist_ids_for_releases(&pool, &touched_ids).await {
-            Ok(owners) => score_targets.extend(owners),
+            Ok(owners) => completeness_targets.extend(owners),
             Err(e) => {
                 let msg = format!("get_owner_artist_ids_for_releases failed: {}", e);
                 reporter.warn(&msg);
@@ -436,17 +436,17 @@ async fn main() {
             }
         }
         let mut recomputed = 0u64;
-        for artist_id in &score_targets {
-            if common::totals::recompute_artist_match_score(&pool, artist_id)
+        for artist_id in &completeness_targets {
+            if common::totals::recompute_artist_completeness(&pool, artist_id)
                 .await
                 .is_ok()
             {
                 recomputed += 1;
             }
         }
-        summary.scores_recomputed = recomputed;
+        summary.completeness_recomputed = recomputed;
         reporter.done(&format!(
-            "Recomputed match scores ({} artist(s))",
+            "Recomputed completeness ({} artist(s))",
             recomputed
         ));
     }
@@ -522,7 +522,7 @@ async fn main() {
             summary.identity_pass_a, summary.identity_pass_b, summary.identity_pass_c
         ),
     );
-    reporter.kv("Scores recomputed", &summary.scores_recomputed.to_string());
+    reporter.kv("Completeness recomputed", &summary.completeness_recomputed.to_string());
     if running.load(Ordering::SeqCst) && !had_error {
         reporter.kv("Artists stamped", &summary.artists_stamped.to_string());
     } else {

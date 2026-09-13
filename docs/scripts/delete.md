@@ -88,7 +88,7 @@ unchecked "Remove the actual files from disk" switch. Logic lives in `delete::re
 
 Removes exactly one `LocalRelease` (cascading tracks, `LocalReleaseMember` rows, `LocalReleaseArtist`,
 `TrackRelatedArtist`, favorites, playlist rows, issues), leaving the rest of the owning artist's(s')
-catalogue untouched. Afterwards: totals/match-score recomputed for the release's former owners, a
+catalogue untouched. Afterwards: totals/completeness recomputed for the release's former owners, a
 now-ownerless owner or a now-uncredited credit-only artist is swept via the same rule
 `index::deletion::delete_orphan_artists` uses (no `LocalReleaseArtist`, `MusicBrainzReleaseArtist` or
 `TrackRelatedArtist` link left), and statistics refresh.

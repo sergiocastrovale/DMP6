@@ -30,7 +30,7 @@ export const rankedArtistIds = async (q: string, skip: number, take: number): Pr
         WHEN name ILIKE ${`% ${escapeLike(q)}%`} THEN 2
         ELSE 3
       END,
-      "averageMatchScore" DESC NULLS LAST,
+      "completeness" DESC NULLS LAST,
       name ASC,
       id ASC
     OFFSET ${skip} LIMIT ${take}

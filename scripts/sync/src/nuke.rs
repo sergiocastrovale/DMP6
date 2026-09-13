@@ -88,7 +88,7 @@ pub async fn nuke_mb_data(
         sqlx::query(
             r#"UPDATE "Artist"
                SET "musicbrainzId" = NULL,
-                   "averageMatchScore" = NULL,
+                   "completeness" = NULL,
                    "lastSyncedAt" = NULL,
                    "updatedAt" = NOW()
                WHERE id = $1"#,

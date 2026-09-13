@@ -47,7 +47,7 @@ model Artist {
   image               String?
   imageUrl            String?                    @db.Text
   musicbrainzId       String?
-  averageMatchScore   Float?
+  completeness        Float?
   totalPlayCount      Int                        @default(0)
   totalTracks         Int                        @default(0)
   totalFileSize       BigInt                     @default(0)
@@ -75,7 +75,7 @@ model Artist {
 
   @@index([musicbrainzId])
   @@index([totalPlayCount])
-  @@index([averageMatchScore])
+  @@index([completeness])
   @@index([createdAt])
   @@index([name]) // B-tree for ORDER BY name; trigram GIN index for ILIKE added via raw migration
   @@index([country])

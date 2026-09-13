@@ -4,7 +4,7 @@ import Dropdown from '../../components/Dropdown.vue'
 
 const OPTIONS = [
   { value: 'name', label: 'Name' },
-  { value: 'score', label: 'Match Score' },
+  { value: 'completeness', label: 'Completeness' },
 ]
 
 describe('Dropdown.vue', () => {
@@ -14,8 +14,8 @@ describe('Dropdown.vue', () => {
   })
 
   it('shows the selected option label', async () => {
-    const wrapper = await mountSuspended(Dropdown, { props: { options: OPTIONS, modelValue: 'score' } })
-    expect(wrapper.get('button').text()).toContain('Match Score')
+    const wrapper = await mountSuspended(Dropdown, { props: { options: OPTIONS, modelValue: 'completeness' } })
+    expect(wrapper.get('button').text()).toContain('Completeness')
   })
 
   it('opens the listbox on trigger click and closes it on selection', async () => {

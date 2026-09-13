@@ -37,7 +37,7 @@ test.beforeAll(async () => {
         slug,
         totalTracks: 20 + i * 17,
         totalPlayCount: i * 93,
-        averageMatchScore: Math.min(1, 0.35 + (i % 7) * 0.11),
+        completeness: Math.min(1, 0.35 + (i % 7) * 0.11),
         genres: { connect: [{ name: GENRES[i % GENRES.length]! }] },
       },
     })

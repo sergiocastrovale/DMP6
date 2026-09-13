@@ -10,7 +10,7 @@ const props = withDefaults(defineProps<{
   link?: string
   year?: number | null
   genre?: string | null
-  score?: number | null
+  completeness?: number | null
   image?: string | null
   playable?: boolean
   releaseId?: string
@@ -23,7 +23,7 @@ const props = withDefaults(defineProps<{
   link: undefined,
   year: undefined,
   genre: undefined,
-  score: undefined,
+  completeness: undefined,
   image: undefined,
   playable: false,
   releaseId: undefined,
@@ -42,7 +42,7 @@ const handlePlay = (e: Event) => {
   }
 }
 
-const hasMetadata = computed(() => props.year || props.genre || (props.score !== undefined && props.score !== null))
+const hasMetadata = computed(() => props.year || props.genre || (props.completeness !== undefined && props.completeness !== null))
 
 const nameClass = 'font-display font-semibold text-lg text-stone-100 truncate'
 const subClass = 'text-sm text-stone-100/55 truncate'
@@ -72,7 +72,7 @@ const metaClass = 'flex items-center gap-2 font-mono text-2xs uppercase text-sto
         <span v-if="year" class="shrink-0">{{ year }}</span>
         <Bullet v-if="year && genre" />
         <span v-if="genre" class="truncate min-w-0">{{ genre }}</span>
-        <ArtistAverageMatchScore v-if="score !== undefined && score !== null" :score="score" />
+        <ArtistCompleteness v-if="completeness !== undefined && completeness !== null" :completeness="completeness" />
       </div>
     </div>
   </NuxtLink>
@@ -120,7 +120,7 @@ const metaClass = 'flex items-center gap-2 font-mono text-2xs uppercase text-sto
         <span v-if="year" class="shrink-0">{{ year }}</span>
         <Bullet v-if="year && genre" />
         <span v-if="genre" class="truncate min-w-0">{{ genre }}</span>
-        <ArtistAverageMatchScore v-if="score !== undefined && score !== null" :score="score" />
+        <ArtistCompleteness v-if="completeness !== undefined && completeness !== null" :completeness="completeness" />
       </div>
     </div>
   </article>

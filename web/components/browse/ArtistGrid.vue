@@ -23,7 +23,7 @@ const { artistImage } = useImageUrl()
         :subtitle="`${artist.totalTracks.toLocaleString()} tracks`"
         :link="`/artist/${artist.slug}`"
         :image="artistImage(artist as Artist)"
-        :score="(artist as Artist).averageMatchScore"
+        :completeness="(artist as Artist).completeness"
       />
     </div>
 

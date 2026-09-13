@@ -4,7 +4,7 @@ import { defaultSortDirection, isSortDirection, resolveSortDirection } from '../
 describe('defaultSortDirection', () => {
   it('reads names A-Z but every quantity biggest-first', () => {
     expect(defaultSortDirection('name')).toBe('asc')
-    for (const field of ['releases', 'tracks', 'playCount', 'score', 'recent']) {
+    for (const field of ['releases', 'tracks', 'playCount', 'completeness', 'recent']) {
       expect(defaultSortDirection(field)).toBe('desc')
     }
   })

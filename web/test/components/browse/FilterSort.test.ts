@@ -18,9 +18,9 @@ describe('browse/FilterSort.vue', () => {
     const wrapper = await mountSuspended(FilterSort, { props: { active: 'name' } })
     await wrapper.get('button').trigger('click')
     const options = wrapper.findAll('[role="option"]')
-    const scoreOption = options.find(o => o.text() === 'Match score')!
-    await scoreOption.trigger('click')
-    expect(wrapper.emitted('select')).toEqual([['score']])
+    const completenessOption = options.find(o => o.text() === 'Completeness')!
+    await completenessOption.trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['completeness']])
   })
 
   it('carries the listbox ARIA contract', async () => {

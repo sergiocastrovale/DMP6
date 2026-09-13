@@ -102,7 +102,7 @@ Without `--web`: colored console progress with rate-limit countdown. With `--web
 6. **Link** LocalReleaseTrack → MusicBrainzReleaseTrack where titles match
 7. **Write MB IDs** back to audio file tags (`MUSICBRAINZ_ALBUMARTISTID`, `MUSICBRAINZ_ALBUMID`, `MUSICBRAINZ_RELEASEGROUPID`, `MUSICBRAINZ_RELEASETRACKID` = release-track id, `MUSICBRAINZ_TRACKID` = recording id; ID3 uses Picard's TXXX descriptions + `UFID:http://musicbrainz.org` for the recording) - only fills tags that are absent; never overwrites an existing value unless `--overwrite` is passed (deliberate re-correction, e.g. after fixing a bad match). Preserves file mtime to avoid triggering re-index. Skipped with `--skip-mb-tags`. A file with no tag block at all gets one created so IDs can still be written.
 8. **Cover art** - download from Cover Art Archive (release-level first, release-group fallback), embed into audio file tags, then re-extract 200x200 thumbnails via same pipeline as index (`common/src/images.rs`)
-9. **Set `lastSyncedAt`** on Artist, persist country code, compute average match score
+9. **Set `lastSyncedAt`** on Artist, persist country code, compute completeness
 10. **Stamp run hash** on Artist for resumability
 
 Duplicate detection: tracks processed MB IDs across the run. Skips artists that resolve to an already-processed MB artist.
@@ -148,7 +148,7 @@ track's own release-track id as absent, without `--overwrite`), so the mixup can
 
 ## --delete Behaviour
 
-Resets `musicbrainzId`, `averageMatchScore`, and `lastSyncedAt` to NULL, unlinks `MusicBrainzRelease` records, resets `LocalRelease.matchStatus` to `UNMATCHED`. Re-running `./sync` after this automatically re-syncs those artists.
+Resets `musicbrainzId`, `completeness`, and `lastSyncedAt` to NULL, unlinks `MusicBrainzRelease` records, resets `LocalRelease.matchStatus` to `UNMATCHED`. Re-running `./sync` after this automatically re-syncs those artists.
 
 The unlink statement used to set `statusReason` as well. That column lives on `MusicBrainzRelease`, not `LocalRelease`, so the statement errored - and here the error was propagated with `?`, aborting the unlink part-way through and leaving the rest of the artist's releases still bound to MB. Removed.
 

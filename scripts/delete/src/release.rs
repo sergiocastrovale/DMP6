@@ -13,7 +13,7 @@ use common::{
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
     s3::create_s3_client,
     statistics::update_statistics,
-    totals::{recompute_artist_match_score, update_artist_totals_for_artist, zero_totals_for_ownerless_artists},
+    totals::{recompute_artist_completeness, update_artist_totals_for_artist, zero_totals_for_ownerless_artists},
 };
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -351,7 +351,7 @@ pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_co
 
     for aid in &plan.owner_artist_ids {
         update_artist_totals_for_artist(pool, aid).await.ok();
-        recompute_artist_match_score(pool, aid).await.ok();
+        recompute_artist_completeness(pool, aid).await.ok();
     }
     zero_totals_for_ownerless_artists(pool, &touched_artist_ids).await.ok();
 

@@ -1,32 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { artistScanActions, DEFAULT_THEME, getScoreRange, getStatus, scanActions, scoreRanges, statuses, themes, visibleArtistScanActions, visibleScanActions } from '../../helpers/constants'
+import { artistScanActions, DEFAULT_THEME, getCompletenessRange, getStatus, scanActions, completenessRanges, statuses, themes, visibleArtistScanActions, visibleScanActions } from '../../helpers/constants'
 import { toneBg, toneFill, toneText } from '../../helpers/ui'
 import type { ReleaseStatus } from '../../types/release'
 
-describe('getScoreRange', () => {
+describe('getCompletenessRange', () => {
   it('picks the matching bucket for interior values', () => {
-    expect(getScoreRange(10)).toBe(scoreRanges[0])
-    expect(getScoreRange(35)).toBe(scoreRanges[1])
-    expect(getScoreRange(55)).toBe(scoreRanges[2])
-    expect(getScoreRange(75)).toBe(scoreRanges[3])
-    expect(getScoreRange(95)).toBe(scoreRanges[4])
+    expect(getCompletenessRange(10)).toBe(completenessRanges[0])
+    expect(getCompletenessRange(35)).toBe(completenessRanges[1])
+    expect(getCompletenessRange(55)).toBe(completenessRanges[2])
+    expect(getCompletenessRange(75)).toBe(completenessRanges[3])
+    expect(getCompletenessRange(95)).toBe(completenessRanges[4])
   })
 
   it('treats bucket boundaries as [min, max)', () => {
-    expect(getScoreRange(0)).toBe(scoreRanges[0])
-    expect(getScoreRange(20)).toBe(scoreRanges[1])
-    expect(getScoreRange(40)).toBe(scoreRanges[2])
-    expect(getScoreRange(60)).toBe(scoreRanges[3])
-    expect(getScoreRange(80)).toBe(scoreRanges[4])
+    expect(getCompletenessRange(0)).toBe(completenessRanges[0])
+    expect(getCompletenessRange(20)).toBe(completenessRanges[1])
+    expect(getCompletenessRange(40)).toBe(completenessRanges[2])
+    expect(getCompletenessRange(60)).toBe(completenessRanges[3])
+    expect(getCompletenessRange(80)).toBe(completenessRanges[4])
   })
 
   it('falls back to the last bucket at/above 100', () => {
-    expect(getScoreRange(100)).toBe(scoreRanges.at(-1))
-    expect(getScoreRange(1000)).toBe(scoreRanges.at(-1))
+    expect(getCompletenessRange(100)).toBe(completenessRanges.at(-1))
+    expect(getCompletenessRange(1000)).toBe(completenessRanges.at(-1))
   })
 
   it('falls back to the last bucket for out-of-range negative values too (no bucket matches)', () => {
-    expect(getScoreRange(-5)).toBe(scoreRanges.at(-1))
+    expect(getCompletenessRange(-5)).toBe(completenessRanges.at(-1))
   })
 })
 

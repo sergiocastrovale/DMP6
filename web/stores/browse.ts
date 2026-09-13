@@ -19,8 +19,8 @@ export const useBrowseStore = defineStore('browse', () => {
   const genreFilter = ref<string | null>(null)
   const sortBy = ref('name')
   const sortDir = ref<SortDirection>(defaultSortDirection('name'))
-  const minScore = ref<number | null>(null)
-  const maxScore = ref<number | null>(null)
+  const minCompleteness = ref<number | null>(null)
+  const maxCompleteness = ref<number | null>(null)
   const viewMode = ref<'expanded' | 'summarized'>('expanded')
 
   // Aborts any in-flight fetchArtists request when a newer one starts, so a slow stale response
@@ -50,8 +50,8 @@ export const useBrowseStore = defineStore('browse', () => {
       if (searchQuery.value) {params.search = searchQuery.value}
       if (letterFilter.value) {params.letter = letterFilter.value}
       if (genreFilter.value) {params.genre = genreFilter.value}
-      if (minScore.value !== null) {params.minScore = minScore.value}
-      if (maxScore.value !== null) {params.maxScore = maxScore.value}
+      if (minCompleteness.value !== null) {params.minCompleteness = minCompleteness.value}
+      if (maxCompleteness.value !== null) {params.maxCompleteness = maxCompleteness.value}
 
       const data = await $fetch<{
         items: ArtistListItem[]
@@ -136,9 +136,9 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
-  function setScoreRange(min: number | null, max: number | null) {
-    minScore.value = min
-    maxScore.value = max
+  function setCompletenessRange(min: number | null, max: number | null) {
+    minCompleteness.value = min
+    maxCompleteness.value = max
     fetchArtists()
   }
 
@@ -159,13 +159,13 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
-  function setMinScore(min: number | null) {
-    minScore.value = min
+  function setMinCompleteness(min: number | null) {
+    minCompleteness.value = min
     fetchArtists()
   }
 
-  function setMaxScore(max: number | null) {
-    maxScore.value = max
+  function setMaxCompleteness(max: number | null) {
+    maxCompleteness.value = max
     fetchArtists()
   }
 
@@ -183,8 +183,8 @@ export const useBrowseStore = defineStore('browse', () => {
     genreFilter,
     sortBy,
     sortDir,
-    minScore,
-    maxScore,
+    minCompleteness,
+    maxCompleteness,
     viewMode,
     fetchArtists,
     loadMore,
@@ -196,8 +196,8 @@ export const useBrowseStore = defineStore('browse', () => {
     setSearch,
     setViewMode,
     setPageSize,
-    setScoreRange,
-    setMinScore,
-    setMaxScore,
+    setCompletenessRange,
+    setMinCompleteness,
+    setMaxCompleteness,
   }
 })

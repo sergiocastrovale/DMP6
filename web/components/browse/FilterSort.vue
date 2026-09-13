@@ -14,7 +14,7 @@ const options = [
   { value: 'releases', label: 'Releases' },
   { value: 'tracks', label: 'Tracks' },
   { value: 'playCount', label: 'Play count' },
-  { value: 'score', label: 'Match score' },
+  { value: 'completeness', label: 'Completeness' },
   { value: 'recent', label: 'Recently added' },
 ]
 

@@ -92,9 +92,9 @@ export interface RadioOption {
   label: string
 }
 
-export interface ScoreRangeFilterProps {
-  minScore: number | null
-  maxScore: number | null
+export interface CompletenessRangeFilterProps {
+  minCompleteness: number | null
+  maxCompleteness: number | null
 }
 
 export interface TabItem {
