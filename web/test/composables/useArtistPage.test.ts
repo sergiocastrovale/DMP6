@@ -11,6 +11,9 @@ vi.stubGlobal('$fetch', fetchMock)
 
 const artist = ref<{ monitored: boolean } | null>({ monitored: false })
 
+const { auth } = vi.hoisted(() => ({ auth: { permissions: ['sync.view'] as string[] } }))
+mockNuxtImport('useAuth', () => () => ({ hasPerm: (key: string) => ({ value: auth.permissions.includes(key) }) }))
+
 mockNuxtImport('useFetch', () => (url: any) => {
   const target = typeof url === 'function' ? url() : url
   return target.includes('/releases')
@@ -42,10 +45,20 @@ describe('useArtistPage download-status polling', () => {
     fetchMock.mockReset()
     fetchMock.mockResolvedValue({ items: [] })
     artist.value = { monitored: false }
+    auth.permissions = ['sync.view']
   })
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('never asks for download status without sync.view, even for a monitored artist', async () => {
+    auth.permissions = []
+    artist.value = { monitored: true }
+    const wrapper = await mountPage()
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(statusCalls()).toBe(0)
+    wrapper.unmount()
   })
 
   it('fetches once on mount and never polls while nothing is in flight', async () => {

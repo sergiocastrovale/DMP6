@@ -1,6 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
+import { hasPermission } from '~/server/utils/permissions'
 import {
   accumulateAlsoPartOf,
   buildAppearsOnCards,
@@ -182,9 +183,10 @@ export default defineEventHandler(async (event) => {
 
   // Attach in-flight download state (acquisition pipeline) for the paged cards.
   // PROMOTED/REJECTED are excluded on purpose: promoted shows as a real local release,
-  // rejected reverts to plain MISSING.
+  // rejected reverts to plain MISSING. Only for users who can see downloads at all.
   const pagedMbIds = paged.map(r => r.mbReleaseRowId).filter((v): v is string => !!v)
-  if (pagedMbIds.length > 0) {
+  const user = event.context.user
+  if (pagedMbIds.length > 0 && user && await hasPermission(user.role, 'sync.view')) {
     const dls = await prisma.downloadedRelease.findMany({
       where: {
         mbReleaseId: { in: pagedMbIds },

@@ -8,10 +8,13 @@ import ReleaseInfoDialog from '../../components/ReleaseInfoDialog.vue'
 import type { UnifiedRelease } from '../../types/release'
 
 // Plain values, not refs: vi.hoisted runs before vue is imported.
-const { auth } = vi.hoisted(() => ({ auth: { isAdmin: false } }))
+const { auth } = vi.hoisted(() => ({ auth: { isAdmin: false, permissions: [] as string[] } }))
 // A real computed ref, not a plain `{ value }` object - the component's template relies on Vue's
 // auto-unwrap for a top-level script-setup binding, which only kicks in for an actual Ref.
-mockNuxtImport('useAuth', () => () => ({ isAdmin: computed(() => auth.isAdmin) }))
+mockNuxtImport('useAuth', () => () => ({
+  isAdmin: computed(() => auth.isAdmin),
+  hasPerm: (key: string) => computed(() => auth.permissions.includes(key)),
+}))
 
 const release = (overrides: Partial<UnifiedRelease> = {}): UnifiedRelease => ({
   id: 'lr1', title: 'Heal the World Tour 92', year: 1994, type: 'Album', typeSlug: 'album',
@@ -36,6 +39,16 @@ describe('ReleaseInfoDialog.vue', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     auth.isAdmin = false
+    auth.permissions = []
+  })
+
+  it('offers Refresh only to users who can run scans', async () => {
+    const body = await mount(release({ hasLocal: true, localReleaseId: 'lr1' }))
+    expect(body.querySelector('[aria-label="Refresh this release"]')).toBeNull()
+    wrapper?.unmount()
+    auth.permissions = ['sync.run']
+    const again = await mount(release({ hasLocal: true, localReleaseId: 'lr1' }))
+    expect(again.querySelector('[aria-label="Refresh this release"]')).not.toBeNull()
   })
 
   afterEach(() => {

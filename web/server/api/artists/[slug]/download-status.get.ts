@@ -1,9 +1,12 @@
 import { prisma } from '~/server/utils/prisma'
 import { computeDownloadPercent } from '~/server/utils/downloadProgress'
+import { requirePermission } from '~/server/utils/permissions'
 
 // Lightweight poll target for the artist page: in-flight acquisition state per MB release.
 // No release recompute — just the DownloadedRelease rows for this artist.
 export default defineEventHandler(async (event) => {
+  await requirePermission(event, 'sync.view')
+
   const slug = getRouterParam(event, 'slug')
   if (!slug) {throw createError({ statusCode: 400, statusMessage: 'Missing slug' })}
 

@@ -15,6 +15,8 @@ export const useArtistPage = (slug: Ref<string>) => {
   const terminal = useTerminalStore()
   const player = usePlayerStore()
   const downloads = useDownloadsStore()
+  const { hasPerm } = useAuth()
+  const canViewDownloads = hasPerm('sync.view')
 
   const { data: artist, pending: artistPending, error } = useFetch<Artist>(() => `/api/artists/${slug.value}`, {
     key: () => `artist-${slug.value}`,
@@ -73,6 +75,9 @@ export const useArtistPage = (slug: Ref<string>) => {
   }
 
   const fetchDownloadStatus = async () => {
+    if (!canViewDownloads.value) {
+      return
+    }
     try {
       const data = await $fetch<{ items: DlStatusItem[] }>(`/api/artists/${slug.value}/download-status`)
       const next = new Map<string, DlStatusValue>()

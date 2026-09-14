@@ -218,7 +218,7 @@ test.describe('manager (non-admin)', () => {
     // page's own hydration signal (a fill that lands pre-hydration never reaches the ref).
     await expect(async () => {
       await page.getByLabel('Username').fill(managerUsername)
-      await page.getByLabel('Password').fill(managerPassword)
+      await page.getByLabel('Password', { exact: true }).fill(managerPassword)
       await expect(submit).toBeEnabled({ timeout: 1000 })
     }).toPass()
     await submit.click()

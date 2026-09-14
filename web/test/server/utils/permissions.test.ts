@@ -56,6 +56,19 @@ describe('permissions', () => {
     expect(await hasPermission('VIEWER', 'downloads.crud')).toBe(false)
   })
 
+  it('by default a VIEWER gets no downloads or scan permissions', async () => {
+    const { DEFAULT_MATRIX } = await import('../../../server/utils/permissions')
+    expect(DEFAULT_MATRIX.VIEWER).not.toContain('sync.view')
+    expect(DEFAULT_MATRIX.VIEWER).not.toContain('sync.run')
+    expect(DEFAULT_MATRIX.VIEWER).not.toContain('downloads.crud')
+  })
+
+  it('the table still decides: a VIEWER granted sync.view in RolePermission holds it', async () => {
+    findManyMock.mockResolvedValue([{ role: 'VIEWER', permission: 'sync.view' }])
+    const { hasPermission } = await import('../../../server/utils/permissions')
+    expect(await hasPermission('VIEWER', 'sync.view')).toBe(true)
+  })
+
   it('getPermissionsForRole returns a sorted list', async () => {
     findManyMock.mockResolvedValue([
       { role: 'ADMIN', permission: 'sync.view' },

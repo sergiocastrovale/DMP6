@@ -15,6 +15,7 @@ const TABS: Record<string, { title: string; component: Component }> = {
 }
 
 definePageMeta({
+  middleware: 'downloads',
   validate: route => (route.params.tab as string) in TABS,
 })
 

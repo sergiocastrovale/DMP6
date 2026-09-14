@@ -30,7 +30,9 @@ const emit = defineEmits<{
 
 const model = defineModel<boolean>({ required: true })
 const { releaseImage } = useImageUrl()
-const { isAdmin } = useAuth()
+const { isAdmin, hasPerm } = useAuth()
+const canDownload = hasPerm('downloads.crud')
+const canScan = hasPerm('sync.run')
 const terminal = useTerminalStore()
 const downloadsStore = useDownloadsStore()
 
@@ -79,7 +81,7 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
           @click="showDeleteDialog = true"
         />
         <DownloadsDownloadDisabledButton
-          v-if="canRedownload(release, downloadsStore.downloadsEnabled)"
+          v-if="canDownload && canRedownload(release, downloadsStore.downloadsEnabled)"
           :icon="DownloadCloud"
           :loading="isAcquiring"
           :label="isAcquiring ? 'Requesting download...' : 'Re-download this release'"
@@ -87,7 +89,7 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
           @click="emit('redownload')"
         />
         <DataTableAction
-          v-if="release.localReleaseId"
+          v-if="canScan && release.localReleaseId"
           :icon="RefreshCw"
           label="Refresh this release"
           :disabled="terminal.isRunning"

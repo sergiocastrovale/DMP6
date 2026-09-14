@@ -49,6 +49,9 @@ const { isCurrentRelease: isCurrentReleaseId, isReleasePlaying: isReleasePlaying
 const { isSearching, isDownloading, isEnriching, isAwaitingMerge, downloadFailed, isAbandoned, verifyDownload } = useReleaseDownloadState(() => props.release)
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
+const { hasPerm } = useAuth()
+const canDownload = hasPerm('downloads.crud')
+const canScan = hasPerm('sync.run')
 const { merge: mergeNow, busyIds: mergeBusyIds } = useDownloadQueueActions()
 const onMergeNow = () => mergeNow(props.release.downloadedReleaseId!)
 
@@ -207,6 +210,7 @@ const alsoPartOfLabel = computed(() =>
 
       <div class="flex shrink-0 items-center justify-end gap-0.5 pr-0 pl-1 lg:px-3">
         <div class="hidden items-center gap-0.5 md:flex">
+        <template v-if="canDownload">
         <DataTableAction
           v-if="isSearching || isDownloading || isEnriching"
           :icon="X"
@@ -247,9 +251,10 @@ const alsoPartOfLabel = computed(() =>
           :reasons="downloadsStore.acquireBlockReasons"
           @click="emit('redownload')"
         />
+        </template>
 
         <DataTableAction
-          v-if="release.localReleaseId"
+          v-if="canScan && release.localReleaseId"
           :icon="RefreshCw"
           label="Refresh this release"
           :disabled="terminal.isRunning"

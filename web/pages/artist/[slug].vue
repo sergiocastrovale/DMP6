@@ -15,7 +15,9 @@ const catalogue = useArtistCatalogue(releases)
 provide('catalogue', catalogue)
 provide('refreshDownloadStatus', refreshDownloadStatus)
 
-const { isAdmin } = useAuth()
+const { isAdmin, hasPerm } = useAuth()
+const canMonitor = hasPerm('downloads.crud')
+const canScan = hasPerm('sync.run')
 
 watch(() => artist.value?.name, (name) => {
   if (name) {
@@ -39,8 +41,8 @@ watch(() => artist.value?.name, (name) => {
         @shuffle-all="shuffleAll"
       >
         <div class="flex shrink-0 items-center gap-2">
-          <ArtistButtonMonitor :monitored="artist.monitored" :busy="monitorBusy" @toggle="toggleMonitor" />
-          <ArtistScanActions :artist-name="artist.name" :folders="artistFolders" />
+          <ArtistButtonMonitor v-if="canMonitor" :monitored="artist.monitored" :busy="monitorBusy" @toggle="toggleMonitor" />
+          <ArtistScanActions v-if="canScan" :artist-name="artist.name" :folders="artistFolders" />
           <ArtistButtonRemove v-if="isAdmin" :artist-name="artist.name" />
         </div>
       </ArtistHeader>
@@ -54,8 +56,8 @@ watch(() => artist.value?.name, (name) => {
         @play-all="playAll"
         @shuffle-all="shuffleAll"
       >
-        <ArtistButtonMonitor :monitored="artist.monitored" :busy="monitorBusy" @toggle="toggleMonitor" />
-        <ArtistScanActions :artist-name="artist.name" :folders="artistFolders" />
+        <ArtistButtonMonitor v-if="canMonitor" :monitored="artist.monitored" :busy="monitorBusy" @toggle="toggleMonitor" />
+        <ArtistScanActions v-if="canScan" :artist-name="artist.name" :folders="artistFolders" />
         <ArtistButtonRemove v-if="isAdmin" :artist-name="artist.name" />
       </ArtistMobileHeader>
 

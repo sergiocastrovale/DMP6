@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { Plus, Trash2, Pencil, KeyRound, Save, X, AlertCircle } from 'lucide-vue-next'
+import { Plus, Trash2, Pencil, KeyRound, Save, X, AlertCircle, Eye, EyeOff } from 'lucide-vue-next'
 import type { AdminUser } from '~/types/auth'
 import type { Tone } from '~/types/ui'
-import { cx, data, form, toneText } from '~/helpers/ui'
+import { cx, data, form, iconButton, toneText, ICON_STROKE_WIDTH } from '~/helpers/ui'
+
+const editPasswordRevealed = ref(false)
 
 const { data: users, refresh } = await useAsyncData('settings-users', () =>
   useCookieFetch<AdminUser[]>('/api/users'),
@@ -143,7 +145,24 @@ const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 
                 </div>
               </td>
               <td :class="data.td">
-                <input v-model="editForm.password" type="password" placeholder="New pw (optional)" :class="[form.input, 'h-[34px]']">
+                <div class="relative">
+                  <input
+                    v-model="editForm.password"
+                    :type="editPasswordRevealed ? 'text' : 'password'"
+                    placeholder="New pw (optional)"
+                    :class="[form.input, 'h-[34px] pr-9']"
+                  >
+                  <button
+                    type="button"
+                    tabindex="-1"
+                    :aria-label="editPasswordRevealed ? 'Hide password' : 'Show password'"
+                    :class="cx(iconButton, 'absolute right-1 top-1/2 -translate-y-1/2 size-6')"
+                    @click="editPasswordRevealed = !editPasswordRevealed"
+                  >
+                    <EyeOff v-if="editPasswordRevealed" :size="15" :stroke-width="ICON_STROKE_WIDTH" />
+                    <Eye v-else :size="15" :stroke-width="ICON_STROKE_WIDTH" />
+                  </button>
+                </div>
               </td>
               <td :class="cx(data.td, 'text-right')" @click.stop>
                 <div class="flex items-center justify-end gap-1.5">

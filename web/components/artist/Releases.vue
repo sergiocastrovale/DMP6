@@ -22,6 +22,8 @@ const { toggleOrPlay } = usePlayRelease()
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
 const toast = useToastStore()
+const { hasPerm } = useAuth()
+const canViewDownloads = hasPerm('sync.view')
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
 // The artist page polls download status on demand only - acquiring or cancelling here is what
 // creates/kills a row, so it has to kick the poll back into life.
@@ -50,6 +52,9 @@ const favoriteReleases = ref<Set<string>>(new Set())
 const acquiringIds = ref<Set<string>>(new Set())
 
 onMounted(() => {
+  if (!canViewDownloads.value) {
+    return
+  }
   downloadsStore.checkStatus()
   downloadsStore.fetchDownloadCapabilities()
 })

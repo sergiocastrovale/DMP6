@@ -144,7 +144,7 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 
 **CRUD**: `/api/playlists/*`, `/api/playlist-generators/*` (admin — genre/region playlist settings, see docs/feature_generated_playlists.md), `/api/favorites/*`, `/api/auth/{login,logout,change-password,me}`, `/api/users/*` (admin), `/api/permissions/*`
 
-**Downloads** (gated `sync.view`/`downloads.crud`): `GET /downloads/{queue,active,status,enabled}`, `POST /downloads/{acquire,merge/[id],merge-all,pause,cleanup,cancel/[id],reject/[id],reject-all,requeue/[id],requeue-all,retry/[id]}`, `GET /artists/monitoring`, `PATCH /artists/[slug]` (toggle `monitored`)
+**Downloads** (gated `sync.view`/`downloads.crud`, table-driven via `RolePermission`; `/downloads` pages use `middleware: 'downloads'`): `GET /downloads/{queue,active,status,enabled}`, `POST /downloads/{acquire,merge/[id],merge-all,pause,cleanup,cancel/[id],reject/[id],reject-all,requeue/[id],requeue-all,retry/[id]}`, `GET /artists/monitoring`, `PATCH /artists/[slug]` (toggle `monitored`)
 
 **Issues**: `GET /issues/summary`, `/issues/[type]`, `PATCH /issues/[type]/[id]`, `POST /issues/[type]/queue`, `/issues/[type]/queue-revert`, `GET /issues/history`, `POST /issues/history-undo`, `DELETE /issues/history`
 
