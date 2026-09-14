@@ -25,7 +25,12 @@ Artist Damageplan shows an unmatched "Uncivilization" (Feat. Corey Taylor, Slith
 
 a while ago you made it so claim_owned_bundle handles the "one folder covering an extra MB release" cases. I want to revisit this as it might be tremendously flawed. First: what are we even fixing with this? Give solid examples. 
 
+Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. When that happens, always prepend the country name to the artist like "NAPA (PT)". These catalogues should be separated - best strategy?
+
 UI 
+
+toggiling favorites / adding to playlists should update the sidebar counters (or make them appear if zero)
+
 
 LIBRARY
 
