@@ -92,11 +92,6 @@ export interface RadioOption {
   label: string
 }
 
-export interface CompletenessRangeFilterProps {
-  minCompleteness: number | null
-  maxCompleteness: number | null
-}
-
 export interface TabItem {
   key: string
   label: string

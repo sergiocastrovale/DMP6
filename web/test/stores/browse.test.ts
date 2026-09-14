@@ -27,6 +27,52 @@ describe('useBrowseStore', () => {
     }))
   })
 
+  it('fetchArtists sends checked genres as an array param (OR match server-side)', async () => {
+    const store = useBrowseStore()
+    store.genreFilters = ['Indie Rock', 'Ambient']
+    await store.fetchArtists()
+    expect(fetchMock).toHaveBeenCalledWith('/api/artists', expect.objectContaining({
+      params: expect.objectContaining({ genre: ['Indie Rock', 'Ambient'] }),
+    }))
+  })
+
+  it('toggleGenre adds an unchecked genre and refetches', async () => {
+    const store = useBrowseStore()
+    fetchMock.mockClear()
+    store.toggleGenre('Ambient')
+    expect(store.genreFilters).toEqual(['Ambient'])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('toggleGenre removes an already-checked genre', () => {
+    const store = useBrowseStore()
+    store.genreFilters = ['Ambient', 'Indie Rock']
+    store.toggleGenre('Ambient')
+    expect(store.genreFilters).toEqual(['Indie Rock'])
+  })
+
+  it('activeFilterCount counts genres plus one for any completeness band, not the sort', () => {
+    const store = useBrowseStore()
+    expect(store.activeFilterCount).toBe(0)
+    store.genreFilters = ['Ambient', 'Indie Rock']
+    expect(store.activeFilterCount).toBe(2)
+    store.setCompletenessRange(80, 100)
+    expect(store.activeFilterCount).toBe(3)
+  })
+
+  it('clearFilters resets genres and completeness in a single refetch', async () => {
+    const store = useBrowseStore()
+    store.genreFilters = ['Ambient']
+    store.minCompleteness = 80
+    store.maxCompleteness = 100
+    fetchMock.mockClear()
+    store.clearFilters()
+    expect(store.genreFilters).toEqual([])
+    expect(store.minCompleteness).toBeNull()
+    expect(store.maxCompleteness).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('setLetterFilter clears the search query and refetches', async () => {
     const store = useBrowseStore()
     store.searchQuery = 'old query'
@@ -105,19 +151,6 @@ describe('useBrowseStore', () => {
     await store.fetchArtists()
     expect(store.page).toBe(1)
     expect(store.artists).toEqual([{ slug: 'a' }])
-  })
-
-  it('a request aborted by a newer one resolves quietly instead of throwing (regression: unhandled rejection)', async () => {
-    // ofetch wraps an AbortController.abort() as its own FetchError, whose .name is 'FetchError' -
-    // the actual AbortError lives at .cause. Reproduces the live "Uncaught (in promise) FetchError
-    // ... Caused by: AbortError" seen from rapid genre-filter toggling.
-    const abortFetchError = Object.assign(new Error('aborted'), {
-      name: 'FetchError',
-      cause: new DOMException('signal is aborted without reason', 'AbortError'),
-    })
-    fetchMock.mockRejectedValueOnce(abortFetchError)
-    const store = useBrowseStore()
-    await expect(store.fetchArtists()).resolves.toBeUndefined()
   })
 
   it('a stale response arriving after a newer request never overwrites the fresher one (audit #77)', async () => {

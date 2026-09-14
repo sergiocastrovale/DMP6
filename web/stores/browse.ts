@@ -17,7 +17,8 @@ export const useBrowseStore = defineStore('browse', () => {
   // Filters
   const searchQuery = ref('')
   const letterFilter = ref<string | null>(null)
-  const genreFilter = ref<string | null>(null)
+  // OR semantics - an artist matches if tagged with any checked genre.
+  const genreFilters = ref<string[]>([])
   const sortBy = ref('name')
   const sortDir = ref<SortDirection>(defaultSortDirection('name'))
   const minCompleteness = ref<number | null>(null)
@@ -41,7 +42,7 @@ export const useBrowseStore = defineStore('browse', () => {
     }
 
     try {
-      const params: Record<string, string | number> = {
+      const params: Record<string, string | number | string[]> = {
         page: append ? page.value : 1,
         pageSize: pageSize.value,
         sort: sortBy.value,
@@ -50,7 +51,7 @@ export const useBrowseStore = defineStore('browse', () => {
 
       if (searchQuery.value) {params.search = searchQuery.value}
       if (letterFilter.value) {params.letter = letterFilter.value}
-      if (genreFilter.value) {params.genre = genreFilter.value}
+      if (genreFilters.value.length) {params.genre = genreFilters.value}
       if (minCompleteness.value !== null) {params.minCompleteness = minCompleteness.value}
       if (maxCompleteness.value !== null) {params.maxCompleteness = maxCompleteness.value}
 
@@ -104,8 +105,14 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
-  function setGenreFilter(genre: string | null) {
-    genreFilter.value = genre
+  function toggleGenre(genre: string) {
+    const index = genreFilters.value.indexOf(genre)
+    if (index === -1) {
+      genreFilters.value.push(genre)
+    }
+    else {
+      genreFilters.value.splice(index, 1)
+    }
     fetchArtists()
   }
 
@@ -160,15 +167,18 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
-  function setMinCompleteness(min: number | null) {
-    minCompleteness.value = min
+  // Genres + completeness band, cleared together in one refetch - Sort isn't a "filter" in this
+  // count (it always has a value), so a fresh page with nothing ticked reads as 0.
+  function clearFilters() {
+    genreFilters.value = []
+    minCompleteness.value = null
+    maxCompleteness.value = null
     fetchArtists()
   }
 
-  function setMaxCompleteness(max: number | null) {
-    maxCompleteness.value = max
-    fetchArtists()
-  }
+  const activeFilterCount = computed(() =>
+    genreFilters.value.length + (minCompleteness.value !== null || maxCompleteness.value !== null ? 1 : 0),
+  )
 
   return {
     artists,
@@ -181,16 +191,17 @@ export const useBrowseStore = defineStore('browse', () => {
     loadingMore,
     searchQuery,
     letterFilter,
-    genreFilter,
+    genreFilters,
     sortBy,
     sortDir,
     minCompleteness,
     maxCompleteness,
     viewMode,
+    activeFilterCount,
     fetchArtists,
     loadMore,
     setLetterFilter,
-    setGenreFilter,
+    toggleGenre,
     setSortBy,
     setSortDir,
     toggleSortDir,
@@ -198,7 +209,6 @@ export const useBrowseStore = defineStore('browse', () => {
     setViewMode,
     setPageSize,
     setCompletenessRange,
-    setMinCompleteness,
-    setMaxCompleteness,
+    clearFilters,
   }
 })

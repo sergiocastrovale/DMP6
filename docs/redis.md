@@ -71,8 +71,8 @@ Uses `KEYS pattern` to find matching keys, then `DEL`s them. Used for event-driv
 | Endpoint | Cache key | TTL | Notes |
 |----------|-----------|-----|-------|
 | `GET /api/stats` | `stats` | 5 min | Single stats row from the `Statistics` table |
-| `GET /api/genres` | `genres` | 5 min | Full genre list with artist counts |
-| `GET /api/artists` | `artists:p=…:ps=…:l=…:g=…:s=…:q=…:min=…:max=…` | 2 min | All browse filter params encoded in key |
+| `GET /api/genres` | `genres:s=…:l=…` | 5 min | Genre list, most-common first; `search`/`limit` params encoded in key |
+| `GET /api/artists` | `artists:p=…:ps=…:l=…:g=…:s=…:o=…:q=…:min=…:max=…` | 2 min | All browse filter params encoded in key; `g=` is a sorted, comma-joined genre list (OR match) |
 | `GET /api/artists/[slug]` | `artist:{slug}` | 10 min | Artist metadata, genres, URLs |
 | `GET /api/releases/latest` | `releases:latest:{limit}` | 2 min | Ordered by `createdAt DESC` |
 | `GET /api/releases/last-played` | `releases:last-played:{limit}` | 1 min | Shorter TTL - changes on every play |

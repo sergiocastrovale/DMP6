@@ -220,6 +220,14 @@ export const transitions = {
     leaveActiveClass: 'transition-transform duration-[250ms] ease',
     leaveToClass: 'translate-y-full',
   },
+  // A right-docked panel (BrowseFiltersSidebar) - slides in from the right at every size, since
+  // the panel itself is centered (<lg) or right-docked (lg+), not bottom-anchored like slideUp.
+  drawer: {
+    enterActiveClass: 'transition-transform duration-[250ms] ease',
+    enterFromClass: 'translate-x-full',
+    leaveActiveClass: 'transition-transform duration-[250ms] ease',
+    leaveToClass: 'translate-x-full',
+  },
 }
 
 export const form = {

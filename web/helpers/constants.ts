@@ -177,6 +177,18 @@ export const completenessRanges = [
 export const getCompletenessRange = (completeness: number) =>
   completenessRanges.find(r => completeness >= r.min && completeness < r.max) ?? completenessRanges.at(-1)!
 
+// Browse's sort-by options. Shared by the summarized table's sortable headers and
+// BrowseFiltersSidebar's sort chips, so the two controls stay interchangeable rather than each
+// reaching a subset of the orders.
+export const browseSortOptions = [
+  { value: 'name', label: 'Name' },
+  { value: 'releases', label: 'Releases' },
+  { value: 'tracks', label: 'Tracks' },
+  { value: 'playCount', label: 'Play count' },
+  { value: 'completeness', label: 'Completeness' },
+  { value: 'recent', label: 'Recently added' },
+]
+
 // DownloadedRelease.status -> colour, shared by DownloadProgress's bar and any per-release
 // "Downloading"/"Enriching" pill (artist/ReleaseGroupDetails.vue) so the two always agree.
 export const downloadStatusTone: Record<string, Tone> = {

@@ -13,16 +13,19 @@ export default defineEventHandler(async (event) => {
   // truncate that view's pages, throwing off its page-size-based skip math (audit #78).
   const { page, pageSize } = parsePagination(query, { defaultSize: 48, maxSize: 250 })
   const letter = (query.letter as string)?.toLowerCase() || null
-  const genre = query.genre as string || null
   const sort = (query.sort as string) || 'name'
   // Browse sends this explicitly; a direct API call that omits it falls back to the field's own
   // default (names A-Z, quantities biggest-first).
   const order = resolveSortDirection(sort, query.order)
   const search = (query.search as string)?.trim() || null
+  // OR semantics - an artist matches if tagged with any of the checked genres.
+  const genres = (Array.isArray(query.genre) ? query.genre : query.genre ? [query.genre] : []) as string[]
   const minCompleteness = query.minCompleteness ? Number(query.minCompleteness) : null
   const maxCompleteness = query.maxCompleteness ? Number(query.maxCompleteness) : null
 
-  const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genre ?? ''}:s=${sort}:o=${order}:q=${search ?? ''}:min=${minCompleteness ?? ''}:max=${maxCompleteness ?? ''}`
+  // Sorted so two requests with the same genres in a different order share one cache entry.
+  const genreKey = [...genres].sort().join(',')
+  const cacheKey = `artists:p=${page}:ps=${pageSize}:l=${letter ?? ''}:g=${genreKey}:s=${sort}:o=${order}:q=${search ?? ''}:min=${minCompleteness ?? ''}:max=${maxCompleteness ?? ''}`
 
   return cachedResponse(cacheKey, 120, async () => {
     // Credit-only artists (MB-verified 'appears on' entries that own no release) have their own page
@@ -37,8 +40,8 @@ export default defineEventHandler(async (event) => {
       where.name = { contains: search, mode: 'insensitive' }
     }
 
-    if (genre) {
-      where.genres = { some: { name: genre } }
+    if (genres.length) {
+      where.genres = { some: { name: { in: genres } } }
     }
 
     if (minCompleteness !== null || maxCompleteness !== null) {

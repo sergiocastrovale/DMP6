@@ -40,7 +40,8 @@ export interface BrowseFilterParam {
   key: string
   storeKey: keyof ReturnType<typeof import('~/stores/browse').useBrowseStore>
   default?: string
-  type?: 'number'
+  // 'list' round-trips a string[] as repeated query keys (genre=a&genre=b).
+  type?: 'number' | 'list'
 }
 
 export type SortDirection = 'asc' | 'desc'

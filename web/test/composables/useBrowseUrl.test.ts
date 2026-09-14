@@ -8,7 +8,7 @@ import { useBrowseStore } from '../../stores/browse'
 // Only useRoute is stubbed - useRouter is left real. Nuxt's own bootstrap plugins (payload,
 // route-announcer) call router.afterEach/beforeResolve during app init, which a plain mock object
 // doesn't implement; the real (in-memory, in the `nuxt` test environment) router does.
-const { routeRef } = vi.hoisted(() => ({ routeRef: { query: {} as Record<string, string> } }))
+const { routeRef } = vi.hoisted(() => ({ routeRef: { query: {} as Record<string, string | string[]> } }))
 mockNuxtImport('useRoute', () => () => routeRef)
 
 const fetchMock = vi.fn().mockResolvedValue({ artists: [], total: 0 })
@@ -38,6 +38,30 @@ describe('useBrowseUrl', () => {
     const store = useBrowseStore()
     expect(store.minCompleteness).toBe(40)
     expect(store.maxCompleteness).toBe(80)
+  })
+
+  it('initFromUrl reads a single genre query value into a one-item array', () => {
+    routeRef.query = { genre: 'Ambient' }
+    const { initFromUrl } = useBrowseUrl()
+    initFromUrl()
+    const store = useBrowseStore()
+    expect(store.genreFilters).toEqual(['Ambient'])
+  })
+
+  it('initFromUrl reads repeated genre query values into an array', () => {
+    routeRef.query = { genre: ['Ambient', 'Indie Rock'] }
+    const { initFromUrl } = useBrowseUrl()
+    initFromUrl()
+    const store = useBrowseStore()
+    expect(store.genreFilters).toEqual(['Ambient', 'Indie Rock'])
+  })
+
+  it('initFromUrl reads the sort direction', () => {
+    routeRef.query = { order: 'desc' }
+    const { initFromUrl } = useBrowseUrl()
+    initFromUrl()
+    const store = useBrowseStore()
+    expect(store.sortDir).toBe('desc')
   })
 
   it('initFromUrl returns false when there are no relevant query params', () => {
