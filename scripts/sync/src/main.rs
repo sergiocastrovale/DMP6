@@ -1339,7 +1339,8 @@ async fn main() {
             }
             let release_start = std::time::Instant::now();
             reporter.info(&format!(
-                "    [{}/{}] {}",
+                "    {} ({}/{}) - {}",
+                artist.name,
                 lr_idx + 1,
                 local_release_total,
                 local_release.title,
