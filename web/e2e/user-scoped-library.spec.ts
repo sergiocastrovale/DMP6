@@ -21,8 +21,17 @@ test.use({ storageState: { cookies: [], origins: [] } })
 
 const loginAs = async (page: Page, username: string, password: string) => {
   // /login redirects straight to / when a session cookie is already valid, so switching users
-  // mid-spec needs an explicit logout first.
-  await page.request.post('/api/auth/logout').catch(() => {})
+  // mid-spec needs a clean slate first. Clearing at the browser-context level - never by posting
+  // /api/auth/logout through page.request - for two reasons: 'admin' is the one shared account
+  // every other spec's default storageState session also authenticates as, and logout's
+  // destroySession bumps that user's tokenVersion, which invalidates every session issued for them
+  // - including every other spec's, running concurrently in the same CI worker (this is exactly
+  // what broke all of visualizer.spec.ts in the same run: their shared admin session went stale
+  // mid-test the moment this file logged it out). Even ignoring that, it also raced: the gap
+  // between that request's Set-Cookie and the page's own cookie jar picking it up was wide enough
+  // under CI load for the next goto('/login') to still see the old session and self-redirect to
+  // '/', so the fill/submit below silently targeted a login form that was never there.
+  await page.context().clearCookies()
   await page.goto('/login')
   const submit = page.getByRole('button', { name: 'Sign in' })
   await expect(async () => {
@@ -30,7 +39,13 @@ const loginAs = async (page: Page, username: string, password: string) => {
     await page.getByLabel('Password', { exact: true }).fill(password)
     await expect(submit).toBeEnabled({ timeout: 1000 })
   }).toPass()
-  await submit.click()
+  const [response] = await Promise.all([
+    page.waitForResponse(res => res.url().endsWith('/api/auth/login')),
+    submit.click(),
+  ])
+  if (!response.ok()) {
+    throw new Error(`login as ${username} failed: ${response.status()} ${await response.text()}`)
+  }
   await page.waitForURL('/')
 }
 
