@@ -33,16 +33,13 @@ const stubTerminal = async (page: Page, exitCode = 0) => {
   return runs
 }
 
-const stubMbSearch = async (page: Page, name: string) => {
+const stubMbSearch = async (page: Page, name: string, existing: { slug: string, name: string } | null = null) => {
   await page.route('**/api/artists/mb-search*', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ items: [{ mbid, name, disambiguation: null, country: 'GB', type: 'Group', existing: null }] }),
+      body: JSON.stringify({ items: [{ mbid, name, disambiguation: null, country: 'GB', type: 'Group', existing }] }),
     })
-  })
-  await page.route('**/api/artists/mb-official-count/*', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ count: 12 }) })
   })
 }
 
@@ -129,6 +126,20 @@ test('adding an already-in-library artist shows the dialog, no terminal run', as
 
   await expect(page.getByRole('dialog')).toContainText('already in your library')
   await expect.poll(() => runs).toEqual([])
+})
+
+test('a row already flagged existing by mb-search shows no Add button', async ({ page }) => {
+  const runs = await stubTerminal(page)
+  await stubMbSearch(page, existingArtistName, { slug: existingArtistSlug, name: existingArtistName })
+
+  await page.goto('/add')
+  await page.getByPlaceholder('Artist name...').fill(existingArtistName)
+  await page.getByRole('button', { name: 'Search in MusicBrainz' }).click()
+  await expect(page.getByText(existingArtistName)).toBeVisible()
+
+  await expect(page.getByRole('button', { name: 'Add' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'In library' })).toBeVisible()
+  expect(runs).toEqual([])
 })
 
 test.describe('viewer (no sync.run)', () => {

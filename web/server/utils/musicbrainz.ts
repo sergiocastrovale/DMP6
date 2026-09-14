@@ -42,8 +42,8 @@ export async function mbFetch(path: string): Promise<any> {
     return res.json()
   }
 
-  // Chain onto the shared queue so concurrent callers (e.g. the per-row official-count loop) still
-  // serialize, and a failed call doesn't wedge the queue for the next one.
+  // Chain onto the shared queue so concurrent callers still serialize, and a failed call doesn't
+  // wedge the queue for the next one.
   const result = queue.then(run, run)
   queue = result.then(() => undefined, () => undefined)
   return result
@@ -67,19 +67,4 @@ export async function searchArtists(query: string): Promise<MbArtistSearchRow[]>
     country: a.country || null,
     type: a.type || null,
   }))
-}
-
-// Same album/EP-only, Official-only, non-audiobook allow-list as scripts/common/src/mb/allowlist.rs -
-// singles/broadcasts excluded by primarytype, bootlegs by status. Pure so it's unit-testable without
-// a network call.
-export function officialReleaseGroupQuery(mbid: string): string {
-  return `arid:${mbid} AND (primarytype:album OR primarytype:ep) AND status:official `
-    + 'AND NOT secondarytype:(audiobook OR "audio drama" OR spokenword OR interview OR "field recording" OR demo)'
-}
-
-// A display hint, not authoritative - the Rust `./add` catalogue-gaps pass does the real browse-based
-// count when the artist is actually added.
-export async function countOfficialReleaseGroups(mbid: string): Promise<number> {
-  const data = await mbFetch(`/release-group?query=${encodeURIComponent(officialReleaseGroupQuery(mbid))}&limit=1`)
-  return typeof data?.count === 'number' ? data.count : 0
 }

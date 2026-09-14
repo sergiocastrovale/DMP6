@@ -57,6 +57,17 @@ const notFound = () => {
   return Promise.reject(err)
 }
 
+const doSearch = async (name = 'radiohead') => {
+  await wrapper!.find('input').setValue(name)
+  await wrapper!.findAll('button').find(b => b.text().includes('Search in MusicBrainz'))!.trigger('click')
+  await flushMicrotasks()
+}
+
+const clickAdd = async () => {
+  await wrapper!.findAll('button').find(b => b.text().trim() === 'Add')!.trigger('click')
+  await flushMicrotasks()
+}
+
 describe('artist/add/Search.vue', () => {
   beforeEach(() => {
     runMock.mockClear()
@@ -74,53 +85,34 @@ describe('artist/add/Search.vue', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('searches MusicBrainz on the Search button', async () => {
-    fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/artists/mb-search') {return Promise.resolve({ items: [searchRow()] })}
-      if (url.startsWith('/api/artists/mb-official-count/')) {return Promise.resolve({ count: 38 })}
-      return Promise.reject(new Error(`unexpected fetch ${url}`))
-    })
+  it('searches MusicBrainz on the Search button, one call only', async () => {
+    fetchMock.mockResolvedValue({ items: [searchRow()] })
     await mount()
-    await wrapper!.find('input').setValue('radiohead')
-    await wrapper!.findAll('button').find(b => b.text().includes('Search in MusicBrainz'))!.trigger('click')
-    await flushMicrotasks()
+    await doSearch()
 
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledWith('/api/artists/mb-search', { query: { q: 'radiohead' } })
     expect(wrapper!.text()).toContain('Radiohead')
-    expect(wrapper!.text()).toContain('38')
   })
 
-  it('loads official-release counts sequentially, one $fetch per row', async () => {
-    const rows = [searchRow({ mbid: 'a', name: 'A' }), searchRow({ mbid: 'b', name: 'B' })]
-    fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/artists/mb-search') {return Promise.resolve({ items: rows })}
-      if (url === '/api/artists/mb-official-count/a') {return Promise.resolve({ count: 1 })}
-      if (url === '/api/artists/mb-official-count/b') {return Promise.resolve({ count: 2 })}
-      return Promise.reject(new Error(`unexpected fetch ${url}`))
-    })
+  it('an already-in-library row is greyed out with no Add button', async () => {
+    fetchMock.mockResolvedValue({ items: [searchRow({ existing: { slug: 'radiohead', name: 'Radiohead' } })] })
     await mount()
-    await wrapper!.find('input').setValue('x')
-    await wrapper!.findAll('button').find(b => b.text().includes('Search in MusicBrainz'))!.trigger('click')
-    await flushMicrotasks()
+    await doSearch()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/artists/mb-official-count/a')
-    expect(fetchMock).toHaveBeenCalledWith('/api/artists/mb-official-count/b')
+    expect(wrapper!.findAll('button').find(b => b.text().trim() === 'Add')).toBeUndefined()
+    expect(wrapper!.text()).toContain('In library')
   })
 
-  it('a fresh duplicate hit opens the error dialog and never runs the terminal', async () => {
+  it('a fresh duplicate hit (race) opens the error dialog and never runs the terminal', async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url === '/api/artists/mb-search') {return Promise.resolve({ items: [searchRow()] })}
-      if (url.startsWith('/api/artists/mb-official-count/')) {return Promise.resolve({ count: 5 })}
       if (url === '/api/artists/by-mbid/mb-1') {return Promise.resolve({ slug: 'radiohead', name: 'Radiohead' })}
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
     await mount()
-    await wrapper!.find('input').setValue('radiohead')
-    await wrapper!.findAll('button').find(b => b.text().includes('Search in MusicBrainz'))!.trigger('click')
-    await flushMicrotasks()
-
-    await wrapper!.findAll('button').find(b => b.text().trim() === 'Add')!.trigger('click')
-    await flushMicrotasks()
+    await doSearch()
+    await clickAdd()
 
     expect(runMock).not.toHaveBeenCalled()
     expect(document.body.textContent).toContain('already in your library')
@@ -130,39 +122,15 @@ describe('artist/add/Search.vue', () => {
   it('adds an artist: runs ./add with --mbid, and --monitored only when checked', async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url === '/api/artists/mb-search') {return Promise.resolve({ items: [searchRow()] })}
-      if (url.startsWith('/api/artists/mb-official-count/')) {return Promise.resolve({ count: 5 })}
       if (url === '/api/artists/by-mbid/mb-1') {return notFound()}
       if (url === '/api/artists/added/mb-1') {return Promise.resolve({ slug: 'radiohead' })}
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
     await mount()
-    await wrapper!.find('input').setValue('radiohead')
-    await wrapper!.findAll('button').find(b => b.text().includes('Search in MusicBrainz'))!.trigger('click')
-    await flushMicrotasks()
-
-    await wrapper!.findAll('button').find(b => b.text().trim() === 'Add')!.trigger('click')
-    await flushMicrotasks()
+    await doSearch()
+    await clickAdd()
 
     expect(runMock).toHaveBeenCalledWith('./add', ['--mbid', 'mb-1'], 'add-radiohead')
-    expect(pushMock).toHaveBeenCalledWith('/artist/radiohead')
-  })
-
-  it('exit 0 navigates to the new artist page', async () => {
-    terminal.exitCode = 0
-    fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/artists/mb-search') {return Promise.resolve({ items: [searchRow()] })}
-      if (url.startsWith('/api/artists/mb-official-count/')) {return Promise.resolve({ count: 5 })}
-      if (url === '/api/artists/by-mbid/mb-1') {return notFound()}
-      if (url === '/api/artists/added/mb-1') {return Promise.resolve({ slug: 'radiohead' })}
-      return Promise.reject(new Error(`unexpected fetch ${url}`))
-    })
-    await mount()
-    await wrapper!.find('input').setValue('radiohead')
-    await wrapper!.findAll('button').find(b => b.text().includes('Search in MusicBrainz'))!.trigger('click')
-    await flushMicrotasks()
-    await wrapper!.findAll('button').find(b => b.text().trim() === 'Add')!.trigger('click')
-    await flushMicrotasks()
-
     expect(pushMock).toHaveBeenCalledWith('/artist/radiohead')
   })
 
@@ -170,16 +138,12 @@ describe('artist/add/Search.vue', () => {
     terminal.exitCode = 3
     fetchMock.mockImplementation((url: string) => {
       if (url === '/api/artists/mb-search') {return Promise.resolve({ items: [searchRow()] })}
-      if (url.startsWith('/api/artists/mb-official-count/')) {return Promise.resolve({ count: 5 })}
       if (url === '/api/artists/by-mbid/mb-1') {return notFound()}
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
     await mount()
-    await wrapper!.find('input').setValue('radiohead')
-    await wrapper!.findAll('button').find(b => b.text().includes('Search in MusicBrainz'))!.trigger('click')
-    await flushMicrotasks()
-    await wrapper!.findAll('button').find(b => b.text().trim() === 'Add')!.trigger('click')
-    await flushMicrotasks()
+    await doSearch()
+    await clickAdd()
 
     expect(pushMock).not.toHaveBeenCalled()
     expect(document.body.textContent).toContain('already in your library')
@@ -189,16 +153,12 @@ describe('artist/add/Search.vue', () => {
     terminal.exitCode = 1
     fetchMock.mockImplementation((url: string) => {
       if (url === '/api/artists/mb-search') {return Promise.resolve({ items: [searchRow()] })}
-      if (url.startsWith('/api/artists/mb-official-count/')) {return Promise.resolve({ count: 5 })}
       if (url === '/api/artists/by-mbid/mb-1') {return notFound()}
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
     await mount()
-    await wrapper!.find('input').setValue('radiohead')
-    await wrapper!.findAll('button').find(b => b.text().includes('Search in MusicBrainz'))!.trigger('click')
-    await flushMicrotasks()
-    await wrapper!.findAll('button').find(b => b.text().trim() === 'Add')!.trigger('click')
-    await flushMicrotasks()
+    await doSearch()
+    await clickAdd()
 
     expect(pushMock).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalled()

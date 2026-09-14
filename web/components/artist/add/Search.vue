@@ -18,7 +18,6 @@ const query = ref('')
 const results = ref<MbArtistSearchRow[]>([])
 const searched = ref(false)
 const loading = ref(false)
-const counts = ref<Record<string, number | 'error' | undefined>>({})
 const monitor = ref(false)
 const addingMbid = ref<string | null>(null)
 
@@ -26,20 +25,13 @@ const errorOpen = ref(false)
 const errorMessage = ref('')
 const errorSlug = ref<string | null>(null)
 
-// Abandons an in-flight counts loop when a new search starts or the component unmounts - counts are
-// keyed by mbid so a stale write would just be wrong data landing on the right row.
-let countsGeneration = 0
-
 const search = async () => {
   const q = query.value.trim()
   if (!q) {return}
   loading.value = true
   searched.value = true
-  const gen = ++countsGeneration
-  counts.value = {}
   try {
     const data = await $fetch<{ items: MbArtistSearchRow[] }>('/api/artists/mb-search', { query: { q } })
-    if (gen !== countsGeneration) {return}
     results.value = data.items
   }
   catch (e: any) {
@@ -48,22 +40,6 @@ const search = async () => {
   }
   finally {
     loading.value = false
-  }
-  loadCounts(gen)
-}
-
-const loadCounts = async (gen: number) => {
-  for (const row of results.value) {
-    if (gen !== countsGeneration) {return}
-    try {
-      const { count } = await $fetch<{ count: number }>(`/api/artists/mb-official-count/${row.mbid}`)
-      if (gen !== countsGeneration) {return}
-      counts.value = { ...counts.value, [row.mbid]: count }
-    }
-    catch {
-      if (gen !== countsGeneration) {return}
-      counts.value = { ...counts.value, [row.mbid]: 'error' }
-    }
   }
 }
 
@@ -140,7 +116,6 @@ const add = async (row: MbArtistSearchRow) => {
     <ArtistAddResultsTable
       v-else-if="results.length > 0"
       :items="results"
-      :counts="counts"
       :adding-mbid="addingMbid"
       @add="add"
     />

@@ -13,18 +13,6 @@ const jsonResponse = (status: number, body: unknown) => ({
   json: async () => body,
 })
 
-describe('officialReleaseGroupQuery', () => {
-  it('scopes to the artist, album/EP primarytype, official status, excludes non-audiobook secondary types', async () => {
-    const { officialReleaseGroupQuery } = await freshModule()
-    const q = officialReleaseGroupQuery('abc-123')
-    expect(q).toContain('arid:abc-123')
-    expect(q).toContain('(primarytype:album OR primarytype:ep)')
-    expect(q).toContain('status:official')
-    expect(q).toContain('NOT secondarytype:')
-    expect(q).toContain('audiobook')
-  })
-})
-
 describe('mbFetch', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -94,7 +82,7 @@ describe('mbFetch', () => {
   })
 })
 
-describe('searchArtists / countOfficialReleaseGroups', () => {
+describe('searchArtists', () => {
   beforeEach(() => {
     vi.useFakeTimers()
   })
@@ -114,14 +102,5 @@ describe('searchArtists / countOfficialReleaseGroups', () => {
     const rows = await promise
 
     expect(rows).toEqual([{ mbid: 'mb-1', name: 'Radiohead', disambiguation: null, country: 'GB', type: 'Group' }])
-  })
-
-  it('countOfficialReleaseGroups reads the count field', async () => {
-    const { countOfficialReleaseGroups } = await freshModule()
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, { count: 38 })))
-
-    const promise = countOfficialReleaseGroups('mb-1')
-    await vi.runAllTimersAsync()
-    expect(await promise).toBe(38)
   })
 })

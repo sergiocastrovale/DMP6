@@ -146,7 +146,7 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 
 **Core**: `GET /api/artists`, `/artists/[slug]`, `/artists/[slug]/releases`, `/artists/[slug]/tracks`, `/artists/random`, `/releases/[id]/tracks`, `/releases/[id]/info`
 
-**Add artist** (`/add`, gated `sync.run`; read-only MB calls, no scripts logic — see `server/utils/musicbrainz.ts`/docs/scripts/add.md): `GET /artists/mb-search?q=`, `/artists/mb-official-count/[mbid]`, `/artists/by-mbid/[mbid]`; `POST /artists/added/[mbid]` (post-`./add` cache bust, since `./add` can't reach Redis)
+**Add artist** (`/add`, gated `sync.run`; read-only MB calls, no scripts logic — see `server/utils/musicbrainz.ts`/docs/scripts/add.md): `GET /artists/mb-search?q=`, `/artists/by-mbid/[mbid]`; `POST /artists/added/[mbid]` (post-`./add` cache bust, since `./add` can't reach Redis)
 
 **Playback**: `GET /api/audio/[id]` (range+ETag), `POST /tracks/[id]/play`, `GET /tracks/[id]/info`, `/tracks/[id]/playlists`, `POST /tracks/explore`, `GET /tracks/random`, `/tracks/random-batch`
 
