@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { useGlobalStore } from '~/stores/global'
+import { isAbortError } from '~/helpers/functions'
 import { appendTerminalLine, parseDoneExitCode, parseSseEvents } from '~/helpers/sse'
 
 export const useTerminalStore = defineStore('terminal', () => {
@@ -73,9 +74,9 @@ export const useTerminalStore = defineStore('terminal', () => {
           }
         }
       }
-    } catch (e: any) {
-      if (e.name !== 'AbortError') {
-        lines.value.push(`Error: ${e.message}`)
+    } catch (e) {
+      if (!isAbortError(e)) {
+        lines.value.push(`Error: ${(e as Error).message}`)
       }
     } finally {
       isRunning.value = false

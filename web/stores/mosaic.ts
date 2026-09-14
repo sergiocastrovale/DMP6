@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { MosaicItem, MosaicProgress } from '~/types/labs'
+import { isAbortError } from '~/helpers/functions'
 import { parseSseEvents } from '~/helpers/sse'
 
 export const useMosaicStore = defineStore('mosaic', () => {
@@ -59,9 +60,9 @@ export const useMosaicStore = defineStore('mosaic', () => {
           }
         }
       }
-    } catch (e: any) {
-      if (e.name !== 'AbortError') {
-        error.value = e.message
+    } catch (e) {
+      if (!isAbortError(e)) {
+        error.value = (e as Error).message
       }
     } finally {
       isGenerating.value = false

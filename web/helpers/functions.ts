@@ -2,6 +2,18 @@ import type { DownloadedReleaseItem } from '~/types/download'
 import type { ScanProgress } from '~/types/scan'
 import type { SortDirection } from '~/types/common'
 
+// Whether a caught $fetch error is only "a newer request superseded this one" (AbortController.abort()
+// on a stale in-flight call - the standard "abort the old request when a fresher one starts" pattern
+// used by browse.ts's fetchArtists and FiltersGenre.vue's fetchGenres) rather than a real failure that
+// should propagate. `ofetch` wraps an aborted request in its own `FetchError`, whose `.name` is
+// 'FetchError' - the actual `AbortError` lives one level down at `.cause` - so checking `e.name`
+// alone (the fetch spec's own contract for a plain aborted `fetch()`) never matches an ofetch/$fetch
+// abort, and the wrapped error was re-thrown as an unhandled rejection on every single one.
+export const isAbortError = (e: unknown): boolean => {
+  const err = e as { name?: string, cause?: { name?: string } } | null | undefined
+  return err?.name === 'AbortError' || err?.cause?.name === 'AbortError'
+}
+
 // Scan the terminal output backwards for the latest structured `PROGRESS:{json}` line emitted by the
 // index/sync/refresh scripts (--web mode). Returns null when no structured progress is present.
 export const parseProgress = (lines: string[]): ScanProgress | null => {
@@ -103,6 +115,15 @@ export const downloadSubpage = (state?: string | null): string => {
     default:
       return '/downloads/queue?filter=downloading'
   }
+}
+
+export const formatRelative = (date: string): string => {
+  const ms = Date.now() - new Date(date).getTime()
+  const min = Math.floor(ms / 60000)
+  if (min < 1) { return 'Just now' }
+  if (min < 60) { return `${min}m ago` }
+  const h = Math.floor(min / 60)
+  return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago` 
 }
 
 export const formatDuration = (seconds: number | null): string => {

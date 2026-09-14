@@ -14,6 +14,7 @@ import {
   formatNumber,
   formatPlaytime,
   formatSpeed,
+  isAbortError,
   musicBrainzUrl,
   pageCount,
   paginate,
@@ -26,6 +27,31 @@ import {
 } from '../../helpers/functions'
 import { queueFilters } from '../../helpers/constants'
 import type { DownloadedReleaseItem } from '../../types/download'
+
+describe('isAbortError', () => {
+  it('recognises a plain fetch() AbortError (name set directly)', () => {
+    expect(isAbortError(new DOMException('aborted', 'AbortError'))).toBe(true)
+  })
+
+  it('recognises an ofetch/$fetch FetchError wrapping the AbortError as .cause', () => {
+    // Regression: ofetch's own error name is 'FetchError', not 'AbortError' - the real abort
+    // reason lives one level down at .cause. Checking e.name alone let every aborted $fetch call
+    // re-throw as an unhandled promise rejection (seen live from rapid genre-filter toggling).
+    const fetchError = Object.assign(new Error('aborted'), { name: 'FetchError', cause: new DOMException('aborted', 'AbortError') })
+    expect(isAbortError(fetchError)).toBe(true)
+  })
+
+  it('rejects a real failure', () => {
+    expect(isAbortError(new Error('network down'))).toBe(false)
+    expect(isAbortError(Object.assign(new Error('500'), { name: 'FetchError', cause: new Error('boom') }))).toBe(false)
+  })
+
+  it('handles non-object/nullish input without throwing', () => {
+    expect(isAbortError(null)).toBe(false)
+    expect(isAbortError(undefined)).toBe(false)
+    expect(isAbortError('AbortError')).toBe(false)
+  })
+})
 
 describe('parseProgress', () => {
   it('scans backwards for the latest PROGRESS: line', () => {

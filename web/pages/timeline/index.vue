@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { LucideClock, LucideMusic, Loader2 } from 'lucide-vue-next'
 import type { Decade, DecadeResponse, TimelineRelease } from '~/types/timeline'
+import { isAbortError } from '~/helpers/functions'
 import { cx, grid, ICON_STROKE_WIDTH, layout, sw } from '~/helpers/ui'
 
 useTitle('Timeline')
@@ -47,7 +48,7 @@ async function fetchDecadeData(url: string) {
   }
   catch (error) {
     if (token !== requestToken) {return}
-    if ((error as { name?: string })?.name !== 'AbortError') {
+    if (!isAbortError(error)) {
       console.error('Failed to load timeline data:', error)
     }
   }

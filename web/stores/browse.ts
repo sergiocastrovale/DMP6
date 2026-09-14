@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { ArtistListItem } from '~/types/artist'
 import { defaultSortDirection } from '~/helpers/browseSort'
+import { isAbortError } from '~/helpers/functions'
 import type { SortDirection } from '~/types/common'
 
 export const useBrowseStore = defineStore('browse', () => {  
@@ -74,8 +75,8 @@ export const useBrowseStore = defineStore('browse', () => {
       mainCount.value = data.mainCount
       hasMore.value = data.hasMore
     }
-    catch (e: any) {
-      if (e?.name !== 'AbortError') {throw e}
+    catch (e) {
+      if (!isAbortError(e)) {throw e}
     }
     finally {
       if (abortController === controller) {

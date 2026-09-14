@@ -107,6 +107,19 @@ describe('useBrowseStore', () => {
     expect(store.artists).toEqual([{ slug: 'a' }])
   })
 
+  it('a request aborted by a newer one resolves quietly instead of throwing (regression: unhandled rejection)', async () => {
+    // ofetch wraps an AbortController.abort() as its own FetchError, whose .name is 'FetchError' -
+    // the actual AbortError lives at .cause. Reproduces the live "Uncaught (in promise) FetchError
+    // ... Caused by: AbortError" seen from rapid genre-filter toggling.
+    const abortFetchError = Object.assign(new Error('aborted'), {
+      name: 'FetchError',
+      cause: new DOMException('signal is aborted without reason', 'AbortError'),
+    })
+    fetchMock.mockRejectedValueOnce(abortFetchError)
+    const store = useBrowseStore()
+    await expect(store.fetchArtists()).resolves.toBeUndefined()
+  })
+
   it('a stale response arriving after a newer request never overwrites the fresher one (audit #77)', async () => {
     const store = useBrowseStore()
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
+import { isAbortError } from '~/helpers/functions'
 
 const props = defineProps<{
   type: 'artists' | 'releases' | 'tracks'
@@ -40,8 +41,8 @@ const fetchPage = async (append = false) => {
     hasMore.value = data.hasMore
     if (!append) {page.value = 1}
   }
-  catch (e: any) {
-    if (e?.name !== 'AbortError') {throw e}
+  catch (e) {
+    if (!isAbortError(e)) {throw e}
   }
   finally {
     if (abortController === controller) {

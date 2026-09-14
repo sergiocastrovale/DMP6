@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { isAbortError } from '~/helpers/functions'
 import type { FixHistoryRow, HistoryIssueType, IssueSummary, IssueType } from '~/types/issues'
 import type { PaginatedResponse } from '~/types/api'
 
@@ -61,8 +62,8 @@ export const useIssuesStore = defineStore('issues', () => {
       items.value[type] = res.items
       total.value[type] = res.total
     }
-    catch (e: any) {
-      if (e?.name !== 'AbortError') {throw e}
+    catch (e) {
+      if (!isAbortError(e)) {throw e}
     }
     finally {
       if (typeAbortControllers[type] === controller) {
@@ -98,8 +99,8 @@ export const useIssuesStore = defineStore('issues', () => {
       resolvedItems.value[type] = res.items
       resolvedTotal.value[type] = res.total
     }
-    catch (e: any) {
-      if (e?.name !== 'AbortError') {throw e}
+    catch (e) {
+      if (!isAbortError(e)) {throw e}
     }
     finally {
       if (resolvedAbortControllers[type] === controller) {
