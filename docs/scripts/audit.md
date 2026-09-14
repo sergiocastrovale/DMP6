@@ -41,7 +41,7 @@ Artists that shouldn't exist:
 | Reason | Meaning |
 |--------|---------|
 | `phantom` | Name matches `^\d{1,3}$` or `@\d{2,3}$` - created by corrupted tags |
-| `no_releases` | No link in **any** of `LocalReleaseArtist`, `MusicBrainzReleaseArtist` or `TrackRelatedArtist`. All three matter: an MB-verified credit artist ("appears on" only) owns nothing, so its credit is the single thing keeping it alive |
+| `no_releases` | No link in **any** of `LocalReleaseArtist`, `MusicBrainzReleaseArtist` or `TrackRelatedArtist`. All three matter: an MB-verified credit artist ("appears on" only) owns nothing, so its credit is the single thing keeping it alive. Excludes `manuallyAdded` artists (`./add`, docs/scripts/add.md) — mirrors `index`'s own orphan sweep (`scripts/index/src/deletion.rs`), the two rules must match |
 
 **Fix:** `./fix --orphans` deletes the artist and any local image file.
 

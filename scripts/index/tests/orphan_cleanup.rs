@@ -21,6 +21,7 @@ const LRA_NAME: &str = "DMP Test LRA Artist (orphan_cleanup)";
 const MBRA_NAME: &str = "DMP Test MBRA Artist (orphan_cleanup)";
 const CREDIT_ONLY_NAME: &str = "DMP Test Credit Only Artist (orphan_cleanup)";
 const LONE_NAME: &str = "DMP Test Unlinked Artist (orphan_cleanup)";
+const MANUALLY_ADDED_NAME: &str = "DMP Test Manually Added Artist (orphan_cleanup)";
 const RELEASE_TYPE_NAME: &str = "DMP Test Release Type (orphan_cleanup)";
 
 /// Config with local image storage pointed at a throwaway dir: the fixture artists carry no image,
@@ -61,6 +62,21 @@ async fn insert_artist(pool: &PgPool, name: &str) -> String {
     id
 }
 
+async fn insert_manually_added_artist(pool: &PgPool, name: &str) -> String {
+    let id = cuid2::create_id();
+    sqlx::query(
+        r#"INSERT INTO "Artist" (id, name, slug, "manuallyAdded", "totalPlayCount", "totalTracks", "totalFileSize", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, true, 0, 0, 0, now(), now())"#,
+    )
+    .bind(&id)
+    .bind(name)
+    .bind(common::slug::make_slug(name))
+    .execute(pool)
+    .await
+    .expect("insert fixture manuallyAdded Artist");
+    id
+}
+
 async fn artist_exists(pool: &PgPool, id: &str) -> bool {
     sqlx::query_scalar::<_, bool>(r#"SELECT EXISTS(SELECT 1 FROM "Artist" WHERE id = $1)"#)
         .bind(id)
@@ -95,6 +111,7 @@ async fn reset_fixture(pool: &PgPool) {
             common::slug::make_slug(MBRA_NAME),
             common::slug::make_slug(CREDIT_ONLY_NAME),
             common::slug::make_slug(LONE_NAME),
+            common::slug::make_slug(MANUALLY_ADDED_NAME),
         ])
         .execute(pool)
         .await
@@ -116,6 +133,9 @@ async fn credits_and_release_links_both_protect_an_artist() {
     let mbra_id = insert_artist(&pool, MBRA_NAME).await;
     let credit_only_id = insert_artist(&pool, CREDIT_ONLY_NAME).await;
     let lone_id = insert_artist(&pool, LONE_NAME).await;
+    // No links at all, same as LONE_NAME - the only difference is manuallyAdded, which must be enough
+    // on its own to survive the sweep (./add, docs/scripts/add.md).
+    let manually_added_id = insert_manually_added_artist(&pool, MANUALLY_ADDED_NAME).await;
 
     // LRA_NAME: protected by a LocalReleaseArtist link.
     let release_id = cuid2::create_id();
@@ -226,6 +246,10 @@ async fn credits_and_release_links_both_protect_an_artist() {
     assert!(
         !artist_exists(&pool, &lone_id).await,
         "artist with no links at all should have been deleted"
+    );
+    assert!(
+        artist_exists(&pool, &manually_added_id).await,
+        "manuallyAdded artist with no links was deleted - it hasn't had a chance to gain any yet"
     );
 
     // ...but once the credit itself is gone (track deleted -> cascade), the artist becomes collectable.

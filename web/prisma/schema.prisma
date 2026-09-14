@@ -64,6 +64,7 @@ model Artist {
   country             String?                    @db.VarChar(2)
   syncHash            String?
   monitored           Boolean                    @default(false)
+  manuallyAdded       Boolean                    @default(false)
   lastGapsCheckedAt   DateTime? // last catalogue-gap refresh (round-robin fairness at scale)
   trackRelatedArtists TrackRelatedArtist[]       @relation("ArtistRelatedTracks")
   orphanIssues        IssueOrphanArtist[]        @relation("OrphanArtistIssue")

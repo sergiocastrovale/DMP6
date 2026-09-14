@@ -221,6 +221,8 @@ export const musicBrainzUrl = (release: { musicbrainzId: string | null, releaseG
   return `https://musicbrainz.org/${isGroupPlaceholder ? 'release-group' : 'release'}/${release.musicbrainzId}`
 }
 
+export const musicbrainzArtistUrl = (mbid: string): string => `https://musicbrainz.org/artist/${mbid}`
+
 // With no explicit session, the terminal store's `run()` falls back to a fixed `dmp-<command>` name
 // shared by every caller of that command - two artists' `./index` runs land on the same `dmp-index`
 // session and the second hits the 409 hasUnfinishedRun guard. Scoping the session to what's being

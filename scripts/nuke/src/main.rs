@@ -564,9 +564,10 @@ async fn refresh_statistics(pool: &PgPool) {
         r#"UPDATE "Statistics" SET
              artists = (SELECT COUNT(*)::int FROM "Artist"),
              "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
-                AND EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)),
+                AND (EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id) OR a."manuallyAdded")),
              "creditArtists" = (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
-                AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)),
+                AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)
+                AND NOT a."manuallyAdded"),
              tracks = (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
              releases = (SELECT COUNT(*)::int FROM "LocalRelease"),
              "releasesWithCoverArt" = (SELECT COUNT(*)::int FROM "LocalRelease"

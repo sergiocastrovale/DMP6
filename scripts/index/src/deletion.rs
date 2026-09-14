@@ -267,7 +267,11 @@ pub async fn delete_orphaned_mb_releases(pool: &PgPool, scope: ArtistScope<'_>) 
 /// Scoped to `scope`'s own artist ids when it is `Some` - a filtered run may retire an artist it just
 /// emptied, never one it never looked at.
 pub async fn delete_orphan_artists(pool: &PgPool, config: &Config, scope: ArtistScope<'_>) -> u64 {
+    // `manuallyAdded` (./add, CLAUDE.md Data Model) is excluded: an artist added before owning any
+    // files has no links yet by design, and must survive until the catalogue-gaps pass or a real
+    // release gives it one. Mirrored in scripts/audit/src/orphans.rs - the two must match.
     const UNLINKED: &str = r#"a."primaryArtistId" IS NULL
+           AND NOT a."manuallyAdded"
            AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = a.id)
            AND NOT EXISTS (SELECT 1 FROM "MusicBrainzReleaseArtist" x WHERE x."artistId" = a.id)
            AND NOT EXISTS (SELECT 1 FROM "TrackRelatedArtist" x WHERE x."artistId" = a.id)"#;

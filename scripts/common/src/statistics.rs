@@ -15,9 +15,10 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
            SELECT 'main',
              (SELECT COUNT(*)::int FROM "Artist"),
              (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
-                AND EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)),
+                AND (EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id) OR a."manuallyAdded")),
              (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
-                AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)),
+                AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)
+                AND NOT a."manuallyAdded"),
              (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
              (SELECT COUNT(*)::int FROM "LocalRelease"),
              (SELECT COUNT(*)::int FROM "Genre"),

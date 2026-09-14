@@ -5,7 +5,7 @@ Personal music library web app. Scans local audio files, matches vs MusicBrainz,
 ## Stack
 
 - **Web**: Nuxt 4 + Vue 3 + TS + Tailwind v4 + Pinia + Prisma + PostgreSQL
-- **Scripts**: Rust CLI, one crate/binary under `scripts/` (`index`, `sync`, `tidy`, `audit`, `fix`, `problems`, `analysis`, `nuke`, `delete`, `playlists`, `extract-meta-images`, `dissect`, `mosaic`, shared `common` lib). `sync` is lib+bin (`dmp_sync`) — `tidy` depends on its lib for db/boxset/status/etc.
+- **Scripts**: Rust CLI, one crate/binary under `scripts/` (`index`, `sync`, `tidy`, `add`, `audit`, `fix`, `problems`, `analysis`, `nuke`, `delete`, `playlists`, `extract-meta-images`, `dissect`, `mosaic`, shared `common` lib). `sync` is lib+bin (`dmp_sync`) — `tidy`/`add` depend on its lib for db/boxset/status/catalogue_gaps/etc.
 - **Mobile**: PWA + Capacitor Android wrapper in `mobile/` pointing at `MOBILE_SERVER_URL` — see `docs/pwa/pwa_capacitor_android.md`
 - **Deploy**: Docker on TrueNAS via `./deploy`
 - **Optional**: Redis (ioredis), S3 image storage, Cloudflare Tunnel
@@ -35,6 +35,7 @@ Artist.primaryArtistId → Artist.id (dup → canonical)
 - **Box set = one MusicBrainzRelease, N `MusicBrainzReleaseMedium` rows**, never several releases (see `docs/sync_decisions.md`). MB has no box-set entity, no id-link disc→standalone album — only shared identity is **recording** (`recordingId`). `index` never folds multi-medium; `dmp_sync::boxset::run_repair` (called from `./tidy`, scoped by artist ids) does binding + fold/dissolve + equivalence. Binding: tag consensus first, else `boxset::plan_box_bind` tracklist matcher — folder→medium pairing is 3 passes, strictest first (exact title +-5s → exact title +-15s for master drift → one title containing the other, unambiguous only); every sibling must resolve to exactly one medium or the whole group is rejected. A binding the box pass owns (`boxReleaseId` or `mediumPosition` set) wins over the folder's own tags on re-sync, and skips the deluxe-edition upgrade, or the two passes fight and the disc never scores. Equivalence 3 tiers (recording equi-join → artist-scoped title+duration → containment). `mediumCount>1` + ≥2 equivalent media → **dissolves** (each disc binds standalone via `boxReleaseId`/`boxMediumPosition`); 0-1 equivalent → **folds** into one `LocalRelease`. Needs `LocalReleaseMember` row/disc or re-scan re-splits it. Each sibling group is bound/folded/dissolved inside its own error boundary — one group's DB error is logged + counted (`groups_failed`), never aborts the rest of the pass (2026-09-06/09-10 outages: an unhandled error mid-loop silently zeroed out box placement for every group after it, on every run, until fixed — see `docs/sync_decisions.md` §9 "One box never blocks the rest").
 - **Discarded merge must not orphan its just-bound MB release.** `stampMerged` discard branch (`web/server/utils/promote.ts`) deletes MusicBrainzRelease only if nothing else needs it (other LocalRelease, a track still pointing at it via `mbTrackId`, or MISSING placeholder — kept on purpose, makes it re-downloadable). `dmp_sync::db::delete_orphaned_mb_releases` must run before `retire_owned_missing_placeholders` at every call site — sync's own tail no longer runs either (moved to `./tidy`, docs/scripts/tidy.md).
 - `LocalRelease.groupKey` (unique) = `"folder:{folderPath}"` (fallback `"meta:{slugTitle}:{year}:{slugArtist}"`). Per-track MB ids NOT part of key — folder is the physical unit. Binds only Official Album/EP, +Single only when files' own MB ids point at it (`allowlist::is_allowed_tagged`). Searches/catalogue-gaps never produce a Single.
+- `Artist.manuallyAdded` — the one place ownership is a stored flag, not derived. Set only by `./add` (docs/scripts/add.md), never un-set. Lets a file-less artist show in `/browse` (`OR manuallyAdded`, `index.get.ts`) and counts it into `Statistics.mainArtists`; excluded from the orphan-artist sweep (`index/src/deletion.rs`, `audit/src/orphans.rs` — the two must match) so a just-added artist with no links yet survives the next `./index`/`./audit`.
 
 ## Standards
 
@@ -96,6 +97,12 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 # the Artist.lastTidiedAt watermark unless --all/--only/--from/--to/--artist-ids narrow it. Every
 # caller chains ./tidy after ./sync (docs/scripts/tidy.md) — sync itself never calls it.
 
+./add --mbid <uuid> [--monitored] [--dry-run]
+# Adds a MusicBrainz artist before any file exists for them: empty MUSIC_DIR folder + Artist row
+# (manuallyAdded=true) + a catalogue-gaps pass scoped to just that artist id. ./refresh can't do this
+# (needs local files to find an artist to sync). Exit 3 = already exists (mbid/slug/folder collision),
+# distinct from exit 1 failure — see docs/scripts/add.md.
+
 # Audit & Fix
 ./audit [--corrupted|--orphans|--duplicates|--missing|--enrichment|--duplicate-release|--mismatched-release-id]
 ./fix [--corrupted|--orphans|--duplicates|--missing]
@@ -123,7 +130,7 @@ Web UI scan buttons run these binaries via `/api/terminal/run`, from **two separ
 - `scanActions` → `components/settings/ScanActions.vue` (library-wide): check new / re-check changed (`--inspect`) / index only / sync only (MANAGER), + ADMIN full re-scan (`--overwrite-with-images` + `sync --overwrite`, never `--prune` library-wide). Check/full/sync-only all chain `./tidy` after `./sync`.
 - `artistScanActions` → `components/artist/ScanActions.vue` (per-artist): scan new files (MANAGER) / rebuild everything / rebuild files-only / re-match from scratch (ADMIN). Scan/rebuild/re-match chain `./tidy` after `./sync`; rebuild-files-only doesn't touch MusicBrainz so has no `./tidy` step.
 
-`./delete` takes artist **name** positionally + needs `--y` (stdin prompt, nothing answers it in tmux). `index` scoped by **folders** instead — per-artist actions pass `--folders`, never `--only`: `--only` matches whole top-level directories, and a release co-owned inside another artist's folder (compound albumArtist split) then dragged that artist's entire catalogue into every scan (Michael Jackson → 5 roots, 662 Diana Ross files re-read with `--overwrite` for one duet). `artistScanFolders` (`helpers/artistPageLogic.ts`) mixes granularity, which `index` walks entry by entry (`walk_roots`): own roots — the artist's plus any connected duplicate-merged artist's, matched on `normalize_filter` semantics — go in bare so new albums are still found; every other root contributes only the exact album folders concerned. Trade-off: a **new** co-owned album filed under another artist is found by that artist's scan, not this one. Post-run resolution scopes off touched artist ids, not the filter, so `--folders` keeps it correct. ADMIN gating: `DESTRUCTIVE_FLAGS` in `server/utils/terminalCommand.ts` (`--delete`,`--overwrite*`,`--prune`,`--files`) + `COMMAND_PERM` (puts `./delete`/`./nuke` at ADMIN outright). New destructive flag must be added to the deny-list explicitly.
+`./delete` takes artist **name** positionally + needs `--y` (stdin prompt, nothing answers it in tmux). `index` scoped by **folders** instead — per-artist actions pass `--folders`, never `--only`: `--only` matches whole top-level directories, and a release co-owned inside another artist's folder (compound albumArtist split) then dragged that artist's entire catalogue into every scan (Michael Jackson → 5 roots, 662 Diana Ross files re-read with `--overwrite` for one duet). `artistScanFolders` (`helpers/artistPageLogic.ts`) mixes granularity, which `index` walks entry by entry (`walk_roots`): own roots — the artist's plus any connected duplicate-merged artist's, matched on `normalize_filter` semantics — go in bare so new albums are still found; every other root contributes only the exact album folders concerned. Trade-off: a **new** co-owned album filed under another artist is found by that artist's scan, not this one. Post-run resolution scopes off touched artist ids, not the filter, so `--folders` keeps it correct. ADMIN gating: `DESTRUCTIVE_FLAGS` in `server/utils/terminalCommand.ts` (`--delete`,`--overwrite*`,`--prune`,`--files`) + `COMMAND_PERM` (puts `./delete`/`./nuke` at ADMIN outright). New destructive flag must be added to the deny-list explicitly. `FLAG_PERM` is the non-destructive counterpart — a flag gated by its own permission on top of the command's: `--monitored` on `./add` needs `downloads.crud` even though `./add` itself only needs `sync.run`.
 
 No UI caller passes `--skip-resolve` — every run does artist-resolution + canonicalize + orphan sweep, scoped by whatever `--only`/`--folders`/`--release` filter it got (`scoped_release_ids_for_filter` never returns `None` once a filter is set).
 
@@ -138,6 +145,8 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 ## API Endpoints
 
 **Core**: `GET /api/artists`, `/artists/[slug]`, `/artists/[slug]/releases`, `/artists/[slug]/tracks`, `/artists/random`, `/releases/[id]/tracks`, `/releases/[id]/info`
+
+**Add artist** (`/add`, gated `sync.run`; read-only MB calls, no scripts logic — see `server/utils/musicbrainz.ts`/docs/scripts/add.md): `GET /artists/mb-search?q=`, `/artists/mb-official-count/[mbid]`, `/artists/by-mbid/[mbid]`; `POST /artists/added/[mbid]` (post-`./add` cache bust, since `./add` can't reach Redis)
 
 **Playback**: `GET /api/audio/[id]` (range+ETag), `POST /tracks/[id]/play`, `GET /tracks/[id]/info`, `/tracks/[id]/playlists`, `POST /tracks/explore`, `GET /tracks/random`, `/tracks/random-batch`
 
@@ -163,6 +172,7 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 |---|---|
 | `/` | Dashboard: latest, recently played, playlists, favorites |
 | `/browse` | Artist grid, filters, infinite scroll |
+| `/add` | Search MusicBrainz and add an artist before owning any files (`./add`, `sync.run`) |
 | `/artist/[slug]` | Artist detail + releases (aggregated across connected artists) + sync controls |
 | `/explore` | 4-slider discovery (energy/era/familiarity/sound) |
 | `/playlists`, `/playlists/[slug]` | Playlist library / single playlist |

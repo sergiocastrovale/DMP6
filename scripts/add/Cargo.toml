@@ -1,0 +1,21 @@
+[package]
+name = "add"
+version = "1.0.0"
+edition = "2021"
+
+[[bin]]
+name = "add"
+path = "src/main.rs"
+
+[dependencies]
+dmp_sync = { path = "../sync", package = "sync" }
+common = { path = "../common" }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+reqwest = { workspace = true }
+chrono = { workspace = true }
+dotenvy = { workspace = true }
+serde_json = { workspace = true }
+cuid2 = { workspace = true }
+aws-sdk-s3 = { workspace = true }

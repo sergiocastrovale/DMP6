@@ -159,6 +159,10 @@ For 2 million tracks with ~26 images:
 3. **Set up lifecycle rules** to delete old versions if needed
 4. **Use CloudFront** for better performance (optional)
 
+`common::images::download_artist_image` is called from both `./sync` (per artist during a normal run)
+and `./add` (once, right after creating the artist row - docs/scripts/add.md) — same function, same
+Wikidata/Wikipedia/Fanart source order, non-fatal on failure either way.
+
 ## Image Deletion
 
 Image cleanup is always synchronous - every deletion path removes the local file and the S3 object **before** deleting the DB row. There is no queue, no trigger, no background worker: if a row is gone, its images are gone too.

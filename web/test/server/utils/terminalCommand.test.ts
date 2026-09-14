@@ -13,13 +13,14 @@ import {
   isValidSessionName,
   parseExitLine,
   permissionForCommand,
+  permissionsForFlags,
   stripAnsi,
   withWebFlag,
 } from '../../../server/utils/terminalCommand'
 
 describe('isAllowedCommand', () => {
   it('accepts every allow-listed command', () => {
-    for (const cmd of ['./index', './sync', './tidy', './analysis', './nuke', './playlists', './audit', './fix', './refresh', './delete']) {
+    for (const cmd of ['./index', './sync', './tidy', './analysis', './nuke', './playlists', './audit', './fix', './refresh', './delete', './add']) {
       expect(isAllowedCommand(cmd)).toBe(true)
     }
   })
@@ -74,6 +75,21 @@ describe('permissionForCommand', () => {
 
   it('returns undefined for an unknown command', () => {
     expect(permissionForCommand('./unknown')).toBeUndefined()
+  })
+
+  it('maps ./add to sync.run', () => {
+    expect(permissionForCommand('./add')).toBe('sync.run')
+  })
+})
+
+describe('permissionsForFlags', () => {
+  it('maps --monitored to downloads.crud', () => {
+    expect(permissionsForFlags(['--mbid', 'x', '--monitored'])).toEqual(['downloads.crud'])
+  })
+
+  it('returns nothing for args with no gated flag', () => {
+    expect(permissionsForFlags(['--mbid', 'x'])).toEqual([])
+    expect(permissionsForFlags([])).toEqual([])
   })
 })
 

@@ -311,6 +311,11 @@ Because credits can point at an artist that owns nothing, `delete_orphan_artists
 link tables (`LocalReleaseArtist`, `MusicBrainzReleaseArtist`, `TrackRelatedArtist`) - omitting the third
 deletes every credit artist the resolver just created. See `scripts/index/tests/orphan_cleanup.rs`.
 
+A `manuallyAdded` artist (`./add`, docs/scripts/add.md) is excluded from this check too, for the same
+kind of reason: it's added before it has any link at all, on purpose, and must survive until the
+catalogue-gaps pass or a real release gives it one. `ensure_artist`/`ensure_artist_cached` (below) never
+touch the flag either way, so it's unaffected by a tag-derived artist row being created or reused.
+
 ### Cleanup is scoped to the run
 
 `delete_empty_releases`, `delete_orphaned_mb_releases` and `delete_orphan_artists` take an `ArtistScope`.

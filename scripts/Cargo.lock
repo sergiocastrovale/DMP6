@@ -3,6 +3,23 @@
 version = 4
 
 [[package]]
+name = "add"
+version = "1.0.0"
+dependencies = [
+ "aws-sdk-s3",
+ "chrono",
+ "clap",
+ "common",
+ "cuid2",
+ "dotenvy",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "sync",
+ "tokio",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

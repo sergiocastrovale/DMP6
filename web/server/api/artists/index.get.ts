@@ -29,8 +29,13 @@ export default defineEventHandler(async (event) => {
 
   return cachedResponse(cacheKey, 120, async () => {
     // Credit-only artists (MB-verified 'appears on' entries that own no release) have their own page
-    // and are searchable, but must not appear in browse. Ownership is derived, never a stored flag.
-    const where: Record<string, unknown> = { primaryArtistId: null, localReleases: { some: {} } }
+    // and are searchable, but must not appear in browse. Ownership is normally derived, never a
+    // stored flag - except `manuallyAdded` (./add, CLAUDE.md Data Model), which lets an artist added
+    // before owning any files still show up here.
+    const where: Record<string, unknown> = {
+      primaryArtistId: null,
+      OR: [{ localReleases: { some: {} } }, { manuallyAdded: true }],
+    }
 
     if (letter) {
       where.slug = { startsWith: letter }

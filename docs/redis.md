@@ -114,6 +114,15 @@ After `REFRESH MATERIALIZED VIEW CONCURRENTLY dmp_timeline`, all timeline keys a
 |---------|--------|
 | `timeline:*` | Decade/year counts may have changed after index/sync |
 
+### On artist add - `POST /api/artists/added/[mbid]`
+
+`./add` (docs/scripts/add.md) writes straight to Postgres and can't reach Redis itself, so `/add`'s
+Search.vue calls this route right after `./add` exits 0:
+
+| Pattern | Reason |
+|---------|--------|
+| `artists:*` | New `manuallyAdded` artist should show in `/browse` immediately, not after the 2-min TTL |
+
 ### Not explicitly invalidated
 
 - `genres`, `artists:*`, `artist:{slug}` (non-play) - these only change after an index or sync run. Their TTLs (2–10 min) are short enough that stale data is not a practical concern.

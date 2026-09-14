@@ -111,6 +111,12 @@ Duplicate detection: tracks processed MB IDs across the run. Skips artists that 
 
 Fast path for populating MISSING MusicBrainzRelease entries without re-running the full sync. Requires artists to already have `musicbrainzId` in DB (from a previous full sync).
 
+Two ways to scope it: name filtering (`--only`/`--from`/`--to`/`--exact`, this binary's own flags), or
+an explicit `artist_ids: Option<&[String]>` param on `fill_catalogue_gaps` itself, used only by `./add`
+(docs/scripts/add.md) — it scopes to the single artist id it just created rather than a name match, so
+two same-named artists never cross and a name containing `;` needs no special handling. `./sync`'s own
+CLI always passes `None` here.
+
 **Per artist (a few API calls):**
 1. Use existing `musicbrainzId` from DB (no search/lookup)
 2. Fetch release groups from MB API
@@ -412,7 +418,10 @@ Moved out of sync's own tail - see `docs/scripts/tidy.md`.
 
 Moved to `./tidy` (`dmp_sync::db::delete_empty_local_releases`/`delete_orphaned_mb_releases`, both take
 an `ArtistScope`) - sync's own tail no longer runs it. Only the `--catalogue-gaps` path still does its
-own scoped orphan sweep + retire inline, since it's a per-artist fast pass that stays in `sync`.
+own scoped orphan sweep + retire inline, since it's a per-artist fast pass that stays in `sync`. That
+inline tail is `catalogue_gaps::finish_run(pool, scope, reporter)` — shared with `./add`, which calls
+it after its own `fill_catalogue_gaps`, so the ordering rule below lives in exactly one place rather
+than being copy-pasted per caller.
 
 `delete_orphaned_mb_releases` spares a release that local tracks still point at via
 `LocalReleaseTrack.mbTrackId` while no `LocalRelease.releaseId` does — the shape a dissolved box leaves

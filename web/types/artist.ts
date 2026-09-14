@@ -50,6 +50,15 @@ export interface ArtistUrl {
   url: string
 }
 
+export interface MbArtistSearchRow {
+  mbid: string
+  name: string
+  disambiguation: string | null
+  country: string | null
+  type: string | null
+  existing: { slug: string, name: string } | null
+}
+
 export interface Genre {
   id: string
   name: string

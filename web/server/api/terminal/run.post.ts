@@ -10,6 +10,7 @@ import {
   isValidSessionName,
   parseExitLine,
   permissionForCommand,
+  permissionsForFlags,
   stripAnsi,
   withWebFlag,
 } from '~/server/utils/terminalCommand'
@@ -69,6 +70,13 @@ export default defineEventHandler(async (event) => {
   // regardless of which permission a MANAGER holds.
   if (hasDestructiveFlag(body.args ?? [])) {
     requireRole(event, 'ADMIN')
+  }
+
+  // Per-flag gates on top of the command's own permission - e.g. `--monitored` on `./add` needs
+  // 'downloads.crud', same as the existing monitoring toggle, even though `./add` itself only needs
+  // 'sync.run'.
+  for (const flagPerm of permissionsForFlags(body.args ?? [])) {
+    await requirePermission(event, flagPerm)
   }
 
   const workDir = process.env.PROJECT_ROOT!

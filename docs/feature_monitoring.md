@@ -28,6 +28,9 @@ fully trusted) — everything up to READY is automatic; nothing enters the libra
 
 1. **Detect missing.** The catalogue-gap worker runs `sync --catalogue-gaps` on a rotating batch of
    monitored artists, marking `MusicBrainzRelease.status = MISSING`. New releases surface continuously.
+   An artist can also enter monitoring at creation time: `/add`'s "Monitor after adding" checkbox passes
+   `--monitored` to `./add` (docs/scripts/add.md), which stamps `lastGapsCheckedAt` itself after its own
+   catalogue-gaps pass so this rotating worker doesn't immediately redo the same artist.
 2. **Auto-download.** `topUpDownloads` keeps `MAX_CONCURRENT_DOWNLOADS` active transfers, picking from
    two pools: **fresh** MISSING albums/EPs of monitored artists never yet attempted (random, fair), and
    a **retry** pool of previously-attempted releases ordered by `priority` DESC (at least one slot

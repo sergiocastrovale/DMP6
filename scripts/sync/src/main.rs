@@ -18,7 +18,7 @@ mod nuke;
 
 use common::images::download_artist_image;
 use dmp_sync::catalogue_gaps;
-use dmp_sync::db::{self, *};
+use dmp_sync::db::*;
 use dmp_sync::images::download_cover_art;
 use dmp_sync::mb_api;
 use dmp_sync::mb_api::RateLimiter;
@@ -566,34 +566,19 @@ async fn main() {
             args.exact,
             args.overwrite,
             args.verbose,
+            None,
         )
         .await
         {
             Ok((artists, gaps, processed_artist_ids)) => {
-                // A merge that discards a completed download (see promote.ts's stampMerged) can leave
-                // an orphaned non-MISSING MB release behind. This path had no orphan sweep at all, so
-                // that orphan lived forever. Must run BEFORE retire_owned_missing_placeholders: once a
-                // download is discarded, retire's live-status guard no longer sees a pinning row, and
-                // if the orphan (a non-MISSING sibling) is still standing, retire deletes the
-                // placeholder instead - the wrong survivor, since the placeholder is what makes the
-                // release re-downloadable. Scoped to the artists this run actually touched, matching
-                // the scoping discipline of the main sync tail (see cleanup_scope below) - unscoped
-                // would delete unbound MB releases for artists a `--only`/`--from`/`--to` run never
-                // looked at.
+                // Scoped to the artists this run actually touched, matching the scoping discipline of
+                // the main sync tail (see cleanup_scope below) - unscoped would delete unbound MB
+                // releases for artists a `--only`/`--from`/`--to` run never looked at. See
+                // `catalogue_gaps::finish_run` for why the ordering inside it matters.
                 let gaps_scope: Option<Vec<String>> =
                     (args.only.is_some() || args.from.is_some() || args.to.is_some())
                         .then_some(processed_artist_ids);
-                if let Ok(n) = delete_orphaned_mb_releases(&pool, gaps_scope.as_deref()).await {
-                    if n > 0 {
-                        reporter.info(&format!("Cleaned up {} orphaned MB release(s)", n));
-                    }
-                }
-                if let Ok(n) = db::retire_owned_missing_placeholders(&pool).await {
-                    if n > 0 {
-                        reporter.info(&format!("Retired {} owned MISSING placeholder(s)", n));
-                    }
-                }
-                update_statistics(&pool).await.ok();
+                catalogue_gaps::finish_run(&pool, gaps_scope.as_deref(), &reporter).await;
                 reporter.blank();
                 reporter.done(&format!(
                     "Catalogue gaps complete: {} artist(s) processed, {} gap(s) recorded",

@@ -14,6 +14,7 @@ COPY scripts/common/Cargo.toml common/Cargo.toml
 COPY scripts/index/Cargo.toml index/Cargo.toml
 COPY scripts/sync/Cargo.toml sync/Cargo.toml
 COPY scripts/tidy/Cargo.toml tidy/Cargo.toml
+COPY scripts/add/Cargo.toml add/Cargo.toml
 COPY scripts/fix/Cargo.toml fix/Cargo.toml
 COPY scripts/analysis/Cargo.toml analysis/Cargo.toml
 COPY scripts/nuke/Cargo.toml nuke/Cargo.toml
@@ -27,13 +28,14 @@ COPY scripts/extract-meta-images/Cargo.toml extract-meta-images/Cargo.toml
 COPY scripts/artist-photos/Cargo.toml artist-photos/Cargo.toml
 
 # Create dummy src files to pre-build dependencies
-RUN mkdir -p common/src index/src sync/src tidy/src fix/src analysis/src nuke/src audit/src playlists/src delete/src mosaic/src dissect/src problems/src extract-meta-images/src artist-photos/src \
+RUN mkdir -p common/src index/src sync/src tidy/src add/src fix/src analysis/src nuke/src audit/src playlists/src delete/src mosaic/src dissect/src problems/src extract-meta-images/src artist-photos/src \
     && echo 'pub mod config; pub mod db; pub mod slug; pub mod filters; pub mod artists; pub mod s3; pub mod progress; pub mod lock; pub mod checkpoint; pub mod totals; pub mod statistics; pub mod types; pub mod images;' > common/src/lib.rs \
     && for m in config db slug filters artists s3 progress lock checkpoint totals statistics types images; do echo '' > common/src/$m.rs; done \
     && echo 'fn main(){}' > index/src/main.rs \
     && echo 'fn main(){}' > sync/src/main.rs \
     && echo '' > sync/src/lib.rs \
     && echo 'fn main(){}' > tidy/src/main.rs \
+    && echo 'fn main(){}' > add/src/main.rs \
     && echo 'fn main(){}' > fix/src/main.rs \
     && echo 'fn main(){}' > analysis/src/main.rs \
     && echo 'fn main(){}' > nuke/src/main.rs \
@@ -54,6 +56,7 @@ COPY scripts/common/src common/src
 COPY scripts/index/src index/src
 COPY scripts/sync/src sync/src
 COPY scripts/tidy/src tidy/src
+COPY scripts/add/src add/src
 COPY scripts/fix/src fix/src
 COPY scripts/analysis/src analysis/src
 COPY scripts/nuke/src nuke/src
@@ -125,6 +128,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends tmux ca-certifi
 COPY --from=scripts-builder /build/target/release/index /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/sync /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/tidy /usr/local/bin/
+COPY --from=scripts-builder /build/target/release/add /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/audit /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/fix /usr/local/bin/
 COPY --from=scripts-builder /build/target/release/analysis /usr/local/bin/

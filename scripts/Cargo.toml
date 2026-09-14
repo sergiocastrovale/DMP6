@@ -15,6 +15,7 @@ members = [
     "extract-meta-images",
     "artist-photos",
     "tidy",
+    "add",
 ]
 resolver = "2"
 

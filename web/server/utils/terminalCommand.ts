@@ -7,7 +7,7 @@ import type { PermissionKey } from './permissions'
 export const ALLOWED_COMMANDS = [
   './index', './sync', './tidy', './analysis', './nuke',
   './playlists', './audit', './fix', './refresh',
-  './delete',
+  './delete', './add',
 ] as const
 
 // 'sync.view' only ever gated read/list endpoints elsewhere; running these scripts (they can mutate or
@@ -25,7 +25,18 @@ export const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
   // Wipes an artist's whole catalogue (and with `--files`, their audio files) - ADMIN like ./nuke,
   // never a 'sync.run' MANAGER action.
   './delete': 'ADMIN',
+  './add': 'sync.run',
 }
+
+// Per-flag permission on top of the command's own gate - `--monitored` sets a new artist as monitored
+// on creation, same gate as the existing monitoring toggle (`PATCH /artists/[slug]`), so a MANAGER
+// with only `sync.run` can add artists but not opt them into the download worker.
+export const FLAG_PERM: Record<string, PermissionKey> = {
+  '--monitored': 'downloads.crud',
+}
+
+export const permissionsForFlags = (args: string[]): PermissionKey[] =>
+  args.map(a => FLAG_PERM[a]).filter((p): p is PermissionKey => p !== undefined)
 
 // Flags that delete data or force a destructive rewrite - restricted to ADMIN regardless of whether the
 // caller holds 'sync.run', so a MANAGER can trigger normal index/sync runs but not `--delete`/
@@ -47,7 +58,7 @@ export const hasDestructiveFlag = (args: string[]): boolean =>
 export const SESSION_NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/
 
 // Commands that support the --web flag (structured PROGRESS:{json} output).
-export const WEB_MODE_COMMANDS = new Set(['./index', './sync', './tidy', './refresh'])
+export const WEB_MODE_COMMANDS = new Set(['./index', './sync', './tidy', './refresh', './add'])
 
 export const isAllowedCommand = (command: string): boolean =>
   (ALLOWED_COMMANDS as readonly string[]).includes(command)

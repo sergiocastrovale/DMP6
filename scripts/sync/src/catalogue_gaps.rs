@@ -21,29 +21,48 @@ pub async fn fill_catalogue_gaps(
     exact: bool,
     overwrite: bool,
     verbose: bool,
+    // Scope by exact artist id instead of name filtering - used by `./add`, where a name match could
+    // cross two same-named artists (e.g. NAPA PT/CL) or trip on a name containing `;`.
+    artist_ids: Option<&[String]>,
 ) -> Result<(u32, u32, Vec<String>), String> {
-    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
-        r#"SELECT id, name, slug, "musicbrainzId"
-           FROM "Artist"
-           WHERE "primaryArtistId" IS NULL
-             AND "musicbrainzId" IS NOT NULL
-             AND "musicbrainzId" != ''
-           ORDER BY name"#,
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| format!("DB query failed: {}", e))?;
+    let rows: Vec<(String, String, String, Option<String>)> = match artist_ids {
+        Some(ids) => sqlx::query_as(
+            r#"SELECT id, name, slug, "musicbrainzId"
+               FROM "Artist"
+               WHERE "primaryArtistId" IS NULL
+                 AND "musicbrainzId" IS NOT NULL
+                 AND "musicbrainzId" != ''
+                 AND id = ANY($1::text[])
+               ORDER BY name"#,
+        )
+        .bind(ids)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("DB query failed: {}", e))?,
+        None => sqlx::query_as(
+            r#"SELECT id, name, slug, "musicbrainzId"
+               FROM "Artist"
+               WHERE "primaryArtistId" IS NULL
+                 AND "musicbrainzId" IS NOT NULL
+                 AND "musicbrainzId" != ''
+               ORDER BY name"#,
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("DB query failed: {}", e))?,
+    };
 
     let artists: Vec<(String, String, String, String)> = rows
         .into_iter()
         .filter(|(_, name, _, _)| {
-            matches_filter(
-                name,
-                from.unwrap_or(""),
-                to.unwrap_or(""),
-                only.unwrap_or(""),
-                exact,
-            )
+            artist_ids.is_some()
+                || matches_filter(
+                    name,
+                    from.unwrap_or(""),
+                    to.unwrap_or(""),
+                    only.unwrap_or(""),
+                    exact,
+                )
         })
         .filter_map(|(id, name, slug, mb_id)| {
             mb_id.and_then(|raw| sanitize_mb_id(&raw)).map(|mb| (id, name, slug, mb))
@@ -205,4 +224,23 @@ pub async fn fill_catalogue_gaps(
     }
 
     Ok((total_artists, total_gaps, processed_artist_ids))
+}
+
+/// Shared tail for every `fill_catalogue_gaps` caller (plain `--catalogue-gaps` and `./add`): orphan
+/// sweep, then retire owned MISSING placeholders, then recompute statistics. Order is load-bearing -
+/// see the comment this used to carry inline in `sync/src/main.rs`: `delete_orphaned_mb_releases` must
+/// run BEFORE `retire_owned_missing_placeholders`, or a merge-discard orphan left standing makes retire
+/// delete the wrong survivor (the placeholder, not the orphan).
+pub async fn finish_run(pool: &PgPool, scope: Option<&[String]>, reporter: &Reporter) {
+    if let Ok(n) = delete_orphaned_mb_releases(pool, scope).await {
+        if n > 0 {
+            reporter.info(&format!("Cleaned up {} orphaned MB release(s)", n));
+        }
+    }
+    if let Ok(n) = retire_owned_missing_placeholders(pool).await {
+        if n > 0 {
+            reporter.info(&format!("Retired {} owned MISSING placeholder(s)", n));
+        }
+    }
+    common::statistics::update_statistics(pool).await.ok();
 }
