@@ -1,8 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import { currentUserId } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'favorites.view')
+  const userId = currentUserId(event)
 
   const id = getRouterParam(event, 'id')
   if (!id) {
@@ -10,7 +12,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const favorite = await prisma.favoriteTrack.findUnique({
-    where: { trackId: id },
+    where: { userId_trackId: { userId, trackId: id } },
     select: { id: true },
   })
 

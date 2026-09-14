@@ -2,9 +2,11 @@ import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 import { requirePermission } from '~/server/utils/permissions'
+import { currentUserId } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'favorites.view')
+  const userId = currentUserId(event)
 
   const query = getQuery(event)
   const type = (query.type as string) || 'all'
@@ -18,6 +20,7 @@ export default defineEventHandler(async (event) => {
   if (type === 'all' || type === 'releases') {
     const [rawReleases, count] = await Promise.all([
       prisma.favoriteRelease.findMany({
+        where: { userId },
         skip,
         take: pageSize,
         include: {
@@ -32,7 +35,7 @@ export default defineEventHandler(async (event) => {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.favoriteRelease.count(),
+      prisma.favoriteRelease.count({ where: { userId } }),
     ])
     totalReleases = count
     releases = rawReleases.map((fav) => {
@@ -55,6 +58,7 @@ export default defineEventHandler(async (event) => {
   if (type === 'all' || type === 'tracks') {
     const [rawTracks, count] = await Promise.all([
       prisma.favoriteTrack.findMany({
+        where: { userId },
         skip: type === 'all' ? skip : skip,
         take: pageSize,
         include: {
@@ -72,7 +76,7 @@ export default defineEventHandler(async (event) => {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.favoriteTrack.count(),
+      prisma.favoriteTrack.count({ where: { userId } }),
     ])
     totalTracks = count
     tracks = rawTracks.map((fav) => {

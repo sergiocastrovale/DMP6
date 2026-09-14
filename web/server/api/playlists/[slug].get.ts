@@ -1,9 +1,11 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { requirePermission } from '~/server/utils/permissions'
+import { currentUserId, visiblePlaylistsWhere } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'playlists.view')
+  const userId = currentUserId(event)
 
   const slug = getRouterParam(event, 'slug')
 
@@ -14,8 +16,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const playlist = await prisma.playlist.findUnique({
-    where: { slug },
+  const playlist = await prisma.playlist.findFirst({
+    where: { slug, ...visiblePlaylistsWhere(userId) },
+    orderBy: { userId: { sort: 'desc', nulls: 'last' } },
     include: {
       tracks: {
         take: 500,

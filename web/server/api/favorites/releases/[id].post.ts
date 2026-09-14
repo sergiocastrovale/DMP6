@@ -1,9 +1,11 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
 import { isForeignKeyError } from '~/server/utils/prismaErrors'
+import { currentUserId } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'favorites.crud')
+  const userId = currentUserId(event)
 
   const id = getRouterParam(event, 'id')
 
@@ -16,8 +18,8 @@ export default defineEventHandler(async (event) => {
 
   try {
     await prisma.favoriteRelease.upsert({
-      where: { releaseId: id },
-      create: { releaseId: id },
+      where: { userId_releaseId: { userId, releaseId: id } },
+      create: { userId, releaseId: id },
       update: {},
     })
   }

@@ -1,8 +1,10 @@
 import { prisma } from '~/server/utils/prisma'
 import { requirePermission } from '~/server/utils/permissions'
+import { currentUserId, findOwnManualPlaylist } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'playlists.crud')
+  const userId = currentUserId(event)
 
   const slug = getRouterParam(event, 'slug')
 
@@ -13,20 +15,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const playlist = await prisma.playlist.findUnique({
-    where: { slug },
-  })
-
-  if (!playlist) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: 'Playlist not found',
-    })
-  }
+  const playlist = await findOwnManualPlaylist(slug, userId)
 
   // Delete playlist and all its tracks
   await prisma.playlist.delete({
-    where: { slug },
+    where: { id: playlist.id },
   })
 
   return { success: true, message: 'Playlist deleted' }

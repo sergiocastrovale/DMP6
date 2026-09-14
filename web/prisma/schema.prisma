@@ -270,7 +270,7 @@ model LocalRelease {
   tracks                     LocalReleaseTrack[]
   members                    LocalReleaseMember[]
   enrichmentIssues           IssueEnrichmentGap[]
-  favorite                   FavoriteRelease?
+  favorites                  FavoriteRelease[]
   downloadedRelease          DownloadedRelease?
   duplicateReleaseAIssues    IssueDuplicateRelease[]    @relation("DuplicateReleaseA")
   duplicateReleaseBIssues    IssueDuplicateRelease[]    @relation("DuplicateReleaseB")
@@ -388,7 +388,7 @@ model LocalReleaseTrack {
   updatedAt           DateTime                 @updatedAt
   localRelease        LocalRelease?            @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
   mbTrack             MusicBrainzReleaseTrack? @relation(fields: [mbTrackId], references: [id])
-  favorite            FavoriteTrack?
+  favorites           FavoriteTrack[]
   playlistTracks      PlaylistTrack[]
   trackRelatedArtists TrackRelatedArtist[]     @relation("TrackRelatedArtists")
   corruptedIssues     IssueCorruptedTpe2[]     @relation("CorruptedTrackIssue")
@@ -457,18 +457,27 @@ enum PlaylistType {
   REGION
 }
 
+// GENRE/REGION rows are shared/generated (userId null, `./playlists` regen). MANUAL rows are
+// per-user and private (userId set, Cascade on user delete) - see User-scoped favorites/playlists
+// in CLAUDE.md. slug is unique among generated playlists and, separately, unique per owner - both
+// enforced by partial/composite indexes added via raw migration (Prisma can't express either).
 model Playlist {
   id          String             @id @default(cuid())
   name        String
-  slug        String             @unique
+  slug        String
   description String?            @db.Text
   image       String?
   type        PlaylistType       @default(MANUAL)
   generatorId String?            @unique
   generator   PlaylistGenerator? @relation(fields: [generatorId], references: [id], onDelete: Cascade)
+  userId      Int?
+  user        User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   tracks      PlaylistTrack[]
+
+  @@unique([userId, slug])
+  @@index([userId])
 }
 
 // Seeds for GENRE/REGION playlists, editable at /playlists/setup/generated. `terms` holds raw
@@ -506,22 +515,30 @@ model PlaylistTrack {
 
 model FavoriteRelease {
   id        String       @id @default(cuid())
-  releaseId String       @unique
+  userId    Int
+  releaseId String
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   release   LocalRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, releaseId])
   @@index([releaseId])
+  @@index([userId])
 }
 
 model FavoriteTrack {
   id        String            @id @default(cuid())
-  trackId   String            @unique
+  userId    Int
+  trackId   String
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   track     LocalReleaseTrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, trackId])
   @@index([trackId])
+  @@index([userId])
 }
 
 // ---------------------------------------------------------------------------
@@ -853,6 +870,10 @@ model User {
   tokenVersion       Int      @default(0)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  favoriteReleases FavoriteRelease[]
+  favoriteTracks   FavoriteTrack[]
+  playlists        Playlist[]
 }
 
 model RolePermission {

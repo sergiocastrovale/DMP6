@@ -20,7 +20,7 @@ export const ALL_PERMISSIONS = [
 export type PermissionKey = typeof ALL_PERMISSIONS[number]
 
 export const DEFAULT_MATRIX: Record<Role, PermissionKey[]> = {
-  VIEWER: ['favorites.view', 'playlists.view', 'play.view'],
+  VIEWER: ['favorites.view', 'favorites.crud', 'playlists.view', 'playlists.crud', 'play.view'],
   MANAGER: [
     'favorites.view',
     'favorites.crud',

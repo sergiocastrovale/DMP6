@@ -1,9 +1,11 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { requirePermission } from '~/server/utils/permissions'
+import { currentUserId, visiblePlaylistsWhere } from '~/server/utils/libraryOwnership'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'playlists.view')
+  const userId = currentUserId(event)
 
   const query = getQuery(event)
   const limit = query.limit ? Math.min(Number(query.limit), 100) : undefined
@@ -12,7 +14,10 @@ export default defineEventHandler(async (event) => {
 
   const playlists = await prisma.playlist.findMany({
     ...(limit ? { take: limit } : {}),
-    ...(typeFilter ? { where: { type: typeFilter } } : {}),
+    where: {
+      ...visiblePlaylistsWhere(userId),
+      ...(typeFilter ? { type: typeFilter } : {}),
+    },
     include: {
       _count: {
         select: {
