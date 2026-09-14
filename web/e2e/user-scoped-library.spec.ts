@@ -47,6 +47,35 @@ const loginAs = async (page: Page, username: string, password: string) => {
     throw new Error(`login as ${username} failed: ${response.status()} ${await response.text()}`)
   }
   await page.waitForURL('/')
+  // The rest of this spec drives the API through page.request rather than the page's own in-app
+  // fetch, so confirm *that* surface sees the new session before returning - a browser-context
+  // cookie jar update from a response the page itself received isn't guaranteed to be visible to
+  // page.request on the very next call.
+  await expect(async () => {
+    const me = await page.request.get('/api/auth/me')
+    expect(me.ok(), `GET /api/auth/me: ${me.status()}`).toBe(true)
+    expect((await me.json()).username).toBe(username)
+  }).toPass({ timeout: 10_000 })
+}
+
+// e2e/settings-autosave.spec.ts's "permissions: toggling a checkbox saves immediately" test flips a
+// real RolePermission row through the UI and never reverts it, so the shared VIEWER grants seedTestData
+// wrote (shared/permissionsMatrix.ts's DEFAULT_MATRIX) can no longer be assumed to still hold by the
+// time this file's test runs - fullyParallel means there's no ordering between spec files. Repair
+// VIEWER's library grants (bob's role below) through the real /api/permissions endpoint, as this
+// spec's own admin session, rather than writing RolePermission directly: only that endpoint calls
+// invalidatePermissionCache(), and the running server's in-memory permission cache (server/utils/
+// permissions.ts) would otherwise keep serving whatever it last loaded regardless of what the DB says.
+const ensureViewerHasLibraryPermissions = async (page: Page) => {
+  const required = ['favorites.view', 'favorites.crud', 'playlists.view', 'playlists.crud']
+  const { matrix } = await (await page.request.get('/api/permissions')).json()
+  const missing = required.filter(p => !matrix.VIEWER.includes(p))
+  if (missing.length === 0) {return}
+  matrix.VIEWER = [...matrix.VIEWER, ...missing]
+  const res = await page.request.put('/api/permissions', { data: { matrix } })
+  if (!res.ok()) {
+    throw new Error(`failed to repair VIEWER permissions: ${res.status()} ${await res.text()}`)
+  }
 }
 
 test.beforeAll(async () => {
@@ -86,6 +115,7 @@ test.afterAll(async () => {
 
 test('favoriting a release and creating a playlist is private to the acting user', async ({ page }) => {
   await loginAs(page, 'admin', 'admin')
+  await ensureViewerHasLibraryPermissions(page)
 
   expect((await page.request.post(`/api/favorites/releases/${releaseId}`)).status()).toBe(200)
   const createAdminPlaylist = await page.request.post('/api/playlists', { data: { name: `Admin Mix ${randomUUID().slice(0, 6)}` } })
