@@ -5,7 +5,7 @@ import {
   Play,
 } from 'lucide-vue-next'
 import type { ScanStatus } from '~/types/scan'
-import { formatDate, parseProgress } from '~/helpers/functions'
+import { formatDate, formatRelative, parseProgress } from '~/helpers/functions'
 import { cx, ICON_STROKE_WIDTH, layout, surface, typography } from '~/helpers/ui'
 import { useTerminalStore } from '~/stores/terminal'
 
@@ -75,20 +75,6 @@ async function reconnectSession() {
   }
 }
 
-
-function formatRelativeTime(iso: string | null): string {
-  if (!iso) {return 'Never'}
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) {return 'Just now'}
-  if (mins < 60) {return `${mins}m ago`}
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) {return `${hours}h ago`}
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
-
 onMounted(() => {
   fetchStatus()
   if (terminal.isRunning) {startPolling()}
@@ -118,8 +104,8 @@ onUnmounted(() => {
             <p v-if="terminal.isRunning" class="text-sm text-stone-100/55">
               Check the terminal for live output
             </p>
-            <p v-else-if="status" class="text-sm text-stone-100/55">
-              Last scan: {{ formatRelativeTime(status.lastScanEndedAt) }}
+            <p v-else-if="status?.lastScanEndedAt" class="text-sm text-stone-100/55">
+              Last scanned {{ formatRelative(status.lastScanEndedAt) }}
             </p>
           </div>
         </div>

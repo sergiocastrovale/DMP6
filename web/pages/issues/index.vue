@@ -3,6 +3,7 @@ import { ChevronRight, ScanSearch } from 'lucide-vue-next'
 import { useIssuesStore } from '~/stores/issues'
 import { useTerminalStore } from '~/stores/terminal'
 import type { IssueType } from '~/types/issues'
+import { formatRelative } from '~/helpers/functions'
 
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 useTitle('Issues')
@@ -42,24 +43,22 @@ const typeCards: { key: IssueType; label: string; description: string }[] = [
   { key: 'mismatched-release-id', label: 'Mismatched Release ID', description: 'Local release pairs sharing one MusicBrainz release ID despite different titles - a sync-matcher linking bug' },
 ]
 
-function formatRelative(date: string): string {
-  const ms = Date.now() - new Date(date).getTime()
-  const min = Math.floor(ms / 60000)
-  if (min < 1) { return 'just now' }
-  if (min < 60) { return `${min}m ago` }
-  const h = Math.floor(min / 60)
-  return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`
-}
+const lastAuditText = computed(() => {
+  if (issuesStore.summary?.lastAudit) {
+    return `Last audited ${formatRelative(issuesStore.summary.lastAudit.startedAt)}`
+  }
+  return 'Never audited'
+})
+
+
 </script>
 
 <template>
   <IssuesShell>
     <template #header>
       <PageTitle
-        text="Metadata Issues"
-        :subtext="issuesStore.summary?.lastAudit
-          ? `Last audit: ${formatRelative(issuesStore.summary.lastAudit.startedAt)}`
-          : (!issuesStore.summaryLoading ? 'No audit has been run yet' : undefined)"
+        text="Issues"
+        :subtext="lastAuditText"
       >
         <UiButton :icon="ScanSearch" :loading="terminal.isRunning" @click="runAudit">
           Run Audit
