@@ -288,7 +288,7 @@ describe('useTerminalStore', () => {
 
     const runCalls = fakeFetch.mock.calls.filter(c => c[0] === '/api/terminal/run')
     expect(runCalls).toHaveLength(2)
-    expect(JSON.parse(runCalls[1][1].body)).toEqual({
+    expect(JSON.parse(runCalls[1]![1].body)).toEqual({
       command: './delete',
       args: ['Damageplan', '--y'],
       session: 'dmp-delete',
