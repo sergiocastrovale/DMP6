@@ -1103,8 +1103,6 @@ async fn main() {
                 let mut mtime_updates: Vec<(NaiveDateTime, String)> = Vec::new();
                 let mut batch_tracks: Vec<_> = Vec::new();
                 let mut pending_release_artist_links: HashSet<(String, String)> = HashSet::new();
-                // First album artist resolved for this folder - receives the folder image (see below).
-                let mut folder_primary_artist_id: Option<String> = None;
                 let mut release_mb_key: HashMap<String, String> = HashMap::new();
                 let mut releases_with_art: HashSet<String> = HashSet::new();
                 let mut releases_already_have_art: HashSet<String> = HashSet::new();
@@ -1287,8 +1285,6 @@ async fn main() {
                                 pending_release_artist_links
                                     .insert((release_id.clone(), aa_id.clone()));
                                 folder_artist_ids.insert(aa_id.clone());
-                                // First resolved owner is the primary - it gets the folder image.
-                                folder_primary_artist_id.get_or_insert(aa_id);
                             }
                         }
                     }
@@ -1497,114 +1493,6 @@ async fn main() {
                     }
                 }
 
-                // A folder's own cover art is a believable stand-in for an artist photo only when a
-                // handful of people co-own it (a compound-tag duet/group folder like "Ella Fitzgerald &
-                // Roy Eldridge Sextet"). A various-artists tribute/box-set folder can have dozens of
-                // co-owners via the same comma/"&" all-co-own rule - handing its cover to every one of
-                // them as their personal photo means unrelated musicians end up sharing one person's
-                // face (seen on "Rise Above: 24 Black Flag Songs...", every guest vocalist lacking a
-                // photo inherited whichever one artist's picture the folder cover happened to be).
-                const MAX_FOLDER_IMAGE_COOWNERS: usize = 2;
-                if !args.skip_covers && folder_artist_ids.len() <= MAX_FOLDER_IMAGE_COOWNERS {
-                    // Artist folder image.
-                    //
-                    // The primary owner (first album artist resolved for this folder) always gets it; the other
-                    // resolved owners only if they have no image yet. Previously this fired only for
-                    // single-artist folders, which meant a folder like "Ella Fitzgerald & Roy Eldridge Sextet"
-                    // handed its image to the compound junk artist - and once album artists split, such folders
-                    // would have stopped contributing an image at all.
-                    let image_targets: Vec<String> = match folder_primary_artist_id {
-                        Some(ref primary) => std::iter::once(primary.clone())
-                            .chain(
-                                folder_artist_ids
-                                    .iter()
-                                    .filter(|id| *id != primary)
-                                    .cloned(),
-                            )
-                            .collect(),
-                        None => folder_artist_ids.iter().cloned().collect(),
-                    };
-                    for (position, artist_id) in image_targets.iter().enumerate() {
-                        let is_primary = position == 0
-                            && folder_primary_artist_id.as_deref() == Some(artist_id.as_str());
-
-                        let existing_img: Option<(Option<String>, Option<String>)> =
-                            sqlx::query_as(
-                                r#"SELECT image, "imageUrl" FROM "Artist" WHERE id = $1"#,
-                            )
-                            .bind(artist_id)
-                            .fetch_optional(&pool)
-                            .await
-                            .ok()
-                            .flatten();
-
-                        let needs_image = is_primary
-                            || existing_img
-                                .map(|(img, url)| img.is_none() && url.is_none())
-                                .unwrap_or(true);
-
-                        if needs_image {
-                            let slug: Option<String> = sqlx::query_as::<_, (String,)>(
-                                r#"SELECT slug FROM "Artist" WHERE id = $1"#,
-                            )
-                            .bind(artist_id)
-                            .fetch_optional(&pool)
-                            .await
-                            .ok()
-                            .flatten()
-                            .map(|(s,)| s);
-
-                            if let Some(ref artist_slug) = slug {
-                                let out_path = artist_img_dir.join(format!("{}.jpg", artist_slug));
-                                if images::use_artist_folder_image(&folder_path, &out_path) {
-                                    if use_s3 {
-                                        if let (
-                                            Some(ref client),
-                                            Some(ref bucket),
-                                            Some(ref public_url),
-                                        ) = (
-                                            &s3_client,
-                                            &config.storage_bucket,
-                                            &config.storage_public_url,
-                                        ) {
-                                            let s3_key = format!("artists/{}.jpg", artist_slug);
-                                            if upload_to_s3(client, bucket, &s3_key, &out_path)
-                                                .await
-                                                .is_ok()
-                                            {
-                                                let image_url = format!(
-                                                    "{}/{}",
-                                                    public_url.trim_end_matches('/'),
-                                                    s3_key
-                                                );
-                                                sqlx::query(
-                                            r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                                        )
-                                        .bind(&image_url)
-                                        .bind(artist_id)
-                                        .execute(&pool)
-                                        .await
-                                        .ok();
-                                            }
-                                        }
-                                    }
-                                    if use_local {
-                                        let filename = format!("{}.jpg", artist_slug);
-                                        sqlx::query(
-                                    r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
-                                )
-                                .bind(&filename)
-                                .bind(artist_id)
-                                .execute(&pool)
-                                .await
-                                .ok();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 if !args.skip_covers {
                     let newly_extracted = release_to_image_filename.len();
                     let mb_shortcut = releases_already_have_art
@@ -1686,6 +1574,86 @@ async fn main() {
                 .unwrap_or_default();
                 for (aid,) in album_artists {
                     folder_artist_ids.insert(aid);
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Artist folder image: only the folder's one main artist (most track
+        // links - owner or credit - under this root), never co-owners/guests.
+        // A various-artists folder (a tribute comp, a box set with many credited
+        // performers) has no single face its cover belongs to, so a tie or an
+        // empty count leaves every artist under it without a folder-image fallback.
+        // -----------------------------------------------------------------
+        if !args.skip_covers {
+            let counts = folder_artist_track_counts(&pool, &folder_prefix).await;
+            if let Some(owner_id) = pick_folder_image_owner(&counts) {
+                let existing_img: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+                    r#"SELECT image, "imageUrl" FROM "Artist" WHERE id = $1"#,
+                )
+                .bind(&owner_id)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten();
+                let needs_image = existing_img
+                    .map(|(img, url)| img.is_none() && url.is_none())
+                    .unwrap_or(true);
+
+                if needs_image {
+                    let slug: Option<String> = sqlx::query_as::<_, (String,)>(
+                        r#"SELECT slug FROM "Artist" WHERE id = $1"#,
+                    )
+                    .bind(&owner_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|(s,)| s);
+
+                    if let Some(ref artist_slug) = slug {
+                        let out_path = artist_img_dir.join(format!("{}.jpg", artist_slug));
+                        if images::use_artist_folder_image(&folder_path, &out_path) {
+                            if use_s3 {
+                                if let (Some(ref client), Some(ref bucket), Some(ref public_url)) = (
+                                    &s3_client,
+                                    &config.storage_bucket,
+                                    &config.storage_public_url,
+                                ) {
+                                    let s3_key = format!("artists/{}.jpg", artist_slug);
+                                    if upload_to_s3(client, bucket, &s3_key, &out_path)
+                                        .await
+                                        .is_ok()
+                                    {
+                                        let image_url = format!(
+                                            "{}/{}",
+                                            public_url.trim_end_matches('/'),
+                                            s3_key
+                                        );
+                                        sqlx::query(
+                                            r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                        )
+                                        .bind(&image_url)
+                                        .bind(&owner_id)
+                                        .execute(&pool)
+                                        .await
+                                        .ok();
+                                    }
+                                }
+                            }
+                            if use_local {
+                                let filename = format!("{}.jpg", artist_slug);
+                                sqlx::query(
+                                    r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#,
+                                )
+                                .bind(&filename)
+                                .bind(&owner_id)
+                                .execute(&pool)
+                                .await
+                                .ok();
+                            }
+                        }
+                    }
                 }
             }
         }

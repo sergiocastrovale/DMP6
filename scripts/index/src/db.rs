@@ -1,4 +1,5 @@
 use chrono::{NaiveDateTime, Utc};
+use common::filters::escape_like;
 use common::mb::cache::cache_answer;
 use common::mb::names::CacheAnswer;
 use common::types::TrackMeta;
@@ -428,6 +429,80 @@ pub async fn update_last_indexed_at(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Per-artist track-link count under an artist-root folder (prefix, trailing `/`): +1 for every track
+/// they own the release of (`LocalReleaseArtist`) or are credited on (`TrackRelatedArtist`). Used to
+/// pick the one artist a folder's cover art actually belongs to - never propagated to co-owners/guests.
+pub async fn folder_artist_track_counts(
+    pool: &PgPool,
+    folder_prefix: &str,
+) -> Vec<(String, i64)> {
+    sqlx::query_as(
+        r#"
+        WITH tr AS (
+            SELECT t.id AS tid, t."localReleaseId" AS rid
+            FROM "LocalReleaseTrack" t
+            JOIN "LocalRelease" lr ON lr.id = t."localReleaseId"
+            WHERE lr."folderPath" LIKE $1
+        )
+        SELECT a, count(*) FROM (
+            SELECT lra."artistId" AS a, tr.tid FROM tr JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = tr.rid
+            UNION
+            SELECT tra."artistId" AS a, tr.tid FROM tr JOIN "TrackRelatedArtist" tra ON tra."trackId" = tr.tid
+        ) x
+        GROUP BY a
+        "#,
+    )
+    .bind(format!("{}%", escape_like(folder_prefix)))
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+}
+
+/// The strict-majority artist id from `folder_artist_track_counts`, or `None` on a tie/empty result -
+/// a folder's cover art is only ever attributed to one clear main artist, never split or guessed.
+pub fn pick_folder_image_owner(counts: &[(String, i64)]) -> Option<String> {
+    let mut sorted = counts.to_vec();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    match sorted.as_slice() {
+        [(id, top), rest @ ..] if rest.first().map(|(_, c)| c < top).unwrap_or(true) => {
+            Some(id.clone())
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod folder_image_owner_tests {
+    use super::pick_folder_image_owner;
+
+    #[test]
+    fn clear_winner() {
+        let counts = vec![
+            ("main".to_string(), 24),
+            ("guest-a".to_string(), 1),
+            ("guest-b".to_string(), 1),
+        ];
+        assert_eq!(pick_folder_image_owner(&counts), Some("main".to_string()));
+    }
+
+    #[test]
+    fn tie_is_none() {
+        let counts = vec![("a".to_string(), 15), ("b".to_string(), 15)];
+        assert_eq!(pick_folder_image_owner(&counts), None);
+    }
+
+    #[test]
+    fn empty_is_none() {
+        assert_eq!(pick_folder_image_owner(&[]), None);
+    }
+
+    #[test]
+    fn single_artist_wins() {
+        let counts = vec![("solo".to_string(), 8)];
+        assert_eq!(pick_folder_image_owner(&counts), Some("solo".to_string()));
+    }
 }
 
 // ---------------------------------------------------------------------------
