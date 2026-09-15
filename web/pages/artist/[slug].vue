@@ -61,6 +61,8 @@ watch(() => artist.value?.name, (name) => {
         <ArtistButtonRemove v-if="isAdmin" :artist-name="artist.name" />
       </ArtistMobileHeader>
 
+      <ArtistDidYouKnow :slug="artist.slug" class="mx-3 md:mx-6" />
+
       <ArtistReleases
         :slug="artist.slug"
         :artist-name="artist.name"

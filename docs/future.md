@@ -10,12 +10,14 @@ all pages mobile friendly
 
 review all scripts: output and feel should look the same but as concise as possible (users will see it in web format)
 
-remove all singles if need space
+remove all singles, bootlegs for extra space
 
 
 FEATURES
 
-Genius API to get trivia from releases, tracks
+"Did you know..." Genius trivia on the artist page — shipped, see `docs/feature_did_you_know.md`.
+
+With Genius API, add lyrics as part of the visualizers and as a dedicated dropdown, and as an icon in the player before the viz
 
 BUGS
 

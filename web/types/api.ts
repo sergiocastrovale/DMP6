@@ -17,6 +17,9 @@ export interface CachedSettings {
   storageEndpoint: string
   storagePublicUrl: string
   fanartApiKey: string
+  geniusClientId: string | null
+  geniusSecret: string | null
+  geniusAccessToken: string | null
   lastfmApiKey: string | null
   lastfmSecret: string | null
   lastfmSessionKey: string | null

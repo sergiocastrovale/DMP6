@@ -63,3 +63,10 @@ export interface Genre {
   id: string
   name: string
 }
+
+export interface ArtistFactResponse {
+  text: string
+  sourceUrl: string | null
+  release: { id: string, title: string } | null
+  track: { id: string, title: string | null } | null
+}

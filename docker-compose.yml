@@ -97,6 +97,9 @@ services:
       - LASTFM_SECRET=${LASTFM_SECRET:-}
       - LASTFM_SESSION_KEY=${LASTFM_SESSION_KEY:-}
       - LASTFM_USERNAME=${LASTFM_USERNAME:-}
+      - GENIUS_CLIENT_ID=${GENIUS_CLIENT_ID:-}
+      - GENIUS_SECRET=${GENIUS_SECRET:-}
+      - GENIUS_ACCESS_TOKEN=${GENIUS_ACCESS_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     deploy:

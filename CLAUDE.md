@@ -36,6 +36,7 @@ Artist.primaryArtistId → Artist.id (dup → canonical)
 - **Discarded merge must not orphan its just-bound MB release.** `stampMerged` discard branch (`web/server/utils/promote.ts`) deletes MusicBrainzRelease only if nothing else needs it (other LocalRelease, a track still pointing at it via `mbTrackId`, or MISSING placeholder — kept on purpose, makes it re-downloadable). `dmp_sync::db::delete_orphaned_mb_releases` must run before `retire_owned_missing_placeholders` at every call site — sync's own tail no longer runs either (moved to `./tidy`, docs/scripts/tidy.md).
 - `LocalRelease.groupKey` (unique) = `"folder:{folderPath}"` (fallback `"meta:{slugTitle}:{year}:{slugArtist}"`). Per-track MB ids NOT part of key — folder is the physical unit. Binds only Official Album/EP, +Single only when files' own MB ids point at it (`allowlist::is_allowed_tagged`). Searches/catalogue-gaps never produce a Single.
 - `Artist.manuallyAdded` — the one place ownership is a stored flag, not derived. Set only by `./add` (docs/scripts/add.md), never un-set. Lets a file-less artist show in `/browse` (`OR manuallyAdded`, `index.get.ts`) and counts it into `Statistics.mainArtists`; excluded from the orphan-artist sweep (`index/src/deletion.rs`, `audit/src/orphans.rs` — the two must match) so a just-added artist with no links yet survives the next `./index`/`./audit`.
+- `ArtistFact` — "Did you know..." trivia cache (`web/components/artist/DidYouKnow.vue`, `GET /api/artists/[slug]/fact`), see `docs/feature_did_you_know.md`. `artistId` + optional `releaseId`/`trackId` (Cascade — a re-indexed/deleted release or track takes its fact with it, never demotes to artist-level). Fetched from Genius (`server/utils/genius.ts`) and persisted; once an artist has more than `ARTIST_FACTS_DB_THRESHOLD` (15, `helpers/constants.ts`) stored rows, Genius is skipped entirely and facts are served from the DB only.
 
 ## Standards
 
@@ -144,7 +145,7 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 
 ## API Endpoints
 
-**Core**: `GET /api/artists`, `/artists/[slug]`, `/artists/[slug]/releases`, `/artists/[slug]/tracks`, `/artists/random`, `/releases/[id]/tracks`, `/releases/[id]/info`
+**Core**: `GET /api/artists`, `/artists/[slug]`, `/artists/[slug]/releases`, `/artists/[slug]/tracks`, `/artists/[slug]/fact` (Genius trivia, see Data Model `ArtistFact`), `/artists/random`, `/releases/[id]/tracks`, `/releases/[id]/info`
 
 **Add artist** (`/add`, gated `sync.run`; read-only MB calls, no scripts logic — see `server/utils/musicbrainz.ts`/docs/scripts/add.md): `GET /artists/mb-search?q=`, `/artists/by-mbid/[mbid]`; `POST /artists/added/[mbid]` (post-`./add` cache bust, since `./add` can't reach Redis)
 

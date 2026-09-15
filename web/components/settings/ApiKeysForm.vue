@@ -19,6 +19,22 @@ const { saving, saved, error, save } = useFormSave(async () => {
   await refresh()
 })
 
+const geniusClientId = ref(settings.value?.geniusClientId ?? '')
+const geniusSecret = ref(settings.value?.geniusSecret ?? '')
+const geniusAccessToken = ref(settings.value?.geniusAccessToken ?? '')
+
+const { saving: geniusSaving, saved: geniusSaved, error: geniusError, save: geniusSave } = useFormSave(async () => {
+  await $fetch('/api/settings', {
+    method: 'PUT',
+    body: {
+      geniusClientId: geniusClientId.value || null,
+      geniusSecret: geniusSecret.value || undefined,
+      geniusAccessToken: geniusAccessToken.value || undefined,
+    },
+  })
+  await refresh()
+})
+
 const lastfmApiKey = ref(settings.value?.lastfmApiKey ?? '')
 const lastfmSecret = ref(settings.value?.lastfmSecret ?? '')
 const connectedUsername = computed(() => settings.value?.lastfmUsername ?? '')
@@ -94,6 +110,44 @@ const disconnect = async () => {
       </div>
 
       <SettingsSaveBar :saving="saving" :saved="saved" :error="error" />
+    </UiCard>
+
+    <UiCard title="Genius" description="Used to fetch 'Did you know...' trivia facts for artists">
+      <div class="text-sm text-stone-100/60">
+        Create a client <a href="https://genius.com/api-clients" target="_blank" class="underline">here</a>.
+        Only the access token is used to call the API; client ID/secret are stored for reference.
+      </div>
+
+      <div :class="grid.halfRow" class="mt-4">
+        <SettingsField
+          v-model="geniusClientId"
+          label="Client ID"
+          placeholder="Genius client ID"
+          :disabled="!canEdit"
+          @blur="geniusSave"
+        />
+
+        <SettingsField
+          v-model="geniusSecret"
+          label="Client Secret"
+          type="password"
+          :placeholder="settings?.geniusSecretSet ? 'Already set - leave blank to keep' : 'Genius client secret'"
+          :disabled="!canEdit"
+          @blur="geniusSave"
+        />
+
+        <SettingsField
+          v-model="geniusAccessToken"
+          label="Access Token"
+          type="password"
+          :placeholder="settings?.geniusAccessTokenSet ? 'Already set - leave blank to keep' : 'Genius access token'"
+          description="Overrides GENIUS_CLIENT_ID/GENIUS_SECRET/GENIUS_ACCESS_TOKEN."
+          :disabled="!canEdit"
+          @blur="geniusSave"
+        />
+      </div>
+
+      <SettingsSaveBar :saving="geniusSaving" :saved="geniusSaved" :error="geniusError" />
     </UiCard>
 
     <UiCard title="Last.fm" description="Scrobble tracks to Last.fm">

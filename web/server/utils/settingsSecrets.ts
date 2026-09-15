@@ -4,6 +4,8 @@ export const SECRET_SETTINGS_FIELDS = [
   'awsSecretAccessKey',
   'lastfmSecret',
   'lastfmSessionKey',
+  'geniusSecret',
+  'geniusAccessToken',
 ] as const
 
 /** Replace secret values with a `${field}Set` boolean so the browser never sees them, masked or not. */

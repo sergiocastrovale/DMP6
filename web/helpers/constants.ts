@@ -76,6 +76,11 @@ export const EXPLORE_HISTORY_PAGE_SIZE = 15
 // read well blown up from a couch.
 export const EXPLORE_HISTORY_TV_LIMIT = 3
 export const SESSION_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
+// Once an artist has more stored ArtistFact rows than this, GET /artists/[slug]/fact serves from the
+// DB only and never calls Genius again for that artist.
+export const ARTIST_FACTS_DB_THRESHOLD = 15
+// Max chars per extracted Genius fact chunk before it's split at a sentence boundary.
+export const GENIUS_FACT_MAX_CHARS = 320
 // Shared by the desktop player bar's shuffle pill and the mobile expanded sheet's transport row.
 export const SHUFFLE_CONTEXT_LABELS: Record<string, string> = {
   explorer: 'Explorer',

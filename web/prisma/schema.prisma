@@ -73,6 +73,7 @@ model Artist {
   primaryArtistId     String?
   primaryArtist       Artist?                    @relation("ArtistPrimary", fields: [primaryArtistId], references: [id], onDelete: SetNull)
   connectedArtists    Artist[]                   @relation("ArtistPrimary")
+  facts               ArtistFact[]
 
   @@index([musicbrainzId])
   @@index([totalPlayCount])
@@ -277,6 +278,7 @@ model LocalRelease {
   duplicateReleaseBIssues    IssueDuplicateRelease[]    @relation("DuplicateReleaseB")
   mismatchedReleaseIdAIssues IssueMismatchedReleaseId[] @relation("MismatchedReleaseIdA")
   mismatchedReleaseIdBIssues IssueMismatchedReleaseId[] @relation("MismatchedReleaseIdB")
+  facts                      ArtistFact[]
 
   @@unique([groupKey])
   @@index([releaseId])
@@ -394,6 +396,7 @@ model LocalReleaseTrack {
   trackRelatedArtists TrackRelatedArtist[]     @relation("TrackRelatedArtists")
   corruptedIssues     IssueCorruptedTpe2[]     @relation("CorruptedTrackIssue")
   missingIssues       IssueMissingMetadata[]   @relation("MissingMetadataIssue")
+  facts               ArtistFact[]
   // Trigram GIN index for title ILIKE and expression index on LOWER(genre) added via raw migration
 
   @@index([localReleaseId])
@@ -408,6 +411,30 @@ model LocalReleaseTrack {
   @@index([localReleaseId, discNumber, trackNumber]) // Composite for ORDER BY discNumber, trackNumber within a release
   @@index([mbReleaseGroupId])
   @@index([mbReleaseId])
+}
+
+// ---------------------------------------------------------------------------
+// ArtistFact — "Did you know..." trivia, fetched from Genius and cached. Once an
+// artist has more than ARTIST_FACTS_DB_THRESHOLD (constants.ts) rows, the Genius
+// API is skipped entirely and facts are served from here only.
+// ---------------------------------------------------------------------------
+
+model ArtistFact {
+  id        String             @id @default(cuid())
+  artistId  String
+  releaseId String?
+  trackId   String?
+  text      String             @db.Text
+  hash      String             @db.VarChar(40) // sha1(normalized text) - dedupe within an artist
+  sourceUrl String?            @db.Text
+  createdAt DateTime           @default(now())
+  artist    Artist             @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  release   LocalRelease?      @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  track     LocalReleaseTrack? @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([artistId, hash])
+  @@index([artistId])
+  @@map("ArtistFacts")
 }
 
 // ---------------------------------------------------------------------------
@@ -604,6 +631,10 @@ model Settings {
   storagePublicUrl       String?
   // API Keys
   fanartApiKey           String?
+  // Genius (trivia facts) - override GENIUS_CLIENT_ID/GENIUS_SECRET/GENIUS_ACCESS_TOKEN
+  geniusClientId         String?
+  geniusSecret           String?
+  geniusAccessToken      String?
   // Run hashes (resumability)
   indexRunHash           String?
   syncRunHash            String?
