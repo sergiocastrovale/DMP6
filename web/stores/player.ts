@@ -438,6 +438,11 @@ export const usePlayerStore = defineStore('player', () => {
             isVisible.value = true
             media.setMetadata(trackMeta(track))
             media.setPlaybackState('paused')
+            // playTrack() never ran for this restore, so scrobbleStartTime is still its 0
+            // default - checkScrobble() would send timestamp:0, which the API rejects as falsy.
+            scrobbleStartTime = Date.now()
+            scrobbled = false
+            playCounted = false
             // Restore position but don't auto-play
             if (state.currentTime && state.currentTime > 0) {
               const a = getAudio()
