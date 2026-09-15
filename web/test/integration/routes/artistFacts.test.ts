@@ -21,29 +21,39 @@ const geniusSearchResponse = {
   },
 }
 
+// Genius nests each entity one level deeper than the bare `response` envelope
+// (response.song / response.album / response.artist) - geniusGet() only unwraps `response`, so
+// fixtures here must mirror the real API shape or a flattened mock will pass against buggy code
+// that reads e.g. `song.description` instead of `song.song.description`.
 const geniusSongResponse = {
   meta: { status: 200 },
   response: {
-    id: 78831,
-    url: 'https://genius.com/Radiohead-paranoid-android-lyrics',
-    description: { plain: 'Paranoid Android was the first single from OK Computer and ran over six minutes long.' },
-    album: { id: 17915, name: 'OK Computer' },
+    song: {
+      id: 78831,
+      url: 'https://genius.com/Radiohead-paranoid-android-lyrics',
+      description: { plain: 'Paranoid Android was the first single from OK Computer and ran over six minutes long.' },
+      album: { id: 17915, name: 'OK Computer' },
+    },
   },
 }
 
 const geniusAlbumResponse = {
   meta: { status: 200 },
   response: {
-    url: 'https://genius.com/albums/Radiohead/Ok-computer',
-    description_annotation: { annotations: [{ body: { plain: 'OK Computer was recorded partly at a Tudor mansion near Bath and became a landmark of the era.' } }] },
+    album: {
+      url: 'https://genius.com/albums/Radiohead/Ok-computer',
+      description_annotation: { annotations: [{ body: { plain: 'OK Computer was recorded partly at a Tudor mansion near Bath and became a landmark of the era.' } }] },
+    },
   },
 }
 
 const geniusArtistResponse = {
   meta: { status: 200 },
   response: {
-    url: 'https://genius.com/artists/Radiohead',
-    description: { plain: 'Radiohead formed in 1985 in Abingdon, England, originally under the name On A Friday.' },
+    artist: {
+      url: 'https://genius.com/artists/Radiohead',
+      description: { plain: 'Radiohead formed in 1985 in Abingdon, England, originally under the name On A Friday.' },
+    },
   },
 }
 

@@ -86,33 +86,33 @@ export const fetchArtistFacts = async (artist: Artist, subject: FactSubject): Pr
     if (!hit) {continue}
 
     if (attempt === 'track') {
-      const song = await geniusGet<GeniusSong>(`/songs/${hit.id}?text_format=plain`)
-      const facts = extractFacts(song?.description?.plain)
-      if (facts.length) {return { facts, trackId: track.id, sourceUrl: song?.url ?? null }}
+      const song = await geniusGet<{ song: GeniusSong }>(`/songs/${hit.id}?text_format=plain`)
+      const facts = extractFacts(song?.song?.description?.plain)
+      if (facts.length) {return { facts, trackId: track.id, sourceUrl: song?.song?.url ?? null }}
     }
 
     if (attempt === 'release') {
-      const song = await geniusGet<GeniusSong>(`/songs/${hit.id}?text_format=plain`)
-      if (!song?.album) {continue}
-      const album = await geniusGet<{ url?: string, description_annotation?: { annotations?: Array<{ body?: { plain?: string } }> } }>(
-        `/albums/${song.album.id}?text_format=plain`,
+      const song = await geniusGet<{ song: GeniusSong }>(`/songs/${hit.id}?text_format=plain`)
+      if (!song?.song?.album) {continue}
+      const album = await geniusGet<{ album: { url?: string, description_annotation?: { annotations?: Array<{ body?: { plain?: string } }> } } }>(
+        `/albums/${song.song.album.id}?text_format=plain`,
       )
-      const facts = extractFacts(album?.description_annotation?.annotations?.[0]?.body?.plain)
+      const facts = extractFacts(album?.album?.description_annotation?.annotations?.[0]?.body?.plain)
       const release = await prisma.localReleaseTrack.findUnique({
         where: { id: track.id },
         select: { localReleaseId: true },
       })
       if (facts.length && release?.localReleaseId) {
-        return { facts, releaseId: release.localReleaseId, sourceUrl: album?.url ?? null }
+        return { facts, releaseId: release.localReleaseId, sourceUrl: album?.album?.url ?? null }
       }
     }
 
     if (attempt === 'artist') {
-      const geniusArtist = await geniusGet<{ url?: string, description?: { plain?: string } }>(
+      const geniusArtist = await geniusGet<{ artist: { url?: string, description?: { plain?: string } } }>(
         `/artists/${hit.primary_artist.id}?text_format=plain`,
       )
-      const facts = extractFacts(geniusArtist?.description?.plain)
-      if (facts.length) {return { facts, sourceUrl: geniusArtist?.url ?? null }}
+      const facts = extractFacts(geniusArtist?.artist?.description?.plain)
+      if (facts.length) {return { facts, sourceUrl: geniusArtist?.artist?.url ?? null }}
     }
   }
 
