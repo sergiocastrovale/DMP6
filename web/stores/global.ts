@@ -12,6 +12,7 @@ const DEFAULT_STATS: AppStats = {
   playlists: 0,
   favorites: 0,
   issues: 0,
+  activeDownloads: 0,
 }
 
 export const useGlobalStore = defineStore('global', () => {

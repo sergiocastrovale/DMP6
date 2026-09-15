@@ -67,6 +67,23 @@ describe('layout/Sidebar.vue', () => {
     expect(wrapper.text()).toContain('22,633')
   })
 
+  it('shows the active downloads count next to Downloads once granted', async () => {
+    setUser({ permissions: ['sync.view'] })
+    const global = useGlobalStore()
+    global.stats.activeDownloads = 4
+    const wrapper = await mountSuspended(Sidebar)
+    expect(wrapper.text()).toContain('4')
+  })
+
+  it('hides the Downloads count badge when nothing is active', async () => {
+    setUser({ permissions: ['sync.view'] })
+    const global = useGlobalStore()
+    global.stats.activeDownloads = 0
+    const wrapper = await mountSuspended(Sidebar)
+    const downloadsLink = wrapper.findAll('a').find(a => a.text().includes('Downloads'))!
+    expect(downloadsLink.find('span.font-mono').exists()).toBe(false)
+  })
+
   it('calls logout when Sign out is clicked', async () => {
     setUser()
     vi.stubGlobal('$fetch', vi.fn().mockResolvedValue({}))

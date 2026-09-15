@@ -11,6 +11,7 @@ export interface AppStats {
   playlists: number
   favorites: number
   issues: number
+  activeDownloads: number
 }
 
 // /statistics index page (pages/statistics/index.vue) card shapes.

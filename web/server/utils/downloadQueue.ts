@@ -37,6 +37,15 @@ export async function fetchActiveQueueRows() {
   return [...inFlight, ...failed, ...unavailable]
 }
 
+/**
+ * "Active" for the sidebar badge (`GET /api/app-stats`): in progress (Downloading/Enriching) plus
+ * awaiting manual merge (Ready). Deliberately excludes SEARCHING (not yet acquiring anything) and
+ * every terminal status, unlike fetchActiveQueueRows above.
+ */
+export async function countActiveDownloads(): Promise<number> {
+  return prisma.downloadedRelease.count({ where: { status: { in: ['DOWNLOADING', 'ENRICHING', 'READY'] } } })
+}
+
 /** The dedicated "Rejected" tab bucket — terminal, force-rejected rows, newest first, capped. */
 export async function fetchRejectedQueueRows() {
   return prisma.downloadedRelease.findMany({

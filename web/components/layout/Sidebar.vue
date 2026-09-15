@@ -35,7 +35,7 @@ const navItems = computed<NavEntry[]>(() => [
   { to: '/timeline', label: 'Timeline', icon: Clock },
   ...(canViewPlaylists.value ? [{ to: '/playlists', label: 'Playlists', icon: ListMusic, count: global.stats.playlists }] : []),
   ...(canViewFavorites.value ? [{ to: '/favorites', label: 'Favorites', icon: Heart, count: global.stats.favorites }] : []),
-  ...(canViewDownloads.value ? [{ to: '/downloads', label: 'Downloads', icon: DownloadCloud }] : []),
+  ...(canViewDownloads.value ? [{ to: '/downloads', label: 'Downloads', icon: DownloadCloud, count: global.stats.activeDownloads }] : []),
 ])
 
 const footerItems = computed<NavEntry[]>(() => [
