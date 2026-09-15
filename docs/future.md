@@ -15,16 +15,14 @@ remove all singles if need space
 
 FEATURES
 
+Genius API to get trivia from releases, tracks
 
 BUGS
 
-Artist Damageplan shows an unmatched "Uncivilization" (Feat. Corey Taylor, Slitheryn, Soulfly, Snot, Biohazard). What is this release? It should the cover image as 'Soulfly - Jumpdafuckup' album. Confirm if bad metadata or bad matching bug with MB. Cover is definitely wrong.
+Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. These catalogues should be separated - best strategy? The name of the band isn't the problem - it's the slug generation and the way we catalogue them (they can't be together).
 
-a while ago you made it so claim_owned_bundle handles the "one folder covering an extra MB release" cases. I want to revisit this as it might be tremendously flawed. First: what are we even fixing with this? Give solid examples. 
 
-Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. When that happens, always prepend the country name to the artist like "NAPA (PT)". These catalogues should be separated - best strategy?
-
-UI 
+UI
 
 
 LIBRARY
