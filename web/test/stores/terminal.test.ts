@@ -234,4 +234,38 @@ describe('useTerminalStore', () => {
 
     expect(store.lines).toContain('Failed to clear lock.')
   })
+
+  it('unlockAndRerun() clears the lock then re-runs the last command/args/session', async () => {
+    const fakeFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse('event: done\ndata: 1\n\n')) // rejected run (lock held)
+      .mockResolvedValueOnce({ ok: true }) // /api/terminal/unlock, from unlockAndRerun
+      .mockResolvedValueOnce(sseResponse('event: done\ndata: 0\n\n')) // successful rerun
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+
+    await store.run('./delete', ['Damageplan', '--y'], 'dmp-delete')
+    expect(store.exitCode).toBe(1)
+
+    await store.unlockAndRerun()
+
+    const runCalls = fakeFetch.mock.calls.filter(c => c[0] === '/api/terminal/run')
+    expect(runCalls).toHaveLength(2)
+    expect(JSON.parse(runCalls[1][1].body)).toEqual({
+      command: './delete',
+      args: ['Damageplan', '--y'],
+      session: 'dmp-delete',
+    })
+    expect(store.exitCode).toBe(0)
+  })
+
+  it('unlockAndRerun() only clears the lock when there is no prior run to retry', async () => {
+    const fakeFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+
+    await store.unlockAndRerun()
+
+    expect(fakeFetch.mock.calls.filter(c => c[0] === '/api/terminal/run')).toHaveLength(0)
+    expect(store.lines).toContain('Lock cleared.')
+  })
 })

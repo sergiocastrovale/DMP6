@@ -11,6 +11,9 @@ export const useTerminalStore = defineStore('terminal', () => {
   const exitCode = ref<number | null>(null)
   const currentSession = ref<string | null>(null)
   const currentCommand = ref<string | null>(null)
+  // Survives streamSSE's finally block (which nulls currentSession/currentCommand) so a lock-blocked
+  // run can be retried after Force Unlock without the caller re-supplying command/args/session.
+  const lastRun = ref<{ command: string, args: string[], session: string } | null>(null)
 
   let abortController: AbortController | null = null
 
@@ -91,6 +94,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     const resolvedSession = session ?? `dmp-${command.replace('./', '')}`
     currentSession.value = resolvedSession
     currentCommand.value = command
+    lastRun.value = { command, args, session: resolvedSession }
     return streamSSE('/api/terminal/run', { command, args, session: resolvedSession })
   }
 
@@ -165,6 +169,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     viewMode.value === 'toast' && !dismissed.value && (isRunning.value || hasLockError.value),
   )
 
+  // Clears the DB scan lock without touching whatever process holds it - the other script keeps
+  // running. Caller decides what runs next; see unlockAndRerun() for the "run alongside it" path.
   async function unlock() {
     try {
       await fetch('/api/terminal/unlock', { method: 'POST' })
@@ -172,6 +178,18 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
     catch {
       lines.value.push('Failed to clear lock.')
+    }
+  }
+
+  // User-confirmed override for a lock-blocked run: clears the lock (the other script is left running
+  // untouched) then re-issues the exact command/args/session that just got rejected, so it now starts
+  // in parallel with whatever still holds - or held - the lock. Collisions are the accepted risk of
+  // pressing this; gated behind an explicit confirm dialog in TerminalForceUnlock.vue.
+  async function unlockAndRerun() {
+    const retry = lastRun.value
+    await unlock()
+    if (retry) {
+      await run(retry.command, retry.args, retry.session)
     }
   }
 
@@ -195,5 +213,6 @@ export const useTerminalStore = defineStore('terminal', () => {
     stop,
     stopAndClose,
     unlock,
+    unlockAndRerun,
   }
 })
