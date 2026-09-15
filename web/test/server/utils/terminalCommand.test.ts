@@ -20,7 +20,7 @@ import {
 
 describe('isAllowedCommand', () => {
   it('accepts every allow-listed command', () => {
-    for (const cmd of ['./index', './sync', './tidy', './analysis', './nuke', './playlists', './audit', './fix', './refresh', './delete', './add']) {
+    for (const cmd of ['./index', './sync', './tidy', './analysis', './nuke', './playlists', './audit', './fix', './refresh', './delete', './add', './artist-photos']) {
       expect(isAllowedCommand(cmd)).toBe(true)
     }
   })
@@ -79,6 +79,10 @@ describe('permissionForCommand', () => {
 
   it('maps ./add to sync.run', () => {
     expect(permissionForCommand('./add')).toBe('sync.run')
+  })
+
+  it('maps ./artist-photos to sync.run', () => {
+    expect(permissionForCommand('./artist-photos')).toBe('sync.run')
   })
 })
 

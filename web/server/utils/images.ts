@@ -35,6 +35,14 @@ export function localImageExists(type: 'artists' | 'releases', filename: string)
   return cachedExists(filePath)
 }
 
+// A file written after its `existsSync === false` result was cached (e.g. `./artist-photos --id`
+// just downloaded it) would otherwise read as missing for up to CACHE_TTL - drop the entry so the
+// very next verifyImage() call re-stats disk instead of trusting the stale negative.
+export function forgetImageExists(type: 'artists' | 'releases', filename: string | null | undefined): void {
+  if (!filename) {return}
+  existsCache.delete(resolve(join(getImageDir(), type, filename)))
+}
+
 /**
  * Returns the image filename only if the file exists on disk (for local storage),
  * or returns it as-is when not in local mode.

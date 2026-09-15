@@ -7,7 +7,7 @@ import type { PermissionKey } from './permissions'
 export const ALLOWED_COMMANDS = [
   './index', './sync', './tidy', './analysis', './nuke',
   './playlists', './audit', './fix', './refresh',
-  './delete', './add',
+  './delete', './add', './artist-photos',
 ] as const
 
 // 'sync.view' only ever gated read/list endpoints elsewhere; running these scripts (they can mutate or
@@ -26,6 +26,7 @@ export const COMMAND_PERM: Record<string, PermissionKey | 'ADMIN'> = {
   // never a 'sync.run' MANAGER action.
   './delete': 'ADMIN',
   './add': 'sync.run',
+  './artist-photos': 'sync.run',
 }
 
 // Per-flag permission on top of the command's own gate - `--monitored` sets a new artist as monitored
