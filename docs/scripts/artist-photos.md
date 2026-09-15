@@ -18,6 +18,7 @@ cd scripts && cargo build --release -p artist-photos
 ./artist-photos                    # Full run over every photo-less artist with a MusicBrainz id
 ./artist-photos --dry-run          # Look up candidates + report source availability, write nothing
 ./artist-photos --limit 50         # Cap the run - validate before committing to the full pass
+./artist-photos --id clxxx         # One artist only, on demand (web's per-artist "find photo" button)
 ```
 
 ## CLI Flags
@@ -26,14 +27,18 @@ cd scripts && cargo build --release -p artist-photos
 |---|---|---|---|
 | `--dry-run` | bool | false | Fetch MB detail per candidate and report whether a Wikidata/Wikipedia relation or Fanart.tv key is available, but never download an image or write to disk/DB |
 | `--limit` | u32 | unbounded | Cap the number of candidates processed |
+| `--id` | string | none | Fetch exactly this one `Artist.id`, bypassing the owns-a-release/no-existing-image/`primaryArtistId` filters below - still requires a `musicbrainzId`. Ignores `--limit` |
 | `--web` | bool | false | Machine-readable progress output |
 
 ## How It Works
 
-1. Query candidates: `Artist` rows with `primaryArtistId IS NULL`, an owned `LocalReleaseArtist`,
-   `image`/`imageUrl` both null, and a `musicbrainzId` set (no MB id → no relations to look up → out
-   of scope; that's an artist-resolution gap, not an image-fetch one). Each candidate also carries the
-   first path segment of one of its releases' `LocalRelease.folderPath` as its on-disk artist folder.
+1. Query candidates: with `--id`, exactly that one `Artist` row (only `musicbrainzId IS NOT NULL`
+   required - an explicit single-artist request from the web UI doesn't need the owns-a-release/
+   no-existing-image/`primaryArtistId` guards below). Otherwise, `Artist` rows with
+   `primaryArtistId IS NULL`, an owned `LocalReleaseArtist`, `image`/`imageUrl` both null, and a
+   `musicbrainzId` set (no MB id → no relations to look up → out of scope; that's an artist-resolution
+   gap, not an image-fetch one). Each candidate also carries the first path segment of one of its
+   releases' `LocalRelease.folderPath` as its on-disk artist folder.
 2. Per candidate, sequentially (MusicBrainz is rate-limited to ~1 req/s via `MB_MIN_DELAY_MS`):
    fetch MB artist detail (`url-rels`) to read its Wikidata/Wikipedia relation URLs.
 3. Bounded to 4 concurrent (`common::images::download_artist_image`, shared with `sync`): try

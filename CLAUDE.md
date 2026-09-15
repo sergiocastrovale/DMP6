@@ -118,7 +118,7 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./problems --audit [--only "Name"|--resume|--report-only]     # read-only tag-defect scan → problems.xlsx
 ./problems --fix:year|--fix:artist|--fix:albumartist [--dry-run]
 ./extract-meta-images [--dry-run] [--only "Name"]
-./artist-photos [--dry-run] [--limit 50]       # backfill artist photos
+./artist-photos [--dry-run] [--limit 50] [--id clxxx]  # backfill artist photos (--id: one artist, on demand)
 ./analysis /path/to/music     # standalone HTML quality report → reports/
 ./playlists [--dry-run|--report|--group rock|--no-genres|--no-regions]  # reads PlaylistGenerator rows (DB), no config file
 ./dissect                     # errors.log → reports/errors.xlsx

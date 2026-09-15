@@ -10,9 +10,10 @@ use reqwest::Client;
 use sqlx::PgPool;
 use tokio::task::JoinSet;
 
-/// One-off backfill: fetch a photo (Wikidata -> Wikipedia -> Fanart.tv) for every artist that owns a
+/// Backfill: fetch a photo (Wikidata -> Wikipedia -> Fanart.tv) for every artist that owns a
 /// release, isn't merged into another artist via `primaryArtistId`, and currently has no
-/// `image`/`imageUrl`. Stores it at `{IMAGE_DIR}/artists/{slug}.jpg` (+ S3 if configured) and, when the
+/// `image`/`imageUrl` - or, with `--id`, for exactly one artist on demand (web's per-artist "find
+/// photo" button). Stores it at `{IMAGE_DIR}/artists/{slug}.jpg` (+ S3 if configured) and, when the
 /// artist's on-disk folder is known and has no cover of its own yet, also as
 /// `{MUSIC_DIR}/{ArtistFolder}/folder.jpg`.
 #[derive(Parser, Debug)]
@@ -24,6 +25,11 @@ struct Args {
     /// Cap the number of candidates processed (for a small validation pass before a full run).
     #[arg(long)]
     limit: Option<u32>,
+    /// Fetch a photo for exactly this one artist id, bypassing the owns-a-release/no-existing-image
+    /// filters (an explicit, on-demand request - see web's `POST /artists/[slug]/photo`). Still
+    /// requires the artist to have a `musicbrainzId`.
+    #[arg(long)]
+    id: Option<String>,
     /// Emit machine-readable PROGRESS: lines for the web terminal.
     #[arg(long)]
     web: bool,
@@ -51,7 +57,30 @@ struct Counts {
     would_attempt: usize,
 }
 
-async fn fetch_candidates(pool: &PgPool, limit: Option<u32>) -> Vec<Candidate> {
+async fn fetch_candidates(pool: &PgPool, limit: Option<u32>, id: Option<&str>) -> Vec<Candidate> {
+    // `--id` is an explicit single-artist request from the web UI (a hover icon on a photo-less
+    // artist page): it bypasses the owns-a-release/no-existing-image/primaryArtistId filters that
+    // keep the unscoped backfill from re-fetching artists that already have a photo or aren't
+    // browsable owners - the caller already knows exactly which artist it wants.
+    if let Some(id) = id {
+        return sqlx::query_as(
+            r#"
+            SELECT a.id, a.slug, a.name, a."musicbrainzId" AS mb_id,
+                (SELECT split_part(lr."folderPath", '/', 1)
+                 FROM "LocalReleaseArtist" lra
+                 JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
+                 WHERE lra."artistId" = a.id
+                 LIMIT 1) AS artist_folder
+            FROM "Artist" a
+            WHERE a.id = $1 AND a."musicbrainzId" IS NOT NULL
+            "#,
+        )
+        .bind(id)
+        .fetch_all(pool)
+        .await
+        .expect("query candidate by id");
+    }
+
     let limit: i64 = limit.map(|n| n as i64).unwrap_or(i64::MAX);
     sqlx::query_as(
         r#"
@@ -135,7 +164,7 @@ async fn main() {
         "DMP Artist Photos"
     });
 
-    let candidates = fetch_candidates(&pool, args.limit).await;
+    let candidates = fetch_candidates(&pool, args.limit, args.id.as_deref()).await;
     reporter.kv("Candidates", &candidates.len().to_string());
 
     let s3_client = create_s3_client(&config).await;
