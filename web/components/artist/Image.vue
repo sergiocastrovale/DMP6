@@ -17,6 +17,12 @@ const emit = defineEmits<{
 
 const { artistImage } = useImageUrl()
 const image = computed(() => artistImage(props.artist))
+
+const confirmOpen = ref(false)
+const confirmFetch = () => {
+  confirmOpen.value = false
+  emit('fetchPhoto')
+}
 </script>
 
 <template>
@@ -44,14 +50,34 @@ const image = computed(() => artistImage(props.artist))
       v-if="canFetchPhoto && !image"
       type="button"
       aria-label="Find artist photo"
-      title="Find artist photo"
       :disabled="photoBusy"
-      class="absolute inset-0 flex items-center justify-center bg-black/50 text-stone-100/80 opacity-0 transition-opacity duration-150 hover:text-stone-100 focus-visible:opacity-100 group-hover/photo:opacity-100"
+      class="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/50 text-stone-100/80 opacity-0 transition-opacity duration-150 hover:text-stone-100 focus-visible:opacity-100 group-hover/photo:opacity-100"
       :class="{ 'opacity-100': photoBusy }"
-      @click="emit('fetchPhoto')"
+      @click="confirmOpen = true"
     >
       <Loader2 v-if="photoBusy" :size="22" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
       <ImagePlus v-else :size="22" :stroke-width="ICON_STROKE_WIDTH" />
     </button>
+
+    <Dialog v-model="confirmOpen" title="Find artist photo" size="md">
+      <template #content>
+        <div  class="text-base text-stone-100/70">
+          <p>
+            Attempt to fetch the artist image from Wikidata, Wikipedia or Fanart.tv?
+          </p>
+          <p>
+            If successful, the image will be added to the library and shown here automatically.
+          </p>
+        </div>
+      </template>
+      <template #footer>
+        <UiButton variant="ghost" size="sm" @click="confirmOpen = false">
+          Cancel
+        </UiButton>
+        <UiButton size="sm" @click="confirmFetch">
+          Fetch artist image
+        </UiButton>
+      </template>
+    </Dialog>
   </div>
 </template>

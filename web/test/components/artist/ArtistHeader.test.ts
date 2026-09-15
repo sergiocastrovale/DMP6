@@ -1,6 +1,6 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { computed } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import ArtistHeader from '../../../components/artist/Header.vue'
 import type { Artist } from '../../../types/artist'
 
@@ -25,6 +25,10 @@ const mountHeader = async (props: Partial<InstanceType<typeof ArtistHeader>['$pr
   })
 
 describe('artist/ArtistHeader.vue', () => {
+  // ArtistImage's confirm dialog renders through Dialog.vue's <Teleport to="body">, outside the
+  // wrapper's subtree - it must be queried on document.body, and cleaned up between tests.
+  afterEach(() => { document.body.innerHTML = '' })
+
   it('renders a Shuffle button beside Play all', async () => {
     const wrapper = await mountHeader()
     expect(wrapper.text()).toContain('Play all')
@@ -83,9 +87,31 @@ describe('artist/ArtistHeader.vue', () => {
     expect(withImage.find('[aria-label="Find artist photo"]').exists()).toBe(false)
   })
 
-  it('emits fetchPhoto when the "find photo" icon is clicked', async () => {
+  const bodyButtons = () => [...document.body.querySelectorAll('button')]
+  const clickBodyText = async (text: string) => {
+    const button = bodyButtons().find(b => b.textContent?.includes(text))
+    await button!.dispatchEvent(new Event('click'))
+  }
+
+  it('opens a confirm dialog on click, and emits fetchPhoto only once "Fetch artist image" is pressed', async () => {
+    const wrapper = await mountHeader({ canFetchPhoto: true })
+
+    expect(document.body.textContent).not.toContain('Attempt to fetch the artist image')
+    await wrapper.get('[aria-label="Find artist photo"]').trigger('click')
+    expect(document.body.textContent).toContain('Attempt to fetch the artist image')
+    expect(wrapper.emitted('fetchPhoto')).toBeUndefined()
+
+    await clickBodyText('Fetch artist image')
+    expect(wrapper.emitted('fetchPhoto')).toHaveLength(1)
+  })
+
+  it('closes the confirm dialog without emitting fetchPhoto when Cancel is pressed', async () => {
     const wrapper = await mountHeader({ canFetchPhoto: true })
     await wrapper.get('[aria-label="Find artist photo"]').trigger('click')
-    expect(wrapper.emitted('fetchPhoto')).toHaveLength(1)
+
+    await clickBodyText('Cancel')
+
+    expect(document.body.textContent).not.toContain('Attempt to fetch the artist image')
+    expect(wrapper.emitted('fetchPhoto')).toBeUndefined()
   })
 })

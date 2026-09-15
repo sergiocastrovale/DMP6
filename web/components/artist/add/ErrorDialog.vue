@@ -8,7 +8,7 @@ defineProps<{
 </script>
 
 <template>
-  <Dialog v-model="open" title="Can't add artist" size="sm">
+  <Dialog v-model="open" title="Can't add artist" size="md">
     <template #content>
       <p class="text-base text-stone-100/70">{{ message }}</p>
     </template>

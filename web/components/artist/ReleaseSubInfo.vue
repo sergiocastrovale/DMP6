@@ -54,7 +54,7 @@ const simpleItems = computed(() => [
       </span>
     </template>
 
-    <Dialog v-model="featDialogOpen" title="Featured artists" size="sm">
+    <Dialog v-model="featDialogOpen" title="Featured artists" size="md">
       <template #content>
         <div class="flex flex-wrap gap-2">
           <NuxtLink

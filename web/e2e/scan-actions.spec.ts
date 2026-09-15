@@ -176,7 +176,14 @@ test.describe('artist scan dropdown', () => {
 
     const findPhoto = page.getByRole('button', { name: 'Find artist photo' })
     await expect(findPhoto).toBeVisible()
+    await expect(findPhoto).toHaveCSS('cursor', 'pointer')
     await findPhoto.click()
+
+    // The click opens a confirm dialog explaining what the button does - it must not run anything yet.
+    await expect(page.getByText(/Attempt to fetch the artist image from/)).toBeVisible()
+    expect(runs).toEqual([])
+
+    await page.getByRole('button', { name: 'Fetch artist image' }).click()
 
     await expect.poll(() => runs).toEqual([
       { command: './artist-photos', args: ['--id', artistId] },
