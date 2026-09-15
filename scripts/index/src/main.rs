@@ -1497,7 +1497,15 @@ async fn main() {
                     }
                 }
 
-                if !args.skip_covers {
+                // A folder's own cover art is a believable stand-in for an artist photo only when a
+                // handful of people co-own it (a compound-tag duet/group folder like "Ella Fitzgerald &
+                // Roy Eldridge Sextet"). A various-artists tribute/box-set folder can have dozens of
+                // co-owners via the same comma/"&" all-co-own rule - handing its cover to every one of
+                // them as their personal photo means unrelated musicians end up sharing one person's
+                // face (seen on "Rise Above: 24 Black Flag Songs...", every guest vocalist lacking a
+                // photo inherited whichever one artist's picture the folder cover happened to be).
+                const MAX_FOLDER_IMAGE_COOWNERS: usize = 2;
+                if !args.skip_covers && folder_artist_ids.len() <= MAX_FOLDER_IMAGE_COOWNERS {
                     // Artist folder image.
                     //
                     // The primary owner (first album artist resolved for this folder) always gets it; the other
