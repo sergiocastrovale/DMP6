@@ -306,4 +306,23 @@ describe('useTerminalStore', () => {
     expect(fakeFetch.mock.calls.filter(c => c[0] === '/api/terminal/run')).toHaveLength(0)
     expect(store.lines).toContain('Lock cleared.')
   })
+
+  it('unlockAndRerun() also retries a runStream operation (e.g. merge), not just run()', async () => {
+    const fakeFetch = vi.fn()
+      .mockResolvedValueOnce(sseResponse('event: done\ndata: 1\n\n')) // rejected merge (lock held)
+      .mockResolvedValueOnce({ ok: true }) // /api/terminal/unlock, from unlockAndRerun
+      .mockResolvedValueOnce(sseResponse('event: done\ndata: 0\n\n')) // successful retry
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+
+    await store.runStream('/api/downloads/merge-stream', { ids: ['abc'] }, 'merge', 'Merging…')
+    expect(store.exitCode).toBe(1)
+
+    await store.unlockAndRerun()
+
+    const mergeCalls = fakeFetch.mock.calls.filter(c => c[0] === '/api/downloads/merge-stream')
+    expect(mergeCalls).toHaveLength(2)
+    expect(JSON.parse(mergeCalls[1]![1].body)).toEqual({ ids: ['abc'] })
+    expect(store.exitCode).toBe(0)
+  })
 })

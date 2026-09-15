@@ -12,8 +12,9 @@ export const useTerminalStore = defineStore('terminal', () => {
   const currentSession = ref<string | null>(null)
   const currentCommand = ref<string | null>(null)
   // Survives streamSSE's finally block (which nulls currentSession/currentCommand) so a lock-blocked
-  // run can be retried after Force Unlock without the caller re-supplying command/args/session.
-  const lastRun = ref<{ command: string, args: string[], session: string } | null>(null)
+  // run - script-backed (run/runSequence) or SSE-backed (runStream, e.g. merge) - can be retried after
+  // Force Unlock without the caller re-supplying its command/args/session or url/body.
+  const lastRetry = ref<(() => Promise<void>) | null>(null)
   // 1-based index of the running stage within runSequence()'s steps, and the total stage count - null
   // outside a sequence (or for a single run()). Lets the UI show "Rebuilding: index (2/4)" instead of
   // reading a mid-sequence stage's own "Done." banner as the whole sequence having finished.
@@ -99,7 +100,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     const resolvedSession = session ?? `dmp-${command.replace('./', '')}`
     currentSession.value = resolvedSession
     currentCommand.value = command
-    lastRun.value = { command, args, session: resolvedSession }
+    lastRetry.value = () => run(command, args, resolvedSession)
     return streamSSE('/api/terminal/run', { command, args, session: resolvedSession })
   }
 
@@ -132,6 +133,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   async function runStream(url: string, body: Record<string, any>, session: string, label: string) {
     currentSession.value = session
     currentCommand.value = label
+    lastRetry.value = () => runStream(url, body, session, label)
     return streamSSE(url, body)
   }
 
@@ -197,14 +199,14 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   // User-confirmed override for a lock-blocked run: clears the lock (the other script is left running
-  // untouched) then re-issues the exact command/args/session that just got rejected, so it now starts
-  // in parallel with whatever still holds - or held - the lock. Collisions are the accepted risk of
-  // pressing this; gated behind an explicit confirm dialog in TerminalForceUnlock.vue.
+  // untouched) then re-issues whatever just got rejected - a script run or a runStream operation like
+  // merge - so it now starts in parallel with whatever still holds - or held - the lock. Collisions are
+  // the accepted risk of pressing this; gated behind an explicit confirm dialog in TerminalForceUnlock.vue.
   async function unlockAndRerun() {
-    const retry = lastRun.value
+    const retry = lastRetry.value
     await unlock()
     if (retry) {
-      await run(retry.command, retry.args, retry.session)
+      await retry()
     }
   }
 
