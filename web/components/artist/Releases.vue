@@ -5,6 +5,7 @@ import type { TrackListColumn } from '~/types/ui'
 import { useDownloadsStore } from '~/stores/downloads'
 import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
+import { useGlobalStore } from '~/stores/global'
 import { scanSessionName } from '~/helpers/functions'
 import { acquireFailureMessage, favoriteTargetId, findBundleParentRelease } from '~/helpers/artistPageLogic'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
@@ -22,6 +23,7 @@ const { toggleOrPlay } = usePlayRelease()
 const downloadsStore = useDownloadsStore()
 const terminal = useTerminalStore()
 const toast = useToastStore()
+const global = useGlobalStore()
 const { hasPerm } = useAuth()
 const canViewDownloads = hasPerm('sync.view')
 const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
@@ -285,8 +287,10 @@ async function toggleFavoriteRelease(release: UnifiedRelease) {
     })
     if (isFavorite) {
       favoriteReleases.value.delete(localId)
+      global.stats.favorites--
     } else {
       favoriteReleases.value.add(localId)
+      global.stats.favorites++
     }
   }
   catch { /* ignore */ }

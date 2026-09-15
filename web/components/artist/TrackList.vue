@@ -4,6 +4,7 @@ import type { Track, TrackInfo } from '~/types/track'
 import type { ReleaseStatus } from '~/types/release'
 import type { TrackListColumn } from '~/types/ui'
 import { usePlayerStore } from '~/stores/player'
+import { useGlobalStore } from '~/stores/global'
 import { formatDuration } from '~/helpers/functions'
 import { cx, surface } from '~/helpers/ui'
 
@@ -23,6 +24,7 @@ const props = withDefaults(defineProps<{
 })
 
 const player = usePlayerStore()
+const global = useGlobalStore()
 const favoriteTracks = ref<Set<string>>(new Set())
 
 onMounted(async () => {
@@ -81,10 +83,12 @@ async function toggleFavorite(trackId: string) {
     if (isFavorite) {
       await $fetch(`/api/favorites/tracks/${trackId}`, { method: 'DELETE' })
       favoriteTracks.value.delete(trackId)
+      global.stats.favorites--
     }
     else {
       await $fetch(`/api/favorites/tracks/${trackId}`, { method: 'POST' })
       favoriteTracks.value.add(trackId)
+      global.stats.favorites++
     }
   }
   catch { /* ignore */ }

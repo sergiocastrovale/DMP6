@@ -1,7 +1,4 @@
 # Ideas and future features
-- Advanced catalogue exploration: filter by decade, mood, intensity in a unified view.
-- Non-admin (VIEWER/MANAGER) users hitting a blank catalogue page in some cases — needs
-  reproduction + root-causing.
 - Standardize output format, iconography, and styling across all Rust scripts (`index`, `sync`,
   `audit`, `fix`, etc.) so terminal output looks consistent regardless of which one is running.
 
@@ -28,8 +25,6 @@ a while ago you made it so claim_owned_bundle handles the "one folder covering a
 Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. When that happens, always prepend the country name to the artist like "NAPA (PT)". These catalogues should be separated - best strategy?
 
 UI 
-
-toggiling favorites / adding to playlists should update the sidebar counters (or make them appear if zero)
 
 
 LIBRARY

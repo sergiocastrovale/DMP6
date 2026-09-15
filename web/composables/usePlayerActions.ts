@@ -1,4 +1,5 @@
 import { usePlayerStore } from '~/stores/player'
+import { useGlobalStore } from '~/stores/global'
 import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 
 // Playlist-menu + release-info state and methods used by every player surface (desktop bar,
@@ -6,6 +7,7 @@ import type { UnifiedRelease, ReleaseInfoExtra } from '~/types/release'
 // state so the desktop bar's menu and the mobile sheet's menu never cross-talk.
 export const usePlayerActions = () => {
   const player = usePlayerStore()
+  const global = useGlobalStore()
 
   const showPlaylistMenu = ref(false)
   const showNewPlaylistDialog = ref(false)
@@ -86,6 +88,7 @@ export const usePlayerActions = () => {
   }
 
   async function onPlaylistCreated() {
+    global.stats.playlists++
     await loadPlaylists()
   }
 

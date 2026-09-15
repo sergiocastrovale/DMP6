@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
 
   const conditions = [
     Prisma.sql`a."primaryArtistId" IS NULL`,
-    Prisma.sql`EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)`,
+    Prisma.sql`(a."manuallyAdded" OR EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id))`,
   ]
   if (search) {
     conditions.push(Prisma.sql`a.name ILIKE ${`%${search}%`}`)
@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
   const orderCol = sortColumns[sortKey]!
   const orderDir = query.dir === 'desc' ? Prisma.raw('DESC') : Prisma.raw('ASC')
 
-  const monitoredCount = await prisma.artist.count({ where: { primaryArtistId: null, monitored: true, localReleases: { some: {} } } })
+  const monitoredCount = await prisma.artist.count({ where: { primaryArtistId: null, monitored: true, OR: [{ manuallyAdded: true }, { localReleases: { some: {} } }] } })
 
   const rows = await prisma.$queryRaw<Array<{
     id: string

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Heart } from 'lucide-vue-next'
 import { usePlayerStore } from '~/stores/player'
+import { useGlobalStore } from '~/stores/global'
 import { cx } from '~/helpers/ui'
 
 const props = withDefaults(defineProps<{
@@ -23,6 +24,7 @@ const emit = defineEmits<{ toggle: [] }>()
 const isControlled = computed(() => props.active !== undefined)
 
 const player = usePlayerStore()
+const global = useGlobalStore()
 const { hasPerm } = useAuth()
 const canCrud = hasPerm('favorites.crud')
 const selfFavorite = ref(false)
@@ -48,6 +50,7 @@ async function toggleSelf() {
       method: selfFavorite.value ? 'DELETE' : 'POST',
     })
     selfFavorite.value = !selfFavorite.value
+    global.stats.favorites += selfFavorite.value ? 1 : -1
   }
   catch (error) {
     console.error('Failed to toggle favorite:', error)

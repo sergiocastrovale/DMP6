@@ -1,4 +1,5 @@
 import type { FavoritesResponse, FavoriteRelease, FavoriteTrack } from '~/types/favorites'
+import { useGlobalStore } from '~/stores/global'
 
 const PAGE_SIZE = 50
 
@@ -8,6 +9,7 @@ const PAGE_SIZE = 50
 export const useFavoritesPage = () => {
   const route = useRoute()
   const router = useRouter()
+  const global = useGlobalStore()
 
   const loading = ref(true)
   const loadingMore = ref(false)
@@ -100,6 +102,7 @@ export const useFavoritesPage = () => {
       await $fetch(`/api/favorites/releases/${releaseId}`, { method: 'DELETE' })
       releases.value = releases.value.filter(r => r.release.id !== releaseId)
       totalReleases.value--
+      global.stats.favorites--
     }
     catch { /* ignore */ }
   }
@@ -109,6 +112,7 @@ export const useFavoritesPage = () => {
       await $fetch(`/api/favorites/tracks/${trackId}`, { method: 'DELETE' })
       tracks.value = tracks.value.filter(t => t.track.id !== trackId)
       totalTracks.value--
+      global.stats.favorites--
     }
     catch { /* ignore */ }
   }

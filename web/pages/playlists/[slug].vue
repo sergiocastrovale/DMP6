@@ -4,11 +4,13 @@ import type { PlaylistDetail } from '~/types/playlist'
 import type { PlayerTrack } from '~/types/player'
 import { cx, layout, typography } from '~/helpers/ui'
 import { useToastStore } from '~/stores/toast'
+import { useGlobalStore } from '~/stores/global'
 
 const route = useRoute()
 const router = useRouter()
 const slug = route.params.slug as string
 const toast = useToastStore()
+const global = useGlobalStore()
 
 const loading = ref(true)
 const playlist = ref<PlaylistDetail | null>(null)
@@ -79,6 +81,7 @@ const deletePlaylist = async () => {
   showDeleteConfirm.value = false
   try {
     await $fetch(`/api/playlists/${slug}`, { method: 'DELETE' })
+    global.stats.playlists--
     router.push('/playlists')
   }
   catch (error) {

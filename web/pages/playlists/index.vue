@@ -3,16 +3,23 @@ import { LucidePlus, LucideSettings } from 'lucide-vue-next'
 import type { PlaylistSummary } from '~/types/playlist'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
 import { cx, layout } from '~/helpers/ui'
+import { useGlobalStore } from '~/stores/global'
 
 useTitle('Playlists')
 
 const { hasPerm, isAdmin } = useAuth()
 const canCrud = hasPerm('playlists.crud')
 const terminal = useTerminalStore()
+const global = useGlobalStore()
 
 const loading = ref(true)
 const playlists = ref<PlaylistSummary[]>([])
 const showCreate = ref(false)
+
+async function onCreated() {
+  global.stats.playlists++
+  await loadPlaylists()
+}
 
 async function loadPlaylists() {
   loading.value = true
@@ -59,6 +66,6 @@ onMounted(() => loadPlaylists())
 
     <PlaylistList v-else :playlists="playlists" @create="showCreate = true" />
 
-    <PlaylistCreateDialog v-model="showCreate" @created="loadPlaylists" />
+    <PlaylistCreateDialog v-model="showCreate" @created="onCreated" />
   </div>
 </template>
