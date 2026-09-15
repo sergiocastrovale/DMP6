@@ -1,5 +1,6 @@
 import type { ReleaseStatus } from '~/types/release'
 import type { Tone } from '~/types/ui'
+import type { ReleaseTypeBucketId } from '~/types/stats'
 
 // Accent themes (Settings → Themes). Each id matches an `html[data-theme=…]` block in
 // assets/css/themes.css, which redefines the amber ramp - `amber` is the default and needs no
@@ -330,3 +331,21 @@ export const linkIcons: Record<string, { viewBox: string; path: string }> = {
     path: 'M12 2L2 12h3v8h6v-6h2v6h6v-8h3L12 2z',
   },
 }
+
+// Statistics → Release Types metric (pages/statistics/types.vue - one pivoted table, one column per
+// bucket). Display/column order only - classification priority (box-set beats compilation beats
+// live, ...) is separate and hardcoded in server/utils/releaseTypeBuckets.ts, since that order
+// (rarest/most-specific first) reads badly as a display order (most people care about Albums/EPs
+// first).
+// shortLabel is the types.vue table's column header - narrower than the index card's full label
+// (8 columns need to fit side by side; the index card has a whole row's width per item).
+export const releaseTypeBuckets: { id: ReleaseTypeBucketId, label: string, shortLabel: string }[] = [
+  { id: 'album', label: 'Albums', shortLabel: 'Albums' },
+  { id: 'ep', label: 'EPs', shortLabel: 'EPs' },
+  { id: 'live', label: 'Live albums', shortLabel: 'Live' },
+  { id: 'soundtrack', label: 'Soundtracks', shortLabel: 'OST' },
+  { id: 'single', label: 'Singles', shortLabel: 'Singles' },
+  { id: 'compilation', label: 'Compilations', shortLabel: 'Compilations' },
+  { id: 'box-set', label: 'Box sets', shortLabel: 'Box' },
+  { id: 'unknown', label: 'Unknown', shortLabel: 'Unknown' },
+]

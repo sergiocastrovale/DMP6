@@ -180,7 +180,7 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 | `/playlists/setup/generated` (+`new`, `[id]`) | Admin: CRUD for `PlaylistGenerator` seeds (genre/region playlist settings) |
 | `/favorites` | Tabbed releases/tracks |
 | `/timeline` | Browse by decade/year |
-| `/statistics` (+16 subpages) | Stats dashboard |
+| `/statistics` (+18 subpages) | Stats dashboard |
 | `/downloads` (+5 subpages) | Queue shell: monitoring, merge, queue (`?filter=`), history, events |
 | `/labs` (+5 subpages) | map, genome, mosaic, network, decades |
 | `/issues`, `/issues/<type>` (7), `/issues/history` | Metadata issue review/fix/undo |

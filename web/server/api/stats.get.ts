@@ -1,11 +1,14 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
+import { releaseTypeBucketSql } from '~/server/utils/releaseTypeBuckets'
+import { releaseTypeBuckets } from '~/helpers/constants'
+import type { ReleaseTypeBucketId } from '~/types/stats'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
 
   return cachedResponse('stats', 300, async () => {
-    const [stats, unmatchedReleases, incompleteReleases, lowBitrateTracks, singleReleaseResult, missingArtReleases, linkedArtists] = await Promise.all([
+    const [stats, unmatchedReleases, incompleteReleases, lowBitrateTracks, singleReleaseResult, missingArtReleases, linkedArtists, releaseTypeRows] = await Promise.all([
       prisma.statistics.findUnique({ where: { id: 'main' } }),
       prisma.localRelease.count({ where: { matchStatus: 'UNMATCHED' } }),
       prisma.localRelease.count({ where: { matchStatus: { in: ['INCOMPLETE', 'MISSING_TRACKS'] } } }),
@@ -22,7 +25,17 @@ export default defineEventHandler(async (event) => {
       `),
       prisma.localRelease.count({ where: { image: null, imageUrl: null } }),
       prisma.artist.count({ where: { primaryArtistId: { not: null } } }),
+      prisma.$queryRawUnsafe<{ bucket: ReleaseTypeBucketId, count: bigint }[]>(`
+        SELECT ${releaseTypeBucketSql} AS bucket, COUNT(*)::bigint AS count
+        FROM "LocalRelease" lr
+        LEFT JOIN "MusicBrainzRelease" mb ON mb.id = lr."releaseId"
+        LEFT JOIN "ReleaseType" rt ON rt.id = mb."typeId"
+        GROUP BY 1
+      `),
     ])
+
+    const releaseTypes = Object.fromEntries(releaseTypeBuckets.map(b => [b.id, 0])) as Record<ReleaseTypeBucketId, number>
+    for (const row of releaseTypeRows) { releaseTypes[row.bucket] = Number(row.count) }
 
     const curation = {
       unmatchedReleases,
@@ -31,6 +44,7 @@ export default defineEventHandler(async (event) => {
       singleReleaseArtists: Number(singleReleaseResult[0].count),
       missingArtReleases,
       linkedArtists,
+      releaseTypes,
     }
 
     if (!stats) {

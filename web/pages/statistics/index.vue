@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideAlertTriangle, Info } from 'lucide-vue-next'
+import { LucideLibrary, LucidePlay, LucideRefreshCw, LucideImage, LucideAlertTriangle, LucideDisc3, LucideLink, Info } from 'lucide-vue-next'
 import type { Statistics, StatSection, StatTile } from '~/types/stats'
 import { formatNumber, formatFileSize, formatDate } from '~/helpers/functions'
 import { layout, surface, toneText } from '~/helpers/ui'
+import { releaseTypeBuckets } from '~/helpers/constants'
 
 useTitle('Statistics')
 
@@ -36,26 +37,23 @@ const sections = computed<StatSection[]>(() => {
       title: 'Library',
       icon: LucideLibrary,
       items: [
+        { label: 'Artists synced', value: formatNumber(s.artistsSyncedWithMusicbrainz), link: '/statistics/artists-synced' },
+        { label: 'Releases synced', value: formatNumber(s.releasesSyncedWithMusicbrainz), link: '/statistics/releases-synced' },
         { label: 'Linked artists', value: formatNumber(s.linkedArtists), info: 'Artists that share a MusicBrainz ID with another artist (e.g. "Artist A & B" → "Artist A"). Their catalogue is aggregated on the primary artist\'s page.' },
+        { label: 'Artists with photo', value: formatNumber(s.artistsWithCoverArt), link: '/statistics/artists-with-art' },
+        { label: 'Releases with cover art', value: formatNumber(s.releasesWithCoverArt), link: '/statistics/releases-with-art' },
         { label: 'Genres', value: formatNumber(s.genres), link: '/statistics/genres' },
         { label: 'Total size', value: formatFileSize(s.totalFileSize), link: '/statistics/size' },
       ],
     },
     {
-      title: 'MusicBrainz Sync',
-      icon: LucideRefreshCw,
-      items: [
-        { label: 'Artists synced', value: formatNumber(s.artistsSyncedWithMusicbrainz), link: '/statistics/artists-synced' },
-        { label: 'Releases synced', value: formatNumber(s.releasesSyncedWithMusicbrainz), link: '/statistics/releases-synced' },
-      ],
-    },
-    {
-      title: 'Cover Art',
-      icon: LucideImage,
-      items: [
-        { label: 'Artists with photo', value: formatNumber(s.artistsWithCoverArt), link: '/statistics/artists-with-art' },
-        { label: 'Releases with cover art', value: formatNumber(s.releasesWithCoverArt), link: '/statistics/releases-with-art' },
-      ],
+      title: 'Release Types',
+      icon: LucideDisc3,
+      items: releaseTypeBuckets.map(b => ({
+        label: b.label,
+        value: formatNumber(s.releaseTypes[b.id]),
+        link: `/statistics/types?sort=${b.id}`,
+      })),
     },
     {
       title: 'Curation',
@@ -147,6 +145,7 @@ onMounted(() => {
                     </div>
                   </template>
                 </Popover>
+                <LucideLink v-if="item.link" :size="13" class="text-stone-100/40" />
               </span>
               <span class="text-lg font-bold tabular-nums" :class="item.link && item.value === 'Browse' ? toneText.warning : 'text-stone-100'">{{ item.value }}</span>
             </component>

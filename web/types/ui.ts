@@ -30,7 +30,7 @@ export interface DataTableColumn {
   key: string
   label: string
   sortable?: boolean
-  align?: 'left' | 'right'
+  align?: 'left' | 'right' | 'center'
   width?: string
   // Responsive visibility (e.g. `hidden md:table-cell`) - applied to both the header and every
   // row's cell for this column, since hiding only the cell content would leave an empty <td>

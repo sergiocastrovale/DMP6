@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft } from 'lucide-vue-next'
-import type { DataTableColumn } from '~/types/ui'
+import type { DataTableColumn, TabItem } from '~/types/ui'
 import type { SortDirection } from '~/types/common'
 import { layout, cx, typography } from '~/helpers/ui'
 
@@ -11,9 +11,16 @@ const props = withDefaults(defineProps<{
   columns: DataTableColumn[]
   defaultSort?: string
   defaultOrder?: SortDirection
+  tabs?: TabItem[]
+  rowLink?: (row: Record<string, any>) => string
+  // Fixed query params sent alongside page/search/sort on every fetch - for an api-type that needs
+  // more than the generic list shape (types/[bucket].vue's "this artist's releases in this bucket").
+  extraQuery?: Record<string, string | number>
+  backTo?: string
 }>(), {
   defaultSort: '',
   defaultOrder: 'asc',
+  backTo: '/statistics',
 })
 
 const slots = defineSlots<{
@@ -63,6 +70,7 @@ const fetchItems = async (append = false) => {
         search: searchQuery.value || undefined,
         sort: sort.value.key || undefined,
         order: sort.value.dir,
+        ...props.extraQuery,
       },
     })
     items.value = append ? [...items.value, ...data.items] : data.items
@@ -88,19 +96,32 @@ const loadMore = () => {
 onMounted(() => {
   fetchItems()
 })
+
+// apiType changes when a route-linked tab switches (page instance is reused across the dynamic
+// segment - see pages/statistics/types/[bucket].vue) - re-run the search/sort state fresh for the
+// new tab rather than showing the previous tab's rows under the new label.
+watch(() => props.apiType, () => {
+  page.value = 1
+  searchQuery.value = ''
+  sort.value = { key: props.defaultSort || null, dir: props.defaultOrder }
+  items.value = []
+  fetchItems()
+})
 </script>
 
 <template>
   <div :class="cx(layout.page)">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <NuxtLink to="/statistics" aria-label="Back to statistics" class="text-stone-100/55 transition-colors duration-150 hover:text-stone-100">
+        <NuxtLink :to="backTo" aria-label="Back" class="text-stone-100/55 transition-colors duration-150 hover:text-stone-100">
           <ArrowLeft :size="20" />
         </NuxtLink>
         <h1 :class="typography.h2">{{ title }}</h1>
       </div>
       <span class="text-sm text-stone-100/55 tabular-nums">{{ total.toLocaleString() }} {{ label }}</span>
     </div>
+
+    <Tabs v-if="tabs" :tabs="tabs" />
 
     <div class="flex items-center gap-3">
       <SearchInput
@@ -121,6 +142,7 @@ onMounted(() => {
       :selectable="false"
       :loading="loading"
       :sort="sort"
+      :row-link="rowLink"
       :empty-message="`No ${label} found`"
       @sort="handleSort"
     >

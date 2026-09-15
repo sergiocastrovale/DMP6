@@ -1,11 +1,15 @@
 import { prisma } from '~/server/utils/prisma'
 import { parsePagination } from '~/server/utils/pagination'
+import { releaseTypeBucketSql } from '~/server/utils/releaseTypeBuckets'
+import { releaseTypeBuckets } from '~/helpers/constants'
+
+const RELEASE_TYPE_BUCKET_ID_SET = new Set<string>(releaseTypeBuckets.map(b => b.id))
 
 const VALID_TYPES = new Set([
   'artists', 'releases', 'tracks', 'genres', 'plays', 'size',
   'artists-synced', 'releases-synced',
   'artists-with-art', 'releases-with-art',
-  'unmatched', 'incomplete', 'bitrate', 'single-release', 'shortest', 'missing-art',
+  'unmatched', 'incomplete', 'bitrate', 'single-release', 'shortest', 'missing-art', 'types', 'type-detail',
 ])
 
 export default defineEventHandler(async (event) => {
@@ -21,6 +25,16 @@ export default defineEventHandler(async (event) => {
   const order = ((query.order as string) === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc'
 
   switch (type) {
+    case 'types':
+      return queryReleaseTypesPivot(search, skip, pageSize, page, sort, order)
+    case 'type-detail': {
+      const bucket = query.bucket as string
+      const artist = query.artist as string
+      if (!RELEASE_TYPE_BUCKET_ID_SET.has(bucket) || !artist) {
+        throw createError({ statusCode: 400, statusMessage: 'Invalid bucket or artist' })
+      }
+      return queryReleaseTypeDetail(bucket, artist, search, skip, pageSize, page, sort, order)
+    }
     case 'artists':
     case 'artists-synced':
     case 'artists-with-art':
@@ -513,6 +527,131 @@ async function queryReleasesSynced(search: string, skip: number, pageSize: numbe
       artistName: r.artists[0]?.artist.name ?? 'Unknown',
       artistSlug: r.artists[0]?.artist.slug ?? '',
     })),
+    total,
+    page,
+    pageSize,
+    hasMore: skip + pageSize < total,
+  }
+}
+
+// Release Types (pages/statistics/types.vue): one row per artist, one column per bucket - a single
+// pivoted table instead of a tab per bucket, since the whole vocabulary is only 8 buckets. Connected
+// (duplicate) artists roll up onto their primary, same convention as queryArtists's "Linked artists"
+// note above. releaseTypeBuckets (helpers/constants.ts) drives the column list so a new bucket only
+// needs adding there and to releaseTypeBucketSql's CASE.
+const RELEASE_TYPE_BUCKET_IDS = releaseTypeBuckets.map(b => b.id)
+
+async function queryReleaseTypesPivot(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+  const searchClause = search ? `AND a2."name" ILIKE '%' || $1 || '%'` : ''
+  const params = search ? [search] : []
+
+  const bucketColumns = RELEASE_TYPE_BUCKET_IDS
+    .map(id => `COUNT(*) FILTER (WHERE rb.bucket = '${id}')::int AS "${id}"`)
+    .join(',\n      ')
+
+  const orderColumnMap: Record<string, string> = { name: 'a2."name"' }
+  for (const id of RELEASE_TYPE_BUCKET_IDS) { orderColumnMap[id] = `"${id}"` }
+  const orderColumn = orderColumnMap[sort] ?? 'a2."name"'
+  const orderDir = order === 'asc' ? 'ASC' : 'DESC'
+
+  const releaseBucketsCte = `
+    WITH release_buckets AS (
+      SELECT lra."artistId", ${releaseTypeBucketSql} AS bucket
+      FROM "LocalRelease" lr
+      JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+      LEFT JOIN "MusicBrainzRelease" mb ON mb.id = lr."releaseId"
+      LEFT JOIN "ReleaseType" rt ON rt.id = mb."typeId"
+    )
+  `
+
+  const countResult = await prisma.$queryRawUnsafe<[{ count: bigint }]>(`
+    ${releaseBucketsCte}
+    SELECT COUNT(*)::bigint AS count FROM (
+      SELECT a2.id
+      FROM release_buckets rb
+      JOIN "Artist" a ON a.id = rb."artistId"
+      JOIN "Artist" a2 ON a2.id = COALESCE(a."primaryArtistId", a.id)
+      WHERE 1 = 1 ${searchClause}
+      GROUP BY a2.id
+    ) sub
+  `, ...params)
+
+  const total = Number(countResult[0].count)
+  const offsetParam = search ? '$2' : '$1'
+  const limitParam = search ? '$3' : '$2'
+
+  const rows = await prisma.$queryRawUnsafe<Record<string, any>[]>(`
+    ${releaseBucketsCte}
+    SELECT a2.id, a2."name", a2."slug",
+      ${bucketColumns}
+    FROM release_buckets rb
+    JOIN "Artist" a ON a.id = rb."artistId"
+    JOIN "Artist" a2 ON a2.id = COALESCE(a."primaryArtistId", a.id)
+    WHERE 1 = 1 ${searchClause}
+    GROUP BY a2.id, a2."name", a2."slug"
+    ORDER BY ${orderColumn} ${orderDir}
+    OFFSET ${offsetParam} LIMIT ${limitParam}
+  `, ...params, skip, pageSize)
+
+  return {
+    items: rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      ...Object.fromEntries(RELEASE_TYPE_BUCKET_IDS.map(id => [id, r[id]])),
+    })),
+    total,
+    page,
+    pageSize,
+    hasMore: skip + pageSize < total,
+  }
+}
+
+// Release Types drill-down (pages/statistics/types/[bucket].vue): one artist's releases within one
+// bucket - "Britney Spears' Singles" - reached by clicking a nonzero cell in the pivoted table above.
+// Matches both the given artist and any artist rolled onto it via primaryArtistId (a TypesPage.vue
+// row is already the *primary* artist, so its duplicates' own releases belong on this list too).
+async function queryReleaseTypeDetail(bucket: string, artistSlug: string, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+  const artist = await prisma.artist.findUnique({ where: { slug: artistSlug }, select: { id: true } })
+  if (!artist) {
+    throw createError({ statusCode: 404, statusMessage: 'Artist not found' })
+  }
+
+  const searchClause = search ? `AND lr."title" ILIKE '%' || $3 || '%'` : ''
+  const params = search ? [bucket, artist.id, search] : [bucket, artist.id]
+
+  const orderColumnMap: Record<string, string> = { title: 'lr."title"', year: 'lr."year"', updatedAt: 'lr."updatedAt"' }
+  const orderColumn = orderColumnMap[sort] ?? 'lr."year"'
+  const orderDir = order === 'asc' ? 'ASC' : 'DESC'
+
+  const countResult = await prisma.$queryRawUnsafe<[{ count: bigint }]>(`
+    SELECT COUNT(DISTINCT lr.id)::bigint AS count
+    FROM "LocalRelease" lr
+    JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+    JOIN "Artist" a ON a.id = lra."artistId"
+    LEFT JOIN "MusicBrainzRelease" mb ON mb.id = lr."releaseId"
+    LEFT JOIN "ReleaseType" rt ON rt.id = mb."typeId"
+    WHERE (${releaseTypeBucketSql}) = $1 AND (a.id = $2 OR a."primaryArtistId" = $2) ${searchClause}
+  `, ...params)
+
+  const total = Number(countResult[0].count)
+  const offsetParam = search ? '$4' : '$3'
+  const limitParam = search ? '$5' : '$4'
+
+  const rows = await prisma.$queryRawUnsafe<{ id: string, title: string, year: number | null, updatedAt: Date | string | null }[]>(`
+    SELECT DISTINCT lr.id, lr."title", lr."year", lr."updatedAt"
+    FROM "LocalRelease" lr
+    JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+    JOIN "Artist" a ON a.id = lra."artistId"
+    LEFT JOIN "MusicBrainzRelease" mb ON mb.id = lr."releaseId"
+    LEFT JOIN "ReleaseType" rt ON rt.id = mb."typeId"
+    WHERE (${releaseTypeBucketSql}) = $1 AND (a.id = $2 OR a."primaryArtistId" = $2) ${searchClause}
+    ORDER BY ${orderColumn} ${orderDir}
+    OFFSET ${offsetParam} LIMIT ${limitParam}
+  `, ...params, skip, pageSize)
+
+  return {
+    items: rows.map(r => ({ id: r.id, title: r.title, year: r.year, updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : null })),
     total,
     page,
     pageSize,

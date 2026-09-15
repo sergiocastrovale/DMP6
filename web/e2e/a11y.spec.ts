@@ -49,6 +49,7 @@ const AUTHENTICATED_ROUTES = [
   '/downloads/monitoring',
   '/downloads/events',
   '/statistics',
+  '/statistics/types',
   '/issues',
   '/labs',
   '/labs/decades',

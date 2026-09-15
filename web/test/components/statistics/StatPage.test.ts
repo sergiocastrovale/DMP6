@@ -105,4 +105,49 @@ describe('statistics/StatPage.vue', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('No releases found')
   })
+
+  it('renders tabs when given, and none when omitted', async () => {
+    const withTabs = await mountSuspended(StatPage, {
+      props: { title: 'Releases', apiType: 'releases', label: 'releases', columns: COLUMNS, tabs: [{ key: 'a', label: 'Albums', href: '/x/a' }] },
+    })
+    await flushPromises()
+    expect(withTabs.text()).toContain('Albums')
+
+    const withoutTabs = await mountSuspended(StatPage, {
+      props: { title: 'Releases', apiType: 'releases', label: 'releases', columns: COLUMNS },
+    })
+    await flushPromises()
+    expect(withoutTabs.find('[role="tablist"]').exists()).toBe(false)
+  })
+
+  it('re-fetches from a clean state when apiType changes (route-linked tab switch)', async () => {
+    const wrapper = await mountSuspended(StatPage, {
+      props: { title: 'Types', apiType: 'types-album', label: 'artists', columns: COLUMNS },
+    })
+    await flushPromises()
+    fetchMock.mockClear()
+    await wrapper.setProps({ apiType: 'types-ep' })
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledWith('/api/stats/types-ep', expect.objectContaining({
+      query: expect.objectContaining({ page: 1, search: undefined, sort: undefined, order: 'asc' }),
+    }))
+  })
+
+  it('sends extraQuery fixed params alongside every fetch', async () => {
+    await mountSuspended(StatPage, {
+      props: { title: 'Detail', apiType: 'type-detail', label: 'releases', columns: COLUMNS, extraQuery: { bucket: 'single', artist: 'britney-spears' } },
+    })
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledWith('/api/stats/type-detail', expect.objectContaining({
+      query: expect.objectContaining({ bucket: 'single', artist: 'britney-spears' }),
+    }))
+  })
+
+  it('backTo overrides the default back-to-statistics link', async () => {
+    const wrapper = await mountSuspended(StatPage, {
+      props: { title: 'Detail', apiType: 'type-detail', label: 'releases', columns: COLUMNS, backTo: '/statistics/types' },
+    })
+    await flushPromises()
+    expect(wrapper.get('a[aria-label="Back"]').attributes('href')).toBe('/statistics/types')
+  })
 })

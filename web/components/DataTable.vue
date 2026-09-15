@@ -9,6 +9,9 @@ const props = withDefaults(defineProps<{
   rows: T[]
   getRowId?: (row: T) => string | number
   rowLabel?: (row: T) => string
+  // When given, the whole row navigates there on click - the row itself is the action, so it's
+  // meant for tables with no `actions` slot (e.g. statistics/TypesPage.vue).
+  rowLink?: (row: T) => string
   selectable?: boolean
   loading?: boolean
   loadingRows?: number
@@ -63,6 +66,10 @@ const toggleRow = (id: string | number) => {
 
 const clearSelection = () => emit('update:selected', new Set())
 
+const goToRow = (row: T) => {
+  if (props.rowLink) { navigateTo(props.rowLink(row)) }
+}
+
 const hasActionsSlot = computed(() => !!slots.actions)
 const columnCount = computed(() => props.columns.length + (props.selectable ? 1 : 0) + (hasActionsSlot.value ? 1 : 0))
 
@@ -109,7 +116,7 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
           />
           <th
             v-else
-            :class="cx(data.th, col.align === 'right' ? 'text-right' : 'text-left', col.class)"
+            :class="cx(data.th, col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left', col.class)"
             :style="col.width ? { width: col.width } : undefined"
           >
             {{ col.label }}
@@ -137,6 +144,10 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
             v-for="row in rows"
             :key="rowId(row)"
             :active="selectedIds.has(rowId(row))"
+            :tabindex="rowLink ? 0 : undefined"
+            :role="rowLink ? 'link' : undefined"
+            @click="goToRow(row)"
+            @keydown.enter="goToRow(row)"
           >
             <td v-if="selectable" :class="cx('w-10', data.th)" @click.stop="captureRowClick">
               <UiCheckbox
@@ -148,10 +159,10 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
             <td
               v-for="col in columns"
               :key="col.key"
-              :class="cx(data.td, col.align === 'right' && 'text-right', col.class)"
+              :class="cx(data.td, col.align === 'right' && 'text-right', col.align === 'center' && 'text-center', col.class)"
             >
               <slot v-if="hasCellSlot(col.key)" :name="cellSlotName(col.key)" :row="row" :value="cellValue(row, col.key)" />
-              <span v-else :class="col.align === 'right' && 'tabular-nums'">{{ cellValue(row, col.key) }}</span>
+              <span v-else :class="(col.align === 'right' || col.align === 'center') && 'tabular-nums'">{{ cellValue(row, col.key) }}</span>
             </td>
             <td v-if="hasActionsSlot" :class="cx(data.td, 'text-right')" @click.stop>
               <slot name="actions" :row="row" />

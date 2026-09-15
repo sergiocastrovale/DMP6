@@ -36,6 +36,8 @@ export interface StatTile {
   link: string
 }
 
+export type ReleaseTypeBucketId = 'album' | 'ep' | 'single' | 'box-set' | 'compilation' | 'live' | 'soundtrack' | 'unknown'
+
 export interface Statistics {
   artists: number
   mainArtists: number
@@ -57,4 +59,5 @@ export interface Statistics {
   singleReleaseArtists: number
   missingArtReleases: number
   linkedArtists: number
+  releaseTypes: Record<ReleaseTypeBucketId, number>
 }

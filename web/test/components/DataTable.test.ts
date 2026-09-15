@@ -1,8 +1,11 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it, vi } from 'vitest'
 import DataTable from '../../components/DataTable.vue'
 import type { DataTableColumn } from '../../types/ui'
 import type { DataTableTestArtist } from '../../types/common'
+
+const { navigateToMock } = vi.hoisted(() => ({ navigateToMock: vi.fn() }))
+mockNuxtImport('navigateTo', () => navigateToMock)
 
 const ROWS: DataTableTestArtist[] = [
   { id: 'a', name: 'Radiohead', releases: 12 },
@@ -139,6 +142,17 @@ describe('DataTable.vue', () => {
       },
     })
     expect(wrapper.html()).toContain('RADIOHEAD')
+  })
+
+  it('rowLink navigates on row click without an actions column', async () => {
+    const wrapper = await mountSuspended(DataTable, {
+      props: { columns: COLUMNS, rows: ROWS, selectable: false, rowLink: ((row: DataTableTestArtist) => `/artist/${row.id}`) as (row: object) => string },
+    })
+    expect(wrapper.text()).not.toContain('Actions')
+    const row = wrapper.findAll('tbody tr').find(tr => tr.text().includes('Radiohead'))!
+    expect(row.attributes('role')).toBe('link')
+    await row.trigger('click')
+    expect(navigateToMock).toHaveBeenCalledWith('/artist/a')
   })
 
   it('renders the actions slot and an Actions header only when the slot is provided', async () => {

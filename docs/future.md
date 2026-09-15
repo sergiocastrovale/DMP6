@@ -15,17 +15,14 @@ remove all singles, bootlegs for extra space
 
 FEATURES
 
-"Did you know..." Genius trivia on the artist page — shipped, see `docs/feature_did_you_know.md`.
-
-With Genius API, add lyrics as part of the visualizers and as a dedicated dropdown, and as an icon in the player before the viz
 
 BUGS
 
 Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. These catalogues should be separated - best strategy? The name of the band isn't the problem - it's the slug generation and the way we catalogue them (they can't be together).
 
-
 UI
 
+Better hierarchy in statistics vs subpages
 
 LIBRARY
 
