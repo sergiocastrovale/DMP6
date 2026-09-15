@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   reasons: string[]
   variant?: ButtonVariant
+  iconClass?: string
   iconOnly?: boolean
   size?: ButtonSize
 }>(), {
@@ -34,6 +35,7 @@ const blocked = computed(() => props.reasons.length > 0)
     :label="label"
     :loading="loading"
     :variant="variant"
+    :icon-class="iconClass"
     @click="$emit('click')"
   />
   <UiButton
@@ -41,6 +43,7 @@ const blocked = computed(() => props.reasons.length > 0)
     :size="size"
     :variant="variant ?? 'secondary'"
     :icon="icon"
+    :icon-class="iconClass"
     :loading="loading"
     :title="label"
     @click="$emit('click')"

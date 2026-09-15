@@ -220,8 +220,8 @@ const alsoPartOfLabel = computed(() =>
 
         <template v-else-if="isAwaitingMerge">
           <DownloadsDownloadDisabledButton
-            variant="success"
             :icon="FolderInput"
+            icon-class="text-success"
             :loading="mergeBusyIds.has(release.downloadedReleaseId ?? '')"
             label="Merge this release now"
             :reasons="downloadsStore.mergeBlockReasons"
