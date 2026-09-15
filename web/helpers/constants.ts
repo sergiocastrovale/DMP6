@@ -187,6 +187,7 @@ export const browseSortOptions = [
   { value: 'playCount', label: 'Play count' },
   { value: 'completeness', label: 'Completeness' },
   { value: 'recent', label: 'Recently added' },
+  { value: 'updated', label: 'Recently updated' },
 ]
 
 // DownloadedRelease.status -> colour, shared by DownloadProgress's bar and any per-release

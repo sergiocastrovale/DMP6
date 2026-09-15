@@ -112,6 +112,9 @@ export default defineEventHandler(async (event) => {
       case 'recent':
         orderBy.createdAt = order
         break
+      case 'updated':
+        orderBy.updatedAt = order
+        break
       case 'tracks':
         orderBy.totalTracks = order
         break
