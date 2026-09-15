@@ -12,7 +12,7 @@ defineProps<{
     <template #content>
       <p class="text-base text-stone-100/70">{{ message }}</p>
     </template>
-    <template #actions>
+    <template #footer>
       <UiButton variant="ghost" size="sm" @click="open = false">
         Close
       </UiButton>

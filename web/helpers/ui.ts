@@ -314,6 +314,7 @@ export const layout = {
   dialogTitle: 'min-w-0 pr-3 pl-4 py-5 flex items-start justify-between gap-4 text-stone-200/55 hover:text-stone-200',
   dialogActions: 'flex items-center justify-end gap-1 border-y bg-stone-800/50 border-stone-100/10 py-1 pl-4 pr-2 mb-5',
   dialogContent: 'flex-1 overflow-y-auto px-4 pb-5',
+  dialogFooter: 'flex items-center justify-end gap-2 border-t border-stone-100/10 px-4 py-3',
   pageHead: 'flex items-baseline justify-between gap-4 mb-[22px]',
   toolbar: 'flex items-center gap-2.5 flex-wrap mb-4',
   spacer: 'flex-1 min-w-0',

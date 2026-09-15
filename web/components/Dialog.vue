@@ -60,6 +60,10 @@ useModalLayer(isOpen, panelRef, close)
         <div :class="cx(layout.dialogContent)">
           <slot name="content" />
         </div>
+
+        <div v-if="$slots.footer" :class="cx(layout.dialogFooter)">
+          <slot name="footer" />
+        </div>
       </div>
     </div>
   </Teleport>

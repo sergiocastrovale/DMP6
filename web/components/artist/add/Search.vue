@@ -18,6 +18,7 @@ const query = ref('')
 const results = ref<MbArtistSearchRow[]>([])
 const searched = ref(false)
 const loading = ref(false)
+const rateLimited = ref(false)
 const monitor = ref(false)
 const addingMbid = ref<string | null>(null)
 
@@ -27,15 +28,22 @@ const errorSlug = ref<string | null>(null)
 
 const search = async () => {
   const q = query.value.trim()
-  if (!q) {return}
+  if (!q || loading.value) {return}
   loading.value = true
   searched.value = true
+  rateLimited.value = false
   try {
     const data = await $fetch<{ items: MbArtistSearchRow[] }>('/api/artists/mb-search', { query: { q } })
     results.value = data.items
   }
   catch (e: any) {
-    toast.error(e?.data?.message || e?.message || 'MusicBrainz search failed')
+    const message = e?.data?.message || e?.message || ''
+    if (message.includes('503')) {
+      rateLimited.value = true
+    }
+    else {
+      toast.error(message || 'MusicBrainz search failed')
+    }
     results.value = []
   }
   finally {
@@ -103,13 +111,15 @@ const add = async (row: MbArtistSearchRow) => {
         wrapper-class="sm:max-w-sm"
         @submit="search"
       />
-      <UiButton variant="secondary" :icon="SearchIcon" :loading="loading" @click="search">
+      <UiButton variant="secondary" :icon="SearchIcon" :loading="loading" :disabled="loading" @click="search">
         Search in MusicBrainz
       </UiButton>
       <Switch v-if="canMonitor" v-model="monitor" label="Monitor after adding" />
     </div>
 
     <UiLoadingBlock v-if="loading" />
+
+    <ArtistAddRateLimit v-else-if="rateLimited" @retry="search" />
 
     <UiEmptyState v-else-if="searched && results.length === 0" message="No artists found on MusicBrainz" />
 
