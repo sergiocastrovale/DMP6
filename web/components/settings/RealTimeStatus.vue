@@ -54,6 +54,10 @@ watch(() => terminal.isRunning, (running) => {
 
 const progress = computed(() => parseProgress(terminal.lines))
 
+const stageSuffix = computed(() =>
+  terminal.stageTotal && terminal.stageTotal > 1 ? ` - stage ${terminal.stageIndex}/${terminal.stageTotal}` : '',
+)
+
 const staleLock = computed(() =>
   !terminal.isRunning && status.value?.isRunning ? status.value : null,
 )
@@ -115,7 +119,7 @@ onUnmounted(() => {
       <UiLoadingPanel
         v-if="terminal.isRunning && progress"
         class="mt-4"
-        :label="`${progress.phase === 'index' ? 'Indexing' : 'Syncing'}: ${progress.folder || progress.artist} (${progress.current} / ${progress.total})`"
+        :label="`${progress.phase === 'index' ? 'Indexing' : 'Syncing'}: ${progress.folder || progress.artist} (${progress.current} / ${progress.total})${stageSuffix}`"
         :percent="Math.min(100, (progress.current / Math.max(1, progress.total)) * 100)"
       />
 

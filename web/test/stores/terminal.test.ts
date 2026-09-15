@@ -165,6 +165,44 @@ describe('useTerminalStore', () => {
     expect(bodies).toEqual(['./index', './sync'])
   })
 
+  it('runSequence() tracks stageIndex/stageTotal while running and clears both when done', async () => {
+    const seen: Array<[number | null, number | null]> = []
+    const fakeFetch = vi.fn().mockImplementation(async () => {
+      seen.push([store.stageIndex, store.stageTotal])
+      return sseResponse('event: done\ndata: 0\n\n')
+    })
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+
+    await store.runSequence([
+      { command: './delete', args: ['X', '--y'], session: 'seq4' },
+      { command: './index', args: ['--overwrite'], session: 'seq4' },
+      { command: './sync', args: ['--overwrite'], session: 'seq4' },
+    ])
+
+    expect(seen).toEqual([[1, 3], [2, 3], [3, 3]])
+    expect(store.stageIndex).toBeNull()
+    expect(store.stageTotal).toBeNull()
+  })
+
+  it('runSequence() clears stageIndex/stageTotal when stopped mid-sequence', async () => {
+    const fakeFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url === '/api/terminal/stop') {return { ok: true }}
+      await store.stop()
+      return sseResponse('event: done\ndata: 0\n\n')
+    })
+    vi.stubGlobal('fetch', fakeFetch)
+    const store = useTerminalStore()
+
+    await store.runSequence([
+      { command: './delete', args: ['X', '--y'], session: 'seq5' },
+      { command: './index', args: ['--overwrite'], session: 'seq5' },
+    ])
+
+    expect(store.stageIndex).toBeNull()
+    expect(store.stageTotal).toBeNull()
+  })
+
   // Stopping stage 1 used to only abort its SSE: run() resolved, stage 2 fired anyway, and the user
   // who pressed Stop got the rest of the rebuild (plus a 409 from the still-unfinished session log).
   it('runSequence() skips the remaining stages once stop() is called', async () => {

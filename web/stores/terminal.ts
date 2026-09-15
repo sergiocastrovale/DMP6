@@ -14,6 +14,11 @@ export const useTerminalStore = defineStore('terminal', () => {
   // Survives streamSSE's finally block (which nulls currentSession/currentCommand) so a lock-blocked
   // run can be retried after Force Unlock without the caller re-supplying command/args/session.
   const lastRun = ref<{ command: string, args: string[], session: string } | null>(null)
+  // 1-based index of the running stage within runSequence()'s steps, and the total stage count - null
+  // outside a sequence (or for a single run()). Lets the UI show "Rebuilding: index (2/4)" instead of
+  // reading a mid-sequence stage's own "Done." banner as the whole sequence having finished.
+  const stageIndex = ref<number | null>(null)
+  const stageTotal = ref<number | null>(null)
 
   let abortController: AbortController | null = null
 
@@ -101,10 +106,20 @@ export const useTerminalStore = defineStore('terminal', () => {
   // Runs stages back to back, stopping at the first one the user cancels.
   async function runSequence(steps: Array<{ command: string, args: string[], session?: string }>) {
     const gen = ++sequenceGeneration
-    for (const step of steps) {
-      if (stoppedGeneration === gen) {return}
-      await run(step.command, step.args, step.session)
-      if (stoppedGeneration === gen) {return}
+    stageTotal.value = steps.length
+    try {
+      for (const [i, step] of steps.entries()) {
+        if (stoppedGeneration === gen) {return}
+        stageIndex.value = i + 1
+        await run(step.command, step.args, step.session)
+        if (stoppedGeneration === gen) {return}
+      }
+    }
+    finally {
+      if (sequenceGeneration === gen) {
+        stageIndex.value = null
+        stageTotal.value = null
+      }
     }
   }
 
@@ -201,6 +216,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     exitCode,
     currentSession,
     currentCommand,
+    stageIndex,
+    stageTotal,
     hasLockError,
     isSidebarVisible,
     isToastVisible,

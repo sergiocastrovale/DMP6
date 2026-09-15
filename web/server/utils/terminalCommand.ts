@@ -107,10 +107,17 @@ export const buildCommandLine = (binary: string, args: string[]): string => {
 // stayed sentinel-less forever - and hasUnfinishedRun() then rejected every later run of that session
 // name with a 409. `trap 'exit 130' INT TERM` turns the signal into a normal exit so the EXIT trap
 // fires exactly once with 130 (128 + SIGINT), matching what an interrupted shell command reports.
-export const buildScript = (workDir: string, fullCmd: string, logFile: string): string => `#!/bin/bash
+// The trap also explicitly kills the tmux session (once the sentinel is safely written): tmux's own
+// "destroy session when the pane's process exits" is not instant - a slow-to-reap child briefly left
+// the pane's process as a zombie with the session still reporting alive, which made hasUnfinishedRun +
+// tmuxSessionAlive block a same-named retry with a 409 even though the run had genuinely finished.
+// Killing the session from inside itself is safe: the SSE reader in run.post.ts already finishes off
+// the DMP_EXIT line in the log file, not off tmux state, so it is unaffected. `session` is always a
+// SESSION_NAME_RE-validated value (alphanumeric/-/_ only), never raw user input, so no escaping needed.
+export const buildScript = (workDir: string, fullCmd: string, logFile: string, session: string): string => `#!/bin/bash
 set -o pipefail
 cd "${workDir}"
-trap 'echo "DMP_EXIT:$?" >> "${logFile}"' EXIT
+trap 'echo "DMP_EXIT:$?" >> "${logFile}"; tmux kill-session -t "${session}" 2>/dev/null || true' EXIT
 trap 'exit 130' INT TERM
 ${fullCmd} 2>&1 | tee "${logFile}"
 `

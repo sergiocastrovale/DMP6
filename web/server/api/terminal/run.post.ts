@@ -126,7 +126,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const fullCmd = buildCommandLine(binary, args)
-  const script = buildScript(workDir, fullCmd, logFile)
+  const script = buildScript(workDir, fullCmd, logFile, session)
   fs.writeFileSync(scriptFile, script, { mode: 0o755 })
   fs.writeFileSync(logFile, '')
 

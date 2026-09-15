@@ -25,15 +25,19 @@ const percent = computed(() => {
   return Math.min(100, Math.round((p.current / Math.max(1, p.total)) * 100))
 })
 
+const stageSuffix = computed(() =>
+  terminal.stageTotal && terminal.stageTotal > 1 ? ` (${terminal.stageIndex}/${terminal.stageTotal})` : '',
+)
+
 const label = computed(() => {
   const p = progress.value
   if (p) {
     if (p.phase === 'tidy') {
-      return `Tidying: ${p.step || ''}`
+      return `Tidying: ${p.step || ''}${stageSuffix.value}`
     }
-    return `${p.phase === 'index' ? 'Indexing' : 'Syncing'}: ${p.folder || p.artist || ''}`
+    return `${p.phase === 'index' ? 'Indexing' : 'Syncing'}: ${p.folder || p.artist || ''}${stageSuffix.value}`
   }
-  return (terminal.currentCommand && commandLabels[terminal.currentCommand]) || 'Running…'
+  return ((terminal.currentCommand && commandLabels[terminal.currentCommand]) || 'Running…') + stageSuffix.value
 })
 
 const recentLines = computed(() => {

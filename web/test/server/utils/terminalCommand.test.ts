@@ -221,7 +221,7 @@ describe('buildCommandLine', () => {
 
 describe('buildScript', () => {
   it('produces a bash script that cds into workDir and tees to the log file', () => {
-    const script = buildScript('/srv/dmp', '/bin/sync --web', '/tmp/dmp-x.log')
+    const script = buildScript('/srv/dmp', '/bin/sync --web', '/tmp/dmp-x.log', 'sess1')
     expect(script).toContain('#!/bin/bash')
     expect(script).toContain('cd "/srv/dmp"')
     expect(script).toContain('/bin/sync --web 2>&1 | tee "/tmp/dmp-x.log"')
@@ -231,22 +231,27 @@ describe('buildScript', () => {
   it('sets pipefail so the sentinel reports the command exit code, not tee\'s', () => {
     // Without this the command is piped into tee, `$?` is tee's status, and every failed run was
     // streamed to the UI as DMP_EXIT:0 - a clean run that never happened.
-    const script = buildScript('/srv/dmp', '/bin/sync', '/tmp/dmp-x.log')
+    const script = buildScript('/srv/dmp', '/bin/sync', '/tmp/dmp-x.log', 'sess1')
     expect(script).toContain('set -o pipefail')
     expect(script.indexOf('set -o pipefail')).toBeLessThan(script.indexOf('| tee'))
   })
 
   it('does not set -e, so the exit sentinel is still written when the command fails', () => {
-    expect(buildScript('/srv/dmp', '/bin/sync', '/tmp/x.log')).not.toMatch(/^set -e$/m)
+    expect(buildScript('/srv/dmp', '/bin/sync', '/tmp/x.log', 'sess1')).not.toMatch(/^set -e$/m)
   })
 
   it('writes the sentinel from an EXIT trap, and turns INT/TERM into a normal exit', () => {
     // Stop sends Ctrl-C to the pane's process group, killing bash itself - a trailing `echo` never
     // ran, the log kept no sentinel, and every later run of that session name 409'd.
-    const script = buildScript('/srv/dmp', '/bin/sync', '/tmp/dmp-x.log')
-    expect(script).toContain(`trap 'echo "DMP_EXIT:$?" >> "/tmp/dmp-x.log"' EXIT`)
+    const script = buildScript('/srv/dmp', '/bin/sync', '/tmp/dmp-x.log', 'sess1')
+    expect(script).toContain(`trap 'echo "DMP_EXIT:$?" >> "/tmp/dmp-x.log"; tmux kill-session -t "sess1" 2>/dev/null || true' EXIT`)
     expect(script).toContain(`trap 'exit 130' INT TERM`)
     expect(script.indexOf('trap')).toBeLessThan(script.indexOf('| tee'))
+  })
+
+  it('kills its own tmux session from the EXIT trap so a stale zombie pane never blocks a retry', () => {
+    const script = buildScript('/srv/dmp', '/bin/sync', '/tmp/dmp-x.log', 'rebuild-corey-taylor')
+    expect(script).toContain('tmux kill-session -t "rebuild-corey-taylor" 2>/dev/null || true')
   })
 })
 
@@ -259,7 +264,7 @@ describe('buildScript (executed)', () => {
     new Promise<string>((resolve, reject) => {
       const logFile = path.join(tmpDir, `${name}.log`)
       const scriptFile = path.join(tmpDir, `${name}.sh`)
-      fs.writeFileSync(scriptFile, buildScript(tmpDir, fullCmd, logFile), { mode: 0o755 })
+      fs.writeFileSync(scriptFile, buildScript(tmpDir, fullCmd, logFile, name), { mode: 0o755 })
       // detached: own process group, so a signal can be sent to the group the way tmux's Ctrl-C does.
       const child = spawn(scriptFile, { detached: true })
       if (signal) {
