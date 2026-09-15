@@ -5,14 +5,16 @@ import { downloadStatusTone } from '~/helpers/constants'
 import type { Tone } from '~/types/ui'
 
 const props = defineProps<{
-  items?: ReleaseProgress[] // aggregate mode: a batch of in-flight releases
-  percent?: number // single mode: one release's percent
+  items?: ReleaseProgress[] // items-aggregate mode: a batch of in-flight releases, percent from bytes
+  percent?: number // single mode: one release's percent; also the percent for label mode
   status?: string // single mode: one release's status
+  label?: string // label mode: a precomputed aggregate (e.g. merge) - label + percent given directly
 }>()
 
 const statusVariant = (status?: string): Tone => downloadStatusTone[status ?? 'DOWNLOADING'] ?? 'accent'
 
 const aggregate = computed(() => props.items != null)
+const labelled = computed(() => props.items == null && props.label != null)
 
 const total = computed(() => props.items?.length ?? 0)
 const overallBytes = computed(() => {
@@ -45,13 +47,15 @@ const single = computed(() => ({
 </script>
 
 <template>
-  <UiLoadingPanel v-if="!aggregate" :percent="single.percent" :variant="single.variant" size="sm" />
+  <UiLoadingPanel v-if="labelled" :label="label" :percent="percent ?? 0" variant="accent" size="md" />
 
   <UiLoadingPanel
-    v-else-if="total > 0"
+    v-else-if="aggregate && total > 0"
     :label="aggregateLabel"
     :percent="overallPercent"
     variant="accent"
     size="md"
   />
+
+  <UiLoadingPanel v-else-if="!aggregate" :percent="single.percent" :variant="single.variant" size="sm" />
 </template>

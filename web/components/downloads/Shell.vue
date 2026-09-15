@@ -6,7 +6,7 @@ import { cx, layout } from '~/helpers/ui'
 
 const store = useDownloadsStore()
 const toast = useToastStore()
-const { queueActive, readyCount, paused, mergeActive, environmentBlockReasons, monitoredArtists, totalArtists } = storeToRefs(store)
+const { queueActive, readyCount, paused, mergeActive, mergeBatchTotal, mergeBatchCompleted, mergePercent, environmentBlockReasons, monitoredArtists, totalArtists } = storeToRefs(store)
 
 const actionMsg = ref<string | null>(null)
 const issuesPanel = ref<{ fetchEvents: () => Promise<void> } | null>(null)
@@ -26,6 +26,14 @@ const downloading = computed(() => queueActive.value.filter(i => i.status === 'D
 const downloadProgressItems = computed(() => downloading.value.map(i => ({
   status: i.status, percent: i.percent, bytesTransferred: i.bytesTransferred, totalBytes: i.totalBytes,
 })))
+
+// Server-polled (store.mergeBatchTotal/mergePercent), not tied to the merge-stream SSE connection -
+// stays accurate across the page even if that stream drops mid-batch (see mergeProgress in
+// stores/downloads.ts).
+const mergeLabel = computed(() => {
+  const n = mergeBatchTotal.value
+  return `Merging ${n} release${n === 1 ? '' : 's'} — ${mergeBatchCompleted.value}/${n} done`
+})
 
 const tabs = computed<TabItem[]>(() => [
   { key: 'monitoring', label: 'Monitoring', href: '/downloads/monitoring' },
@@ -121,6 +129,8 @@ onUnmounted(() => {
           </p>
 
           <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3" />
+
+          <DownloadsDownloadProgress v-if="mergeBatchTotal > 0" :label="mergeLabel" :percent="mergePercent" class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3" />
         </div>
       </div>
     </template>

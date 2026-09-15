@@ -63,6 +63,29 @@ describe('useDownloadsStore - pure getters (seeded state)', () => {
     expect(store.mergingIds.has('b')).toBe(true)
     expect(store.mergeActive).toBe(true)
   })
+
+  it('mergeActive/mergeBatchTotal/mergePercent stay live from polled merge-progress even after the merge-stream fetch ends (e.g. a dropped SSE connection)', async () => {
+    // The stream itself finishes (simulating either a real completion or a dropped connection) -
+    // mergeInitiated clears either way. The server-side batch (server/utils/mergeProgress.ts) is
+    // the thing this test cares about surviving that.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(doneSse()))
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/downloads/merge-progress') {
+        return Promise.resolve({ a: { step: 'syncing', title: 'A' }, b: { step: 'syncing', title: 'B' } })
+      }
+      // 'a' already left READY (promoted/invalidated); 'b' hasn't yet - 1 of 2 done.
+      return Promise.resolve({ active: [], ready: [{ id: 'b' }], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: null })
+    })
+    const store = useDownloadsStore()
+
+    await store.mergeAll(['a', 'b'])
+
+    expect(store.mergingIds.size).toBe(0)
+    expect(store.mergeBatchTotal).toBe(2)
+    expect(store.mergeBatchCompleted).toBe(1)
+    expect(store.mergePercent).toBe(50)
+    expect(store.mergeActive).toBe(true)
+  })
 })
 
 describe('useDownloadsStore - actions', () => {
@@ -212,10 +235,9 @@ describe('useDownloadsStore - queue polling', () => {
   })
 
   it('startQueuePolling self-stops once nothing is in flight and acquisition cannot run', async () => {
-    fetchMock.mockResolvedValue({
-      active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null,
-      acquisition: { canAcquire: false },
-    })
+    fetchMock.mockImplementation((url: string) => Promise.resolve(url === '/api/downloads/merge-progress'
+      ? {}
+      : { active: [], ready: [], history: [], paused: false, pausedReason: null, freeGb: null, minFreeGb: null, acquisition: { canAcquire: false } }))
     const store = useDownloadsStore()
     store.startQueuePolling()
     await vi.advanceTimersByTimeAsync(2000)

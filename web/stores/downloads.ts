@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useTerminalStore } from '~/stores/terminal'
-import type { ActiveDownload, DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth, DownloadEnvironment } from '~/types/download'
+import type { ActiveDownload, DownloadSourceStatus, DownloadedReleaseItem, Acquisition, SongkongHealth, DownloadEnvironment, MergeProgressEntry } from '~/types/download'
 
 export const useDownloadsStore = defineStore('downloads', () => {
   const slskd = ref<DownloadSourceStatus>({ configured: false, connected: false })
@@ -88,8 +88,34 @@ export const useDownloadsStore = defineStore('downloads', () => {
   // instant spinner, lag-free count.
   const mergeInitiated = ref<Set<string>>(new Set())
 
+  // Server-truth mirror of the same in-flight batch (server/utils/mergeProgress.ts), polled
+  // alongside the queue. mergeInitiated alone drops to empty the moment the merge-stream fetch
+  // ends for ANY reason - including the SSE connection getting cut mid-batch (e.g. an idle-timeout
+  // on the Cloudflare Tunnel/reverse proxy during a long silent index/sync step) - even though
+  // mergeManyDownloadedReleases keeps running server-side regardless of the client. This survives
+  // that: every id in the current batch stays in the map until the WHOLE batch finishes, so its
+  // key count is a stable "total in this batch" even across a dropped/reconnected page.
+  const mergeProgress = ref<Record<string, MergeProgressEntry>>({})
+  const fetchMergeProgress = async () => {
+    try {
+      mergeProgress.value = await $fetch<Record<string, MergeProgressEntry>>('/api/downloads/merge-progress')
+    }
+    catch { /* ignore */ }
+  }
+
   const mergingIds = computed(() => mergeInitiated.value)
-  const mergeActive = computed(() => mergingIds.value.size > 0)
+  const mergeBatchIds = computed(() => Object.keys(mergeProgress.value))
+  const mergeBatchTotal = computed(() => mergeBatchIds.value.length)
+  // A batch id leaves READY the moment its own stampMerged lands (promoted or invalidated), well
+  // before the map entry itself is cleared (that happens once, for every id, only when the whole
+  // batch ends) - so "no longer READY" is what actually tracks per-item completion mid-batch.
+  const mergeBatchCompleted = computed(() => {
+    if (!mergeBatchTotal.value) {return 0}
+    const readyIds = new Set(queueReady.value.map(i => i.id))
+    return mergeBatchIds.value.filter(id => !readyIds.has(id)).length
+  })
+  const mergePercent = computed(() => mergeBatchTotal.value ? Math.round((mergeBatchCompleted.value / mergeBatchTotal.value) * 100) : 0)
+  const mergeActive = computed(() => mergingIds.value.size > 0 || mergeBatchTotal.value > 0)
 
   // Is there anything live to watch? Downloads finalizing (reconcile runs even while paused), a merge in
   // flight, or acquisition able to spawn new downloads any tick. When NONE of these hold there's nothing
@@ -176,6 +202,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
       songkong.value = data.songkong
     }
     catch { /* ignore */ }
+    // Polled together so a merge batch's progress is never more stale than the queue counts it's
+    // measured against (mergeBatchCompleted diffs mergeProgress ids against queueReady).
+    await fetchMergeProgress()
     // Self-manage the live poll: spin it up whenever there's work to watch (a fresh download/merge just
     // appeared, a source got enabled, etc). The loop tick stops itself once nothing is in flight.
     ensureQueuePolling()
@@ -365,6 +394,9 @@ export const useDownloadsStore = defineStore('downloads', () => {
     cleanupReady,
     mergingIds,
     mergeActive,
+    mergeBatchTotal,
+    mergeBatchCompleted,
+    mergePercent,
     mergeSelected,
     startQueuePolling,
     stopQueuePolling,
