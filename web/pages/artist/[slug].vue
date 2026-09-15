@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTerminalStore } from '~/stores/terminal'
+
 definePageMeta({
   layout: 'default',
 })
@@ -9,6 +11,7 @@ const slug = computed(() => route.params.slug as string)
 const {
   artist, error, pending, releases, dlInFlight, refreshDownloadStatus,
   monitorBusy, toggleMonitor, artistFolders, playingAll, playAll, shufflingAll, shuffleAll,
+  photoBusy, fetchPhoto,
 } = useArtistPage(slug)
 
 const catalogue = useArtistCatalogue(releases)
@@ -18,6 +21,9 @@ provide('refreshDownloadStatus', refreshDownloadStatus)
 const { isAdmin, hasPerm } = useAuth()
 const canMonitor = hasPerm('downloads.crud')
 const canScan = hasPerm('sync.run')
+
+const terminal = useTerminalStore()
+const canFetchPhoto = computed(() => canScan.value && !!artist.value?.musicbrainzId && !terminal.isRunning)
 
 watch(() => artist.value?.name, (name) => {
   if (name) {
@@ -36,9 +42,12 @@ watch(() => artist.value?.name, (name) => {
         :play-disabled="playingAll || !releases.length"
         :shuffle-disabled="shufflingAll || !releases.length"
         :active-downloads="dlInFlight"
+        :can-fetch-photo="canFetchPhoto"
+        :photo-busy="photoBusy"
         class="hidden min-w-0 flex-1 md:flex"
         @play-all="playAll"
         @shuffle-all="shuffleAll"
+        @fetch-photo="fetchPhoto"
       >
         <div class="flex shrink-0 items-center gap-2">
           <ArtistButtonMonitor v-if="canMonitor" :monitored="artist.monitored" :busy="monitorBusy" @toggle="toggleMonitor" />

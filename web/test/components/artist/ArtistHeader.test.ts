@@ -71,4 +71,21 @@ describe('artist/ArtistHeader.vue', () => {
     const shuffleButton = buttons.find(b => b.text().includes('Shuffle'))!
     expect(shuffleButton.attributes('disabled')).toBeDefined()
   })
+
+  it('shows the "find photo" icon only when canFetchPhoto is set and there is no image', async () => {
+    const withoutPerm = await mountHeader()
+    expect(withoutPerm.find('[aria-label="Find artist photo"]').exists()).toBe(false)
+
+    const withPerm = await mountHeader({ canFetchPhoto: true })
+    expect(withPerm.find('[aria-label="Find artist photo"]').exists()).toBe(true)
+
+    const withImage = await mountHeader({ canFetchPhoto: true, artist: { ...artist, image: 'boards.jpg' } } as any)
+    expect(withImage.find('[aria-label="Find artist photo"]').exists()).toBe(false)
+  })
+
+  it('emits fetchPhoto when the "find photo" icon is clicked', async () => {
+    const wrapper = await mountHeader({ canFetchPhoto: true })
+    await wrapper.get('[aria-label="Find artist photo"]').trigger('click')
+    expect(wrapper.emitted('fetchPhoto')).toHaveLength(1)
+  })
 })

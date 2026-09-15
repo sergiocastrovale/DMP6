@@ -4,7 +4,9 @@ import type { UnifiedRelease } from '~/types/release'
 import type { Track } from '~/types/track'
 import type { DlStatusValue, DlStatusItem } from '~/types/download'
 import { useTerminalStore } from '~/stores/terminal'
+import { useToastStore } from '~/stores/toast'
 import { artistScanFolders, connectedArtistNames, dlPollNeeded, filterInFlight, mergeDownloadStatus, tracksToPlayerTracks } from '~/helpers/artistPageLogic'
+import { scanSessionName } from '~/helpers/functions'
 import { DL_POLL_LIVE_MS, DL_POLL_MONITORED_MS } from '~/helpers/constants'
 import { useDownloadsStore } from '~/stores/downloads'
 
@@ -13,6 +15,7 @@ import { useDownloadsStore } from '~/stores/downloads'
 // pages/artist/[slug].vue to keep the page itself down to layout/composition.
 export const useArtistPage = (slug: Ref<string>) => {
   const terminal = useTerminalStore()
+  const toast = useToastStore()
   const player = usePlayerStore()
   const downloads = useDownloadsStore()
   const { hasPerm } = useAuth()
@@ -133,6 +136,37 @@ export const useArtistPage = (slug: Ref<string>) => {
     }
   }
 
+  // On-demand photo fetch (the hover icon over a placeholder artist image). Runs `artist-photos --id`
+  // scoped to this one artist, then re-reads the DB row through /photo (busts Redis + the server's own
+  // on-disk-exists cache, which `./artist-photos` writing straight to Postgres/disk can't reach) so the
+  // placeholder can flip to the real image without a full page reload.
+  const photoBusy = ref(false)
+  const fetchPhoto = async () => {
+    if (!artist.value || photoBusy.value) { return }
+    photoBusy.value = true
+    try {
+      await terminal.run('./artist-photos', ['--id', artist.value.id], scanSessionName('photo', slug.value))
+      if (terminal.exitCode !== 0) {
+        toast.error(`Photo lookup for ${artist.value.name} failed - see terminal`)
+        return
+      }
+      const result = await $fetch<{ image: string | null, imageUrl: string | null }>(`/api/artists/${slug.value}/photo`, { method: 'POST' })
+      if (result.image || result.imageUrl) {
+        artist.value.image = result.image
+        artist.value.imageUrl = result.imageUrl
+      }
+      else {
+        toast.info(`No photo found for ${artist.value.name}`)
+      }
+    }
+    catch {
+      toast.error('Photo lookup failed - see terminal')
+    }
+    finally {
+      photoBusy.value = false
+    }
+  }
+
   // A merge (started from a release card) retires the READY row it merges - poll until it's gone.
   watch(() => downloads.mergeActive, () => { ensureDlPolling() })
 
@@ -201,6 +235,8 @@ export const useArtistPage = (slug: Ref<string>) => {
     dlInFlight,
     refreshDownloadStatus: fetchDownloadStatus,
     monitorBusy,
+    photoBusy,
+    fetchPhoto,
     toggleMonitor,
     artistFolders,
     playingAll,

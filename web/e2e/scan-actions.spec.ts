@@ -71,7 +71,8 @@ test.beforeAll(async () => {
   artistSlug = `e2e-scan-fixture-${suffix}`
   managerUsername = `e2e-manager-${suffix}`
 
-  const artist = await prisma.artist.create({ data: { name: artistName, slug: artistSlug } })
+  // musicbrainzId is what gates the artist-photo "find photo" icon (no MB id -> nothing to look up).
+  const artist = await prisma.artist.create({ data: { name: artistName, slug: artistSlug, musicbrainzId: randomUUID() } })
   artistId = artist.id
 
   // folderPath is what artistScanFolders() turns into the `--folders` scan root, so the fixture needs
@@ -167,6 +168,23 @@ test.describe('artist scan dropdown', () => {
       { command: './sync', args: ['--only', artistName, '--exact', '--overwrite'] },
       { command: './tidy', args: [] },
     ])
+  })
+
+  test('the "find photo" icon runs artist-photos scoped to this artist', async ({ page }) => {
+    const runs = await stubTerminal(page)
+    await gotoHydrated(page, `/artist/${artistSlug}`, `**/api/artists/${artistSlug}/download-status`)
+
+    const findPhoto = page.getByRole('button', { name: 'Find artist photo' })
+    await expect(findPhoto).toBeVisible()
+    await findPhoto.click()
+
+    await expect.poll(() => runs).toEqual([
+      { command: './artist-photos', args: ['--id', artistId] },
+    ])
+    // The stubbed run never actually downloaded anything, so the fixture artist still has no image -
+    // POST /photo hits the real endpoint/DB and reports that honestly. `getByRole('status')` also
+    // matches the page's own "Loading…" region, so scope to the toast host's fixed corner container.
+    await expect(page.locator('[aria-live="polite"].fixed')).toContainText(`No photo found for ${artistName}`)
   })
 })
 

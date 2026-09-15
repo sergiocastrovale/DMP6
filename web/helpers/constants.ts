@@ -115,6 +115,7 @@ export const commandLabels: Record<string, string> = {
   './audit': 'Auditing metadata…',
   './fix': 'Applying fixes…',
   './playlists': 'Generating playlists…',
+  './artist-photos': 'Looking up artist photo…',
 }
 
 // The library-wide scan menu (components/settings/ScanActions.vue). The artist dropdown has its own, narrower

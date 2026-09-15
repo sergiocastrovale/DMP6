@@ -12,11 +12,14 @@ const props = defineProps<{
   playDisabled?: boolean
   shuffleDisabled?: boolean
   activeDownloads?: ReleaseProgress[]
+  canFetchPhoto?: boolean
+  photoBusy?: boolean
 }>()
 
 const emit = defineEmits<{
   playAll: []
   shuffleAll: []
+  fetchPhoto: []
 }>()
 
 const showAllGenres = ref(false)
@@ -25,7 +28,13 @@ const showAllGenres = ref(false)
 <template>
   <div class="relative rounded-xl">
     <div class="relative flex flex-col gap-6 p-1 md:px-6 md:py-8 sm:flex-row sm:items-start sm:gap-6">
-      <ArtistImage :artist="artist" type="desktop" />
+      <ArtistImage
+        :artist="artist"
+        type="desktop"
+        :can-fetch-photo="canFetchPhoto"
+        :photo-busy="photoBusy"
+        @fetch-photo="emit('fetchPhoto')"
+      />
 
       <div class="flex min-w-0 flex-1 flex-col gap-3">
         <h1 :class="typography.h1">
