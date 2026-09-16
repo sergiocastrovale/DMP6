@@ -38,6 +38,7 @@ Artist.primaryArtistId → Artist.id (dup → canonical)
 - `LocalRelease.groupKey` (unique) = `"folder:{folderPath}"` (fallback `"meta:{slugTitle}:{year}:{slugArtist}"`). Per-track MB ids NOT part of key — folder is the physical unit. Binds only Official Album/EP, +Single only when files' own MB ids point at it (`allowlist::is_allowed_tagged`). Searches/catalogue-gaps never produce a Single.
 - `Artist.manuallyAdded` — the one place ownership is a stored flag, not derived. Set only by `./add` (docs/scripts/add.md), never un-set. Lets a file-less artist show in `/browse` (`OR manuallyAdded`, `index.get.ts`) and counts it into `Statistics.mainArtists`; excluded from the orphan-artist sweep (`index/src/deletion.rs`, `audit/src/orphans.rs` — the two must match) so a just-added artist with no links yet survives the next `./index`/`./audit`.
 - `ArtistFact` — "Did you know..." trivia cache (`web/components/artist/DidYouKnow.vue`, `GET /api/artists/[slug]/fact`), see `docs/feature_did_you_know.md`. `artistId` + optional `releaseId`/`trackId` (Cascade — a re-indexed/deleted release or track takes its fact with it, never demotes to artist-level). Fetched from Genius (`server/utils/genius.ts`) and persisted; once an artist has more than `ARTIST_FACTS_DB_THRESHOLD` (15, `helpers/constants.ts`) stored rows, Genius is skipped entirely and facts are served from the DB only.
+- `UserApiKey` — per-user credential for the Subsonic (`/rest/*`) API, see `docs/feature_subsonic.md`. The one credential accepted there (bcrypt passwords can't support Subsonic's classic `t=md5(pw+salt)` scheme); stored as a sha256 hash (`server/utils/apiKeys.ts`), plaintext shown once at creation (Settings → Subsonic). Cascade on user delete; survives a password change (PAT semantics), dies on explicit revoke (`revokedAt` set, row kept).
 
 ## Standards
 
@@ -153,6 +154,8 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 **Playback**: `GET /api/audio/[id]` (range+ETag), `GET /tracks/[id]/info`, `/tracks/[id]/playlists`, `POST /tracks/explore`, `GET /tracks/random`, `/tracks/random-batch`
 
 **Play events** (gated `play.view`, see Data Model "Plays are per-user"): `POST /play-events` (opens one), `PATCH /play-events/[id]` (progress/counted/ended), `POST /play-events/[id]/finish` (sendBeacon-only twin of the PATCH, for page-hide)
+
+**Subsonic** (see `docs/feature_subsonic.md`): `ALL /rest/*` — OpenSubsonic-compatible API for third-party clients (Symfonium, Amperfy, Feishin, ...), auth via per-user `apiKey` only (Settings → Subsonic, `GET/POST /api/me/api-keys`, `DELETE /api/me/api-keys/[id]`), never the session cookie or `u`/`p`/`t`. Exempted from `server/middleware/auth.ts`'s cookie check; the dispatcher (`server/routes/rest/[...path].ts`) authenticates itself and reuses `requirePermission`/`currentUserId` same as every other route.
 
 **Library**: `GET /releases/latest`, `/releases/last-played`, `/releases/archive`, `/search`, `/timeline/decades`, `/timeline/[decade]`, `POST /timeline/refresh`, `GET /genres`, `/stats`, `/stats/[type]`, `/app-stats`
 

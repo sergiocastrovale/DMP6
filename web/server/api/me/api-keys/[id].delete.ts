@@ -1,11 +1,14 @@
 import { requirePermission } from '~/server/utils/permissions'
-import { serveTrackFile } from '~/server/utils/serveTrack'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { revokeApiKey } from '~/server/utils/apiKeys'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event, 'play.view')
+  const userId = currentUserId(event)
 
   const id = getRouterParam(event, 'id')
   if (!id) {throw createError({ statusCode: 400, statusMessage: 'Missing id' })}
 
-  return serveTrackFile(event, id)
+  await revokeApiKey(userId, id)
+  return { success: true }
 })

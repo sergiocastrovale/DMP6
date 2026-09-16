@@ -1,3 +1,4 @@
+import type { PlaySource } from '@prisma/client'
 import { prisma } from '~/server/utils/prisma'
 import { invalidateCache } from '~/server/utils/cache'
 import { recordPlay } from '~/server/utils/userPlays'
@@ -67,4 +68,31 @@ export async function applyPlayEventPatch(userId: number, id: string, patch: Pla
 
   await prisma.playEvent.update({ where: { id }, data })
   return { ok: true }
+}
+
+// A scrobble from an external player (Subsonic clients - server/utils/subsonic/endpoints/
+// annotation.ts) never opened a PlayEvent of its own via /api/play-events first, so this
+// synthesizes one already-finished/counted event so it lands in stats/recap the same as a normal
+// play, then folds it into the LocalReleaseTrackPlay counter the same way applyPlayEventPatch does.
+export async function recordExternalPlay(userId: number, trackId: string, source: PlaySource = 'SUBSONIC') {
+  const track = await prisma.localReleaseTrack.findUnique({ where: { id: trackId }, select: { duration: true } })
+  if (!track) {
+    throw createError({ statusCode: 404, statusMessage: 'Track not found' })
+  }
+
+  const now = new Date()
+  await prisma.playEvent.create({
+    data: {
+      userId,
+      trackId,
+      source,
+      startedAt: now,
+      endedAt: now,
+      listenedSeconds: track.duration ?? 0,
+      trackDuration: track.duration,
+      counted: true,
+    },
+  })
+  await recordPlay(userId, trackId, now)
+  await invalidateCache(`releases:last-played:${userId}:*`)
 }

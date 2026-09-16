@@ -23,7 +23,6 @@ Add gapless playback and crossfade, off by default for albums. Configurable in s
 
 I want to think about lyrics. Where can we get them from? I'd like to have a ./write-lyrics script that enbeds them in the actual files, and another ./lyrics that reads and injects in the DB. How can we use LRCLIB?
 
-"I own this" + Discogs sync with your account. Needs new .env / .env.example variables (plus updating docs) and settings/api-keys new panel which will override the .env settings if set. If not set in any of the places, feature never shows. "I own this" = icon to toggle in the ReleaseInfoDialog.vue's action bar (top right). Then, add new statistic in /statistics, right before 'linked artists' - 'Owned releases'. Clicking should lead to a subpage with the table of owned releases; clicking on a row leads to the artist page + anchor to the release (see other stats pages).
 
 Pull front and back covers, booklets and higher-resolution images from the Cover Art Archive, with a gallery on the release page
 

@@ -7,7 +7,10 @@ const STATIC_PREFIXES = ['/_nuxt', '/__']
 const STATIC_FILES = ['/favicon.ico', '/apple-touch-icon.png', '/robots.txt']
 
 const PUBLIC_API = new Set(['/api/auth/login', '/api/auth/logout', '/api/health'])
-const PUBLIC_PREFIXES = ['/img/']
+// /rest/* (Subsonic API) authenticates itself via apiKey, not the dmp_session cookie - a native
+// Subsonic client can't do the interactive cookie login. server/routes/rest/[...path].ts sets
+// event.context.user from the resolved key before doing anything else.
+const PUBLIC_PREFIXES = ['/img/', '/rest/']
 
 const PASSWORD_CHANGE_PAGE = '/change-password'
 const PASSWORD_CHANGE_API = '/api/auth/change-password'

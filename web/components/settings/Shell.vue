@@ -2,11 +2,12 @@
 import { cx, layout } from '~/helpers/ui'
 const { isAdmin } = useAuth()
 
-// Themes is the one settings page that isn't admin-gated (it's a per-browser preference, see
-// pages/settings/themes.vue), so it's the only tab a non-admin gets - every other route here
-// bounces them home via middleware/admin.ts, and offering tabs that do that is worse than
-// not offering them.
+// Themes and Subsonic are the settings pages that aren't admin-gated (per-browser preference /
+// per-user credential, see pages/settings/themes.vue and pages/settings/subsonic.vue), so they're
+// the only tabs a non-admin gets - every other route here bounces them home via middleware/admin.ts,
+// and offering tabs that do that is worse than not offering them.
 const themesTab = { key: 'themes', label: 'Themes', href: '/settings/themes' }
+const subsonicTab = { key: 'subsonic', label: 'Subsonic', href: '/settings/subsonic' }
 
 const adminTabs = [
   { key: 'library', label: 'Library', href: '/settings/library' },
@@ -17,7 +18,7 @@ const adminTabs = [
   { key: 'permissions', label: 'Permissions', href: '/settings/permissions' },
 ]
 
-const tabs = computed(() => isAdmin.value ? [...adminTabs, themesTab] : [themesTab])
+const tabs = computed(() => isAdmin.value ? [...adminTabs, subsonicTab, themesTab] : [subsonicTab, themesTab])
 </script>
 
 <template>

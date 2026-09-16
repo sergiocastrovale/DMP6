@@ -448,6 +448,7 @@ enum PlaySource {
   CATALOGUE
   EXPLORER
   RANDOM
+  SUBSONIC
 }
 
 model PlayEvent {
@@ -963,6 +964,28 @@ model User {
   playlists        Playlist[]
   trackPlays       LocalReleaseTrackPlay[]
   playEvents       PlayEvent[]
+  apiKeys          UserApiKey[]
+}
+
+// OpenSubsonic `apiKey` auth (see docs/feature_subsonic.md) - the one credential form the /rest/*
+// API accepts. bcrypt-hashed passwords (server/utils/password.ts) can't support Subsonic's classic
+// t=md5(password+salt) scheme, so a client authenticates with one of these instead. Stored as a
+// sha256 hex digest, not bcrypt - the key is high-entropy already and gets checked on every request,
+// so a slow KDF would needlessly cost every /rest/* call. Survives a password change (PAT
+// semantics); dies on user delete (Cascade) or explicit revoke (revokedAt set, row kept for the
+// audit trail rather than deleted).
+model UserApiKey {
+  id         String    @id @default(cuid())
+  userId     Int
+  name       String
+  keyHash    String    @unique
+  prefix     String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model RolePermission {
