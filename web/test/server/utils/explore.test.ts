@@ -72,6 +72,12 @@ describe('scoreTrack', () => {
     const electronic = scoreTrack(track({ metadata: { MOOD_ACOUSTIC: 5, MOOD_ELECTRONIC: 90 } }), params({ sound: 0 }))
     expect(acoustic).toBeGreaterThan(electronic)
   })
+
+  it('scores a track skipped recently lower than the same track never skipped', () => {
+    const skipped = scoreTrack(track({ playCount: 5, recentSkips: 3 }), params())
+    const notSkipped = scoreTrack(track({ playCount: 5, recentSkips: 0 }), params())
+    expect(skipped).toBeLessThan(notSkipped)
+  })
 })
 
 describe('getPoolCacheKey', () => {

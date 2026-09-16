@@ -20,6 +20,14 @@ export function shouldScrobble(state: { duration: number, currentTime: number })
   return state.currentTime > state.duration * 0.5 || state.currentTime > 240
 }
 
+// A finish is a skip only when it happens before the listen was counted (shouldScrobble's threshold) -
+// natural end-of-track ('ended') is never a skip regardless of counted state, since the whole track
+// was heard.
+export function isSkip(reason: 'ended' | 'changed' | 'dismissed', counted: boolean): boolean {
+  if (reason === 'ended') {return false}
+  return !counted
+}
+
 // FIFO cap: push to the end, drop from the front once over `cap`. Mutates `arr` in place.
 export function pushCapped<T>(arr: T[], item: T, cap: number): void {
   arr.push(item)

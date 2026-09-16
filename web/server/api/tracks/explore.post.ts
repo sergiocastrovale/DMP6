@@ -6,7 +6,7 @@ import {
   getPoolCacheKey, getCachedPool, setCachedPool, removeFromPool,
 } from '~/server/utils/explore'
 import { currentUserId } from '~/server/utils/libraryOwnership'
-import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
+import { trackPlaysByIds, withTrackPlay, recentSkipsByIds } from '~/server/utils/userPlays'
 
 export default defineEventHandler(async (event) => {
   const userId = currentUserId(event)
@@ -95,8 +95,14 @@ export default defineEventHandler(async (event) => {
       ;[raw[i], raw[j]] = [raw[j]!, raw[i]!]
     }
 
-    const plays = await trackPlaysByIds(userId, raw.map(t => t.id))
-    candidates = raw.slice(0, 500).map(t => withTrackPlay(t, plays)) as unknown as TrackCandidate[]
+    const [plays, recentSkips] = await Promise.all([
+      trackPlaysByIds(userId, raw.map(t => t.id)),
+      recentSkipsByIds(userId, raw.map(t => t.id)),
+    ])
+    candidates = raw.slice(0, 500).map(t => ({
+      ...withTrackPlay(t, plays),
+      recentSkips: recentSkips.get(t.id) ?? 0,
+    })) as unknown as TrackCandidate[]
 
     // Cache the full pool for subsequent requests with the same params
     setCachedPool(cacheKey, candidates)

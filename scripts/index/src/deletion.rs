@@ -19,8 +19,8 @@ pub struct TrackDeletionResult {
     pub count: u64,
     /// User-owned links that cascade away with the deleted rows. Counted, never re-linked: a replaced
     /// file is a new `LocalReleaseTrack` (filePath is the identity), so its favorite / playlist entries
-    /// and per-user play history (`LocalReleaseTrackPlay`) are gone. Reported so the run does not lose
-    /// them silently.
+    /// and per-user play history (`LocalReleaseTrackPlay`, `PlayEvent`) are gone. Reported so the run
+    /// does not lose them silently.
     pub favorites_dropped: u64,
     pub playlists_dropped: u64,
 }

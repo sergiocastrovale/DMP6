@@ -191,7 +191,7 @@ export function scoreTrack(track: TrackCandidate, params: ExploreParams): number
 
   const energyScore = scoreEnergy(meta, genreSignals, params.energy)
   const eraScore = scoreEra(track.year, params.era)
-  const familiarityScore = scoreFamiliarity(track.playCount, track.lastPlayedAt, params.familiarity)
+  const familiarityScore = scoreFamiliarity(track.playCount, track.lastPlayedAt, params.familiarity, track.recentSkips ?? 0)
   const soundScore = scoreSound(meta, genreSignals, params.sound)
 
   return (energyScore * 0.40) + (eraScore * 0.20) + (familiarityScore * 0.20) + (soundScore * 0.20)
@@ -266,7 +266,7 @@ function scoreEra(year: number | null, slider: number): number {
   return Math.max(0, 1 - dist / 30)
 }
 
-function scoreFamiliarity(playCount: number, lastPlayedAt: Date | null, slider: number): number {
+function scoreFamiliarity(playCount: number, lastPlayedAt: Date | null, slider: number, recentSkips: number): number {
   if (slider === 9 && playCount > 0) {return 0}
 
   // Weight play count by recency: plays from 1 year ago count half
@@ -277,7 +277,13 @@ function scoreFamiliarity(playCount: number, lastPlayedAt: Date | null, slider: 
   const normalizedPlays = Math.min(effectivePlays / 20, 1.0)
   const targetFamiliarity = slider / 9 // 0 = familiar, 1 = uncharted
   const distance = Math.abs(targetFamiliarity - (1 - normalizedPlays))
-  return 1 - distance
+  const score = 1 - distance
+
+  // Recently skipped (last 90 days, PlayEvent.skipped via recentSkipsByIds) - Explore kept re-offering
+  // tracks the user deliberately moved past, regardless of slider position. Each skip halves the
+  // score's contribution rather than zeroing it outright, since a track skipped once months into a
+  // 90-day window shouldn't be excluded as hard as one skipped repeatedly this week.
+  return score / (1 + 0.5 * recentSkips)
 }
 
 function scoreSound(meta: Record<string, string | number> | null, genre: ExploreGenreSignals, slider: number): number {

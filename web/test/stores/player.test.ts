@@ -68,7 +68,11 @@ describe('usePlayerStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     fetchMock.mockReset()
-    fetchMock.mockResolvedValue({})
+    // Every playTrack() opens a PlayEvent (composables/usePlayEventTracker.ts) - give it an id so
+    // tests that drive timeupdate past the counted threshold can assert the resulting PATCH.
+    fetchMock.mockImplementation((url: string) => url === '/api/play-events'
+      ? Promise.resolve({ id: 'ev1' })
+      : Promise.resolve({}))
     vi.stubGlobal('$fetch', fetchMock)
     vi.stubGlobal('Audio', FakeAudio)
     vi.stubGlobal('MediaMetadata', FakeMediaMetadata)
@@ -95,29 +99,46 @@ describe('usePlayerStore', () => {
   it('does not count a play immediately at playback start - only once the scrobble threshold is crossed', async () => {
     const store = usePlayerStore()
     await store.playTrack(track())
-    expect(fetchMock.mock.calls.some(c => String(c[0]) === '/api/tracks/t1/play')).toBe(false)
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.some(c => String(c[0]) === '/api/play-events')).toBe(true)
+    })
 
     const audioEl = store.getAudioElement() as unknown as FakeAudio
     audioEl.duration = 100
     audioEl.dispatch('loadedmetadata') // populates store.duration
-    audioEl.currentTime = 60 // > 50% of 100s -> shouldScrobble threshold crossed
-    audioEl.dispatch('timeupdate')
+    const countedCalls = () => fetchMock.mock.calls.filter(c =>
+      String(c[0]) === '/api/play-events/ev1' && (c[1] as any)?.body?.counted === true)
 
-    expect(fetchMock.mock.calls.some(c => String(c[0]) === '/api/tracks/t1/play')).toBe(true)
+    audioEl.currentTime = 0.25 // real-time tick, well under the 50s (50%) threshold
+    audioEl.dispatch('timeupdate')
+    expect(countedCalls()).toHaveLength(0)
+
+    // Gradual real-time ticks (0.25s deltas) crossing the threshold - a single big jump would be
+    // treated as a seek and ignored (composables/usePlayEventTracker.ts).
+    for (let t = 0.5; t <= 50.25; t += 0.25) {
+      audioEl.currentTime = t
+      audioEl.dispatch('timeupdate')
+    }
+    expect(countedCalls()).toHaveLength(1)
   })
 
   it('counts a play only once per track even with repeated timeupdate ticks past the threshold', async () => {
     const store = usePlayerStore()
     await store.playTrack(track())
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.some(c => String(c[0]) === '/api/play-events')).toBe(true)
+    })
     const audioEl = store.getAudioElement() as unknown as FakeAudio
     audioEl.duration = 100
     audioEl.dispatch('loadedmetadata')
-    audioEl.currentTime = 60
-    audioEl.dispatch('timeupdate')
-    audioEl.dispatch('timeupdate')
-    audioEl.dispatch('timeupdate')
-    const playCalls = fetchMock.mock.calls.filter(c => String(c[0]) === '/api/tracks/t1/play')
-    expect(playCalls.length).toBe(1)
+
+    for (let t = 0.25; t <= 52; t += 0.25) {
+      audioEl.currentTime = t
+      audioEl.dispatch('timeupdate')
+    }
+    const countedCalls = fetchMock.mock.calls.filter(c =>
+      String(c[0]) === '/api/play-events/ev1' && (c[1] as any)?.body?.counted === true)
+    expect(countedCalls).toHaveLength(1)
   })
 
   it('playTrack pushes the previous track onto history, capped at 50', async () => {

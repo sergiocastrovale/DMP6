@@ -15,10 +15,6 @@ remove all singles, bootlegs for extra space
 
 FEATURES
 
-plays are only stored as LocalReleaseTrack.playCount and lastPlayedAt, which every user  shares. There is no table of individual plays per user. we need to change this. Remove from LocalReleaseTrack and add to new LocalReleaseTrackUser (or similar) table. Update all the app and UI accordingly.
-
-PlayEvent table (userId, trackId, when, how much was played, skipped or not). This unlocks per-user stats, a yearly recap, "on this day" and better recommendations, and gives Explore's familiarity score a per-user signal.
-
 Now that we have PlayEvents, add new statistics + detail pages in /statistics: "This year", "This month", "Last week", "Today". The panels should appear right below the total playtime.
 
 Subsonic API. This lets existing apps (Symfonium, Feishin, Substreamer, Sonixd) play from DMP, with offline mode, Android Auto and CarPlay, without building them. It's probably the most value for the least work.
@@ -29,7 +25,7 @@ Add gapless playback and crossfade, off by default for albums. Configurable in s
 
 I want to think about lyrics. Where can we get them from? I'd like to have a ./write-lyrics script that enbeds them in the actual files, and another ./lyrics that reads and injects in the DB. How can we use LRCLIB?
 
-"I own this" + Discogs sync with your account
+"I own this" + Discogs sync with your account. Needs new .env / .env.example variables (plus updating docs) and settings/api-keys new panel which will override the .env settings if set. If not set in any of the places, feature never shows. "I own this" = icon to toggle in the ReleaseInfoDialog.vue's action bar (top right). Then, add new statistic in /statistics, right before 'linked artists' - 'Owned releases'. Clicking should lead to a subpage with the table of owned releases; clicking on a row leads to the artist page + anchor to the release (see other stats pages).
 
 Pull front and back covers, booklets and higher-resolution images from the Cover Art Archive, with a gallery on the release page
 

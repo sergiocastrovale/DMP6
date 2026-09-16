@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useDebounceFn, useThrottleFn } from '@vueuse/core'
-import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState, MediaSessionTrackMeta } from '~/types/player'
+import type { PlayerTrack, ShuffleMode, ExploreParams, PersistedPlayerState, MediaSessionTrackMeta, PlaySource } from '~/types/player'
 import { EXPLORER_SESSION_HISTORY_CAP, nextIndexWrap, pushCapped, QUEUE_PERSIST_CAP, shouldScrobble, shuffleArray, sliceForPersist, unshiftCapped } from '~/helpers/playerLogic'
 
 export const usePlayerStore = defineStore('player', () => { 
@@ -29,10 +29,10 @@ export const usePlayerStore = defineStore('player', () => {
   let audio: HTMLAudioElement | null = null
   let scrobbleStartTime = 0
   let scrobbled = false
-  let playCounted = false
 
   const { resolve } = useImageUrl()
   const nativeBridge = useNativeBridge()
+  const playEvents = createPlayEventTracker()
 
   const media = createMediaSession({
     isPlaying: () => isPlaying.value,
@@ -57,12 +57,6 @@ export const usePlayerStore = defineStore('player', () => {
   function checkScrobble() {
     if (!currentTrack.value) {return}
     if (!shouldScrobble({ duration: duration.value, currentTime: currentTime.value })) {return}
-    // playCount uses the same "meaningfully listened to" threshold as a scrobble (30s/25% duration),
-    // not playback start - skipping through 10 tracks in a row must not inflate stats by 10 plays.
-    if (!playCounted) {
-      playCounted = true
-      $fetch(`/api/tracks/${currentTrack.value.id}/play`, { method: 'POST' }).catch(() => {})
-    }
     if (scrobbled) {return}
     scrobbled = true
     $fetch('/api/scrobble/scrobble', {
@@ -77,12 +71,14 @@ export const usePlayerStore = defineStore('player', () => {
       audio.addEventListener('timeupdate', () => {
         currentTime.value = audio!.currentTime
         checkScrobble()
+        playEvents.onTimeUpdate(audio!.currentTime, duration.value)
         media.updatePosition()
       })
       audio.addEventListener('loadedmetadata', () => {
         duration.value = audio!.duration
       })
       audio.addEventListener('ended', () => {
+        playEvents.finish('ended')
         next()
       })
       audio.addEventListener('error', () => {
@@ -91,11 +87,14 @@ export const usePlayerStore = defineStore('player', () => {
       })
       audio.volume = isMuted.value ? 0 : volume.value
       media.registerHandlers()
+      // Beacon-only finish for the in-flight play event - a normal PATCH may not survive the page
+      // unloading before it completes (composables/usePlayEventTracker.ts).
+      window.addEventListener('pagehide', () => playEvents.finishOnHide())
     }
     return audio!
   }
 
-  async function playTrack(track: PlayerTrack, newQueue?: PlayerTrack[]) {
+  async function playTrack(track: PlayerTrack, newQueue?: PlayerTrack[], source?: PlaySource) {
     // Delegate entirely to setQueue, which calls back into playTrack(track) with no newQueue - a single
     // history push and a single audio/metadata setup, instead of doing both here AND in the recursive call.
     if (newQueue) {
@@ -114,9 +113,21 @@ export const usePlayerStore = defineStore('player', () => {
     a.src = `/api/audio/${track.id}`
     a.load()
     scrobbled = false
-    playCounted = false
     scrobbleStartTime = Date.now()
     media.resetPositionThrottle()
+    // shuffleMode/currentPlaylistSlug are already set by the caller (pickExplorerTrack/setExplorerTrack
+    // set 'explorer', next()'s catalogue branch is already in 'catalogue', playPlaylist sets the slug
+    // before calling here) - an explicit `source` is only needed where none of those apply, i.e. next()'s
+    // no-queue random fallback.
+    const resolvedSource: PlaySource = source
+      ?? (shuffleMode.value === 'explorer'
+        ? 'EXPLORER'
+        : shuffleMode.value === 'catalogue'
+          ? 'CATALOGUE'
+          : currentPlaylistSlug.value
+            ? 'PLAYLIST'
+            : 'QUEUE')
+    playEvents.start(track.id, resolvedSource, track.duration)
     try {
       await a.play()
       isPlaying.value = true
@@ -177,6 +188,7 @@ export const usePlayerStore = defineStore('player', () => {
     isVisible.value = false
     media.setPlaybackState('paused')
     nativeBridge.stopPlaybackService()
+    playEvents.finish('dismissed')
   }
 
   function setQueue(tracks: PlayerTrack[], startTrack?: PlayerTrack) {
@@ -284,7 +296,7 @@ export const usePlayerStore = defineStore('player', () => {
     if (queue.value.length === 0) {
       try {
         const track = await $fetch<PlayerTrack>('/api/tracks/random')
-        if (track) {playTrack(track)}
+        if (track) {playTrack(track, undefined, 'RANDOM')}
       }
       catch { /* ignore */ }
       return
@@ -442,8 +454,8 @@ export const usePlayerStore = defineStore('player', () => {
             // default - checkScrobble() would send timestamp:0, which the API rejects as falsy.
             scrobbleStartTime = Date.now()
             scrobbled = false
-            playCounted = false
-            // Restore position but don't auto-play
+            // Restore position but don't auto-play - no PlayEvent is reopened for a restored
+            // position either (composables/usePlayEventTracker.ts); one starts fresh on next play().
             if (state.currentTime && state.currentTime > 0) {
               const a = getAudio()
               a.src = `/api/audio/${track.id}`

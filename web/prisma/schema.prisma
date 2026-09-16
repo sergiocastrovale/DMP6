@@ -391,6 +391,7 @@ model LocalReleaseTrack {
   missingIssues       IssueMissingMetadata[]   @relation("MissingMetadataIssue")
   facts               ArtistFact[]
   plays               LocalReleaseTrackPlay[]
+  playEvents          PlayEvent[]
   // Trigram GIN index for title ILIKE and expression index on LOWER(genre) added via raw migration
 
   @@index([localReleaseId])
@@ -428,6 +429,44 @@ model LocalReleaseTrackPlay {
   @@index([trackId])
   @@index([userId, lastPlayedAt])
   @@index([userId, playCount])
+}
+
+// ---------------------------------------------------------------------------
+// PlayEvent
+// ---------------------------------------------------------------------------
+//
+// One row per listen, per user - the log LocalReleaseTrackPlay's counter is folded from. Powers
+// per-user stats, a yearly recap, "on this day" and Explore's familiarity/skip scoring. Cascade on
+// user/track delete, same as FavoriteTrack/LocalReleaseTrackPlay - no snapshot, history for a track
+// goes with the row. `counted` mirrors the same "meaningfully listened to" threshold as scrobbling
+// (`helpers/playerLogic.ts`'s `shouldScrobble`) - the transition false->true is what increments
+// LocalReleaseTrackPlay (server/utils/userPlays.ts's `recordPlay`), exactly once per event.
+
+enum PlaySource {
+  QUEUE
+  PLAYLIST
+  CATALOGUE
+  EXPLORER
+  RANDOM
+}
+
+model PlayEvent {
+  id              String            @id @default(cuid())
+  userId          Int
+  trackId         String
+  startedAt       DateTime          @default(now())
+  endedAt         DateTime?
+  listenedSeconds Int               @default(0)
+  trackDuration   Int?
+  counted         Boolean           @default(false)
+  skipped         Boolean           @default(false)
+  source          PlaySource
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track           LocalReleaseTrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@index([userId, trackId, startedAt])
+  @@index([trackId])
 }
 
 // ---------------------------------------------------------------------------
@@ -923,6 +962,7 @@ model User {
   favoriteTracks   FavoriteTrack[]
   playlists        Playlist[]
   trackPlays       LocalReleaseTrackPlay[]
+  playEvents       PlayEvent[]
 }
 
 model RolePermission {

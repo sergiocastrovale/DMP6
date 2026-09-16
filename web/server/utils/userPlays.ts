@@ -82,3 +82,19 @@ export const userTotalPlays = async (userId: number): Promise<number> => {
   })
   return result._sum.playCount ?? 0
 }
+
+const RECENT_SKIP_WINDOW_DAYS = 90
+
+// Skips in the last 90 days per track (PlayEvent.skipped) - feeds Explore's familiarity skip penalty
+// (server/utils/explore.ts's scoreFamiliarity). A `finish` (page unload) is never counted as a skip
+// (composables/usePlayEventTracker.ts), so this only reflects deliberate track changes/dismissals.
+export const recentSkipsByIds = async (userId: number, trackIds: string[]): Promise<Map<string, number>> => {
+  if (trackIds.length === 0) {return new Map()}
+  const since = new Date(Date.now() - RECENT_SKIP_WINDOW_DAYS * 86400000)
+  const rows = await prisma.playEvent.groupBy({
+    by: ['trackId'],
+    where: { userId, trackId: { in: trackIds }, skipped: true, startedAt: { gte: since } },
+    _count: { _all: true },
+  })
+  return new Map(rows.map(r => [r.trackId, r._count._all]))
+}

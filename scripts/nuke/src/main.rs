@@ -827,6 +827,8 @@ async fn main() {
         "Playlist",
         "FavoriteTrack",
         "FavoriteRelease",
+        "PlayEvent",
+        "LocalReleaseTrackPlay",
         "TrackRelatedArtist",
         "LocalReleaseArtist",
         "LocalReleaseTrack",

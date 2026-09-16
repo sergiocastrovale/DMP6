@@ -1,0 +1,91 @@
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { getTestPrisma, resetDb } from '../../../test/setup/db'
+import { makeUser, makeLocalTrack } from '../../../test/factories'
+import { applyPlayEventPatch } from '../../../server/utils/playEvents'
+
+// The counted false->true transition is guarded (server/utils/playEvents.ts) so it only ever runs
+// recordPlay once per event, even racing - exercised against real Postgres because that guarantee is
+// a DB-level `updateMany` guard, not something a mocked-prisma unit test can prove.
+const prisma = getTestPrisma()
+
+describe('play events (real Postgres)', () => {
+  beforeEach(async () => {
+    await resetDb()
+  })
+
+  afterAll(async () => {
+    await prisma.$disconnect()
+  })
+
+  it('the counted transition increments LocalReleaseTrackPlay exactly once under two concurrent patches', async () => {
+    const alice = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma)
+    const event = await prisma.playEvent.create({
+      data: { userId: alice.id, trackId: track.id, source: 'QUEUE' },
+    })
+
+    await Promise.all([
+      applyPlayEventPatch(alice.id, event.id, { listenedSeconds: 120, counted: true }),
+      applyPlayEventPatch(alice.id, event.id, { listenedSeconds: 121, counted: true }),
+    ])
+
+    const play = await prisma.localReleaseTrackPlay.findUnique({
+      where: { userId_trackId: { userId: alice.id, trackId: track.id } },
+    })
+    expect(play?.playCount).toBe(1)
+
+    const updated = await prisma.playEvent.findUniqueOrThrow({ where: { id: event.id } })
+    expect(updated.counted).toBe(true)
+    expect(updated.listenedSeconds).toBe(121)
+  })
+
+  it('a second counted patch after the first is a no-op - no double increment', async () => {
+    const alice = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma)
+    const event = await prisma.playEvent.create({
+      data: { userId: alice.id, trackId: track.id, source: 'QUEUE' },
+    })
+
+    await applyPlayEventPatch(alice.id, event.id, { counted: true })
+    await applyPlayEventPatch(alice.id, event.id, { counted: true })
+
+    const play = await prisma.localReleaseTrackPlay.findUnique({
+      where: { userId_trackId: { userId: alice.id, trackId: track.id } },
+    })
+    expect(play?.playCount).toBe(1)
+  })
+
+  it('another user\'s event id 404s rather than leaking whose id exists', async () => {
+    const alice = await makeUser(prisma)
+    const bob = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma)
+    const event = await prisma.playEvent.create({
+      data: { userId: alice.id, trackId: track.id, source: 'QUEUE' },
+    })
+
+    await expect(applyPlayEventPatch(bob.id, event.id, { counted: true })).rejects.toMatchObject({
+      statusCode: 404,
+    })
+  })
+
+  it('an unknown event id 404s', async () => {
+    const alice = await makeUser(prisma)
+    await expect(applyPlayEventPatch(alice.id, 'nonexistent', { counted: true })).rejects.toMatchObject({
+      statusCode: 404,
+    })
+  })
+
+  it('deleting the track cascades its PlayEvent and LocalReleaseTrackPlay rows', async () => {
+    const alice = await makeUser(prisma)
+    const track = await makeLocalTrack(prisma)
+    const event = await prisma.playEvent.create({
+      data: { userId: alice.id, trackId: track.id, source: 'QUEUE' },
+    })
+    await applyPlayEventPatch(alice.id, event.id, { counted: true })
+
+    await prisma.localReleaseTrack.delete({ where: { id: track.id } })
+
+    expect(await prisma.playEvent.count({ where: { id: event.id } })).toBe(0)
+    expect(await prisma.localReleaseTrackPlay.count({ where: { userId: alice.id } })).toBe(0)
+  })
+})

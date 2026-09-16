@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  isSkip,
   nextIndexWrap,
   pushCapped,
   QUEUE_PERSIST_CAP,
@@ -131,5 +132,25 @@ describe('sliceForPersist', () => {
   it('defaults to QUEUE_PERSIST_CAP (200) when no cap is given', () => {
     const arr = Array.from({ length: 300 }, (_, i) => i)
     expect(sliceForPersist(arr)).toHaveLength(QUEUE_PERSIST_CAP)
+  })
+})
+
+describe('isSkip', () => {
+  it('a natural end-of-track is never a skip, counted or not', () => {
+    expect(isSkip('ended', true)).toBe(false)
+    expect(isSkip('ended', false)).toBe(false)
+  })
+
+  it('a track change before counted is a skip', () => {
+    expect(isSkip('changed', false)).toBe(true)
+  })
+
+  it('a track change after counted is not a skip', () => {
+    expect(isSkip('changed', true)).toBe(false)
+  })
+
+  it('a dismiss follows the same counted rule as a track change', () => {
+    expect(isSkip('dismissed', false)).toBe(true)
+    expect(isSkip('dismissed', true)).toBe(false)
   })
 })

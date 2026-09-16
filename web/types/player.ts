@@ -45,6 +45,10 @@ export interface PlayerTrack {
 
 export type ShuffleMode = 'off' | 'release' | 'artist' | 'catalogue' | 'explorer'
 
+// Mirrors the Prisma PlaySource enum (web/prisma/schema.prisma) - what queue/mode was playing when a
+// PlayEvent was created.
+export type PlaySource = 'QUEUE' | 'PLAYLIST' | 'CATALOGUE' | 'EXPLORER' | 'RANDOM'
+
 export interface ExploreParams {
   energy: number
   era: number
@@ -73,6 +77,9 @@ export interface TrackCandidate {
   genre: string | null
   playCount: number
   lastPlayedAt: Date | null
+  // Skips in the last 90 days (server/utils/userPlays.ts's recentSkipsByIds) - 0 when never fetched
+  // outside Explore. Used only by scoreFamiliarity's skip penalty.
+  recentSkips?: number
   metadata: Record<string, unknown> | null
   localReleaseId: string | null
   localRelease: {
