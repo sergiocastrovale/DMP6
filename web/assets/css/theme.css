@@ -1,7 +1,4 @@
-/* DMP design tokens — Tailwind v4 @theme.
-   Six colour ramps (50 -> 950) plus six semantic aliases that name a decision, not a hue.
-   `static` so every token is also emitted as a real CSS custom property, resolvable from
-   inline styles, canvas and JS (see pages/labs/*.vue) via getComputedStyle. */
+/* DMP design tokens — Tailwind v4 @theme. */
 
 @theme static {
   /* stone — warm neutral: surfaces at the dark end, text at the light end */
@@ -83,7 +80,6 @@
   --color-violet-900: oklch(0.28 0.09 285);
   --color-violet-950: oklch(0.20 0.06 285);
 
-  /* semantic aliases — the only names that carry a decision rather than a value */
   --color-accent: var(--color-amber-400);
   --color-on-accent: #17140d;
   --color-success: var(--color-green-500);
@@ -91,14 +87,10 @@
   --color-danger: var(--color-red-400);
   --color-info: var(--color-violet-400);
 
-  /* type families */
   --font-sans: 'Inter Tight', 'SF Pro Text', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-display: 'Inter Tight', 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
 
-  /* type scale — xs 11px -> 6xl 64px, every step multiplied by --ui-scale so Settings → Themes'
-     UI-size stepper resizes all text at once (themes.css sets the multiplier per html[data-size];
-     the fallback keeps this file standalone). Line heights stay unitless, so they scale for free. */
   --text-xs: calc(11px * var(--ui-scale, 1));
   --text-sm: calc(12px * var(--ui-scale, 1));
   --text-base: calc(14px * var(--ui-scale, 1));
@@ -110,19 +102,14 @@
   --text-5xl: calc(44px * var(--ui-scale, 1));
   --text-6xl: calc(64px * var(--ui-scale, 1));
 
-  /* content widths — the page column. 7xl is the standard shell width (settings, tab shells,
-     explore); Tailwind ships the rest of the scale, this one is named here because it is a layout
-     decision the app makes, not a default it inherits. */
-  --container-7xl: 80rem;
+  --container-7xl: 86rem;
 
-  /* radii */
   --radius-sm: 6px;
   --radius-md: 9px;
   --radius-lg: 12px;
   --radius-xl: 14px;
   --radius-2xl: 16px;
 
-  /* elevation */
   --shadow-md: 0 10px 28px -14px rgba(0, 0, 0, .9);
   --shadow-lg: 0 24px 50px -20px rgba(0, 0, 0, .9);
   --shadow-xl: 0 50px 100px -40px rgba(0, 0, 0, .95);

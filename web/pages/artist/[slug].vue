@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTerminalStore } from '~/stores/terminal'
+import { pageWidth } from '~/helpers/ui'
 
 definePageMeta({
   layout: 'default',
@@ -33,7 +34,7 @@ watch(() => artist.value?.name, (name) => {
 </script>
 
 <template>
-  <div>
+  <div :class="pageWidth">
     <UiLoadingBlock v-if="pending" />
     <ArtistNotFound v-else-if="error" />
     <div v-else-if="artist" class="flex flex-col gap-8">

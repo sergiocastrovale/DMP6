@@ -77,22 +77,28 @@ const metaClass = 'flex items-center gap-2 font-mono text-xs uppercase text-ston
     </div>
   </NuxtLink>
 
-  <article v-else class="cursor-pointer flex flex-col gap-3 group">
+  <article v-else class="group/cover cursor-pointer flex flex-col gap-3">
     <UiThumb @click="playable ? handlePlay($event) : undefined">
       <img
         v-if="image"
         :src="image"
         :alt="title"
         loading="lazy"
-        class="w-full h-full object-cover transition-transform duration-400 group-hover:scale-[1.04]"
+        class="w-full h-full object-cover transition-transform duration-400 group-hover/cover:scale-[1.04]"
       >
       <slot name="overlay" />
-      <PlayerPlayPauseButton
+      <div
         v-if="playable && releaseId"
-        :playing="isPlaying"
-        class="absolute right-3 bottom-3 bg-amber-400 text-on-accent shadow-md transition-all duration-200"
-        :class="isPlaying ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0'"
-      />
+        class="absolute inset-0 flex items-center justify-center transition-colors duration-150"
+        :class="isPlaying ? 'bg-black/50' : 'group-hover/cover:bg-black/50'"
+      >
+        <PlayerPlayPauseButton
+          :playing="isPlaying"
+          :highlighted="isPlaying"
+          class="text-white opacity-0 transition-all duration-200 group-hover/cover:opacity-100"
+          :class="isPlaying && 'opacity-100'"
+        />
+      </div>
     </UiThumb>
     <div class="flex flex-col gap-0.5 min-w-0">
       <NuxtLink

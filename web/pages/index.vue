@@ -3,6 +3,7 @@ import type { Release } from '~/types/release'
 import type { PlaylistSummary } from '~/types/playlist'
 import type { DashboardSection } from '~/types/common'
 import { SKELETON_GRID_SIZE } from '~/helpers/constants'
+import { cx, layout } from '~/helpers/ui'
 
 useTitle('Dashboard')
 
@@ -52,7 +53,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5 lg:gap-8 my-6">
+  <div :class="cx(layout.page, 'my-6')">
     <DashboardFirstScan v-if="isEmpty" />
     <template v-else>
       <DashboardSubheader />

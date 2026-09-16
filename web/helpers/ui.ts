@@ -306,8 +306,15 @@ export const typography = {
 // same property.
 export const outlinePill = 'inline-flex items-center gap-1 px-2.5 py-[3px] rounded-full border text-sm font-bold tabular-nums'
 
+// Every content page caps out at this width, centered - Labs pages are the one deliberate
+// exception (each is a full-width canvas, see layouts/labs.vue), which pair `layout.page` with
+// `max-w-none` to opt back out. Exported on its own too, for the rare page (artist/[slug].vue)
+// that needs the width cap without layout.page's padding, because its own sections - a full-bleed
+// mobile hero image among them - already manage their own.
+export const pageWidth = 'mx-auto w-full max-w-7xl'
+
 export const layout = {
-  page: 'flex flex-col gap-5 lg:gap-8 p-4 lg:p-1',
+  page: cx(pageWidth, 'flex flex-col gap-5 lg:gap-8 p-4 lg:p-1'),
   topbar: 'sticky top-0 z-10 flex items-center gap-3 h-[56px] px-7 bg-stone-950/85 backdrop-blur-[14px] border-b border-stone-100/6',
   scrim: 'fixed inset-0 z-50 grid place-items-center bg-black/62 backdrop-blur-[3px] p-6',
   dialog: 'w-full rounded-lg xl:rounded-xl border border-stone-100/10 bg-stone-900 shadow-xl max-h-[80vh] flex flex-col outline-none',

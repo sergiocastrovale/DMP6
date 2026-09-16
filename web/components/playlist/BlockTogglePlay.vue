@@ -1,10 +1,15 @@
 <template>
   <div
     class="absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity duration-150"
-    :class="isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+    :class="isPlaying ? 'opacity-100' : 'opacity-0 group-hover/cover:opacity-100'"
     @click.prevent="handleClick"
   >
-    <PlayerPlayPauseButton :playing="isPlaying" size="lg" :highlighted="isPlaying" class="text-stone-100" />
+    <PlayerPlayPauseButton
+      :playing="isPlaying"
+      size="lg"
+      :highlighted="isPlaying"
+      class="text-stone-100"
+    />
   </div>
 </template>
 

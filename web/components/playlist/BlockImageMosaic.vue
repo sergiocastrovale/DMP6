@@ -35,7 +35,7 @@ const coverImageUrl = (cover: { image: string | null; imageUrl: string | null })
         :src="coverImageUrl(cover)!"
         alt=""
         loading="lazy"
-        class="h-full w-full object-cover transition-transform duration-400 group-hover:scale-105"
+        class="h-full w-full object-cover transition-transform duration-400 group-hover/cover:scale-105"
       >
       <div
         v-else

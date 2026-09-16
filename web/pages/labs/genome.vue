@@ -250,7 +250,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div :class="cx(layout.page)">
+  <div :class="cx(layout.page, 'max-w-none')">
     <LabsBackLink />
 
     <div class="grid gap-6 lg:grid-cols-5">

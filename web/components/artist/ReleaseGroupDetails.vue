@@ -112,7 +112,6 @@ const alsoPartOfLabel = computed(() =>
           <PlayerPlayPauseButton
             :playing="isPlaying"
             size="sm"
-            class="group-hover/cover:bg-amber-400 group-hover/cover:text-on-accent group-hover/cover:scale-105"
             :class="isPlaying || isCurrent ? 'text-amber-400' : 'text-white/50 group-hover/cover:text-white'"
           />
         </div>

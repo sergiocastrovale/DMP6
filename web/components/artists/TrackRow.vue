@@ -35,7 +35,6 @@ const { releaseImage } = useImageUrl()
           <PlayerPlayPauseButton
             :playing="playing"
             size="sm"
-            class="group-hover/cover:bg-amber-400 group-hover/cover:text-on-accent group-hover/cover:scale-105"
             :class="current ? 'text-amber-400' : 'text-white/50 group-hover/cover:text-white'"
           />
         </div>

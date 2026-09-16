@@ -42,6 +42,10 @@ UI
 
 Better hierarchy in statistics vs subpages
 
+"Connected now" panel in settings/users needs more love
+
+move "Did you know" to the explore page. Try fetching trivia from track, if not, from release, if not, from artist, else don't show the widget.
+
 LIBRARY
 
 Before full backup to external drive: Build a script that goes through EVERY release and, for every file and if no release MB ID is found, takes that MB ID from the DB and writes it into the metadata of the file. This prevents us having to go fishing for MB IDs again and again by querying Musicbrainz every time we need to nuke the DB and re-sync.

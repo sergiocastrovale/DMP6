@@ -1,6 +1,6 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
-import { currentUserId, visiblePlaylistsWhere } from '~/server/utils/libraryOwnership'
+import { currentUserId } from '~/server/utils/libraryOwnership'
 import { countActiveDownloads } from '~/server/utils/downloadQueue'
 import { userTotalPlays } from '~/server/utils/userPlays'
 
@@ -33,8 +33,10 @@ export default defineEventHandler(async (event) => {
         activeDownloads,
       }
     }),
-    // Per-user, so kept out of the shared cache above (its Redis entry is process-wide, not per caller).
-    prisma.playlist.count({ where: visiblePlaylistsWhere(userId) }),
+    // Sidebar "Playlists" count - the user's own MANUAL playlists only, not the shared GENRE/REGION
+    // ones every user sees (visiblePlaylistsWhere would include those too). Per-user, so kept out of
+    // the shared cache above (its Redis entry is process-wide, not per caller).
+    prisma.playlist.count({ where: { userId } }),
     prisma.favoriteRelease.count({ where: { userId } }).then((r) => prisma.favoriteTrack.count({ where: { userId } }).then((t) => r + t)),
     userTotalPlays(userId),
   ])

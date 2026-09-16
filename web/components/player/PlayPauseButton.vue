@@ -11,6 +11,10 @@ const props = withDefaults(defineProps<{
   highlighted: false,
 })
 
+// Every "playable block" (thumb overlay) shows this control the same way: an ancestor named
+// `group/cover` around the hoverable art (not the whole card - a row/card can have its own,
+// differently-scoped hover effects) gets the accent circle for free, centred, no per-caller classes
+// needed. A bare `hover:` still covers a standalone control with no such ancestor (transport bars).
 const config = {
   sm: { icon: 14, circle: 'size-8' },
   md: { icon: 16, circle: 'size-10' },
@@ -22,7 +26,7 @@ const config = {
 <template>
   <button
     type="button"
-    class="flex items-center justify-center rounded-full transition-all duration-150 hover:bg-amber-400 hover:text-on-accent hover:scale-105"
+    class="flex items-center justify-center rounded-full transition-all duration-150 hover:bg-amber-400 hover:text-on-accent hover:scale-105 group-hover/cover:bg-amber-400 group-hover/cover:text-on-accent group-hover/cover:scale-105"
     :class="[config[size].circle, highlighted && 'bg-amber-400 text-on-accent scale-105']"
     :aria-label="playing ? 'Pause' : 'Play'"
   >
