@@ -360,3 +360,15 @@ export const playPeriods: { id: PlayPeriod, label: string }[] = [
   { id: 'month', label: 'This month' },
   { id: 'year', label: 'This year' },
 ]
+
+// Settings → Users "connected now" panel (server/utils/presence.ts, components/settings/UsersLive.vue).
+// In-memory, single-instance presence - no DB table, no cross-restart persistence (see CLAUDE.md
+// Data Model). HEARTBEAT is how often a live tab/Subsonic call touches its entry; STALE is when an
+// untouched entry drops off the list entirely (2.5x the heartbeat, tolerating one missed beat before
+// disappearing); PLAYING_STALE_MS is separate and shorter - a track keeps showing but flips to
+// "paused" once its own timestamp goes quiet, since a listener can stay online (heartbeat still
+// fresh) well after playback itself stops. REFRESH is the admin panel's own poll interval.
+export const PRESENCE_HEARTBEAT_MS = 30_000
+export const PRESENCE_STALE_MS = 75_000
+export const PRESENCE_PLAYING_STALE_MS = 60_000
+export const USERS_LIVE_REFRESH_MS = 10_000

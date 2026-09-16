@@ -91,6 +91,8 @@ const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 
 
 <template>
   <form class="flex w-full max-w-7xl flex-col gap-6" @submit.prevent>
+    <SettingsUsersLive />
+
     <UiCard title="Users">
       <template #actions>
         <UiButton size="sm" :icon="Plus" @click="showCreate = !showCreate">

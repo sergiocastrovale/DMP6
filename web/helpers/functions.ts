@@ -267,3 +267,26 @@ export const toggleRowSelection = <T extends string | number>(
 // title, or null when the reason is anything else.
 export const containmentContainerTitle = (statusReason?: string | null): string | null =>
   statusReason?.match(/^Recordings inside "(.+)"$/)?.[1] ?? null
+
+// Short "Browser · OS" device label for Settings → Users' "connected now" panel
+// (server/utils/presence.ts). No UA-parser dependency for a one-line admin-only label - order
+// matters (Edge/Chrome UAs both contain "Safari", most contain "Mobile" too), so check the most
+// specific token first.
+export const describeUserAgent = (ua: string | null | undefined): string => {
+  if (!ua) {return 'Unknown device'}
+  const browser = ua.includes('Edg/') ? 'Edge'
+    : ua.includes('OPR/') || ua.includes('Opera') ? 'Opera'
+    : ua.includes('Firefox/') ? 'Firefox'
+    : ua.includes('CriOS/') ? 'Chrome'
+    : ua.includes('Chrome/') ? 'Chrome'
+    : ua.includes('FxiOS/') ? 'Firefox'
+    : ua.includes('Safari/') ? 'Safari'
+    : 'Browser'
+  const os = ua.includes('Android') ? 'Android'
+    : /iPhone|iPad|iPod/.test(ua) ? 'iOS'
+    : ua.includes('Windows') ? 'Windows'
+    : ua.includes('Mac OS X') ? 'macOS'
+    : ua.includes('Linux') ? 'Linux'
+    : null
+  return os ? `${browser} · ${os}` : browser
+}

@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import { requirePermission } from '~/server/utils/permissions'
+import { touchPresence } from '~/server/utils/presence'
 import { authenticateSubsonicRequest } from '~/server/utils/subsonic/auth'
 import { makeParams } from '~/server/utils/subsonic/params'
 import { subsonicOk, subsonicError, type SubsonicFormat } from '~/server/utils/subsonic/response'
@@ -78,6 +79,11 @@ export default defineEventHandler(async (event) => {
     // currentUserId work unchanged for every handler below.
     event.context.user = user
     await requirePermission(event, 'play.view')
+
+    // Counts a Subsonic client as "connected" for Settings → Users too - one entry per app name
+    // (the `c` param), since Subsonic carries no persistent per-device id to key on.
+    const clientName = params.str('c') || 'Subsonic'
+    touchPresence({ userId: user.id, clientId: `subsonic:${clientName}`, client: 'subsonic', clientLabel: clientName })
 
     const ctx: HandlerContext = { user, params, format }
 
