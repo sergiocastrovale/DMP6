@@ -15,8 +15,6 @@ remove all singles, bootlegs for extra space
 
 FEATURES
 
-Subsonic API. This lets existing apps (Symfonium, Feishin, Substreamer, Sonixd) play from DMP, with offline mode, Android Auto and CarPlay, without building them. It's probably the most value for the least work.
-
 Bind volume levelling from ReplayGain tags. The value is already read and shown in the track info dialog, but the player doesn't use it. This should be a toggle in a new settings/player page (make it the 3rd tab).
 
 Add gapless playback and crossfade, off by default for albums. Configurable in settings/player page.
