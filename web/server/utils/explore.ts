@@ -319,8 +319,11 @@ function scoreSound(meta: Record<string, string | number> | null, genre: Explore
 const POOL_TTL = 5 * 60 * 1000 // 5 minutes
 const poolCache = new Map<string, CachedPool>()
 
-export function getPoolCacheKey(params: ExploreParams): string {
-  return `${params.energy}-${params.era}-${params.familiarity}-${params.sound}`
+// Plays are per-user (LocalReleaseTrackPlay, server/utils/userPlays.ts) and familiarity scoring
+// reads them, so the pool cache is keyed per user too - otherwise one user's "uncharted" pick would
+// leak into another user's cached pool.
+export function getPoolCacheKey(userId: number, params: ExploreParams): string {
+  return `${userId}-${params.energy}-${params.era}-${params.familiarity}-${params.sound}`
 }
 
 export function getCachedPool(key: string, excludeIds: string[]): TrackCandidate[] | null {

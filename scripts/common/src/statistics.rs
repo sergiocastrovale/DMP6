@@ -7,7 +7,7 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
         r#"INSERT INTO "Statistics" (
              id, artists, "mainArtists", "creditArtists",
              tracks, releases, genres,
-             "releasesWithCoverArt", playtime, plays,
+             "releasesWithCoverArt", playtime,
              "artistsSyncedWithMusicbrainz", "releasesSyncedWithMusicbrainz",
              "artistsWithCoverArt", "totalFileSize",
              "lastScanEndedAt", "updatedAt"
@@ -24,7 +24,6 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
              (SELECT COUNT(*)::int FROM "Genre"),
              (SELECT COUNT(*)::int FROM "LocalRelease" WHERE image IS NOT NULL OR "imageUrl" IS NOT NULL),
              COALESCE((SELECT SUM(duration)::bigint FROM "LocalReleaseTrack"), 0),
-             COALESCE((SELECT SUM("playCount")::bigint FROM "LocalReleaseTrack"), 0),
              (SELECT COUNT(*)::int FROM "Artist" WHERE "musicbrainzId" IS NOT NULL AND "primaryArtistId" IS NULL),
              (SELECT COUNT(*)::int FROM "MusicBrainzRelease"),
              (SELECT COUNT(*)::int FROM "Artist" WHERE (image IS NOT NULL OR "imageUrl" IS NOT NULL) AND "primaryArtistId" IS NULL),
@@ -39,7 +38,6 @@ pub async fn update_statistics(pool: &PgPool) -> Result<(), sqlx::Error> {
              genres = EXCLUDED.genres,
              "releasesWithCoverArt" = EXCLUDED."releasesWithCoverArt",
              playtime = EXCLUDED.playtime,
-             plays = EXCLUDED.plays,
              "artistsSyncedWithMusicbrainz" = EXCLUDED."artistsSyncedWithMusicbrainz",
              "releasesSyncedWithMusicbrainz" = EXCLUDED."releasesSyncedWithMusicbrainz",
              "artistsWithCoverArt" = EXCLUDED."artistsWithCoverArt",

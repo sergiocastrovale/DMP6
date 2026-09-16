@@ -20,8 +20,8 @@ pub async fn ensure_artist(pool: &PgPool, name: &str) -> Result<String, sqlx::Er
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
     let row: (String,) = sqlx::query_as(
-        r#"INSERT INTO "Artist" (id, name, slug, "totalPlayCount", "totalTracks", "totalFileSize", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, 0, 0, 0, $4, $4)
+        r#"INSERT INTO "Artist" (id, name, slug, "totalTracks", "totalFileSize", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, 0, 0, $4, $4)
            ON CONFLICT (slug) DO UPDATE SET "updatedAt" = EXCLUDED."updatedAt"
            RETURNING id"#,
     )

@@ -1,6 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { trackPlaysByIds } from '~/server/utils/userPlays'
 
 export default defineEventHandler(async (event) => {
+  const userId = currentUserId(event)
   const id = getRouterParam(event, 'id')
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'Missing id' })
@@ -23,8 +26,6 @@ export default defineEventHandler(async (event) => {
       trackNumber: true,
       discNumber: true,
       fileSize: true,
-      playCount: true,
-      lastPlayedAt: true,
       mbTrackId: true,
       mbReleaseId: true,
       mbReleaseGroupId: true,
@@ -37,6 +38,9 @@ export default defineEventHandler(async (event) => {
   if (!track) {
     throw createError({ statusCode: 404, statusMessage: 'Track not found' })
   }
+
+  const plays = await trackPlaysByIds(userId, [id])
+  const { playCount, lastPlayedAt } = plays.get(id) ?? { playCount: 0, lastPlayedAt: null }
 
   const meta = track.metadata as Record<string, unknown> | null
   const bpm = meta?.IntegerBpm as string | null ?? null
@@ -51,6 +55,8 @@ export default defineEventHandler(async (event) => {
   return {
     ...track,
     fileSize: track.fileSize ? Number(track.fileSize) : null,
+    playCount,
+    lastPlayedAt,
     bpm,
     isrc,
     label,

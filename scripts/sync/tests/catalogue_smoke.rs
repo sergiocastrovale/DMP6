@@ -163,8 +163,8 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
     sqlx::query(
         r#"INSERT INTO "Artist"
              (id, name, slug, "musicbrainzId", monitored,
-              "totalPlayCount", "totalTracks", "totalFileSize", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, true, 0, 0, 0, now(), now())
+              "totalTracks", "totalFileSize", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, true, 0, 0, now(), now())
            ON CONFLICT (slug) DO UPDATE SET "musicbrainzId" = EXCLUDED."musicbrainzId""#,
     )
     .bind(&artist_id)

@@ -50,8 +50,8 @@ fn test_config() -> Config {
 async fn insert_artist(pool: &PgPool, name: &str) -> String {
     let id = cuid2::create_id();
     sqlx::query(
-        r#"INSERT INTO "Artist" (id, name, slug, "totalPlayCount", "totalTracks", "totalFileSize", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, 0, 0, 0, now(), now())"#,
+        r#"INSERT INTO "Artist" (id, name, slug, "totalTracks", "totalFileSize", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, 0, 0, now(), now())"#,
     )
     .bind(&id)
     .bind(name)
@@ -65,8 +65,8 @@ async fn insert_artist(pool: &PgPool, name: &str) -> String {
 async fn insert_manually_added_artist(pool: &PgPool, name: &str) -> String {
     let id = cuid2::create_id();
     sqlx::query(
-        r#"INSERT INTO "Artist" (id, name, slug, "manuallyAdded", "totalPlayCount", "totalTracks", "totalFileSize", "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, true, 0, 0, 0, now(), now())"#,
+        r#"INSERT INTO "Artist" (id, name, slug, "manuallyAdded", "totalTracks", "totalFileSize", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, true, 0, 0, now(), now())"#,
     )
     .bind(&id)
     .bind(name)
@@ -166,9 +166,9 @@ async fn credits_and_release_links_both_protect_an_artist() {
     let track_id = cuid2::create_id();
     sqlx::query(
         r#"INSERT INTO "LocalReleaseTrack"
-             (id, title, artist, "albumArtist", album, "filePath", "localReleaseId", "playCount",
+             (id, title, artist, "albumArtist", album, "filePath", "localReleaseId",
               "createdAt", "updatedAt")
-           VALUES ($1, 'Fixture Track', $2, $3, 'Orphan Cleanup Fixture', $4, $5, 0, now(), now())"#,
+           VALUES ($1, 'Fixture Track', $2, $3, 'Orphan Cleanup Fixture', $4, $5, now(), now())"#,
     )
     .bind(&track_id)
     .bind(format!("{} feat. {}", LRA_NAME, CREDIT_ONLY_NAME))

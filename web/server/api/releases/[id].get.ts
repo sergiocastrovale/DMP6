@@ -1,8 +1,11 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { accumulateAlsoPartOf, buildReleaseCard } from '~/server/utils/releaseAggregation'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { releasePlayTotals } from '~/server/utils/userPlays'
 
 export default defineEventHandler(async (event) => {
+  const userId = currentUserId(event)
   const id = getRouterParam(event, 'id')
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'Missing id' })
@@ -19,7 +22,6 @@ export default defineEventHandler(async (event) => {
       imageUrl: true,
       matchStatus: true,
       releaseId: true,
-      totalPlayCount: true,
       tracks: { select: { id: true } },
       artists: {
         select: {
@@ -101,5 +103,8 @@ export default defineEventHandler(async (event) => {
     alsoPartOf = byGroupId.get(lr.release.releaseGroupId)
   }
 
-  return buildReleaseCard(lr, lr.release, verifyImage, { boxMbr, alsoPartOf })
+  const plays = await releasePlayTotals(userId, [lr.id])
+  const totalPlayCount = plays.get(lr.id)?.totalPlayCount ?? 0
+
+  return buildReleaseCard({ ...lr, totalPlayCount }, lr.release, verifyImage, { boxMbr, alsoPartOf })
 })

@@ -1,6 +1,8 @@
 import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { mapBundleMbTracks } from '~/server/utils/bundleTracks'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
 
 function normalizeTitle(title: string): string {
   return title
@@ -11,6 +13,7 @@ function normalizeTitle(title: string): string {
 }
 
 export default defineEventHandler(async (event) => {
+  const userId = currentUserId(event)
   const id = getRouterParam(event, 'id')
   if (!id) {throw createError({ statusCode: 400, statusMessage: 'Missing id' })}
 
@@ -41,7 +44,7 @@ export default defineEventHandler(async (event) => {
   const localReleaseId = mbRelease?.localReleases[0]?.id
 
   if (localReleaseId) {
-    return getLocalReleaseTracks(localReleaseId, mbRelease?.tracks)
+    return getLocalReleaseTracks(userId, localReleaseId, mbRelease?.tracks)
   }
 
   if (mbRelease) {
@@ -63,7 +66,6 @@ export default defineEventHandler(async (event) => {
         duration: true,
         trackNumber: true,
         discNumber: true,
-        playCount: true,
         filePath: true,
         localReleaseId: true,
         mbTrackId: true,
@@ -72,6 +74,7 @@ export default defineEventHandler(async (event) => {
         },
       },
     })
+    const linkedPlays = await trackPlaysByIds(userId, linkedLocalTracks.map(t => t.id))
     return {
       release: {
         id: mbRelease.id,
@@ -81,7 +84,7 @@ export default defineEventHandler(async (event) => {
         artistName: 'Unknown',
         artistSlug: '',
       },
-      tracks: mapBundleMbTracks(mbRelease.tracks ?? [], linkedLocalTracks),
+      tracks: mapBundleMbTracks(mbRelease.tracks ?? [], linkedLocalTracks.map(t => withTrackPlay(t, linkedPlays))),
     }
   }
 
@@ -108,10 +111,11 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  return getLocalReleaseTracks(id, localRelease?.release?.tracks)
+  return getLocalReleaseTracks(userId, id, localRelease?.release?.tracks)
 })
 
 async function getLocalReleaseTracks(
+  userId: number,
   localReleaseId: string,
   mbTracks?: { id: string; title: string; position: number | null; discNumber: number | null; durationMs: number | null; musicbrainzId: string | null }[],
 ) {
@@ -143,7 +147,6 @@ async function getLocalReleaseTracks(
       duration: true,
       trackNumber: true,
       discNumber: true,
-      playCount: true,
       filePath: true,
       localReleaseId: true,
       mbTrack: {
@@ -158,11 +161,14 @@ async function getLocalReleaseTracks(
     orderBy: [{ discNumber: 'asc' }, { trackNumber: 'asc' }],
   })
 
+  const plays = await trackPlaysByIds(userId, tracks.map(t => t.id))
+
   // Build enriched tracks, checking for MB title differences via substring matching
   const enrichedTracks: any[] = []
   const matchedMbIds = new Set<string>()
 
-  for (const { trackRelatedArtists, mbTrack, ...t } of tracks) {
+  for (const { trackRelatedArtists, mbTrack, ...raw } of tracks) {
+    const t = withTrackPlay(raw, plays)
     let mbTitle: string | null = null
 
     if (mbTracks) {

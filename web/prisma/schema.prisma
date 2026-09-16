@@ -48,7 +48,6 @@ model Artist {
   imageUrl            String?                    @db.Text
   musicbrainzId       String?
   completeness        Float?
-  totalPlayCount      Int                        @default(0)
   totalTracks         Int                        @default(0)
   totalFileSize       BigInt                     @default(0)
   lastSyncedAt        DateTime?
@@ -76,7 +75,6 @@ model Artist {
   facts               ArtistFact[]
 
   @@index([musicbrainzId])
-  @@index([totalPlayCount])
   @@index([completeness])
   @@index([createdAt])
   @@index([name]) // B-tree for ORDER BY name; trigram GIN index for ILIKE added via raw migration
@@ -250,10 +248,8 @@ model LocalRelease {
   groupKey                   String                     @db.VarChar(500)
   image                      String?
   imageUrl                   String?                    @db.Text
-  totalPlayCount             Int                        @default(0)
   totalDuration              Int?                       @default(0)
   totalFileSize              BigInt                     @default(0)
-  lastPlayedAt               DateTime?
   createdAt                  DateTime                   @default(now())
   updatedAt                  DateTime                   @updatedAt
   downloadedFrom             String? // null = pristine library; 'slskd' = acquired via Soulseek
@@ -284,7 +280,6 @@ model LocalRelease {
   @@index([releaseId])
   @@index([year])
   @@index([createdAt])
-  @@index([lastPlayedAt])
   @@index([downloadedFrom])
   @@index([boxReleaseId])
   @@index([title]) // B-tree for ORDER BY title; trigram GIN index for ILIKE added via raw migration
@@ -385,8 +380,6 @@ model LocalReleaseTrack {
   mtime               DateTime?
   contentHash         String?                  @db.VarChar(32)
   metadata            Json?
-  playCount           Int                      @default(0)
-  lastPlayedAt        DateTime?
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
   localRelease        LocalRelease?            @relation(fields: [localReleaseId], references: [id], onDelete: Cascade)
@@ -397,20 +390,44 @@ model LocalReleaseTrack {
   corruptedIssues     IssueCorruptedTpe2[]     @relation("CorruptedTrackIssue")
   missingIssues       IssueMissingMetadata[]   @relation("MissingMetadataIssue")
   facts               ArtistFact[]
+  plays               LocalReleaseTrackPlay[]
   // Trigram GIN index for title ILIKE and expression index on LOWER(genre) added via raw migration
 
   @@index([localReleaseId])
   @@index([mbTrackId])
-  @@index([lastPlayedAt])
   @@index([contentHash])
   @@index([mtime])
   @@index([year])
   @@index([year, genre])
-  @@index([playCount])
   @@index([genre])
   @@index([localReleaseId, discNumber, trackNumber]) // Composite for ORDER BY discNumber, trackNumber within a release
   @@index([mbReleaseGroupId])
   @@index([mbReleaseId])
+}
+
+// ---------------------------------------------------------------------------
+// LocalReleaseTrackPlay
+// ---------------------------------------------------------------------------
+//
+// Per-user play counter - one row per (user, track), same pattern as FavoriteTrack. Plays are
+// private per user, never shared (CLAUDE.md Data Model). Release/artist totals and "last played"
+// are computed from this table at read time (server/utils/userPlays.ts), not stored denormalized.
+
+model LocalReleaseTrackPlay {
+  id           String            @id @default(cuid())
+  userId       Int
+  trackId      String
+  playCount    Int               @default(0)
+  lastPlayedAt DateTime
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track        LocalReleaseTrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId])
+  @@index([trackId])
+  @@index([userId, lastPlayedAt])
+  @@index([userId, playCount])
 }
 
 // ---------------------------------------------------------------------------
@@ -706,7 +723,6 @@ model Statistics {
   /// Derived from LocalReleaseArtist at write time; there is deliberately no flag on Artist.
   creditArtists                 Int       @default(0)
   playtime                      BigInt    @default(0)
-  plays                         BigInt    @default(0)
   tracks                        Int       @default(0)
   releases                      Int       @default(0)
   genres                        Int       @default(0)
@@ -906,6 +922,7 @@ model User {
   favoriteReleases FavoriteRelease[]
   favoriteTracks   FavoriteTrack[]
   playlists        Playlist[]
+  trackPlays       LocalReleaseTrackPlay[]
 }
 
 model RolePermission {

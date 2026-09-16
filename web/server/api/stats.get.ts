@@ -3,11 +3,14 @@ import { cachedResponse } from '~/server/utils/cache'
 import { releaseTypeBucketSql } from '~/server/utils/releaseTypeBuckets'
 import { releaseTypeBuckets } from '~/helpers/constants'
 import type { ReleaseTypeBucketId } from '~/types/stats'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { userTotalPlays } from '~/server/utils/userPlays'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
+  const userId = currentUserId(event)
 
-  return cachedResponse('stats', 300, async () => {
+  const shared = await cachedResponse('stats', 300, async () => {
     const [stats, unmatchedReleases, incompleteReleases, lowBitrateTracks, singleReleaseResult, missingArtReleases, linkedArtists, releaseTypeRows] = await Promise.all([
       prisma.statistics.findUnique({ where: { id: 'main' } }),
       prisma.localRelease.count({ where: { matchStatus: 'UNMATCHED' } }),
@@ -55,7 +58,6 @@ export default defineEventHandler(async (event) => {
         releases: 0,
         genres: 0,
         playtime: 0,
-        plays: 0,
         artistsSyncedWithMusicbrainz: 0,
         releasesSyncedWithMusicbrainz: 0,
         artistsWithCoverArt: 0,
@@ -75,7 +77,6 @@ export default defineEventHandler(async (event) => {
       releases: stats.releases,
       genres: stats.genres,
       playtime: Number(stats.playtime),
-      plays: Number(stats.plays),
       artistsSyncedWithMusicbrainz: stats.artistsSyncedWithMusicbrainz,
       releasesSyncedWithMusicbrainz: stats.releasesSyncedWithMusicbrainz,
       artistsWithCoverArt: stats.artistsWithCoverArt,
@@ -86,4 +87,7 @@ export default defineEventHandler(async (event) => {
       ...curation,
     }
   })
+
+  // Per-user, so kept out of the shared cache above (its Redis entry is process-wide, not per caller).
+  return { ...shared, plays: await userTotalPlays(userId) }
 })

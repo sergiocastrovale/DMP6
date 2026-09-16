@@ -49,9 +49,9 @@ async fn seed(pool: &PgPool, music_dir: &std::path::Path) -> (String, Vec<String
         };
         sqlx::query(
             r#"INSERT INTO "LocalReleaseTrack"
-                 (id, title, artist, "albumArtist", album, "filePath", "localReleaseId", "playCount",
+                 (id, title, artist, "albumArtist", album, "filePath", "localReleaseId",
                   "createdAt", "updatedAt")
-               VALUES ($1, $2, 'Prune Guard', 'Prune Guard', 'Prune Guard Fixture', $3, $4, 0, now(), now())"#,
+               VALUES ($1, $2, 'Prune Guard', 'Prune Guard', 'Prune Guard Fixture', $3, $4, now(), now())"#,
         )
         .bind(&id)
         .bind(format!("Track {:02}", i))

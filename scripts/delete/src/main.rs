@@ -408,7 +408,7 @@ async fn execute_plan(
         .collect();
     if !kept_ids.is_empty() {
         sqlx::query(
-            r#"UPDATE "Artist" SET image = NULL, "imageUrl" = NULL, "totalPlayCount" = 0,
+            r#"UPDATE "Artist" SET image = NULL, "imageUrl" = NULL,
                  "totalTracks" = 0, "totalFileSize" = 0, "updatedAt" = NOW()
                WHERE id = ANY($1::text[])"#,
         )

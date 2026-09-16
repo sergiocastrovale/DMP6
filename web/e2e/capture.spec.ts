@@ -36,7 +36,6 @@ test.beforeAll(async () => {
         name,
         slug,
         totalTracks: 20 + i * 17,
-        totalPlayCount: i * 93,
         completeness: Math.min(1, 0.35 + (i % 7) * 0.11),
         genres: { connect: [{ name: GENRES[i % GENRES.length]! }] },
       },
@@ -50,7 +49,6 @@ test.beforeAll(async () => {
           groupKey: `folder:${slug}/album-${r}`,
           folderPath: `${name}/Album ${r + 1}`,
           matchStatus: r % 3 === 0 ? 'COMPLETE' : r % 3 === 1 ? 'MISSING_TRACKS' : 'UNMATCHED',
-          totalPlayCount: (i + r) * 12,
           artists: { create: { artistId: artist.id } },
           tracks: {
             create: Array.from({ length: 4 + (r % 5) }, (_, t) => ({

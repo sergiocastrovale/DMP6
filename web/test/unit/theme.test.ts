@@ -70,7 +70,7 @@ describe('theme.css semantic aliases', () => {
 })
 
 describe('theme.css type scale', () => {
-  const STEPS_BY_NAME = ['2xs', 'xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl']
+  const STEPS_BY_NAME = ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl']
 
   // Every step is `calc(<px> * var(--ui-scale, 1))` so Settings → Themes' size stepper can rescale
   // the lot - pull the base px back out rather than parseFloat'ing the calc() (which yields NaN and
@@ -82,7 +82,7 @@ describe('theme.css type scale', () => {
     return Number(match![1])
   }
 
-  it('is ordered smallest to largest across all eleven steps', () => {
+  it('is ordered smallest to largest across all ten steps', () => {
     const sizes = STEPS_BY_NAME.map(basePx)
     expect(sizes.every(Number.isFinite)).toBe(true)
     expect(sizes).toEqual([...sizes].sort((a, b) => a - b))
@@ -90,7 +90,7 @@ describe('theme.css type scale', () => {
 
   it('every step multiplies by --ui-scale, so the size stepper misses nothing', () => {
     // basePx() asserts the shape; this just pins the intent for anyone adding a step later.
-    expect(STEPS_BY_NAME.map(basePx)).toHaveLength(11)
+    expect(STEPS_BY_NAME.map(basePx)).toHaveLength(10)
   })
 })
 

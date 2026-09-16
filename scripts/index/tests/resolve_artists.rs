@@ -94,9 +94,9 @@ async fn embedded_pairing_resolves_owner_and_credit_without_network() {
     let track_id = cuid2::create_id();
     sqlx::query(
         r#"INSERT INTO "LocalReleaseTrack"
-             (id, title, artist, "albumArtist", album, "filePath", "localReleaseId", "playCount",
+             (id, title, artist, "albumArtist", album, "filePath", "localReleaseId",
               artists, "mbArtistIds", "createdAt", "updatedAt")
-           VALUES ($1, 'Fixture Track', $2, $3, 'Resolve Fixture', $4, $5, 0, $6, $7, now(), now())"#,
+           VALUES ($1, 'Fixture Track', $2, $3, 'Resolve Fixture', $4, $5, $6, $7, now(), now())"#,
     )
     .bind(&track_id)
     .bind(format!("{} with {}", owner_name, guest_name))
@@ -207,9 +207,9 @@ async fn dry_run_writes_no_library_data() {
     let track_id = cuid2::create_id();
     sqlx::query(
         r#"INSERT INTO "LocalReleaseTrack"
-             (id, title, artist, "albumArtist", album, "filePath", "localReleaseId", "playCount",
+             (id, title, artist, "albumArtist", album, "filePath", "localReleaseId",
               artists, "mbArtistIds", "createdAt", "updatedAt")
-           VALUES ($1, 'Fixture Track', $2, $3, 'Resolve Fixture', $4, $5, 0, $6, $7, now(), now())"#,
+           VALUES ($1, 'Fixture Track', $2, $3, 'Resolve Fixture', $4, $5, $6, $7, now(), now())"#,
     )
     .bind(&track_id)
     .bind(format!("{} with {}", owner_name, guest_name))

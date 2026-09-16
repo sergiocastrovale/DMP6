@@ -5,8 +5,11 @@ import {
   scoreTrack, weightedRandomPick,
   getPoolCacheKey, getCachedPool, setCachedPool, removeFromPool,
 } from '~/server/utils/explore'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
 
 export default defineEventHandler(async (event) => {
+  const userId = currentUserId(event)
   const body = await readBody<{
     energy?: number
     era?: number
@@ -23,7 +26,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds : []
-  const cacheKey = getPoolCacheKey(params)
+  const cacheKey = getPoolCacheKey(userId, params)
 
   // Try cached pool first
   let candidates: TrackCandidate[]
@@ -49,7 +52,7 @@ export default defineEventHandler(async (event) => {
 
     // Hard filter for "Uncharted" familiarity
     if (params.familiarity === 9) {
-      where.playCount = 0
+      where.plays = { none: { userId } }
     }
 
     // Soft era filter: include tracks in range ±10 years OR tracks with no year
@@ -69,8 +72,6 @@ export default defineEventHandler(async (event) => {
         duration: true,
         year: true,
         genre: true,
-        playCount: true,
-        lastPlayedAt: true,
         metadata: true,
         localReleaseId: true,
         localRelease: {
@@ -94,7 +95,8 @@ export default defineEventHandler(async (event) => {
       ;[raw[i], raw[j]] = [raw[j]!, raw[i]!]
     }
 
-    candidates = raw.slice(0, 500) as unknown as TrackCandidate[]
+    const plays = await trackPlaysByIds(userId, raw.map(t => t.id))
+    candidates = raw.slice(0, 500).map(t => withTrackPlay(t, plays)) as unknown as TrackCandidate[]
 
     // Cache the full pool for subsequent requests with the same params
     setCachedPool(cacheKey, candidates)

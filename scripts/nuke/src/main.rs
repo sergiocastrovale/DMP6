@@ -578,7 +578,6 @@ async fn refresh_statistics(pool: &PgPool) {
                 WHERE "musicbrainzId" IS NOT NULL),
              "releasesSyncedWithMusicbrainz" = (SELECT COUNT(*)::int FROM "MusicBrainzRelease"),
              playtime = COALESCE((SELECT SUM(duration)::bigint FROM "LocalReleaseTrack"), 0),
-             plays = COALESCE((SELECT SUM("playCount")::bigint FROM "LocalReleaseTrack"), 0),
              "updatedAt" = NOW()
            WHERE id = 'main'"#,
     )

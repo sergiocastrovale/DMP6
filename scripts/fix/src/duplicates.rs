@@ -222,16 +222,9 @@ async fn merge(
         .execute(&mut *tx)
         .await?;
 
-    // Play count: fold B's history into A before B disappears, instead of silently losing it.
-    sqlx::query(
-        r#"UPDATE "Artist" SET "totalPlayCount" = "totalPlayCount" + (
-             SELECT "totalPlayCount" FROM "Artist" WHERE id = $2
-           ) WHERE id = $1"#,
-    )
-    .bind(artist_a)
-    .bind(artist_b)
-    .execute(&mut *tx)
-    .await?;
+    // Play counts are per-user now (LocalReleaseTrackPlay, keyed by trackId) and computed at read
+    // time by joining through LocalReleaseArtist - once that join is retargeted to A above, A's
+    // play totals include B's former tracks automatically. Nothing to fold here.
 
     sqlx::query(r#"UPDATE "Artist" SET "primaryArtistId" = $1 WHERE "primaryArtistId" = $2"#)
         .bind(artist_a)

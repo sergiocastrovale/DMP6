@@ -44,9 +44,9 @@ pub async fn insert_artist(
     sqlx::query(
         r#"INSERT INTO "Artist"
              (id, name, slug, "musicbrainzId", country, "manuallyAdded", monitored,
-              "totalPlayCount", "totalTracks", "totalFileSize", "lastSyncedAt", "lastGapsCheckedAt",
+              "totalTracks", "totalFileSize", "lastSyncedAt", "lastGapsCheckedAt",
               "createdAt", "updatedAt")
-           VALUES ($1, $2, $3, $4, $5, true, $6, 0, 0, 0, $7, $7, $7, $7)"#,
+           VALUES ($1, $2, $3, $4, $5, true, $6, 0, 0, $7, $7, $7, $7)"#,
     )
     .bind(id)
     .bind(name)

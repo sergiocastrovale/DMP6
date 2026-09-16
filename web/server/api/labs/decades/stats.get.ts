@@ -1,6 +1,8 @@
 import type { DecadeStats, DecadeRow, GenreRow } from '~/types/labs'
+import { currentUserId } from '~/server/utils/libraryOwnership'
 
-export default defineEventHandler(async (): Promise<DecadeStats[]> => {
+export default defineEventHandler(async (event): Promise<DecadeStats[]> => {
+  const userId = currentUserId(event)
   const rows = await prisma.$queryRaw<DecadeRow[]>`
     SELECT
       (FLOOR(lr.year / 10) * 10)::int AS decade,
@@ -9,10 +11,11 @@ export default defineEventHandler(async (): Promise<DecadeStats[]> => {
       COUNT(DISTINCT lra."artistId") AS artist_count,
       AVG(lrt.duration)::float AS avg_duration,
       AVG(lrt.bitrate)::float AS avg_bitrate,
-      COALESCE(SUM(lrt."playCount"), 0) AS total_play_count
+      COALESCE(SUM(p."playCount"), 0) AS total_play_count
     FROM "LocalRelease" lr
     JOIN "LocalReleaseTrack" lrt ON lrt."localReleaseId" = lr.id
     LEFT JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+    LEFT JOIN "LocalReleaseTrackPlay" p ON p."trackId" = lrt.id AND p."userId" = ${userId}
     WHERE lr.year IS NOT NULL
     GROUP BY decade
     ORDER BY decade

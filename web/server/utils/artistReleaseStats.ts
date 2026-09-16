@@ -4,6 +4,10 @@
 // the current page's artist ids and merges the result in JS via this module.
 import type { ArtistReleaseLink, ReleaseStatsResult } from '~/types/artist'
 
+interface PlayCountable {
+  totalPlayCount: number
+}
+
 // Dedupes by localRelease.id within each artist - a compilation ties the same release to multiple
 // co-owners, and without the dedupe a shared release would inflate one owner's own releaseCount if the
 // join ever produced more than one row per (artistId, releaseId) pair.
@@ -37,15 +41,18 @@ export function mergeReleaseStats<T extends { id: string }>(
 }
 
 // `releases` has no DB column to `orderBy` - the route fetches every `where`-matching artist,
-// sorts here, then paginates the sorted result in JS.
-export function sortArtistsInMemory<T extends ReleaseStatsResult>(
+// sorts here, then paginates the sorted result in JS. `playCount` is per-user (LocalReleaseTrackPlay,
+// server/utils/userPlays.ts) so it has no DB column either, same treatment.
+export function sortArtistsInMemory<T extends ReleaseStatsResult & Partial<PlayCountable>>(
   items: T[],
   sort: string,
   direction: 'asc' | 'desc' = 'desc',
 ): T[] {
   const key = sort === 'releases'
     ? (item: T) => item.releaseCount
-    : null
+    : sort === 'playCount'
+      ? (item: T) => item.totalPlayCount ?? 0
+      : null
 
   if (!key) {
     return items

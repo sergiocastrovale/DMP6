@@ -2,6 +2,7 @@ import { prisma } from '~/server/utils/prisma'
 import { parsePagination } from '~/server/utils/pagination'
 import { releaseTypeBucketSql } from '~/server/utils/releaseTypeBuckets'
 import { releaseTypeBuckets } from '~/helpers/constants'
+import { currentUserId } from '~/server/utils/libraryOwnership'
 
 const RELEASE_TYPE_BUCKET_ID_SET = new Set<string>(releaseTypeBuckets.map(b => b.id))
 
@@ -47,7 +48,7 @@ export default defineEventHandler(async (event) => {
     case 'genres':
       return queryGenres(search, skip, pageSize, page, sort, order)
     case 'plays':
-      return queryPlays(search, skip, pageSize, page, sort, order)
+      return queryPlays(currentUserId(event), search, skip, pageSize, page, sort, order)
     case 'size':
       return querySize(search, skip, pageSize, page, sort, order)
     case 'releases-synced':
@@ -202,33 +203,33 @@ async function queryGenres(search: string, skip: number, pageSize: number, page:
   }
 }
 
-async function queryPlays(search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
-  const where: any = { playCount: { gt: 0 } }
-  if (search) { where.title = { contains: search, mode: 'insensitive' } }
+async function queryPlays(userId: number, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+  const where: any = { userId, playCount: { gt: 0 } }
+  if (search) { where.track = { title: { contains: search, mode: 'insensitive' } } }
 
   const sortMap: Record<string, any> = {
-    title: { title: order },
-    artist: { artist: order },
+    title: { track: { title: order } },
+    artist: { track: { artist: order } },
   }
   const orderBy = sortMap[sort] ?? { playCount: order }
 
   const [items, total] = await Promise.all([
-    prisma.localReleaseTrack.findMany({
+    prisma.localReleaseTrackPlay.findMany({
       where,
-      select: { id: true, title: true, artist: true, playCount: true },
+      select: { playCount: true, track: { select: { id: true, title: true, artist: true } } },
       orderBy,
       skip,
       take: pageSize,
     }),
-    prisma.localReleaseTrack.count({ where }),
+    prisma.localReleaseTrackPlay.count({ where }),
   ])
 
   return {
-    items: items.map(t => ({
-      id: t.id,
-      title: t.title,
-      artistName: t.artist,
-      playCount: t.playCount,
+    items: items.map(p => ({
+      id: p.track.id,
+      title: p.track.title,
+      artistName: p.track.artist,
+      playCount: p.playCount,
     })),
     total,
     page,

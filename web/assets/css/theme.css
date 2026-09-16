@@ -96,7 +96,7 @@
   --font-display: 'Inter Tight', 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
 
-  /* type scale — 2xs 11px -> 6xl 64px, every step multiplied by --ui-scale so Settings → Themes'
+  /* type scale — xs 11px -> 6xl 64px, every step multiplied by --ui-scale so Settings → Themes'
      UI-size stepper resizes all text at once (themes.css sets the multiplier per html[data-size];
      the fallback keeps this file standalone). Line heights stay unitless, so they scale for free. */
   --text-xs: calc(11px * var(--ui-scale, 1));

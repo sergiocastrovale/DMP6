@@ -1,14 +1,17 @@
 import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
 import { verifyImage } from '~/server/utils/images'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { artistPlayTotals } from '~/server/utils/userPlays'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=600, stale-while-revalidate=60')
+  const userId = currentUserId(event)
 
   const slug = getRouterParam(event, 'slug')
   if (!slug) {throw createError({ statusCode: 400, statusMessage: 'Missing slug' })}
 
-  return cachedResponse(`artist:${slug}`, 600, async () => {
+  const cached = await cachedResponse(`artist:${slug}`, 600, async () => {
     const artist = await prisma.artist.findUnique({
       where: { slug },
       select: {
@@ -19,7 +22,6 @@ export default defineEventHandler(async (event) => {
         imageUrl: true,
         musicbrainzId: true,
         completeness: true,
-        totalPlayCount: true,
         totalTracks: true,
         totalFileSize: true,
         lastSyncedAt: true,
@@ -31,9 +33,13 @@ export default defineEventHandler(async (event) => {
 
     if (!artist) {throw createError({ statusCode: 404, statusMessage: 'Artist not found' })}
 
+    const connectedArtists = await prisma.artist.findMany({
+      where: { primaryArtistId: artist.id },
+      select: { id: true },
+    })
     const connectedStats = await prisma.artist.aggregate({
       where: { primaryArtistId: artist.id },
-      _sum: { totalPlayCount: true, totalTracks: true, totalFileSize: true },
+      _sum: { totalTracks: true, totalFileSize: true },
     })
 
     const relatedArtists = await prisma.$queryRaw<Array<{
@@ -63,7 +69,7 @@ export default defineEventHandler(async (event) => {
       imageUrl: img.imageUrl,
       musicbrainzId: artist.musicbrainzId,
       completeness: artist.completeness,
-      totalPlayCount: artist.totalPlayCount + (connectedStats._sum.totalPlayCount || 0),
+      connectedArtistIds: connectedArtists.map(a => a.id),
       totalTracks: artist.totalTracks + (connectedStats._sum.totalTracks || 0),
       totalFileSize: ((artist.totalFileSize || BigInt(0)) + (connectedStats._sum.totalFileSize || BigInt(0))).toString(),
       lastSyncedAt: artist.lastSyncedAt,
@@ -76,4 +82,10 @@ export default defineEventHandler(async (event) => {
       })),
     }
   })
+
+  const playTotals = await artistPlayTotals(userId, [cached.id, ...cached.connectedArtistIds])
+  const totalPlayCount = [...playTotals.values()].reduce((sum, n) => sum + n, 0)
+  const { connectedArtistIds: _connectedArtistIds, ...rest } = cached
+
+  return { ...rest, totalPlayCount }
 })

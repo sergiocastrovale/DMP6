@@ -2,12 +2,13 @@ import { prisma } from '~/server/utils/prisma'
 import { cachedResponse } from '~/server/utils/cache'
 import { currentUserId, visiblePlaylistsWhere } from '~/server/utils/libraryOwnership'
 import { countActiveDownloads } from '~/server/utils/downloadQueue'
+import { userTotalPlays } from '~/server/utils/userPlays'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'private, max-age=120, stale-while-revalidate=30')
   const userId = currentUserId(event)
 
-  const [shared, playlists, favorites] = await Promise.all([
+  const [shared, playlists, favorites, totalPlays] = await Promise.all([
     cachedResponse('app-stats', 120, async () => {
       const [stats, issues, activeDownloads] = await Promise.all([
         prisma.statistics.findUnique({ where: { id: 'main' } }),
@@ -28,7 +29,6 @@ export default defineEventHandler(async (event) => {
         genres: stats?.genres ?? 0,
         playtime: Number(stats?.playtime ?? 0),
         totalFileSize: Number(stats?.totalFileSize ?? 0),
-        totalPlays: Number(stats?.plays ?? 0),
         issues,
         activeDownloads,
       }
@@ -36,7 +36,8 @@ export default defineEventHandler(async (event) => {
     // Per-user, so kept out of the shared cache above (its Redis entry is process-wide, not per caller).
     prisma.playlist.count({ where: visiblePlaylistsWhere(userId) }),
     prisma.favoriteRelease.count({ where: { userId } }).then((r) => prisma.favoriteTrack.count({ where: { userId } }).then((t) => r + t)),
+    userTotalPlays(userId),
   ])
 
-  return { ...shared, playlists, favorites }
+  return { ...shared, playlists, favorites, totalPlays }
 })

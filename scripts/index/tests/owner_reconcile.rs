@@ -100,9 +100,9 @@ impl Ctx {
         let id = cuid2::create_id();
         sqlx::query(
             r#"INSERT INTO "LocalReleaseTrack"
-                 (id, title, artist, "albumArtist", album, "filePath", "localReleaseId", "playCount",
+                 (id, title, artist, "albumArtist", album, "filePath", "localReleaseId",
                   "albumArtists", "mbAlbumArtistIds", "createdAt", "updatedAt")
-               VALUES ($1, 'T', $2, $2, 'Reconcile Fixture', $3, $4, 0, $5, $6, now(), now())"#,
+               VALUES ($1, 'T', $2, $2, 'Reconcile Fixture', $3, $4, $5, $6, now(), now())"#,
         )
         .bind(&id)
         .bind(album_artist)
@@ -129,9 +129,9 @@ impl Ctx {
         let id = cuid2::create_id();
         sqlx::query(
             r#"INSERT INTO "LocalReleaseTrack"
-                 (id, title, artist, "albumArtist", album, "filePath", "localReleaseId", "playCount",
+                 (id, title, artist, "albumArtist", album, "filePath", "localReleaseId",
                   artists, "mbArtistIds", "createdAt", "updatedAt")
-               VALUES ($1, 'T', $2, 'Various Artists', 'Reconcile Fixture', $3, $4, 0, $5, $6, now(), now())"#,
+               VALUES ($1, 'T', $2, 'Various Artists', 'Reconcile Fixture', $3, $4, $5, $6, now(), now())"#,
         )
         .bind(&id)
         .bind(artist)

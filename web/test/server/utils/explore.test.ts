@@ -76,7 +76,7 @@ describe('scoreTrack', () => {
 
 describe('getPoolCacheKey', () => {
   it('encodes all four slider values', () => {
-    expect(getPoolCacheKey(params({ energy: 1, era: 2, familiarity: 3, sound: 4 }))).toBe('1-2-3-4')
+    expect(getPoolCacheKey(7, params({ energy: 1, era: 2, familiarity: 3, sound: 4 }))).toBe('7-1-2-3-4')
   })
 })
 

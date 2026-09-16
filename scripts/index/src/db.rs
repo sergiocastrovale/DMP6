@@ -123,8 +123,8 @@ pub async fn ensure_local_release(
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
     let row: (String,) = sqlx::query_as(
-        r#"INSERT INTO "LocalRelease" (id, title, year, "matchStatus", "forcedComplete", "totalPlayCount", "totalDuration", "totalFileSize", "createdAt", "updatedAt", "folderPath", "groupKey")
-           VALUES ($1, $2, $3, 'UNMATCHED', false, 0, 0, 0, $4, $4, $5, $6)
+        r#"INSERT INTO "LocalRelease" (id, title, year, "matchStatus", "forcedComplete", "totalDuration", "totalFileSize", "createdAt", "updatedAt", "folderPath", "groupKey")
+           VALUES ($1, $2, $3, 'UNMATCHED', false, 0, 0, $4, $4, $5, $6)
            ON CONFLICT ("groupKey") DO UPDATE SET
              title = EXCLUDED.title,
              year = COALESCE(EXCLUDED.year, "LocalRelease".year),
@@ -247,7 +247,6 @@ pub async fn batch_upsert_tracks(
         mb_album_artist_ids_multi.push(serde_json::json!(track.mb_album_artist_ids));
     }
 
-    let play_counts: Vec<i32> = vec![0; len];
     let created: Vec<NaiveDateTime> = vec![now; len];
 
     let rows: Vec<(String, String)> = sqlx::query_as(
@@ -255,12 +254,12 @@ pub async fn batch_upsert_tracks(
            (id, title, artist, "albumArtist", album, year, genre,
             duration, bitrate, "sampleRate", "filePath", position, "trackNumber", "discNumber",
             "localReleaseId", "fileSize", mtime, "contentHash", metadata,
-            "playCount", "createdAt", "updatedAt", "mbReleaseGroupId", "mbReleaseId", "mbAlbumArtistId",
+            "createdAt", "updatedAt", "mbReleaseGroupId", "mbReleaseId", "mbAlbumArtistId",
             artists, "mbArtistIds", "albumArtists", "mbAlbumArtistIds")
            SELECT t.id, t.title, t.artist, t.album_artist, t.album, t.year, t.genre,
                   t.duration, t.bitrate, t.sample_rate, t.file_path, t.position, t.track_number, t.disc_number,
                   t.release_id, t.file_size, t.mtime, t.content_hash, t.metadata,
-                  t.play_count, t.created, t.updated, t.mb_rg_id, t.mb_rel_id, t.mb_aa_id,
+                  t.created, t.updated, t.mb_rg_id, t.mb_rel_id, t.mb_aa_id,
                   ARRAY(SELECT jsonb_array_elements_text(t.artists_json)),
                   ARRAY(SELECT jsonb_array_elements_text(t.mb_artist_ids_json)),
                   ARRAY(SELECT jsonb_array_elements_text(t.album_artists_json)),
@@ -269,12 +268,12 @@ pub async fn batch_upsert_tracks(
                $1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::text[],
                $8::int[], $9::int[], $10::int[], $11::text[], $12::text[], $13::int[], $14::int[],
                $15::text[], $16::bigint[], $17::timestamp[], $18::text[], $19::jsonb[],
-               $20::int[], $21::timestamp[], $22::timestamp[], $23::text[], $24::text[], $25::text[],
-               $26::jsonb[], $27::jsonb[], $28::jsonb[], $29::jsonb[]
+               $20::timestamp[], $21::timestamp[], $22::text[], $23::text[], $24::text[],
+               $25::jsonb[], $26::jsonb[], $27::jsonb[], $28::jsonb[]
            ) AS t(id, title, artist, album_artist, album, year, genre,
                   duration, bitrate, sample_rate, file_path, position, track_number, disc_number,
                   release_id, file_size, mtime, content_hash, metadata,
-                  play_count, created, updated, mb_rg_id, mb_rel_id, mb_aa_id,
+                  created, updated, mb_rg_id, mb_rel_id, mb_aa_id,
                   artists_json, mb_artist_ids_json, album_artists_json, mb_album_artist_ids_json)
            ON CONFLICT ("filePath") DO UPDATE SET
              title = EXCLUDED.title, artist = EXCLUDED.artist, "albumArtist" = EXCLUDED."albumArtist",
@@ -309,7 +308,6 @@ pub async fn batch_upsert_tracks(
     .bind(&mtimes)
     .bind(&content_hashes)
     .bind(&metadatas)
-    .bind(&play_counts)
     .bind(&created)
     .bind(&created)
     .bind(&mb_release_group_ids)

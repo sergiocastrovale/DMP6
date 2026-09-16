@@ -2,6 +2,8 @@ import { prisma } from '~/server/utils/prisma'
 import { verifyImage } from '~/server/utils/images'
 import { parsePagination } from '~/server/utils/pagination'
 import { hasPermission } from '~/server/utils/permissions'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { releasePlayTotals } from '~/server/utils/userPlays'
 import {
   accumulateAlsoPartOf,
   buildAppearsOnCards,
@@ -12,6 +14,7 @@ import {
 } from '~/server/utils/releaseAggregation'
 
 export default defineEventHandler(async (event) => {
+  const userId = currentUserId(event)
   const slug = getRouterParam(event, 'slug')
   if (!slug) {throw createError({ statusCode: 400, statusMessage: 'Missing slug' })}
 
@@ -83,7 +86,6 @@ export default defineEventHandler(async (event) => {
       imageUrl: true,
       matchStatus: true,
       releaseId: true,
-      totalPlayCount: true,
       tracks: { select: { id: true } },
       artists: {
         select: {
@@ -97,9 +99,12 @@ export default defineEventHandler(async (event) => {
     orderBy: [{ year: 'asc' }, { title: 'asc' }],
   })
 
+  const playTotals = await releasePlayTotals(userId, localReleases.map(r => r.id))
+  const localReleasesWithPlays = localReleases.map(r => ({ ...r, totalPlayCount: playTotals.get(r.id)?.totalPlayCount ?? 0 }))
+
   // Build co-artist map: for each local release, list other artists (excluding current + connected)
   const connectedSlugs = new Set(connectedArtists.map(a => a.slug))
-  const coArtistMap = buildCoArtistMap(localReleases, slug, connectedSlugs)
+  const coArtistMap = buildCoArtistMap(localReleasesWithPlays, slug, connectedSlugs)
 
   // docs/sync_decisions.md: box sets in the catalogue that reprint any of this page's release groups -
   // a pure catalogue fact, independent of ownership. Batched once across every group id on the page.
@@ -115,7 +120,7 @@ export default defineEventHandler(async (event) => {
   accumulateAlsoPartOf(alsoPartOfMedia, alsoPartOfByGroupId, alsoPartOfSeen)
 
   const { cards: localAndGapCards, appearsOnLocal } = buildLocalAndGapCards({
-    localReleases,
+    localReleases: localReleasesWithPlays,
     mbById,
     coArtistMap,
     connectedArtistByRelease,

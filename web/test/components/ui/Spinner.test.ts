@@ -7,7 +7,7 @@ describe('ui/Spinner.vue', () => {
     const wrapper = await mountSuspended(Spinner)
     const svg = wrapper.get('svg')
     expect(svg.classes()).toContain('animate-spin')
-    expect(svg.attributes('stroke-width')).toBe('1.6')
+    expect(svg.attributes('stroke-width')).toBe('1.7')
   })
 
   it('defaults to size 20', async () => {

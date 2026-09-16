@@ -11,6 +11,7 @@ const loading = ref(true)
 
 const sections: DashboardSection[] = [
   { title: 'Latest Additions', type: 'release', items: ref([]) },
+  { title: 'Latest Updates', type: 'release', items: ref([]) },
   { title: 'Recently Played', type: 'release', items: ref([]) },
   { title: 'Your Playlists', type: 'playlist', items: ref([]) },
   { title: 'Favorite Releases', type: 'release', items: ref([]) },
@@ -23,6 +24,7 @@ const isEmpty = computed(() =>
 
 const endpoints = [
   `/api/releases/latest?limit=${SKELETON_GRID_SIZE}`,
+  `/api/releases/updated?limit=${SKELETON_GRID_SIZE}`,
   `/api/releases/last-played?limit=${SKELETON_GRID_SIZE}`,
   `/api/playlists?type=manual&limit=${SKELETON_GRID_SIZE}`,
   `/api/favorites/releases?limit=${SKELETON_GRID_SIZE}`,

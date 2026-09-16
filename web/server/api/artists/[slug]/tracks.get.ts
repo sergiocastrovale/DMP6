@@ -1,6 +1,9 @@
 import { prisma } from '~/server/utils/prisma'
+import { currentUserId } from '~/server/utils/libraryOwnership'
+import { trackPlaysByIds, withTrackPlay } from '~/server/utils/userPlays'
 
 export default defineEventHandler(async (event) => {
+  const userId = currentUserId(event)
   const slug = getRouterParam(event, 'slug')
   if (!slug) {throw createError({ statusCode: 400, statusMessage: 'Missing slug' })}
 
@@ -29,7 +32,6 @@ export default defineEventHandler(async (event) => {
       duration: true,
       trackNumber: true,
       discNumber: true,
-      playCount: true,
       filePath: true,
       localReleaseId: true,
       trackRelatedArtists: {
@@ -42,8 +44,10 @@ export default defineEventHandler(async (event) => {
     take: 2000,
   })
 
+  const plays = await trackPlaysByIds(userId, tracks.map(t => t.id))
+
   return tracks.map(({ trackRelatedArtists, ...t }) => ({
-    ...t,
+    ...withTrackPlay(t, plays),
     artists: trackRelatedArtists.map(ta => ({
       name: ta.artist.name,
       slug: ta.artist.slug,
