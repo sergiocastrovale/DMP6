@@ -69,7 +69,7 @@ const lastAuditText = computed(() => {
     <NuxtLink
       v-if="historyCount > 0"
       to="/issues/history"
-      class="flex items-center justify-between rounded-xl border border-stone-100/6 bg-stone-900/50 px-4 py-3 transition-colors duration-150 hover:border-stone-100/10"
+      class="flex items-center justify-between rounded-xl border border-stone-100/10 bg-stone-900/50 px-4 py-3 transition-colors duration-150 hover:border-stone-100/10"
     >
       <span class="text-base text-stone-100/60">
         {{ historyCount }} undo record{{ historyCount !== 1 ? 's' : '' }} stored
@@ -84,7 +84,7 @@ const lastAuditText = computed(() => {
         v-for="card in typeCards"
         :key="card.key"
         :to="`/issues/${card.key}`"
-        class="rounded-xl border border-stone-100/6 bg-stone-900 p-4 transition-colors duration-150 hover:border-stone-100/10"
+        class="rounded-xl border border-stone-100/10 bg-stone-900 p-4 transition-colors duration-150 hover:border-stone-100/10"
       >
         <div class="flex items-start justify-between">
           <div>

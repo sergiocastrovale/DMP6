@@ -43,7 +43,7 @@ const emit = defineEmits<{
             Create new playlist
           </UiButton>
         </div>
-        <div v-if="playlists.length > 0" class="border-t border-stone-100/6 pt-2">
+        <div v-if="playlists.length > 0" class="border-t border-stone-100/10 pt-2">
           <button
             v-for="playlist in playlists"
             :key="playlist.id"

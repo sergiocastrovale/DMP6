@@ -46,7 +46,7 @@ const hasMetadata = computed(() => props.year || props.genre || (props.completen
 
 const nameClass = 'font-display font-semibold text-lg text-stone-100 truncate'
 const subClass = 'text-sm text-stone-100/55 truncate'
-const metaClass = 'flex items-center gap-2 font-mono text-2xs uppercase text-stone-100/50'
+const metaClass = 'flex items-center gap-2 font-mono text-xs uppercase text-stone-100/50'
 </script>
 
 <template>

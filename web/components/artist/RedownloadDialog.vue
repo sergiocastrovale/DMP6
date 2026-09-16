@@ -28,7 +28,7 @@ const type = computed(() => props.release?.type)
     @update:model-value="emit('update:modelValue', $event)"
     @confirm="emit('confirm')"
   >
-    <div v-if="release" class="text-sm border border-stone-100/6 bg-stone-950 px-5 py-5 rounded-md">
+    <div v-if="release" class="text-sm border border-stone-100/10 bg-stone-950 px-5 py-5 rounded-md">
       <div class="truncate">
         <template v-if="artistName">{{ artistName }} &middot; </template>{{ release.title }}
       </div>

@@ -67,7 +67,7 @@ watch(route, closeMore)
 </script>
 
 <template>
-  <nav class="fixed bottom-0 left-0 z-40 flex w-full border-t border-stone-100/6 bg-stone-950 lg:hidden">
+  <nav class="fixed bottom-0 left-0 z-40 flex w-full border-t border-stone-100/10 bg-stone-950 lg:hidden">
     <NuxtLink
       v-for="item in items"
       :key="item.to"
@@ -100,7 +100,7 @@ watch(route, closeMore)
     <Transition v-bind="transitions.slideUp">
       <div
         v-if="showMore"
-        class="fixed bottom-[57px] left-0 right-0 z-50 rounded-t-2xl border-t border-stone-100/6 bg-stone-950 px-4 pb-4 pt-3 lg:hidden"
+        class="fixed bottom-[57px] left-0 right-0 z-50 rounded-t-2xl border-t border-stone-100/10 bg-stone-950 px-4 pb-4 pt-3 lg:hidden"
       >
         <template v-for="(group, gi) in moreGroups" :key="gi">
           <div v-if="gi > 0" class="my-2 border-t border-stone-100/6" />

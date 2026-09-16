@@ -62,11 +62,11 @@ const labs = computed<Lab[]>(() => [
         v-for="lab in labs"
         :key="lab.to"
         :to="lab.to"
-        class="group rounded-xl border border-stone-100/6 bg-stone-900 p-5 transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800/50"
+        class="group rounded-xl border border-stone-100/10 bg-stone-900 p-5 transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800/50"
       >
         <div class="mb-3 flex items-start justify-between gap-3">
           <h2 :class="[typography.title, 'text-stone-100']">{{ lab.title }}</h2>
-          <span :class="cx(outlinePill, toneBg[lab.tone], 'shrink-0 border-transparent font-mono text-2xs uppercase tracking-wider')">
+          <span :class="cx(outlinePill, toneBg[lab.tone], 'shrink-0 border-transparent font-mono text-xs uppercase tracking-wider')">
             {{ lab.maturity }}
           </span>
         </div>

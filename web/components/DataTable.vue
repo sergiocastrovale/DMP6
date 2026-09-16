@@ -10,8 +10,10 @@ const props = withDefaults(defineProps<{
   getRowId?: (row: T) => string | number
   rowLabel?: (row: T) => string
   // When given, the whole row navigates there on click - the row itself is the action, so it's
-  // meant for tables with no `actions` slot (e.g. statistics/TypesPage.vue).
-  rowLink?: (row: T) => string
+  // meant for tables with no `actions` slot (e.g. every statistics/* page). A row the function
+  // returns no link for (e.g. a release with no linked artist) stays visually plain and inert -
+  // see rowIsLinked below.
+  rowLink?: (row: T) => string | null | undefined
   selectable?: boolean
   loading?: boolean
   loadingRows?: number
@@ -66,8 +68,11 @@ const toggleRow = (id: string | number) => {
 
 const clearSelection = () => emit('update:selected', new Set())
 
+const rowIsLinked = (row: T) => !!props.rowLink?.(row)
+
 const goToRow = (row: T) => {
-  if (props.rowLink) { navigateTo(props.rowLink(row)) }
+  const link = props.rowLink?.(row)
+  if (link) { navigateTo(link) }
 }
 
 const hasActionsSlot = computed(() => !!slots.actions)
@@ -128,7 +133,7 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
       </SlimTableHeader>
       <SlimTableBody>
         <template v-if="loading">
-          <tr v-for="i in loadingRows" :key="i" class="border-b border-stone-100/6 last:border-b-0">
+          <tr v-for="i in loadingRows" :key="i" class="border-b border-stone-100/10 last:border-b-0">
             <td :colspan="columnCount" :class="data.td">
               <UiSkeleton w="w-full max-w-xs" />
             </td>
@@ -144,8 +149,9 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
             v-for="row in rows"
             :key="rowId(row)"
             :active="selectedIds.has(rowId(row))"
-            :tabindex="rowLink ? 0 : undefined"
-            :role="rowLink ? 'link' : undefined"
+            :muted="!!rowLink && !rowIsLinked(row)"
+            :tabindex="rowIsLinked(row) ? 0 : undefined"
+            :role="rowIsLinked(row) ? 'link' : undefined"
             @click="goToRow(row)"
             @keydown.enter="goToRow(row)"
           >

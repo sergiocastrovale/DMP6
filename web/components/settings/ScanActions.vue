@@ -52,7 +52,7 @@ const visibleActions = computed(() => visibleScanActions(isAdmin.value))
       v-for="scan in visibleActions"
       :key="scan.id"
       :disabled="terminal.isRunning || disabled"
-      class="flex items-center gap-3 rounded-xl border border-stone-100/6 bg-stone-900 p-4 text-left transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
+      class="flex items-center gap-3 rounded-xl border border-stone-100/10 bg-stone-900 p-4 text-left transition-colors duration-150 hover:border-stone-100/10 hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
       @click="globalActions[scan.id]!()"
     >
       <Loader2 v-if="terminal.isRunning" :size="20" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 animate-spin text-amber-400" />

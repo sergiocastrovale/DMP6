@@ -221,7 +221,7 @@ async function undoSelected() {
         </SlimTableHeader>
         <SlimTableBody>
           <template v-if="issuesStore.historyLoading[activeTab] && groups.length === 0">
-            <tr v-for="n in 5" :key="n" class="border-b border-stone-100/6 last:border-b-0">
+            <tr v-for="n in 5" :key="n" class="border-b border-stone-100/10 last:border-b-0">
               <td :class="data.td"><UiSkeleton w="size-4" h="" /></td>
               <td v-for="c in 4" :key="c" :class="data.td"><UiSkeleton w="w-32" /></td>
             </tr>
@@ -285,7 +285,7 @@ async function undoSelected() {
 
       <div
         v-if="(issuesStore.historyTotal[activeTab] ?? 0) > 50"
-        class="flex items-center justify-between border-t border-stone-100/6 px-4 py-2.5 text-sm text-stone-100/55"
+        class="flex items-center justify-between border-t border-stone-100/10 px-4 py-2.5 text-sm text-stone-100/55"
       >
         <span class="tabular-nums">{{ issuesStore.historyTotal[activeTab] }} total</span>
         <div class="flex items-center gap-2">
@@ -312,7 +312,7 @@ async function undoSelected() {
           <div
             v-for="item in dialogGroup.items"
             :key="item.id"
-            class="flex items-center gap-3 border-b border-stone-100/6 px-1 py-2 last:border-0"
+            class="flex items-center gap-3 border-b border-stone-100/10 px-1 py-2 last:border-0"
             :class="selected.has(item.id) ? 'bg-amber-400/10' : ''"
             @click.stop="captureFileClick"
           >

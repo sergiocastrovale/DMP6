@@ -35,7 +35,7 @@ const selectCompleteness = (range: typeof completenessRanges[number]) => {
             tabindex="-1"
             class="relative flex h-[90vh] max-h-[90vh] w-[90vw] flex-col rounded-xl border border-stone-100/10 bg-stone-900 shadow-xl outline-none lg:fixed lg:inset-y-0 lg:right-0 lg:h-full lg:max-h-none lg:w-[420px] lg:rounded-none lg:border-y-0 lg:border-r-0 lg:border-l"
           >
-            <div class="flex items-center justify-between gap-3 border-b border-stone-100/6 px-5 py-4">
+            <div class="flex items-center justify-between gap-3 border-b border-stone-100/10 px-5 py-4">
               <div class="flex items-center gap-2">
                 <h2 class="text-xl font-semibold text-stone-200">Filters</h2>
                 <UiSpinner v-if="store.loading" :size="14" />

@@ -158,7 +158,7 @@ const formatFileSize = (bytes: number) => {
     <SlimTableBody>
       <template v-for="group in trackGroups" :key="group.discNumber ?? 'all'">
         <tr v-if="group.discNumber !== null">
-          <td :colspan="columns.length" class="pt-3 pb-1 pl-4 text-2xs font-semibold uppercase tracking-wide text-stone-100/40">Disc {{ group.discNumber }}</td>
+          <td :colspan="columns.length" class="pt-3 pb-1 pl-4 text-xs font-semibold uppercase tracking-wide text-stone-100/40">Disc {{ group.discNumber }}</td>
         </tr>
         <SlimTableRow
           v-for="track in group.tracks"

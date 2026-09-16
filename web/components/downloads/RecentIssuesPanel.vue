@@ -146,7 +146,7 @@ defineExpose({ fetchEvents })
         />
       </div>
     </div>
-    <ul v-if="open" class="divide-y divide-stone-100/6 border-t border-stone-100/6">
+    <ul v-if="open" class="divide-y divide-stone-100/10 border-t border-stone-100/6">
       <li v-for="ev in events" :key="ev.id" class="flex items-start gap-2.5 px-4 py-2.5 text-base">
         <component
           :is="ev.level === 'error' ? CircleAlert : AlertTriangle"

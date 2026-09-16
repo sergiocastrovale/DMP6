@@ -108,7 +108,7 @@ describe('AudioPlayer.vue', () => {
     expect(shuffleBtn.classes()).toContain('border-amber-400/45')
     const prevBtn = wrapper.find('[aria-label="Previous track"]')
     expect(prevBtn.classes()).toContain('rounded-full')
-    expect(prevBtn.classes()).toContain('border-stone-100/10')
+    expect(prevBtn.classes()).toContain('border-stone-100/10 ')
   })
 
   it('renders a volume control wired to the player store', async () => {

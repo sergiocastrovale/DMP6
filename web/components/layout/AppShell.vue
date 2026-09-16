@@ -6,7 +6,7 @@ const { collapsed } = useSidebar()
 const { visible: chromeVisible, topbar: topbarVisible, player: playerVisible } = useChrome()
 
 const gridCols = computed(() =>
-  collapsed.value ? 'grid-cols-1 lg:grid-cols-[64px_1fr]' : 'grid-cols-1 lg:grid-cols-[240px_1fr]',
+  collapsed.value ? 'grid-cols-1 lg:grid-cols-[64px_1fr]' : 'grid-cols-1 lg:grid-cols-[210px_1fr]',
 )
 
 // Global space-to-play/pause and left/right-to-seek, TV-remote style.
@@ -20,8 +20,6 @@ const isTypingTarget = (target: EventTarget | null): boolean => {
   return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
 }
 
-// A focused button/link already treats Space as "activate me" - letting it through too would
-// both click the control and toggle playback.
 const isActivatableTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
     return false
@@ -112,7 +110,7 @@ onUnmounted(() => document.removeEventListener('keydown', onGlobalKeydown))
         <main
           id="main-content"
           class="overflow-y-auto flex-1"
-          :class="chromeVisible ? 'md:p-6 lg:px-10 xl:px-12' : 'flex items-center justify-center'"
+          :class="chromeVisible ? 'lg:px-8' : 'flex items-center justify-center'"
         >
           <slot />
         </main>

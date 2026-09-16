@@ -35,7 +35,7 @@ const confirmFetch = () => {
     <div v-else class="absolute inset-0 bg-stone-800" />
     <div class="absolute inset-0 bg-black/88" />
   </div>
-  <div v-else class="group/photo relative size-28 shrink-0 overflow-hidden rounded-xl border border-stone-100/6 bg-stone-800 sm:size-36">
+  <div v-else class="group/photo relative size-28 shrink-0 overflow-hidden rounded-xl border border-stone-100/10 bg-stone-800 sm:size-36">
     <img
       v-if="image"
       :src="image"

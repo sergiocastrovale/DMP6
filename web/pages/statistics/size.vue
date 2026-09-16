@@ -7,7 +7,7 @@ useTitle('Statistics', 'Library Size')
 
 const columns: DataTableColumn[] = [
   { key: 'name', label: 'Artist', sortable: true },
-  { key: 'totalSize', label: 'Size', sortable: true, align: 'right' },
+  { key: 'totalSize', label: 'Size', sortable: true, align: 'center' },
 ]
 </script>
 

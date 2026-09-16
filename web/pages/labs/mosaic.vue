@@ -136,7 +136,7 @@ onMounted(async () => {
         <UiCard padding="sm" title="Mosaic History">
           <UiEmptyState v-if="mosaic.mosaics.length === 0" message="No mosaics generated yet." />
 
-          <div v-else class="divide-y divide-stone-100/6 rounded-lg border border-stone-100/6">
+          <div v-else class="divide-y divide-stone-100/10 rounded-lg border border-stone-100/6">
             <div
               v-for="item in mosaic.mosaics"
               :key="item.filename"

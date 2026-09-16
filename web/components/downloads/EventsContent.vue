@@ -138,7 +138,7 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
       :hint="sub === 'flagged' ? 'The monitor loop logs warnings and errors here as they happen.' : 'Clearing a flagged event moves it here.'"
     />
 
-    <div v-else class="overflow-hidden rounded-xl border border-stone-100/6 bg-stone-900">
+    <div v-else class="overflow-hidden rounded-xl border border-stone-100/10 bg-stone-900">
       <table class="w-full text-base">
         <SlimTableHeader>
           <th :class="cx(data.th, 'w-28 text-left')">Level</th>
@@ -147,7 +147,7 @@ const levelTone = (level: string) => (level === 'error' ? 'danger' : 'warning')
           <th v-if="canEdit && sub === 'archived'" :class="cx(data.th, 'w-24 text-right')">Actions</th>
         </SlimTableHeader>
         <SlimTableBody>
-        <tr v-for="ev in visible" :key="ev.id" class="border-b border-stone-100/6 last:border-b-0">
+        <tr v-for="ev in visible" :key="ev.id" class="border-b border-stone-100/10 last:border-b-0">
           <td :class="data.td">
             <span :class="cx('inline-flex items-center gap-1.5 whitespace-nowrap', toneText[levelTone(ev.level)])">
               <component :is="ev.level === 'error' ? CircleAlert : AlertTriangle" :size="13" />

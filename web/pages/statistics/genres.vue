@@ -6,7 +6,7 @@ useTitle('Statistics', 'Genres')
 
 const columns: DataTableColumn[] = [
   { key: 'name', label: 'Genre', sortable: true },
-  { key: 'artistCount', label: 'Artists', sortable: true, align: 'right' },
+  { key: 'artistCount', label: 'Artists', sortable: true, align: 'center' },
 ]
 </script>
 

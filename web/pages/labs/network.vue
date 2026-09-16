@@ -349,7 +349,7 @@ onUnmounted(() => {
       <div class="relative lg:col-span-4">
         <div
           v-if="loading"
-          class="flex h-full min-h-[600px] items-center justify-center rounded-xl border border-stone-100/6 bg-stone-900"
+          class="flex h-full min-h-[600px] items-center justify-center rounded-xl border border-stone-100/10 bg-stone-900"
         >
           <div class="flex items-center gap-2 text-base text-stone-100/60">
             <Loader2 :size="16" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin text-amber-400" />
@@ -360,13 +360,13 @@ onUnmounted(() => {
         <UiEmptyState
           v-else-if="!graphData || graphData.nodes.length === 0"
           :message="selectedArtist ? 'No collaborations found for this artist.' : 'No connections found. Try lowering the threshold.'"
-          class="flex h-full min-h-[600px] flex-col items-center justify-center rounded-xl border border-stone-100/6 bg-stone-900"
+          class="flex h-full min-h-[600px] flex-col items-center justify-center rounded-xl border border-stone-100/10 bg-stone-900"
         />
 
         <div
           v-else
           ref="svgContainer"
-          class="h-full min-h-[600px] overflow-hidden rounded-xl border border-stone-100/6 bg-stone-900"
+          class="h-full min-h-[600px] overflow-hidden rounded-xl border border-stone-100/10 bg-stone-900"
         />
       </div>
     </div>

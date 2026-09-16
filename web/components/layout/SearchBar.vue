@@ -151,7 +151,7 @@ onBeforeUnmount(() => {
       </button>
       <div
         v-else
-        class="pointer-events-none absolute right-3.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-sm border border-stone-100/10 px-1.5 py-0.5 font-mono text-2xs text-stone-100/50 sm:right-2.5 sm:flex"
+        class="pointer-events-none absolute right-3.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-sm border border-stone-100/10 px-1.5 py-0.5 font-mono text-xs text-stone-100/50 sm:right-2.5 sm:flex"
       >
         ⌘ K
       </div>

@@ -127,7 +127,7 @@ onUnmounted(() => {
 
       <div
         v-if="terminal.isRunning && terminal.lines.length > 0"
-        class="mt-4 max-h-24 overflow-hidden rounded-md border border-stone-100/6 bg-stone-950 p-3 font-mono text-xs leading-5 text-stone-100/60 cursor-pointer"
+        class="mt-4 max-h-24 overflow-hidden rounded-md border border-stone-100/10 bg-stone-950 p-3 font-mono text-xs leading-5 text-stone-100/60 cursor-pointer"
         @click="terminal.expand()"
       >
         <div v-for="(line, i) in terminal.lines.slice(-3)" :key="i" class="truncate">

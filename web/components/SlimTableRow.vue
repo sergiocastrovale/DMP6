@@ -25,7 +25,7 @@ watch(() => props.highlight, (val) => {
   <tr
     ref="rowRef"
     :class="cx(
-      'group border-b border-stone-100/6 last:border-b-0 transition-colors duration-150',
+      'group border-b border-stone-100/10 last:border-b-0 transition-colors duration-150',
       active && 'bg-amber-400/10',
       muted ? 'opacity-50 cursor-default' : 'cursor-pointer hover:bg-stone-800',
       flashing && 'animate-highlight-flash',

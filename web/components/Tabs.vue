@@ -48,7 +48,7 @@ const onKeydown = (event: KeyboardEvent) => {
 }
 
 const countPillClass = (tab: TabItem) => cx(
-  'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-2xs font-semibold',
+  'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-semibold',
   tab.countHighlight && (tab.count ?? 0) > 0 ? 'bg-amber-400/20 text-amber-400' : 'bg-stone-800 text-stone-100/55',
 )
 

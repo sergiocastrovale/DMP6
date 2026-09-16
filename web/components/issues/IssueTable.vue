@@ -115,7 +115,7 @@ function commitEdit(item: any, col: IssueColumn) {
       </SlimTableHeader>
       <SlimTableBody>
         <template v-if="loading && items.length === 0">
-          <tr v-for="n in 5" :key="n" class="border-b border-stone-100/6 last:border-b-0">
+          <tr v-for="n in 5" :key="n" class="border-b border-stone-100/10 last:border-b-0">
             <td v-if="type !== 'enrichment'" :class="data.td">
               <UiSkeleton w="size-4" h="" />
             </td>
@@ -174,7 +174,7 @@ function commitEdit(item: any, col: IssueColumn) {
       </SlimTableBody>
     </SlimTable>
 
-    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-stone-100/6 px-4 py-2.5 text-sm text-stone-100/55">
+    <div v-if="total > pageSize" class="flex items-center justify-between border-t border-stone-100/10 px-4 py-2.5 text-sm text-stone-100/55">
       <span class="tabular-nums">{{ total }} total</span>
       <div class="flex items-center gap-2">
         <UiButton

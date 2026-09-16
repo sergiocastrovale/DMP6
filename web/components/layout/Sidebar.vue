@@ -56,7 +56,7 @@ const isActive = (item: NavEntry) => {
 </script>
 
 <template>
-  <aside class="flex h-full flex-col overflow-hidden border-r border-stone-100/6 bg-stone-950 transition-all duration-200">
+  <aside class="flex h-full flex-col overflow-hidden border-r border-stone-100/10 bg-stone-950 transition-all duration-200">
     <div :class="cx('flex items-center gap-2 px-3 py-3 mb-5', collapsed ? 'flex-col' : 'justify-between')">
       <LayoutLogo />
       <UiButton
@@ -83,7 +83,7 @@ const isActive = (item: NavEntry) => {
       />
     </nav>
 
-    <nav class="mb-4 mt-3 flex flex-col gap-0.5 border-t border-stone-100/6 px-2 pt-3" aria-label="System">
+    <nav class="mb-4 mt-3 flex flex-col gap-0.5 border-t border-stone-100/10 px-2 pt-3" aria-label="System">
       <LayoutSidebarItem
         v-for="item in footerItems"
         :key="item.label"

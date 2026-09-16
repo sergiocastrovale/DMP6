@@ -50,7 +50,7 @@ const coverImageUrl = (cover: { image: string | null, imageUrl: string | null })
       <div class="font-display font-semibold text-lg text-stone-100 truncate">
         {{ playlist.name }}
       </div>
-      <div class="font-mono text-2xs uppercase text-stone-100/50 tracking-[0.04em]">
+      <div class="font-mono text-xs uppercase text-stone-100/50 tracking-[0.04em]">
         {{ playlist.trackCount }} {{ playlist.trackCount === 1 ? 'track' : 'tracks' }}
       </div>
     </div>

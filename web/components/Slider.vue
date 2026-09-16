@@ -88,7 +88,7 @@ const onKeydown = (event: KeyboardEvent) => {
   <div>
     <div class="mb-3 flex items-center justify-between gap-3">
       <span class="text-base font-medium text-stone-100">{{ title }}</span>
-      <span class="rounded-full bg-amber-400 px-2.5 py-0.5 font-mono text-2xs font-bold uppercase tracking-wider text-on-accent">
+      <span class="rounded-full bg-amber-400 px-2.5 py-0.5 font-mono text-xs font-bold uppercase tracking-wider text-on-accent">
         {{ currentLabel }}
       </span>
     </div>

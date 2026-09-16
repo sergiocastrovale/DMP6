@@ -7,7 +7,7 @@ useTitle('Statistics', 'Releases Synced')
 const columns: DataTableColumn[] = [
   { key: 'title', label: 'Title', sortable: true },
   { key: 'artistName', label: 'Artist', class: 'hidden md:table-cell' },
-  { key: 'year', label: 'Year', sortable: true, align: 'right' },
+  { key: 'year', label: 'Year', sortable: true, align: 'center' },
 ]
 </script>
 

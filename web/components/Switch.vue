@@ -19,7 +19,7 @@ const props = withDefaults(defineProps<{ label?: string; disabled?: boolean }>()
       :disabled="disabled"
       :class="cx(
         'relative inline-flex h-[19px] w-[34px] shrink-0 rounded-full border transition-colors duration-150',
-        model ? 'bg-amber-400 border-amber-400' : 'bg-stone-700 border-stone-100/10',
+        model ? 'bg-amber-400 border-amber-400' : 'bg-stone-700 border-stone-100/10 ',
         disabled && 'cursor-default',
       )"
       @click="!props.disabled && (model = !model)"

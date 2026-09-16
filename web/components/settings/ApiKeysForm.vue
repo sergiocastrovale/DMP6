@@ -176,7 +176,7 @@ const disconnect = async () => {
         </UiButton>
       </div>
 
-      <div v-else class="flex items-center gap-3 rounded-lg border border-stone-100/6 bg-stone-800/50 px-4 py-3">
+      <div v-else class="flex items-center gap-3 rounded-lg border border-stone-100/10 bg-stone-800/50 px-4 py-3">
         <AlertCircle :size="18" class="text-stone-100/55 shrink-0" />
         <p class="flex-1 text-base text-stone-100/60">Not connected to Last.fm</p>
       </div>

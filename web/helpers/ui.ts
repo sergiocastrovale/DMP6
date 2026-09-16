@@ -10,7 +10,7 @@ export const cx = (...classes: Array<string | false | null | undefined>): string
 
 // The system's icon weight (lucide-vue-next defaults to 2). Pass to every Lucide icon so the
 // whole app reads as one stroke weight instead of whatever each call site happened to leave.
-export const ICON_STROKE_WIDTH = 1.6
+export const ICON_STROKE_WIDTH = 1.7
 
 const BUTTON_BASE = 'inline-flex items-center justify-center gap-2 font-sans whitespace-nowrap cursor-pointer transition-colors duration-150 disabled:opacity-40 disabled:cursor-default'
 
@@ -115,7 +115,7 @@ const TOGGLE: Record<ToggleKey, ToggleSpec> = {
     on: 'bg-stone-700 text-stone-100',
   },
   countPill: {
-    base: 'inline-flex items-center h-[19px] px-2 rounded-full text-2xs font-bold tabular-nums',
+    base: 'inline-flex items-center h-[19px] px-2 rounded-full text-xs font-bold tabular-nums',
     idle: 'bg-stone-800 text-stone-100/55',
     on: 'bg-amber-400/20 text-amber-400',
   },
@@ -189,10 +189,10 @@ export const markerPill: Record<Tone, { rule: string, tab: string }> = {
 }
 
 export const surface = {
-  card: 'rounded-xl border border-stone-100/6 bg-stone-900',
+  card: 'rounded-xl border border-stone-100/10 bg-stone-900',
   cardHead: 'flex items-center justify-between gap-3 px-[18px] py-[14px] border-b border-stone-100/6',
   cardBody: 'p-[18px] flex flex-col gap-4',
-  panel: 'rounded-lg border border-stone-100/6 bg-stone-950',
+  panel: 'rounded-lg border border-stone-100/10 bg-stone-950',
   popover: 'rounded-lg border border-stone-100/10 bg-stone-900 shadow-lg',
   divider: 'border-b border-stone-100/6',
   // The persistent player bar's chrome - gradient wash, blur, groove overlay. Shared by the
@@ -245,13 +245,13 @@ export const form = {
 // Structural/idle/active kept apart for the same reason as BUTTON_VARIANT above: idle and active
 // both set text colour, so active must replace idle rather than sit next to it.
 export const nav = {
-  base: 'relative flex items-center gap-3 rounded-md px-3 py-2.5 text-lg font-normal whitespace-nowrap cursor-pointer transition-colors duration-150',
+  base: 'relative flex items-center gap-2 rounded-md px-2.25 py-2 my-0.25 text-base font-normal whitespace-nowrap cursor-pointer transition-colors duration-150',
   idle: 'text-stone-100/60 hover:bg-stone-800 hover:text-stone-100',
   active: 'bg-amber-400/20 text-amber-400 font-medium',
 }
 
 export const data = {
-  row: 'flex items-center justify-between gap-3.5 w-full px-[18px] py-3 border-b border-stone-100/6 last:border-b-0 text-base',
+  row: 'flex items-center justify-between gap-3.5 w-full px-[18px] py-3 border-b border-stone-100/10 last:border-b-0 text-base',
   rowLink: 'cursor-pointer hover:bg-stone-800',
   // Padding only - SlimTableHeader's <tr> already carries the header font/border/colour, and
   // SlimTableRow's <tr> already carries the body row's border, so a per-cell recipe with either
@@ -260,7 +260,7 @@ export const data = {
   // order, not DOM order, so emitting both is undefined, not "last one wins".
   th: 'px-3 py-2.5',
   td: 'px-3 py-3',
-  tag: 'inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/6 text-xs text-stone-100/60',
+  tag: 'inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/10 text-xs text-stone-100/60',
   badge: 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
 }
 
@@ -279,10 +279,10 @@ export const grid = {
 
 export const tile = {
   root: 'group block min-w-0 text-left',
-  art: 'w-full aspect-square rounded-lg bg-stone-800 border border-stone-100/6 overflow-hidden transition-colors duration-150 group-hover:border-stone-100/10',
+  art: 'w-full aspect-square rounded-lg bg-stone-800 border border-stone-100/10 overflow-hidden transition-colors duration-150 group-hover:border-stone-100/10',
   name: 'mt-2.5 text-lg font-semibold text-stone-100 truncate',
   sub: 'mt-0.5 text-sm text-stone-100/55',
-  meta: 'mt-0.5 text-2xs text-stone-100/50',
+  meta: 'mt-0.5 text-xs text-stone-100/50',
 }
 
 export const typography = {
@@ -292,12 +292,12 @@ export const typography = {
   title: 'text-xl font-semibold tracking-[-0.01em]',
   body: 'text-base text-stone-100/60 leading-[1.55]',
   sub: 'text-sm text-stone-100/55',
-  sectionLabel: 'text-2xs font-bold tracking-[0.1em] uppercase text-stone-100/55',
+  sectionLabel: 'text-xs font-bold tracking-[0.1em] uppercase text-stone-100/55',
   meta: 'font-mono text-xs text-stone-100/55 tabular-nums',
   // Wider-tracked monospace caption that sits *above* a value rather than beside it - the
   // "TOTAL PLAYTIME" rule on Statistics, the "STATUS" lead-in on the artist page. Distinct from
   // sectionLabel (sans, card headers) and from meta (numerals inside a row).
-  eyebrow: 'inline-flex items-center gap-2 font-mono text-2xs tracking-[0.24em] uppercase text-stone-100/55',
+  eyebrow: 'inline-flex items-center gap-2 font-mono text-xs tracking-[0.24em] uppercase text-stone-100/55',
 }
 
 // A pill that carries its colour as a *border + tinted fill* rather than a solid one:

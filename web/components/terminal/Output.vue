@@ -28,7 +28,7 @@ watch(() => terminal.lines.length, () => {
       v-if="terminal.isSidebarVisible"
       class="fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-stone-100/10 bg-stone-950 lg:w-[500px]"
     >
-      <div class="flex items-center justify-between border-b border-stone-100/6 px-4 py-3">
+      <div class="flex items-center justify-between border-b border-stone-100/10 px-4 py-3">
         <span class="text-sm font-medium text-stone-100/60">Terminal</span>
         <div class="flex items-center gap-2">
           <span v-if="terminal.isRunning" class="text-xs text-amber-400">Running...</span>
@@ -51,7 +51,7 @@ watch(() => terminal.lines.length, () => {
 
       <div
         v-if="terminal.currentSession || terminal.isRunning"
-        class="flex items-center gap-2 border-b border-stone-100/6 px-4 py-2"
+        class="flex items-center gap-2 border-b border-stone-100/10 px-4 py-2"
       >
         <TerminalCopySession :session="terminal.currentSession" />
       </div>

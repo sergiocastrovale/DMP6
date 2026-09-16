@@ -7,7 +7,7 @@ useTitle('Statistics', 'Low Bitrate Tracks')
 const columns: DataTableColumn[] = [
   { key: 'title', label: 'Title', sortable: true },
   { key: 'artist', label: 'Artist', sortable: true, class: 'hidden md:table-cell' },
-  { key: 'bitrate', label: 'Bitrate', sortable: true, align: 'right' },
+  { key: 'bitrate', label: 'Bitrate', sortable: true, align: 'center' },
 ]
 </script>
 

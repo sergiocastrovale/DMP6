@@ -4,7 +4,7 @@ import { cx, typography } from '~/helpers/ui'
 
 <template>
   <thead>
-    <tr :class="cx('border-b border-stone-100/6 bg-stone-800/50 h-[38px]', typography.sectionLabel)">
+    <tr :class="cx('border-b border-stone-100/10 bg-stone-800/50 h-[38px]', typography.sectionLabel)">
       <slot />
     </tr>
   </thead>

@@ -8,8 +8,8 @@ useTitle('Statistics', 'Single-Release Artists')
 const columns: DataTableColumn[] = [
   { key: 'name', label: 'Artist', sortable: true },
   { key: 'releaseTitle', label: 'Release', class: 'hidden md:table-cell' },
-  { key: 'trackCount', label: 'Tracks', sortable: true, align: 'right' },
-  { key: 'totalSize', label: 'Size', sortable: true, align: 'right' },
+  { key: 'trackCount', label: 'Tracks', sortable: true, align: 'center' },
+  { key: 'totalSize', label: 'Size', sortable: true, align: 'center' },
 ]
 </script>
 
@@ -20,17 +20,15 @@ const columns: DataTableColumn[] = [
     label="artists"
     default-sort="totalSize"
     :columns="columns"
+    :row-link="row => `/artist/${row.slug}`"
   >
     <template #cell-name="{ row }">
-      <NuxtLink :to="`/artist/${row.slug}`" class="text-stone-100 hover:text-amber-400 transition-colors duration-150">
+      <NuxtLink :to="`/artist/${row.slug}`" class="text-stone-100 hover:text-amber-400 transition-colors duration-150" @click.stop>
         {{ row.name }}
       </NuxtLink>
     </template>
     <template #cell-totalSize="{ value }">
       {{ formatFileSize((value as number) ?? 0) }}
-    </template>
-    <template #actions="{ row }">
-      <StatisticsRowActions :artist-slug="row.slug" :label="row.name" />
     </template>
   </StatisticsStatPage>
 </template>

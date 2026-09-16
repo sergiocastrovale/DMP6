@@ -6,7 +6,7 @@ defineProps<{
 </script>
 
 <template>
-  <NuxtLink v-if="artistSlug" :to="`/artist/${artistSlug}`" class="text-stone-100 hover:text-amber-400 transition-colors duration-150">
+  <NuxtLink v-if="artistSlug" :to="`/artist/${artistSlug}`" class="text-stone-100 hover:text-amber-400 transition-colors duration-150" @click.stop>
     {{ title }}
   </NuxtLink>
   <span v-else class="text-stone-100">{{ title }}</span>

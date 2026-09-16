@@ -124,13 +124,13 @@ onUnmounted(() => {
 
           <DownloadsRecentIssuesPanel ref="issuesPanel" />
 
-          <p v-if="actionMsg" class="rounded-lg border border-stone-100/6 bg-stone-900 px-4 py-2 text-base text-stone-100/60">
+          <p v-if="actionMsg" class="rounded-lg border border-stone-100/10 bg-stone-900 px-4 py-2 text-base text-stone-100/60">
             {{ actionMsg }}
           </p>
 
-          <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3" />
+          <DownloadsDownloadProgress v-if="downloading.length" :items="downloadProgressItems" class="rounded-xl border border-stone-100/10 bg-stone-900 px-4 py-3" />
 
-          <DownloadsDownloadProgress v-if="mergeBatchTotal > 0" :label="mergeLabel" :percent="mergePercent" class="rounded-xl border border-stone-100/6 bg-stone-900 px-4 py-3" />
+          <DownloadsDownloadProgress v-if="mergeBatchTotal > 0" :label="mergeLabel" :percent="mergePercent" class="rounded-xl border border-stone-100/10 bg-stone-900 px-4 py-3" />
         </div>
       </div>
     </template>

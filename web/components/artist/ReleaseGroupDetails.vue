@@ -123,9 +123,9 @@ const alsoPartOfLabel = computed(() =>
           <span class="truncate text-lg font-medium" :class="release.status === 'MISSING' ? 'text-stone-100/55' : 'text-stone-100'">
             {{ release.title }}
           </span>
-          <span v-if="subtitle" class="shrink-0 rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60">{{ subtitle }}</span>
-          <span v-if="discLabel" class="shrink-0 text-2xs text-stone-100/40">{{ discLabel }}</span>
-          <span v-if="isBoxSet" :class="cx('shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium', toneBg.info)">Box Set</span>
+          <span v-if="subtitle" class="shrink-0 rounded bg-stone-100/8 px-1.5 py-0.5 text-xs font-medium text-stone-100/60">{{ subtitle }}</span>
+          <span v-if="discLabel" class="shrink-0 text-xs text-stone-100/40">{{ discLabel }}</span>
+          <span v-if="isBoxSet" :class="cx('shrink-0 rounded px-1.5 py-0.5 text-xs font-medium', toneBg.info)">Box Set</span>
           <ToggleFavorite
             v-if="release.localReleaseId || release.bundleParentReleaseId"
             class="hidden md:inline-flex"
@@ -137,7 +137,7 @@ const alsoPartOfLabel = computed(() =>
           <button
             v-if="containmentNote && release.bundleParentReleaseId"
             type="button"
-            class="flex shrink-0 items-center gap-1 truncate rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60 transition-colors duration-150 hover:bg-stone-100/15 hover:text-stone-100"
+            class="flex shrink-0 items-center gap-1 truncate rounded bg-stone-100/8 px-1.5 py-0.5 text-xs font-medium text-stone-100/60 transition-colors duration-150 hover:bg-stone-100/15 hover:text-stone-100"
             :title="`${containmentNote} - this release itself is still missing`"
             @click.stop="emit('goToBundle')"
           >
@@ -146,7 +146,7 @@ const alsoPartOfLabel = computed(() =>
           </button>
           <span
             v-else-if="containmentNote"
-            class="flex shrink-0 items-center gap-1 truncate rounded bg-stone-100/8 px-1.5 py-0.5 text-2xs font-medium text-stone-100/60"
+            class="flex shrink-0 items-center gap-1 truncate rounded bg-stone-100/8 px-1.5 py-0.5 text-xs font-medium text-stone-100/60"
             :title="`${containmentNote} - this release itself is still missing`"
           >
             <Layers :size="10" :stroke-width="ICON_STROKE_WIDTH" />

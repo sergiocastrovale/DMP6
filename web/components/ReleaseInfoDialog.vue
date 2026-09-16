@@ -166,7 +166,7 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
           </div>
           <div v-if="release.totalPlayCount">
             <dt :class="dtClass">Plays</dt>
-            <dd class="text-2xs text-stone-100/50">{{ release.totalPlayCount.toLocaleString() }} times</dd>
+            <dd class="text-xs text-stone-100/50">{{ release.totalPlayCount.toLocaleString() }} times</dd>
           </div>
           <div v-if="release.hasLocal">
             <dt :class="dtClass">Release ID</dt>

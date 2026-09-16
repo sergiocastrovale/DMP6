@@ -221,7 +221,7 @@ onUnmounted(() => {
                 <span
                   v-for="g in d.topGenres.slice(0, 3)"
                   :key="g.name"
-                  class="rounded-full bg-stone-800 px-2 py-0.5 text-2xs text-stone-100/60"
+                  class="rounded-full bg-stone-800 px-2 py-0.5 text-xs text-stone-100/60"
                 >
                   {{ g.name }}
                 </span>
@@ -232,7 +232,7 @@ onUnmounted(() => {
       </div>
 
       <div class="lg:col-span-3">
-        <div class="sticky top-20 flex h-[600px] flex-col rounded-xl border border-stone-100/6 bg-stone-900 p-6">
+        <div class="sticky top-20 flex h-[600px] flex-col rounded-xl border border-stone-100/10 bg-stone-900 p-6">
           <UiEmptyState v-if="selectedDecades.length === 0" class="m-auto" message="Select decades to compare" />
           <canvas v-show="selectedDecades.length > 0" ref="radarCanvas" class="min-h-0 w-full flex-1" />
           <div v-if="selectedSeries.length > 0" class="mt-4 flex flex-wrap items-center justify-center gap-4">

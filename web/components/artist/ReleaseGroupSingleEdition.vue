@@ -33,7 +33,7 @@ const connectedArtistNames = computed(() => {
 <template>
   <div
     :class="cx(
-      'rounded-lg border border-stone-100/6 bg-stone-900 overflow-hidden',
+      'rounded-lg border border-stone-100/10 bg-stone-900 overflow-hidden',
       group.primary.status === 'MISSING' && 'bg-danger/5',
     )"
   >

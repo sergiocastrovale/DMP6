@@ -32,7 +32,7 @@ const PLAYTIME_TWINKLES = [
     />
     <div class="relative flex items-center justify-center gap-3">
       <span class="h-px w-10 bg-amber-400/30" />
-      <span class="text-2xs font-medium uppercase tracking-[0.25em] text-amber-400/70">Total Playtime</span>
+      <span class="text-xs font-medium uppercase tracking-[0.25em] text-amber-400/70">Total Playtime</span>
       <span class="h-px w-10 bg-amber-400/30" />
     </div>
     <p

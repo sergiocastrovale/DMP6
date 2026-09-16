@@ -85,7 +85,7 @@ const viewAllClass = (index: number) => cx(
     role="listbox"
     :class="cx(surface.popover, 'absolute left-0 right-0 top-full z-50 mt-1 max-h-[80vh] overflow-y-auto')"
   >
-    <div v-if="results.artists.length > 0" class="border-b border-stone-100/6 p-2">
+    <div v-if="results.artists.length > 0" class="border-b border-stone-100/10 p-2">
       <div :class="cx('px-2 py-1', typography.sectionLabel)">
         Artists
       </div>
@@ -134,7 +134,7 @@ const viewAllClass = (index: number) => cx(
       </NuxtLink>
     </div>
 
-    <div v-if="results.releases.length > 0" class="border-b border-stone-100/6 p-2">
+    <div v-if="results.releases.length > 0" class="border-b border-stone-100/10 p-2">
       <div :class="cx('px-2 py-1', typography.sectionLabel)">
         Releases
       </div>

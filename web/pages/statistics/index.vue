@@ -119,7 +119,7 @@ onMounted(() => {
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <section v-for="section in sections" :key="section.title" :class="surface.card">
           <h2
-            :class="[surface.cardHead, section.warn ? toneText.warning : 'text-stone-100/55', 'text-2xs font-bold uppercase tracking-[0.1em]']"
+            :class="[surface.cardHead, section.warn ? toneText.warning : 'text-stone-100/55', 'text-xs font-bold uppercase tracking-[0.1em]']"
           >
             <component :is="section.icon" :class="['size-4', section.warn ? toneText.warning : 'text-amber-400']" />
             {{ section.title }}
@@ -130,7 +130,7 @@ onMounted(() => {
               v-for="item in section.items"
               :key="item.label"
               :to="item.link"
-              class="flex items-baseline justify-between px-[18px] py-3 border-b border-stone-100/6 last:border-b-0"
+              class="flex items-baseline justify-between px-[18px] py-3 border-b border-stone-100/10 last:border-b-0"
               :class="item.link ? 'transition-colors duration-150 hover:bg-stone-800/50' : ''"
             >
               <span class="flex items-center gap-1.5 text-base text-stone-100/60">

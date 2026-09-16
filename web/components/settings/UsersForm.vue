@@ -98,7 +98,7 @@ const roleTone = (role: string): Tone => role === 'ADMIN' ? 'accent' : role === 
         </UiButton>
       </template>
 
-      <div v-if="showCreate" class="flex flex-col gap-3 rounded-lg border border-stone-100/6 bg-stone-950 p-4">
+      <div v-if="showCreate" class="flex flex-col gap-3 rounded-lg border border-stone-100/10 bg-stone-950 p-4">
         <div class="grid grid-cols-2 gap-3">
           <UiTextField v-model="newUser.username" label="Username" placeholder="Username" />
           <UiTextField v-model="newUser.email" label="Email" type="email" placeholder="Email" />

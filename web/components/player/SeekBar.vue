@@ -91,7 +91,7 @@ const onPointerUp = () => {
 
 <template>
   <div :class="cx('flex w-full items-center gap-2')">
-    <span v-if="!slim" :class="cx('shrink-0 text-left text-stone-100/55 tabular-nums', large ? 'w-10 text-base' : 'w-8 text-2xs')">{{ formatDuration(displayTime) }}</span>
+    <span v-if="!slim" :class="cx('shrink-0 text-left text-stone-100/55 tabular-nums', large ? 'w-10 text-base' : 'w-8 text-xs')">{{ formatDuration(displayTime) }}</span>
 
     <Popover v-if="hoverPopover" trigger="hover" class="flex-1">
       <template #trigger>
@@ -116,7 +116,7 @@ const onPointerUp = () => {
       <template #content>
         <div
           :class="cx(
-            'absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-stone-100/10 bg-stone-900 px-2 py-1 text-2xs tabular-nums text-stone-100 shadow-lg',
+            'absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-stone-100/10 bg-stone-900 px-2 py-1 text-xs tabular-nums text-stone-100 shadow-lg',
             popoverPlacement === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2',
           )"
         >
@@ -148,6 +148,6 @@ const onPointerUp = () => {
       <div class="h-full bg-gradient-to-b from-amber-600 to-amber-400" :class="slim ? 'rounded-r-full' : 'rounded-full'" :style="{ width: `${progressPct}%` }" />
     </div>
 
-    <span v-if="!slim" :class="cx('shrink-0 text-right text-stone-100/55 tabular-nums', large ? 'w-12 text-base' : 'w-10 text-2xs')">{{ rightLabel }}</span>
+    <span v-if="!slim" :class="cx('shrink-0 text-right text-stone-100/55 tabular-nums', large ? 'w-12 text-base' : 'w-10 text-xs')">{{ rightLabel }}</span>
   </div>
 </template>

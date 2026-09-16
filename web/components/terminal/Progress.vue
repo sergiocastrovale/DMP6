@@ -68,7 +68,7 @@ const recentLines = computed(() => {
           
           <span class="truncate text-xs font-medium text-stone-100/60">{{ label }}</span>
           
-          <span v-if="determinate" class="mr-2 shrink-0 text-2xs text-stone-100/55 tabular-nums">
+          <span v-if="determinate" class="mr-2 shrink-0 text-xs text-stone-100/55 tabular-nums">
             ({{ progress!.current }}/{{ progress!.total }})
           </span>
         </div>
@@ -88,7 +88,7 @@ const recentLines = computed(() => {
         </div>
       </div>
 
-      <div v-if="recentLines.length" class="mt-2 space-y-0.5 font-mono text-2xs leading-4 text-stone-100/55">
+      <div v-if="recentLines.length" class="mt-2 space-y-0.5 font-mono text-xs leading-4 text-stone-100/55">
         <p v-for="(line, i) in recentLines" :key="i" class="truncate">{{ line }}</p>
       </div>
 

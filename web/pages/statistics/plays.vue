@@ -7,7 +7,7 @@ useTitle('Statistics', 'Played Tracks')
 const columns: DataTableColumn[] = [
   { key: 'title', label: 'Title', sortable: true },
   { key: 'artist', label: 'Artist', sortable: true, class: 'hidden md:table-cell' },
-  { key: 'playCount', label: 'Plays', sortable: true, align: 'right' },
+  { key: 'playCount', label: 'Plays', sortable: true, align: 'center' },
 ]
 </script>
 

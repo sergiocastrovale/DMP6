@@ -12,7 +12,7 @@ const props = withDefaults(defineProps<{
   defaultSort?: string
   defaultOrder?: SortDirection
   tabs?: TabItem[]
-  rowLink?: (row: Record<string, any>) => string
+  rowLink?: (row: Record<string, any>) => string | null | undefined
   // Fixed query params sent alongside page/search/sort on every fetch - for an api-type that needs
   // more than the generic list shape (types/[bucket].vue's "this artist's releases in this bucket").
   extraQuery?: Record<string, string | number>
