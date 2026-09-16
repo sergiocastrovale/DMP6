@@ -1,6 +1,6 @@
 import type { ReleaseStatus } from '~/types/release'
 import type { Tone } from '~/types/ui'
-import type { ReleaseTypeBucketId } from '~/types/stats'
+import type { ReleaseTypeBucketId, PlayPeriod } from '~/types/stats'
 
 // Accent themes (Settings → Themes). Each id matches an `html[data-theme=…]` block in
 // assets/css/themes.css, which redefines the amber ramp - `amber` is the default and needs no
@@ -348,4 +348,15 @@ export const releaseTypeBuckets: { id: ReleaseTypeBucketId, label: string, short
   { id: 'compilation', label: 'Compilations', shortLabel: 'Compilations' },
   { id: 'box-set', label: 'Box sets', shortLabel: 'Box' },
   { id: 'unknown', label: 'Unknown', shortLabel: 'Unknown' },
+]
+
+// Statistics → Recent Plays panel (below Total Playtime, pages/statistics/index.vue) and its
+// per-period detail subpage (pages/statistics/recent-plays/[period].vue). "Last week" is a trailing
+// 7-day window, not the current calendar week - the other three are calendar-boundary, today/month/
+// year-to-date (server/utils/userPlays.ts's periodStart is the one place that math lives).
+export const playPeriods: { id: PlayPeriod, label: string }[] = [
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'Last week' },
+  { id: 'month', label: 'This month' },
+  { id: 'year', label: 'This year' },
 ]

@@ -100,6 +100,7 @@ onMounted(() => {
 
     <template v-else-if="stats">
       <StatisticsPlaytime :stats="stats" />
+      <StatisticsRecentPlays :stats="stats" />
 
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <NuxtLink

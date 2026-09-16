@@ -1,13 +1,16 @@
 import { prisma } from '~/server/utils/prisma'
 import { parsePagination } from '~/server/utils/pagination'
 import { releaseTypeBucketSql } from '~/server/utils/releaseTypeBuckets'
-import { releaseTypeBuckets } from '~/helpers/constants'
+import { releaseTypeBuckets, playPeriods } from '~/helpers/constants'
 import { currentUserId } from '~/server/utils/libraryOwnership'
+import { periodStart } from '~/server/utils/userPlays'
+import type { PlayPeriod } from '~/types/stats'
 
 const RELEASE_TYPE_BUCKET_ID_SET = new Set<string>(releaseTypeBuckets.map(b => b.id))
+const PLAY_PERIOD_ID_SET = new Set<string>(playPeriods.map(p => p.id))
 
 const VALID_TYPES = new Set([
-  'artists', 'releases', 'tracks', 'genres', 'plays', 'size',
+  'artists', 'releases', 'tracks', 'genres', 'plays', 'size', 'recent-plays',
   'artists-synced', 'releases-synced',
   'artists-with-art', 'releases-with-art',
   'unmatched', 'incomplete', 'bitrate', 'single-release', 'shortest', 'missing-art', 'types', 'type-detail',
@@ -49,6 +52,13 @@ export default defineEventHandler(async (event) => {
       return queryGenres(search, skip, pageSize, page, sort, order)
     case 'plays':
       return queryPlays(currentUserId(event), search, skip, pageSize, page, sort, order)
+    case 'recent-plays': {
+      const period = query.period as string
+      if (!PLAY_PERIOD_ID_SET.has(period)) {
+        throw createError({ statusCode: 400, statusMessage: 'Invalid period' })
+      }
+      return queryRecentPlays(currentUserId(event), period as PlayPeriod, search, skip, pageSize, page, sort, order)
+    }
     case 'size':
       return querySize(search, skip, pageSize, page, sort, order)
     case 'releases-synced':
@@ -230,6 +240,44 @@ async function queryPlays(userId: number, search: string, skip: number, pageSize
       title: p.track.title,
       artistName: p.track.artist,
       playCount: p.playCount,
+    })),
+    total,
+    page,
+    pageSize,
+    hasMore: skip + pageSize < total,
+  }
+}
+
+// Backs the Recent Plays panel's detail subpages (pages/statistics/recent-plays/[period].vue) - the
+// individual PlayEvent rows within the period, not the per-track aggregate `queryPlays` above uses.
+async function queryRecentPlays(userId: number, period: PlayPeriod, search: string, skip: number, pageSize: number, page: number, sort: string, order: 'asc' | 'desc') {
+  const where: any = { userId, counted: true, startedAt: { gte: periodStart(period) } }
+  if (search) { where.track = { title: { contains: search, mode: 'insensitive' } } }
+
+  const sortMap: Record<string, any> = {
+    title: { track: { title: order } },
+    artist: { track: { artist: order } },
+    playedAt: { startedAt: order },
+  }
+  const orderBy = sortMap[sort] ?? { startedAt: 'desc' }
+
+  const [items, total] = await Promise.all([
+    prisma.playEvent.findMany({
+      where,
+      select: { id: true, startedAt: true, track: { select: { id: true, title: true, artist: true } } },
+      orderBy,
+      skip,
+      take: pageSize,
+    }),
+    prisma.playEvent.count({ where }),
+  ])
+
+  return {
+    items: items.map(p => ({
+      id: p.id,
+      title: p.track.title,
+      artistName: p.track.artist,
+      playedAt: p.startedAt,
     })),
     total,
     page,

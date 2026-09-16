@@ -3,6 +3,7 @@
 // never stored denormalized; they're computed from this table at read time, here.
 
 import { prisma } from './prisma'
+import type { PlayPeriod } from '~/types/stats'
 
 export const recordPlay = async (userId: number, trackId: string, playedAt: Date) => {
   await prisma.localReleaseTrackPlay.upsert({
@@ -81,6 +82,33 @@ export const userTotalPlays = async (userId: number): Promise<number> => {
     _sum: { playCount: true },
   })
   return result._sum.playCount ?? 0
+}
+
+// Statistics → Recent Plays panel (helpers/constants.ts's playPeriods) and its detail subpage
+// (pages/statistics/recent-plays/[period].vue) - the one place "today"/"week"/"month"/"year" turn
+// into an actual boundary, shared by the tile counts and the filtered list so they never disagree.
+// "week" is a trailing 7-day window (not the current calendar week); the rest are calendar-boundary,
+// to-date. `now` is a parameter (not `new Date()` inline) so it's pure and unit-testable.
+export const periodStart = (period: PlayPeriod, now: Date = new Date()): Date => {
+  switch (period) {
+    case 'today': return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    case 'week': return new Date(now.getTime() - 7 * 86400000)
+    case 'month': return new Date(now.getFullYear(), now.getMonth(), 1)
+    case 'year': return new Date(now.getFullYear(), 0, 1)
+  }
+}
+
+// Counted plays (PlayEvent.counted - the same "meaningfully listened to" threshold LocalReleaseTrackPlay
+// itself increments on) starting in each period, for the index page's Recent Plays tiles.
+export const recentPlayCounts = async (userId: number): Promise<Record<PlayPeriod, number>> => {
+  const now = new Date()
+  const [today, week, month, year] = await Promise.all([
+    prisma.playEvent.count({ where: { userId, counted: true, startedAt: { gte: periodStart('today', now) } } }),
+    prisma.playEvent.count({ where: { userId, counted: true, startedAt: { gte: periodStart('week', now) } } }),
+    prisma.playEvent.count({ where: { userId, counted: true, startedAt: { gte: periodStart('month', now) } } }),
+    prisma.playEvent.count({ where: { userId, counted: true, startedAt: { gte: periodStart('year', now) } } }),
+  ])
+  return { today, week, month, year }
 }
 
 const RECENT_SKIP_WINDOW_DAYS = 90

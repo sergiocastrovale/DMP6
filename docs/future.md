@@ -15,8 +15,6 @@ remove all singles, bootlegs for extra space
 
 FEATURES
 
-Now that we have PlayEvents, add new statistics + detail pages in /statistics: "This year", "This month", "Last week", "Today". The panels should appear right below the total playtime.
-
 Subsonic API. This lets existing apps (Symfonium, Feishin, Substreamer, Sonixd) play from DMP, with offline mode, Android Auto and CarPlay, without building them. It's probably the most value for the least work.
 
 Bind volume levelling from ReplayGain tags. The value is already read and shown in the track info dialog, but the player doesn't use it. This should be a toggle in a new settings/player page (make it the 3rd tab).

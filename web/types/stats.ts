@@ -38,6 +38,9 @@ export interface StatTile {
 
 export type ReleaseTypeBucketId = 'album' | 'ep' | 'single' | 'box-set' | 'compilation' | 'live' | 'soundtrack' | 'unknown'
 
+// Statistics → Recent Plays panel (helpers/constants.ts's playPeriods drives display order/labels).
+export type PlayPeriod = 'today' | 'week' | 'month' | 'year'
+
 export interface Statistics {
   artists: number
   mainArtists: number
@@ -60,4 +63,5 @@ export interface Statistics {
   missingArtReleases: number
   linkedArtists: number
   releaseTypes: Record<ReleaseTypeBucketId, number>
+  recentPlays: Record<PlayPeriod, number>
 }
