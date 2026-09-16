@@ -78,5 +78,17 @@ export function invalidateSettingsCache(): void {
   cacheExpiry = 0
 }
 
+// Awaitable counterpart to invalidateSettingsCache - for a test (or any caller) that needs the very
+// next getCachedSettings() to reflect a just-written DB row synchronously. getCachedSettings()
+// itself deliberately returns process.env defaults immediately after invalidation and refreshes in
+// the background (fire-and-forget) - fine in production (30s TTL, eventually consistent, and every
+// real request is a separate call site with plenty of time for the background refresh to land) but
+// a genuine race for code asserting on the fresh DB value on the very next line. Masked locally by
+// any real value already sitting in .env (e.g. GENIUS_ACCESS_TOKEN) - only visible where the env
+// var is unset, which is exactly the CI unit job (test/integration/routes/artistFacts.test.ts).
+export async function refreshSettingsCache(): Promise<void> {
+  await refreshCache()
+}
+
 // Warm cache on module load
 refreshCache().catch(() => {})

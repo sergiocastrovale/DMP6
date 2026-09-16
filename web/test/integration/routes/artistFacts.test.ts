@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getTestPrisma, resetDb } from '../../../test/setup/db'
-import { invalidateSettingsCache } from '../../../server/utils/settingsCache'
+import { invalidateSettingsCache, refreshSettingsCache } from '../../../server/utils/settingsCache'
 import { fetchArtistFacts } from '../../../server/utils/genius'
 import { factHash } from '../../../server/utils/geniusFacts'
 import { ARTIST_FACTS_DB_THRESHOLD } from '../../../helpers/constants'
@@ -95,6 +95,11 @@ describe('artist "Did you know" facts (real Postgres)', () => {
       update: { geniusAccessToken: 'test-token' },
     })
     invalidateSettingsCache()
+    // getCachedSettings() returns process.env defaults synchronously right after invalidation and
+    // refreshes from the DB in the background - without this await, isGeniusConfigured() races that
+    // refresh and can read a stale/empty token whenever GENIUS_ACCESS_TOKEN isn't already set in the
+    // environment (masked locally by web/.env, but not in CI - see settingsCache.ts).
+    await refreshSettingsCache()
   })
 
   afterEach(() => {
@@ -152,6 +157,7 @@ describe('artist "Did you know" facts (real Postgres)', () => {
     vi.stubEnv('GENIUS_ACCESS_TOKEN', '')
     await prisma.settings.update({ where: { id: 'main' }, data: { geniusAccessToken: null } })
     invalidateSettingsCache()
+    await refreshSettingsCache()
     const fetchMock = stubGeniusFetch()
     const { artist } = await seedArtistWithOneTrack()
 
