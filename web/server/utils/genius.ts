@@ -1,8 +1,7 @@
-import type { Artist, LocalReleaseTrack } from '@prisma/client'
-import { prisma } from '~/server/utils/prisma'
+import type { Artist } from '@prisma/client'
 import { getCachedSettings } from '~/server/utils/settingsCache'
 import { cachedResponse } from '~/server/utils/cache'
-import { extractFacts, pickSongHit, type FactSubject, type GeniusSearchHit } from '~/server/utils/geniusFacts'
+import { extractFacts, pickSongHit, type GeniusSearchHit } from '~/server/utils/geniusFacts'
 
 const GENIUS_API_URL = 'https://api.genius.com'
 const GENIUS_TIMEOUT_MS = 8000
@@ -57,13 +56,6 @@ const searchSong = async (title: string, artistName: string): Promise<GeniusSong
   return pickSongHit(search.hits, title, artistName)
 }
 
-const randomOwnedTrack = async (artistId: string): Promise<LocalReleaseTrack | null> => {
-  const where = { localRelease: { artists: { some: { artistId } } }, title: { not: null } }
-  const count = await prisma.localReleaseTrack.count({ where })
-  if (!count) {return null}
-  return prisma.localReleaseTrack.findFirst({ where, skip: Math.floor(Math.random() * count) })
-}
-
 export interface FetchedFacts {
   facts: string[]
   releaseId?: string
@@ -71,50 +63,45 @@ export interface FetchedFacts {
   sourceUrl: string | null
 }
 
-// Tries the requested subject first, then falls through the others (artist last, since a bio is the
-// one most likely to exist) so one visit yields something whenever Genius has anything at all.
-export const fetchArtistFacts = async (artist: Artist, subject: FactSubject): Promise<FetchedFacts | null> => {
-  if (!isGeniusConfigured()) {return null}
+// Only what's actually read below - the caller passes a `select`-projected track, not a full
+// Prisma LocalReleaseTrack row.
+export interface TrackForFacts {
+  id: string
+  title: string | null
+  localReleaseId: string | null
+}
 
-  const order: FactSubject[] = [subject, ...(['track', 'release', 'artist'] as FactSubject[]).filter(s => s !== subject)]
+// Explore's "Did you know" widget already knows exactly what's playing, so unlike the old
+// artist-page picker (random subject, random owned track) this is a deterministic cascade pinned to
+// that one track: try a fact about the track itself, then its release, then the artist - stopping at
+// the first tier with usable text, same specificity order the caller (server/api/tracks/[id]/fact.get.ts)
+// checks the DB in.
+export const fetchFactsForTrack = async (track: TrackForFacts, artist: Artist): Promise<FetchedFacts | null> => {
+  if (!isGeniusConfigured() || !track.title) {return null}
 
-  for (const attempt of order) {
-    const track = await randomOwnedTrack(artist.id)
-    if (!track?.title) {continue}
+  const hit = await searchSong(track.title, artist.name)
+  if (!hit) {return null}
 
-    const hit = await searchSong(track.title, artist.name)
-    if (!hit) {continue}
+  const song = await geniusGet<{ song: GeniusSong }>(`/songs/${hit.id}?text_format=plain`)
 
-    if (attempt === 'track') {
-      const song = await geniusGet<{ song: GeniusSong }>(`/songs/${hit.id}?text_format=plain`)
-      const facts = extractFacts(song?.song?.description?.plain)
-      if (facts.length) {return { facts, trackId: track.id, sourceUrl: song?.song?.url ?? null }}
-    }
+  const trackFacts = extractFacts(song?.song?.description?.plain)
+  if (trackFacts.length) {return { facts: trackFacts, trackId: track.id, sourceUrl: song?.song?.url ?? null }}
 
-    if (attempt === 'release') {
-      const song = await geniusGet<{ song: GeniusSong }>(`/songs/${hit.id}?text_format=plain`)
-      if (!song?.song?.album) {continue}
-      const album = await geniusGet<{ album: { url?: string, description_annotation?: { annotations?: Array<{ body?: { plain?: string } }> } } }>(
-        `/albums/${song.song.album.id}?text_format=plain`,
-      )
-      const facts = extractFacts(album?.album?.description_annotation?.annotations?.[0]?.body?.plain)
-      const release = await prisma.localReleaseTrack.findUnique({
-        where: { id: track.id },
-        select: { localReleaseId: true },
-      })
-      if (facts.length && release?.localReleaseId) {
-        return { facts, releaseId: release.localReleaseId, sourceUrl: album?.album?.url ?? null }
-      }
-    }
-
-    if (attempt === 'artist') {
-      const geniusArtist = await geniusGet<{ artist: { url?: string, description?: { plain?: string } } }>(
-        `/artists/${hit.primary_artist.id}?text_format=plain`,
-      )
-      const facts = extractFacts(geniusArtist?.artist?.description?.plain)
-      if (facts.length) {return { facts, sourceUrl: geniusArtist?.artist?.url ?? null }}
+  if (song?.song?.album && track.localReleaseId) {
+    const album = await geniusGet<{ album: { url?: string, description_annotation?: { annotations?: Array<{ body?: { plain?: string } }> } } }>(
+      `/albums/${song.song.album.id}?text_format=plain`,
+    )
+    const releaseFacts = extractFacts(album?.album?.description_annotation?.annotations?.[0]?.body?.plain)
+    if (releaseFacts.length) {
+      return { facts: releaseFacts, releaseId: track.localReleaseId, sourceUrl: album?.album?.url ?? null }
     }
   }
+
+  const geniusArtist = await geniusGet<{ artist: { url?: string, description?: { plain?: string } } }>(
+    `/artists/${hit.primary_artist.id}?text_format=plain`,
+  )
+  const artistFacts = extractFacts(geniusArtist?.artist?.description?.plain)
+  if (artistFacts.length) {return { facts: artistFacts, sourceUrl: geniusArtist?.artist?.url ?? null }}
 
   return null
 }

@@ -5,6 +5,12 @@ import Shell from '../../../components/explore/Shell.vue'
 import { useChrome } from '../../../composables/useChrome'
 import { usePlayerStore } from '../../../stores/player'
 
+// ExploreDidYouKnow fetches on mount whenever a track is playing, which every test below sets up -
+// stub it globally so that's a resolved no-op instead of a real network call (same convention as
+// test/components/artist/DidYouKnow.test.ts / UsersLive.test.ts).
+const { fetchMock } = vi.hoisted(() => ({ fetchMock: vi.fn() }))
+vi.stubGlobal('$fetch', fetchMock)
+
 const TRACK = {
   id: 't1',
   title: 'Cool Water',
@@ -23,6 +29,28 @@ describe('explore/Shell.vue', () => {
     // configCollapsed reads player.explorerCurrentTrack at setup() time, so a track left over
     // from a previous test would mount the next Shell already-collapsed with no "Explore" button.
     usePlayerStore().explorerCurrentTrack = null
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(null)
+  })
+
+  it('renders the "Did you know" widget once a track is explored', async () => {
+    fetchMock.mockResolvedValue({ text: 'Some trivia.', sourceUrl: null, release: null, track: null })
+    const wrapper = await mountSuspended(Shell)
+    const player = usePlayerStore()
+    vi.spyOn(player, 'pickExplorerTrack').mockImplementation(async () => {
+      player.explorerCurrentTrack = TRACK
+    })
+
+    await wrapper.findAll('button').find(b => b.text() === 'Explore')!.trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/tracks/t1/fact')
+    expect(wrapper.text()).toContain('Some trivia.')
+  })
+
+  it('does not render the "Did you know" widget when nothing is playing', async () => {
+    await mountSuspended(Shell)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('collapses the config sliders into a summary once a track is explored', async () => {

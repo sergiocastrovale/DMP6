@@ -71,11 +71,3 @@ export const pickSongHit = (hits: GeniusSearchHit[], title: string, artistName: 
 
 export const factHash = (text: string): string =>
   createHash('sha1').update(normalizeTitle(text)).digest('hex')
-
-export type FactSubject = 'artist' | 'release' | 'track'
-
-// Random subject each call so an artist accrues a mix of the three kinds over repeat visits.
-export const pickSubject = (): FactSubject => {
-  const subjects: FactSubject[] = ['artist', 'release', 'track']
-  return subjects[Math.floor(Math.random() * subjects.length)]!
-}

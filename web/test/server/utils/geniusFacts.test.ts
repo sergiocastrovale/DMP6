@@ -3,7 +3,6 @@ import {
   extractFacts,
   factHash,
   pickSongHit,
-  pickSubject,
   sameName,
   type GeniusSearchHit,
 } from '../../../server/utils/geniusFacts'
@@ -93,14 +92,6 @@ describe('geniusFacts', () => {
 
     it('differs for different text', () => {
       expect(factHash('Fact one')).not.toBe(factHash('Fact two'))
-    })
-  })
-
-  describe('pickSubject', () => {
-    it('always returns one of the three known subjects', () => {
-      for (let i = 0; i < 20; i++) {
-        expect(['artist', 'release', 'track']).toContain(pickSubject())
-      }
     })
   })
 })

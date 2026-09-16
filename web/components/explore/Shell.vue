@@ -116,6 +116,11 @@ onBeforeUnmount(() => {
         @cancel="cancelChanges"
       />
 
+      <ExploreDidYouKnow
+        v-if="player.explorerCurrentTrack"
+        :track-id="player.explorerCurrentTrack.id"
+      />
+
       <ExploreCard
         v-if="player.explorerCurrentTrack"
         :track="player.explorerCurrentTrack"
