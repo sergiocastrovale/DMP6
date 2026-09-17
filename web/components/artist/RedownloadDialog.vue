@@ -30,19 +30,19 @@ const type = computed(() => props.release?.type)
   >
     <div v-if="release" class="text-sm border border-stone-100/10 bg-stone-950 px-5 py-5 rounded-md">
       <div class="truncate">
-        <template v-if="artistName">{{ artistName }} &middot; </template>{{ release.title }}
+        <template v-if="artistName">{{ artistName }} <Bullet class="inline-block" /> </template>{{ release.title }}
       </div>
 
       <div class="mt-0.5 flex items-center gap-1.5 text-xs text-stone-100/45">
         <span v-if="release.year">{{ release.year }}</span>
 
         <template v-if="type">
-          <span>&middot;</span>
+          <Bullet />
           <span>{{ type }}</span>
         </template>
 
         <template v-if="edition">
-          <span>&middot;</span>
+          <Bullet />
           <span>{{ edition }}</span>
         </template>
       </div>

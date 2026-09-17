@@ -1,5 +1,6 @@
 import type { UnifiedRelease, ReleaseGroup } from '~/types/release'
 import type { CatalogueCounts } from '~/types/artist'
+import { favoriteTargetId } from '~/helpers/artistPageLogic'
 
 const countReleases = (releases: UnifiedRelease[]): CatalogueCounts => {
   const counts: CatalogueCounts = { total: 0, albums: 0, eps: 0, singles: 0 }
@@ -38,19 +39,37 @@ const buildGroups = (releases: UnifiedRelease[]): ReleaseGroup[] => {
 }
 
 export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>) => {
-  const showMissing = ref(true)
+  const hideMissing = ref(false)
   const showLinked = ref(true)
+  const favoritesOnly = ref(false)
   const searchQuery = ref('')
-  const typeFilter = ref<string | null>(null)
+  const typeFilters = ref<Set<string>>(new Set())
   const activeStatuses = ref<Set<string>>(new Set())
   const sortKey = ref<string>('year-asc')
+
+  const favoriteReleases = ref<Set<string>>(new Set())
+  onMounted(async () => {
+    try {
+      const data = await $fetch<any>('/api/favorites', { query: { type: 'releases', pageSize: 100 } })
+      if (data?.releases) {
+        favoriteReleases.value = new Set(data.releases.map((f: any) => f.release.id))
+      }
+    }
+    catch { /* ignore */ }
+  })
 
   const hasLinkedReleases = computed(() => releases.value.some(r => r.connectedArtistName))
 
   const visibleReleases = computed(() => {
     let r = releases.value
-    if (!showMissing.value) { r = r.filter(x => x.status !== 'MISSING') }
+    if (hideMissing.value) { r = r.filter(x => x.status !== 'MISSING') }
     if (!showLinked.value) { r = r.filter(x => !x.connectedArtistName) }
+    if (favoritesOnly.value) {
+      r = r.filter((x) => {
+        const id = favoriteTargetId(x)
+        return !!id && favoriteReleases.value.has(id)
+      })
+    }
     return r
   })
 
@@ -67,10 +86,11 @@ export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>) => {
     if (activeStatuses.value.size > 0) {
       r = r.filter(x => activeStatuses.value.has(x.status))
     }
-    if (typeFilter.value) {
-      r = typeFilter.value === 'other'
-        ? r.filter(x => !['album', 'ep', 'single'].includes(x.typeSlug))
-        : r.filter(x => x.typeSlug === typeFilter.value)
+    if (typeFilters.value.size > 0) {
+      r = r.filter(x =>
+        typeFilters.value.has(x.typeSlug)
+        || (typeFilters.value.has('other') && !['album', 'ep', 'single'].includes(x.typeSlug)),
+      )
     }
     if (searchQuery.value) {
       const q = searchQuery.value.toLowerCase()
@@ -88,11 +108,30 @@ export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>) => {
   const totalCounts = computed(() => countReleases(releases.value))
   const visibleCounts = computed(() => countReleases(filteredReleases.value))
 
+  // Sort excluded, same convention as stores/browse.ts's activeFilterCount - it always has a value.
+  const activeFilterCount = computed(() =>
+    typeFilters.value.size
+    + activeStatuses.value.size
+    + (hideMissing.value ? 1 : 0)
+    + (showLinked.value ? 0 : 1)
+    + (favoritesOnly.value ? 1 : 0),
+  )
+
+  const clearFilters = () => {
+    typeFilters.value = new Set()
+    activeStatuses.value = new Set()
+    hideMissing.value = false
+    showLinked.value = true
+    favoritesOnly.value = false
+  }
+
   return {
-    showMissing,
+    hideMissing,
     showLinked,
+    favoritesOnly,
+    favoriteReleases,
     searchQuery,
-    typeFilter,
+    typeFilters,
     activeStatuses,
     sortKey,
     hasLinkedReleases,
@@ -102,5 +141,7 @@ export const useArtistCatalogue = (releases: Ref<UnifiedRelease[]>) => {
     groups,
     totalCounts,
     visibleCounts,
+    activeFilterCount,
+    clearFilters,
   }
 }

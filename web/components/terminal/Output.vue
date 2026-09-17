@@ -26,7 +26,7 @@ watch(() => terminal.lines.length, () => {
   >
     <div
       v-if="terminal.isSidebarVisible"
-      class="fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-stone-100/10 bg-stone-950 lg:w-[500px]"
+      class="fixed right-0 top-0 z-40 flex h-full w-full flex-col border-l border-stone-100/10 bg-stone-950 lg:w-125"
     >
       <div class="flex items-center justify-between border-b border-stone-100/10 px-4 py-3">
         <span class="text-sm font-medium text-stone-100/60">Terminal</span>

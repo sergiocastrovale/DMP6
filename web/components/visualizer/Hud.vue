@@ -39,7 +39,7 @@ const albumCover = computed(() =>
         </h2>
         <p :class="cx(typography.meta, 'truncate text-lg')">
           {{ player.currentTrack?.artist }}
-          <template v-if="player.currentTrack?.album">&middot; {{ player.currentTrack.album }}</template>
+          <template v-if="player.currentTrack?.album"><Bullet class="inline-block" /> {{ player.currentTrack.album }}</template>
         </p>
       </div>
 

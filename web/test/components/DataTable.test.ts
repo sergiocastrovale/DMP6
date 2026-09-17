@@ -35,10 +35,16 @@ describe('DataTable.vue', () => {
     expect(wrapper.get('table').classes()).toContain('min-w-max')
   })
 
-  it('shows a loading skeleton instead of rows while loading', async () => {
+  it('shows a loading skeleton in every column, not just the first, while loading', async () => {
     const wrapper = await mountSuspended(DataTable, { props: { columns: COLUMNS, rows: ROWS, loading: true, loadingRows: 3 } })
     expect(wrapper.text()).not.toContain('Radiohead')
-    expect(wrapper.findAll('tbody tr')).toHaveLength(3)
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows).toHaveLength(3)
+    // selectable (checkbox) + name + releases = 3 cells per row, each carrying its own skeleton.
+    const firstRowCells = rows[0]!.findAll('td')
+    expect(firstRowCells).toHaveLength(3)
+    expect(firstRowCells[1]!.html()).toContain('animate-pulse')
+    expect(firstRowCells[2]!.html()).toContain('animate-pulse')
   })
 
   it('shows the empty state with a message and hint when there are no rows', async () => {

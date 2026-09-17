@@ -12,24 +12,25 @@ const confirmUnlock = () => {
 </script>
 
 <template>
-  <UiButton
-    v-if="terminal.hasLockError"
-    variant="danger"
-    size="sm"
-    :icon="LockOpen"
-    @click="confirmOpen = true"
-  >
-    Force unlock
-  </UiButton>
+  <div v-if="terminal.hasLockError">
+    <UiButton
+      variant="danger"
+      size="sm"
+      :icon="LockOpen"
+      @click="confirmOpen = true"
+    >
+      Force unlock
+    </UiButton>
 
-  <ConfirmDialog
-    v-model="confirmOpen"
-    title="Run alongside the locked script?"
-    message="Another script still holds the scan lock. Unlocking does not stop it - this run starts in parallel."
-    note="Both scripts touch the same database at once. This can collide (lost updates, races on shared rows) - accepted risk of proceeding."
-    confirm-label="Unlock and run script in parallel"
-    variant="danger"
-    :icon="LockOpen"
-    @confirm="confirmUnlock"
-  />
+    <ConfirmDialog
+      v-model="confirmOpen"
+      title="Run alongside the locked script?"
+      message="Another script still holds the scan lock. Unlocking does not stop it - this run starts in parallel."
+      note="Both scripts touch the same database at once. This can collide (lost updates, races on shared rows) - accepted risk of proceeding."
+      confirm-label="Unlock and run script in parallel"
+      variant="danger"
+      :icon="LockOpen"
+      @confirm="confirmUnlock"
+    />
+  </div>
 </template>

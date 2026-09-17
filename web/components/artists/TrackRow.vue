@@ -56,7 +56,9 @@ const { releaseImage } = useImageUrl()
         >
           {{ track.release.artist.name }}
         </NuxtLink>
+
         <Bullet v-if="track.release.artist" />
+        
         <span class="truncate">{{ track.release.title }}</span>
       </div>
     </td>

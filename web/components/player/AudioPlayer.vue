@@ -107,7 +107,7 @@ const contextLabel = computed(() => SHUFFLE_CONTEXT_LABELS[player.shuffleMode])
             </NuxtLink>
             <span v-else>{{ player.currentTrack?.artist }}</span>
             <template v-if="player.currentTrack?.album">
-              &middot;
+              <Bullet class="inline-block" />
               <NuxtLink
                 v-if="releaseLink"
                 :to="releaseLink"

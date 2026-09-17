@@ -7,10 +7,10 @@ export interface ArtistListItem extends ArtistSummary {
   totalPlayCount: number
   totalTracks: number
   releaseCount?: number
+  musicbrainzId: string | null
 }
 
 export interface Artist extends ArtistListItem {
-  musicbrainzId: string | null
   totalFileSize: bigint | number | string
   lastSyncedAt: string | null
   monitored?: boolean

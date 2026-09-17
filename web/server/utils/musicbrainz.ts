@@ -68,3 +68,21 @@ export async function searchArtists(query: string): Promise<MbArtistSearchRow[]>
     type: a.type || null,
   }))
 }
+
+// Direct lookup for the /add search box's "paste a MusicBrainz ID" path - a plain id lookup instead
+// of the query search, since `/artist?query=<uuid>` doesn't reliably match on id.
+export async function getArtistByMbid(mbid: string): Promise<MbArtistSearchRow | null> {
+  try {
+    const a = await mbFetch(`/artist/${mbid}?fmt=json`)
+    return {
+      mbid: a.id,
+      name: a.name,
+      disambiguation: a.disambiguation || null,
+      country: a.country || null,
+      type: a.type || null,
+    }
+  }
+  catch {
+    return null
+  }
+}

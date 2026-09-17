@@ -53,7 +53,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div :class="cx(layout.page, 'my-6')">
+  <div :class="cx(layout.page, 'lg:my-6 my-1')">
     <DashboardFirstScan v-if="isEmpty" />
     <template v-else>
       <DashboardSubheader />

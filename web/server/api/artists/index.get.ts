@@ -61,6 +61,7 @@ export default defineEventHandler(async (event) => {
     imageUrl: true,
     completeness: true,
     totalTracks: true,
+    musicbrainzId: true,
   }
 
   // `releases`/`playCount` have no DB column to order by - `releases` only exists after merging the

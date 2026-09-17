@@ -1,25 +1,23 @@
 <script setup lang="ts">
+import { Link } from 'lucide-vue-next'
 import type { DataTableColumn } from '~/types/ui'
-import { typography } from '~/helpers/ui'
+import { cx, typography } from '~/helpers/ui'
 import { useBrowseStore } from '~/stores/browse'
+import { musicbrainzArtistUrl } from '~/helpers/functions'
 
 const store = useBrowseStore()
 const { artistImage } = useImageUrl()
 
-// A bare "6" in a Releases column is ambiguous at a glance once four numeric columns sit side by
-// side; the unit carries which column you are reading without a second look at the header.
-const counted = (value: number, singular: string, plural = `${singular}s`) =>
-  `${value.toLocaleString()} ${value === 1 ? singular : plural}`
-
 const columns: DataTableColumn[] = [
   { key: 'name', label: 'Name', sortable: true },
-  { key: 'releases', label: 'Releases', sortable: true, align: 'right', width: '110px' },
-  { key: 'tracks', label: 'Tracks', sortable: true, align: 'right', width: '100px' },
-  { key: 'playCount', label: 'Plays', sortable: true, align: 'right', width: '100px' },
+  { key: 'musicbrainzId', label: 'MusicBrainz ID' },
+  { key: 'releases', label: 'Releases', sortable: true, align: 'center' },
+  { key: 'tracks', label: 'Tracks', sortable: true, align: 'center' },
+  { key: 'playCount', label: 'Plays', sortable: true, align: 'center' },
 ]
 
-// The real direction, not a per-field guess: the header arrows and the toolbar's direction button
-// are two views of one piece of store state, so they can never disagree.
+const showing = computed(() => store.artists.length)
+
 const sort = computed(() => ({ key: store.sortBy, dir: store.sortDir }))
 </script>
 
@@ -36,7 +34,7 @@ const sort = computed(() => ({ key: store.sortBy, dir: store.sortDir }))
       @sort="store.setSortBy"
     >
       <template #cell-name="{ row }">
-        <NuxtLink :to="`/artist/${row.slug}`" class="group flex min-w-0 items-center gap-3">
+        <NuxtLink :to="`/artist/${row.slug}`" class="group/name inline-flex items-center gap-3">
           <div class="size-8 shrink-0 overflow-hidden rounded-md bg-stone-800">
             <img
               v-if="artistImage(row)"
@@ -49,20 +47,34 @@ const sort = computed(() => ({ key: store.sortBy, dir: store.sortDir }))
               {{ row.name.charAt(0).toUpperCase() }}
             </div>
           </div>
-          <span class="truncate text-sm font-medium text-stone-100 group-hover:text-amber-400">{{ row.name }}</span>
+          <span class="truncate text-sm font-medium text-stone-100 group-hover/name:text-amber-400">{{ row.name }}</span>
         </NuxtLink>
       </template>
 
+      <template #cell-musicbrainzId="{ row }">
+        <a
+          v-if="row.musicbrainzId"
+          :href="musicbrainzArtistUrl(row.musicbrainzId)"
+          target="_blank"
+          rel="noopener noreferrer"
+          :class="cx(typography.meta, 'flex items-center gap-1.5 hover:text-amber-400')"
+        >
+          {{ row.musicbrainzId }}
+          <Link :size="12" />
+        </a>
+        <span v-else :class="typography.meta">—</span>
+      </template>
+
       <template #cell-releases="{ row }">
-        <span :class="typography.meta">{{ counted(row.releaseCount ?? 0, 'release') }}</span>
+        <span :class="typography.meta">{{ row.releaseCount }}</span>
       </template>
 
       <template #cell-tracks="{ row }">
-        <span :class="typography.meta">{{ counted(row.totalTracks, 'track') }}</span>
+        <span :class="typography.meta">{{ row.totalTracks }}</span>
       </template>
 
       <template #cell-playCount="{ row }">
-        <span :class="typography.meta">{{ counted(row.totalPlayCount, 'play') }}</span>
+        <span :class="typography.meta">{{ row.totalPlayCount }}</span>
       </template>
     </DataTable>
 
@@ -71,7 +83,7 @@ const sort = computed(() => ({ key: store.sortBy, dir: store.sortDir }))
     <UiLoadingBlock v-if="store.loadingMore" size="inline" />
 
     <div v-if="!store.loading && store.artists.length > 0" class="text-center text-xs text-stone-100/55">
-      Showing {{ store.artists.length }} of {{ store.total }} artists
+      Showing {{ showing }} of {{ store.total }} artists
     </div>
   </div>
 </template>

@@ -6,7 +6,7 @@ const props = withDefaults(defineProps<{
   modelValue: string
   placeholder?: string
   showSubmit?: boolean
-  size?: 'sm' | 'md'
+  size?: 'sm' | 'md' | 'lg'
   debounce?: number
   disabled?: boolean
   clearable?: boolean
@@ -40,7 +40,7 @@ watch(() => props.modelValue, (val) => {
   inputValue.value = val
 })
 
-const sizeClass = computed(() => props.size === 'md' ? 'h-9' : 'h-8')
+const sizeClass = computed(() => props.size === 'lg' ? 'h-12' : props.size === 'md' ? 'h-9' : 'h-8')
 
 const handleInput = (event: Event) => {
   const val = (event.target as HTMLInputElement).value
@@ -84,13 +84,16 @@ onUnmounted(() => {
         showSubmit ? 'flex-1' : 'w-full',
       )"
     >
-      <Search :size="14" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 text-stone-100/55" />
+      <Search :size="size === 'lg' ? 18 : 14" :stroke-width="ICON_STROKE_WIDTH" class="shrink-0 text-stone-100/55" />
       <input
         :value="inputValue"
         type="text"
         :placeholder="placeholder"
         :disabled="disabled"
-        class="w-full bg-transparent text-base text-stone-100 outline-0 placeholder:text-stone-100/50"
+        :class="cx(
+          'w-full bg-transparent text-stone-100 outline-0 placeholder:text-stone-100/50',
+          size === 'lg' ? 'text-lg' : 'text-base',
+        )"
         @input="handleInput"
         @keydown="handleKeydown"
         @focus="emit('focus', $event)"

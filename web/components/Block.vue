@@ -61,13 +61,17 @@ const metaClass = 'flex items-center gap-2 font-mono text-xs uppercase text-ston
       >
       <slot name="overlay" />
     </UiThumb>
-    <div class="flex flex-col gap-0.5 min-w-0">
-      <div v-if="title" :class="nameClass">
-        {{ title }}
+    <div class="flex flex-col gap-1.5 min-w-0">
+      <div>
+        <div v-if="title" :class="nameClass">
+          {{ title }}
+        </div>
+
+        <div v-if="subtitle || $slots.subtitle" :class="subClass">
+          <slot name="subtitle">{{ subtitle }}</slot>
+        </div>
       </div>
-      <div v-if="subtitle" :class="subClass">
-        {{ subtitle }}
-      </div>
+
       <div v-if="hasMetadata" :class="metaClass">
         <span v-if="year" class="shrink-0">{{ year }}</span>
         <Bullet v-if="year && genre" />
@@ -119,8 +123,8 @@ const metaClass = 'flex items-center gap-2 font-mono text-xs uppercase text-ston
       >
         {{ subtitle }}
       </NuxtLink>
-      <div v-else-if="subtitle" :class="subClass">
-        {{ subtitle }}
+      <div v-else-if="subtitle || $slots.subtitle" :class="subClass">
+        <slot name="subtitle">{{ subtitle }}</slot>
       </div>
       <div v-if="hasMetadata" :class="metaClass">
         <span v-if="year" class="shrink-0">{{ year }}</span>

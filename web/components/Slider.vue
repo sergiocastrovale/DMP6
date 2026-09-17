@@ -1,9 +1,4 @@
 <script setup lang="ts">
-// The app's one range control. Two shapes come out of the same component:
-//   - Explore's mood dials pass `stops` + end labels, so the pill reads "MELANCHOLIC" and the rail
-//     is bracketed by "Tired"/"Powerful".
-//   - Labs' thresholds pass neither, so the pill shows the raw number and the rail spans the row.
-// Anything that wants a drag track uses this; nothing hand-rolls one (handoff/RULES.md).
 const props = withDefaults(defineProps<{
   modelValue: number
   min?: number
@@ -85,16 +80,20 @@ const onKeydown = (event: KeyboardEvent) => {
 </script>
 
 <template>
-  <div>
-    <div class="mb-3 flex items-center justify-between gap-3">
-      <span class="text-base font-medium text-stone-100">{{ title }}</span>
-      <span class="rounded-full bg-amber-400 px-2.5 py-0.5 font-mono text-xs font-bold uppercase tracking-wider text-on-accent">
-        {{ currentLabel }}
-      </span>
+  <div class="flex flex-col gap-3">
+    <div class="flex flex-col gap-1">
+      <div class="flex justify-between items-start">
+        <div class="text-base font-medium text-stone-100">{{ title }}</div>
+        <div class="rounded-full bg-amber-400 px-3 py-1 text-sm font-semibold uppercase text-stone-900">
+          {{ currentLabel }}
+        </div>
+      </div>
+      
+      <div v-if="hint" class="mb-5 text-sm leading-snug text-stone-100/55">{{ hint }}</div>
     </div>
 
-    <div class="flex items-center gap-3">
-      <span v-if="leftLabel" class="w-24 shrink-0 text-xs text-stone-100/55">{{ leftLabel }}</span>
+    <div class="flex items-center gap-1">
+      <span v-if="leftLabel" class="w-24 shrink-0 text-base text-stone-100/55">{{ leftLabel }}</span>
 
       <div
         ref="trackRef"
@@ -115,12 +114,10 @@ const onKeydown = (event: KeyboardEvent) => {
           class="absolute left-0 h-1 rounded-full bg-amber-400 shadow-[0_0_10px_color-mix(in_oklch,var(--color-amber-400)_45%,transparent)]"
           :style="{ width: `${percent}%` }"
         />
-        <div class="absolute size-3.5 -ml-[7px] rounded-full bg-stone-100 shadow-md" :style="{ left: `${percent}%` }" />
+        <div class="absolute size-3.5 -ml-1.75 rounded-full bg-stone-100 shadow-md" :style="{ left: `${percent}%` }" />
       </div>
 
-      <span v-if="rightLabel" class="w-24 shrink-0 text-right text-xs text-stone-100/55">{{ rightLabel }}</span>
+      <span v-if="rightLabel" class="w-24 shrink-0 text-right text-base text-stone-100/55">{{ rightLabel }}</span>
     </div>
-
-    <p v-if="hint" class="mt-2 text-xs leading-snug text-stone-100/55">{{ hint }}</p>
   </div>
 </template>

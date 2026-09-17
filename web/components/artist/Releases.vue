@@ -31,10 +31,7 @@ const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
 // creates/kills a row, so it has to kick the poll back into life.
 const refreshDownloadStatus = inject<() => void>('refreshDownloadStatus', () => {})
 
-const {
-  showLinked, searchQuery, typeFilter, activeStatuses, sortKey,
-  hasLinkedReleases, statusCounts, filteredReleases, groups,
-} = catalogue
+const { searchQuery, sortKey, groups, favoriteReleases } = catalogue
 
 const initialView = route.query.view === 'list' ? 'list' : 'catalogue'
 const viewMode = ref<'catalogue' | 'list'>(initialView)
@@ -50,7 +47,6 @@ const showRedownloadDialog = ref(false)
 const infoRelease = ref<UnifiedRelease | null>(null)
 const showInfoDialog = ref(false)
 const infoExtra = ref<ReleaseInfoExtra | null>(null)
-const favoriteReleases = ref<Set<string>>(new Set())
 const acquiringIds = ref<Set<string>>(new Set())
 
 onMounted(() => {
@@ -61,31 +57,29 @@ onMounted(() => {
   downloadsStore.fetchDownloadCapabilities()
 })
 
-onMounted(async () => {
-  try {
-    const data = await $fetch<any>('/api/favorites', { query: { type: 'releases', pageSize: 100 } })
-    if (data?.releases) {
-      favoriteReleases.value = new Set(data.releases.map((f: any) => f.release.id))
-    }
-  }
-  catch { /* ignore */ }
-})
-
-
 const sortedGroups = computed<ReleaseGroup[]>(() => {
   const arr = [...groups.value]
   switch (sortKey.value) {
     case 'year-desc':
       arr.sort((a, b) => b.earliest.localeCompare(a.earliest))
       break
-    case 'title':
+    case 'title-asc':
       arr.sort((a, b) => a.primary.title.localeCompare(b.primary.title))
+      break
+    case 'title-desc':
+      arr.sort((a, b) => b.primary.title.localeCompare(a.primary.title))
       break
     case 'tracks-desc':
       arr.sort((a, b) => b.totalTracks - a.totalTracks)
       break
+    case 'tracks-asc':
+      arr.sort((a, b) => a.totalTracks - b.totalTracks)
+      break
     case 'plays-desc':
       arr.sort((a, b) => b.totalPlayCount - a.totalPlayCount)
+      break
+    case 'plays-asc':
+      arr.sort((a, b) => a.totalPlayCount - b.totalPlayCount)
       break
     default:
       arr.sort((a, b) => a.earliest.localeCompare(b.earliest))
@@ -353,8 +347,6 @@ watch(() => props.releases, () => {
 
 <template>
   <div class="flex flex-col gap-4 p-3 md:px-6">
-    <ArtistStatusChips v-model:active-statuses="activeStatuses" :status-counts="statusCounts" />
-
     <ArtistReleaseFilterBar v-model:view-mode="viewMode" />
 
     <template v-if="viewMode === 'catalogue'">

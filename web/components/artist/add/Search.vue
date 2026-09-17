@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Search as SearchIcon } from 'lucide-vue-next'
 import type { MbArtistSearchRow } from '~/types/artist'
 import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
@@ -103,18 +102,21 @@ const add = async (row: MbArtistSearchRow) => {
 
 <template>
   <div class="flex flex-col gap-5">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+    <div class="flex flex-col gap-3">
       <SearchInput
         v-model="query"
-        placeholder="Artist name..."
+        placeholder="Artist name or MusicBrainz ID..."
+        size="lg"
         :debounce="0"
-        wrapper-class="sm:max-w-sm"
+        wrapper-class="w-full"
+        :disabled="loading"
         @submit="search"
       />
-      <UiButton variant="secondary" :icon="SearchIcon" :loading="loading" :disabled="loading" @click="search">
-        Search in MusicBrainz
-      </UiButton>
-      <Switch v-if="canMonitor" v-model="monitor" label="Monitor after adding" />
+      <Switch
+        v-if="canMonitor"
+        v-model="monitor"
+        label="Monitor after adding. Missing releases will be downloaded automatically."
+      />
     </div>
 
     <UiLoadingBlock v-if="loading" />

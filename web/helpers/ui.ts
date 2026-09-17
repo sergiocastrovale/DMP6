@@ -12,11 +12,11 @@ export const cx = (...classes: Array<string | false | null | undefined>): string
 // whole app reads as one stroke weight instead of whatever each call site happened to leave.
 export const ICON_STROKE_WIDTH = 1.7
 
-const BUTTON_BASE = 'inline-flex items-center justify-center gap-2 font-sans whitespace-nowrap cursor-pointer transition-colors duration-150 disabled:opacity-40 disabled:cursor-default'
+const BUTTON_BASE = 'inline-flex items-center justify-center gap-1 font-sans whitespace-nowrap cursor-pointer transition-colors duration-150 disabled:opacity-40 disabled:cursor-default'
 
 const BUTTON_SIZE: Record<ButtonSize, string> = {
   sm: 'h-[30px] px-[11px] text-sm',
-  md: 'h-[34px] px-4 text-base',
+  md: 'h-[34px] pr-4 pl-2.5 text-base',
   lg: 'h-[40px] px-5 text-lg',
   // TV/cinema-mode Explore only, so far - a button meant to be legible and clickable from a couch.
   xl: 'h-[60px] px-8 text-2xl',
@@ -260,7 +260,7 @@ export const data = {
   // order, not DOM order, so emitting both is undefined, not "last one wins".
   th: 'px-3 py-2.5',
   td: 'px-3 py-3',
-  tag: 'inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/10 text-xs text-stone-100/60',
+  tag: 'inline-flex items-center h-[22px] px-2.5 rounded-full bg-stone-800 border border-stone-100/10 text-xs text-stone-100/80',
   badge: 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
 }
 
@@ -286,13 +286,13 @@ export const tile = {
 }
 
 export const typography = {
-  h1: 'font-display text-4xl font-bold tracking-[-0.03em]',
-  h2: 'font-display text-3xl font-bold tracking-[-0.025em]',
-  h3: 'font-display text-2xl font-semibold tracking-[-0.02em]',
-  title: 'text-xl font-semibold tracking-[-0.01em]',
+  h1: 'font-display text-3xl lg:text-4xl font-bold',
+  h2: 'font-display text-2xl lg:text-3xl font-bold',
+  h3: 'font-display text-2xl font-semibold',
+  title: 'text-xl font-semibold',
   body: 'text-base text-stone-100/60 leading-[1.55]',
   sub: 'text-sm text-stone-100/55',
-  sectionLabel: 'text-xs font-bold tracking-[0.1em] uppercase text-stone-100/55',
+  sectionLabel: 'text-xs font-bold uppercase text-stone-100/55',
   meta: 'font-mono text-xs text-stone-100/55 tabular-nums',
   // Wider-tracked monospace caption that sits *above* a value rather than beside it - the
   // "TOTAL PLAYTIME" rule on Statistics, the "STATUS" lead-in on the artist page. Distinct from

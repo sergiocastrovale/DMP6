@@ -31,15 +31,17 @@ const showAllGenres = ref(false)
     <ArtistImage :artist="artist" type="mobile" />
 
     <div class="relative flex flex-col gap-3 p-3">
-      <h1 :class="typography.h1">
-        {{ artist.name }}
-      </h1>
-
-      <ArtistShowing />
+      <div class="flex flex-col gap-1">
+        <h1 :class="typography.h1">
+          {{ artist.name }}
+        </h1>
+        
+        <ArtistShowing />
+      </div>
+      
+      <Genres :genres="artist.genres" @seeAll="showAllGenres = true" />
 
       <DownloadProgress v-if="activeDownloads?.length" :items="activeDownloads" class="max-w-md" />
-
-      <Genres :genres="artist.genres" @more="showAllGenres = true" />
 
       <div class="mt-2 flex items-center gap-2">
         <UiButton :icon="Play" icon-class="fill-current" :disabled="playDisabled" @click="emit('playAll')">

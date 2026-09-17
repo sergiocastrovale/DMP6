@@ -77,7 +77,7 @@ const pinned = computed(() => store.genreFilters.filter(g => !results.value.some
       <UiSpinner v-if="loading" :size="14" />
     </div>
 
-    <div class="flex flex-col gap-0.5" :aria-busy="loading">
+    <div class="flex flex-col gap-2" :aria-busy="loading">
       <template v-if="!loaded">
         <UiSkeleton v-for="n in 5" :key="n" h="h-7" />
       </template>
@@ -96,8 +96,8 @@ const pinned = computed(() => store.genreFilters.filter(g => !results.value.some
           @update:model-value="store.toggleGenre(genre.name)"
         >
           <span class="flex w-full items-center justify-between gap-2">
-            <span class="text-sm">{{ genre.name }}</span>
-            <span class="text-stone-100/55 text-xs">{{ genre.artistCount }} artists</span>
+            <span class="text-base text-stone-100/90">{{ genre.name }}</span>
+            <span class="text-stone-100/55 text-sm">{{ genre.artistCount }} artists</span>
           </span>
         </UiCheckbox>
         <p v-if="!pinned.length && !results.length" class="py-1 text-sm text-stone-100/55">

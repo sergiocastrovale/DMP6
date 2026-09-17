@@ -45,7 +45,7 @@ const showAllGenres = ref(false)
 
         <DownloadProgress v-if="activeDownloads?.length" :items="activeDownloads" class="max-w-md" />
 
-        <Genres :genres="artist.genres" @more="showAllGenres = true" />
+        <Genres :genres="artist.genres" @seeAll="showAllGenres = true" />
 
         <div class="mt-2 flex items-center gap-2">
           <UiButton :icon="Play" icon-class="fill-current" :disabled="playDisabled" @click="emit('playAll')">

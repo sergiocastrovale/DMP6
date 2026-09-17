@@ -28,8 +28,6 @@ const ctas: [string, string][] = [
 
 const pick = <T,>(arr: T[], seed: number): T => arr[seed % arr.length]!
 
-// useState (not a plain Math.random() call): the seed must match between SSR and client hydration,
-// or the greeting text differs between passes and Vue flags a hydration mismatch.
 const seed = useState('dashboard-hello-seed', () => Math.floor(Math.random() * 1000))
 const greeting = pick(greetings, seed.value)
 
@@ -42,14 +40,16 @@ const [ctaBefore, ctaAfter] = randomArtist ? pick(ctas, seed.value + 1) : ['', '
     <h1 :class="typography.h1">
       Hello, {{ user?.username }}
     </h1>
-    <p class="text-lg text-stone-100/55">
+
+    <div class="text-base mt-1.5 text-stone-300">
       {{ greeting }}
       <span v-if="randomArtist">{{ ctaBefore }}
-        <NuxtLink :to="`/artist/${randomArtist.slug}`" class="text-stone-100/60 underline decoration-stone-100/30 underline-offset-2 transition-colors duration-150 hover:text-stone-100">
+        <NuxtLink :to="`/artist/${randomArtist.slug}`" class="underline text-stone-300 hover:text-stone-100">
           {{ randomArtist.name }}
         </NuxtLink>
+
         {{ ctaAfter }}
       </span>
-    </p>
+    </div>
   </div>
 </template>

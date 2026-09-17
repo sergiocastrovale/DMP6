@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { LayoutGrid, LayoutList, SlidersHorizontal, X } from 'lucide-vue-next'
+import { LayoutGrid, LayoutList } from 'lucide-vue-next'
 import { useBrowseStore } from '~/stores/browse'
 import { useBrowseUrl } from '~/composables/useBrowseUrl'
-import { cx, ICON_STROKE_WIDTH, layout, sw } from '~/helpers/ui'
+import { layout } from '~/helpers/ui'
 
 const BROWSE_VIEW_OPTIONS = [
   { value: 'expanded', icon: LayoutGrid, title: 'Grid view' },
@@ -51,15 +51,7 @@ onMounted(() => {
         wrapper-class="basis-full lg:basis-auto lg:flex-1 lg:max-w-xs"
         @update:model-value="handleSearch"
       />
-      <button type="button" :class="cx(sw('chip', store.activeFilterCount > 0), 'gap-2')" @click="sidebarOpen = true">
-        <SlidersHorizontal :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-        Filters
-        <span v-if="store.activeFilterCount" :class="sw('countPill', true)">{{ store.activeFilterCount }}</span>
-      </button>
-      <button v-if="store.activeFilterCount" type="button" :class="cx(sw('chip', false), 'gap-1')" @click="store.clearFilters">
-        <X :size="14" :stroke-width="ICON_STROKE_WIDTH" />
-        Clear filters
-      </button>
+      <UiFilterButton v-model:open="sidebarOpen" :active-count="store.activeFilterCount" @clear="store.clearFilters" />
       <div :class="layout.spacer" />
       <ArtistListToggle v-model="viewMode" :options="BROWSE_VIEW_OPTIONS" />
     </div>

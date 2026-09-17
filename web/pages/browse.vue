@@ -17,12 +17,9 @@ const filterSummary = computed(() => browseFilterSummary(store))
 <template>
   <div :class="layout.page">
     <PageTitle text="Browse" :subtext="filterSummary">
-      <div class="flex items-center gap-3">
-        <span class="text-sm text-stone-100/55">{{ store.mainCount.toLocaleString() }} artists</span>
-        <UiButton v-if="canAddArtist" to="/add" size="sm" :icon="Plus">
-          Add artist
-        </UiButton>
-      </div>
+      <UiButton v-if="canAddArtist" to="/add" size="md" :icon="Plus">
+        Add artist
+      </UiButton>
     </PageTitle>
 
     <BrowseFilters />

@@ -134,9 +134,18 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
       <SlimTableBody>
         <template v-if="loading">
           <tr v-for="i in loadingRows" :key="i" class="border-b border-stone-100/10 last:border-b-0">
-            <td :colspan="columnCount" :class="data.td">
-              <UiSkeleton w="w-full max-w-xs" />
+            <td v-if="selectable" :class="cx('w-10', data.td)" />
+            <td
+              v-for="col in columns"
+              :key="col.key"
+              :class="cx(data.td, col.align === 'right' && 'text-right', col.align === 'center' && 'text-center', col.class)"
+            >
+              <UiSkeleton
+                :w="col.align === 'right' || col.align === 'center' ? 'w-12' : 'w-full max-w-xs'"
+                :class="cx(col.align === 'right' && 'ml-auto', col.align === 'center' && 'mx-auto')"
+              />
             </td>
+            <td v-if="hasActionsSlot" :class="cx(data.td, 'text-right')" />
           </tr>
         </template>
         <tr v-else-if="rows.length === 0">
@@ -150,6 +159,7 @@ const cellValue = (row: T, key: string) => (row as unknown as Record<string, unk
             :key="rowId(row)"
             :active="selectedIds.has(rowId(row))"
             :muted="!!rowLink && !rowIsLinked(row)"
+            :interactive="!!rowLink"
             :tabindex="rowIsLinked(row) ? 0 : undefined"
             :role="rowIsLinked(row) ? 'link' : undefined"
             @click="goToRow(row)"

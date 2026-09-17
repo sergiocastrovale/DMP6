@@ -126,6 +126,18 @@ export const useBrowseStore = defineStore('browse', () => {
     fetchArtists()
   }
 
+  // Explicit-pair sort chips (browse/FiltersSidebar.vue) set both column and direction in one shot,
+  // rather than going through setSortBy's "reselecting the active column flips it" table-header
+  // convention - a pair button always means exactly the order it's labelled.
+  function setSort(sort: string, dir: SortDirection) {
+    if (sortBy.value === sort && sortDir.value === dir) {
+      return
+    }
+    sortBy.value = sort
+    sortDir.value = dir
+    fetchArtists()
+  }
+
   function setSortDir(dir: SortDirection) {
     if (sortDir.value === dir) {
       return
@@ -203,6 +215,7 @@ export const useBrowseStore = defineStore('browse', () => {
     setLetterFilter,
     toggleGenre,
     setSortBy,
+    setSort,
     setSortDir,
     toggleSortDir,
     setSearch,

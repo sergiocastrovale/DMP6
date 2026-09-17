@@ -30,12 +30,12 @@ const simpleItems = computed(() => [
 <template>
   <div class="mt-0.5 flex items-center gap-1 text-xs text-stone-100/60">
     <template v-for="(item, i) in simpleItems" :key="item.key">
-      <span v-if="i > 0" class="hidden md:inline">&middot;</span>
+      <Bullet v-if="i > 0" class="hidden md:block" />
       <span :class="[item.hiddenSm && 'hidden md:inline', item.hiddenLg && 'hidden truncate lg:inline']">{{ item.text }}</span>
     </template>
 
     <template v-if="coArtists?.length">
-      <span v-if="simpleItems.length" class="hidden md:inline">&middot;</span>
+      <Bullet v-if="simpleItems.length" class="hidden md:block" />
       <span>Feat.
         <template v-for="(co, i) in visibleCoArtists" :key="co.slug">
           <NuxtLink
@@ -69,7 +69,7 @@ const simpleItems = computed(() => [
     </Dialog>
 
     <template v-if="connectedArtistNames?.length">
-      <span v-if="simpleItems.length || coArtists?.length" class="hidden md:inline">&middot;</span>
+      <Bullet v-if="simpleItems.length || coArtists?.length" class="hidden md:block" />
       <span class="flex items-center gap-1 italic" :title="`Originally credited to: ${connectedArtistNames.join(', ')}`">
         <Info :size="12" :stroke-width="ICON_STROKE_WIDTH" />
         <span>as {{ connectedArtistNames.join(', ') }}</span>

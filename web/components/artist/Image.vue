@@ -33,7 +33,7 @@ const confirmFetch = () => {
       :style="{ backgroundImage: `url(${image})` }"
     />
     <div v-else class="absolute inset-0 bg-stone-800" />
-    <div class="absolute inset-0 bg-black/88" />
+    <div class="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-950/80 to-stone-950/30" />
   </div>
   <div v-else class="group/photo relative size-28 shrink-0 overflow-hidden rounded-xl border border-stone-100/10 bg-stone-800 sm:size-36">
     <img

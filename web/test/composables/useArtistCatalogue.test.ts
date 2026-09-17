@@ -31,11 +31,19 @@ const release = (overrides: Partial<UnifiedRelease> & { id: string }): UnifiedRe
 } as UnifiedRelease)
 
 describe('useArtistCatalogue', () => {
-  it('visibleReleases hides MISSING releases when showMissing is false', () => {
+  it('visibleReleases hides MISSING releases when hideMissing is true', () => {
     const releases = ref([release({ id: '1', status: 'MISSING' }), release({ id: '2', status: 'COMPLETE' })])
     const cat = useArtistCatalogue(releases)
-    cat.showMissing.value = false
+    cat.hideMissing.value = true
     expect(cat.visibleReleases.value.map(r => r.id)).toEqual(['2'])
+  })
+
+  it('visibleReleases filters to favoriteReleases when favoritesOnly is true', () => {
+    const releases = ref([release({ id: '1', localReleaseId: 'l1' }), release({ id: '2', localReleaseId: 'l2' })])
+    const cat = useArtistCatalogue(releases)
+    cat.favoriteReleases.value = new Set(['l1'])
+    cat.favoritesOnly.value = true
+    expect(cat.visibleReleases.value.map(r => r.id)).toEqual(['1'])
   })
 
   it('visibleReleases hides connected-artist releases when showLinked is false', () => {
@@ -65,8 +73,19 @@ describe('useArtistCatalogue', () => {
       release({ id: '3', typeSlug: 'compilation' }),
     ])
     const cat = useArtistCatalogue(releases)
-    cat.typeFilter.value = 'other'
+    cat.typeFilters.value = new Set(['other'])
     expect(cat.filteredReleases.value.map(r => r.id)).toEqual(['3'])
+  })
+
+  it('filteredReleases filters by multiple selected types at once', () => {
+    const releases = ref([
+      release({ id: '1', typeSlug: 'album' }),
+      release({ id: '2', typeSlug: 'single' }),
+      release({ id: '3', typeSlug: 'ep' }),
+    ])
+    const cat = useArtistCatalogue(releases)
+    cat.typeFilters.value = new Set(['album', 'single'])
+    expect(cat.filteredReleases.value.map(r => r.id)).toEqual(['1', '2'])
   })
 
   it('filteredReleases filters by search query across title/disambiguation/editionLabel', () => {
@@ -160,5 +179,38 @@ describe('useArtistCatalogue', () => {
     ])
     const cat = useArtistCatalogue(releases)
     expect(cat.statusCounts.value).toEqual({ COMPLETE: 2, MISSING: 1 })
+  })
+
+  it('activeFilterCount counts type/status selections and non-default toggles, excluding sort', () => {
+    const releases = ref([release({ id: '1' })])
+    const cat = useArtistCatalogue(releases)
+    expect(cat.activeFilterCount.value).toBe(0)
+    cat.typeFilters.value = new Set(['album'])
+    cat.activeStatuses.value = new Set(['COMPLETE'])
+    cat.hideMissing.value = true
+    cat.showLinked.value = false
+    cat.favoritesOnly.value = true
+    cat.sortKey.value = 'title'
+    expect(cat.activeFilterCount.value).toBe(5)
+  })
+
+  it('clearFilters resets type/status/visibility toggles but leaves search and sort untouched', () => {
+    const releases = ref([release({ id: '1' })])
+    const cat = useArtistCatalogue(releases)
+    cat.typeFilters.value = new Set(['album'])
+    cat.activeStatuses.value = new Set(['COMPLETE'])
+    cat.hideMissing.value = true
+    cat.showLinked.value = false
+    cat.favoritesOnly.value = true
+    cat.searchQuery.value = 'foo'
+    cat.sortKey.value = 'title'
+    cat.clearFilters()
+    expect(cat.typeFilters.value.size).toBe(0)
+    expect(cat.activeStatuses.value.size).toBe(0)
+    expect(cat.hideMissing.value).toBe(false)
+    expect(cat.showLinked.value).toBe(true)
+    expect(cat.favoritesOnly.value).toBe(false)
+    expect(cat.searchQuery.value).toBe('foo')
+    expect(cat.sortKey.value).toBe('title')
   })
 })

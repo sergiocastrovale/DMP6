@@ -60,8 +60,11 @@ const classes = computed(() => cx(
     :aria-label="ariaLabel"
   >
     <Loader2 v-if="loading" :size="iconSize" :stroke-width="ICON_STROKE_WIDTH" class="animate-spin" />
+
     <component :is="icon" v-else-if="icon" :size="iconSize" :stroke-width="ICON_STROKE_WIDTH" :class="iconClass" />
+
     <slot v-if="!iconOnly" />
+    
     <component :is="trailingIcon" v-if="trailingIcon && !iconOnly && !loading" :size="iconSize" :stroke-width="ICON_STROKE_WIDTH" :class="iconClass" />
   </component>
 </template>

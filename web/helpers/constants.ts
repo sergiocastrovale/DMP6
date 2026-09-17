@@ -185,8 +185,8 @@ export const getCompletenessRange = (completeness: number) =>
   completenessRanges.find(r => completeness >= r.min && completeness < r.max) ?? completenessRanges.at(-1)!
 
 // Browse's sort-by options. Shared by the summarized table's sortable headers and
-// BrowseFiltersSidebar's sort chips, so the two controls stay interchangeable rather than each
-// reaching a subset of the orders.
+// browseFilterSummary's one-line label lookup, so the two controls stay interchangeable rather than
+// each reaching a subset of the orders.
 export const browseSortOptions = [
   { value: 'name', label: 'Name' },
   { value: 'releases', label: 'Releases' },
@@ -195,6 +195,48 @@ export const browseSortOptions = [
   { value: 'completeness', label: 'Completeness' },
   { value: 'recent', label: 'Recently added' },
   { value: 'updated', label: 'Recently updated' },
+]
+
+// browse/FiltersSidebar.vue's sort chips - explicit asc/desc pairs (rather than one button per
+// column plus a separate direction toggle) so both ends of every order are one click away and
+// visible at once. Listed as adjacent pairs so the sidebar's 2-column grid lines each pair up
+// side by side.
+export const browseSortPairOptions = [
+  { sortBy: 'name', sortDir: 'asc', label: 'A-Z' },
+  { sortBy: 'name', sortDir: 'desc', label: 'Z-A' },
+  { sortBy: 'releases', sortDir: 'desc', label: 'Most releases' },
+  { sortBy: 'releases', sortDir: 'asc', label: 'Fewest releases' },
+  { sortBy: 'tracks', sortDir: 'desc', label: 'Most tracks' },
+  { sortBy: 'tracks', sortDir: 'asc', label: 'Fewest tracks' },
+  { sortBy: 'playCount', sortDir: 'desc', label: 'Most played' },
+  { sortBy: 'playCount', sortDir: 'asc', label: 'Least played' },
+  { sortBy: 'completeness', sortDir: 'desc', label: 'Most complete' },
+  { sortBy: 'completeness', sortDir: 'asc', label: 'Least complete' },
+  { sortBy: 'recent', sortDir: 'desc', label: 'Newest added' },
+  { sortBy: 'recent', sortDir: 'asc', label: 'Oldest added' },
+  { sortBy: 'updated', sortDir: 'desc', label: 'Newest updated' },
+  { sortBy: 'updated', sortDir: 'asc', label: 'Oldest updated' },
+] as const
+
+// Artist page's release sort options - each value bakes in its own direction, explicit pairs same
+// as browseSortPairOptions, used by artist/FiltersSidebar.vue's sort chips.
+export const artistReleaseSortOptions = [
+  { value: 'year-asc', label: 'Oldest first' },
+  { value: 'year-desc', label: 'Newest first' },
+  { value: 'title-asc', label: 'Title (A-Z)' },
+  { value: 'title-desc', label: 'Title (Z-A)' },
+  { value: 'tracks-desc', label: 'Most tracks' },
+  { value: 'tracks-asc', label: 'Fewest tracks' },
+  { value: 'plays-desc', label: 'Most played' },
+  { value: 'plays-asc', label: 'Least played' },
+]
+
+// Artist page's release-type filter options, used by artist/FiltersSidebar.vue's checkboxes.
+export const releaseTypeOptions = [
+  { value: 'album', label: 'Albums' },
+  { value: 'ep', label: 'EPs' },
+  { value: 'single', label: 'Singles' },
+  { value: 'other', label: 'Other' },
 ]
 
 // DownloadedRelease.status -> colour, shared by DownloadProgress's bar and any per-release
@@ -211,7 +253,7 @@ export const downloadStatusTone: Record<string, Tone> = {
 }
 
 // The one release-status -> colour map. Every status badge in the app (release/StatusBadge.vue,
-// artist/StatusChips.vue, TrackList.vue) reads `tone` from here through helpers/ui.ts's
+// artist/FiltersSidebar.vue, TrackList.vue) reads `tone` from here through helpers/ui.ts's
 // toneBg/toneFill/toneText - previously each of those three kept its own copy, and they had
 // drifted (TrackList's copy was missing MISSING_TRACKS entirely, silently falling through).
 export const statuses: { value: ReleaseStatus, label: string, tone: Tone, description: string, weight: number }[] = [
@@ -372,3 +414,7 @@ export const PRESENCE_HEARTBEAT_MS = 30_000
 export const PRESENCE_STALE_MS = 75_000
 export const PRESENCE_PLAYING_STALE_MS = 60_000
 export const USERS_LIVE_REFRESH_MS = 10_000
+
+// MusicBrainz artist MBID - used by /add's search box to detect a pasted id vs a name query
+// (server/api/artists/mb-search.get.ts).
+export const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

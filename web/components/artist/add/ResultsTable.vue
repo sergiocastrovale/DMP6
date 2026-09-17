@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ExternalLink } from 'lucide-vue-next'
+import { ExternalLink, Plus } from 'lucide-vue-next'
 import type { MbArtistSearchRow } from '~/types/artist'
 import { cx, data } from '~/helpers/ui'
 import { musicbrainzArtistUrl } from '~/helpers/functions'
@@ -47,13 +47,14 @@ defineEmits<{
           </NuxtLink>
           <UiButton
             v-else
-            variant="secondary"
-            size="sm"
+            :icon="Plus"
+            variant="primary"
+            size="md"
             :loading="addingMbid === row.mbid"
             :disabled="addingMbid !== null && addingMbid !== row.mbid"
             @click="$emit('add', row)"
           >
-            Add
+            Add to catalogue
           </UiButton>
         </td>
       </SlimTableRow>

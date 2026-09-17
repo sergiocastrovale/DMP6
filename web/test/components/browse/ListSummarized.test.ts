@@ -17,6 +17,7 @@ const artist = (overrides: Partial<ReturnType<typeof useBrowseStore>['artists'][
   totalPlayCount: 0,
   totalTracks: 0,
   releaseCount: 0,
+  musicbrainzId: null,
   ...overrides,
 })
 
@@ -64,6 +65,19 @@ describe('browse/ListSummarized.vue', () => {
     const releasesHeader = wrapper.findAll('button').find(btn => btn.text().includes('Releases'))!
     await releasesHeader.trigger('click')
     expect(store.sortBy).toBe('releases')
+  })
+
+  it('shows the MusicBrainz ID linking out to the artist\'s MB page, or a dash when unmatched', async () => {
+    const { wrapper, store } = await mountList()
+    store.artists = [
+      artist({ id: 'a1', musicbrainzId: 'a74b1b7f-71a5-4011-9441-d0b5e4122711' }),
+      artist({ id: 'a2', musicbrainzId: null }),
+    ]
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('a74b1b7f-71a5-4011-9441-d0b5e4122711')
+    const link = wrapper.find('a[href="https://musicbrainz.org/artist/a74b1b7f-71a5-4011-9441-d0b5e4122711"]')
+    expect(link.exists()).toBe(true)
+    expect(link.attributes('target')).toBe('_blank')
   })
 
   it('shows the empty state when there are no artists', async () => {

@@ -218,4 +218,21 @@ describe('useBrowseStore', () => {
     store.setSortDir('asc')
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('setSort sets column and direction together in one shot, refetching once', () => {
+    const store = useBrowseStore()
+    fetchMock.mockClear()
+    store.setSort('tracks', 'asc')
+    expect(store.sortBy).toBe('tracks')
+    expect(store.sortDir).toBe('asc')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('setSort does not refetch when already on that exact column and direction', () => {
+    const store = useBrowseStore()
+    store.setSort('tracks', 'desc')
+    fetchMock.mockClear()
+    store.setSort('tracks', 'desc')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })

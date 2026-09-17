@@ -32,6 +32,15 @@ describe('Block.vue', () => {
     expect(wrapper.text()).toContain('Alternative Rock')
   })
 
+  it('renders custom subtitle content via the subtitle slot instead of the plain-text prop', async () => {
+    const wrapper = await mountSuspended(Block, {
+      props: { id: '1', title: 'OK Computer' },
+      slots: { subtitle: '<span>12 releases</span><span>340 tracks</span>' },
+    })
+    expect(wrapper.text()).toContain('12 releases')
+    expect(wrapper.text()).toContain('340 tracks')
+  })
+
   it('renders the completeness pill when a completeness value is provided', async () => {
     const wrapper = await mountSuspended(Block, { props: { id: '1', title: 'OK Computer', completeness: 0.82 } })
     expect(wrapper.text()).toContain('82% complete')

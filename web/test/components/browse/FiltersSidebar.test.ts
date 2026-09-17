@@ -29,22 +29,15 @@ describe('browse/FiltersSidebar.vue', () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
   })
 
-  it('clicking a sort chip calls setSortBy', async () => {
+  it('clicking a sort pair chip sets both the column and its explicit direction', async () => {
     wrapper = await mountSuspended(FiltersSidebar, { props: { modelValue: true } })
     const store = useBrowseStore()
-    bodyButtons('Tracks')!.click()
+    bodyButtons('Fewest tracks')!.click()
     expect(store.sortBy).toBe('tracks')
-  })
-
-  it('clicking the sort direction button toggles it', async () => {
-    wrapper = await mountSuspended(FiltersSidebar, { props: { modelValue: true } })
-    const store = useBrowseStore()
-    // Not asserting the starting direction here - mountSuspended shares one Pinia instance across
-    // every test in this file (setActivePinia doesn't reach the store a mounted component
-    // resolves), so an earlier test's setSortBy may have already left it on either direction.
-    const before = store.sortDir
-    bodyButtons(before === 'asc' ? 'Asc' : 'Desc')!.click()
-    expect(store.sortDir).toBe(before === 'asc' ? 'desc' : 'asc')
+    expect(store.sortDir).toBe('asc')
+    bodyButtons('Most tracks')!.click()
+    expect(store.sortBy).toBe('tracks')
+    expect(store.sortDir).toBe('desc')
   })
 
   it('clicking a completeness band sets its range, clicking it again clears it', async () => {

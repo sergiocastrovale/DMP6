@@ -96,8 +96,8 @@
   --text-base: calc(14px * var(--ui-scale, 1));
   --text-lg: calc(16px * var(--ui-scale, 1));
   --text-xl: calc(18px * var(--ui-scale, 1));
-  --text-2xl: calc(24px * var(--ui-scale, 1));
-  --text-3xl: calc(28px * var(--ui-scale, 1));
+  --text-2xl: calc(22px * var(--ui-scale, 1));
+  --text-3xl: calc(30px * var(--ui-scale, 1));
   --text-4xl: calc(36px * var(--ui-scale, 1));
   --text-5xl: calc(44px * var(--ui-scale, 1));
   --text-6xl: calc(64px * var(--ui-scale, 1));
