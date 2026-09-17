@@ -41,7 +41,7 @@ describe('explore/Shell.vue', () => {
       player.explorerCurrentTrack = TRACK
     })
 
-    await wrapper.findAll('button').find(b => b.text() === 'Explore')!.trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Start exploring!')!.trigger('click')
     await flushPromises()
 
     expect(fetchMock).toHaveBeenCalledWith('/api/tracks/t1/fact')
@@ -59,7 +59,7 @@ describe('explore/Shell.vue', () => {
     vi.spyOn(player, 'pickExplorerTrack').mockImplementation(async () => {
       player.explorerCurrentTrack = TRACK
     })
-    const exploreButton = wrapper.findAll('button').find(b => b.text() === 'Explore')!
+    const exploreButton = wrapper.findAll('button').find(b => b.text() === 'Start exploring!')!
     // trigger()'s own tick isn't enough here: the click chains through Config's emit -> Shell's
     // async onExplore -> useExplorer's async explore() -> the mocked pickExplorerTrack, each an
     // extra microtask hop nextTick() alone doesn't wait out. flushPromises drains all of them.
@@ -79,7 +79,7 @@ describe('explore/Shell.vue', () => {
       player.explorerCurrentTrack = TRACK
     })
 
-    await wrapper.findAll('button').find(b => b.text() === 'Explore')!.trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Start exploring!')!.trigger('click')
     await flushPromises()
     const summaryBefore = wrapper.text()
 

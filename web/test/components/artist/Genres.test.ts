@@ -16,14 +16,14 @@ describe('artist/Genres.vue', () => {
   it('caps visible genres at the max and shows a "+N more" button beyond it', async () => {
     const genres = Array.from({ length: 8 }, (_, i) => genre(String(i), `Genre ${i}`))
     const wrapper = await mountSuspended(Genres, { props: { genres } })
-    expect(wrapper.findAll('a')).toHaveLength(6)
-    expect(wrapper.text()).toContain('+2 more')
+    expect(wrapper.findAll('a')).toHaveLength(4)
+    expect(wrapper.text()).toContain('+4 more')
   })
 
-  it('emits "more" when the overflow button is clicked', async () => {
+  it('emits "seeAll" when the overflow button is clicked', async () => {
     const genres = Array.from({ length: 8 }, (_, i) => genre(String(i), `Genre ${i}`))
     const wrapper = await mountSuspended(Genres, { props: { genres } })
     await wrapper.get('button').trigger('click')
-    expect(wrapper.emitted('more')).toHaveLength(1)
+    expect(wrapper.emitted('seeAll')).toHaveLength(1)
   })
 })

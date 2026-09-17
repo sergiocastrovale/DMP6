@@ -34,10 +34,10 @@ export const createPresenceHeartbeat = () => {
 
   const send = (track: PresenceTrackInfo | null) => {
     if (!clientId) {return}
-    $fetch('/api/me/presence', {
+    Promise.resolve($fetch('/api/me/presence', {
       method: 'POST',
       body: { clientId, trackId: track?.trackId ?? null, playing: track?.playing ?? false },
-    }).catch(() => {})
+    })).catch(() => {})
   }
 
   const start = (getTrack: () => PresenceTrackInfo | null) => {

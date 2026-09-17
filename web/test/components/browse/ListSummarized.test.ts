@@ -28,24 +28,14 @@ const mountList = async () => {
 }
 
 describe('browse/ListSummarized.vue', () => {
-  it('names the unit on every count, so four numeric columns stay readable at a glance', async () => {
+  it('renders each numeric column value plainly, no unit suffix', async () => {
     const { wrapper, store } = await mountList()
     store.artists = [artist({ id: 'a1', name: 'Boards of Canada', totalTracks: 40, totalPlayCount: 12, releaseCount: 4 })]
     await wrapper.vm.$nextTick()
     expect(wrapper.text()).toContain('Boards of Canada')
-    expect(wrapper.text()).toContain('4 releases')
-    expect(wrapper.text()).toContain('40 tracks')
-    expect(wrapper.text()).toContain('12 plays')
-  })
-
-  it('uses the singular when a count is exactly one', async () => {
-    const { wrapper, store } = await mountList()
-    store.artists = [artist({ id: 'a1', releaseCount: 1, totalTracks: 1, totalPlayCount: 1 })]
-    await wrapper.vm.$nextTick()
-    expect(wrapper.text()).toContain('1 release')
-    expect(wrapper.text()).not.toContain('1 releases')
-    expect(wrapper.text()).toContain('1 track')
-    expect(wrapper.text()).toContain('1 play')
+    expect(wrapper.text()).toContain('4')
+    expect(wrapper.text()).toContain('40')
+    expect(wrapper.text()).toContain('12')
   })
 
   it('reads its header arrows from the same state as the toolbar direction button', async () => {

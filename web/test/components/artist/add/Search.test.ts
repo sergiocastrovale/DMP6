@@ -59,12 +59,12 @@ const notFound = () => {
 
 const doSearch = async (name = 'radiohead') => {
   await wrapper!.find('input').setValue(name)
-  await wrapper!.findAll('button').find(b => b.text().includes('Search in MusicBrainz'))!.trigger('click')
+  await wrapper!.find('input').trigger('keydown', { key: 'Enter' })
   await flushMicrotasks()
 }
 
 const clickAdd = async () => {
-  await wrapper!.findAll('button').find(b => b.text().trim() === 'Add')!.trigger('click')
+  await wrapper!.findAll('button').find(b => b.text().trim() === 'Add to catalogue')!.trigger('click')
   await flushMicrotasks()
 }
 
@@ -85,7 +85,7 @@ describe('artist/add/Search.vue', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('searches MusicBrainz on the Search button, one call only', async () => {
+  it('searches MusicBrainz on submit (Enter), one call only', async () => {
     fetchMock.mockResolvedValue({ items: [searchRow()] })
     await mount()
     await doSearch()
@@ -100,7 +100,7 @@ describe('artist/add/Search.vue', () => {
     await mount()
     await doSearch()
 
-    expect(wrapper!.findAll('button').find(b => b.text().trim() === 'Add')).toBeUndefined()
+    expect(wrapper!.findAll('button').find(b => b.text().trim() === 'Add to catalogue')).toBeUndefined()
     expect(wrapper!.text()).toContain('In library')
   })
 

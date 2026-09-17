@@ -32,7 +32,7 @@ describe('explore/Config.vue', () => {
 
   it('emits explore when the Explore button is clicked', async () => {
     const wrapper = await mountConfig()
-    const exploreButton = wrapper.findAll('button').find(b => b.text() === 'Explore')!
+    const exploreButton = wrapper.findAll('button').find(b => b.text() === 'Start exploring!')!
     await exploreButton.trigger('click')
     expect(wrapper.emitted('explore')).toHaveLength(1)
   })
@@ -45,7 +45,7 @@ describe('explore/Config.vue', () => {
   it('offers no way out of a first run - there is nothing to cancel back to', async () => {
     const wrapper = await mountConfig()
     expect(wrapper.findAll('button').some(b => b.text() === 'Cancel changes')).toBe(false)
-    expect(wrapper.findAll('button').some(b => b.text() === 'Explore')).toBe(true)
+    expect(wrapper.findAll('button').some(b => b.text() === 'Start exploring!')).toBe(true)
   })
 
   it('re-opened over a playing track, offers Cancel changes and relabels the primary action', async () => {
