@@ -7,7 +7,7 @@ const props = withDefaults(defineProps<{
   leftLabel?: string
   rightLabel?: string
   title: string
-  stops?: string[]
+  stops?: readonly string[]
   hint?: string
 }>(), {
   min: 0,

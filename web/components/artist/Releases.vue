@@ -31,7 +31,7 @@ const catalogue = inject<ReturnType<typeof useArtistCatalogue>>('catalogue')!
 // creates/kills a row, so it has to kick the poll back into life.
 const refreshDownloadStatus = inject<() => void>('refreshDownloadStatus', () => {})
 
-const { searchQuery, sortKey, groups, favoriteReleases } = catalogue
+const { searchQuery, sortKey, groups, favoriteReleases, activeStatuses } = catalogue
 
 const initialView = route.query.view === 'list' ? 'list' : 'catalogue'
 const viewMode = ref<'catalogue' | 'list'>(initialView)
