@@ -1,5 +1,7 @@
 use crate::db::LocalTrackRow;
 use crate::mb_types::{MbMedia, MbRelease, MbTrack};
+use crate::owned::durations_within;
+use crate::title_rules::{numbers_disagree, strip_qualifier, titles_near_identical};
 use common::types::TrackMeta;
 use unicode_normalization::UnicodeNormalization;
 
@@ -20,7 +22,7 @@ pub fn track_metas_from_rows(rows: &[LocalTrackRow]) -> Vec<TrackMeta> {
             genre: None,
             track_number: t.track_number,
             disc_number: t.disc_number,
-            duration: None,
+            duration: t.duration,
             bitrate: None,
             sample_rate: None,
             position: None,
@@ -161,12 +163,39 @@ fn scope_to_medium(tracks: &[MbTrack], medium_position: Option<i32>) -> Vec<MbTr
     }
 }
 
+/// Which title rules `check_release_status` may use. `Extended` is the only one production code runs;
+/// `Legacy` exists so the replay harness can score the same release both ways and diff the answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TitleRules {
+    #[cfg_attr(not(test), allow(dead_code))]
+    Legacy,
+    Extended,
+}
+
 pub fn check_release_status(
     local_tracks: &[&TrackMeta],
     local_track_ids: &[String],
     mb_releases: &[(MbRelease, Vec<MbTrack>)],
     local_year: Option<i32>,
     medium_position: Option<i32>,
+) -> StatusCheck {
+    check_release_status_with(
+        local_tracks,
+        local_track_ids,
+        mb_releases,
+        local_year,
+        medium_position,
+        TitleRules::Extended,
+    )
+}
+
+pub(crate) fn check_release_status_with(
+    local_tracks: &[&TrackMeta],
+    local_track_ids: &[String],
+    mb_releases: &[(MbRelease, Vec<MbTrack>)],
+    local_year: Option<i32>,
+    medium_position: Option<i32>,
+    rules: TitleRules,
 ) -> StatusCheck {
     if mb_releases.is_empty() {
         return StatusCheck {
@@ -292,6 +321,21 @@ pub fn check_release_status(
         }
     }
 
+    // Passes 3 and 4 - the two title rules the box matcher gained in round 2, so the two stop
+    // disagreeing about the same tracks (see `title_rules`). Both only ever see what the passes above
+    // left unmatched, so they can add a pairing but never undo one.
+    if rules == TitleRules::Extended {
+        for rule in [LooseRule::BaseTitle, LooseRule::Typo] {
+            claim_by_rule(
+                rule,
+                &mut matched,
+                local_tracks,
+                local_track_ids,
+                &mut used_local,
+            );
+        }
+    }
+
     let unmatched_mb = matched.iter().filter(|(_, lid)| lid.is_none()).count();
     let unmatched_local = local_count - used_local.len();
 
@@ -312,6 +356,113 @@ pub fn check_release_status(
         best_release_id: best_release.0.id.clone(),
         best_release_disambiguation: best_release.0.disambiguation.clone(),
         is_confident,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LooseRule {
+    /// Equal once each side's trailing "(...)"/"[...]" qualifier is dropped: "Market Square Heroes
+    /// (alternative version)" against "Market Square Heroes (re-record)". Neither contains the other,
+    /// and their meaningful-word Jaccard is 3/6, so nothing above can see it.
+    BaseTitle,
+    /// A one- or two-character tagging typo, with both runtimes known and agreeing.
+    Typo,
+}
+
+/// Runtime agreement required when the two titles carry *different* qualifiers - "(Detroit mix)"
+/// against "(original single mix)". The labels disagree, so the runtime is the only evidence these are
+/// one recording, and only a near-exact one is good enough.
+///
+/// Measured on the library: at two seconds or less the pairings were overwhelmingly one slot labelled
+/// two ways ("(live, Delicate Sound of Thunder)" / "(2019 remix)" at 278s/278s). Between 3 and 15
+/// seconds they were frequently different recordings sharing a base title - "(Paul Humphreys remix)" /
+/// "(Theo Kottis remix)", "(overdubbed)" / "(undubbed)", "(mono)" / "(stereo)". Identical titles and
+/// near-identical ones (typos) keep the full `SAME_TRACK_DIFFERENT_MASTER_SECS`: their 3-15s pairings
+/// sampled as mastering drift, every one.
+const QUALIFIERS_DISAGREE_SECS: i32 = 2;
+
+fn rule_fits(rule: LooseRule, mb: &MbTrack, local: &TrackMeta) -> bool {
+    use crate::boxset::SAME_TRACK_DIFFERENT_MASTER_SECS as WINDOW;
+    let mb_secs = mb.length.map(|ms| (ms / 1000) as i32);
+    let local_title = local.title.as_deref().unwrap_or("");
+    let both_known = local.duration.is_some() && mb_secs.is_some();
+    // A number is identity, not spelling - "Part 2" is not "Part 3", "(take 3)" is not "(take 4)".
+    if numbers_disagree(&mb.title, local_title) {
+        return false;
+    }
+    match rule {
+        LooseRule::BaseTitle => {
+            let a = crate::owned::normalize_title(&strip_qualifier(&mb.title));
+            let b = crate::owned::normalize_title(&strip_qualifier(local_title));
+            if a.is_empty() || a != b {
+                return false;
+            }
+            let formatting_only =
+                crate::owned::normalize_title(&mb.title) == crate::owned::normalize_title(local_title);
+            if formatting_only {
+                // "Ready, Set, Don't Go" / "Ready,Set,Don't Go", "L.S.D." / "L. S. D." - the titles
+                // are identical once punctuation and spacing go, so there is no qualifier to disagree
+                // about. Unknown durations stay missing evidence here, as they are everywhere else.
+                return durations_within(local.duration, mb_secs, WINDOW);
+            }
+            // The qualifiers differ, so the runtime is the only thing saying these are one recording:
+            // it has to actually be known on both sides, and agree closely. Measured: every pairing
+            // that rode in on an unknown MusicBrainz duration with differing qualifiers was a different
+            // recording ("(stereo)" / "(mono)", "(instrumental)" / "(Single Version)").
+            both_known && durations_within(local.duration, mb_secs, QUALIFIERS_DISAGREE_SECS)
+        }
+        LooseRule::Typo => {
+            both_known
+                && durations_within(local.duration, mb_secs, WINDOW)
+                && titles_near_identical(
+                    &crate::owned::normalize_title(&mb.title),
+                    &crate::owned::normalize_title(local_title),
+                )
+        }
+    }
+}
+
+/// Pair each still-unmatched MusicBrainz track with a still-unused local track under `rule`, but only
+/// where the pairing is unique **in both directions**: exactly one local track fits the MB track, and
+/// that local track fits no other unmatched MB track.
+///
+/// Stricter than the box matcher's one-directional uniqueness on purpose. This decides the status of
+/// every release in the library, not only box discs, and a looser rule's failure mode here is a false
+/// `COMPLETE` - so the only pairings taken are ones no other track could contest.
+///
+/// Every decision is made against the state *before* this pass claims anything, so the result cannot
+/// depend on which track happened to be examined first. Two claims can never collide: a local track
+/// that fits two MB tracks is refused, and so is an MB track that fits two local tracks.
+fn claim_by_rule(
+    rule: LooseRule,
+    matched: &mut [(MbTrack, Option<String>)],
+    local_tracks: &[&TrackMeta],
+    local_track_ids: &[String],
+    used_local: &mut std::collections::HashSet<usize>,
+) {
+    let pending: Vec<usize> = (0..matched.len())
+        .filter(|&mi| matched[mi].1.is_none())
+        .collect();
+    let mut claims: Vec<(usize, usize)> = Vec::new();
+    for &mi in &pending {
+        let fits: Vec<usize> = (0..local_tracks.len())
+            .filter(|li| !used_local.contains(li) && rule_fits(rule, &matched[mi].0, local_tracks[*li]))
+            .collect();
+        let [li] = fits[..] else {
+            continue;
+        };
+        let contested = pending
+            .iter()
+            .filter(|&&other| rule_fits(rule, &matched[other].0, local_tracks[li]))
+            .count()
+            > 1;
+        if !contested {
+            claims.push((mi, li));
+        }
+    }
+    for (mi, li) in claims {
+        used_local.insert(li);
+        matched[mi].1 = Some(local_track_ids[li].clone());
     }
 }
 
@@ -409,6 +560,143 @@ mod tests {
         (0..n).map(|i| format!("local-track-{i}")).collect()
     }
 
+    /// Differential harness for the scorer: scores every release in a library dump with both the
+    /// `Legacy` and `Extended` title rules and reports every status that changed and every new
+    /// pairing the extended rules made. `#[ignore]`d - it needs a dump - and run by hand:
+    ///
+    /// ```text
+    /// STATUS_DUMP=/path/status_dump.tsv STATUS_OUT=/path/report.txt \
+    ///   cargo test -p sync replay_status_dump -- --ignored
+    /// ```
+    ///
+    /// Tab-separated, Postgres `\copy` text format, three record kinds:
+    /// `R  localReleaseId  mbReleaseId  mediumPosition  year  currentStatus`,
+    /// `L  localReleaseId  trackId  title  seconds`,
+    /// `M  mbReleaseId  trackId  title  milliseconds  discNumber  position`.
+    ///
+    /// `check_release_status` decides the status of every release in the library, so a unit test
+    /// cannot answer the only question that matters when its title rules change: does anything move
+    /// that should not. This does.
+    #[test]
+    #[ignore]
+    fn replay_status_dump() {
+        use std::collections::HashMap;
+        use std::fmt::Write as _;
+        let Ok(path) = std::env::var("STATUS_DUMP") else {
+            eprintln!("set STATUS_DUMP");
+            return;
+        };
+        let unescape = |s: &str| s.replace("\\\\", "\\");
+        let num = |s: &str| s.parse::<i32>().ok();
+
+        let mut releases: Vec<(String, String, Option<i32>, Option<i32>, String)> = Vec::new();
+        let mut locals: HashMap<String, Vec<LocalTrackRow>> = HashMap::new();
+        let mut mbs: HashMap<String, Vec<MbTrack>> = HashMap::new();
+        for line in std::fs::read_to_string(&path).unwrap().lines() {
+            let f: Vec<&str> = line.split('\t').collect();
+            match f.first() {
+                Some(&"R") if f.len() >= 6 => releases.push((
+                    f[1].to_string(),
+                    f[2].to_string(),
+                    num(f[3]),
+                    num(f[4]),
+                    f[5].to_string(),
+                )),
+                Some(&"L") if f.len() >= 5 => locals.entry(f[1].to_string()).or_default().push(
+                    LocalTrackRow {
+                        id: f[2].to_string(),
+                        title: Some(unescape(f[3])),
+                        artist: None,
+                        mb_release_id: None,
+                        mb_release_group_id: None,
+                        mb_album_artist_id: None,
+                        track_number: None,
+                        disc_number: None,
+                        duration: num(f[4]),
+                    },
+                ),
+                Some(&"M") if f.len() >= 7 => mbs.entry(f[1].to_string()).or_default().push(MbTrack {
+                    id: f[2].to_string(),
+                    title: unescape(f[3]),
+                    position: f[6].parse().ok(),
+                    length: f[4].parse().ok(),
+                    disc_number: f[5].parse().ok(),
+                    recording: None,
+                }),
+                _ => {}
+            }
+        }
+
+        let mut transitions: HashMap<(String, String), usize> = HashMap::new();
+        let (mut scored, mut legacy_agrees_with_db) = (0usize, 0usize);
+        let mut new_pairs = String::new();
+        let mut new_pair_count = 0usize;
+        for (local_id, mb_id, medium, year, db_status) in &releases {
+            let (Some(rows), Some(tracks)) = (locals.get(local_id), mbs.get(mb_id)) else {
+                continue;
+            };
+            let metas = track_metas_from_rows(rows);
+            let refs: Vec<&TrackMeta> = metas.iter().collect();
+            let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+            let release = MbRelease {
+                id: mb_id.clone(),
+                title: String::new(),
+                date: None,
+                status: None,
+                disambiguation: None,
+                packaging: None,
+                country: None,
+                media: None,
+            };
+            let candidates = [(release, tracks.clone())];
+            let old = check_release_status_with(&refs, &ids, &candidates, *year, *medium, TitleRules::Legacy);
+            let new = check_release_status_with(&refs, &ids, &candidates, *year, *medium, TitleRules::Extended);
+            scored += 1;
+            let old_s = status_to_db_string(&old.status).to_string();
+            let new_s = status_to_db_string(&new.status).to_string();
+            if &old_s == db_status {
+                legacy_agrees_with_db += 1;
+            }
+            if old_s != new_s {
+                writeln!(new_pairs, "FLIP\t{local_id}\t{old_s}\t{new_s}").unwrap();
+            }
+            *transitions.entry((old_s, new_s)).or_default() += 1;
+
+            for (i, (mb_track, lid)) in new.matched_mb_tracks.iter().enumerate() {
+                let was = old.matched_mb_tracks.get(i).and_then(|(_, l)| l.clone());
+                let (Some(lid), None) = (lid, was) else {
+                    continue;
+                };
+                let local = rows.iter().find(|r| &r.id == lid).unwrap();
+                new_pair_count += 1;
+                writeln!(
+                    new_pairs,
+                    "PAIR\t{}\t{}\t{}\t{}\t{}",
+                    local_id,
+                    mb_track.title,
+                    local.title.as_deref().unwrap_or(""),
+                    mb_track.length.map(|ms| (ms / 1000).to_string()).unwrap_or_default(),
+                    local.duration.map(|d| d.to_string()).unwrap_or_default()
+                )
+                .unwrap();
+            }
+        }
+
+        let mut report = format!(
+            "scored {scored}; legacy rules reproduce the stored status on {legacy_agrees_with_db}; new pairings {new_pair_count}\n"
+        );
+        let mut rows: Vec<_> = transitions.into_iter().collect();
+        rows.sort();
+        for ((from, to), n) in rows {
+            writeln!(report, "{from} -> {to}\t{n}").unwrap();
+        }
+        report.push_str(&new_pairs);
+        println!("{report}");
+        if let Ok(out) = std::env::var("STATUS_OUT") {
+            std::fs::write(out, report).ok();
+        }
+    }
+
     #[test]
     fn track_metas_from_rows_carries_the_comparison_fields_and_drops_the_rest() {
         let rows = vec![crate::db::LocalTrackRow {
@@ -420,6 +708,7 @@ mod tests {
             mb_album_artist_id: Some("mb-artist".into()),
             track_number: Some(1),
             disc_number: Some(2),
+            duration: Some(185),
         }];
 
         let metas = track_metas_from_rows(&rows);
@@ -433,6 +722,7 @@ mod tests {
         assert_eq!(m.mb_album_artist_id.as_deref(), Some("mb-artist"));
         assert_eq!(m.track_number, Some(1));
         assert_eq!(m.disc_number, Some(2));
+        assert_eq!(m.duration, Some(185), "the looser title rules need a real runtime to compare");
         // File-path/hash/multi-value fields are a DB-row shim only, never read back from here.
         assert_eq!(m.file_path, "");
         assert_eq!(m.content_hash, "");
@@ -449,6 +739,92 @@ mod tests {
             disc_number: None,
             recording: None,
         }
+    }
+
+    fn timed(title: &str, secs: i32) -> TrackMeta {
+        TrackMeta {
+            duration: Some(secs),
+            ..track(title)
+        }
+    }
+
+    fn mb_timed(id: &str, title: &str, secs: u64) -> MbTrack {
+        MbTrack {
+            length: Some(secs * 1000),
+            ..mb_track(id, title)
+        }
+    }
+
+    fn score(locals: &[TrackMeta], mb: Vec<MbTrack>, rules: TitleRules) -> ReleaseStatus {
+        let refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(locals.len());
+        check_release_status_with(&refs, &ids, &[(mb_release("r1", None, None), mb)], None, None, rules)
+            .status
+    }
+
+    /// Marillion's "The Singles '82-88'" disc 4, the release that started this: every track present,
+    /// runtimes agreeing to the second, and still `MISSING_TRACKS` because one bonus track is labelled
+    /// "(alternative version)" where MusicBrainz says "(re-record)". Scored both ways, so the test fails
+    /// if it ever stops exercising the new rule - a regression test that passes under the old code
+    /// provides no coverage (see `exact_titles_are_claimed_before_a_loose_match_can_steal_one`).
+    #[test]
+    fn a_differently_qualified_title_now_scores_complete() {
+        let locals = vec![
+            timed("Punch and Judy", 200),
+            timed("Market Square Heroes (re-record edit)", 240),
+            timed("Three Boats Down From the Candy (re-record)", 242),
+            timed("Market Square Heroes (alternative version)", 288),
+        ];
+        let mb = || {
+            vec![
+                mb_timed("m1", "Punch and Judy", 200),
+                mb_timed("m2", "Market Square Heroes (re‐record edit)", 240),
+                mb_timed("m3", "Three Boats Down From the Candy (re‐record)", 242),
+                mb_timed("m4", "Market Square Heroes (re‐record)", 288),
+            ]
+        };
+        assert_eq!(score(&locals, mb(), TitleRules::Legacy), ReleaseStatus::MissingTracks);
+        assert_eq!(score(&locals, mb(), TitleRules::Extended), ReleaseStatus::Complete);
+    }
+
+    /// When the qualifiers disagree the runtime is the only evidence of sameness, so it must be known
+    /// on both sides and agree closely. Measured on the library: "(mono)" paired with "(stereo)" purely
+    /// because MusicBrainz had no length for the stereo track.
+    #[test]
+    fn differing_qualifiers_need_a_known_and_close_runtime() {
+        let locals = vec![timed("Intro", 60), timed("Clown (mono)", 130)];
+        let with = |mb_clown: MbTrack| vec![mb_timed("m1", "Intro", 60), mb_clown];
+        assert_eq!(
+            score(&locals, with(mb_track("m2", "Clown (stereo)")), TitleRules::Extended),
+            ReleaseStatus::MissingTracks,
+            "an unknown MusicBrainz runtime is no evidence at all here"
+        );
+        assert_eq!(
+            score(&locals, with(mb_timed("m2", "Clown (stereo)", 140)), TitleRules::Extended),
+            ReleaseStatus::MissingTracks,
+            "ten seconds apart with disagreeing labels is two recordings"
+        );
+        assert_eq!(
+            score(&locals, with(mb_timed("m2", "Clown (single version)", 131)), TitleRules::Extended),
+            ReleaseStatus::Complete,
+            "a second apart, the file is in that slot whatever the label says"
+        );
+    }
+
+    #[test]
+    fn a_different_take_number_is_never_the_same_track() {
+        let locals = vec![timed("Intro", 60), timed("Rip It Up (take 4)", 180)];
+        let mb = vec![mb_timed("m1", "Intro", 60), mb_timed("m2", "Rip It Up (take 10)", 180)];
+        assert_eq!(score(&locals, mb, TitleRules::Extended), ReleaseStatus::MissingTracks);
+    }
+
+    /// Two local files could each be either MusicBrainz track - the scorer must refuse rather than
+    /// guess, since a guess here is a status the user reads as fact.
+    #[test]
+    fn a_pairing_either_side_could_contest_is_refused() {
+        let locals = vec![timed("Song (demo)", 200), timed("Song (rehearsal)", 201)];
+        let mb = vec![mb_timed("m1", "Song (live)", 200), mb_timed("m2", "Song (take)", 201)];
+        assert_eq!(score(&locals, mb, TitleRules::Extended), ReleaseStatus::MissingTracks);
     }
 
     fn mb_track_disc(id: &str, title: &str, disc_number: u32) -> MbTrack {

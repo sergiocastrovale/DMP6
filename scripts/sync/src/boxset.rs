@@ -24,6 +24,7 @@ use crate::box_editions;
 use crate::db::*;
 use crate::mb_api::{self, RateLimiter};
 use crate::owned::{durations_compatible, durations_within, normalize_title};
+use crate::title_rules::{strip_qualifier, titles_near_identical};
 use chrono::Utc;
 use colored::Colorize;
 use common::mb::types::{MbMedia, MbRelease};
@@ -96,7 +97,7 @@ fn common_ancestor(a: &str, b: &str) -> String {
 /// Marionette" is 243s in the files against MusicBrainz's 249s, on a disc whose eleven titles
 /// otherwise line up exactly. Still bounded, because a shared title with a wildly different runtime is
 /// usually a different recording - a live take, an extended mix - not a different rip of the same one.
-const SAME_TRACK_DIFFERENT_MASTER_SECS: i32 = 15;
+pub(crate) const SAME_TRACK_DIFFERENT_MASTER_SECS: i32 = 15;
 
 /// Only reachable on a disc that has *already* paired `CORROBORATION_MIN_EXACT_PAIRS` tracks by exact
 /// title. At that point the folder's identity is established by those pairings, and a lone same-titled
@@ -106,93 +107,6 @@ const SAME_TRACK_DIFFERENT_MASTER_SECS: i32 = 15;
 /// corroboration requirement this would be exactly that loosening.
 const CORROBORATED_DRIFT_SECS: i32 = 60;
 const CORROBORATION_MIN_EXACT_PAIRS: usize = 3;
-
-/// Pass 4's bounds. A tagging typo is one or two characters; a genuinely different song scores far
-/// below the floor. Both a ratio floor and an absolute edit cap apply - the cap is what stops a long
-/// title from buying itself proportionally more slack.
-const FUZZY_MIN_RATIO: f32 = 0.9;
-const FUZZY_MAX_EDITS: usize = 3;
-
-/// The title with any trailing parenthesised/bracketed qualifiers removed:
-/// `"Market Square Heroes (re-record)"` -> `"Market Square Heroes"`. Repeats, so
-/// `"Song (live) [remastered]"` reduces to `"Song"`.
-///
-/// Empty when the whole title is one bracketed group - there is no base title to compare in that case,
-/// and comparing empty strings would match everything.
-fn strip_qualifier(title: &str) -> String {
-    let mut s = title.trim().to_string();
-    loop {
-        let chars: Vec<char> = s.chars().collect();
-        let (open, close) = match chars.last() {
-            Some(')') => ('(', ')'),
-            Some(']') => ('[', ']'),
-            _ => break,
-        };
-        let mut depth = 0i32;
-        let mut opened_at = None;
-        for (i, c) in chars.iter().enumerate().rev() {
-            if *c == close {
-                depth += 1;
-            } else if *c == open {
-                depth -= 1;
-                if depth == 0 {
-                    opened_at = Some(i);
-                    break;
-                }
-            }
-        }
-        let Some(i) = opened_at else { break };
-        let next: String = chars[..i].iter().collect::<String>().trim().to_string();
-        if next.is_empty() {
-            return String::new();
-        }
-        s = next;
-    }
-    s
-}
-
-/// Levenshtein distance, abandoned as soon as it is certain to exceed `max` - so this stays cheap on
-/// the long titles where it would otherwise do the most work.
-fn edit_distance_within(a: &str, b: &str, max: usize) -> Option<usize> {
-    let a: Vec<char> = a.chars().collect();
-    let b: Vec<char> = b.chars().collect();
-    if a.len().abs_diff(b.len()) > max {
-        return None;
-    }
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    let mut cur = vec![0usize; b.len() + 1];
-    for (i, ca) in a.iter().enumerate() {
-        cur[0] = i + 1;
-        let mut row_min = cur[0];
-        for (j, cb) in b.iter().enumerate() {
-            let cost = usize::from(ca != cb);
-            cur[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(cur[j] + 1);
-            row_min = row_min.min(cur[j + 1]);
-        }
-        if row_min > max {
-            return None;
-        }
-        std::mem::swap(&mut prev, &mut cur);
-    }
-    let distance = prev[b.len()];
-    (distance <= max).then_some(distance)
-}
-
-/// Two normalized titles close enough to be the same song typed differently.
-///
-/// Accepts `"sweetemalinamygal"`/`"sweetemalinemygal"` (0.94) and `"frearmsmash"`/`"forearmsmash"`
-/// (0.92); refuses `"blessyourselfandthechildren"`/`"blessthebeastsandthechildren"` (~0.7, a
-/// mondegreen of a different song) and `"two"`/`"three"` (0.2).
-fn titles_near_identical(a: &str, b: &str) -> bool {
-    let longest = a.chars().count().max(b.chars().count());
-    if longest == 0 {
-        return false;
-    }
-    match edit_distance_within(a, b, FUZZY_MAX_EDITS) {
-        Some(distance) => 1.0 - (distance as f32 / longest as f32) >= FUZZY_MIN_RATIO,
-        None => false,
-    }
-}
 
 /// One medium track still up for grabs, pre-normalized once so the ladder below never re-normalizes.
 struct MediumTrack {

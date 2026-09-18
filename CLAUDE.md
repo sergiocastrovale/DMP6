@@ -94,12 +94,14 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./sync --only-write-mb-to-files [--only x]   # backfill MB ids into tags, no API calls
 ./sync --catalogue-gaps [--overwrite]        # fast MISSING-entry pass
 ./sync --artist-ids file      # used by refresh
-./tidy [--all] [--only "Name" [--exact]] [--from x] [--to y] [--artist-ids file]
+./tidy [--all] [--only "Name" [--exact]] [--from x] [--to y] [--artist-ids file] [--rescore-only]
 # Library-wide repair, split out of sync: empty/orphaned release cleanup, box-set binding +
 # fold/dissolve + equivalence (dmp_sync::boxset::run_repair), DB-only re-score of anything the box
 # pass leaves at UNKNOWN, artist identity repair (3 passes), score recompute. Picks its own scope from
 # the Artist.lastTidiedAt watermark unless --all/--only/--from/--to/--artist-ids narrow it. Every
 # caller chains ./tidy after ./sync (docs/scripts/tidy.md) — sync itself never calls it.
+# --rescore-only: DB-only re-score of bound releases incl. MISSING_TRACKS, nothing else, no stamp - how a
+# scorer-rule change (status::check_release_status) reaches releases scored before it.
 
 ./add --mbid <uuid> [--monitored] [--dry-run]
 # Adds a MusicBrainz artist before any file exists for them: empty MUSIC_DIR folder + Artist row

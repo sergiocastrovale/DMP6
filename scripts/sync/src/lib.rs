@@ -8,3 +8,4 @@ pub mod mb_matching;
 pub mod mb_types;
 pub mod owned;
 pub mod status;
+pub mod title_rules;

@@ -533,6 +533,9 @@ pub struct RescoreTarget {
     /// Picked up only because its tracks link outside its own release, not because anything this run
     /// touched it. Counted separately so the repair is measurable.
     pub stale_links_only: bool,
+    /// Its stored status was `MISSING_TRACKS` - so a `COMPLETE` re-score is a scorer improvement taking
+    /// effect, which `tidy --rescore-only` reports on its own line.
+    pub was_missing_tracks: bool,
 }
 
 /// Targets, unioned from three sources:
@@ -554,6 +557,7 @@ pub async fn get_rescore_targets(
     pool: &PgPool,
     scope: ArtistScope<'_>,
     touched_ids: &[String],
+    include_missing_tracks: bool,
 ) -> Result<Vec<RescoreTarget>, sqlx::Error> {
     let mut ids: Vec<String> = match scope {
         Some(artist_ids) => {
@@ -617,12 +621,43 @@ pub async fn get_rescore_targets(
         }
     }
 
+    // `tidy --rescore-only`: releases already scored `MISSING_TRACKS`, so a change to the scorer's own
+    // rules reaches the releases it was made for. Nothing else re-scores a release once it has a
+    // status - sync only revisits what it re-matches.
+    if include_missing_tracks {
+        let missing: Vec<String> = match scope {
+            Some(artist_ids) => {
+                sqlx::query_scalar(
+                    r#"SELECT DISTINCT lr.id FROM "LocalRelease" lr
+                       JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+                       WHERE lr."matchStatus" = 'MISSING_TRACKS' AND lr."releaseId" IS NOT NULL
+                         AND lra."artistId" = ANY($1)"#,
+                )
+                .bind(artist_ids)
+                .fetch_all(pool)
+                .await?
+            }
+            None => {
+                sqlx::query_scalar(
+                    r#"SELECT id FROM "LocalRelease"
+                       WHERE "matchStatus" = 'MISSING_TRACKS' AND "releaseId" IS NOT NULL"#,
+                )
+                .fetch_all(pool)
+                .await?
+            }
+        };
+        let known: std::collections::HashSet<String> = ids.iter().cloned().collect();
+        ids.extend(missing.into_iter().filter(|id| !known.contains(id)));
+    }
+
     if ids.is_empty() {
         return Ok(Vec::new());
     }
 
-    let rows: Vec<(String, Option<String>, Option<i32>, Option<i32>)> = sqlx::query_as(
-        r#"SELECT id, "releaseId", "mediumPosition", year FROM "LocalRelease" WHERE id = ANY($1) AND "releaseId" IS NOT NULL"#,
+    let stale: std::collections::HashSet<String> = stale.into_iter().collect();
+    let rows: Vec<(String, Option<String>, Option<i32>, Option<i32>, String)> = sqlx::query_as(
+        r#"SELECT id, "releaseId", "mediumPosition", year, "matchStatus"::text
+           FROM "LocalRelease" WHERE id = ANY($1) AND "releaseId" IS NOT NULL"#,
     )
     .bind(&ids)
     .fetch_all(pool)
@@ -630,14 +665,15 @@ pub async fn get_rescore_targets(
 
     Ok(rows
         .into_iter()
-        .filter_map(|(id, release_id, medium_position, year)| {
-            let stale_links_only = !unknown_or_touched.contains(&id);
+        .filter_map(|(id, release_id, medium_position, year, status)| {
+            let stale_links_only = stale.contains(&id) && !unknown_or_touched.contains(&id);
             Some(RescoreTarget {
                 local_release_id: id,
                 mb_release_id: release_id?,
                 medium_position,
                 year,
                 stale_links_only,
+                was_missing_tracks: status == "MISSING_TRACKS",
             })
         })
         .collect())
@@ -1922,15 +1958,19 @@ pub struct LocalTrackRow {
     pub mb_album_artist_id: Option<String>,
     pub track_number: Option<i32>,
     pub disc_number: Option<i32>,
+    /// Seconds. Carried so `status::check_release_status`'s looser title rules can require the
+    /// runtimes to agree - without it those rules would be matching on title evidence alone.
+    pub duration: Option<i32>,
 }
 
 pub async fn get_local_tracks_for_release(
     pool: &PgPool,
     release_id: &str,
 ) -> Result<Vec<LocalTrackRow>, sqlx::Error> {
-    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>)> =
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>, Option<i32>)> =
         sqlx::query_as(
-            r#"SELECT id, title, artist, "mbReleaseId", "mbReleaseGroupId", "mbAlbumArtistId", "trackNumber", "discNumber"
+            r#"SELECT id, title, artist, "mbReleaseId", "mbReleaseGroupId", "mbAlbumArtistId", "trackNumber", "discNumber", duration
                FROM "LocalReleaseTrack"
                WHERE "localReleaseId" = $1
                ORDER BY "discNumber", "trackNumber""#,
@@ -1951,6 +1991,7 @@ pub async fn get_local_tracks_for_release(
                 mb_album_artist_id,
                 track_number,
                 disc_number,
+                duration,
             )| {
                 LocalTrackRow {
                     id,
@@ -1961,6 +2002,7 @@ pub async fn get_local_tracks_for_release(
                     mb_album_artist_id,
                     track_number,
                     disc_number,
+                    duration,
                 }
             },
         )

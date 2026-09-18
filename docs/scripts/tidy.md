@@ -33,6 +33,7 @@ cd scripts && cargo build --release -p tidy
 ./tidy --from "A" --to "M"                # letter range
 ./tidy --artist-ids /tmp/ids.txt          # explicit ids (used by ./refresh), bypasses the watermark
 ./tidy --web                              # PROGRESS:{json} lines for the web terminal
+./tidy --rescore-only --all               # apply scorer-rule changes to already-scored releases, DB only
 ```
 
 ## CLI Flags
@@ -44,6 +45,7 @@ cd scripts && cargo build --release -p tidy
 | `--exact` | Exact-name match for `--only`, no prefix matching. |
 | `--from <name>` / `--to <name>` | Letter-range narrowing, same semantics as `sync`. |
 | `--artist-ids <file>` | One artist id per line. Bypasses the watermark and `--only`/`--from`/`--to` entirely. `./refresh` does **not** use this for tidy (see Callers below) — kept for parity with `sync`/`index` and for manual/scripted use. |
+| `--rescore-only` | Re-score bound releases — **including ones already `MISSING_TRACKS`** — against the release on file, and do nothing else: no box pass, no cleanup, no identity repair, no MusicBrainz calls, and **no watermark stamp** (the box pass did not run, so the artists are not "tidied"). For applying an improvement to the scorer's own rules (docs/sync_decisions.md §8) to releases scored before it existed; nothing else ever revisits a release once it has a status. `./tidy --rescore-only --all` covers the whole library. |
 | `--verbose` | Prints a line per re-scored release. |
 | `--web` | Emits `PROGRESS:{"phase":"tidy",...}` lines for the web terminal. |
 

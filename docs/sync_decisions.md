@@ -238,6 +238,32 @@ other (which absorbs "remastered", "live", "bonus" style suffixes); or if they s
 their meaningful words. Words like "the", "and", "of" are ignored when scoring, so two unrelated songs
 cannot match just by sharing them.
 
+Two more rules follow, and they only ever see what everything above left unpaired:
+
+- **Equal once each side's trailing "(…)" or "[…]" qualifier is dropped** — "Market Square Heroes
+  (alternative version)" against MusicBrainz's "Market Square Heroes (re-record)". Neither contains the
+  other and they share too few words for the 80% rule, so without this a box holding every one of its
+  tracks scored `MISSING_TRACKS` (Marillion's "The Singles '82-88'": 45 of 45 tracks, still "missing").
+  When the qualifiers actually differ, the running times must be **known on both sides and within two
+  seconds** — the label disagrees, so the runtime is the only thing saying these are one recording.
+  Titles that differ only in punctuation or spacing ("Ready, Set, Don't Go" / "Ready,Set,Don't Go")
+  keep the usual tolerance.
+- **A one- or two-letter typo** ("Kaleidscope", "Makin' Whoopee" / "Making Whoopee"), with both running
+  times known and within 15 seconds.
+
+Both refuse whenever the pairing could be contested from **either** side — one file that could be two
+tracks, or one track that two files could be — and both refuse when the two titles name **different
+numbers**: "Part 2" is not "Part 3", "(take 10)" is not "(take 4)". "Part I", "Part 1" and "Part One"
+count as the same number; a number on only one side ("(live in Minneapolis 1996)" / "(live)") is extra
+detail, not a disagreement.
+
+Before shipping, both versions of the scorer were run over every `MISSING_TRACKS` and `EXTRA_TRACKS`
+release in the library plus 5,000 `COMPLETE` ones: no `COMPLETE` or `EXTRA_TRACKS` release changed at
+all, and 1,013 `MISSING_TRACKS` releases became `COMPLETE`. Of the pairings that made the difference, the
+riskiest kind (different qualifiers) sampled 33 of 40 clearly one recording labelled two ways, 0 clearly
+wrong and 7 uncertain — all with running times agreeing to the second. See
+docs/scripts/tidy_observations.md §14.
+
 **Identical titles are claimed before a loose match is even tried.** A bonus disc full of alternate
 takes shares one base title across many tracks ("Song", "Song (remake)", "Song (take 3)", "Song (take
 4)"...). Matching loosely in one pass let an early plain-titled track steal a "(take 3)" file before the

@@ -32,6 +32,8 @@ Disabiguating artists: NAPA's catalogue features both portuguese and chilean ban
 
 I see 3 exactly equal "Dear Michael: The Motown Collection" releases grouped. How is this possible? Clearly a bug. Note: sync and tidy scripts have ran fully. 
 
+22-20s release "Got It If You Want It" has 2 editions with MISSING_TRACKS, but opening it each shows one of the disks. Why? Bug? Analyze metadata of files too.
+
 UI
 
 Better hierarchy in statistics vs subpages
