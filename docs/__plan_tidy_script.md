@@ -1,6 +1,9 @@
 # Plan: `./tidy` — library-wide repair split out of `./sync`
 
-Status (2026-09-12): fully planned, nothing implemented. Execute steps 1→10 in order.
+Status: **implemented and rolled out** (built 2026-09-12/13, first whole-library run 2026-09-17,
+Step 7's one-off run 2026-09-18). Kept as design history only — current behaviour is in
+`docs/scripts/tidy.md`, and what the rollout found and fixed afterwards is in
+`docs/scripts/tidy_observations.md`. Do not execute these steps again.
 
 ## Context
 

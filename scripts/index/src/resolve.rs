@@ -767,16 +767,36 @@ pub async fn resolve_and_apply(
 
     if !new_owner_links.is_empty() {
         let (rel, art): (Vec<String>, Vec<String>) = new_owner_links.iter().cloned().unzip();
-        sqlx::query(
+        let gained_ownership: Vec<String> = sqlx::query_scalar(
             r#"INSERT INTO "LocalReleaseArtist" (id, "localReleaseId", "artistId", "createdAt")
                SELECT gen_random_uuid()::text, r, a, NOW()
                FROM UNNEST($1::text[], $2::text[]) AS t(r, a)
-               ON CONFLICT ("localReleaseId", "artistId") DO NOTHING"#,
+               ON CONFLICT ("localReleaseId", "artistId") DO NOTHING
+               RETURNING "artistId""#,
         )
         .bind(&rel)
         .bind(&art)
-        .execute(&mut *tx)
+        .fetch_all(&mut *tx)
         .await?;
+        // An artist that just gained a release has something new for sync to match - and sync only
+        // ever looks at artists with a `lastIndexedAt` (`get_artists_pending_sync`). The folder scan
+        // stamps the owners *it* settled, but the owners this pass substitutes for a provisional
+        // compound ("Jimmy Regal And The Royals" -> "Jimmy Regal", "The Royals") are often artists it
+        // has just created, and were never stamped: sync never selected them, ever. Measured on
+        // 2026-09-18: 5,445 owning artists with no `lastIndexedAt`, and 437 releases owned only by
+        // them - 406 of those Unmatched because nothing had ever tried to match them.
+        //
+        // Only artists whose link this insert actually wrote (`RETURNING`), so an owner that already
+        // held the release is not re-queued for nothing.
+        if !gained_ownership.is_empty() {
+            sqlx::query(
+                r#"UPDATE "Artist" SET "lastIndexedAt" = NOW(), "updatedAt" = NOW()
+                   WHERE id = ANY($1::text[])"#,
+            )
+            .bind(&gained_ownership)
+            .execute(&mut *tx)
+            .await?;
+        }
     }
 
     for (release_id, desired) in &desired_owners {

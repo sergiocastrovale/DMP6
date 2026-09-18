@@ -1,5 +1,9 @@
 # Containment ≠ ownership — rollout runbook
 
+> **Historical runbook.** Everything below describes the code as it was on 2026-09-10. Since then the box
+> pass moved from sync's tail into `./tidy` (`docs/scripts/tidy.md`), and file/line references here are
+> stale. Current behaviour: `docs/sync_decisions.md` §9/§12.
+
 Companion to `docs/sync_decisions.md`. **Done — §§2-6 ran on prod (verified 2026-09-10).** `deploy` shipped
 the new binary, `undo_owned_bundle_claims.sql` ran, the relink re-sync completed. §4's verification queries
 all come back clean:

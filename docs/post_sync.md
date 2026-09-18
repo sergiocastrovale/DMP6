@@ -1,6 +1,6 @@
 # Post-Sync Routine
 
-After running `./index && ./sync` in batches, run this routine to catch and fix errors before moving to the next batch.
+After running `./index && ./sync && ./tidy` in batches, run this routine to catch and fix errors before moving to the next batch. (`./tidy` must follow `./sync`: box sets, identity repair and re-scoring live there, not in sync — `docs/scripts/tidy.md`.)
 
 ## Phase 1: Check Encoding Errors
 

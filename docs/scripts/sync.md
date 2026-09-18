@@ -1,6 +1,6 @@
 # Scripts: sync
 
-Queries pending artists (`lastIndexedAt > lastSyncedAt`) and syncs each against MusicBrainz. Uses a run hash for resumability - interrupted runs skip already-processed artists. Reads from DB and calls MB API. Writes found MB IDs back to audio file tags (preserving mtime to avoid re-index) and embeds downloaded cover art.
+Queries pending artists (`lastIndexedAt > lastSyncedAt`, or never synced — but only artists that **have** a `lastIndexedAt`: one with NULL is never selected at all, see `docs/sync_decisions.md` §19 item 13) and syncs each against MusicBrainz. Uses a run hash for resumability - interrupted runs skip already-processed artists. Reads from DB and calls MB API. Writes found MB IDs back to audio file tags (preserving mtime to avoid re-index) and embeds downloaded cover art.
 
 Artists that only hold track credits ("appears on", owning no release here) are deliberately not synced -
 they are excluded by `EXISTS(LocalReleaseArtist)` rather than by a stored flag. See
@@ -20,10 +20,11 @@ they are excluded by `EXISTS(LocalReleaseArtist)` rather than by a stored flag. 
    - Skip already-synced (has `releaseId`) unless `--overwrite` or its status is `UNKNOWN` (index flagged it for recalculation after deleting tracks)
    - Match: Tier 1 (MUSICBRAINZ_ALBUMID) → Tier 2 (MUSICBRAINZ_RELEASEGROUPID) → Tier 3 (title+artist search, only when no usable MB-id consensus) → no match = UNMATCHED
    - Majority id must be a real consensus (unanimous, or a strict plurality ≥2); a folder of all-distinct per-source ids yields no consensus
+   - **Agreement, not just plurality** (`tags_agree_on`): Tier 1 binds by tag directly only when the id — or its release group — is carried by more than half the tagged tracks. A plurality that is not an agreement (a per-track-tagged compilation) is looked up but bound only if its tracklist scores COMPLETE; otherwise the folder stays UNMATCHED and is deliberately *not* searched (its title is the same scattered tag). Tier 2 browses only a release group most tracks agree on. See `docs/sync_decisions.md` §7
    - **Allow-list**: bind only Official Album/EP release-groups (rejects Broadcast/Other, non-Official/bootleg, and non-music secondary types). A Single-typed group binds only when the *files' own* MB ids point at it; a rejected candidate gets one search-tier retry before going Unmatched
    - Compare local vs MB track counts → status: COMPLETE / EXTRA_TRACKS / MISSING_TRACKS / INCOMPLETE
    - If ambiguous (multiple editions, no exact track-count match) → UNMATCHED
-   - Upsert MB release, link tracks, update local release match status
+   - Upsert MB release, link tracks, update local release match status. Marking a release UNMATCHED also clears its tracks' `mbTrackId` links
 5. **Cover art (batched per artist):** download from Cover Art Archive, embed into audio files, extract thumbnail → `img/releases/` (local/S3)
 6. **Cleanup:** update artist sync stats + global statistics, delete orphan MB releases, release lock
 
@@ -147,8 +148,10 @@ Cannot combine with `--release`, `--delete`, or `--catalogue-gaps`. Compatible w
 
 Until 2026-09, `common::tags::write_mb_ids` wrote each track's **release-track** id into the **recording** slot (`MUSICBRAINZ_TRACKID` / ID3 UFID / MP4 `MusicBrainz Track Id`: Picard's names, which say "track" but mean the recording). A normal sync filled it wherever the tag was empty, and `--overwrite` replaced correct Picard values with it. MP3s were spared only by accident: lofty's generic ID3v2 conversion dropped the frame, see the MP3 note in `CLAUDE.md`.
 
-The one-off `oneoff/repair_recording_tags.py` (docs/__plan_tidy_script.md Step 7) fixed every file
-library-wide, once, then was deleted along with the rest of `oneoff/`. There is no standing flag for
+The one-off `oneoff/repair_recording_tags.py` repaired the already-damaged files library-wide on
+2026-09-18 (it had failed to start on the NAS's Python 3.11 until then — see
+`docs/scripts/tidy_observations.md` §17 for the run) and was then deleted along with the rest of
+`oneoff/`. There is no standing flag for
 this anymore - a normal sync still heals as it goes (`write_mb_ids` treats a recording tag equal to the
 track's own release-track id as absent, without `--overwrite`), so the mixup cannot recur.
 

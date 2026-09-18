@@ -65,8 +65,14 @@ and `running` (Ctrl-C/SIGTERM sets this false) gate the final watermark stamp.
 3. **Orphans + retire (round 1)**: `delete_orphaned_mb_releases(scope)` then
    `retire_owned_missing_placeholders()` — **order mandatory**, retire's live-download guard only works
    once the orphan is already gone (see the function's own doc comment).
-4. **Box pass**: `dmp_sync::boxset::run_repair(scope)` — bind sibling folder groups to a box-set
-   `MusicBrainzRelease`, derive equivalences, fold or dissolve. Sets `matchStatus='UNKNOWN'` on
+3b. **Disc backfill** (global, pure SQL): `db::backfill_media_from_track_discs` — medium rows and
+   `mediumCount` for releases matched before discs were modelled (2026-09-06), rebuilt from the disc
+   numbers their tracks already carry. Must precede the box pass, which keys everything off
+   `mediumCount > 1`. Idempotent; finds nothing once done.
+4. **Box pass**: `dmp_sync::boxset::run_repair(scope)` — bind folder groups to a box-set
+   `MusicBrainzRelease`, derive equivalences, fold or dissolve. Groups are found two ways: folders
+   sharing a parent, and a root folder plus the folders beneath it all bound to one multi-disc release
+   (`nested_groups` — disc 1 in the album folder, disc 2 below). Sets `matchStatus='UNKNOWN'` on
    everything it touches; those ids come back as `touched_local_release_ids`.
 5. **Re-score**: `db::get_rescore_targets` unions three sources — every scoped `LocalRelease` at
    `matchStatus='UNKNOWN'` with a release bound; this run's own `touched_local_release_ids` (a safety

@@ -46,6 +46,6 @@ any API calls — useful after a fresh match to make future syncs skip re-verifi
 
 An old tag-writing bug once put release-track ids into the recording slot; `write_mb_ids`'s own
 stale-recording self-heal now corrects this on every normal sync going forward (no flag needed). Files
-already damaged before the fix were repaired once, library-wide, by a throwaway script
-(`oneoff/repair_recording_tags.py`, since deleted — see `docs/__plan_tidy_script.md` Step 7). See
+already damaged before the fix were repaired once, library-wide, on 2026-09-18 by a throwaway script
+(`oneoff/repair_recording_tags.py`, since deleted — see `docs/scripts/tidy_observations.md` §17). See
 `docs/scripts/sync.md`.

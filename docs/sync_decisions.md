@@ -18,7 +18,8 @@ same album in two folders are two entries, on purpose, and the app groups them o
 
 Deliberately *not* used to group: the MusicBrainz ids inside the files. A compilation's files each
 carry the id of the album they were originally lifted from, so grouping by that would shatter one
-compilation into dozens of fragments.
+compilation into dozens of fragments. The same fact limits how far those ids are trusted for *matching*
+the folder — see §7.
 
 Loose files with no folder fall back to being grouped by album title + year + artist.
 
@@ -195,14 +196,33 @@ disappears immediately instead of lingering until the next sync.
 
 Four attempts, in order. **The file tags always win over searching.**
 
-1. **The album id in the files.** Believed directly, no second-guessing.
-2. **The album-group id in the files** — browse its editions and pick one (see §8).
+1. **The album id the files agree on.** Believed directly — *if* they agree: more than half of the
+   tagged tracks carry it, or carry its album group (a folder tagged across two editions of one album
+   is common and correct). Tracks with no id at all do not count against it.
+   When the files do **not** agree — the id merely won a scatter — it is a hint, not a statement. It is
+   still looked up, but only bound if its tracklist actually fits the folder (scores Complete).
+   This matters because a per-track tagger rewrites every file of a budget compilation to wherever it
+   thought that one recording appeared: "Christmas Moments with Harold Land" carried 31 different album
+   ids across 35 tracks ("Late Registration", "Born to Die", a Handel concerto) with "Harold in the Land
+   of Jazz" on 5. Believing the winner of that scatter bound twenty such compilations to one 8-track
+   album, and filled every "Chronological Classics" volume the same way. A compilation that really is
+   the release (Lloyd Price's "15 Hits", tagged per source but every title matching) still binds.
+2. **The album-group id most files agree on** — browse its editions and pick one (see "Which pressing
+   gets picked" below). A group only a minority of tracks carry is not browsed.
 3. **Search by album title + artist**, and *only* when the files carry no usable id at all. A search
-   hit must score at least 85, have a similar title, and be an allowed type.
+   hit must score at least 85, have a similar title, and be an allowed type. A folder whose id was
+   rejected in step 1 is **not** searched: its title comes from the same scattered tags — once bound it
+   even *is* the MusicBrainz title — so searching just re-finds the rejected album. It stays unmatched.
 4. If the files point at something the library refuses to bind (a bootleg, say), search is given one
    chance to find a legitimate edition instead. Before this existed, such an album was simply stuck.
 
 If none of that produces a confident answer, the album is left **unmatched** rather than guessed at.
+Unmatching also clears the album's track links, so nothing keeps pointing at the rejected release.
+
+**Changing these rules does not re-match what is already matched.** Sync skips any album that already
+has a match (unless it is `UNKNOWN` or the run uses `--overwrite`), so a rule change only affects new
+matches. The 2026-09-18 change above was applied to existing matches by a one-time repair
+(docs/scripts/tidy_observations.md §16): 2,812 compilations unmatched, 7 re-synced.
 
 ### Which albums are allowed to match at all
 
@@ -308,6 +328,21 @@ of each song. Everything below is sync reconstructing a relationship MusicBrainz
 ### Finding a box
 
 Folders sitting side by side inside a parent folder are treated as candidate discs of one thing.
+
+So is a second layout: **disc 1's files in the album folder itself, disc 2 in a folder beneath it**
+(`…/2004 - Blast Tyrant` holding CD 1, `…/2004 - Blast Tyrant/CD 2 - Bonus Disc` holding CD 2). Grouping by
+common parent never sees these two together — the album folder's parent is the artist's type folder — so
+both used to be scored against the whole two-disc tracklist and shown as two "missing tracks" cards for one
+complete album. Such a group is only formed when every folder in it is already bound to the same multi-disc
+release and none is placed or folded, and it never overlaps a side-by-side group. Folders bound to one
+release but filed in *unrelated* places (two spellings of an artist, a copy elsewhere) are not grouped:
+a folder-and-its-subfolder layout is evidence of one physical release, two separate trees is not.
+
+**A release must know it has discs at all.** Discs were first recorded on 2026-09-06/07, and releases
+matched before that kept a disc count of 1 with no disc rows, even though their tracks carried disc numbers
+1, 2, … all along — 3,602 of them. Every decision in this section keys off "this release has more than one
+disc", so those were invisible here. `./tidy` rebuilds the disc structure from the stored disc numbers
+before this pass runs (no MusicBrainz call); nothing writes that shape any more.
 
 Three sources feed candidate box releases, tried in order until one produces a bind:
 
@@ -584,7 +619,9 @@ take about an hour each. Both are normal.
 ## 14. Safety rules that override everything
 
 - **Metadata is the truth.** Folder and file names are never read for artist, album or year.
-- **Ids embedded in your files are believed immediately** — no second-guessing.
+- **Ids embedded in your files are believed immediately — when the files agree on them.** An album id
+  carried by most of a folder's tracks (or whose album group is) is never second-guessed. One that merely
+  won a scatter is checked against the tracklist first (§7). Artist ids follow §5.
 - **Nothing is deleted to make a match fit.** Ambiguity produces "unmatched", never a deletion.
 - **A network failure is never evidence.** It defers; it never concludes an album does not exist.
 - **Sync repairs and re-runs are safe to repeat.** Running it twice produces the same result as once.
@@ -724,6 +761,9 @@ the item-1 edition/partial-bind work later reclaims), and no new `Box-set repair
 | Box seen by `./tidy` but never bound | §10 — the run summary's `not bound:` line says which reason |
 | Several identical-looking cards for one release — really a box's discs, unplaced | §9, §10, §17 |
 | Album listed missing that you own | §11, §9 |
+| Several unrelated compilations all shown as the same album | §7 — tags that scatter across albums |
+| Album with disc 1 in the folder and disc 2 in a subfolder shown as two cards | §9 "Finding a box" |
+| An artist that owns albums but has never been synced | §19 "Gaps in sync and tidy" |
 | "Songs inside another release" note looks wrong | §12 |
 | Sync too slow, or MusicBrainz errors | §13 |
 | Ran `./tidy` but the wrong albums are still there | §6 — a repair clears the id, it does not re-sync the artist; that happens on the next normal `sync` |
@@ -732,8 +772,10 @@ Useful commands: `./tidy`, `./sync --only "Artist" --exact --verbose`, `./audit`
 
 ## 19. To do next
 
-Left open by the 2026-09-11 box-set investigation (§17). Each item below is self-contained — symptom,
-cause, fix, safety, verification — so it can be picked up on its own, without re-deriving context.
+Each item below is self-contained — symptom, cause, fix, safety, verification — so it can be picked up on
+its own, without re-deriving context. Items 1–5 came out of the 2026-09-11 box-set investigation (§17);
+6–13 out of the 2026-09-18 tidy rollout review (docs/scripts/tidy_observations.md has the evidence for
+each). Done items are kept, marked, so the numbering stays stable.
 
 ### 1. Refused split-disc groups — **done (2026-09-18)**
 
@@ -824,8 +866,10 @@ A **separate, unrelated bug** from everything else in this document: `common::ta
 to write a track's release-track id into the recording-id tag slot. Fixed and deployed (commit
 `3549964b`). What originally repaired *already-damaged* files was a Rust `sync --repair-recording-tags`
 flag; that flag has since been removed entirely and replaced by a throwaway one-off,
-`oneoff/repair_recording_tags.py`, run once library-wide and then deleted (see
-docs/__plan_tidy_script.md Step 7). Not documented elsewhere in this file because it has nothing to do
+`oneoff/repair_recording_tags.py`. That script could not even start on the NAS's Python 3.11 (a nested
+f-string syntax error), so despite earlier notes saying otherwise it never ran until 2026-09-18, when it was
+fixed, validated on FŒHN (8 files) and run library-wide (docs/scripts/tidy_observations.md §17), then
+deleted. Not documented elsewhere in this file because it has nothing to do
 with box sets, artist identity, or any matching decision above — it only touches which MB id lands in
 which tag.
 
@@ -834,6 +878,101 @@ binding/fold/dissolve moved off `sync`'s own tail entirely, into a new `./tidy` 
 completion in one invocation instead of needing a second unscoped `sync` to re-score newly-`UNKNOWN`
 rows. **The current rollout checklist is docs/__plan_tidy_script.md Step 10** — follow that, not the
 procedure that used to be written here.
+
+### 6. Root folder holding two discs at once, next disc below (21 albums)
+
+**Symptom:** discs 1 and 2 ripped together into the album folder, disc 3 in a subfolder (Scorpions "MTV
+Unplugged", Kreator "Dying Alive", Concerto Moon "Decade Of The Moon"). Both folders stay `MISSING_TRACKS`,
+each scored against the whole three-disc list.
+
+**Cause:** the box bind plan pairs each folder with exactly **one** disc. The album folder matches no
+single disc, so only the subfolder resolves — one folder — and the group is refused.
+
+**Fix:** allow a folder to pair with a *contiguous run* of discs when it matches no single one, pairing
+its tracks against the run's combined tracklist with the same rule ladder. `apply_fold` must then stamp
+each track's disc number from which disc its pairing landed on, not from the folder.
+
+**Safety:** this changes `plan_box_bind`, which the side-by-side box pass shares — replay old vs new over
+every sibling group first (`boxset::tests::replay_library_dump`), as every earlier matcher change was.
+
+### 7. A 9-track folder bound to a 257-track box ("Dear Michael: The Motown Collection")
+
+**Symptom:** three different Michael Jackson albums — "20th Century Masters", "Farewell My Summer Love",
+"Looking Back To Yesterday" — all bound to one 12-disc box, three identical cards.
+
+**Cause:** not the box pass (the folders are separate albums, not discs). None of the files carries an
+embedded album id, so the album matcher reached the box by search or edition choice — which §7's own rules
+should not allow for a 9-track folder against a 257-track box. The box pairs *two albums per disc*, so no
+per-disc placement exists either (§15 limit 2). Start in the album matcher's search/edition path.
+
+### 8. Albums owned by dozens of unrelated artists (scattered per-track artist tags)
+
+**Symptom:** a Harold Land budget compilation shows on the pages of Christina Perri, Lana Del Rey, The
+Prodigy, Ylvis, Handel…
+
+**Cause:** the same per-track tagger as §7's scattered album ids also rewrote the album-artist tags per
+track, and §2's owner rule takes the union of every track's album artist. After the §7 binding fix these
+albums are Unmatched under their own name, but still owned by everyone the tagger named.
+
+**Fix:** belongs in index's ownership resolution — e.g. the same "most tracks must agree" test applied to
+album artists, falling back to the folder's dominant owner. Or retag the files.
+
+### 9. 124 "Chronological Classics" bindings still wrong — needs retagging, not code
+
+Compilations whose files **agree** (59 unanimously, 65 by majority) on a Chronological Classics volume —
+the tagger stamped them consistently, because every pre-war recording appears on some volume. §7's rule
+correctly believes files that agree, and nothing in the metadata separates these from a genuine partial
+album; folder names are not evidence (§14). Retag the files. List:
+`docs/scripts/tidy_observations_cc_retag.tsv`.
+
+### 10. 2,404 Complete albums with no linked tracks at all
+
+Already so before any 2026-09-18 run (e.g. Garden of Delight "Lutherion 1": Complete, 0 of 22 linked),
+and `tidy --rescore-only` never targets Complete albums. Suspected: a re-index recreating track rows
+without links while the status stays. **Not verified** — start by comparing `LocalReleaseTrack.createdAt`
+to the album's last scoring.
+
+### 11. Loose title containment pairs one-word titles with anything (102 links)
+
+A file tagged just "You" pairs with "What's the Matter With You Baby", "How Sweet It Is (To Be Loved by
+You)"… — the original containment rule in §8 has no length floor and no duration check. Fixing it moves
+some albums the strict way (Complete → Missing tracks), so it needs its own replay and a decision.
+
+### 12. Box discs whose box was deleted (37 remaining)
+
+`boxMediumPosition` set with no `boxReleaseId`: the orphan sweep used to delete dissolved boxes (fixed
+2026-09-18, docs/scripts/tidy_observations.md §12). 208 were damaged; 171 recovered when their groups
+re-bound. The rest recover once their group binds.
+
+### 13. Artists that owned albums were never synced — **done (2026-09-18)**
+
+Index's post-scan artist resolution replaces a provisional compound owner ("Jimmy Regal And The Royals")
+with the artists it names, often creating them — and never stamped their `lastIndexedAt`. Sync only
+selects artists that have one, so 5,445 owning artists had never been synced since the first index run,
+and 437 albums owned only by them had never been matched (406 Unmatched). Fixed: the resolution pass stamps
+every artist it actually adds as an owner. The existing 5,490 were stamped once (undo list:
+`logs/undo17_never_indexed.txt` on the NAS); the next plain `./sync` picks them up.
+
+### Gaps in sync and tidy
+
+Not bugs in what they do, but things neither of them does, found the hard way:
+
+- **Sync never re-examines an album it has already matched.** Every change to the matching rules (§7,
+  §8) therefore needs a one-off repair to reach existing matches — §7's agreement rule did. `tidy
+  --rescore-only` covers *scoring* changes; nothing covers *matching* changes. A standing check (e.g. tidy
+  flagging matches the current rules would reject, setting them `UNKNOWN` so sync re-matches them) would
+  make that self-healing.
+- **One persistently failing box group blocks the whole run's "tidied" stamp.** Any `groups_failed`
+  marks the run as errored and withholds the stamp for every artist in scope, not just the failing
+  group's. Conservative (nothing is written wrongly) but a group that always fails would keep a whole
+  scope permanently pending. Attribute it to that group's artists instead, like fetch errors already are.
+- **An artist held back after a MusicBrainz failure may not be the one that pulled the group in**
+  (`artist_for_group` picks any owner). The group stays unbound regardless, so it resurfaces — a nudge,
+  not a guarantee.
+- **`tidy --rescore-only` does not run the orphan sweep**, so releases a re-score leaves unreferenced wait
+  for the next ordinary tidy.
+- **Sync only ever adds track links.** Only tidy's re-score clears links it no longer confirms, so an album
+  sync re-matches but tidy never re-scores can keep stale links.
 
 ---
 

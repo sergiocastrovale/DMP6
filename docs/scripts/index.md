@@ -355,7 +355,13 @@ owner **forever**. 497 of those had accumulated -
 `"Aaron Neville, Kenny G, Walter Afanasieff, John \"JR\" Robinson, ..."` owning *The Bodyguard OST*.
 
 The resolve pass then runs an **ownership reconcile** that replaces those provisional owners, guarded so it
-can never make things worse:
+can never make things worse. **Every artist the reconcile actually adds as an owner is stamped
+`lastIndexedAt`** (only rows its insert wrote, via `RETURNING`, so an existing owner is not re-queued).
+It used not to be: the folder loop stamps the owners *it* settled, which for a provisional compound
+("Jimmy Regal And The Royals") is the compound — and the real artists the reconcile substituted, often
+created on the spot, were left with no `lastIndexedAt`. Sync only ever selects artists that have one, so
+5,445 owning artists were never synced and 437 albums owned only by them were never matched (fixed
+2026-09-18, `docs/sync_decisions.md` §19 item 13).
 
 | Guard | Why |
 |---|---|

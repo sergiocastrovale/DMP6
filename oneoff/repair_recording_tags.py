@@ -281,7 +281,8 @@ def main() -> None:
     conn = connect(database_url)
     conn.autocommit = True
 
-    print(f"Fetching candidate file list{f' for artists matching \"{args.only}\"' if args.only else ''}...")
+    scope = f' for artists matching "{args.only}"' if args.only else ""
+    print(f"Fetching candidate file list{scope}...")
     rel_paths = fetch_candidates(conn, args.only)
     print(f"{len(rel_paths)} candidate file(s).")
 

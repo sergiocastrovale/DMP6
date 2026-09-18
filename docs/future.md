@@ -30,11 +30,13 @@ BUGS
 
 Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. These catalogues should be separated - best strategy? The name of the band isn't the problem - it's the slug generation and the way we catalogue them (they can't be together).
 
-I see 3 exactly equal "Dear Michael: The Motown Collection" releases grouped. How is this possible? Clearly a bug. Note: sync and tidy scripts have ran fully. 
+3 identical "Dear Michael: The Motown Collection" cards — diagnosed, not fixed: the album matcher bound three separate 9-12 track albums to one 257-track box. See `docs/sync_decisions.md` §19 item 7.
 
-22-20s release "Got It If You Want It" has 2 editions with MISSING_TRACKS, but opening it each shows one of the disks. Why? Bug? Analyze metadata of files too.
+Compilations owned by dozens of unrelated artists (a Harold Land compilation on Lana Del Rey's page) — scattered per-track artist tags; index ownership. See `docs/sync_decisions.md` §19 item 8.
 
-"Billie Holiday - Harold in the Land of Jazz" has 2 editions. Both look like they are exactly the same, say 'extra tracks' but seem to have missing tracks? Same in "The Chronological Classics: Teddy Wilson and His Orchestra 1934-1935" etc. Looks like a systemic problem. All " Chronological Classics" seem to have the same problem.
+124 "Chronological Classics" bindings whose files agree on the wrong volume — retag the files. List: `docs/scripts/tidy_observations_cc_retag.tsv`, background in `docs/sync_decisions.md` §19 item 9.
+
+(Fixed 2026-09-18 and removed from this list: 22-20s "Got It If You Want It" disc 1 + disc 2 shown as two cards — `docs/sync_decisions.md` §9; "Harold in the Land of Jazz" / Chronological Classics compilations bound to the wrong album by scattered tags — §7. Full open-bug list: §19.)
 
 
 UI
