@@ -34,11 +34,18 @@ I see 3 exactly equal "Dear Michael: The Motown Collection" releases grouped. Ho
 
 22-20s release "Got It If You Want It" has 2 editions with MISSING_TRACKS, but opening it each shows one of the disks. Why? Bug? Analyze metadata of files too.
 
+"Billie Holiday - Harold in the Land of Jazz" has 2 editions. Both look like they are exactly the same, say 'extra tracks' but seem to have missing tracks? Same in "The Chronological Classics: Teddy Wilson and His Orchestra 1934-1935" etc. Looks like a systemic problem. All " Chronological Classics" seem to have the same problem.
+
+
 UI
 
 Better hierarchy in statistics vs subpages
 
 "Connected now" panel in settings/users needs more love
+
+if downloads are paused, re-download button in artist page should be disabled with Popover.vue explaining why
+
+In downloads page "1 release have no MusicBrainz release date and can never be auto-acquired." -> which one(s)? Change to: "The following releases have no MusicBrainz release date and can never be auto-acquired: {unordered list of artist - release}" 
 
 TIDY
 

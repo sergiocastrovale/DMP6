@@ -720,3 +720,89 @@ production order, the replay's legacy rules reproduce the stored status on 23,47
   You)", and so on. 102 such links library-wide (≤ 4-letter local title, not equal to the MusicBrainz
   title, runtimes > 15s apart). Fixing it changes existing statuses in the strict direction
   (`COMPLETE` → `MISSING_TRACKS`), so it needs its own replay and a decision.
+
+---
+
+## 15. Round 4 — discs split across a folder and its subfolder (2026-09-18)
+
+Reported in `docs/future.md` as 22-20s "Got It If You Want It": two cards for one album, each showing
+`MISSING_TRACKS` and one of its discs. The artist has since been deleted; the examples below stand in.
+
+### Two faults, stacked
+
+**1. Pre-multidisk releases never got their discs.** Discs were first modelled on 2026-09-06/07 (the
+`box_sets` and `multidisk` migrations). Those defaulted `mediumCount` to 1 and never backfilled, so
+every release synced 2026-08-31 to 09-06 and not re-synced since kept `mediumCount = 1` and no
+`MusicBrainzReleaseMedium` rows — although its tracks carried disc numbers 1, 2, … the whole time.
+3,602 releases; 3,599 of them written in that one week. Every multi-disc decision keys off
+`mediumCount > 1`, so these were invisible to the box pass.
+
+(Corrects §14, which blamed `db::upsert_mb_release` hardcoding one disc. Its only callers create
+`MISSING` placeholders, which have no tracks. Sync's binding path records discs properly; nothing
+writes this shape today.)
+
+**2. The box pass never saw the layout.** Disc 1 sits in the album folder itself, disc 2 in a folder
+beneath it (`…/2004 - Blast Tyrant` and `…/2004 - Blast Tyrant/CD 2 - Bonus Disc`). The box pass groups
+folders by common parent, and the root folder's parent is the artist's type folder — so the two discs
+were never considered together, even for releases whose discs *were* recorded.
+
+### Fix
+
+- `db::backfill_media_from_track_discs`, a tidy phase before the box pass: medium rows and
+  `mediumCount` from the stored disc numbers. Pure SQL, idempotent, only where every track has a disc
+  number and there are at least two.
+- `boxset::nested_groups`: a root folder plus every folder beneath it, all bound to one multi-disc
+  release, none placed or folded. **Discovery only** — the group then goes through the unchanged bind /
+  equivalence / fold-or-dissolve pipeline, candidate taken from the database first. Folders in unrelated
+  trees are not grouped, and a nested group never overlaps a sibling group, so everything the box pass
+  did before it still does identically.
+
+### Verified
+
+Simulated first over all 276 nested groups: 185 bind, every one covering all its folders.
+
+Stage 1, six artists including cases that must not change:
+
+| Album | Before | After |
+|---|---|---|
+| George Harrison, *All Things Must Pass* 2CD | 2 cards, both `MISSING_TRACKS` | 1 release, 2 disc members, 28/28 linked, `COMPLETE` |
+| Clutch, *Blast Tyrant* | 2 cards, both `MISSING_TRACKS` | 1 release, 25/25, `COMPLETE` |
+| Carter USM, *Worry Bombe* | 2 cards, both `MISSING_TRACKS` | 1 release, 25/25, `COMPLETE` |
+| Circa Survive, two unrelated live albums bound to one release | separate | **unchanged** |
+| Garden of Delight, *Lutherion 2* (a sibling group, each disc bound to a different release) | refused | **refused, as before** |
+
+All five groups found folded, all five from the database with no MusicBrainz call, all five re-scored
+`COMPLETE`.
+
+Stage 2, every artist owning a nested group (209 artists, 43 minutes; their ordinary sibling groups ran
+too):
+
+```
+Box groups : 471 seen, 229 bound (172 folded, 52 dissolved, 5 key-taken, 0 failed, 292 from DB)
+  not bound: 242 - 54 no candidate, 167 no match, 14 ambiguous, 7 collision
+Re-scored  : 385 complete, 10 extra tracks, 5 missing tracks, 0 deferred
+```
+
+Checked per release against a pre-run snapshot:
+
+| | |
+|---|---|
+| `MISSING_TRACKS` → `COMPLETE` | 179 |
+| Any other status change | 0 |
+| Duplicate cards removed (absorbed into a fold) | 177 |
+| Releases that lost track links | 0 |
+| Tracks | 1,901,672 before and after |
+| Multi-disc releases still stored as one disc | 0 (was 3,602) |
+
+Library: `MISSING_TRACKS` 13,146 → 12,790, `COMPLETE` 116,647 → 116,826.
+
+### Open
+
+- **21 nested groups where the root folder holds two discs at once** — discs 1+2 in the album folder,
+  disc 3 below (Scorpions *MTV Unplugged*, Concerto Moon, Kreator *Dying Alive*). Needs a bind plan in
+  which one folder covers several discs, a change to `plan_box_bind` itself, which the sibling box pass
+  shares. Left for its own replay.
+- **2,404 `COMPLETE` releases with no linked tracks at all.** Pre-existing: e.g. Garden of Delight
+  *Lutherion 1* was already 0 of 22 before any round-3/4 run, and `--rescore-only` never targets
+  `COMPLETE`. Probably a re-index recreating track rows without links while the status stays; not
+  verified.
