@@ -639,3 +639,84 @@ like the whole problem. It is not.
   a scope can never be marked done. Conservative rather than harmful — every placement still lands — but
   a permanently-failing group would block it forever. The `--artist-ids` scope bypasses the watermark
   anyway, so nothing is pending as a result of this run (2 artists pending, unchanged).
+
+---
+
+## 14. Round 3 — the status scorer (2026-09-18)
+
+Fixes §13's "a folded box can score `MISSING_TRACKS` while holding every track". Cause: round 2 taught
+`boxset::pair_tracks_at` new title rules; `status::check_release_status`, which decides the *status*,
+never learned them.
+
+### What changed
+
+- The round-2 title rules moved into a shared `title_rules` module, used by both.
+- Two scorer passes after the existing ones: **equal once qualifiers are dropped**, and **one- or
+  two-letter typos**. Both refuse when the pairing is contested from *either* side, and when the two
+  titles name different numbers.
+- When the qualifiers differ, the runtimes must be **known on both sides and within 2s**.
+- Among identical titles, the exact pass takes the **closest runtime**, not the first file.
+- Local durations now reach the scorer at all — `LocalTrackRow` had no `duration` and
+  `track_metas_from_rows` hardcoded `None`.
+- `tidy --rescore-only`: DB-only re-score including `MISSING_TRACKS`, nothing else, no stamp.
+
+### How the guards were found
+
+Every guard came from replaying both scorers over 23,490 releases (all `MISSING_TRACKS` and
+`EXTRA_TRACKS`, plus 5,000 `COMPLETE`) and reading the pairings, not from reasoning about them:
+
+| Draft rule let through | Guard |
+|---|---|
+| "(mono)" ↔ "(stereo)", MusicBrainz length unknown | differing qualifiers need both runtimes known |
+| "Divine Opus #1" ↔ "Divine Opus 2", "Part 1" ↔ "Part II" | numbers must not disagree |
+| "(Paul Humphreys remix)" ↔ "(Theo Kottis remix)", 14s apart | differing qualifiers need ≤ 2s |
+| "Lil Wayne" reading as the number 99 | explicit roman-numeral whitelist |
+
+The number guard also *added* correct pairings: "Freakish (1)" previously fit both "(take 1)" and
+"(take 2)", was contested, and refused; now it resolves.
+
+### Results in production
+
+Rolled out in stages, each checked per release against a snapshot of linked-track counts:
+
+| | |
+|---|---|
+| Stage 1 (51 artists) | 111 → `COMPLETE`, 39 of 40 predicted, 0 releases lost links |
+| Stage 2 (whole library) | 920 more → `COMPLETE` |
+| Stage 3 (exact-pass fix) | 3 more → `COMPLETE` |
+| **Total `MISSING_TRACKS` → `COMPLETE`** | **1,034** |
+| `MISSING_TRACKS` → anything else | 0 |
+| Track links gained | 25,452 |
+| The 44 mis-scored folded boxes | 36 now `COMPLETE` |
+
+Library: `COMPLETE` 115,620 → 116,654, `MISSING_TRACKS` 14,182 → 13,148.
+
+**Estimated wrong pairings: 1–2%, bounded above by ~5%.** The riskiest class (differing qualifiers)
+sampled 33 of 40 clearly one recording labelled two ways, 0 clearly wrong, 7 uncertain — every
+uncertain one with runtimes agreeing to the second. One known wrong one shipped: Yello's "She's Got a
+Gun (live at the Palladium)" paired with "(Instrumental Club Mix)" 242s/241s, a different bonus track.
+
+**Link clearing.** Stage 2 cleared 26 links across 21 releases, none changing status. Traced: sync
+only ever *adds* links, so releases accumulate ones their current scoring doesn't make — a duplicate
+file linked alongside its twin (8 releases), pairings from earlier runs. Re-scoring's existing rule
+clears what it doesn't re-confirm. Checked and ruled out: nothing links from embedded tag ids, so no
+definitive link was removed.
+
+**The replay's one disagreement with production** was file order: the dump didn't order local tracks,
+production reads them by disc and track number, and the old exact pass was order-dependent. Re-dumped in
+production order, the replay's legacy rules reproduce the stored status on 23,474 of 23,490 releases.
+
+### Open, found during round 3
+
+- **3,603 multi-disc releases stored as `mediumCount = 1` with no medium rows** — 1,745 local releases
+  `MISSING_TRACKS` as a result. Reported in `docs/future.md` as 22-20s "Got It If You Want It": CD 1 in
+  the release folder, CD 2 in a subfolder, both scored against the full 23-track list. MusicBrainz has 2
+  media (13 + 10); the DB recorded 1 and no medium rows, although the tracks carry disc numbers 1 and 2.
+  Written by `db::upsert_mb_release`, which hardcodes `medium_count = 1` and never calls
+  `sync_mb_media_for_release`. Repairable from the stored disc numbers with no MusicBrainz calls; the
+  root-folder-plus-subfolder layout also needs placing, since `find_sibling_groups` never sees it.
+- **The legacy loose pass pairs by substring with no duration guard and no length floor.** A local file
+  whose tag is just "You" pairs with "What's the Matter With You Baby", "How Sweet It Is (To Be Loved by
+  You)", and so on. 102 such links library-wide (≤ 4-letter local title, not equal to the MusicBrainz
+  title, runtimes > 15s apart). Fixing it changes existing statuses in the strict direction
+  (`COMPLETE` → `MISSING_TRACKS`), so it needs its own replay and a decision.
