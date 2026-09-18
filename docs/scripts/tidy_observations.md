@@ -920,7 +920,7 @@ script died at parse time on the NAS's Python 3.11 (a nested-quote f-string only
 file was ever repaired. Fixed and run 2026-09-18:
 
 - FŒHN (`--apply --only`): 8 files blanked, confirmed by re-reading the tags afterwards; no other tag
-  and no audio touched (mtime changed only on those 8).
+  and no audio touched, mtimes preserved (so index does not see them as changed).
 - Elvis Presley dry run: 1,279 changes planned, all rewrites to the recording id.
 - Library-wide (`--apply --workers 8 --resume`): started 2026-09-18 13:53, 1,901,672 candidate files,
   I/O bound at ~2,200 files/min (~14h). Result: pending.
