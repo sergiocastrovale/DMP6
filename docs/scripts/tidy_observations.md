@@ -615,11 +615,26 @@ like the whole problem. It is not.
   binds.
 - **98 box releases are now protected only by the `boxReleaseId` guard**, up from 33 — every one of them
   would be deleted by the old sweep on the next run.
-- **A folded box can still score `MISSING_TRACKS` while holding every track.** Marillion's fold is
-  45 local tracks against a 45-track box, every track disc-numbered, and still reads `MISSING_TRACKS`.
-  A folded release scores against the whole box with `mediumPosition` NULL, so titles repeated across
-  discs (this box has "Market Square Heroes" on CD1 and again on CD4) can pair to the wrong slot. Worth
-  scoping a folded release's scoring per medium. New, separate from anything above.
+- **A folded box can still score `MISSING_TRACKS` while holding every track — 44 releases.** Measured:
+  of 1,518 folded releases, 1,363 are `COMPLETE` and hold every track, 155 are `MISSING_TRACKS`, and of
+  those **44 hold every track of the box they are bound to**. The other 111 are genuine partial rips,
+  correctly scored.
+
+  Cause, traced on Marillion's fold (45 local tracks against a 45-track box): **the box matcher learned
+  new title rules in round 2 and the status scorer did not.** `boxset::pair_tracks_at` now pairs
+  "Market Square Heroes (alternative version)" with MusicBrainz's "Market Square Heroes (re-record)" via
+  the qualifier-stripping rule, but `status::titles_match` — which decides the *status* — still sees
+  equality, then substring containment, then Jaccard over the meaningful words: 3 shared of 6 union =
+  0.5, below its 0.8 threshold. One unpaired track out of 45 produces `MISSING_TRACKS`.
+
+  (Checked and ruled out: `status::normalize_title` keeps whitespace, unlike the identically-named
+  `owned::normalize_title` which strips it, so the Jaccard branch is live rather than dead. Two
+  functions with the same name and different semantics in one crate is its own readability hazard.)
+
+  **Not fixed here, deliberately.** `titles_match` scores every release in the library, not only folded
+  boxes; loosening it to recover 44 releases out of 151,928 (0.03%) risks changing status on far more
+  than it fixes. If it is taken on, it needs the same treatment the box matcher got: replay both
+  versions over the whole library and confirm nothing moves in the wrong direction *before* deploying.
 - **`groups_failed > 0` blocks the watermark stamp for the entire scope.** One pathological group means
   a scope can never be marked done. Conservative rather than harmful — every placement still lands — but
   a permanently-failing group would block it forever. The `--artist-ids` scope bypasses the watermark
