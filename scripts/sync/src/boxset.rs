@@ -370,7 +370,7 @@ fn pair_tracks(
 /// Why `plan_box_bind_detailed` refused a candidate. Carried so the caller can both log a precise
 /// reason and count refusals by kind - a bare `None` made half the box pass' work invisible in the run
 /// summary, which is how a transient MusicBrainz outage stayed indistinguishable from "this group has
-/// no box release" for an entire rollout (docs/scripts/tidy_observations.md).
+/// no box release" for an entire rollout (docs/specs/spec_tidy_observations.md).
 #[derive(Debug, Clone)]
 pub enum BindRefusal {
     /// Fewer than two siblings, or fewer than two of them matched a medium - nothing to fold.
@@ -608,7 +608,7 @@ fn build_candidate(release_id: &str, media: &Option<Vec<MbMedia>>) -> Option<Box
 
 /// A MusicBrainz lookup that failed: logged, not swallowed. `reporter.sub_step` alone put this in a
 /// run log nobody keeps, so a 503 during a six-hour pass was indistinguishable in the summary from a
-/// group that genuinely has no box release (docs/scripts/tidy_observations.md).
+/// group that genuinely has no box release (docs/specs/spec_tidy_observations.md).
 fn note_fetch_error(reporter: &Reporter, what: &str, err: &str) {
     let msg = format!("box candidate lookup failed ({what}): {err}");
     reporter.sub_step(&format!("  -> {msg}"));
@@ -2142,7 +2142,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Ladder passes 1c / 2 / 3 / 4 (docs/scripts/tidy_observations.md round 2)
+    // Ladder passes 1c / 2 / 3 / 4 (docs/specs/spec_tidy_observations.md round 2)
     // -----------------------------------------------------------------------
 
     /// Pass 2's window used to be 5s while pass 1b already allowed 15s, so a containment pair with a
@@ -2408,7 +2408,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Nested groups: root folder + subfolders (docs/scripts/tidy_observations.md §15)
+    // Nested groups: root folder + subfolders (docs/specs/spec_tidy_observations.md §15)
     // -----------------------------------------------------------------------
 
     fn row(id: &str, path: &str) -> SiblingRow {

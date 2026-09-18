@@ -551,7 +551,7 @@ pub struct RescoreTarget {
 /// dissolved: `apply_dissolve` only sets `UNKNOWN` when something changed, so a disc already moved and
 /// already scored back then is at neither `UNKNOWN` nor in `touched_ids`, and its tracks keep pointing
 /// at the box's track rows forever. Measured 1,336 such links across 122 releases after the 2026-09-17
-/// rollout (docs/scripts/tidy_observations.md). `rescore_bound_release` already repairs this correctly
+/// rollout (docs/specs/spec_tidy_observations.md). `rescore_bound_release` already repairs this correctly
 /// - it just never saw them. DB-only, no MusicBrainz call, and `mbTrackId` is indexed.
 pub async fn get_rescore_targets(
     pool: &PgPool,
@@ -691,7 +691,7 @@ pub enum RescoreOutcome {
 /// Re-score one already-bound `LocalRelease` against the `MusicBrainzRelease` it already points at -
 /// no MusicBrainz call, no allow-list gate (it is bound already), no tag write (the next sync's
 /// `write_mb_ids` owns tags), and never `update_artist_sync_stats` (tidy must never stamp
-/// `lastSyncedAt` - see docs/__plan_tidy_script.md "Watermark traps").
+/// `lastSyncedAt` - see docs/specs/spec_tidy_script.md "Watermark traps").
 pub async fn rescore_bound_release(
     pool: &PgPool,
     target: &RescoreTarget,
@@ -1167,7 +1167,7 @@ pub type ArtistScope<'a> = Option<&'a [String]>;
 ///
 /// It matters because every multi-disc decision keys off `mediumCount > 1`: such a release is invisible
 /// to the box pass, and each disc folder bound to it is scored against the *whole* multi-disc tracklist -
-/// 1,745 local releases `MISSING_TRACKS` purely for that reason (docs/scripts/tidy_observations.md §15).
+/// 1,745 local releases `MISSING_TRACKS` purely for that reason (docs/specs/spec_tidy_observations.md §15).
 ///
 /// Only releases where **every** track has a disc number and there are at least two distinct ones. A
 /// release with a single disc number is a genuine single medium and is left exactly as it is. Medium
@@ -1898,7 +1898,7 @@ pub async fn get_all_synced_artists(pool: &PgPool) -> Result<Vec<(String, String
 
 /// Stamp `lastTidiedAt` for exactly the artists this run scoped and finished clean. Never called for a
 /// run that was interrupted or hit a phase error - those artists must stay pending so the next tidy
-/// redoes them (docs/__plan_tidy_script.md "Watermark traps").
+/// redoes them (docs/specs/spec_tidy_script.md "Watermark traps").
 pub async fn stamp_artists_tidied(
     pool: &PgPool,
     artist_ids: &[String],

@@ -5,7 +5,7 @@
 //! They used to live only in `boxset`, which is how the two drifted apart: round 2 taught the box
 //! matcher to pair "Market Square Heroes (alternative version)" with MusicBrainz's "Market Square Heroes
 //! (re-record)", while the status scorer still could not - so Marillion's box folded with all 45 tracks
-//! and was then scored `MISSING_TRACKS` (docs/scripts/tidy_observations.md §13). One definition, used by
+//! and was then scored `MISSING_TRACKS` (docs/specs/spec_tidy_observations.md §13). One definition, used by
 //! both, keeps the two answers consistent.
 //!
 //! Both rules operate on `owned::normalize_title` output (alphanumerics only, lower-cased) - the

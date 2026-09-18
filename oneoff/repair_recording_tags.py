@@ -10,7 +10,7 @@ rewrites it to that track's recording id, or blanks it when the recording is not
 tag value is touched, and mtimes are kept so a plain re-index never sees these files as changed. No
 MusicBrainz calls - the DB already has every id this needs.
 
-This is a throwaway script: run it once (see docs/__plan_tidy_script.md Step 7), then delete
+This is a throwaway script: run it once (see docs/specs/spec_tidy_script.md Step 7), then delete
 `oneoff/` from both the repo and the NAS. It replaces what used to be `sync --repair-recording-tags`.
 
 Usage:
@@ -18,7 +18,7 @@ Usage:
     python3 oneoff/repair_recording_tags.py --apply --only "FŒHN"          # apply, one artist
     python3 oneoff/repair_recording_tags.py --apply --workers 8            # full library, in tmux
 
-Requires: mutagen, psycopg2 (both already on the NAS host per docs/__plan_tidy_script.md).
+Requires: mutagen, psycopg2 (both already on the NAS host per docs/specs/spec_tidy_script.md).
 """
 
 from __future__ import annotations

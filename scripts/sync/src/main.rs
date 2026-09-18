@@ -287,7 +287,7 @@ async fn search_release_candidate(
 /// budget compilation to wherever it thought that one recording appeared leaves a folder like
 /// "Christmas Moments with Harold Land": 35 tracks, 31 distinct album ids ("Late Registration", "Born to
 /// Die", "Handel: Concerti grossi"...), and "Harold in the Land of Jazz" winning with 5. Sync bound twenty
-/// such compilations to that one 8-track album (docs/scripts/tidy_observations.md §16).
+/// such compilations to that one 8-track album (docs/specs/spec_tidy_observations.md §16).
 fn tags_agree_on(
     tracks: &[LocalTrackRow],
     field: fn(&LocalTrackRow) -> &Option<String>,

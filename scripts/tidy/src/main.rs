@@ -17,7 +17,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-/// Library-wide repair split out of `./sync` (docs/scripts/tidy.md, docs/__plan_tidy_script.md).
+/// Library-wide repair split out of `./sync` (docs/scripts/tidy.md, docs/specs/spec_tidy_script.md).
 /// Every caller chains `./tidy` after `./sync` - sync itself never calls it.
 #[derive(Parser, Debug)]
 #[command(name = "tidy")]
@@ -522,7 +522,7 @@ async fn main() {
     if running.load(Ordering::SeqCst) && !had_error && !args.rescore_only {
         // Everything in scope except the artists a failed MusicBrainz lookup left unanswered - those
         // stay pending on purpose, so the next `./tidy` asks again instead of treating an outage as a
-        // settled "this group has no box" (docs/scripts/tidy_observations.md).
+        // settled "this group has no box" (docs/specs/spec_tidy_observations.md).
         let stampable: Vec<String> = scope_ids
             .iter()
             .filter(|id| !held_for_retry.contains(*id))

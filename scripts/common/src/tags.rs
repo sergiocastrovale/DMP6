@@ -19,7 +19,7 @@ use std::time::SystemTime;
 ///   but mean the recording.
 ///
 /// The release-track-into-recording-slot mixup this once corrected (`--repair-recording-tags`) was
-/// undone once, library-wide, by a throwaway one-off script (see docs/__plan_tidy_script.md) - not by
+/// undone once, library-wide, by a throwaway one-off script (see docs/specs/spec_tidy_script.md) - not by
 /// code kept here. `write_mb_ids`'s own stale-recording self-heal below still corrects it going
 /// forward on every normal sync.
 #[derive(Debug, Default, Clone, Copy)]

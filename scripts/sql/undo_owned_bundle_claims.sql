@@ -28,7 +28,7 @@ UPDATE "MusicBrainzRelease" m
        "statusReason" = 'Recordings inside ' || substring(m."statusReason" FROM 'Owned as part of (.*)'),
        "updatedAt" = NOW()
  WHERE m."statusReason" LIKE 'Owned as part of "%"'
-   -- Box provenance guard (mandatory per docs/containment.md §2.2): a claim row that multidisk has
+   -- Box provenance guard (mandatory per docs/specs/spec_containment_rollout.md §2.2): a claim row that multidisk has
    -- since bound as a box (LocalRelease.boxReleaseId points at it) must not be flipped back to MISSING
    -- - that would undo days of dissolve work. 0 rows matched this at the time this ran, but the guard
    -- stays so a re-run after further multidisk activity stays safe.
