@@ -96,6 +96,11 @@ and `running` (Ctrl-C/SIGTERM sets this false) gate the final watermark stamp.
     pending, so the next run retries them — a 503 is not a settled answer. Deliberately not treated as
     `had_error`: that would unstamp every artist in scope and redo the whole library over one failed
     request.
+    Known limitation: the artist held back is whichever one `boxset::artist_for_group` picked for that
+    group (a `LIMIT 1` over its `LocalReleaseArtist` rows), which on a group spanning several artists is
+    not necessarily the scoped artist that pulled it in. The group itself is still unbound either way, so
+    it comes back into view as soon as any of its artists is pending again — the hold is a nudge, not a
+    guarantee.
 
 ## Watermark semantics
 

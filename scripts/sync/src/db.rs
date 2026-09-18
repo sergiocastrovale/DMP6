@@ -119,6 +119,22 @@ pub async fn upsert_mb_release(
     .await
 }
 
+/// `MusicBrainzRelease.title` is `VarChar(500)`, and Postgres rejects an over-long value outright
+/// rather than truncating it. MusicBrainz has a handful of genuinely enormous titles - Soulwax's
+/// "Most of the remixes we've made for other people over the years except for the one for Einstürzende
+/// Neubauten…" runs past 600 characters - and every one of them failed the insert with `value too long
+/// for type character varying(500)`, taking the whole release with it.
+///
+/// Clamped by **characters**, not bytes: the column counts characters, and byte slicing would also
+/// risk splitting a multi-byte character and panicking.
+fn clamp_title(title: &str) -> String {
+    const MAX: usize = 500;
+    if title.chars().count() <= MAX {
+        return title.to_string();
+    }
+    title.chars().take(MAX).collect()
+}
+
 /// Same as `upsert_mb_release`, plus `mediumCount` - the distinct MB media on the release (1 for a
 /// plain album, 9 for a box set). Denormalized onto the release row so the artist releases endpoint
 /// (a hot list route) never has to join `MusicBrainzReleaseMedium` just to render a disc-count
@@ -140,6 +156,8 @@ pub async fn upsert_mb_release_with_media(
 ) -> Result<String, sqlx::Error> {
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
+    let title = clamp_title(title);
+    let title = title.as_str();
     let row: (String,) = sqlx::query_as(
         r#"INSERT INTO "MusicBrainzRelease"
              (id, title, "typeId", year, "musicbrainzId", "releaseGroupId",
@@ -2086,4 +2104,36 @@ pub async fn stamp_sync_hash(pool: &PgPool, artist_id: &str, hash: &str) {
         .execute(pool)
         .await
         .ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `MusicBrainzRelease.title` is `VarChar(500)` and Postgres refuses an over-long value outright,
+    /// so an enormous MusicBrainz title used to fail the whole insert with `value too long for type
+    /// character varying(500)`. Hit live on Soulwax's "Most of the remixes we've made for other people
+    /// over the years except for the one for Einstürzende Neubauten…", which runs past 600 characters.
+    #[test]
+    fn an_over_long_title_is_clamped_to_the_column_width() {
+        let short = "Kind of Blue";
+        assert_eq!(clamp_title(short), short, "a normal title is untouched");
+
+        let long: String = "a".repeat(640);
+        assert_eq!(clamp_title(&long).chars().count(), 500);
+
+        let exactly: String = "b".repeat(500);
+        assert_eq!(clamp_title(&exactly).chars().count(), 500);
+    }
+
+    /// Clamping counts characters, not bytes - the column does, and byte slicing would risk splitting
+    /// a multi-byte character. MusicBrainz titles carry accents and curly quotes routinely.
+    #[test]
+    fn clamping_counts_characters_not_bytes() {
+        let accented: String = "é".repeat(600);
+        let clamped = clamp_title(&accented);
+        assert_eq!(clamped.chars().count(), 500);
+        assert_eq!(clamped.len(), 1000, "600 chars is 1200 bytes; 500 chars is 1000");
+        assert!(clamped.chars().all(|c| c == 'é'), "no split character");
+    }
 }

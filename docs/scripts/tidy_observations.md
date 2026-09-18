@@ -553,3 +553,74 @@ A `#[ignore]`d harness, `boxset::tests::replay_library_dump`, now replays the **
 dump of every sibling group in a library and reports bind/refuse/partial counts. It agreed with the
 Python model exactly (347 both before the majority floor, 326 both after), which is what makes the
 "0 regressions" claim about the shipped code rather than about a model of it.
+
+---
+
+## 13. Round 2 results (run finished 2026-09-18, 5h05m, 1233 artists)
+
+```
+Box groups : 1676 seen, 475 bound (184 folded, 285 dissolved, 6 key-taken, 1 failed, 154 from DB)
+  not bound: 1201 - 629 no candidate, 5 fetch error, 489 no match, 55 ambiguous, 22 collision
+Re-scored  : 1194 complete, 85 extra tracks, 231 missing tracks, 0 deferred (420 for stale track links)
+Identities : Pass A: 0, Pass B: 0, Pass C: 0
+Artists stamped: NOT stamped (errors)
+```
+
+### Measured against the round-1 baselines
+
+| Measure | Round 1 | Now |
+|---|---|---|
+| Discs on their own medium | 556 | **823** |
+| Dissolved box discs | 771 | **1,214** (295 boxes, was 218) |
+| Fold members / folded releases | 3,604 / 1,339 | **4,260 / 1,523** |
+| Total placed `LocalRelease` rows | 1,120 | **1,786** (+59%) |
+| True unplaced boxes (shape B) | 263 groups / 920 rows | **157 / 410** (−40% / −55%) |
+| Stale `mbTrackId` links | 1,336 across 122 releases | **0** |
+| Box-disc media with an equivalence | 3,337 | 3,412 |
+| Box-placed discs at `UNKNOWN` | 0 | **0** (no regression) |
+| `MISSING_TRACKS` rows library-wide | 14,885 | **14,182** (−703) |
+| `COMPLETE` rows library-wide | 115,367 | **115,620** (+253) |
+
+Dissolved discs are 1,035/1,214 `COMPLETE` (85%); medium-bound 760/823 (92%).
+
+### Hero cases, all as predicted
+
+| Case | Before | After |
+|---|---|---|
+| Marillion "The Singles '82-88'" | 12 unplaced cards | folded, **12 members**, 45/45 tracks disc-numbered |
+| Marillion "The Singles '89-95'" | unplaced | folded, 10 of 12 — partial bind, 2 odd folders untouched |
+| Chuck Berry 16CD | 16 unplaced cards | folded, **15 members**, 1 folder left out |
+| Art Tatum "Piano Grand Master" | refused | folded, 4 members |
+| ABBA CD4 "Arrival" | stuck on the box | **moved to standalone `Arrival`** via the release-group tie-break |
+| HIM "The Single Collection" | 10 cards (round 1 fixed it) | still folded, 10 members, `COMPLETE` |
+| Rome "Hall Of Thatch" | bound | **still bound** — the depth-ordering regression candidate |
+| Omega "Antológia 1980-85" | bound, 3 folders | **still bound**, all 3 placed |
+
+Rome and Omega are the two groups the first draft of this work would have broken. Both came through
+placed and `COMPLETE`, in production, which is the real confirmation that the strictest-depth-first rule
+holds.
+
+### The new summary breakdown earns its keep immediately
+
+`629 no candidate` is now the single largest bucket — larger than every matcher refusal combined. Those
+groups have no multi-medium MusicBrainz release to bind to at all, so no amount of matcher work reaches
+them. Before this run that number was invisible, folded into "seen minus bound", and the matcher looked
+like the whole problem. It is not.
+
+### Residual
+
+- **37 discs still carry `boxMediumPosition` with no `boxReleaseId`** (Kraftwerk 8, Bad Company 6,
+  Rush 5, …), down from 208. These are groups whose box the orphan sweep had already deleted and whose
+  candidate still refuses, so there is nothing to re-link to yet. They restore themselves once the group
+  binds.
+- **98 box releases are now protected only by the `boxReleaseId` guard**, up from 33 — every one of them
+  would be deleted by the old sweep on the next run.
+- **A folded box can still score `MISSING_TRACKS` while holding every track.** Marillion's fold is
+  45 local tracks against a 45-track box, every track disc-numbered, and still reads `MISSING_TRACKS`.
+  A folded release scores against the whole box with `mediumPosition` NULL, so titles repeated across
+  discs (this box has "Market Square Heroes" on CD1 and again on CD4) can pair to the wrong slot. Worth
+  scoping a folded release's scoring per medium. New, separate from anything above.
+- **`groups_failed > 0` blocks the watermark stamp for the entire scope.** One pathological group means
+  a scope can never be marked done. Conservative rather than harmful — every placement still lands — but
+  a permanently-failing group would block it forever. The `--artist-ids` scope bypasses the watermark
+  anyway, so nothing is pending as a result of this run (2 artists pending, unchanged).
