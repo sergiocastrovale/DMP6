@@ -522,6 +522,10 @@ impl BindRefusal {
 /// no disc" is evidence about that folder alone, "could be either disc" is evidence that the candidate
 /// itself is wrong.
 ///
+/// The partial bind also needs a **majority** of the folders to resolve, not merely two of them. Below
+/// that, "one folder does not fit" stops being the right reading and "this is not the box" becomes the
+/// likelier one.
+///
 /// A candidate medium with no matching sibling is fine either way - a partially-ripped box is allowed.
 pub fn plan_box_bind_detailed(
     siblings: &[BoxSibling],
@@ -578,7 +582,13 @@ pub fn plan_box_bind_detailed(
         track_links.extend(links.iter().cloned());
     }
 
-    if members.len() < 2 {
+    // Two independent floors, and the second matters as much as the first. A group where only a
+    // handful of folders resolve is weak evidence that this candidate is the group's box at all -
+    // binding 2 of a 16-folder group would fold those two into one release and leave fourteen loose,
+    // which reads worse on screen than the unplaced state it replaced. Measured across the library,
+    // requiring a majority costs 21 of 347 binds and removes every case of that shape (Pink Floyd's
+    // "Oh By The Way" at 2 of 16, Elvis's 60CD box at 10 of 60).
+    if members.len() < 2 || members.len() * 2 < siblings.len() {
         return Err(BindRefusal::TooFewMatched {
             matched: members.len(),
         });
@@ -2377,6 +2387,113 @@ mod tests {
         assert_eq!(strip_qualifier("(Untitled)"), "");
     }
 
+    /// Differential harness: replays `plan_box_bind_detailed` over a dump of every sibling-folder
+    /// group in a real library and prints how many bind. Not a unit test - it needs two dump files -
+    /// so it is `#[ignore]`d and run by hand:
+    ///
+    /// ```text
+    /// BOX_DUMP_LOCAL=/path/all_local.txt BOX_DUMP_MB=/path/all_mb.txt \
+    ///   cargo test -p sync replay_library_dump -- --ignored --nocapture
+    /// ```
+    ///
+    /// Exists because unit tests cannot answer the only question that matters when the matcher
+    /// changes: *did anything that used to bind stop binding*. The dump format is one
+    /// `L|parent|folder|trackId|title|seconds` line per local track and one
+    /// `M|parent|discNumber|trackId|title|seconds` line per MusicBrainz track.
+    #[test]
+    #[ignore]
+    fn replay_library_dump() {
+        use std::collections::BTreeMap;
+        let (Ok(local_path), Ok(mb_path)) = (
+            std::env::var("BOX_DUMP_LOCAL"),
+            std::env::var("BOX_DUMP_MB"),
+        ) else {
+            eprintln!("set BOX_DUMP_LOCAL and BOX_DUMP_MB");
+            return;
+        };
+
+        type Tracks = Vec<(String, String, Option<i32>)>;
+        let mut locals: BTreeMap<String, BTreeMap<String, Tracks>> = BTreeMap::new();
+        for line in std::fs::read_to_string(&local_path).unwrap().lines() {
+            let f: Vec<&str> = line.splitn(6, '|').collect();
+            if f.len() < 6 || f[0] != "L" {
+                continue;
+            }
+            locals
+                .entry(f[1].to_string())
+                .or_default()
+                .entry(f[2].to_string())
+                .or_default()
+                .push((f[3].to_string(), f[4].to_string(), f[5].parse().ok()));
+        }
+        let mut media: BTreeMap<String, BTreeMap<i32, Tracks>> = BTreeMap::new();
+        for line in std::fs::read_to_string(&mb_path).unwrap().lines() {
+            let f: Vec<&str> = line.splitn(6, '|').collect();
+            if f.len() < 6 || f[0] != "M" {
+                continue;
+            }
+            let Ok(disc) = f[2].parse::<i32>() else {
+                continue;
+            };
+            media
+                .entry(f[1].to_string())
+                .or_default()
+                .entry(disc)
+                .or_default()
+                .push((f[3].to_string(), f[4].to_string(), f[5].parse().ok()));
+        }
+
+        let (mut bound, mut refused, mut partial) = (0usize, 0usize, 0usize);
+        for (parent, folders) in &locals {
+            let Some(discs) = media.get(parent) else {
+                continue;
+            };
+            if discs.len() < 2 || folders.len() < 2 {
+                continue;
+            }
+            let siblings: Vec<BoxSibling> = folders
+                .iter()
+                .map(|(path, tracks)| BoxSibling {
+                    local_id: path.clone(),
+                    folder_path: path.clone(),
+                    tracks: tracks.clone(),
+                })
+                .collect();
+            let candidate = BoxCandidate {
+                release_id: parent.clone(),
+                media: discs
+                    .iter()
+                    .map(|(position, tracks)| BoxMedium {
+                        position: *position,
+                        tracks: tracks.clone(),
+                    })
+                    .collect(),
+            };
+            match plan_box_bind_detailed(&siblings, &candidate) {
+                Ok(plan) => {
+                    bound += 1;
+                    if plan.members.len() < siblings.len() {
+                        partial += 1;
+                    }
+                }
+                Err(_) => refused += 1,
+            }
+        }
+        let line = format!(
+            "replay: {} groups, {} bind ({} of them partial), {} refuse",
+            bound + refused,
+            bound,
+            partial,
+            refused
+        );
+        println!("{line}");
+        // Also to a file: a test runner (or a wrapper around cargo) that captures stdout would
+        // otherwise swallow the only output this harness exists to produce.
+        if let Ok(out) = std::env::var("BOX_DUMP_OUT") {
+            std::fs::write(out, format!("{line}\n")).ok();
+        }
+    }
+
     fn sibling(id: &str, folder: &str, tracks: &[(&str, &str, Option<i32>)]) -> BoxSibling {
         BoxSibling {
             local_id: id.to_string(),
@@ -2621,6 +2738,38 @@ mod tests {
             plan.folder_path, "Box",
             "the box root still spans every sibling, matched or not"
         );
+    }
+
+    /// A partial bind needs a majority, not just two. Binding 2 of 6 folders would fold those two into
+    /// one release and leave four loose - worse on screen than leaving the group alone.
+    #[test]
+    fn a_partial_bind_below_half_the_folders_is_refused() {
+        let mut siblings = vec![
+            sibling("cd1", "Box/CD1", &[("t1", "A", Some(100))]),
+            sibling("cd2", "Box/CD2", &[("t2", "B", Some(100))]),
+        ];
+        for n in 3..=6 {
+            siblings.push(sibling(
+                &format!("x{n}"),
+                &format!("Box/Extra{n}"),
+                &[(&format!("u{n}"), "Unrelated", Some(999))],
+            ));
+        }
+        let candidate = BoxCandidate {
+            release_id: "mb-box".to_string(),
+            media: vec![
+                medium(1, &[("mb-t1", "A", Some(100))]),
+                medium(2, &[("mb-t2", "B", Some(100))]),
+            ],
+        };
+        assert!(matches!(
+            plan_box_bind_detailed(&siblings, &candidate),
+            Err(BindRefusal::TooFewMatched { matched: 2 })
+        ));
+
+        // Exactly half still binds - the rule is "not a minority", not "a strict majority".
+        let half = &siblings[..4];
+        assert!(plan_box_bind(half, &candidate).is_some());
     }
 
     /// The distinction that keeps the partial bind safe: "on no disc" is evidence about one folder,

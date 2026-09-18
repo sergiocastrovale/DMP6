@@ -442,3 +442,114 @@ against new:
 
 The first replay (before the two ordering rules above) showed 2 regressions. Both were traced,
 understood and fixed rather than accepted — that is the only reason the final number is 0.
+
+---
+
+## 11. Open: three unrelated albums bound to one box ("Dear Michael: The Motown Collection")
+
+Raised in `docs/future.md` as "3 exactly equal releases grouped. Clearly a bug." Confirmed, and it is
+**not** the box-set failure this round fixes.
+
+Three genuinely different Michael Jackson albums are all bound to the same 12-medium
+`MusicBrainzRelease`, none placed on a medium, so the UI renders three identical cards:
+
+| Folder | Local tracks | Bound to |
+|---|---|---|
+| `2009 - 20th Century Masters… Best of Michael Jackson` | 11 | Dear Michael: The Motown Collection (12 media) |
+| `2013 - Farewell My Summer Love` | 9 | same |
+| `2013 - Looking Back To Yesterday` | 12 | same |
+
+Why the box pass cannot reach it: the three folders sit directly under `Michael Jackson/Album/`, so
+they are at path depth 3 and share no parent *box* folder. `find_sibling_groups` only considers folders
+at depth ≥ 4 grouped by their common parent — this is §19 item 2 ("shared multi-medium releases across
+**different** parent folders"), which is still open.
+
+Why the obvious fix would not work either. §19 item 2 proposes a medium-level bind without folding —
+pair each folder against exactly one medium and set `mediumPosition`. That fails here, because this
+box pairs **two albums per disc**:
+
+```
+medium  3  Hello World: The Motown Solo Collection (disc 3)
+           - Looking Back to Yesterday / Farewell My Summer Love     24 tracks
+```
+
+The user owns those two albums separately (12 and 9 tracks). Neither can pair 1:1 with a 24-track
+medium, so no medium-level bind exists — §15 known limit 2, from the other direction.
+
+**The real fault is upstream, in the album matcher.** Verified: none of the three folders carries an
+embedded `MUSICBRAINZ_ALBUMID` (`LocalReleaseTrack.mbReleaseId` is NULL on all 32 tracks), so §7 step 1
+is not the path taken — a 9-track folder was bound to a 257-track, 12-disc box by search or by edition
+selection, which §7's own rules should not permit. That is where the next investigation should start,
+not in `boxset.rs`.
+
+Not fixed in this round, and deliberately so: it is a different code path, the diagnosis above was only
+reached after the round-2 work was already committed, and changing the album matcher on the strength of
+one example is how the faults in §3 got introduced in the first place.
+
+---
+
+## 12. Round 2, second pass — two faults caught by running it (2026-09-18)
+
+The round-2 run was started, then **stopped after 325 of 1676 groups** and restarted. Both reasons are
+worth recording, because neither was visible in unit tests or in the offline replay.
+
+### 12.1 The orphan sweep deletes dissolved boxes
+
+`db::delete_orphaned_mb_releases` kept a `MusicBrainzRelease` alive if a `LocalRelease.releaseId` or a
+`LocalReleaseTrack.mbTrackId` pointed at it. It never checked `LocalRelease.boxReleaseId`.
+
+A dissolved box is exactly the shape where the first check cannot fire: after `apply_dissolve` each
+disc's `releaseId` names the *standalone album it reprints*, and only `boxReleaseId` still names the
+box. The box survived purely by accident, through the `mbTrackId` links `persist_box_media` leaves
+pointing at the box's own track rows.
+
+`boxReleaseId` carries no `onDelete` override, so Prisma's default for an optional relation is
+`SetNull`. Deleting the box therefore **nulls `boxReleaseId` on every one of its discs, silently, without
+touching `updatedAt`** — leaving `boxMediumPosition` as the only trace that a dissolve ever happened.
+
+Measured immediately after the interrupted run:
+
+```
+discs with boxMediumPosition set but boxReleaseId NULL : 208
+box releases currently protected only by boxReleaseId  :  33   (one run from the same fate)
+```
+
+Bad Company's six-disc SWAN SONG, Chic's "Original Album Series", and others — all still correctly bound
+to their standalone albums, all with their box provenance gone. It is not cosmetic: §11 counts a
+dissolved box disc as owning its album, so a deleted box brings that album back as a missing-album gap.
+
+**Round 2 would have made this dramatically worse.** Fix 7 re-links a dissolved disc's tracks to the
+standalone release — removing the incidental `mbTrackId` protection that was the only thing keeping
+these boxes alive. The fix (a third `NOT EXISTS` on `boxReleaseId`, both scoped and global branches)
+had to land before the run could safely continue.
+
+This was found only because the interrupted run's placement counts were compared against the
+pre-run numbers and 202 discs had quietly changed category with `updatedAt` untouched.
+
+### 12.2 Partial bind needed a floor, not just a minimum
+
+The partial bind shipped with "at least 2 folders matched". Replaying it over the library showed 21
+groups binding on **under half** their folders — Pink Floyd's "Oh By The Way" at 2 of 16, Elvis's 60CD
+box at 10 of 60, Johnny Cash's 18CD at 3 of 18.
+
+For a group that then *folds*, that is worse than doing nothing: the few matched folders merge into one
+entry and the rest stay loose. Added a majority floor (`matched * 2 >= siblings`). Cost: 21 of 347
+binds. Re-replayed after the change — still **0 regressions, 0 folders moved**:
+
+```
+old binds: 106   new binds: 326
+REGRESSIONS (bound before, refuse now): 0
+folders lost/moved on a still-binding group: 0
+```
+
+### 12.3 Why stopping was cheap
+
+`boxset::run_repair` plans every group first and only writes fold/dissolve afterwards, so an interrupt
+during the group loop writes nothing at all. Verified before restarting: 0 folds, 0 dissolves, 0
+artists stamped, `LocalRelease` rows touched since run start = 0. The watermark is only stamped on a
+clean finish, so the interrupted scope simply stayed pending.
+
+A `#[ignore]`d harness, `boxset::tests::replay_library_dump`, now replays the **real** matcher over a
+dump of every sibling group in a library and reports bind/refuse/partial counts. It agreed with the
+Python model exactly (347 both before the majority floor, 326 both after), which is what makes the
+"0 regressions" claim about the shipped code rather than about a model of it.

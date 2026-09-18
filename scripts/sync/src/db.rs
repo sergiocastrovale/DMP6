@@ -1091,10 +1091,25 @@ pub type ArtistScope<'a> = Option<&'a [String]>;
 /// column collapses to UNKNOWN for every row as soon as one NULL enters the subquery, which is what
 /// that `IS NOT NULL` guard existed to work around.
 ///
-/// The second `NOT EXISTS` keeps a release whose tracks are referenced by `LocalReleaseTrack.mbTrackId`
-/// even though no `LocalRelease.releaseId` points at it — the shape `boxset`'s dissolved discs leave
-/// behind. Without it the first `NOT EXISTS` alone reads such a release as unbound and deletes it,
-/// nulling the track links with it.
+/// **A dissolved box is referenced three different ways, and all three have to be checked.** After
+/// `boxset::apply_dissolve`, each disc's `releaseId` points at the *standalone album it reprints*, so
+/// nothing points at the box through the first `NOT EXISTS` at all. What still names the box is
+/// `LocalRelease.boxReleaseId` (the provenance: "this folder is disc N of that box") and, incidentally,
+/// `LocalReleaseTrack.mbTrackId`, since `persist_box_media` links a dissolved disc's tracks to the
+/// box's own track rows.
+///
+/// The `boxReleaseId` check is the load-bearing one; the `mbTrackId` check is not a substitute for it.
+/// Relying on `mbTrackId` alone is what made this a live bug: `boxReleaseId` carries no `onDelete`
+/// override, so Prisma's default for an optional relation is `SetNull` — deleting the box silently
+/// nulls `boxReleaseId` on every one of its discs, without touching `updatedAt`, leaving
+/// `boxMediumPosition` behind as the only trace. Measured on 2026-09-18: **208 discs** had lost their
+/// box this way (Bad Company's six-disc SWAN SONG, Chic's Original Album Series, …) and 33 further box
+/// releases were one run away from the same fate. `tidy`'s own re-score makes it worse rather than
+/// better, because re-linking a dissolved disc's tracks to the standalone release removes the
+/// incidental `mbTrackId` protection that had been holding the box alive.
+///
+/// Losing the link is not cosmetic: §11's ownership rule counts a dissolved box disc as owning its
+/// album, so a box that disappears here brings the album back as a missing-album gap.
 pub async fn delete_orphaned_mb_releases(
     pool: &PgPool,
     scope: ArtistScope<'_>,
@@ -1105,6 +1120,7 @@ pub async fn delete_orphaned_mb_releases(
                 r#"DELETE FROM "MusicBrainzRelease" m
                    WHERE m.status <> 'MISSING'
                      AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)
+                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."boxReleaseId" = m.id)
                      AND NOT EXISTS (
                            SELECT 1 FROM "LocalReleaseTrack" lt
                            JOIN "MusicBrainzReleaseTrack" mt ON mt.id = lt."mbTrackId"
@@ -1124,6 +1140,7 @@ pub async fn delete_orphaned_mb_releases(
                 r#"DELETE FROM "MusicBrainzRelease" m
                    WHERE m.status <> 'MISSING'
                      AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)
+                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."boxReleaseId" = m.id)
                      AND NOT EXISTS (
                            SELECT 1 FROM "LocalReleaseTrack" lt
                            JOIN "MusicBrainzReleaseTrack" mt ON mt.id = lt."mbTrackId"

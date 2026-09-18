@@ -363,6 +363,13 @@ An *ambiguous* folder still rejects the whole group, and that distinction is the
 property: "on no disc" is evidence about one folder, "could be either disc" is evidence that the
 candidate box itself is wrong.
 
+**A majority of the folders must resolve, not merely two of them.** Below half, "one folder does not
+fit" stops being the right reading and "this is not the box" becomes the likelier one — and binding
+anyway would fold the few matches into one entry while leaving the rest loose, which reads worse on
+screen than the unplaced state it replaced. Measured across the library, requiring a majority costs 21
+of 347 binds and removes every case of that shape (Pink Floyd's "Oh By The Way" matching 2 of 16
+folders, Elvis's 60CD box matching 10 of 60).
+
 Measured on this library before the rule existed: 126 boxes where exactly one folder failed and every
 other folder paired perfectly.
 
