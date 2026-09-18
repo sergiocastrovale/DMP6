@@ -287,6 +287,19 @@ Three sources feed candidate box releases, tried in order until one produces a b
    `"2002 - The Single Collection [#74321 96173 2]"` searches as `"The Single Collection"` (catalogue
    numbers in brackets used to return zero hits, since MusicBrainz's own title carries neither
    suffix).
+4. **Other editions of the same release group**, tried only once every candidate above has failed to
+   bind. MusicBrainz catalogues several editions of one box (region and label variants); the ordinary
+   album matcher binds whichever it happened to pick, and that edition's tracklist may simply not be
+   the one on disc. This costs one extra request for a group that was going to be refused anyway, and
+   uses the same perfect-match rule — more candidates, not a looser test.
+
+Ahead of all four, a group whose folders are **already placed** is rebuilt from the rows the box
+already has in the database, with no MusicBrainz request at all. Such groups are re-examined on every
+unscoped run by design — a disc must still be able to move when a new equivalence appears — but asking
+MusicBrainz to re-tell us what we already stored cost a cold lookup each time, for hundreds of groups,
+for no new information. Anything incomplete about the stored rows (a medium with no tracks, a track
+count that disagrees with what is recorded, a track with no MusicBrainz id) falls back to the network,
+so this is only ever a shortcut, never a second answer.
 
 **Why this runs once, at the end of `./tidy`, not per artist as each one is synced:** a box's siblings
 and their standalone twin can belong to *different* artist rows (compilations, VA sets) — not scoped to
@@ -303,22 +316,55 @@ Every folder must match exactly one disc, and every match must be unambiguous �
 group is refused.** A partly-ripped box is fine (missing discs are just missing); an *ambiguous* disc
 is not.
 
-Matching a folder to a disc happens in three passes, strictest first, so a loose match can never steal
-a track a strict match had a claim on:
+Matching a folder to a disc happens in a ladder of rules, strictest first, so a loose match can never
+steal a track a strict match had a claim on:
 
 1. **Identical titles, running times within 5 seconds.**
 2. **Identical titles, running times within 15 seconds** — rips and masterings shift a track by a few
    seconds.
-3. **One title containing the other**, and only when exactly one candidate fits. Ambiguity is refused.
+3. **Identical titles, running times within 60 seconds** — but only on a disc where at least three
+   tracks have *already* paired by title. At that point the folder's identity is settled by those
+   pairings, and a lone outlier is a different master of a slot the rest of the disc already proved.
+   Without the corroboration requirement this would just be a flat loosening, which is exactly what the
+   rule above refuses to be.
+4. **One title containing the other**, and only when exactly one candidate fits. Ambiguity is refused.
+5. **The two titles agree once each side's trailing "(…)" or "[…]" qualifier is dropped.** Containment
+   cannot see this case, because *both* sides carry a qualifier and neither contains the other.
+6. **Near-identical titles** — a one- or two-character tagging typo. The weakest rule, so also the most
+   constrained: both running times must actually be known, not merely non-contradictory.
 
 **Why the order matters so much:** ABBA's box holds four language versions of "Ring Ring" whose running
 times are all within seconds of each other. A single loose pass would pair whichever came first.
-Claiming the exact titles up front removes the risk entirely.
+Claiming the exact titles up front removes the risk entirely. Rules 4–6 additionally refuse whenever
+more than one candidate fits, so the four "Ring Ring"s reject each other rather than being guessed at.
 
-**Both loosenings were paid for in real damage.** ABBA's nine-disc "Complete Studio Recordings" — a
+**The same order applies at the disc level, not only within one disc.** A folder that matches exactly
+one disc under the strict rules keeps that disc even when a looser rule would also match it to a
+second one. Otherwise widening a rule turns a settled answer into an ambiguity, and a box that used to
+bind stops binding — measured on this library, two boxes did exactly that before the disc-level rule
+was added (one holds two masterings of the same album, and the 60-second rule matched both).
+
+**Every loosening was paid for in real damage.** ABBA's nine-disc "Complete Studio Recordings" — a
 perfect 9-of-9 rip — was rejected outright twice: once because one song was tagged "Ring Ring (English
 version)" where MusicBrainz says "Ring Ring", and again because one track was 6 seconds longer than
-listed. One song out of 133 rejected the entire box.
+listed. One song out of 133 rejected the entire box. Marillion's twelve-disc "The Singles '82-88'" was
+rejected by one bonus track tagged "Market Square Heroes (alternative version)" where MusicBrainz says
+"Market Square Heroes (re-record)" — identical running time, 11 of 12 discs pairing perfectly.
+
+### A folder on no disc at all
+
+A sibling folder that matches **no** disc of the box no longer rejects the group. Real rips routinely
+carry one: a bonus DVD-audio, a hi-res or SACD layer filed beside the CD rip, a disc whose tracklist
+the rip split differently. Those folders are simply left out — nothing about them changes, they are not
+folded away and not deleted — and the rest of the box binds as long as **at least two** folders still
+resolve to a disc each.
+
+An *ambiguous* folder still rejects the whole group, and that distinction is the whole safety
+property: "on no disc" is evidence about one folder, "could be either disc" is evidence that the
+candidate box itself is wrong.
+
+Measured on this library before the rule existed: 126 boxes where exactly one folder failed and every
+other folder paired perfectly.
 
 ### Then: fold, or dissolve?
 
@@ -410,9 +456,18 @@ If box discs ever show "unknown" again after a `./tidy` run, this is the first p
 
 If instead every disc of a box sits `MISSING_TRACKS` and shows the *box's own* title on every card
 (scored against every medium, not its own one), the box pass never placed it at all — check
-`logs/errors.log` for `Box-set repair error` first (§9's "one box never blocks the rest"), then the
-`./tidy` run's own `Box groups: N seen, M bound (F folded, D dissolved, K key-taken, X failed)` line for
-groups that were seen but not bound.
+`logs/errors.log` for `Box-set repair error` and `box candidate lookup failed` first (§9's "one box
+never blocks the rest"), then the `./tidy` run's own summary, which now says **why** every group it saw
+was not bound:
+
+```
+Box groups : 1712 seen, 1420 bound (1192 folded, 223 dissolved, 5 key-taken, 0 failed, 230 from DB)
+  not bound: 292 - 112 no candidate, 18 fetch error, 130 no match, 29 ambiguous, 3 collision
+```
+
+`fetch error` is the one that is **not** a settled answer: MusicBrainz was unwell, the group was never
+really judged, and the artists owning those groups are deliberately left unstamped so the next `./tidy`
+asks again. Everything else is a decision the matcher actually made.
 
 ---
 
@@ -505,6 +560,13 @@ These come from what MusicBrainz does and does not record. Changing them means g
 5. A remaster that re-splits an album across a different number of discs than any standalone edition
    cannot be lined up.
 6. A box-exclusive "lost album" and a plain rarities disc look identical in MusicBrainz's data.
+7. **A standalone album can only be recognised by recordings if MusicBrainz gave every one of its
+   tracks a recording id.** The exact, certain way to recognise a box disc is to compare recording ids,
+   and a candidate album missing even one of them cannot be compared that way at all — it has to fall
+   back to titles and running times, which refuse far more often. Measured on this library: 42.5% of
+   single-disc releases (48,303 of 113,702) are unusable as an exact target for this reason. This is
+   the single largest reason boxes fold rather than dissolve, and it is a gap in MusicBrainz's data
+   rather than a decision made here.
 
 ---
 
@@ -554,7 +616,31 @@ the baseline query are in git history for this section if ever needed again.
 
 ### Measurements taken during the 2026-09-11 box-set investigation
 
-HIM's "The Single Collection" showing as 10 identical cards led to this. Read-only, against prod:
+HIM's "The Single Collection" showing as 10 identical cards led to this. Read-only, against prod.
+
+**Use this query, not the one this section originally carried.** The original counted *every*
+`LocalRelease` under a flagged parent folder, including the ones that were placed correctly, so it
+inflated both the baseline and every later measurement against it (3,411 "unplaced rows" in 2026-09-11
+were really 1,613). This one counts only rows that are genuinely bound to a multi-disc release and
+genuinely unplaced:
+
+```sql
+WITH lr AS (SELECT lr.*, regexp_replace(lr."folderPath", '/[^/]+$', '') parent
+            FROM "LocalRelease" lr WHERE lr."folderPath" IS NOT NULL
+              AND array_length(string_to_array(lr."folderPath", '/'), 1) >= 4)
+SELECT count(*) AS groups, sum(n) AS rows FROM (
+  SELECT lr.parent, lr."releaseId", count(*) n
+  FROM lr JOIN "MusicBrainzRelease" m ON m.id = lr."releaseId"
+  WHERE m."mediumCount" > 1 AND lr."mediumPosition" IS NULL AND lr."boxReleaseId" IS NULL
+  GROUP BY 1, 2 HAVING count(*) > 1) t;
+```
+
+Grouping by `releaseId` as well as by folder is what separates the two very different things the
+original lumped together: several folders bound to **one** multi-disc release is a box the pass failed
+to place, while several folders each bound to a **different** multi-disc release is usually a
+wrong-edition bind (§19 item 1a) and not a box at all.
+
+The original query, kept only so older numbers in this document can be reproduced:
 
 ```sql
 WITH lr AS (SELECT lr.*, regexp_replace(lr."folderPath", '/[^/]+$', '') parent
@@ -592,6 +678,7 @@ the item-1 edition/partial-bind work later reclaims), and no new `Box-set repair
 | "Missing tracks" on an album that looks complete | §8 |
 | Box set shown as one lump, or as scattered discs | §9 |
 | Box discs stuck on "unknown" across runs | §10 |
+| Box seen by `./tidy` but never bound | §10 — the run summary's `not bound:` line says which reason |
 | Several identical-looking cards for one release — really a box's discs, unplaced | §9, §10, §17 |
 | Album listed missing that you own | §11, §9 |
 | "Songs inside another release" note looks wrong | §12 |
@@ -605,34 +692,24 @@ Useful commands: `./tidy`, `./sync --only "Artist" --exact --verbose`, `./audit`
 Left open by the 2026-09-11 box-set investigation (§17). Each item below is self-contained — symptom,
 cause, fix, safety, verification — so it can be picked up on its own, without re-deriving context.
 
-### 1. Refused split-disc groups (312, §17)
+### 1. Refused split-disc groups — **done (2026-09-18)**
 
-**Symptom:** discs bound to the whole box, `MISSING_TRACKS`, never placed — `plan_box_bind` correctly
-refuses the group rather than guess. Re-run §17's simulation for the current count. 280 fail because "a
-sibling matches no disc", 31 because a sibling matches more than one, 1 because two siblings claim the
-same disc. Examples: 311 "Archives (1992-2014) [4 CD]", ABBA "Golden Double Album, 2LP", Andrew Bird
-"Are You Serious (Deluxe Box Set)", David Bowie's SACD hybrid discs (`…/02 - DSD`).
+Both causes are fixed and shipped.
 
-**Two distinct causes, two distinct fixes:**
+- **(a) The bound release is a different edition than the rip** — `run_repair` now falls back to the
+  release group's other editions when every candidate it already had fails to bind (§9's discovery
+  source 4). Same perfect-match rule, more candidates.
+- **(b) An extra sibling folder that is on no disc of any edition** — a folder matching zero discs is
+  now left out instead of refusing the group, provided at least two folders still resolve and no folder
+  is *ambiguous* (§9, "A folder on no disc at all").
 
-- **(a) The bound release is a different edition than the rip.** The disc really is a box disc, but not
-  of *this* edition of the box — MusicBrainz catalogues several (region/label variants) and sync bound
-  whichever one the matcher happened to pick. Fix: when the currently-bound candidate fails
-  `plan_box_bind`, fetch its release group's other editions (`mb_api::mb_get_release_tracks`, one
-  paginated call, same helper §9's discovery already has available) and try each until one binds. Uses
-  the existing perfect-match rule as-is — no loosening, just more candidates.
-- **(b) An extra sibling folder that is on no disc of any edition** — a bonus DVD-audio folder, a
-  hi-res/SACD duplicate layer sitting beside the CD rip. Fix: allow a **partial** bind — at least 2
-  siblings match a distinct medium each, and every *unmatched* sibling matches zero media of the
-  chosen candidate (never "matches but ambiguously" — that still refuses). The unmatched siblings are
-  left exactly as they are; nothing about them changes.
+Alongside them the matcher itself gained three rules — corroborated 60s drift, qualifier-stripped title
+equality, and near-identical (typo) titles — plus the disc-level strictness ordering that keeps a
+widened rule from turning a settled bind into an ambiguity (§9).
 
-**Safety:** unit tests built from real tracklists (ABBA's box, a Bowie SACD hybrid) covering both
-causes and confirming a genuinely ambiguous sibling still refuses. Re-run §17's simulation with the new
-logic before any write, and compare its refused list to the current 312.
-
-**Verify:** the refused-group count falls; no group binds with a sibling claiming two media; the 988
-already-bindable groups still bind identically.
+Replayed against the whole library before shipping, comparing old matcher to new over every sibling
+group: **106 → 347 groups bind, 0 groups that bound before stop binding, 0 folders move to a different
+disc.** Full analysis and the per-cause breakdown are in `docs/scripts/tidy_observations.md`.
 
 ### 2. Shared multi-medium releases across different parent folders (370 releases, 1,581 rows)
 
@@ -657,25 +734,16 @@ same-title-duplicate distinction):
 **Verify:** every one of the 370 releases ends up either queued as a duplicate or with each of its
 folders sitting on a distinct `mediumPosition`; none left as they are now.
 
-### 3. Dissolved boxes re-fetched from MusicBrainz on every unscoped run
+### 3. Dissolved boxes re-fetched from MusicBrainz on every unscoped run — **done (2026-09-18)**
 
-**Symptom:** the box pass's tail runtime grows with the number of already-dissolved boxes in the
-library — each one still costs a cold MB lookup (~10s) every unscoped sync, for no new information.
+A group whose folders are all already placed is now rebuilt from the rows the box already has in the
+database instead of being fetched again (§9's discovery, "Ahead of all four"). The group is still
+visited, still re-linked, and still goes through the fold/dissolve decision, so a disc can still move
+when a new equivalence appears — only the MusicBrainz request is gone. Anything incomplete about the
+stored rows falls back to the network, so the shortcut can never become a second, weaker answer.
 
-**Cause:** `find_sibling_groups` (`boxset.rs`) doesn't exclude groups that are already fully placed,
-which is deliberate — a new equivalence appearing should be able to re-home a disc that folded before
-one existed. But a box that already dissolved cleanly has nothing left to discover.
-
-**Fix:** for a group where every sibling already has `mediumPosition` or `boxReleaseId` set and the
-box's own `MusicBrainzRelease`/media rows already exist, build the bind plan straight from those stored
-values (members = stored positions) and skip `candidates_from_embedded_ids`/`candidates_from_search`/
-`persist_box_media` entirely. Still run `box_editions::run_link_box_editions`'s re-derivation over it —
-that's what lets a disc move later when a new equivalence appears.
-
-**Verify:** a second unscoped `./sync` run makes zero MusicBrainz calls attributable to already-placed
-groups (spot-check the `--verbose` MB request log), and a disc placed on the box still relocates once
-its standalone equivalent is later added to the catalogue (regression test: run once with the
-equivalent absent, add it, run again, confirm the move).
+Measured before the fix: 230 groups / 1,113 folders paying a cold lookup (~10s) on every unscoped run
+for no new information.
 
 ### 4. Cover-art embedding strips MusicBrainz frames from MP3s
 

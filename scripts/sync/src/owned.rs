@@ -41,13 +41,20 @@ pub struct LocalBundle {
 /// played live, so a title-only rule reads it as contained. Its takes run 1-33s off the studio ones;
 /// masterings and remasters of the same recording differ by well under this. Since containment needs
 /// EVERY track to match, one honest outlier is enough to refuse.
-const DURATION_TOLERANCE_SECS: i32 = 5;
+pub(crate) const DURATION_TOLERANCE_SECS: i32 = 5;
 
 /// Unknown duration on either side cannot refute a title match — it is missing evidence, not counter-
 /// evidence. (Local durations come from the file; MB's `length` is frequently absent on older data.)
 pub(crate) fn durations_compatible(local_secs: Option<i32>, mb_secs: Option<i32>) -> bool {
+    durations_within(local_secs, mb_secs, DURATION_TOLERANCE_SECS)
+}
+
+/// `durations_compatible` with an explicit window, for the callers that deliberately widen it
+/// (`boxset::pair_tracks`' later passes). Split out so the "unknown is not counter-evidence" rule
+/// above has exactly one implementation — that half must never drift between windows.
+pub(crate) fn durations_within(local_secs: Option<i32>, mb_secs: Option<i32>, secs: i32) -> bool {
     match (local_secs, mb_secs) {
-        (Some(a), Some(b)) => (a - b).abs() <= DURATION_TOLERANCE_SECS,
+        (Some(a), Some(b)) => (a - b).abs() <= secs,
         _ => true,
     }
 }

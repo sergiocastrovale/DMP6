@@ -66,13 +66,17 @@ and `running` (Ctrl-C/SIGTERM sets this false) gate the final watermark stamp.
 4. **Box pass**: `dmp_sync::boxset::run_repair(scope)` — bind sibling folder groups to a box-set
    `MusicBrainzRelease`, derive equivalences, fold or dissolve. Sets `matchStatus='UNKNOWN'` on
    everything it touches; those ids come back as `touched_local_release_ids`.
-5. **Re-score**: `db::get_rescore_targets` = every scoped `LocalRelease` at `matchStatus='UNKNOWN'` with
-   a release bound, unioned with this run's own `touched_local_release_ids` (a safety net — box pass
-   output should already be a subset). `db::rescore_bound_release` re-runs `check_release_status`
-   against the release already on file (no MusicBrainz call), re-links matched tracks, clears
-   `mbTrackId` on anything a fold moved that didn't re-match, and writes the new `matchStatus`. No MB
-   release found or no local tracks yet → `Deferred`, left at `UNKNOWN` so a plain `sync`'s own watermark
-   clause picks it up later.
+5. **Re-score**: `db::get_rescore_targets` unions three sources — every scoped `LocalRelease` at
+   `matchStatus='UNKNOWN'` with a release bound; this run's own `touched_local_release_ids` (a safety
+   net, box pass output should already be a subset); and any scoped release holding a
+   `LocalReleaseTrack.mbTrackId` that belongs to a **different** release than the folder is bound to.
+   That third source exists because a disc the *pre-tidy, sync-era* box pass dissolved is at neither
+   `UNKNOWN` nor in `touched_ids` — `apply_dissolve` only sets `UNKNOWN` when something changed — so its
+   tracks kept pointing at the box's rows forever (1,336 such links across 122 releases after the
+   2026-09-17 rollout). `db::rescore_bound_release` re-runs `check_release_status` against the release
+   already on file (no MusicBrainz call), re-links matched tracks, clears `mbTrackId` on anything that
+   didn't re-match, and writes the new `matchStatus`. No MB release found or no local tracks yet →
+   `Deferred`, left at `UNKNOWN` so a plain `sync`'s own watermark clause picks it up later.
 6. **Orphans + retire (round 2)**: same two calls as phase 3. Dissolving a box makes release groups
    owned that weren't before, which can surface fresh orphans/placeholders.
 7. **Artist identity repair** (global, pure SQL, always runs regardless of scope):
@@ -88,6 +92,10 @@ and `running` (Ctrl-C/SIGTERM sets this false) gate the final watermark stamp.
     this run's *start* time, not `NOW()` — an artist re-synced mid-tidy must stay pending for the next
     run. **Never calls `update_artist_sync_stats`** (that stamps `lastSyncedAt`, which would make the
     artist look freshly synced and hide it from `sync`'s own pending clause).
+    **Artists whose box group hit a MusicBrainz lookup failure are excluded from the stamp** and stay
+    pending, so the next run retries them — a 503 is not a settled answer. Deliberately not treated as
+    `had_error`: that would unstamp every artist in scope and redo the whole library over one failed
+    request.
 
 ## Watermark semantics
 
@@ -105,6 +113,11 @@ WHERE "lastSyncedAt" IS NOT NULL
   leaves every artist it touched pending, so the *next* `./tidy` redoes exactly the same set.
 - **Never touches `Artist.lastSyncedAt`.** A missed or interrupted tidy self-heals on the next run; it
   can never make sync think an artist needs re-syncing (or hide it from sync's own pending query).
+- **`lastTidiedAt` set while `lastSyncedAt` is NULL is expected, not a violated invariant.** Phase 7's
+  identity repair clears `lastSyncedAt` on an artist whose stored MusicBrainz identity it just took
+  away, precisely so sync picks the entry back up and re-derives it (docs/sync_decisions.md §6); phase
+  10 then stamps the whole scope, that artist included. 215 artists were in this state after the
+  2026-09-17 run.
 - `index` still sets `LocalRelease.matchStatus = 'UNKNOWN'` on track deletion, and a box dissolve/fold
   sets it too — both are covered because phase 5's target query re-checks `matchStatus='UNKNOWN'`
   directly, not just this run's own `touched_local_release_ids`.
@@ -129,9 +142,14 @@ See `CLAUDE.md`'s scan-buttons paragraph for the exact button → command-sequen
 ## Summary output
 
 One elapsed-time line, then: empty releases removed; orphans/placeholders retired (both rounds); box
-groups seen/bound/folded/dissolved/key-taken/failed; re-scored counts per status + deferred; identity
-Pass A/B/C counts; completeness recomputed; artists stamped (or "NOT stamped: errors" / "NOT stamped:
-interrupted").
+groups seen/bound/folded/dissolved/key-taken/failed/from-DB; **a `not bound:` line breaking the
+remainder down by reason** (no candidate, fetch error, no match, ambiguous, collision, no artist link,
+under 2 siblings); re-scored counts per status + deferred, with how many were picked up only for stale
+track links; identity Pass A/B/C counts; completeness recomputed; artists stamped, with how many were
+held back for retry (or "NOT stamped: errors" / "NOT stamped: interrupted").
+
+`groups seen` counts only groups that had a chance to bind — a parent with fewer than two sibling
+folders is reported under `under 2 siblings` rather than padding the denominator.
 
 ## Relation to sync
 

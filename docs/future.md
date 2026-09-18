@@ -30,6 +30,8 @@ BUGS
 
 Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. These catalogues should be separated - best strategy? The name of the band isn't the problem - it's the slug generation and the way we catalogue them (they can't be together).
 
+I see 3 exactly equal "Dear Michael: The Motown Collection" releases grouped. How is this possible? Clearly a bug. Note: sync and tidy scripts have ran fully. 
+
 UI
 
 Better hierarchy in statistics vs subpages

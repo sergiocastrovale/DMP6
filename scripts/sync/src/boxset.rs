@@ -23,7 +23,7 @@ use std::collections::{HashMap, HashSet};
 use crate::box_editions;
 use crate::db::*;
 use crate::mb_api::{self, RateLimiter};
-use crate::owned::{durations_compatible, normalize_title};
+use crate::owned::{durations_compatible, durations_within, normalize_title};
 use chrono::Utc;
 use colored::Colorize;
 use common::mb::types::{MbMedia, MbRelease};
@@ -63,6 +63,7 @@ pub struct BoxCandidate {
     pub media: Vec<BoxMedium>,
 }
 
+#[derive(Debug)]
 pub struct BoxBindPlan {
     pub release_id: String,
     pub folder_path: String,
@@ -86,8 +87,177 @@ fn common_ancestor(a: &str, b: &str) -> String {
     out.join("/")
 }
 
+/// How far apart two runtimes of the same recording may sit, per pass of the ladder in
+/// `pair_tracks`. Pass 1 keeps `owned::durations_compatible`'s own 5s; the widenings below are named
+/// here so the ladder reads as one rule set rather than three magic numbers.
+///
+/// Rips, masterings and gapless trailing silence move a track by a few seconds. Requiring 5s cost
+/// ABBA's "The Complete Studio Recordings" its entire nine-disc bind over one track: disc 5's "I'm a
+/// Marionette" is 243s in the files against MusicBrainz's 249s, on a disc whose eleven titles
+/// otherwise line up exactly. Still bounded, because a shared title with a wildly different runtime is
+/// usually a different recording - a live take, an extended mix - not a different rip of the same one.
+const SAME_TRACK_DIFFERENT_MASTER_SECS: i32 = 15;
+
+/// Only reachable on a disc that has *already* paired `CORROBORATION_MIN_EXACT_PAIRS` tracks by exact
+/// title. At that point the folder's identity is established by those pairings, and a lone same-titled
+/// outlier is a different master of a slot the rest of the disc already proved - not evidence that the
+/// folder is a different disc. Deliberately **not** applied as a flat window (docs/sync_decisions.md
+/// §9: "a shared title with a wildly different runtime is usually a different recording"); without the
+/// corroboration requirement this would be exactly that loosening.
+const CORROBORATED_DRIFT_SECS: i32 = 60;
+const CORROBORATION_MIN_EXACT_PAIRS: usize = 3;
+
+/// Pass 4's bounds. A tagging typo is one or two characters; a genuinely different song scores far
+/// below the floor. Both a ratio floor and an absolute edit cap apply - the cap is what stops a long
+/// title from buying itself proportionally more slack.
+const FUZZY_MIN_RATIO: f32 = 0.9;
+const FUZZY_MAX_EDITS: usize = 3;
+
+/// The title with any trailing parenthesised/bracketed qualifiers removed:
+/// `"Market Square Heroes (re-record)"` -> `"Market Square Heroes"`. Repeats, so
+/// `"Song (live) [remastered]"` reduces to `"Song"`.
+///
+/// Empty when the whole title is one bracketed group - there is no base title to compare in that case,
+/// and comparing empty strings would match everything.
+fn strip_qualifier(title: &str) -> String {
+    let mut s = title.trim().to_string();
+    loop {
+        let chars: Vec<char> = s.chars().collect();
+        let (open, close) = match chars.last() {
+            Some(')') => ('(', ')'),
+            Some(']') => ('[', ']'),
+            _ => break,
+        };
+        let mut depth = 0i32;
+        let mut opened_at = None;
+        for (i, c) in chars.iter().enumerate().rev() {
+            if *c == close {
+                depth += 1;
+            } else if *c == open {
+                depth -= 1;
+                if depth == 0 {
+                    opened_at = Some(i);
+                    break;
+                }
+            }
+        }
+        let Some(i) = opened_at else { break };
+        let next: String = chars[..i].iter().collect::<String>().trim().to_string();
+        if next.is_empty() {
+            return String::new();
+        }
+        s = next;
+    }
+    s
+}
+
+/// Levenshtein distance, abandoned as soon as it is certain to exceed `max` - so this stays cheap on
+/// the long titles where it would otherwise do the most work.
+fn edit_distance_within(a: &str, b: &str, max: usize) -> Option<usize> {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    if a.len().abs_diff(b.len()) > max {
+        return None;
+    }
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for (i, ca) in a.iter().enumerate() {
+        cur[0] = i + 1;
+        let mut row_min = cur[0];
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != cb);
+            cur[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(cur[j] + 1);
+            row_min = row_min.min(cur[j + 1]);
+        }
+        if row_min > max {
+            return None;
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    let distance = prev[b.len()];
+    (distance <= max).then_some(distance)
+}
+
+/// Two normalized titles close enough to be the same song typed differently.
+///
+/// Accepts `"sweetemalinamygal"`/`"sweetemalinemygal"` (0.94) and `"frearmsmash"`/`"forearmsmash"`
+/// (0.92); refuses `"blessyourselfandthechildren"`/`"blessthebeastsandthechildren"` (~0.7, a
+/// mondegreen of a different song) and `"two"`/`"three"` (0.2).
+fn titles_near_identical(a: &str, b: &str) -> bool {
+    let longest = a.chars().count().max(b.chars().count());
+    if longest == 0 {
+        return false;
+    }
+    match edit_distance_within(a, b, FUZZY_MAX_EDITS) {
+        Some(distance) => 1.0 - (distance as f32 / longest as f32) >= FUZZY_MIN_RATIO,
+        None => false,
+    }
+}
+
+/// One medium track still up for grabs, pre-normalized once so the ladder below never re-normalizes.
+struct MediumTrack {
+    /// Index back into the caller's `medium` slice, for the MB track id.
+    idx: usize,
+    norm: String,
+    /// `norm` of the title with trailing qualifiers stripped - empty when there is no base title.
+    base: String,
+    secs: Option<i32>,
+}
+
+/// One local track not yet paired, same pre-normalization.
+struct LocalTrack<'a> {
+    id: &'a String,
+    norm: String,
+    base: String,
+    secs: Option<i32>,
+}
+
+/// Claim every leftover whose predicate matches exactly one remaining medium track, greedily in the
+/// order given. Returns the leftovers that matched nothing, or `None` the moment one matches more than
+/// one - ambiguity refuses rather than guesses.
+fn claim_unique<'a, F>(
+    available: &mut Vec<MediumTrack>,
+    medium: &[(String, String, Option<i32>)],
+    links: &mut Vec<(String, String)>,
+    unresolved: Vec<LocalTrack<'a>>,
+    fits: F,
+) -> Option<Vec<LocalTrack<'a>>>
+where
+    F: Fn(&LocalTrack<'a>, &MediumTrack) -> bool,
+{
+    let mut left = Vec::new();
+    for track in unresolved {
+        let mut found = None;
+        let mut hits = 0usize;
+        for (pos, candidate) in available.iter().enumerate() {
+            if fits(&track, candidate) {
+                hits += 1;
+                if hits > 1 {
+                    break;
+                }
+                found = Some(pos);
+            }
+        }
+        if hits > 1 {
+            return None;
+        }
+        match found {
+            Some(pos) => {
+                let claimed = available.remove(pos);
+                links.push((track.id.clone(), medium[claimed.idx].0.clone()));
+            }
+            None => left.push(track),
+        }
+    }
+    Some(left)
+}
+
+/// How many strictness levels `pair_tracks_at` offers. Level 0 is the historical ladder exactly;
+/// each level above it enables one more (looser) rule. See `pair_tracks`.
+const PAIR_DEPTH_MAX: usize = 3;
+
 /// Pair a folder's tracks against a medium's, one-to-one, returning `(local_track_id, mb_track_id)`
-/// for every track - or `None` when the two are not the same tracklist.
+/// for every track - or `None` when the two are not the same tracklist at this strictness `depth`.
 ///
 /// Same length is still required (this decides "is this folder *that* disc", not containment), but the
 /// pairing is by **content, not position**: each local track claims a distinct medium track with the
@@ -99,127 +269,308 @@ fn common_ancestor(a: &str, b: &str) -> String {
 /// in MB, "Rock 'n Roll Band" last vs 12th). One such disc made `plan_box_bind` reject the **whole**
 /// group, so a complete box stayed nine unbound `MISSING_TRACKS` folders.
 ///
-/// Greedy first-fit, matching `owned::find_owning_bundle`'s own approach: duration separates
-/// same-titled tracks, and a pathological set where only a different assignment would succeed is
-/// left unmatched rather than guessed at.
-fn pair_tracks(
+/// The rules, strictest first. **The order is the safety property**: anything placeable beyond doubt
+/// is claimed before a looser rule gets to compete for it, so a loose match can never steal a track a
+/// strict one had a claim on.
+///
+/// | Rule | Window | Unique required | From depth |
+/// |---|---|---|---|
+/// | normalized title equal              | 5s  | no (greedy) | 0 |
+/// | normalized title equal              | 15s | no (greedy) | 0 |
+/// | normalized title equal, 3+ already paired | 60s | yes | 1 |
+/// | one title contains the other        | 5s  | yes | 0 |
+/// | one title contains the other        | 15s | yes | 1 |
+/// | titles equal minus a trailing qualifier | 5s then 15s | yes | 2 |
+/// | near-identical titles (typo), both durations known | 5s then 15s | yes | 3 |
+///
+/// Greedy is correct for the first two, matching `owned::find_owning_bundle`'s own approach: two tracks
+/// sharing a title *and* a runtime are interchangeable. Every looser rule demands a unique candidate,
+/// and a pathological set where only a different assignment would succeed is left unmatched rather than
+/// guessed at.
+fn pair_tracks_at(
     local: &[(String, String, Option<i32>)],
     medium: &[(String, String, Option<i32>)],
+    depth: usize,
 ) -> Option<Vec<(String, String)>> {
     if local.len() != medium.len() {
         return None;
     }
-    let mut available: Vec<(usize, String, Option<i32>)> = medium
+    let mut available: Vec<MediumTrack> = medium
         .iter()
         .enumerate()
-        .map(|(i, (_, title, secs))| (i, normalize_title(title), *secs))
+        .map(|(idx, (_, title, secs))| MediumTrack {
+            idx,
+            norm: normalize_title(title),
+            base: normalize_title(&strip_qualifier(title)),
+            secs: *secs,
+        })
         .collect();
 
     let mut links: Vec<(String, String)> = Vec::with_capacity(local.len());
-    let mut unresolved: Vec<(&String, String, Option<i32>)> = Vec::new();
+    let mut unresolved: Vec<LocalTrack> = local
+        .iter()
+        .map(|(id, title, secs)| LocalTrack {
+            id,
+            norm: normalize_title(title),
+            base: normalize_title(&strip_qualifier(title)),
+            secs: *secs,
+        })
+        .collect();
 
-    // Pass 1 - identical title, runtimes agreeing closely. Everything placeable beyond doubt is
-    // placed first, so the looser passes never compete for a track this one had a claim on. Greedy is
-    // correct here: two tracks that share a title *and* a runtime are interchangeable.
-    for (local_id, local_title, local_secs) in local {
-        let want = normalize_title(local_title);
-        match available
-            .iter()
-            .position(|(_, have, hs)| *have == want && durations_compatible(*local_secs, *hs))
-        {
-            Some(pos) => {
-                let (idx, _, _) = available.remove(pos);
-                links.push((local_id.clone(), medium[idx].0.clone()));
+    // Identical title, runtimes agreeing closely, then merely in the same region.
+    for window in [None, Some(SAME_TRACK_DIFFERENT_MASTER_SECS)] {
+        let mut left = Vec::new();
+        for track in unresolved {
+            let fits = |m: &MediumTrack| {
+                m.norm == track.norm
+                    && match window {
+                        None => durations_compatible(track.secs, m.secs),
+                        Some(secs) => durations_within(track.secs, m.secs, secs),
+                    }
+            };
+            match available.iter().position(fits) {
+                Some(pos) => {
+                    let claimed = available.remove(pos);
+                    links.push((track.id.clone(), medium[claimed.idx].0.clone()));
+                }
+                None => left.push(track),
             }
-            None => unresolved.push((local_id, want, *local_secs)),
         }
+        unresolved = left;
     }
 
-    // Pass 1b - identical title, runtime merely in the same region. Rips, masterings and gapless
-    // trailing silence move a track by a few seconds, and the five-second tie-breaker used above is
-    // deliberately tight because `owned::find_owning_bundle` shares it for a much weaker test.
-    // Requiring it here cost ABBA's "The Complete Studio Recordings" its entire nine-disc bind over
-    // one track: disc 5's "I'm a Marionette" is 243s in the files against MusicBrainz's 249s, on a
-    // disc whose eleven titles otherwise line up exactly.
+    // Identical title a whole minute out, but only once the rest of the disc has already vouched for
+    // it. See `CORROBORATED_DRIFT_SECS`.
+    if depth >= 1 && links.len() >= CORROBORATION_MIN_EXACT_PAIRS {
+        unresolved = claim_unique(
+            &mut available,
+            medium,
+            &mut links,
+            unresolved,
+            |track, candidate| {
+                candidate.norm == track.norm
+                    && durations_within(track.secs, candidate.secs, CORROBORATED_DRIFT_SECS)
+            },
+        )?;
+    }
+
+    // A title that merely *contains* the other. Tags routinely qualify a track MusicBrainz leaves
+    // plain, or the reverse: ABBA's "The Complete Studio Recordings" disc 1 is a perfect 19-of-19 rip
+    // whose opener is tagged "Ring Ring (English version)" where MusicBrainz says "Ring Ring", and that
+    // single word rejected the entire nine-disc box.
     //
-    // Still bounded, because a shared title with a wildly different runtime is usually a different
-    // recording - a live take, an extended mix - not a different rip of the same one.
-    const SAME_TRACK_DIFFERENT_MASTER_SECS: i32 = 15;
-    let mut still_unresolved: Vec<(&String, String, Option<i32>)> = Vec::new();
-    for (local_id, want, local_secs) in unresolved {
-        let near = |hs: Option<i32>| match (local_secs, hs) {
-            (Some(a), Some(b)) => (a - b).abs() <= SAME_TRACK_DIFFERENT_MASTER_SECS,
-            _ => true,
-        };
-        match available
-            .iter()
-            .position(|(_, have, hs)| *have == want && near(*hs))
-        {
-            Some(pos) => {
-                let (idx, _, _) = available.remove(pos);
-                links.push((local_id.clone(), medium[idx].0.clone()));
-            }
-            None => still_unresolved.push((local_id, want, local_secs)),
-        }
+    // Running this greedily would be actively dangerous: that same disc also holds the Spanish, German
+    // and Swedish "Ring Ring", whose durations sit within tolerance of the plain one, so first-fit
+    // would pair whichever came first. Exact-first plus the uniqueness test removes both hazards.
+    let containment_windows: &[i32] = if depth >= 1 {
+        &CLAIM_WINDOWS
+    } else {
+        &CLAIM_WINDOWS[..1]
+    };
+    for &window in containment_windows {
+        unresolved = claim_unique(
+            &mut available,
+            medium,
+            &mut links,
+            unresolved,
+            |track, candidate| {
+                (candidate.norm.contains(track.norm.as_str())
+                    || track.norm.contains(candidate.norm.as_str()))
+                    && durations_within(track.secs, candidate.secs, window)
+            },
+        )?;
     }
-    let unresolved = still_unresolved;
 
-    // Pass 2 - a title that merely *contains* the other, for the leftovers. Tags routinely qualify a
-    // track MusicBrainz leaves plain, or the reverse: ABBA's "The Complete Studio Recordings" disc 1
-    // is a perfect 19-of-19 rip whose opener is tagged "Ring Ring (English version)" where
-    // MusicBrainz says "Ring Ring", and that single word rejected the entire nine-disc box.
+    // The two titles agree once each side's trailing qualifier is dropped. Containment above cannot see
+    // this, because *both* sides carry a qualifier and neither contains the other: Marillion's "The
+    // Singles '82-88'" disc 4 is tagged "Market Square Heroes (alternative version)" where MusicBrainz
+    // says "Market Square Heroes (re-record)", same 288s, and that one track cost the whole twelve-disc
+    // box its placement.
     //
-    // Only for leftovers, and only when exactly one candidate fits. Run greedily over every track it
-    // would be actively dangerous: that same disc also holds the Spanish, German and Swedish "Ring
-    // Ring", whose durations sit within the tolerance of the plain one - first-fit would happily pair
-    // whichever came first. Exact-first plus a uniqueness test removes both hazards.
-    for (local_id, want, local_secs) in unresolved {
-        let mut hits = available.iter().enumerate().filter(|(_, (_, have, hs))| {
-            (have.contains(want.as_str()) || want.contains(have.as_str()))
-                && durations_compatible(local_secs, *hs)
-        });
-        let (pos, _) = hits.next()?;
-        if hits.next().is_some() {
-            return None; // ambiguous - refuse rather than guess
+    // Two differently-qualified variants of one base title (the four language versions of "Ring Ring")
+    // both fit, so the uniqueness test refuses - the same protection containment relies on.
+    if depth >= 2 {
+        for window in CLAIM_WINDOWS {
+            unresolved = claim_unique(
+                &mut available,
+                medium,
+                &mut links,
+                unresolved,
+                |track, candidate| {
+                    !track.base.is_empty()
+                        && track.base == candidate.base
+                        && durations_within(track.secs, candidate.secs, window)
+                },
+            )?;
         }
-        let (idx, _, _) = available.remove(pos);
-        links.push((local_id.clone(), medium[idx].0.clone()));
     }
 
-    Some(links)
+    // A tagging typo ("Sweet Emalina My Gal" for "Sweet Emaline My Gal", "Frearm Smash" for "Forearm
+    // Smash"). The weakest evidence on the ladder, so it is also the most constrained: both durations
+    // must actually be known, not merely non-contradictory, on top of the usual window and uniqueness.
+    if depth >= 3 {
+        for window in CLAIM_WINDOWS {
+            unresolved = claim_unique(
+                &mut available,
+                medium,
+                &mut links,
+                unresolved,
+                |track, candidate| {
+                    track.secs.is_some()
+                        && candidate.secs.is_some()
+                        && durations_within(track.secs, candidate.secs, window)
+                        && titles_near_identical(&track.norm, &candidate.norm)
+                },
+            )?;
+        }
+    }
+
+    unresolved.is_empty().then_some(links)
 }
 
-fn tracks_match(
+/// The duration windows a unique-claim rule tries, tightest first.
+///
+/// Trying 5s before 15s is not cosmetic: widening a window can turn a rule's single candidate into
+/// two, and `claim_unique` then refuses. Claiming at the tight window first means a pairing the old
+/// 5s-only rule found is always found again, and the wider window only ever sees what the tight one
+/// could not place. Measured across the whole library, that ordering is the difference between 0 and 2
+/// groups that used to bind and would otherwise stop binding.
+const CLAIM_WINDOWS: [i32; 2] = [
+    crate::owned::DURATION_TOLERANCE_SECS,
+    SAME_TRACK_DIFFERENT_MASTER_SECS,
+];
+
+/// `pair_tracks_at` at whichever strictness level first produces a pairing.
+///
+/// Production code never wants this: `plan_box_bind_detailed` has to compare a folder against every
+/// medium at *equal* strictness, so it drives the levels itself. Kept for the tests, which are about
+/// whether a given tracklist pairs at all rather than at which level.
+#[cfg(test)]
+fn pair_tracks(
     local: &[(String, String, Option<i32>)],
     medium: &[(String, String, Option<i32>)],
-) -> bool {
-    pair_tracks(local, medium).is_some()
+) -> Option<Vec<(String, String)>> {
+    (0..=PAIR_DEPTH_MAX).find_map(|depth| pair_tracks_at(local, medium, depth))
 }
 
-/// Decide whether `siblings` are discs of `candidate`, and how. `None` when any sibling matches zero
-/// or more than one medium (ambiguous), when two siblings claim the same medium, or when fewer than
-/// two siblings are given (nothing to fold). A candidate medium with no matching sibling is fine - a
-/// partially-ripped box is allowed, only every *sibling that exists* must resolve unambiguously.
-pub fn plan_box_bind(siblings: &[BoxSibling], candidate: &BoxCandidate) -> Option<BoxBindPlan> {
-    if siblings.len() < 2 {
-        return None;
+/// Why `plan_box_bind_detailed` refused a candidate. Carried so the caller can both log a precise
+/// reason and count refusals by kind - a bare `None` made half the box pass' work invisible in the run
+/// summary, which is how a transient MusicBrainz outage stayed indistinguishable from "this group has
+/// no box release" for an entire rollout (docs/scripts/tidy_observations.md).
+#[derive(Debug, Clone)]
+pub enum BindRefusal {
+    /// Fewer than two siblings, or fewer than two of them matched a medium - nothing to fold.
+    TooFewMatched { matched: usize },
+    /// A sibling matched more than one medium of this candidate.
+    Ambiguous { folder: String, media: usize },
+    /// Two siblings both resolved to the same medium - duplicate rips, not two halves of a box.
+    Collision {
+        folder: String,
+        other: String,
+        position: i32,
+    },
+}
+
+impl BindRefusal {
+    /// One line for `reporter.skip` and `errors.log`, naming the release it was checked against.
+    pub fn describe(&self, release_title: &str) -> String {
+        match self {
+            BindRefusal::TooFewMatched { matched } => format!(
+                "only {} sibling(s) matched a disc of \"{}\" - at least 2 required",
+                matched, release_title
+            ),
+            BindRefusal::Ambiguous { folder, media } => format!(
+                "[{}] matches {} discs of \"{}\" - ambiguous",
+                folder, media, release_title
+            ),
+            BindRefusal::Collision {
+                folder,
+                other,
+                position,
+            } => format!(
+                "[{}] and [{}] both match disc {} of \"{}\"",
+                other, folder, position, release_title
+            ),
+        }
     }
 
-    let mut claimed: HashSet<i32> = HashSet::new();
+    /// Stable key for the run summary's per-reason counters.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            BindRefusal::TooFewMatched { .. } => "no match",
+            BindRefusal::Ambiguous { .. } => "ambiguous",
+            BindRefusal::Collision { .. } => "collision",
+        }
+    }
+}
+
+/// Decide whether `siblings` are discs of `candidate`, and how.
+///
+/// Refuses when a sibling matches **more than one** medium (ambiguous), when two siblings claim the
+/// same medium, or when fewer than two siblings resolve at all - there is nothing to fold below two.
+///
+/// A sibling that matches **zero** media no longer refuses the group (docs/sync_decisions.md §19 item
+/// 1b). Real boxes routinely carry a folder that is on no disc of any edition: a bonus DVD-audio rip, a
+/// hi-res or SACD layer sitting beside the CD rip, a disc whose tracklist the rip split differently.
+/// Refusing the whole box over one of those was the single largest cause of unplaced discs measured in
+/// the 2026-09-17 rollout - 126 groups where exactly one folder failed and every other folder paired
+/// perfectly. Unmatched siblings are simply left out of `members`/`absorbed`/`track_links`, so
+/// `apply_fold` never deletes them and `apply_dissolve` never writes to them: nothing about those rows
+/// changes.
+///
+/// An *ambiguous* sibling still refuses the whole group. That distinction is the safety property - "on
+/// no disc" is evidence about that folder alone, "could be either disc" is evidence that the candidate
+/// itself is wrong.
+///
+/// A candidate medium with no matching sibling is fine either way - a partially-ripped box is allowed.
+pub fn plan_box_bind_detailed(
+    siblings: &[BoxSibling],
+    candidate: &BoxCandidate,
+) -> Result<BoxBindPlan, BindRefusal> {
+    if siblings.len() < 2 {
+        return Err(BindRefusal::TooFewMatched { matched: 0 });
+    }
+
+    let mut claimed: HashMap<i32, String> = HashMap::new();
     let mut members: Vec<(String, i32)> = Vec::with_capacity(siblings.len());
     let mut track_links: Vec<(String, String)> = Vec::new();
 
     for s in siblings {
-        let hits: Vec<(&BoxMedium, Vec<(String, String)>)> = candidate
-            .media
-            .iter()
-            .filter_map(|m| pair_tracks(&s.tracks, &m.tracks).map(|links| (m, links)))
-            .collect();
-        let [(medium, links)] = &hits[..] else {
-            return None; // zero or ambiguous
+        // Strictest-first at the *medium* level too, not just inside `pair_tracks_at`. A folder that
+        // pairs with exactly one disc under the tight rules must keep that disc even though a looser
+        // level would also pair it with a second one - otherwise widening a rule turns a settled
+        // answer into an ambiguity and the group stops binding. Measured library-wide: without this,
+        // two groups that bound before would refuse (Rome's "Hall Of Thatch", whose disc pairs with
+        // two masterings of the same album once the 60s window opens).
+        let hits: Vec<(&BoxMedium, Vec<(String, String)>)> = (0..=PAIR_DEPTH_MAX)
+            .map(|depth| {
+                candidate
+                    .media
+                    .iter()
+                    .filter_map(|m| {
+                        pair_tracks_at(&s.tracks, &m.tracks, depth).map(|links| (m, links))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .find(|hits: &Vec<_>| !hits.is_empty())
+            .unwrap_or_default();
+        let (medium, links) = match &hits[..] {
+            [one] => one,
+            // On no disc of this candidate: leave the folder exactly as it is and carry on.
+            [] => continue,
+            many => {
+                return Err(BindRefusal::Ambiguous {
+                    folder: s.folder_path.clone(),
+                    media: many.len(),
+                })
+            }
         };
-        if !claimed.insert(medium.position) {
-            return None; // two siblings claim the same medium
+        if let Some(other) = claimed.insert(medium.position, s.folder_path.clone()) {
+            return Err(BindRefusal::Collision {
+                folder: s.folder_path.clone(),
+                other,
+                position: medium.position,
+            });
         }
         members.push((s.local_id.clone(), medium.position));
         // The pairing computed by `pair_tracks`, not a positional zip - on a disc whose sequencing
@@ -227,11 +578,19 @@ pub fn plan_box_bind(siblings: &[BoxSibling], candidate: &BoxCandidate) -> Optio
         track_links.extend(links.iter().cloned());
     }
 
+    if members.len() < 2 {
+        return Err(BindRefusal::TooFewMatched {
+            matched: members.len(),
+        });
+    }
+
     let mut ordered = members.clone();
     ordered.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
     let survivor = ordered[0].0.clone();
     let absorbed: Vec<String> = ordered.into_iter().skip(1).map(|(id, _)| id).collect();
 
+    // The box root, computed over *every* sibling including the unmatched ones - the folder they all
+    // sit in is the box regardless of which discs MusicBrainz happens to list.
     let folder_path = siblings
         .iter()
         .map(|s| s.folder_path.clone())
@@ -239,7 +598,7 @@ pub fn plan_box_bind(siblings: &[BoxSibling], candidate: &BoxCandidate) -> Optio
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| siblings[0].folder_path.clone());
 
-    Some(BoxBindPlan {
+    Ok(BoxBindPlan {
         release_id: candidate.release_id.clone(),
         folder_path,
         survivor,
@@ -249,15 +608,44 @@ pub fn plan_box_bind(siblings: &[BoxSibling], candidate: &BoxCandidate) -> Optio
     })
 }
 
+/// `plan_box_bind_detailed` without the reason, for callers that only need the decision.
+pub fn plan_box_bind(siblings: &[BoxSibling], candidate: &BoxCandidate) -> Option<BoxBindPlan> {
+    plan_box_bind_detailed(siblings, candidate).ok()
+}
+
 // ---------------------------------------------------------------------------
 // Candidate discovery - network + DB
 // ---------------------------------------------------------------------------
 
+/// Where a candidate box release came from, and therefore what still has to happen to it before a
+/// sibling can be bound to it.
+enum CandidateSource {
+    /// Fetched from MusicBrainz. Its `MusicBrainzRelease` + media + track rows must be persisted
+    /// (`persist_box_media`) before anything can point at it.
+    Fetched {
+        release: MbRelease,
+        rg_id: String,
+        primary_type: Option<String>,
+    },
+    /// Rebuilt from rows this box already has in the database, with no MusicBrainz call at all - the
+    /// whole point of `candidates_from_db`. Nothing to persist; the row id is already known.
+    Stored { mb_db_id: String },
+}
+
 struct FetchedCandidate {
     candidate: BoxCandidate,
-    release: MbRelease,
-    rg_id: String,
-    primary_type: Option<String>,
+    /// The release's own title, for log lines - the one field both sources always have.
+    title: String,
+    source: CandidateSource,
+}
+
+/// Candidates plus how many MusicBrainz lookups failed while gathering them. A failed lookup is **not**
+/// the same as "no box exists", and conflating the two is what let a transient outage look like a
+/// settled negative for a whole rollout - see `BoxSetSummary::candidate_fetch_errors`.
+#[derive(Default)]
+struct CandidateFetch {
+    candidates: Vec<FetchedCandidate>,
+    errors: usize,
 }
 
 fn build_candidate(release_id: &str, media: &Option<Vec<MbMedia>>) -> Option<BoxCandidate> {
@@ -294,6 +682,15 @@ fn build_candidate(release_id: &str, media: &Option<Vec<MbMedia>>) -> Option<Box
     })
 }
 
+/// A MusicBrainz lookup that failed: logged, not swallowed. `reporter.sub_step` alone put this in a
+/// run log nobody keeps, so a 503 during a six-hour pass was indistinguishable in the summary from a
+/// group that genuinely has no box release (docs/scripts/tidy_observations.md).
+fn note_fetch_error(reporter: &Reporter, what: &str, err: &str) {
+    let msg = format!("box candidate lookup failed ({what}): {err}");
+    reporter.sub_step(&format!("  -> {msg}"));
+    common::error_log::log_warn(&msg);
+}
+
 /// Tier (a): the siblings' own majority embedded MB release ids, looked up directly. Catches a box
 /// where at least one disc's tag happens to point at the box release itself.
 async fn candidates_from_embedded_ids(
@@ -301,8 +698,8 @@ async fn candidates_from_embedded_ids(
     limiter: &mut RateLimiter,
     ids: &[String],
     reporter: &Reporter,
-) -> Vec<FetchedCandidate> {
-    let mut out = Vec::new();
+) -> CandidateFetch {
+    let mut out = CandidateFetch::default();
     for id in ids {
         reporter.sub_step(&format!("tier (a): looking up embedded id {id}..."));
         match mb_api::mb_get_release_by_id(http_client, id, limiter).await {
@@ -313,11 +710,14 @@ async fn candidates_from_embedded_ids(
                         by_id.release.title,
                         candidate.media.len()
                     ));
-                    out.push(FetchedCandidate {
+                    out.candidates.push(FetchedCandidate {
                         candidate,
-                        release: by_id.release,
-                        rg_id: by_id.rg_id,
-                        primary_type: by_id.primary_type,
+                        title: by_id.release.title.clone(),
+                        source: CandidateSource::Fetched {
+                            release: by_id.release,
+                            rg_id: by_id.rg_id,
+                            primary_type: by_id.primary_type,
+                        },
                     });
                 }
                 None => reporter.sub_step(&format!(
@@ -325,7 +725,10 @@ async fn candidates_from_embedded_ids(
                     by_id.release.title
                 )),
             },
-            Err(e) => reporter.sub_step(&format!("  -> lookup failed: {e}")),
+            Err(e) => {
+                note_fetch_error(reporter, &format!("release {id}"), &e);
+                out.errors += 1;
+            }
         }
     }
     out
@@ -339,7 +742,8 @@ async fn candidates_from_search(
     title: &str,
     artist_name: &str,
     reporter: &Reporter,
-) -> Vec<FetchedCandidate> {
+) -> CandidateFetch {
+    let mut out = CandidateFetch::default();
     reporter.sub_step(&format!(
         "tier (b): searching MusicBrainz for \"{title}\" by {artist_name}..."
     ));
@@ -347,12 +751,12 @@ async fn candidates_from_search(
         match mb_api::mb_search_release_groups(http_client, title, artist_name, limiter).await {
             Ok(hits) => hits,
             Err(e) => {
-                reporter.sub_step(&format!("  -> search failed: {e}"));
-                return Vec::new();
+                note_fetch_error(reporter, &format!("search \"{title}\""), &e);
+                out.errors += 1;
+                return out;
             }
         };
     reporter.sub_step(&format!("  -> {} release group(s) found", hits.len()));
-    let mut out = Vec::new();
     for rg in hits {
         if !common::mb::allowlist::is_allowed(rg.primary_type.as_deref(), &rg.secondary_types, None)
         {
@@ -362,80 +766,183 @@ async fn candidates_from_search(
             ));
             continue;
         }
-        match mb_api::mb_get_release_tracks(http_client, &rg.id, limiter).await {
-            Ok(editions) => {
+        let fetched = candidates_from_release_group(
+            http_client,
+            limiter,
+            &rg.id,
+            rg.primary_type.as_deref(),
+            &HashSet::new(),
+            reporter,
+        )
+        .await;
+        out.errors += fetched.errors;
+        out.candidates.extend(fetched.candidates);
+    }
+    out
+}
+
+/// Every multi-medium edition of one release group, as bind candidates.
+///
+/// Shared by tier (b)'s search and tier (c) below, which is the point: MusicBrainz catalogues several
+/// editions of the same box (region and label variants), the ordinary album matcher binds whichever one
+/// it happened to pick, and that edition's tracklist may simply not be the one on disc. Trying the
+/// group's *other* editions costs one paginated call and uses the existing perfect-match rule
+/// unchanged - more candidates, not a looser test (docs/sync_decisions.md §19 item 1a).
+///
+/// `exclude` skips release ids already tried, so tier (c) never re-checks the candidate that just
+/// failed.
+async fn candidates_from_release_group(
+    http_client: &Client,
+    limiter: &mut RateLimiter,
+    rg_id: &str,
+    primary_type: Option<&str>,
+    exclude: &HashSet<String>,
+    reporter: &Reporter,
+) -> CandidateFetch {
+    let mut out = CandidateFetch::default();
+    let editions = match mb_api::mb_get_release_tracks(http_client, rg_id, limiter).await {
+        Ok(editions) => editions,
+        Err(e) => {
+            note_fetch_error(reporter, &format!("release group {rg_id}"), &e);
+            out.errors += 1;
+            return out;
+        }
+    };
+    reporter.sub_step(&format!("  -> {} edition(s) to check", editions.len()));
+    for (release, _flattened) in editions {
+        if exclude.contains(&release.id) {
+            continue;
+        }
+        match build_candidate(&release.id, &release.media) {
+            Some(candidate) => {
                 reporter.sub_step(&format!(
-                    "  -> \"{}\": {} edition(s) to check",
-                    rg.title,
-                    editions.len()
+                    "     \"{}\" ({}), {} disc(s)",
+                    release.title,
+                    release.id,
+                    candidate.media.len()
                 ));
-                for (release, _flattened) in editions {
-                    match build_candidate(&release.id, &release.media) {
-                        Some(candidate) => {
-                            reporter.sub_step(&format!(
-                                "     \"{}\" ({}), {} disc(s)",
-                                release.title,
-                                release.id,
-                                candidate.media.len()
-                            ));
-                            out.push(FetchedCandidate {
-                                candidate,
-                                release,
-                                rg_id: rg.id.clone(),
-                                primary_type: rg.primary_type.clone(),
-                            });
-                        }
-                        None => reporter.sub_step(&format!(
-                            "     \"{}\" has only 1 medium, not a box",
-                            release.title
-                        )),
-                    }
-                }
+                out.candidates.push(FetchedCandidate {
+                    candidate,
+                    title: release.title.clone(),
+                    source: CandidateSource::Fetched {
+                        release,
+                        rg_id: rg_id.to_string(),
+                        primary_type: primary_type.map(str::to_string),
+                    },
+                });
             }
-            Err(e) => reporter.sub_step(&format!("  -> \"{}\" fetch failed: {e}", rg.title)),
+            None => reporter.sub_step(&format!(
+                "     \"{}\" has only 1 medium, not a box",
+                release.title
+            )),
         }
     }
     out
 }
 
-/// Why a candidate that reached `plan_box_bind` did not produce a bind - diagnostic only, computed
-/// separately from the pure decision fn so `plan_box_bind` itself stays a plain `Option` with no
-/// reporting concerns. Checked in the same order `plan_box_bind` evaluates siblings.
-fn describe_rejection(siblings: &[BoxSibling], candidate: &FetchedCandidate) -> String {
-    let mut claimed: HashMap<i32, &str> = HashMap::new();
-    for s in siblings {
-        let hits: Vec<i32> = candidate
-            .candidate
-            .media
-            .iter()
-            .filter(|m| tracks_match(&s.tracks, &m.tracks))
-            .map(|m| m.position)
-            .collect();
-        match hits.len() {
-            0 => {
-                return format!(
-                    "[{}] matches no disc of \"{}\"",
-                    s.folder_path, candidate.release.title
-                )
-            }
-            1 => {
-                let pos = hits[0];
-                if let Some(other) = claimed.insert(pos, &s.folder_path) {
-                    return format!(
-                        "[{}] and [{}] both match disc {} of \"{}\"",
-                        other, s.folder_path, pos, candidate.release.title
-                    );
-                }
-            }
-            n => {
-                return format!(
-                    "[{}] matches {} discs of \"{}\" - ambiguous",
-                    s.folder_path, n, candidate.release.title
-                )
-            }
+/// Tier (d): rebuild a candidate from rows the box already has in the database, with **no** MusicBrainz
+/// call.
+///
+/// Only used for a group whose siblings are already placed. Those groups are re-discovered on every
+/// unscoped run by design - a disc must still be able to move when a new equivalence appears - but
+/// re-fetching the box to learn what the database already knows cost a cold lookup (~10s) each time,
+/// for 230 groups, for no new information (docs/sync_decisions.md §19 item 3).
+///
+/// Strictly an optimisation, never a different answer: anything incomplete about the stored rows
+/// (fewer than two media, a medium with no tracks, a medium whose `trackCount` disagrees with the rows
+/// present, a track with no MusicBrainz id) returns `None` and the caller falls back to the network.
+async fn candidates_from_db(pool: &PgPool, mb_ids: &[String]) -> Vec<FetchedCandidate> {
+    let mut out = Vec::new();
+    for mb_id in mb_ids {
+        let Ok(Some((db_id, title))) = sqlx::query_as::<_, (String, String)>(
+            r#"SELECT id, title FROM "MusicBrainzRelease"
+               WHERE "musicbrainzId" = $1 AND "mediumCount" > 1"#,
+        )
+        .bind(mb_id)
+        .fetch_optional(pool)
+        .await
+        else {
+            continue;
+        };
+
+        let Ok(medium_rows) = sqlx::query_as::<_, (i32, i32)>(
+            r#"SELECT position, "trackCount" FROM "MusicBrainzReleaseMedium"
+               WHERE "releaseId" = $1 ORDER BY position"#,
+        )
+        .bind(&db_id)
+        .fetch_all(pool)
+        .await
+        else {
+            continue;
+        };
+        if medium_rows.len() < 2 {
+            continue;
         }
+
+        let Ok(track_rows) = sqlx::query_as::<_, (Option<i32>, Option<String>, String, Option<i32>)>(
+            r#"SELECT "discNumber", "musicbrainzId", title, "durationMs"
+               FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1
+               ORDER BY "discNumber" NULLS FIRST, position"#,
+        )
+        .bind(&db_id)
+        .fetch_all(pool)
+        .await
+        else {
+            continue;
+        };
+
+        let Some(candidate) = box_candidate_from_rows(mb_id, &medium_rows, &track_rows) else {
+            continue;
+        };
+        out.push(FetchedCandidate {
+            candidate,
+            title,
+            source: CandidateSource::Stored { mb_db_id: db_id },
+        });
     }
-    "no reason found (this should not happen)".to_string()
+    out
+}
+
+/// The pure half of `candidates_from_db`: stored medium + track rows in, a `BoxCandidate` out, or
+/// `None` when the stored rows are not a faithful copy of the box.
+///
+/// Every rejection here sends the caller back to the network, so these are the rules that keep tier (d)
+/// an optimisation rather than a second, weaker source of truth:
+/// fewer than two media, a medium with no tracks, a medium whose row count disagrees with its recorded
+/// `trackCount` (a half-synced release), or a track with no MusicBrainz id (nothing to link against).
+fn box_candidate_from_rows(
+    release_mb_id: &str,
+    medium_rows: &[(i32, i32)],
+    track_rows: &[(Option<i32>, Option<String>, String, Option<i32>)],
+) -> Option<BoxCandidate> {
+    if medium_rows.len() < 2 {
+        return None;
+    }
+    let mut media: Vec<BoxMedium> = Vec::with_capacity(medium_rows.len());
+    for (position, track_count) in medium_rows {
+        let tracks: Vec<(String, String, Option<i32>)> = track_rows
+            .iter()
+            .filter(|(disc, _, _, _)| *disc == Some(*position))
+            .filter_map(|(_, mb_track_id, title, duration_ms)| {
+                Some((
+                    mb_track_id.clone()?,
+                    title.clone(),
+                    duration_ms.map(|ms| ms / 1000),
+                ))
+            })
+            .collect();
+        if tracks.is_empty() || tracks.len() as i32 != *track_count {
+            return None;
+        }
+        media.push(BoxMedium {
+            position: *position,
+            tracks,
+        });
+    }
+    (media.len() >= 2).then(|| BoxCandidate {
+        release_id: release_mb_id.to_string(),
+        media,
+    })
 }
 
 /// Best-effort box title from a parent folder name: strip a leading "YYYY - " and any trailing
@@ -469,6 +976,10 @@ struct SiblingRow {
     local_id: String,
     folder_path: String,
     majority_mb_release_id: Option<String>,
+    /// This folder already sits on a medium (`mediumPosition`) or came out of a dissolve
+    /// (`boxReleaseId`). A group where every sibling is placed needs no MusicBrainz call to be
+    /// re-checked - see `candidates_from_db`.
+    placed: bool,
 }
 
 struct SiblingGroup {
@@ -491,19 +1002,20 @@ async fn find_sibling_groups(
     pool: &PgPool,
     scope: Option<&[String]>,
 ) -> Result<Vec<SiblingGroup>, sqlx::Error> {
-    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+    let rows: Vec<(String, String, String, Option<String>, bool)> = sqlx::query_as(
         r#"
         WITH f AS (
           SELECT lr.id, lr."folderPath" AS folder_path,
                  regexp_replace(lr."folderPath", '/[^/]+$', '') AS parent,
                  (SELECT t."mbReleaseId" FROM "LocalReleaseTrack" t
                     WHERE t."localReleaseId" = lr.id AND t."mbReleaseId" IS NOT NULL
-                    GROUP BY t."mbReleaseId" ORDER BY count(*) DESC, t."mbReleaseId" ASC LIMIT 1) AS majority_mb
+                    GROUP BY t."mbReleaseId" ORDER BY count(*) DESC, t."mbReleaseId" ASC LIMIT 1) AS majority_mb,
+                 (lr."mediumPosition" IS NOT NULL OR lr."boxReleaseId" IS NOT NULL) AS placed
           FROM "LocalRelease" lr
           WHERE lr."folderPath" IS NOT NULL
             AND array_length(string_to_array(lr."folderPath", '/'), 1) >= 4
         )
-        SELECT f.id, f.folder_path, f.parent, f.majority_mb
+        SELECT f.id, f.folder_path, f.parent, f.majority_mb, f.placed
         FROM f
         WHERE f.parent IN (SELECT parent FROM f GROUP BY parent HAVING count(*) > 1)
           AND ($1::text[] IS NULL OR f.parent IN (
@@ -519,11 +1031,12 @@ async fn find_sibling_groups(
     .await?;
 
     let mut groups: Vec<SiblingGroup> = Vec::new();
-    for (id, folder_path, parent, majority_mb) in rows {
+    for (id, folder_path, parent, majority_mb, placed) in rows {
         let row = SiblingRow {
             local_id: id,
             folder_path,
             majority_mb_release_id: majority_mb,
+            placed,
         };
         match groups.last_mut() {
             Some(g) if g.parent == parent => g.rows.push(row),
@@ -593,27 +1106,30 @@ async fn artist_for_group(pool: &PgPool, local_ids: &[String]) -> Option<(String
 /// mutation - the caller decides fold vs dissolve afterward (docs/sync_decisions.md), once
 /// `box_editions::run_link_box_editions` has had a chance to derive equivalences, which needs these
 /// media rows to exist first. Returns the box's `MusicBrainzRelease.id`.
+#[allow(clippy::too_many_arguments)]
 async fn persist_box_media(
     pool: &PgPool,
-    fetched: &FetchedCandidate,
+    release: &MbRelease,
+    rg_id: &str,
+    primary_type: Option<&str>,
+    candidate: &BoxCandidate,
     plan: &BoxBindPlan,
     release_type_cache: &mut HashMap<String, String>,
     artist_id: &str,
     artist_genre_ids: &[String],
 ) -> Result<String, sqlx::Error> {
-    let type_name = fetched.primary_type.as_deref().unwrap_or("Other");
+    let type_name = primary_type.unwrap_or("Other");
     let type_id = ensure_release_type_cached(pool, type_name, release_type_cache).await?;
-    let year = fetched
-        .release
+    let year = release
         .date
         .as_deref()
         .and_then(|d| d.split('-').next())
         .and_then(|y| y.parse::<i32>().ok());
-    let format_str = crate::status::format_from_media(&fetched.release.media);
+    let format_str = crate::status::format_from_media(&release.media);
     let extras = MbReleaseExtras {
-        release_date: fetched.release.date.as_deref(),
-        packaging: fetched.release.packaging.as_deref(),
-        country: fetched.release.country.as_deref(),
+        release_date: release.date.as_deref(),
+        packaging: release.packaging.as_deref(),
+        country: release.country.as_deref(),
         format: format_str.as_deref(),
         ..Default::default()
     };
@@ -622,7 +1138,7 @@ async fn persist_box_media(
     // UNKNOWN by apply_fold/apply_dissolve below and picked up by the ordinary bind path's
     // medium-scoped check_release_status on this artist's next sync pass - the same "next sync
     // re-scores it" convention the old tier-1 fold already relied on.
-    let complete = plan.members.len() == fetched.candidate.media.len();
+    let complete = plan.members.len() == candidate.media.len();
     let status = if complete {
         "COMPLETE"
     } else {
@@ -632,25 +1148,25 @@ async fn persist_box_media(
         format!(
             "{} of {} discs present",
             plan.members.len(),
-            fetched.candidate.media.len()
+            candidate.media.len()
         )
     });
 
     let mb_db_id = upsert_mb_release_with_media(
         pool,
         &plan.release_id,
-        &fetched.rg_id,
-        &fetched.release.title,
+        rg_id,
+        &release.title,
         year,
         &type_id,
         status,
         reason.as_deref(),
-        fetched.release.disambiguation.as_deref(),
+        release.disambiguation.as_deref(),
         &extras,
-        fetched.candidate.media.len() as i32,
+        candidate.media.len() as i32,
     )
     .await?;
-    sync_mb_media_for_release(pool, &mb_db_id, &mb_medium_rows(&fetched.release.media)).await?;
+    sync_mb_media_for_release(pool, &mb_db_id, &mb_medium_rows(&release.media)).await?;
     ensure_mb_release_artist_link(pool, &mb_db_id, artist_id)
         .await
         .ok();
@@ -658,7 +1174,7 @@ async fn persist_box_media(
         .await
         .ok();
 
-    let flattened = common::mb::api::flatten_audio_tracks(&fetched.release.media);
+    let flattened = common::mb::api::flatten_audio_tracks(&release.media);
     let track_rows: Vec<MbTrackRow> = flattened
         .iter()
         .map(|t| MbTrackRow {
@@ -940,6 +1456,106 @@ pub struct BoxSetSummary {
     /// fold, each member whose row a dissolve wrote to. Tidy re-scores exactly these, in addition to
     /// whatever was already sitting at `matchStatus='UNKNOWN'` from a previous, interrupted run.
     pub touched_local_release_ids: Vec<String>,
+
+    // -- Why the rest were not bound. `groups_seen` minus `groups_bound` used to be a number with no
+    // -- explanation anywhere, which is how a MusicBrainz outage hid inside it for a whole rollout.
+    /// Fewer than two sibling folders survived to be considered - can never bind, so excluded from
+    /// `groups_seen` rather than silently inflating it.
+    pub groups_under_two_siblings: usize,
+    /// No `LocalReleaseArtist` row for any sibling, so there is no artist to credit the box to.
+    pub groups_skipped_no_artist: usize,
+    /// Every tier came back empty: no embedded id resolved to a multi-medium release, the search found
+    /// nothing. A settled negative, unlike `candidate_fetch_errors`.
+    pub groups_no_candidate: usize,
+    /// Candidates were found and checked, but fewer than two siblings matched a disc.
+    pub groups_refused_no_match: usize,
+    /// A sibling matched more than one disc of every candidate.
+    pub groups_refused_ambiguous: usize,
+    /// Two siblings resolved to the same disc of every candidate.
+    pub groups_refused_collision: usize,
+    /// Individual MusicBrainz lookups that errored while gathering candidates. Counted and logged, not
+    /// swallowed: a group that failed only because MusicBrainz was unwell must be retried, which is
+    /// what `artists_with_fetch_errors` buys.
+    pub candidate_fetch_errors: usize,
+    /// Artists owning a group where a lookup errored. Tidy withholds the `lastTidiedAt` stamp from
+    /// exactly these, so the next run retries them instead of treating a 503 as a settled answer.
+    pub artists_with_fetch_errors: HashSet<String>,
+    /// Groups whose candidate came from the database instead of MusicBrainz (`candidates_from_db`).
+    pub groups_from_db: usize,
+}
+
+impl BoxSetSummary {
+    /// The per-reason tail of the run summary's `Box groups` line. Empty when everything bound.
+    pub fn refusal_breakdown(&self) -> String {
+        let parts = [
+            ("no candidate", self.groups_no_candidate),
+            ("fetch error", self.candidate_fetch_errors),
+            ("no match", self.groups_refused_no_match),
+            ("ambiguous", self.groups_refused_ambiguous),
+            ("collision", self.groups_refused_collision),
+            ("no artist link", self.groups_skipped_no_artist),
+            ("under 2 siblings", self.groups_under_two_siblings),
+        ];
+        parts
+            .iter()
+            .filter(|(_, n)| *n > 0)
+            .map(|(label, n)| format!("{n} {label}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// Log and count a group no candidate could bind. Each candidate contributes one reason; the group is
+/// attributed to the *first* one, which is the candidate the ordinary matcher had already chosen and so
+/// the most useful single answer.
+fn report_refusals(
+    summary: &mut BoxSetSummary,
+    reporter: &Reporter,
+    refusals: &[(String, BindRefusal)],
+) {
+    match refusals.first() {
+        Some((_, first)) => match first {
+            BindRefusal::TooFewMatched { .. } => summary.groups_refused_no_match += 1,
+            BindRefusal::Ambiguous { .. } => summary.groups_refused_ambiguous += 1,
+            BindRefusal::Collision { .. } => summary.groups_refused_collision += 1,
+        },
+        None => summary.groups_no_candidate += 1,
+    }
+    let detail: Vec<String> = refusals
+        .iter()
+        .map(|(title, r)| r.describe(title))
+        .collect();
+    reporter.skip(&format!(
+        "{} candidate(s) checked, none matched: {}",
+        detail.len(),
+        detail.join("; ")
+    ));
+}
+
+/// The `CandidateSource::Stored` twin of the track relinking `persist_box_media` does at its tail:
+/// `plan.track_links` carries raw MusicBrainz track uuids, which have to be resolved to this release's
+/// own `MusicBrainzReleaseTrack.id` values before they can be written.
+async fn relink_stored_tracks(
+    pool: &PgPool,
+    mb_db_id: &str,
+    plan: &BoxBindPlan,
+) -> Result<(), sqlx::Error> {
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        r#"SELECT id, "musicbrainzId" FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
+    )
+    .bind(mb_db_id)
+    .fetch_all(pool)
+    .await?;
+    let links: Vec<(String, String)> = plan
+        .track_links
+        .iter()
+        .filter_map(|(local_id, mb_raw)| {
+            rows.iter()
+                .find(|(_, mb_id)| mb_id.as_deref() == Some(mb_raw.as_str()))
+                .map(|(db_id, _)| (local_id.clone(), db_id.clone()))
+        })
+        .collect();
+    link_local_tracks_to_mb(pool, &links).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -964,10 +1580,11 @@ pub async fn run_repair(
     scope: Option<&[String]>,
 ) -> Result<BoxSetSummary, sqlx::Error> {
     let groups = find_sibling_groups(pool, scope).await?;
-    let mut summary = BoxSetSummary {
-        groups_seen: groups.len(),
-        ..Default::default()
-    };
+    let mut summary = BoxSetSummary::default();
+    // A group under two siblings can never bind, so it is reported separately rather than padding
+    // `groups_seen` - the denominator has to mean "groups that had a chance".
+    summary.groups_under_two_siblings = groups.iter().filter(|g| g.rows.len() < 2).count();
+    summary.groups_seen = groups.len() - summary.groups_under_two_siblings;
     reporter.info(&format!(
         "{} sibling-folder group(s) not folded by tier 1",
         summary.groups_seen
@@ -1017,6 +1634,7 @@ pub async fn run_repair(
 
         let local_ids: Vec<String> = group.rows.iter().map(|r| r.local_id.clone()).collect();
         let Some((artist_id, artist_name)) = artist_for_group(pool, &local_ids).await else {
+            summary.groups_skipped_no_artist += 1;
             reporter.skip("no artist link found for this group - skipped");
             continue;
         };
@@ -1029,33 +1647,115 @@ pub async fn run_repair(
         embedded_ids.extend(bound_box_mb_ids(pool, &local_ids).await);
         let embedded_ids: Vec<String> = embedded_ids.into_iter().collect();
 
-        let mut fetched =
-            candidates_from_embedded_ids(http_client, limiter, &embedded_ids, reporter).await;
-        if fetched.is_empty() {
+        // Tier (d) first, and it costs nothing: a group whose siblings are all already placed can be
+        // rebuilt from the rows the box already has, so the common "nothing to discover here" case
+        // never reaches MusicBrainz at all (docs/sync_decisions.md §19 item 3).
+        let all_placed = group.rows.iter().all(|r| r.placed);
+        let mut fetched = CandidateFetch::default();
+        if all_placed {
+            fetched.candidates = candidates_from_db(pool, &embedded_ids).await;
+            if !fetched.candidates.is_empty() {
+                reporter.sub_step(&format!(
+                    "tier (d): {} candidate(s) rebuilt from the database, no MusicBrainz call",
+                    fetched.candidates.len()
+                ));
+                summary.groups_from_db += 1;
+            }
+        }
+        if fetched.candidates.is_empty() {
+            fetched = candidates_from_embedded_ids(http_client, limiter, &embedded_ids, reporter).await;
+        }
+        if fetched.candidates.is_empty() {
             let title = guess_box_title(&group.parent);
-            fetched =
+            let searched =
                 candidates_from_search(http_client, limiter, &title, &artist_name, reporter).await;
+            fetched.errors += searched.errors;
+            fetched.candidates = searched.candidates;
         }
 
-        if fetched.is_empty() {
-            reporter.skip("no multi-medium candidate found");
+        if fetched.candidates.is_empty() {
+            if fetched.errors > 0 {
+                // Not a settled negative: MusicBrainz was unwell. Withhold this artist's watermark so
+                // the next run asks again instead of never revisiting the group.
+                summary.candidate_fetch_errors += fetched.errors;
+                summary.artists_with_fetch_errors.insert(artist_id.clone());
+                reporter.skip("no candidate found - MusicBrainz lookups failed, will retry");
+            } else {
+                summary.groups_no_candidate += 1;
+                reporter.skip("no multi-medium candidate found");
+            }
             continue;
         }
 
-        let plan = fetched
-            .iter()
-            .find_map(|f| plan_box_bind(&siblings, &f.candidate).map(|p| (f, p)));
+        let mut refusals: Vec<(String, BindRefusal)> = Vec::new();
+        let mut plan = None;
+        for f in &fetched.candidates {
+            match plan_box_bind_detailed(&siblings, &f.candidate) {
+                Ok(p) => {
+                    plan = Some((f, p));
+                    break;
+                }
+                Err(refusal) => refusals.push((f.title.clone(), refusal)),
+            }
+        }
 
-        let Some((fetched, plan)) = plan else {
-            let reasons: Vec<String> = fetched
+        // Tier (c): the bound candidate may simply be the wrong *edition* of the right box - MB
+        // catalogues several, and the ordinary album matcher picked one. Try the group's other
+        // editions before giving up (docs/sync_decisions.md §19 item 1a).
+        let mut other_editions: Vec<FetchedCandidate> = Vec::new();
+        if plan.is_none() {
+            let already_tried: HashSet<String> = fetched
+                .candidates
                 .iter()
-                .map(|f| describe_rejection(&siblings, f))
+                .map(|f| f.candidate.release_id.clone())
                 .collect();
-            reporter.skip(&format!(
-                "{} candidate(s) checked, none matched: {}",
-                reasons.len(),
-                reasons.join("; ")
-            ));
+            let mut rg_seen: HashSet<String> = HashSet::new();
+            for f in &fetched.candidates {
+                if let CandidateSource::Fetched {
+                    rg_id,
+                    primary_type,
+                    ..
+                } = &f.source
+                {
+                    if rg_seen.insert(rg_id.clone()) {
+                        reporter.sub_step(&format!(
+                            "tier (c): trying other editions of release group {rg_id}..."
+                        ));
+                        let more = candidates_from_release_group(
+                            http_client,
+                            limiter,
+                            rg_id,
+                            primary_type.as_deref(),
+                            &already_tried,
+                            reporter,
+                        )
+                        .await;
+                        fetched.errors += more.errors;
+                        other_editions.extend(more.candidates);
+                    }
+                }
+            }
+            for f in &other_editions {
+                match plan_box_bind_detailed(&siblings, &f.candidate) {
+                    Ok(p) => {
+                        plan = Some((f, p));
+                        break;
+                    }
+                    Err(refusal) => refusals.push((f.title.clone(), refusal)),
+                }
+            }
+            if plan.is_none() {
+                report_refusals(&mut summary, reporter, &refusals);
+                if fetched.errors > 0 {
+                    summary.candidate_fetch_errors += fetched.errors;
+                    summary.artists_with_fetch_errors.insert(artist_id.clone());
+                }
+                continue;
+            }
+        }
+
+        let Some((fetched_candidate, plan)) = plan else {
+            report_refusals(&mut summary, reporter, &refusals);
             continue;
         };
 
@@ -1066,7 +1766,7 @@ pub async fn run_repair(
             plan.folder_path,
             plan.members.len(),
             plan.members.len(),
-            fetched.candidate.media.len(),
+            fetched_candidate.candidate.media.len(),
         );
         for s in &siblings {
             let owned = plan.members.iter().any(|(id, _)| id == &s.local_id);
@@ -1078,24 +1778,48 @@ pub async fn run_repair(
             println!("    {} {} [{}]", mark, s.local_id, s.folder_path);
         }
 
-        let artist_genre_ids = get_artist_genre_ids(pool, &artist_id).await;
-        let persisted = persist_box_media(
-            pool,
-            fetched,
-            &plan,
-            &mut release_type_cache,
-            &artist_id,
-            &artist_genre_ids,
-        )
-        .await;
-        let mb_db_id = match persisted {
-            Ok(id) => id,
-            Err(e) => {
-                let msg = format!("box group [{}]: binding failed: {}", plan.folder_path, e);
-                reporter.warn(&msg);
-                common::error_log::log_warn(&msg);
-                summary.groups_failed += 1;
-                continue;
+        let mb_db_id = match &fetched_candidate.source {
+            // Already in the database, rebuilt by tier (d) - nothing to persist. Re-link the tracks
+            // anyway so the outcome is identical to the fetched path.
+            CandidateSource::Stored { mb_db_id } => {
+                if let Err(e) = relink_stored_tracks(pool, mb_db_id, &plan).await {
+                    let msg = format!("box group [{}]: relinking failed: {}", plan.folder_path, e);
+                    reporter.warn(&msg);
+                    common::error_log::log_warn(&msg);
+                    summary.groups_failed += 1;
+                    continue;
+                }
+                mb_db_id.clone()
+            }
+            CandidateSource::Fetched {
+                release,
+                rg_id,
+                primary_type,
+            } => {
+                let artist_genre_ids = get_artist_genre_ids(pool, &artist_id).await;
+                match persist_box_media(
+                    pool,
+                    release,
+                    rg_id,
+                    primary_type.as_deref(),
+                    &fetched_candidate.candidate,
+                    &plan,
+                    &mut release_type_cache,
+                    &artist_id,
+                    &artist_genre_ids,
+                )
+                .await
+                {
+                    Ok(id) => id,
+                    Err(e) => {
+                        let msg =
+                            format!("box group [{}]: binding failed: {}", plan.folder_path, e);
+                        reporter.warn(&msg);
+                        common::error_log::log_warn(&msg);
+                        summary.groups_failed += 1;
+                        continue;
+                    }
+                }
             }
         };
 
@@ -1376,6 +2100,283 @@ mod tests {
         );
     }
 
+    // -----------------------------------------------------------------------
+    // Ladder passes 1c / 2 / 3 / 4 (docs/scripts/tidy_observations.md round 2)
+    // -----------------------------------------------------------------------
+
+    /// Pass 2's window used to be 5s while pass 1b already allowed 15s, so a containment pair with a
+    /// few seconds of drift was refused although the identical-title pair beside it was accepted.
+    /// Real case: Bass Mekanik's "Reload" disc 2, "20Hz Sine Wave" against MusicBrainz's "20Hz".
+    #[test]
+    fn a_contained_title_tolerates_the_same_drift_an_exact_one_does() {
+        let local = sibling(
+            "cd2",
+            "Box/CD 2",
+            &[
+                ("l1", "20Hz Sine Wave", Some(129)),
+                ("l2", "Bass Mekanik", Some(200)),
+            ],
+        );
+        let m = medium(
+            2,
+            &[("m1", "20Hz", Some(120)), ("m2", "Bass Mekanik", Some(200))],
+        );
+        let by_local: std::collections::HashMap<_, _> = pair_tracks(&local.tracks, &m.tracks)
+            .expect("nine seconds is drift, not a different track")
+            .into_iter()
+            .collect();
+        assert_eq!(by_local["l1"], "m1");
+    }
+
+    /// Marillion's "The Singles '82-88' (Boxset)" disc 4. Both sides carry a *different* qualifier, so
+    /// containment cannot see it - neither string contains the other - yet the runtimes agree to the
+    /// second. One track out of 44 cost the whole twelve-disc box its placement.
+    #[test]
+    fn two_differently_qualified_titles_pair_on_their_base_title() {
+        let local = sibling(
+            "cd4",
+            "Box/CD 4",
+            &[
+                ("l1", "Punch and Judy", Some(200)),
+                ("l2", "Market Square Heroes (re-record edit)", Some(240)),
+                ("l3", "Three Boats Down From the Candy (re-record)", Some(242)),
+                ("l4", "Market Square Heroes (alternative version)", Some(288)),
+            ],
+        );
+        let m = medium(
+            4,
+            &[
+                ("m1", "Punch and Judy", Some(200)),
+                ("m2", "Market Square Heroes (re-record edit)", Some(240)),
+                ("m3", "Three Boats Down From the Candy (re-record)", Some(242)),
+                ("m4", "Market Square Heroes (re-record)", Some(288)),
+            ],
+        );
+        let by_local: std::collections::HashMap<_, _> = pair_tracks(&local.tracks, &m.tracks)
+            .expect("a differing qualifier must not reject the disc")
+            .into_iter()
+            .collect();
+        assert_eq!(by_local["l4"], "m4");
+        assert_eq!(by_local["l2"], "m2", "the exact pair is still claimed first");
+    }
+
+    /// The hazard pass 3's uniqueness test exists for: a base title shared by several qualified
+    /// variants (ABBA's four language versions of "Ring Ring") must refuse, not pick one.
+    #[test]
+    fn a_base_title_matching_two_variants_is_refused() {
+        let local = sibling(
+            "cd1",
+            "Box/CD 1",
+            &[
+                ("l1", "Ring Ring (German version)", Some(185)),
+                ("l2", "Santa Rosa", Some(181)),
+            ],
+        );
+        let m = medium(
+            1,
+            &[
+                ("m1", "Ring Ring (English version)", Some(184)),
+                ("m2", "Santa Rosa", Some(181)),
+            ],
+        );
+        // Only one variant remains, so this one *does* pair - the refusal case needs two.
+        assert!(pair_tracks(&local.tracks, &m.tracks).is_some());
+
+        let m_two = medium(
+            1,
+            &[
+                ("m1", "Ring Ring (English version)", Some(184)),
+                ("m2", "Ring Ring (Spanish version)", Some(186)),
+            ],
+        );
+        let local_two = sibling(
+            "cd1",
+            "Box/CD 1",
+            &[
+                ("l1", "Ring Ring (German version)", Some(185)),
+                ("l2", "Ring Ring (Swedish version)", Some(185)),
+            ],
+        );
+        assert!(
+            pair_tracks(&local_two.tracks, &m_two.tracks).is_none(),
+            "two variants of one base title are ambiguous, not a pairing"
+        );
+    }
+
+    /// Pass 4: a one-character tagging typo on a disc that otherwise lines up exactly. Art Tatum's
+    /// "Piano Grand Master" disc 2 - "Sweet Emalina My Gal" against "Sweet Emaline My Gal".
+    #[test]
+    fn a_single_character_typo_still_pairs() {
+        let local = sibling(
+            "d2",
+            "Box/Disc 2",
+            &[
+                ("l1", "Elegie", Some(200)),
+                ("l2", "Sweet Emalina My Gal", Some(180)),
+            ],
+        );
+        let m = medium(
+            2,
+            &[
+                ("m1", "Elegie", Some(200)),
+                ("m2", "Sweet Emaline My Gal", Some(182)),
+            ],
+        );
+        let by_local: std::collections::HashMap<_, _> = pair_tracks(&local.tracks, &m.tracks)
+            .expect("one letter is a typo, not a different song")
+            .into_iter()
+            .collect();
+        assert_eq!(by_local["l2"], "m2");
+    }
+
+    /// The other side of pass 4: a mondegreen is a *different song*, and must stay refused however
+    /// much of the string it shares. Belinda Carlisle's "The Anthology" disc 2.
+    #[test]
+    fn a_differently_worded_title_is_not_a_typo() {
+        let local = sibling(
+            "cd2",
+            "Box/CD 2",
+            &[
+                ("l1", "Heaven Is a Place on Earth", Some(240)),
+                ("l2", "Bless Yourself and the Children", Some(200)),
+            ],
+        );
+        let m = medium(
+            2,
+            &[
+                ("m1", "Heaven Is a Place on Earth", Some(240)),
+                ("m2", "Bless the Beasts and the Children", Some(200)),
+            ],
+        );
+        assert!(pair_tracks(&local.tracks, &m.tracks).is_none());
+    }
+
+    /// Pass 4 is the weakest rule on the ladder, so it demands both runtimes actually be known -
+    /// unlike every pass above it, where an unknown duration is merely missing evidence.
+    #[test]
+    fn a_typo_without_durations_is_refused() {
+        let local = sibling(
+            "d2",
+            "Box/Disc 2",
+            &[("l1", "Elegie", None), ("l2", "Sweet Emalina My Gal", None)],
+        );
+        let m = medium(
+            2,
+            &[("m1", "Elegie", None), ("m2", "Sweet Emaline My Gal", None)],
+        );
+        assert!(pair_tracks(&local.tracks, &m.tracks).is_none());
+    }
+
+    /// Pass 1c: three tracks pair exactly, so the disc has already vouched for itself, and the lone
+    /// same-titled outlier a minute out is a different master rather than a different disc.
+    #[test]
+    fn a_corroborated_disc_absorbs_one_long_runtime_outlier() {
+        let local = sibling(
+            "cd2",
+            "Box/CD 2",
+            &[
+                ("l1", "One", Some(100)),
+                ("l2", "Two", Some(100)),
+                ("l3", "Three", Some(100)),
+                ("l4", "Jam", Some(300)),
+            ],
+        );
+        let m = medium(
+            2,
+            &[
+                ("m1", "One", Some(100)),
+                ("m2", "Two", Some(100)),
+                ("m3", "Three", Some(100)),
+                ("m4", "Jam", Some(340)),
+            ],
+        );
+        let by_local: std::collections::HashMap<_, _> = pair_tracks(&local.tracks, &m.tracks)
+            .expect("three exact pairs vouch for the fourth")
+            .into_iter()
+            .collect();
+        assert_eq!(by_local["l4"], "m4");
+    }
+
+    /// ...and without that corroboration the same outlier still rejects the disc. This is what keeps
+    /// the 60s window from being the flat loosening docs/sync_decisions.md §9 argues against.
+    #[test]
+    fn an_uncorroborated_runtime_outlier_still_rejects_the_disc() {
+        let local = sibling(
+            "cd2",
+            "Box/CD 2",
+            &[("l1", "One", Some(100)), ("l2", "Jam", Some(300))],
+        );
+        let m = medium(2, &[("m1", "One", Some(100)), ("m2", "Jam", Some(340))]);
+        assert!(pair_tracks(&local.tracks, &m.tracks).is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Tier (d): rebuilding a candidate from stored rows (docs/sync_decisions.md §19 item 3)
+    // -----------------------------------------------------------------------
+
+    fn stored_track(
+        disc: i32,
+        mb_id: Option<&str>,
+        title: &str,
+        ms: Option<i32>,
+    ) -> (Option<i32>, Option<String>, String, Option<i32>) {
+        (
+            Some(disc),
+            mb_id.map(str::to_string),
+            title.to_string(),
+            ms,
+        )
+    }
+
+    #[test]
+    fn a_fully_stored_box_rebuilds_without_touching_musicbrainz() {
+        let media = [(1, 2), (2, 1)];
+        let tracks = [
+            stored_track(1, Some("mb-1"), "A", Some(100_000)),
+            stored_track(1, Some("mb-2"), "B", Some(200_000)),
+            stored_track(2, Some("mb-3"), "C", Some(300_000)),
+        ];
+        let candidate = box_candidate_from_rows("box-mbid", &media, &tracks).expect("rebuilds");
+        assert_eq!(candidate.release_id, "box-mbid");
+        assert_eq!(candidate.media.len(), 2);
+        assert_eq!(candidate.media[0].tracks.len(), 2);
+        // Durations come back in seconds, as `build_candidate` produces them from the API.
+        assert_eq!(candidate.media[0].tracks[0].2, Some(100));
+    }
+
+    /// Each rejection sends the caller back to the network - that is what keeps tier (d) an
+    /// optimisation rather than a second, weaker source of truth.
+    #[test]
+    fn incomplete_stored_rows_fall_back_to_the_network() {
+        let full = [
+            stored_track(1, Some("mb-1"), "A", Some(100_000)),
+            stored_track(2, Some("mb-2"), "B", Some(200_000)),
+        ];
+        // Single medium: not a box.
+        assert!(box_candidate_from_rows("b", &[(1, 1)], &full[..1]).is_none());
+        // A medium with no track rows at all.
+        assert!(box_candidate_from_rows("b", &[(1, 1), (2, 1), (3, 1)], &full).is_none());
+        // Row count disagrees with the recorded trackCount - a half-synced release.
+        assert!(box_candidate_from_rows("b", &[(1, 2), (2, 1)], &full).is_none());
+        // A track with no MusicBrainz id: nothing to link a local track against.
+        let no_id = [
+            stored_track(1, None, "A", Some(100_000)),
+            stored_track(2, Some("mb-2"), "B", Some(200_000)),
+        ];
+        assert!(box_candidate_from_rows("b", &[(1, 1), (2, 1)], &no_id).is_none());
+    }
+
+    #[test]
+    fn strip_qualifier_drops_trailing_bracket_groups_only() {
+        assert_eq!(strip_qualifier("Market Square Heroes (re-record)"), "Market Square Heroes");
+        assert_eq!(strip_qualifier("Song (live) [remastered]"), "Song");
+        assert_eq!(strip_qualifier("Plain Title"), "Plain Title");
+        // A bracket that is not trailing is part of the title.
+        assert_eq!(strip_qualifier("(I Can't Get No) Satisfaction"), "(I Can't Get No) Satisfaction");
+        // Nothing but a qualifier leaves no base title to compare.
+        assert_eq!(strip_qualifier("(Untitled)"), "");
+    }
+
     fn sibling(id: &str, folder: &str, tracks: &[(&str, &str, Option<i32>)]) -> BoxSibling {
         BoxSibling {
             local_id: id.to_string(),
@@ -1530,6 +2531,134 @@ mod tests {
         };
 
         assert!(plan_box_bind(&siblings, &candidate).is_none());
+    }
+
+    /// Rome's "Hall Of Thatch [Vinyl Rip]". The box holds two masterings of the same album, so once
+    /// the 60s corroborated window opens the folder pairs with *both* - while under the tight rules it
+    /// pairs with exactly one. The strict answer has to win, or widening a rule would turn a settled
+    /// bind into an ambiguity and the whole group would stop binding.
+    #[test]
+    fn a_folder_keeps_the_disc_the_strict_rules_gave_it() {
+        let siblings = vec![
+            sibling(
+                "cd1",
+                "Box/CD 1",
+                &[
+                    ("l1", "A", Some(100)),
+                    ("l2", "B", Some(100)),
+                    ("l3", "C", Some(100)),
+                    ("l4", "D", Some(200)),
+                ],
+            ),
+            sibling("cd2", "Box/CD 2", &[("l5", "Z", Some(100))]),
+        ];
+        let candidate = BoxCandidate {
+            release_id: "mb-box".to_string(),
+            media: vec![
+                // The remaster: same four titles, one of them 40s out - only reachable at depth >= 1.
+                medium(
+                    1,
+                    &[
+                        ("m1", "A", Some(100)),
+                        ("m2", "B", Some(100)),
+                        ("m3", "C", Some(100)),
+                        ("m4", "D", Some(240)),
+                    ],
+                ),
+                // The original: an exact match at depth 0.
+                medium(
+                    2,
+                    &[
+                        ("n1", "A", Some(100)),
+                        ("n2", "B", Some(100)),
+                        ("n3", "C", Some(100)),
+                        ("n4", "D", Some(200)),
+                    ],
+                ),
+                medium(3, &[("o1", "Z", Some(100))]),
+            ],
+        };
+
+        // Both discs pair at the loosest level...
+        assert!(pair_tracks(&siblings[0].tracks, &candidate.media[0].tracks).is_some());
+        assert!(pair_tracks(&siblings[0].tracks, &candidate.media[1].tracks).is_some());
+        // ...but only the exact one pairs at depth 0, and that is the one the plan must use.
+        assert!(pair_tracks_at(&siblings[0].tracks, &candidate.media[0].tracks, 0).is_none());
+        assert!(pair_tracks_at(&siblings[0].tracks, &candidate.media[1].tracks, 0).is_some());
+
+        let plan = plan_box_bind(&siblings, &candidate).expect("the strict answer resolves it");
+        let by_local: std::collections::HashMap<_, _> = plan.members.into_iter().collect();
+        assert_eq!(by_local["cd1"], 2, "the exact mastering, not the 40s-out one");
+    }
+
+    /// docs/sync_decisions.md §19 item 1b. A box whose rip carries one folder that is on no disc of
+    /// any edition - a bonus DVD-audio, an SACD layer beside the CD rip - used to reject the whole
+    /// group. The extra folder is now simply left out; nothing about its row changes.
+    #[test]
+    fn a_sibling_on_no_disc_is_left_out_instead_of_refusing_the_box() {
+        let siblings = vec![
+            sibling("cd1", "Box/CD1", &[("t1", "A", Some(100))]),
+            sibling("cd2", "Box/CD2", &[("t2", "B", Some(100))]),
+            sibling("dvd", "Box/DVD-Audio", &[("t3", "Bonus Film", Some(999))]),
+        ];
+        let candidate = BoxCandidate {
+            release_id: "mb-box".to_string(),
+            media: vec![
+                medium(1, &[("mb-t1", "A", Some(100))]),
+                medium(2, &[("mb-t2", "B", Some(100))]),
+            ],
+        };
+
+        let plan = plan_box_bind(&siblings, &candidate).expect("two matched siblings are enough");
+        assert_eq!(plan.members.len(), 2);
+        let bound: Vec<&str> = plan.members.iter().map(|(id, _)| id.as_str()).collect();
+        assert!(!bound.contains(&"dvd"), "the unmatched folder must not be bound");
+        assert!(
+            !plan.absorbed.contains(&"dvd".to_string()),
+            "and must never be absorbed - apply_fold deletes what it absorbs"
+        );
+        assert_eq!(
+            plan.folder_path, "Box",
+            "the box root still spans every sibling, matched or not"
+        );
+    }
+
+    /// The distinction that keeps the partial bind safe: "on no disc" is evidence about one folder,
+    /// "could be either disc" is evidence the candidate itself is wrong.
+    #[test]
+    fn an_ambiguous_sibling_still_refuses_the_whole_group() {
+        let siblings = vec![
+            sibling("cd1", "Box/CD1", &[("t1", "A", Some(100))]),
+            sibling("cd2", "Box/CD2", &[("t2", "B", Some(100))]),
+            sibling("cd3", "Box/CD3", &[("t3", "A", Some(100))]),
+        ];
+        let candidate = BoxCandidate {
+            release_id: "mb-box".to_string(),
+            media: vec![
+                medium(1, &[("mb-t1", "A", Some(100))]),
+                medium(2, &[("mb-t2", "B", Some(100))]),
+                medium(3, &[("mb-t3", "A", Some(100))]),
+            ],
+        };
+        assert!(matches!(
+            plan_box_bind_detailed(&siblings, &candidate),
+            Err(BindRefusal::Ambiguous { .. })
+        ));
+    }
+
+    #[test]
+    fn a_refusal_names_its_reason() {
+        let siblings = vec![
+            sibling("a", "Box/CD1 [FLAC]", &[("t1", "A", Some(100))]),
+            sibling("b", "Box/CD1 [MP3]", &[("t2", "A", Some(100))]),
+        ];
+        let candidate = BoxCandidate {
+            release_id: "mb-box".to_string(),
+            media: vec![medium(1, &[("mb-t1", "A", Some(100))])],
+        };
+        let refusal = plan_box_bind_detailed(&siblings, &candidate).unwrap_err();
+        assert_eq!(refusal.kind(), "collision");
+        assert!(refusal.describe("The Box").contains("disc 1"));
     }
 
     #[test]

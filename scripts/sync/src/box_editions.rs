@@ -222,6 +222,18 @@ async fn single_medium_releases_for_artists(
     Ok(releases)
 }
 
+/// `same_release_group_winner` for tier 2's candidate type. Same rule, same determinism.
+fn same_release_group_facts_winner<'a>(hits: &[&'a ReleaseFacts]) -> Option<&'a ReleaseFacts> {
+    let first = hits.first()?.release_group_id.as_deref()?;
+    if !hits
+        .iter()
+        .all(|r| r.release_group_id.as_deref() == Some(first))
+    {
+        return None;
+    }
+    hits.iter().min_by(|a, b| a.release_id.cmp(&b.release_id)).copied()
+}
+
 fn tracks_match(medium: &[(String, Option<i32>)], release: &[(String, Option<i32>)]) -> bool {
     if medium.len() != release.len() || medium.len() < 3 {
         return false;
@@ -351,10 +363,35 @@ fn resolve_containment_winner<'a>(
                 hits.iter().filter(|c| c.is_original_work).collect();
             match originals[..] {
                 [only] => ContainmentOutcome::Linked(*only),
-                _ => ContainmentOutcome::Ambiguous,
+                _ => match same_release_group_winner(&hits) {
+                    Some(hit) => ContainmentOutcome::Linked(hit),
+                    None => ContainmentOutcome::Ambiguous,
+                },
             }
         }
     }
+}
+
+/// The tie-break of last resort: when every remaining candidate belongs to the **same release group**,
+/// they are editions of one album and the choice between them does not change what the medium is
+/// equivalent *to*. Ownership (docs/sync_decisions.md §11) and the missing-albums list both work at
+/// release-group level, so refusing here bought nothing and cost real placements - ABBA's box disc 4
+/// had four `Arrival` candidates, all release group `e464e167-…`, and stayed unlinked because none of
+/// them could be preferred over the others.
+///
+/// Deliberately requires a known group on every candidate: two `NULL`s are not evidence of sameness.
+/// Lowest `release_id` wins, so repeated runs give the same answer (docs/sync_decisions.md §14).
+fn same_release_group_winner<'a>(
+    hits: &[&'a ContainmentCandidate],
+) -> Option<&'a ContainmentCandidate> {
+    let first = hits.first()?.release_group_id.as_deref()?;
+    if !hits
+        .iter()
+        .all(|c| c.release_group_id.as_deref() == Some(first))
+    {
+        return None;
+    }
+    hits.iter().min_by(|a, b| a.release_id.cmp(&b.release_id)).copied()
 }
 
 /// Runs all three tiers to completion, no preview mode - called automatically at the tail of a
@@ -407,11 +444,19 @@ pub async fn run_link_box_editions(
             .iter()
             .filter(|r| tracks_match(&m.tracks, &r.tracks))
             .collect();
-        let [hit] = hits[..] else {
-            if hits.len() > 1 {
-                summary.fallback_ambiguous += 1;
-            }
-            continue;
+        // Same rule as tier 3's `same_release_group_winner`: several editions of one release group are
+        // interchangeable as an equivalence target, so that is a tie worth breaking rather than an
+        // ambiguity worth refusing.
+        let hit = match hits[..] {
+            [only] => only,
+            [] => continue,
+            _ => match same_release_group_facts_winner(&hits) {
+                Some(hit) => hit,
+                None => {
+                    summary.fallback_ambiguous += 1;
+                    continue;
+                }
+            },
         };
 
         summary.fallback_linked += 1;
@@ -687,6 +732,64 @@ mod tests {
         ];
         assert!(matches!(
             resolve_containment_winner("Kind of Blue", &medium_tracks, "box1", &candidates),
+            ContainmentOutcome::Ambiguous
+        ));
+    }
+
+    /// Several editions of one release group are interchangeable as an equivalence target - ownership
+    /// and the missing-albums list both work at release-group level - so this is a tie to break, not an
+    /// ambiguity to refuse. ABBA's box disc 4 had four `Arrival` candidates in one group and stayed
+    /// unlinked for exactly this reason.
+    #[test]
+    fn candidates_sharing_one_release_group_break_the_tie_deterministically() {
+        let medium_tracks = vec![
+            t("X", Some(100)),
+            t("Y", Some(100)),
+            t("Z", Some(100)),
+            t("Bonus", Some(100)),
+        ];
+        let mut candidates = vec![
+            candidate("arrival2", "Arrival", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate("arrival1", "Arrival", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate("arrival3", "Arrival", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+        ];
+        for c in &mut candidates {
+            c.release_group_id = Some("rg-arrival".to_string());
+        }
+        match resolve_containment_winner("Arrival", &medium_tracks, "box1", &candidates) {
+            ContainmentOutcome::Linked(hit) => assert_eq!(
+                hit.release_id, "arrival1",
+                "lowest release id wins, so repeated runs agree"
+            ),
+            _ => panic!("one release group is a tie, not an ambiguity"),
+        }
+    }
+
+    /// ...and two genuinely different release groups still refuse. Two NULL groups are not evidence of
+    /// sameness either.
+    #[test]
+    fn candidates_from_two_release_groups_are_still_ambiguous() {
+        let medium_tracks = vec![
+            t("X", Some(100)),
+            t("Y", Some(100)),
+            t("Z", Some(100)),
+            t("Bonus", Some(100)),
+        ];
+        let candidates = vec![
+            candidate("kob1", "Kind of Blue", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate("kob2", "Kind of Blue", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+        ];
+        assert!(matches!(
+            resolve_containment_winner("Kind of Blue", &medium_tracks, "box1", &candidates),
+            ContainmentOutcome::Ambiguous
+        ));
+
+        let mut unknown_groups = candidates;
+        for c in &mut unknown_groups {
+            c.release_group_id = None;
+        }
+        assert!(matches!(
+            resolve_containment_winner("Kind of Blue", &medium_tracks, "box1", &unknown_groups),
             ContainmentOutcome::Ambiguous
         ));
     }

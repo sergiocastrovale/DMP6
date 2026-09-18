@@ -259,7 +259,7 @@ model LocalRelease {
   // Dissolved-box-disc provenance: this folder physically sits on disc boxMediumPosition of box
   // release boxReleaseId, while releaseId points at the standalone album it reprints (or at the box
   // itself, for a rarities/no-equivalent disc, in which case mediumPosition also carries the disc
-  // number and these two provenance columns are null). docs/multidisk.md §2/§5.
+  // number and these two provenance columns are null). docs/sync_decisions.md §9.
   boxReleaseId               String?
   boxMediumPosition          Int?
   box                        MusicBrainzRelease?        @relation("BoxDiscs", fields: [boxReleaseId], references: [id])

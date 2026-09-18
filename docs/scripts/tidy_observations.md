@@ -1,0 +1,444 @@
+# Tidy rollout — post-run analysis (2026-09-18)
+
+Critical review of the first full `./sync` + `./tidy` rollout (docs/__plan_tidy_script.md Step 10).
+Every number below was queried read-only against prod (`ix-postgres-postgres-1`) on 2026-09-18, after
+the final `./tidy` run finished.
+
+Final run summary, for reference:
+
+```
+Tidy complete. (6h:38m:07s)
+Empty releases removed: 0
+Orphans / placeholders: 0 / 0 (round 1), 72 / 0 (round 2)
+Box groups    : 2857 seen, 1420 bound (1192 folded, 223 dissolved, 5 key-taken, 0 failed)
+Re-scored     : 1901 complete, 0 incomplete, 57 extra tracks, 96 missing tracks, 0 other, 0 deferred
+Identities    : Pass A: 1, Pass B: 200, Pass C: 15
+Completeness recomputed: 17434
+Artists stamped: 17412
+```
+
+**Verdict: goal partly met.** Fold/dissolve is correct wherever it fires, and nothing it wrote is
+wrong. But roughly half the box groups it saw were never bound, and the summary gives no way to tell
+why. Four bugs found, one reproducible end to end.
+
+---
+
+## 1. What the rollout achieved
+
+| Measure | Pre-rollout (docs/sync_decisions.md §9/§17) | Now |
+|---|---|---|
+| Dissolved box discs | 133 | **771** (across 218 boxes) |
+| Fold members (`LocalReleaseMember`) | 395 | **3,604** (1,339 folded releases) |
+| Discs bound to their own medium | — | **556** |
+| Total placed `LocalRelease` rows | ~528 | **1,120** |
+| §17 split-disc query | 1,300 groups / 3,411 rows | **459 / 2,212** |
+| Box-placed discs stuck at `matchStatus='UNKNOWN'` | 588 | **0** |
+
+Verified clean:
+
+- **63 `UNKNOWN` rows remain, all with `releaseId IS NULL`.** Correctly excluded from phase 5 (which
+  needs a bound release), correctly left for the next `./sync`'s own UNKNOWN clause. The verification
+  checklist item "one `./sync && ./tidy` leaves no box-placed disc at UNKNOWN" **passes**.
+- **0 `Box-set repair error`** in `logs/errors.log` for the run. §9's "one box never blocks the rest"
+  error boundary held.
+- **Lock heartbeat works.** `errors.log` shows `Cannot start: lock held by tidy (pid 846)` at
+  `2026-09-17 23:00:53`, 6.5h into the run — `clear_stale_lock_minutes(10)` never stole it. Step 5 of
+  the plan is confirmed in production.
+- **Folds are structurally sound:** 1,339 folded releases, **0** with a NULL `discNumber` on any track.
+- **Placement quality:** dissolved discs 636/771 `COMPLETE`; medium-bound discs 529/556 `COMPLETE`.
+
+---
+
+## 2. Candidate walkthroughs
+
+### 2.1 HIM — "The Single Collection" — FIXED
+
+The case that triggered the whole investigation (docs/sync_decisions.md §17).
+
+**Before:** 10 sibling folders, each its own `LocalRelease`, all bound to the same 10-medium
+`MusicBrainzRelease`, every one with `mediumPosition IS NULL`. The UI rendered 10 identical cards all
+titled "The Single Collection".
+
+**What tidy did:** bound the group via tier (b) (the release a sibling was already bound to) →
+`count_equivalents` returned 0 (a singles box has no standalone album twins) → **fold**.
+
+**Now:**
+
+```
+HIM/Album/2002 - The Single Collection [#74321 96173 2]   COMPLETE   mediumCount 10
+  10 LocalReleaseMember rows, discNumber 1..10, in folder order
+```
+
+**Why correct:** §9's rule is fold when 0–1 discs are recognisable as standalone releases. Every disc
+here is a CD single; §7's allow-list never invents standalone singles, so no equivalence can exist.
+One entry is the right answer, and the disc numbers are preserved on the members.
+
+### 2.2 ABBA — "The Complete Studio Recordings (9CD)" — PARTIAL
+
+**Before:** all 9 discs bound whole-box at `MISSING_TRACKS`, unscored across three consecutive syncs
+(the §10 matcher-vs-box-pass fight).
+
+**Now:**
+
+| Disc | `releaseId` points at | `mediumPosition` | `boxMediumPosition` | status |
+|---|---|---|---|---|
+| CD1 Ring Ring | the box | 1 | — | MISSING_TRACKS |
+| CD2 Waterloo | **Waterloo** (standalone) | — | 2 | EXTRA_TRACKS |
+| CD3 ABBA | **ABBA** (standalone) | — | 3 | COMPLETE |
+| CD4 Arrival | the box | 4 | — | COMPLETE |
+| CD5 The Album | **The Album** | — | 5 | EXTRA_TRACKS |
+| CD6 Voulez-Vous | **Voulez‐vous** | — | 6 | EXTRA_TRACKS |
+| CD7 Super Trouper | **Super Trouper** | — | 7 | EXTRA_TRACKS |
+| CD8 The Visitors | **The Visitors** | — | 8 | EXTRA_TRACKS |
+| CD9 Rarities | the box | 9 | — | COMPLETE |
+
+**Correct parts.** Six discs dissolved onto the albums they reprint, with box provenance kept in
+`boxReleaseId`/`boxMediumPosition`. CD9 Rarities correctly stayed attached to the box — §9's "discs
+with no standalone equivalent stay attached". `EXTRA_TRACKS` on the dissolved discs is honest, not a
+fault: a box disc carries bonus tracks the standalone edition does not list. Ownership propagated
+correctly (§11) — Waterloo, The Album, Voulez-Vous, Super Trouper and The Visitors are **no longer
+listed as MISSING gaps** for ABBA.
+
+**Wrong parts.** CD1 Ring Ring and CD4 Arrival have obvious standalone twins sitting in the DB and
+tier-1 eligible (4 `Arrival` rows at 10/10/11/16 tracks, 3 `Ring Ring` rows at 12/12/25), yet got no
+equivalence at all. Cause is `resolve_containment_winner` (`scripts/sync/src/box_editions.rs:346-357`):
+several candidates fit, the only tie-break is `is_original_work`, so the outcome is `Ambiguous` and the
+medium is left unset. **All four `Arrival` candidates share one `releaseGroupId`
+(`e464e167-83ab-3b59-88bd-262cf552056e`)** — refusing a tie in which every candidate is the same release
+group buys nothing, since §11's ownership check is release-group scoped anyway.
+
+---
+
+## 3. Bug 1 — one bad track kills an entire box (dominant failure mode)
+
+`pair_tracks` (`scripts/sync/src/boxset.rs:105`) requires `local.len() == medium.len()` and every local
+track to resolve to a distinct medium track. `plan_box_bind` (`boxset.rs:218`) returns `None` the moment
+one sibling matches zero or more than one medium. `run_repair` (`boxset.rs:1059`) then skips the
+**entire group**.
+
+### 3.1 Proof — Marillion, "The Singles '82-88' (Boxset)"
+
+12 folders, 12 media, track counts line up exactly: `3,3,5,4,4,5,3,3,4,4,3,4`. The release was fetched
+live from MusicBrainz (`4a0a6fe3-6130-453e-9dcb-555481bcafaa`) — all 12 media present, all tracks
+returned, so this is **not** the `inc=recordings` truncation problem from §13. Replaying
+`plan_box_bind`'s exact three-pass logic:
+
+```
+ok     CD 1 - Market Square Heroes (1982)   -> medium 1
+ok     CD 2 - He Knows You Know (1983)      -> medium 2
+ok     CD 3 - Garden Party (1983)           -> medium 3
+REFUSE CD 4 - Punch & Judy (1984)           -> 0 media match
+ok     CD 5 - Assassing (1984)              -> medium 5
+ok     CD 6 - Kayleigh (1985)               -> medium 6
+ok     CD 7 - Lavender (1985)               -> medium 7
+ok     CD 8 - Heart of Lothian (1985)       -> medium 8
+ok     CD 9 - Incommunicado (1987)          -> medium 9
+ok     CD 10 - Sugar Mice (1987)            -> medium 10
+ok     CD 11 - Warm Wet Circles (1987)      -> medium 11
+ok     CD 12 - Freaks - live (1988)         -> medium 12
+
+RESULT: REFUSED
+```
+
+The single offending track, on CD 4:
+
+```
+LOCAL: Market Square Heroes (alternative version)   [288s]
+MB   : Market Square Heroes (re-record)             [288s]
+```
+
+Durations agree to the second. Normalised (`owned::normalize_title`, alphanumerics only) they are
+`marketsquareheroesalternativeversion` vs `marketsquareheroesrerecord`: not equal, and neither contains
+the other, so pass 1, pass 1b and pass 2 all fail. One bonus track's wording costs a 12-disc box its
+entire placement.
+
+This is the same shape as the ABBA failure §9 says was paid for in real damage — but the fixes there
+covered *duration drift* (pass 1b, 15s) and *title suffixes* (pass 2, containment). A genuine title
+**disagreement** was never covered.
+
+### 3.2 How widespread
+
+`plan_box_bind` was replayed against stored MB tracklists for all **263 genuine unplaced boxes** — every
+sibling bound to one and the same multi-medium release, none placed (920 `LocalRelease` rows):
+
+| Refusal reason | Groups |
+|---|---|
+| A sibling matches no medium | **220** |
+| …of which **exactly one bad folder**, every other sibling perfect | **126** |
+| A sibling matches more than one medium | 36 |
+| Two siblings claim the same medium | 3 |
+| Would bind cleanly on current data (see Bug 2) | 4 |
+
+Root cause of the 126 single-bad-folder groups:
+
+| Cause | Groups | What would fix it |
+|---|---|---|
+| Identical titles, duration-only kill | 37 | 7 of 37 are within 15s, 21 within 30s — pass 1b's `SAME_TRACK_DIFFERENT_MASTER_SECS = 15` is too tight |
+| Genuinely different title | 29 | a fuzzy tier — real pairs: `sweetemalinamygal`/`sweetemalinemygal`, `frearmsmash`/`forearmsmash`, `blessyourselfandthechildren`/`blessthebeastsandthechildren` |
+| Containment **would** match, duration blocked it | **13** | **pass 2 uses `durations_compatible` (5s) while pass 1b already allows 15s** — real pairs: `20hzsinewave`⊃`20hz`, `partix`⊂`londonpartix`, `afterthedancevocal`⊃`afterthedance` |
+| Track count differs from every free medium | 39 | partial bind, docs/sync_decisions.md §19 item 1(b) |
+| No free medium left | 9 | — |
+
+Cheapest high-yield fix is the 13: give pass 2 the same 15s window pass 1b already has.
+
+---
+
+## 4. Bug 2 — a MusicBrainz lookup failure is silent, then permanent
+
+`candidates_from_embedded_ids` (`boxset.rs:328`) and `candidates_from_search` swallow every error:
+
+```rust
+Err(e) => reporter.sub_step(&format!("  -> lookup failed: {e}")),
+```
+
+No `common::error_log::log_warn`, no retry, no `groups_failed` increment. In the summary a transient
+503 is indistinguishable from "this group has no box release".
+
+**Evidence.** Four groups bind cleanly when replayed against *live* MusicBrainz data, yet sit unplaced:
+Pixies "Doolittle 25", Thunder "Rip It Up (Deluxe Edition) (3 CD)", Hawkwind "Levitation", IQ "The
+Wake". Both siblings in each are already bound to the multi-medium release, so `bound_box_mb_ids`
+(tier (b)) had the id available. Live fetch is complete:
+
+```
+Doolittle 25 (7490a74b-…)  pos1 CD 15 tracks, pos2 CD 13, pos3 CD 22
+  CD2 (Peel Sessions)  tracks=13  hits=[2]
+  CD3 (Demos)          tracks=22  hits=[3]     -> binds
+Rip It Up (f16ea191-…)     pos1 CD 11 tracks, pos2 CD 8, pos3 CD 6
+  CD 2 (Live at the 100 Club Pt. 1)  tracks=8  hits=[2]
+  CD 3 (Live at the 100 Club Pt. 2)  tracks=6  hits=[3]  -> binds
+```
+
+All four artists carry `lastTidiedAt = 2026-09-17 16:31:46.582` — they were in scope and were stamped
+anyway. **Phase 10 stamps the watermark regardless of groups that were skipped**, so a plain `./tidy`
+will never revisit them. Only `--all`, an explicit `--only`, or a re-sync of the artist will.
+
+---
+
+## 5. Bug 3 — 1,336 stale `mbTrackId` links
+
+Local tracks pointing at a `MusicBrainzReleaseTrack` belonging to a **different** release than their
+own `LocalRelease.releaseId`:
+
+```sql
+SELECT count(*) AS stale_links, count(DISTINCT t."localReleaseId") AS releases
+FROM "LocalReleaseTrack" t JOIN "LocalRelease" lr ON lr.id = t."localReleaseId"
+JOIN "MusicBrainzReleaseTrack" mt ON mt.id = t."mbTrackId"
+WHERE lr."releaseId" IS NOT NULL AND mt."releaseId" <> lr."releaseId";
+-- 1336 links across 122 releases; 105 of those releases are dissolved box discs
+```
+
+ABBA is the clean demonstration (`ok_links` = links agreeing with the disc's own `releaseId`):
+
+| Disc | `releaseId` | tracks | linked | ok_links |
+|---|---|---|---|---|
+| CD2 Waterloo | Waterloo | 18 | 18 | **0** |
+| CD3 ABBA | ABBA | 14 | 14 | **0** |
+| CD5–CD8 | standalone albums | 11–16 | all | **0** |
+| CD1 / CD4 / CD9 | the box | 19 / 15 / 11 | all | all |
+
+`LocalRelease.updatedAt` on all nine discs is `2026-09-09` — the Sep-13 tidy never rewrote the rows.
+
+`rescore_bound_release` (`scripts/sync/src/db.rs:588`) does the right thing: it re-links matched tracks
+and NULLs everything the score did not re-confirm. The gap is in **which rows reach it**.
+`get_rescore_targets` picks only `matchStatus='UNKNOWN' AND releaseId IS NOT NULL` for scoped artists,
+unioned with this run's `touched_local_release_ids`. A disc dissolved by the **pre-tidy, sync-era box
+pass** and already scored back then is in neither set, so its links are never reconciled. `apply_dissolve`
+only sets `UNKNOWN` "when something changed", and for these discs nothing did.
+
+Not caused by tidy — inherited from the Sep 9/10 sync-era rollout — but tidy is the pass that is
+supposed to clean it up and currently cannot see it.
+
+---
+
+## 6. Bug 4 — the summary hides the failure mode
+
+```
+Box groups : 2857 seen, 1420 bound (1192 folded, 223 dissolved, 5 key-taken, 0 failed)
+```
+
+1,437 groups were seen and not bound, and get **no line at all**. `groups_seen` also counts groups
+dropped at `run_repair:983` for `rows.len() < 2`, which can never bind, so the denominator is inflated
+too. Every skip path is `reporter.skip` only — `no artist link found for this group`, `no multi-medium
+candidate found`, `N candidate(s) checked, none matched` — nothing counted, nothing written to
+`errors.log`. With no run log retained, a post-mortem is impossible without re-running.
+
+`docs/sync_decisions.md` §10 already tells the reader to check this line for "groups that were seen but
+not bound" — the line does not currently carry that information.
+
+---
+
+## 7. Equivalence coverage — an undocumented ceiling
+
+```
+box-disc media (on mediumCount > 1 releases):  22,680
+  with an equivalence set:                      3,337   (14.7%)
+  of which via tier 1 (exact recording set):    2,758
+single-medium releases:                       113,702
+  usable as a tier-1 target:                   65,399   (57.5%)
+```
+
+**42.5% of single-medium releases cannot serve as a tier-1 equivalence target**, because at least one of
+their tracks has no `recordingId` and `link_by_recording_fingerprint`
+(`scripts/sync/src/box_editions.rs:104`) requires `count(*) FILTER (WHERE t."recordingId" IS NULL) = 0`.
+Every box disc whose standalone twin falls in that 42.5% has to fall through to tier 2 (title+duration)
+or tier 3 (containment), both of which refuse far more often.
+
+This is the structural reason the run folded 1,192 groups and only dissolved 223. It is not listed in
+§15's known limits, and a `recordingId` backfill would move dissolve rates more than any matcher tweak.
+
+---
+
+## 8. Other observations
+
+- **§17's own metric over-counts.** Its final `count(*) FROM lr JOIN bad USING (parent)` counts *every*
+  `LocalRelease` in a flagged parent, including correctly-placed ones. The honest figure is **1,613
+  genuinely-unplaced multi-medium rows** across 459 groups. Of those 459: 339 all-same-MB (true box
+  failures), 43 mixed, 77 all-distinct-MB (wrong-edition binds — §19 item 1(a), not box discs at all).
+- **§19 item 3 is still open and now measurable:** **230 groups / 1,113 rows** are fully placed yet still
+  re-discovered and re-fetched from MusicBrainz on every unscoped run.
+- **34 groups** have a box root folder that is already its own `LocalRelease` (`groupKey = 'folder:<parent>'`),
+  but only 5 were counted `key-taken` — the other 29 were refused before ever reaching the fold stage.
+  §17 predicted 10.
+- **215 artists have `lastTidiedAt` set but `lastSyncedAt` NULL.** Not a bug: identity-repair passes B and C
+  (`db.rs:1427`, `db.rs:1518`) NULL `lastSyncedAt` to push the entry back into sync's pending queue (§6),
+  and phase 10 then stamps `lastTidiedAt` on the whole scope. Worth a sentence in `docs/scripts/tidy.md`,
+  since it makes the watermark invariant look violated when it is not.
+- **The rollout is not finished.** 5,674 artists that own local releases are pending sync, and 2,164
+  artists with releases have `musicbrainzId IS NULL`. Per §16 step 3, another `./sync` then `./tidy` is
+  required before any of these numbers settle.
+- `web/prisma/schema.prisma:262` cites `docs/multidisk.md §2/§5` — **that file does not exist**.
+
+---
+
+## 9. Action points
+
+Ordered by yield per unit of work. Each is independently shippable.
+
+### Matcher fixes (`scripts/sync/src/boxset.rs`)
+
+- [x] **Pass 2 duration tolerance.** `pair_tracks` pass 2 (containment) uses `durations_compatible`
+      (5s) while pass 1b already allows `SAME_TRACK_DIFFERENT_MASTER_SECS` (15s). Use the same 15s
+      window in pass 2. Unblocks **13 boxes**. Unit test from the Bass Mekanik pair
+      (`20hzsinewave` / `20hz`) and the Keith Jarrett pair (`partix` / `londonpartix`).
+- [x] **Fuzzy title tier (pass 3).** Add a final pass for leftovers: normalised edit distance or token
+      overlap, still requiring a unique candidate and a compatible duration. Unblocks up to **29 boxes**.
+      Test fixtures: `sweetemalinamygal`/`sweetemalinemygal` (Art Tatum),
+      `frearmsmash`/`forearmsmash` (Budgie), `blessyourselfandthechildren`/`blessthebeastsandthechildren`
+      (Belinda Carlisle). Must still refuse `summernightcity` vs `waterloo` (ABBA) and
+      `distortion` vs `失真` (G.E.M.).
+- [x] **Widen pass 1b for identical titles.** 21 of the 37 duration-only kills are within 30s. Consider
+      raising `SAME_TRACK_DIFFERENT_MASTER_SECS` only when the normalised titles are *identical* and the
+      pairing is otherwise unique. Do not widen the containment pass this far.
+- [x] **Partial bind** (docs/sync_decisions.md §19 item 1(b)): at least 2 siblings match a distinct
+      medium each, and every unmatched sibling matches *zero* media of the chosen candidate. Addresses
+      the **39** track-count-mismatch groups. Never accept "matches but ambiguously".
+- [x] **Try other editions of the bound release group** (§19 item 1(a)) when the currently-bound
+      candidate fails `plan_box_bind`. Addresses the 77 all-distinct-MB groups.
+
+### Equivalence fixes (`scripts/sync/src/box_editions.rs`)
+
+- [x] **Release-group tie-break in `resolve_containment_winner`.** When every ambiguous hit shares one
+      `releaseGroupId`, pick deterministically (lowest `musicbrainzId`) instead of returning
+      `Ambiguous`. Unblocks ABBA "Arrival" and "Ring Ring" and their whole class.
+- [x] **Same tie-break for tier 2.** The `let [hit] = hits[..] else { … }` arm at `box_editions.rs:411`
+      has no release-group tie-break at all — only an `ambiguous` counter.
+- [ ] **`recordingId` backfill.** 42.5% of single-medium releases are unusable as tier-1 targets. Add a
+      pass (or a `sync` fixup) that re-fetches `recordingId` for releases missing it, then re-run
+      `link_by_recording_fingerprint`. Highest structural yield of anything on this list.
+- [x] Document the tier-1 target ceiling in `docs/sync_decisions.md` §15.
+
+### Robustness / observability (`scripts/sync/src/boxset.rs`, `scripts/tidy/src/main.rs`)
+
+- [x] **Log and count MusicBrainz lookup failures.** `candidates_from_embedded_ids` and
+      `candidates_from_search` must call `common::error_log::log_warn` and increment a new
+      `candidate_fetch_failed` counter instead of only `reporter.sub_step`.
+- [x] **Do not stamp the watermark for artists whose groups hit a fetch error.** Either exclude those
+      artists from the phase-10 stamp, or set `had_error` for the run. Today a transient 503 is
+      permanent until `--all` or a re-sync.
+- [x] **Break down `groups_seen`.** Add counters: `no_candidate`, `candidate_fetch_failed`,
+      `plan_refused_no_match`, `plan_refused_ambiguous`, `plan_refused_collision`, and exclude
+      `rows.len() < 2` groups from `groups_seen` (or report them separately). Update the summary line
+      and `docs/sync_decisions.md` §10's troubleshooting row.
+- [ ] **Retain the tidy run log.** The final run's output was not kept, which is why section 3 required a
+      30-minute offline simulation. Write to `logs/tidy-run.log` alongside `errors.log`, or document the
+      `tmux … > /tmp/tidy-run.log` pattern from §20 as mandatory.
+
+### Data repair
+
+- [x] **Extend phase-5 re-score targets** to any `LocalRelease` holding a `LocalReleaseTrack` whose
+      `mbTrackId` belongs to a different release than `LocalRelease.releaseId`. Fixes the **1,336 stale
+      links across 122 releases**. Query in section 5 is the target selector.
+- [x] **Skip already-placed groups in `find_sibling_groups`** (§19 item 3) — **230 groups / 1,113 rows**
+      currently cost a cold MusicBrainz lookup on every unscoped run for no new information. Keep running
+      `box_editions::run_link_box_editions` over them so a new equivalence can still re-home a disc.
+- [ ] **Follow-up `./sync` then `./tidy`.** 5,674 artists owning local releases are pending sync (partly
+      the 215 the identity repair pushed back into the queue, §16 step 3).
+
+### Docs
+
+- [x] Fix the `docs/multidisk.md` reference at `web/prisma/schema.prisma:262` — write the file or point
+      the comment at `docs/sync_decisions.md` §9.
+- [x] Replace §17's split-disc query with one that counts only genuinely-unplaced multi-medium rows
+      (it currently counts every row in a flagged parent, inflating both the baseline and the result).
+- [x] Note in `docs/scripts/tidy.md` that identity repair NULLs `lastSyncedAt`, so `lastTidiedAt` set
+      with `lastSyncedAt` NULL is expected, not a watermark violation.
+
+---
+
+## 10. Round 2 — what shipped (2026-09-18)
+
+All nine fixes above landed in one change. `cargo test`: 382 passed, 0 failed.
+
+**Matcher** (`scripts/sync/src/boxset.rs`) — `pair_tracks` became `pair_tracks_at`, a ladder of rules
+gated by a strictness `depth`:
+
+| Rule | Window | Unique required | From depth |
+|---|---|---|---|
+| normalized title equal | 5s | no (greedy) | 0 |
+| normalized title equal | 15s | no (greedy) | 0 |
+| normalized title equal, 3+ already paired | 60s | yes | 1 |
+| one title contains the other | 5s, then 15s | yes | 0 / 1 |
+| titles equal minus a trailing qualifier | 5s, then 15s | yes | 2 |
+| near-identical titles (typo), both durations known | 5s, then 15s | yes | 3 |
+
+Two ordering rules turned out to be load-bearing, and both were found by the replay below rather than
+by reasoning:
+
+- **Tight window before wide, within a rule.** Widening a rule can turn its single candidate into two,
+  and the uniqueness test then refuses. Claiming at 5s first means every pairing the old rule found is
+  still found.
+- **Strictest depth first, across discs.** A folder that matches exactly one disc under the tight rules
+  keeps that disc even when a looser rule would also match a second. Without this, Rome's "Hall Of
+  Thatch" (two masterings of one album in the same box) stopped binding.
+
+**Partial bind** — a folder matching *no* disc is left out instead of refusing the group, provided ≥2
+folders still resolve and none is *ambiguous*.
+
+**Discovery** — a new tier tries the release group's other editions after every held candidate fails,
+and a group whose folders are all already placed is rebuilt from stored rows with no MusicBrainz call.
+
+**Equivalences** (`box_editions.rs`) — when every ambiguous candidate belongs to the same release
+group, the tie is broken deterministically (lowest release id) instead of refused. Applies to both
+tier 2 and tier 3.
+
+**Observability** — MusicBrainz lookup failures are logged to `errors.log` and counted; the run summary
+breaks the not-bound groups down by reason; artists whose group hit a lookup failure are **excluded
+from the `lastTidiedAt` stamp** so the next run retries them.
+
+**Re-score** — `get_rescore_targets` gained a third source: any release whose track links point outside
+its own release. That is what reaches the 1,336 stale links in §5.
+
+### Regression gate
+
+Unit tests alone cannot answer "did anything that used to bind stop binding", so both matchers were
+replayed over **every** sibling-folder group in the library (818 groups with usable data), old logic
+against new:
+
+| | Old | New |
+|---|---|---|
+| Groups binding | 106 | **347** |
+| Groups that bound before and refuse now | — | **0** |
+| Folders moved to a different disc | — | **0** |
+
+The first replay (before the two ordering rules above) showed 2 regressions. Both were traced,
+understood and fixed rather than accepted — that is the only reason the final number is 0.

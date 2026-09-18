@@ -505,19 +505,33 @@ pub async fn load_mb_release_with_tracks(
 // Tidy: DB-only re-score of a box-touched release
 // ---------------------------------------------------------------------------
 
-/// A `LocalRelease` tidy's box pass touched (or left `UNKNOWN` from a prior interrupted run) and must
-/// re-score.
+/// A `LocalRelease` tidy's box pass touched (or left `UNKNOWN` from a prior interrupted run, or whose
+/// track links point at the wrong release) and must re-score.
 pub struct RescoreTarget {
     pub local_release_id: String,
     pub mb_release_id: String,
     pub medium_position: Option<i32>,
     pub year: Option<i32>,
+    /// Picked up only because its tracks link outside its own release, not because anything this run
+    /// touched it. Counted separately so the repair is measurable.
+    pub stale_links_only: bool,
 }
 
-/// Targets = every scoped `LocalRelease` already sitting at `matchStatus='UNKNOWN'` with a release
-/// bound (a prior run's box pass that never got tidied, or index's own UNKNOWN-on-track-delete), union
-/// `touched_ids` (this run's own fold/dissolve output - almost always a subset already, but a defensive
-/// union costs nothing and guarantees this run's own work is never skipped).
+/// Targets, unioned from three sources:
+///
+///   1. every scoped `LocalRelease` already sitting at `matchStatus='UNKNOWN'` with a release bound (a
+///      prior run's box pass that never got tidied, or index's own UNKNOWN-on-track-delete);
+///   2. `touched_ids` - this run's own fold/dissolve output. Almost always a subset of (1) already, but
+///      a defensive union costs nothing and guarantees this run's own work is never skipped;
+///   3. any scoped release holding a `LocalReleaseTrack.mbTrackId` that belongs to a **different**
+///      release than the one the folder is bound to.
+///
+/// Source 3 exists because (1) and (2) between them cannot see a disc the *pre-tidy, sync-era* box pass
+/// dissolved: `apply_dissolve` only sets `UNKNOWN` when something changed, so a disc already moved and
+/// already scored back then is at neither `UNKNOWN` nor in `touched_ids`, and its tracks keep pointing
+/// at the box's track rows forever. Measured 1,336 such links across 122 releases after the 2026-09-17
+/// rollout (docs/scripts/tidy_observations.md). `rescore_bound_release` already repairs this correctly
+/// - it just never saw them. DB-only, no MusicBrainz call, and `mbTrackId` is indexed.
 pub async fn get_rescore_targets(
     pool: &PgPool,
     scope: ArtistScope<'_>,
@@ -543,11 +557,48 @@ pub async fn get_rescore_targets(
             .await?
         }
     };
+    let unknown_or_touched: std::collections::HashSet<String> = ids
+        .iter()
+        .cloned()
+        .chain(touched_ids.iter().cloned())
+        .collect();
     for id in touched_ids {
         if !ids.contains(id) {
             ids.push(id.clone());
         }
     }
+
+    let stale: Vec<String> = match scope {
+        Some(artist_ids) => {
+            sqlx::query_scalar(
+                r#"SELECT DISTINCT lr.id FROM "LocalRelease" lr
+                   JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
+                   JOIN "LocalReleaseTrack" t ON t."localReleaseId" = lr.id
+                   JOIN "MusicBrainzReleaseTrack" mt ON mt.id = t."mbTrackId"
+                   WHERE lr."releaseId" IS NOT NULL AND mt."releaseId" <> lr."releaseId"
+                     AND lra."artistId" = ANY($1)"#,
+            )
+            .bind(artist_ids)
+            .fetch_all(pool)
+            .await?
+        }
+        None => {
+            sqlx::query_scalar(
+                r#"SELECT DISTINCT lr.id FROM "LocalRelease" lr
+                   JOIN "LocalReleaseTrack" t ON t."localReleaseId" = lr.id
+                   JOIN "MusicBrainzReleaseTrack" mt ON mt.id = t."mbTrackId"
+                   WHERE lr."releaseId" IS NOT NULL AND mt."releaseId" <> lr."releaseId""#,
+            )
+            .fetch_all(pool)
+            .await?
+        }
+    };
+    for id in &stale {
+        if !ids.contains(id) {
+            ids.push(id.clone());
+        }
+    }
+
     if ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -562,11 +613,13 @@ pub async fn get_rescore_targets(
     Ok(rows
         .into_iter()
         .filter_map(|(id, release_id, medium_position, year)| {
+            let stale_links_only = !unknown_or_touched.contains(&id);
             Some(RescoreTarget {
                 local_release_id: id,
                 mb_release_id: release_id?,
                 medium_position,
                 year,
+                stale_links_only,
             })
         })
         .collect())

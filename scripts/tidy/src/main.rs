@@ -55,6 +55,13 @@ struct TidySummary {
     box_groups_dissolved: usize,
     box_groups_key_taken: usize,
     box_groups_failed: usize,
+    /// Why the groups that were seen but not bound were not bound - see
+    /// `dmp_sync::boxset::BoxSetSummary::refusal_breakdown`.
+    box_refusal_breakdown: String,
+    box_groups_from_db: usize,
+    /// Artists whose watermark is deliberately withheld because a MusicBrainz lookup failed on one of
+    /// their groups. They stay pending so the next run retries them.
+    artists_held_for_retry: usize,
     orphans_retired_round2: u64,
     placeholders_retired_round2: u64,
     rescored_complete: usize,
@@ -63,6 +70,9 @@ struct TidySummary {
     rescored_missing_tracks: usize,
     rescored_other: usize,
     rescore_deferred: usize,
+    /// Of those re-scored, how many were picked up only because their tracks linked outside their own
+    /// release (`RescoreTarget::stale_links_only`).
+    rescored_stale_links: usize,
     identity_pass_a: usize,
     identity_pass_b: usize,
     identity_pass_c: usize,
@@ -224,6 +234,7 @@ async fn main() {
 
     // ---- Phase 4: box pass ----
     let mut touched_ids: Vec<String> = Vec::new();
+    let mut held_for_retry: HashSet<String> = HashSet::new();
     if running.load(Ordering::SeqCst) {
         let http_client = Client::builder()
             .timeout(std::time::Duration::from_secs(60))
@@ -242,9 +253,15 @@ async fn main() {
                 summary.box_groups_dissolved = s.groups_dissolved;
                 summary.box_groups_key_taken = s.groups_key_taken;
                 summary.box_groups_failed = s.groups_failed;
+                summary.box_refusal_breakdown = s.refusal_breakdown();
+                summary.box_groups_from_db = s.groups_from_db;
                 if s.groups_failed > 0 {
                     had_error = true;
                 }
+                // A group skipped because MusicBrainz was unwell is not a settled answer. Withhold just
+                // those artists' watermark rather than failing the whole run - marking `had_error` here
+                // would unstamp every artist in scope and redo the entire library over one 503.
+                held_for_retry = s.artists_with_fetch_errors;
                 touched_ids = s.touched_local_release_ids;
             }
             Err(e) => {
@@ -304,13 +321,18 @@ async fn main() {
                     reporter.item("Release", &target.local_release_id, idx + 1, total);
                 }
                 match db::rescore_bound_release(&pool, target).await {
-                    Ok(RescoreOutcome::Scored(status)) => match status {
+                    Ok(RescoreOutcome::Scored(status)) => {
+                        if target.stale_links_only {
+                            summary.rescored_stale_links += 1;
+                        }
+                        match status {
                         "COMPLETE" => summary.rescored_complete += 1,
                         "INCOMPLETE" => summary.rescored_incomplete += 1,
                         "EXTRA_TRACKS" => summary.rescored_extra_tracks += 1,
                         "MISSING_TRACKS" => summary.rescored_missing_tracks += 1,
                         _ => summary.rescored_other += 1,
-                    },
+                        }
+                    }
                     Ok(RescoreOutcome::Deferred) => summary.rescore_deferred += 1,
                     Err(e) => {
                         let msg = format!(
@@ -456,12 +478,21 @@ async fn main() {
 
     // ---- Phase 10: watermark stamp ----
     if running.load(Ordering::SeqCst) && !had_error {
-        if is_global {
+        // Everything in scope except the artists a failed MusicBrainz lookup left unanswered - those
+        // stay pending on purpose, so the next `./tidy` asks again instead of treating an outage as a
+        // settled "this group has no box" (docs/scripts/tidy_observations.md).
+        let stampable: Vec<String> = scope_ids
+            .iter()
+            .filter(|id| !held_for_retry.contains(*id))
+            .cloned()
+            .collect();
+        summary.artists_held_for_retry = scope_ids.len() - stampable.len();
+        if is_global && held_for_retry.is_empty() {
             if db::stamp_all_tidied(&pool, start).await.is_ok() {
-                summary.artists_stamped = scope_ids.len();
+                summary.artists_stamped = stampable.len();
             }
-        } else if db::stamp_artists_tidied(&pool, &scope_ids, start).await.is_ok() {
-            summary.artists_stamped = scope_ids.len();
+        } else if db::stamp_artists_tidied(&pool, &stampable, start).await.is_ok() {
+            summary.artists_stamped = stampable.len();
         }
     }
 
@@ -494,25 +525,39 @@ async fn main() {
     reporter.kv(
         "Box groups",
         &format!(
-            "{} seen, {} bound ({} folded, {} dissolved, {} key-taken, {} failed)",
+            "{} seen, {} bound ({} folded, {} dissolved, {} key-taken, {} failed, {} from DB)",
             summary.box_groups_seen,
             summary.box_groups_bound,
             summary.box_groups_folded,
             summary.box_groups_dissolved,
             summary.box_groups_key_taken,
-            summary.box_groups_failed
+            summary.box_groups_failed,
+            summary.box_groups_from_db
         ),
     );
+    if !summary.box_refusal_breakdown.is_empty() {
+        reporter.kv(
+            "  not bound",
+            &format!(
+                "{} - {}",
+                summary
+                    .box_groups_seen
+                    .saturating_sub(summary.box_groups_bound),
+                summary.box_refusal_breakdown
+            ),
+        );
+    }
     reporter.kv(
         "Re-scored",
         &format!(
-            "{} complete, {} incomplete, {} extra tracks, {} missing tracks, {} other, {} deferred",
+            "{} complete, {} incomplete, {} extra tracks, {} missing tracks, {} other, {} deferred ({} for stale track links)",
             summary.rescored_complete,
             summary.rescored_incomplete,
             summary.rescored_extra_tracks,
             summary.rescored_missing_tracks,
             summary.rescored_other,
-            summary.rescore_deferred
+            summary.rescore_deferred,
+            summary.rescored_stale_links
         ),
     );
     reporter.kv(
@@ -524,7 +569,21 @@ async fn main() {
     );
     reporter.kv("Completeness recomputed", &summary.completeness_recomputed.to_string());
     if running.load(Ordering::SeqCst) && !had_error {
-        reporter.kv("Artists stamped", &summary.artists_stamped.to_string());
+        reporter.kv(
+            "Artists stamped",
+            &format!(
+                "{}{}",
+                summary.artists_stamped,
+                if summary.artists_held_for_retry > 0 {
+                    format!(
+                        " ({} held for retry - MusicBrainz lookups failed)",
+                        summary.artists_held_for_retry
+                    )
+                } else {
+                    String::new()
+                }
+            ),
+        );
     } else {
         reporter.kv(
             "Artists stamped",
