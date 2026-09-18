@@ -429,7 +429,12 @@ export const usePlayerStore = defineStore('player', () => {
     // the bar for a flash before wiping it - and then the debounced watch below persisted that
     // wiped state right back to localStorage. onMounted always runs after that hydration patch is
     // done, which is why useTheme.ts reads its own localStorage entry the same way.
-    onMounted(() => {
+    //
+    // onMounted alone is not enough: it only registers when the store is first created inside a
+    // component's setup(). plugins/presence.client.ts creates it from a plugin, before any component
+    // exists - onMounted then had no instance to attach to and the restore silently never ran.
+    // `useAfterHydration` covers every way the store can come to life.
+    const restore = () => {
       const saved = localStorage.getItem('dmp-player')
       if (!saved) {
         return
@@ -466,7 +471,8 @@ export const usePlayerStore = defineStore('player', () => {
         }
       }
       catch { /* ignore corrupt state */ }
-    })
+    }
+    useAfterHydration(restore)
 
     const buildPersistedState = (): PersistedPlayerState => ({
       trackId: currentTrack.value?.id ?? null,

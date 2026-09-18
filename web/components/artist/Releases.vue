@@ -7,7 +7,7 @@ import { useTerminalStore } from '~/stores/terminal'
 import { useToastStore } from '~/stores/toast'
 import { useGlobalStore } from '~/stores/global'
 import { scanSessionName } from '~/helpers/functions'
-import { acquireFailureMessage, favoriteTargetId, findBundleParentRelease } from '~/helpers/artistPageLogic'
+import { acquireFailureMessage, favoriteTargetId, findBundleParentRelease, viewQueryMatches } from '~/helpers/artistPageLogic'
 import type { useArtistCatalogue } from '~/composables/useArtistCatalogue'
 
 const props = defineProps<{
@@ -128,12 +128,22 @@ const listViewColumns: TrackListColumn[] = [
   { key: 'favorite' },
 ]
 
+// Only navigates when ?view actually changes. This watcher is immediate, and the artist page remounts
+// this component whenever its releases refetch (every terminal run ends with one) - an unconditional
+// replace to the current route then superseded whatever navigation was already in flight, e.g.
+// DeleteDialog's redirect to /browse, stranding the user on the deleted artist's page.
 watch(viewMode, (val) => {
+  if (val === 'list') {
+    loadAllTracks()
+  }
+  if (viewQueryMatches(route.query.view, val)) {
+    return
+  }
   const query = { ...route.query }
   if (val === 'list') {
     query.view = 'list'
-    loadAllTracks()
-  } else {
+  }
+  else {
     delete query.view
   }
   router.replace({ query })

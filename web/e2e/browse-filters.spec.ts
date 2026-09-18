@@ -102,12 +102,13 @@ test.describe('browse filters', () => {
     expect(box.width).toBeLessThan(500) // fixed-width panel, not a near-full-width dialog
   })
 
-  test('sidebar is an ~90% dialog below lg width', async ({ page }) => {
+  test('sidebar is a centred, near-full-height dialog below lg width', async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 })
     await openSidebar(page)
     const panel = page.getByRole('dialog', { name: 'Filters' })
     const box = (await panel.boundingBox())!
-    expect(box.width).toBeGreaterThan(800 * 0.85)
+    expect(box.width).toBeLessThanOrEqual(320) // same fixed width as the desktop panel
+    expect(Math.abs(box.x + box.width / 2 - 400)).toBeLessThan(2) // centred, not docked
     expect(box.height).toBeGreaterThan(900 * 0.85)
   })
 

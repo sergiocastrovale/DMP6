@@ -1,16 +1,15 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { createPinia, setActivePinia } from 'pinia'
-import { defineComponent } from 'vue'
+import { defineComponent, nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePlayerStore } from '../../stores/player'
 import { EXPLORER_SESSION_HISTORY_CAP } from '../../helpers/playerLogic'
 
-// The store's localStorage restore runs in onMounted (see stores/player.ts) because Nuxt's Pinia
-// SSR hydration overwrites every ref back to the server-rendered value immediately after setup()
-// returns - onMounted is what runs after that patch, in the real app as much as here. A bare
-// `usePlayerStore()` call has no active component instance, so Vue no-ops onMounted and the
-// restore silently never runs; mounting a throwaway host is what makes it fire, exactly as
-// AudioPlayer.vue mounting for real does.
+// The store's localStorage restore is deferred (useAfterHydration, see stores/player.ts) because
+// Nuxt's Pinia SSR hydration overwrites every ref back to the server-rendered value immediately
+// after setup() returns. Created inside a component it runs on mount, which this host reproduces;
+// created outside one (plugins/presence.client.ts) it runs on the next tick - covered separately
+// below, since that is the case a bare onMounted used to miss.
 //
 // mountSuspended mounts into @nuxt/test-utils' own persistent app/Pinia, not into whatever
 // setActivePinia(createPinia()) made active in beforeEach - so without passing this test's pinia
@@ -422,6 +421,20 @@ describe('usePlayerStore', () => {
     const store = await usePlayerStoreMounted()
     expect(store.currentTrack?.id).toBe('restored')
     expect(store.isPlaying).toBe(false)
+    expect(store.isVisible).toBe(true)
+  })
+
+  it('restores when the store is first created outside any component, as a plugin does', async () => {
+    const savedTrack = track({ id: 'restored-from-plugin' })
+    localStorage.setItem('dmp-player', JSON.stringify({
+      trackId: 'restored-from-plugin', currentTime: 0, volume: 0.3, isMuted: false,
+      shuffleMode: 'off', queue: [savedTrack], originalQueue: [savedTrack], explorerParams: null,
+    }))
+    setActivePinia(createPinia())
+    const store = usePlayerStore()
+    await nextTick()
+    expect(store.volume).toBe(0.3)
+    expect(store.currentTrack?.id).toBe('restored-from-plugin')
     expect(store.isVisible).toBe(true)
   })
 

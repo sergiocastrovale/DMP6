@@ -96,11 +96,11 @@ test('searching and adding a new artist runs ./add and lands on its page', async
   })
 
   await page.goto('/add')
-  await page.getByPlaceholder('Artist name...').fill('E2E New Artist')
-  await page.getByRole('button', { name: 'Search in MusicBrainz' }).click()
+  await page.getByPlaceholder('Artist name or MusicBrainz ID...').fill('E2E New Artist')
+  await page.getByPlaceholder('Artist name or MusicBrainz ID...').press('Enter')
   await expect(page.getByText('E2E New Artist')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add' }).click()
+  await page.getByRole('button', { name: 'Add to catalogue' }).click()
 
   await expect.poll(() => runs).toEqual([{ command: './add', args: ['--mbid', mbid] }])
   await page.waitForURL(`/artist/${newSlug}`)
@@ -118,11 +118,11 @@ test('adding an already-in-library artist shows the dialog, no terminal run', as
   })
 
   await page.goto('/add')
-  await page.getByPlaceholder('Artist name...').fill(existingArtistName)
-  await page.getByRole('button', { name: 'Search in MusicBrainz' }).click()
+  await page.getByPlaceholder('Artist name or MusicBrainz ID...').fill(existingArtistName)
+  await page.getByPlaceholder('Artist name or MusicBrainz ID...').press('Enter')
   await expect(page.getByText(existingArtistName)).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add' }).click()
+  await page.getByRole('button', { name: 'Add to catalogue' }).click()
 
   await expect(page.getByRole('dialog')).toContainText('already in your library')
   await expect.poll(() => runs).toEqual([])
@@ -133,11 +133,11 @@ test('a row already flagged existing by mb-search shows no Add button', async ({
   await stubMbSearch(page, existingArtistName, { slug: existingArtistSlug, name: existingArtistName })
 
   await page.goto('/add')
-  await page.getByPlaceholder('Artist name...').fill(existingArtistName)
-  await page.getByRole('button', { name: 'Search in MusicBrainz' }).click()
+  await page.getByPlaceholder('Artist name or MusicBrainz ID...').fill(existingArtistName)
+  await page.getByPlaceholder('Artist name or MusicBrainz ID...').press('Enter')
   await expect(page.getByText(existingArtistName)).toBeVisible()
 
-  await expect(page.getByRole('button', { name: 'Add' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Add to catalogue' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'In library' })).toBeVisible()
   expect(runs).toEqual([])
 })

@@ -173,3 +173,7 @@ export const tracksToPlayerTracks = (tracks: Track[], artistSlug: string): Playe
       releaseImageUrl: null,
       localReleaseId: t.localReleaseId,
     }))
+
+// Whether the URL's ?view already says `mode` - list mode is `view=list`, catalogue mode is no `view` at all.
+export const viewQueryMatches = (current: unknown, mode: 'catalogue' | 'list'): boolean =>
+  mode === 'list' ? current === 'list' : current === undefined

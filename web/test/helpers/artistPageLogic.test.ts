@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { acquireFailureMessage, artistScanFolders, boxRowDiscLabel, boxRowSubtitle, canRedownload, connectedArtistNames, dedupeLocalFolders, dlPollNeeded, favoriteTargetId, filterInFlight, findBundleParentRelease, isBoxSetRow, mergeDownloadStatus, tracksToPlayerTracks } from '../../helpers/artistPageLogic'
+import { acquireFailureMessage, artistScanFolders, boxRowDiscLabel, boxRowSubtitle, canRedownload, connectedArtistNames, dedupeLocalFolders, dlPollNeeded, favoriteTargetId, filterInFlight, findBundleParentRelease, isBoxSetRow, mergeDownloadStatus, tracksToPlayerTracks, viewQueryMatches } from '../../helpers/artistPageLogic'
 import type { UnifiedRelease } from '../../types/release'
 import type { Track } from '../../types/track'
 import type { DlStatusValue } from '../../types/download'
@@ -334,5 +334,18 @@ describe('box-set row helpers (docs/sync_decisions.md)', () => {
       expect(boxRowDiscLabel(rarities)).toBeNull()
       expect(boxRowDiscLabel(plain)).toBeNull()
     })
+  })
+})
+
+describe('viewQueryMatches', () => {
+  it('list mode matches only view=list', () => {
+    expect(viewQueryMatches('list', 'list')).toBe(true)
+    expect(viewQueryMatches(undefined, 'list')).toBe(false)
+  })
+
+  it('catalogue mode matches only a missing view param', () => {
+    expect(viewQueryMatches(undefined, 'catalogue')).toBe(true)
+    expect(viewQueryMatches('list', 'catalogue')).toBe(false)
+    expect(viewQueryMatches('bogus', 'catalogue')).toBe(false)
   })
 })

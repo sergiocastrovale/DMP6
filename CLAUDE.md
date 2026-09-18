@@ -202,7 +202,7 @@ NAS: `sudo docker exec dmp cat /app/errors.log`
 
 `stores/player.ts` shuffle modes: `off`/`release`/`artist`/`catalogue`/`explorer`. State persisted to localStorage (queue capped 200).
 
-**Restore read must run in `onMounted`, never inline in `setup()`.** Nuxt Pinia SSR hydration patches every ref back to server-rendered value right after `setup()` returns; an inline (`import.meta.client`-gated) restore gets clobbered back to `null`/`[]` within one tick, and the debounced save watcher then persists that wiped state, corrupting the next restore too. Regression test: `e2e/player-persistence.spec.ts` (must do real `page.reload()` — component-tree unit tests don't round-trip SSR).
+**Restore read must be deferred via `useAfterHydration`, never inline in `setup()`.** Nuxt Pinia SSR hydration patches every ref back to server-rendered value right after `setup()` returns; an inline (`import.meta.client`-gated) restore gets clobbered back to `null`/`[]` within one tick, and the debounced save watcher then persists that wiped state, corrupting the next restore too. A bare `onMounted` is not enough either: `plugins/presence.client.ts` creates the store before any component exists, so `onMounted` had nothing to attach to and the restore silently never ran. `composables/useAfterHydration.ts` handles all three creation paths (during hydration / in a component / outside one). Regression tests: `e2e/player-persistence.spec.ts` (must do real `page.reload()` — component-tree unit tests don't round-trip SSR) + `test/stores/player.test.ts` plugin-created case.
 
 ## Visualizer
 
