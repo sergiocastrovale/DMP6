@@ -287,9 +287,31 @@ pub(crate) fn check_release_status_with(
 
     for (mi, mb_track) in mb_tracks.iter().enumerate() {
         let exact = normalize_title(&mb_track.title);
-        let hit = local_tracks.iter().enumerate().find(|(i, local)| {
+        let same_title = |(i, local): &(usize, &&TrackMeta)| {
             !used_local.contains(i) && normalize_title(local.title.as_deref().unwrap_or("")) == exact
-        });
+        };
+        let hit = match rules {
+            TitleRules::Legacy => local_tracks.iter().enumerate().find(same_title),
+            // Among several local files with the identical title, take the one whose runtime is
+            // closest - not whichever the file order happened to put first. A disc carrying two "The
+            // Evening's Young" (190s and 301s, an album take and a 1985 version) used to pair the
+            // 301s MusicBrainz track with the 190s file purely because it sorted first, which then
+            // stranded the real 190s pairing. It also meant re-scoring a box disc could undo the
+            // duration-aware pairing `boxset` had already linked: measured on the library, 26 links
+            // across 21 box discs. `min_by_key` keeps the first on a tie, so with no durations known
+            // this is exactly the old behaviour.
+            TitleRules::Extended => {
+                let mb_secs = mb_track.length.map(|ms| (ms / 1000) as i32);
+                local_tracks
+                    .iter()
+                    .enumerate()
+                    .filter(same_title)
+                    .min_by_key(|(_, local)| match (local.duration, mb_secs) {
+                        (Some(a), Some(b)) => (a - b).abs(),
+                        _ => i32::MAX,
+                    })
+            }
+        };
         match hit {
             Some((idx, _)) => {
                 used_local.insert(idx);
@@ -660,6 +682,8 @@ mod tests {
             if old_s != new_s {
                 writeln!(new_pairs, "FLIP\t{local_id}\t{old_s}\t{new_s}").unwrap();
             }
+            let linked = |c: &StatusCheck| c.matched_mb_tracks.iter().filter(|(_, l)| l.is_some()).count();
+            writeln!(new_pairs, "MATCHED\t{local_id}\t{}\t{}", linked(&old), linked(&new)).unwrap();
             *transitions.entry((old_s, new_s)).or_default() += 1;
 
             for (i, (mb_track, lid)) in new.matched_mb_tracks.iter().enumerate() {
@@ -809,6 +833,29 @@ mod tests {
             ReleaseStatus::Complete,
             "a second apart, the file is in that slot whatever the label says"
         );
+    }
+
+    /// Yello's "Claro Que Si" disc: two files titled "The Evening's Young" (190s album take, 301s
+    /// longer take). The exact pass used to hand the MusicBrainz 301s track whichever file sorted first
+    /// - the 190s one - stranding the real 190s pairing. Among identical titles it now takes the
+    /// closest runtime. Scored both ways so the test cannot pass under the old behaviour.
+    #[test]
+    fn identical_titles_pair_by_closest_runtime_not_file_order() {
+        let locals = vec![timed("The Evening's Young", 190), timed("The Evening's Young", 301)];
+        let refs: Vec<&TrackMeta> = locals.iter().collect();
+        let ids = track_ids(2);
+        let mb = || vec![mb_timed("m1", "The Evening's Young", 301), mb_timed("m2", "The Evening's Young", 190)];
+        let paired = |rules| {
+            check_release_status_with(&refs, &ids, &[(mb_release("r1", None, None), mb())], None, None, rules)
+                .matched_mb_tracks
+                .into_iter()
+                .map(|(t, l)| (t.id, l.unwrap()))
+                .collect::<std::collections::HashMap<_, _>>()
+        };
+        assert_eq!(paired(TitleRules::Legacy)["m1"], ids[0], "old: file order wins");
+        let new = paired(TitleRules::Extended);
+        assert_eq!(new["m1"], ids[1], "301s track takes the 301s file");
+        assert_eq!(new["m2"], ids[0], "190s track takes the 190s file");
     }
 
     #[test]

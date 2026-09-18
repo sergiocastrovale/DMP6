@@ -264,6 +264,16 @@ riskiest kind (different qualifiers) sampled 33 of 40 clearly one recording labe
 wrong and 7 uncertain — all with running times agreeing to the second. See
 docs/scripts/tidy_observations.md §14.
 
+**Among several files with the identical title, the closest running time wins** — not whichever file
+sorted first. A disc carrying two "The Evening's Young" (an album take and a longer 1985 version) used to
+pair them by file order, stranding the real pairing.
+
+**Re-scoring clears links it does not re-confirm.** Sync only ever *adds* track links, so over repeated
+runs a release accumulates links its current scoring no longer makes — a duplicate copy of a file linked
+alongside its twin, a pairing from an earlier edition or older data. The first library-wide
+`tidy --rescore-only` cleared 26 such links across 21 releases (none changed status) while adding
+25,446.
+
 **Identical titles are claimed before a loose match is even tried.** A bonus disc full of alternate
 takes shares one base title across many tracks ("Song", "Song (remake)", "Song (take 3)", "Song (take
 4)"...). Matching loosely in one pass let an early plain-titled track steal a "(take 3)" file before the
