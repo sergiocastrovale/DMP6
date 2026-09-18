@@ -278,6 +278,32 @@ async fn search_release_candidate(
     }
 }
 
+/// Whether `id` is carried by **more than half** of the tracks that carry any id in `field` - agreement,
+/// as opposed to `get_majority_id`'s plurality. Tracks with no id at all are absent evidence and do not
+/// count against it.
+///
+/// The distinction is what "embedded ids are definitive" rests on. It holds for an id the files agree
+/// on; it does not hold for the winner of a scatter. A per-track tagger that rewrote every file of a
+/// budget compilation to wherever it thought that one recording appeared leaves a folder like
+/// "Christmas Moments with Harold Land": 35 tracks, 31 distinct album ids ("Late Registration", "Born to
+/// Die", "Handel: Concerti grossi"...), and "Harold in the Land of Jazz" winning with 5. Sync bound twenty
+/// such compilations to that one 8-track album (docs/scripts/tidy_observations.md §16).
+fn tags_agree_on(
+    tracks: &[LocalTrackRow],
+    field: fn(&LocalTrackRow) -> &Option<String>,
+    id: &str,
+) -> bool {
+    let tagged = tracks
+        .iter()
+        .filter(|t| field(t).as_deref().is_some_and(|s| !s.is_empty()))
+        .count();
+    let agree = tracks
+        .iter()
+        .filter(|t| field(t).as_deref() == Some(id))
+        .count();
+    agree * 2 > tagged
+}
+
 fn get_majority_id(
     tracks: &[LocalTrackRow],
     field: fn(&LocalTrackRow) -> &Option<String>,
@@ -1421,6 +1447,9 @@ async fn main() {
 
             // Tier 1: Direct release lookup via embedded MUSICBRAINZ_ALBUMID
             let mut matched: Option<MatchCandidate> = None;
+            // Set when the files' most common id turned out to be a scatter's winner rather than an
+            // agreement, and its tracklist did not confirm it (see `tags_agree_on`).
+            let mut weak_tags_rejected = false;
             if let Some(ref rel_id) = majority_release_id {
                 let api_start = std::time::Instant::now();
                 r.info(&format!("        → Lookup by album ID {}", rel_id));
@@ -1431,14 +1460,45 @@ async fn main() {
                             api_start.elapsed().as_secs_f64(),
                             found.tracks.len()
                         ));
-                        matched = Some(MatchCandidate {
+                        // Agreement, not a plurality: the release id or its release group must be
+                        // carried by most of the folder's tagged tracks (the group covers a folder
+                        // tagged across two editions of one album, which is common and correct). A
+                        // dissolved box disc's binding comes from the box pass, not from tags.
+                        let agreed = local_release.dissolved_bound_mb_id.is_some()
+                            || tags_agree_on(&local_tracks, |t| &t.mb_release_id, rel_id)
+                            || tags_agree_on(&local_tracks, |t| &t.mb_release_group_id, &found.rg_id);
+                        let candidate = MatchCandidate {
                             release_id: rel_id.clone(),
                             rg_id: found.rg_id,
                             releases: vec![(found.release, found.tracks)],
                             primary_type: found.primary_type,
                             secondary_types: found.secondary_types,
                             from_tags: true,
-                        });
+                        };
+                        // A scattered folder's winning id is a hint, not a statement. Keep it only when
+                        // the tracklist itself confirms it - which is what separates a hits compilation
+                        // that really is that release (tagged per source, every title still matching)
+                        // from twenty budget compilations collapsed onto one album.
+                        let confirmed = agreed || {
+                            let metas = status::track_metas_from_rows(&local_tracks);
+                            let refs: Vec<&TrackMeta> = metas.iter().collect();
+                            let ids: Vec<String> = local_tracks.iter().map(|t| t.id.clone()).collect();
+                            check_release_status(
+                                &refs,
+                                &ids,
+                                &candidate.releases,
+                                local_release.year,
+                                local_release.medium_position,
+                            )
+                            .status
+                                == status::ReleaseStatus::Complete
+                        };
+                        if confirmed {
+                            matched = Some(candidate);
+                        } else {
+                            weak_tags_rejected = true;
+                            r.info("        ← Tracks disagree on the album and this one's tracklist does not fit - not binding by tag");
+                        }
                     }
                     Err(e) if mb_api::classify_mb_error(&e) == mb_api::MbErrorKind::NotFound => {
                         r.info("        ← Album ID not found, trying release group...");
@@ -1512,7 +1572,18 @@ async fn main() {
 
             // Tier 2: Release group lookup via MUSICBRAINZ_RELEASEGROUPID (or Tier 1 fallback)
             if matched.is_none() {
-                let rg_id_to_try = majority_rg_id.as_deref().or(majority_release_id.as_deref()); // Tier 1 404 fallback
+                // Only a release group most tracks agree on is browsed. A scattered folder's plurality
+                // group is as much a guess as its plurality release, and browsing it just binds the
+                // guess to whichever edition has the right track count. The Tier 1 404 fallback keeps
+                // its old behaviour, but not for an id Tier 1 already judged a scatter.
+                let agreed_rg = majority_rg_id
+                    .as_deref()
+                    .filter(|rg| tags_agree_on(&local_tracks, |t| &t.mb_release_group_id, rg));
+                let rg_id_to_try = agreed_rg.or_else(|| {
+                    majority_release_id
+                        .as_deref()
+                        .filter(|_| !weak_tags_rejected)
+                }); // Tier 1 404 fallback
                 if let Some(rg_id) = rg_id_to_try {
                     let api_start = std::time::Instant::now();
                     r.info(&format!(
@@ -1573,6 +1644,11 @@ async fn main() {
             // (downstream) an edition's track count matches. The embedded-id tiers always win first;
             // this never overrides an id, and check_release_status still picks the edition by track
             // count, so distinct editions are not collapsed.
+            // Deliberately unchanged by the agreement rule: a folder whose Tier 1 id was rejected as a
+            // scatter still counts as "has embedded ids", so it is NOT searched. Its own title comes
+            // from those same scattered tags - once bound it is even the MusicBrainz title - so a title
+            // search just re-finds the scatter's winner ("Christmas Moments with Harold Land" searching
+            // as "Harold in the Land of Jazz"). It ends Unmatched instead, which is the honest answer.
             let has_embedded_ids = majority_release_id.is_some() || majority_rg_id.is_some();
             if matched.is_none() && !has_embedded_ids {
                 match search_release_candidate(
@@ -2298,8 +2374,63 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_artist_total_failure, majority_from_counts};
+    use super::{is_artist_total_failure, majority_from_counts, tags_agree_on};
+    use dmp_sync::db::LocalTrackRow;
     use std::collections::HashMap;
+
+    fn tagged(release: Option<&str>) -> LocalTrackRow {
+        LocalTrackRow {
+            id: String::new(),
+            title: None,
+            artist: None,
+            mb_release_id: release.map(str::to_string),
+            mb_release_group_id: None,
+            mb_album_artist_id: None,
+            track_number: None,
+            disc_number: None,
+            duration: None,
+        }
+    }
+
+    fn many(release: Option<&str>, n: usize) -> Vec<LocalTrackRow> {
+        (0..n).map(|_| tagged(release)).collect()
+    }
+
+    /// "Christmas Moments with Harold Land": 35 tracks, 31 of them tagged with 20-odd different album
+    /// ids by a per-track tagger, and "Harold in the Land of Jazz" winning with 5. A plurality, not an
+    /// agreement - sync bound twenty compilations to that one album on exactly this.
+    #[test]
+    fn a_scatter_winner_is_not_an_agreement() {
+        let mut tracks = many(Some("harold"), 5);
+        for i in 0..26 {
+            tracks.push(tagged(Some(if i % 2 == 0 { "other-a" } else { "other-b" })));
+        }
+        tracks.extend(many(None, 4));
+        assert!(!tags_agree_on(&tracks, |t| &t.mb_release_id, "harold"));
+    }
+
+    #[test]
+    fn an_album_with_a_couple_of_odd_tracks_still_agrees() {
+        let mut tracks = many(Some("album"), 10);
+        tracks.extend(many(Some("bonus-source"), 2));
+        assert!(tags_agree_on(&tracks, |t| &t.mb_release_id, "album"));
+    }
+
+    /// Untagged tracks are missing evidence, not disagreement: half a folder with no ids at all must
+    /// not stop the other half's unanimous id from counting.
+    #[test]
+    fn untagged_tracks_do_not_count_against_agreement() {
+        let mut tracks = many(Some("album"), 5);
+        tracks.extend(many(None, 7));
+        assert!(tags_agree_on(&tracks, |t| &t.mb_release_id, "album"));
+    }
+
+    #[test]
+    fn exactly_half_is_not_a_majority() {
+        let mut tracks = many(Some("a"), 4);
+        tracks.extend(many(Some("b"), 4));
+        assert!(!tags_agree_on(&tracks, |t| &t.mb_release_id, "a"));
+    }
 
     #[test]
     fn total_failure_when_every_release_actively_failed() {

@@ -980,11 +980,16 @@ pub async fn update_local_release_match(
     Ok(())
 }
 
+/// Unbind a release, and its tracks with it. Clearing only `releaseId` used to leave every track still
+/// linked to the old release's track rows: an Unmatched release whose tracks claimed to be specific
+/// MusicBrainz recordings, and - because `delete_orphaned_mb_releases` keeps any release a track still
+/// points at - an old binding that could never be swept away.
 pub async fn mark_local_release_unmatched(
     pool: &PgPool,
     local_release_id: &str,
 ) -> Result<(), sqlx::Error> {
     let now = Utc::now().naive_utc();
+    let mut tx = pool.begin().await?;
     sqlx::query(
         r#"UPDATE "LocalRelease"
            SET "releaseId" = NULL,
@@ -994,8 +999,17 @@ pub async fn mark_local_release_unmatched(
     )
     .bind(now)
     .bind(local_release_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    sqlx::query(
+        r#"UPDATE "LocalReleaseTrack" SET "mbTrackId" = NULL, "updatedAt" = $1
+           WHERE "localReleaseId" = $2 AND "mbTrackId" IS NOT NULL"#,
+    )
+    .bind(now)
+    .bind(local_release_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     Ok(())
 }
 
