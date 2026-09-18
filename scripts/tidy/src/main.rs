@@ -68,6 +68,9 @@ struct TidySummary {
     /// Artists whose watermark is deliberately withheld because a MusicBrainz lookup failed on one of
     /// their groups. They stay pending so the next run retries them.
     artists_held_for_retry: usize,
+    /// Releases whose medium rows and `mediumCount` were rebuilt from their tracks' disc numbers
+    /// (`db::backfill_media_from_track_discs`).
+    media_backfilled: u64,
     orphans_retired_round2: u64,
     placeholders_retired_round2: u64,
     rescored_complete: usize,
@@ -241,6 +244,25 @@ async fn main() {
             }
             Err(e) => {
                 let msg = format!("retire_owned_missing_placeholders (round 1) failed: {}", e);
+                reporter.warn(&msg);
+                common::error_log::log_warn(&msg);
+                had_error = true;
+            }
+        }
+
+        // ---- Phase 3b: medium backfill - before the box pass, which keys everything off mediumCount > 1 ----
+        match db::backfill_media_from_track_discs(&pool).await {
+            Ok(n) => {
+                summary.media_backfilled = n;
+                if n > 0 {
+                    reporter.info(&format!(
+                        "Rebuilt disc structure for {} release(s) stored before discs were modelled",
+                        n
+                    ));
+                }
+            }
+            Err(e) => {
+                let msg = format!("backfill_media_from_track_discs failed: {}", e);
                 reporter.warn(&msg);
                 common::error_log::log_warn(&msg);
                 had_error = true;
@@ -542,6 +564,9 @@ async fn main() {
             summary.placeholders_retired_round2
         ),
     );
+    if summary.media_backfilled > 0 {
+        reporter.kv("Media backfilled", &format!("{} release(s)", summary.media_backfilled));
+    }
     reporter.kv(
         "Box groups",
         &format!(

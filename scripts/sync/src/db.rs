@@ -1141,6 +1141,68 @@ pub async fn batch_link_release_genres(
 /// run never looked at. Only an unfiltered run has the whole picture.
 pub type ArtistScope<'a> = Option<&'a [String]>;
 
+/// Rebuild `MusicBrainzReleaseMedium` rows and `mediumCount` for releases that predate them, from the
+/// disc numbers their own tracks already carry. Pure SQL, no MusicBrainz call, idempotent: once a release
+/// has medium rows it is never selected again.
+///
+/// Discs were first modelled on 2026-09-06/07 (the `box_sets`/`multidisk` migrations). Those migrations
+/// defaulted `mediumCount` to 1 and never backfilled existing releases, so everything synced 2026-08-31 to
+/// 09-06 and not re-synced since kept `mediumCount = 1` and no medium rows - while its tracks carried disc
+/// numbers 1, 2, ... all along. Measured on 2026-09-18: 3,602 releases. Nothing writes this shape today;
+/// sync's binding path records media properly.
+///
+/// It matters because every multi-disc decision keys off `mediumCount > 1`: such a release is invisible
+/// to the box pass, and each disc folder bound to it is scored against the *whole* multi-disc tracklist -
+/// 1,745 local releases `MISSING_TRACKS` purely for that reason (docs/scripts/tidy_observations.md §15).
+///
+/// Only releases where **every** track has a disc number and there are at least two distinct ones. A
+/// release with a single disc number is a genuine single medium and is left exactly as it is. Medium
+/// titles and formats are not recoverable from tracks and stay NULL; nothing downstream requires them
+/// (the containment tier of `box_editions` simply skips an untitled medium).
+pub async fn backfill_media_from_track_discs(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let now = Utc::now().naive_utc();
+    let mut tx = pool.begin().await?;
+    let targets: Vec<String> = sqlx::query_scalar(
+        r#"SELECT r.id FROM "MusicBrainzRelease" r
+           WHERE NOT EXISTS (SELECT 1 FROM "MusicBrainzReleaseMedium" md WHERE md."releaseId" = r.id)
+             AND NOT EXISTS (SELECT 1 FROM "MusicBrainzReleaseTrack" t
+                             WHERE t."releaseId" = r.id AND t."discNumber" IS NULL)
+             AND (SELECT count(DISTINCT t."discNumber") FROM "MusicBrainzReleaseTrack" t
+                  WHERE t."releaseId" = r.id) > 1"#,
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    if targets.is_empty() {
+        tx.commit().await?;
+        return Ok(0);
+    }
+    sqlx::query(
+        r#"INSERT INTO "MusicBrainzReleaseMedium" (id, "releaseId", position, "trackCount", "createdAt", "updatedAt")
+           SELECT md5(t."releaseId" || ':' || t."discNumber"), t."releaseId", t."discNumber", count(*), $2, $2
+           FROM "MusicBrainzReleaseTrack" t
+           WHERE t."releaseId" = ANY($1)
+           GROUP BY t."releaseId", t."discNumber"
+           ON CONFLICT ("releaseId", position) DO NOTHING"#,
+    )
+    .bind(&targets)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"UPDATE "MusicBrainzRelease" r
+           SET "mediumCount" = (SELECT count(DISTINCT t."discNumber") FROM "MusicBrainzReleaseTrack" t
+                                WHERE t."releaseId" = r.id),
+               "updatedAt" = $2
+           WHERE r.id = ANY($1)"#,
+    )
+    .bind(&targets)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(targets.len() as u64)
+}
+
 /// `NOT EXISTS` rather than `NOT IN (... WHERE "releaseId" IS NOT NULL)`: `NOT IN` over a nullable
 /// column collapses to UNKNOWN for every row as soon as one NULL enters the subquery, which is what
 /// that `IS NOT NULL` guard existed to work around.

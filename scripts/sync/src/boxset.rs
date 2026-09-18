@@ -909,6 +909,10 @@ struct SiblingRow {
 struct SiblingGroup {
     parent: String,
     rows: Vec<SiblingRow>,
+    /// Found by `nested_groups` - a root folder plus folders beneath it, all bound to one multi-disc
+    /// release - rather than as folders sharing a parent. Its candidate is taken from the database
+    /// first, since every member is by definition already bound to it.
+    nested: bool,
 }
 
 /// Folders sharing a parent, at least two of them, none yet folded into one `LocalRelease` - the
@@ -967,10 +971,123 @@ async fn find_sibling_groups(
             _ => groups.push(SiblingGroup {
                 parent,
                 rows: vec![row],
+                nested: false,
             }),
         }
     }
+
+    let already_grouped: HashSet<String> = groups
+        .iter()
+        .flat_map(|g| g.rows.iter().map(|r| r.local_id.clone()))
+        .collect();
+    groups.extend(nested_groups(pool, scope, &already_grouped).await?);
     Ok(groups)
+}
+
+/// Discs filed as a **root folder plus subfolders** rather than as siblings: disc 1's files sit in the
+/// release folder itself and disc 2 in a folder beneath it (`…/2004 - Blast Tyrant` holding CD 1,
+/// `…/2004 - Blast Tyrant/CD 2 - Bonus Disc` holding CD 2). `find_sibling_groups` groups folders by
+/// their common parent, so it never sees these two together - the root's parent is the artist's type
+/// folder, not the album folder. Both were bound to the whole multi-disc release, never placed, and each
+/// scored against the full tracklist: two `MISSING_TRACKS` cards for one complete album.
+///
+/// A group is a root `LocalRelease` plus every `LocalRelease` beneath its folder, all bound to the same
+/// `mediumCount > 1` release, none yet placed (`mediumPosition`/`boxReleaseId`) or folded
+/// (`LocalReleaseMember`). Once found, it goes through exactly the same bind / equivalence /
+/// fold-or-dissolve pipeline as a sibling group - nothing about binding changes, only discovery.
+///
+/// Deliberately **not** grouped: folders bound to one release that sit in *unrelated* trees (two
+/// spellings of an artist, a duplicate copy filed elsewhere). A root-plus-subfolder layout is evidence the
+/// folders are one physical release; two separate trees is not.
+///
+/// A group sharing any folder with a sibling group is skipped, so the box pass keeps handling those
+/// exactly as before. Roots are taken shortest path first and a folder is only ever used once, so a
+/// three-level tree cannot produce two overlapping groups.
+async fn nested_groups(
+    pool: &PgPool,
+    scope: Option<&[String]>,
+    already_grouped: &HashSet<String>,
+) -> Result<Vec<SiblingGroup>, sqlx::Error> {
+    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        r#"
+        WITH lr AS (
+          SELECT l.id, l."folderPath" AS fp, l."releaseId" AS rid
+          FROM "LocalRelease" l
+          WHERE l."folderPath" IS NOT NULL AND l."releaseId" IS NOT NULL
+            AND l."mediumPosition" IS NULL AND l."boxReleaseId" IS NULL
+            AND NOT EXISTS (SELECT 1 FROM "LocalReleaseMember" m WHERE m."localReleaseId" = l.id)
+        ),
+        roots AS (
+          SELECT r.id AS root_id, r.fp AS root_fp, r.rid
+          FROM lr r
+          JOIN "MusicBrainzRelease" m ON m.id = r.rid AND m."mediumCount" > 1
+          WHERE EXISTS (SELECT 1 FROM lr c
+                        WHERE c.rid = r.rid AND left(c.fp, length(r.fp) + 1) = r.fp || '/')
+        ),
+        members AS (
+          SELECT r.root_fp, c.id, c.fp
+          FROM roots r
+          JOIN lr c ON c.rid = r.rid
+                   AND (c.id = r.root_id OR left(c.fp, length(r.root_fp) + 1) = r.root_fp || '/')
+        )
+        SELECT mem.root_fp, mem.id, mem.fp,
+               (SELECT t."mbReleaseId" FROM "LocalReleaseTrack" t
+                  WHERE t."localReleaseId" = mem.id AND t."mbReleaseId" IS NOT NULL
+                  GROUP BY t."mbReleaseId" ORDER BY count(*) DESC, t."mbReleaseId" ASC LIMIT 1)
+        FROM members mem
+        WHERE $1::text[] IS NULL OR mem.root_fp IN (
+                SELECT m2.root_fp FROM members m2
+                JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = m2.id
+                WHERE lra."artistId" = ANY($1))
+        ORDER BY length(mem.root_fp), mem.root_fp, mem.fp
+        "#,
+    )
+    .bind(scope)
+    .fetch_all(pool)
+    .await?;
+
+    let mut candidates: Vec<SiblingGroup> = Vec::new();
+    for (root, id, folder_path, majority_mb) in rows {
+        let row = SiblingRow {
+            local_id: id,
+            folder_path,
+            majority_mb_release_id: majority_mb,
+            placed: false,
+        };
+        match candidates.last_mut() {
+            Some(g) if g.parent == root => g.rows.push(row),
+            _ => candidates.push(SiblingGroup {
+                parent: root,
+                rows: vec![row],
+                nested: true,
+            }),
+        }
+    }
+
+    Ok(keep_disjoint_groups(candidates, already_grouped))
+}
+
+/// Keep candidate groups in order, dropping any that shares a folder with a sibling group or with a
+/// group already kept, and any under two folders. Candidates arrive shortest root path first, so an
+/// outer root always claims its whole tree before a nested sub-root could claim part of it.
+fn keep_disjoint_groups(
+    candidates: Vec<SiblingGroup>,
+    already_grouped: &HashSet<String>,
+) -> Vec<SiblingGroup> {
+    let mut used: HashSet<String> = HashSet::new();
+    let mut groups = Vec::new();
+    for g in candidates {
+        let overlaps = g
+            .rows
+            .iter()
+            .any(|r| already_grouped.contains(&r.local_id) || used.contains(&r.local_id));
+        if overlaps || g.rows.len() < 2 {
+            continue;
+        }
+        used.extend(g.rows.iter().map(|r| r.local_id.clone()));
+        groups.push(g);
+    }
+    groups
 }
 
 async fn sibling_tracks(
@@ -1576,7 +1693,7 @@ pub async fn run_repair(
         // never reaches MusicBrainz at all (docs/sync_decisions.md §19 item 3).
         let all_placed = group.rows.iter().all(|r| r.placed);
         let mut fetched = CandidateFetch::default();
-        if all_placed {
+        if all_placed || group.nested {
             fetched.candidates = candidates_from_db(pool, &embedded_ids).await;
             if !fetched.candidates.is_empty() {
                 reporter.sub_step(&format!(
@@ -2288,6 +2405,71 @@ mod tests {
             stored_track(2, Some("mb-2"), "B", Some(200_000)),
         ];
         assert!(box_candidate_from_rows("b", &[(1, 1), (2, 1)], &no_id).is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Nested groups: root folder + subfolders (docs/scripts/tidy_observations.md §15)
+    // -----------------------------------------------------------------------
+
+    fn row(id: &str, path: &str) -> SiblingRow {
+        SiblingRow {
+            local_id: id.to_string(),
+            folder_path: path.to_string(),
+            majority_mb_release_id: None,
+            placed: false,
+        }
+    }
+
+    fn nested(root: &str, rows: Vec<SiblingRow>) -> SiblingGroup {
+        SiblingGroup {
+            parent: root.to_string(),
+            rows,
+            nested: true,
+        }
+    }
+
+    /// Clutch's "Blast Tyrant": CD 1 in the album folder itself, CD 2 in a subfolder. The fold path is
+    /// the common ancestor of every member - here the root folder, which is itself a member. That is
+    /// what keeps `apply_fold` from treating it as a foreign release holding the key (it only refuses
+    /// when the key belongs to a release *outside* the plan).
+    #[test]
+    fn a_nested_group_folds_onto_its_own_root_folder() {
+        let siblings = vec![
+            sibling("root", "Clutch/Album/2004 - Blast Tyrant", &[("t1", "Mercury", Some(60)), ("t2", "Profits of Doom", Some(250))]),
+            sibling("cd2", "Clutch/Album/2004 - Blast Tyrant/CD 2 - Bonus Disc", &[("t3", "Drink to the Dead", Some(200)), ("t4", "Cypress Grove", Some(210))]),
+        ];
+        let candidate = BoxCandidate {
+            release_id: "mb".to_string(),
+            media: vec![
+                medium(1, &[("m1", "Mercury", Some(60)), ("m2", "Profits of Doom", Some(250))]),
+                medium(2, &[("m3", "Drink to the Dead", Some(200)), ("m4", "Cypress Grove", Some(210))]),
+            ],
+        };
+        let plan = plan_box_bind(&siblings, &candidate).expect("binds");
+        assert_eq!(plan.folder_path, "Clutch/Album/2004 - Blast Tyrant");
+        assert_eq!(plan.survivor, "root", "disc 1 - the root folder - survives");
+        assert_eq!(plan.absorbed, vec!["cd2".to_string()]);
+    }
+
+    #[test]
+    fn nested_groups_never_overlap_sibling_groups_or_each_other() {
+        let already: HashSet<String> = ["sib".to_string()].into_iter().collect();
+        let groups = keep_disjoint_groups(
+            vec![
+                // Outer root first (shortest path), claims its whole tree.
+                nested("A", vec![row("a", "A"), row("ab", "A/B"), row("abc", "A/B/C")]),
+                // A sub-root inside it: overlaps, dropped.
+                nested("A/B", vec![row("ab", "A/B"), row("abc", "A/B/C")]),
+                // Shares a folder with a sibling group: the box pass keeps it, dropped here.
+                nested("X", vec![row("x", "X"), row("sib", "X/CD 2")]),
+                // A lone folder is nothing to fold.
+                nested("Y", vec![row("y", "Y")]),
+                nested("Z", vec![row("z", "Z"), row("z2", "Z/CD 2")]),
+            ],
+            &already,
+        );
+        let roots: Vec<&str> = groups.iter().map(|g| g.parent.as_str()).collect();
+        assert_eq!(roots, vec!["A", "Z"]);
     }
 
     #[test]
