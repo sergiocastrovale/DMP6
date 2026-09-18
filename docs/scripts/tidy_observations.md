@@ -806,3 +806,88 @@ Library: `MISSING_TRACKS` 13,146 → 12,790, `COMPLETE` 116,647 → 116,826.
   *Lutherion 1* was already 0 of 22 before any round-3/4 run, and `--rescore-only` never targets
   `COMPLETE`. Probably a re-index recreating track rows without links while the status stays; not
   verified.
+
+---
+
+## 16. Round 5 — compilations bound to the wrong album by scattered tags (2026-09-18)
+
+Reported as "Billie Holiday - Harold in the Land of Jazz has 2 editions, both extra tracks but seem to
+have missing tracks", and "all Chronological Classics seem to have the same problem".
+
+### Cause
+
+A per-track tagger rewrote every file of many budget compilations to wherever it thought that one
+recording appeared — album tag, `MUSICBRAINZ_ALBUMID`, and artist tags. "Christmas Moments with Harold
+Land": 35 tracks, 31 distinct album ids ("Late Registration", "Born to Die", "Handel: Concerti grossi",
+"The Fox (What Does the Fox Say?)"), and "Harold in the Land of Jazz" on 5.
+
+Sync's Tier 1 took the folder's most common id and bound to it on any plurality of two or more
+(`majority_from_counts`). Twenty Harold Land compilations collapsed onto that one 8-track album
+(`EXTRA_TRACKS`, "exactly the same"); Chronological Classics volumes collected compilations the same
+way, since a tagger finds most pre-war jazz there.
+
+Two layers, only the first fixed here:
+
+1. **Binding** — fixed below.
+2. **Ownership** — the same scattered per-track artist tags make each compilation *owned* by dozens of
+   unrelated artists (Christina Perri, Lana Del Rey, The Prodigy, Ylvis, Handel…), which is how "Harold
+   in the Land of Jazz" reached Billie Holiday's page. Index's ownership resolution; not touched.
+
+### Fix (sync `main.rs`)
+
+- Tier 1 binds by tag only when the id is carried by **more than half** the tagged tracks, or its
+  **release group** is (a folder tagged across two editions of one album — common and correct).
+- A scattered folder's winning id is still fetched (no extra MusicBrainz calls) but bound **only if its
+  tracklist scores `COMPLETE`** — keeps a hits compilation that genuinely is that release.
+- Tier 2 browses only a release group most tracks agree on.
+- A rejected scatter is **not** searched by title: its title comes from the same scattered tags (once
+  bound, it *is* the MusicBrainz title), so a search re-finds the scatter's winner. It ends Unmatched.
+- `mark_local_release_unmatched` now clears the release's track links; it used to leave them, keeping
+  the old release alive in the orphan sweep.
+
+Unanimous and majority ids are untouched: "embedded ids are definitive" still holds for any id the files
+agree on.
+
+### Verified
+
+Sample re-matches on production, forced through the new sync:
+
+| Release | Expected | Result |
+|---|---|---|
+| Harold Land, *Christmas Moments* | unbind | `UNMATCHED` |
+| Harold Land, *Triple Trouble Vol. 2* | unbind | `UNMATCHED` |
+| Teddy Wilson, *Selected Favorites Vol. 5* | unbind | `UNMATCHED` |
+| Lloyd Price, *15 Hits* (scattered tags, tracklist matches) | keep | `COMPLETE` 15/15 |
+| Motörhead, *Overkill* (two editions) | keep | `COMPLETE` |
+| Within Temptation, *Q-Music Sessions* | keep | `COMPLETE` |
+| Teddy Wilson, *Sweet and Simple* (unanimous tags) | keep, by the rule | `MISSING_TRACKS` |
+
+### Repair of existing bindings
+
+Sync never re-examines an already-bound release, so existing damage was repaired directly. The set:
+bound through its plurality tag id, no majority for the release or its release group, not `COMPLETE` —
+exactly what the new rule rejects, decidable from the database because the stored status *is* the
+scorer's verdict against the bound release.
+
+- **2,812** had no other release group with a majority → the new rule's outcome is `UNMATCHED` with no
+  MusicBrainz call; applied in one transaction, clearing 24,976 stale track links.
+- **7** had another release group with a real majority → re-synced: 2 now `COMPLETE` (Foreigner *Can't
+  Slow Down* super deluxe, Velvet Underground *1969 Live*), 4 `UNMATCHED`, 1 bound by agreed-but-wrong
+  tags (Electric Mary's live album → studio *Down to the Bone*).
+- Completeness recomputed for all 2,521 owning artists.
+
+**Undo record**: `logs/undo16_releases.tsv` (release id, re-sync flag, previous `releaseId`, previous
+status) and `logs/undo16_links.tsv` (track id, release id, previous `mbTrackId`) on the NAS.
+
+Library: `MISSING_TRACKS` 12,790 → 11,151, `EXTRA_TRACKS` 4,590 → 3,408, `UNMATCHED` 17,007 → 19,826.
+"Harold in the Land of Jazz" went from 20 bound folders to 5 (the 1958 album plus four copies whose tags
+genuinely agree on it) and is gone from Billie Holiday's page.
+
+### Open
+
+- **124 Chronological Classics bindings are still wrong**, and deliberately left: their files *agree*
+  on a CC volume (59 unanimously, 65 by majority) — the tagger stamped them consistently. Nothing in the
+  metadata separates them from a genuine partial album, and folder names are not allowed as evidence.
+  Retag the files. List: `docs/scripts/tidy_observations_cc_retag.tsv`.
+- **Ownership pollution** (layer 2 above): compilations owned by dozens of unrelated artists through
+  scattered per-track artist tags. Same root cause; the fix belongs in index, or in retagging.
