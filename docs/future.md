@@ -34,7 +34,7 @@ Disabiguating artists: NAPA's catalogue features both portuguese and chilean ban
 
 Compilations owned by dozens of unrelated artists (a Harold Land compilation on Lana Del Rey's page) — scattered per-track artist tags; index ownership. See `docs/sync_decisions.md` §19 item 8.
 
-124 "Chronological Classics" bindings whose files agree on the wrong volume — retag the files. List: `docs/scripts/tidy_observations_cc_retag.tsv`, background in `docs/sync_decisions.md` §19 item 9.
+124 "Chronological Classics" bindings whose files agree on the wrong volume — retag the files. List: `docs/specs/spec_tidy_observations_cc_retag.tsv`, background in `docs/sync_decisions.md` §19 item 9.
 
 (Fixed 2026-09-18 and removed from this list: 22-20s "Got It If You Want It" disc 1 + disc 2 shown as two cards — `docs/sync_decisions.md` §9; "Harold in the Land of Jazz" / Chronological Classics compilations bound to the wrong album by scattered tags — §7. Full open-bug list: §19.)
 

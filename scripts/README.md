@@ -13,6 +13,8 @@ on the NAS. An existing binary is never rebuilt automatically — after a code c
 |--------|--------|---------|------|
 | `index/` | `index` | Extract metadata from local audio files, upsert to DB, resolve artist identity | [index.md](../docs/scripts/index.md) |
 | `sync/` | `sync` | MusicBrainz sync for indexed artists | [sync.md](../docs/scripts/sync.md) |
+| `tidy/` | `tidy` | Library-wide repair (box sets, identity, cleanup, re-score) after sync | [tidy.md](../docs/scripts/tidy.md) |
+| `add/` | `add` | Add a MusicBrainz artist before any file exists for them | [add.md](../docs/scripts/add.md) |
 | `audit/` | `audit` | Detect metadata issues → write to DB | [audit.md](../docs/scripts/audit.md) |
 | `fix/` | `fix` | Apply PENDING issue fixes (tag writes + DB ops) | [fix.md](../docs/scripts/fix.md) |
 | `problems/` | `problems` | Scan files for tag defects → XLSX, and fix year/artist/albumArtist defects | [problems.md](../docs/scripts/problems.md) |
@@ -23,6 +25,7 @@ on the NAS. An existing binary is never rebuilt automatically — after a code c
 | `extract-meta-images/` | `extract-meta-images` | Extract embedded cover art to `folder.jpg` per release | [extract-meta-images.md](../docs/scripts/extract-meta-images.md) |
 | `dissect/` | `dissect` | Parse `errors.log` into `reports/errors.xlsx` | [dissect.md](../docs/scripts/dissect.md) |
 | `mosaic/` | `mosaic` | Build album-cover mosaics for `/labs/mosaic` (no wrapper — invoked by the web app) | [mosaic.md](../docs/scripts/mosaic.md) |
+| `artist-photos/` | `artist-photos` | One-off backfill: fetch photos for photo-less artists | [artist-photos.md](../docs/scripts/artist-photos.md) |
 | `common/` | — | Shared library: config, DB, MusicBrainz client + resolver, images, filters | — |
 
 `test-s3/` is a throwaway connectivity check for S3 credentials, not part of the workspace build.

@@ -6,7 +6,7 @@ user-invocable: true
 
 # Audit & Fix
 
-The structured workflow for detecting and fixing metadata issues in the library. Replaces the ad-hoc Python scripts for the common cases.
+Structured workflow for detecting and fixing metadata issues in the library. Replaces the ad-hoc Python scripts for the common cases.
 
 ---
 
@@ -57,11 +57,7 @@ Proposed fix is derived by majority vote of non-corrupt peers in the same releas
 
 ### Compound artist names (no longer an audit type)
 
-The `unsplit` detector was **retired**. Compound names are now resolved at index time against
-MusicBrainz (`common::mb::resolve`): the whole string is looked up first, so a real band like
-"Nurse With Wound" is never split, and only MB-confirmed groupings are. Nothing to review or queue -
-re-run `./index --resolve-artists` (add `--dry-run` to preview the decisions) instead of an audit/fix
-cycle. See `docs/scripts/index.md`'s Artist Resolution section.
+The `unsplit` detector was **retired**. Compound names now resolved at index time against MusicBrainz (`common::mb::resolve`): whole string looked up first, so "Nurse With Wound" is never split, only MB-confirmed groupings are. Nothing to review/queue — re-run `./index --resolve-artists` (`--dry-run` to preview) instead. See `docs/scripts/index.md` Artist Resolution.
 
 ### Orphans
 

@@ -15,16 +15,11 @@ files them into your library automatically. This is the hub doc — the two subs
 
 ## What it does
 
-On an artist page, a missing release shows a download icon — click it and DMP searches Soulseek,
-grabs the best copy, converts it, and stages it for you to approve into your library.
+On an artist page, a missing release shows a download icon — click it and DMP searches Soulseek, grabs the best copy, converts it, and stages it for approval into your library.
 
-There's also an **always-on mode**: turn on "Monitor" for an artist (or "Monitor all" for the whole
-library) and DMP keeps searching for their missing albums in the background, with no further input
-— it self-paces so it doesn't hammer Soulseek or MusicBrainz even across thousands of artists.
+**Always-on mode**: turn on "Monitor" for an artist (or "Monitor all") and DMP keeps searching for missing albums in the background, self-paced so it doesn't hammer Soulseek/MusicBrainz even across thousands of artists.
 
-Only one running copy of DMP drives this background work (`MONITOR_PRIMARY=true` on the NAS) — a
-second instance (e.g. your laptop pointed at the same database for local dev) is view-only and won't
-double-download anything.
+Only one running copy of DMP drives this (`MONITOR_PRIMARY=true` on the NAS) — a second instance (e.g. local dev pointed at the same DB) is view-only, won't double-download.
 
 ## How the pipeline works
 

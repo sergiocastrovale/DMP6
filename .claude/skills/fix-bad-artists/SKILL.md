@@ -14,15 +14,10 @@ Use the `./audit` + `./fix` Rust pipeline, not Python scripts (those have been d
 
 ## Background: Why This Happens
 
-### Corrupted TPE2
+- **Corrupted TPE2**: one `Artist` per unique `albumArtist` value. TPE2=`"02"` on track 2 → phantom artist `"02"` created; each differently-tagged track becomes its own isolated single-track release (`groupKey`); a phantom like `"27"` can accidentally match a real MB band and pull in their whole discography.
+- **Unsplit compound artists**: resolved against MB at index time (`common::mb::resolve`), not punctuation-guessed — whole string looked up first, so "Simon & Garfunkel"/"Nurse With Wound" stay intact, "Jeff Beck & Eric Clapton" splits once MB confirms both. Preview: `./index --resolve-artists --dry-run`.
 
-The sync script creates one `Artist` record per unique `albumArtist` (TPE2) value. If TPE2 is `"02"` on track 2 of a Jeff Beck album, a phantom artist named `"02"` gets created. Since the `groupKey` for a `LocalRelease` is `meta:{slug(album)}:{year}:{slug(albumArtist)}`, every track with a different albumArtist becomes its own isolated single-track release. The phantom artist `"27"` can then accidentally match the real UK band "27" on MusicBrainz, pulling in their entire discography.
-
-### Unsplit compound artists
-
-Compound names are resolved against MusicBrainz at index time (`common::mb::resolve`), not guessed from punctuation. The whole string is looked up first, so "Simon & Garfunkel" and "Nurse With Wound" stay intact, while "Jeff Beck & Eric Clapton" splits once MB confirms both halves. Run `./index --resolve-artists --dry-run` to see the decisions before applying them.
-
-The fix for both: write the correct TPE2 value back to the file and resync with `--overwrite`.
+Fix for both: write the correct TPE2 value back to the file, resync with `--overwrite`.
 
 ---
 

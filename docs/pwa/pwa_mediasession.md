@@ -1,19 +1,10 @@
 # MediaSession (lock-screen / notification controls)
 
-The OS media UI (Android notification + lock screen, desktop media keys) is driven by the
-W3C **MediaSession API**. This is what makes hardware/lock-screen play-pause-next-prev and the
-"now playing" card work, and it is honoured by the Android WebView — so it covers the Android
-app's media controls without native code (the foreground service in
-[pwa_capacitor_android.md](docs/pwa/pwa_capacitor_android.md) keeps the audio *alive*; MediaSession
-provides the *controls + metadata*).
+OS media UI (Android notification + lock screen, desktop media keys) driven by the W3C **MediaSession API** — hardware/lock-screen play-pause-next-prev + "now playing" card. Honoured by the Android WebView, so it covers the Android app's media controls with no native code (foreground service in `pwa_capacitor_android.md` keeps audio *alive*; MediaSession provides *controls + metadata*).
 
 ## Design
 
-The logic lives in a standalone, dependency-free module:
-`web/composables/useMediaSession.ts` → `createMediaSession(controls)`.
-
-It takes plain getter/action callbacks (no Vue, no Nuxt, no `$fetch`), so it is unit-testable in
-isolation (`web/test/unit/composables/useMediaSession.test.ts`). The store wires it up.
+Standalone, dependency-free module: `web/composables/useMediaSession.ts` → `createMediaSession(controls)`. Takes plain getter/action callbacks (no Vue/Nuxt/`$fetch`) — unit-testable in isolation (`web/test/unit/composables/useMediaSession.test.ts`). Store wires it up.
 
 ```
 createMediaSession(controls) → {
@@ -25,31 +16,22 @@ createMediaSession(controls) → {
 }
 ```
 
-`controls` exposes `isPlaying/currentTime/duration` getters and `play/pause/next/previous/seek`
-actions, all backed by the player store.
+`controls`: `isPlaying`/`currentTime`/`duration` getters + `play`/`pause`/`next`/`previous`/`seek` actions, backed by the player store.
 
 ## Where the store hooks in (`web/stores/player.ts`)
 
-- `const media = createMediaSession({ ... })` near the top, wiring getters to refs and actions to
-  the store's `togglePlay/next/previous/seek`.
-- `getAudio()` `timeupdate` listener → `media.updatePosition()`.
-- `getAudio()` registers handlers once → `media.registerHandlers()`; `error` → `setPlaybackState('paused')`.
-- `playTrack()` → `media.setMetadata(trackMeta(track))`, `resetPositionThrottle()`, and
-  `setPlaybackState('playing'|'paused')`.
-- `togglePlay()` / `dismiss()` → `setPlaybackState(...)`.
-- localStorage restore path → `setMetadata(...)` + `setPlaybackState('paused')` so a restored
-  track shows correctly before playback starts.
+- `createMediaSession({...})` near the top, getters→refs, actions→`togglePlay`/`next`/`previous`/`seek`.
+- `getAudio()` `timeupdate` → `media.updatePosition()`.
+- `getAudio()` registers handlers once → `registerHandlers()`; `error` → `setPlaybackState('paused')`.
+- `playTrack()` → `setMetadata(trackMeta(track))`, `resetPositionThrottle()`, `setPlaybackState(...)`.
+- `togglePlay()`/`dismiss()` → `setPlaybackState(...)`.
+- localStorage restore path → `setMetadata(...)` + `setPlaybackState('paused')` so a restored track shows correctly before playback starts.
 
-Because lock-screen next/prev call the store's `next()`/`previous()`, all 5 shuffle modes
-(including `catalogue` and `explorer`) work from the lock screen for free.
+Lock-screen next/prev call the store's `next()`/`previous()` — all 5 shuffle modes (incl. `catalogue`/`explorer`) work from the lock screen for free.
 
-## Gotchas baked into the module
+## Gotchas
 
-- **Artwork must be an absolute URL.** Local artwork resolves to a relative `/img/...` path; the
-  OS media layer needs an absolute URL. `toAbsoluteUrl()` prefixes `location.origin` for relative
-  paths and leaves S3 URLs (already absolute) alone.
-- **`setPositionState` throws** if `position > duration` during the metadata-load race — wrapped
-  in try/catch and skipped when `duration <= 0` or `position > duration`.
-- **Throttle** position updates to ~1/s (the `timeupdate` event fires ~4×/s).
-- **Availability guard:** every call checks `'mediaSession' in navigator`, so SSR and old WebViews
-  are safe.
+- **Artwork must be an absolute URL** — local artwork resolves relative `/img/...`, OS layer needs absolute. `toAbsoluteUrl()` prefixes `location.origin`, leaves already-absolute S3 URLs alone.
+- **`setPositionState` throws** if `position > duration` during the metadata-load race — wrapped in try/catch, skipped when `duration<=0` or `position>duration`.
+- **Throttle** position updates ~1/s (`timeupdate` fires ~4×/s).
+- **Availability guard:** every call checks `'mediaSession' in navigator` — SSR and old WebViews safe.

@@ -42,6 +42,7 @@ Working conventions, data model and the day-to-day command reference live in [CL
 * [Downloads](docs/downloader/downloads.md) — [Soulseek/slskd](docs/downloader/downloads_slskd.md), [tag enrichment](docs/downloader/downloads_songkong.md), [monitoring](docs/feature_monitoring.md)
 * [Explore](docs/feature_explore.md)
 * [Generated playlists](docs/feature_generated_playlists.md)
+* [Visualizer](docs/feature_visualizer.md)
 
 ### PWA
 
@@ -72,7 +73,7 @@ Working conventions, data model and the day-to-day command reference live in [CL
 
 Overview: [scripts/README.md](scripts/README.md).
 
-* [index](docs/scripts/index.md) · [sync](docs/scripts/sync.md) · [refresh](docs/scripts/refresh.md)
+* [index](docs/scripts/index.md) · [sync](docs/scripts/sync.md) · [tidy](docs/scripts/tidy.md) · [refresh](docs/scripts/refresh.md) · [add](docs/scripts/add.md)
 * [audit](docs/scripts/audit.md) · [fix](docs/scripts/fix.md) · [problems](docs/scripts/problems.md)
 * [analysis](docs/scripts/analysis.md) · [dissect](docs/scripts/dissect.md) · [extract-meta-images](docs/scripts/extract-meta-images.md)
 * [playlists](docs/scripts/playlists.md) · [mosaic](docs/scripts/mosaic.md) · [artist-photos](docs/scripts/artist-photos.md)

@@ -1,8 +1,8 @@
 # Redis API Cache
 
-DMP uses Redis as an optional server-side response cache. When available, repeated requests for expensive read-only API endpoints return pre-serialised JSON from Redis rather than re-running Prisma queries against PostgreSQL - taking reads from tens of milliseconds down to under a millisecond.
+Optional server-side response cache. Repeated requests for expensive read-only endpoints return pre-serialised JSON from Redis instead of re-running Prisma against PostgreSQL — tens of ms down to under 1ms.
 
-Redis is **optional and non-blocking**. If `REDIS_URL` is unset, or if the Redis instance is unreachable, every endpoint falls through transparently to the database. No request ever fails because of Redis.
+**Optional and non-blocking.** `REDIS_URL` unset or unreachable → every endpoint falls through transparently to the DB. No request ever fails because of Redis.
 
 ---
 
@@ -29,7 +29,7 @@ Nuxt/Nitro server
            return result
 ```
 
-The cache is **write-through**: a cache miss always populates Redis so the next identical request is served from cache.
+**Write-through**: a cache miss always populates Redis, next identical request is served from cache.
 
 ---
 
@@ -37,7 +37,7 @@ The cache is **write-through**: a cache miss always populates Redis so the next 
 
 ### Singleton client - `server/utils/redis.ts`
 
-A single `ioredis` instance is created at module load time if `REDIS_URL` is set. Key options:
+Single `ioredis` instance created at module load if `REDIS_URL` is set:
 
 | Option | Value | Reason |
 |--------|-------|--------|
@@ -46,7 +46,7 @@ A single `ioredis` instance is created at module load time if `REDIS_URL` is set
 | `enableOfflineQueue` | `false` | Discard commands when disconnected instead of buffering |
 | `connectTimeout` | `2000ms` | Give up quickly so the app stays responsive |
 
-Errors are silently swallowed via an `error` event listener - Redis never surfaces to the user.
+Errors silently swallowed via an `error` event listener — Redis never surfaces to the user.
 
 ### Cache helper - `server/utils/cache.ts`
 
@@ -54,15 +54,15 @@ Errors are silently swallowed via an `error` event listener - Redis never surfac
 cachedResponse<T>(key: string, ttlSeconds: number, fn: () => Promise<T>): Promise<T>
 ```
 
-- If Redis is `null` (no `REDIS_URL`): calls `fn()` directly.
-- Otherwise: tries `GET key`. On a hit, returns `JSON.parse`. On a miss, calls `fn()`, stores result with `SET key … EX ttlSeconds`, returns result.
-- All Redis calls are wrapped in `try/catch` - a Redis error causes silent fallthrough to `fn()`.
+- Redis `null` (no `REDIS_URL`) → calls `fn()` directly.
+- Else: `GET key` — hit → `JSON.parse`; miss → `fn()`, `SET key … EX ttlSeconds`, return.
+- All Redis calls wrapped `try/catch` — error → silent fallthrough to `fn()`.
 
 ```ts
 invalidateCache(pattern: string): Promise<void>
 ```
 
-Uses `KEYS pattern` to find matching keys, then `DEL`s them. Used for event-driven invalidation (see below). Pattern supports Redis glob syntax, e.g. `releases:last-played:*`.
+`KEYS pattern` → `DEL`s matches. Used for event-driven invalidation (below). Glob syntax, e.g. `releases:last-played:*`.
 
 ---
 
@@ -94,7 +94,7 @@ Endpoints not cached (always hit the database):
 
 ## Cache invalidation
 
-TTL expiry handles most staleness. A handful of write events also explicitly bust specific keys:
+TTL expiry handles most staleness; a few write events also explicitly bust keys:
 
 ### On track play - `POST /api/tracks/[id]/play`
 
@@ -116,8 +116,7 @@ After `REFRESH MATERIALIZED VIEW CONCURRENTLY dmp_timeline`, all timeline keys a
 
 ### On artist add - `POST /api/artists/added/[mbid]`
 
-`./add` (docs/scripts/add.md) writes straight to Postgres and can't reach Redis itself, so `/add`'s
-Search.vue calls this route right after `./add` exits 0:
+`./add` writes straight to Postgres, can't reach Redis itself — `/add`'s Search.vue calls this route right after `./add` exits 0:
 
 | Pattern | Reason |
 |---------|--------|
@@ -125,8 +124,8 @@ Search.vue calls this route right after `./add` exits 0:
 
 ### Not explicitly invalidated
 
-- `genres`, `artists:*`, `artist:{slug}` (non-play) - these only change after an index or sync run. Their TTLs (2–10 min) are short enough that stale data is not a practical concern.
-- `releases:latest:*` - changes only when new releases are indexed. 2-min TTL is acceptable.
+- `genres`, `artists:*`, `artist:{slug}` (non-play) — only change after index/sync; TTLs (2-10 min) short enough stale data isn't a practical concern.
+- `releases:latest:*` — changes only on new-release index, 2-min TTL acceptable.
 
 If you need to force-clear all DMP cache keys (e.g. after a full re-index), run on the NAS:
 
@@ -156,11 +155,11 @@ redis:
 
 Key settings:
 
-- **`maxmemory 512mb`** - hard cap. Tune up if you have RAM to spare; tune down on memory-constrained systems.
-- **`allkeys-lru`** - when the cap is hit, evict the least recently used key regardless of TTL. Correct policy for a cache (as opposed to `noeviction` which is for a primary store).
-- **Persistence** - Redis data is written to `${DMP_DATA}/redis` via the default RDB snapshot. Cache data survives container restarts; on a cold start cached values are available immediately.
+- **`maxmemory 512mb`** — hard cap, tune to available RAM.
+- **`allkeys-lru`** — cap hit → evict least-recently-used regardless of TTL (correct for a cache, vs. `noeviction` for a primary store).
+- **Persistence** — written to `${DMP_DATA}/redis` via default RDB snapshot, survives container restarts.
 
-The web container connects via `REDIS_URL=redis://dmp-redis:6379`. This is hardcoded in `docker-compose.yml` and does not need to be set in the NAS `.env`.
+Web container connects via `REDIS_URL=redis://dmp-redis:6379`, hardcoded in `docker-compose.yml` — not needed in NAS `.env`.
 
 ### Required NAS directory
 
@@ -175,7 +174,7 @@ mkdir -p "$DEPLOY_PATH"/redis   # /mnt/SSD/web/dmp/redis
 
 ## Local development
 
-`REDIS_URL` is intentionally left empty in `web/.env`. Redis is not required to run DMP locally - all endpoints fall through to PostgreSQL as if Redis did not exist.
+`REDIS_URL` intentionally empty in `web/.env` — not required to run DMP locally, all endpoints fall through to PostgreSQL.
 
 To test Redis locally, start a Redis container and set `REDIS_URL`:
 

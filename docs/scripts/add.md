@@ -47,38 +47,19 @@ cd scripts && cargo build --release -p add
 
 ## Flow
 
-1. Validate `--mbid` (`common::filters::sanitize_mb_id`).
-2. Take the scan lock (`common::lock::acquire_lock`, binary name `"add"`) — same exclusive lock
-   `index`/`sync`/`tidy` share, so `./add` can't race a library-wide scan.
-3. One MusicBrainz call: `mb_get_artist_detail` → authoritative name, area (→ ISO country), relations
-   (image source). The name typed into the `/add` search box is never trusted directly — CLAUDE.md
-   "Embedded MB IDs are definitive."
-4. Derive `slug = common::slug::make_slug(name)` (the same function `index`'s `ensure_artist` uses —
-   critical, or a name needing transliteration could fork into a second Artist row once real files
-   land) and `folder = folder_name(name)` (path-separator/NUL sanitize, own module, unit tested).
-5. **Duplicate check** — any of the following aborts with exit code 3, nothing written:
-   - an existing Artist row with this `musicbrainzId` (resolved through `primaryArtistId` if it's a
-     connected duplicate, so the message names the primary artist);
-   - an existing Artist row with this slug;
-   - the folder already exists under `MUSIC_DIR`.
-6. `--dry-run` stops here (after step 5, before any write).
-7. `mkdir` the folder (non-recursive; refuses a path whose parent isn't exactly `MUSIC_DIR`, guarding
-   against a sanitized name that still contains `..`).
-8. Insert the `Artist` row: `manuallyAdded = true`, `musicbrainzId`, `country`, `monitored` from
-   `--monitored`, totals at 0. A unique-constraint race here (another `./add` or a manual insert won
-   the slug) removes the just-created folder and exits 3.
-9. Artist image, same path sync uses (`common::images::download_artist_image` +
-   `record_artist_image`) — non-fatal on failure.
-10. `dmp_sync::catalogue_gaps::fill_catalogue_gaps`, scoped to just this artist id (`artist_ids: Some(&[id])`,
-    not `--only`/`--exact` name filtering — two same-named artists, e.g. "NAPA (PT)"/"NAPA (CL)", or a
-    name containing `;`, would otherwise cross). Then the same tail every gaps-pass caller shares,
-    `catalogue_gaps::finish_run` (see docs/scripts/sync.md): orphan sweep, retire owned MISSING
-    placeholders, `update_statistics`. Stamps `lastGapsCheckedAt` so the monitor loop's own gaps
-    trickle doesn't immediately redo this artist.
-11. Release the lock, exit 0.
+1. Validate `--mbid`.
+2. Take the scan lock (`"add"`) — same exclusive lock `index`/`sync`/`tidy` share, no racing a library-wide scan.
+3. One MB call: `mb_get_artist_detail` → authoritative name, area (ISO country), relations (image source). The typed search-box name is never trusted directly — "Embedded MB IDs are definitive".
+4. Derive `slug` via `common::slug::make_slug` (same fn `index`'s `ensure_artist` uses — critical, or a transliterated name could fork a second Artist row once real files land) and sanitized `folder`.
+5. **Duplicate check** — aborts exit 3, nothing written, if: existing Artist row with this `musicbrainzId` (resolved through `primaryArtistId` if a connected duplicate); existing row with this slug; folder already exists under `MUSIC_DIR`.
+6. `--dry-run` stops here.
+7. `mkdir` the folder (non-recursive, refuses a parent that isn't exactly `MUSIC_DIR` — guards a sanitized name still containing `..`).
+8. Insert `Artist` row: `manuallyAdded=true`, `musicbrainzId`, `country`, `monitored` from flag, totals 0. Unique-constraint race (another `./add` won the slug) → removes the just-created folder, exits 3.
+9. Artist image via the same path sync uses — non-fatal on failure.
+10. `fill_catalogue_gaps` scoped to just this artist id (not name filtering — avoids cross-matching e.g. "NAPA (PT)"/"NAPA (CL)"), then the shared `catalogue_gaps::finish_run` tail (orphan sweep, retire MISSING placeholders, `update_statistics`). Stamps `lastGapsCheckedAt` so the monitor loop's own trickle doesn't immediately redo this artist.
+11. Release lock, exit 0.
 
-A gaps-pass failure at step 10 does **not** roll back the artist or folder — they're valid, and a
-failed catalogue fetch is retried the normal way, from the artist page's own sync controls. It exits 1.
+A gaps-pass failure at step 10 does **not** roll back the artist/folder (valid either way, retried normally from the artist page). Exits 1.
 
 ## Exit codes
 

@@ -35,16 +35,9 @@ PlaylistGenerator          Playlist
 | `Playlist.userId` | `Int?` | `NULL` for GENRE/REGION (shared, same for every user); set for MANUAL (private to that user) — see CLAUDE.md Data Model |
 | `PlaylistGenerator.terms` | `String[]` | Raw textarea lines — see Term Syntax below |
 
-Generated playlists are never per-user: `./playlists` writes `userId = NULL`, everyone sees the same
-`genre-rock`/`region-jp` rows, and `/api/playlists` includes them for every caller alongside that
-caller's own MANUAL playlists (`server/utils/libraryOwnership.ts`'s `visiblePlaylistsWhere`). A raw
-CHECK constraint (`(type = 'MANUAL') = (userId IS NOT NULL)`) plus a partial unique index on `slug`
-(scoped to `userId IS NULL`) keep this invariant and generated-slug uniqueness at the DB level.
+Generated playlists are never per-user — `./playlists` writes `userId = NULL`, everyone sees the same `genre-rock`/`region-jp` rows, `/api/playlists` includes them for every caller alongside that caller's own MANUAL playlists (`visiblePlaylistsWhere`). A raw CHECK (`(type='MANUAL')=(userId IS NOT NULL)`) + partial unique index on `slug` (scoped `userId IS NULL`) enforce this + generated-slug uniqueness at the DB level.
 
-Deleting a `PlaylistGenerator` cascades to its linked `Playlist` (and that playlist's tracks)
-immediately — there is no orphaned-playlist cleanup step, the FK does it. Renaming a generator
-changes its slug, which the next `./playlists` run reflects (`Playlist.slug`/`name` are refreshed
-from the generator on every regenerate — the row itself, and its `generatorId`, are stable).
+Deleting a `PlaylistGenerator` cascades to its linked `Playlist` (+ tracks) immediately — FK handles it, no orphan cleanup step. Renaming changes its slug, reflected on the next `./playlists` run (`Playlist.slug`/`name` refreshed on every regenerate; the row + `generatorId` stay stable).
 
 ## Term Syntax
 

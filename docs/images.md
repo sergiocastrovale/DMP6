@@ -2,187 +2,104 @@
 
 ## Goals
 
-We should be able to specify whether we want to keep our artist and release cover images locally or in an S3 bucket.
-
-We control this via the .env:
+Choose local disk or S3 for artist/release cover storage, via `.env`:
 
 ```bash
-IMAGE_STORAGE=s3 # can be s3, local or both
+IMAGE_STORAGE=s3 # s3, local, or both
 ```
 
-This variable is read by both the `index` and `sync` scripts so they can act accordingly after downloading/extracting the images.
+Read by both `index` and `sync` after downloading/extracting images.
 
-- **s3** — uploads with the credentials from `.env` and stores the full URL in `Artist.imageUrl` / `LocalRelease.imageUrl`.
-- **local** — stores the filename in `Artist.image` / `LocalRelease.image`, served from `web/public/img/`.
+- **s3** — uploads with `.env` credentials, stores the full URL in `Artist.imageUrl`/`LocalRelease.imageUrl`.
+- **local** — stores the filename in `Artist.image`/`LocalRelease.image`, served from `web/public/img/`.
 - **both** — saves locally *and* uploads.
 
-In the web app always resolve images through the `useImageUrl()` composable, which picks between the two.
+Web app always resolves images via `useImageUrl()`, which picks between the two.
 
 ## S3 Setup Guide
 
-### Step 1: Create an S3 Bucket
-
-1. **Log in to AWS Console**: Go to [AWS S3 Console](https://s3.console.aws.amazon.com/)
-
-2. **Create a new bucket**:
-   - Click "Create bucket"
-   - Choose a unique bucket name (e.g., `dmp-img`)
-   - Select your preferred region (e.g., `us-east-1`)
-   - **Block Public Access**: Uncheck "Block all public access" since we need images to be publicly accessible
-   - Acknowledge the warning
-   - Click "Create bucket"
-
-3. **Configure bucket policy** for public read access:
-   - Go to your bucket → Permissions → Bucket Policy
-   - Add this policy (replace `YOUR-BUCKET-NAME`):
-
+### 1. Create an S3 bucket
+- [AWS S3 Console](https://s3.console.aws.amazon.com/) → Create bucket, unique name (e.g. `dmp-img`), preferred region (e.g. `us-east-1`).
+- **Block Public Access**: uncheck "Block all public access" (images need to be public), acknowledge, create.
+- **Bucket Policy** (Permissions → Bucket Policy), public read:
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "PublicReadGetObject",
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::YOUR-BUCKET-NAME/*"
-    }
-  ]
+  "Statement": [{"Sid": "PublicReadGetObject", "Effect": "Allow", "Principal": "*",
+    "Action": "s3:GetObject", "Resource": "arn:aws:s3:::YOUR-BUCKET-NAME/*"}]
 }
 ```
+- **Object Ownership** (Permissions → Object Ownership → Edit): select "Bucket owner enforced" (ACLs disabled) — policy controls access instead of per-object ACLs.
 
-4. **Configure Object Ownership** (required for public access):
-   - Go to your bucket → Permissions → Object Ownership
-   - Click "Edit"
-   - Select **"Bucket owner enforced"** (ACLs disabled - recommended)
-   - Click "Save changes"
-   - This makes the bucket policy control access instead of per-object ACLs
+### 2. Create IAM user for programmatic access
+[AWS IAM Console](https://console.aws.amazon.com/iam/) → Users → Create user `dmp-s3-uploader`, check "Programmatic access" → attach `AmazonS3FullAccess` (or the custom policy below) → save the **Access Key ID** and **Secret Access Key** (shown once).
 
-### Step 2: Create IAM User for Programmatic Access
-
-1. **Go to IAM Console**: [AWS IAM Console](https://console.aws.amazon.com/iam/)
-
-2. **Create a new user**:
-   - Click "Users" → "Create user"
-   - User name: `dmp-s3-uploader`
-   - Check "Programmatic access"
-   - Click "Next"
-
-3. **Attach permissions**:
-   - Click "Attach policies directly"
-   - Search and select `AmazonS3FullAccess` (or create a custom policy with just `s3:PutObject` and `s3:PutObjectAcl` for better security)
-   - Click "Next" → "Create user"
-
-4. **Save credentials**:
-   - **Access Key ID** - Save this
-   - **Secret Access Key** - Save this (only shown once!)
-
-### Step 3: Configure .env
-
-Add these variables to your `web/.env` file:
+### 3. Configure `web/.env`
 
 ```bash
-# Image Storage Configuration
 IMAGE_STORAGE=s3  # or "local" or "both"
-
-# Storage buckets (S3-compatible)
 STORAGE_IMAGE_BUCKET=dmp-img
 STORAGE_BACKUPS_BUCKET=backups
-
-# AWS credentials
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=YOUR_ACCESS_KEY_HERE
 AWS_SECRET_ACCESS_KEY=YOUR_SECRET_KEY_HERE
-STORAGE_ENDPOINT=  # Leave empty for AWS S3, or set for S3-compatible services
+STORAGE_ENDPOINT=  # empty for AWS S3, set for S3-compatible services
 STORAGE_PUBLIC_URL=https://dmp-img.s3.us-east-1.amazonaws.com
 ```
 
-### Step 4: Test Configuration
-
-After configuring, run:
+### 4. Test
 
 ```bash
 ./index --only "Test" --exact
 ```
 
-Images will be:
-- Uploaded to S3 if `IMAGE_STORAGE=s3` or `IMAGE_STORAGE=both`
-- Saved locally if `IMAGE_STORAGE=local` or `IMAGE_STORAGE=both`
-- URLs stored in `Artist.imageUrl` and `LocalRelease.imageUrl` fields
+Images upload to S3 (`s3`/`both`), save locally (`local`/`both`), URLs stored in `Artist.imageUrl`/`LocalRelease.imageUrl`.
 
-### Using S3-Compatible Services
-
-If using Backblaze B2, DigitalOcean Spaces, or MinIO:
+### S3-compatible services (Backblaze B2, DigitalOcean Spaces, MinIO)
 
 ```bash
-STORAGE_ENDPOINT=https://s3.us-west-000.backblazeb2.com  # Example for B2
+STORAGE_ENDPOINT=https://s3.us-west-000.backblazeb2.com  # example for B2
 STORAGE_PUBLIC_URL=https://f000.backblazeb2.com/file/your-bucket-name
 ```
 
-### Cost Estimates
+### Cost
 
-**AWS S3 Pricing (us-east-1)**:
-- Storage: $0.023/GB per month
-- PUT requests: $0.005 per 1,000 requests
-- GET requests: $0.0004 per 1,000 requests
+AWS S3 us-east-1: storage $0.023/GB/mo, PUT $0.005/1k, GET $0.0004/1k. For 2M tracks with ~26 images (~10MB total): <$1/year.
 
-For 2 million tracks with ~26 images:
-- ~26 image files = ~10MB total
-- Cost: < $1/year
+### Security
 
-### Security Best Practices
-
-1. **Use custom IAM policy** instead of `AmazonS3FullAccess`:
-
+Custom IAM policy instead of `AmazonS3FullAccess`:
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:PutObjectAcl",
-        "s3:DeleteObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::YOUR-BUCKET-NAME/*",
-        "arn:aws:s3:::YOUR-BUCKET-NAME"
-      ]
-    }
-  ]
+  "Statement": [{"Effect": "Allow",
+    "Action": ["s3:PutObject", "s3:PutObjectAcl", "s3:DeleteObject", "s3:ListBucket"],
+    "Resource": ["arn:aws:s3:::YOUR-BUCKET-NAME/*", "arn:aws:s3:::YOUR-BUCKET-NAME"]}]
 }
 ```
+Also: enable versioning for backup, lifecycle rules to prune old versions, CloudFront optional for performance.
 
-2. **Enable versioning** on your bucket for backup
-3. **Set up lifecycle rules** to delete old versions if needed
-4. **Use CloudFront** for better performance (optional)
-
-`common::images::download_artist_image` is called from both `./sync` (per artist during a normal run)
-and `./add` (once, right after creating the artist row - docs/scripts/add.md) — same function, same
-Wikidata/Wikipedia/Fanart source order, non-fatal on failure either way.
+`common::images::download_artist_image` is called from both `./sync` (per artist, normal run) and `./add` (once, right after creating the artist row) — same function, same Wikidata/Wikipedia/Fanart source order, non-fatal on failure either way.
 
 ## Image Deletion
 
-Image cleanup is always synchronous - every deletion path removes the local file and the S3 object **before** deleting the DB row. There is no queue, no trigger, no background worker: if a row is gone, its images are gone too.
+Always synchronous — every deletion path removes the local file + S3 object **before** deleting the DB row. No queue, no trigger, no background worker: row gone → images gone too.
 
 ### Deletion paths
 
 | Trigger | Handler |
 |---|---|
-| Full DB reset | `./nuke` - wipes all local + S3 images, then truncates tables |
+| Full DB reset | `./nuke` — wipes all local+S3 images, then truncates tables |
 | `./nuke --only="Artist"` | Removes that artist's images + cascaded orphan artist/release images |
-| `./index` (folder removed from disk) | `detect_deleted_folders` calls `delete_release_images` / `delete_artist_images` before deleting empty releases and orphan artists |
+| `./index` (folder removed from disk) | `detect_deleted_folders` calls `delete_release_images`/`delete_artist_images` before deleting empty releases and orphan artists |
 | `./sync` (ghost artists) | `cleanup_ghost_artists` calls `delete_artist_images` before the DB delete |
 | `./fix --orphans` | Deletes the artist's images before deleting the `Artist` row |
 | `./fix --duplicates` | Deletes artist B's image before merging B into A |
 
 ### Shared helpers
 
-Both helpers live in [`scripts/common/src/images.rs`](../scripts/common/src/images.rs):
+Both in `scripts/common/src/images.rs`:
+- `delete_artist_images(pool, config, artist_ids)` — looks up `slug`/`image`/`imageUrl`, deletes `web/public/img/artists/{image}` + S3 key `artists/{slug}.jpg`.
+- `delete_release_images(pool, config, release_ids)` — looks up `image`/`imageUrl`, deletes `web/public/img/releases/{image}` + S3 key `releases/{id}.jpg`.
 
-- `delete_artist_images(pool, config, artist_ids)` - looks up `slug`, `image`, `imageUrl` and deletes `web/public/img/artists/{image}` + S3 key `artists/{slug}.jpg`
-- `delete_release_images(pool, config, release_ids)` - looks up `image`, `imageUrl` and deletes `web/public/img/releases/{image}` + S3 key `releases/{id}.jpg`
-
-Both respect `IMAGE_STORAGE` (local / s3 / both) and are safe to call with an empty slice.
+Both respect `IMAGE_STORAGE` (local/s3/both), safe to call with an empty slice.
