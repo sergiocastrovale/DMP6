@@ -174,7 +174,7 @@ folders is reported under `under 2 siblings` rather than padding the denominator
 | Writes `lastTidiedAt` | Never | Yes, on a clean finish |
 | Box-set repair | Not run | `dmp_sync::boxset::run_repair` |
 | Artist identity repair | Not run | 3 passes, always global |
-| `--repair-recording-tags` | Removed — see `oneoff/repair_recording_tags.py` (one-off, not a flag anywhere) | N/A |
+| `--repair-recording-tags` | Removed — replaced by a one-off Python script, run once 2026-09-18 and deleted (`docs/scripts/tidy_observations.md` §17) | N/A |
 
 See `docs/__plan_tidy_script.md` for the full design history and rollout checklist, and
 `docs/sync_decisions.md` for the box-set binding/fold/dissolve rules `boxset::run_repair` implements.

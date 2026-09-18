@@ -891,3 +891,54 @@ genuinely agree on it) and is gone from Billie Holiday's page.
   Retag the files. List: `docs/scripts/tidy_observations_cc_retag.tsv`.
 - **Ownership pollution** (layer 2 above): compilations owned by dozens of unrelated artists through
   scattered per-track artist tags. Same root cause; the fix belongs in index, or in retagging.
+
+## 17. Round 6 — artists sync never saw, and one-off scripts that never ran (2026-09-18)
+
+### 5,445 owning artists with no `lastIndexedAt`
+
+After a full `./sync` + `./tidy`, the pending count jumped to ~5,700 artists. They were not new: they
+were owners sync had **never** selected.
+
+Index's post-scan resolution (`index::resolve::resolve_and_apply`) replaces a provisional compound owner
+("Jimmy Regal And The Royals") with the artists it names, often creating them. The folder scan stamps
+`lastIndexedAt` on the owners *it* settles; this pass never stamped the ones it substituted. Sync's
+pending query (`get_artists_pending_sync`) requires `lastIndexedAt IS NOT NULL`, so those artists were
+invisible to every sync ever run — including the "full" one. Measured: 5,445 owning artists with no
+`lastIndexedAt`, 437 releases owned only by them, 406 of those `UNMATCHED` because nothing had ever tried.
+
+- **Fix** (commit `55a9a230`): the owner insert returns the artists it actually linked (`RETURNING`) and
+  stamps their `lastIndexedAt` in the same transaction. An owner that already held the release is not
+  re-queued.
+- **Backfill**: 5,490 owning artists stamped directly. Undo record: `logs/undo17_never_indexed.txt`
+  (ids whose `lastIndexedAt` was NULL). They now sit in the normal sync backlog — `./sync && ./tidy`
+  picks them up; nothing else is needed.
+
+### `repair_recording_tags.py` never ran
+
+§5 of `docs/sync_decisions.md` and earlier notes said the recording-tags repair had run. It had not: the
+script died at parse time on the NAS's Python 3.11 (a nested-quote f-string only legal from 3.12), so no
+file was ever repaired. Fixed and run 2026-09-18:
+
+- FŒHN (`--apply --only`): 8 files blanked, confirmed by re-reading the tags afterwards; no other tag
+  and no audio touched (mtime changed only on those 8).
+- Elvis Presley dry run: 1,279 changes planned, all rewrites to the recording id.
+- Library-wide (`--apply --workers 8 --resume`): started 2026-09-18 13:53, 1,901,672 candidate files,
+  I/O bound at ~2,200 files/min (~14h). Result: pending.
+- Change record (path, action, old value, new value) kept as the undo: `logs/recording_tags_*.csv`.
+
+### `dedupe_artist_images.py` never ran either
+
+Same story: the NAS host has no `psycopg2`, so the 2026-09-15 throwaway had never started. Run from a
+disposable `python:3.12-slim` container (`--network host`). Dry run: 133 byte-identical groups, 103 already
+correct, 30 skipped (no shared root folder / ambiguous / too few rows), 17 rows to clear — aliases and
+members wearing the main act's photo (Yusuf Islam → Cat Stevens, Wagon Christ → Luke Vibert, nine Sam
+Rivers ensembles, The Wailers, Terri Nunn, Snoop Lion, Wayne Hussey, …). Applied: 17 `Artist.image`
+NULLed, 17 files removed. Undo record: `logs/undo18_artist_images.tsv` (every `id, image` before the
+run) + `logs/undo18_artist_images.tgz` (the whole `img/artists/` directory before the run).
+
+### Cleanup
+
+Both scripts and `oneoff/` deleted from the repo and the NAS. Every scratch file of rounds 1-6 removed
+from NAS `/tmp`, the Postgres container's `/tmp` and `logs/` (artist-id lists, dumps, run logs). Kept on
+purpose in NAS `logs/`: `undo16_*.tsv`, `undo17_never_indexed.txt`, `undo18_artist_images.*`,
+`recording_tags_*.csv`.
