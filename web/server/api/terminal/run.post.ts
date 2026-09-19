@@ -14,29 +14,7 @@ import {
   stripAnsi,
   withWebFlag,
 } from '~/server/utils/terminalCommand'
-
-function tmuxAvailable(): boolean {
-  try {
-    execSync('tmux -V', { stdio: 'ignore' })
-    return true
-  }
-  catch {
-    return false
-  }
-}
-
-// The tmux session is created with the wrapper script as its command, so it disappears the moment that
-// script exits (cleanly, crashed, or killed). A live session is therefore the only proof a run is
-// still going - a sentinel-less log on its own only proves the *last* run didn't write one.
-function tmuxSessionAlive(session: string): boolean {
-  try {
-    execSync(`tmux has-session -t "${session}" 2>/dev/null`, { stdio: 'ignore' })
-    return true
-  }
-  catch {
-    return false
-  }
-}
+import { tmuxAvailable, tmuxSessionAlive } from '~/server/utils/tmuxSessions'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{

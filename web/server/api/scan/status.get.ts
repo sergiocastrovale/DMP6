@@ -1,4 +1,5 @@
 import { prisma } from '~/server/utils/prisma'
+import { findReconnectableSessions } from '~/server/utils/tmuxSessions'
 import type { ScanStatus } from '~/types/scan'
 
 export default defineEventHandler(async (): Promise<ScanStatus> => {
@@ -23,7 +24,13 @@ export default defineEventHandler(async (): Promise<ScanStatus> => {
     lockedAt: stats?.scanLockedAt?.toISOString() ?? null,
     pid: stats?.scanPid ?? null,
     args: null,
-    sessionName: lockedBy ? `dmp-${lockedBy}` : null,
+    // Best-effort single-session convenience for this endpoint's existing simple UI
+    // (RealTimeStatus.vue/FirstScan.vue) - NOT derived from scanLockedBy (that only names the
+    // currently-executing binary, never the tmux session name, and is wrong for every custom session:
+    // every per-artist action and wrapper script like ./refresh). When more than one session is live
+    // this only ever surfaces one of them; the real multi-session source of truth is
+    // GET /api/terminal/sessions, which stores/terminal.ts's autoReconnectOrphan() actually uses.
+    sessionName: findReconnectableSessions()[0]?.session ?? null,
     lastScanStartedAt: stats?.lastScanStartedAt?.toISOString() ?? null,
     lastScanEndedAt: stats?.lastScanEndedAt?.toISOString() ?? null,
     lastIndexedFolder: stats?.lastIndexedFolder ?? null,

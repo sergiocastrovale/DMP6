@@ -1,6 +1,7 @@
 import { prisma } from '~/server/utils/prisma'
 import { requireRole } from '~/server/utils/permissions'
 import { isOwnScanProcess } from '~/server/utils/scanLock'
+import { findReconnectableSessions, killTmuxSession } from '~/server/utils/tmuxSessions'
 
 export default defineEventHandler(async (event) => {
   requireRole(event, 'ADMIN')
@@ -24,6 +25,12 @@ export default defineEventHandler(async (event) => {
     where: { id: 'main' },
     data: { scanLockedBy: null, scanLockedAt: null, scanPid: null },
   })
+
+  // Same reasoning as terminal/unlock.post.ts: clearing the DB row alone leaves the tmux session
+  // itself alive, so the next run with the same session name 409s right back.
+  for (const s of findReconnectableSessions()) {
+    killTmuxSession(s.session)
+  }
 
   return { ok: true }
 })

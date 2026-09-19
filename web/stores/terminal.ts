@@ -2,6 +2,10 @@ import { defineStore } from 'pinia'
 import { useGlobalStore } from '~/stores/global'
 import { isAbortError } from '~/helpers/functions'
 import { appendTerminalLine, parseDoneExitCode, parseSseEvents } from '~/helpers/sse'
+import { RECONNECT_BACKOFF_MS, RECONNECT_STOP_GUARD_MS } from '~/helpers/constants'
+import type { TerminalSessionSummary, TerminalSessionsResponse } from '~/types/scan'
+
+const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
 export const useTerminalStore = defineStore('terminal', () => {
   const viewMode = ref<'toast' | 'sidebar'>('toast')
@@ -11,6 +15,17 @@ export const useTerminalStore = defineStore('terminal', () => {
   const exitCode = ref<number | null>(null)
   const currentSession = ref<string | null>(null)
   const currentCommand = ref<string | null>(null)
+  // Set when streamSSE's fetch/reader throws something other than an intentional abort (a dropped
+  // network connection, e.g. the QUIC error that motivated this) - kept separate from exitCode
+  // because "connection lost" isn't "the job finished", and from isRunning because the job is (as
+  // far as we know) still running server-side, we just can't see it. Read by isSidebarVisible/
+  // isToastVisible so the panel stays up instead of silently vanishing, and drives
+  // maybeAutoReconnect() below.
+  const connectionLost = ref(false)
+  // Sessions GET /api/terminal/sessions reports as alive+unfinished that this tab has no memory of
+  // starting (a fresh page load, or a reload after a drop) - populated by checkForOrphanSessions(),
+  // consumed by autoReconnectOrphan() and by RealTimeStatus.vue's manual fallback.
+  const orphanSessions = ref<TerminalSessionSummary[]>([])
   // Survives streamSSE's finally block (which nulls currentSession/currentCommand) so a lock-blocked
   // run - script-backed (run/runSequence) or SSE-backed (runStream, e.g. merge) - can be retried after
   // Force Unlock without the caller re-supplying its command/args/session or url/body.
@@ -30,14 +45,30 @@ export const useTerminalStore = defineStore('terminal', () => {
   let sequenceGeneration = 0
   let stoppedGeneration = -1
 
+  // A narrower, session-keyed guard for the new auto-reconnect paths (maybeAutoReconnect, orphan
+  // recovery) - stoppedGeneration only protects runSequence()'s stage loop, not a retry loop kicked
+  // off after streamSSE() has already resolved. stop() records the session the instant it's called
+  // (synchronously, before any await), so the guard is in place regardless of network timing -
+  // covering both "Stop clicked while connectionLost is already showing" and "Stop clicked during the
+  // backoff wait". Not persisted across a real page reload: a reload right after Stop reconnecting to
+  // confirm it actually landed is correct behavior, not a bug (see terminal.test.ts).
+  const recentlyStoppedAt = new Map<string, number>()
+  const wasRecentlyStopped = (session: string): boolean => {
+    const t = recentlyStoppedAt.get(session)
+    return t !== undefined && Date.now() - t < RECONNECT_STOP_GUARD_MS
+  }
+
   async function streamSSE(url: string, body: Record<string, any>) {
     lines.value = []
     exitCode.value = null
     isRunning.value = true
     dismissed.value = false
     viewMode.value = 'toast'
+    connectionLost.value = false
 
     abortController = new AbortController()
+    let aborted = false
+    let nonOk = false
 
     try {
       const response = await fetch(url, {
@@ -48,6 +79,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       })
 
       if (!response.ok) {
+        nonOk = true
         lines.value.push(`Error: ${response.status} ${response.statusText}`)
         isRunning.value = false
         return
@@ -84,16 +116,47 @@ export const useTerminalStore = defineStore('terminal', () => {
         }
       }
     } catch (e) {
-      if (!isAbortError(e)) {
+      if (isAbortError(e)) {
+        aborted = true
+      } else {
         lines.value.push(`Error: ${(e as Error).message}`)
+        connectionLost.value = true
       }
     } finally {
       isRunning.value = false
-      currentSession.value = null
-      currentCommand.value = null
+      // Only clear the session once we know nothing is left to reconnect to: the run genuinely
+      // concluded (exitCode set by a `done` event), was explicitly aborted, or never started (non-ok
+      // response). A bare connection-lost error keeps currentSession/currentCommand populated - that's
+      // what lets Stop still target the right session and lets maybeAutoReconnect() below know what to
+      // reconnect to.
+      if (aborted || nonOk || exitCode.value !== null) {
+        currentSession.value = null
+        currentCommand.value = null
+      }
       abortController = null
       useGlobalStore().refresh()
     }
+  }
+
+  // Bounded, backed-off retry after a dropped connection. `attempt` is how many retries have already
+  // been used getting here (0 the first time it's called, straight after the original run/reconnect
+  // failed) - RECONNECT_BACKOFF_MS[attempt] is the delay before trying retry number attempt+1. Not
+  // wired into runStream() (e.g. merge): there is no reconnect-equivalent resume endpoint for
+  // non-tmux SSE operations, and auto-retrying a non-idempotent op would be wrong.
+  async function maybeAutoReconnect(session: string, attempt = 0) {
+    if (!connectionLost.value) {return}
+    if (wasRecentlyStopped(session)) {
+      connectionLost.value = false
+      return
+    }
+    if (attempt >= RECONNECT_BACKOFF_MS.length) {return}
+    await delay(RECONNECT_BACKOFF_MS[attempt]!)
+    if (wasRecentlyStopped(session)) {
+      connectionLost.value = false
+      return
+    }
+    if (!connectionLost.value) {return}
+    await reconnect(session, attempt + 1)
   }
 
   async function run(command: string, args: string[], session?: string) {
@@ -101,7 +164,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     currentSession.value = resolvedSession
     currentCommand.value = command
     lastRetry.value = () => run(command, args, resolvedSession)
-    return streamSSE('/api/terminal/run', { command, args, session: resolvedSession })
+    await streamSSE('/api/terminal/run', { command, args, session: resolvedSession })
+    await maybeAutoReconnect(resolvedSession)
   }
 
   // Runs stages back to back, stopping at the first one the user cancels.
@@ -124,9 +188,13 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
 
-  async function reconnect(session: string) {
+  // `attempt` is passed through from maybeAutoReconnect when this is an automatic retry (so a failure
+  // here continues the same backoff sequence rather than restarting it); defaults to 0 for a fresh
+  // manual reconnect (e.g. RealTimeStatus.vue's button, or autoReconnectOrphan() below).
+  async function reconnect(session: string, attempt = 0) {
     currentSession.value = session
-    return streamSSE('/api/terminal/reconnect', { session })
+    await streamSSE('/api/terminal/reconnect', { session })
+    await maybeAutoReconnect(session, attempt)
   }
 
   // Generic SSE streamer for non-script operations (e.g. merge) that want their output in the terminal.
@@ -152,6 +220,9 @@ export const useTerminalStore = defineStore('terminal', () => {
   async function stop() {
     stoppedGeneration = sequenceGeneration
     if (currentSession.value) {
+      // Recorded synchronously, before any await, so the guard is in place the instant Stop is
+      // clicked regardless of network timing - see recentlyStoppedAt's comment above.
+      recentlyStoppedAt.set(currentSession.value, Date.now())
       try {
         await fetch('/api/terminal/stop', {
           method: 'POST',
@@ -179,12 +250,35 @@ export const useTerminalStore = defineStore('terminal', () => {
   }
 
   const isSidebarVisible = computed(() =>
-    viewMode.value === 'sidebar' && !dismissed.value && (isRunning.value || exitCode.value !== null),
+    viewMode.value === 'sidebar' && !dismissed.value
+    && (isRunning.value || exitCode.value !== null || connectionLost.value),
   )
 
   const isToastVisible = computed(() =>
-    viewMode.value === 'toast' && !dismissed.value && (isRunning.value || hasLockError.value),
+    viewMode.value === 'toast' && !dismissed.value
+    && (isRunning.value || hasLockError.value || connectionLost.value),
   )
+
+  // Orphan recovery for a store instance that never saw the run start (a fresh page load, a reload
+  // after a drop, or the drop happened on a page that wasn't even watching it). No-ops while already
+  // attached to something - checkForOrphanSessions() only matters when idle.
+  async function checkForOrphanSessions() {
+    if (isRunning.value || currentSession.value) {return}
+    try {
+      const res = await $fetch<TerminalSessionsResponse>('/api/terminal/sessions')
+      orphanSessions.value = res.sessions.filter(s => !wasRecentlyStopped(s.session))
+    }
+    catch { /* best-effort */ }
+  }
+
+  async function autoReconnectOrphan() {
+    await checkForOrphanSessions()
+    if (isRunning.value || currentSession.value) {return}
+    const first = orphanSessions.value[0]
+    if (first) {
+      await reconnect(first.session)
+    }
+  }
 
   // Clears the DB scan lock without touching whatever process holds it - the other script keeps
   // running. Caller decides what runs next; see unlockAndRerun() for the "run alongside it" path.
@@ -218,6 +312,8 @@ export const useTerminalStore = defineStore('terminal', () => {
     exitCode,
     currentSession,
     currentCommand,
+    connectionLost,
+    orphanSessions,
     stageIndex,
     stageTotal,
     hasLockError,
@@ -233,5 +329,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     stopAndClose,
     unlock,
     unlockAndRerun,
+    checkForOrphanSessions,
+    autoReconnectOrphan,
   }
 })

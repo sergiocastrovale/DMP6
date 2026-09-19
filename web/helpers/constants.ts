@@ -100,6 +100,19 @@ export const SHUFFLE_TOOLTIPS: Record<string, string> = {
 // capping keeps the reactive array (and every component re-scanning it per chunk) bounded (audit #92).
 export const TERMINAL_LINES_CAP = 5000
 
+// Terminal store auto-reconnect (stores/terminal.ts). RECONNECT_BACKOFF_MS: delays tried in order
+// after a dropped connection before giving up and leaving connectionLost showing (a network blip
+// resolves in seconds; a longer outage backs off rather than hammering the server). Same delays used
+// whether the drop happened mid-run() or mid-reconnect(). RECONNECT_STOP_GUARD_MS: how long after the
+// user presses Stop a session is considered "intentionally stopped" - auto-reconnect and the orphan
+// poll both skip it for this window, so Stop can't get raced by a reconnect attempt already in
+// flight. ORPHAN_POLL_MS: how often plugins/terminalReconnect.client.ts checks for a session running
+// in the background that this tab has no memory of (page reload, or the drop happened on a page that
+// was never watching the run at all).
+export const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 15000]
+export const RECONNECT_STOP_GUARD_MS = 30000
+export const ORPHAN_POLL_MS = 15000
+
 // Artist page download-status poll cadences. Live: a row is mid-acquisition (or a merge is running),
 // so it changes on its own every couple of seconds. Monitored: nothing is in flight, but background
 // auto-acquisition can create rows with no click in this tab, so keep a slow heartbeat. An

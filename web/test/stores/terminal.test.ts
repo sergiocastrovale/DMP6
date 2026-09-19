@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTerminalStore } from '../../stores/terminal'
 
 const fetchMock = vi.fn().mockResolvedValue({})
@@ -20,6 +20,20 @@ const sseResponse = (body: string, ok = true) => ({
         },
       }
     },
+  },
+})
+
+// A response whose body starts streaming fine (ok: true) but whose reader.read() then rejects mid-
+// stream - exactly what a dropped connection (e.g. the QUIC error that motivated this) looks like to
+// streamSSE(), as opposed to a clean non-ok HTTP response.
+const sseDroppedResponse = () => ({
+  ok: true,
+  status: 200,
+  statusText: 'OK',
+  body: {
+    getReader: () => ({
+      read: async () => { throw new Error('network error') },
+    }),
   },
 })
 
@@ -324,5 +338,194 @@ describe('useTerminalStore', () => {
     expect(mergeCalls).toHaveLength(2)
     expect(JSON.parse(mergeCalls[1]![1].body)).toEqual({ ids: ['abc'] })
     expect(store.exitCode).toBe(0)
+  })
+
+  // Regression coverage for the disappearing-terminal bug: a dropped connection used to be treated
+  // identically to "nothing was ever running" (currentSession/currentCommand nulled, exitCode left
+  // null), collapsing isSidebarVisible/isToastVisible to false even though the job was still running
+  // server-side.
+  describe('connection drop handling', () => {
+    // run()'s tail call to maybeAutoReconnect() means a persistently-dropped fetch keeps retrying
+    // (real backoff delays) unless time is faked - these tests only care about the state right after
+    // streamSSE()'s own catch/finally, before any retry fires, so they fake timers, advance 0ms (just
+    // enough to flush microtasks through that point) to snapshot state, then let the run() promise
+    // resolve cleanly to avoid leaking a pending timer/promise into the next test.
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => { vi.useRealTimers() })
+
+    it('a reader.read() rejection sets connectionLost and keeps currentSession populated', async () => {
+      const fakeFetch = vi.fn().mockResolvedValue(sseDroppedResponse())
+      vi.stubGlobal('fetch', fakeFetch)
+      const store = useTerminalStore()
+
+      const runPromise = store.run('./sync', [], 'sess-drop')
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(store.connectionLost).toBe(true)
+      expect(store.isRunning).toBe(false)
+      expect(store.exitCode).toBeNull()
+      expect(store.currentSession).toBe('sess-drop')
+      expect(store.currentCommand).toBe('./sync')
+
+      await store.stop()
+      await vi.advanceTimersByTimeAsync(30000)
+      await runPromise
+    })
+
+    it('isSidebarVisible/isToastVisible stay true on connectionLost even though exitCode is null', async () => {
+      const fakeFetch = vi.fn().mockResolvedValue(sseDroppedResponse())
+      vi.stubGlobal('fetch', fakeFetch)
+      const store = useTerminalStore()
+
+      const runPromise = store.run('./sync', [], 'sess-drop-vis')
+      await vi.advanceTimersByTimeAsync(0)
+      // streamSSE() resets viewMode to 'toast' at the start of every run - expand() has to happen
+      // after the drop, same as a user clicking into the sidebar once it's already showing.
+      store.expand()
+
+      expect(store.exitCode).toBeNull()
+      expect(store.isSidebarVisible).toBe(true)
+      store.minimize()
+      expect(store.isToastVisible).toBe(true)
+
+      await store.stop()
+      await vi.advanceTimersByTimeAsync(30000)
+      await runPromise
+    })
+
+    it('stop() still targets the right session after a drop (currentSession was preserved)', async () => {
+      const fakeFetch = vi.fn().mockResolvedValue(sseDroppedResponse())
+      vi.stubGlobal('fetch', fakeFetch)
+      const store = useTerminalStore()
+
+      const runPromise = store.run('./sync', [], 'sess-drop-stop')
+      await vi.advanceTimersByTimeAsync(0)
+      fakeFetch.mockClear()
+      fakeFetch.mockResolvedValue({ ok: true })
+      await store.stop()
+
+      expect(fakeFetch).toHaveBeenCalledWith('/api/terminal/stop', expect.objectContaining({
+        body: JSON.stringify({ session: 'sess-drop-stop' }),
+      }))
+
+      await vi.advanceTimersByTimeAsync(30000)
+      await runPromise
+    })
+
+    it('a non-ok HTTP response still clears currentSession (never started, nothing to reconnect to)', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse('', false)))
+      const store = useTerminalStore()
+
+      await store.run('./sync', [], 'sess-nonok')
+
+      expect(store.connectionLost).toBe(false)
+      expect(store.currentSession).toBeNull()
+    })
+  })
+
+  describe('auto-reconnect after a drop', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('automatically reconnects after the first backoff delay', async () => {
+      const fakeFetch = vi.fn()
+        .mockResolvedValueOnce(sseDroppedResponse())
+        .mockResolvedValueOnce(sseResponse('event: done\ndata: 0\n\n'))
+      vi.stubGlobal('fetch', fakeFetch)
+      const store = useTerminalStore()
+
+      const runPromise = store.run('./sync', [], 'sess-auto')
+      await vi.advanceTimersByTimeAsync(20000)
+      await runPromise
+
+      const urls = fakeFetch.mock.calls.map(c => c[0])
+      expect(urls).toEqual(['/api/terminal/run', '/api/terminal/reconnect'])
+      expect(JSON.parse(fakeFetch.mock.calls[1]![1].body)).toEqual({ session: 'sess-auto' })
+      expect(store.connectionLost).toBe(false)
+      expect(store.exitCode).toBe(0)
+    })
+
+    it('gives up after exhausting the backoff list, leaving connectionLost true', async () => {
+      const fakeFetch = vi.fn().mockResolvedValue(sseDroppedResponse())
+      vi.stubGlobal('fetch', fakeFetch)
+      const store = useTerminalStore()
+
+      const runPromise = store.run('./sync', [], 'sess-exhaust')
+      for (let i = 0; i < 8; i++) {
+        await vi.advanceTimersByTimeAsync(20000)
+      }
+      await runPromise
+
+      const reconnectCalls = fakeFetch.mock.calls.filter(c => c[0] === '/api/terminal/reconnect')
+      expect(reconnectCalls.length).toBeGreaterThan(0)
+      expect(store.connectionLost).toBe(true)
+    })
+
+    // The anti-race guard: stoppedGeneration alone only protects runSequence()'s stage loop, not a
+    // retry kicked off after streamSSE() has already resolved - this is what stops Stop from getting
+    // raced by a reconnect attempt already in flight.
+    it('stop() during the backoff window cancels the pending auto-reconnect', async () => {
+      const fakeFetch = vi.fn().mockResolvedValue(sseDroppedResponse())
+      vi.stubGlobal('fetch', fakeFetch)
+      const store = useTerminalStore()
+
+      const runPromise = store.run('./sync', [], 'sess-race')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(store.connectionLost).toBe(true)
+
+      fakeFetch.mockResolvedValue({ ok: true })
+      await store.stop()
+
+      await vi.advanceTimersByTimeAsync(30000)
+      await runPromise
+
+      const reconnectCalls = fakeFetch.mock.calls.filter(c => c[0] === '/api/terminal/reconnect')
+      expect(reconnectCalls).toHaveLength(0)
+      expect(store.connectionLost).toBe(false)
+    })
+  })
+
+  describe('orphan session recovery', () => {
+    it('checkForOrphanSessions does nothing while already attached to a session', async () => {
+      const store = useTerminalStore()
+      store.currentSession = 'already-running'
+      const dollarFetch = vi.fn()
+      vi.stubGlobal('$fetch', dollarFetch)
+
+      await store.checkForOrphanSessions()
+
+      expect(dollarFetch).not.toHaveBeenCalled()
+    })
+
+    it('autoReconnectOrphan reconnects to the first session GET /api/terminal/sessions reports', async () => {
+      const dollarFetch = vi.fn().mockResolvedValue({ sessions: [{ session: 'rebuild-al-jolson', startedAt: null }] })
+      vi.stubGlobal('$fetch', dollarFetch)
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse('event: done\ndata: 0\n\n')))
+      const store = useTerminalStore()
+
+      await store.autoReconnectOrphan()
+
+      expect(dollarFetch).toHaveBeenCalledWith('/api/terminal/sessions')
+      expect(store.exitCode).toBe(0)
+    })
+
+    it('skips a session this tab recently stopped itself', async () => {
+      const dollarFetch = vi.fn().mockResolvedValue({ sessions: [{ session: 'sess-stopped', startedAt: null }] })
+      vi.stubGlobal('$fetch', dollarFetch)
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+      const store = useTerminalStore()
+      store.currentSession = 'sess-stopped'
+      await store.stop()
+      store.currentSession = null
+
+      await store.checkForOrphanSessions()
+
+      expect(store.orphanSessions).toEqual([])
+    })
   })
 })

@@ -58,8 +58,13 @@ const stageSuffix = computed(() =>
   terminal.stageTotal && terminal.stageTotal > 1 ? ` - stage ${terminal.stageIndex}/${terminal.stageTotal}` : '',
 )
 
+// Manual fallback for the two cases the global auto-reconnect (plugins/terminalReconnect.client.ts)
+// doesn't cover on its own: a lock held with no session (nothing to reconnect to, needs Force
+// Unlock), or the poll hasn't caught up yet. Excludes terminal.connectionLost - when that's true this
+// tab is already mid-retry (stores/terminal.ts's maybeAutoReconnect), so showing this banner too would
+// just contradict the toast/sidebar already handling it.
 const staleLock = computed(() =>
-  !terminal.isRunning && status.value?.isRunning ? status.value : null,
+  !terminal.isRunning && !terminal.connectionLost && status.value?.isRunning ? status.value : null,
 )
 
 const reconnecting = ref(false)

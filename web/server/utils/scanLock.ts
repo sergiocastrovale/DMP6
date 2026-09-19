@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs'
 
 // Binaries that call common::lock::acquire_lock
-// (scripts/{index,sync,fix,delete,nuke,playlists}/src/main.rs) - the only values
-// Statistics.scanLockedBy can ever hold. Keep in sync with those call sites.
-export const KNOWN_LOCK_BINARIES = new Set(['index', 'sync', 'fix', 'delete', 'nuke', 'playlists'])
+// (scripts/{index,sync,fix,delete,nuke,playlists,add,tidy}/src/main.rs) - the only values
+// Statistics.scanLockedBy can ever hold. Keep in sync with those call sites
+// (`grep -rl acquire_lock scripts/*/src/main.rs`).
+export const KNOWN_LOCK_BINARIES = new Set(['index', 'sync', 'fix', 'delete', 'nuke', 'playlists', 'add', 'tidy'])
 
 // True when `comm` (a /proc/<pid>/comm read) names the expected lock-holding binary. Extracted from
 // the fs read below so the matching logic is unit-testable without a real /proc filesystem.

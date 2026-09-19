@@ -30,3 +30,15 @@ export interface ScanStatus {
   lastIndexedFolder: string | null
   lastSyncedArtist: string | null
 }
+
+// GET /api/terminal/sessions - every live, reconnectable DMP tmux session (see
+// server/utils/tmuxSessions.ts), used by stores/terminal.ts's autoReconnectOrphan() for cross-page/
+// cross-reload recovery.
+export interface TerminalSessionSummary {
+  session: string
+  startedAt: string | null
+}
+
+export interface TerminalSessionsResponse {
+  sessions: TerminalSessionSummary[]
+}
