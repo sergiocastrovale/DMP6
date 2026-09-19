@@ -30,6 +30,8 @@ BUGS
 
 Disabiguating artists: NAPA's catalogue features both portuguese and chilean band in one catalogue. These catalogues should be separated - best strategy? The name of the band isn't the problem - it's the slug generation and the way we catalogue them (they can't be together).
 
+multi-disk albums that are not all in a parent folder will never be seen as part of the same box set / collection. Must fix in folders
+
 3 identical "Dear Michael: The Motown Collection" cards — diagnosed, not fixed: the album matcher bound three separate 9-12 track albums to one 257-track box. See `docs/sync_decisions.md` §19 item 7.
 
 Compilations owned by dozens of unrelated artists (a Harold Land compilation on Lana Del Rey's page) — scattered per-track artist tags; index ownership. See `docs/sync_decisions.md` §19 item 8.
@@ -52,3 +54,5 @@ In downloads page "1 release have no MusicBrainz release date and can never be a
 TIDY
 
 Add proper eslint and apply everywhere
+
+docs are all over the place. We need one consistent doc with the entire flow and ifs / trade-offs - from index to sync to tidy. What decisions do we make? Why and how? Are they because of faulty metadata or true problems with grouping / UI display that we need to tackle even with pristine metadata (particularly in compilations, multi-disk albums, box-sets)? Are we logging the output of each script? Where? Make it bullet-point and almost pseudo-code based - e.g. "1. We find a multi-disk release 2. We then test against X 2.1 Is it Y? Then ...". For each of the inner flows and decision making, also include a mermaid / markdown diagram. Make it SUPER simple to understand for non-technical people. 
