@@ -309,7 +309,7 @@ export const statuses: { value: ReleaseStatus, label: string, tone: Tone, descri
     value: 'UNKNOWN',
     label: 'Unknown',
     tone: 'muted',
-    description: 'Status not yet determined. Needs sync.',
+    description: 'Not yet scored, or the files don\'t identify a single album.',
     weight: 6,
   },
   {

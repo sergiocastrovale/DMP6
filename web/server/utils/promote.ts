@@ -233,15 +233,14 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
   }
 
   const reloaded = lr
-    ? await prisma.localRelease.findUnique({ where: { id: lr.id }, select: { id: true, releaseId: true, matchStatus: true, forcedComplete: true } })
+    ? await prisma.localRelease.findUnique({ where: { id: lr.id }, select: { id: true, releaseId: true, matchStatus: true, forcedComplete: true, statusReason: true } })
     : null
 
   // Keep an exact match (matchStatus COMPLETE) or a superset (EXTRA_TRACKS — every MusicBrainz track
-  // present, plus bonus/deluxe tracks the matched edition doesn't have). The Rust matcher already tries
-  // to bind a deluxe sibling edition first when the local folder overshoots; EXTRA_TRACKS is what's left
-  // when no such sibling exists, and is a legitimate copy, not a data-quality problem — never purge it.
-  // forcedComplete is the manual "treat as complete" escape hatch — honour it. Only a genuine shortfall
-  // (INCOMPLETE / MISSING_TRACKS, or no MB identity at all) is discarded and left to retry.
+  // present, plus bonus/deluxe tracks the matched edition doesn't have) — a legitimate copy, not a
+  // data-quality problem, never purge it. forcedComplete is the manual "treat as complete" escape
+  // hatch — honour it. Only a genuine shortfall (INCOMPLETE / MISSING_TRACKS, no MB identity at all,
+  // or a no-guessing consensus reason — docs/no_guessing.md) is discarded and left to retry.
   const matched = !!reloaded?.releaseId
   const complete = matched && (reloaded!.forcedComplete || reloaded!.matchStatus === 'COMPLETE' || reloaded!.matchStatus === 'EXTRA_TRACKS')
 
@@ -300,7 +299,10 @@ async function stampMerged(row: MergeRow, music: string, rel: string, maxDownloa
   // library. Remove them and bump the attempt cap so a complete copy can still surface later (the
   // MISSING placeholder is deliberately NOT retired here).
   let reason = 'no MusicBrainz identity after enrichment'
-  if (matched) {
+  if (!matched && reloaded?.statusReason) {
+    reason = reloaded.statusReason
+  }
+  else if (matched) {
     const [expected, present] = await Promise.all([
       prisma.musicBrainzReleaseTrack.count({ where: { releaseId: reloaded!.releaseId! } }),
       prisma.localReleaseTrack.count({ where: { localReleaseId: reloaded!.id } }),

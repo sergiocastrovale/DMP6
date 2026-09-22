@@ -565,6 +565,10 @@ pub async fn get_rescore_targets(
                 r#"SELECT DISTINCT lr.id FROM "LocalRelease" lr
                    JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
                    WHERE lr."matchStatus" = 'UNKNOWN' AND lr."releaseId" IS NOT NULL
+                     -- A no-guessing consensus reason (docs/no_guessing.md) always ships with
+                     -- releaseId IS NULL, so this is already implied - explicit so --rescore-only
+                     -- --all can never resurrect a terminal row even if that invariant ever slips.
+                     AND lr."statusReason" IS NULL
                      AND lra."artistId" = ANY($1)"#,
             )
             .bind(artist_ids)
@@ -573,7 +577,8 @@ pub async fn get_rescore_targets(
         }
         None => {
             sqlx::query_scalar(
-                r#"SELECT id FROM "LocalRelease" WHERE "matchStatus" = 'UNKNOWN' AND "releaseId" IS NOT NULL"#,
+                r#"SELECT id FROM "LocalRelease"
+                   WHERE "matchStatus" = 'UNKNOWN' AND "releaseId" IS NOT NULL AND "statusReason" IS NULL"#,
             )
             .fetch_all(pool)
             .await?
@@ -968,6 +973,7 @@ pub async fn update_local_release_match(
         r#"UPDATE "LocalRelease"
            SET "releaseId" = $1,
                "matchStatus" = $2::"ReleaseStatus",
+               "statusReason" = NULL,
                "updatedAt" = $3
            WHERE id = $4"#,
     )
@@ -994,6 +1000,7 @@ pub async fn mark_local_release_unmatched(
         r#"UPDATE "LocalRelease"
            SET "releaseId" = NULL,
                "matchStatus" = 'UNMATCHED',
+               "statusReason" = NULL,
                "updatedAt" = $1
            WHERE id = $2"#,
     )
@@ -1850,6 +1857,9 @@ pub async fn get_artists_pending_sync(pool: &PgPool) -> Result<Vec<ArtistSyncRow
                      SELECT 1 FROM "LocalRelease" lr
                      JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
                      WHERE lra."artistId" = a.id AND lr."matchStatus" = 'UNKNOWN'
+                       -- A no-guessing consensus reason (docs/no_guessing.md) is terminal: without
+                       -- this a flagged release would requeue its artist on every run, forever.
+                       AND lr."statusReason" IS NULL
                    )
                  )
                ORDER BY name"#,
@@ -1965,13 +1975,22 @@ pub struct LocalReleaseRow {
     /// without this the per-release matcher re-binds it from the tag on every run while the box pass
     /// re-points it back - the two fight, and the disc never settles on a score. See its use in main.rs.
     pub dissolved_bound_mb_id: Option<String>,
+    /// No-guessing release placement (docs/no_guessing.md): the reason index/a previous sync parked
+    /// this release at UNKNOWN, or None when it's clean/UNMATCHED/bound. Read straight into the row
+    /// so main.rs's consensus gate needs no extra query.
+    pub status_reason: Option<String>,
+    /// Whether this folder is a fold survivor (`LocalReleaseMember` rows exist) - a folded release
+    /// legitimately mixes per-disc album tags, so the consensus gate exempts it same as a dissolved
+    /// box disc.
+    pub is_folded: bool,
 }
 
 pub async fn get_local_releases_for_artist(
     pool: &PgPool,
     artist_id: &str,
 ) -> Result<Vec<LocalReleaseRow>, sqlx::Error> {
-    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>)> = sqlx::query_as(
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, Option<String>, bool)> = sqlx::query_as(
         r#"SELECT lr.id, lr.title, lr.year, lr."forcedComplete", lr."releaseId", lr."matchStatus"::text,
                   lr.image, lr."imageUrl", lr."mediumPosition",
                   -- Any binding the box pass owns, not just a dissolved one. A disc it kept on the
@@ -1980,7 +1999,9 @@ pub async fn get_local_releases_for_artist(
                   -- with the standalone "Ring Ring" id, so the tag would drag it off the box.
                   CASE WHEN lr."boxReleaseId" IS NOT NULL OR lr."mediumPosition" IS NOT NULL
                        THEN (SELECT b."musicbrainzId" FROM "MusicBrainzRelease" b WHERE b.id = lr."releaseId")
-                  END
+                  END,
+                  lr."statusReason",
+                  EXISTS (SELECT 1 FROM "LocalReleaseMember" m WHERE m."localReleaseId" = lr.id) AS is_folded
            FROM "LocalRelease" lr
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
            WHERE lra."artistId" = $1
@@ -2004,6 +2025,8 @@ pub async fn get_local_releases_for_artist(
                 image_url,
                 medium_position,
                 dissolved_bound_mb_id,
+                status_reason,
+                is_folded,
             )| {
                 LocalReleaseRow {
                     id,
@@ -2015,6 +2038,8 @@ pub async fn get_local_releases_for_artist(
                     has_cover: image.is_some() || image_url.is_some(),
                     medium_position,
                     dissolved_bound_mb_id,
+                    status_reason,
+                    is_folded,
                 }
             },
         )
@@ -2029,6 +2054,8 @@ pub struct LocalTrackRow {
     pub id: String,
     pub title: Option<String>,
     pub artist: Option<String>,
+    pub album: Option<String>,
+    pub year: Option<i32>,
     pub mb_release_id: Option<String>,
     pub mb_release_group_id: Option<String>,
     pub mb_album_artist_id: Option<String>,
@@ -2044,9 +2071,9 @@ pub async fn get_local_tracks_for_release(
     release_id: &str,
 ) -> Result<Vec<LocalTrackRow>, sqlx::Error> {
     #[allow(clippy::type_complexity)]
-    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>, Option<i32>)> =
+    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<i32>, Option<i32>)> =
         sqlx::query_as(
-            r#"SELECT id, title, artist, "mbReleaseId", "mbReleaseGroupId", "mbAlbumArtistId", "trackNumber", "discNumber", duration
+            r#"SELECT id, title, artist, album, year, "mbReleaseId", "mbReleaseGroupId", "mbAlbumArtistId", "trackNumber", "discNumber", duration
                FROM "LocalReleaseTrack"
                WHERE "localReleaseId" = $1
                ORDER BY "discNumber", "trackNumber""#,
@@ -2062,6 +2089,8 @@ pub async fn get_local_tracks_for_release(
                 id,
                 title,
                 artist,
+                album,
+                year,
                 mb_release_id,
                 mb_release_group_id,
                 mb_album_artist_id,
@@ -2073,6 +2102,8 @@ pub async fn get_local_tracks_for_release(
                     id,
                     title,
                     artist,
+                    album,
+                    year,
                     mb_release_id,
                     mb_release_group_id,
                     mb_album_artist_id,

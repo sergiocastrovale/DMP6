@@ -136,6 +136,12 @@ const ddClass = 'font-mono text-xs text-stone-100/60'
               <span> — a different edition, so this one still counts as missing and can be downloaded on its own.</span>
             </div>
           </div>
+          <div v-if="release.statusReason && !containmentContainer">
+            <dt :class="dtClass">Status reason</dt>
+            <dd :class="ddClass">
+             {{ release.statusReason }}
+            </dd>
+          </div>
           <div v-if="release.year">
             <dt :class="dtClass">Year</dt>
             <dd :class="dtClass">

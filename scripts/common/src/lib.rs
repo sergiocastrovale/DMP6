@@ -1,6 +1,7 @@
 pub mod artists;
 pub mod checkpoint;
 pub mod config;
+pub mod consensus;
 pub mod db;
 pub mod error_log;
 pub mod filters;

@@ -899,7 +899,9 @@ fn guess_box_title(parent_folder: &str) -> String {
 struct SiblingRow {
     local_id: String,
     folder_path: String,
-    majority_mb_release_id: Option<String>,
+    /// Unanimous only (docs/no_guessing.md) - never a plurality. `NULL` when the folder's tracks
+    /// carry no `mbReleaseId` at all, or disagree on it.
+    unanimous_mb_release_id: Option<String>,
     /// This folder already sits on a medium (`mediumPosition`) or came out of a dissolve
     /// (`boxReleaseId`). A group where every sibling is placed needs no MusicBrainz call to be
     /// re-checked - see `candidates_from_db`.
@@ -935,15 +937,16 @@ async fn find_sibling_groups(
         WITH f AS (
           SELECT lr.id, lr."folderPath" AS folder_path,
                  regexp_replace(lr."folderPath", '/[^/]+$', '') AS parent,
-                 (SELECT t."mbReleaseId" FROM "LocalReleaseTrack" t
-                    WHERE t."localReleaseId" = lr.id AND t."mbReleaseId" IS NOT NULL
-                    GROUP BY t."mbReleaseId" ORDER BY count(*) DESC, t."mbReleaseId" ASC LIMIT 1) AS majority_mb,
+                 (SELECT CASE WHEN count(DISTINCT t."mbReleaseId") = 1
+                              THEN min(t."mbReleaseId") END
+                    FROM "LocalReleaseTrack" t
+                   WHERE t."localReleaseId" = lr.id AND t."mbReleaseId" IS NOT NULL) AS unanimous_mb_release_id,
                  (lr."mediumPosition" IS NOT NULL OR lr."boxReleaseId" IS NOT NULL) AS placed
           FROM "LocalRelease" lr
           WHERE lr."folderPath" IS NOT NULL
             AND array_length(string_to_array(lr."folderPath", '/'), 1) >= 4
         )
-        SELECT f.id, f.folder_path, f.parent, f.majority_mb, f.placed
+        SELECT f.id, f.folder_path, f.parent, f.unanimous_mb_release_id, f.placed
         FROM f
         WHERE f.parent IN (SELECT parent FROM f GROUP BY parent HAVING count(*) > 1)
           AND ($1::text[] IS NULL OR f.parent IN (
@@ -959,11 +962,11 @@ async fn find_sibling_groups(
     .await?;
 
     let mut groups: Vec<SiblingGroup> = Vec::new();
-    for (id, folder_path, parent, majority_mb, placed) in rows {
+    for (id, folder_path, parent, unanimous_mb, placed) in rows {
         let row = SiblingRow {
             local_id: id,
             folder_path,
-            majority_mb_release_id: majority_mb,
+            unanimous_mb_release_id: unanimous_mb,
             placed,
         };
         match groups.last_mut() {
@@ -1031,9 +1034,10 @@ async fn nested_groups(
                    AND (c.id = r.root_id OR left(c.fp, length(r.root_fp) + 1) = r.root_fp || '/')
         )
         SELECT mem.root_fp, mem.id, mem.fp,
-               (SELECT t."mbReleaseId" FROM "LocalReleaseTrack" t
-                  WHERE t."localReleaseId" = mem.id AND t."mbReleaseId" IS NOT NULL
-                  GROUP BY t."mbReleaseId" ORDER BY count(*) DESC, t."mbReleaseId" ASC LIMIT 1)
+               (SELECT CASE WHEN count(DISTINCT t."mbReleaseId") = 1
+                            THEN min(t."mbReleaseId") END
+                  FROM "LocalReleaseTrack" t
+                 WHERE t."localReleaseId" = mem.id AND t."mbReleaseId" IS NOT NULL)
         FROM members mem
         WHERE $1::text[] IS NULL OR mem.root_fp IN (
                 SELECT m2.root_fp FROM members m2
@@ -1047,11 +1051,11 @@ async fn nested_groups(
     .await?;
 
     let mut candidates: Vec<SiblingGroup> = Vec::new();
-    for (root, id, folder_path, majority_mb) in rows {
+    for (root, id, folder_path, unanimous_mb) in rows {
         let row = SiblingRow {
             local_id: id,
             folder_path,
-            majority_mb_release_id: majority_mb,
+            unanimous_mb_release_id: unanimous_mb,
             placed: false,
         };
         match candidates.last_mut() {
@@ -1348,7 +1352,7 @@ async fn apply_fold(
         r#"UPDATE "LocalRelease"
            SET "groupKey" = $1, "folderPath" = $2, "releaseId" = $3, "mediumPosition" = NULL,
                "boxReleaseId" = NULL, "boxMediumPosition" = NULL, "matchStatus" = 'UNKNOWN',
-               "updatedAt" = $4
+               "statusReason" = NULL, "updatedAt" = $4
            WHERE id = $5"#,
     )
     .bind(format!("folder:{}", plan.folder_path))
@@ -1428,7 +1432,8 @@ async fn apply_dissolve(
                 let res = sqlx::query(
                     r#"UPDATE "LocalRelease"
                        SET "releaseId" = $1, "mediumPosition" = $2, "boxReleaseId" = $3,
-                           "boxMediumPosition" = $4, "matchStatus" = 'UNKNOWN', "updatedAt" = $5
+                           "boxMediumPosition" = $4, "matchStatus" = 'UNKNOWN', "statusReason" = NULL,
+                           "updatedAt" = $5
                        WHERE id = $6
                          AND ("releaseId" IS DISTINCT FROM $1
                            OR "mediumPosition" IS DISTINCT FROM $2
@@ -1451,7 +1456,8 @@ async fn apply_dissolve(
                 let res = sqlx::query(
                     r#"UPDATE "LocalRelease"
                        SET "releaseId" = $1, "mediumPosition" = $2, "boxReleaseId" = NULL,
-                           "boxMediumPosition" = NULL, "matchStatus" = 'UNKNOWN', "updatedAt" = $3
+                           "boxMediumPosition" = NULL, "matchStatus" = 'UNKNOWN', "statusReason" = NULL,
+                           "updatedAt" = $3
                        WHERE id = $4
                          AND ("releaseId" IS DISTINCT FROM $1
                            OR "mediumPosition" IS DISTINCT FROM $2
@@ -1646,7 +1652,7 @@ pub async fn run_repair(
             reporter.sub_step(&format!(
                 "  [{}] embedded id: {}",
                 r.folder_path,
-                r.majority_mb_release_id.as_deref().unwrap_or("(none)")
+                r.unanimous_mb_release_id.as_deref().unwrap_or("(none)")
             ));
         }
 
@@ -1683,7 +1689,7 @@ pub async fn run_repair(
         let mut embedded_ids: std::collections::BTreeSet<String> = group
             .rows
             .iter()
-            .filter_map(|r| r.majority_mb_release_id.clone())
+            .filter_map(|r| r.unanimous_mb_release_id.clone())
             .collect();
         embedded_ids.extend(bound_box_mb_ids(pool, &local_ids).await);
         let embedded_ids: Vec<String> = embedded_ids.into_iter().collect();
@@ -2415,7 +2421,7 @@ mod tests {
         SiblingRow {
             local_id: id.to_string(),
             folder_path: path.to_string(),
-            majority_mb_release_id: None,
+            unanimous_mb_release_id: None,
             placed: false,
         }
     }

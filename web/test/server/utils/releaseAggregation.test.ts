@@ -38,6 +38,7 @@ const localRelease = (overrides: Partial<LocalReleaseRow> & { id: string }): Loc
   image: null,
   imageUrl: null,
   matchStatus: 'UNMATCHED',
+  statusReason: null,
   releaseId: null,
   totalPlayCount: 0,
   tracks: [],
@@ -95,6 +96,19 @@ describe('buildLocalAndGapCards - core aggregation', () => {
     expect(cards[0]).toMatchObject({ hasLocal: true, isMusicBrainz: false, localReleaseId: 'lr1' })
     expect(coveredMbIds.size).toBe(0)
     expect(appearsOnLocal).toEqual([])
+  })
+
+  it('carries a no-guessing consensus statusReason onto the unbound card (docs/no_guessing.md)', () => {
+    const lr = localRelease({
+      id: 'lr1',
+      releaseId: null,
+      matchStatus: 'UNKNOWN',
+      statusReason: 'Tracks in the release folder disagree in \'album\' metadata field',
+    })
+    const { cards } = buildLocalAndGapCards({
+      localReleases: [lr], mbById: new Map(), coArtistMap: new Map(), connectedArtistByRelease: new Map(), resolveImage,
+    })
+    expect(cards[0]!.statusReason).toBe('Tracks in the release folder disagree in \'album\' metadata field')
   })
 
   it('matches a local release to its MB release and marks the MB id covered', () => {

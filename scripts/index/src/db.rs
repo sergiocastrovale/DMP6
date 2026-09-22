@@ -55,42 +55,6 @@ pub fn build_group_key(
     format!("meta:{}:{}:{}", title_slug, year.unwrap_or(0), artist_slug)
 }
 
-/// Display title/year for a folder-release: the most common (mode) non-empty album tag and the most
-/// common year among the folder's tracks, computed from a fixed insertion order so the same input
-/// always yields the same result. Falls back to "Unknown Album" / None when the folder has no usable
-/// album/year tags. Sync overrides these with the MusicBrainz match when one is found; this is the
-/// pre-match, tag-derived display value.
-pub fn folder_majority_title_year(
-    tracks: &[(Option<String>, Option<i32>)],
-) -> (String, Option<i32>) {
-    let mut album_counts: Vec<(String, usize)> = Vec::new();
-    let mut year_counts: Vec<(i32, usize)> = Vec::new();
-    for (album, year) in tracks {
-        if let Some(a) = album.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            match album_counts.iter_mut().find(|(v, _)| v == a) {
-                Some(entry) => entry.1 += 1,
-                None => album_counts.push((a.to_string(), 1)),
-            }
-        }
-        if let Some(y) = year {
-            match year_counts.iter_mut().find(|(v, _)| v == y) {
-                Some(entry) => entry.1 += 1,
-                None => year_counts.push((*y, 1)),
-            }
-        }
-    }
-    let title = album_counts
-        .into_iter()
-        .max_by_key(|(_, c)| *c)
-        .map(|(v, _)| v)
-        .unwrap_or_else(|| "Unknown Album".to_string());
-    let year = year_counts
-        .into_iter()
-        .max_by_key(|(_, c)| *c)
-        .map(|(v, _)| v);
-    (title, year)
-}
-
 pub fn image_key_for_release(
     mb_release_id: Option<&str>,
     mb_release_group_id: Option<&str>,
@@ -119,12 +83,14 @@ pub async fn ensure_local_release(
     year: Option<i32>,
     folder_path: &str,
     group_key: &str,
+    status: &str,
+    reason: Option<&str>,
 ) -> Result<String, sqlx::Error> {
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
     let row: (String,) = sqlx::query_as(
-        r#"INSERT INTO "LocalRelease" (id, title, year, "matchStatus", "forcedComplete", "totalDuration", "totalFileSize", "createdAt", "updatedAt", "folderPath", "groupKey")
-           VALUES ($1, $2, $3, 'UNMATCHED', false, 0, 0, $4, $4, $5, $6)
+        r#"INSERT INTO "LocalRelease" (id, title, year, "matchStatus", "forcedComplete", "totalDuration", "totalFileSize", "createdAt", "updatedAt", "folderPath", "groupKey", "statusReason")
+           VALUES ($1, $2, $3, $7::"ReleaseStatus", false, 0, 0, $4, $4, $5, $6, $8)
            ON CONFLICT ("groupKey") DO UPDATE SET
              title = EXCLUDED.title,
              year = COALESCE(EXCLUDED.year, "LocalRelease".year),
@@ -138,6 +104,8 @@ pub async fn ensure_local_release(
     .bind(now)
     .bind(folder_path)
     .bind(group_key)
+    .bind(status)
+    .bind(reason)
     .fetch_one(pool)
     .await?;
 
@@ -150,14 +118,140 @@ pub async fn ensure_local_release_cached(
     year: Option<i32>,
     folder_path: &str,
     group_key: &str,
+    status: &str,
+    reason: Option<&str>,
     cache: &mut HashMap<String, String>,
 ) -> Result<String, sqlx::Error> {
     if let Some(id) = cache.get(group_key) {
         return Ok(id.clone());
     }
-    let id = ensure_local_release(pool, title, year, folder_path, group_key).await?;
+    let id = ensure_local_release(pool, title, year, folder_path, group_key, status, reason).await?;
     cache.insert(group_key.to_string(), id.clone());
     Ok(id)
+}
+
+/// Per-folder consensus counts this run set, for the run summary.
+#[derive(Debug, Default)]
+pub struct ConsensusStats {
+    pub reason_counts: HashMap<&'static str, u64>,
+    pub cleared: u64,
+}
+
+/// Re-evaluate `touched_release_ids`' consensus verdict straight from the DB (not from `extracted`,
+/// which only ever holds this run's new/changed files - see the call site's doc comment). A folder
+/// whose tracks disagree is parked at UNKNOWN with a reason; one that now agrees (retagged) is
+/// cleared back to UNMATCHED so sync picks it up. Box-placed / member releases are skipped: their
+/// placement comes from the box pass, not from tags.
+pub async fn apply_folder_consensus(
+    pool: &PgPool,
+    touched_release_ids: &[String],
+) -> Result<ConsensusStats, sqlx::Error> {
+    use common::consensus::{evaluate, mark_local_release_unknown, TrackTags};
+
+    let mut stats = ConsensusStats::default();
+
+    for release_id in touched_release_ids {
+        let exempt: Option<(bool,)> = sqlx::query_as(
+            r#"SELECT
+                 lr."boxReleaseId" IS NOT NULL
+                 OR lr."mediumPosition" IS NOT NULL
+                 OR EXISTS (SELECT 1 FROM "LocalReleaseMember" m WHERE m."localReleaseId" = lr.id)
+               FROM "LocalRelease" lr WHERE lr.id = $1"#,
+        )
+        .bind(release_id)
+        .fetch_optional(pool)
+        .await?;
+
+        let Some((exempt,)) = exempt else { continue };
+        if exempt {
+            continue;
+        }
+
+        let rows: Vec<(
+            String,
+            Option<String>,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+            Option<i32>,
+            String,
+        )> = sqlx::query_as(
+            r#"SELECT id, album, year, "mbReleaseId", "mbReleaseGroupId", "discNumber", "trackNumber", "filePath"
+               FROM "LocalReleaseTrack" WHERE "localReleaseId" = $1"#,
+        )
+        .bind(release_id)
+        .fetch_all(pool)
+        .await?;
+
+        if rows.is_empty() {
+            continue;
+        }
+
+        let tracks: Vec<TrackTags> = rows
+            .into_iter()
+            .map(
+                |(id, album, year, mb_release_id, mb_release_group_id, disc_number, track_number, file_path)| {
+                    TrackTags {
+                        id,
+                        album,
+                        year,
+                        mb_release_id,
+                        mb_release_group_id,
+                        disc_number,
+                        track_number,
+                        file_path: Some(file_path),
+                    }
+                },
+            )
+            .collect();
+
+        let verdict = evaluate(&tracks);
+
+        if let Some(reason) = verdict.reason {
+            mark_local_release_unknown(pool, release_id, reason).await?;
+            if verdict.year.is_some() {
+                sqlx::query(r#"UPDATE "LocalRelease" SET year = $2, "updatedAt" = NOW() WHERE id = $1"#)
+                    .bind(release_id)
+                    .bind(verdict.year)
+                    .execute(pool)
+                    .await
+                    .ok();
+            }
+            *stats.reason_counts.entry(reason).or_insert(0) += 1;
+            continue;
+        }
+
+        let previously_had_reason: Option<(bool,)> = sqlx::query_as(
+            r#"SELECT "statusReason" IS NOT NULL FROM "LocalRelease" WHERE id = $1"#,
+        )
+        .bind(release_id)
+        .fetch_optional(pool)
+        .await?;
+
+        sqlx::query(
+            r#"UPDATE "LocalRelease" SET title = COALESCE($2, title), year = $3, "updatedAt" = NOW() WHERE id = $1"#,
+        )
+        .bind(release_id)
+        .bind(verdict.title.as_deref())
+        .bind(verdict.year)
+        .execute(pool)
+        .await
+        .ok();
+
+        if previously_had_reason.map(|(v,)| v).unwrap_or(false) {
+            sqlx::query(
+                r#"UPDATE "LocalRelease" SET "matchStatus" = 'UNMATCHED'::"ReleaseStatus", "statusReason" = NULL, "updatedAt" = NOW() WHERE id = $1"#,
+            )
+            .bind(release_id)
+            .execute(pool)
+            .await
+            .ok();
+            stats.cleared += 1;
+        }
+    }
+
+    Ok(stats)
 }
 
 /// Every folder `sync` has already folded (plain multi-disc) or dissolved (box set) into a
@@ -658,42 +752,6 @@ mod tests {
     fn group_key_falls_back_to_meta_when_no_folder() {
         let k = build_group_key("Some Album", Some(1990), "Some Artist", "");
         assert_eq!(k, "meta:some-album:1990:some-artist");
-    }
-
-    #[test]
-    fn folder_majority_picks_mode_album_and_year() {
-        let tracks = vec![
-            (Some("Real Album".to_string()), Some(1986)),
-            (Some("Real Album".to_string()), Some(1986)),
-            (Some("Stray Tag".to_string()), Some(2016)),
-        ];
-        assert_eq!(
-            folder_majority_title_year(&tracks),
-            ("Real Album".to_string(), Some(1986))
-        );
-    }
-
-    #[test]
-    fn folder_majority_ignores_empty_albums_and_falls_back() {
-        let tracks = vec![(Some("   ".to_string()), None), (None, None)];
-        assert_eq!(
-            folder_majority_title_year(&tracks),
-            ("Unknown Album".to_string(), None)
-        );
-    }
-
-    #[test]
-    fn folder_majority_year_independent_of_album_mode() {
-        let tracks = vec![
-            (Some("A".to_string()), Some(2000)),
-            (Some("B".to_string()), Some(2000)),
-            (Some("A".to_string()), Some(1999)),
-        ];
-        // Album mode = "A", year mode = 2000 (computed independently).
-        assert_eq!(
-            folder_majority_title_year(&tracks),
-            ("A".to_string(), Some(2000))
-        );
     }
 
     #[test]

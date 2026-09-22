@@ -841,6 +841,10 @@ async fn main() {
     let scanned_folders: HashSet<String> = artist_folders.iter().cloned().collect();
     let mut mb_id_to_image_hash: HashMap<String, String> = HashMap::new();
     let mut all_artist_ids: HashSet<String> = HashSet::new();
+    // No-guessing release placement (docs/no_guessing.md): counts per UNKNOWN reason this run set,
+    // plus how many previously-flagged releases got retagged back into agreement.
+    let mut consensus_reason_totals: HashMap<&'static str, u64> = HashMap::new();
+    let mut consensus_cleared_total: u64 = 0;
 
     // -------------------------------------------------------------------------
     // Main folder loop
@@ -1068,13 +1072,13 @@ async fn main() {
                     .await
                     .unwrap_or_default();
 
-                // Per-folder display title/year (mode album/year tag). The folder is the physical release
+                // Per-folder consensus verdict (docs/no_guessing.md) over this run's extracted tracks -
+                // seeds a brand-new release's title/status/reason. The folder is the physical release
                 // unit: every track in a folder shares one LocalRelease keyed by folder path (see
-                // build_group_key), so the release's pre-match display name comes from the folder's majority
-                // tag rather than whichever track happens to be processed last. Index never folds multi-disc
-                // folders together (docs/sync_decisions.md) - that decision needs MB medium data only sync has.
-                let folder_display_meta: HashMap<String, (String, Option<i32>)> = {
-                    let mut by_folder: HashMap<String, Vec<(Option<String>, Option<i32>)>> =
+                // build_group_key). Index never folds multi-disc folders together (docs/sync_decisions.md)
+                // - that decision needs MB medium data only sync has.
+                let folder_verdicts: HashMap<String, common::consensus::Verdict> = {
+                    let mut by_folder: HashMap<String, Vec<common::consensus::TrackTags>> =
                         HashMap::new();
                     for track in &extracted {
                         let raw = {
@@ -1086,14 +1090,20 @@ async fn main() {
                             }
                         };
                         let fp = strip_disc_subfolder(&raw);
-                        by_folder
-                            .entry(fp)
-                            .or_default()
-                            .push((track.album.clone(), track.year));
+                        by_folder.entry(fp).or_default().push(common::consensus::TrackTags {
+                            id: track.file_path.clone(),
+                            album: track.album.clone(),
+                            year: track.year,
+                            mb_release_id: track.mb_release_id.clone(),
+                            mb_release_group_id: track.mb_release_group_id.clone(),
+                            disc_number: track.disc_number,
+                            track_number: track.track_number,
+                            file_path: Some(track.file_path.clone()),
+                        });
                     }
                     by_folder
                         .into_iter()
-                        .map(|(fp, v)| (fp, folder_majority_title_year(&v)))
+                        .map(|(fp, tracks)| (fp, common::consensus::evaluate(&tracks)))
                         .collect()
                 };
 
@@ -1200,10 +1210,18 @@ async fn main() {
                     );
                     let display_key = folder_path_str.as_str();
 
-                    let (release_title, release_year) = folder_display_meta
-                        .get(display_key)
-                        .map(|(t, y)| (t.as_str(), *y))
-                        .unwrap_or((album_name, track.year));
+                    let verdict = folder_verdicts.get(display_key);
+                    let release_title: String = verdict
+                        .and_then(|v| v.title.clone())
+                        .unwrap_or_else(|| {
+                            common::consensus::folder_leaf(&folder_path_str).to_string()
+                        });
+                    let release_year = verdict.and_then(|v| v.year);
+                    let (release_status, release_reason): (&str, Option<&str>) =
+                        match verdict.and_then(|v| v.reason) {
+                            Some(reason) => ("UNKNOWN", Some(reason)),
+                            None => ("UNMATCHED", None),
+                        };
 
                     // A folder sync's box-set matcher already bound to a release is pinned there -
                     // never re-derive a group key for it, or the very next full re-index of a
@@ -1216,10 +1234,12 @@ async fn main() {
                     } else {
                         ensure_local_release_cached(
                             &pool,
-                            release_title,
+                            &release_title,
                             release_year,
                             &folder_path_str,
                             &group_key,
+                            release_status,
+                            release_reason,
                             &mut release_cache,
                         )
                         .await
@@ -1324,6 +1344,28 @@ async fn main() {
                     if let Err(e) = batch_upsert_tracks(&pool, &batch_tracks).await {
                         reporter.err(&format!("Batch upsert error for '{}': {}", folder_name, e));
                         error_total += batch_tracks.len() as u64;
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // No-guessing release placement gate (docs/no_guessing.md). Reads tracks back from
+                // the DB (not `extracted`) because `extracted` only holds new/changed files, and the
+                // `release_cache` early return means an existing release's other tracks were never
+                // part of this run's batch - the DB read is what makes the full folder visible.
+                // -----------------------------------------------------------------
+                if !folder_releases.is_empty() {
+                    let touched_release_ids: Vec<String> =
+                        folder_releases.keys().cloned().collect();
+                    match apply_folder_consensus(&pool, &touched_release_ids).await {
+                        Ok(stats) => {
+                            for (reason, count) in &stats.reason_counts {
+                                *consensus_reason_totals.entry(reason).or_insert(0) += count;
+                            }
+                            consensus_cleared_total += stats.cleared;
+                        }
+                        Err(e) => {
+                            reporter.err(&format!("Consensus check error for '{}': {}", folder_name, e));
+                        }
                     }
                 }
 
@@ -1986,6 +2028,14 @@ async fn main() {
         reporter.info(&dropped_links_line(
             favorites_dropped_total,
             playlists_dropped_total,
+        ));
+    }
+
+    if !consensus_reason_totals.is_empty() || consensus_cleared_total > 0 {
+        let total_unknown: u64 = consensus_reason_totals.values().sum();
+        reporter.info(&format!(
+            "  Consensus: {} release(s) parked UNKNOWN, {} cleared back to UNMATCHED",
+            total_unknown, consensus_cleared_total
         ));
     }
 

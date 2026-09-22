@@ -94,7 +94,7 @@ Run hash in `Settings.indexRunHash`. Restart skips already-processed folders (`F
 
 Per-track MB ids are **not** part of the group key — they identify which release a *recording* appears on, not which folder-album a *file* belongs to (keying on them would shred compilations into per-track fragments). Still stored per-track for sync's matcher.
 
-Display title/year = the folder's **majority (mode)** `album`/`year` tag (`folder_majority_title_year`) — deterministic even if tracks disagree (sync overrides with the MB title once matched).
+Display title/year = the folder's **unanimous** `album`/`year` tag (`common::consensus::evaluate`, `docs/no_guessing.md`) — not a majority/mode. Tracks disagreeing on `album` (or an embedded MB id) parks the release `UNKNOWN` with a human-readable `statusReason` and a folder-leaf display title instead of a guessed one; sync overrides with the MB title once matched.
 
 `folderPath` scoping means the same album ripped into two folders = two `LocalRelease` rows (genuine duplicate copies) — sync binds both to the same `MusicBrainzRelease`; web UI collapses to one card; `duplicate-release` audit rule surfaces them.
 

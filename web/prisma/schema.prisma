@@ -243,6 +243,10 @@ model LocalRelease {
   year                       Int?
   releaseId                  String?
   matchStatus                ReleaseStatus              @default(UNMATCHED)
+  /// Why this release is UNKNOWN, in plain language (scripts/common/src/consensus.rs).
+  /// Only ever set together with matchStatus = UNKNOWN, and never alongside a releaseId.
+  /// Distinct from MusicBrainzRelease.statusReason (containment notes) - same name, different table.
+  statusReason               String?                    @db.Text
   forcedComplete             Boolean                    @default(false)
   folderPath                 String?                    @db.Text
   groupKey                   String                     @db.VarChar(500)

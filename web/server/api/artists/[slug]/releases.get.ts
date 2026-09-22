@@ -85,6 +85,7 @@ export default defineEventHandler(async (event) => {
       image: true,
       imageUrl: true,
       matchStatus: true,
+      statusReason: true,
       releaseId: true,
       tracks: { select: { id: true } },
       artists: {

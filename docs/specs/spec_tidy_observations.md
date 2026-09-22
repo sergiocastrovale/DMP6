@@ -142,3 +142,37 @@ Not index fragmentation (round 1's bug) either — these are real, separate, non
 **Not fixed here** (would need the same replay-before-deploy treatment as every other matcher change). Two paths considered:
 - **Retag** with correct distinct per-volume MB ids — same manual effort as the round 5 CC retag list.
 - **Restructure + rebuild**: nest the sibling volume folders under one common parent (`Artist/Album/<compilation title>/<volume folder>`), then rebuild that artist. Makes the group visible to `find_sibling_groups` (which currently never sees them — they sit as ordinary siblings directly under `Album/`, not under a dedicated parent) and lets box pass potentially override the wrong flat bind with a correct per-disc one via `plan_box_bind`. **Only works if MusicBrainz actually has a matching multi-medium edition to bind against.** Checked on the Al Jolson case: it doesn't (MB only catalogs the single-medium version) — nesting there would just turn `MISSING_TRACKS` (wrong) into `UNMATCHED` (honest but still not `COMPLETE`), not a full fix by itself.
+
+## 19. Round 8 — no guessing: unanimity replaces plurality (`docs/no_guessing.md`)
+
+Round 5 fixed the plurality-vote bug (>50% agreement) but left the door open for a scattered folder to
+still bind on a rescued plurality (tracklist scoring `COMPLETE`), and round 7 showed that even a
+*unanimous* wrong id survives every agreement-strength threshold, because agreement was never the
+right test - **unanimity** is. 2026-09-22: album tag and embedded MB id(s) must now be unanimous across
+a folder's tracks (`common::consensus::evaluate`), full stop - no plurality, no majority, no
+COMPLETE-rescue, no deluxe-sibling upgrade search. Anything short of unanimous is parked `UNKNOWN` with
+a human-readable `LocalRelease.statusReason` instead of guessed. Implementation: `docs/no_guessing.md`.
+
+**Measured (read-only preview, excluding box-placed / folded / `forcedComplete`)**: 16,822 releases
+flagged. Reason split: album disagreement 14,688, missing album tag 19, MB-id disagreement with album
+unanimous 2,115 (further splits three ways across `MB_ALBUM_DIVERGENCE_RG_UNANIMOUS` /
+`MB_ALBUM_DIVERGENCE` / `MB_RELEASE_GROUP_DIVERGENCE` - exact split recorded at rollout time). Of the
+16,822: 11,017 were currently bound, and **5,039 were currently `COMPLETE`** - per-track-tagged folders
+round 5's rescue path had bound; this is the round-5-rescue population round 8 now reverses.
+
+Round 5's own open item ("124 Chronological Classics bindings still wrong") is resolved by this change
+for the majority-bound half: 65 of those rows no longer bind at all (were majority, not unanimous) -
+now `UNKNOWN`/`MB_ALBUM_DIVERGENCE`(-adjacent). The 59 unanimously-bound CC rows are unaffected; both
+halves still need retagging to actually fix (`docs/sync_decisions.md` §19 item 9).
+
+**Round 7 is explicitly *not* fixed by this** - each round-7 folder is internally consistent with
+itself (see `docs/sync_decisions.md` §15 item 8), so unanimity has nothing to catch there. Al Jolson's
+"The Man and the Legend" ×3 stack (round 7's own example) is expected to survive this change unchanged;
+its former "The World's Greatest Entertainer" ×5 / "In Songs He Made Famous" ×6 stacks (round 5's
+rescue artifacts) are expected to collapse into `UNKNOWN` singles instead.
+
+**One-off**: `scripts/sql/oneoff_album_consensus.sql`, undo dumps `logs/undo20_album_consensus_releases.tsv` /
+`logs/undo20_album_consensus_links.tsv`. Rollout (implement → test → commit → `./deploy` → undo dumps →
+Tx 1 → Tx 2 → `./tidy --rescore-only --all`) tracked in `docs/no_guessing.md`; before/after library
+`matchStatus` counts and the exact reason-4/5/6 split land here once the one-off has actually run
+against production.

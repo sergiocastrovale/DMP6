@@ -149,4 +149,24 @@ describe('ReleaseInfoDialog.vue', () => {
 
     expect(body.textContent).not.toContain('still counts as missing')
   })
+
+  // docs/no_guessing.md: a consensus reason (e.g. album-tag disagreement) has no containment prefix,
+  // so it renders as its own "Status reason" row instead of the containment callout.
+  it('shows a Status reason row for a non-containment statusReason', async () => {
+    const body = await mount(release({
+      status: 'UNKNOWN', hasLocal: false,
+      statusReason: 'Tracks in the release folder disagree in \'album\' metadata field',
+    }))
+
+    expect(body.textContent).toContain('Status reason')
+    expect(body.textContent).toContain('Tracks in the release folder disagree in \'album\' metadata field')
+  })
+
+  it('does not show the Status reason row when a containment note is already shown', async () => {
+    const body = await mount(release({
+      status: 'MISSING', hasLocal: false, statusReason: 'Recordings inside "Thriller 25 (Box Set)"',
+    }))
+
+    expect(body.textContent).not.toContain('Status reason')
+  })
 })

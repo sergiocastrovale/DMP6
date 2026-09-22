@@ -58,8 +58,11 @@ pub async fn nuke_mb_data(
         // Unlink LocalReleases from MB (set releaseId = NULL, reset status)
         for (mb_db_id, _) in &mb_release_ids {
             sqlx::query(
-                // No "statusReason" here: it is a MusicBrainzRelease column, and naming it made this
-                // statement error out - which `?` propagated, aborting the unlink mid-way.
+                // No "statusReason" here: a bound release (releaseId set, as these are before this
+                // UPDATE) never carries one - docs/no_guessing.md's invariant is "never set alongside
+                // a releaseId" - so there is nothing to clear. The column exists on both
+                // LocalRelease and MusicBrainzRelease now and means different things on each; this one
+                // is LocalRelease's.
                 r#"UPDATE "LocalRelease"
                    SET "releaseId" = NULL,
                        "matchStatus" = 'UNMATCHED'::"ReleaseStatus"

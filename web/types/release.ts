@@ -106,6 +106,7 @@ export interface LocalReleaseRow {
   image: string | null
   imageUrl: string | null
   matchStatus: string
+  statusReason: string | null
   releaseId: string | null
   totalPlayCount: number
   tracks: { id: string }[]

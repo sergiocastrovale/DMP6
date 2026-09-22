@@ -130,13 +130,16 @@ pub async fn delete_removed_tracks(
 
     // Reset matchStatus so sync recalculates.
     //
-    // `statusReason` is a MusicBrainzRelease column, not a LocalRelease one. Naming it here made the
-    // whole statement fail, and `.ok()` swallowed the error - so no pruned release was ever flagged
-    // and sync never recomputed any of them. Caught by `tests/prune_guard.rs`, which had been red.
+    // `statusReason` used to be a MusicBrainzRelease-only column; naming it here once made the whole
+    // statement fail, and `.ok()` swallowed the error - so no pruned release was ever flagged and
+    // sync never recomputed any of them (caught by `tests/prune_guard.rs`, which had been red). The
+    // column now exists on both tables and means different things there (see docs/no_guessing.md);
+    // clearing it here is deliberate - a pruned release is an "UNKNOWN, re-score me" row, not a
+    // terminal consensus-reason one.
     if !affected.is_empty() {
         sqlx::query(
             r#"UPDATE "LocalRelease"
-               SET "matchStatus" = 'UNKNOWN'::"ReleaseStatus"
+               SET "matchStatus" = 'UNKNOWN'::"ReleaseStatus", "statusReason" = NULL
                WHERE id = ANY($1::text[])"#,
         )
         .bind(&affected)

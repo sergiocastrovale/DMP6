@@ -1,4 +1,5 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { DOMWrapper } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import ArtistReleaseGroupDetails from '../../../components/artist/ReleaseGroupDetails.vue'
 import type { UnifiedRelease } from '../../../types/release'
@@ -102,6 +103,30 @@ describe('artist/ReleaseGroupDetails.vue - gap noting containment', () => {
   it('does not render a note for a normal local release', async () => {
     const wrapper = await mountRelease({ localReleaseId: 'own-lr', hasLocal: true })
     expect(wrapper.text()).not.toContain('Recordings inside')
+  })
+
+  // The status badge's own Popover wrapper is the second `.relative` element (the first is the cover
+  // thumbnail's own `group/cover relative ...` div) - mouseenter is dispatched on its direct child,
+  // the div Popover.vue attaches its hover listener to, since mouseenter does not bubble.
+  const hoverStatusBadge = async (wrapper: Awaited<ReturnType<typeof mountRelease>>) => {
+    const target = wrapper.findAll('.relative')[1]!.element.children[0] as HTMLElement
+    await new DOMWrapper(target).trigger('mouseenter')
+  }
+
+  it('shows the generic status description in the status-badge popover when there is no statusReason', async () => {
+    const wrapper = await mountRelease({ status: 'COMPLETE', statusReason: null })
+    await hoverStatusBadge(wrapper)
+    expect(wrapper.text()).toContain('Fully matched with MusicBrainz.')
+  })
+
+  it('shows statusReason (e.g. a no-guessing consensus reason) in the popover instead of the generic description', async () => {
+    const wrapper = await mountRelease({
+      status: 'UNKNOWN',
+      statusReason: 'Tracks in the release folder disagree in \'album\' metadata field',
+    })
+    await hoverStatusBadge(wrapper)
+    expect(wrapper.text()).toContain('Tracks in the release folder disagree in \'album\' metadata field')
+    expect(wrapper.text()).not.toContain('Not yet scored')
   })
 
   it('does not show Refresh for a gap that only names a container', async () => {

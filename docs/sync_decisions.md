@@ -90,16 +90,36 @@ B and C also delete the entry's derived `MusicBrainzReleaseArtist` rows — wron
 
 ## 7. Matching an album to MusicBrainz
 
-Four attempts, in order. **File tags always win over searching.**
+**No guessing (2026-09-22, `docs/no_guessing.md`).** Before any of the tiers below run, a folder's
+album tag and embedded MB id(s) must be **unanimous** across its tracks (`common::consensus::evaluate`)
+— never a plurality/majority vote, never a "rescue" by tracklist score. Untagged tracks are absent
+evidence, not a veto. Not unanimous → the release is parked `UNKNOWN` with a human-readable
+`statusReason` and never reaches MusicBrainz at all this run. Exempt: a dissolved box disc (its
+placement comes from the box pass below, not from tags) and a folded multi-disc survivor (legitimately
+mixes per-disc tags).
 
-1. **The album id the files agree on.** Believed directly *if* agreement: >half the tagged tracks carry it (or its album group). Tracks with no id don't count against it. When files **don't** agree (id merely won a scatter) — looked up but only bound if its tracklist scores `COMPLETE`. Why it matters: a per-track tagger scattered "Christmas Moments with Harold Land" (35 tracks) across 31 different album ids; believing the scatter winner bound 20 unrelated compilations onto one 8-track album, same for every "Chronological Classics" volume. A compilation that really is the release (tagged per source, every title matching) still binds.
-2. **The album-group id most files agree on** — browse its editions, pick one (see "Which pressing" below). A group only a minority carries is not browsed.
-3. **Search by title+artist**, only when files carry no usable id. Hit must score ≥85, similar title, allowed type. A folder rejected in step 1 is **not** searched — its title comes from the same scattered tags, search just re-finds the rejected album. Stays unmatched.
-4. If files point at something the library refuses to bind (a bootleg), search gets one chance at a legitimate edition instead.
+Three tiers, in order, over the unanimous ids/title the gate already established. **File tags always
+win over searching.**
+
+1. **The album id every tagged track agrees on.** Looked up directly, bound as-is — no confirmation
+   step, because unanimity is already the confirmation. (Pre-2026-09-22 this tier believed a >50%
+   plurality and rescued a scatter's winner if its tracklist scored `COMPLETE`: a per-track tagger
+   scattered "Christmas Moments with Harold Land" (35 tracks) across 31 different album ids, and
+   believing the scatter winner bound 20 unrelated compilations onto one 8-track album. That rescue
+   path is gone — those folders are `UNKNOWN` now, see §15.)
+2. **The album-group id every tagged track agrees on** (or Tier 1's release id's own group, if Tier 1
+   404'd — MB has deleted/merged the release since the file was tagged) — browse its editions, pick
+   one (see "Which pressing" below).
+3. **Search by title+artist**, only when the folder carries no usable id at all — which, thanks to the
+   gate above, means the title itself is unanimous too. Hit must score ≥85, similar title, allowed
+   type.
 
 No confident answer → **unmatched**, not guessed. Unmatching also clears track links.
 
-**Rule changes don't re-match existing matches** — sync skips already-matched albums (unless `UNKNOWN` or `--overwrite`). The 2026-09-18 agreement-rule change was applied to existing matches by a one-time repair (`docs/specs/spec_tidy_observations.md` §16): 2,812 compilations unmatched, 7 re-synced.
+**Rule changes don't re-match existing matches** — sync skips already-matched albums (unless `UNKNOWN`
+or `--overwrite`). The 2026-09-18 agreement-rule change was applied to existing matches by a one-time
+repair (`docs/specs/spec_tidy_observations.md` §16): 2,812 compilations unmatched, 7 re-synced. The
+2026-09-22 unanimity change has its own one-off, §19 "Round 8".
 
 ### Which albums are allowed to match at all
 - **Allowed:** Album, EP. Compilations/live/remix/soundtrack ride on those. Remaster/deluxe aren't separate MB types, pass automatically.
@@ -108,7 +128,7 @@ No confident answer → **unmatched**, not guessed. Unmatching also clears track
 - **Singles never searched/invented** — but a single whose id is *in your files* binds (you demonstrably own the disc). MB files plenty of 4-track CDs as singles; Radiohead's "Creep" sat unmatched for years otherwise.
 
 ### Which pressing gets picked
-Prefers the edition whose track count exactly matches your folder. Tie-break: same year as your files → CD format → earliest release date. No match among several candidates → refuse, stay unmatched (binding a random pressing = permanently wrong tracklist). Exception: folder has *more* tracks than the matched edition → look for a deluxe edition with the exact count. Fewer tracks = genuine incompleteness, not a wrong edition.
+Prefers the edition whose track count exactly matches your folder. Tie-break: same year as your files → CD format → earliest release date. No match among several candidates → refuse, stay unmatched (binding a random pressing = permanently wrong tracklist). A folder with *more* tracks than the matched edition scores `EXTRA_TRACKS` rather than hunting a bigger sibling edition (the deluxe-upgrade search this used to do was removed 2026-09-22 alongside the plurality rescue above — same reasoning, and `stampMerged` already treats `EXTRA_TRACKS` as keepable). Fewer tracks = genuine incompleteness, scores `MISSING_TRACKS`.
 
 ---
 
@@ -153,7 +173,7 @@ MusicBrainz has **no box-set concept.** A box is one release, several discs — 
 - **A release must know it has discs.** Discs were first recorded 2026-09-06/07 — releases matched before that kept `mediumCount=1`/no disc rows despite tracks carrying real disc numbers (3,602 of them). `./tidy` rebuilds disc structure from stored disc numbers first (no MB call); nothing writes that shape anymore.
 
 Candidate box sources, tried in order until one binds:
-1. Siblings' own embedded MB ids — majority `MUSICBRAINZ_ALBUMID` tag, looked up directly.
+1. Siblings' own embedded MB ids — **unanimous** `MUSICBRAINZ_ALBUMID` tag (2026-09-22, `docs/no_guessing.md`: was a majority before), looked up directly. `NULL` when a sibling's tracks disagree on it or carry none.
 2. The release a sibling is already bound to, if it has >1 medium (tags name the box — §10). Also what makes a library with no embedded MB ids at all still discoverable.
 3. MB search on the parent folder's own title (`guess_box_title`) — strips leading year + trailing `(…)`/`[…]` annotation (catalogue numbers in brackets used to return zero hits).
 4. Other editions of the same release group, only once all above fail — region/label variants; the ordinary matcher may have bound the wrong edition's tracklist. One extra request, same perfect-match rule (more candidates, not looser).
@@ -277,7 +297,7 @@ Failures retried by kind: "too fast" slows down, "MB unwell" retries without slo
 ## 14. Safety rules that override everything
 
 - **Metadata is the truth** — folder/file names never read for artist/album/year.
-- **Embedded ids believed immediately — when files agree on them.** One that merely won a scatter is checked against the tracklist first (§7). Artist ids follow §5.
+- **Embedded ids believed immediately — when files unanimously agree on them (2026-09-22, `docs/no_guessing.md`).** Not unanimous → `UNKNOWN` with a reason, never a plurality/majority guess and never a tracklist-score rescue (§7). Artist ids follow §5.
 - **Nothing deleted to make a match fit** — ambiguity → unmatched, never deletion.
 - **A network failure is never evidence** — defers, never concludes non-existence.
 - **Repairs and re-runs are safe to repeat** — same result run once or twice.
@@ -295,6 +315,7 @@ From what MB does/doesn't record. Changing them means guessing.
 5. A remaster re-split across a different disc count than any standalone edition can't be lined up.
 6. A box-exclusive "lost album" and a plain rarities disc look identical to MB.
 7. **A standalone album can only be recognized by recordings if MB gave every track a recording id.** Missing even one → falls back to titles/runtimes (refuses far more often). Measured: **42.5%** of single-disc releases (48,303/113,702) unusable as an exact target. Single largest reason boxes fold rather than dissolve — an MB data gap, not a decision made here.
+8. **Round-7 internally-consistent wrong ids are still undetectable by unanimity.** The no-guessing rule (§7, `docs/no_guessing.md`) catches a folder whose *own* tracks disagree with each other; it cannot catch a folder that unanimously, consistently carries the *wrong* id (round 7's shared-`releaseId` shape, `docs/specs/spec_tidy_observations.md` §18) — each such folder is internally consistent, so it survives the change untouched (e.g. Al Jolson's "The Man and the Legend" ×3 stack). Detecting that shape needs cross-folder comparison, out of scope here.
 
 ---
 
@@ -406,6 +427,7 @@ Separate bug: `common::tags::write_mb_ids` used to write a track's release-track
 ### 7. A 9-track folder bound to a 257-track box ("Dear Michael: The Motown Collection")
 **Symptom:** 3 different Michael Jackson albums bound to one 12-disc box, 3 identical cards.
 **Cause:** not the box pass (folders are separate albums, not discs). No embedded album id on any file — album matcher reached the box by search/edition choice, which §7's rules shouldn't allow for a 9-track folder vs. a 257-track box. Box pairs 2 albums per disc, so no per-disc placement exists either (§15 limit 2). Start in the album matcher's search/edition path.
+**Unaffected by the 2026-09-22 no-guessing change** — this is a Tier 3 search/edition-choice bug, not a tag-agreement one; the consensus gate runs before any tier and has nothing to say about which edition a title search picks.
 
 ### 8. Albums owned by dozens of unrelated artists (scattered per-track artist tags)
 **Symptom:** a Harold Land compilation shows on Christina Perri's, Lana Del Rey's, etc. pages.
@@ -414,6 +436,7 @@ Separate bug: `common::tags::write_mb_ids` used to write a track's release-track
 
 ### 9. 124 "Chronological Classics" bindings still wrong — needs retagging, not code
 Files **agree** (59 unanimously, 65 by majority) on a CC volume — tagger was internally consistent (every pre-war recording appears on some volume). §7's agreement rule correctly believes them; nothing in metadata distinguishes this from a genuine partial album, folder names aren't evidence (§14). Retag the files. List: `docs/specs/spec_tidy_observations_cc_retag.tsv`.
+**2026-09-22 update:** the 65 majority-bound rows no longer bind at all — the no-guessing rule (§7, `docs/no_guessing.md`) requires unanimity, and a majority-only agreement is now `UNKNOWN` with `MB_ALBUM_DIVERGENCE` (or the RG-unanimous variant). The 59 unanimously-bound rows are unaffected. Retagging is still the real fix for both.
 
 ### 10. 2,404 Complete albums with no linked tracks at all
 Pre-existing (e.g. Garden of Delight "Lutherion 1": Complete, 0/22 linked), `tidy --rescore-only` never targets Complete. Suspected: re-index recreating track rows without links while status stays. **Not verified** — compare `LocalReleaseTrack.createdAt` to last scoring.

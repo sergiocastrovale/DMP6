@@ -86,6 +86,7 @@ export function buildReleaseCard(
       localReleaseId: lr.id,
       folderPath: lr.folderPath,
       coArtists: extras?.coArtists,
+      statusReason: lr.statusReason,
       connectedArtistName: extras?.connectedArtistName,
       discCount: null,
     }
