@@ -140,7 +140,10 @@ async fn rebinding_replaces_every_track_link_and_the_status() {
     .unwrap();
     for (track, mb_track) in links {
         let expected = (track == local_tracks[0]).then(|| new_tracks[0].clone());
-        assert_eq!(mb_track, expected, "track {track} must not keep a stale link");
+        assert_eq!(
+            mb_track, expected,
+            "track {track} must not keep a stale link"
+        );
     }
 
     reset(&pool).await;
