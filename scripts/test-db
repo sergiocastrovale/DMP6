@@ -31,7 +31,7 @@ else
   docker run -d --rm --name "$CONTAINER" \
     -e POSTGRES_USER=dmp -e POSTGRES_PASSWORD=dmp -e POSTGRES_DB=dmp_test \
     -e LANG=en_US.utf8 \
-    -p "127.0.0.1:${PORT}:5432" postgres:16 >/dev/null
+    -p "127.0.0.1:${PORT}:5432" "${TEST_PG_IMAGE:-postgres:18.4}" >/dev/null
   for _ in $(seq 1 60); do
     if docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U dmp -d dmp_test >/dev/null 2>&1; then
       break

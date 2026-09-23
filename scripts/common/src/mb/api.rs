@@ -95,14 +95,18 @@ const OVERLOAD_RETRY_FLOOR_MS: u64 = 250;
 /// 503s arriving in clusters. Shedding a fixed 100ms per success drains a spike gradually instead.
 const RECOVERY_STEP_MS: u64 = 100;
 
-/// `MB_MIN_DELAY_MS` overrides the pacing floor for a run without a rebuild - useful when MusicBrainz
-/// is having a bad day and the only lever left is going slower. Clamped, because a floor below MB's
-/// published rate is not a knob anyone should be able to turn.
+/// `MB_MIN_DELAY_MS` overrides the pacing floor without a rebuild. Against the public server it can
+/// only go slower than MusicBrainz's published rate; a self-hosted mirror (`MB_BASE_URL`) has no such
+/// limit, so the floor drops to zero there.
 fn configured_min_delay() -> u64 {
+    let custom_base = std::env::var("MB_BASE_URL")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let floor = if custom_base { 0 } else { MIN_DELAY_FLOOR_MS };
     std::env::var("MB_MIN_DELAY_MS")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
-        .map(|v| v.clamp(MIN_DELAY_FLOOR_MS, MAX_DELAY_MS))
+        .map(|v| v.clamp(floor, MAX_DELAY_MS))
         .unwrap_or(DEFAULT_MIN_DELAY_MS)
 }
 
@@ -1420,6 +1424,13 @@ mod tests {
         assert_eq!(configured_min_delay(), DEFAULT_MIN_DELAY_MS);
         std::env::remove_var("MB_MIN_DELAY_MS");
         assert_eq!(configured_min_delay(), DEFAULT_MIN_DELAY_MS);
+
+        std::env::set_var("MB_BASE_URL", "http://127.0.0.1:5000/ws/2");
+        std::env::set_var("MB_MIN_DELAY_MS", "0");
+        assert_eq!(configured_min_delay(), 0, "a mirror has no public rate floor");
+        std::env::remove_var("MB_MIN_DELAY_MS");
+        assert_eq!(configured_min_delay(), DEFAULT_MIN_DELAY_MS);
+        std::env::remove_var("MB_BASE_URL");
     }
 
     #[test]
