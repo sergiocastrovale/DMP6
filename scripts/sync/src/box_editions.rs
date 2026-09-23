@@ -140,13 +140,16 @@ struct ReleaseFacts {
     tracks: Vec<(String, Option<i32>)>,
 }
 
+/// Unlinked media of multi-medium releases only: a single-medium release is itself the standalone
+/// edition, and comparing it against its own artist's catalogue finds itself.
 async fn unlinked_media(pool: &PgPool) -> Result<Vec<UnlinkedMedium>, sqlx::Error> {
     let rows: Vec<(String, String, Option<String>, String, Option<i32>, i32)> = sqlx::query_as(
         r#"SELECT m.id, m."releaseId", m.title, t.title, t."durationMs", t.position
            FROM "MusicBrainzReleaseMedium" m
+           JOIN "MusicBrainzRelease" parent ON parent.id = m."releaseId"
            JOIN "MusicBrainzReleaseTrack" t
              ON t."releaseId" = m."releaseId" AND t."discNumber" = m.position
-           WHERE m."equivalentReleaseId" IS NULL
+           WHERE m."equivalentReleaseId" IS NULL AND parent."mediumCount" > 1
            ORDER BY m.id, t.position"#,
     )
     .fetch_all(pool)
@@ -442,7 +445,7 @@ pub async fn run_link_box_editions(
 
         let hits: Vec<&ReleaseFacts> = candidates
             .iter()
-            .filter(|r| tracks_match(&m.tracks, &r.tracks))
+            .filter(|r| r.release_id != m.release_id && tracks_match(&m.tracks, &r.tracks))
             .collect();
         // Same rule as tier 3's `same_release_group_winner`: several editions of one release group are
         // interchangeable as an equivalence target, so that is a tie worth breaking rather than an
