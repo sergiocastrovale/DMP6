@@ -113,7 +113,7 @@ export default defineEventHandler(async (event) => {
   const alsoPartOfMedia = releaseGroupIds.length > 0
     ? await prisma.musicBrainzReleaseMedium.findMany({
       where: { equivalentReleaseGroupId: { in: releaseGroupIds } },
-      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true } } },
+      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true, releaseGroupId: true } } },
     })
     : []
   const alsoPartOfByGroupId = new Map<string, { title: string, year: number | null }[]>()
@@ -166,7 +166,7 @@ export default defineEventHandler(async (event) => {
   if (appearsOnGroupIds.length > 0) {
     const extraMedia = await prisma.musicBrainzReleaseMedium.findMany({
       where: { equivalentReleaseGroupId: { in: appearsOnGroupIds } },
-      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true } } },
+      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true, releaseGroupId: true } } },
     })
     accumulateAlsoPartOf(extraMedia, alsoPartOfByGroupId, alsoPartOfSeen)
   }

@@ -167,24 +167,26 @@ export function buildConnectedArtistByRelease(
 }
 
 // docs/sync_decisions.md §9: a box set is ONE MusicBrainzRelease with N MusicBrainzReleaseMedium rows
-// (one per disc), and each disc row carries the SAME equivalentReleaseGroupId. Without deduping by
-// releaseId, a box reprinting a release group is listed once per disc instead of once - "Also part
-// of: Foo Box (2011), Foo Box (2011), Foo Box (2011)...". Mutates `byGroupId`/`seen` in place so
-// multiple fetches (e.g. local-catalogue rows then appears-on rows) accumulate into one shared map.
+// (one per disc), and each disc row carries the SAME equivalentReleaseGroupId, so entries are deduped by
+// releaseId. A medium whose own release belongs to the group it points at is an edition of that group,
+// not a box reprinting it, and is skipped. Mutates `byGroupId`/`seen` in place so multiple fetches
+// accumulate into one shared map.
 export function accumulateAlsoPartOf(
-  media: { equivalentReleaseGroupId: string | null, releaseId: string, release: { title: string, year: number | null } }[],
+  media: { equivalentReleaseGroupId: string | null, releaseId: string, release: { title: string, year: number | null, releaseGroupId?: string | null } }[],
   byGroupId: Map<string, { title: string, year: number | null }[]>,
   seen: Map<string, Set<string>>,
 ): void {
   for (const m of media) {
     if (!m.equivalentReleaseGroupId) {continue}
     const groupId = m.equivalentReleaseGroupId
+    if (m.release.releaseGroupId === groupId) {continue}
     const seenForGroup = seen.get(groupId) ?? new Set<string>()
     seen.set(groupId, seenForGroup)
     if (seenForGroup.has(m.releaseId)) {continue}
     seenForGroup.add(m.releaseId)
+    const entry = { title: m.release.title, year: m.release.year }
     const list = byGroupId.get(groupId)
-    if (list) { list.push(m.release) } else { byGroupId.set(groupId, [m.release]) }
+    if (list) { list.push(entry) } else { byGroupId.set(groupId, [entry]) }
   }
 }
 

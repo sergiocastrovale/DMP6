@@ -97,7 +97,7 @@ export default defineEventHandler(async (event) => {
   if (lr.release?.releaseGroupId) {
     const media = await prisma.musicBrainzReleaseMedium.findMany({
       where: { equivalentReleaseGroupId: lr.release.releaseGroupId },
-      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true } } },
+      select: { equivalentReleaseGroupId: true, releaseId: true, release: { select: { title: true, year: true, releaseGroupId: true } } },
     })
     const byGroupId = new Map<string, { title: string, year: number | null }[]>()
     accumulateAlsoPartOf(media, byGroupId, new Map())

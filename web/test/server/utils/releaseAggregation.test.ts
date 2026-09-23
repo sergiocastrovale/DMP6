@@ -402,7 +402,7 @@ describe('buildLocalAndGapCards / buildAppearsOnCards - "Also part of" (docs/syn
 
 describe('accumulateAlsoPartOf', () => {
   it('dedupes a box\'s multiple discs (one MusicBrainzReleaseMedium row per disc, same releaseId) into a single entry', () => {
-    const box = { title: 'Dear Michael: The Motown Collection', year: 2011 }
+    const box = { title: 'Box Set', year: 2011 }
     const media = [
       { equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box },
       { equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box },
@@ -427,12 +427,23 @@ describe('accumulateAlsoPartOf', () => {
   })
 
   it('accumulates across two calls sharing the same seen map, still deduping', () => {
-    const box = { title: 'Dear Michael: The Motown Collection', year: 2011 }
+    const box = { title: 'Box Set', year: 2011 }
     const byGroupId = new Map<string, { title: string, year: number | null }[]>()
     const seen = new Map<string, Set<string>>()
     accumulateAlsoPartOf([{ equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box }], byGroupId, seen)
     accumulateAlsoPartOf([{ equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box }], byGroupId, seen)
     expect(byGroupId.get('rg1')).toEqual([box])
+  })
+
+  it('skips a medium whose own release is an edition of the group it points at', () => {
+    const byGroupId = new Map<string, { title: string, year: number | null }[]>()
+    const album = { title: 'Album', year: 1990, releaseGroupId: 'rg1' }
+    const box = { title: 'Box', year: 2011, releaseGroupId: 'rgBox' }
+    accumulateAlsoPartOf([
+      { equivalentReleaseGroupId: 'rg1', releaseId: 'album1', release: album },
+      { equivalentReleaseGroupId: 'rg1', releaseId: 'box1', release: box },
+    ], byGroupId, new Map())
+    expect(byGroupId.get('rg1')).toEqual([{ title: 'Box', year: 2011 }])
   })
 
   it('ignores rows with a null equivalentReleaseGroupId', () => {
