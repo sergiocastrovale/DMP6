@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#
+# Gate for changes under scripts/. Run before every commit.
+#
+#   scripts/check         format, lint, unit tests, CLI contract
+#   scripts/check --db    also the DB integration tests + schema drift (scripts/test-db, needs Docker)
+#
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+cd "$HERE"
+
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --quiet
+cargo test --workspace --quiet
+./cli-contract check
+
+if [ "${1:-}" = "--db" ]; then
+  ./test-db --quiet
+fi
+echo "scripts/check: all green"

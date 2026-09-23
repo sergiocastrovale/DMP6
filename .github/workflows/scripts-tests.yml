@@ -1,0 +1,32 @@
+name: scripts-tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: scripts
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      # Format, lint, unit tests, CLI contract, then the DB integration tests against a throwaway
+      # Postgres container with the Prisma migrations applied (docker is preinstalled on the runner).
+      - run: scripts/check --db

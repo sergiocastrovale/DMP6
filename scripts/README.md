@@ -30,6 +30,10 @@ on the NAS. An existing binary is never rebuilt automatically — after a code c
 
 ## Tests
 
+`scripts/check` is the gate for every change here (format, clippy, unit tests, CLI contract);
+`scripts/check --db` adds the DB integration tests and a Prisma schema-drift check. CI runs the latter
+(`.github/workflows/scripts-tests.yml`).
+
 ```bash
 cd scripts && cargo test --workspace   # unit tests
 scripts/test-db                        # + DB integration tests against a throwaway Postgres (Docker)

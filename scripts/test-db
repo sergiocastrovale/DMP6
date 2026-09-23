@@ -43,5 +43,14 @@ fi
 
 (cd "$ROOT/web" && DATABASE_URL="$DB_URL" pnpm exec prisma migrate deploy >/dev/null)
 
+# A schema.prisma change without a migration (or a raw-SQL index Prisma would drop) is drift.
+if ! (cd "$ROOT/web" && pnpm exec prisma migrate diff --from-url "$DB_URL" \
+  --to-schema-datamodel prisma/schema.prisma --exit-code >/dev/null); then
+  echo "Schema drift: prisma/schema.prisma and the migrations disagree:" >&2
+  (cd "$ROOT/web" && pnpm exec prisma migrate diff --from-url "$DB_URL" \
+    --to-schema-datamodel prisma/schema.prisma --script) >&2 || true
+  exit 1
+fi
+
 cd "$ROOT/scripts"
 SMOKE_TEST_DATABASE_URL="$DB_URL" cargo test --workspace --no-fail-fast "$@" -- --include-ignored --test-threads=1
