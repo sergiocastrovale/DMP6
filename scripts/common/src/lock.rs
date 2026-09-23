@@ -122,6 +122,29 @@ pub async fn clear_stale_lock_minutes(pool: &PgPool, max_age_minutes: u64) -> bo
     result.map(|r| r.rows_affected() > 0).unwrap_or(false)
 }
 
+/// Unwraps a fallible DB read while the scan lock is held, releasing the lock and exiting instead of
+/// panicking on error. `panic = abort` in the release profile means a plain `.expect()` here skips
+/// every `release_lock` call in the function (no unwinding, no `Drop`), leaving the lock held until
+/// `STALE_LOCK_MINUTES` clears it - stalling every other binary for that long over what a graceful
+/// exit would have made instant.
+pub async fn expect_or_release<T, E: std::fmt::Display>(
+    pool: &PgPool,
+    binary: &str,
+    pid: u32,
+    result: Result<T, E>,
+    context: &str,
+) -> T {
+    match result {
+        Ok(v) => v,
+        Err(e) => {
+            crate::error_log::log_error(&format!("{}: {}", context, e));
+            eprintln!("{}: {}", context, e);
+            release_lock(pool, binary, pid).await;
+            std::process::exit(1);
+        }
+    }
+}
+
 // Helper to flatten Option<Option<T>>
 trait Flatten2<T> {
     fn flatten2(self) -> Option<T>;
