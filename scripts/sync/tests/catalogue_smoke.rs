@@ -35,6 +35,10 @@ const MB_MIN_DELAY: Duration = Duration::from_millis(1100);
 #[tokio::test]
 #[ignore]
 async fn catalogue_smoke_real_binaries_index_and_sync() {
+    if std::env::var("DMP_LIVE_MB").is_err() {
+        eprintln!("skipped: needs the live MusicBrainz API, set DMP_LIVE_MB=1");
+        return;
+    }
     let db_url = std::env::var("SMOKE_TEST_DATABASE_URL").expect(
         "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres — this test never runs \
          against the production DATABASE_URL",

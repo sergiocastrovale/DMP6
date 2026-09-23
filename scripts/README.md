@@ -28,6 +28,18 @@ on the NAS. An existing binary is never rebuilt automatically — after a code c
 | `artist-photos/` | `artist-photos` | One-off backfill: fetch photos for photo-less artists | [artist-photos.md](../docs/scripts/artist-photos.md) |
 | `common/` | — | Shared library: config, DB, MusicBrainz client + resolver, images, filters | — |
 
+## Tests
+
+```bash
+cd scripts && cargo test --workspace   # unit tests
+scripts/test-db                        # + DB integration tests against a throwaway Postgres (Docker)
+DMP_LIVE_MB=1 scripts/test-db          # + tests that call the live MusicBrainz API
+```
+
+`scripts/test-db` starts a disposable `postgres:16`, applies the Prisma migrations and runs the whole
+suite with `--include-ignored`. It never reads `DATABASE_URL`; `TEST_DATABASE_URL` points it at an
+existing empty database instead.
+
 `test-s3/` is a throwaway connectivity check for S3 credentials, not part of the workspace build.
 
 ## Bash Scripts

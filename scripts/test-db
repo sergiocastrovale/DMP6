@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# Run the Rust test suite, including the #[ignore]d database integration tests, against a throwaway
+# PostgreSQL with the Prisma migrations applied. Never touches DATABASE_URL.
+#
+# Usage:
+#   scripts/test-db [cargo test args...]      e.g. scripts/test-db -p index
+#
+# Env:
+#   TEST_DATABASE_URL  use an existing disposable, empty database instead of starting a container
+#   TEST_DB_PORT       host port for the container (default 55432)
+#   DMP_LIVE_MB=1      also run tests that call the live MusicBrainz API
+#
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CONTAINER=""
+
+cleanup() {
+  if [ -n "$CONTAINER" ]; then
+    docker stop "$CONTAINER" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+
+if [ -n "${TEST_DATABASE_URL:-}" ]; then
+  DB_URL="$TEST_DATABASE_URL"
+else
+  PORT="${TEST_DB_PORT:-55432}"
+  CONTAINER="dmp-test-db-$$"
+  docker run -d --rm --name "$CONTAINER" \
+    -e POSTGRES_USER=dmp -e POSTGRES_PASSWORD=dmp -e POSTGRES_DB=dmp_test \
+    -e LANG=en_US.utf8 \
+    -p "127.0.0.1:${PORT}:5432" postgres:16 >/dev/null
+  for _ in $(seq 1 60); do
+    if docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U dmp -d dmp_test >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  DB_URL="postgresql://dmp:dmp@127.0.0.1:${PORT}/dmp_test"
+fi
+
+(cd "$ROOT/web" && DATABASE_URL="$DB_URL" pnpm exec prisma migrate deploy >/dev/null)
+
+cd "$ROOT/scripts"
+SMOKE_TEST_DATABASE_URL="$DB_URL" cargo test --workspace --no-fail-fast "$@" -- --include-ignored --test-threads=1

@@ -19,7 +19,6 @@ const FIXTURE_PREFIX: &str = "album-consensus-fixture";
 
 struct Release {
     id: String,
-    group_key: String,
 }
 
 async fn insert_release(
@@ -52,7 +51,7 @@ async fn insert_release(
     .execute(pool)
     .await
     .expect("insert fixture LocalRelease");
-    Release { id, group_key }
+    Release { id }
 }
 
 async fn insert_track(
@@ -85,14 +84,25 @@ async fn insert_track(
 }
 
 async fn insert_mb_release_track(pool: &PgPool) -> (String, String) {
+    let type_id: String = sqlx::query_scalar(
+        r#"INSERT INTO "ReleaseType" (id, name, slug, "createdAt", "updatedAt")
+           VALUES ('release-type-album', 'Album', 'album', now(), now())
+           ON CONFLICT (name) DO UPDATE SET "updatedAt" = now()
+           RETURNING id"#,
+    )
+    .fetch_one(pool)
+    .await
+    .expect("ensure fixture ReleaseType");
+
     let mb_release_id = cuid2::create_id();
     sqlx::query(
         r#"INSERT INTO "MusicBrainzRelease"
              (id, title, "typeId", "musicbrainzId", status, "createdAt", "updatedAt")
-           VALUES ($1, 'Consensus Fixture MB Release', 'album', $2, 'COMPLETE'::"ReleaseStatus", now(), now())"#,
+           VALUES ($1, 'Consensus Fixture MB Release', $3, $2, 'COMPLETE'::"ReleaseStatus", now(), now())"#,
     )
     .bind(&mb_release_id)
     .bind(cuid2::create_id())
+    .bind(&type_id)
     .execute(pool)
     .await
     .expect("insert fixture MusicBrainzRelease");

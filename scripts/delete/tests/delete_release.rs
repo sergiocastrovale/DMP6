@@ -28,7 +28,7 @@ impl Ctx {
         let album_type_id: String = sqlx::query_scalar(
             r#"INSERT INTO "ReleaseType" (id, name, slug, "createdAt", "updatedAt")
                VALUES ('release-type-album', 'Album', 'album', now(), now())
-               ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+               ON CONFLICT (name) DO UPDATE SET "updatedAt" = now()
                RETURNING id"#,
         )
         .fetch_one(&pool)
@@ -75,7 +75,7 @@ impl Ctx {
             r#"INSERT INTO "MusicBrainzRelease"
                  (id, title, "typeId", "musicbrainzId", "releaseGroupId", status, "mediumCount",
                   "releaseGroupSecondaryTypes", "createdAt", "updatedAt")
-               VALUES ($1, 'Fixture Release', $2, $3, $3, $4, 1, '{}', now(), now())"#,
+               VALUES ($1, 'Fixture Release', $2, $3, $3, $4::"ReleaseStatus", 1, '{}', now(), now())"#,
         )
         .bind(&id)
         .bind(&self.album_type_id)
