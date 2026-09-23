@@ -88,6 +88,7 @@ async fn main() {
 
     let run_id = create_audit_run(&pool).await;
     let mut counts = serde_json::Map::new();
+    let mut had_error = false;
 
     if args.should_run_corrupted() {
         print!("{} ", "→ Detecting corrupted TPE2...".cyan());
@@ -99,6 +100,7 @@ async fn main() {
             Err(e) => {
                 println!("{}: {}", "ERROR".red(), e);
                 counts.insert("corrupted".into(), json!(0));
+                had_error = true;
             }
         }
     }
@@ -113,6 +115,7 @@ async fn main() {
             Err(e) => {
                 println!("{}: {}", "ERROR".red(), e);
                 counts.insert("orphans".into(), json!(0));
+                had_error = true;
             }
         }
     }
@@ -127,6 +130,7 @@ async fn main() {
             Err(e) => {
                 println!("{}: {}", "ERROR".red(), e);
                 counts.insert("duplicates".into(), json!(0));
+                had_error = true;
             }
         }
     }
@@ -141,6 +145,7 @@ async fn main() {
             Err(e) => {
                 println!("{}: {}", "ERROR".red(), e);
                 counts.insert("missing".into(), json!(0));
+                had_error = true;
             }
         }
     }
@@ -155,6 +160,7 @@ async fn main() {
             Err(e) => {
                 println!("{}: {}", "ERROR".red(), e);
                 counts.insert("enrichment".into(), json!(0));
+                had_error = true;
             }
         }
     }
@@ -169,6 +175,7 @@ async fn main() {
             Err(e) => {
                 println!("{}: {}", "ERROR".red(), e);
                 counts.insert("duplicate-release".into(), json!(0));
+                had_error = true;
             }
         }
     }
@@ -183,11 +190,16 @@ async fn main() {
             Err(e) => {
                 println!("{}: {}", "ERROR".red(), e);
                 counts.insert("mismatched-release-id".into(), json!(0));
+                had_error = true;
             }
         }
     }
 
     finish_audit_run(&pool, &run_id, serde_json::Value::Object(counts)).await;
+    if had_error {
+        println!("{}", "Audit finished with errors - see above.".red().bold());
+        std::process::exit(1);
+    }
     println!("{}", "Audit complete.".green().bold());
 }
 
