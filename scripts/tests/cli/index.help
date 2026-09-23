@@ -27,8 +27,6 @@ Options:
           Skip cover art extraction
       --resume
           Resume from last saved checkpoint
-      --delete
-          Delete all local data for matched artists, then exit
       --threads <THREADS>
           Rayon thread count for parallel extraction [default: 8]
       --music-dir <MUSIC_DIR>

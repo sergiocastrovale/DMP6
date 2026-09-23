@@ -12,7 +12,6 @@ Options:
       --skip-release-img           
       --skip-mb-tags               Skip writing MusicBrainz IDs back to audio file tags
       --only-write-mb-to-files     Write DB-known MB IDs to file tags (no API calls), then exit
-      --delete                     
       --catalogue-gaps             Fast pass: populate MISSING catalogue entries only (few API calls/artist)
       --artist-ids <ARTIST_IDS>    Read artist IDs from file (one per line, used by refresh)
       --verbose                    

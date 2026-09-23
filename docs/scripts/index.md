@@ -25,7 +25,6 @@ cd scripts && cargo build --release -p index
 ./index --folders "Artist/Album" # exact folder paths, ;-separated
 ./index --skip-covers
 ./index --threads 4              # rayon thread count, default 8
-./index --delete                 # delete local data for matched artists, exit
 ./index --music-dir /path        # override MUSIC_DIR env
 ./index --web                    # PROGRESS:{json} for web terminal
 ./index --resolve-artists [--dry-run] [--only "Name"] [--overwrite]  # resolve artist tags only, no folder scan
@@ -51,7 +50,6 @@ cd scripts && cargo build --release -p index
 | `--prune` | bool | false | Delete rows for missing files even past the 20% mount-blip guard (only folders this run walked and found audio in) |
 | `--skip-covers` | bool | false | Skip cover art extraction |
 | `--resume` | bool | false | Resume from last checkpoint |
-| `--delete` | bool | false | Nuke local data for matched artists, exit |
 | `--threads` | usize | 8 | Rayon thread count |
 | `--music-dir` | String | - | Override MUSIC_DIR env |
 | `--web` | bool | false | PROGRESS:{json} for web terminal |

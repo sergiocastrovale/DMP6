@@ -15,8 +15,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-mod nuke;
-
 use common::images::download_artist_image;
 use dmp_sync::catalogue_gaps;
 use dmp_sync::db::*;
@@ -30,7 +28,6 @@ use dmp_sync::mb_types::{MbArtistMatch, MbRelease, MbTrack};
 use dmp_sync::owned;
 use dmp_sync::status;
 use dmp_sync::status::{check_release_status, format_from_media, status_to_db_string};
-use nuke::nuke_mb_data;
 
 #[derive(Parser, Debug)]
 #[command(name = "sync")]
@@ -63,7 +60,8 @@ struct SyncArgs {
         help = "Write DB-known MB IDs to file tags (no API calls), then exit"
     )]
     only_write_mb_to_files: bool,
-    #[arg(long)]
+    /// Removed: use `./delete "Artist"` or `./nuke --only "Artist"`.
+    #[arg(long, hide = true)]
     delete: bool,
     #[arg(
         long,
@@ -388,6 +386,10 @@ fn report_image_result(reporter: &Reporter, name: &str, result: &Result<bool, St
 async fn main() {
     let args = SyncArgs::parse();
     common::error_log::init("sync");
+    if args.delete {
+        eprintln!("--delete was removed: use ./delete \"Artist\" or ./nuke --only \"Artist\"");
+        std::process::exit(2);
+    }
     let reporter = Reporter::new(args.web);
     let mut config = load_config(None);
     let pool = create_pool(&config.database_url).await;
@@ -399,20 +401,19 @@ async fn main() {
         std::process::exit(1);
     }
 
-    if args.catalogue_gaps && (args.release.is_some() || args.delete) {
-        common::error_log::log_error(
-            "--catalogue-gaps cannot be combined with --release or --delete",
-        );
-        eprintln!("Error: --catalogue-gaps cannot be combined with --release or --delete");
+    if args.catalogue_gaps && args.release.is_some() {
+        common::error_log::log_error("--catalogue-gaps cannot be combined with --release");
+        eprintln!("Error: --catalogue-gaps cannot be combined with --release");
         std::process::exit(1);
     }
 
-    if args.only_write_mb_to_files && (args.release.is_some() || args.delete || args.catalogue_gaps)
-    {
+    if args.only_write_mb_to_files && (args.release.is_some() || args.catalogue_gaps) {
         common::error_log::log_error(
-            "--only-write-mb-to-files cannot be combined with --release, --delete, or --catalogue-gaps",
+            "--only-write-mb-to-files cannot be combined with --release or --catalogue-gaps",
         );
-        eprintln!("Error: --only-write-mb-to-files cannot be combined with --release, --delete, or --catalogue-gaps");
+        eprintln!(
+            "Error: --only-write-mb-to-files cannot be combined with --release or --catalogue-gaps"
+        );
         std::process::exit(1);
     }
 
@@ -478,26 +479,6 @@ async fn main() {
 
     let mut limiter = RateLimiter::new();
     limiter.set_web(args.web);
-
-    if args.delete {
-        match nuke_mb_data(
-            &pool,
-            args.from.as_deref(),
-            args.to.as_deref(),
-            args.only.as_deref(),
-            args.exact,
-            &config.project_root,
-            &s3_client,
-            &config,
-        )
-        .await
-        {
-            Ok(n) => reporter.info(&format!("Nuked MB data for {} artists.", n)),
-            Err(e) => reporter.err(&format!("Nuke error: {}", e)),
-        }
-        release_lock(&pool).await;
-        return;
-    }
 
     if args.catalogue_gaps {
         reporter.header("DMP Sync - Catalogue Gaps");

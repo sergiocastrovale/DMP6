@@ -1,6 +1,5 @@
 mod images;
 mod metadata;
-mod nuke;
 
 use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
@@ -36,7 +35,6 @@ use index::deletion::{
     delete_removed_tracks, detect_deleted_folders, dropped_links_line,
 };
 use metadata::extract_metadata;
-use nuke::nuke_local_artists;
 
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "opus", "aac", "ogg", "flac"];
 
@@ -92,7 +90,8 @@ struct IndexArgs {
     #[arg(long, help = "Resume from last saved checkpoint")]
     resume: bool,
 
-    #[arg(long, help = "Delete all local data for matched artists, then exit")]
+    /// Removed: use `./delete "Artist"` or `./nuke --only "Artist"`.
+    #[arg(long, hide = true)]
     delete: bool,
 
     #[arg(
@@ -438,6 +437,10 @@ async fn main() {
         args.overwrite = true;
     }
     common::error_log::init("index");
+    if args.delete {
+        eprintln!("--delete was removed: use ./delete \"Artist\" or ./nuke --only \"Artist\"");
+        std::process::exit(2);
+    }
     let reporter = Reporter::new(args.web);
     let mut config = load_config(args.music_dir.as_deref());
     let pool = create_pool(&config.database_url).await;
@@ -536,40 +539,12 @@ async fn main() {
         });
     }
 
-    let project_root = config.project_root.clone();
     let use_local = config.use_local();
     let use_s3 = config.use_s3();
     let release_img_dir = PathBuf::from(&config.image_dir).join("releases");
     let artist_img_dir = PathBuf::from(&config.image_dir).join("artists");
 
     let s3_client = create_s3_client(&config).await;
-
-    // -------------------------------------------------------------------------
-    // Nuke mode
-    // -------------------------------------------------------------------------
-    if args.delete {
-        let from = args.from.as_deref().unwrap_or("");
-        let to = args.to.as_deref().unwrap_or("");
-        let only = args.only.as_deref().unwrap_or("");
-        reporter.info("Deleting local data for matched artists...");
-        match nuke_local_artists(
-            &pool,
-            from,
-            to,
-            only,
-            args.exact,
-            &project_root,
-            &s3_client,
-            &config,
-        )
-        .await
-        {
-            Ok(n) => reporter.info(&format!("Deleted {} artist(s).", n)),
-            Err(e) => reporter.err(&format!("Delete error: {}", e)),
-        }
-        release_lock(&pool).await;
-        return;
-    }
 
     // -------------------------------------------------------------------------
     // Resolve-only mode: decide artist identity against MusicBrainz, no folder scan

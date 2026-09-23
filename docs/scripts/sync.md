@@ -31,7 +31,6 @@ cd scripts && cargo build --release -p sync
 ./sync --skip-artist-img
 ./sync --skip-release-img
 ./sync --verbose                 # show skipped MB releases
-./sync --delete                  # delete MB data for matched artists, exit
 ./sync --catalogue-gaps          # fast pass: MISSING entries only, few API calls/artist
 ./sync --catalogue-gaps --only x
 ./sync --catalogue-gaps --overwrite  # re-fetch all MISSING from scratch
@@ -55,7 +54,6 @@ Sync = per-artist matching only. Library-wide repair (box-set fold/dissolve, ide
 | `--overwrite` | bool | false | Re-sync all matched, not just pending |
 | `--skip-artist-img` | bool | false | Skip artist image download |
 | `--skip-release-img` | bool | false | Skip release cover download |
-| `--delete` | bool | false | Nuke MB data for matched artists, exit |
 | `--catalogue-gaps` | bool | false | Fast pass: MISSING entries only |
 | `--skip-mb-tags` | bool | false | Skip writing found MB IDs to tags |
 | `--only-write-mb-to-files` | bool | false | Backfill DB-known MB IDs into tags, no API calls, then exit |
@@ -96,7 +94,7 @@ Scope: name filtering (`--only`/`--from`/`--to`/`--exact`), or an explicit `arti
 
 **Performance:** 1 release-group browse + artist catalogue browse (1 page typical, ~11 for a Radiohead-sized artist — `inc=recordings` pages are size-capped). Both paths share one catalogue, so containment costs no extra calls here either.
 
-Cannot combine with `--release`/`--delete`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`/`--web`/`--verbose`.
+Cannot combine with `--release`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`/`--web`/`--verbose`.
 
 ## --only-write-mb-to-files Behaviour
 
@@ -106,17 +104,11 @@ Writes DB-known MB IDs to file tags, no API calls. Fills only **absent** tags un
 
 **Use case:** backfill after a full sync so files become source of truth. Run once.
 
-Cannot combine with `--release`/`--delete`/`--catalogue-gaps`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`.
+Cannot combine with `--release`/`--catalogue-gaps`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`.
 
 ## Recording-tag mixup (historical, fixed)
 
 Until 2026-09, `write_mb_ids` wrote each track's **release-track** id into the **recording** slot. A normal sync filled it wherever empty; `--overwrite` replaced correct Picard values. MP3s spared only by accident (lofty's generic ID3v2 conversion dropped the frame — `CLAUDE.md` MP3 note). Repaired library-wide by `oneoff/repair_recording_tags.py` on 2026-09-18 (had failed to start on the NAS's Python 3.11 until then — `docs/specs/spec_tidy_observations.md` §17), then deleted with the rest of `oneoff/`. No standing flag anymore — `write_mb_ids` now treats a recording tag equal to the track's own release-track id as absent, so the mixup can't recur.
-
-## --delete Behaviour
-
-Resets `musicbrainzId`/`completeness`/`lastSyncedAt` to NULL, unlinks `MusicBrainzRelease`, resets `LocalRelease.matchStatus` to `UNMATCHED`. Re-running `./sync` re-syncs those artists automatically.
-
-(Fixed bug: the unlink statement used to also set `statusReason`, a column that lives on `MusicBrainzRelease` not `LocalRelease` — errored, and the error propagated with `?`, aborting mid-artist. Removed.)
 
 ## Artist Matching (5-step)
 

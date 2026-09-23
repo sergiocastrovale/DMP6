@@ -89,9 +89,9 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./index --resolve-artists [--dry-run] [--only "Name"] [--overwrite]  # MB artist-name resolution only, no folder scan
 ./index --skip-resolve        # skip end-of-run resolution pass
 ./index --canonicalize-artists [--dry-run]  # reconcile Artist rows vs MB (pure SQL, no network)
-./index --delete | --emit-artist-ids f
+./index --emit-artist-ids f          # (--delete removed: use ./delete / ./nuke --only)
 ./sync --only "Name" [--exact] [--overwrite] | --release "clxxx" [--artist-hint "clyyy"]
-./sync --delete | --verbose | --skip-mb-tags
+./sync --verbose | --skip-mb-tags
 ./sync --only-write-mb-to-files [--only x]   # backfill MB ids into tags, no API calls
 ./sync --catalogue-gaps [--overwrite]        # fast MISSING-entry pass
 ./sync --artist-ids file      # used by refresh
