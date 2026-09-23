@@ -1669,7 +1669,6 @@ pub async fn run_repair(
                 Err(e) => {
                     let msg = format!("box group [{}]: reading tracks failed: {}", group.parent, e);
                     reporter.warn(&msg);
-                    common::error_log::log_warn(&msg);
                     summary.groups_failed += 1;
                     read_failed = true;
                     break;
@@ -1808,7 +1807,7 @@ pub async fn run_repair(
             continue;
         };
 
-        println!(
+        reporter.info(&format!(
             "{} {} -> {} ({} sibling(s) matched, {}/{} discs owned)",
             "▸".cyan(),
             plan.release_id,
@@ -1816,7 +1815,7 @@ pub async fn run_repair(
             plan.members.len(),
             plan.members.len(),
             fetched_candidate.candidate.media.len(),
-        );
+        ));
         for s in &siblings {
             let owned = plan.members.iter().any(|(id, _)| id == &s.local_id);
             let mark = if owned {
@@ -1824,7 +1823,7 @@ pub async fn run_repair(
             } else {
                 "skip ".yellow()
             };
-            println!("    {} {} [{}]", mark, s.local_id, s.folder_path);
+            reporter.info(&format!("    {} {} [{}]", mark, s.local_id, s.folder_path));
         }
 
         let mb_db_id = match &fetched_candidate.source {
@@ -1834,7 +1833,6 @@ pub async fn run_repair(
                 if let Err(e) = relink_stored_tracks(pool, mb_db_id, &plan).await {
                     let msg = format!("box group [{}]: relinking failed: {}", plan.folder_path, e);
                     reporter.warn(&msg);
-                    common::error_log::log_warn(&msg);
                     summary.groups_failed += 1;
                     continue;
                 }
@@ -1864,7 +1862,6 @@ pub async fn run_repair(
                         let msg =
                             format!("box group [{}]: binding failed: {}", plan.folder_path, e);
                         reporter.warn(&msg);
-                        common::error_log::log_warn(&msg);
                         summary.groups_failed += 1;
                         continue;
                     }
@@ -1896,7 +1893,6 @@ pub async fn run_repair(
                     plan.folder_path, e
                 );
                 reporter.warn(&msg);
-                common::error_log::log_warn(&msg);
                 summary.groups_failed += 1;
                 continue;
             }
@@ -1929,13 +1925,13 @@ pub async fn run_repair(
                 } else {
                     summary.groups_dissolved += 1;
                 }
-                println!(
+                reporter.info(&format!(
                     "{} {} -> {} ({} equivalent medium/media)",
                     "▸".cyan(),
                     plan.folder_path,
                     label,
                     equivalents
-                );
+                ));
             }
             Err(e) => {
                 let msg = format!(
@@ -1943,7 +1939,6 @@ pub async fn run_repair(
                     plan.folder_path, e
                 );
                 reporter.warn(&msg);
-                common::error_log::log_warn(&msg);
                 summary.groups_failed += 1;
             }
         }
