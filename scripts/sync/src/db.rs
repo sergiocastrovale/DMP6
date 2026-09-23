@@ -2201,7 +2201,7 @@ pub async fn get_artist_for_release(
             id,
             name,
             slug,
-            mb_id,
+            mb_id: mb_id.as_deref().and_then(sanitize_mb_id),
             has_image: image.is_some() || image_url.is_some(),
         }),
     )

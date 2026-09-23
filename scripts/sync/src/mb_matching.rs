@@ -140,11 +140,14 @@ pub async fn find_mb_match_with_fallback(
                     .into_iter()
                     .filter(|a| !is_special_mb_artist(&a.id, &a.name))
                     .collect();
+                // Exact only - a release-group credit list can include co-credited artists (a
+                // remixer, a compilation's other contributor) with a similar name, and this rung
+                // has no other evidence to prefer the right one.
                 if !real_artists.is_empty() {
-                    if let Some(matched) = real_artists.iter().find(|a| {
-                        names_are_similar(artist_name, &a.name)
-                            || a.name.eq_ignore_ascii_case(artist_name)
-                    }) {
+                    if let Some(matched) = real_artists
+                        .iter()
+                        .find(|a| mb_artist_exact(artist_name, a))
+                    {
                         return Ok(Some(matched.clone()));
                     }
                 }
