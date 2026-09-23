@@ -161,20 +161,36 @@ async fn main() {
     let mut summary = TidySummary::default();
 
     // ---- Phase 1: scope ----
+    // A failure here (bad --artist-ids path, or the DB read itself) must never read as "0 artists in
+    // scope" - that renders as "Nothing to tidy" and exits 0, indistinguishable from a genuinely
+    // empty, successful run.
     let scope_ids: Vec<String> = if let Some(path) = &args.artist_ids {
-        std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("Failed to read artist IDs file '{}': {}", path, e))
-            .lines()
-            .filter(|l| !l.is_empty())
-            .map(|l| l.to_string())
-            .collect()
+        match std::fs::read_to_string(path) {
+            Ok(contents) => contents
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(|l| l.to_string())
+                .collect(),
+            Err(e) => {
+                let msg = format!("Failed to read artist IDs file '{}': {}", path, e);
+                reporter.err(&msg);
+                release_lock(&pool, "tidy", std::process::id()).await;
+                std::process::exit(1);
+            }
+        }
     } else {
-        let base: Vec<(String, String)> = if args.all {
-            db::get_all_synced_artists(&pool).await.unwrap_or_default()
+        let loaded = if args.all {
+            db::get_all_synced_artists(&pool).await
         } else {
-            db::get_artists_pending_tidy(&pool)
-                .await
-                .unwrap_or_default()
+            db::get_artists_pending_tidy(&pool).await
+        };
+        let base: Vec<(String, String)> = match loaded {
+            Ok(rows) => rows,
+            Err(e) => {
+                reporter.err(&format!("Failed to load tidy scope: {}", e));
+                release_lock(&pool, "tidy", std::process::id()).await;
+                std::process::exit(1);
+            }
         };
         let narrow = args.only.is_some() || args.from.is_some() || args.to.is_some();
         base.into_iter()
