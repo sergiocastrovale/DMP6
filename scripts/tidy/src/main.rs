@@ -104,7 +104,7 @@ async fn main() {
     let pool = create_pool(&config.database_url).await;
     apply_db_overrides(&mut config, &pool).await;
 
-    if clear_stale_lock_minutes(&pool, 10).await {
+    if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         reporter.warn("Cleared stale scan lock.");
     }
 
@@ -132,7 +132,7 @@ async fn main() {
             running.store(false, Ordering::SeqCst);
             eprintln!("\nShutdown requested - finishing current phase...");
             tokio::signal::ctrl_c().await.ok();
-            release_lock(&pool2).await;
+            release_lock(&pool2, "tidy", std::process::id()).await;
             std::process::exit(1);
         });
     }
@@ -145,7 +145,7 @@ async fn main() {
                     .expect("SIGTERM handler");
             term.recv().await;
             running.store(false, Ordering::SeqCst);
-            release_lock(&pool2).await;
+            release_lock(&pool2, "tidy", std::process::id()).await;
             std::process::exit(1);
         });
     }
@@ -194,7 +194,7 @@ async fn main() {
 
     if scope_ids.is_empty() {
         reporter.done("Nothing to tidy.");
-        release_lock(&pool).await;
+        release_lock(&pool, "tidy", std::process::id()).await;
         return;
     }
 
@@ -553,7 +553,7 @@ async fn main() {
         }
     }
 
-    release_lock(&pool).await;
+    release_lock(&pool, "tidy", std::process::id()).await;
 
     let elapsed = start_time.elapsed();
     let h = elapsed.as_secs() / 3600;

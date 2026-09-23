@@ -152,7 +152,10 @@ pub async fn fill_catalogue_gaps(
         let covered_rg_ids = match covered {
             Ok(c) => c,
             Err(e) => {
-                reporter.err(&format!("{}: owned release groups unreadable: {} - gaps skipped", name, e));
+                reporter.err(&format!(
+                    "{}: owned release groups unreadable: {} - gaps skipped",
+                    name, e
+                ));
                 continue;
             }
         };

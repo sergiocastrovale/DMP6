@@ -74,7 +74,7 @@ async fn main() {
         }
     };
 
-    if clear_stale_lock_minutes(&pool, 10).await {
+    if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         reporter.warn("Cleared stale scan lock.");
     }
 
@@ -97,7 +97,7 @@ async fn main() {
             running.store(false, Ordering::SeqCst);
             eprintln!("\nShutdown requested - finishing current phase...");
             tokio::signal::ctrl_c().await.ok();
-            release_lock(&pool2).await;
+            release_lock(&pool2, "add", std::process::id()).await;
             std::process::exit(1);
         });
     }
@@ -110,7 +110,7 @@ async fn main() {
                     .expect("SIGTERM handler");
             term.recv().await;
             running.store(false, Ordering::SeqCst);
-            release_lock(&pool2).await;
+            release_lock(&pool2, "add", std::process::id()).await;
             std::process::exit(1);
         });
     }
@@ -129,7 +129,7 @@ async fn main() {
         Ok(d) => d,
         Err(e) => {
             reporter.err(&format!("MusicBrainz lookup failed: {}", e));
-            release_lock(&pool).await;
+            release_lock(&pool, "add", std::process::id()).await;
             std::process::exit(1);
         }
     };
@@ -142,7 +142,7 @@ async fn main() {
             "Artist name sanitizes to an empty slug: {:?}",
             name
         ));
-        release_lock(&pool).await;
+        release_lock(&pool, "add", std::process::id()).await;
         std::process::exit(1);
     }
     let Some(folder) = folder::folder_name(&name) else {
@@ -150,7 +150,7 @@ async fn main() {
             "Artist name sanitizes to an empty folder name: {:?}",
             name
         ));
-        release_lock(&pool).await;
+        release_lock(&pool, "add", std::process::id()).await;
         std::process::exit(1);
     };
 
@@ -169,13 +169,13 @@ async fn main() {
                 "Already in library: {} ({})",
                 existing.name, existing.slug
             ));
-            release_lock(&pool).await;
+            release_lock(&pool, "add", std::process::id()).await;
             std::process::exit(EXIT_ALREADY_EXISTS);
         }
         Ok(None) => {}
         Err(e) => {
             reporter.err(&format!("DB query failed: {}", e));
-            release_lock(&pool).await;
+            release_lock(&pool, "add", std::process::id()).await;
             std::process::exit(1);
         }
     }
@@ -190,19 +190,19 @@ async fn main() {
                 "Refusing unsafe folder path: {}",
                 folder_path.display()
             ));
-            release_lock(&pool).await;
+            release_lock(&pool, "add", std::process::id()).await;
             std::process::exit(1);
         }
     }
     if folder_path.exists() {
         reporter.err(&format!("Folder already exists: {}", folder_path.display()));
-        release_lock(&pool).await;
+        release_lock(&pool, "add", std::process::id()).await;
         std::process::exit(EXIT_ALREADY_EXISTS);
     }
 
     if args.dry_run {
         reporter.done("Dry run - nothing created.");
-        release_lock(&pool).await;
+        release_lock(&pool, "add", std::process::id()).await;
         return;
     }
 
@@ -213,7 +213,7 @@ async fn main() {
             1
         };
         reporter.err(&format!("Could not create folder: {}", e));
-        release_lock(&pool).await;
+        release_lock(&pool, "add", std::process::id()).await;
         std::process::exit(code);
     }
 
@@ -240,7 +240,7 @@ async fn main() {
             1
         };
         reporter.err(&format!("Could not create artist: {}", e));
-        release_lock(&pool).await;
+        release_lock(&pool, "add", std::process::id()).await;
         std::process::exit(code);
     }
 
@@ -286,7 +286,7 @@ async fn main() {
                 "Added {} - {} release(s) in catalogue",
                 name, gaps
             ));
-            release_lock(&pool).await;
+            release_lock(&pool, "add", std::process::id()).await;
         }
         Err(e) => {
             // Artist + folder already exist and are valid - a failed catalogue fetch is retried by the
@@ -295,7 +295,7 @@ async fn main() {
                 "Catalogue fetch failed: {} (artist was still created)",
                 e
             ));
-            release_lock(&pool).await;
+            release_lock(&pool, "add", std::process::id()).await;
             std::process::exit(1);
         }
     }

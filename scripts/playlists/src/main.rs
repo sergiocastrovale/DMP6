@@ -676,7 +676,7 @@ async fn main() {
     // could otherwise interleave with this pass (audit #89, pairs #51). Skipped for --dry-run, which
     // never writes.
     let _lock_guard = if !args.dry_run {
-        if clear_stale_lock_minutes(&pool, 10).await {
+        if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
             println!("{}", "Cleared a stale lock.".yellow());
         }
         match acquire_lock(&pool, "playlists", std::process::id(), "").await {
@@ -852,7 +852,7 @@ async fn main() {
     }
 
     if !args.dry_run {
-        release_lock(&pool).await;
+        release_lock(&pool, "playlists", std::process::id()).await;
     }
 
     // Summary

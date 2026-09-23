@@ -430,7 +430,7 @@ async fn main() {
         std::process::exit(1);
     }
 
-    if clear_stale_lock_minutes(&pool, 10).await {
+    if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         reporter.warn("Cleared stale scan lock.");
     }
 
@@ -461,7 +461,7 @@ async fn main() {
             running.store(false, Ordering::SeqCst);
             eprintln!("\nShutdown requested - finishing current artist...");
             tokio::signal::ctrl_c().await.ok();
-            release_lock(&pool2).await;
+            release_lock(&pool2, "sync", std::process::id()).await;
             std::process::exit(1);
         });
     }
@@ -474,7 +474,7 @@ async fn main() {
                     .expect("SIGTERM handler");
             term.recv().await;
             running.store(false, Ordering::SeqCst);
-            release_lock(&pool2).await;
+            release_lock(&pool2, "sync", std::process::id()).await;
             std::process::exit(0);
         });
     }
@@ -549,7 +549,7 @@ async fn main() {
             }
             Err(e) => reporter.err(&format!("Catalogue gaps error: {}", e)),
         }
-        release_lock(&pool).await;
+        release_lock(&pool, "sync", std::process::id()).await;
         return;
     }
 
@@ -557,7 +557,7 @@ async fn main() {
         let music_dir = config.music_dir.as_deref().unwrap_or("");
         if music_dir.is_empty() {
             reporter.err("No music_dir configured - cannot write to files");
-            release_lock(&pool).await;
+            release_lock(&pool, "sync", std::process::id()).await;
             std::process::exit(1);
         }
 
@@ -654,7 +654,7 @@ async fn main() {
             "Wrote MB IDs to {} / {} tracks across {} artists",
             total_written, total_tracks, total
         ));
-        release_lock(&pool).await;
+        release_lock(&pool, "sync", std::process::id()).await;
         return;
     }
 
@@ -735,7 +735,7 @@ async fn main() {
                     "Release '{}' not found or has no artist",
                     release_id
                 ));
-                release_lock(&pool).await;
+                release_lock(&pool, "sync", std::process::id()).await;
                 std::process::exit(1);
             }
             Err(e) => {
@@ -743,7 +743,7 @@ async fn main() {
                     "DB error looking up release '{}': {}",
                     release_id, e
                 ));
-                release_lock(&pool).await;
+                release_lock(&pool, "sync", std::process::id()).await;
                 std::process::exit(1);
             }
         }
@@ -2209,7 +2209,7 @@ async fn main() {
     if run_hash.is_some() && running.load(Ordering::SeqCst) {
         clear_run_hash(&pool, "syncRunHash").await;
     }
-    release_lock(&pool).await;
+    release_lock(&pool, "sync", std::process::id()).await;
 
     let elapsed = start_time.elapsed();
     let h = elapsed.as_secs() / 3600;

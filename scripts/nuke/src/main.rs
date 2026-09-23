@@ -267,7 +267,7 @@ async fn main() {
             log!();
         }
 
-        if clear_stale_lock_minutes(&pool, 10).await {
+        if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
             log!("Cleared a stale lock.");
         }
         let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id(), "").await {
@@ -291,7 +291,7 @@ async fn main() {
             Err(e) => {
                 error_log::log_error(&e.to_string());
                 eprintln!("  {} Error: {}", "✗".red(), e);
-                release_lock(&pool).await;
+                release_lock(&pool, "nuke", std::process::id()).await;
                 std::process::exit(1);
             }
         }
@@ -299,7 +299,7 @@ async fn main() {
         if let Err(e) = common::statistics::update_statistics(&pool).await {
             error_log::log_warn(&format!("statistics refresh failed: {e}"));
         }
-        release_lock(&pool).await;
+        release_lock(&pool, "nuke", std::process::id()).await;
 
         log!();
         log!(
@@ -361,7 +361,7 @@ async fn main() {
     // Same DB scan lock index/sync use. Note: this full wipe TRUNCATEs the very "Statistics" row
     // that holds the lock columns - release_lock below becomes a harmless no-op in that case (0 rows
     // affected), and the next acquire_lock anywhere recreates the row via its own ON CONFLICT insert.
-    if clear_stale_lock_minutes(&pool, 10).await {
+    if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         log!("Cleared a stale lock.");
     }
     let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id(), "").await {
@@ -416,7 +416,7 @@ async fn main() {
     if let Err(e) = sqlx::query(&truncate).execute(&pool).await {
         error_log::log_error(&format!("truncate failed: {e}"));
         eprintln!("  {} Truncate failed, nothing deleted: {}", "✗".red(), e);
-        release_lock(&pool).await;
+        release_lock(&pool, "nuke", std::process::id()).await;
         std::process::exit(1);
     }
     log!("  {} Truncated {} tables", "✓".green(), tables.len());
@@ -498,7 +498,7 @@ async fn main() {
 
     log!();
     log!("Done. Run ./index && ./sync to rebuild.");
-    release_lock(&pool).await;
+    release_lock(&pool, "nuke", std::process::id()).await;
 }
 
 #[cfg(test)]

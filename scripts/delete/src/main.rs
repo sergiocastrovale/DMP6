@@ -290,7 +290,7 @@ async fn main() {
 
     // Same DB scan lock index/sync use - acquired only now (not while waiting on the confirmation
     // prompt above) so delete's cascading writes never interleave with a running index/sync pass.
-    if clear_stale_lock_minutes(&pool, 10).await {
+    if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         eprintln!("{}", "Cleared a stale lock.".yellow());
     }
     let _lock_guard = match acquire_lock(&pool, "delete", std::process::id(), "").await {
@@ -314,7 +314,7 @@ async fn main() {
         Err(e) => {
             error_log::log_error(&format!("Database error: {}", e));
             eprintln!("  {} Database error: {}", "✗".red(), e);
-            release_lock(&pool).await;
+            release_lock(&pool, "delete", std::process::id()).await;
             std::process::exit(1);
         }
     }
@@ -324,7 +324,7 @@ async fn main() {
     }
 
     update_statistics(&pool).await.ok();
-    release_lock(&pool).await;
+    release_lock(&pool, "delete", std::process::id()).await;
 
     println!();
     let kept = plan

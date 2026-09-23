@@ -314,7 +314,7 @@ pub async fn run(
     }
 
     // Same DB scan lock index/sync/artist-delete use, acquired only now.
-    if clear_stale_lock_minutes(pool, 10).await {
+    if clear_stale_lock_minutes(pool, common::lock::STALE_LOCK_MINUTES).await {
         eprintln!("{}", "Cleared a stale lock.".yellow());
     }
     let _lock_guard = match acquire_lock(pool, "delete", std::process::id(), "").await {
@@ -329,7 +329,7 @@ pub async fn run(
     if let Err(e) = execute_plan(pool, config, &plan).await {
         error_log::log_error(&format!("Database error: {}", e));
         eprintln!("  {} Database error: {}", "✗".red(), e);
-        release_lock(pool).await;
+        release_lock(pool, "delete", std::process::id()).await;
         std::process::exit(1);
     }
 
@@ -391,7 +391,7 @@ pub async fn run(
     }
 
     update_statistics(pool).await.ok();
-    release_lock(pool).await;
+    release_lock(pool, "delete", std::process::id()).await;
 
     println!();
     println!(

@@ -2,11 +2,13 @@ use chrono::Utc;
 use sqlx::PgPool;
 use tokio::task::JoinHandle;
 
-/// Keeps the scan lock's `scanLockedAt` fresh every 60s for as long as it is held, so
-/// `clear_stale_lock_minutes`'s 10-minute threshold only ever fires on a genuinely dead process, never
-/// a long-running one (a whole-library first `./tidy` run can take hours). Dropping the guard aborts
-/// the heartbeat task; it does NOT clear the lock row itself - callers still call `release_lock`
-/// explicitly, keeping this guard alive until they do.
+/// Every 60s while held, refreshed via a background heartbeat so `STALE_LOCK_MINUTES` only ever fires
+/// on a genuinely dead process, never a long-running one (a whole-library first `./tidy` run can take
+/// hours). 3 minutes tolerates 2 missed heartbeats before a slow-but-alive process looks dead.
+pub const STALE_LOCK_MINUTES: u64 = 3;
+
+/// Dropping the guard aborts the heartbeat task; it does NOT clear the lock row itself - callers still
+/// call `release_lock` explicitly, keeping this guard alive until they do.
 pub struct LockGuard {
     heartbeat: JoinHandle<()>,
 }
@@ -62,8 +64,8 @@ pub async fn acquire_lock(
             });
             Ok(LockGuard { heartbeat })
         }
-        _ => {
-            // Lock held - read who has it
+        Ok(_) => {
+            // 0 rows: genuinely held - read who has it.
             let holder: Option<(Option<String>, Option<i32>)> = sqlx::query_as(
                 r#"SELECT "scanLockedBy", "scanPid" FROM "Statistics" WHERE id = 'main'"#,
             )
@@ -78,15 +80,24 @@ pub async fn acquire_lock(
             let _ = args; // available for future structured logging
             Err(msg)
         }
+        // A DB error here is not evidence the lock is held - conflating the two would make a
+        // transient connection blip look, to every caller's "lock held" branch, exactly like
+        // another process actively running.
+        Err(e) => Err(format!("lock check failed: {}", e)),
     }
 }
 
-pub async fn release_lock(pool: &PgPool) {
+/// Guarded by both `scanPid` and `scanLockedBy`: an unconditional clear would drop a lock this
+/// process no longer holds - taken over by another binary after this one's own lock was cleared as
+/// stale while it was still (slowly) running.
+pub async fn release_lock(pool: &PgPool, binary: &str, pid: u32) {
     sqlx::query(
         r#"UPDATE "Statistics"
            SET "scanLockedBy" = NULL, "scanLockedAt" = NULL, "scanPid" = NULL, "updatedAt" = NOW()
-           WHERE id = 'main'"#,
+           WHERE id = 'main' AND "scanLockedBy" = $1 AND "scanPid" = $2"#,
     )
+    .bind(binary)
+    .bind(pid as i32)
     .execute(pool)
     .await
     .ok();

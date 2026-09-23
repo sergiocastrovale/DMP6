@@ -58,7 +58,7 @@ async fn main() {
 
     // Same DB scan lock index/sync use - fix rewrites tags and merges/deletes artists, so it must
     // not run concurrently with an index/sync pass touching the same rows.
-    if clear_stale_lock_minutes(&pool, 10).await {
+    if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         eprintln!("{}", "Cleared a stale lock.".yellow());
     }
     let _lock_guard = match acquire_lock(&pool, "fix", std::process::id(), "").await {
@@ -203,7 +203,7 @@ async fn main() {
 
     // Release before spawning `index` as a subprocess below - it takes the same lock itself, and
     // fix's own destructive work is done at this point.
-    release_lock(&pool).await;
+    release_lock(&pool, "fix", std::process::id()).await;
 
     if had_file_writes && !affected_folders.is_empty() {
         let folders = affected_folders.into_iter().collect::<Vec<_>>().join(";");
