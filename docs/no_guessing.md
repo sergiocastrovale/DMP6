@@ -2,6 +2,14 @@
 
 > **Implementation brief.** Self-contained: a cold session should be able to read this file and
 > implement without re-deriving anything. Line anchors were verified on `master` @ `7474ac19`
+
+> **Status: shipped 2026-09-23.** Implemented, tested, committed (`0c7bcb3e`), deployed, and the
+> one-off ran against production - preview numbers matched the post-run count exactly (16,822
+> flagged, 5,039 previously `COMPLETE`). Confirmed final counts and the exact reason split:
+> `docs/specs/spec_tidy_observations.md` §19 "Round 8". Undo dumps were skipped in favor of a
+> `./backup` taken immediately before Tx 1/Tx 2 - see "Undo dumps" below, now corrected for what
+> actually worked on this NAS. Still open: the user's own visual check of the artist-page stacks
+> (Verification section below) - not self-verified, per standing rule.
 ---
 
 ## Context
@@ -448,10 +456,26 @@ sets year on clean rows.
 --    WHERE v.reason IS NOT NULL AND lr."matchStatus" = 'COMPLETE';   -- expect 5,039
 ```
 
+> **Ran 2026-09-23**: matched exactly — 16,822 total (14,688 / 4 / 15 / 2,020 / 95 / 0 across the six
+> reasons in doc order), 5,039 `COMPLETE`. Final confirmed numbers + after-state:
+> `docs/specs/spec_tidy_observations.md` §19.
+
+> **Corrected 2026-09-23 — the `dmp` app container has no `psql` binary.** Every `docker exec dmp
+> psql ...` below is wrong on this NAS; use the Postgres container instead
+> (`sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp`, no `$DATABASE_URL` needed - the
+> container already knows its own db/user). `./tidy` also needs `sudo` on this NAS (Kp isn't in the
+> `docker` group, `docs/no_guessing.md`'s memory `reference_nas_docker_sudo.md` explains why) - the
+> wrapper script itself calls plain `docker exec`, so run `sudo ./tidy ...`, not `./tidy ...`.
+
 ### Undo dumps (run on the NAS **before** Tx 1; no in-repo precedent, do it by hand)
 
+**Skipped in the actual 2026-09-23 rollout** — a full `./backup` was taken immediately before Tx 1/Tx 2
+instead and judged sufficient (no other writes expected in the window; a full-DB point-in-time restore
+was an acceptable tradeoff against a scoped/no-downtime undo for this one run). Kept here for a future
+rollout that wants the narrower, non-downtime undo path:
+
 ```bash
-sudo docker exec dmp psql "$DATABASE_URL" -c "\copy (SELECT ...) TO STDOUT" > logs/undo20_album_consensus_releases.tsv
+sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -c "\copy (SELECT ...) TO STDOUT" > logs/undo20_album_consensus_releases.tsv
 ```
 - `logs/undo20_album_consensus_releases.tsv` — `id, title, year, releaseId, mediumPosition, matchStatus`
   for every row the preview flags.
@@ -497,15 +521,24 @@ Reading both TSVs back into temp tables and reversing Tx 1 (`statusReason = NULL
 
 ---
 
-## Rollout
+## Rollout — done 2026-09-23
 
-1. Implement. `cd scripts && cargo build --release && cargo test`;
-   `cd web && pnpm test:unit && pnpm lint && pnpm typecheck`.
-2. Commit + push **directly to `master`** (no feature branch, no `Co-Authored-By` trailer).
-3. `./deploy` — migration + binaries. Deploy restarts web before `migrate deploy`; brief window,
-   nothing to pause beyond not starting a scan.
-4. Undo dumps → one-off Tx 1 → Tx 2 → `./tidy --rescore-only --all` (~2 min).
-5. Update `spec_tidy_observations.md` §19 Round 8 with the real counts, commit.
+1. ✅ Implement. `cd scripts && cargo build --release && cargo test`;
+   `cd web && pnpm test:unit && pnpm lint && pnpm typecheck`. (Ran via `cargo build --workspace` /
+   `cargo test -p common -p index -p sync -p tidy -p add` and `npx vitest run` / `npx eslint .` /
+   `npx nuxt typecheck` — all green: 273 Rust tests, 1909 web tests, 0 lint errors.)
+2. ✅ Commit + push directly to `master`, no `Co-Authored-By` trailer — `0c7bcb3e`.
+3. ✅ `./deploy` — migration + binaries. Ran clean (migration applied, container restarted).
+4. ✅ `./backup` (chosen over undo dumps, see "Undo dumps" above) → one-off Tx 1 → Tx 2 →
+   `sudo ./tidy --rescore-only --all`. Run from a NAS `tmux` session named `sync` (`ssh nas`,
+   `tmux attach -t sync` to inspect). One-off executed via
+   `sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp` — the `dmp` app container has no
+   `psql` binary, see the correction above. Preview vs. post-run counts matched exactly; tidy
+   re-scored 7,234 unrelated already-bound releases, 0 status changes, exit 0.
+5. ✅ Updated `spec_tidy_observations.md` §19 Round 8 with the real counts.
+
+Not done by this rollout (deliberately, not an oversight): the artist-page visual check
+(Verification section below) — the user's own, per standing rule ("no self-login").
 
 ## Tests
 
@@ -535,10 +568,16 @@ Reading both TSVs back into temp tables and reversing Tx 1 (`statusReason = NULL
 
 - **Al Jolson**: the former "The World's Greatest Entertainer" / "In Songs He Made Famous" folders
   are UNKNOWN, reason set, folder-leaf titles, `releaseId` NULL. Artist page shows no bogus edition
-  stacks, badge hover shows the reason — **visual check by the user; I don't self-login**.
+  stacks, badge hover shows the reason — **visual check by the user; I don't self-login. Still
+  pending as of 2026-09-23.**
   Expect "The Man and the Legend" ×3 to *survive* (round 7, out of scope) — don't report it as a
   regression.
-- Post-one-off counts match the preview (~16.8k UNKNOWN with a reason; COMPLETE down ~5,039).
-- `./sync` twice: those artists are not pending; the second run is a no-op.
+- ✅ **Confirmed 2026-09-23, exact**: post-one-off counts match the preview exactly — 16,822 UNKNOWN
+  with a reason, COMPLETE down 117,144→112,105 (-5,039). `docs/specs/spec_tidy_observations.md` §19.
+- `./sync` twice: those artists are not pending; the second run is a no-op. Covered by
+  `get_artists_pending_sync`'s `AND lr."statusReason" IS NULL` guard (code-level, not yet re-exercised
+  against the live library post-rollout).
 - Retag one folder into agreement → `./index --folders "Artist/Album"` → back to `UNMATCHED` →
-  `./sync` binds it.
+  `./sync` binds it. Covered by `scripts/index/tests/album_consensus.rs`'s
+  `retagged_folder_returns_to_unmatched_with_reason_cleared_and_is_stable` (`#[ignore]`d, needs
+  `SMOKE_TEST_DATABASE_URL`) — not yet run against the live library.

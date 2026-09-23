@@ -153,12 +153,24 @@ a folder's tracks (`common::consensus::evaluate`), full stop - no plurality, no 
 COMPLETE-rescue, no deluxe-sibling upgrade search. Anything short of unanimous is parked `UNKNOWN` with
 a human-readable `LocalRelease.statusReason` instead of guessed. Implementation: `docs/no_guessing.md`.
 
-**Measured (read-only preview, excluding box-placed / folded / `forcedComplete`)**: 16,822 releases
-flagged. Reason split: album disagreement 14,688, missing album tag 19, MB-id disagreement with album
-unanimous 2,115 (further splits three ways across `MB_ALBUM_DIVERGENCE_RG_UNANIMOUS` /
-`MB_ALBUM_DIVERGENCE` / `MB_RELEASE_GROUP_DIVERGENCE` - exact split recorded at rollout time). Of the
-16,822: 11,017 were currently bound, and **5,039 were currently `COMPLETE`** - per-track-tagged folders
-round 5's rescue path had bound; this is the round-5-rescue population round 8 now reverses.
+**Measured, confirmed exact at rollout (preview matched the post-run count 1:1)**: 16,822 releases
+flagged, excluding box-placed / folded / `forcedComplete`. Reason split:
+
+| Reason | Count |
+|---|---|
+| `ALBUM_DIVERGENCE` | 14,688 |
+| `MB_ALBUM_DIVERGENCE_RG_UNANIMOUS` | 2,020 |
+| `ALBUM_INEXISTENT` | 15 |
+| `MB_ALBUM_DIVERGENCE` | 95 |
+| `ALBUM_MISSING` | 4 |
+| `MB_RELEASE_GROUP_DIVERGENCE` | 0 |
+| **Total** | **16,822** |
+
+Of the 16,822: 11,017 were currently bound, and **5,039 were currently `COMPLETE`** (2 `ALBUM_MISSING`,
+1,365 `MB_ALBUM_DIVERGENCE_RG_UNANIMOUS`, 3,629 `ALBUM_DIVERGENCE`, 43 `MB_ALBUM_DIVERGENCE`) -
+per-track-tagged folders round 5's rescue path had bound; this is the round-5-rescue population round 8
+now reverses. `MB_RELEASE_GROUP_DIVERGENCE` never fired in the live library (needs release ids absent/
+unanimous *and* release-group ids diverging - apparently no folder in this shape survived rounds 5-7).
 
 Round 5's own open item ("124 Chronological Classics bindings still wrong") is resolved by this change
 for the majority-bound half: 65 of those rows no longer bind at all (were majority, not unanimous) -
@@ -171,8 +183,34 @@ itself (see `docs/sync_decisions.md` §15 item 8), so unanimity has nothing to c
 its former "The World's Greatest Entertainer" ×5 / "In Songs He Made Famous" ×6 stacks (round 5's
 rescue artifacts) are expected to collapse into `UNKNOWN` singles instead.
 
-**One-off**: `scripts/sql/oneoff_album_consensus.sql`, undo dumps `logs/undo20_album_consensus_releases.tsv` /
-`logs/undo20_album_consensus_links.tsv`. Rollout (implement → test → commit → `./deploy` → undo dumps →
-Tx 1 → Tx 2 → `./tidy --rescore-only --all`) tracked in `docs/no_guessing.md`; before/after library
-`matchStatus` counts and the exact reason-4/5/6 split land here once the one-off has actually run
-against production.
+**One-off**: `scripts/sql/oneoff_album_consensus.sql`. Undo dumps were skipped (deliberate call, covered
+by a full `./backup` taken immediately before Tx 1/Tx 2 instead - see `docs/no_guessing.md`). Rollout
+(implement → test → commit → `./deploy` → `./backup` → Tx 1 → Tx 2 → `./tidy --rescore-only --all`) ran
+2026-09-23 against production, from a NAS `tmux` session (`ssh nas` → session `sync`), one-off executed
+via `sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp` (the `dmp` app container has no `psql`
+binary).
+
+**Tx 1/Tx 2 result** (exit 0, single transaction): `UPDATE 16822` (flagged `LocalRelease` rows -
+matches the preview exactly), `UPDATE 137970` (their tracks' stale `mbTrackId` links cleared),
+`UPDATE 54316` (clean, non-flagged releases' `year` corrected from the old mode-tag value to the new
+unanimous-or-NULL value - this runs library-wide, not just over the flagged population, which is why
+the count is large), `DELETE 8840` (orphaned `MusicBrainzRelease` rows the unbind left behind,
+`dmp_sync::db::delete_orphaned_mb_releases`'s global branch). `./tidy --rescore-only --all` then
+re-scored 7,234 already-bound releases (0 status changes among them; unrelated to the flagged
+population, whose `releaseId IS NULL` already excludes it from that pass).
+
+**Library `matchStatus` after rollout**:
+
+| Status | statusReason | Count |
+|---|---|---|
+| `COMPLETE` | - | 112,105 |
+| `UNMATCHED` | - | 13,661 |
+| `UNKNOWN` | set (consensus reason) | 16,822 |
+| `MISSING_TRACKS` | - | 7,234 |
+| `EXTRA_TRACKS` | - | 1,398 |
+| `UNKNOWN` | NULL (unrelated, pending rescore) | 38 |
+
+`COMPLETE` 117,144→112,105 (-5,039, exactly the round-5-rescue population reclaimed by this round).
+Verified: the 16,822 `UNKNOWN` rows all carry a `statusReason`; the 38 reason-less `UNKNOWN` rows are
+pre-existing/unrelated. Visual check of the artist-page stacks (Al Jolson etc.) is the user's own,
+pending as of this writing.
