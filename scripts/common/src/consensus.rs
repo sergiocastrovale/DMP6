@@ -10,8 +10,7 @@ use unicode_normalization::UnicodeNormalization;
 pub const ALBUM_INEXISTENT: &str = "No track in the release folder has an 'album' metadata field";
 pub const ALBUM_DIVERGENCE: &str =
     "Tracks in the release folder disagree in 'album' metadata field";
-pub const ALBUM_MISSING: &str =
-    "Some tracks in the release folder have no 'album' metadata field";
+pub const ALBUM_MISSING: &str = "Some tracks in the release folder have no 'album' metadata field";
 pub const MB_ALBUM_DIVERGENCE_RG_UNANIMOUS: &str =
     "Tracks carry different MUSICBRAINZ_ALBUMID but a unanimous MUSICBRAINZ_RELEASEGROUPID";
 pub const MB_ALBUM_DIVERGENCE: &str =
@@ -168,8 +167,16 @@ pub fn folder_leaf(path: &str) -> &str {
 pub fn evaluate(tracks: &[TrackTags]) -> Verdict {
     let mut sorted: Vec<&TrackTags> = tracks.iter().collect();
     sorted.sort_by(|a, b| {
-        (a.disc_number, a.track_number, a.file_path.as_deref().unwrap_or(""))
-            .cmp(&(b.disc_number, b.track_number, b.file_path.as_deref().unwrap_or("")))
+        (
+            a.disc_number,
+            a.track_number,
+            a.file_path.as_deref().unwrap_or(""),
+        )
+            .cmp(&(
+                b.disc_number,
+                b.track_number,
+                b.file_path.as_deref().unwrap_or(""),
+            ))
     });
     let sorted_tracks: Vec<TrackTags> = sorted.into_iter().cloned().collect();
 
@@ -333,7 +340,10 @@ mod tests {
 
     #[test]
     fn normalize_album_case_spacing_variants_agree() {
-        assert_eq!(normalize_album("  The   Album  "), normalize_album("the album"));
+        assert_eq!(
+            normalize_album("  The   Album  "),
+            normalize_album("the album")
+        );
         assert_eq!(normalize_album("A\tB"), normalize_album("A B"));
     }
 
@@ -357,7 +367,10 @@ mod tests {
 
     #[test]
     fn album_agreement_empty_string_counts_as_missing() {
-        let tracks = vec![track(Some(""), None, None, None), track(Some("X"), None, None, None)];
+        let tracks = vec![
+            track(Some(""), None, None, None),
+            track(Some("X"), None, None, None),
+        ];
         assert_eq!(
             album_agreement(&tracks),
             AlbumVerdict::PartiallyMissing("X".to_string())
@@ -366,10 +379,16 @@ mod tests {
 
     #[test]
     fn album_agreement_partial_vs_all_missing() {
-        let all_missing = vec![track(None, None, None, None), track(Some("  "), None, None, None)];
+        let all_missing = vec![
+            track(None, None, None, None),
+            track(Some("  "), None, None, None),
+        ];
         assert_eq!(album_agreement(&all_missing), AlbumVerdict::AllMissing);
 
-        let partial = vec![track(Some("X"), None, None, None), track(None, None, None, None)];
+        let partial = vec![
+            track(Some("X"), None, None, None),
+            track(None, None, None, None),
+        ];
         assert_eq!(
             album_agreement(&partial),
             AlbumVerdict::PartiallyMissing("X".to_string())
@@ -379,9 +398,19 @@ mod tests {
     #[test]
     fn id_agreement_untagged_does_not_veto() {
         let tracks = vec![
-            track(None, None, Some("11111111-1111-1111-1111-111111111111"), None),
+            track(
+                None,
+                None,
+                Some("11111111-1111-1111-1111-111111111111"),
+                None,
+            ),
             track(None, None, None, None),
-            track(None, None, Some("11111111-1111-1111-1111-111111111111"), None),
+            track(
+                None,
+                None,
+                Some("11111111-1111-1111-1111-111111111111"),
+                None,
+            ),
         ];
         assert_eq!(
             id_agreement(&tracks, |t| &t.mb_release_id),
@@ -392,9 +421,28 @@ mod tests {
     #[test]
     fn id_agreement_case_and_garbage_wrapped_variants_agree() {
         let tracks = vec![
-            track(None, None, Some("11111111-1111-1111-1111-111111111111"), None),
-            track(None, None, Some("MusicBrainz/11111111-1111-1111-1111-111111111111;end"), None),
-            track(None, None, Some("11111111-1111-1111-1111-111111111111".to_uppercase().as_str()), None),
+            track(
+                None,
+                None,
+                Some("11111111-1111-1111-1111-111111111111"),
+                None,
+            ),
+            track(
+                None,
+                None,
+                Some("MusicBrainz/11111111-1111-1111-1111-111111111111;end"),
+                None,
+            ),
+            track(
+                None,
+                None,
+                Some(
+                    "11111111-1111-1111-1111-111111111111"
+                        .to_uppercase()
+                        .as_str(),
+                ),
+                None,
+            ),
         ];
         assert_eq!(
             id_agreement(&tracks, |t| &t.mb_release_id),
@@ -405,16 +453,32 @@ mod tests {
     #[test]
     fn id_agreement_two_ids_disagree() {
         let tracks = vec![
-            track(None, None, Some("11111111-1111-1111-1111-111111111111"), None),
-            track(None, None, Some("22222222-2222-2222-2222-222222222222"), None),
+            track(
+                None,
+                None,
+                Some("11111111-1111-1111-1111-111111111111"),
+                None,
+            ),
+            track(
+                None,
+                None,
+                Some("22222222-2222-2222-2222-222222222222"),
+                None,
+            ),
         ];
-        assert_eq!(id_agreement(&tracks, |t| &t.mb_release_id), IdVerdict::Divergent);
+        assert_eq!(
+            id_agreement(&tracks, |t| &t.mb_release_id),
+            IdVerdict::Divergent
+        );
     }
 
     #[test]
     fn id_agreement_none_tagged_is_absent() {
         let tracks = vec![track(None, None, None, None)];
-        assert_eq!(id_agreement(&tracks, |t| &t.mb_release_id), IdVerdict::Absent);
+        assert_eq!(
+            id_agreement(&tracks, |t| &t.mb_release_id),
+            IdVerdict::Absent
+        );
     }
 
     const REL_A: &str = "11111111-1111-1111-1111-111111111111";
@@ -435,7 +499,12 @@ mod tests {
     fn precedence_rg_divergent_sub_case() {
         let tracks = vec![
             track(Some("X"), None, Some(REL_A), Some(RG_A)),
-            track(Some("X"), None, Some(REL_B), Some("44444444-4444-4444-4444-444444444444")),
+            track(
+                Some("X"),
+                None,
+                Some(REL_B),
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
         ];
         let v = evaluate(&tracks);
         assert_eq!(v.reason, Some(MB_ALBUM_DIVERGENCE));
@@ -445,7 +514,12 @@ mod tests {
     fn precedence_rg_only_divergence() {
         let tracks = vec![
             track(Some("X"), None, None, Some(RG_A)),
-            track(Some("X"), None, None, Some("44444444-4444-4444-4444-444444444444")),
+            track(
+                Some("X"),
+                None,
+                None,
+                Some("44444444-4444-4444-4444-444444444444"),
+            ),
         ];
         let v = evaluate(&tracks);
         assert_eq!(v.reason, Some(MB_RELEASE_GROUP_DIVERGENCE));
@@ -479,7 +553,10 @@ mod tests {
 
     #[test]
     fn year_agreement_disagree_is_none_but_not_a_trigger() {
-        let tracks = vec![track(Some("X"), Some(1999), None, None), track(Some("X"), Some(2000), None, None)];
+        let tracks = vec![
+            track(Some("X"), Some(1999), None, None),
+            track(Some("X"), Some(2000), None, None),
+        ];
         assert_eq!(year_agreement(&tracks), None);
         let v = evaluate(&tracks);
         assert_eq!(v.reason, None);
@@ -498,7 +575,10 @@ mod tests {
 
     #[test]
     fn folder_leaf_strips_parent_path() {
-        assert_eq!(folder_leaf("Artist/Album/2011 - Jazz Heroes"), "2011 - Jazz Heroes");
+        assert_eq!(
+            folder_leaf("Artist/Album/2011 - Jazz Heroes"),
+            "2011 - Jazz Heroes"
+        );
         assert_eq!(folder_leaf("NoSlash"), "NoSlash");
     }
 

@@ -436,9 +436,15 @@ mod tests {
         .expect("append");
         let idx = FixedIndex::load(&ledger);
 
-        assert!(row_is_fixed(&year_zero_row("Artist/Album 1", "01.mp3"), &idx));
+        assert!(row_is_fixed(
+            &year_zero_row("Artist/Album 1", "01.mp3"),
+            &idx
+        ));
         // Same folder, different file - the ledger is keyed per file, not per release.
-        assert!(!row_is_fixed(&year_zero_row("Artist/Album 1", "02.mp3"), &idx));
+        assert!(!row_is_fixed(
+            &year_zero_row("Artist/Album 1", "02.mp3"),
+            &idx
+        ));
         // An ordinary (non-year) row is never fixed by a years-ledger entry.
         assert!(!row_is_fixed(&row(1), &no_fixes()));
         std::fs::remove_file(&ledger).ok();

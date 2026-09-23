@@ -67,7 +67,10 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
 
     tokio::time::sleep(MB_MIN_DELAY).await;
     let detail: serde_json::Value = http
-        .get(format!("{}/release/{release_id}", common::mb::api::mb_base()))
+        .get(format!(
+            "{}/release/{release_id}",
+            common::mb::api::mb_base()
+        ))
         .query(&[
             ("inc", "recordings+artist-credits+release-groups"),
             ("fmt", "json"),

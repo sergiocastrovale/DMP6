@@ -653,8 +653,16 @@ async fn main() {
         all_generators.iter().collect()
     };
 
-    let genre_generators: Vec<&Generator> = generators.iter().filter(|g| g.kind == "GENRE").copied().collect();
-    let region_generators: Vec<&Generator> = generators.iter().filter(|g| g.kind == "REGION").copied().collect();
+    let genre_generators: Vec<&Generator> = generators
+        .iter()
+        .filter(|g| g.kind == "GENRE")
+        .copied()
+        .collect();
+    let region_generators: Vec<&Generator> = generators
+        .iter()
+        .filter(|g| g.kind == "REGION")
+        .copied()
+        .collect();
 
     // Report mode: just show assignments and exit
     if args.report {
@@ -852,12 +860,15 @@ async fn main() {
     println!("════════════════════════════════════════════════════════════");
     println!();
     if args.dry_run {
-        let total_groups = if args.no_genres { 0 } else { genre_generators.len() }
-            + if args.no_regions {
-                0
-            } else {
-                region_generators.len()
-            };
+        let total_groups = if args.no_genres {
+            0
+        } else {
+            genre_generators.len()
+        } + if args.no_regions {
+            0
+        } else {
+            region_generators.len()
+        };
         println!(
             "{} {} group(s) would be updated",
             "Dry run:".cyan().bold(),

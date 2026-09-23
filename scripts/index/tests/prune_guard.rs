@@ -119,8 +119,15 @@ async fn prune_bypasses_the_mount_blip_guard() {
 
     // Without --prune: 9/10 missing reads as a mount blip, nothing is touched.
     let guarded = delete_removed_tracks(&pool, PREFIX, &music_dir_str, false).await;
-    assert_eq!(guarded.count, 0, "the ratio guard should have deleted nothing");
-    assert_eq!(track_count(&pool).await, 10, "guarded run deleted rows anyway");
+    assert_eq!(
+        guarded.count, 0,
+        "the ratio guard should have deleted nothing"
+    );
+    assert_eq!(
+        track_count(&pool).await,
+        10,
+        "guarded run deleted rows anyway"
+    );
     assert_eq!(
         match_status(&pool, &release_id).await,
         "COMPLETE",
@@ -131,7 +138,11 @@ async fn prune_bypasses_the_mount_blip_guard() {
     // for sync to recompute.
     let pruned = delete_removed_tracks(&pool, PREFIX, &music_dir_str, true).await;
     assert_eq!(pruned.count, 9, "prune should delete every missing row");
-    assert_eq!(track_count(&pool).await, 1, "prune deleted a file that exists on disk");
+    assert_eq!(
+        track_count(&pool).await,
+        1,
+        "prune deleted a file that exists on disk"
+    );
     assert_eq!(
         match_status(&pool, &release_id).await,
         "UNKNOWN",

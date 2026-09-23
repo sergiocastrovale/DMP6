@@ -167,9 +167,19 @@ mod tests {
     #[test]
     fn gap_needs_an_official_release_in_the_group() {
         let ids = official(&["rg-official"]);
-        assert!(is_allowed_gap(Some("Album"), &sec(&["Live"]), "rg-official", &ids));
+        assert!(is_allowed_gap(
+            Some("Album"),
+            &sec(&["Live"]),
+            "rg-official",
+            &ids
+        ));
         // Same shape, but every release in the group is a bootleg - the Radiohead soundboard case.
-        assert!(!is_allowed_gap(Some("Album"), &sec(&["Live"]), "rg-bootleg", &ids));
+        assert!(!is_allowed_gap(
+            Some("Album"),
+            &sec(&["Live"]),
+            "rg-bootleg",
+            &ids
+        ));
     }
 
     #[test]

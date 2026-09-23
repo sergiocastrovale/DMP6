@@ -474,14 +474,20 @@ pub async fn load_mb_release_with_tracks(
         )
     };
 
-    let track_rows: Vec<(Option<String>, Option<i32>, Option<i32>, Option<i32>, String, Option<String>)> =
-        sqlx::query_as(
-            r#"SELECT "musicbrainzId", position, "discNumber", "durationMs", title, "recordingId"
+    let track_rows: Vec<(
+        Option<String>,
+        Option<i32>,
+        Option<i32>,
+        Option<i32>,
+        String,
+        Option<String>,
+    )> = sqlx::query_as(
+        r#"SELECT "musicbrainzId", position, "discNumber", "durationMs", title, "recordingId"
                FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
-        )
-        .bind(mb_release_db_id)
-        .fetch_all(pool)
-        .await?;
+    )
+    .bind(mb_release_db_id)
+    .fetch_all(pool)
+    .await?;
 
     if track_rows.is_empty() {
         return Ok(None);
@@ -757,8 +763,13 @@ pub async fn rescore_bound_release(
     .await?;
 
     let status_str = crate::status::status_to_db_string(&status_check.status);
-    update_local_release_match(pool, &target.local_release_id, &target.mb_release_id, status_str)
-        .await?;
+    update_local_release_match(
+        pool,
+        &target.local_release_id,
+        &target.mb_release_id,
+        status_str,
+    )
+    .await?;
 
     Ok(RescoreOutcome::Scored(status_str))
 }
@@ -1901,9 +1912,11 @@ pub async fn get_artists_pending_tidy(pool: &PgPool) -> Result<Vec<(String, Stri
 /// Every artist (id, name) sync has ever reached, for `--all` (which ignores the watermark, but can
 /// still be narrowed further by `--only`/`--from`/`--to` the same way the watermark set can).
 pub async fn get_all_synced_artists(pool: &PgPool) -> Result<Vec<(String, String)>, sqlx::Error> {
-    sqlx::query_as(r#"SELECT id, name FROM "Artist" WHERE "lastSyncedAt" IS NOT NULL ORDER BY name"#)
-        .fetch_all(pool)
-        .await
+    sqlx::query_as(
+        r#"SELECT id, name FROM "Artist" WHERE "lastSyncedAt" IS NOT NULL ORDER BY name"#,
+    )
+    .fetch_all(pool)
+    .await
 }
 
 /// Stamp `lastTidiedAt` for exactly the artists this run scoped and finished clean. Never called for a
@@ -2282,7 +2295,11 @@ mod tests {
         let accented: String = "é".repeat(600);
         let clamped = clamp_title(&accented);
         assert_eq!(clamped.chars().count(), 500);
-        assert_eq!(clamped.len(), 1000, "600 chars is 1200 bytes; 500 chars is 1000");
+        assert_eq!(
+            clamped.len(),
+            1000,
+            "600 chars is 1200 bytes; 500 chars is 1000"
+        );
         assert!(clamped.chars().all(|c| c == 'é'), "no split character");
     }
 }

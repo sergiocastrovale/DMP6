@@ -132,7 +132,12 @@ async fn fetch_and_store(
     (candidate.name, result)
 }
 
-fn report_result(reporter: &Reporter, name: &str, result: &Result<bool, String>, counts: &mut Counts) {
+fn report_result(
+    reporter: &Reporter,
+    name: &str,
+    result: &Result<bool, String>,
+    counts: &mut Counts,
+) {
     match result {
         Ok(true) => {
             counts.downloaded += 1;
@@ -180,7 +185,8 @@ async fn main() {
 
     for candidate in candidates {
         reporter.step(&format!("Fetching MB detail: {}", candidate.name));
-        let detail = match mb_get_artist_detail(&http_client, &candidate.mb_id, &mut limiter).await {
+        let detail = match mb_get_artist_detail(&http_client, &candidate.mb_id, &mut limiter).await
+        {
             Ok(d) => d,
             Err(e) => {
                 counts.mb_errors += 1;
@@ -203,7 +209,11 @@ async fn main() {
             reporter.sub_step(&format!(
                 "{} -> {}",
                 candidate.name,
-                if has_source { "candidate source found" } else { "no source available" }
+                if has_source {
+                    "candidate source found"
+                } else {
+                    "no source available"
+                }
             ));
             continue;
         }

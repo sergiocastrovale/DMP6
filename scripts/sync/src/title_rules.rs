@@ -211,38 +211,68 @@ mod tests {
     fn spellings_of_one_number_share_a_signature() {
         assert_eq!(number_signature("Song to John, Part I"), vec![1]);
         assert_eq!(number_signature("Song to John, Part 1"), vec![1]);
-        assert_eq!(number_signature("Garden Party, Part One - Entrance"), vec![1]);
-        assert_eq!(number_signature("Shine On You Crazy Diamond, Parts I–V"), vec![1, 5]);
-        assert_eq!(number_signature("Shine On You Crazy Diamond, Parts 1-5"), vec![1, 5]);
+        assert_eq!(
+            number_signature("Garden Party, Part One - Entrance"),
+            vec![1]
+        );
+        assert_eq!(
+            number_signature("Shine On You Crazy Diamond, Parts I–V"),
+            vec![1, 5]
+        );
+        assert_eq!(
+            number_signature("Shine On You Crazy Diamond, Parts 1-5"),
+            vec![1, 5]
+        );
     }
 
     /// The pairings the typo rule made on the real library before this existed.
     #[test]
     fn different_numbers_give_different_signatures() {
-        assert_ne!(number_signature("Divine Opus # 1"), number_signature("Divine Opus 2"));
+        assert_ne!(
+            number_signature("Divine Opus # 1"),
+            number_signature("Divine Opus 2")
+        );
         assert_ne!(
             number_signature("Chega de Saudade (No More Blues, Part 1)"),
             number_signature("Chega De Saudade = No More Blues-Part II")
         );
-        assert_ne!(number_signature("Dream of a Discoteque V2"), number_signature("Dream of a Discoteque V1"));
-        assert_ne!(number_signature("I'll Be Home (take 3)"), number_signature("I'll Be Home (take 4)"));
+        assert_ne!(
+            number_signature("Dream of a Discoteque V2"),
+            number_signature("Dream of a Discoteque V1")
+        );
+        assert_ne!(
+            number_signature("I'll Be Home (take 3)"),
+            number_signature("I'll Be Home (take 4)")
+        );
     }
 
     /// Words made of roman-numeral letters must not read as numbers.
     #[test]
     fn a_number_on_one_side_only_is_not_a_disagreement() {
-        assert!(!numbers_disagree("Amen / Inner Self (live)", "Amen/Inner Self (live in Minneapolis 1996)"));
+        assert!(!numbers_disagree(
+            "Amen / Inner Self (live)",
+            "Amen/Inner Self (live in Minneapolis 1996)"
+        ));
         assert!(!numbers_disagree(
             "Wife (Pieces of Detroit mix)",
             "Wife (Prefuse 73's Pieces of Detroit mix)"
         ));
-        assert!(numbers_disagree("Rip It Up (take 10)", "Rip It Up (take 4)"));
-        assert!(!numbers_disagree("Dove... quando..., parte I", "Dove... quando..., Part I"));
+        assert!(numbers_disagree(
+            "Rip It Up (take 10)",
+            "Rip It Up (take 4)"
+        ));
+        assert!(!numbers_disagree(
+            "Dove... quando..., parte I",
+            "Dove... quando..., Part I"
+        ));
     }
 
     #[test]
     fn words_are_not_numbers() {
-        assert!(number_signature("I Must Get You").is_empty(), "the pronoun I");
+        assert!(
+            number_signature("I Must Get You").is_empty(),
+            "the pronoun I"
+        );
         assert!(number_signature("Lil Wayne Is Ill").is_empty());
         assert!(number_signature("Remix (Civil Mix)").is_empty());
         assert!(number_signature("Vivid").is_empty());

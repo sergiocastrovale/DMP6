@@ -10,9 +10,7 @@ pub fn sanitize_mb_id(raw: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    UUID_RE
-        .find(trimmed)
-        .map(|m| m.as_str().to_lowercase())
+    UUID_RE.find(trimmed).map(|m| m.as_str().to_lowercase())
 }
 
 /// Normalize a name for filter comparison: lowercase, strip non-alphanumeric, collapse whitespace.
@@ -32,7 +30,9 @@ pub fn normalize_filter(s: &str) -> String {
 /// - `_` matches any single char, `%` matches anything - e.g. "100% Silk" or "A_Tribute" would produce
 /// bogus matches against unrelated folders. Escape the input BEFORE appending any wildcard suffix.
 pub fn escape_like(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 pub fn matches_filter(folder: &str, from: &str, to: &str, only: &str, exact: bool) -> bool {

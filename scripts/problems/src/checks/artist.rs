@@ -266,8 +266,14 @@ mod tests {
         // Real corruption in the exact same shapes must still be caught - the whitelist is a
         // curated exact-match list, not a loosening of any rule.
         assert!(numeric_or_corrupted("07 - Song").is_some());
-        assert!(numeric_or_corrupted("214").is_some(), "not on the whitelist");
-        assert!(numeric_or_corrupted("2563").is_some(), "not on the whitelist");
+        assert!(
+            numeric_or_corrupted("214").is_some(),
+            "not on the whitelist"
+        );
+        assert!(
+            numeric_or_corrupted("2563").is_some(),
+            "not on the whitelist"
+        );
     }
 
     #[test]

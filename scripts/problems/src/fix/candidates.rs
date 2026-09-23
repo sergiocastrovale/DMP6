@@ -35,7 +35,10 @@ pub fn is_usable_candidate(name: &str) -> bool {
 /// Strict majority of `field(snapshot)` among every audio file in the folder (recursing into disc
 /// subfolders), among files where the field is present and not junk. No majority ⇒ `None`, not a
 /// guess.
-pub fn folder_majority(folder: &Path, field: impl Fn(&TagSnapshot) -> Option<&str>) -> Option<String> {
+pub fn folder_majority(
+    folder: &Path,
+    field: impl Fn(&TagSnapshot) -> Option<&str>,
+) -> Option<String> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     for entry in walkdir::WalkDir::new(folder)
         .follow_links(true)

@@ -803,14 +803,15 @@ async fn candidates_from_db(pool: &PgPool, mb_ids: &[String]) -> Vec<FetchedCand
             continue;
         }
 
-        let Ok(track_rows) = sqlx::query_as::<_, (Option<i32>, Option<String>, String, Option<i32>)>(
-            r#"SELECT "discNumber", "musicbrainzId", title, "durationMs"
+        let Ok(track_rows) =
+            sqlx::query_as::<_, (Option<i32>, Option<String>, String, Option<i32>)>(
+                r#"SELECT "discNumber", "musicbrainzId", title, "durationMs"
                FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1
                ORDER BY "discNumber" NULLS FIRST, position"#,
-        )
-        .bind(&db_id)
-        .fetch_all(pool)
-        .await
+            )
+            .bind(&db_id)
+            .fetch_all(pool)
+            .await
         else {
             continue;
         };
@@ -1710,7 +1711,8 @@ pub async fn run_repair(
             }
         }
         if fetched.candidates.is_empty() {
-            fetched = candidates_from_embedded_ids(http_client, limiter, &embedded_ids, reporter).await;
+            fetched =
+                candidates_from_embedded_ids(http_client, limiter, &embedded_ids, reporter).await;
         }
         if fetched.candidates.is_empty() {
             let title = guess_box_title(&group.parent);
@@ -2186,8 +2188,16 @@ mod tests {
             &[
                 ("l1", "Punch and Judy", Some(200)),
                 ("l2", "Market Square Heroes (re-record edit)", Some(240)),
-                ("l3", "Three Boats Down From the Candy (re-record)", Some(242)),
-                ("l4", "Market Square Heroes (alternative version)", Some(288)),
+                (
+                    "l3",
+                    "Three Boats Down From the Candy (re-record)",
+                    Some(242),
+                ),
+                (
+                    "l4",
+                    "Market Square Heroes (alternative version)",
+                    Some(288),
+                ),
             ],
         );
         let m = medium(
@@ -2195,7 +2205,11 @@ mod tests {
             &[
                 ("m1", "Punch and Judy", Some(200)),
                 ("m2", "Market Square Heroes (re-record edit)", Some(240)),
-                ("m3", "Three Boats Down From the Candy (re-record)", Some(242)),
+                (
+                    "m3",
+                    "Three Boats Down From the Candy (re-record)",
+                    Some(242),
+                ),
                 ("m4", "Market Square Heroes (re-record)", Some(288)),
             ],
         );
@@ -2204,7 +2218,10 @@ mod tests {
             .into_iter()
             .collect();
         assert_eq!(by_local["l4"], "m4");
-        assert_eq!(by_local["l2"], "m2", "the exact pair is still claimed first");
+        assert_eq!(
+            by_local["l2"], "m2",
+            "the exact pair is still claimed first"
+        );
     }
 
     /// The hazard pass 3's uniqueness test exists for: a base title shared by several qualified
@@ -2367,12 +2384,7 @@ mod tests {
         title: &str,
         ms: Option<i32>,
     ) -> (Option<i32>, Option<String>, String, Option<i32>) {
-        (
-            Some(disc),
-            mb_id.map(str::to_string),
-            title.to_string(),
-            ms,
-        )
+        (Some(disc), mb_id.map(str::to_string), title.to_string(), ms)
     }
 
     #[test]
@@ -2441,14 +2453,40 @@ mod tests {
     #[test]
     fn a_nested_group_folds_onto_its_own_root_folder() {
         let siblings = vec![
-            sibling("root", "Clutch/Album/2004 - Blast Tyrant", &[("t1", "Mercury", Some(60)), ("t2", "Profits of Doom", Some(250))]),
-            sibling("cd2", "Clutch/Album/2004 - Blast Tyrant/CD 2 - Bonus Disc", &[("t3", "Drink to the Dead", Some(200)), ("t4", "Cypress Grove", Some(210))]),
+            sibling(
+                "root",
+                "Clutch/Album/2004 - Blast Tyrant",
+                &[
+                    ("t1", "Mercury", Some(60)),
+                    ("t2", "Profits of Doom", Some(250)),
+                ],
+            ),
+            sibling(
+                "cd2",
+                "Clutch/Album/2004 - Blast Tyrant/CD 2 - Bonus Disc",
+                &[
+                    ("t3", "Drink to the Dead", Some(200)),
+                    ("t4", "Cypress Grove", Some(210)),
+                ],
+            ),
         ];
         let candidate = BoxCandidate {
             release_id: "mb".to_string(),
             media: vec![
-                medium(1, &[("m1", "Mercury", Some(60)), ("m2", "Profits of Doom", Some(250))]),
-                medium(2, &[("m3", "Drink to the Dead", Some(200)), ("m4", "Cypress Grove", Some(210))]),
+                medium(
+                    1,
+                    &[
+                        ("m1", "Mercury", Some(60)),
+                        ("m2", "Profits of Doom", Some(250)),
+                    ],
+                ),
+                medium(
+                    2,
+                    &[
+                        ("m3", "Drink to the Dead", Some(200)),
+                        ("m4", "Cypress Grove", Some(210)),
+                    ],
+                ),
             ],
         };
         let plan = plan_box_bind(&siblings, &candidate).expect("binds");
@@ -2463,7 +2501,10 @@ mod tests {
         let groups = keep_disjoint_groups(
             vec![
                 // Outer root first (shortest path), claims its whole tree.
-                nested("A", vec![row("a", "A"), row("ab", "A/B"), row("abc", "A/B/C")]),
+                nested(
+                    "A",
+                    vec![row("a", "A"), row("ab", "A/B"), row("abc", "A/B/C")],
+                ),
                 // A sub-root inside it: overlaps, dropped.
                 nested("A/B", vec![row("ab", "A/B"), row("abc", "A/B/C")]),
                 // Shares a folder with a sibling group: the box pass keeps it, dropped here.
@@ -2480,11 +2521,17 @@ mod tests {
 
     #[test]
     fn strip_qualifier_drops_trailing_bracket_groups_only() {
-        assert_eq!(strip_qualifier("Market Square Heroes (re-record)"), "Market Square Heroes");
+        assert_eq!(
+            strip_qualifier("Market Square Heroes (re-record)"),
+            "Market Square Heroes"
+        );
         assert_eq!(strip_qualifier("Song (live) [remastered]"), "Song");
         assert_eq!(strip_qualifier("Plain Title"), "Plain Title");
         // A bracket that is not trailing is part of the title.
-        assert_eq!(strip_qualifier("(I Can't Get No) Satisfaction"), "(I Can't Get No) Satisfaction");
+        assert_eq!(
+            strip_qualifier("(I Can't Get No) Satisfaction"),
+            "(I Can't Get No) Satisfaction"
+        );
         // Nothing but a qualifier leaves no base title to compare.
         assert_eq!(strip_qualifier("(Untitled)"), "");
     }
@@ -2807,7 +2854,10 @@ mod tests {
 
         let plan = plan_box_bind(&siblings, &candidate).expect("the strict answer resolves it");
         let by_local: std::collections::HashMap<_, _> = plan.members.into_iter().collect();
-        assert_eq!(by_local["cd1"], 2, "the exact mastering, not the 40s-out one");
+        assert_eq!(
+            by_local["cd1"], 2,
+            "the exact mastering, not the 40s-out one"
+        );
     }
 
     /// docs/sync_decisions.md §19 item 1b. A box whose rip carries one folder that is on no disc of
@@ -2831,7 +2881,10 @@ mod tests {
         let plan = plan_box_bind(&siblings, &candidate).expect("two matched siblings are enough");
         assert_eq!(plan.members.len(), 2);
         let bound: Vec<&str> = plan.members.iter().map(|(id, _)| id.as_str()).collect();
-        assert!(!bound.contains(&"dvd"), "the unmatched folder must not be bound");
+        assert!(
+            !bound.contains(&"dvd"),
+            "the unmatched folder must not be bound"
+        );
         assert!(
             !plan.absorbed.contains(&"dvd".to_string()),
             "and must never be absorbed - apply_fold deletes what it absorbs"

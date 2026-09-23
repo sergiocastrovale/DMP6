@@ -94,7 +94,10 @@ mod tests {
         // "CD2 - Warmin' Up" names its own content - collapsing it would attribute one disc's art
         // to a release the indexer treats separately.
         for name in ["CD2 - Warmin' Up", "Bonus", "Disc of Wonders", "Live"] {
-            assert!(!is_disc_subfolder(name), "{name} should not be a disc folder");
+            assert!(
+                !is_disc_subfolder(name),
+                "{name} should not be a disc folder"
+            );
         }
     }
 

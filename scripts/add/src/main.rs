@@ -29,7 +29,10 @@ mod folder;
 struct AddArgs {
     #[arg(long, help = "MusicBrainz artist id (UUID)")]
     mbid: String,
-    #[arg(long, help = "Set the new artist as monitored (download worker will fetch its catalogue)")]
+    #[arg(
+        long,
+        help = "Set the new artist as monitored (download worker will fetch its catalogue)"
+    )]
     monitored: bool,
     #[arg(long, help = "Print what would happen; no writes")]
     dry_run: bool,
@@ -52,7 +55,11 @@ async fn main() {
     let pool = create_pool(&config.database_url).await;
     apply_db_overrides(&mut config, &pool).await;
 
-    reporter.header(if args.web { "DMP Add Artist" } else { "DMP Add Artist - New Library Entry" });
+    reporter.header(if args.web {
+        "DMP Add Artist"
+    } else {
+        "DMP Add Artist - New Library Entry"
+    });
 
     let Some(mb_id) = sanitize_mb_id(&args.mbid) else {
         reporter.err(&format!("Not a valid MusicBrainz artist id: {}", args.mbid));
@@ -131,12 +138,18 @@ async fn main() {
 
     let slug = make_slug(&name);
     if slug.is_empty() {
-        reporter.err(&format!("Artist name sanitizes to an empty slug: {:?}", name));
+        reporter.err(&format!(
+            "Artist name sanitizes to an empty slug: {:?}",
+            name
+        ));
         release_lock(&pool).await;
         std::process::exit(1);
     }
     let Some(folder) = folder::folder_name(&name) else {
-        reporter.err(&format!("Artist name sanitizes to an empty folder name: {:?}", name));
+        reporter.err(&format!(
+            "Artist name sanitizes to an empty folder name: {:?}",
+            name
+        ));
         release_lock(&pool).await;
         std::process::exit(1);
     };
@@ -173,7 +186,10 @@ async fn main() {
     match folder_path.parent() {
         Some(p) if p == Path::new(&music_dir) => {}
         _ => {
-            reporter.err(&format!("Refusing unsafe folder path: {}", folder_path.display()));
+            reporter.err(&format!(
+                "Refusing unsafe folder path: {}",
+                folder_path.display()
+            ));
             release_lock(&pool).await;
             std::process::exit(1);
         }
@@ -266,13 +282,19 @@ async fn main() {
                 .await
                 .ok();
             reporter.blank();
-            reporter.done(&format!("Added {} - {} release(s) in catalogue", name, gaps));
+            reporter.done(&format!(
+                "Added {} - {} release(s) in catalogue",
+                name, gaps
+            ));
             release_lock(&pool).await;
         }
         Err(e) => {
             // Artist + folder already exist and are valid - a failed catalogue fetch is retried by the
             // artist page's own sync, not rolled back here.
-            reporter.warn(&format!("Catalogue fetch failed: {} (artist was still created)", e));
+            reporter.warn(&format!(
+                "Catalogue fetch failed: {} (artist was still created)",
+                e
+            ));
             release_lock(&pool).await;
             std::process::exit(1);
         }

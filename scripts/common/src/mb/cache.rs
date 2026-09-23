@@ -34,11 +34,7 @@ use super::types::MbArtistMatch;
 /// `mbName` is NULL on every row written before it was populated, so it falls back to the string that
 /// was queried - the same shim sync already applies when an `Artist` row has a known `musicbrainzId`.
 /// `score` is 100 because an exact match is exactly that; there is no ranking left to do.
-pub fn match_from_cache_row(
-    queried: &str,
-    mbid: String,
-    mb_name: Option<String>,
-) -> MbArtistMatch {
+pub fn match_from_cache_row(queried: &str, mbid: String, mb_name: Option<String>) -> MbArtistMatch {
     MbArtistMatch {
         id: mbid,
         name: mb_name.unwrap_or_else(|| queried.to_string()),
@@ -63,10 +59,7 @@ pub async fn cached_exact_artist(pool: &PgPool, name: &str) -> Option<MbArtistMa
 
 /// Bulk form for names known before the work starts, so a run does one query instead of one per name.
 /// Mirrors the resolver's own `warm_cache`. Misses are omitted from the map, not recorded as absent.
-pub async fn warm_exact_artists(
-    pool: &PgPool,
-    names: &[String],
-) -> HashMap<String, MbArtistMatch> {
+pub async fn warm_exact_artists(pool: &PgPool, names: &[String]) -> HashMap<String, MbArtistMatch> {
     if names.is_empty() {
         return HashMap::new();
     }
@@ -118,13 +111,12 @@ pub async fn warm_cache_answers(pool: &PgPool, names: &[String]) -> HashMap<Stri
     if names.is_empty() {
         return HashMap::new();
     }
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        r#"SELECT name, mbid FROM "MbArtistLookup" WHERE name = ANY($1::text[])"#,
-    )
-    .bind(names)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as(r#"SELECT name, mbid FROM "MbArtistLookup" WHERE name = ANY($1::text[])"#)
+            .bind(names)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
 
     rows.into_iter()
         .map(|(name, mbid)| {
@@ -210,7 +202,9 @@ mod tests {
         // The rule the whole module exists to enforce: a cached miss must NOT short-circuit the
         // caller's own (fuzzy) search, so it is indistinguishable from "not cached".
         assert!(cached_exact_artist(&pool, MISS_NAME).await.is_none());
-        assert!(cached_exact_artist(&pool, "DMP Test Never Seen").await.is_none());
+        assert!(cached_exact_artist(&pool, "DMP Test Never Seen")
+            .await
+            .is_none());
 
         let warmed = warm_exact_artists(
             &pool,
@@ -252,7 +246,10 @@ mod tests {
             cache_answer(&pool, HIT_NAME).await,
             CacheAnswer::Hit(FIXTURE_MBID.to_string())
         );
-        assert_eq!(cache_answer(&pool, MISS_NAME).await, CacheAnswer::DefiniteMiss);
+        assert_eq!(
+            cache_answer(&pool, MISS_NAME).await,
+            CacheAnswer::DefiniteMiss
+        );
         assert_eq!(
             cache_answer(&pool, "DMP Test Never Seen (common::mb::cache)").await,
             CacheAnswer::Absent,
@@ -268,10 +265,14 @@ mod tests {
             ],
         )
         .await;
-        assert_eq!(warmed.get(HIT_NAME), Some(&CacheAnswer::Hit(FIXTURE_MBID.to_string())));
+        assert_eq!(
+            warmed.get(HIT_NAME),
+            Some(&CacheAnswer::Hit(FIXTURE_MBID.to_string()))
+        );
         assert_eq!(warmed.get(MISS_NAME), Some(&CacheAnswer::DefiniteMiss));
         assert_eq!(
-            warmed.get("DMP Test Never Seen (common::mb::cache)"), None,
+            warmed.get("DMP Test Never Seen (common::mb::cache)"),
+            None,
             "absent from the map, not present-as-a-miss"
         );
 

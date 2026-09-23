@@ -92,11 +92,13 @@ impl Ctx {
     }
 
     async fn row(&self, id: &str) -> (String, String, Option<String>, Option<String>) {
-        sqlx::query_as(r#"SELECT name, slug, "musicbrainzId", "primaryArtistId" FROM "Artist" WHERE id = $1"#)
-            .bind(id)
-            .fetch_one(&self.pool)
-            .await
-            .expect("artist row")
+        sqlx::query_as(
+            r#"SELECT name, slug, "musicbrainzId", "primaryArtistId" FROM "Artist" WHERE id = $1"#,
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await
+        .expect("artist row")
     }
 
     async fn own(&self, artist_id: &str, n: u32) {
@@ -142,9 +144,15 @@ async fn a_contradicted_mbid_is_cleared_unless_sync_established_it() {
     c.lookup(&synced, None).await;
     let synced_id = c.artist(&synced, Some(MBID_A), true).await;
 
-    canonicalize_artists(&c.pool, None, false).await.expect("run");
+    canonicalize_artists(&c.pool, None, false)
+        .await
+        .expect("run");
 
-    assert_eq!(c.row(&leaked_id).await.2, None, "leaked id should be cleared");
+    assert_eq!(
+        c.row(&leaked_id).await.2,
+        None,
+        "leaked id should be cleared"
+    );
     assert_eq!(
         c.row(&synced_id).await.2,
         Some(MBID_A.to_string()),
@@ -162,7 +170,9 @@ async fn dry_run_writes_nothing() {
     c.lookup(&leaked, None).await;
     let id = c.artist(&leaked, Some(MBID_A), false).await;
 
-    let (stats, report) = canonicalize_artists(&c.pool, None, true).await.expect("run");
+    let (stats, report) = canonicalize_artists(&c.pool, None, true)
+        .await
+        .expect("run");
     assert_eq!(stats.mbids_cleared, 1, "the dry run still counts the work");
     assert_eq!(report.mbids_cleared.len(), 1);
     assert_eq!(
@@ -187,11 +197,16 @@ async fn a_punctuation_only_difference_renames_without_moving_the_slug() {
     let id = c.artist(&decorated, None, false).await;
     let slug_before = c.row(&id).await.1;
 
-    canonicalize_artists(&c.pool, None, false).await.expect("run");
+    canonicalize_artists(&c.pool, None, false)
+        .await
+        .expect("run");
 
     let (name, slug, _, _) = c.row(&id).await;
     assert_eq!(name, clean, "the row should take MusicBrainz's spelling");
-    assert_eq!(slug, slug_before, "a punctuation-only fix must not move the URL");
+    assert_eq!(
+        slug, slug_before,
+        "a punctuation-only fix must not move the URL"
+    );
 
     c.reset().await;
 }
@@ -212,7 +227,9 @@ async fn a_rename_onto_a_taken_name_is_skipped_and_connected_instead() {
     c.own(&primary, 1).await;
     let dup = c.artist(&variant, None, false).await;
 
-    canonicalize_artists(&c.pool, None, false).await.expect("run");
+    canonicalize_artists(&c.pool, None, false)
+        .await
+        .expect("run");
 
     let (dup_name, _, _, dup_primary) = c.row(&dup).await;
     assert_eq!(dup_name, variant, "the taken name must not be forced");
@@ -245,7 +262,9 @@ async fn the_owner_heavy_row_becomes_the_primary() {
     c.own(&heavy, 1).await;
     c.own(&heavy, 2).await;
 
-    canonicalize_artists(&c.pool, None, false).await.expect("run");
+    canonicalize_artists(&c.pool, None, false)
+        .await
+        .expect("run");
 
     assert_eq!(
         c.row(&thin).await.3,
@@ -274,10 +293,15 @@ async fn an_alias_hit_is_neither_renamed_nor_connected() {
     c.own(&full_id, 1).await;
     let alias_id = c.artist(&alias, None, false).await;
 
-    canonicalize_artists(&c.pool, None, false).await.expect("run");
+    canonicalize_artists(&c.pool, None, false)
+        .await
+        .expect("run");
 
     let (alias_name, _, _, alias_primary) = c.row(&alias_id).await;
-    assert_eq!(alias_name, alias, "an alias must not be renamed to the full name");
+    assert_eq!(
+        alias_name, alias,
+        "an alias must not be renamed to the full name"
+    );
     assert_eq!(
         alias_primary, None,
         "an alias must not be connected - it is a different artist under a shared string"
@@ -306,7 +330,9 @@ async fn punctuation_and_ampersand_variants_still_connect() {
         c.own(&primary, i as u32).await;
         let dup = c.artist(&variant, None, false).await;
 
-        canonicalize_artists(&c.pool, None, false).await.expect("run");
+        canonicalize_artists(&c.pool, None, false)
+            .await
+            .expect("run");
 
         assert_eq!(
             c.row(&dup).await.3,
@@ -326,7 +352,8 @@ async fn a_scoped_run_leaves_everything_outside_the_scope_alone() {
 
     let in_scope_tag = format!("\\{}", c.name("In Scope"));
     let in_scope_clean = c.name("In Scope");
-    c.lookup(&in_scope_tag, Some((MBID_A, &in_scope_clean))).await;
+    c.lookup(&in_scope_tag, Some((MBID_A, &in_scope_clean)))
+        .await;
     let in_scope = c.artist(&in_scope_tag, None, false).await;
 
     let out_tag = format!("\\{}", c.name("Out Of Scope"));
@@ -345,7 +372,11 @@ async fn a_scoped_run_leaves_everything_outside_the_scope_alone() {
         .expect("run");
 
     // Slug-stable, so a scoped run does make this one.
-    assert_eq!(c.row(&in_scope).await.0, in_scope_clean, "the scoped row is fixed");
+    assert_eq!(
+        c.row(&in_scope).await.0,
+        in_scope_clean,
+        "the scoped row is fixed"
+    );
     assert_eq!(
         c.row(&out_of_scope).await.0,
         out_tag,
@@ -377,14 +408,20 @@ async fn a_scoped_run_skips_a_rename_that_would_move_the_slug() {
         .await
         .expect("scoped run");
     let (name, slug, _, _) = c.row(&id).await;
-    assert_eq!(name, tagged, "a scoped run must not relocate the artist page");
+    assert_eq!(
+        name, tagged,
+        "a scoped run must not relocate the artist page"
+    );
     assert_eq!(slug, slug_before);
 
     canonicalize_artists(&c.pool, None, false)
         .await
         .expect("library-wide run");
     let (name, slug, _, _) = c.row(&id).await;
-    assert_eq!(name, canonical, "the library-wide pass still adopts the canonical name");
+    assert_eq!(
+        name, canonical,
+        "the library-wide pass still adopts the canonical name"
+    );
     assert_ne!(slug, slug_before, "and moves the slug with it");
 
     c.reset().await;
@@ -437,7 +474,9 @@ async fn a_collaboration_is_never_folded_into_its_first_member() {
     let solo_id = c.artist(&solo, Some(MBID_A), false).await;
     let compound_id = c.artist(&compound, Some(MBID_A), false).await;
 
-    canonicalize_artists(&c.pool, None, false).await.expect("run");
+    canonicalize_artists(&c.pool, None, false)
+        .await
+        .expect("run");
 
     assert_eq!(
         c.row(&compound_id).await.3,

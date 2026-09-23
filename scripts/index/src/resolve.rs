@@ -17,10 +17,10 @@ use std::collections::{HashMap, HashSet};
 use common::artists::is_special_artist_name;
 use common::mb::api::{mb_search_artist_exact, RateLimiter};
 use common::mb::names::normalize_name;
-use common::progress::Reporter;
 use common::mb::resolve::{
     cap_co_owners, resolve_with, JoinKind, LookupResult, Resolution, ResolveSource, ResolvedArtist,
 };
+use common::progress::Reporter;
 use common::slug::make_slug;
 use reqwest::Client;
 use sqlx::PgPool;
@@ -305,7 +305,11 @@ pub fn embedded_pairing(
 /// lookup table already held the correct answer for that exact name the whole time; nothing had ever
 /// asked it. `NotFound`/`NeedsFetch`/`Transient` are not contradictions - only a `Found` answer for a
 /// *different* id counts, matching `common::mb::names::IdentityVerdict::Contradicted`.
-fn embedded_id_contradicted(memo: &HashMap<String, LookupResult>, name: &str, claimed_mbid: &str) -> bool {
+fn embedded_id_contradicted(
+    memo: &HashMap<String, LookupResult>,
+    name: &str,
+    claimed_mbid: &str,
+) -> bool {
     matches!(memo.get(name), Some(LookupResult::Found { mbid: Some(known) }) if known != claimed_mbid)
 }
 
@@ -356,7 +360,10 @@ impl<'a> OwnerTag<'a> {
 /// compilation the loop wrote provisional owners from the raw `artist` tag and the reconcile then had
 /// nothing to replace them with, so `"Aaron Neville, Kenny G, Walter Afanasieff, ..."` stayed a
 /// browsable artist owning The Bodyguard OST. 497 of those had accumulated.
-pub fn owner_tag<'a>(album_artist: Option<&'a str>, artist: Option<&'a str>) -> Option<OwnerTag<'a>> {
+pub fn owner_tag<'a>(
+    album_artist: Option<&'a str>,
+    artist: Option<&'a str>,
+) -> Option<OwnerTag<'a>> {
     let usable = |t: &'a str| (!t.trim().is_empty()).then_some(t);
     album_artist
         .and_then(usable)
@@ -536,16 +543,20 @@ pub async fn resolve_and_apply(
     // release -> current owners, so a credit never duplicates an owner. Scoped with the tracks: a
     // one-artist run has no use for the other ~165k ownership links.
     let owner_rows: Vec<(String, String)> = match scoped_release_ids {
-        Some(ids) => sqlx::query_as(
-            r#"SELECT "localReleaseId", "artistId" FROM "LocalReleaseArtist"
+        Some(ids) => {
+            sqlx::query_as(
+                r#"SELECT "localReleaseId", "artistId" FROM "LocalReleaseArtist"
                WHERE "localReleaseId" = ANY($1::text[])"#,
-        )
-        .bind(ids)
-        .fetch_all(pool)
-        .await?,
-        None => sqlx::query_as(r#"SELECT "localReleaseId", "artistId" FROM "LocalReleaseArtist""#)
+            )
+            .bind(ids)
             .fetch_all(pool)
-            .await?,
+            .await?
+        }
+        None => {
+            sqlx::query_as(r#"SELECT "localReleaseId", "artistId" FROM "LocalReleaseArtist""#)
+                .fetch_all(pool)
+                .await?
+        }
     };
     let mut owners_by_release: HashMap<String, HashSet<String>> = HashMap::new();
     for (release_id, artist_id) in owner_rows {
@@ -602,7 +613,13 @@ pub async fn resolve_and_apply(
             };
 
             if !resolved_owners.contains_key(owner) {
-                match embedded_pairing_checked(&resolver.memo, owner, multi, mb_ids, JoinKind::CoBilling) {
+                match embedded_pairing_checked(
+                    &resolver.memo,
+                    owner,
+                    multi,
+                    mb_ids,
+                    JoinKind::CoBilling,
+                ) {
                     Some(mut parts) => {
                         resolver.stats.from_embedded += 1;
                         cap_co_owners(&mut parts);
@@ -952,7 +969,12 @@ mod tests {
 
     #[test]
     fn a_memoized_answer_for_a_different_id_is_a_contradiction() {
-        let memo = memo(&[("row-name", LookupResult::Found { mbid: Some("mbid-correct".into()) })]);
+        let memo = memo(&[(
+            "row-name",
+            LookupResult::Found {
+                mbid: Some("mbid-correct".into()),
+            },
+        )]);
         assert!(embedded_id_contradicted(&memo, "row-name", "mbid-wrong"));
         assert!(!embedded_id_contradicted(&memo, "row-name", "mbid-correct"));
     }
@@ -963,8 +985,16 @@ mod tests {
         // a *different* id counts. Getting this wrong would make an ordinary, never-yet-cached tag
         // fail the gate for no reason.
         let memo = memo(&[("never-found", LookupResult::NotFound)]);
-        assert!(!embedded_id_contradicted(&memo, "never-found", "mbid-anything"));
-        assert!(!embedded_id_contradicted(&HashMap::new(), "never-asked", "mbid-anything"));
+        assert!(!embedded_id_contradicted(
+            &memo,
+            "never-found",
+            "mbid-anything"
+        ));
+        assert!(!embedded_id_contradicted(
+            &HashMap::new(),
+            "never-asked",
+            "mbid-anything"
+        ));
     }
 
     #[test]
@@ -980,7 +1010,12 @@ mod tests {
         assert!(embedded_pairing(tag, &artists, &mb_ids, JoinKind::CoBilling).is_some());
 
         // Checked, against a memo that already knows better: rejected outright.
-        let memo = memo(&[("row-name", LookupResult::Found { mbid: Some("mbid-correct".into()) })]);
+        let memo = memo(&[(
+            "row-name",
+            LookupResult::Found {
+                mbid: Some("mbid-correct".into()),
+            },
+        )]);
         assert!(
             embedded_pairing_checked(&memo, tag, &artists, &mb_ids, JoinKind::CoBilling).is_none(),
             "a contradicted part must discard the whole pairing, not just patch that one part"
@@ -994,11 +1029,25 @@ mod tests {
         let mb_ids = vec!["mbid-correct".to_string()];
 
         // No memo entry at all: nothing to contradict it.
-        assert!(embedded_pairing_checked(&HashMap::new(), tag, &artists, &mb_ids, JoinKind::CoBilling).is_some());
+        assert!(embedded_pairing_checked(
+            &HashMap::new(),
+            tag,
+            &artists,
+            &mb_ids,
+            JoinKind::CoBilling
+        )
+        .is_some());
 
         // Memo agrees: still passes.
-        let memo = memo(&[("row-name", LookupResult::Found { mbid: Some("mbid-correct".into()) })]);
-        assert!(embedded_pairing_checked(&memo, tag, &artists, &mb_ids, JoinKind::CoBilling).is_some());
+        let memo = memo(&[(
+            "row-name",
+            LookupResult::Found {
+                mbid: Some("mbid-correct".into()),
+            },
+        )]);
+        assert!(
+            embedded_pairing_checked(&memo, tag, &artists, &mb_ids, JoinKind::CoBilling).is_some()
+        );
     }
 
     #[test]
@@ -1022,7 +1071,10 @@ mod tests {
         // miss IS cached here, so a row-presence check would call this name done and skip the span
         // lookups that are the actual work.
         let whole_only = memo(&[("Sonny Rollins feat. Jim Hall", LookupResult::NotFound)]);
-        assert!(!is_fully_memoized(&whole_only, "Sonny Rollins feat. Jim Hall"));
+        assert!(!is_fully_memoized(
+            &whole_only,
+            "Sonny Rollins feat. Jim Hall"
+        ));
 
         let complete = memo(&[
             ("Sonny Rollins feat. Jim Hall", LookupResult::NotFound),
@@ -1061,8 +1113,12 @@ mod tests {
         // two owners.
         let lookup = |name: &str| match name {
             "Artist One & Artist Two" => LookupResult::NotFound,
-            "Artist One" => LookupResult::Found { mbid: Some("mbid-one".into()) },
-            "Artist Two" => LookupResult::Found { mbid: Some("mbid-two".into()) },
+            "Artist One" => LookupResult::Found {
+                mbid: Some("mbid-one".into()),
+            },
+            "Artist Two" => LookupResult::Found {
+                mbid: Some("mbid-two".into()),
+            },
             _ => LookupResult::NeedsFetch,
         };
         let mut owners = resolve_owner_offline("Artist One & Artist Two", lookup);
@@ -1083,8 +1139,12 @@ mod tests {
         // second owner.
         let lookup = |name: &str| match name {
             "Frank Sinatra with Count Basie" => LookupResult::NotFound,
-            "Frank Sinatra" => LookupResult::Found { mbid: Some("sinatra-id".into()) },
-            "Count Basie" => LookupResult::Found { mbid: Some("basie-id".into()) },
+            "Frank Sinatra" => LookupResult::Found {
+                mbid: Some("sinatra-id".into()),
+            },
+            "Count Basie" => LookupResult::Found {
+                mbid: Some("basie-id".into()),
+            },
             _ => LookupResult::NeedsFetch,
         };
         let owners = resolve_owner_offline("Frank Sinatra with Count Basie", lookup);

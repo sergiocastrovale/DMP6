@@ -56,7 +56,11 @@ pub async fn run(
                         "✓".green(),
                         file,
                         outcome.new_value.as_deref().unwrap_or(""),
-                        outcome.detail.get("source").and_then(|v| v.as_str()).unwrap_or("?")
+                        outcome
+                            .detail
+                            .get("source")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("?")
                     );
                     result.outcomes.push(outcome);
                 }
@@ -84,14 +88,10 @@ fn process_file(
         message,
     };
 
-    let snap =
-        read_tags_guarded(abs_path).map_err(|e| err(format!("cannot read tags: {}", e.detail())))?;
+    let snap = read_tags_guarded(abs_path)
+        .map_err(|e| err(format!("cannot read tags: {}", e.detail())))?;
 
-    if snap
-        .artist
-        .as_deref()
-        .is_some_and(|a| !a.trim().is_empty())
-    {
+    if snap.artist.as_deref().is_some_and(|a| !a.trim().is_empty()) {
         return Err(err(
             "artist tag no longer missing - tags changed since scan".to_string(),
         ));
@@ -129,4 +129,3 @@ fn process_file(
         fixed_at: chrono::Local::now().to_rfc3339(),
     })
 }
-

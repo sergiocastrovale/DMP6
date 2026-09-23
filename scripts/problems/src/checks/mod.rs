@@ -71,10 +71,7 @@ impl ReasonCode {
     pub fn severity(self) -> Severity {
         use ReasonCode::*;
         match self {
-            TagsUnreadable
-            | TagReadPanicked
-            | ArtistMissing
-            | ArtistWhitespaceOnly
+            TagsUnreadable | TagReadPanicked | ArtistMissing | ArtistWhitespaceOnly
             | TitleEmpty => Severity::Critical,
 
             ArtistPunctuationOnly
@@ -260,8 +257,7 @@ pub fn check_file(snap: &crate::audio::TagSnapshot, current_year: i32) -> Vec<Re
                     ReasonCode::ArtistWhitespaceOnly,
                     sanitize_cell(a),
                 ));
-            } else if text::is_punctuation_only(a) && !artist::is_known_punctuation_artist_name(a)
-            {
+            } else if text::is_punctuation_only(a) && !artist::is_known_punctuation_artist_name(a) {
                 out.push(Reason::new(
                     ReasonCode::ArtistPunctuationOnly,
                     sanitize_cell(a),

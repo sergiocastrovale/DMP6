@@ -39,7 +39,11 @@ pub fn canonical_parent(path: &Path) -> Option<PathBuf> {
 /// `music_root` (which must already be canonical).
 pub fn resolve_in_library(raw: &str, music_root: &Path) -> Option<PathBuf> {
     let candidate = Path::new(raw);
-    let full = if candidate.is_absolute() { candidate.to_path_buf() } else { music_root.join(candidate) };
+    let full = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        music_root.join(candidate)
+    };
     let resolved = canonical_parent(&full)?;
     is_inside(&resolved, music_root).then_some(resolved)
 }
@@ -51,12 +55,14 @@ fn prune_upwards(start: &Path, root: &Path, dry_run: bool) -> usize {
     let mut dir = start.to_path_buf();
 
     while is_inside(&dir, root) {
-        let empty = fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(false);
+        let empty = fs::read_dir(&dir)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false);
         if !empty {
-            break
+            break;
         }
         if !dry_run && fs::remove_dir(&dir).is_err() {
-            break
+            break;
         }
         removed += 1;
         match dir.parent() {
@@ -83,15 +89,15 @@ pub struct FileDeletion {
 /// as "other" audio and refuse to remove the folder).
 fn dir_has_other_audio(dir: &Path, excluding: &std::collections::HashSet<PathBuf>) -> bool {
     let Ok(entries) = fs::read_dir(dir) else {
-        return false
+        return false;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
             if dir_has_other_audio(&path, excluding) {
-                return true
+                return true;
             }
-            continue
+            continue;
         }
         let is_audio = path
             .extension()
@@ -99,11 +105,11 @@ fn dir_has_other_audio(dir: &Path, excluding: &std::collections::HashSet<PathBuf
             .map(|e| common::images::RELEASE_AUDIO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
             .unwrap_or(false);
         if !is_audio {
-            continue
+            continue;
         }
         let canonical = fs::canonicalize(&path).unwrap_or(path);
         if !excluding.contains(&canonical) {
-            return true
+            return true;
         }
     }
     false
@@ -124,7 +130,7 @@ pub fn delete_release_folders(
         return FileDeletion {
             skipped: track_paths.to_vec(),
             ..Default::default()
-        }
+        };
     };
 
     let mut result = FileDeletion::default();
@@ -134,17 +140,15 @@ pub fn delete_release_folders(
     for raw in track_paths {
         let Some(resolved) = resolve_in_library(raw, &root) else {
             result.skipped.push(raw.clone());
-            continue
+            continue;
         };
         if dry_run {
             result.files_removed += 1;
-        }
-        else if fs::remove_file(&resolved).is_ok() {
+        } else if fs::remove_file(&resolved).is_ok() {
             result.files_removed += 1;
-        }
-        else {
+        } else {
             result.skipped.push(raw.clone());
-            continue
+            continue;
         }
         removing.insert(resolved.clone());
         if let Some(parent) = resolved.parent() {
@@ -159,7 +163,11 @@ pub fn delete_release_folders(
     // MUSIC_DIR too, same as track_paths above - see resolve_in_library's doc comment.
     for raw in release_dirs {
         let candidate = Path::new(raw);
-        let full = if candidate.is_absolute() { candidate.to_path_buf() } else { root.join(candidate) };
+        let full = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            root.join(candidate)
+        };
         if let Ok(resolved) = fs::canonicalize(&full) {
             if is_inside(&resolved, &root) && !boundary_dirs.contains(&resolved) {
                 boundary_dirs.push(resolved);
@@ -173,10 +181,10 @@ pub fn delete_release_folders(
 
     for dir in &boundary_dirs {
         if !is_inside(dir, &root) || !dir.exists() {
-            continue
+            continue;
         }
         if dir_has_other_audio(dir, &removing) {
-            continue
+            continue;
         }
         if dry_run || fs::remove_dir_all(dir).is_ok() {
             result.dirs_removed += 1;
@@ -194,7 +202,7 @@ pub fn delete_files(paths: &[String], music_dir: &str, dry_run: bool) -> FileDel
         return FileDeletion {
             skipped: paths.to_vec(),
             ..Default::default()
-        }
+        };
     };
 
     let mut result = FileDeletion::default();
@@ -203,17 +211,15 @@ pub fn delete_files(paths: &[String], music_dir: &str, dry_run: bool) -> FileDel
     for raw in paths {
         let Some(resolved) = resolve_in_library(raw, &root) else {
             result.skipped.push(raw.clone());
-            continue
+            continue;
         };
         if dry_run {
             result.files_removed += 1;
-        }
-        else if fs::remove_file(&resolved).is_ok() {
+        } else if fs::remove_file(&resolved).is_ok() {
             result.files_removed += 1;
-        }
-        else {
+        } else {
             result.skipped.push(raw.clone());
-            continue
+            continue;
         }
         if let Some(parent) = resolved.parent() {
             let parent = parent.to_path_buf();
@@ -269,7 +275,10 @@ mod tests {
 
         let real = delete_files(&paths, &root.to_string_lossy(), false);
         assert_eq!(real.files_removed, 1);
-        assert_eq!(real.dirs_removed, 2, "Album and Artist should both be pruned");
+        assert_eq!(
+            real.dirs_removed, 2,
+            "Album and Artist should both be pruned"
+        );
         assert!(!track.exists());
         assert!(!root.join("Artist").exists());
         assert!(root.exists(), "MUSIC_DIR itself is never removed");
@@ -292,7 +301,11 @@ mod tests {
         let track = album.join("01.flac");
         fs::write(&track, b"x").unwrap();
 
-        let real = delete_files(&["Artist/Album/01.flac".to_string()], &root.to_string_lossy(), false);
+        let real = delete_files(
+            &["Artist/Album/01.flac".to_string()],
+            &root.to_string_lossy(),
+            false,
+        );
         assert_eq!(real.files_removed, 1);
         assert!(real.skipped.is_empty());
         assert!(!track.exists());
@@ -322,8 +335,14 @@ mod tests {
 
         assert_eq!(result.files_removed, 1);
         assert_eq!(result.dirs_removed, 1);
-        assert!(!album.exists(), "cover.jpg must go with the rest of the folder");
-        assert!(root.join("Artist").exists(), "the artist folder is never this call's business");
+        assert!(
+            !album.exists(),
+            "cover.jpg must go with the rest of the folder"
+        );
+        assert!(
+            root.join("Artist").exists(),
+            "the artist folder is never this call's business"
+        );
 
         fs::remove_dir_all(&root).ok();
     }
@@ -370,7 +389,10 @@ mod tests {
         // Mirrors how `release.rs` builds `folder_paths`: LocalRelease.folderPath (the album) plus
         // every LocalReleaseMember.folderPath (each disc).
         let result = delete_release_folders(
-            &[t1.to_string_lossy().to_string(), t2.to_string_lossy().to_string()],
+            &[
+                t1.to_string_lossy().to_string(),
+                t2.to_string_lossy().to_string(),
+            ],
             &[
                 album.to_string_lossy().to_string(),
                 cd1.to_string_lossy().to_string(),
@@ -381,9 +403,18 @@ mod tests {
         );
 
         assert_eq!(result.files_removed, 2);
-        assert_eq!(result.dirs_removed, 3, "CD1, CD2 and the album folder each count as one folder removed");
-        assert!(!album.exists(), "the album folder becomes empty and is pruned too");
-        assert!(root.join("Artist").exists(), "the artist folder is never touched");
+        assert_eq!(
+            result.dirs_removed, 3,
+            "CD1, CD2 and the album folder each count as one folder removed"
+        );
+        assert!(
+            !album.exists(),
+            "the album folder becomes empty and is pruned too"
+        );
+        assert!(
+            root.join("Artist").exists(),
+            "the artist folder is never touched"
+        );
 
         fs::remove_dir_all(&root).ok();
     }
@@ -392,7 +423,8 @@ mod tests {
     fn delete_release_folders_skips_paths_outside_music_dir() {
         let root = temp_root("outside");
         fs::create_dir_all(&root).unwrap();
-        let outside = std::env::temp_dir().join(format!("dmp-release-outside-{}.flac", std::process::id()));
+        let outside =
+            std::env::temp_dir().join(format!("dmp-release-outside-{}.flac", std::process::id()));
         fs::write(&outside, b"x").unwrap();
 
         let result = delete_release_folders(

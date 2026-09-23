@@ -328,7 +328,10 @@ async fn try_release_group_credits(
     // The removed fallback below used to hand back `real_credits[0]` whenever it was merely related to
     // the *tag*, which is exactly how a compound credit array ("<name> Quintet" and "<someone else>")
     // could leak another artist's id onto this row. See docs/sync_decisions.md §4-6.
-    if let Some(matched) = real_credits.iter().find(|c| mb_artist_exact(artist_name, c)) {
+    if let Some(matched) = real_credits
+        .iter()
+        .find(|c| mb_artist_exact(artist_name, c))
+    {
         return Ok(Some(matched.clone()));
     }
 

@@ -86,7 +86,10 @@ pub struct FixRunResult {
 /// Rows from the spool whose rendered reason contains any of `codes`, grouped by release folder.
 /// Shared by every fix kind - reading the spool (not the xlsx, which is a disposable, always-
 /// regenerated artifact) is what the "no prior scan" safeguard in `run_fix` actually checks.
-fn worklist(spool_path: &Path, codes: &[ReasonCode]) -> Result<BTreeMap<String, Vec<String>>, String> {
+fn worklist(
+    spool_path: &Path,
+    codes: &[ReasonCode],
+) -> Result<BTreeMap<String, Vec<String>>, String> {
     let rows = spool::read_rows(spool_path)
         .map_err(|e| format!("cannot read spool at {}: {e}", spool_path.display()))?;
     let mut by_path: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -151,7 +154,11 @@ pub fn run_fix(
             "{} release folder(s), {} file(s) to process{}",
             list.len(),
             total_files,
-            if dry_run { " (dry run - no writes)" } else { "" }
+            if dry_run {
+                " (dry run - no writes)"
+            } else {
+                ""
+            }
         )
         .bright_cyan()
     );
@@ -187,7 +194,13 @@ pub fn run_fix(
             format!("{} file(s) left untouched:", result.errors.len()).yellow()
         );
         for e in &result.errors {
-            println!("  {} {}/{}: {}", "!".bright_red(), e.path, e.file, e.message);
+            println!(
+                "  {} {}/{}: {}",
+                "!".bright_red(),
+                e.path,
+                e.file,
+                e.message
+            );
         }
     }
 

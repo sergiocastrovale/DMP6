@@ -362,8 +362,7 @@ fn run_audit(
         .build_global()
         .ok();
 
-    let artists = match scan::list_artist_dirs(root, &args.from, &args.to, &args.only, args.exact)
-    {
+    let artists = match scan::list_artist_dirs(root, &args.from, &args.to, &args.only, args.exact) {
         Ok(a) => a,
         Err(e) => {
             eprintln!(

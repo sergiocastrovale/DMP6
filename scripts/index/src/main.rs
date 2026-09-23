@@ -372,14 +372,14 @@ async fn run_canonicalize(
     dry_run: bool,
     scope: index::deletion::ArtistScope<'_>,
 ) {
-    let (stats, report) = match index::canonicalize::canonicalize_artists(pool, scope, dry_run).await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            reporter.err(&format!("Artist canonicalization failed: {}", e));
-            return;
-        }
-    };
+    let (stats, report) =
+        match index::canonicalize::canonicalize_artists(pool, scope, dry_run).await {
+            Ok(v) => v,
+            Err(e) => {
+                reporter.err(&format!("Artist canonicalization failed: {}", e));
+                return;
+            }
+        };
 
     if dry_run {
         for name in &report.mbids_cleared {
@@ -390,13 +390,23 @@ async fn run_canonicalize(
                 "  rename      {}  ->  {}{}",
                 r.from,
                 r.to,
-                if r.slug_changes { "  (slug changes)" } else { "" }
+                if r.slug_changes {
+                    "  (slug changes)"
+                } else {
+                    ""
+                }
             );
         }
         for c in &report.connections {
-            println!("  connect     {}  ->  {}  [{}]", c.duplicate, c.primary, c.mbid);
+            println!(
+                "  connect     {}  ->  {}  [{}]",
+                c.duplicate, c.primary, c.mbid
+            );
         }
-        if !report.mbids_cleared.is_empty() || !report.renames.is_empty() || !report.connections.is_empty() {
+        if !report.mbids_cleared.is_empty()
+            || !report.renames.is_empty()
+            || !report.connections.is_empty()
+        {
             println!();
         }
     }
@@ -414,7 +424,10 @@ async fn run_canonicalize(
     }
     let swept = index::deletion::delete_orphan_artists(pool, config, scope).await;
     if swept > 0 {
-        reporter.info(&format!("Deleted {} artist(s) left linked to nothing.", swept));
+        reporter.info(&format!(
+            "Deleted {} artist(s) left linked to nothing.",
+            swept
+        ));
     }
 }
 
@@ -1090,16 +1103,19 @@ async fn main() {
                             }
                         };
                         let fp = strip_disc_subfolder(&raw);
-                        by_folder.entry(fp).or_default().push(common::consensus::TrackTags {
-                            id: track.file_path.clone(),
-                            album: track.album.clone(),
-                            year: track.year,
-                            mb_release_id: track.mb_release_id.clone(),
-                            mb_release_group_id: track.mb_release_group_id.clone(),
-                            disc_number: track.disc_number,
-                            track_number: track.track_number,
-                            file_path: Some(track.file_path.clone()),
-                        });
+                        by_folder
+                            .entry(fp)
+                            .or_default()
+                            .push(common::consensus::TrackTags {
+                                id: track.file_path.clone(),
+                                album: track.album.clone(),
+                                year: track.year,
+                                mb_release_id: track.mb_release_id.clone(),
+                                mb_release_group_id: track.mb_release_group_id.clone(),
+                                disc_number: track.disc_number,
+                                track_number: track.track_number,
+                                file_path: Some(track.file_path.clone()),
+                            });
                     }
                     by_folder
                         .into_iter()
@@ -1211,9 +1227,8 @@ async fn main() {
                     let display_key = folder_path_str.as_str();
 
                     let verdict = folder_verdicts.get(display_key);
-                    let release_title: String = verdict
-                        .and_then(|v| v.title.clone())
-                        .unwrap_or_else(|| {
+                    let release_title: String =
+                        verdict.and_then(|v| v.title.clone()).unwrap_or_else(|| {
                             common::consensus::folder_leaf(&folder_path_str).to_string()
                         });
                     let release_year = verdict.and_then(|v| v.year);
@@ -1227,23 +1242,22 @@ async fn main() {
                     // never re-derive a group key for it, or the very next full re-index of a
                     // shape-(b) box (every disc tagged as its own standalone album) would split it
                     // straight back apart. See get_local_release_members's doc comment.
-                    let release_result = if let Some(existing_id) =
-                        local_release_members.get(&folder_path_str)
-                    {
-                        Ok(existing_id.clone())
-                    } else {
-                        ensure_local_release_cached(
-                            &pool,
-                            &release_title,
-                            release_year,
-                            &folder_path_str,
-                            &group_key,
-                            release_status,
-                            release_reason,
-                            &mut release_cache,
-                        )
-                        .await
-                    };
+                    let release_result =
+                        if let Some(existing_id) = local_release_members.get(&folder_path_str) {
+                            Ok(existing_id.clone())
+                        } else {
+                            ensure_local_release_cached(
+                                &pool,
+                                &release_title,
+                                release_year,
+                                &folder_path_str,
+                                &group_key,
+                                release_status,
+                                release_reason,
+                                &mut release_cache,
+                            )
+                            .await
+                        };
                     let release_id = match release_result {
                         Ok(id) => id,
                         Err(e) => {
@@ -1364,7 +1378,10 @@ async fn main() {
                             consensus_cleared_total += stats.cleared;
                         }
                         Err(e) => {
-                            reporter.err(&format!("Consensus check error for '{}': {}", folder_name, e));
+                            reporter.err(&format!(
+                                "Consensus check error for '{}': {}",
+                                folder_name, e
+                            ));
                         }
                     }
                 }
@@ -1427,8 +1444,7 @@ async fn main() {
                             .filter_map(|(release_id, rel_folder_path)| {
                                 let abs_folder =
                                     PathBuf::from(&music_dir_clone).join(rel_folder_path);
-                                let temp_path =
-                                    rid_clone.join(format!("_tmp_{}.jpg", release_id));
+                                let temp_path = rid_clone.join(format!("_tmp_{}.jpg", release_id));
                                 if overwrite_images {
                                     std::fs::remove_file(&temp_path).ok();
                                 }
@@ -1630,14 +1646,13 @@ async fn main() {
         if !args.skip_covers {
             let counts = folder_artist_track_counts(&pool, &folder_prefix).await;
             if let Some(owner_id) = pick_folder_image_owner(&counts) {
-                let existing_img: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-                    r#"SELECT image, "imageUrl" FROM "Artist" WHERE id = $1"#,
-                )
-                .bind(&owner_id)
-                .fetch_optional(&pool)
-                .await
-                .ok()
-                .flatten();
+                let existing_img: Option<(Option<String>, Option<String>)> =
+                    sqlx::query_as(r#"SELECT image, "imageUrl" FROM "Artist" WHERE id = $1"#)
+                        .bind(&owner_id)
+                        .fetch_optional(&pool)
+                        .await
+                        .ok()
+                        .flatten();
                 let needs_image = existing_img
                     .map(|(img, url)| img.is_none() && url.is_none())
                     .unwrap_or(true);
@@ -2042,12 +2057,8 @@ async fn main() {
     // A filtered run cleans up only after the artists it actually touched. Sweeping globally from a
     // `--only "X"` run would let a one-artist rescan delete rows across the whole library - rows it has
     // no information about and did not create.
-    let cleanup_scope: Option<Vec<String>> = has_filter(&args).then(|| {
-        all_artist_ids
-            .iter()
-            .cloned()
-            .collect::<Vec<String>>()
-    });
+    let cleanup_scope: Option<Vec<String>> =
+        has_filter(&args).then(|| all_artist_ids.iter().cloned().collect::<Vec<String>>());
     let rel_del = delete_empty_releases(&pool, &config, cleanup_scope.as_deref()).await;
     let mb_del = delete_orphaned_mb_releases(&pool, cleanup_scope.as_deref()).await;
     let art_del = delete_orphan_artists(&pool, &config, cleanup_scope.as_deref()).await;

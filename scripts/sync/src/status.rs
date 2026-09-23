@@ -93,10 +93,14 @@ fn titles_match(a: &str, b: &str) -> bool {
     // Jaccard on word sets as fallback, noise words excluded so they can't inflate a match between
     // two titles that don't actually share any meaningful word.
     let noise: std::collections::HashSet<&str> = NOISE_WORDS.iter().copied().collect();
-    let words_a: std::collections::HashSet<&str> =
-        na.split_whitespace().filter(|w| !noise.contains(w)).collect();
-    let words_b: std::collections::HashSet<&str> =
-        nb.split_whitespace().filter(|w| !noise.contains(w)).collect();
+    let words_a: std::collections::HashSet<&str> = na
+        .split_whitespace()
+        .filter(|w| !noise.contains(w))
+        .collect();
+    let words_b: std::collections::HashSet<&str> = nb
+        .split_whitespace()
+        .filter(|w| !noise.contains(w))
+        .collect();
     if words_a.is_empty() || words_b.is_empty() {
         return false;
     }
@@ -288,7 +292,8 @@ pub(crate) fn check_release_status_with(
     for (mi, mb_track) in mb_tracks.iter().enumerate() {
         let exact = normalize_title(&mb_track.title);
         let same_title = |(i, local): &(usize, &&TrackMeta)| {
-            !used_local.contains(i) && normalize_title(local.title.as_deref().unwrap_or("")) == exact
+            !used_local.contains(i)
+                && normalize_title(local.title.as_deref().unwrap_or("")) == exact
         };
         let hit = match rules {
             TitleRules::Legacy => local_tracks.iter().enumerate().find(same_title),
@@ -419,8 +424,8 @@ fn rule_fits(rule: LooseRule, mb: &MbTrack, local: &TrackMeta) -> bool {
             if a.is_empty() || a != b {
                 return false;
             }
-            let formatting_only =
-                crate::owned::normalize_title(&mb.title) == crate::owned::normalize_title(local_title);
+            let formatting_only = crate::owned::normalize_title(&mb.title)
+                == crate::owned::normalize_title(local_title);
             if formatting_only {
                 // "Ready, Set, Don't Go" / "Ready,Set,Don't Go", "L.S.D." / "L. S. D." - the titles
                 // are identical once punctuation and spacing go, so there is no qualifier to disagree
@@ -468,7 +473,9 @@ fn claim_by_rule(
     let mut claims: Vec<(usize, usize)> = Vec::new();
     for &mi in &pending {
         let fits: Vec<usize> = (0..local_tracks.len())
-            .filter(|li| !used_local.contains(li) && rule_fits(rule, &matched[mi].0, local_tracks[*li]))
+            .filter(|li| {
+                !used_local.contains(li) && rule_fits(rule, &matched[mi].0, local_tracks[*li])
+            })
             .collect();
         let [li] = fits[..] else {
             continue;
@@ -553,7 +560,10 @@ mod tests {
         assert_eq!(normalize_title("Bangers + Mash"), "bangers mash");
         assert_eq!(normalize_title("Mk  1"), "mk 1");
         assert_ne!(normalize_title("Mk 1"), normalize_title("Mk1"));
-        assert_eq!(normalize_title("Ring Ring (English Version)"), "ring ring english version");
+        assert_eq!(
+            normalize_title("Ring Ring (English Version)"),
+            "ring ring english version"
+        );
     }
 
     #[test]
@@ -642,29 +652,34 @@ mod tests {
                     num(f[4]),
                     f[5].to_string(),
                 )),
-                Some(&"L") if f.len() >= 5 => locals.entry(f[1].to_string()).or_default().push(
-                    LocalTrackRow {
+                Some(&"L") if f.len() >= 5 => {
+                    locals
+                        .entry(f[1].to_string())
+                        .or_default()
+                        .push(LocalTrackRow {
+                            id: f[2].to_string(),
+                            title: Some(unescape(f[3])),
+                            artist: None,
+                            album: None,
+                            year: None,
+                            mb_release_id: None,
+                            mb_release_group_id: None,
+                            mb_album_artist_id: None,
+                            track_number: None,
+                            disc_number: None,
+                            duration: num(f[4]),
+                        })
+                }
+                Some(&"M") if f.len() >= 7 => {
+                    mbs.entry(f[1].to_string()).or_default().push(MbTrack {
                         id: f[2].to_string(),
-                        title: Some(unescape(f[3])),
-                        artist: None,
-                        album: None,
-                        year: None,
-                        mb_release_id: None,
-                        mb_release_group_id: None,
-                        mb_album_artist_id: None,
-                        track_number: None,
-                        disc_number: None,
-                        duration: num(f[4]),
-                    },
-                ),
-                Some(&"M") if f.len() >= 7 => mbs.entry(f[1].to_string()).or_default().push(MbTrack {
-                    id: f[2].to_string(),
-                    title: unescape(f[3]),
-                    position: f[6].parse().ok(),
-                    length: f[4].parse().ok(),
-                    disc_number: f[5].parse().ok(),
-                    recording: None,
-                }),
+                        title: unescape(f[3]),
+                        position: f[6].parse().ok(),
+                        length: f[4].parse().ok(),
+                        disc_number: f[5].parse().ok(),
+                        recording: None,
+                    })
+                }
                 _ => {}
             }
         }
@@ -691,8 +706,22 @@ mod tests {
                 media: None,
             };
             let candidates = [(release, tracks.clone())];
-            let old = check_release_status_with(&refs, &ids, &candidates, *year, *medium, TitleRules::Legacy);
-            let new = check_release_status_with(&refs, &ids, &candidates, *year, *medium, TitleRules::Extended);
+            let old = check_release_status_with(
+                &refs,
+                &ids,
+                &candidates,
+                *year,
+                *medium,
+                TitleRules::Legacy,
+            );
+            let new = check_release_status_with(
+                &refs,
+                &ids,
+                &candidates,
+                *year,
+                *medium,
+                TitleRules::Extended,
+            );
             scored += 1;
             let old_s = status_to_db_string(&old.status).to_string();
             let new_s = status_to_db_string(&new.status).to_string();
@@ -702,8 +731,19 @@ mod tests {
             if old_s != new_s {
                 writeln!(new_pairs, "FLIP\t{local_id}\t{old_s}\t{new_s}").unwrap();
             }
-            let linked = |c: &StatusCheck| c.matched_mb_tracks.iter().filter(|(_, l)| l.is_some()).count();
-            writeln!(new_pairs, "MATCHED\t{local_id}\t{}\t{}", linked(&old), linked(&new)).unwrap();
+            let linked = |c: &StatusCheck| {
+                c.matched_mb_tracks
+                    .iter()
+                    .filter(|(_, l)| l.is_some())
+                    .count()
+            };
+            writeln!(
+                new_pairs,
+                "MATCHED\t{local_id}\t{}\t{}",
+                linked(&old),
+                linked(&new)
+            )
+            .unwrap();
             *transitions.entry((old_s, new_s)).or_default() += 1;
 
             for (i, (mb_track, lid)) in new.matched_mb_tracks.iter().enumerate() {
@@ -719,7 +759,10 @@ mod tests {
                     local_id,
                     mb_track.title,
                     local.title.as_deref().unwrap_or(""),
-                    mb_track.length.map(|ms| (ms / 1000).to_string()).unwrap_or_default(),
+                    mb_track
+                        .length
+                        .map(|ms| (ms / 1000).to_string())
+                        .unwrap_or_default(),
                     local.duration.map(|d| d.to_string()).unwrap_or_default()
                 )
                 .unwrap();
@@ -768,7 +811,11 @@ mod tests {
         assert_eq!(m.mb_album_artist_id.as_deref(), Some("mb-artist"));
         assert_eq!(m.track_number, Some(1));
         assert_eq!(m.disc_number, Some(2));
-        assert_eq!(m.duration, Some(185), "the looser title rules need a real runtime to compare");
+        assert_eq!(
+            m.duration,
+            Some(185),
+            "the looser title rules need a real runtime to compare"
+        );
         // File-path/hash/multi-value fields are a DB-row shim only, never read back from here.
         assert_eq!(m.file_path, "");
         assert_eq!(m.content_hash, "");
@@ -804,8 +851,15 @@ mod tests {
     fn score(locals: &[TrackMeta], mb: Vec<MbTrack>, rules: TitleRules) -> ReleaseStatus {
         let refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(locals.len());
-        check_release_status_with(&refs, &ids, &[(mb_release("r1", None, None), mb)], None, None, rules)
-            .status
+        check_release_status_with(
+            &refs,
+            &ids,
+            &[(mb_release("r1", None, None), mb)],
+            None,
+            None,
+            rules,
+        )
+        .status
     }
 
     /// Marillion's "The Singles '82-88'" disc 4, the release that started this: every track present,
@@ -829,8 +883,14 @@ mod tests {
                 mb_timed("m4", "Market Square Heroes (re‐record)", 288),
             ]
         };
-        assert_eq!(score(&locals, mb(), TitleRules::Legacy), ReleaseStatus::MissingTracks);
-        assert_eq!(score(&locals, mb(), TitleRules::Extended), ReleaseStatus::Complete);
+        assert_eq!(
+            score(&locals, mb(), TitleRules::Legacy),
+            ReleaseStatus::MissingTracks
+        );
+        assert_eq!(
+            score(&locals, mb(), TitleRules::Extended),
+            ReleaseStatus::Complete
+        );
     }
 
     /// When the qualifiers disagree the runtime is the only evidence of sameness, so it must be known
@@ -841,17 +901,29 @@ mod tests {
         let locals = vec![timed("Intro", 60), timed("Clown (mono)", 130)];
         let with = |mb_clown: MbTrack| vec![mb_timed("m1", "Intro", 60), mb_clown];
         assert_eq!(
-            score(&locals, with(mb_track("m2", "Clown (stereo)")), TitleRules::Extended),
+            score(
+                &locals,
+                with(mb_track("m2", "Clown (stereo)")),
+                TitleRules::Extended
+            ),
             ReleaseStatus::MissingTracks,
             "an unknown MusicBrainz runtime is no evidence at all here"
         );
         assert_eq!(
-            score(&locals, with(mb_timed("m2", "Clown (stereo)", 140)), TitleRules::Extended),
+            score(
+                &locals,
+                with(mb_timed("m2", "Clown (stereo)", 140)),
+                TitleRules::Extended
+            ),
             ReleaseStatus::MissingTracks,
             "ten seconds apart with disagreeing labels is two recordings"
         );
         assert_eq!(
-            score(&locals, with(mb_timed("m2", "Clown (single version)", 131)), TitleRules::Extended),
+            score(
+                &locals,
+                with(mb_timed("m2", "Clown (single version)", 131)),
+                TitleRules::Extended
+            ),
             ReleaseStatus::Complete,
             "a second apart, the file is in that slot whatever the label says"
         );
@@ -863,18 +935,37 @@ mod tests {
     /// closest runtime. Scored both ways so the test cannot pass under the old behaviour.
     #[test]
     fn identical_titles_pair_by_closest_runtime_not_file_order() {
-        let locals = vec![timed("The Evening's Young", 190), timed("The Evening's Young", 301)];
+        let locals = vec![
+            timed("The Evening's Young", 190),
+            timed("The Evening's Young", 301),
+        ];
         let refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
-        let mb = || vec![mb_timed("m1", "The Evening's Young", 301), mb_timed("m2", "The Evening's Young", 190)];
-        let paired = |rules| {
-            check_release_status_with(&refs, &ids, &[(mb_release("r1", None, None), mb())], None, None, rules)
-                .matched_mb_tracks
-                .into_iter()
-                .map(|(t, l)| (t.id, l.unwrap()))
-                .collect::<std::collections::HashMap<_, _>>()
+        let mb = || {
+            vec![
+                mb_timed("m1", "The Evening's Young", 301),
+                mb_timed("m2", "The Evening's Young", 190),
+            ]
         };
-        assert_eq!(paired(TitleRules::Legacy)["m1"], ids[0], "old: file order wins");
+        let paired = |rules| {
+            check_release_status_with(
+                &refs,
+                &ids,
+                &[(mb_release("r1", None, None), mb())],
+                None,
+                None,
+                rules,
+            )
+            .matched_mb_tracks
+            .into_iter()
+            .map(|(t, l)| (t.id, l.unwrap()))
+            .collect::<std::collections::HashMap<_, _>>()
+        };
+        assert_eq!(
+            paired(TitleRules::Legacy)["m1"],
+            ids[0],
+            "old: file order wins"
+        );
         let new = paired(TitleRules::Extended);
         assert_eq!(new["m1"], ids[1], "301s track takes the 301s file");
         assert_eq!(new["m2"], ids[0], "190s track takes the 190s file");
@@ -883,8 +974,14 @@ mod tests {
     #[test]
     fn a_different_take_number_is_never_the_same_track() {
         let locals = vec![timed("Intro", 60), timed("Rip It Up (take 4)", 180)];
-        let mb = vec![mb_timed("m1", "Intro", 60), mb_timed("m2", "Rip It Up (take 10)", 180)];
-        assert_eq!(score(&locals, mb, TitleRules::Extended), ReleaseStatus::MissingTracks);
+        let mb = vec![
+            mb_timed("m1", "Intro", 60),
+            mb_timed("m2", "Rip It Up (take 10)", 180),
+        ];
+        assert_eq!(
+            score(&locals, mb, TitleRules::Extended),
+            ReleaseStatus::MissingTracks
+        );
     }
 
     /// Two local files could each be either MusicBrainz track - the scorer must refuse rather than
@@ -892,8 +989,14 @@ mod tests {
     #[test]
     fn a_pairing_either_side_could_contest_is_refused() {
         let locals = vec![timed("Song (demo)", 200), timed("Song (rehearsal)", 201)];
-        let mb = vec![mb_timed("m1", "Song (live)", 200), mb_timed("m2", "Song (take)", 201)];
-        assert_eq!(score(&locals, mb, TitleRules::Extended), ReleaseStatus::MissingTracks);
+        let mb = vec![
+            mb_timed("m1", "Song (live)", 200),
+            mb_timed("m2", "Song (take)", 201),
+        ];
+        assert_eq!(
+            score(&locals, mb, TitleRules::Extended),
+            ReleaseStatus::MissingTracks
+        );
     }
 
     fn mb_track_disc(id: &str, title: &str, disc_number: u32) -> MbTrack {
@@ -945,10 +1048,26 @@ mod tests {
             .iter()
             .map(|(t, lid)| (t.id.as_str(), lid.as_deref()))
             .collect();
-        assert_eq!(by_mb_id["m1"], Some(ids[2].as_str()), "plain title must pair with the plain file");
-        assert_eq!(by_mb_id["m2"], Some(ids[3].as_str()), "remake must pair with the remake file");
-        assert_eq!(by_mb_id["m3"], Some(ids[0].as_str()), "take 3 must pair with the take-3 file");
-        assert_eq!(by_mb_id["m4"], Some(ids[1].as_str()), "take 4 must pair with the take-4 file");
+        assert_eq!(
+            by_mb_id["m1"],
+            Some(ids[2].as_str()),
+            "plain title must pair with the plain file"
+        );
+        assert_eq!(
+            by_mb_id["m2"],
+            Some(ids[3].as_str()),
+            "remake must pair with the remake file"
+        );
+        assert_eq!(
+            by_mb_id["m3"],
+            Some(ids[0].as_str()),
+            "take 3 must pair with the take-3 file"
+        );
+        assert_eq!(
+            by_mb_id["m4"],
+            Some(ids[1].as_str()),
+            "take 4 must pair with the take-4 file"
+        );
     }
 
     /// Even when old code got the *status* right, it could still get the *pairing* wrong - swapping
@@ -963,7 +1082,10 @@ mod tests {
         ];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
-        let mb_tracks = vec![mb_track("m1", "Song A"), mb_track("m2", "Song A (Extended)")];
+        let mb_tracks = vec![
+            mb_track("m1", "Song A"),
+            mb_track("m2", "Song A (Extended)"),
+        ];
         let release = mb_release("r1", None, None);
         let check = check_release_status(&local_refs, &ids, &[(release, mb_tracks)], None, None);
         assert_eq!(check.status, ReleaseStatus::Complete);
@@ -1247,7 +1369,11 @@ mod tests {
 
     #[test]
     fn medium_scoped_extra_tracks_still_detected_within_that_medium() {
-        let locals = vec![track("Disc 2 Track A"), track("Disc 2 Track B"), track("Disc 2 Bonus")];
+        let locals = vec![
+            track("Disc 2 Track A"),
+            track("Disc 2 Track B"),
+            track("Disc 2 Bonus"),
+        ];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(3);
         let releases = vec![(

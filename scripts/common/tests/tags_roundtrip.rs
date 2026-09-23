@@ -270,4 +270,3 @@ fn keeps_a_genuine_recording_id_without_force() {
         );
     }
 }
-

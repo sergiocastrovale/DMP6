@@ -169,9 +169,34 @@ async fn bound_disagreeing_release_is_unbound_with_reason_and_leaf_title() {
     reset_fixture(&pool).await;
 
     let (mb_release_id, mb_track_id) = insert_mb_release_track(&pool).await;
-    let release = insert_release(&pool, "scattered", "COMPLETE", None, Some(&mb_release_id), None, None).await;
-    let t1 = insert_track(&pool, &release.id, "scattered", 1, Some("Real Album"), Some(&mb_track_id)).await;
-    insert_track(&pool, &release.id, "scattered", 2, Some("A Totally Different Album"), None).await;
+    let release = insert_release(
+        &pool,
+        "scattered",
+        "COMPLETE",
+        None,
+        Some(&mb_release_id),
+        None,
+        None,
+    )
+    .await;
+    let t1 = insert_track(
+        &pool,
+        &release.id,
+        "scattered",
+        1,
+        Some("Real Album"),
+        Some(&mb_track_id),
+    )
+    .await;
+    insert_track(
+        &pool,
+        &release.id,
+        "scattered",
+        2,
+        Some("A Totally Different Album"),
+        None,
+    )
+    .await;
 
     apply_folder_consensus(&pool, &[release.id.clone()])
         .await
@@ -183,8 +208,15 @@ async fn bound_disagreeing_release_is_unbound_with_reason_and_leaf_title() {
         reason.as_deref(),
         Some("Tracks in the release folder disagree in 'album' metadata field")
     );
-    assert_eq!(title, "scattered", "title must fall back to the folder leaf name");
-    assert_eq!(track_mb_id(&pool, &t1).await, None, "mbTrackId links must be cleared");
+    assert_eq!(
+        title, "scattered",
+        "title must fall back to the folder leaf name"
+    );
+    assert_eq!(
+        track_mb_id(&pool, &t1).await,
+        None,
+        "mbTrackId links must be cleared"
+    );
 
     reset_fixture(&pool).await;
 }
@@ -202,12 +234,30 @@ async fn box_placed_and_member_releases_are_untouched() {
     let (mb_release_id, _mb_track_id) = insert_mb_release_track(&pool).await;
 
     // Dissolved box disc: boxReleaseId set.
-    let box_disc = insert_release(&pool, "box-disc", "COMPLETE", None, Some(&mb_release_id), Some(&mb_release_id), None).await;
+    let box_disc = insert_release(
+        &pool,
+        "box-disc",
+        "COMPLETE",
+        None,
+        Some(&mb_release_id),
+        Some(&mb_release_id),
+        None,
+    )
+    .await;
     insert_track(&pool, &box_disc.id, "box-disc", 1, Some("Disc One"), None).await;
     insert_track(&pool, &box_disc.id, "box-disc", 2, Some("Disc Two"), None).await;
 
     // Folded multi-disc release: mediumPosition set.
-    let folded = insert_release(&pool, "folded", "COMPLETE", None, Some(&mb_release_id), None, Some(1)).await;
+    let folded = insert_release(
+        &pool,
+        "folded",
+        "COMPLETE",
+        None,
+        Some(&mb_release_id),
+        None,
+        Some(1),
+    )
+    .await;
     insert_track(&pool, &folded.id, "folded", 1, Some("Side A"), None).await;
     insert_track(&pool, &folded.id, "folded", 2, Some("Side B"), None).await;
 
@@ -215,7 +265,10 @@ async fn box_placed_and_member_releases_are_untouched() {
     let stats = apply_folder_consensus(&pool, &touched)
         .await
         .expect("apply_folder_consensus");
-    assert!(stats.reason_counts.is_empty(), "exempt releases must not be flagged");
+    assert!(
+        stats.reason_counts.is_empty(),
+        "exempt releases must not be flagged"
+    );
 
     let (box_status, box_reason, _) = release_row(&pool, &box_disc.id).await;
     assert_eq!(box_status, "COMPLETE");

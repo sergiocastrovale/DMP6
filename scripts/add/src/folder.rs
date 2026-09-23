@@ -7,7 +7,13 @@
 pub fn folder_name(name: &str) -> Option<String> {
     let replaced: String = name
         .chars()
-        .map(|c| if c == '/' || c == '\\' || c == '\0' { '-' } else { c })
+        .map(|c| {
+            if c == '/' || c == '\\' || c == '\0' {
+                '-'
+            } else {
+                c
+            }
+        })
         .collect();
     let trimmed = replaced.trim().trim_end_matches('.').trim();
     if trimmed.is_empty() {

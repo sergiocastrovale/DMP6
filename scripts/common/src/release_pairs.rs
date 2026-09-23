@@ -52,7 +52,14 @@ mod tests {
     #[test]
     fn title_normalization_ignores_case_and_punctuation() {
         assert_eq!(
-            classify_release_pair("Guitar Town", "GUITAR TOWN!", Some(2068), Some(2062), 10, 10),
+            classify_release_pair(
+                "Guitar Town",
+                "GUITAR TOWN!",
+                Some(2068),
+                Some(2062),
+                10,
+                10
+            ),
             ReleasePairKind::DuplicateRelease
         );
     }
@@ -88,7 +95,14 @@ mod tests {
     #[test]
     fn different_titles_are_mismatched_regardless_of_tracks_or_duration() {
         assert_eq!(
-            classify_release_pair("My Blue Heaven", "The Complete School For Pianists", Some(2068), Some(2062), 10, 10),
+            classify_release_pair(
+                "My Blue Heaven",
+                "The Complete School For Pianists",
+                Some(2068),
+                Some(2062),
+                10,
+                10
+            ),
             ReleasePairKind::MismatchedReleaseId
         );
     }

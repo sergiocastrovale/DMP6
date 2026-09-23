@@ -183,7 +183,9 @@ async fn rename_to_canonical(
         if canonical_key(name) != canonical_key(mb_name) {
             continue;
         }
-        let name_free = by_name.get(mb_name.as_str()).is_none_or(|owner| *owner == id);
+        let name_free = by_name
+            .get(mb_name.as_str())
+            .is_none_or(|owner| *owner == id);
         let slug_free = by_slug
             .get(target_slug.as_str())
             .is_none_or(|owner| *owner == id);
@@ -209,12 +211,14 @@ async fn rename_to_canonical(
             renamed += 1;
             continue;
         }
-        sqlx::query(r#"UPDATE "Artist" SET name = $1, slug = $2, "updatedAt" = NOW() WHERE id = $3"#)
-            .bind(mb_name)
-            .bind(&target_slug)
-            .bind(id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            r#"UPDATE "Artist" SET name = $1, slug = $2, "updatedAt" = NOW() WHERE id = $3"#,
+        )
+        .bind(mb_name)
+        .bind(&target_slug)
+        .bind(id)
+        .execute(pool)
+        .await?;
         renamed += 1;
     }
     Ok(renamed)

@@ -40,7 +40,8 @@ mod tests {
             Some("artists/x.jpg")
         );
         assert_eq!(
-            extract_s3_key("https://s3.us-west-000.backblazeb2.com/bucket/releases/y.jpg").as_deref(),
+            extract_s3_key("https://s3.us-west-000.backblazeb2.com/bucket/releases/y.jpg")
+                .as_deref(),
             Some("bucket/releases/y.jpg")
         );
         assert_eq!(

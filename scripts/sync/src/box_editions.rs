@@ -231,7 +231,9 @@ fn same_release_group_facts_winner<'a>(hits: &[&'a ReleaseFacts]) -> Option<&'a 
     {
         return None;
     }
-    hits.iter().min_by(|a, b| a.release_id.cmp(&b.release_id)).copied()
+    hits.iter()
+        .min_by(|a, b| a.release_id.cmp(&b.release_id))
+        .copied()
 }
 
 fn tracks_match(medium: &[(String, Option<i32>)], release: &[(String, Option<i32>)]) -> bool {
@@ -391,7 +393,9 @@ fn same_release_group_winner<'a>(
     {
         return None;
     }
-    hits.iter().min_by(|a, b| a.release_id.cmp(&b.release_id)).copied()
+    hits.iter()
+        .min_by(|a, b| a.release_id.cmp(&b.release_id))
+        .copied()
 }
 
 /// Runs all three tiers to completion, no preview mode - called automatically at the tail of a
@@ -749,9 +753,24 @@ mod tests {
             t("Bonus", Some(100)),
         ];
         let mut candidates = vec![
-            candidate("arrival2", "Arrival", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
-            candidate("arrival1", "Arrival", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
-            candidate("arrival3", "Arrival", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate(
+                "arrival2",
+                "Arrival",
+                true,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
+            candidate(
+                "arrival1",
+                "Arrival",
+                true,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
+            candidate(
+                "arrival3",
+                "Arrival",
+                true,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
         ];
         for c in &mut candidates {
             c.release_group_id = Some("rg-arrival".to_string());
@@ -776,8 +795,18 @@ mod tests {
             t("Bonus", Some(100)),
         ];
         let candidates = vec![
-            candidate("kob1", "Kind of Blue", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
-            candidate("kob2", "Kind of Blue", true, &[("X", 100), ("Y", 100), ("Z", 100)]),
+            candidate(
+                "kob1",
+                "Kind of Blue",
+                true,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
+            candidate(
+                "kob2",
+                "Kind of Blue",
+                true,
+                &[("X", 100), ("Y", 100), ("Z", 100)],
+            ),
         ];
         assert!(matches!(
             resolve_containment_winner("Kind of Blue", &medium_tracks, "box1", &candidates),

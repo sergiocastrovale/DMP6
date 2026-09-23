@@ -105,7 +105,9 @@ async fn embedded_pairing_resolves_owner_and_credit_without_network() {
     .bind(&release_id)
     .bind(vec![owner_name.to_string(), guest_name.to_string()])
     .bind(vec![OWNER_MBID.to_string(), GUEST_MBID.to_string()])
-    .execute(&pool).await.expect("insert track");
+    .execute(&pool)
+    .await
+    .expect("insert track");
 
     let mut resolver = ArtistResolver::new(&pool, false);
     // Any network call here is a bug: the file already answers the question.
@@ -218,7 +220,9 @@ async fn dry_run_writes_no_library_data() {
     .bind(&release_id)
     .bind(vec![owner_name.to_string(), guest_name.to_string()])
     .bind(vec![OWNER_MBID.to_string(), GUEST_MBID.to_string()])
-    .execute(&pool).await.expect("insert track");
+    .execute(&pool)
+    .await
+    .expect("insert track");
 
     let mut resolver = ArtistResolver::new(&pool, true); // dry run
     resolver.offline = true;

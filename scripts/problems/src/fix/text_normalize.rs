@@ -63,7 +63,13 @@ pub async fn run(
                     }
                 }
                 Err(error) => {
-                    println!("  {} {}/{}: {}", "!".bright_red(), rel_path, file, error.message);
+                    println!(
+                        "  {} {}/{}: {}",
+                        "!".bright_red(),
+                        rel_path,
+                        file,
+                        error.message
+                    );
                     result.errors.push(error);
                 }
             }
@@ -94,14 +100,18 @@ fn process_file(
         message,
     };
 
-    let snap =
-        read_tags_guarded(abs_path).map_err(|e| err(format!("cannot read tags: {}", e.detail())))?;
+    let snap = read_tags_guarded(abs_path)
+        .map_err(|e| err(format!("cannot read tags: {}", e.detail())))?;
 
     let mut fixes = Vec::new();
 
     if let Some(artist) = snap.artist.as_deref() {
         if !invisible_chars(artist).is_empty() {
-            fixes.push(stage_fix("artist", artist, vec![ReasonCode::ArtistInvisibleChars]));
+            fixes.push(stage_fix(
+                "artist",
+                artist,
+                vec![ReasonCode::ArtistInvisibleChars],
+            ));
         }
     }
 
@@ -155,7 +165,11 @@ fn process_file(
     let fixed_at = chrono::Local::now().to_rfc3339();
     let mut outcomes = Vec::new();
     for f in fixes {
-        let field_label = if f.field_key == "artist" { "Artist" } else { "AlbumArtist" };
+        let field_label = if f.field_key == "artist" {
+            "Artist"
+        } else {
+            "AlbumArtist"
+        };
         for code in f.codes {
             outcomes.push(FixOutcome {
                 path: rel_path.to_string(),
@@ -196,7 +210,12 @@ mod tests {
 
     #[test]
     fn stage_fix_returns_none_when_normalizing_changes_nothing() {
-        assert!(stage_fix("artist", "Radiohead", vec![ReasonCode::ArtistInvisibleChars]).is_none());
+        assert!(stage_fix(
+            "artist",
+            "Radiohead",
+            vec![ReasonCode::ArtistInvisibleChars]
+        )
+        .is_none());
     }
 
     #[test]
@@ -213,8 +232,12 @@ mod tests {
 
     #[test]
     fn stage_fix_handles_untrimmed() {
-        let f = stage_fix("album_artist", "HEALTH ", vec![ReasonCode::AlbumArtistUntrimmed])
-            .expect("should stage");
+        let f = stage_fix(
+            "album_artist",
+            "HEALTH ",
+            vec![ReasonCode::AlbumArtistUntrimmed],
+        )
+        .expect("should stage");
         assert_eq!(f.new_value, "HEALTH");
     }
 }

@@ -17,7 +17,10 @@ pub fn init(name: &str) {
 // with no PROJECT_ROOT, same as before.
 fn log_path() -> PathBuf {
     match std::env::var("PROJECT_ROOT") {
-        Ok(root) => PathBuf::from(root).join("data").join("logs").join("errors.log"),
+        Ok(root) => PathBuf::from(root)
+            .join("data")
+            .join("logs")
+            .join("errors.log"),
         Err(_) => PathBuf::from("errors.log"),
     }
 }

@@ -125,7 +125,8 @@ pub async fn ensure_local_release_cached(
     if let Some(id) = cache.get(group_key) {
         return Ok(id.clone());
     }
-    let id = ensure_local_release(pool, title, year, folder_path, group_key, status, reason).await?;
+    let id =
+        ensure_local_release(pool, title, year, folder_path, group_key, status, reason).await?;
     cache.insert(group_key.to_string(), id.clone());
     Ok(id)
 }
@@ -191,7 +192,16 @@ pub async fn apply_folder_consensus(
         let tracks: Vec<TrackTags> = rows
             .into_iter()
             .map(
-                |(id, album, year, mb_release_id, mb_release_group_id, disc_number, track_number, file_path)| {
+                |(
+                    id,
+                    album,
+                    year,
+                    mb_release_id,
+                    mb_release_group_id,
+                    disc_number,
+                    track_number,
+                    file_path,
+                )| {
                     TrackTags {
                         id,
                         album,
@@ -211,12 +221,14 @@ pub async fn apply_folder_consensus(
         if let Some(reason) = verdict.reason {
             mark_local_release_unknown(pool, release_id, reason).await?;
             if verdict.year.is_some() {
-                sqlx::query(r#"UPDATE "LocalRelease" SET year = $2, "updatedAt" = NOW() WHERE id = $1"#)
-                    .bind(release_id)
-                    .bind(verdict.year)
-                    .execute(pool)
-                    .await
-                    .ok();
+                sqlx::query(
+                    r#"UPDATE "LocalRelease" SET year = $2, "updatedAt" = NOW() WHERE id = $1"#,
+                )
+                .bind(release_id)
+                .bind(verdict.year)
+                .execute(pool)
+                .await
+                .ok();
             }
             *stats.reason_counts.entry(reason).or_insert(0) += 1;
             continue;
@@ -262,12 +274,13 @@ pub async fn apply_folder_consensus(
 /// title/year would be rewritten from that disc's own tags and, worse, its folderPath's `groupKey`
 /// regenerated fresh on the very next full re-index that touches it - splitting it straight back
 /// apart. One query, small table, fetched once per index run.
-pub async fn get_local_release_members(pool: &PgPool) -> Result<HashMap<String, String>, sqlx::Error> {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        r#"SELECT "folderPath", "localReleaseId" FROM "LocalReleaseMember""#,
-    )
-    .fetch_all(pool)
-    .await?;
+pub async fn get_local_release_members(
+    pool: &PgPool,
+) -> Result<HashMap<String, String>, sqlx::Error> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as(r#"SELECT "folderPath", "localReleaseId" FROM "LocalReleaseMember""#)
+            .fetch_all(pool)
+            .await?;
     Ok(rows.into_iter().collect())
 }
 
@@ -526,10 +539,7 @@ pub async fn update_last_indexed_at(
 /// Per-artist track-link count under an artist-root folder (prefix, trailing `/`): +1 for every track
 /// they own the release of (`LocalReleaseArtist`) or are credited on (`TrackRelatedArtist`). Used to
 /// pick the one artist a folder's cover art actually belongs to - never propagated to co-owners/guests.
-pub async fn folder_artist_track_counts(
-    pool: &PgPool,
-    folder_prefix: &str,
-) -> Vec<(String, i64)> {
+pub async fn folder_artist_track_counts(pool: &PgPool, folder_prefix: &str) -> Vec<(String, i64)> {
     sqlx::query_as(
         r#"
         WITH tr AS (

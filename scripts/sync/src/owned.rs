@@ -15,7 +15,6 @@
 //! tracks belong to the container and already carry its MB identity; repointing them at this release's
 //! tracks would destroy that identity and stamp a mismatched album/track id pair into the tags.
 
-
 /// Title comparison key: case-folded, punctuation- and whitespace-insensitive. Tag titles and MB
 /// titles disagree on case and punctuation constantly ("Mk 1" vs "MK 1", "Bangers + Mash").
 pub fn normalize_title(title: &str) -> String {
@@ -119,7 +118,6 @@ pub fn find_owning_bundle<'a>(
     None
 }
 
-
 /// Title of the local release whose tracks already cover every track of this release group, if there
 /// is one.
 ///
@@ -205,7 +203,9 @@ mod tests {
     }
 
     fn timed(v: &[(&str, i32)]) -> Vec<(String, Option<i32>)> {
-        v.iter().map(|(s, secs)| (s.to_string(), Some(*secs))).collect()
+        v.iter()
+            .map(|(s, secs)| (s.to_string(), Some(*secs)))
+            .collect()
     }
 
     // The real case: a folder holding CD 01 + CD 02 of In Rainbows, versus MusicBrainz's separate
@@ -215,18 +215,39 @@ mod tests {
         let local = bundle(
             "in-rainbows",
             &[
-                "15 Step", "Bodysnatchers", "Nude", "Weird Fishes", "All I Need", "Faust Arp",
-                "Reckoner", "House of Cards", "Jigsaw Falling Into Place", "Videotape",
-                "Mk 1", "Down Is the New Up", "Go Slowly", "Mk 2", "Last Flowers",
-                "Up on the Ladder", "Bangers + Mash", "4 Minute Warning",
+                "15 Step",
+                "Bodysnatchers",
+                "Nude",
+                "Weird Fishes",
+                "All I Need",
+                "Faust Arp",
+                "Reckoner",
+                "House of Cards",
+                "Jigsaw Falling Into Place",
+                "Videotape",
+                "Mk 1",
+                "Down Is the New Up",
+                "Go Slowly",
+                "Mk 2",
+                "Last Flowers",
+                "Up on the Ladder",
+                "Bangers + Mash",
+                "4 Minute Warning",
             ],
         );
         let disk2 = titles(&[
-            "MK 1", "Down Is the New Up", "Go Slowly", "MK 2", "Last Flowers", "Up on the Ladder",
-            "Bangers + Mash", "4 Minute Warning",
+            "MK 1",
+            "Down Is the New Up",
+            "Go Slowly",
+            "MK 2",
+            "Last Flowers",
+            "Up on the Ladder",
+            "Bangers + Mash",
+            "4 Minute Warning",
         ]);
         let bundles = [local];
-        let (owner, matched) = find_owning_bundle(&disk2, &bundles).expect("bundle contains disk 2");
+        let (owner, matched) =
+            find_owning_bundle(&disk2, &bundles).expect("bundle contains disk 2");
         assert_eq!(owner.release_id, "in-rainbows");
         assert_eq!(matched.len(), 8);
         assert_eq!(matched[0], "in-rainbows-t10"); // "Mk 1", not disc 1's opener
@@ -239,16 +260,30 @@ mod tests {
         let album = timed_bundle(
             "in-rainbows",
             &[
-                ("15 Step", 237), ("Bodysnatchers", 242), ("Nude", 255),
-                ("Weird Fishes/Arpeggi", 318), ("All I Need", 228), ("Faust Arp", 129),
-                ("Reckoner", 290), ("House of Cards", 328), ("Jigsaw Falling Into Place", 248),
-                ("Videotape", 279), ("Mk 1", 66), ("Down Is the New Up", 300),
+                ("15 Step", 237),
+                ("Bodysnatchers", 242),
+                ("Nude", 255),
+                ("Weird Fishes/Arpeggi", 318),
+                ("All I Need", 228),
+                ("Faust Arp", 129),
+                ("Reckoner", 290),
+                ("House of Cards", 328),
+                ("Jigsaw Falling Into Place", 248),
+                ("Videotape", 279),
+                ("Mk 1", 66),
+                ("Down Is the New Up", 300),
             ],
         );
         let from_the_basement = timed(&[
-            ("15 Step", 236), ("Bodysnatchers", 256), ("House of Cards", 329),
-            ("Bangers + Mash", 211), ("Videotape", 287), ("Reckoner", 303),
-            ("Go Slowly", 234), ("All I Need", 261), ("Nude", 261),
+            ("15 Step", 236),
+            ("Bodysnatchers", 256),
+            ("House of Cards", 329),
+            ("Bangers + Mash", 211),
+            ("Videotape", 287),
+            ("Reckoner", 303),
+            ("Go Slowly", 234),
+            ("All I Need", 261),
+            ("Nude", 261),
             ("Weird Fishes/Arpeggi", 320),
         ]);
         assert!(find_owning_bundle(&from_the_basement, &[album]).is_none());
@@ -259,11 +294,20 @@ mod tests {
         let local = timed_bundle(
             "two-disc",
             &[
-                ("A", 200), ("B", 200), ("C", 200), ("D", 200),
-                ("Mk 1", 66), ("Down Is the New Up", 300), ("Go Slowly", 234),
+                ("A", 200),
+                ("B", 200),
+                ("C", 200),
+                ("D", 200),
+                ("Mk 1", 66),
+                ("Down Is the New Up", 300),
+                ("Go Slowly", 234),
             ],
         );
-        let disc_two = timed(&[("Mk 1", 67), ("Down Is the New Up", 299), ("Go Slowly", 234)]);
+        let disc_two = timed(&[
+            ("Mk 1", 67),
+            ("Down Is the New Up", 299),
+            ("Go Slowly", 234),
+        ]);
         assert!(find_owning_bundle(&disc_two, &[local]).is_some());
     }
 
@@ -297,7 +341,10 @@ mod tests {
 
     #[test]
     fn the_note_names_the_container_without_claiming_ownership() {
-        assert_eq!(containment_note("The First Four Years"), "Recordings inside \"The First Four Years\"");
+        assert_eq!(
+            containment_note("The First Four Years"),
+            "Recordings inside \"The First Four Years\""
+        );
     }
 
     #[test]

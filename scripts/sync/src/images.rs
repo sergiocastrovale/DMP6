@@ -10,7 +10,11 @@ pub async fn download_cover_art(
     release_group_id: &str,
 ) -> Result<Option<Vec<u8>>, String> {
     let urls = [
-        format!("{}/release/{}/front-500", common::mb::api::cover_art_base(), release_id),
+        format!(
+            "{}/release/{}/front-500",
+            common::mb::api::cover_art_base(),
+            release_id
+        ),
         format!(
             "{}/release-group/{}/front-500",
             common::mb::api::cover_art_base(),
@@ -48,4 +52,3 @@ pub async fn download_cover_art(
 
     Ok(Some(bytes.to_vec()))
 }
-

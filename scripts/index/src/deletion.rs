@@ -289,10 +289,13 @@ pub async fn delete_orphan_artists(pool: &PgPool, config: &Config, scope: Artist
         .fetch_all(pool)
         .await
         .unwrap_or_default(),
-        None => sqlx::query_as(&format!(r#"SELECT a.id FROM "Artist" a WHERE {}"#, UNLINKED))
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default(),
+        None => sqlx::query_as(&format!(
+            r#"SELECT a.id FROM "Artist" a WHERE {}"#,
+            UNLINKED
+        ))
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default(),
     };
 
     if ids.is_empty() {
@@ -363,15 +366,16 @@ async fn delete_folder_tracks(pool: &PgPool, folder: &str) -> TrackDeletionResul
     let prefix = format!("{}/%", escape_like(folder));
 
     // Ids first: the favorite/playlist counts have to be read while the rows still exist.
-    let ids: Vec<String> =
-        sqlx::query_as::<_, (String,)>(r#"SELECT id FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#)
-            .bind(&prefix)
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(id,)| id)
-            .collect();
+    let ids: Vec<String> = sqlx::query_as::<_, (String,)>(
+        r#"SELECT id FROM "LocalReleaseTrack" WHERE "filePath" LIKE $1"#,
+    )
+    .bind(&prefix)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(id,)| id)
+    .collect();
 
     if ids.is_empty() {
         return TrackDeletionResult {

@@ -22,7 +22,10 @@ use std::sync::Arc;
 #[derive(Parser, Debug)]
 #[command(name = "tidy")]
 struct TidyArgs {
-    #[arg(long, help = "Ignore the lastTidiedAt watermark - process every synced artist")]
+    #[arg(
+        long,
+        help = "Ignore the lastTidiedAt watermark - process every synced artist"
+    )]
     all: bool,
     #[arg(long, short, help = "Only tidy these artists (semicolon-separated)")]
     only: Option<String>,
@@ -147,7 +150,11 @@ async fn main() {
         });
     }
 
-    reporter.header(if args.web { "DMP Tidy" } else { "DMP Tidy - Library Repair" });
+    reporter.header(if args.web {
+        "DMP Tidy"
+    } else {
+        "DMP Tidy - Library Repair"
+    });
     let start = Utc::now().naive_utc();
     let start_time = std::time::Instant::now();
     let mut had_error = false;
@@ -165,7 +172,9 @@ async fn main() {
         let base: Vec<(String, String)> = if args.all {
             db::get_all_synced_artists(&pool).await.unwrap_or_default()
         } else {
-            db::get_artists_pending_tidy(&pool).await.unwrap_or_default()
+            db::get_artists_pending_tidy(&pool)
+                .await
+                .unwrap_or_default()
         };
         let narrow = args.only.is_some() || args.from.is_some() || args.to.is_some();
         base.into_iter()
@@ -191,8 +200,11 @@ async fn main() {
 
     // Whole-library semantics: only a plain `--all` (no further narrowing) counts as truly global -
     // unscoped queries can catch ownerless rows a scoped one deliberately leaves for this pass.
-    let is_global =
-        args.all && args.only.is_none() && args.from.is_none() && args.to.is_none() && args.artist_ids.is_none();
+    let is_global = args.all
+        && args.only.is_none()
+        && args.from.is_none()
+        && args.to.is_none()
+        && args.artist_ids.is_none();
     let scope: Option<&[String]> = if is_global { None } else { Some(&scope_ids) };
 
     reporter.info(&format!("{} artist(s) in scope", scope_ids.len()));
@@ -365,11 +377,11 @@ async fn main() {
                             summary.rescored_missing_now_complete += 1;
                         }
                         match status {
-                        "COMPLETE" => summary.rescored_complete += 1,
-                        "INCOMPLETE" => summary.rescored_incomplete += 1,
-                        "EXTRA_TRACKS" => summary.rescored_extra_tracks += 1,
-                        "MISSING_TRACKS" => summary.rescored_missing_tracks += 1,
-                        _ => summary.rescored_other += 1,
+                            "COMPLETE" => summary.rescored_complete += 1,
+                            "INCOMPLETE" => summary.rescored_incomplete += 1,
+                            "EXTRA_TRACKS" => summary.rescored_extra_tracks += 1,
+                            "MISSING_TRACKS" => summary.rescored_missing_tracks += 1,
+                            _ => summary.rescored_other += 1,
                         }
                     }
                     Ok(RescoreOutcome::Deferred) => summary.rescore_deferred += 1,
@@ -533,7 +545,10 @@ async fn main() {
             if db::stamp_all_tidied(&pool, start).await.is_ok() {
                 summary.artists_stamped = stampable.len();
             }
-        } else if db::stamp_artists_tidied(&pool, &stampable, start).await.is_ok() {
+        } else if db::stamp_artists_tidied(&pool, &stampable, start)
+            .await
+            .is_ok()
+        {
             summary.artists_stamped = stampable.len();
         }
     }
@@ -565,7 +580,10 @@ async fn main() {
         ),
     );
     if summary.media_backfilled > 0 {
-        reporter.kv("Media backfilled", &format!("{} release(s)", summary.media_backfilled));
+        reporter.kv(
+            "Media backfilled",
+            &format!("{} release(s)", summary.media_backfilled),
+        );
     }
     reporter.kv(
         "Box groups",
@@ -621,9 +639,15 @@ async fn main() {
             summary.identity_pass_a, summary.identity_pass_b, summary.identity_pass_c
         ),
     );
-    reporter.kv("Completeness recomputed", &summary.completeness_recomputed.to_string());
+    reporter.kv(
+        "Completeness recomputed",
+        &summary.completeness_recomputed.to_string(),
+    );
     if args.rescore_only {
-        reporter.kv("Artists stamped", "none (re-score only - box pass did not run)");
+        reporter.kv(
+            "Artists stamped",
+            "none (re-score only - box pass did not run)",
+        );
     } else if running.load(Ordering::SeqCst) && !had_error {
         reporter.kv(
             "Artists stamped",

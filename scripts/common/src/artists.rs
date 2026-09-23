@@ -463,10 +463,7 @@ mod tests {
             replace_artist_word("Nevershoutnever!", "Nevershoutnever!", "Never Shout Never"),
             "Never Shout Never"
         );
-        assert_eq!(
-            replace_artist_word("M.O.O.N.", "M.O.O.N.", "Moon"),
-            "Moon"
-        );
+        assert_eq!(replace_artist_word("M.O.O.N.", "M.O.O.N.", "Moon"), "Moon");
     }
 
     #[test]

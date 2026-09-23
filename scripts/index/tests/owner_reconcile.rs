@@ -108,7 +108,12 @@ impl Ctx {
         .bind(album_artist)
         .bind(format!("{}/{}/{:02}.mp3", self.folder(), release_id, n))
         .bind(release_id)
-        .bind(album_artists.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        .bind(
+            album_artists
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
         .bind(mb_ids.iter().map(|s| s.to_string()).collect::<Vec<_>>())
         .execute(&self.pool)
         .await
@@ -162,9 +167,15 @@ impl Ctx {
         let mut resolver = ArtistResolver::new(&self.pool, false);
         resolver.offline = true;
         let mut report: Vec<Decision> = Vec::new();
-        resolve_and_apply(&self.pool, &mut resolver, Some(release_ids), &mut report, None)
-            .await
-            .expect("resolution failed");
+        resolve_and_apply(
+            &self.pool,
+            &mut resolver,
+            Some(release_ids),
+            &mut report,
+            None,
+        )
+        .await
+        .expect("resolution failed");
     }
 }
 

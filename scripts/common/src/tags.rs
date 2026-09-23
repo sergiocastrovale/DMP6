@@ -276,4 +276,3 @@ fn warn_if_mtime_not_restored(abs_path: &Path, original_mtime: SystemTime) {
         ));
     }
 }
-

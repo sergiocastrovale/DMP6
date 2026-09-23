@@ -65,7 +65,9 @@ pub async fn fill_catalogue_gaps(
                 )
         })
         .filter_map(|(id, name, slug, mb_id)| {
-            mb_id.and_then(|raw| sanitize_mb_id(&raw)).map(|mb| (id, name, slug, mb))
+            mb_id
+                .and_then(|raw| sanitize_mb_id(&raw))
+                .map(|mb| (id, name, slug, mb))
         })
         .collect();
 
@@ -133,7 +135,9 @@ pub async fn fill_catalogue_gaps(
 
         let artist_genre_ids = get_artist_genre_ids(pool, artist_id).await;
         if overwrite {
-            delete_missing_releases_for_artist(pool, artist_id).await.ok();
+            delete_missing_releases_for_artist(pool, artist_id)
+                .await
+                .ok();
         }
         let mut covered_rg_ids = get_covered_release_group_ids(pool, artist_id).await;
         if !overwrite {
@@ -178,10 +182,11 @@ pub async fn fill_catalogue_gaps(
                 }
             }
             let type_name = rg.primary_type.as_deref().unwrap_or("Other");
-            let type_id = match ensure_release_type_cached(pool, type_name, &mut release_type_cache).await {
-                Ok(id) => id,
-                Err(_) => continue,
-            };
+            let type_id =
+                match ensure_release_type_cached(pool, type_name, &mut release_type_cache).await {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
             let year = rg
                 .first_release_date
                 .as_deref()
@@ -193,13 +198,25 @@ pub async fn fill_catalogue_gaps(
                 ..Default::default()
             };
             if let Ok(mb_db_id) = upsert_mb_release(
-                pool, &rg.id, &rg.id, &rg.title, year, &type_id, "MISSING",
-                contained_note.as_deref(), None, &extras,
+                pool,
+                &rg.id,
+                &rg.id,
+                &rg.title,
+                year,
+                &type_id,
+                "MISSING",
+                contained_note.as_deref(),
+                None,
+                &extras,
             )
             .await
             {
-                ensure_mb_release_artist_link(pool, &mb_db_id, artist_id).await.ok();
-                batch_link_release_genres(pool, &mb_db_id, &artist_genre_ids).await.ok();
+                ensure_mb_release_artist_link(pool, &mb_db_id, artist_id)
+                    .await
+                    .ok();
+                batch_link_release_genres(pool, &mb_db_id, &artist_genre_ids)
+                    .await
+                    .ok();
                 gap_count += 1;
             }
         }
@@ -209,7 +226,10 @@ pub async fn fill_catalogue_gaps(
         processed_artist_ids.push(artist_id.clone());
 
         if gap_count > 0 {
-            reporter.ok(&format!("{} missing release(s) appended to catalogue", gap_count));
+            reporter.ok(&format!(
+                "{} missing release(s) appended to catalogue",
+                gap_count
+            ));
         }
         if contained_count > 0 {
             reporter.ok(&format!(

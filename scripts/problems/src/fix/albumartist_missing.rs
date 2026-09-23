@@ -42,7 +42,12 @@ pub async fn run(
         // majority (not just the defective files) is the right signal here.
         let majority = folder_majority(&folder, |s| s.album_artist.as_deref());
         match &majority {
-            Some(a) => println!("  {} {} -> folder majority: {}", "→".bright_black(), rel_path, a),
+            Some(a) => println!(
+                "  {} {} -> folder majority: {}",
+                "→".bright_black(),
+                rel_path,
+                a
+            ),
             None => println!(
                 "  {} {} -> no folder majority (falls back to each file's own artist, if usable)",
                 "→".bright_black(),
@@ -59,7 +64,11 @@ pub async fn run(
                         "✓".green(),
                         file,
                         outcome.new_value.as_deref().unwrap_or(""),
-                        outcome.detail.get("source").and_then(|v| v.as_str()).unwrap_or("?")
+                        outcome
+                            .detail
+                            .get("source")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("?")
                     );
                     result.outcomes.push(outcome);
                 }
@@ -87,19 +96,27 @@ fn process_file(
         message,
     };
 
-    let snap =
-        read_tags_guarded(abs_path).map_err(|e| err(format!("cannot read tags: {}", e.detail())))?;
+    let snap = read_tags_guarded(abs_path)
+        .map_err(|e| err(format!("cannot read tags: {}", e.detail())))?;
 
     let current = snap.album_artist.as_deref();
     let old_value = current.unwrap_or("").to_string();
 
     let (code, new_value, source) = if current.is_none_or(|v| v.trim().is_empty()) {
-        let (v, source) = derive(&snap, folder_majority)
-            .ok_or_else(|| err("no reliable albumArtist source - own artist missing/junk and no folder majority".to_string()))?;
+        let (v, source) = derive(&snap, folder_majority).ok_or_else(|| {
+            err(
+                "no reliable albumArtist source - own artist missing/junk and no folder majority"
+                    .to_string(),
+            )
+        })?;
         (ReasonCode::AlbumArtistMissing, v, source)
     } else if is_unknown_artist(current.unwrap_or_default()) {
-        let (v, source) = derive(&snap, folder_majority)
-            .ok_or_else(|| err("no reliable albumArtist source - own artist missing/junk and no folder majority".to_string()))?;
+        let (v, source) = derive(&snap, folder_majority).ok_or_else(|| {
+            err(
+                "no reliable albumArtist source - own artist missing/junk and no folder majority"
+                    .to_string(),
+            )
+        })?;
         (ReasonCode::AlbumArtistUnknownArtist, v, source)
     } else if unrecognised_various(current.unwrap_or_default()).is_some() {
         (
@@ -132,7 +149,10 @@ fn process_file(
 }
 
 /// The file's own `artist` tag if usable, else the folder-wide `albumArtist` majority.
-fn derive(snap: &crate::audio::TagSnapshot, folder_majority: Option<&str>) -> Option<(String, &'static str)> {
+fn derive(
+    snap: &crate::audio::TagSnapshot,
+    folder_majority: Option<&str>,
+) -> Option<(String, &'static str)> {
     if let Some(a) = snap.artist.as_deref().filter(|v| is_usable_candidate(v)) {
         return Some((a.trim().to_string(), "artist"));
     }
@@ -145,6 +165,8 @@ mod tests {
 
     #[test]
     fn canonical_various_is_what_the_indexer_recognises() {
-        assert!(crate::checks::artist::index_treats_as_various(CANONICAL_VARIOUS));
+        assert!(crate::checks::artist::index_treats_as_various(
+            CANONICAL_VARIOUS
+        ));
     }
 }

@@ -280,7 +280,12 @@ mod tests {
     }
 
     fn candidate_with_id(id: &str) -> MbArtistMatch {
-        MbArtistMatch { id: id.to_string(), name: "queried-name".to_string(), score: Some(100), aliases: None }
+        MbArtistMatch {
+            id: id.to_string(),
+            name: "queried-name".to_string(),
+            score: Some(100),
+            aliases: None,
+        }
     }
 
     #[test]
@@ -291,7 +296,9 @@ mod tests {
         assert!(!certain_match("queried-name", &disagreeing, &cached));
         assert_eq!(
             identity_verdict("queried-name", &disagreeing, &cached),
-            IdentityVerdict::Contradicted { independent_mbid: placeholder_id(1) }
+            IdentityVerdict::Contradicted {
+                independent_mbid: placeholder_id(1)
+            }
         );
 
         // Same query, the id the cache itself names: certain.
@@ -322,9 +329,21 @@ mod tests {
     #[test]
     fn no_cache_entry_falls_back_to_exact_name_or_alias_match() {
         let cached = CacheAnswer::Absent;
-        assert!(certain_match("queried-name", &artist("queried-name", &[]), &cached));
-        assert!(certain_match("short-form", &artist("queried-name", &["short-form"]), &cached));
-        assert!(!certain_match("alpha beta", &artist("alpha beta gamma", &[]), &cached));
+        assert!(certain_match(
+            "queried-name",
+            &artist("queried-name", &[]),
+            &cached
+        ));
+        assert!(certain_match(
+            "short-form",
+            &artist("queried-name", &["short-form"]),
+            &cached
+        ));
+        assert!(!certain_match(
+            "alpha beta",
+            &artist("alpha beta gamma", &[]),
+            &cached
+        ));
     }
 
     #[test]

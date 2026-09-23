@@ -161,8 +161,8 @@ fn process_file(
         .as_ref()
         .map_err(|e| err(format!("cannot read tags: {}", e.detail())))?;
 
-    let (key, raw) =
-        effective_key(&snap.dates).ok_or_else(|| err("no date field present - defect no longer reproduces".to_string()))?;
+    let (key, raw) = effective_key(&snap.dates)
+        .ok_or_else(|| err("no date field present - defect no longer reproduces".to_string()))?;
     let code = defect_code(raw, current_year).ok_or_else(|| {
         err("field no longer YEAR_ZERO/YEAR_NON_NUMERIC/YEAR_TWO_DIGIT/YEAR_IMPLAUSIBLE - tags changed since scan".to_string())
     })?;
@@ -187,7 +187,12 @@ fn process_file(
         path: rel_path.to_string(),
         file: file.to_string(),
         code,
-        action: if resolved_year.is_some() { "set" } else { "cleared" }.to_string(),
+        action: if resolved_year.is_some() {
+            "set"
+        } else {
+            "cleared"
+        }
+        .to_string(),
         field: field_name(&key).to_string(),
         old_value: raw.to_string(),
         new_value: resolved_year.map(|y| y.to_string()),
@@ -375,14 +380,8 @@ mod tests {
             Some(ReasonCode::YearTwoDigit),
             "3-digit truncation is still short of 4, not implausible"
         );
-        assert_eq!(
-            defect_code("1859", 2026),
-            Some(ReasonCode::YearImplausible)
-        );
-        assert_eq!(
-            defect_code("2028", 2026),
-            Some(ReasonCode::YearImplausible)
-        );
+        assert_eq!(defect_code("1859", 2026), Some(ReasonCode::YearImplausible));
+        assert_eq!(defect_code("2028", 2026), Some(ReasonCode::YearImplausible));
     }
 
     #[test]

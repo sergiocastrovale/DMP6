@@ -727,7 +727,10 @@ mod tests {
     #[test]
     fn x_is_a_separator_now() {
         // Streetwear/collab-style billing: "Artist x Artist". Previously unsplittable.
-        let (res, _) = resolve_with("Travis Scott x The Weeknd", known(&["Travis Scott", "The Weeknd"]));
+        let (res, _) = resolve_with(
+            "Travis Scott x The Weeknd",
+            known(&["Travis Scott", "The Weeknd"]),
+        );
         assert_eq!(names_of(&res), vec!["Travis Scott", "The Weeknd"]);
     }
 
@@ -822,8 +825,14 @@ mod tests {
         for variant in ["A FEAT. B", "A Feat. B", "A feat. B"] {
             assert_eq!(separator_positions(variant).len(), 1, "{variant}");
         }
-        assert_eq!(strip_role_qualifier("CONDUCTED BY Nelson Riddle"), "Nelson Riddle");
-        assert_eq!(strip_role_qualifier("Special Guests Carey Bell"), "Carey Bell");
+        assert_eq!(
+            strip_role_qualifier("CONDUCTED BY Nelson Riddle"),
+            "Nelson Riddle"
+        );
+        assert_eq!(
+            strip_role_qualifier("Special Guests Carey Bell"),
+            "Carey Bell"
+        );
     }
 
     #[test]
@@ -966,7 +975,10 @@ mod tests {
             "The High Notes",
         ];
         for (tag, parts) in [
-            ("Mal Waldron\\\\Jim Pepper", vec!["Mal Waldron", "Jim Pepper"]),
+            (
+                "Mal Waldron\\\\Jim Pepper",
+                vec!["Mal Waldron", "Jim Pepper"],
+            ),
             ("Ras Teo\\\\Lone Ark", vec!["Ras Teo", "Lone Ark"]),
             (
                 "Alton Ellis\\\\Rude Rich\\\\The High Notes",
@@ -1083,7 +1095,10 @@ mod tests {
             "Alan Vega · Alex Chilton · Ben Vaughn",
             known(&["Alan Vega", "Alex Chilton", "Ben Vaughn"]),
         );
-        assert_eq!(names_of(&res), vec!["Alan Vega", "Alex Chilton", "Ben Vaughn"]);
+        assert_eq!(
+            names_of(&res),
+            vec!["Alan Vega", "Alex Chilton", "Ben Vaughn"]
+        );
 
         let (res, _) = resolve_with(
             "Tommy Dorsey ♦ Frank Sinatra",
@@ -1106,7 +1121,10 @@ mod tests {
         let seps = separator_positions("Antônio Carlos Jobim • Toquinho");
         assert_eq!(seps.len(), 1);
         let s = &seps[0];
-        assert_eq!(&"Antônio Carlos Jobim • Toquinho"[..s.start], "Antônio Carlos Jobim");
+        assert_eq!(
+            &"Antônio Carlos Jobim • Toquinho"[..s.start],
+            "Antônio Carlos Jobim"
+        );
         assert_eq!(&"Antônio Carlos Jobim • Toquinho"[s.end..], "Toquinho");
     }
 

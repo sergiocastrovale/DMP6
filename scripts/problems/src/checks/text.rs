@@ -66,9 +66,9 @@ pub fn invisible_chars(s: &str) -> Vec<char> {
 /// artist owns. The remaining 19 - curly quotes, dashes, ellipsis, dagger, per-mille, trademark,
 /// bullet - never double as an ordinary letter, so they stay a reliable signal.
 const CP1252_HIGH: &[char] = &[
-    '\u{20AC}', '\u{201A}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}', '\u{02C6}',
-    '\u{2030}', '\u{2039}', '\u{2018}', '\u{2019}', '\u{201C}',
-    '\u{201D}', '\u{2022}', '\u{2013}', '\u{2014}', '\u{02DC}', '\u{2122}', '\u{203A}',
+    '\u{20AC}', '\u{201A}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}', '\u{02C6}', '\u{2030}',
+    '\u{2039}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '\u{2022}', '\u{2013}', '\u{2014}',
+    '\u{02DC}', '\u{2122}', '\u{203A}',
 ];
 
 /// True when the value looks like UTF-8 that was decoded as Latin-1 or CP1252 ("mojibake").
@@ -270,7 +270,13 @@ mod tests {
     #[test]
     fn normalize_leaves_clean_values_byte_identical() {
         // The fixer must never rewrite a file it has no business touching.
-        for clean in ["Radiohead", "Sigur Rós", "日本", "AC/DC", "Simon & Garfunkel"] {
+        for clean in [
+            "Radiohead",
+            "Sigur Rós",
+            "日本",
+            "AC/DC",
+            "Simon & Garfunkel",
+        ] {
             assert_eq!(normalize_tag_text(clean), clean);
         }
     }

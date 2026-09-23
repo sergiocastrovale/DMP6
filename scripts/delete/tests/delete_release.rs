@@ -35,7 +35,11 @@ impl Ctx {
         .await
         .expect("ensure release type");
 
-        let ctx = Self { pool, tag: tag.to_string(), album_type_id };
+        let ctx = Self {
+            pool,
+            tag: tag.to_string(),
+            album_type_id,
+        };
         ctx.reset().await;
         ctx
     }
@@ -117,19 +121,23 @@ impl Ctx {
     }
 
     async fn mb_release_exists(&self, id: &str) -> bool {
-        sqlx::query_scalar::<_, bool>(r#"SELECT EXISTS(SELECT 1 FROM "MusicBrainzRelease" WHERE id = $1)"#)
-            .bind(id)
-            .fetch_one(&self.pool)
-            .await
-            .expect("exists query")
+        sqlx::query_scalar::<_, bool>(
+            r#"SELECT EXISTS(SELECT 1 FROM "MusicBrainzRelease" WHERE id = $1)"#,
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await
+        .expect("exists query")
     }
 
     async fn local_release_exists(&self, id: &str) -> bool {
-        sqlx::query_scalar::<_, bool>(r#"SELECT EXISTS(SELECT 1 FROM "LocalRelease" WHERE id = $1)"#)
-            .bind(id)
-            .fetch_one(&self.pool)
-            .await
-            .expect("exists query")
+        sqlx::query_scalar::<_, bool>(
+            r#"SELECT EXISTS(SELECT 1 FROM "LocalRelease" WHERE id = $1)"#,
+        )
+        .bind(id)
+        .fetch_one(&self.pool)
+        .await
+        .expect("exists query")
     }
 
     async fn artist_exists(&self, id: &str) -> bool {
@@ -143,13 +151,20 @@ impl Ctx {
     /// Runs the same plan -> orphan-check -> execute sequence `release::run` performs, skipping the
     /// interactive/lock/image/statistics side effects that don't matter to these assertions.
     async fn delete_release(&self, local_release_id: &str) {
-        let plan = build_plan(&self.pool, local_release_id).await.expect("plan");
+        let plan = build_plan(&self.pool, local_release_id)
+            .await
+            .expect("plan");
         let mut verdicts = Vec::new();
         for mb_id in &plan.mb_candidates {
             let orphaned = mb_is_orphaned(&self.pool, mb_id, &plan.id).await;
-            verdicts.push(MbVerdict { id: mb_id.clone(), orphaned });
+            verdicts.push(MbVerdict {
+                id: mb_id.clone(),
+                orphaned,
+            });
         }
-        execute_plan(&self.pool, &plan, &verdicts).await.expect("execute plan");
+        execute_plan(&self.pool, &plan, &verdicts)
+            .await
+            .expect("execute plan");
     }
 }
 
@@ -166,8 +181,14 @@ async fn deleting_one_duplicate_copy_keeps_the_shared_mb_edition() {
 
     c.delete_release(&copy_a).await;
 
-    assert!(!c.local_release_exists(&copy_a).await, "the deleted copy must be gone");
-    assert!(c.local_release_exists(&copy_b).await, "the surviving duplicate must be untouched");
+    assert!(
+        !c.local_release_exists(&copy_a).await,
+        "the deleted copy must be gone"
+    );
+    assert!(
+        c.local_release_exists(&copy_b).await,
+        "the surviving duplicate must be untouched"
+    );
     assert!(
         c.mb_release_exists(&mb).await,
         "the shared MB edition must survive - the other copy still points at it"
@@ -188,7 +209,10 @@ async fn deleting_a_sole_copy_drops_its_orphaned_mb_edition() {
     c.delete_release(&copy).await;
 
     assert!(!c.local_release_exists(&copy).await);
-    assert!(!c.mb_release_exists(&mb).await, "an edition nothing else needs must be dropped");
+    assert!(
+        !c.mb_release_exists(&mb).await,
+        "an edition nothing else needs must be dropped"
+    );
 
     c.reset().await;
 }
@@ -206,7 +230,10 @@ async fn a_missing_placeholder_is_never_touched() {
     c.delete_release(&copy).await;
 
     assert!(!c.local_release_exists(&copy).await);
-    assert!(!c.mb_release_exists(&owned_mb).await, "the now-orphaned owned edition is dropped");
+    assert!(
+        !c.mb_release_exists(&owned_mb).await,
+        "the now-orphaned owned edition is dropped"
+    );
     assert!(
         c.mb_release_exists(&missing_mb).await,
         "a MISSING placeholder is never swept by a release delete, even an unrelated one"
@@ -230,9 +257,15 @@ async fn a_sibling_release_of_the_same_artist_is_untouched() {
     c.delete_release(&release_a).await;
 
     assert!(!c.local_release_exists(&release_a).await);
-    assert!(c.local_release_exists(&release_b).await, "a sibling release must be left alone");
+    assert!(
+        c.local_release_exists(&release_b).await,
+        "a sibling release must be left alone"
+    );
     assert!(c.mb_release_exists(&mb_b).await);
-    assert!(c.artist_exists(&artist).await, "the artist still owns release_b and must survive");
+    assert!(
+        c.artist_exists(&artist).await,
+        "the artist still owns release_b and must survive"
+    );
 
     c.reset().await;
 }

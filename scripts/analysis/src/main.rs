@@ -154,7 +154,7 @@ struct FileIssue {
     missing_mood: bool,
     missing_album_art: bool,
     // Inconsistencies
-    invalid_year: Option<String>,    // the bad value
+    invalid_year: Option<String>, // the bad value
     blank_artist: bool,
     blank_title: bool,
     blank_year: bool,
@@ -164,10 +164,10 @@ struct FileIssue {
 /// A single field-level change made by beets autofix.
 #[derive(Debug, Clone)]
 struct FieldMatch {
-    field: &'static str,       // e.g. "Artist", "Discogs Artist", "MB Track ID"
-    old_display: String,       // "Missing", "(blank)", or the invalid value
-    new_value: String,         // Actual new tag value written by beets
-    category: &'static str,   // "critical", "mb", "discogs", "ids", "other"
+    field: &'static str,    // e.g. "Artist", "Discogs Artist", "MB Track ID"
+    old_display: String,    // "Missing", "(blank)", or the invalid value
+    new_value: String,      // Actual new tag value written by beets
+    category: &'static str, // "critical", "mb", "discogs", "ids", "other"
 }
 
 /// Per-file collection of field-level diffs produced by autofix.
@@ -180,9 +180,9 @@ type SkippedFiles = HashMap<PathBuf, String>;
 /// Fix status attached to each file entry in artist groups.
 #[derive(Debug, Clone)]
 enum FileFixStatus {
-    NoAutofix,           // autofix didn't run
-    Matched,               // all issues for this field were resolved
-    Skipped,             // beets attempted but found no confident match
+    NoAutofix, // autofix didn't run
+    Matched,   // all issues for this field were resolved
+    Skipped,   // beets attempted but found no confident match
 }
 
 impl FileIssue {
@@ -196,9 +196,7 @@ impl FileIssue {
             || self.blank_year
     }
     fn has_mb(&self) -> bool {
-        self.missing_mb_artist_id
-            || self.missing_mb_track_id
-            || self.missing_mb_album_id
+        self.missing_mb_artist_id || self.missing_mb_track_id || self.missing_mb_album_id
     }
     fn has_discogs(&self) -> bool {
         self.missing_discogs_artist || self.missing_discogs_release
@@ -310,7 +308,11 @@ fn scan_file(path: &Path) -> Result<(FileIssue, Vec<String>), String> {
     let file_size = meta.len();
 
     let parse_opts = ParseOptions::new().read_properties(false);
-    let tagged_file = match Probe::open(path).map_err(|e| e.to_string())?.options(parse_opts).read() {
+    let tagged_file = match Probe::open(path)
+        .map_err(|e| e.to_string())?
+        .options(parse_opts)
+        .read()
+    {
         Ok(f) => f,
         Err(e) => return Err(e.to_string()),
     };
@@ -330,7 +332,11 @@ fn scan_file(path: &Path) -> Result<(FileIssue, Vec<String>), String> {
     // --- MusicBrainz ---
     let missing_mb_artist_id = !has_tag(
         &tags,
-        &["MUSICBRAINZ ARTIST ID", "MUSICBRAINZ_ARTISTID", "MUSICBRAINZARTISTID"],
+        &[
+            "MUSICBRAINZ ARTIST ID",
+            "MUSICBRAINZ_ARTISTID",
+            "MUSICBRAINZARTISTID",
+        ],
     );
     let missing_mb_track_id = !has_tag(
         &tags,
@@ -343,14 +349,21 @@ fn scan_file(path: &Path) -> Result<(FileIssue, Vec<String>), String> {
     );
     let missing_mb_album_id = !has_tag(
         &tags,
-        &["MUSICBRAINZ ALBUM ID", "MUSICBRAINZ_ALBUMID", "MUSICBRAINZALBUMID", "MUSICBRAINZRELEASEID"],
+        &[
+            "MUSICBRAINZ ALBUM ID",
+            "MUSICBRAINZ_ALBUMID",
+            "MUSICBRAINZALBUMID",
+            "MUSICBRAINZRELEASEID",
+        ],
     );
 
     // --- IDs ---
-    let missing_acoustic_id = !has_tag(&tags, &["ACOUSTIC_ID", "ACOUSTIC ID", "ACOUSTID_ID", "ACOUSTID ID"]);
+    let missing_acoustic_id = !has_tag(
+        &tags,
+        &["ACOUSTIC_ID", "ACOUSTIC ID", "ACOUSTID_ID", "ACOUSTID ID"],
+    );
     let missing_songkong_id = !has_tag(&tags, &["SONGKONG_ID", "SONGKONGID"]);
-    let missing_bandcamp =
-        !has_tag(&tags, &["URL_BANDCAMP_ARTIST_SITE", "WWW BANDCAMP_ARTIST"]);
+    let missing_bandcamp = !has_tag(&tags, &["URL_BANDCAMP_ARTIST_SITE", "WWW BANDCAMP_ARTIST"]);
     let missing_wikipedia_artist = !has_tag(&tags, &["WWW WIKIPEDIA_ARTIST"]);
 
     // --- Discogs ---
@@ -366,14 +379,10 @@ fn scan_file(path: &Path) -> Result<(FileIssue, Vec<String>), String> {
     let missing_album_art = !has_art;
 
     // --- Inconsistency: blank fields ---
-    let blank_artist =
-        tag_key_exists(&tags, &["ARTIST"]) && !has_tag(&tags, &["ARTIST"]);
-    let blank_title =
-        tag_key_exists(&tags, &["TITLE"]) && !has_tag(&tags, &["TITLE"]);
-    let blank_year =
-        tag_key_exists(&tags, &["YEAR"]) && !has_tag(&tags, &["YEAR"]);
-    let blank_genre =
-        tag_key_exists(&tags, &["GENRE"]) && !has_tag(&tags, &["GENRE"]);
+    let blank_artist = tag_key_exists(&tags, &["ARTIST"]) && !has_tag(&tags, &["ARTIST"]);
+    let blank_title = tag_key_exists(&tags, &["TITLE"]) && !has_tag(&tags, &["TITLE"]);
+    let blank_year = tag_key_exists(&tags, &["YEAR"]) && !has_tag(&tags, &["YEAR"]);
+    let blank_genre = tag_key_exists(&tags, &["GENRE"]) && !has_tag(&tags, &["GENRE"]);
 
     // --- Inconsistency: invalid year ---
     let year_value = get_tag(&tags, &["YEAR"]);
@@ -387,33 +396,35 @@ fn scan_file(path: &Path) -> Result<(FileIssue, Vec<String>), String> {
     });
 
     let tag_keys: Vec<String> = tags.keys().cloned().collect();
-    Ok((FileIssue {
-        path: path.to_path_buf(),
-        file_size,
-        missing_artist,
-        missing_title,
-        missing_year,
-        missing_mb_artist_id,
-        missing_mb_track_id,
-        missing_mb_album_id,
-        missing_acoustic_id,
-        missing_songkong_id,
-        missing_bandcamp,
-        missing_discogs_artist,
-        missing_discogs_release,
-        missing_wikipedia_artist,
-        missing_genre,
-        missing_bpm,
-        missing_mood,
-        missing_album_art,
-        invalid_year,
-        blank_artist,
-        blank_title,
-        blank_year,
-        blank_genre,
-    }, tag_keys))
+    Ok((
+        FileIssue {
+            path: path.to_path_buf(),
+            file_size,
+            missing_artist,
+            missing_title,
+            missing_year,
+            missing_mb_artist_id,
+            missing_mb_track_id,
+            missing_mb_album_id,
+            missing_acoustic_id,
+            missing_songkong_id,
+            missing_bandcamp,
+            missing_discogs_artist,
+            missing_discogs_release,
+            missing_wikipedia_artist,
+            missing_genre,
+            missing_bpm,
+            missing_mood,
+            missing_album_art,
+            invalid_year,
+            blank_artist,
+            blank_title,
+            blank_year,
+            blank_genre,
+        },
+        tag_keys,
+    ))
 }
-
 
 // ---------------------------------------------------------------------------
 // Path formatting helpers
@@ -427,11 +438,7 @@ fn get_artist_folder(path: &Path, scan_root: &str) -> String {
         .unwrap_or(&path_str)
         .trim_start_matches('/');
 
-    relative
-        .split('/')
-        .next()
-        .unwrap_or("")
-        .to_string()
+    relative.split('/').next().unwrap_or("").to_string()
 }
 
 /// Get the path relative to the scan root (e.g., "Radiohead/OK Computer/01 Airbag.flac")
@@ -844,17 +851,21 @@ fn build_groups(
 ) -> ArtistGroups {
     let mut groups: ArtistGroups = BTreeMap::new();
     for issue in issues {
-        if !predicate(issue) { continue; }
+        if !predicate(issue) {
+            continue;
+        }
         let artist = get_artist_folder(&issue.path, scan_root);
-        let rel    = relative_path(&issue.path, scan_root);
-        let ann    = annotate(issue);
+        let rel = relative_path(&issue.path, scan_root);
+        let ann = annotate(issue);
         let fix_status = if diffs.is_none() && skipped_files.is_none() {
             FileFixStatus::NoAutofix
         } else if let Some(sf) = skipped_files {
             if sf.contains_key(&issue.path) {
                 FileFixStatus::Skipped
             } else if let (Some(d), Some(fname)) = (diffs, field_name) {
-                if d.get(&issue.path).map_or(false, |fixes| fixes.iter().any(|fix| fix.field == fname)) {
+                if d.get(&issue.path)
+                    .map_or(false, |fixes| fixes.iter().any(|fix| fix.field == fname))
+                {
                     FileFixStatus::Matched
                 } else {
                     FileFixStatus::NoAutofix
@@ -863,7 +874,9 @@ fn build_groups(
                 FileFixStatus::NoAutofix
             }
         } else if let (Some(d), Some(fname)) = (diffs, field_name) {
-            if d.get(&issue.path).map_or(false, |fixes| fixes.iter().any(|fix| fix.field == fname)) {
+            if d.get(&issue.path)
+                .map_or(false, |fixes| fixes.iter().any(|fix| fix.field == fname))
+            {
                 FileFixStatus::Matched
             } else {
                 FileFixStatus::NoAutofix
@@ -871,7 +884,10 @@ fn build_groups(
         } else {
             FileFixStatus::NoAutofix
         };
-        groups.entry(artist).or_default().push((rel, ann, fix_status));
+        groups
+            .entry(artist)
+            .or_default()
+            .push((rel, ann, fix_status));
     }
     for files in groups.values_mut() {
         files.sort_by(|a, b| a.0.cmp(&b.0));
@@ -884,7 +900,9 @@ fn group_total(groups: &ArtistGroups) -> usize {
 }
 
 fn group_matched_count(groups: &ArtistGroups) -> usize {
-    groups.values().flat_map(|v| v.iter())
+    groups
+        .values()
+        .flat_map(|v| v.iter())
         .filter(|(_, _, fs)| matches!(fs, FileFixStatus::Matched))
         .count()
 }
@@ -902,7 +920,8 @@ fn collect_all_artists(groups_list: &[&ArtistGroups]) -> Vec<String> {
 
 /// Filter an ArtistGroups to only include artists in the given set.
 fn filter_groups(groups: &ArtistGroups, artists: &HashSet<&str>) -> ArtistGroups {
-    groups.iter()
+    groups
+        .iter()
         .filter(|(artist, _)| artists.contains(artist.as_str()))
         .map(|(artist, files)| (artist.clone(), files.clone()))
         .collect()
@@ -920,7 +939,12 @@ fn write_pagination<W: Write>(
     }
     write!(f, "<div class=\"pagination\">\n")?;
     if current_page > 1 {
-        write!(f, "<a href=\"{}_{}.html\">&lsaquo;</a>\n", base_name, current_page - 1)?;
+        write!(
+            f,
+            "<a href=\"{}_{}.html\">&lsaquo;</a>\n",
+            base_name,
+            current_page - 1
+        )?;
     } else {
         write!(f, "<span class=\"disabled\">&lsaquo;</span>\n")?;
     }
@@ -932,7 +956,12 @@ fn write_pagination<W: Write>(
         }
     }
     if current_page < total_pages {
-        write!(f, "<a href=\"{}_{}.html\">&rsaquo;</a>\n", base_name, current_page + 1)?;
+        write!(
+            f,
+            "<a href=\"{}_{}.html\">&rsaquo;</a>\n",
+            base_name,
+            current_page + 1
+        )?;
     } else {
         write!(f, "<span class=\"disabled\">&rsaquo;</span>\n")?;
     }
@@ -978,7 +1007,11 @@ fn write_field_panel<W: Write>(
     scan_root: &str,
 ) -> std::io::Result<()> {
     let hidden = if active { "" } else { " hidden" };
-    write!(f, "<div class=\"panel{}\" id=\"panel-{}\">\n", hidden, panel_id)?;
+    write!(
+        f,
+        "<div class=\"panel{}\" id=\"panel-{}\">\n",
+        hidden, panel_id
+    )?;
     if groups.is_empty() {
         write!(f, "<div class=\"empty-panel\">No issues found</div>\n")?;
     } else {
@@ -998,7 +1031,8 @@ fn write_field_panel<W: Write>(
                 if files.len() == 1 { "" } else { "s" }
             )?;
             for (path, ann, fix_status) in files {
-                let ann_html = ann.as_ref()
+                let ann_html = ann
+                    .as_ref()
                     .map(|a| format!(" <span class=\"annot\">{}</span>", encode_text(a)))
                     .unwrap_or_default();
 
@@ -1008,7 +1042,8 @@ fn write_field_panel<W: Write>(
                         let full_path = PathBuf::from(scan_root).join(path);
                         let popover_html = if let Some(d) = diffs {
                             if let Some(fixes) = d.get(&full_path) {
-                                let cat_fixes: Vec<&FieldMatch> = fixes.iter()
+                                let cat_fixes: Vec<&FieldMatch> = fixes
+                                    .iter()
                                     .filter(|fix| fix.category == category)
                                     .collect();
                                 if !cat_fixes.is_empty() {
@@ -1039,10 +1074,20 @@ fn write_field_panel<W: Write>(
                         )?;
                     }
                     FileFixStatus::Skipped => {
-                        write!(f, "<li class=\"file-item\">{}{}</li>\n", encode_text(path), ann_html)?;
+                        write!(
+                            f,
+                            "<li class=\"file-item\">{}{}</li>\n",
+                            encode_text(path),
+                            ann_html
+                        )?;
                     }
                     FileFixStatus::NoAutofix => {
-                        write!(f, "<li class=\"file-item\">{}{}</li>\n", encode_text(path), ann_html)?;
+                        write!(
+                            f,
+                            "<li class=\"file-item\">{}{}</li>\n",
+                            encode_text(path),
+                            ann_html
+                        )?;
                     }
                 }
             }
@@ -1068,19 +1113,67 @@ fn write_nav<W: Write>(
     // (id, label, filename, count, fixed_count, show)
     let entries: Vec<(&str, &str, &str, Option<usize>, usize, bool)> = vec![
         ("overview", "Overview", "index.html", None, 0, true),
-        ("issues", "Issues", "issues.html", Some(counts.issues), 0, true),
-        ("critical", "Critical", "critical_1.html", Some(counts.critical), counts.critical_matched, pages.critical),
-        ("mb", "MusicBrainz", "mb_1.html", Some(counts.mb), counts.mb_matched, pages.mb),
-        ("discogs", "Discogs", "discogs_1.html", Some(counts.discogs), counts.discogs_matched, pages.discogs),
-        ("ids", "IDs", "ids_1.html", Some(counts.ids), counts.ids_matched, pages.ids),
-        ("other", "Other", "other_1.html", Some(counts.other), counts.other_matched, pages.other),
+        (
+            "issues",
+            "Issues",
+            "issues.html",
+            Some(counts.issues),
+            0,
+            true,
+        ),
+        (
+            "critical",
+            "Critical",
+            "critical_1.html",
+            Some(counts.critical),
+            counts.critical_matched,
+            pages.critical,
+        ),
+        (
+            "mb",
+            "MusicBrainz",
+            "mb_1.html",
+            Some(counts.mb),
+            counts.mb_matched,
+            pages.mb,
+        ),
+        (
+            "discogs",
+            "Discogs",
+            "discogs_1.html",
+            Some(counts.discogs),
+            counts.discogs_matched,
+            pages.discogs,
+        ),
+        (
+            "ids",
+            "IDs",
+            "ids_1.html",
+            Some(counts.ids),
+            counts.ids_matched,
+            pages.ids,
+        ),
+        (
+            "other",
+            "Other",
+            "other_1.html",
+            Some(counts.other),
+            counts.other_matched,
+            pages.other,
+        ),
     ];
 
     write!(f, "<nav class=\"nav-bar\">\n")?;
     for (id, label, filename, count, matched, show) in &entries {
-        if !show { continue; }
+        if !show {
+            continue;
+        }
         let href = if *filename == "index.html" {
-            if from_index { "index.html".to_string() } else { "../index.html".to_string() }
+            if from_index {
+                "index.html".to_string()
+            } else {
+                "../index.html".to_string()
+            }
         } else if from_index {
             format!("pages/{}", filename)
         } else {
@@ -1098,7 +1191,11 @@ fn write_nav<W: Write>(
             }
             None => String::new(),
         };
-        write!(f, "<a href=\"{}\" class=\"nav-tab{}\">{}{}</a>\n", href, active_class, label, badge)?;
+        write!(
+            f,
+            "<a href=\"{}\" class=\"nav-tab{}\">{}{}</a>\n",
+            href, active_class, label, badge
+        )?;
     }
     write!(f, "</nav>\n")?;
     Ok(())
@@ -1108,27 +1205,38 @@ fn write_nav<W: Write>(
 // Report: page shell (start / end)
 // ---------------------------------------------------------------------------
 
-fn write_page_start<W: Write>(
-    f: &mut W,
-    title: &str,
-    from_index: bool,
-) -> std::io::Result<()> {
-    let css_path = if from_index { "css/styles.css" } else { "../css/styles.css" };
-    write!(f, "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
+fn write_page_start<W: Write>(f: &mut W, title: &str, from_index: bool) -> std::io::Result<()> {
+    let css_path = if from_index {
+        "css/styles.css"
+    } else {
+        "../css/styles.css"
+    };
+    write!(
+        f,
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
         <meta charset=\"UTF-8\">\n\
         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n\
         <title>{} &mdash; Audio Metadata Analysis</title>\n\
         <link rel=\"stylesheet\" href=\"{}\">\n\
         </head>\n<body>\n<div class=\"container\">\n\
         <h1>Audio Metadata Analysis</h1>\n",
-        encode_text(title), css_path
+        encode_text(title),
+        css_path
     )?;
     Ok(())
 }
 
 fn write_page_end<W: Write>(f: &mut W, from_index: bool) -> std::io::Result<()> {
-    let js_path = if from_index { "js/report.js" } else { "../js/report.js" };
-    write!(f, "<script src=\"{}\"></script>\n</div>\n</body>\n</html>\n", js_path)?;
+    let js_path = if from_index {
+        "js/report.js"
+    } else {
+        "../js/report.js"
+    };
+    write!(
+        f,
+        "<script src=\"{}\"></script>\n</div>\n</body>\n</html>\n",
+        js_path
+    )?;
     Ok(())
 }
 
@@ -1154,7 +1262,9 @@ fn write_index(
     write_page_start(&mut f, "Overview", true)?;
 
     // Subtitle
-    write!(f, "<p class=\"subtitle\">\
+    write!(
+        f,
+        "<p class=\"subtitle\">\
         <span>Scanned <code>{}</code></span>\
         <span class=\"meta\">{} &middot; {:.2}s</span>\
         </p>\n",
@@ -1169,7 +1279,10 @@ fn write_index(
     let readable = total_files.saturating_sub(error_count);
     let ok_count = readable.saturating_sub(issues_len as u64);
 
-    write!(f, "<div class=\"stats-container\">\n<div class=\"stats-group\">\n")?;
+    write!(
+        f,
+        "<div class=\"stats-container\">\n<div class=\"stats-group\">\n"
+    )?;
 
     // File type stats
     let mut sorted_types: Vec<_> = file_type_counts.iter().collect();
@@ -1186,22 +1299,40 @@ fn write_index(
     write!(f, "</div>\n</div>\n")?;
 
     // Category breakdown
-    write!(f, "<div class=\"breakdown\">\n<h2>Breakdown by Category</h2>\n\
+    write!(
+        f,
+        "<div class=\"breakdown\">\n<h2>Breakdown by Category</h2>\n\
         <div class=\"table-wrap\"><table>\n\
-        <thead><tr><th>Category</th><th>Issues</th><th></th></tr></thead>\n<tbody>\n")?;
+        <thead><tr><th>Category</th><th>Issues</th><th></th></tr></thead>\n<tbody>\n"
+    )?;
 
     let breakdown: &[(&str, &str, usize, bool)] = &[
         ("Issues", "pages/issues.html", counts.issues, true),
-        ("Critical", "pages/critical_1.html", counts.critical, pages.critical),
+        (
+            "Critical",
+            "pages/critical_1.html",
+            counts.critical,
+            pages.critical,
+        ),
         ("MusicBrainz", "pages/mb_1.html", counts.mb, pages.mb),
-        ("Discogs", "pages/discogs_1.html", counts.discogs, pages.discogs),
+        (
+            "Discogs",
+            "pages/discogs_1.html",
+            counts.discogs,
+            pages.discogs,
+        ),
         ("IDs", "pages/ids_1.html", counts.ids, pages.ids),
         ("Other", "pages/other_1.html", counts.other, pages.other),
     ];
     for &(label, href, count, show) in breakdown {
-        if !show { continue; }
-        write!(f, "<tr><td>{}</td><td>{}</td><td><a href=\"{}\">View &rarr;</a></td></tr>\n",
-            label, count, href)?;
+        if !show {
+            continue;
+        }
+        write!(
+            f,
+            "<tr><td>{}</td><td>{}</td><td><a href=\"{}\">View &rarr;</a></td></tr>\n",
+            label, count, href
+        )?;
     }
 
     write!(f, "</tbody>\n</table></div>\n</div>\n")?;
@@ -1233,20 +1364,26 @@ fn write_issues_page(
         <thead><tr><th data-sort=\"0\">Path</th><th data-sort=\"1\">Problem</th></tr></thead>\n<tbody>\n")?;
 
     // Lone files (only one audio file in parent directory)
-    let mut lone_files: Vec<&PathBuf> = all_paths.iter()
+    let mut lone_files: Vec<&PathBuf> = all_paths
+        .iter()
         .filter(|p| {
             p.parent()
                 .and_then(|par| parent_audio_count.get(par))
                 .copied()
-                .unwrap_or(0) == 1
+                .unwrap_or(0)
+                == 1
         })
         .collect();
     lone_files.sort();
 
     for p in &lone_files {
         let rel = relative_path(p, scan_root);
-        write!(f, "<tr><td title=\"{}\">{}</td><td>Only one file</td></tr>\n",
-            encode_text(&p.to_string_lossy()), encode_text(&rel))?;
+        write!(
+            f,
+            "<tr><td title=\"{}\">{}</td><td>Only one file</td></tr>\n",
+            encode_text(&p.to_string_lossy()),
+            encode_text(&rel)
+        )?;
     }
 
     // Unreadable files
@@ -1255,14 +1392,20 @@ fn write_issues_page(
 
     for (p, err) in &sorted_unreadable {
         let rel = relative_path(p, scan_root);
-        write!(f, "<tr><td title=\"{}\">{}</td><td>{}</td></tr>\n",
+        write!(
+            f,
+            "<tr><td title=\"{}\">{}</td><td>{}</td></tr>\n",
             encode_text(&p.to_string_lossy()),
             encode_text(&rel),
-            encode_text(err))?;
+            encode_text(err)
+        )?;
     }
 
     if lone_files.is_empty() && sorted_unreadable.is_empty() {
-        write!(f, "<tr><td colspan=\"2\" class=\"empty-state\">No issues found</td></tr>\n")?;
+        write!(
+            f,
+            "<tr><td colspan=\"2\" class=\"empty-state\">No issues found</td></tr>\n"
+        )?;
     }
 
     write!(f, "</tbody>\n</table></div>\n")?;
@@ -1285,26 +1428,51 @@ fn write_critical_page(
 ) -> std::io::Result<()> {
     // Build per-field groups
     let artist_groups = build_groups(
-        issues, scan_root,
+        issues,
+        scan_root,
         |i| i.missing_artist || i.blank_artist,
-        |i| if i.blank_artist { Some("(blank)".into()) } else { None },
-        diffs, skipped_files, Some("Artist"),
+        |i| {
+            if i.blank_artist {
+                Some("(blank)".into())
+            } else {
+                None
+            }
+        },
+        diffs,
+        skipped_files,
+        Some("Artist"),
     );
     let title_groups = build_groups(
-        issues, scan_root,
+        issues,
+        scan_root,
         |i| i.missing_title || i.blank_title,
-        |i| if i.blank_title { Some("(blank)".into()) } else { None },
-        diffs, skipped_files, Some("Title"),
+        |i| {
+            if i.blank_title {
+                Some("(blank)".into())
+            } else {
+                None
+            }
+        },
+        diffs,
+        skipped_files,
+        Some("Title"),
     );
     let year_groups = build_groups(
-        issues, scan_root,
+        issues,
+        scan_root,
         |i| i.missing_year || i.blank_year || i.invalid_year.is_some(),
         |i| {
-            if i.blank_year { Some("(blank)".into()) }
-            else if let Some(v) = &i.invalid_year { Some(format!("({})", v)) }
-            else { None }
+            if i.blank_year {
+                Some("(blank)".into())
+            } else if let Some(v) = &i.invalid_year {
+                Some(format!("({})", v))
+            } else {
+                None
+            }
         },
-        diffs, skipped_files, Some("Year"),
+        diffs,
+        skipped_files,
+        Some("Year"),
     );
 
     let all_artists = collect_all_artists(&[&artist_groups, &title_groups, &year_groups]);
@@ -1320,8 +1488,8 @@ fn write_critical_page(
         };
 
         let pg_artist = filter_groups(&artist_groups, &page_artists);
-        let pg_title  = filter_groups(&title_groups, &page_artists);
-        let pg_year   = filter_groups(&year_groups, &page_artists);
+        let pg_title = filter_groups(&title_groups, &page_artists);
+        let pg_year = filter_groups(&year_groups, &page_artists);
 
         let path = report_dir.join(format!("pages/critical_{}.html", page_num));
         let mut f = BufWriter::new(fs::File::create(&path)?);
@@ -1330,17 +1498,38 @@ fn write_critical_page(
         write_nav(&mut f, "critical", counts, pages, false)?;
 
         let tabs: &[(&str, &str, usize, usize)] = &[
-            ("artist", "Artist",  group_total(&pg_artist), group_matched_count(&pg_artist)),
-            ("title",  "Title",   group_total(&pg_title),  group_matched_count(&pg_title)),
-            ("year",   "Year",    group_total(&pg_year),   group_matched_count(&pg_year)),
+            (
+                "artist",
+                "Artist",
+                group_total(&pg_artist),
+                group_matched_count(&pg_artist),
+            ),
+            (
+                "title",
+                "Title",
+                group_total(&pg_title),
+                group_matched_count(&pg_title),
+            ),
+            (
+                "year",
+                "Year",
+                group_total(&pg_year),
+                group_matched_count(&pg_year),
+            ),
         ];
 
         write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
         write_pagination(&mut f, "critical", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
-        write_field_panel(&mut f, "artist", &pg_artist, true,  "critical", diffs, scan_root)?;
-        write_field_panel(&mut f, "title",  &pg_title,  false, "critical", diffs, scan_root)?;
-        write_field_panel(&mut f, "year",   &pg_year,   false, "critical", diffs, scan_root)?;
+        write_field_panel(
+            &mut f, "artist", &pg_artist, true, "critical", diffs, scan_root,
+        )?;
+        write_field_panel(
+            &mut f, "title", &pg_title, false, "critical", diffs, scan_root,
+        )?;
+        write_field_panel(
+            &mut f, "year", &pg_year, false, "critical", diffs, scan_root,
+        )?;
         write_pagination(&mut f, "critical", page_num, total_pages)?;
 
         write_page_end(&mut f, false)?;
@@ -1361,9 +1550,33 @@ fn write_mb_page(
     diffs: Option<&MatchDiffs>,
     skipped_files: Option<&SkippedFiles>,
 ) -> std::io::Result<()> {
-    let artist_groups = build_groups(issues, scan_root, |i| i.missing_mb_artist_id, |_| None, diffs, skipped_files, Some("MB Artist ID"));
-    let track_groups  = build_groups(issues, scan_root, |i| i.missing_mb_track_id,  |_| None, diffs, skipped_files, Some("MB Track ID"));
-    let album_groups  = build_groups(issues, scan_root, |i| i.missing_mb_album_id,  |_| None, diffs, skipped_files, Some("MB Album ID"));
+    let artist_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_mb_artist_id,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("MB Artist ID"),
+    );
+    let track_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_mb_track_id,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("MB Track ID"),
+    );
+    let album_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_mb_album_id,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("MB Album ID"),
+    );
 
     let all_artists = collect_all_artists(&[&artist_groups, &track_groups, &album_groups]);
     let total_pages = ((all_artists.len() + ARTISTS_PER_PAGE - 1) / ARTISTS_PER_PAGE).max(1);
@@ -1378,8 +1591,8 @@ fn write_mb_page(
         };
 
         let pg_artist = filter_groups(&artist_groups, &page_artists);
-        let pg_track  = filter_groups(&track_groups, &page_artists);
-        let pg_album  = filter_groups(&album_groups, &page_artists);
+        let pg_track = filter_groups(&track_groups, &page_artists);
+        let pg_album = filter_groups(&album_groups, &page_artists);
 
         let path = report_dir.join(format!("pages/mb_{}.html", page_num));
         let mut f = BufWriter::new(fs::File::create(&path)?);
@@ -1388,17 +1601,40 @@ fn write_mb_page(
         write_nav(&mut f, "mb", counts, pages, false)?;
 
         let tabs: &[(&str, &str, usize, usize)] = &[
-            ("mb-artist", "MB Artist", group_total(&pg_artist), group_matched_count(&pg_artist)),
-            ("mb-track",  "MB Track",  group_total(&pg_track),  group_matched_count(&pg_track)),
-            ("mb-album",  "MB Album",  group_total(&pg_album),  group_matched_count(&pg_album)),
+            (
+                "mb-artist",
+                "MB Artist",
+                group_total(&pg_artist),
+                group_matched_count(&pg_artist),
+            ),
+            (
+                "mb-track",
+                "MB Track",
+                group_total(&pg_track),
+                group_matched_count(&pg_track),
+            ),
+            (
+                "mb-album",
+                "MB Album",
+                group_total(&pg_album),
+                group_matched_count(&pg_album),
+            ),
         ];
 
         write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
         write_pagination(&mut f, "mb", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
-        write_field_panel(&mut f, "mb-artist", &pg_artist, true,  "mb", diffs, scan_root)?;
-        write_field_panel(&mut f, "mb-track",  &pg_track,  false, "mb", diffs, scan_root)?;
-        write_field_panel(&mut f, "mb-album",  &pg_album,  false, "mb", diffs, scan_root)?;
+        write_field_panel(
+            &mut f,
+            "mb-artist",
+            &pg_artist,
+            true,
+            "mb",
+            diffs,
+            scan_root,
+        )?;
+        write_field_panel(&mut f, "mb-track", &pg_track, false, "mb", diffs, scan_root)?;
+        write_field_panel(&mut f, "mb-album", &pg_album, false, "mb", diffs, scan_root)?;
         write_pagination(&mut f, "mb", page_num, total_pages)?;
 
         write_page_end(&mut f, false)?;
@@ -1419,8 +1655,24 @@ fn write_discogs_page(
     diffs: Option<&MatchDiffs>,
     skipped_files: Option<&SkippedFiles>,
 ) -> std::io::Result<()> {
-    let artist_groups  = build_groups(issues, scan_root, |i| i.missing_discogs_artist,  |_| None, diffs, skipped_files, Some("Discogs Artist"));
-    let release_groups = build_groups(issues, scan_root, |i| i.missing_discogs_release, |_| None, diffs, skipped_files, Some("Discogs Release"));
+    let artist_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_discogs_artist,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("Discogs Artist"),
+    );
+    let release_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_discogs_release,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("Discogs Release"),
+    );
 
     let all_artists = collect_all_artists(&[&artist_groups, &release_groups]);
     let total_pages = ((all_artists.len() + ARTISTS_PER_PAGE - 1) / ARTISTS_PER_PAGE).max(1);
@@ -1434,7 +1686,7 @@ fn write_discogs_page(
             HashSet::new()
         };
 
-        let pg_artist  = filter_groups(&artist_groups, &page_artists);
+        let pg_artist = filter_groups(&artist_groups, &page_artists);
         let pg_release = filter_groups(&release_groups, &page_artists);
 
         let path = report_dir.join(format!("pages/discogs_{}.html", page_num));
@@ -1444,15 +1696,41 @@ fn write_discogs_page(
         write_nav(&mut f, "discogs", counts, pages, false)?;
 
         let tabs: &[(&str, &str, usize, usize)] = &[
-            ("dg-artist",  "Discogs Artist",  group_total(&pg_artist),  group_matched_count(&pg_artist)),
-            ("dg-release", "Discogs Release", group_total(&pg_release), group_matched_count(&pg_release)),
+            (
+                "dg-artist",
+                "Discogs Artist",
+                group_total(&pg_artist),
+                group_matched_count(&pg_artist),
+            ),
+            (
+                "dg-release",
+                "Discogs Release",
+                group_total(&pg_release),
+                group_matched_count(&pg_release),
+            ),
         ];
 
         write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
         write_pagination(&mut f, "discogs", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
-        write_field_panel(&mut f, "dg-artist",  &pg_artist,  true,  "discogs", diffs, scan_root)?;
-        write_field_panel(&mut f, "dg-release", &pg_release, false, "discogs", diffs, scan_root)?;
+        write_field_panel(
+            &mut f,
+            "dg-artist",
+            &pg_artist,
+            true,
+            "discogs",
+            diffs,
+            scan_root,
+        )?;
+        write_field_panel(
+            &mut f,
+            "dg-release",
+            &pg_release,
+            false,
+            "discogs",
+            diffs,
+            scan_root,
+        )?;
         write_pagination(&mut f, "discogs", page_num, total_pages)?;
 
         write_page_end(&mut f, false)?;
@@ -1473,12 +1751,49 @@ fn write_ids_page(
     diffs: Option<&MatchDiffs>,
     skipped_files: Option<&SkippedFiles>,
 ) -> std::io::Result<()> {
-    let acoustic_groups  = build_groups(issues, scan_root, |i| i.missing_acoustic_id,       |_| None, diffs, skipped_files, Some("Acoustic ID"));
-    let songkong_groups  = build_groups(issues, scan_root, |i| i.missing_songkong_id,        |_| None, diffs, skipped_files, Some("SongKong ID"));
-    let bandcamp_groups  = build_groups(issues, scan_root, |i| i.missing_bandcamp,           |_| None, diffs, skipped_files, Some("Bandcamp"));
-    let wiki_groups      = build_groups(issues, scan_root, |i| i.missing_wikipedia_artist,   |_| None, diffs, skipped_files, Some("Wikipedia Artist"));
+    let acoustic_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_acoustic_id,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("Acoustic ID"),
+    );
+    let songkong_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_songkong_id,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("SongKong ID"),
+    );
+    let bandcamp_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_bandcamp,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("Bandcamp"),
+    );
+    let wiki_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_wikipedia_artist,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("Wikipedia Artist"),
+    );
 
-    let all_artists = collect_all_artists(&[&acoustic_groups, &songkong_groups, &bandcamp_groups, &wiki_groups]);
+    let all_artists = collect_all_artists(&[
+        &acoustic_groups,
+        &songkong_groups,
+        &bandcamp_groups,
+        &wiki_groups,
+    ]);
     let total_pages = ((all_artists.len() + ARTISTS_PER_PAGE - 1) / ARTISTS_PER_PAGE).max(1);
 
     for page_num in 1..=total_pages {
@@ -1493,7 +1808,7 @@ fn write_ids_page(
         let pg_acoustic = filter_groups(&acoustic_groups, &page_artists);
         let pg_songkong = filter_groups(&songkong_groups, &page_artists);
         let pg_bandcamp = filter_groups(&bandcamp_groups, &page_artists);
-        let pg_wiki     = filter_groups(&wiki_groups, &page_artists);
+        let pg_wiki = filter_groups(&wiki_groups, &page_artists);
 
         let path = report_dir.join(format!("pages/ids_{}.html", page_num));
         let mut f = BufWriter::new(fs::File::create(&path)?);
@@ -1502,19 +1817,71 @@ fn write_ids_page(
         write_nav(&mut f, "ids", counts, pages, false)?;
 
         let tabs: &[(&str, &str, usize, usize)] = &[
-            ("acoustic",  "Acoustic ID", group_total(&pg_acoustic), group_matched_count(&pg_acoustic)),
-            ("songkong",  "SongKong",    group_total(&pg_songkong), group_matched_count(&pg_songkong)),
-            ("bandcamp",  "Bandcamp",    group_total(&pg_bandcamp), group_matched_count(&pg_bandcamp)),
-            ("wikipedia", "Wikipedia",   group_total(&pg_wiki),     group_matched_count(&pg_wiki)),
+            (
+                "acoustic",
+                "Acoustic ID",
+                group_total(&pg_acoustic),
+                group_matched_count(&pg_acoustic),
+            ),
+            (
+                "songkong",
+                "SongKong",
+                group_total(&pg_songkong),
+                group_matched_count(&pg_songkong),
+            ),
+            (
+                "bandcamp",
+                "Bandcamp",
+                group_total(&pg_bandcamp),
+                group_matched_count(&pg_bandcamp),
+            ),
+            (
+                "wikipedia",
+                "Wikipedia",
+                group_total(&pg_wiki),
+                group_matched_count(&pg_wiki),
+            ),
         ];
 
         write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
         write_pagination(&mut f, "ids", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
-        write_field_panel(&mut f, "acoustic",  &pg_acoustic, true,  "ids", diffs, scan_root)?;
-        write_field_panel(&mut f, "songkong",  &pg_songkong, false, "ids", diffs, scan_root)?;
-        write_field_panel(&mut f, "bandcamp",  &pg_bandcamp, false, "ids", diffs, scan_root)?;
-        write_field_panel(&mut f, "wikipedia", &pg_wiki,     false, "ids", diffs, scan_root)?;
+        write_field_panel(
+            &mut f,
+            "acoustic",
+            &pg_acoustic,
+            true,
+            "ids",
+            diffs,
+            scan_root,
+        )?;
+        write_field_panel(
+            &mut f,
+            "songkong",
+            &pg_songkong,
+            false,
+            "ids",
+            diffs,
+            scan_root,
+        )?;
+        write_field_panel(
+            &mut f,
+            "bandcamp",
+            &pg_bandcamp,
+            false,
+            "ids",
+            diffs,
+            scan_root,
+        )?;
+        write_field_panel(
+            &mut f,
+            "wikipedia",
+            &pg_wiki,
+            false,
+            "ids",
+            diffs,
+            scan_root,
+        )?;
         write_pagination(&mut f, "ids", page_num, total_pages)?;
 
         write_page_end(&mut f, false)?;
@@ -1536,14 +1903,47 @@ fn write_other_page(
     skipped_files: Option<&SkippedFiles>,
 ) -> std::io::Result<()> {
     let genre_groups = build_groups(
-        issues, scan_root,
+        issues,
+        scan_root,
         |i| i.missing_genre || i.blank_genre,
-        |i| if i.blank_genre { Some("(blank)".into()) } else { None },
-        diffs, skipped_files, Some("Genre"),
+        |i| {
+            if i.blank_genre {
+                Some("(blank)".into())
+            } else {
+                None
+            }
+        },
+        diffs,
+        skipped_files,
+        Some("Genre"),
     );
-    let bpm_groups   = build_groups(issues, scan_root, |i| i.missing_bpm,       |_| None, diffs, skipped_files, Some("BPM"));
-    let mood_groups  = build_groups(issues, scan_root, |i| i.missing_mood,       |_| None, diffs, skipped_files, Some("Mood"));
-    let art_groups   = build_groups(issues, scan_root, |i| i.missing_album_art,  |_| None, diffs, skipped_files, Some("Album Art"));
+    let bpm_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_bpm,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("BPM"),
+    );
+    let mood_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_mood,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("Mood"),
+    );
+    let art_groups = build_groups(
+        issues,
+        scan_root,
+        |i| i.missing_album_art,
+        |_| None,
+        diffs,
+        skipped_files,
+        Some("Album Art"),
+    );
 
     let all_artists = collect_all_artists(&[&genre_groups, &bpm_groups, &mood_groups, &art_groups]);
     let total_pages = ((all_artists.len() + ARTISTS_PER_PAGE - 1) / ARTISTS_PER_PAGE).max(1);
@@ -1558,9 +1958,9 @@ fn write_other_page(
         };
 
         let pg_genre = filter_groups(&genre_groups, &page_artists);
-        let pg_bpm   = filter_groups(&bpm_groups, &page_artists);
-        let pg_mood  = filter_groups(&mood_groups, &page_artists);
-        let pg_art   = filter_groups(&art_groups, &page_artists);
+        let pg_bpm = filter_groups(&bpm_groups, &page_artists);
+        let pg_mood = filter_groups(&mood_groups, &page_artists);
+        let pg_art = filter_groups(&art_groups, &page_artists);
 
         let path = report_dir.join(format!("pages/other_{}.html", page_num));
         let mut f = BufWriter::new(fs::File::create(&path)?);
@@ -1569,19 +1969,47 @@ fn write_other_page(
         write_nav(&mut f, "other", counts, pages, false)?;
 
         let tabs: &[(&str, &str, usize, usize)] = &[
-            ("genre",     "Genre",     group_total(&pg_genre), group_matched_count(&pg_genre)),
-            ("bpm",       "BPM",       group_total(&pg_bpm),   group_matched_count(&pg_bpm)),
-            ("mood",      "Mood",      group_total(&pg_mood),  group_matched_count(&pg_mood)),
-            ("album-art", "Album Art", group_total(&pg_art),   group_matched_count(&pg_art)),
+            (
+                "genre",
+                "Genre",
+                group_total(&pg_genre),
+                group_matched_count(&pg_genre),
+            ),
+            (
+                "bpm",
+                "BPM",
+                group_total(&pg_bpm),
+                group_matched_count(&pg_bpm),
+            ),
+            (
+                "mood",
+                "Mood",
+                group_total(&pg_mood),
+                group_matched_count(&pg_mood),
+            ),
+            (
+                "album-art",
+                "Album Art",
+                group_total(&pg_art),
+                group_matched_count(&pg_art),
+            ),
         ];
 
         write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
         write_pagination(&mut f, "other", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
-        write_field_panel(&mut f, "genre",     &pg_genre, true,  "other", diffs, scan_root)?;
-        write_field_panel(&mut f, "bpm",       &pg_bpm,   false, "other", diffs, scan_root)?;
-        write_field_panel(&mut f, "mood",      &pg_mood,  false, "other", diffs, scan_root)?;
-        write_field_panel(&mut f, "album-art", &pg_art,   false, "other", diffs, scan_root)?;
+        write_field_panel(&mut f, "genre", &pg_genre, true, "other", diffs, scan_root)?;
+        write_field_panel(&mut f, "bpm", &pg_bpm, false, "other", diffs, scan_root)?;
+        write_field_panel(&mut f, "mood", &pg_mood, false, "other", diffs, scan_root)?;
+        write_field_panel(
+            &mut f,
+            "album-art",
+            &pg_art,
+            false,
+            "other",
+            diffs,
+            scan_root,
+        )?;
         write_pagination(&mut f, "other", page_num, total_pages)?;
 
         write_page_end(&mut f, false)?;
@@ -1615,38 +2043,51 @@ fn generate_report(
     fs::create_dir_all(report_dir.join("pages"))?;
 
     // Compute lone files count for nav badge
-    let lone_count = all_paths.iter()
+    let lone_count = all_paths
+        .iter()
         .filter(|p| {
             p.parent()
                 .and_then(|par| parent_audio_count.get(par))
                 .copied()
-                .unwrap_or(0) == 1
+                .unwrap_or(0)
+                == 1
         })
         .count();
 
     // Compute matched counts per category from autofix diffs
-    let (critical_matched, mb_matched, discogs_matched, ids_matched, other_matched) = if let Some(d) = diffs {
-        let mut cf = HashSet::new();
-        let mut mf = HashSet::new();
-        let mut df = HashSet::new();
-        let mut idf = HashSet::new();
-        let mut of = HashSet::new();
-        for (path, fixes) in d {
-            for fix in fixes {
-                match fix.category {
-                    "critical" => { cf.insert(path); }
-                    "mb"       => { mf.insert(path); }
-                    "discogs"  => { df.insert(path); }
-                    "ids"      => { idf.insert(path); }
-                    "other"    => { of.insert(path); }
-                    _ => {}
+    let (critical_matched, mb_matched, discogs_matched, ids_matched, other_matched) =
+        if let Some(d) = diffs {
+            let mut cf = HashSet::new();
+            let mut mf = HashSet::new();
+            let mut df = HashSet::new();
+            let mut idf = HashSet::new();
+            let mut of = HashSet::new();
+            for (path, fixes) in d {
+                for fix in fixes {
+                    match fix.category {
+                        "critical" => {
+                            cf.insert(path);
+                        }
+                        "mb" => {
+                            mf.insert(path);
+                        }
+                        "discogs" => {
+                            df.insert(path);
+                        }
+                        "ids" => {
+                            idf.insert(path);
+                        }
+                        "other" => {
+                            of.insert(path);
+                        }
+                        _ => {}
+                    }
                 }
             }
-        }
-        (cf.len(), mf.len(), df.len(), idf.len(), of.len())
-    } else {
-        (0, 0, 0, 0, 0)
-    };
+            (cf.len(), mf.len(), df.len(), idf.len(), of.len())
+        } else {
+            (0, 0, 0, 0, 0)
+        };
 
     let counts = NavCounts {
         issues: lone_count + unreadable.len(),
@@ -1668,27 +2109,83 @@ fn generate_report(
 
     // Write index (always)
     write_index(
-        report_dir, scan_root, total_files, total_size, error_count,
-        file_type_counts, elapsed, issues.len(), &counts, pages,
+        report_dir,
+        scan_root,
+        total_files,
+        total_size,
+        error_count,
+        file_type_counts,
+        elapsed,
+        issues.len(),
+        &counts,
+        pages,
     )?;
 
     // Write selected pages
     // Issues page is always generated (lone files + unreadable files are always relevant)
-    write_issues_page(report_dir, scan_root, all_paths, parent_audio_count, unreadable, &counts, pages)?;
+    write_issues_page(
+        report_dir,
+        scan_root,
+        all_paths,
+        parent_audio_count,
+        unreadable,
+        &counts,
+        pages,
+    )?;
     if pages.critical {
-        write_critical_page(report_dir, scan_root, issues, &counts, pages, diffs, skipped_files)?;
+        write_critical_page(
+            report_dir,
+            scan_root,
+            issues,
+            &counts,
+            pages,
+            diffs,
+            skipped_files,
+        )?;
     }
     if pages.mb {
-        write_mb_page(report_dir, scan_root, issues, &counts, pages, diffs, skipped_files)?;
+        write_mb_page(
+            report_dir,
+            scan_root,
+            issues,
+            &counts,
+            pages,
+            diffs,
+            skipped_files,
+        )?;
     }
     if pages.discogs {
-        write_discogs_page(report_dir, scan_root, issues, &counts, pages, diffs, skipped_files)?;
+        write_discogs_page(
+            report_dir,
+            scan_root,
+            issues,
+            &counts,
+            pages,
+            diffs,
+            skipped_files,
+        )?;
     }
     if pages.ids {
-        write_ids_page(report_dir, scan_root, issues, &counts, pages, diffs, skipped_files)?;
+        write_ids_page(
+            report_dir,
+            scan_root,
+            issues,
+            &counts,
+            pages,
+            diffs,
+            skipped_files,
+        )?;
     }
     if pages.other {
-        write_other_page(report_dir, scan_root, issues, &counts, pages, diffs, skipped_files)?;
+        write_other_page(
+            report_dir,
+            scan_root,
+            issues,
+            &counts,
+            pages,
+            diffs,
+            skipped_files,
+        )?;
     }
 
     Ok(())
@@ -1742,16 +2239,15 @@ fn print_beet_install_instructions() {
     eprintln!("    auto: yes");
     eprintln!();
     eprintln!("  discogs:");
-    eprintln!("    user_token: YOUR_TOKEN   # Get from https://www.discogs.com/settings/developers");
+    eprintln!(
+        "    user_token: YOUR_TOKEN   # Get from https://www.discogs.com/settings/developers"
+    );
 }
 
 /// Check beets availability and required plugins. Returns Ok(version_string) or exits.
 fn check_beets_setup() {
     // 1. Check beet binary
-    let beet_output = match std::process::Command::new("beet")
-        .arg("version")
-        .output()
-    {
+    let beet_output = match std::process::Command::new("beet").arg("version").output() {
         Ok(o) if o.status.success() => o,
         _ => {
             print_beet_install_instructions();
@@ -1771,7 +2267,9 @@ fn check_beets_setup() {
         .is_err()
     {
         eprintln!();
-        eprintln!("ERROR: fpcalc not found. Required by the chroma plugin for AcoustID fingerprinting.");
+        eprintln!(
+            "ERROR: fpcalc not found. Required by the chroma plugin for AcoustID fingerprinting."
+        );
         eprintln!();
         eprintln!("  Install: sudo apt install libchromaprint-tools");
         std::process::exit(1);
@@ -1797,11 +2295,16 @@ fn check_beets_setup() {
 
     if !missing_required.is_empty() {
         eprintln!();
-        eprintln!("ERROR: Missing required beets plugins: {}", missing_required.join(", "));
+        eprintln!(
+            "ERROR: Missing required beets plugins: {}",
+            missing_required.join(", ")
+        );
         eprintln!();
         for &p in &missing_required {
             match p {
-                "chroma" => eprintln!("  pip install pyacoustid              # chroma plugin (AcoustID)"),
+                "chroma" => {
+                    eprintln!("  pip install pyacoustid              # chroma plugin (AcoustID)")
+                }
                 "discogs" => eprintln!("  pip install python-discogs-client    # discogs plugin"),
                 _ => eprintln!("  # Enable '{}' in your beets config plugins list", p),
             }
@@ -1812,7 +2315,10 @@ fn check_beets_setup() {
     }
 
     if !missing_recommended.is_empty() {
-        println!("  Note: recommended plugins not loaded: {}", missing_recommended.join(", "));
+        println!(
+            "  Note: recommended plugins not loaded: {}",
+            missing_recommended.join(", ")
+        );
     }
 }
 
@@ -1844,7 +2350,8 @@ fn run_autofix(
         return HashMap::new();
     }
 
-    println!("\n[{}] Processing {} director{} ({} files with issues)...\n",
+    println!(
+        "\n[{}] Processing {} director{} ({} files with issues)...\n",
         label,
         total_dirs,
         if total_dirs == 1 { "y" } else { "ies" },
@@ -1870,22 +2377,27 @@ fn run_autofix(
 
         let is_singleton = parent_audio_count.get(dir).copied().unwrap_or(0) == 1;
 
-        print!("  [{}/{}] {} ({} file{}) ... ",
-            idx + 1, total_dirs, rel, file_count,
+        print!(
+            "  [{}/{}] {} ({} file{}) ... ",
+            idx + 1,
+            total_dirs,
+            rel,
+            file_count,
             if *file_count == 1 { "" } else { "s" },
         );
         std::io::stdout().flush().ok();
 
         let mut cmd = std::process::Command::new("beet");
-        cmd.arg("-l").arg(&tmp_lib)
+        cmd.arg("-l")
+            .arg(&tmp_lib)
             .arg("import")
-            .arg("-C")    // don't copy/move files
-            .arg("-q");   // quiet mode (no prompts, skip uncertain matches)
+            .arg("-C") // don't copy/move files
+            .arg("-q"); // quiet mode (no prompts, skip uncertain matches)
 
         if dry {
             cmd.arg("--pretend"); // dry run: show what would be tagged
         } else {
-            cmd.arg("-w");        // write tags to files
+            cmd.arg("-w"); // write tags to files
         }
 
         if is_singleton {
@@ -1902,13 +2414,18 @@ fn run_autofix(
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let combined = format!("{}{}", stdout, stderr);
                 if output.status.success() {
-                    if combined.to_lowercase().contains("skipping") || combined.to_lowercase().contains("no good match") {
+                    if combined.to_lowercase().contains("skipping")
+                        || combined.to_lowercase().contains("no good match")
+                    {
                         // Extract a meaningful reason from beets output, or use a default
-                        let reason = combined.lines()
+                        let reason = combined
+                            .lines()
                             .find(|l| {
                                 let lower = l.to_lowercase();
-                                lower.contains("skipping") || lower.contains("no good match")
-                                    || lower.contains("no candidate") || lower.contains("no match")
+                                lower.contains("skipping")
+                                    || lower.contains("no good match")
+                                    || lower.contains("no candidate")
+                                    || lower.contains("no match")
                             })
                             .map(|l| l.trim().to_string())
                             .unwrap_or_else(|| "No confident match from beets".to_string());
@@ -1973,7 +2490,13 @@ fn run_autofix(
 fn compute_autofix_diffs(
     original_issues: &[FileIssue],
     skip_dirs: &HashMap<PathBuf, String>,
-) -> (Vec<PathBuf>, Vec<FileIssue>, Vec<(PathBuf, String)>, MatchDiffs, SkippedFiles) {
+) -> (
+    Vec<PathBuf>,
+    Vec<FileIssue>,
+    Vec<(PathBuf, String)>,
+    MatchDiffs,
+    SkippedFiles,
+) {
     let mut matched: Vec<PathBuf> = Vec::new();
     let mut still_broken: Vec<FileIssue> = Vec::new();
     let mut unreadable: Vec<(PathBuf, String)> = Vec::new();
@@ -2075,7 +2598,15 @@ fn compute_autofix_diffs(
             field_matches.push(FieldMatch {
                 field: "MB Artist ID",
                 old_display: "Missing".into(),
-                new_value: get_tag(&tag_map, &["MUSICBRAINZ ARTIST ID", "MUSICBRAINZ_ARTISTID", "MUSICBRAINZARTISTID"]).unwrap_or_default(),
+                new_value: get_tag(
+                    &tag_map,
+                    &[
+                        "MUSICBRAINZ ARTIST ID",
+                        "MUSICBRAINZ_ARTISTID",
+                        "MUSICBRAINZARTISTID",
+                    ],
+                )
+                .unwrap_or_default(),
                 category: "mb",
             });
         }
@@ -2083,7 +2614,16 @@ fn compute_autofix_diffs(
             field_matches.push(FieldMatch {
                 field: "MB Track ID",
                 old_display: "Missing".into(),
-                new_value: get_tag(&tag_map, &["MUSICBRAINZ RELEASE TRACK ID", "MUSICBRAINZ_TRACKID", "MUSICBRAINZTRACKID", "MUSICBRAINZ_RELEASETRACKID"]).unwrap_or_default(),
+                new_value: get_tag(
+                    &tag_map,
+                    &[
+                        "MUSICBRAINZ RELEASE TRACK ID",
+                        "MUSICBRAINZ_TRACKID",
+                        "MUSICBRAINZTRACKID",
+                        "MUSICBRAINZ_RELEASETRACKID",
+                    ],
+                )
+                .unwrap_or_default(),
                 category: "mb",
             });
         }
@@ -2091,7 +2631,16 @@ fn compute_autofix_diffs(
             field_matches.push(FieldMatch {
                 field: "MB Album ID",
                 old_display: "Missing".into(),
-                new_value: get_tag(&tag_map, &["MUSICBRAINZ ALBUM ID", "MUSICBRAINZ_ALBUMID", "MUSICBRAINZALBUMID", "MUSICBRAINZRELEASEID"]).unwrap_or_default(),
+                new_value: get_tag(
+                    &tag_map,
+                    &[
+                        "MUSICBRAINZ ALBUM ID",
+                        "MUSICBRAINZ_ALBUMID",
+                        "MUSICBRAINZALBUMID",
+                        "MUSICBRAINZRELEASEID",
+                    ],
+                )
+                .unwrap_or_default(),
                 category: "mb",
             });
         }
@@ -2101,7 +2650,8 @@ fn compute_autofix_diffs(
             field_matches.push(FieldMatch {
                 field: "Discogs Artist",
                 old_display: "Missing".into(),
-                new_value: get_tag(&tag_map, &["URL_DISCOGS_ARTIST_SITE", "WWW DISCOGS_ARTIST"]).unwrap_or_default(),
+                new_value: get_tag(&tag_map, &["URL_DISCOGS_ARTIST_SITE", "WWW DISCOGS_ARTIST"])
+                    .unwrap_or_default(),
                 category: "discogs",
             });
         }
@@ -2109,7 +2659,11 @@ fn compute_autofix_diffs(
             field_matches.push(FieldMatch {
                 field: "Discogs Release",
                 old_display: "Missing".into(),
-                new_value: get_tag(&tag_map, &["URL_DISCOGS_RELEASE_SITE", "WWW DISCOGS_RELEASE"]).unwrap_or_default(),
+                new_value: get_tag(
+                    &tag_map,
+                    &["URL_DISCOGS_RELEASE_SITE", "WWW DISCOGS_RELEASE"],
+                )
+                .unwrap_or_default(),
                 category: "discogs",
             });
         }
@@ -2119,7 +2673,11 @@ fn compute_autofix_diffs(
             field_matches.push(FieldMatch {
                 field: "Acoustic ID",
                 old_display: "Missing".into(),
-                new_value: get_tag(&tag_map, &["ACOUSTIC_ID", "ACOUSTIC ID", "ACOUSTID_ID", "ACOUSTID ID"]).unwrap_or_default(),
+                new_value: get_tag(
+                    &tag_map,
+                    &["ACOUSTIC_ID", "ACOUSTIC ID", "ACOUSTID_ID", "ACOUSTID ID"],
+                )
+                .unwrap_or_default(),
                 category: "ids",
             });
         }
@@ -2135,7 +2693,11 @@ fn compute_autofix_diffs(
             field_matches.push(FieldMatch {
                 field: "Bandcamp",
                 old_display: "Missing".into(),
-                new_value: get_tag(&tag_map, &["URL_BANDCAMP_ARTIST_SITE", "WWW BANDCAMP_ARTIST"]).unwrap_or_default(),
+                new_value: get_tag(
+                    &tag_map,
+                    &["URL_BANDCAMP_ARTIST_SITE", "WWW BANDCAMP_ARTIST"],
+                )
+                .unwrap_or_default(),
                 category: "ids",
             });
         }
@@ -2213,7 +2775,10 @@ fn restore_dir(staging_dir: &Path, scan_root: &str, moved: &mut u32, failed: &mu
         return;
     }
 
-    println!("Moving files from {} back to original locations...", staging_dir.display());
+    println!(
+        "Moving files from {} back to original locations...",
+        staging_dir.display()
+    );
 
     for entry in WalkDir::new(staging_dir)
         .into_iter()
@@ -2252,13 +2817,15 @@ fn restore_dir(staging_dir: &Path, scan_root: &str, moved: &mut u32, failed: &mu
 }
 
 fn end_quarantine(scan_root: &str) {
-    let quarantine_dir    = PathBuf::from(scan_root).join("__QUARANTINE");
-    let needs_review_dir  = PathBuf::from(scan_root).join("__NEEDS_REVIEW");
-    let unreadable_dir    = PathBuf::from(scan_root).join("__UNREADABLE");
-    let autofixed_dir     = PathBuf::from(scan_root).join("__AUTOFIXED");
+    let quarantine_dir = PathBuf::from(scan_root).join("__QUARANTINE");
+    let needs_review_dir = PathBuf::from(scan_root).join("__NEEDS_REVIEW");
+    let unreadable_dir = PathBuf::from(scan_root).join("__UNREADABLE");
+    let autofixed_dir = PathBuf::from(scan_root).join("__AUTOFIXED");
 
-    if !quarantine_dir.exists() && !needs_review_dir.exists()
-        && !unreadable_dir.exists() && !autofixed_dir.exists()
+    if !quarantine_dir.exists()
+        && !needs_review_dir.exists()
+        && !unreadable_dir.exists()
+        && !autofixed_dir.exists()
     {
         println!("Nothing to do: no staging folders found.");
         return;
@@ -2267,10 +2834,10 @@ fn end_quarantine(scan_root: &str) {
     let mut moved = 0u32;
     let mut failed = 0u32;
 
-    restore_dir(&quarantine_dir,   scan_root, &mut moved, &mut failed);
+    restore_dir(&quarantine_dir, scan_root, &mut moved, &mut failed);
     restore_dir(&needs_review_dir, scan_root, &mut moved, &mut failed);
-    restore_dir(&unreadable_dir,   scan_root, &mut moved, &mut failed);
-    restore_dir(&autofixed_dir,    scan_root, &mut moved, &mut failed);
+    restore_dir(&unreadable_dir, scan_root, &mut moved, &mut failed);
+    restore_dir(&autofixed_dir, scan_root, &mut moved, &mut failed);
 
     println!("Done. Restored: {}, Failed: {}", moved, failed);
 }
@@ -2313,25 +2880,41 @@ fn main() {
     // Handle --autofix / --autofix-dry + --only-* interaction
     let do_autofix = args.autofix || args.autofix_dry;
     {
-        let any_only = args.only_critical || args.only_mb || args.only_discogs
-            || args.only_issues || args.only_ids || args.only_other;
+        let any_only = args.only_critical
+            || args.only_mb
+            || args.only_discogs
+            || args.only_issues
+            || args.only_ids
+            || args.only_other;
 
         if do_autofix && any_only {
             println!("Autofix enabled, skipping --only-* commands");
             args.only_critical = false;
-            args.only_mb       = false;
-            args.only_discogs  = false;
-            args.only_issues   = false;
-            args.only_ids      = false;
-            args.only_other    = false;
+            args.only_mb = false;
+            args.only_discogs = false;
+            args.only_issues = false;
+            args.only_ids = false;
+            args.only_other = false;
         } else if any_only {
             let mut modes = Vec::new();
-            if args.only_critical { modes.push("critical"); }
-            if args.only_mb       { modes.push("mb"); }
-            if args.only_discogs  { modes.push("discogs"); }
-            if args.only_issues   { modes.push("issues"); }
-            if args.only_ids      { modes.push("ids"); }
-            if args.only_other    { modes.push("other"); }
+            if args.only_critical {
+                modes.push("critical");
+            }
+            if args.only_mb {
+                modes.push("mb");
+            }
+            if args.only_discogs {
+                modes.push("discogs");
+            }
+            if args.only_issues {
+                modes.push("issues");
+            }
+            if args.only_ids {
+                modes.push("ids");
+            }
+            if args.only_other {
+                modes.push("other");
+            }
             println!("Pages     : {}", modes.join(", "));
         }
     }
@@ -2346,8 +2929,16 @@ fn main() {
     if !args.only.is_empty() {
         println!("Filter    : only folders matching '{}'", args.only);
     } else if !args.from.is_empty() || !args.to.is_empty() {
-        let from_str = if args.from.is_empty() { "A".to_string() } else { args.from.to_uppercase() };
-        let to_str = if args.to.is_empty() { "Z".to_string() } else { args.to.to_uppercase() };
+        let from_str = if args.from.is_empty() {
+            "A".to_string()
+        } else {
+            args.from.to_uppercase()
+        };
+        let to_str = if args.to.is_empty() {
+            "Z".to_string()
+        } else {
+            args.to.to_uppercase()
+        };
         println!("Filter    : {} to {}", from_str, to_str);
     }
     println!("CPU cores : {}", num_cpus::get());
@@ -2412,7 +3003,10 @@ fn main() {
 
     let total_files = paths.len() as u64;
     let total_dirs = total_dirs.load(Ordering::Relaxed);
-    println!("  Found {} audio files in {} folders", total_files, total_dirs);
+    println!(
+        "  Found {} audio files in {} folders",
+        total_files, total_dirs
+    );
 
     // --- Always build parent_audio_count (needed for issues.html and quarantine) ---
     let mut parent_audio_count: HashMap<PathBuf, usize> = HashMap::new();
@@ -2423,13 +3017,23 @@ fn main() {
     }
 
     // --- Phase 2: Parallel scan ---
-    println!("[2/4] Scanning metadata ({} threads)...", rayon::current_num_threads());
+    println!(
+        "[2/4] Scanning metadata ({} threads)...",
+        rayon::current_num_threads()
+    );
     let scanned = AtomicU64::new(0);
 
     // Lock-free accumulation via rayon fold/reduce.
     // Each thread builds its own local (issues, tag_keys, file_type_counts, total_size, error_count, unreadable_paths)
     // and they are merged at the end - no Mutex contention in the hot path.
-    type ScanAcc = (Vec<FileIssue>, HashSet<String>, HashMap<String, u64>, u64, u64, Vec<(PathBuf, String)>);
+    type ScanAcc = (
+        Vec<FileIssue>,
+        HashSet<String>,
+        HashMap<String, u64>,
+        u64,
+        u64,
+        Vec<(PathBuf, String)>,
+    );
 
     let (results, _all_tag_keys, file_type_counts, total_size, error_count, unreadable_paths): ScanAcc = paths
         .par_iter()
@@ -2484,10 +3088,7 @@ fn main() {
 
     // --- Phase 3: Filter to only files with issues ---
     println!("[3/4] Filtering results...");
-    let issues: Vec<FileIssue> = results
-        .into_iter()
-        .filter(|i| i.has_any_issue())
-        .collect();
+    let issues: Vec<FileIssue> = results.into_iter().filter(|i| i.has_any_issue()).collect();
 
     println!("  {} files with at least one issue", issues.len());
 
@@ -2513,10 +3114,16 @@ fn main() {
 
         // Helper closure: move (or dry-run) a batch of files to a staging directory.
         let move_batch = |batch: &[PathBuf], staging_dir: &Path, label: &str, dry: bool| {
-            if batch.is_empty() { return; }
+            if batch.is_empty() {
+                return;
+            }
             println!();
             if dry {
-                println!("[DRY RUN] Would move {} file(s) to {}:", batch.len(), staging_dir.display());
+                println!(
+                    "[DRY RUN] Would move {} file(s) to {}:",
+                    batch.len(),
+                    staging_dir.display()
+                );
                 for src in batch {
                     let rel = src.strip_prefix(&scan_root_path).unwrap_or(src);
                     let dst = staging_dir.join(rel);
@@ -2545,10 +3152,10 @@ fn main() {
             // --- Autofix + quarantine: use pre-computed diffs ---
             let (ref matched_paths, ref still_broken, ref new_unreadable, _, _) = *data;
 
-            let autofixed_dir    = scan_root_path.join("__AUTOFIXED");
-            let quarantine_dir   = scan_root_path.join("__QUARANTINE");
+            let autofixed_dir = scan_root_path.join("__AUTOFIXED");
+            let quarantine_dir = scan_root_path.join("__QUARANTINE");
             let needs_review_dir = scan_root_path.join("__NEEDS_REVIEW");
-            let unreadable_dir   = scan_root_path.join("__UNREADABLE");
+            let unreadable_dir = scan_root_path.join("__UNREADABLE");
 
             // Matched files → __AUTOFIXED
             let mut sorted_matched = matched_paths.clone();
@@ -2556,10 +3163,12 @@ fn main() {
             move_batch(&sorted_matched, &autofixed_dir, "__AUTOFIXED", dry);
 
             // Still-broken files → __QUARANTINE or __NEEDS_REVIEW
-            let mut to_quarantine:   Vec<PathBuf> = Vec::new();
+            let mut to_quarantine: Vec<PathBuf> = Vec::new();
             let mut to_needs_review: Vec<PathBuf> = Vec::new();
             for issue in still_broken {
-                let count = issue.path.parent()
+                let count = issue
+                    .path
+                    .parent()
                     .and_then(|p| parent_audio_count.get(p))
                     .copied()
                     .unwrap_or(1);
@@ -2571,26 +3180,29 @@ fn main() {
             }
             to_quarantine.sort();
             to_needs_review.sort();
-            move_batch(&to_quarantine,   &quarantine_dir,   "__QUARANTINE",   dry);
+            move_batch(&to_quarantine, &quarantine_dir, "__QUARANTINE", dry);
             move_batch(&to_needs_review, &needs_review_dir, "__NEEDS_REVIEW", dry);
 
             // Unreadable files (original + newly unreadable after autofix) → __UNREADABLE
-            let mut all_unreadable: Vec<PathBuf> = unreadable_paths.iter().map(|(p, _)| p.clone()).collect();
+            let mut all_unreadable: Vec<PathBuf> =
+                unreadable_paths.iter().map(|(p, _)| p.clone()).collect();
             all_unreadable.extend(new_unreadable.iter().map(|(p, _)| p.clone()));
             all_unreadable.sort();
             all_unreadable.dedup();
             move_batch(&all_unreadable, &unreadable_dir, "__UNREADABLE", dry);
         } else {
             // --- Standard quarantine (no autofix) ---
-            let quarantine_dir   = scan_root_path.join("__QUARANTINE");
+            let quarantine_dir = scan_root_path.join("__QUARANTINE");
             let needs_review_dir = scan_root_path.join("__NEEDS_REVIEW");
-            let unreadable_dir   = scan_root_path.join("__UNREADABLE");
+            let unreadable_dir = scan_root_path.join("__UNREADABLE");
 
             // Split issue files: lone files → __NEEDS_REVIEW, rest → __QUARANTINE
-            let mut to_quarantine:   Vec<PathBuf> = Vec::new();
+            let mut to_quarantine: Vec<PathBuf> = Vec::new();
             let mut to_needs_review: Vec<PathBuf> = Vec::new();
             for issue in &issues {
-                let count = issue.path.parent()
+                let count = issue
+                    .path
+                    .parent()
                     .and_then(|p| parent_audio_count.get(p))
                     .copied()
                     .unwrap_or(1);
@@ -2602,11 +3214,12 @@ fn main() {
             }
             to_quarantine.sort();
             to_needs_review.sort();
-            move_batch(&to_quarantine,   &quarantine_dir,   "__QUARANTINE",   dry);
+            move_batch(&to_quarantine, &quarantine_dir, "__QUARANTINE", dry);
             move_batch(&to_needs_review, &needs_review_dir, "__NEEDS_REVIEW", dry);
 
             // Unreadable files → __UNREADABLE
-            let mut unreadable: Vec<PathBuf> = unreadable_paths.iter().map(|(p, _)| p.clone()).collect();
+            let mut unreadable: Vec<PathBuf> =
+                unreadable_paths.iter().map(|(p, _)| p.clone()).collect();
             unreadable.sort();
             move_batch(&unreadable, &unreadable_dir, "__UNREADABLE", dry);
         }
@@ -2629,15 +3242,19 @@ fn main() {
         let report_dir = output_dir.join(format!("analysis_{}", timestamp));
 
         // Determine which pages to generate
-        let any_only_flag = args.only_critical || args.only_mb || args.only_discogs
-            || args.only_issues || args.only_ids || args.only_other;
+        let any_only_flag = args.only_critical
+            || args.only_mb
+            || args.only_discogs
+            || args.only_issues
+            || args.only_ids
+            || args.only_other;
 
         let pages = PageFlags {
             critical: !any_only_flag || args.only_critical,
-            mb:       !any_only_flag || args.only_mb,
-            discogs:  !any_only_flag || args.only_discogs,
-            ids:      !any_only_flag || args.only_ids,
-            other:    !any_only_flag || args.only_other,
+            mb: !any_only_flag || args.only_mb,
+            discogs: !any_only_flag || args.only_discogs,
+            ids: !any_only_flag || args.only_ids,
+            other: !any_only_flag || args.only_other,
         };
 
         let elapsed = start.elapsed();
@@ -2667,7 +3284,12 @@ fn main() {
                 println!("Total time: {:.2}s", elapsed.as_secs_f64());
                 let readable = total_files.saturating_sub(error_count);
                 let ok = readable.saturating_sub(issues.len() as u64);
-                println!("Files OK: {} | Issues: {} | Unreadable: {}", ok, issues.len(), error_count);
+                println!(
+                    "Files OK: {} | Issues: {} | Unreadable: {}",
+                    ok,
+                    issues.len(),
+                    error_count
+                );
             }
             Err(e) => {
                 eprintln!("Failed to write report: {}", e);

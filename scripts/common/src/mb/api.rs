@@ -19,7 +19,10 @@ static USER_AGENT: LazyLock<String> = LazyLock::new(|| {
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| {
-            format!("DMP/{} ( https://github.com/dmp )", env!("CARGO_PKG_VERSION"))
+            format!(
+                "DMP/{} ( https://github.com/dmp )",
+                env!("CARGO_PKG_VERSION")
+            )
         })
 });
 
@@ -200,12 +203,16 @@ impl RateLimiter {
 
     /// Requests issued so far, retries included.
     pub fn requests_issued(&self) -> u64 {
-        self.inner.requests.load(std::sync::atomic::Ordering::Relaxed)
+        self.inner
+            .requests
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Retryable 503s absorbed so far.
     pub fn absorbed_503s(&self) -> u64 {
-        self.inner.absorbed.load(std::sync::atomic::Ordering::Relaxed)
+        self.inner
+            .absorbed
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn note_absorbed_503(&self) {
@@ -577,7 +584,8 @@ async fn mb_artist_candidates(
     let quoted = urlencoding::encode(&phrase);
     let url = format!(
         "{}/artist/?query=artist:{}&limit=5&fmt=json",
-        mb_base(), quoted
+        mb_base(),
+        quoted
     );
     let body = mb_get(client, &url, limiter).await?;
     let result: MbArtistSearchResult =
@@ -617,7 +625,8 @@ pub async fn mb_search_artist_exact(
     let quoted = urlencoding::encode(&phrase);
     let url = format!(
         "{}/artist/?query=artist:{}&limit=5&inc=aliases&fmt=json",
-        mb_base(), quoted
+        mb_base(),
+        quoted
     );
     let body = mb_get(client, &url, limiter).await?;
     let result: MbArtistSearchResult =
@@ -665,7 +674,8 @@ pub async fn mb_lookup_release_group_artist(
 ) -> Result<Vec<MbArtistMatch>, String> {
     let url = format!(
         "{}/release-group/{}?inc=artist-credits&fmt=json",
-        mb_base(), mb_release_group_id
+        mb_base(),
+        mb_release_group_id
     );
     let body = mb_get(client, &url, limiter).await?;
 
@@ -712,7 +722,8 @@ pub async fn mb_search_release_group_credits(
     let encoded = urlencoding::encode(&query);
     let url = format!(
         "{}/release-group/?query={}&limit=1&fmt=json",
-        mb_base(), encoded
+        mb_base(),
+        encoded
     );
     let body = mb_get(client, &url, limiter).await?;
 
@@ -810,7 +821,8 @@ pub async fn mb_search_release_groups(
     let encoded = urlencoding::encode(&query);
     let url = format!(
         "{}/release-group/?query={}&limit=5&fmt=json",
-        mb_base(), encoded
+        mb_base(),
+        encoded
     );
     let body = mb_get(client, &url, limiter).await?;
 
@@ -872,7 +884,8 @@ pub async fn mb_get_artist_detail(
 ) -> Result<MbArtistDetail, String> {
     let url = format!(
         "{}/artist/{}?inc=url-rels+genres+tags&fmt=json",
-        mb_base(), mb_id
+        mb_base(),
+        mb_id
     );
     let body = mb_get(client, &url, limiter).await?;
     serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))
@@ -890,7 +903,10 @@ pub async fn mb_get_release_groups(
     loop {
         let url = format!(
             "{}/release-group?artist={}&limit={}&offset={}&fmt=json",
-            mb_base(), mb_id, limit, offset
+            mb_base(),
+            mb_id,
+            limit,
+            offset
         );
         let body = mb_get(client, &url, limiter).await?;
         let result: MbReleaseGroupList =
@@ -1064,7 +1080,10 @@ pub async fn mb_get_release_tracks(
     loop {
         let url = format!(
             "{}/release?release-group={}&inc=recordings&limit={}&offset={}&fmt=json",
-            mb_base(), release_group_id, limit, offset
+            mb_base(),
+            release_group_id,
+            limit,
+            offset
         );
         let body = mb_get(client, &url, limiter).await?;
         let result: MbReleaseList =
@@ -1115,7 +1134,8 @@ pub async fn mb_get_release_by_id(
 ) -> Result<ReleaseById, String> {
     let url = format!(
         "{}/release/{}?inc=recordings+release-groups&fmt=json",
-        mb_base(), release_id
+        mb_base(),
+        release_id
     );
     let body = mb_get(client, &url, limiter).await?;
 
@@ -1163,8 +1183,7 @@ mod tests {
     use super::*;
 
     /// The real 503 body MusicBrainz serves when a client is over its allowance.
-    const RATE_LIMIT_BODY: &str =
-        r#"{"error":"Your requests are exceeding the allowable rate limit. Please see http://wiki.musicbrainz.org/XMLWebService for more information."}"#;
+    const RATE_LIMIT_BODY: &str = r#"{"error":"Your requests are exceeding the allowable rate limit. Please see http://wiki.musicbrainz.org/XMLWebService for more information."}"#;
 
     /// Built field-by-field rather than via `RateLimiter::new()` on purpose: `new()` reads
     /// `MB_MIN_DELAY_MS`, and cargo runs these tests in parallel with the one that mutates it.
@@ -1202,7 +1221,11 @@ mod tests {
     async fn recovery_is_additive_and_floors_at_min_delay() {
         let l = limiter_at(5000);
         l.on_success().await;
-        assert_eq!(delay_of(&l), 4900, "one success sheds exactly RECOVERY_STEP_MS");
+        assert_eq!(
+            delay_of(&l),
+            4900,
+            "one success sheds exactly RECOVERY_STEP_MS"
+        );
         let floor = min_delay_of(&l);
         let l = limiter_at(floor + 50);
         l.on_success().await;
@@ -1370,8 +1393,14 @@ mod tests {
             advance_browse(&mut offset, 31, Some(39)),
             "31 of 39 is a short page, not the end"
         );
-        assert_eq!(offset, 31, "the cursor steps by what arrived, not by `limit`");
-        assert!(!advance_browse(&mut offset, 8, Some(39)), "39 of 39 is the end");
+        assert_eq!(
+            offset, 31,
+            "the cursor steps by what arrived, not by `limit`"
+        );
+        assert!(
+            !advance_browse(&mut offset, 8, Some(39)),
+            "39 of 39 is the end"
+        );
         assert_eq!(offset, 39);
     }
 
@@ -1379,9 +1408,15 @@ mod tests {
     fn a_browse_terminates_on_an_empty_page_or_a_missing_count() {
         // Both guard against looping forever: MusicBrainz occasionally answers with neither.
         let mut offset = 50;
-        assert!(!advance_browse(&mut offset, 0, Some(999)), "an empty page ends it");
+        assert!(
+            !advance_browse(&mut offset, 0, Some(999)),
+            "an empty page ends it"
+        );
         let mut offset = 0;
-        assert!(!advance_browse(&mut offset, 10, None), "no count means stop, not spin");
+        assert!(
+            !advance_browse(&mut offset, 10, None),
+            "no count means stop, not spin"
+        );
     }
 
     #[test]
@@ -1394,10 +1429,17 @@ mod tests {
     fn bare_503_is_overload_not_rate_limit() {
         // The whole point of the split: slowing down does not fix MusicBrainz being unwell.
         assert_eq!(
-            classify_throttle(503, None, "<html><body>503 Service Unavailable</body></html>"),
+            classify_throttle(
+                503,
+                None,
+                "<html><body>503 Service Unavailable</body></html>"
+            ),
             ThrottleKind::Overloaded
         );
-        assert_eq!(classify_throttle(503, Some(42), ""), ThrottleKind::Overloaded);
+        assert_eq!(
+            classify_throttle(503, Some(42), ""),
+            ThrottleKind::Overloaded
+        );
     }
 
     #[test]
@@ -1405,9 +1447,16 @@ mod tests {
         assert_eq!(parse_retry_after(Some("30")), Some(30_000));
         assert_eq!(parse_retry_after(Some("  5 ")), Some(5_000));
         assert_eq!(parse_retry_after(Some("0")), Some(1_000), "clamped up");
-        assert_eq!(parse_retry_after(Some("9999")), Some(60_000), "clamped down");
+        assert_eq!(
+            parse_retry_after(Some("9999")),
+            Some(60_000),
+            "clamped down"
+        );
         // HTTP-date form is deliberately unparsed - falling back to the caller's ladder beats a 0ms wait.
-        assert_eq!(parse_retry_after(Some("Wed, 21 Oct 2015 07:28:00 GMT")), None);
+        assert_eq!(
+            parse_retry_after(Some("Wed, 21 Oct 2015 07:28:00 GMT")),
+            None
+        );
         assert_eq!(parse_retry_after(None), None);
     }
 
@@ -1417,7 +1466,11 @@ mod tests {
         std::env::set_var("MB_MIN_DELAY_MS", "2000");
         assert_eq!(configured_min_delay(), 2000);
         std::env::set_var("MB_MIN_DELAY_MS", "10");
-        assert_eq!(configured_min_delay(), MIN_DELAY_FLOOR_MS, "never below MB's rate");
+        assert_eq!(
+            configured_min_delay(),
+            MIN_DELAY_FLOOR_MS,
+            "never below MB's rate"
+        );
         std::env::set_var("MB_MIN_DELAY_MS", "999999");
         assert_eq!(configured_min_delay(), MAX_DELAY_MS);
         std::env::set_var("MB_MIN_DELAY_MS", "not-a-number");
@@ -1427,7 +1480,11 @@ mod tests {
 
         std::env::set_var("MB_BASE_URL", "http://127.0.0.1:5000/ws/2");
         std::env::set_var("MB_MIN_DELAY_MS", "0");
-        assert_eq!(configured_min_delay(), 0, "a mirror has no public rate floor");
+        assert_eq!(
+            configured_min_delay(),
+            0,
+            "a mirror has no public rate floor"
+        );
         std::env::remove_var("MB_MIN_DELAY_MS");
         assert_eq!(configured_min_delay(), DEFAULT_MIN_DELAY_MS);
         std::env::remove_var("MB_BASE_URL");
@@ -1525,7 +1582,13 @@ mod tests {
     #[test]
     fn leaves_other_lucene_metacharacters_alone() {
         // Inside a quoted phrase these are literal. Escaping them would corrupt real artist names.
-        for name in ["AC/DC", "Sunn O)))", "!!!", "+/-", "Godspeed You! Black Emperor"] {
+        for name in [
+            "AC/DC",
+            "Sunn O)))",
+            "!!!",
+            "+/-",
+            "Godspeed You! Black Emperor",
+        ] {
             assert_eq!(escape_lucene_phrase(name), name, "over-escaped: {name}");
         }
     }

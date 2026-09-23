@@ -93,7 +93,10 @@ fn first_audio_file(dir: &Path) -> Option<PathBuf> {
         .filter(|p| {
             p.is_file()
                 && p.extension()
-                    .map(|e| RELEASE_AUDIO_EXTENSIONS.contains(&e.to_string_lossy().to_lowercase().as_str()))
+                    .map(|e| {
+                        RELEASE_AUDIO_EXTENSIONS
+                            .contains(&e.to_string_lossy().to_lowercase().as_str())
+                    })
                     .unwrap_or(false)
         })
         .collect();
@@ -213,8 +216,12 @@ pub fn embed_cover_art(file_path: &Path, jpeg_bytes: &[u8]) -> Result<bool, Stri
 
 pub fn use_folder_image(folder_path: &Path, output_path: &Path) -> Option<&'static str> {
     for name in &[
-        "cover.jpg", "folder.jpg", "front.jpg",
-        "Cover.jpg", "Folder.jpg", "Front.jpg",
+        "cover.jpg",
+        "folder.jpg",
+        "front.jpg",
+        "Cover.jpg",
+        "Folder.jpg",
+        "Front.jpg",
     ] {
         let candidate = folder_path.join(name);
         if candidate.is_file() {
@@ -279,7 +286,12 @@ pub fn use_artist_folder_image(artist_folder: &Path, output_path: &Path) -> bool
 // artist still missing one.
 // ---------------------------------------------------------------------------
 
-async fn download_and_resize(client: &Client, url: &str, dest: &Path, max_px: u32) -> Result<(), String> {
+async fn download_and_resize(
+    client: &Client,
+    url: &str,
+    dest: &Path,
+    max_px: u32,
+) -> Result<(), String> {
     let bytes = client
         .get(url)
         .header("User-Agent", crate::mb::api::user_agent())
@@ -503,7 +515,12 @@ pub async fn download_artist_image(
 /// Point `Artist.image`/`imageUrl` at a just-stored `{slug}.jpg` (local filename and/or S3 public
 /// URL, matching whichever of `config.use_local()`/`use_s3()` is active). Called after
 /// `download_artist_image` returns `Ok(true)`.
-pub async fn record_artist_image(pool: &PgPool, config: &Config, artist_id: &str, artist_slug: &str) {
+pub async fn record_artist_image(
+    pool: &PgPool,
+    config: &Config,
+    artist_id: &str,
+    artist_slug: &str,
+) {
     if config.use_local() {
         let filename = format!("{}.jpg", artist_slug);
         sqlx::query(r#"UPDATE "Artist" SET image = $1, "updatedAt" = NOW() WHERE id = $2"#)
@@ -520,12 +537,14 @@ pub async fn record_artist_image(pool: &PgPool, config: &Config, artist_id: &str
                 public_url.trim_end_matches('/'),
                 artist_slug
             );
-            sqlx::query(r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#)
-                .bind(&image_url)
-                .bind(artist_id)
-                .execute(pool)
-                .await
-                .ok();
+            sqlx::query(
+                r#"UPDATE "Artist" SET "imageUrl" = $1, "updatedAt" = NOW() WHERE id = $2"#,
+            )
+            .bind(&image_url)
+            .bind(artist_id)
+            .execute(pool)
+            .await
+            .ok();
         }
     }
 }
@@ -727,7 +746,10 @@ mod tests {
         let img = image::RgbImage::from_pixel(4, 4, image::Rgb(rgb));
         let mut buf = Vec::new();
         image::DynamicImage::ImageRgb8(img)
-            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Jpeg)
+            .write_to(
+                &mut std::io::Cursor::new(&mut buf),
+                image::ImageFormat::Jpeg,
+            )
             .unwrap();
         buf
     }
@@ -789,7 +811,7 @@ mod tests {
     fn cover_file_wins_over_embedded_tag() {
         let dir = temp_dir("cover_wins");
         write_cover_file(&dir, "cover.jpg", [200, 0, 0]); // red
-        // Present but unreadable as audio - proves it's never touched.
+                                                          // Present but unreadable as audio - proves it's never touched.
         fs::write(dir.join("track.flac"), b"not a real flac file").unwrap();
 
         let out = dir.join("out.jpg");

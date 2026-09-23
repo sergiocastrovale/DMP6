@@ -13,7 +13,10 @@ use common::{
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
     s3::create_s3_client,
     statistics::update_statistics,
-    totals::{recompute_artist_completeness, update_artist_totals_for_artist, zero_totals_for_ownerless_artists},
+    totals::{
+        recompute_artist_completeness, update_artist_totals_for_artist,
+        zero_totals_for_ownerless_artists,
+    },
 };
 use sqlx::PgPool;
 use std::collections::HashSet;
@@ -44,15 +47,22 @@ pub struct ReleasePlan {
 }
 
 pub async fn build_plan(pool: &PgPool, local_release_id: &str) -> Option<ReleasePlan> {
-    let row: Option<(String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            r#"SELECT id, title, image, "imageUrl", "folderPath", "releaseId", "boxReleaseId"
+    let row: Option<(
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        r#"SELECT id, title, image, "imageUrl", "folderPath", "releaseId", "boxReleaseId"
                FROM "LocalRelease" WHERE id = $1"#,
-        )
-        .bind(local_release_id)
-        .fetch_optional(pool)
-        .await
-        .expect("Failed to query LocalRelease");
+    )
+    .bind(local_release_id)
+    .fetch_optional(pool)
+    .await
+    .expect("Failed to query LocalRelease");
 
     let (id, title, image, image_url, folder_path, release_id, box_release_id) = row?;
 
@@ -83,13 +93,12 @@ pub async fn build_plan(pool: &PgPool, local_release_id: &str) -> Option<Release
     .map(|(p,)| p)
     .collect();
 
-    let (track_count,): (i64,) = sqlx::query_as(
-        r#"SELECT COUNT(*) FROM "LocalReleaseTrack" WHERE "localReleaseId" = $1"#,
-    )
-    .bind(&id)
-    .fetch_one(pool)
-    .await
-    .unwrap_or((0,));
+    let (track_count,): (i64,) =
+        sqlx::query_as(r#"SELECT COUNT(*) FROM "LocalReleaseTrack" WHERE "localReleaseId" = $1"#)
+            .bind(&id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or((0,));
 
     let mut mb_candidates: HashSet<String> = HashSet::new();
     if let Some(rid) = &release_id {
@@ -167,7 +176,11 @@ pub async fn mb_is_orphaned(pool: &PgPool, mb_id: &str, own_release_id: &str) ->
     !still_needed
 }
 
-pub async fn execute_plan(pool: &PgPool, plan: &ReleasePlan, verdicts: &[MbVerdict]) -> Result<(), sqlx::Error> {
+pub async fn execute_plan(
+    pool: &PgPool,
+    plan: &ReleasePlan,
+    verdicts: &[MbVerdict],
+) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
 
     // LocalRelease cascades: tracks, members, LocalReleaseArtist, TrackRelatedArtist, favorites,
@@ -177,7 +190,11 @@ pub async fn execute_plan(pool: &PgPool, plan: &ReleasePlan, verdicts: &[MbVerdi
         .execute(&mut *tx)
         .await?;
 
-    let orphaned_mb: Vec<String> = verdicts.iter().filter(|v| v.orphaned).map(|v| v.id.clone()).collect();
+    let orphaned_mb: Vec<String> = verdicts
+        .iter()
+        .filter(|v| v.orphaned)
+        .map(|v| v.id.clone())
+        .collect();
     if !orphaned_mb.is_empty() {
         sqlx::query(r#"DELETE FROM "_ReleaseGenres" WHERE "B" = ANY($1::text[])"#)
             .bind(&orphaned_mb)
@@ -198,10 +215,21 @@ pub async fn execute_plan(pool: &PgPool, plan: &ReleasePlan, verdicts: &[MbVerdi
 }
 
 /// Entry point called from `main.rs` when `--release` is given.
-pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_confirm: bool, files: bool, dry_run: bool) {
+pub async fn run(
+    pool: &PgPool,
+    config: &Config,
+    local_release_id: &str,
+    skip_confirm: bool,
+    files: bool,
+    dry_run: bool,
+) {
     let Some(plan) = build_plan(pool, local_release_id).await else {
         error_log::log_error(&format!("No release found with id '{}'", local_release_id));
-        eprintln!("{} No release found with id '{}'", "✗".red(), local_release_id);
+        eprintln!(
+            "{} No release found with id '{}'",
+            "✗".red(),
+            local_release_id
+        );
         std::process::exit(1);
     };
 
@@ -211,12 +239,18 @@ pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_co
     let mut verdicts: Vec<MbVerdict> = Vec::new();
     for mb_id in &plan.mb_candidates {
         let orphaned = mb_is_orphaned(pool, mb_id, &plan.id).await;
-        verdicts.push(MbVerdict { id: mb_id.clone(), orphaned });
+        verdicts.push(MbVerdict {
+            id: mb_id.clone(),
+            orphaned,
+        });
     }
 
     println!("{}", "Plan".bright_cyan().bold());
     println!("{}", "----".bright_black());
-    println!("Local tracks    : {}", plan.track_count.to_string().bright_white());
+    println!(
+        "Local tracks    : {}",
+        plan.track_count.to_string().bright_white()
+    );
     if plan.folder_paths.is_empty() {
         println!("Folder(s)       : {}", "none on record".bright_black());
     } else {
@@ -228,7 +262,11 @@ pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_co
         println!("MB release      : {}", "none (unmatched)".bright_black());
     } else {
         for v in &verdicts {
-            let verb = if v.orphaned { "deleted".red() } else { "kept - still needed elsewhere".green() };
+            let verb = if v.orphaned {
+                "deleted".red()
+            } else {
+                "kept - still needed elsewhere".green()
+            };
             println!("MB release      : {} ({})", v.id.bright_white(), verb);
         }
     }
@@ -244,7 +282,12 @@ pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_co
     if dry_run {
         if files {
             if let Some(music_dir) = config.music_dir.as_deref() {
-                let result = crate::files::delete_release_folders(&plan.track_paths, &plan.folder_paths, music_dir, true);
+                let result = crate::files::delete_release_folders(
+                    &plan.track_paths,
+                    &plan.folder_paths,
+                    music_dir,
+                    true,
+                );
                 println!(
                     "  {} would remove {} file(s), {} folder(s)",
                     "✓".green(),
@@ -322,7 +365,12 @@ pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_co
 
     if files {
         if let Some(music_dir) = config.music_dir.as_deref() {
-            let result = crate::files::delete_release_folders(&plan.track_paths, &plan.folder_paths, music_dir, false);
+            let result = crate::files::delete_release_folders(
+                &plan.track_paths,
+                &plan.folder_paths,
+                music_dir,
+                false,
+            );
             println!(
                 "  {} removed {} file(s), {} folder(s)",
                 "✓".green(),
@@ -337,7 +385,10 @@ pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_co
                 );
             }
         } else {
-            eprintln!("  {} MUSIC_DIR is not configured - no files deleted", "✗".red());
+            eprintln!(
+                "  {} MUSIC_DIR is not configured - no files deleted",
+                "✗".red()
+            );
             error_log::log_error("--files requested but MUSIC_DIR is not configured");
         }
     }
@@ -353,12 +404,19 @@ pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_co
         update_artist_totals_for_artist(pool, aid).await.ok();
         recompute_artist_completeness(pool, aid).await.ok();
     }
-    zero_totals_for_ownerless_artists(pool, &touched_artist_ids).await.ok();
+    zero_totals_for_ownerless_artists(pool, &touched_artist_ids)
+        .await
+        .ok();
 
     if !touched_artist_ids.is_empty() {
-        let removed = index::deletion::delete_orphan_artists(pool, config, Some(&touched_artist_ids)).await;
+        let removed =
+            index::deletion::delete_orphan_artists(pool, config, Some(&touched_artist_ids)).await;
         if removed > 0 {
-            println!("  {} {} now-ownerless artist(s) removed", "✓".green(), removed);
+            println!(
+                "  {} {} now-ownerless artist(s) removed",
+                "✓".green(),
+                removed
+            );
         }
     }
 
@@ -366,5 +424,9 @@ pub async fn run(pool: &PgPool, config: &Config, local_release_id: &str, skip_co
     release_lock(pool).await;
 
     println!();
-    println!("{} {} deleted.", "✓".green().bold(), plan.title.bright_white());
+    println!(
+        "{} {} deleted.",
+        "✓".green().bold(),
+        plan.title.bright_white()
+    );
 }
