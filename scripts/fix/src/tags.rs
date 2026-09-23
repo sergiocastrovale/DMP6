@@ -1,4 +1,6 @@
+use common::tags::TagFile;
 use common::{config::Config, error_log};
+use lofty::tag::ItemKey;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
@@ -12,26 +14,19 @@ pub fn resolve_path(music_dir: &str, file_path: &str) -> PathBuf {
     }
 }
 
-pub fn write_album_artist(abs_path: &Path, value: &str) -> Result<(), String> {
-    use lofty::prelude::*;
-    use lofty::probe::Probe;
-    use lofty::tag::{ItemKey, ItemValue, TagItem};
-
-    let mut tagged = Probe::open(abs_path)
-        .map_err(|e| e.to_string())?
-        .read()
-        .map_err(|e| e.to_string())?;
-
-    if let Some(tag) = tagged.primary_tag_mut() {
-        tag.insert(TagItem::new(
-            ItemKey::AlbumArtist,
-            ItemValue::Text(value.to_string()),
-        ));
-        tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
-            .map_err(|e| e.to_string())?;
+fn open_tagged(abs_path: &Path) -> Result<TagFile, String> {
+    let tags = TagFile::open(abs_path)?;
+    if !tags.had_tag() {
+        return Err(format!("{} has no tag block", abs_path.display()));
     }
+    Ok(tags)
+}
 
-    bump_dir_mtime(abs_path);
+pub fn write_album_artist(abs_path: &Path, value: &str) -> Result<(), String> {
+    let mut tags = open_tagged(abs_path)?;
+    tags.set(ItemKey::AlbumArtist, value);
+    tags.save(abs_path)?;
+    common::images::bump_dir_mtime(abs_path);
     Ok(())
 }
 
@@ -68,6 +63,8 @@ pub async fn delete_artist_image(config: &Config, image_file: &str) {
     }
 }
 
+/// Renames `name_b` to `name_a` in the artist fields, including the multi-value credited-artist
+/// frames that index's embedded pairing reads (a leftover value there would recreate `name_b`).
 pub fn write_artist_tags(
     abs_path: &Path,
     artist: &str,
@@ -75,131 +72,55 @@ pub fn write_artist_tags(
     name_b: &str,
     name_a: &str,
 ) -> Result<(), String> {
-    use lofty::prelude::*;
-    use lofty::probe::Probe;
-    use lofty::tag::{ItemKey, ItemValue, TagItem};
-
-    let mut tagged = Probe::open(abs_path)
-        .map_err(|e| e.to_string())?
-        .read()
-        .map_err(|e| e.to_string())?;
-
-    if let Some(tag) = tagged.primary_tag_mut() {
-        tag.set_artist(artist.to_string());
-        tag.insert(TagItem::new(
-            ItemKey::AlbumArtist,
-            ItemValue::Text(album_artist.to_string()),
-        ));
-
-        // Picard-style multi-value credited-artist frames (TXXX:ARTISTS / TXXX:ALBUM_ARTISTS -> lofty's
-        // TrackArtists/AlbumArtists) are separate items from the plain Artist/AlbumArtist frame above and
-        // hold one artist name per item. index's Tier-0 embedded-pairing reads these directly, so a leftover
-        // occurrence of name_b here resurrects it as a fresh Artist row on the next index run even after the
-        // plain tags are fixed. `take` removes every item of the key (preserving order), each value gets the
-        // same whole-word replace, then they're pushed back to preserve multiplicity (`insert` would collapse
-        // them to one).
-        for key in [ItemKey::TrackArtists, ItemKey::AlbumArtists] {
-            let items: Vec<TagItem> = tag.take(key).collect();
-            for item in items {
-                match item.value() {
-                    ItemValue::Text(v) => {
-                        let new_v = common::artists::replace_artist_word(v, name_b, name_a);
-                        tag.push_unchecked(TagItem::new(key, ItemValue::Text(new_v)));
-                    }
-                    _ => tag.push_unchecked(item),
-                }
-            }
+    let mut tags = open_tagged(abs_path)?;
+    tags.set(ItemKey::TrackArtist, artist);
+    tags.set(ItemKey::AlbumArtist, album_artist);
+    for key in [ItemKey::TrackArtists, ItemKey::AlbumArtists] {
+        let values = tags.values(key);
+        if !values.is_empty() {
+            let renamed = values
+                .iter()
+                .map(|v| common::artists::replace_artist_word(v, name_b, name_a))
+                .collect();
+            tags.set_values(key, renamed);
         }
-
-        tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
-            .map_err(|e| e.to_string())?;
     }
-
-    bump_dir_mtime(abs_path);
+    tags.save(abs_path)?;
+    common::images::bump_dir_mtime(abs_path);
     Ok(())
 }
 
+const REVERTIBLE_FIELDS: [(&str, ItemKey); 4] = [
+    ("artist", ItemKey::TrackArtist),
+    ("albumArtist", ItemKey::AlbumArtist),
+    ("album", ItemKey::AlbumTitle),
+    ("year", ItemKey::RecordingDate),
+];
+
+/// The fields a fix may touch, as stored in `FixHistory.previousState`. An absent field is recorded
+/// as `null` so a revert can remove what the fix added.
 pub fn read_tags(abs_path: &Path) -> Result<serde_json::Value, String> {
-    use lofty::prelude::*;
-    use lofty::probe::Probe;
-    use lofty::tag::ItemKey;
-
-    let tagged = Probe::open(abs_path)
-        .map_err(|e| e.to_string())?
-        .read()
-        .map_err(|e| e.to_string())?;
-
-    let tag = tagged
-        .primary_tag()
-        .ok_or_else(|| "No primary tag".to_string())?;
-
-    let artist = tag.artist().map(|s| s.to_string());
-    let album_artist = tag.get_string(ItemKey::AlbumArtist).map(|s| s.to_string());
-    let album = tag.album().map(|s| s.to_string());
-    let year = tag.date().map(|d| d.year as u32);
-
+    let tags = open_tagged(abs_path)?;
     let mut obj = serde_json::Map::new();
-    if let Some(v) = artist {
-        obj.insert("artist".into(), json!(v));
+    for (name, key) in REVERTIBLE_FIELDS {
+        obj.insert(name.into(), tags.get(key).map_or(json!(null), |v| json!(v)));
     }
-    if let Some(v) = album_artist {
-        obj.insert("albumArtist".into(), json!(v));
-    }
-    if let Some(v) = album {
-        obj.insert("album".into(), json!(v));
-    }
-    if let Some(v) = year {
-        obj.insert("year".into(), json!(v));
-    }
-
     Ok(serde_json::Value::Object(obj))
 }
 
+/// Writes the fields present in `values`: a string sets it, a number sets a year, `null` removes it.
+/// Fields not mentioned are left alone.
 pub fn write_tags_from_json(abs_path: &Path, values: &serde_json::Value) -> Result<(), String> {
-    use lofty::prelude::*;
-    use lofty::probe::Probe;
-    use lofty::tag::{ItemKey, ItemValue, TagItem};
-
-    let mut tagged = Probe::open(abs_path)
-        .map_err(|e| e.to_string())?
-        .read()
-        .map_err(|e| e.to_string())?;
-
-    let tag = tagged
-        .primary_tag_mut()
-        .ok_or_else(|| "No primary tag".to_string())?;
-
-    if let Some(v) = values.get("albumArtist").and_then(|v| v.as_str()) {
-        tag.insert(TagItem::new(
-            ItemKey::AlbumArtist,
-            ItemValue::Text(v.to_string()),
-        ));
+    let mut tags = open_tagged(abs_path)?;
+    for (name, key) in REVERTIBLE_FIELDS {
+        match values.get(name) {
+            Some(serde_json::Value::String(v)) => tags.set(key, v),
+            Some(serde_json::Value::Number(n)) => tags.set(key, &n.to_string()),
+            Some(serde_json::Value::Null) => tags.remove(key),
+            _ => {}
+        }
     }
-    if let Some(v) = values.get("artist").and_then(|v| v.as_str()) {
-        tag.set_artist(v.to_string());
-    }
-    if let Some(v) = values.get("album").and_then(|v| v.as_str()) {
-        tag.set_album(v.to_string());
-    }
-    if let Some(v) = values.get("year").and_then(|v| v.as_u64()) {
-        use lofty::tag::items::Timestamp;
-        tag.set_date(Timestamp {
-            year: v as u16,
-            month: None,
-            day: None,
-            hour: None,
-            minute: None,
-            second: None,
-        });
-    }
-
-    tag.save_to_path(abs_path, lofty::config::WriteOptions::default())
-        .map_err(|e| e.to_string())?;
-
-    bump_dir_mtime(abs_path);
+    tags.save(abs_path)?;
+    common::images::bump_dir_mtime(abs_path);
     Ok(())
-}
-
-fn bump_dir_mtime(file_path: &Path) {
-    common::images::bump_dir_mtime(file_path);
 }

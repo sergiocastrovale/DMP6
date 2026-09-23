@@ -172,40 +172,14 @@ pub fn resolve_release_cover(folder_path: &Path, output_path: &Path) -> bool {
 // Cover art embedding (into audio file tags)
 // ---------------------------------------------------------------------------
 
+/// Embeds `jpeg_bytes` as the front cover when the file has a tag block and no picture yet.
 pub fn embed_cover_art(file_path: &Path, jpeg_bytes: &[u8]) -> Result<bool, String> {
-    use lofty::config::{ParseOptions, ParsingMode, WriteOptions};
-    use lofty::picture::{MimeType, Picture, PictureType};
-    use lofty::prelude::*;
-    use lofty::probe::Probe;
-
-    let parse_opts = ParseOptions::new()
-        .read_properties(false)
-        .parsing_mode(ParsingMode::Relaxed);
-
-    let mut tagged = Probe::open(file_path)
-        .map_err(|e| e.to_string())?
-        .options(parse_opts)
-        .read()
-        .map_err(|e| e.to_string())?;
-
-    let tag = match tagged.primary_tag_mut() {
-        Some(t) => t,
-        None => return Ok(false),
-    };
-
-    if !tag.pictures().is_empty() {
+    let mut tags = crate::tags::TagFile::open(file_path)?;
+    if !tags.had_tag() || tags.has_picture() {
         return Ok(false);
     }
-
-    let picture = Picture::unchecked(jpeg_bytes.to_vec())
-        .pic_type(PictureType::CoverFront)
-        .mime_type(MimeType::Jpeg)
-        .build();
-
-    tag.push_picture(picture);
-    tag.save_to_path(file_path, WriteOptions::default())
-        .map_err(|e| e.to_string())?;
-
+    tags.add_front_cover_jpeg(jpeg_bytes);
+    tags.save(file_path)?;
     bump_dir_mtime(file_path);
     Ok(true)
 }

@@ -3,7 +3,7 @@
 //! back. Guards the release-track vs recording slot mix-up `write_mb_ids`'s stale-recording self-heal
 //! corrects. Skips with a message when ffmpeg is not on PATH.
 
-use common::tags::{write_mb_ids, MbTagIds};
+use common::tags::{write_mb_ids, MbTagIds, TagFile};
 use lofty::prelude::*;
 use lofty::probe::Probe;
 use lofty::tag::ItemKey;
@@ -268,5 +268,143 @@ fn keeps_a_genuine_recording_id_without_force() {
             Some(OTHER_RECORDING),
             "{ext}"
         );
+    }
+}
+
+fn picard_mp3() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("dmp-tags-{}", cuid2::create_id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("picard.mp3");
+    let status = Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=48000:cl=mono",
+        ])
+        .args(["-t", "1", "-c:a", "libmp3lame", "-id3v2_version", "3"])
+        .args(["-metadata", "artist=Old Artist"])
+        .args(["-metadata", "album_artist=Old Artist"])
+        .args(["-metadata", &format!("MusicBrainz Album Id={ALBUM}")])
+        .args([
+            "-metadata",
+            &format!("MusicBrainz Release Track Id={RELEASE_TRACK}"),
+        ])
+        .arg(&file)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    file
+}
+
+fn assert_mb_frames_intact(file: &Path) {
+    assert_eq!(
+        ffprobe_tag(file, "MusicBrainz Album Id").as_deref(),
+        Some(ALBUM)
+    );
+    assert_eq!(
+        ffprobe_tag(file, "MusicBrainz Release Track Id").as_deref(),
+        Some(RELEASE_TRACK)
+    );
+}
+
+#[test]
+fn tag_file_text_edits_keep_musicbrainz_frames_on_mp3() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let file = picard_mp3();
+    let mut tags = TagFile::open(&file).unwrap();
+    assert!(tags.had_tag());
+    assert_eq!(
+        tags.get(ItemKey::AlbumArtist).as_deref(),
+        Some("Old Artist")
+    );
+    tags.set(ItemKey::AlbumArtist, "New Artist");
+    tags.set(ItemKey::TrackArtist, "New Artist");
+    tags.set(ItemKey::RecordingDate, "1975-03-01");
+    tags.save(&file).unwrap();
+
+    assert_mb_frames_intact(&file);
+    let reopened = TagFile::open(&file).unwrap();
+    assert_eq!(
+        reopened.get(ItemKey::AlbumArtist).as_deref(),
+        Some("New Artist")
+    );
+    assert_eq!(
+        reopened.get(ItemKey::TrackArtist).as_deref(),
+        Some("New Artist")
+    );
+    let date = reopened.get(ItemKey::RecordingDate);
+    assert!(
+        date.as_deref().is_some_and(|d| d.starts_with("1975")),
+        "date read back as {date:?}"
+    );
+}
+
+#[test]
+fn tag_file_remove_and_multi_value_edits_on_mp3() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let file = picard_mp3();
+    let mut tags = TagFile::open(&file).unwrap();
+    tags.set_values(
+        ItemKey::TrackArtists,
+        vec!["First".to_string(), "Second".to_string()],
+    );
+    tags.remove(ItemKey::AlbumArtist);
+    tags.save(&file).unwrap();
+
+    assert_mb_frames_intact(&file);
+    let reopened = TagFile::open(&file).unwrap();
+    assert_eq!(reopened.get(ItemKey::AlbumArtist), None);
+    assert_eq!(
+        reopened.values(ItemKey::TrackArtists),
+        vec!["First".to_string(), "Second".to_string()]
+    );
+}
+
+#[test]
+fn embed_cover_art_keeps_musicbrainz_frames_on_mp3() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let file = picard_mp3();
+    let mut jpeg = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(4, 4)
+        .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+        .unwrap();
+    assert!(common::images::embed_cover_art(&file, jpeg.get_ref()).unwrap());
+    assert!(
+        !common::images::embed_cover_art(&file, jpeg.get_ref()).unwrap(),
+        "a file that already has a picture is left alone"
+    );
+    assert_mb_frames_intact(&file);
+    assert!(TagFile::open(&file).unwrap().has_picture());
+}
+
+#[test]
+fn tag_file_text_edits_round_trip_in_every_format() {
+    if !ffmpeg_available() {
+        return;
+    }
+    for (ext, codec) in FORMATS {
+        let file = fixture(ext, codec);
+        let mut tags = TagFile::open(&file).unwrap();
+        tags.set(ItemKey::AlbumArtist, "Round Trip");
+        tags.save(&file).unwrap();
+        assert_eq!(
+            TagFile::open(&file)
+                .unwrap()
+                .get(ItemKey::AlbumArtist)
+                .as_deref(),
+            Some("Round Trip"),
+            "{ext}"
+        );
+        assert_eq!(title(&file).as_deref(), Some("Fixture Title"), "{ext}");
     }
 }
