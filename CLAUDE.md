@@ -239,5 +239,6 @@ NAS: `SERVER_HOST` (192.168.1.241), `DEPLOY_PATH` (`/mnt/SSD/web/dmp`), `MUSIC_D
 ## Env Vars
 
 See `web/.env.example`. Scripts-only:
+- `MB_USER_AGENT` — identifies the deployment to MusicBrainz/CAA (MB etiquette); `MB_BASE_URL` / `COVER_ART_ARCHIVE_URL` point at a mirror or a test stub.
 - `MB_MIN_DELAY_MS` — MB inter-request floor for index/sync/problems (default 1100, clamp 1100-10000). Raise only for genuine rate-limiting; doesn't affect MB's silent 503 load-shedding (absorbed, counted in run summary).
 - `MB_MAX_INFLIGHT` — concurrent MB requests (default 8, clamp 1-16). **Not a rate knob**: `RateLimiter` is one token schedule issuing 1 request per `MB_MIN_DELAY_MS` however many callers wait, and a clone is a handle onto that *same* schedule (never `RateLimiter::new()` per worker). MB is latency-bound here (cold query ~10s, warm 0.2s), so a serial client reaches ~0.15 of its ~0.91 req/s allowance; in-flight requests reclaim the idle wire, not extra rate. `X-RateLimit-Remaining` is a *shared global* pool (limit 1200/s), never our budget — nothing derived from it may undercut the floor.

@@ -282,7 +282,7 @@ pub fn use_artist_folder_image(artist_folder: &Path, output_path: &Path) -> bool
 async fn download_and_resize(client: &Client, url: &str, dest: &Path, max_px: u32) -> Result<(), String> {
     let bytes = client
         .get(url)
-        .header("User-Agent", crate::mb::api::USER_AGENT)
+        .header("User-Agent", crate::mb::api::user_agent())
         .send()
         .await
         .map_err(|e| format!("Download failed: {}", e))?
@@ -356,7 +356,7 @@ async fn get_wikidata_image(client: &Client, wikidata_url: &str) -> Option<Strin
     );
     let body = client
         .get(&api_url)
-        .header("User-Agent", crate::mb::api::USER_AGENT)
+        .header("User-Agent", crate::mb::api::user_agent())
         .send()
         .await
         .ok()?
@@ -394,7 +394,7 @@ async fn get_wikipedia_image(client: &Client, wikipedia_url: &str) -> Option<Str
     );
     let body = client
         .get(&api_url)
-        .header("User-Agent", crate::mb::api::USER_AGENT)
+        .header("User-Agent", crate::mb::api::user_agent())
         .send()
         .await
         .ok()?
@@ -415,7 +415,7 @@ async fn get_fanart_image(client: &Client, mb_artist_id: &str, api_key: &str) ->
     );
     let body = client
         .get(&url)
-        .header("User-Agent", crate::mb::api::USER_AGENT)
+        .header("User-Agent", crate::mb::api::user_agent())
         .send()
         .await
         .ok()?

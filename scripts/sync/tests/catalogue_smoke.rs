@@ -27,9 +27,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 
-// Mirrors sync::mb_api::USER_AGENT / RateLimiter's 1.1s floor — duplicated rather than reused since
-// this integration test can't reach into the `sync` binary crate's internal modules (no lib target).
-const MB_USER_AGENT: &str = "DMPv6/0.1.0 ( https://github.com/dmp )";
+// RateLimiter's 1.1s floor - this test issues its own discovery requests outside the limiter.
 const MB_MIN_DELAY: Duration = Duration::from_millis(1100);
 
 #[tokio::test]
@@ -51,13 +49,13 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
     // tracklist live (rather than hardcoding one from memory) means the fixture always matches
     // whatever MusicBrainz has right now.
     let search: serde_json::Value = http
-        .get("https://musicbrainz.org/ws/2/release/")
+        .get(format!("{}/release/", common::mb::api::mb_base()))
         .query(&[
             ("query", "release:\"The Dark Side of the Moon\" AND artist:\"Pink Floyd\" AND status:official"),
             ("fmt", "json"),
             ("limit", "5"),
         ])
-        .header("User-Agent", MB_USER_AGENT)
+        .header("User-Agent", common::mb::api::user_agent())
         .send().await.expect("MB search request failed")
         .json().await.expect("MB search response not JSON");
     let release_id = search["releases"][0]["id"]
@@ -69,12 +67,12 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
 
     tokio::time::sleep(MB_MIN_DELAY).await;
     let detail: serde_json::Value = http
-        .get(format!("https://musicbrainz.org/ws/2/release/{release_id}"))
+        .get(format!("{}/release/{release_id}", common::mb::api::mb_base()))
         .query(&[
             ("inc", "recordings+artist-credits+release-groups"),
             ("fmt", "json"),
         ])
-        .header("User-Agent", MB_USER_AGENT)
+        .header("User-Agent", common::mb::api::user_agent())
         .send()
         .await
         .expect("MB release lookup failed")

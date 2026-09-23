@@ -10,15 +10,19 @@ pub async fn download_cover_art(
     release_group_id: &str,
 ) -> Result<Option<Vec<u8>>, String> {
     let urls = [
-        format!("https://coverartarchive.org/release/{}/front-500", release_id),
-        format!("https://coverartarchive.org/release-group/{}/front-500", release_group_id),
+        format!("{}/release/{}/front-500", common::mb::api::cover_art_base(), release_id),
+        format!(
+            "{}/release-group/{}/front-500",
+            common::mb::api::cover_art_base(),
+            release_group_id
+        ),
     ];
 
     let mut bytes_result = None;
     for url in &urls {
         let resp = client
             .get(url)
-            .header("User-Agent", crate::mb_api::USER_AGENT)
+            .header("User-Agent", common::mb::api::user_agent())
             .send()
             .await
             .map_err(|e| format!("CAA request failed: {}", e))?;

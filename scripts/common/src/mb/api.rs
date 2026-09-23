@@ -1,13 +1,50 @@
 use crate::error_log;
 use reqwest::Client;
+use std::sync::LazyLock;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::time::sleep;
 
 use super::names::{mb_artist_exact, names_are_similar};
 use super::types::*;
 
-pub const MB_BASE: &str = "https://musicbrainz.org/ws/2";
-pub const USER_AGENT: &str = "DMPv6/0.1.0 ( https://github.com/dmp )";
+static MB_BASE: LazyLock<String> = LazyLock::new(|| {
+    env_url("MB_BASE_URL").unwrap_or_else(|| "https://musicbrainz.org/ws/2".to_string())
+});
+static COVER_ART_BASE: LazyLock<String> = LazyLock::new(|| {
+    env_url("COVER_ART_ARCHIVE_URL").unwrap_or_else(|| "https://coverartarchive.org".to_string())
+});
+static USER_AGENT: LazyLock<String> = LazyLock::new(|| {
+    std::env::var("MB_USER_AGENT")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| {
+            format!("DMP/{} ( https://github.com/dmp )", env!("CARGO_PKG_VERSION"))
+        })
+});
+
+fn env_url(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|v| v.trim().trim_end_matches('/').to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// MusicBrainz web service root (`MB_BASE_URL`, default the public server).
+pub fn mb_base() -> &'static str {
+    &MB_BASE
+}
+
+/// Cover Art Archive root (`COVER_ART_ARCHIVE_URL`, default the public server).
+pub fn cover_art_base() -> &'static str {
+    &COVER_ART_BASE
+}
+
+/// User-Agent for every MusicBrainz-family request (`MB_USER_AGENT`). MusicBrainz asks each
+/// deployment to identify itself with an application name, version and contact.
+pub fn user_agent() -> &'static str {
+    &USER_AGENT
+}
 
 /// Escape a value for use inside a **quoted** Lucene phrase (`field:"…"`), which is how every
 /// search query here is built.
@@ -381,7 +418,7 @@ pub async fn mb_get(
 
         let sent = client
             .get(url)
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", user_agent())
             .header("Accept", "application/json")
             .send()
             .await;
@@ -536,7 +573,7 @@ async fn mb_artist_candidates(
     let quoted = urlencoding::encode(&phrase);
     let url = format!(
         "{}/artist/?query=artist:{}&limit=5&fmt=json",
-        MB_BASE, quoted
+        mb_base(), quoted
     );
     let body = mb_get(client, &url, limiter).await?;
     let result: MbArtistSearchResult =
@@ -576,7 +613,7 @@ pub async fn mb_search_artist_exact(
     let quoted = urlencoding::encode(&phrase);
     let url = format!(
         "{}/artist/?query=artist:{}&limit=5&inc=aliases&fmt=json",
-        MB_BASE, quoted
+        mb_base(), quoted
     );
     let body = mb_get(client, &url, limiter).await?;
     let result: MbArtistSearchResult =
@@ -598,7 +635,7 @@ pub async fn mb_lookup_artist(
     // tag spells the name differently from MB's own ("N.W.W." for "Nurse With Wound"). Without aliases
     // here, `mb_artist_exact` silently degrades to bare-name equality and rejects a real, legitimate
     // alias spelling.
-    let url = format!("{}/artist/{}?inc=aliases&fmt=json", MB_BASE, mb_artist_id);
+    let url = format!("{}/artist/{}?inc=aliases&fmt=json", mb_base(), mb_artist_id);
     let body = mb_get(client, &url, limiter).await?;
 
     #[derive(serde::Deserialize)]
@@ -624,7 +661,7 @@ pub async fn mb_lookup_release_group_artist(
 ) -> Result<Vec<MbArtistMatch>, String> {
     let url = format!(
         "{}/release-group/{}?inc=artist-credits&fmt=json",
-        MB_BASE, mb_release_group_id
+        mb_base(), mb_release_group_id
     );
     let body = mb_get(client, &url, limiter).await?;
 
@@ -671,7 +708,7 @@ pub async fn mb_search_release_group_credits(
     let encoded = urlencoding::encode(&query);
     let url = format!(
         "{}/release-group/?query={}&limit=1&fmt=json",
-        MB_BASE, encoded
+        mb_base(), encoded
     );
     let body = mb_get(client, &url, limiter).await?;
 
@@ -769,7 +806,7 @@ pub async fn mb_search_release_groups(
     let encoded = urlencoding::encode(&query);
     let url = format!(
         "{}/release-group/?query={}&limit=5&fmt=json",
-        MB_BASE, encoded
+        mb_base(), encoded
     );
     let body = mb_get(client, &url, limiter).await?;
 
@@ -831,7 +868,7 @@ pub async fn mb_get_artist_detail(
 ) -> Result<MbArtistDetail, String> {
     let url = format!(
         "{}/artist/{}?inc=url-rels+genres+tags&fmt=json",
-        MB_BASE, mb_id
+        mb_base(), mb_id
     );
     let body = mb_get(client, &url, limiter).await?;
     serde_json::from_str(&body).map_err(|e| format!("Parse error: {}", e))
@@ -849,7 +886,7 @@ pub async fn mb_get_release_groups(
     loop {
         let url = format!(
             "{}/release-group?artist={}&limit={}&offset={}&fmt=json",
-            MB_BASE, mb_id, limit, offset
+            mb_base(), mb_id, limit, offset
         );
         let body = mb_get(client, &url, limiter).await?;
         let result: MbReleaseGroupList =
@@ -941,7 +978,7 @@ pub async fn mb_get_official_artist_catalogue(
     loop {
         let url = format!(
             "{}/release?artist={}&status=official&type=album|ep&inc=release-groups+recordings&limit={}&offset={}&fmt=json",
-            MB_BASE, mb_id, limit, offset
+            mb_base(), mb_id, limit, offset
         );
         let body = mb_get(client, &url, limiter).await?;
         let result: BrowsedReleaseList =
@@ -1023,7 +1060,7 @@ pub async fn mb_get_release_tracks(
     loop {
         let url = format!(
             "{}/release?release-group={}&inc=recordings&limit={}&offset={}&fmt=json",
-            MB_BASE, release_group_id, limit, offset
+            mb_base(), release_group_id, limit, offset
         );
         let body = mb_get(client, &url, limiter).await?;
         let result: MbReleaseList =
@@ -1074,7 +1111,7 @@ pub async fn mb_get_release_by_id(
 ) -> Result<ReleaseById, String> {
     let url = format!(
         "{}/release/{}?inc=recordings+release-groups&fmt=json",
-        MB_BASE, release_id
+        mb_base(), release_id
     );
     let body = mb_get(client, &url, limiter).await?;
 
