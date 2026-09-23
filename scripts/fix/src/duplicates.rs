@@ -113,12 +113,7 @@ async fn merge(
         }
     }
 
-    // Fetch B's image path before B disappears (used for a best-effort file delete after commit).
-    let img: Option<(Option<String>,)> =
-        sqlx::query_as(r#"SELECT image FROM "Artist" WHERE id = $1"#)
-            .bind(artist_b)
-            .fetch_optional(pool)
-            .await?;
+    let b_images = common::images::artist_images(pool, &[artist_b.to_string()]).await?;
 
     // Everything below is one atomic merge - a crash mid-way must not leave B half-merged (double
     // work on re-run) or drop B's genres/URLs/play count/in-flight downloads on the floor.
@@ -239,12 +234,7 @@ async fn merge(
 
     tx.commit().await?;
 
-    // Image file delete is a best-effort side effect on disk/S3, not part of the atomic DB merge.
-    if let Some((Some(image_file),)) = img {
-        if !image_file.is_empty() {
-            crate::tags::delete_artist_image(config, &image_file).await;
-        }
-    }
+    common::images::delete_artist_image_files(config, &b_images).await;
 
     Ok(affected)
 }

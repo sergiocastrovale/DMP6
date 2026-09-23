@@ -5,13 +5,11 @@
 //! `MusicBrainzRelease` this release was matched to is deleted only if nothing else still needs it -
 //! a duplicate copy bound to the same edition, a box parent, or a dissolved disc's track links.
 
-use crate::images::{delete_from_s3, extract_s3_key};
 use colored::*;
 use common::{
     config::Config,
     error_log,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
-    s3::create_s3_client,
     statistics::update_statistics,
     totals::{
         recompute_artist_completeness, update_artist_totals_for_artist,
@@ -46,7 +44,10 @@ pub struct ReleasePlan {
     pub credited_artist_ids: Vec<String>,
 }
 
-pub async fn build_plan(pool: &PgPool, local_release_id: &str) -> Option<ReleasePlan> {
+pub async fn build_plan(
+    pool: &PgPool,
+    local_release_id: &str,
+) -> Result<Option<ReleasePlan>, sqlx::Error> {
     let row: Option<(
         String,
         String,
@@ -61,18 +62,18 @@ pub async fn build_plan(pool: &PgPool, local_release_id: &str) -> Option<Release
     )
     .bind(local_release_id)
     .fetch_optional(pool)
-    .await
-    .expect("Failed to query LocalRelease");
+    .await?;
 
-    let (id, title, image, image_url, folder_path, release_id, box_release_id) = row?;
+    let Some((id, title, image, image_url, folder_path, release_id, box_release_id)) = row else {
+        return Ok(None);
+    };
 
     let member_paths: Vec<String> = sqlx::query_as::<_, (String,)>(
         r#"SELECT "folderPath" FROM "LocalReleaseMember" WHERE "localReleaseId" = $1"#,
     )
     .bind(&id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default()
+    .await?
     .into_iter()
     .map(|(p,)| p)
     .collect();
@@ -87,8 +88,7 @@ pub async fn build_plan(pool: &PgPool, local_release_id: &str) -> Option<Release
     )
     .bind(&id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default()
+    .await?
     .into_iter()
     .map(|(p,)| p)
     .collect();
@@ -97,8 +97,7 @@ pub async fn build_plan(pool: &PgPool, local_release_id: &str) -> Option<Release
         sqlx::query_as(r#"SELECT COUNT(*) FROM "LocalReleaseTrack" WHERE "localReleaseId" = $1"#)
             .bind(&id)
             .fetch_one(pool)
-            .await
-            .unwrap_or((0,));
+            .await?;
 
     let mut mb_candidates: HashSet<String> = HashSet::new();
     if let Some(rid) = &release_id {
@@ -113,8 +112,7 @@ pub async fn build_plan(pool: &PgPool, local_release_id: &str) -> Option<Release
     )
     .bind(&id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default()
+    .await?
     .into_iter()
     .map(|(a,)| a)
     .collect();
@@ -126,13 +124,12 @@ pub async fn build_plan(pool: &PgPool, local_release_id: &str) -> Option<Release
     )
     .bind(&id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default()
+    .await?
     .into_iter()
     .map(|(a,)| a)
     .collect();
 
-    Some(ReleasePlan {
+    Ok(Some(ReleasePlan {
         id,
         title,
         image,
@@ -143,7 +140,7 @@ pub async fn build_plan(pool: &PgPool, local_release_id: &str) -> Option<Release
         mb_candidates: mb_candidates.into_iter().collect(),
         owner_artist_ids,
         credited_artist_ids,
-    })
+    }))
 }
 
 /// One MB candidate, orphaned or not - drives both the plan printout and the deletion query.
@@ -166,6 +163,11 @@ pub async fn mb_is_orphaned(pool: &PgPool, mb_id: &str, own_release_id: &str) ->
              SELECT 1 FROM "LocalReleaseTrack" lt
              JOIN "MusicBrainzReleaseTrack" mt ON mt.id = lt."mbTrackId"
              WHERE mt."releaseId" = $1 AND lt."localReleaseId" <> $2
+           ) OR EXISTS (
+             SELECT 1 FROM "MusicBrainzReleaseMedium" md
+             WHERE md."equivalentReleaseId" = $1 AND md."releaseId" <> $1
+           ) OR EXISTS (
+             SELECT 1 FROM "MusicBrainzRelease" m WHERE m.id = $1 AND m.status = 'MISSING'
            )"#,
     )
     .bind(mb_id)
@@ -176,41 +178,32 @@ pub async fn mb_is_orphaned(pool: &PgPool, mb_id: &str, own_release_id: &str) ->
     !still_needed
 }
 
+/// Deletes the release, then the MusicBrainz releases and cover nothing else uses any more.
 pub async fn execute_plan(
     pool: &PgPool,
+    config: &Config,
     plan: &ReleasePlan,
-    verdicts: &[MbVerdict],
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
-    // LocalRelease cascades: tracks, members, LocalReleaseArtist, TrackRelatedArtist, favorites,
-    // playlist rows, issues. DownloadedRelease.localReleaseId is set NULL (onDelete: SetNull).
+    // Cascades: tracks, members, LocalReleaseArtist, TrackRelatedArtist, favorites, playlist rows,
+    // issues. DownloadedRelease.localReleaseId is set NULL.
     sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = $1"#)
         .bind(&plan.id)
-        .execute(&mut *tx)
+        .execute(pool)
         .await?;
 
-    let orphaned_mb: Vec<String> = verdicts
+    common::cleanup::delete_orphaned_mb_releases(
+        pool,
+        common::cleanup::MbSweepScope::Releases(&plan.mb_candidates),
+    )
+    .await?;
+
+    let images: Vec<String> = plan
+        .image
         .iter()
-        .filter(|v| v.orphaned)
-        .map(|v| v.id.clone())
+        .filter(|s| !s.is_empty())
+        .cloned()
         .collect();
-    if !orphaned_mb.is_empty() {
-        sqlx::query(r#"DELETE FROM "_ReleaseGenres" WHERE "B" = ANY($1::text[])"#)
-            .bind(&orphaned_mb)
-            .execute(&mut *tx)
-            .await?;
-        // Only status <> 'MISSING': a MISSING placeholder is the re-downloadable stub and must never
-        // be swept here even if nothing points at it anymore - retiring one is sync's job, not this.
-        sqlx::query(
-            r#"DELETE FROM "MusicBrainzRelease" WHERE id = ANY($1::text[]) AND status <> 'MISSING'"#,
-        )
-        .bind(&orphaned_mb)
-        .execute(&mut *tx)
-        .await?;
-    }
-
-    tx.commit().await?;
+    common::images::delete_unreferenced_release_images(pool, config, &images).await;
     Ok(())
 }
 
@@ -223,7 +216,15 @@ pub async fn run(
     files: bool,
     dry_run: bool,
 ) {
-    let Some(plan) = build_plan(pool, local_release_id).await else {
+    let plan = match build_plan(pool, local_release_id).await {
+        Ok(plan) => plan,
+        Err(e) => {
+            error_log::log_error(&format!("Database error: {}", e));
+            eprintln!("{} Database error: {}", "✗".red(), e);
+            std::process::exit(1);
+        }
+    };
+    let Some(plan) = plan else {
         error_log::log_error(&format!("No release found with id '{}'", local_release_id));
         eprintln!(
             "{} No release found with id '{}'",
@@ -324,43 +325,12 @@ pub async fn run(
         }
     };
 
-    // Images deleted before the transaction, same ordering as the artist path - once the row is
-    // gone there is nothing left telling us which files to remove.
-    let use_local = config.use_local();
-    let use_s3 = config.use_s3();
-    let has_local_img = plan.image.as_ref().map_or(false, |s| !s.is_empty());
-    let has_s3_img = plan.image_url.as_ref().map_or(false, |s| !s.is_empty());
-    if has_local_img || has_s3_img {
-        let release_img_dir = std::path::PathBuf::from(&config.image_dir).join("releases");
-        if use_local && has_local_img {
-            std::fs::remove_file(release_img_dir.join(plan.image.as_ref().unwrap())).ok();
-        }
-        if use_s3 && has_s3_img {
-            if let Some(bucket) = &config.storage_bucket {
-                if let Some(client) = create_s3_client(config).await {
-                    if let Some(key) = extract_s3_key(plan.image_url.as_ref().unwrap()) {
-                        delete_from_s3(&client, bucket, &key).await;
-                    }
-                }
-            }
-        }
-    }
-
     println!("Deleting...");
-    if let Err(e) = execute_plan(pool, &plan, &verdicts).await {
+    if let Err(e) = execute_plan(pool, config, &plan).await {
         error_log::log_error(&format!("Database error: {}", e));
         eprintln!("  {} Database error: {}", "✗".red(), e);
         release_lock(pool).await;
         std::process::exit(1);
-    }
-
-    // Non-critical FolderScan cleanup, outside the transaction - same as the artist path.
-    if !plan.folder_paths.is_empty() {
-        sqlx::query(r#"DELETE FROM "FolderScan" WHERE "folderPath" = ANY($1::text[])"#)
-            .bind(&plan.folder_paths)
-            .execute(pool)
-            .await
-            .ok();
     }
 
     if files {

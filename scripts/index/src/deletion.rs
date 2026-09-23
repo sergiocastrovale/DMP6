@@ -1,7 +1,12 @@
+use common::cleanup::{
+    delete_orphaned_mb_releases as delete_orphaned_mb_releases_in, MbSweepScope, ARTIST_UNLINKED,
+};
 use common::config::Config;
 use common::error_log::log_warn;
 use common::filters::escape_like;
-use common::images::{delete_artist_images, delete_release_images};
+use common::images::{
+    artist_images, delete_artist_image_files, delete_unreferenced_release_images, release_images,
+};
 use sqlx::PgPool;
 use std::collections::HashSet;
 use std::path::Path;
@@ -163,15 +168,16 @@ pub async fn delete_removed_tracks(
 /// Only an unfiltered run has the whole picture, so only an unfiltered run sweeps globally.
 pub type ArtistScope<'a> = Option<&'a [String]>;
 
-/// Delete LocalRelease rows that have no tracks left. Cleans images (local + S3) first.
-/// Also deletes orphan MusicBrainzRelease rows that no LocalRelease references anymore.
+/// Delete `LocalRelease` rows that have no tracks left, the MusicBrainz releases only they used, and
+/// then the covers nothing references any more.
 ///
 /// Scoped to releases owned by `scope`'s artists when it is `Some`. An *ownerless* empty release is
-/// deliberately left to the global pass - nothing attributes it to the artists in scope.
+/// left to the global pass - nothing attributes it to the artists in scope.
 pub async fn delete_empty_releases(pool: &PgPool, config: &Config, scope: ArtistScope<'_>) -> u64 {
-    let rows: Vec<(String, Option<String>)> = match scope {
-        Some(artist_ids) => sqlx::query_as(
-            r#"SELECT lr.id, lr."releaseId" FROM "LocalRelease" lr
+    let rows: Result<Vec<(String, Option<String>)>, sqlx::Error> = match scope {
+        Some(artist_ids) => {
+            sqlx::query_as(
+                r#"SELECT lr.id, lr."releaseId" FROM "LocalRelease" lr
                WHERE NOT EXISTS (
                        SELECT 1 FROM "LocalReleaseTrack" t WHERE t."localReleaseId" = lr.id
                      )
@@ -179,137 +185,113 @@ pub async fn delete_empty_releases(pool: &PgPool, config: &Config, scope: Artist
                        SELECT 1 FROM "LocalReleaseArtist" lra
                        WHERE lra."localReleaseId" = lr.id AND lra."artistId" = ANY($1::text[])
                      )"#,
-        )
-        .bind(artist_ids)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default(),
-        None => sqlx::query_as(
-            r#"SELECT lr.id, lr."releaseId" FROM "LocalRelease" lr
-               WHERE NOT EXISTS (
-                   SELECT 1 FROM "LocalReleaseTrack" t WHERE t."localReleaseId" = lr.id
-               )"#,
-        )
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default(),
-    };
-
-    if rows.is_empty() {
-        return 0;
-    }
-
-    let release_ids: Vec<String> = rows.iter().map(|(id, _)| id.clone()).collect();
-    let mb_release_ids: Vec<String> = rows.iter().filter_map(|(_, mb)| mb.clone()).collect();
-
-    delete_release_images(pool, config, &release_ids).await;
-
-    let result = sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = ANY($1::text[])"#)
-        .bind(&release_ids)
-        .execute(pool)
-        .await;
-    let deleted = result.map(|r| r.rows_affected()).unwrap_or(0);
-
-    // Clean up MB releases that no LocalRelease points to anymore
-    if !mb_release_ids.is_empty() {
-        sqlx::query(
-            r#"DELETE FROM "MusicBrainzRelease" m
-               WHERE m.id = ANY($1::text[])
-                 AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)"#,
-        )
-        .bind(&mb_release_ids)
-        .execute(pool)
-        .await
-        .ok();
-    }
-
-    deleted
-}
-
-/// Scoped to releases credited to `scope`'s artists when it is `Some`.
-///
-/// `NOT EXISTS` rather than the old `NOT IN (... WHERE "releaseId" IS NOT NULL)`: `NOT IN` over a
-/// nullable column yields UNKNOWN for every row the moment one NULL slips into the subquery, which is
-/// what that `IS NOT NULL` guard was there to paper over. `NOT EXISTS` has no such trap and plans
-/// better as an anti-join.
-pub async fn delete_orphaned_mb_releases(pool: &PgPool, scope: ArtistScope<'_>) -> u64 {
-    let result = match scope {
-        Some(artist_ids) => {
-            sqlx::query(
-                r#"DELETE FROM "MusicBrainzRelease" m
-                   WHERE m.status <> 'MISSING'
-                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)
-                     AND EXISTS (
-                           SELECT 1 FROM "MusicBrainzReleaseArtist" mra
-                           WHERE mra."releaseId" = m.id AND mra."artistId" = ANY($1::text[])
-                         )"#,
             )
             .bind(artist_ids)
-            .execute(pool)
+            .fetch_all(pool)
             .await
         }
         None => {
-            sqlx::query(
-                r#"DELETE FROM "MusicBrainzRelease" m
-                   WHERE m.status <> 'MISSING'
-                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)"#,
+            sqlx::query_as(
+                r#"SELECT lr.id, lr."releaseId" FROM "LocalRelease" lr
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM "LocalReleaseTrack" t WHERE t."localReleaseId" = lr.id
+               )"#,
             )
-            .execute(pool)
+            .fetch_all(pool)
             .await
         }
     };
-    result.map(|r| r.rows_affected()).unwrap_or(0)
+    let rows = match rows {
+        Ok(rows) if !rows.is_empty() => rows,
+        Ok(_) => return 0,
+        Err(e) => {
+            log_warn(&format!("empty-release lookup failed: {e}"));
+            return 0;
+        }
+    };
+
+    let release_ids: Vec<String> = rows.iter().map(|(id, _)| id.clone()).collect();
+    let mb_release_ids: Vec<String> = rows.iter().filter_map(|(_, mb)| mb.clone()).collect();
+    let images = release_images(pool, &release_ids).await.unwrap_or_default();
+
+    let deleted = match sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = ANY($1::text[])"#)
+        .bind(&release_ids)
+        .execute(pool)
+        .await
+    {
+        Ok(r) => r.rows_affected(),
+        Err(e) => {
+            log_warn(&format!("empty-release delete failed: {e}"));
+            return 0;
+        }
+    };
+
+    if let Err(e) =
+        delete_orphaned_mb_releases_in(pool, MbSweepScope::Releases(&mb_release_ids)).await
+    {
+        log_warn(&format!("orphaned MusicBrainz release sweep failed: {e}"));
+    }
+    delete_unreferenced_release_images(pool, config, &images).await;
+    deleted
 }
 
-/// Delete Artist rows with no link left in ANY of the three link tables. Cleans images first.
-///
-/// `TrackRelatedArtist` must be one of the three: an MB-verified credit artist ("appears on" only -
-/// Count Basie guesting on a Sinatra album without owning a release here) is a legitimate row whose
-/// *only* link is a credit. Leaving that table out deletes every such artist the run just created and
-/// cascades their credits away - the exact data-loss bug this pass once shipped. Mirrors the orphan
-/// rule in `audit`'s scripts/audit/src/orphans.rs.
+/// Orphaned `MusicBrainzRelease` rows credited to `scope`'s artists, or library-wide when `None`.
+pub async fn delete_orphaned_mb_releases(pool: &PgPool, scope: ArtistScope<'_>) -> u64 {
+    let sweep = match scope {
+        Some(artist_ids) => MbSweepScope::Artists(artist_ids),
+        None => MbSweepScope::All,
+    };
+    delete_orphaned_mb_releases_in(pool, sweep)
+        .await
+        .unwrap_or_else(|e| {
+            log_warn(&format!("orphaned MusicBrainz release sweep failed: {e}"));
+            0
+        })
+}
+
+/// Delete `Artist` rows nothing refers to (`common::cleanup::ARTIST_UNLINKED`), then their images.
 /// Scoped to `scope`'s own artist ids when it is `Some` - a filtered run may retire an artist it just
 /// emptied, never one it never looked at.
 pub async fn delete_orphan_artists(pool: &PgPool, config: &Config, scope: ArtistScope<'_>) -> u64 {
-    // `manuallyAdded` (./add, CLAUDE.md Data Model) is excluded: an artist added before owning any
-    // files has no links yet by design, and must survive until the catalogue-gaps pass or a real
-    // release gives it one. Mirrored in scripts/audit/src/orphans.rs - the two must match.
-    const UNLINKED: &str = r#"a."primaryArtistId" IS NULL
-           AND NOT a."manuallyAdded"
-           AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = a.id)
-           AND NOT EXISTS (SELECT 1 FROM "MusicBrainzReleaseArtist" x WHERE x."artistId" = a.id)
-           AND NOT EXISTS (SELECT 1 FROM "TrackRelatedArtist" x WHERE x."artistId" = a.id)"#;
-
-    let ids: Vec<(String,)> = match scope {
-        Some(artist_ids) => sqlx::query_as(&format!(
-            r#"SELECT a.id FROM "Artist" a WHERE a.id = ANY($1::text[]) AND {}"#,
-            UNLINKED
-        ))
-        .bind(artist_ids)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default(),
-        None => sqlx::query_as(&format!(
-            r#"SELECT a.id FROM "Artist" a WHERE {}"#,
-            UNLINKED
-        ))
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default(),
+    let ids: Result<Vec<String>, sqlx::Error> =
+        match scope {
+            Some(artist_ids) => sqlx::query_scalar(&format!(
+                r#"SELECT a.id FROM "Artist" a WHERE a.id = ANY($1::text[]) AND {ARTIST_UNLINKED}"#
+            ))
+            .bind(artist_ids)
+            .fetch_all(pool)
+            .await,
+            None => {
+                sqlx::query_scalar(&format!(
+                    r#"SELECT a.id FROM "Artist" a WHERE {ARTIST_UNLINKED}"#
+                ))
+                .fetch_all(pool)
+                .await
+            }
+        };
+    let artist_ids = match ids {
+        Ok(ids) if !ids.is_empty() => ids,
+        Ok(_) => return 0,
+        Err(e) => {
+            log_warn(&format!("orphan-artist lookup failed: {e}"));
+            return 0;
+        }
     };
 
-    if ids.is_empty() {
-        return 0;
-    }
-
-    let artist_ids: Vec<String> = ids.into_iter().map(|(id,)| id).collect();
-    delete_artist_images(pool, config, &artist_ids).await;
-
-    let result = sqlx::query(r#"DELETE FROM "Artist" WHERE id = ANY($1::text[])"#)
+    let images = artist_images(pool, &artist_ids).await.unwrap_or_default();
+    let deleted = match sqlx::query(r#"DELETE FROM "Artist" WHERE id = ANY($1::text[])"#)
         .bind(&artist_ids)
         .execute(pool)
-        .await;
-    result.map(|r| r.rows_affected()).unwrap_or(0)
+        .await
+    {
+        Ok(r) => r.rows_affected(),
+        Err(e) => {
+            log_warn(&format!("orphan-artist delete failed: {e}"));
+            return 0;
+        }
+    };
+    delete_artist_image_files(config, &images).await;
+    deleted
 }
 
 /// After indexing all folders, find folders that were previously indexed but

@@ -579,120 +579,151 @@ pub fn bump_dir_mtime(file_path: &Path) {
 }
 
 // ---------------------------------------------------------------------------
-// Image deletion helpers
+// Image deletion
+//
+// Two steps: read what a set of rows points at before deleting them, then remove the files once the
+// deletion has committed. A release cover is content-addressed and may be shared by other releases,
+// so it goes only when no remaining row references it.
 // ---------------------------------------------------------------------------
 
-pub async fn delete_artist_images(pool: &PgPool, config: &Config, artist_ids: &[String]) {
-    if artist_ids.is_empty() {
-        return;
-    }
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ArtistImage {
+    pub slug: String,
+    pub image: Option<String>,
+    #[sqlx(rename = "imageUrl")]
+    pub image_url: Option<String>,
+}
 
-    let rows: Vec<(String, Option<String>, Option<String>)> = match sqlx::query_as(
-        r#"SELECT slug, image, "imageUrl" FROM "Artist" WHERE id = ANY($1::text[])"#,
+pub async fn artist_images(
+    pool: &PgPool,
+    artist_ids: &[String],
+) -> Result<Vec<ArtistImage>, sqlx::Error> {
+    if artist_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    sqlx::query_as(
+        r#"SELECT slug, image, "imageUrl" FROM "Artist"
+           WHERE id = ANY($1::text[]) AND (image IS NOT NULL OR "imageUrl" IS NOT NULL)"#,
     )
     .bind(artist_ids)
     .fetch_all(pool)
     .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            crate::error_log::log_warn(&format!("artist image lookup failed: {}", e));
-            eprintln!("  Warning: artist image lookup failed: {}", e);
-            return;
-        }
-    };
-
-    if rows.is_empty() {
-        return;
-    }
-
-    let artist_dir = PathBuf::from(&config.image_dir).join("artists");
-    let use_local = config.use_local();
-    let use_s3 = config.use_s3();
-
-    let s3_ctx = if use_s3 {
-        match (&config.storage_bucket, create_s3_client(config).await) {
-            (Some(bucket), Some(client)) => Some((client, bucket.clone())),
-            _ => None,
-        }
-    } else {
-        None
-    };
-
-    for (slug, image, image_url) in rows {
-        if use_local {
-            if let Some(f) = image.as_ref().filter(|s| !s.is_empty()) {
-                let _ = fs::remove_file(artist_dir.join(f));
-            }
-        }
-        if let Some((ref client, ref bucket)) = s3_ctx {
-            if image_url.as_ref().map_or(false, |s| !s.is_empty()) {
-                let key = format!("artists/{}.jpg", slug);
-                delete_from_s3(client, bucket, &key).await;
-            }
-        }
-    }
 }
 
-pub async fn delete_release_images(pool: &PgPool, config: &Config, release_ids: &[String]) {
+/// Distinct cover filenames of `release_ids`.
+pub async fn release_images(
+    pool: &PgPool,
+    release_ids: &[String],
+) -> Result<Vec<String>, sqlx::Error> {
     if release_ids.is_empty() {
-        return;
+        return Ok(Vec::new());
     }
-
-    let rows: Vec<(String, Option<String>, Option<String>)> = match sqlx::query_as(
-        r#"SELECT id, image, "imageUrl" FROM "LocalRelease" WHERE id = ANY($1::text[])"#,
+    sqlx::query_scalar(
+        r#"SELECT DISTINCT image FROM "LocalRelease"
+           WHERE id = ANY($1::text[]) AND image IS NOT NULL AND image <> ''"#,
     )
     .bind(release_ids)
     .fetch_all(pool)
     .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            crate::error_log::log_warn(&format!("release image lookup failed: {}", e));
-            eprintln!("  Warning: release image lookup failed: {}", e);
-            return;
-        }
-    };
+}
 
-    if rows.is_empty() {
-        return;
+async fn s3_target(config: &Config) -> Option<(aws_sdk_s3::Client, String)> {
+    if !config.use_s3() {
+        return None;
     }
+    match (&config.storage_bucket, create_s3_client(config).await) {
+        (Some(bucket), Some(client)) => Some((client, bucket.clone())),
+        _ => None,
+    }
+}
 
-    let release_dir = PathBuf::from(&config.image_dir).join("releases");
-    let use_local = config.use_local();
-    let use_s3 = config.use_s3();
-
-    let s3_ctx = if use_s3 {
-        match (&config.storage_bucket, create_s3_client(config).await) {
-            (Some(bucket), Some(client)) => Some((client, bucket.clone())),
-            _ => None,
+fn remove_local(path: &Path) -> bool {
+    match fs::remove_file(path) {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => {
+            crate::error_log::log_warn(&format!("cannot delete {}: {}", path.display(), e));
+            false
         }
-    } else {
-        None
+    }
+}
+
+async fn remove_s3(target: &Option<(aws_sdk_s3::Client, String)>, keys: &[String]) -> usize {
+    let Some((client, bucket)) = target else {
+        return 0;
     };
+    let mut deleted = 0;
+    for key in keys {
+        match delete_from_s3(client, bucket, key).await {
+            Ok(()) => deleted += 1,
+            Err(e) => crate::error_log::log_warn(&e),
+        }
+    }
+    deleted
+}
 
-    for (id, image, _image_url) in rows {
-        if let Some(ref f) = image.filter(|s| !s.is_empty()) {
-            let shared: (i64,) = sqlx::query_as(
-                r#"SELECT COUNT(*) FROM "LocalRelease" WHERE image = $1 AND id != $2"#,
-            )
-            .bind(f)
-            .bind(&id)
-            .fetch_one(pool)
-            .await
-            .unwrap_or((0,));
+/// Removed image counts: (local files, S3 objects).
+pub type ImageDeletion = (usize, usize);
 
-            if shared.0 == 0 {
-                if use_local {
-                    let _ = fs::remove_file(release_dir.join(f));
-                }
-                if let Some((ref client, ref bucket)) = s3_ctx {
-                    let key = format!("releases/{}", f);
-                    delete_from_s3(client, bucket, &key).await;
-                }
+/// Deletes the artist images of rows that are already gone (artist images are per artist, never
+/// shared).
+pub async fn delete_artist_image_files(config: &Config, images: &[ArtistImage]) -> ImageDeletion {
+    let dir = PathBuf::from(&config.image_dir).join("artists");
+    let target = s3_target(config).await;
+    let (mut local, mut s3) = (0, 0);
+    for img in images {
+        if config.use_local() {
+            if let Some(f) = img.image.as_deref().filter(|s| !s.is_empty()) {
+                local += usize::from(remove_local(&dir.join(f)));
             }
         }
+        if img.image_url.as_deref().is_some_and(|u| !u.is_empty()) {
+            let mut keys = vec![format!("artists/{}.jpg", img.slug)];
+            if let Some(k) = img
+                .image_url
+                .as_deref()
+                .and_then(|u| crate::s3::key_from_public_url(config, u))
+            {
+                if !keys.contains(&k) {
+                    keys.push(k);
+                }
+            }
+            s3 += remove_s3(&target, &keys).await;
+        }
     }
+    (local, s3)
+}
+
+/// Deletes each release cover in `images` that no remaining `LocalRelease` references. Call after
+/// the rows that used them are deleted; a lookup error keeps the file.
+pub async fn delete_unreferenced_release_images(
+    pool: &PgPool,
+    config: &Config,
+    images: &[String],
+) -> ImageDeletion {
+    let dir = PathBuf::from(&config.image_dir).join("releases");
+    let target = s3_target(config).await;
+    let (mut local, mut s3) = (0, 0);
+    for image in images {
+        let still_used: Result<bool, sqlx::Error> =
+            sqlx::query_scalar(r#"SELECT EXISTS (SELECT 1 FROM "LocalRelease" WHERE image = $1)"#)
+                .bind(image)
+                .fetch_one(pool)
+                .await;
+        match still_used {
+            Ok(false) => {}
+            Ok(true) => continue,
+            Err(e) => {
+                crate::error_log::log_warn(&format!("release image lookup failed: {e}"));
+                continue;
+            }
+        }
+        if config.use_local() {
+            local += usize::from(remove_local(&dir.join(image)));
+        }
+        s3 += remove_s3(&target, &[format!("releases/{image}")]).await;
+    }
+    (local, s3)
 }
 
 #[cfg(test)]

@@ -83,23 +83,16 @@ Also: enable versioning for backup, lifecycle rules to prune old versions, Cloud
 
 ## Image Deletion
 
-Always synchronous — every deletion path removes the local file + S3 object **before** deleting the DB row. No queue, no trigger, no background worker: row gone → images gone too.
-
-### Deletion paths
+Two steps, in `scripts/common/src/images.rs`: read what the rows point at before deleting them
+(`release_images`, `artist_images`), then remove files only after the deletion committed
+(`delete_unreferenced_release_images`, `delete_artist_image_files`). Release covers are
+content-addressed and can be shared, so a cover is removed only when no remaining `LocalRelease`
+references it; a failed lookup keeps the file. S3 keys are `releases/{image}` / `artists/{slug}.jpg`,
+plus the key derived from a stored URL under `STORAGE_PUBLIC_URL`. Every path honours `IMAGE_STORAGE`.
 
 | Trigger | Handler |
 |---|---|
-| Full DB reset | `./nuke` — wipes all local+S3 images, then truncates tables |
-| `./nuke --only="Artist"` | Removes that artist's images + cascaded orphan artist/release images |
-| `./index` (folder removed from disk) | `detect_deleted_folders` calls `delete_release_images`/`delete_artist_images` before deleting empty releases and orphan artists |
-| `./sync` (ghost artists) | `cleanup_ghost_artists` calls `delete_artist_images` before the DB delete |
-| `./fix --orphans` | Deletes the artist's images before deleting the `Artist` row |
-| `./fix --duplicates` | Deletes artist B's image before merging B into A |
-
-### Shared helpers
-
-Both in `scripts/common/src/images.rs`:
-- `delete_artist_images(pool, config, artist_ids)` — looks up `slug`/`image`/`imageUrl`, deletes `web/public/img/artists/{image}` + S3 key `artists/{slug}.jpg`.
-- `delete_release_images(pool, config, release_ids)` — looks up `image`/`imageUrl`, deletes `web/public/img/releases/{image}` + S3 key `releases/{id}.jpg`.
-
-Both respect `IMAGE_STORAGE` (local/s3/both), safe to call with an empty slice.
+| Full DB reset | `./nuke` - wipes all local+S3 images after the truncate succeeds |
+| `./delete`, `./nuke --only` | `delete::artist` / `delete::release` |
+| `./index` (folders removed, empty releases, orphan artists) | `index::deletion` |
+| `./fix --orphans`, `./fix --duplicates` | after the artist row is gone |

@@ -10,7 +10,6 @@ use common::{
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
-use std::collections::HashSet;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -116,479 +115,40 @@ async fn delete_s3_prefix(
     Ok(deleted_count)
 }
 
-async fn delete_s3_object(client: &S3Client, bucket: &str, key: &str) {
-    client
-        .delete_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await
-        .ok();
-}
-
-fn extract_s3_key(url: &str) -> Option<String> {
-    if let Some(pos) = url.find(".com/") {
-        return Some(url[pos + 5..].to_string());
-    }
-    let mut slashes = 0;
-    for (i, c) in url.char_indices() {
-        if c == '/' {
-            slashes += 1;
-            if slashes == 3 {
-                return Some(url[i + 1..].to_string());
-            }
+/// A connection string without its credentials, safe to print.
+fn redact_url(url: &str) -> String {
+    match (url.find("://"), url.rfind('@')) {
+        (Some(scheme), Some(at)) if at > scheme => {
+            format!("{}{}", &url[..scheme + 3], &url[at + 1..])
         }
+        _ => url.to_string(),
     }
-    None
 }
 
-// ---------------------------------------------------------------------------
-// --only mode
-// ---------------------------------------------------------------------------
-
-struct ArtistRow {
-    id: String,
-    name: String,
-    slug: String,
-    image: Option<String>,
-    image_url: Option<String>,
-}
-
-struct LocalReleaseRow {
-    id: String,
-    image: Option<String>,
-    image_url: Option<String>,
-}
-
-struct OnlyPlan {
-    artists: Vec<ArtistRow>,
-    target_ids: HashSet<String>,
-    cascade_ids: HashSet<String>,
-    local_releases: Vec<LocalReleaseRow>,
-    mb_release_ids: Vec<String>,
-    track_count: i64,
-    folder_paths: Vec<String>,
-}
-
-async fn build_only_plan(pool: &PgPool, only: &str, exact: bool) -> Result<OnlyPlan, sqlx::Error> {
-    let all_artists: Vec<(String, String, String, Option<String>, Option<String>)> =
-        sqlx::query_as(r#"SELECT id, name, slug, image, "imageUrl" FROM "Artist" ORDER BY name"#)
+/// Artists whose name matches `only` exactly (`;`-separated), plus the duplicates connected to them.
+async fn only_targets(pool: &PgPool, only: &str) -> Result<Vec<(String, String)>, sqlx::Error> {
+    let all: Vec<(String, String)> =
+        sqlx::query_as(r#"SELECT id, name FROM "Artist" ORDER BY name"#)
             .fetch_all(pool)
             .await?;
-
-    let target_ids: HashSet<String> = all_artists
-        .iter()
-        .filter(|(_, name, _, _, _)| matches_filter(name, "", "", only, exact))
-        .map(|(id, _, _, _, _)| id.clone())
+    let mut targets: Vec<(String, String)> = all
+        .into_iter()
+        .filter(|(_, name)| matches_filter(name, "", "", only, true))
         .collect();
-
-    if target_ids.is_empty() {
-        return Ok(OnlyPlan {
-            artists: vec![],
-            target_ids,
-            cascade_ids: HashSet::new(),
-            local_releases: vec![],
-            mb_release_ids: vec![],
-            track_count: 0,
-            folder_paths: vec![],
-        });
-    }
-
-    let target_id_vec: Vec<String> = target_ids.iter().cloned().collect();
-
-    // Collect all local + MB releases linked to any target
-    let local_release_ids: Vec<String> = sqlx::query_as::<_, (String,)>(
-        r#"SELECT DISTINCT "localReleaseId" FROM "LocalReleaseArtist"
-           WHERE "artistId" = ANY($1::text[])"#,
+    let ids: Vec<String> = targets.iter().map(|(id, _)| id.clone()).collect();
+    let connected: Vec<(String, String)> = sqlx::query_as(
+        r#"SELECT id, name FROM "Artist" WHERE "primaryArtistId" = ANY($1::text[])"#,
     )
-    .bind(&target_id_vec)
+    .bind(&ids)
     .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(|(id,)| id)
-    .collect();
-
-    let mb_release_ids: Vec<String> = sqlx::query_as::<_, (String,)>(
-        r#"SELECT DISTINCT "releaseId" FROM "MusicBrainzReleaseArtist"
-           WHERE "artistId" = ANY($1::text[])"#,
-    )
-    .bind(&target_id_vec)
-    .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(|(id,)| id)
-    .collect();
-
-    let local_set: HashSet<String> = local_release_ids.iter().cloned().collect();
-    let mb_set: HashSet<String> = mb_release_ids.iter().cloned().collect();
-
-    // Find all co-artists sharing any of those releases or tracks
-    let mut candidate_ids: HashSet<String> = HashSet::new();
-
-    if !local_release_ids.is_empty() {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            r#"SELECT DISTINCT "artistId" FROM "LocalReleaseArtist"
-               WHERE "localReleaseId" = ANY($1::text[]) AND "artistId" != ALL($2::text[])"#,
-        )
-        .bind(&local_release_ids)
-        .bind(&target_id_vec)
-        .fetch_all(pool)
-        .await?;
-        for (id,) in rows {
-            candidate_ids.insert(id);
-        }
-    }
-
-    if !mb_release_ids.is_empty() {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            r#"SELECT DISTINCT "artistId" FROM "MusicBrainzReleaseArtist"
-               WHERE "releaseId" = ANY($1::text[]) AND "artistId" != ALL($2::text[])"#,
-        )
-        .bind(&mb_release_ids)
-        .bind(&target_id_vec)
-        .fetch_all(pool)
-        .await?;
-        for (id,) in rows {
-            candidate_ids.insert(id);
-        }
-    }
-
-    // Also surface artists who appear via TrackRelatedArtist on tracks in these releases
-    if !local_release_ids.is_empty() {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            r#"SELECT DISTINCT ta."artistId" FROM "TrackRelatedArtist" ta
-               JOIN "LocalReleaseTrack" lrt ON lrt.id = ta."trackId"
-               WHERE lrt."localReleaseId" = ANY($1::text[])
-                 AND ta."artistId" != ALL($2::text[])"#,
-        )
-        .bind(&local_release_ids)
-        .bind(&target_id_vec)
-        .fetch_all(pool)
-        .await?;
-        for (id,) in rows {
-            candidate_ids.insert(id);
-        }
-    }
-
-    // Cascade check: co-artist Y cascades only if ALL three hold:
-    //   1. Every LocalReleaseArtist row for Y points into the deletion set
-    //   2. Every MusicBrainzReleaseArtist row for Y points into the deletion set
-    //   3. No TrackRelatedArtist rows for Y link to tracks in releases outside the deletion set
-    let mut cascade_ids: HashSet<String> = HashSet::new();
-
-    for cand_id in &candidate_ids {
-        let cand_local: HashSet<String> = sqlx::query_as::<_, (String,)>(
-            r#"SELECT DISTINCT "localReleaseId" FROM "LocalReleaseArtist" WHERE "artistId" = $1"#,
-        )
-        .bind(cand_id)
-        .fetch_all(pool)
-        .await?
-        .into_iter()
-        .map(|(id,)| id)
-        .collect();
-
-        let cand_mb: HashSet<String> = sqlx::query_as::<_, (String,)>(
-            r#"SELECT DISTINCT "releaseId" FROM "MusicBrainzReleaseArtist" WHERE "artistId" = $1"#,
-        )
-        .bind(cand_id)
-        .fetch_all(pool)
-        .await?
-        .into_iter()
-        .map(|(id,)| id)
-        .collect();
-
-        // Any tracks in releases outside the deletion set?
-        let outside_tracks: i64 = if local_release_ids.is_empty() {
-            sqlx::query_as::<_, (i64,)>(
-                r#"SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = $1"#,
-            )
-            .bind(cand_id)
-            .fetch_one(pool)
-            .await?
-            .0
-        } else {
-            sqlx::query_as::<_, (i64,)>(
-                r#"SELECT COUNT(*) FROM "TrackRelatedArtist" ta
-                   JOIN "LocalReleaseTrack" lrt ON lrt.id = ta."trackId"
-                   WHERE ta."artistId" = $1
-                     AND lrt."localReleaseId" IS NOT NULL
-                     AND lrt."localReleaseId" != ALL($2::text[])"#,
-            )
-            .bind(cand_id)
-            .bind(&local_release_ids)
-            .fetch_one(pool)
-            .await?
-            .0
-        };
-
-        let local_ok = cand_local.is_subset(&local_set);
-        let mb_ok = cand_mb.is_subset(&mb_set);
-        let track_ok = outside_tracks == 0;
-        let has_anything = !cand_local.is_empty() || !cand_mb.is_empty();
-
-        if local_ok && mb_ok && track_ok && has_anything {
-            cascade_ids.insert(cand_id.clone());
-        }
-    }
-
-    // Full deletion artist set
-    let all_artist_ids: Vec<String> = target_ids
-        .iter()
-        .chain(cascade_ids.iter())
-        .cloned()
-        .collect();
-
-    let artist_rows: Vec<(String, String, String, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            r#"SELECT id, name, slug, image, "imageUrl" FROM "Artist"
-               WHERE id = ANY($1::text[]) ORDER BY name ASC"#,
-        )
-        .bind(&all_artist_ids)
-        .fetch_all(pool)
-        .await?;
-
-    let artists: Vec<ArtistRow> = artist_rows
-        .into_iter()
-        .map(|(id, name, slug, image, image_url)| ArtistRow {
-            id,
-            name,
-            slug,
-            image,
-            image_url,
-        })
-        .collect();
-
-    let local_release_data: Vec<(String, Option<String>, Option<String>, Option<String>)> =
-        if local_release_ids.is_empty() {
-            vec![]
-        } else {
-            sqlx::query_as(
-                r#"SELECT id, image, "imageUrl", "folderPath" FROM "LocalRelease"
-                   WHERE id = ANY($1::text[])"#,
-            )
-            .bind(&local_release_ids)
-            .fetch_all(pool)
-            .await?
-        };
-
-    let folder_paths: Vec<String> = local_release_data
-        .iter()
-        .filter_map(|(_, _, _, fp)| fp.clone())
-        .collect();
-
-    let local_releases: Vec<LocalReleaseRow> = local_release_data
-        .into_iter()
-        .map(|(id, image, image_url, _)| LocalReleaseRow {
-            id,
-            image,
-            image_url,
-        })
-        .collect();
-
-    let track_count: i64 = if local_release_ids.is_empty() {
-        0
-    } else {
-        sqlx::query_as::<_, (i64,)>(
-            r#"SELECT COUNT(*) FROM "LocalReleaseTrack"
-               WHERE "localReleaseId" = ANY($1::text[])"#,
-        )
-        .bind(&local_release_ids)
-        .fetch_one(pool)
-        .await?
-        .0
-    };
-
-    Ok(OnlyPlan {
-        artists,
-        target_ids,
-        cascade_ids,
-        local_releases,
-        mb_release_ids,
-        track_count,
-        folder_paths,
-    })
-}
-
-async fn execute_only_plan(
-    pool: &PgPool,
-    plan: &OnlyPlan,
-    image_dir: &str,
-    image_storage: &str,
-    s3_client: &Option<S3Client>,
-    storage_bucket: &Option<String>,
-    keep_artist_img: bool,
-) -> Result<(usize, usize), Box<dyn std::error::Error>> {
-    let use_local = image_storage == "local" || image_storage == "both";
-    let use_s3 = image_storage == "s3" || image_storage == "both";
-
-    let artist_img_dir = PathBuf::from(image_dir).join("artists");
-    let release_img_dir = PathBuf::from(image_dir).join("releases");
-
-    let mut local_deleted = 0usize;
-    let mut s3_deleted = 0usize;
-
-    if !keep_artist_img {
-        for artist in &plan.artists {
-            if use_local {
-                if let Some(ref img) = artist.image {
-                    if !img.is_empty() {
-                        log!("  Deleting local artist image: {}", img);
-                        if fs::remove_file(artist_img_dir.join(img)).is_ok() {
-                            local_deleted += 1;
-                        }
-                    }
-                }
-            }
-            if use_s3 {
-                if let Some(ref url) = artist.image_url {
-                    if !url.is_empty() {
-                        if let (Some(ref s3), Some(ref bucket)) = (s3_client, storage_bucket) {
-                            if let Some(key) = extract_s3_key(url) {
-                                log!("  Deleting S3 artist image: {}", key);
-                                delete_s3_object(s3, bucket, &key).await;
-                                s3_deleted += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    for release in &plan.local_releases {
-        if use_local {
-            if let Some(ref img) = release.image {
-                if !img.is_empty() {
-                    log!("  Deleting local release image: {}", img);
-                    if fs::remove_file(release_img_dir.join(img)).is_ok() {
-                        local_deleted += 1;
-                    }
-                }
-            }
-        }
-        if use_s3 {
-            if let Some(ref url) = release.image_url {
-                if !url.is_empty() {
-                    if let (Some(ref s3), Some(ref bucket)) = (s3_client, storage_bucket) {
-                        if let Some(key) = extract_s3_key(url) {
-                            log!("  Deleting S3 release image: {}", key);
-                            delete_s3_object(s3, bucket, &key).await;
-                            s3_deleted += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let artist_ids: Vec<String> = plan.artists.iter().map(|a| a.id.clone()).collect();
-    let local_release_ids: Vec<String> = plan.local_releases.iter().map(|r| r.id.clone()).collect();
-
-    let mut tx = pool.begin().await?;
-
-    // _ArtistGenres and _ReleaseGenres are implicit Prisma M:N tables with no FK cascade
-    if !artist_ids.is_empty() {
-        sqlx::query(r#"DELETE FROM "_ArtistGenres" WHERE "A" = ANY($1::text[])"#)
-            .bind(&artist_ids)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    if !plan.mb_release_ids.is_empty() {
-        sqlx::query(r#"DELETE FROM "_ReleaseGenres" WHERE "B" = ANY($1::text[])"#)
-            .bind(&plan.mb_release_ids)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    // LocalRelease cascades: LocalReleaseTrack, LocalReleaseArtist, FavoriteTrack,
-    //                        PlaylistTrack, TrackRelatedArtist
-    // Must delete before MusicBrainzRelease so LocalReleaseTrack.mbTrackId refs are gone first
-    if !local_release_ids.is_empty() {
-        sqlx::query(r#"DELETE FROM "LocalRelease" WHERE id = ANY($1::text[])"#)
-            .bind(&local_release_ids)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    // MusicBrainzRelease cascades: MusicBrainzReleaseTrack, MusicBrainzReleaseArtist,
-    //                              FavoriteRelease
-    if !plan.mb_release_ids.is_empty() {
-        sqlx::query(r#"DELETE FROM "MusicBrainzRelease" WHERE id = ANY($1::text[])"#)
-            .bind(&plan.mb_release_ids)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    // Artist cascades: ArtistUrl, remaining junction rows
-    if !artist_ids.is_empty() {
-        sqlx::query(r#"DELETE FROM "Artist" WHERE id = ANY($1::text[])"#)
-            .bind(&artist_ids)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    // Sweep releases that lost all artist links (shared releases now orphaned)
-    sqlx::query(
-        r#"DELETE FROM "LocalRelease" WHERE id NOT IN (
-               SELECT DISTINCT "localReleaseId" FROM "LocalReleaseArtist"
-           )"#,
-    )
-    .execute(&mut *tx)
     .await?;
-
-    sqlx::query(
-        r#"DELETE FROM "MusicBrainzRelease" WHERE id NOT IN (
-               SELECT DISTINCT "releaseId" FROM "MusicBrainzReleaseArtist"
-           )"#,
-    )
-    .execute(&mut *tx)
-    .await?;
-
-    tx.commit().await?;
-
-    // FolderScan cleanup (outside transaction - non-critical)
-    if !plan.folder_paths.is_empty() {
-        sqlx::query(r#"DELETE FROM "FolderScan" WHERE "folderPath" = ANY($1::text[])"#)
-            .bind(&plan.folder_paths)
-            .execute(pool)
-            .await
-            .ok();
+    for row in connected {
+        if !targets.iter().any(|(id, _)| *id == row.0) {
+            targets.push(row);
+        }
     }
-
-    Ok((local_deleted, s3_deleted))
+    Ok(targets)
 }
-
-async fn refresh_statistics(pool: &PgPool) {
-    sqlx::query(
-        r#"UPDATE "Statistics" SET
-             artists = (SELECT COUNT(*)::int FROM "Artist"),
-             "mainArtists" = (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
-                AND (EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id) OR a."manuallyAdded")),
-             "creditArtists" = (SELECT COUNT(*)::int FROM "Artist" a WHERE a."primaryArtistId" IS NULL
-                AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" l WHERE l."artistId" = a.id)
-                AND NOT a."manuallyAdded"),
-             tracks = (SELECT COUNT(*)::int FROM "LocalReleaseTrack"),
-             releases = (SELECT COUNT(*)::int FROM "LocalRelease"),
-             "releasesWithCoverArt" = (SELECT COUNT(*)::int FROM "LocalRelease"
-                WHERE image IS NOT NULL OR "imageUrl" IS NOT NULL),
-             "artistsWithCoverArt" = (SELECT COUNT(*)::int FROM "Artist"
-                WHERE image IS NOT NULL OR "imageUrl" IS NOT NULL),
-             "artistsSyncedWithMusicbrainz" = (SELECT COUNT(*)::int FROM "Artist"
-                WHERE "musicbrainzId" IS NOT NULL),
-             "releasesSyncedWithMusicbrainz" = (SELECT COUNT(*)::int FROM "MusicBrainzRelease"),
-             playtime = COALESCE((SELECT SUM(duration)::bigint FROM "LocalReleaseTrack"), 0),
-             "updatedAt" = NOW()
-           WHERE id = 'main'"#,
-    )
-    .execute(pool)
-    .await
-    .ok();
-}
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
 
 #[tokio::main]
 async fn main() {
@@ -629,7 +189,20 @@ async fn main() {
         // DB-configured S3/image settings (Settings table) override env, same as index/sync.
         apply_db_overrides(&mut config, &pool).await;
 
-        let plan = match build_only_plan(&pool, only, true).await {
+        let targets = match only_targets(&pool, only).await {
+            Ok(t) => t,
+            Err(e) => {
+                error_log::log_error(&format!("Failed to resolve artists: {}", e));
+                eprintln!("Failed to resolve artists: {}", e);
+                std::process::exit(1);
+            }
+        };
+        if targets.is_empty() {
+            log!("No artists match '{}'.", only);
+            return;
+        }
+
+        let plan = match delete::artist::build_plan(&pool, &targets).await {
             Ok(p) => p,
             Err(e) => {
                 error_log::log_error(&format!("Failed to build deletion plan: {}", e));
@@ -638,41 +211,42 @@ async fn main() {
             }
         };
 
-        if plan.artists.is_empty() {
-            log!("No artists match '{}'.", only);
-            return;
-        }
-
         log!(
             "Artists to delete  : {}",
-            plan.artists.len().to_string().bright_white()
+            plan.artist_actions.len().to_string().bright_white()
         );
-        for artist in &plan.artists {
-            let tag = if plan.target_ids.contains(&artist.id) {
-                "target".bright_white()
-            } else if plan.cascade_ids.contains(&artist.id) {
-                "cascaded".yellow()
+        for artist in &plan.artist_actions {
+            let tag = if artist.is_cascaded {
+                "cascaded"
             } else {
-                "".normal()
+                "target"
+            };
+            let kept = if artist.other_credits_count > 0 {
+                " - kept as credit-only artist"
+            } else {
+                ""
             };
             log!(
                 "  {} {}  {}",
                 "•".bright_black(),
                 artist.name.bright_white(),
-                format!("({}) {}", artist.slug, tag).bright_black()
+                format!("({}) {}{}", artist.slug, tag, kept).bright_black()
             );
         }
         log!(
             "Local releases     : {}",
-            plan.local_releases.len().to_string().bright_white()
+            plan.doomed_releases.len().to_string().bright_white()
         );
+        let co_owned = plan.owned_releases.len() - plan.doomed_releases.len();
+        if co_owned > 0 {
+            log!(
+                "Co-owned kept      : {} (still owned by another artist - only unlinked)",
+                co_owned
+            );
+        }
         log!(
             "Local tracks       : {}",
             plan.track_count.to_string().bright_white()
-        );
-        log!(
-            "MB releases        : {}",
-            plan.mb_release_ids.len().to_string().bright_white()
         );
         log!();
 
@@ -693,9 +267,6 @@ async fn main() {
             log!();
         }
 
-        // Same DB scan lock index/sync use - acquired only now (not while waiting on the
-        // confirmation prompt above) so this cascading delete never interleaves with a running
-        // index/sync pass.
         if clear_stale_lock_minutes(&pool, 10).await {
             log!("Cleared a stale lock.");
         }
@@ -707,25 +278,8 @@ async fn main() {
             }
         };
 
-        let use_s3 = config.image_storage == "s3" || config.image_storage == "both";
-        let s3_client = if use_s3 {
-            create_s3_client(&config).await
-        } else {
-            None
-        };
-
         log!("Deleting...");
-        match execute_only_plan(
-            &pool,
-            &plan,
-            &config.image_dir,
-            &config.image_storage,
-            &s3_client,
-            &config.storage_bucket,
-            args.keep_artist_img,
-        )
-        .await
-        {
+        match delete::artist::execute_plan(&pool, &plan, &config, args.keep_artist_img).await {
             Ok((local, s3)) => {
                 log!(
                     "  {} {} local image(s), {} S3 object(s) removed",
@@ -742,16 +296,17 @@ async fn main() {
             }
         }
 
-        refresh_statistics(&pool).await;
+        if let Err(e) = common::statistics::update_statistics(&pool).await {
+            error_log::log_warn(&format!("statistics refresh failed: {e}"));
+        }
         release_lock(&pool).await;
 
         log!();
         log!(
-            "{} {} artist(s), {} local release(s), {} MB release(s) deleted.",
+            "{} {} artist(s), {} local release(s) deleted.",
             "✓".green().bold(),
-            plan.artists.len(),
-            plan.local_releases.len(),
-            plan.mb_release_ids.len()
+            plan.artist_actions.len(),
+            plan.doomed_releases.len()
         );
         log!("Run ./index && ./sync to re-index the affected artists.");
         return;
@@ -770,7 +325,7 @@ async fn main() {
     if args.keep_artist_img {
         log!("Artist images will be preserved.");
     }
-    log!("Database: {}", config.database_url);
+    log!("Database: {}", redact_url(&config.database_url));
     log!();
 
     if args.dry_run {
@@ -850,14 +405,19 @@ async fn main() {
         "MbArtistLookup",
     ];
 
-    for table in &tables {
-        log!("  Truncating {}...", table);
-        if let Err(e) = sqlx::query(&format!(r#"TRUNCATE TABLE "{}" CASCADE"#, table))
-            .execute(&pool)
-            .await
-        {
-            log!("  {} Error truncating {}: {}", "✗".red(), table, e);
-        }
+    let truncate = format!(
+        "TRUNCATE TABLE {} CASCADE",
+        tables
+            .iter()
+            .map(|t| format!(r#""{t}""#))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    if let Err(e) = sqlx::query(&truncate).execute(&pool).await {
+        error_log::log_error(&format!("truncate failed: {e}"));
+        eprintln!("  {} Truncate failed, nothing deleted: {}", "✗".red(), e);
+        release_lock(&pool).await;
+        std::process::exit(1);
     }
     log!("  {} Truncated {} tables", "✓".green(), tables.len());
 
@@ -939,4 +499,21 @@ async fn main() {
     log!();
     log!("Done. Run ./index && ./sync to rebuild.");
     release_lock(&pool).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_url;
+
+    #[test]
+    fn redact_url_drops_credentials() {
+        assert_eq!(
+            redact_url("postgresql://user:secret@db.example:5432/dmp?x=1"),
+            "postgresql://db.example:5432/dmp?x=1"
+        );
+        assert_eq!(
+            redact_url("postgresql://localhost/dmp"),
+            "postgresql://localhost/dmp"
+        );
+    }
 }

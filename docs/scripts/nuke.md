@@ -24,32 +24,17 @@ Truncates all database tables and deletes all image files. **Destructive** - req
 
 ## Full Wipe
 
-`TRUNCATE ... CASCADE` on 22 tables (catalogue, playlists, favorites, `FolderScan`, `FixHistory`, `MbArtistLookup`) and deletes every `.jpg` under `web/public/img/releases/` and `web/public/img/artists/` (plus S3 if `IMAGE_STORAGE=s3` or `both`). Issue tables aren't listed explicitly — they go via the `Artist`/release cascades.
+One atomic `TRUNCATE ... CASCADE` over 24 tables (catalogue, playlists, favorites, `FolderScan`, `FixHistory`, `MbArtistLookup`) and deletes every `.jpg` under `web/public/img/releases/` and `web/public/img/artists/` (plus S3 if `IMAGE_STORAGE=s3` or `both`). If the truncate fails nothing is deleted - images included. The printed database URL has its credentials removed. Issue tables aren't listed explicitly — they go via the `Artist`/release cascades.
 
 `Settings`, `User` and `RolePermission` are **not** truncated: config and logins survive a full nuke. `Statistics` is truncated, which includes the scan-lock row; the next `acquire_lock` recreates it.
 
 ## `--only` (Selective Delete)
 
-Deletes matching artists and their entire catalogue. Uses **exact match** (no prefix matching) - "Air" won't catch "Airbag".
-
-**What gets deleted:**
-
-- `Artist` row (cascades to `ArtistUrl`, junction tables)
-- `_ArtistGenres` and `_ReleaseGenres` M:N rows
-- All `LocalRelease` rows (cascades to tracks, favorites, playlists, release-artist links)
-- All `MusicBrainzRelease` rows (cascades to tracks, release-artist links, favorites)
-- Release + artist images (local + S3)
-- `FolderScan` cache entries for deleted folder paths
-- Orphan sweeps remove any `LocalRelease`/`MusicBrainzRelease` that lost their last artist link
-
-Executes within a **transaction**.
-
-**Cascade rule:** Co-artist `Y` is also deleted if:
-1. All `LocalReleaseArtist` rows for `Y` point into the deletion set
-2. All `MusicBrainzReleaseArtist` rows for `Y` point into the deletion set
-3. `Y` has no `TrackRelatedArtist` rows pointing to tracks outside the deletion set
-
-Full plan (targets + cascaded artists, counts) is printed before confirmation.
+Resolves the matching artists (**exact match**, `;`-separated - "Air" won't catch "Airbag") plus their
+connected duplicates, then runs exactly the same plan and deletion as `./delete` (`delete::artist`):
+releases only they own are deleted, releases another surviving artist also owns are kept and only
+unlinked, credit-only survivors are kept, MusicBrainz releases and covers go only when nothing else uses
+them. See [delete.md](delete.md). The plan is printed before confirmation.
 
 ## `--keep-artist-img`
 

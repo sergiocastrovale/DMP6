@@ -1,5 +1,4 @@
 use common::tags::TagFile;
-use common::{config::Config, error_log};
 use lofty::tag::ItemKey;
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -28,39 +27,6 @@ pub fn write_album_artist(abs_path: &Path, value: &str) -> Result<(), String> {
     tags.save(abs_path)?;
     common::images::bump_dir_mtime(abs_path);
     Ok(())
-}
-
-/// Deletes an artist image from local storage and/or S3 depending on config.
-/// `image_file` is the bare filename (e.g. "the-rolling-stones.jpg") as stored in the DB.
-pub async fn delete_artist_image(config: &Config, image_file: &str) {
-    if config.use_local() {
-        let local_path = Path::new(&config.image_dir)
-            .join("artists")
-            .join(image_file);
-        if let Err(e) = std::fs::remove_file(&local_path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                error_log::log_warn(&format!(
-                    "failed to delete local image {}: {}",
-                    local_path.display(),
-                    e
-                ));
-                eprintln!(
-                    "  Warning: failed to delete local image {}: {}",
-                    local_path.display(),
-                    e
-                );
-            }
-        }
-    }
-
-    if config.use_s3() {
-        if let Some(bucket) = &config.storage_bucket {
-            if let Some(client) = common::s3::create_s3_client(config).await {
-                let key = format!("artists/{}", image_file);
-                common::s3::delete_from_s3(&client, bucket, &key).await;
-            }
-        }
-    }
 }
 
 /// Renames `name_b` to `name_a` in the artist fields, including the multi-value credited-artist

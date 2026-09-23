@@ -1,6 +1,6 @@
 # Scripts: delete
 
-Permanently deletes an artist's catalogue (local + MB), images, and any co-artists whose entire catalogue falls within the deletion set. If the artist is credited (`TrackRelatedArtist`) on other artists' tracks outside the deletion set, those credits are removed too - warned about in the plan display before confirming.
+Permanently deletes artists and the releases only they own, plus any co-artists whose entire catalogue falls within the deletion set. A release another, surviving artist also owns is kept - only the deleted artists' ownership links are removed. An artist still credited (`TrackRelatedArtist`) on tracks outside the deletion set is kept as a credit-only artist.
 
 ## Usage
 
@@ -32,17 +32,18 @@ Co-artists are automatically included when ALL of their local releases AND MB re
 
 ## What Gets Deleted
 
-Within a single **transaction** (7 steps, plus a non-critical cleanup step after commit):
-1. `_ArtistGenres` junction rows
-2. `_ReleaseGenres` junction rows
-3. `LocalRelease` rows (cascades to tracks, playlist/favorite rows, release-artist links, `TrackRelatedArtist`)
-4. `MusicBrainzRelease` rows (cascades to tracks, release-artist links, favorites)
-5. `Artist` rows (cascades to remaining `ArtistUrl`, `MusicBrainzReleaseArtist`, and any `TrackRelatedArtist` credit this artist held on OTHER artists' tracks - those credits are lost)
-6. Sweep orphaned `LocalRelease` rows
-7. Sweep orphaned `MusicBrainzRelease` rows
-8. `FolderScan` cleanup (outside the transaction)
+One transaction (`delete::artist::execute_plan`):
+1. Ownership links of every in-scope artist (`LocalReleaseArtist`, `MusicBrainzReleaseArtist`) on the
+   releases they touch.
+2. Local releases left with no owner (cascades to tracks, credits, favorites, playlist rows, issues).
+3. In-scope artists without credits elsewhere; credit-only survivors lose their images and totals.
 
-Also: release + artist images (local + S3), statistics refresh.
+After commit: MusicBrainz releases nothing uses any more (`common::cleanup::delete_orphaned_mb_releases`
+- never `MISSING` placeholders, bound/box/linked/equivalence-target releases), then covers no remaining
+release references and the deleted artists' images (`common::images`), then statistics.
+
+The plan printout counts only the releases that will actually be deleted and lists how many co-owned
+releases are kept. `--files` removes only the files of deleted releases.
 
 ## `--files`
 

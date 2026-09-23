@@ -7,7 +7,7 @@
 //!   SMOKE_TEST_DATABASE_URL=postgres://... cargo test -p delete --release --test delete_release \
 //!     -- --ignored --nocapture
 
-use delete::release::{build_plan, execute_plan, mb_is_orphaned, MbVerdict};
+use delete::release::{build_plan, execute_plan};
 use sqlx::PgPool;
 
 const PREFIX: &str = "delete-release-fixture";
@@ -148,21 +148,32 @@ impl Ctx {
             .expect("exists query")
     }
 
-    /// Runs the same plan -> orphan-check -> execute sequence `release::run` performs, skipping the
-    /// interactive/lock/image/statistics side effects that don't matter to these assertions.
+    /// Runs the same plan -> execute sequence `release::run` performs, skipping the interactive,
+    /// lock and statistics side effects that don't matter to these assertions.
     async fn delete_release(&self, local_release_id: &str) {
         let plan = build_plan(&self.pool, local_release_id)
             .await
-            .expect("plan");
-        let mut verdicts = Vec::new();
-        for mb_id in &plan.mb_candidates {
-            let orphaned = mb_is_orphaned(&self.pool, mb_id, &plan.id).await;
-            verdicts.push(MbVerdict {
-                id: mb_id.clone(),
-                orphaned,
-            });
-        }
-        execute_plan(&self.pool, &plan, &verdicts)
+            .expect("plan")
+            .expect("release exists");
+        let config = common::config::Config {
+            music_dir: None,
+            music_dir_locked: false,
+            database_url: String::new(),
+            project_root: String::new(),
+            image_dir: std::env::temp_dir()
+                .join("dmp-delete-release-images")
+                .to_string_lossy()
+                .to_string(),
+            image_storage: "local".into(),
+            storage_bucket: None,
+            s3_region: None,
+            s3_access_key: None,
+            s3_secret_key: None,
+            storage_endpoint: None,
+            storage_public_url: None,
+            fanart_api_key: None,
+        };
+        execute_plan(&self.pool, &config, &plan)
             .await
             .expect("execute plan");
     }
@@ -284,7 +295,10 @@ async fn an_owner_left_with_nothing_is_swept_but_a_multi_release_owner_survives(
     c.own(&release, &multi_owner).await;
     c.own(&other_release, &multi_owner).await;
 
-    let plan = build_plan(&c.pool, &release).await.expect("plan");
+    let plan = build_plan(&c.pool, &release)
+        .await
+        .expect("plan")
+        .expect("release exists");
     c.delete_release(&release).await;
 
     // What `release::run` does after `execute_plan`, minus the interactive/lock/S3/statistics parts.
@@ -320,5 +334,81 @@ async fn an_owner_left_with_nothing_is_swept_but_a_multi_release_owner_survives(
         "an artist who still owns another release must survive"
     );
 
+    c.reset().await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn deleting_an_artist_keeps_releases_a_surviving_artist_also_owns() {
+    let c = Ctx::new("artist-co-owned").await;
+    let target = c.artist("Target").await;
+    let partner = c.artist("Partner").await;
+
+    let mb_solo = c.mb_release("solo", "COMPLETE").await;
+    let mb_duet = c.mb_release("duet", "COMPLETE").await;
+    let solo = c.local_release("solo", Some(&mb_solo)).await;
+    let duet = c.local_release("duet", Some(&mb_duet)).await;
+    let partner_own = c.local_release("partner-own", None).await;
+    c.own(&solo, &target).await;
+    c.own(&duet, &target).await;
+    c.own(&duet, &partner).await;
+    c.own(&partner_own, &partner).await;
+
+    let targets = vec![(target.clone(), "Target".to_string())];
+    let plan = delete::artist::build_plan(&c.pool, &targets)
+        .await
+        .expect("plan");
+    assert_eq!(plan.doomed_releases, vec![solo.clone()]);
+
+    let config = common::config::Config {
+        music_dir: None,
+        music_dir_locked: false,
+        database_url: String::new(),
+        project_root: String::new(),
+        image_dir: std::env::temp_dir()
+            .join("dmp-delete-artist-images")
+            .to_string_lossy()
+            .to_string(),
+        image_storage: "local".into(),
+        storage_bucket: None,
+        s3_region: None,
+        s3_access_key: None,
+        s3_secret_key: None,
+        storage_endpoint: None,
+        storage_public_url: None,
+        fanart_api_key: None,
+    };
+    delete::artist::execute_plan(&c.pool, &plan, &config, false)
+        .await
+        .expect("execute");
+
+    assert!(
+        !c.local_release_exists(&solo).await,
+        "solely owned release is deleted"
+    );
+    assert!(
+        !c.mb_release_exists(&mb_solo).await,
+        "its MB release goes with it"
+    );
+    assert!(
+        c.local_release_exists(&duet).await,
+        "co-owned release is kept"
+    );
+    assert!(
+        c.mb_release_exists(&mb_duet).await,
+        "a kept release keeps its MB release"
+    );
+    assert!(c.local_release_exists(&partner_own).await);
+    assert!(!c.artist_exists(&target).await);
+    assert!(c.artist_exists(&partner).await);
+
+    let owners: Vec<String> = sqlx::query_scalar(
+        r#"SELECT "artistId" FROM "LocalReleaseArtist" WHERE "localReleaseId" = $1"#,
+    )
+    .bind(&duet)
+    .fetch_all(&c.pool)
+    .await
+    .unwrap();
+    assert_eq!(owners, vec![partner.clone()]);
     c.reset().await;
 }

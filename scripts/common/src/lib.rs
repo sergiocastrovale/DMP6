@@ -1,5 +1,6 @@
 pub mod artists;
 pub mod checkpoint;
+pub mod cleanup;
 pub mod config;
 pub mod consensus;
 pub mod db;
