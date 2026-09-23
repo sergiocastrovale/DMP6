@@ -211,7 +211,14 @@ fn contains_as_word(haystack: &str, needle: &str) -> bool {
             if before_ok && after_ok {
                 return true;
             }
-            start = abs_pos + 1;
+            // Advance by one whole character, not one byte: a multi-byte UTF-8 character at
+            // `abs_pos` (e.g. an accented letter) would otherwise leave `start` mid-character, and
+            // the next `haystack[start..]` slice panics ("byte index is not a char boundary").
+            let advance = haystack[abs_pos..]
+                .chars()
+                .next()
+                .map_or(1, |c| c.len_utf8());
+            start = abs_pos + advance;
         } else {
             break;
         }
@@ -231,9 +238,12 @@ async fn fetch_all_genres(pool: &PgPool) -> Vec<(String, String)> {
         .expect("Failed to fetch genres")
 }
 
-async fn fetch_artist_genre_links(pool: &PgPool, genre_ids: &[String]) -> Vec<(String, String)> {
+async fn fetch_artist_genre_links(
+    pool: &PgPool,
+    genre_ids: &[String],
+) -> Result<Vec<(String, String)>, sqlx::Error> {
     if genre_ids.is_empty() {
-        return vec![];
+        return Ok(vec![]);
     }
     // _ArtistGenres: "A" = artist_id, "B" = genre_id
     sqlx::query_as::<_, (String, String)>(
@@ -242,7 +252,6 @@ async fn fetch_artist_genre_links(pool: &PgPool, genre_ids: &[String]) -> Vec<(S
     .bind(genre_ids)
     .fetch_all(pool)
     .await
-    .expect("Failed to fetch artist-genre links")
 }
 
 #[derive(Debug)]
@@ -252,9 +261,12 @@ struct TrackCandidate {
     local_release_id: Option<String>,
 }
 
-async fn fetch_tracks_for_artists(pool: &PgPool, artist_ids: &[String]) -> Vec<TrackCandidate> {
+async fn fetch_tracks_for_artists(
+    pool: &PgPool,
+    artist_ids: &[String],
+) -> Result<Vec<TrackCandidate>, sqlx::Error> {
     if artist_ids.is_empty() {
-        return vec![];
+        return Ok(vec![]);
     }
     let rows: Vec<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
         r#"
@@ -268,10 +280,10 @@ async fn fetch_tracks_for_artists(pool: &PgPool, artist_ids: &[String]) -> Vec<T
     )
     .bind(artist_ids)
     .fetch_all(pool)
-    .await
-    .expect("Failed to fetch tracks");
+    .await?;
 
-    rows.into_iter()
+    Ok(rows
+        .into_iter()
         .map(
             |(track_id, artist_id, local_release_id, _genre)| TrackCandidate {
                 track_id,
@@ -279,15 +291,15 @@ async fn fetch_tracks_for_artists(pool: &PgPool, artist_ids: &[String]) -> Vec<T
                 local_release_id,
             },
         )
-        .collect()
+        .collect())
 }
 
 async fn fetch_tracks_for_countries(
     pool: &PgPool,
     country_codes: &[String],
-) -> Vec<TrackCandidate> {
+) -> Result<Vec<TrackCandidate>, sqlx::Error> {
     if country_codes.is_empty() {
-        return vec![];
+        return Ok(vec![]);
     }
     let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
         r#"
@@ -303,16 +315,16 @@ async fn fetch_tracks_for_countries(
     )
     .bind(country_codes)
     .fetch_all(pool)
-    .await
-    .expect("Failed to fetch tracks for countries");
+    .await?;
 
-    rows.into_iter()
+    Ok(rows
+        .into_iter()
         .map(|(track_id, artist_id, local_release_id)| TrackCandidate {
             track_id,
             artist_id,
             local_release_id,
         })
-        .collect()
+        .collect())
 }
 
 async fn upsert_playlist(
@@ -727,7 +739,14 @@ async fn main() {
                 .collect();
 
             let genre_ids: Vec<String> = genre_matches.iter().map(|m| m.genre_id.clone()).collect();
-            let artist_links = fetch_artist_genre_links(&pool, &genre_ids).await;
+            let artist_links = common::lock::expect_or_release(
+                &pool,
+                "playlists",
+                std::process::id(),
+                fetch_artist_genre_links(&pool, &genre_ids).await,
+                "Failed to fetch artist-genre links",
+            )
+            .await;
 
             if artist_links.is_empty() {
                 println!("{} no artists with matching genres", "○".bright_black());
@@ -745,7 +764,14 @@ async fn main() {
             }
 
             let artist_ids: Vec<String> = artist_scores.keys().cloned().collect();
-            let tracks = fetch_tracks_for_artists(&pool, &artist_ids).await;
+            let tracks = common::lock::expect_or_release(
+                &pool,
+                "playlists",
+                std::process::id(),
+                fetch_tracks_for_artists(&pool, &artist_ids).await,
+                "Failed to fetch tracks",
+            )
+            .await;
 
             if tracks.is_empty() {
                 println!("{} no tracks found", "○".bright_black());
@@ -803,7 +829,14 @@ async fn main() {
             print!("  {} {}... ", "●".magenta(), generator.name.bold());
 
             let countries = region_countries(&generator.terms);
-            let tracks = fetch_tracks_for_countries(&pool, &countries).await;
+            let tracks = common::lock::expect_or_release(
+                &pool,
+                "playlists",
+                std::process::id(),
+                fetch_tracks_for_countries(&pool, &countries).await,
+                "Failed to fetch tracks for countries",
+            )
+            .await;
 
             if tracks.is_empty() {
                 println!("{} no tracks found", "○".bright_black());
@@ -887,6 +920,15 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A rejected match immediately followed by a multi-byte character used to advance the search
+    // by one byte, landing mid-character - the next slice then panicked with "byte index is not a
+    // char boundary" instead of just continuing the search.
+    #[test]
+    fn contains_as_word_does_not_panic_on_multi_byte_characters() {
+        assert!(!contains_as_word("coéxist", "é"));
+        assert!(contains_as_word("café", "café"));
+    }
 
     // A big equal-score candidate pool (every artist scored identically) exceeding max_tracks -
     // with a STABLE sort and no pre-sort shuffle, the same top max_tracks subset (by insertion
