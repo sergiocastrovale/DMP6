@@ -82,33 +82,45 @@ pub struct FileDeletion {
     pub skipped: Vec<String>,
 }
 
-/// True if `dir` (already known to exist) contains, anywhere below it, a file whose extension is in
-/// `common::images::RELEASE_AUDIO_EXTENSIONS` and whose canonical path is not in `excluding` - the
-/// files this run is itself in the middle of removing (needed for `dry_run`, where nothing has
-/// actually been deleted from disk yet, so a live scan would otherwise see this release's own tracks
-/// as "other" audio and refuse to remove the folder).
-fn dir_has_other_audio(dir: &Path, excluding: &std::collections::HashSet<PathBuf>) -> bool {
+/// Files that belong to a release folder without being music: removed together with the folder.
+const SIDECAR_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "png", "gif", "bmp", "webp", "tif", "tiff", "cue", "log", "txt", "nfo", "m3u",
+    "m3u8", "pls", "sfv", "md5", "ffp", "accurip", "pdf",
+];
+const SIDECAR_NAMES: &[&str] = &[".ds_store", "thumbs.db", "desktop.ini", ".fix-touch"];
+
+fn is_sidecar(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(str::to_lowercase)
+        .unwrap_or_default();
+    if SIDECAR_NAMES.contains(&name.as_str()) {
+        return true;
+    }
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| SIDECAR_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+}
+
+/// True if `dir` holds, anywhere below it, a file that is neither one of the files this run is
+/// removing (`excluding`, canonical paths - needed for `dry_run`, where nothing is gone yet) nor a
+/// known sidecar. Any other file - another release's audio, an unindexed format, something unknown -
+/// keeps the folder.
+fn dir_has_unrelated_files(dir: &Path, excluding: &std::collections::HashSet<PathBuf>) -> bool {
     let Ok(entries) = fs::read_dir(dir) else {
-        return false;
+        return true;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if dir_has_other_audio(&path, excluding) {
+            if dir_has_unrelated_files(&path, excluding) {
                 return true;
             }
             continue;
         }
-        let is_audio = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| common::images::RELEASE_AUDIO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-            .unwrap_or(false);
-        if !is_audio {
-            continue;
-        }
-        let canonical = fs::canonicalize(&path).unwrap_or(path);
-        if !excluding.contains(&canonical) {
+        let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        if !excluding.contains(&canonical) && !is_sidecar(&path) {
             return true;
         }
     }
@@ -117,7 +129,7 @@ fn dir_has_other_audio(dir: &Path, excluding: &std::collections::HashSet<PathBuf
 
 /// Deletes `track_paths` (a single release's `LocalReleaseTrack.filePath` values), then removes each
 /// of `release_dirs` (the release's own folder(s): `folderPath` plus every `LocalReleaseMember`
-/// folder) **whole, sidecars included**, but only the ones left holding no other release's audio.
+/// folder) **whole, sidecars included**, but only the ones left holding nothing but sidecars.
 /// Never touches anything above `release_dirs` - a shared artist folder is never a candidate here,
 /// unlike `delete_files`' upward empty-dir prune.
 pub fn delete_release_folders(
@@ -183,7 +195,7 @@ pub fn delete_release_folders(
         if !is_inside(dir, &root) || !dir.exists() {
             continue;
         }
-        if dir_has_other_audio(dir, &removing) {
+        if dir_has_unrelated_files(dir, &removing) {
             continue;
         }
         if dry_run || fs::remove_dir_all(dir).is_ok() {
@@ -488,6 +500,49 @@ mod tests {
         assert!(result.skipped.is_empty());
         assert!(!album.exists());
         assert!(root.join("Artist").exists());
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_release_folder_holding_unindexed_audio_is_kept() {
+        let root = temp_root("unindexed");
+        let album = root.join("Artist/Album");
+        fs::create_dir_all(&album).unwrap();
+        fs::write(album.join("01.flac"), b"x").unwrap();
+        fs::write(album.join("cover.jpg"), b"x").unwrap();
+        fs::write(album.join("bonus.wav"), b"x").unwrap();
+
+        let result = delete_release_folders(
+            &["Artist/Album/01.flac".to_string()],
+            &["Artist/Album".to_string()],
+            &root.to_string_lossy(),
+            false,
+        );
+        assert_eq!(result.files_removed, 1);
+        assert_eq!(result.dirs_removed, 0);
+        assert!(album.join("bonus.wav").exists());
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_release_folder_with_only_sidecars_left_is_removed() {
+        let root = temp_root("sidecars");
+        let album = root.join("Artist/Album");
+        fs::create_dir_all(&album).unwrap();
+        fs::write(album.join("01.flac"), b"x").unwrap();
+        fs::write(album.join("cover.jpg"), b"x").unwrap();
+        fs::write(album.join("rip.log"), b"x").unwrap();
+
+        let result = delete_release_folders(
+            &["Artist/Album/01.flac".to_string()],
+            &["Artist/Album".to_string()],
+            &root.to_string_lossy(),
+            false,
+        );
+        assert_eq!(result.dirs_removed, 1);
+        assert!(!album.exists());
 
         fs::remove_dir_all(&root).ok();
     }
