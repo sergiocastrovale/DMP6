@@ -1,11 +1,16 @@
 use cuid2::create_id;
 use sqlx::PgPool;
 
+/// One transaction for the whole pass - a crash between the DELETE and the last INSERT used to
+/// leave the DETECTED set empty/partial until the next run re-derives it (PENDING/RESOLVED/FAILED
+/// rows are untouched either way, so nothing is permanently lost, but a run that dies partway used to
+/// silently under-report instead of reporting none).
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
+    let mut tx = pool.begin().await?;
     // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
     // are user/fix state and must survive across runs (queue, history trail, FixHistory links).
     sqlx::query(r#"DELETE FROM "IssueOrphanArtist" WHERE status = 'DETECTED'"#)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // Phantom: names that are clearly corrupted (numeric garbage, bitrate markers)
@@ -14,7 +19,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
            WHERE (name ~ '^\d{1,3}$' OR name ~ '@\d{2,3}$') AND name <> ALL($1::text[])"#,
     )
     .bind(common::artists::KNOWN_NUMERIC_ARTIST_NAMES)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     // Fully disconnected artists - no local releases, no MB releases, AND no track credits. An
@@ -33,7 +38,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
              AND NOT EXISTS (SELECT 1 FROM "MusicBrainzReleaseArtist" mra WHERE mra."artistId" = a.id)"#,
     )
     .bind(common::artists::KNOWN_NUMERIC_ARTIST_NAMES)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     let mut inserted = 0usize;
@@ -49,7 +54,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
                    WHERE "artistId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
             )
             .bind(artist_id)
-            .fetch_one(pool)
+            .fetch_one(&mut *tx)
             .await?;
             if already_tracked {
                 continue;
@@ -66,11 +71,12 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
             .bind(artist_id)
             .bind(*reason)
             .bind(now)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
             inserted += 1;
         }
     }
 
+    tx.commit().await?;
     Ok(inserted)
 }

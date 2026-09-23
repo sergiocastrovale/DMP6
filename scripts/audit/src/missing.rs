@@ -2,11 +2,16 @@ use cuid2::create_id;
 use serde_json::{json, Map, Value};
 use sqlx::PgPool;
 
+/// One transaction for the whole pass - a crash between the DELETE and the last INSERT used to
+/// leave the DETECTED set empty/partial until the next run re-derives it (PENDING/RESOLVED/FAILED
+/// rows are untouched either way, so nothing is permanently lost, but a run that dies partway used to
+/// silently under-report instead of reporting none).
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
+    let mut tx = pool.begin().await?;
     // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
     // are user/fix state and must survive across runs (queue, history trail, FixHistory links).
     sqlx::query(r#"DELETE FROM "IssueMissingMetadata" WHERE status = 'DETECTED'"#)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     let rows: Vec<(
@@ -26,7 +31,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
                   OR (album IS NULL OR album = '')
                   OR year IS NULL"#,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     let mut inserted = 0usize;
@@ -55,14 +60,14 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
                WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
         )
         .bind(track_id)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
         if already_tracked {
             continue;
         }
 
         let proposed = build_proposed(
-            pool,
+            &mut tx,
             &missing_fields,
             artist,
             album_artist,
@@ -83,17 +88,18 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         .bind(&missing_fields)
         .bind(proposed)
         .bind(now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
         inserted += 1;
     }
 
+    tx.commit().await?;
     Ok(inserted)
 }
 
 async fn build_proposed(
-    pool: &PgPool,
+    tx: &mut sqlx::PgConnection,
     missing: &[&str],
     artist: &Option<String>,
     album_artist: &Option<String>,
@@ -121,7 +127,7 @@ async fn build_proposed(
                    GROUP BY year ORDER BY cnt DESC LIMIT 1"#,
             )
             .bind(rid)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *tx)
             .await?;
             if let Some((Some(y), _)) = row {
                 props.insert("year".into(), json!(y));

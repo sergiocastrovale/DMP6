@@ -1,11 +1,16 @@
 use cuid2::create_id;
 use sqlx::PgPool;
 
+/// One transaction for the whole pass - a crash between the DELETE and the last INSERT used to
+/// leave the DETECTED set empty/partial until the next run re-derives it (PENDING/RESOLVED/FAILED
+/// rows are untouched either way, so nothing is permanently lost, but a run that dies partway used to
+/// silently under-report instead of reporting none).
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
+    let mut tx = pool.begin().await?;
     // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
     // are user/fix state and must survive across runs (queue, history trail, FixHistory links).
     sqlx::query(r#"DELETE FROM "IssueEnrichmentGap" WHERE status = 'DETECTED'"#)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // One row per LocalRelease. Each boolean is true when NO track in the release has that field.
@@ -71,7 +76,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
            OR missing_discogs OR missing_bandcamp OR missing_wikipedia
         "#,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     let mut inserted = 0usize;
@@ -116,7 +121,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
                WHERE "localReleaseId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
         )
         .bind(release_id)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
         if already_tracked {
             continue;
@@ -133,11 +138,12 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         .bind(release_id)
         .bind(&missing_fields)
         .bind(now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
         inserted += 1;
     }
 
+    tx.commit().await?;
     Ok(inserted)
 }

@@ -2,11 +2,16 @@ use cuid2::create_id;
 use sqlx::PgPool;
 use std::collections::HashSet;
 
+/// One transaction for the whole pass - a crash between the DELETE and the last INSERT used to
+/// leave the DETECTED set empty/partial until the next run re-derives it (PENDING/RESOLVED/FAILED
+/// rows are untouched either way, so nothing is permanently lost, but a run that dies partway used to
+/// silently under-report instead of reporting none).
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
+    let mut tx = pool.begin().await?;
     // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
     // are user/fix state and must survive across runs (queue, history trail, FixHistory links).
     sqlx::query(r#"DELETE FROM "IssueDuplicateArtist" WHERE status = 'DETECTED'"#)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     let rows: Vec<(String, String, Option<String>, Option<String>, i64, i64)> = sqlx::query_as(
@@ -20,7 +25,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
                      LOWER(REGEXP_REPLACE(a2.name, '[^[:alnum:]]', '', 'g'))
                  AND REGEXP_REPLACE(a1.name, '[^[:alnum:]]', '', 'g') <> ''"#,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     let mut inserted = 0usize;
@@ -30,7 +35,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         let rows: Vec<(String, String)> = sqlx::query_as(
             r#"SELECT id, "primaryArtistId" FROM "Artist" WHERE "primaryArtistId" IS NOT NULL"#,
         )
-        .fetch_all(pool)
+        .fetch_all(&mut *tx)
         .await?;
         rows.into_iter()
             .map(|(child, parent)| {
@@ -72,7 +77,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         )
         .bind(artist_a)
         .bind(artist_b)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
         if already_tracked {
             continue;
@@ -89,11 +94,12 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         .bind(artist_a)
         .bind(artist_b)
         .bind(now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
         inserted += 1;
     }
 
+    tx.commit().await?;
     Ok(inserted)
 }

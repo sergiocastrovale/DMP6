@@ -5,11 +5,17 @@ use std::sync::LazyLock;
 static DIGIT_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"^\d{1,3}$").unwrap());
 
+/// One transaction for the whole detect pass: a crash between the DELETE and the last INSERT used to
+/// leave the DETECTED set empty (or partial) until the next run re-derives it - never permanent data
+/// loss (PENDING/RESOLVED/FAILED rows are untouched), but a run that dies partway silently
+/// under-reported issues instead of reporting none.
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
     // Only clear stale DETECTED rows - PENDING (queued), PENDING_REVERT, RESOLVED and FAILED
     // are user/fix state and must survive across runs (queue, history trail, FixHistory links).
     sqlx::query(r#"DELETE FROM "IssueCorruptedTpe2" WHERE status = 'DETECTED'"#)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     let rows: Vec<(String, String, Option<String>, Option<i32>)> = sqlx::query_as(
@@ -25,10 +31,11 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
              AND "albumArtist" <> ALL($1::text[])"#,
     )
     .bind(common::artists::KNOWN_NUMERIC_ARTIST_NAMES)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     if rows.is_empty() {
+        tx.commit().await?;
         return Ok(0);
     }
 
@@ -36,7 +43,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
 
     for (track_id, current_value, release_id, year) in &rows {
         let (proposed_value, confidence) =
-            find_proposed(pool, track_id, release_id.as_deref(), *year).await?;
+            find_proposed(&mut tx, track_id, release_id.as_deref(), *year).await?;
 
         if proposed_value.is_empty() || proposed_value == *current_value {
             continue;
@@ -47,7 +54,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
                WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
         )
         .bind(track_id)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
         if already_tracked {
             continue;
@@ -67,17 +74,18 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         .bind(&proposed_value)
         .bind(&confidence)
         .bind(now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
         inserted += 1;
     }
 
+    tx.commit().await?;
     Ok(inserted)
 }
 
 async fn find_proposed(
-    pool: &PgPool,
+    tx: &mut sqlx::PgConnection,
     track_id: &str,
     release_id: Option<&str>,
     year: Option<i32>,
@@ -102,7 +110,7 @@ async fn find_proposed(
         .bind(rid)
         .bind(track_id)
         .bind(year)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *tx)
         .await?;
 
         if let Some((val, cnt)) = row {
@@ -113,7 +121,7 @@ async fn find_proposed(
         let row: Option<(Option<String>,)> =
             sqlx::query_as(r#"SELECT artist FROM "LocalReleaseTrack" WHERE id = $1"#)
                 .bind(track_id)
-                .fetch_optional(pool)
+                .fetch_optional(&mut *tx)
                 .await?;
 
         if let Some((Some(artist),)) = row {
