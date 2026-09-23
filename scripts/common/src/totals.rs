@@ -95,7 +95,7 @@ pub async fn update_artist_totals_for_artist(
            FROM (
              SELECT lra."artistId",
                     COUNT(DISTINCT lrt.id)::int as track_count,
-                    COALESCE(SUM(DISTINCT lrt."fileSize"), 0) as total_size
+                    COALESCE(SUM(lrt."fileSize"), 0) as total_size
              FROM "LocalReleaseTrack" lrt
              JOIN "LocalRelease" lr ON lrt."localReleaseId" = lr.id
              JOIN "LocalReleaseArtist" lra ON lr.id = lra."localReleaseId"
