@@ -297,18 +297,18 @@ pub async fn delete_orphan_artists(pool: &PgPool, config: &Config, scope: Artist
 /// After indexing all folders, find folders that were previously indexed but
 /// are no longer present in the current scan run. Delete their tracks and
 /// cascade-clean empty releases and orphan artists.
+/// Errors propagate: a failed read here must never be read as "zero known folders," which would make
+/// every folder on disk look newly missing on the next successful run.
 pub async fn detect_deleted_folders(
     pool: &PgPool,
     scanned_folders: &HashSet<String>,
     config: &Config,
-) -> DeletionStats {
-    // Load all distinct folder prefixes that have tracks in the DB
+) -> Result<DeletionStats, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"SELECT DISTINCT SPLIT_PART("filePath", '/', 1) AS folder FROM "LocalReleaseTrack""#,
     )
     .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    .await?;
 
     let mut stats = DeletionStats::default();
 
@@ -324,7 +324,7 @@ pub async fn detect_deleted_folders(
             "detect_deleted_folders: {}/{} known folders missing from this scan - looks like a mount blip, not a real mass deletion. Skipping folder-level deletion this run.",
             missing_folders.len(), total_known
         ));
-        return stats;
+        return Ok(stats);
     }
 
     for db_folder in missing_folders {
@@ -341,7 +341,7 @@ pub async fn detect_deleted_folders(
         stats.artists_deleted = delete_orphan_artists(pool, config, None).await;
     }
 
-    stats
+    Ok(stats)
 }
 
 async fn delete_folder_tracks(pool: &PgPool, folder: &str) -> TrackDeletionResult {

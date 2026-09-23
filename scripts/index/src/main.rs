@@ -487,7 +487,7 @@ async fn main() {
     };
 
     // Clear stale locks (held > 10 min = leftover from crash/kill)
-    if clear_stale_lock_minutes(&pool, 10).await {
+    if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         reporter.warn("Cleared a stale lock.");
     }
 
@@ -521,7 +521,7 @@ async fn main() {
             eprintln!("\nShutdown requested - finishing current folder...");
             // Wait for second Ctrl-C → force exit after releasing lock
             tokio::signal::ctrl_c().await.ok();
-            release_lock(&pool).await;
+            release_lock(&pool, "index", std::process::id()).await;
             std::process::exit(1);
         });
     }
@@ -534,7 +534,7 @@ async fn main() {
                     .expect("SIGTERM handler");
             term.recv().await;
             shutdown.store(true, Ordering::SeqCst);
-            release_lock(&pool).await;
+            release_lock(&pool, "index", std::process::id()).await;
             std::process::exit(0);
         });
     }
@@ -560,7 +560,7 @@ async fn main() {
             args.overwrite,
         )
         .await;
-        release_lock(&pool).await;
+        release_lock(&pool, "index", std::process::id()).await;
         return;
     }
 
@@ -574,7 +574,7 @@ async fn main() {
             None => None,
         };
         run_canonicalize(&pool, &config, &reporter, args.dry_run, scope.as_deref()).await;
-        release_lock(&pool).await;
+        release_lock(&pool, "index", std::process::id()).await;
         return;
     }
 
@@ -737,6 +737,12 @@ async fn main() {
 
     artist_folders.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
 
+    // A folder `--resume` skips was scanned in an earlier, interrupted run of this same pass - not
+    // missing. `scanned_folders` (below) must count every folder on disk, not just the ones this
+    // process walks, or the unfiltered deleted-folder sweep at the end treats the skipped head as
+    // gone and deletes its rows.
+    let all_artist_folders = artist_folders.clone();
+
     // Resume: skip folders before the checkpoint
     if args.resume {
         if let Some(checkpoint) = load_index_checkpoint(&pool).await {
@@ -826,7 +832,7 @@ async fn main() {
     // takes a playlist entry with it is visible instead of invisible.
     let mut favorites_dropped_total: u64 = 0;
     let mut playlists_dropped_total: u64 = 0;
-    let scanned_folders: HashSet<String> = artist_folders.iter().cloned().collect();
+    let scanned_folders: HashSet<String> = all_artist_folders.iter().cloned().collect();
     let mut mb_id_to_image_hash: HashMap<String, String> = HashMap::new();
     let mut all_artist_ids: HashSet<String> = HashSet::new();
     // No-guessing release placement (docs/no_guessing.md): counts per UNKNOWN reason this run set,
@@ -1772,14 +1778,18 @@ async fn main() {
     // Post-loop: detect entirely deleted folders
     // -------------------------------------------------------------------------
     if !shutdown.load(Ordering::SeqCst) && !has_filter(&args) {
-        let del = detect_deleted_folders(&pool, &scanned_folders, &config).await;
-        favorites_dropped_total += del.favorites_dropped;
-        playlists_dropped_total += del.playlists_dropped;
-        if del.tracks_deleted > 0 {
-            reporter.info(&format!(
-                "Removed {} track(s), {} release(s), {} artist(s) for deleted folders.",
-                del.tracks_deleted, del.releases_deleted, del.artists_deleted
-            ));
+        match detect_deleted_folders(&pool, &scanned_folders, &config).await {
+            Ok(del) => {
+                favorites_dropped_total += del.favorites_dropped;
+                playlists_dropped_total += del.playlists_dropped;
+                if del.tracks_deleted > 0 {
+                    reporter.info(&format!(
+                        "Removed {} track(s), {} release(s), {} artist(s) for deleted folders.",
+                        del.tracks_deleted, del.releases_deleted, del.artists_deleted
+                    ));
+                }
+            }
+            Err(e) => reporter.warn(&format!("Deleted-folder sweep skipped: {}", e)),
         }
     }
 
@@ -2062,10 +2072,14 @@ async fn main() {
         }
     }
 
-    clear_index_checkpoint(&pool).await.ok();
-    update_statistics(&pool).await.ok();
-    if run_hash.is_some() && !shutdown.load(Ordering::SeqCst) {
-        clear_run_hash(&pool, "indexRunHash").await;
+    // An interrupted run keeps its checkpoint (and run hash) so `--resume` picks up where it stopped
+    // instead of restarting the whole scan.
+    if !shutdown.load(Ordering::SeqCst) {
+        clear_index_checkpoint(&pool).await.ok();
+        if run_hash.is_some() {
+            clear_run_hash(&pool, "indexRunHash").await;
+        }
     }
-    release_lock(&pool).await;
+    update_statistics(&pool).await.ok();
+    release_lock(&pool, "index", std::process::id()).await;
 }
