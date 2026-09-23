@@ -68,7 +68,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         let already_tracked: bool = sqlx::query_scalar(
             r#"SELECT EXISTS(SELECT 1 FROM "IssueDuplicateArtist"
                WHERE (("artistAId" = $1 AND "artistBId" = $2) OR ("artistAId" = $2 AND "artistBId" = $1))
-                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
         )
         .bind(artist_a)
         .bind(artist_b)

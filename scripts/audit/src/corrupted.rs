@@ -21,8 +21,10 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
               OR "albumArtist" ILIKE '%lbumArtist/%'
               OR (year IS NOT NULL AND "albumArtist" = year::text))
              AND "albumArtist" IS NOT NULL
-             AND "albumArtist" != ''"#,
+             AND "albumArtist" != ''
+             AND "albumArtist" <> ALL($1::text[])"#,
     )
+    .bind(common::artists::KNOWN_NUMERIC_ARTIST_NAMES)
     .fetch_all(pool)
     .await?;
 
@@ -42,7 +44,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
 
         let already_tracked: bool = sqlx::query_scalar(
             r#"SELECT EXISTS(SELECT 1 FROM "IssueCorruptedTpe2"
-               WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+               WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
         )
         .bind(track_id)
         .fetch_one(pool)

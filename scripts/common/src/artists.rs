@@ -138,6 +138,25 @@ pub const KNOWN_SINGLE_ARTISTS: &[&str] = &[
     "ac/dc",
 ];
 
+/// Real artists whose name is entirely or mostly digits, which the digit-shaped "corrupted tag"
+/// heuristics in `audit` and `problems` would otherwise flag.
+pub const KNOWN_NUMERIC_ARTIST_NAMES: &[&str] = &[
+    "311",
+    "112",
+    "702",
+    "98",
+    "504",
+    "3",
+    "22-20s",
+    "24-7 Spyz",
+    "213",
+    "2562",
+];
+
+pub fn is_known_numeric_artist_name(s: &str) -> bool {
+    KNOWN_NUMERIC_ARTIST_NAMES.contains(&s)
+}
+
 /// Whole-name match against `KNOWN_SINGLE_ARTISTS`, compared on the normalized form so one entry
 /// covers every punctuation variant of the same band - "Florence + the Machine", "Florence & The
 /// Machine" and "florence and the machine" all normalize alike.

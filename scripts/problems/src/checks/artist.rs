@@ -97,7 +97,7 @@ pub fn numeric_or_corrupted(name: &str) -> Option<String> {
     // track-title rule, "2562" trips the bare-year rule. A real album genuinely named "07 - Song"-
     // shaped or a real bare year in the field is what the branches below still need to catch, so
     // this is a curated exception list, not a loosening of any rule's shape.
-    if is_known_numeric_artist_name(t) {
+    if common::artists::is_known_numeric_artist_name(t) {
         return None;
     }
 
@@ -140,16 +140,6 @@ pub fn numeric_or_corrupted(name: &str) -> Option<String> {
     }
 
     None
-}
-
-/// Real artists whose name is entirely (or mostly) digits, so one of the shape rules above would
-/// otherwise report them on every file they own. Each entry here was confirmed against real,
-/// currently-owned library data - not added speculatively.
-fn is_known_numeric_artist_name(s: &str) -> bool {
-    matches!(
-        s,
-        "311" | "112" | "702" | "98" | "504" | "3" | "22-20s" | "24-7 Spyz" | "213" | "2562"
-    )
 }
 
 /// Real artists whose name is entirely punctuation, so [`super::text::is_punctuation_only`] would

@@ -52,7 +52,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
 
         let already_tracked: bool = sqlx::query_scalar(
             r#"SELECT EXISTS(SELECT 1 FROM "IssueMissingMetadata"
-               WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+               WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
         )
         .bind(track_id)
         .fetch_one(pool)

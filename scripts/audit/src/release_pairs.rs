@@ -54,7 +54,7 @@ pub async fn detect_duplicate_release(pool: &PgPool, run_id: &str) -> Result<usi
         let already_tracked: bool = sqlx::query_scalar(
             r#"SELECT EXISTS(SELECT 1 FROM "IssueDuplicateRelease"
                WHERE (("releaseAId" = $1 AND "releaseBId" = $2) OR ("releaseAId" = $2 AND "releaseBId" = $1))
-                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
         )
         .bind(id1)
         .bind(id2)
@@ -112,7 +112,7 @@ pub async fn detect_mismatched_release_id(
         let already_tracked: bool = sqlx::query_scalar(
             r#"SELECT EXISTS(SELECT 1 FROM "IssueMismatchedReleaseId"
                WHERE (("releaseAId" = $1 AND "releaseBId" = $2) OR ("releaseAId" = $2 AND "releaseBId" = $1))
-                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
         )
         .bind(id1)
         .bind(id2)

@@ -113,7 +113,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
 
         let already_tracked: bool = sqlx::query_scalar(
             r#"SELECT EXISTS(SELECT 1 FROM "IssueEnrichmentGap"
-               WHERE "localReleaseId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED'))"#,
+               WHERE "localReleaseId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
         )
         .bind(release_id)
         .fetch_one(pool)
