@@ -6,5 +6,6 @@ Options:
       --mbid <MBID>  MusicBrainz artist id (UUID)
       --monitored    Set the new artist as monitored (download worker will fetch its catalogue)
       --dry-run      Print what would happen; no writes
+      --verbose      Log skipped/already-covered release groups during the catalogue-gaps pass
       --web          Emit PROGRESS:{json} lines and plain output for the web terminal
   -h, --help         Print help

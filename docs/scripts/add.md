@@ -43,6 +43,7 @@ cd scripts && cargo build --release -p add
 | `--mbid <uuid>` | Required. MusicBrainz artist id. |
 | `--monitored` | Sets `Artist.monitored = true` on creation, so the download worker's monitoring trickle picks the artist up immediately instead of waiting for someone to flip it on later. Gated `downloads.crud` at the web layer (`server/utils/terminalCommand.ts`'s `FLAG_PERM`), separately from `./add` itself (`sync.run`) — a MANAGER with only `sync.run` can add artists but not opt them into downloads. |
 | `--dry-run` | Looks up the artist on MusicBrainz, prints name/slug/folder/country/monitored, and exits before touching disk or the DB. Still takes the scan lock (so a real run can't start underneath it) and releases it before exiting. |
+| `--verbose` | Logs skipped/already-covered release groups during the catalogue-gaps pass. |
 | `--web` | Emits `PROGRESS:{...}` lines for the web terminal (same `Reporter` as `index`/`sync`/`tidy`). |
 
 ## Flow

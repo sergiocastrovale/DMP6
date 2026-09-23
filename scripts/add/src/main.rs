@@ -36,6 +36,9 @@ struct AddArgs {
     monitored: bool,
     #[arg(long, help = "Print what would happen; no writes")]
     dry_run: bool,
+    /// Log skipped/already-covered release groups during the catalogue-gaps pass.
+    #[arg(long)]
+    verbose: bool,
     /// Emit PROGRESS:{json} lines and plain output for the web terminal.
     #[arg(long)]
     web: bool,
@@ -268,12 +271,16 @@ async fn main() {
         None,
         false,
         false,
-        args.web,
+        args.verbose,
         Some(&artist_ids),
     )
     .await
     {
-        Ok((_, gaps, processed)) => {
+        // `processed` only ever gains this id once the whole per-artist body ran without hitting one
+        // of the loop's own `continue`s (an MB fetch failure, an unreadable owned-group set) - a
+        // single-artist call skipping the only artist in scope is indistinguishable from a real
+        // failure and used to report Ok((0, 0, [])) as success regardless.
+        Ok((_, gaps, processed)) if processed.contains(&artist_id) => {
             catalogue_gaps::finish_run(&pool, Some(&processed), &reporter).await;
             sqlx::query(r#"UPDATE "Artist" SET "lastGapsCheckedAt" = $1 WHERE id = $2"#)
                 .bind(Utc::now().naive_utc())
@@ -287,6 +294,14 @@ async fn main() {
                 name, gaps
             ));
             release_lock(&pool, "add", std::process::id()).await;
+        }
+        Ok(_) => {
+            reporter.warn(&format!(
+                "Catalogue fetch failed for {} (artist was still created)",
+                name
+            ));
+            release_lock(&pool, "add", std::process::id()).await;
+            std::process::exit(1);
         }
         Err(e) => {
             // Artist + folder already exist and are valid - a failed catalogue fetch is retried by the
