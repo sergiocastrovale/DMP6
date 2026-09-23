@@ -245,9 +245,15 @@ async fn fetch_artist_genre_links(
     if genre_ids.is_empty() {
         return Ok(vec![]);
     }
-    // _ArtistGenres: "A" = artist_id, "B" = genre_id
+    // _ArtistGenres: "A" = artist_id, "B" = genre_id. Same primaryArtistId rule as
+    // fetch_tracks_for_countries: a connected (duplicate-merged) artist is excluded here too, or its
+    // own genre links score it as a second, separate artist alongside the canonical one it was
+    // connected to.
     sqlx::query_as::<_, (String, String)>(
-        r#"SELECT "A", "B" FROM "_ArtistGenres" WHERE "B" = ANY($1)"#,
+        r#"SELECT ag."A", ag."B"
+           FROM "_ArtistGenres" ag
+           JOIN "Artist" a ON a.id = ag."A"
+           WHERE ag."B" = ANY($1) AND a."primaryArtistId" IS NULL"#,
     )
     .bind(genre_ids)
     .fetch_all(pool)
@@ -325,6 +331,31 @@ async fn fetch_tracks_for_countries(
             local_release_id,
         })
         .collect())
+}
+
+/// A generator that currently matches nothing must not leave a stale or empty playlist behind -
+/// `Playlist.generatorId` cascades, so this also drops its `PlaylistTrack` rows. No-op if the
+/// generator has never produced a playlist (nothing to prune yet).
+async fn prune_playlist(pool: &PgPool, generator_id: &str) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(r#"DELETE FROM "Playlist" WHERE "generatorId" = $1"#)
+        .bind(generator_id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected())
+}
+
+/// Called from every early-exit in the generation loops (no matches, too few tracks): prunes this
+/// generator's existing playlist so a rule that stops qualifying doesn't leave stale tracks or an
+/// empty shell behind forever. `--dry-run` only reports what would be pruned.
+async fn prune_if_stale(pool: &PgPool, generator: &Generator, dry_run: bool) {
+    if dry_run {
+        return;
+    }
+    match prune_playlist(pool, &generator.id).await {
+        Ok(0) => {}
+        Ok(_) => println!("    {} pruned stale playlist", "↩".yellow()),
+        Err(e) => println!("    {} failed to prune: {}", "✗".red(), e),
+    }
 }
 
 async fn upsert_playlist(
@@ -730,6 +761,7 @@ async fn main() {
 
             if genre_matches.is_empty() {
                 println!("{} no matching genres", "○".bright_black());
+                prune_if_stale(&pool, generator, args.dry_run).await;
                 continue;
             }
 
@@ -750,6 +782,7 @@ async fn main() {
 
             if artist_links.is_empty() {
                 println!("{} no artists with matching genres", "○".bright_black());
+                prune_if_stale(&pool, generator, args.dry_run).await;
                 continue;
             }
 
@@ -775,6 +808,7 @@ async fn main() {
 
             if tracks.is_empty() {
                 println!("{} no tracks found", "○".bright_black());
+                prune_if_stale(&pool, generator, args.dry_run).await;
                 continue;
             }
 
@@ -787,6 +821,7 @@ async fn main() {
                     selected.len(),
                     MIN_TRACKS
                 );
+                prune_if_stale(&pool, generator, args.dry_run).await;
                 continue;
             }
 
@@ -840,6 +875,7 @@ async fn main() {
 
             if tracks.is_empty() {
                 println!("{} no tracks found", "○".bright_black());
+                prune_if_stale(&pool, generator, args.dry_run).await;
                 continue;
             }
 
@@ -854,6 +890,7 @@ async fn main() {
                     selected.len(),
                     MIN_TRACKS
                 );
+                prune_if_stale(&pool, generator, args.dry_run).await;
                 continue;
             }
 
