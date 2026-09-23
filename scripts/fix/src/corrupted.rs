@@ -45,38 +45,64 @@ pub async fn fix(
         let previous_state =
             tags::read_tags(&abs_path).unwrap_or_else(|_| json!({ "albumArtist": current }));
 
+        // The revert record is written and the transaction left open BEFORE the file is touched, then
+        // committed only once the write succeeds. A crash mid-write rolls the transaction back with it
+        // (nothing committed, issue stays PENDING, safely retried) - never a mutated file with no
+        // `previousState` anywhere to revert it from.
+        let mut tx = match pool.begin().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                println!("    {} {}: {}", "✗".red(), file_name, e);
+                fail += 1;
+                continue;
+            }
+        };
+        let fh_id = cuid2::create_id();
+        if let Err(e) = sqlx::query(
+            r#"INSERT INTO "FixHistory" (id, "issueType", "issueId", "filePath", "previousState", "appliedState", "appliedAt", "createdAt", "updatedAt")
+               VALUES ($1, 'corrupted', $2, $3, $4, $5, $6, $6, $6)"#,
+        )
+        .bind(&fh_id)
+        .bind(issue_id)
+        .bind(file_path)
+        .bind(&previous_state)
+        .bind(json!({ "albumArtist": proposed }))
+        .bind(now)
+        .execute(&mut *tx)
+        .await
+        {
+            println!("    {} {}: {}", "✗".red(), file_name, e);
+            fail += 1;
+            continue;
+        }
+        if let Err(e) = sqlx::query(
+            r#"UPDATE "IssueCorruptedTpe2" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
+        )
+        .bind(now)
+        .bind(issue_id)
+        .execute(&mut *tx)
+        .await
+        {
+            println!("    {} {}: {}", "✗".red(), file_name, e);
+            fail += 1;
+            continue;
+        }
+
         match tags::write_album_artist(&abs_path, proposed) {
             Ok(()) => {
+                if let Err(e) = tx.commit().await {
+                    println!("    {} {}: {}", "✗".red(), file_name, e);
+                    fail += 1;
+                    continue;
+                }
                 println!("    {} {} → {}", "✓".green(), file_name, proposed);
-
-                let fh_id = cuid2::create_id();
-                sqlx::query(
-                    r#"INSERT INTO "FixHistory" (id, "issueType", "issueId", "filePath", "previousState", "appliedState", "appliedAt", "createdAt", "updatedAt")
-                       VALUES ($1, 'corrupted', $2, $3, $4, $5, $6, $6, $6)"#,
-                )
-                .bind(&fh_id)
-                .bind(issue_id)
-                .bind(file_path)
-                .bind(&previous_state)
-                .bind(json!({ "albumArtist": proposed }))
-                .bind(now)
-                .execute(pool)
-                .await?;
-
-                sqlx::query(
-                    r#"UPDATE "IssueCorruptedTpe2" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
-                )
-                .bind(now)
-                .bind(issue_id)
-                .execute(pool)
-                .await?;
-
                 if let Some(a) = folder_from_path(file_path) {
                     artists.insert(a);
                 }
                 ok += 1;
             }
             Err(e) => {
+                tx.rollback().await.ok();
                 println!("    {} {}: {}", "✗".red(), file_name, e);
                 sqlx::query(
                     r#"UPDATE "IssueCorruptedTpe2" SET status = 'FAILED', "updatedAt" = $1 WHERE id = $2"#,

@@ -49,38 +49,62 @@ pub async fn fix(
 
         let previous_state = tags::read_tags(&abs_path).unwrap_or_else(|_| json!({}));
 
+        // Same ordering as corrupted::fix: the revert record is committed only alongside the write
+        // that made it true, never before.
+        let mut tx = match pool.begin().await {
+            Ok(tx) => tx,
+            Err(e) => {
+                println!("    {} {}: {}", "✗".red(), file_name, e);
+                fail += 1;
+                continue;
+            }
+        };
+        let fh_id = cuid2::create_id();
+        if let Err(e) = sqlx::query(
+            r#"INSERT INTO "FixHistory" (id, "issueType", "issueId", "filePath", "previousState", "appliedState", "appliedAt", "createdAt", "updatedAt")
+               VALUES ($1, 'missing', $2, $3, $4, $5, $6, $6, $6)"#,
+        )
+        .bind(&fh_id)
+        .bind(issue_id)
+        .bind(file_path)
+        .bind(&previous_state)
+        .bind(proposed)
+        .bind(now)
+        .execute(&mut *tx)
+        .await
+        {
+            println!("    {} {}: {}", "✗".red(), file_name, e);
+            fail += 1;
+            continue;
+        }
+        if let Err(e) = sqlx::query(
+            r#"UPDATE "IssueMissingMetadata" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
+        )
+        .bind(now)
+        .bind(issue_id)
+        .execute(&mut *tx)
+        .await
+        {
+            println!("    {} {}: {}", "✗".red(), file_name, e);
+            fail += 1;
+            continue;
+        }
+
         match tags::write_tags_from_json(&abs_path, proposed) {
             Ok(()) => {
+                if let Err(e) = tx.commit().await {
+                    println!("    {} {}: {}", "✗".red(), file_name, e);
+                    fail += 1;
+                    continue;
+                }
                 println!("    {} {}", "✓".green(), file_name);
-
-                let fh_id = cuid2::create_id();
-                sqlx::query(
-                    r#"INSERT INTO "FixHistory" (id, "issueType", "issueId", "filePath", "previousState", "appliedState", "appliedAt", "createdAt", "updatedAt")
-                       VALUES ($1, 'missing', $2, $3, $4, $5, $6, $6, $6)"#,
-                )
-                .bind(&fh_id)
-                .bind(issue_id)
-                .bind(file_path)
-                .bind(&previous_state)
-                .bind(proposed)
-                .bind(now)
-                .execute(pool)
-                .await?;
-
-                sqlx::query(
-                    r#"UPDATE "IssueMissingMetadata" SET status = 'RESOLVED', "updatedAt" = $1 WHERE id = $2"#,
-                )
-                .bind(now)
-                .bind(issue_id)
-                .execute(pool)
-                .await?;
-
                 if let Some(a) = folder_from_path(file_path) {
                     artists.insert(a);
                 }
                 ok += 1;
             }
             Err(e) => {
+                tx.rollback().await.ok();
                 println!("    {} {}: {}", "✗".red(), file_name, e);
                 sqlx::query(
                     r#"UPDATE "IssueMissingMetadata" SET status = 'FAILED', "updatedAt" = $1 WHERE id = $2"#,
