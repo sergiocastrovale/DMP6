@@ -2232,7 +2232,15 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::is_artist_total_failure;
+    use super::{is_artist_total_failure, year_from_date};
+
+    #[test]
+    fn year_from_date_takes_the_leading_year() {
+        assert_eq!(year_from_date("1975-03-01"), Some(1975));
+        assert_eq!(year_from_date("1975"), Some(1975));
+        assert_eq!(year_from_date(""), None);
+        assert_eq!(year_from_date("abcd-01"), None);
+    }
 
     #[test]
     fn total_failure_when_every_release_actively_failed() {

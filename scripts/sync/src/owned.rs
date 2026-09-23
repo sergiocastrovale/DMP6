@@ -166,6 +166,15 @@ pub fn containment_note(container_title: &str) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn normalize_title_keeps_only_lowercased_alphanumerics() {
+        assert_eq!(normalize_title("Bangers + Mash"), "bangersmash");
+        assert_eq!(normalize_title("Mk 1"), "mk1");
+        assert_eq!(normalize_title("MK1"), "mk1");
+        assert_eq!(normalize_title("Café"), "café");
+        assert_eq!(normalize_title("  "), "");
+    }
+
     /// Local bundle with unknown durations - the title-only case.
     fn bundle(id: &str, titles: &[&str]) -> LocalBundle {
         LocalBundle {

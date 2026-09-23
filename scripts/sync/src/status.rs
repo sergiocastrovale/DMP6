@@ -546,6 +546,24 @@ mod titles_match_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_title_folds_accents_and_keeps_word_boundaries() {
+        assert_eq!(normalize_title("Café"), "cafe");
+        assert_eq!(normalize_title("Bangers + Mash"), "bangers mash");
+        assert_eq!(normalize_title("Mk  1"), "mk 1");
+        assert_ne!(normalize_title("Mk 1"), normalize_title("Mk1"));
+        assert_eq!(normalize_title("Ring Ring (English Version)"), "ring ring english version");
+    }
+
+    #[test]
+    fn year_from_date_takes_the_leading_year() {
+        assert_eq!(year_from_date(Some("1975-03-01")), Some(1975));
+        assert_eq!(year_from_date(Some("1975")), Some(1975));
+        assert_eq!(year_from_date(Some("")), None);
+        assert_eq!(year_from_date(Some("abcd-01")), None);
+        assert_eq!(year_from_date(None), None);
+    }
     use crate::mb_types::MbMedia;
 
     fn track(title: &str) -> TrackMeta {

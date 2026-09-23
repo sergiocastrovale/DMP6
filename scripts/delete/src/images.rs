@@ -28,3 +28,25 @@ pub fn extract_s3_key(url: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::extract_s3_key;
+
+    #[test]
+    fn extract_s3_key_from_virtual_hosted_and_path_urls() {
+        assert_eq!(
+            extract_s3_key("https://bucket.s3.us-east-1.amazonaws.com/artists/x.jpg").as_deref(),
+            Some("artists/x.jpg")
+        );
+        assert_eq!(
+            extract_s3_key("https://s3.us-west-000.backblazeb2.com/bucket/releases/y.jpg").as_deref(),
+            Some("bucket/releases/y.jpg")
+        );
+        assert_eq!(
+            extract_s3_key("http://minio:9000/bucket/releases/z.jpg").as_deref(),
+            Some("bucket/releases/z.jpg")
+        );
+        assert_eq!(extract_s3_key("not a url"), None);
+    }
+}

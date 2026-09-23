@@ -75,6 +75,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn normalize_filter_drops_punctuation_and_collapses_spaces() {
+        assert_eq!(normalize_filter("A.A. Bondy"), "aa bondy");
+        assert_eq!(normalize_filter("070-shake"), "070shake");
+        assert_eq!(normalize_filter("  Sunn   O)))  "), "sunn o");
+    }
+
+    #[test]
+    fn matches_filter_only_is_prefix_unless_exact_and_splits_on_semicolons() {
+        assert!(matches_filter("Airbag", "", "", "air", false));
+        assert!(!matches_filter("Airbag", "", "", "air", true));
+        assert!(matches_filter("Air", "", "", "air", true));
+        assert!(matches_filter("Björk", "", "", "radiohead; björk", false));
+        assert!(!matches_filter("Blur", "", "", "radiohead;;", false));
+    }
+
+    #[test]
+    fn matches_filter_range_is_inclusive_of_the_to_prefix() {
+        assert!(matches_filter("Beck", "b", "c", "", false));
+        assert!(matches_filter("Coldplay", "b", "c", "", false));
+        assert!(!matches_filter("Abba", "b", "c", "", false));
+        assert!(!matches_filter("Delta", "b", "c", "", false));
+        assert!(matches_filter("Anything", "", "", "", false));
+    }
+
+    #[test]
     fn escape_like_escapes_percent_and_underscore() {
         assert_eq!(escape_like("100% Silk"), "100\\% Silk");
         assert_eq!(escape_like("A_Tribute"), "A\\_Tribute");
