@@ -43,12 +43,15 @@ fi
 
 (cd "$ROOT/web" && DATABASE_URL="$DB_URL" pnpm exec prisma migrate deploy >/dev/null)
 
-# A schema.prisma change without a migration (or a raw-SQL index Prisma would drop) is drift.
-if ! (cd "$ROOT/web" && pnpm exec prisma migrate diff --from-url "$DB_URL" \
-  --to-schema-datamodel prisma/schema.prisma --exit-code >/dev/null); then
+# A schema.prisma change without a migration is drift. Indexes Prisma cannot declare (btree operator
+# classes) are created by raw migrations and listed here so their "DROP INDEX" is not reported.
+RAW_INDEXES='LocalReleaseTrack_filePath_pattern_idx|LocalRelease_folderPath_pattern_idx'
+DRIFT="$(cd "$ROOT/web" && pnpm exec prisma migrate diff --from-url "$DB_URL" \
+  --to-schema-datamodel prisma/schema.prisma --script 2>/dev/null \
+  | grep -vE "^--|^\s*$|^DROP INDEX \"(${RAW_INDEXES})\";$" || true)"
+if [ -n "$DRIFT" ]; then
   echo "Schema drift: prisma/schema.prisma and the migrations disagree:" >&2
-  (cd "$ROOT/web" && pnpm exec prisma migrate diff --from-url "$DB_URL" \
-    --to-schema-datamodel prisma/schema.prisma --script) >&2 || true
+  echo "$DRIFT" >&2
   exit 1
 fi
 

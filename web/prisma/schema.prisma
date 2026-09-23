@@ -77,7 +77,7 @@ model Artist {
   @@index([musicbrainzId])
   @@index([completeness])
   @@index([createdAt])
-  @@index([name]) // B-tree for ORDER BY name; trigram GIN index for ILIKE added via raw migration
+  @@index([name])
   @@index([country])
   @@index([monitored, lastGapsCheckedAt])
   @@index([monitored])
@@ -286,7 +286,8 @@ model LocalRelease {
   @@index([createdAt])
   @@index([downloadedFrom])
   @@index([boxReleaseId])
-  @@index([title]) // B-tree for ORDER BY title; trigram GIN index for ILIKE added via raw migration
+  // Also indexed as ("folderPath" text_pattern_ops) by migration 20260923000100 - Prisma cannot declare it.
+  @@index([title])
 }
 
 // ---------------------------------------------------------------------------
@@ -408,6 +409,7 @@ model LocalReleaseTrack {
   @@index([localReleaseId, discNumber, trackNumber]) // Composite for ORDER BY discNumber, trackNumber within a release
   @@index([mbReleaseGroupId])
   @@index([mbReleaseId])
+  // Also indexed as ("filePath" varchar_pattern_ops) by migration 20260923000100 - Prisma cannot declare it.
 }
 
 // ---------------------------------------------------------------------------
