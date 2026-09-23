@@ -13,6 +13,24 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use walkdir::WalkDir;
 
+/// `--quarantine`'s own output folders, top-level under the scan root. Never walked as library
+/// content - a re-run would otherwise report/re-quarantine files this tool already staged, and
+/// `get_artist_folder` would report one of these names itself as a fake "artist".
+const STAGING_DIRS: &[&str] = &[
+    "__QUARANTINE",
+    "__AUTOFIXED",
+    "__NEEDS_REVIEW",
+    "__UNREADABLE",
+];
+
+fn is_staging_path(path: &Path, scan_root: &Path) -> bool {
+    path.strip_prefix(scan_root)
+        .ok()
+        .and_then(|rel| rel.components().next())
+        .and_then(|c| c.as_os_str().to_str())
+        .is_some_and(|top| STAGING_DIRS.contains(&top))
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -385,11 +403,19 @@ fn scan_file(path: &Path) -> Result<(FileIssue, Vec<String>), String> {
     let blank_genre = tag_key_exists(&tags, &["GENRE"]) && !has_tag(&tags, &["GENRE"]);
 
     // --- Inconsistency: invalid year ---
+    // Same +1 buffer as problems::checks::year::check_dates (a pre-release tagged for next year is
+    // legitimate) - computed from the clock, not a hardcoded cutoff that goes stale.
+    let max_plausible_year = Local::now()
+        .format("%Y")
+        .to_string()
+        .parse::<i32>()
+        .unwrap_or(9999)
+        + 1;
     let year_value = get_tag(&tags, &["YEAR"]);
     let invalid_year = year_value.as_ref().and_then(|y| {
         let trimmed = y.trim();
         match trimmed.parse::<i32>() {
-            Ok(n) if n <= 0 || n >= 2030 => Some(trimmed.to_string()),
+            Ok(n) if n <= 0 || n > max_plausible_year => Some(trimmed.to_string()),
             Err(_) => Some(trimmed.to_string()),
             _ => None,
         }
@@ -2967,6 +2993,10 @@ fn main() {
                 return false;
             }
 
+            if is_staging_path(e.path(), Path::new(&scan_root_clone)) {
+                return false;
+            }
+
             // Apply filters based on artist folder
             let folder = get_artist_folder(e.path(), &scan_root_clone);
             let folder_lower = folder.to_lowercase();
@@ -3134,6 +3164,17 @@ fn main() {
                 for src in batch {
                     let rel = src.strip_prefix(&scan_root_path).unwrap_or(src);
                     let dst = staging_dir.join(rel);
+                    // `fs::rename` silently replaces an existing destination on Unix (POSIX
+                    // rename semantics) - a second quarantine pass landing on the same relative
+                    // path would destroy whatever was staged there first, with no warning.
+                    if dst.exists() {
+                        eprintln!(
+                            "  SKIPPED (destination already exists): {} -> {}",
+                            src.display(),
+                            dst.display()
+                        );
+                        continue;
+                    }
                     if let Some(dst_parent) = dst.parent() {
                         if let Err(e) = fs::create_dir_all(dst_parent) {
                             eprintln!("  FAILED to create {}: {}", dst_parent.display(), e);
