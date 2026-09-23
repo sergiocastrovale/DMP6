@@ -363,37 +363,46 @@ fn parse_retry_after(raw: Option<&str>) -> Option<u64> {
 // Error classification
 // ---------------------------------------------------------------------------
 
-/// Every mb_api function returns `Result<T, String>` (see mb_get below) - this is the single place
-/// that classifies what those error strings actually mean, instead of scattering `.contains("503")`
-/// checks at every call site. Previously a `Request failed: ...` (reqwest-level network/timeout/DNS
-/// error from mb_get's `.send()`) matched NONE of the "transient" checks and fell through to the
-/// hard-fail branch - in the `--release <id>` merge-validation path that feeds the file-deleting
-/// INVALID path on a plain network blip, not a genuine no-match (see docs audit #3/#63).
+/// What an `mb_get` error string means. Every mb_api function returns `Result<T, String>` with
+/// `mb_get`'s error passed through unchanged, and `mb_get` only produces the prefixes below, so the
+/// classification parses the prefix and the status code instead of searching the whole message (an
+/// id or URL in it can contain any digits).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MbErrorKind {
     /// HTTP 404 - this specific ID doesn't exist; try the next lookup tier.
     NotFound,
-    /// Network/timeout/DNS error, or MB itself reporting overload (503/429, retries exhausted).
-    /// Worth skipping for now and retrying later - NOT evidence the release has no MB match.
+    /// Network/timeout/DNS error, or MB reporting overload/server error after the retries ran out.
+    /// Worth retrying later - NOT evidence the release has no MB match.
     Transient,
     /// Anything else (unexpected status, response parse failure).
     Hard,
 }
 
+const ERR_REQUEST: &str = "Request failed:";
+const ERR_READ_BODY: &str = "Read body failed:";
+const ERR_UNAVAILABLE: &str = "MusicBrainz API still unavailable";
+const ERR_RETRIES: &str = "Max retries exceeded";
+
+/// The status of an `HTTP <status> for <url>` error.
+fn http_status(e: &str) -> Option<u16> {
+    e.strip_prefix("HTTP ")?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
+}
+
 pub fn classify_mb_error(e: &str) -> MbErrorKind {
-    if e.contains("HTTP 404") {
-        MbErrorKind::NotFound
-    } else if e.starts_with("Request failed:")
-        || e.starts_with("Read body failed:")
-        || e.contains("unavailable")
-        || e.contains("503")
-        || e.contains("429")
-        || e.contains("502")
-        || e.contains("504")
+    if [ERR_REQUEST, ERR_READ_BODY, ERR_UNAVAILABLE, ERR_RETRIES]
+        .iter()
+        .any(|p| e.starts_with(p))
     {
-        MbErrorKind::Transient
-    } else {
-        MbErrorKind::Hard
+        return MbErrorKind::Transient;
+    }
+    match http_status(e) {
+        Some(404) => MbErrorKind::NotFound,
+        Some(429) | Some(500..=599) => MbErrorKind::Transient,
+        _ => MbErrorKind::Hard,
     }
 }
 
@@ -425,7 +434,7 @@ pub async fn mb_get(
             .inflight
             .acquire()
             .await
-            .map_err(|e| format!("Request failed: limiter closed: {}", e))?;
+            .map_err(|e| format!("{ERR_REQUEST} limiter closed: {}", e))?;
 
         let sent = client
             .get(url)
@@ -452,7 +461,7 @@ pub async fn mb_get(
                     limiter.allow_immediate_retry().await;
                     continue;
                 }
-                return Err(format!("Request failed: {}", e));
+                return Err(format!("{ERR_REQUEST} {}", e));
             }
         };
 
@@ -480,7 +489,7 @@ pub async fn mb_get(
             let body = resp
                 .text()
                 .await
-                .map_err(|e| format!("Read body failed: {}", e));
+                .map_err(|e| format!("{ERR_READ_BODY} {}", e));
             drop(permit);
             return body;
         }
@@ -541,7 +550,7 @@ pub async fn mb_get(
                 continue;
             } else {
                 return Err(format!(
-                    "MusicBrainz API still unavailable after {} retries (waited up to {}s). Will retry this release next time.",
+                    "{ERR_UNAVAILABLE} after {} retries (waited up to {}s). Will retry this release next time.",
                     max_attempts,
                     ladder / 1000
                 ));
@@ -552,7 +561,7 @@ pub async fn mb_get(
         return Err(format!("HTTP {} for {}", status, url));
     }
 
-    Err("Max retries exceeded".to_string())
+    Err(ERR_RETRIES.to_string())
 }
 
 /// Advance a browse cursor, and say whether another page is owed.
@@ -1516,8 +1525,6 @@ mod tests {
 
     #[test]
     fn classifies_bad_gateway_and_gateway_timeout_as_transient() {
-        // The reverse proxy in front of MB, not MB's own app - previously fell through to Hard with
-        // zero retry, aborting the whole artist on the first blip during a long-running backfill.
         assert_eq!(
             classify_mb_error("HTTP 502 for https://musicbrainz.org/..."),
             MbErrorKind::Transient,
@@ -1530,9 +1537,6 @@ mod tests {
 
     #[test]
     fn classifies_network_timeout_dns_errors_as_transient_not_hard() {
-        // The actual bug (docs audit #63): a reqwest-level failure (timeout, DNS, connection refused)
-        // previously matched none of the "transient" substring checks and fell through to Hard, wrongly
-        // counting a network blip as a real failure.
         assert_eq!(
             classify_mb_error("Request failed: error sending request for url (https://musicbrainz.org/...): operation timed out"),
             MbErrorKind::Transient,
@@ -1548,13 +1552,34 @@ mod tests {
     }
 
     #[test]
+    fn digits_in_the_url_never_decide_the_kind() {
+        let url = "https://musicbrainz.org/ws/2/release/0503a429-5020-4504-8404-000000000503";
+        assert_eq!(
+            classify_mb_error(&format!("HTTP 400 for {url}")),
+            MbErrorKind::Hard
+        );
+        assert_eq!(
+            classify_mb_error(&format!("HTTP 410 for {url}")),
+            MbErrorKind::Hard
+        );
+        assert_eq!(
+            classify_mb_error(&format!("Parse error at {url}: HTTP 404")),
+            MbErrorKind::Hard
+        );
+        assert_eq!(
+            classify_mb_error(&format!("HTTP 500 for {url}")),
+            MbErrorKind::Transient
+        );
+    }
+
+    #[test]
     fn classifies_everything_else_as_hard() {
         assert_eq!(
             classify_mb_error("Parse error: invalid JSON"),
             MbErrorKind::Hard
         );
         assert_eq!(
-            classify_mb_error("HTTP 500 for https://musicbrainz.org/..."),
+            classify_mb_error("HTTP 400 for https://musicbrainz.org/..."),
             MbErrorKind::Hard
         );
     }
