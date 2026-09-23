@@ -277,6 +277,19 @@ async fn search_release_candidate(
     }
 }
 
+/// A failed artist lookup is not "no match": nothing is stamped, so the artist stays pending and the
+/// next run asks again.
+fn artist_lookup_failed(
+    r: &ArtistReporter<'_>,
+    mut outcome: ArtistOutcome,
+    name: &str,
+    e: &str,
+) -> ArtistOutcome {
+    r.err(&format!("Search error: {}", e));
+    outcome.failed = Some((name.to_string(), format!("Search error: {}", e)));
+    outcome
+}
+
 /// An artist is only stamped "done" for this run when it isn't a total failure - otherwise a resume
 /// would skip it despite it having accomplished nothing. `release_failures > 0` alone used to be the
 /// only signal, which missed a real case (docs/sync_decisions.md): a failed release-groups fetch
@@ -1012,12 +1025,7 @@ async fn main() {
                 .await
                 {
                     Ok(result) => result,
-                    Err(e) => {
-                        r.err(&format!("Search error: {}", e));
-                        outcome.failed =
-                            Some((artist.name.clone(), format!("Search error: {}", e)));
-                        None
-                    }
+                    Err(e) => return artist_lookup_failed(&r, outcome, &artist.name, &e),
                 }
             }
         } else {
@@ -1033,11 +1041,7 @@ async fn main() {
             .await
             {
                 Ok(result) => result,
-                Err(e) => {
-                    r.err(&format!("Search error: {}", e));
-                    outcome.failed = Some((artist.name.clone(), format!("Search error: {}", e)));
-                    None
-                }
+                Err(e) => return artist_lookup_failed(&r, outcome, &artist.name, &e),
             }
         };
 
@@ -1747,11 +1751,19 @@ async fn main() {
                     Some((local_id.clone(), db_id))
                 })
                 .collect();
-            link_local_tracks_to_mb(&pool, &track_links).await.ok();
-
-            update_local_release_match(&pool, &local_release.id, &mb_db_id, status_str)
-                .await
-                .ok();
+            if let Err(e) = bind_local_release(
+                &pool,
+                &local_release.id,
+                &mb_db_id,
+                status_str,
+                &track_links,
+            )
+            .await
+            {
+                release_failures += 1;
+                r.warn(&format!("{}: bind failed: {}", local_release.title, e));
+                continue;
+            }
 
             batch_link_release_genres(&pool, &mb_db_id, &artist_genre_ids)
                 .await
@@ -1852,6 +1864,9 @@ async fn main() {
         // Catalogue gaps: persist MISSING entries for MB release groups without local releases
         if !release_groups.is_empty() && !is_targeted && !is_duplicate {
             let covered_rg_ids = get_covered_release_group_ids(&pool, &artist.id).await;
+            if let Err(ref e) = covered_rg_ids {
+                r.warn(&format!("Owned release groups unreadable: {} - gaps skipped", e));
+            }
             // A release group has no status, so the allow-list alone lets bootleg live recordings in
             // (primary Album, secondary Live - both kept on purpose for official live albums). Ask MB
             // which of this artist's groups actually have an Official release. On failure, leave the
@@ -1859,20 +1874,23 @@ async fn main() {
             // One browse, two answers: the official-group set this gate needs, and the tracklist of
             // every one of those releases - which is what the containment note below is derived from.
             // Containment used to spend a paginated browse per gap here, every run.
-            let catalogue = match mb_api::mb_get_official_artist_catalogue(
-                &http_client,
-                &mb_artist.id,
-                &mut limiter,
-            )
-            .await
-            {
-                Ok(c) => Some(c),
-                Err(e) => {
-                    r.warn(&format!("Official release lookup failed: {} - gaps skipped", e));
-                    None
-                }
+            let catalogue = match covered_rg_ids {
+                Err(_) => None,
+                Ok(_) => match mb_api::mb_get_official_artist_catalogue(
+                    &http_client,
+                    &mb_artist.id,
+                    &mut limiter,
+                )
+                .await
+                {
+                    Ok(c) => Some(c),
+                    Err(e) => {
+                        r.warn(&format!("Official release lookup failed: {} - gaps skipped", e));
+                        None
+                    }
+                },
             };
-            if let Some(catalogue) = catalogue {
+            if let (Some(catalogue), Ok(covered_rg_ids)) = (catalogue, covered_rg_ids) {
                 let official_rg_ids = &catalogue.official_rg_ids;
                 // Notes survive the wipe below. Re-deriving one is free now (the catalogue above
                 // already carries the tracklists), but the carried note still wins on a non-overwrite
@@ -2078,9 +2096,15 @@ async fn main() {
             .await
             .ok();
         } else {
-            update_artist_sync_stats(&pool, &artist.id, &mb_artist.id, country_code.as_deref())
-                .await
-                .ok();
+            update_artist_sync_stats(
+                &pool,
+                &artist.id,
+                &mb_artist.id,
+                country_code.as_deref(),
+                !release_groups_fetch_failed,
+            )
+            .await
+            .ok();
             // Recompute catalogue-completeness now that this artist's MISSING gaps have been (re)written.
             recompute_artist_completeness(&pool, &artist.id).await.ok();
         }

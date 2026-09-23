@@ -139,11 +139,23 @@ pub async fn fill_catalogue_gaps(
                 .await
                 .ok();
         }
-        let mut covered_rg_ids = get_covered_release_group_ids(pool, artist_id).await;
-        if !overwrite {
-            let existing_missing = get_missing_release_group_ids_for_artist(pool, artist_id).await;
-            covered_rg_ids.extend(existing_missing);
-        }
+        let covered = match get_covered_release_group_ids(pool, artist_id).await {
+            Ok(c) if overwrite => Ok(c),
+            Ok(mut c) => get_missing_release_group_ids_for_artist(pool, artist_id)
+                .await
+                .map(|missing| {
+                    c.extend(missing);
+                    c
+                }),
+            Err(e) => Err(e),
+        };
+        let covered_rg_ids = match covered {
+            Ok(c) => c,
+            Err(e) => {
+                reporter.err(&format!("{}: owned release groups unreadable: {} - gaps skipped", name, e));
+                continue;
+            }
+        };
 
         let contained_notes = get_contained_notes_for_artist(pool, artist_id).await;
         let local_bundles = get_local_bundles_for_artist(pool, artist_id).await;

@@ -39,13 +39,9 @@ pub struct LinkSummary {
 
 /// Step 0: clear an `equivalentReleaseId` (and its `equivalentReleaseGroupId`/
 /// `equivalentMediumPosition` companions) that points at a `MusicBrainzRelease` row that no longer
-/// exists. The column carries no foreign key, and the orphan-release sweep
-/// (`db::delete_orphaned_mb_releases`) has no reason to know this column exists, so a dissolved box's
-/// target deleted for an unrelated reason (a merge, a bad match undone) leaves the equivalence dangling
-/// forever - the tiers below only ever fill a `NULL`, never correct a stale value. Left dangling, it
-/// also fails the whole repair pass outright: `apply_dissolve` writes it straight into
-/// `LocalRelease.releaseId`, which has a real foreign key (docs/sync_decisions.md §9 "One box never
-/// blocks the rest" - this is the 2026-09-10 rollout's own abort).
+/// exists. The column has no foreign key and the tiers below only fill a `NULL`, so a dangling value
+/// would otherwise stay forever - and `apply_dissolve` writes it into `LocalRelease.releaseId`, whose
+/// foreign key would then fail the whole repair pass.
 pub async fn clear_dangling_equivalences(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         r#"UPDATE "MusicBrainzReleaseMedium" m

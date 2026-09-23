@@ -748,26 +748,13 @@ pub async fn rescore_bound_release(
             Some((local_id.clone(), db_id))
         })
         .collect();
-    link_local_tracks_to_mb(pool, &track_links).await?;
-
-    // A fold moves tracks with stale `mbTrackId` links onto the survivor - clear whatever this score
-    // did not just re-confirm.
-    let matched_local_ids: Vec<String> = track_links.iter().map(|(l, _)| l.clone()).collect();
-    sqlx::query(
-        r#"UPDATE "LocalReleaseTrack" SET "mbTrackId" = NULL
-           WHERE "localReleaseId" = $1 AND id <> ALL($2)"#,
-    )
-    .bind(&target.local_release_id)
-    .bind(&matched_local_ids)
-    .execute(pool)
-    .await?;
-
     let status_str = crate::status::status_to_db_string(&status_check.status);
-    update_local_release_match(
+    bind_local_release(
         pool,
         &target.local_release_id,
         &target.mb_release_id,
         status_str,
+        &track_links,
     )
     .await?;
 
@@ -974,7 +961,7 @@ pub async fn batch_upsert_artist_urls(
 // ---------------------------------------------------------------------------
 
 pub async fn update_local_release_match(
-    pool: &PgPool,
+    executor: impl sqlx::PgExecutor<'_>,
     local_release_id: &str,
     mb_release_id: &str,
     status: &str,
@@ -992,9 +979,34 @@ pub async fn update_local_release_match(
     .bind(status)
     .bind(now)
     .bind(local_release_id)
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(())
+}
+
+/// Bind a local release to an MB release in one transaction: link the matched tracks, clear every
+/// other track's `mbTrackId` (stale links from an earlier binding or a fold), set release + status.
+/// A failure leaves the previous binding intact.
+pub async fn bind_local_release(
+    pool: &PgPool,
+    local_release_id: &str,
+    mb_release_id: &str,
+    status: &str,
+    links: &[(String, String)], // (local_track_id, mb_track_id)
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    link_local_tracks_to_mb(&mut *tx, links).await?;
+    let matched: Vec<&str> = links.iter().map(|(l, _)| l.as_str()).collect();
+    sqlx::query(
+        r#"UPDATE "LocalReleaseTrack" SET "mbTrackId" = NULL
+           WHERE "localReleaseId" = $1 AND "mbTrackId" IS NOT NULL AND id <> ALL($2)"#,
+    )
+    .bind(local_release_id)
+    .bind(&matched)
+    .execute(&mut *tx)
+    .await?;
+    update_local_release_match(&mut *tx, local_release_id, mb_release_id, status).await?;
+    tx.commit().await
 }
 
 /// Unbind a release, and its tracks with it. Clearing only `releaseId` used to leave every track still
@@ -1036,7 +1048,7 @@ pub async fn mark_local_release_unmatched(
 // ---------------------------------------------------------------------------
 
 pub async fn link_local_tracks_to_mb(
-    pool: &PgPool,
+    executor: impl sqlx::PgExecutor<'_>,
     links: &[(String, String)], // (local_track_id, mb_track_id)
 ) -> Result<(), sqlx::Error> {
     if links.is_empty() {
@@ -1055,7 +1067,7 @@ pub async fn link_local_tracks_to_mb(
     .bind(&local_ids)
     .bind(&mb_ids)
     .bind(now)
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(())
 }
@@ -1064,17 +1076,20 @@ pub async fn link_local_tracks_to_mb(
 // Artist sync stats
 // ---------------------------------------------------------------------------
 
+/// `mark_synced = false` persists the MB id and country but leaves `lastSyncedAt`, so an artist whose
+/// release groups could not be fetched stays pending.
 pub async fn update_artist_sync_stats(
     pool: &PgPool,
     artist_id: &str,
     mb_id: &str,
     country: Option<&str>,
+    mark_synced: bool,
 ) -> Result<(), sqlx::Error> {
     let now = Utc::now().naive_utc();
     sqlx::query(
         r#"UPDATE "Artist"
            SET "musicbrainzId" = $1,
-               "lastSyncedAt" = $2,
+               "lastSyncedAt" = CASE WHEN $5 THEN $2 ELSE "lastSyncedAt" END,
                "updatedAt" = $2,
                "country" = $3
            WHERE id = $4"#,
@@ -1083,6 +1098,7 @@ pub async fn update_artist_sync_stats(
     .bind(now)
     .bind(country)
     .bind(artist_id)
+    .bind(mark_synced)
     .execute(pool)
     .await?;
     Ok(())
@@ -1235,71 +1251,17 @@ pub async fn backfill_media_from_track_discs(pool: &PgPool) -> Result<u64, sqlx:
     Ok(targets.len() as u64)
 }
 
-/// `NOT EXISTS` rather than `NOT IN (... WHERE "releaseId" IS NOT NULL)`: `NOT IN` over a nullable
-/// column collapses to UNKNOWN for every row as soon as one NULL enters the subquery, which is what
-/// that `IS NOT NULL` guard existed to work around.
-///
-/// **A dissolved box is referenced three different ways, and all three have to be checked.** After
-/// `boxset::apply_dissolve`, each disc's `releaseId` points at the *standalone album it reprints*, so
-/// nothing points at the box through the first `NOT EXISTS` at all. What still names the box is
-/// `LocalRelease.boxReleaseId` (the provenance: "this folder is disc N of that box") and, incidentally,
-/// `LocalReleaseTrack.mbTrackId`, since `persist_box_media` links a dissolved disc's tracks to the
-/// box's own track rows.
-///
-/// The `boxReleaseId` check is the load-bearing one; the `mbTrackId` check is not a substitute for it.
-/// Relying on `mbTrackId` alone is what made this a live bug: `boxReleaseId` carries no `onDelete`
-/// override, so Prisma's default for an optional relation is `SetNull` — deleting the box silently
-/// nulls `boxReleaseId` on every one of its discs, without touching `updatedAt`, leaving
-/// `boxMediumPosition` behind as the only trace. Measured on 2026-09-18: **208 discs** had lost their
-/// box this way (Bad Company's six-disc SWAN SONG, Chic's Original Album Series, …) and 33 further box
-/// releases were one run away from the same fate. `tidy`'s own re-score makes it worse rather than
-/// better, because re-linking a dissolved disc's tracks to the standalone release removes the
-/// incidental `mbTrackId` protection that had been holding the box alive.
-///
-/// Losing the link is not cosmetic: §11's ownership rule counts a dissolved box disc as owning its
-/// album, so a box that disappears here brings the album back as a missing-album gap.
+/// Sync/tidy entry point for [`common::cleanup::delete_orphaned_mb_releases`], scoped by artist.
+/// Must run before `retire_owned_missing_placeholders` at every call site.
 pub async fn delete_orphaned_mb_releases(
     pool: &PgPool,
     scope: ArtistScope<'_>,
 ) -> Result<u64, sqlx::Error> {
-    let result = match scope {
-        Some(artist_ids) => {
-            sqlx::query(
-                r#"DELETE FROM "MusicBrainzRelease" m
-                   WHERE m.status <> 'MISSING'
-                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)
-                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."boxReleaseId" = m.id)
-                     AND NOT EXISTS (
-                           SELECT 1 FROM "LocalReleaseTrack" lt
-                           JOIN "MusicBrainzReleaseTrack" mt ON mt.id = lt."mbTrackId"
-                           WHERE mt."releaseId" = m.id
-                         )
-                     AND EXISTS (
-                           SELECT 1 FROM "MusicBrainzReleaseArtist" mra
-                           WHERE mra."releaseId" = m.id AND mra."artistId" = ANY($1::text[])
-                         )"#,
-            )
-            .bind(artist_ids)
-            .execute(pool)
-            .await?
-        }
-        None => {
-            sqlx::query(
-                r#"DELETE FROM "MusicBrainzRelease" m
-                   WHERE m.status <> 'MISSING'
-                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."releaseId" = m.id)
-                     AND NOT EXISTS (SELECT 1 FROM "LocalRelease" lr WHERE lr."boxReleaseId" = m.id)
-                     AND NOT EXISTS (
-                           SELECT 1 FROM "LocalReleaseTrack" lt
-                           JOIN "MusicBrainzReleaseTrack" mt ON mt.id = lt."mbTrackId"
-                           WHERE mt."releaseId" = m.id
-                         )"#,
-            )
-            .execute(pool)
-            .await?
-        }
+    let scope = match scope {
+        Some(artist_ids) => common::cleanup::MbSweepScope::Artists(artist_ids),
+        None => common::cleanup::MbSweepScope::All,
     };
-    Ok(result.rows_affected())
+    common::cleanup::delete_orphaned_mb_releases(pool, scope).await
 }
 
 /// Scoped to releases owned by `scope`'s artists. An *ownerless* empty release is left to the global
@@ -1376,7 +1338,11 @@ pub async fn delete_missing_releases_for_artist(
 // Without this, a release owned only under a connected artist's LocalReleaseArtist link stayed
 // "uncovered" here, so catalogue-gaps created a MISSING placeholder and the trickle worker
 // re-downloaded an album the library already had (landing under the connected artist's folder).
-pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> HashSet<String> {
+/// Errors propagate: an empty set would turn every owned album into a MISSING gap.
+pub async fn get_covered_release_group_ids(
+    pool: &PgPool,
+    artist_id: &str,
+) -> Result<HashSet<String>, sqlx::Error> {
     // Two ways a group counts as owned:
     //   1. a LocalRelease is bound to one of its releases (the ordinary case), or
     //   2. it is a dissolved box (docs/sync_decisions.md): a box's own release has no bind
@@ -1425,9 +1391,8 @@ pub async fn get_covered_release_group_ids(pool: &PgPool, artist_id: &str) -> Ha
     )
     .bind(artist_id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-    rows.into_iter().map(|(id,)| id).collect()
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
 /// Release group -> containment note, for this artist's existing MISSING gaps.
@@ -1813,7 +1778,7 @@ pub async fn get_local_bundles_for_artist(
 pub async fn get_missing_release_group_ids_for_artist(
     pool: &PgPool,
     artist_id: &str,
-) -> HashSet<String> {
+) -> Result<HashSet<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"SELECT DISTINCT mbr."releaseGroupId"
            FROM "MusicBrainzRelease" mbr
@@ -1824,9 +1789,8 @@ pub async fn get_missing_release_group_ids_for_artist(
     )
     .bind(artist_id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-    rows.into_iter().map(|(id,)| id).collect()
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
 // ---------------------------------------------------------------------------
