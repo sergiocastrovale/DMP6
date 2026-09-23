@@ -103,7 +103,7 @@ pub async fn run(
             Ok(m) => (m.year, m.rg_id.clone(), m.title.clone(), m.artist.clone()),
             Err(_) => (None, None, None, None),
         };
-        let mb_call_failed = year_result.is_err();
+        let mb_call_error: Option<&String> = year_result.as_ref().err();
         if let Err(e) = &year_result {
             eprintln!("  {} {}", "!".bright_red(), e);
         } else {
@@ -124,7 +124,7 @@ pub async fn run(
                 rg_id.clone(),
                 mb_title.clone(),
                 mb_artist.clone(),
-                mb_call_failed,
+                mb_call_error,
                 dry_run,
                 current_year,
             ) {
@@ -147,7 +147,7 @@ fn process_file(
     rg_id: Option<String>,
     mb_title: Option<String>,
     mb_artist: Option<String>,
-    mb_call_failed: bool,
+    mb_call_error: Option<&String>,
     dry_run: bool,
     current_year: i32,
 ) -> Result<FixOutcome, FixError> {
@@ -167,10 +167,8 @@ fn process_file(
         err("field no longer YEAR_ZERO/YEAR_NON_NUMERIC/YEAR_TWO_DIGIT/YEAR_IMPLAUSIBLE - tags changed since scan".to_string())
     })?;
 
-    if mb_call_failed {
-        return Err(err(
-            "MusicBrainz lookup failed - left untouched, retry later".to_string(),
-        ));
+    if let Some(reason) = mb_call_error {
+        return Err(err(format!("{reason} - left untouched, retry later")));
     }
 
     if !dry_run {

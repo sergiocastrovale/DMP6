@@ -145,9 +145,16 @@ pub fn read_id3v2_dates(path: &Path) -> std::io::Result<Option<RawId3Dates>> {
         return Ok(None);
     }
 
+    // A single `read()` is not guaranteed to fill the buffer even when enough bytes remain (a short
+    // read is legal per the `Read` contract, and MUSIC_DIR is frequently a network mount) - silently
+    // truncating to whatever came back risked parsing a tag as if it were smaller than it is. Treated
+    // the same as a missing/unsynchronised tag: nothing useful to read, not an error to propagate -
+    // a tag claiming more bytes than the file actually has is exactly the corrupt-file case this
+    // function already declines to parse.
     let mut buf = vec![0u8; size as usize];
-    let read = file.read(&mut buf)?;
-    buf.truncate(read);
+    if file.read_exact(&mut buf).is_err() {
+        return Ok(None);
+    }
 
     // Extended header: skip it.
     let mut pos = 0usize;

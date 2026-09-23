@@ -117,7 +117,11 @@ struct Args {
     )]
     limit_files: Option<usize>,
 
-    #[arg(long, help = "--audit only: continue a previous interrupted scan")]
+    #[arg(
+        long,
+        help = "--audit only: continue a previous interrupted scan",
+        conflicts_with = "restart"
+    )]
     resume: bool,
 
     #[arg(

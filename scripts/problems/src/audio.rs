@@ -18,8 +18,10 @@ use lofty::tag::ItemKey;
 use crate::checks::year::RawDates;
 use crate::id3raw;
 
-/// Audio extensions worth opening. Matches the indexer's set.
-pub const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "m4a", "opus", "ogg", "aac", "wma", "wav"];
+/// Audio extensions worth opening - the indexer's own set (`common::images::RELEASE_AUDIO_EXTENSIONS`,
+/// kept in sync manually with `index/src/main.rs`'s copy). Reporting a tag defect on an extension
+/// `./index` doesn't recognize as audio would flag a file the library doesn't actually track.
+pub const AUDIO_EXTENSIONS: &[&str] = common::images::RELEASE_AUDIO_EXTENSIONS;
 
 /// Files whose tag parse panicked. Surfaced on the Summary sheet, because a nonzero count here
 /// means the report is incomplete in a way the user should know about.
@@ -189,6 +191,15 @@ mod tests {
         assert!(!is_audio_file(&PathBuf::from("cover.jpg")));
         assert!(!is_audio_file(&PathBuf::from("notes.txt")));
         assert!(!is_audio_file(&PathBuf::from("noext")));
+    }
+
+    #[test]
+    fn extension_set_matches_the_indexer() {
+        // A defect report on an extension `./index` never treats as audio would flag a file the
+        // library doesn't actually track.
+        assert_eq!(AUDIO_EXTENSIONS, common::images::RELEASE_AUDIO_EXTENSIONS);
+        assert!(!is_audio_file(&PathBuf::from("a.wma")));
+        assert!(!is_audio_file(&PathBuf::from("a.wav")));
     }
 
     #[test]
