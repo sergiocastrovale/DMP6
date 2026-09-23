@@ -431,7 +431,7 @@ pub async fn batch_upsert_tracks(
 }
 
 pub async fn batch_ensure_track_related_artists(
-    pool: &PgPool,
+    executor: impl sqlx::PgExecutor<'_>,
     links: &[(String, String)],
 ) -> Result<(), sqlx::Error> {
     if links.is_empty() {
@@ -463,7 +463,7 @@ pub async fn batch_ensure_track_related_artists(
     .bind(&track_ids)
     .bind(&artist_ids)
     .bind(&timestamps)
-    .execute(pool)
+    .execute(executor)
     .await?;
 
     Ok(())

@@ -578,6 +578,12 @@ pub async fn resolve_and_apply(
     // ownership is left exactly as-is - stripping owners on an incomplete picture is how a release
     // ends up invisible, unsyncable, and deletable by ./delete's sweep.
     let mut releases_with_deferred: HashSet<String> = HashSet::new();
+    // Tracks whose credit-producing resolution (owner-tag co-billing, or their own artist tag)
+    // deferred this run. Their existing `TrackRelatedArtist` rows are left exactly as-is - the credit
+    // reconcile below has an incomplete picture of what they should be, and a deferred answer must
+    // never read as "nothing credited," which is what wiped every guest credit under a cold resolver
+    // cache.
+    let mut tracks_with_deferred: HashSet<String> = HashSet::new();
 
     // Phase B is offline - every name Phase A asked about is already memoized - so progress here is
     // measured in tracks, not names. Reported every PROGRESS_EVERY tracks: 1.8M transient lines is
@@ -646,6 +652,7 @@ pub async fn resolve_and_apply(
                             }
                             Resolution::Deferred => {
                                 releases_with_deferred.insert(release_id.clone());
+                                tracks_with_deferred.insert(track.id.clone());
                             }
                         }
                     }
@@ -654,6 +661,7 @@ pub async fn resolve_and_apply(
             if !resolved_owners.contains_key(owner) {
                 // Deferred on an earlier track of this same release.
                 releases_with_deferred.insert(release_id.clone());
+                tracks_with_deferred.insert(track.id.clone());
             }
             if let Some(parts) = resolved_owners.get(owner).cloned() {
                 for part in parts {
@@ -718,7 +726,10 @@ pub async fn resolve_and_apply(
                             resolved_names.insert(tag.clone(), parts);
                         }
                         // Deferred: leave this track untouched, retry next run.
-                        Resolution::Deferred => continue,
+                        Resolution::Deferred => {
+                            tracks_with_deferred.insert(track.id.clone());
+                            continue;
+                        }
                     }
                 }
                 resolved_names.get(tag).cloned().unwrap_or_default()
@@ -841,7 +852,15 @@ pub async fn resolve_and_apply(
     tx.commit().await?;
 
     // --- reconcile credits for the tracks in scope ----------------------------------------------
-    let track_ids: Vec<String> = tracks.iter().map(|t| t.id.clone()).collect();
+    // Deferred tracks are excluded from the diff on both sides (their `desired_credits` is
+    // incomplete this run, and `existing`'s rows for them must not read as "no longer desired") -
+    // never in the removal candidate set, but harmless to fetch since a set difference against an
+    // empty desired-for-that-track subset would otherwise flag them.
+    let track_ids: Vec<String> = tracks
+        .iter()
+        .map(|t| t.id.clone())
+        .filter(|id| !tracks_with_deferred.contains(id))
+        .collect();
     let existing_rows: Vec<(String, String)> = sqlx::query_as(
         r#"SELECT "trackId", "artistId" FROM "TrackRelatedArtist" WHERE "trackId" = ANY($1::text[])"#,
     )
@@ -850,7 +869,14 @@ pub async fn resolve_and_apply(
     .await?;
     let existing: HashSet<(String, String)> = existing_rows.into_iter().collect();
 
+    let to_add: Vec<(String, String)> = desired_credits.difference(&existing).cloned().collect();
     let to_remove: Vec<(String, String)> = existing.difference(&desired_credits).cloned().collect();
+
+    // Insert before delete, one transaction: a track is never momentarily credit-less mid-reconcile.
+    let mut tx = pool.begin().await?;
+    if !to_add.is_empty() {
+        crate::db::batch_ensure_track_related_artists(&mut *tx, &to_add).await?;
+    }
     if !to_remove.is_empty() {
         let (t, a): (Vec<String>, Vec<String>) = to_remove.into_iter().unzip();
         sqlx::query(
@@ -860,16 +886,10 @@ pub async fn resolve_and_apply(
         )
         .bind(&t)
         .bind(&a)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     }
-
-    let to_add: Vec<(String, String)> = desired_credits.difference(&existing).cloned().collect();
-    if !to_add.is_empty() {
-        crate::db::batch_ensure_track_related_artists(pool, &to_add)
-            .await
-            .ok();
-    }
+    tx.commit().await?;
 
     if let Some(reporter) = progress {
         reporter.clear_transient();
