@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 #
-# DMP database restore. Loads the most recent dump from web/dump/ into local PostgreSQL.
+# Load a database dump from web/dump/ into a throwaway/local PostgreSQL.
+#
+# The target is RESTORE_DATABASE_URL only - never DATABASE_URL, which points at the live library.
+# Dumps are made with `pg_dump --clean`, so a restore DROPs every table in the target first.
+#
 # Usage:
-#   ./restore              # restore latest dump
-#   ./restore <file.sql.gz> # restore specific dump
+#   ./restore [--yes] [--force-remote] [file.sql.gz]
+#
+#   --yes           skip the confirmation prompt
+#   --force-remote  allow a non-local target host (still never the DATABASE_URL host)
 #
 set -euo pipefail
 
@@ -11,78 +17,111 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DUMP_DIR="$SCRIPT_DIR/web/dump"
 ENV_FILE="$SCRIPT_DIR/web/.env"
 
-DB_HOST_DEFAULT="localhost"
-DB_PORT_DEFAULT="5432"
-DB_USER_DEFAULT="dmp"
-DB_NAME_DEFAULT="dmp"
+ASSUME_YES=false
+FORCE_REMOTE=false
+DUMP_ARG=""
+for arg in "$@"; do
+  case "$arg" in
+    --yes) ASSUME_YES=true ;;
+    --force-remote) FORCE_REMOTE=true ;;
+    -*) echo "Unknown option: $arg" >&2; exit 2 ;;
+    *) DUMP_ARG="$arg" ;;
+  esac
+done
 
+LIVE_DATABASE_URL="${DATABASE_URL:-}"
 if [ -f "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   set +a
+  LIVE_DATABASE_URL="${DATABASE_URL:-$LIVE_DATABASE_URL}"
 fi
 
-if [ -n "${DATABASE_URL:-}" ]; then
-  DB_HOST=$(echo "$DATABASE_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
-  DB_PORT=$(echo "$DATABASE_URL" | sed -n 's|.*:\([0-9]*\)/.*|\1|p')
-  DB_USER=$(echo "$DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
-  DB_PASS=$(echo "$DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
-  DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
-else
-  DB_HOST="$DB_HOST_DEFAULT"
-  DB_PORT="$DB_PORT_DEFAULT"
-  DB_USER="$DB_USER_DEFAULT"
-  DB_NAME="$DB_NAME_DEFAULT"
-  DB_PASS=""
+if [ -z "${RESTORE_DATABASE_URL:-}" ]; then
+  echo "RESTORE_DATABASE_URL is not set." >&2
+  echo "Point it at a disposable database, e.g. postgresql://dmp:dmp@localhost:5432/dmp_restore" >&2
+  exit 1
 fi
 
-if [ -n "${1:-}" ]; then
-  if [ -f "$1" ]; then
-    DUMP_FILE="$1"
-  elif [ -f "$DUMP_DIR/$1" ]; then
-    DUMP_FILE="$DUMP_DIR/$1"
+url_host() {
+  # postgresql://user:pass@host:port/db?params -> host
+  echo "$1" | sed -E 's|^[a-z]+://([^@/]*@)?([^:/?]+).*|\2|'
+}
+url_db() {
+  echo "$1" | sed -E 's|^[a-z]+://[^/]+/([^?]+).*|\1|'
+}
+
+TARGET_HOST="$(url_host "$RESTORE_DATABASE_URL")"
+TARGET_DB="$(url_db "$RESTORE_DATABASE_URL")"
+# psql rejects Prisma-only query parameters such as connection_limit.
+TARGET_URL="${RESTORE_DATABASE_URL%%\?*}"
+
+is_local_host() {
+  case "$1" in
+    localhost|127.0.0.1|::1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# A remote DATABASE_URL is the live library: never restore onto its host, --force-remote or not.
+if [ -n "$LIVE_DATABASE_URL" ]; then
+  LIVE_HOST="$(url_host "$LIVE_DATABASE_URL")"
+  if [ "$TARGET_HOST" = "$LIVE_HOST" ] && ! is_local_host "$TARGET_HOST"; then
+    echo "Refusing: RESTORE_DATABASE_URL is on the DATABASE_URL host (${TARGET_HOST})." >&2
+    exit 1
+  fi
+fi
+
+case "$TARGET_HOST" in
+  localhost|127.0.0.1|::1) ;;
+  *)
+    if [ "$FORCE_REMOTE" != true ]; then
+      echo "Refusing: target host '${TARGET_HOST}' is not local. Pass --force-remote if this is intended." >&2
+      exit 1
+    fi
+    ;;
+esac
+
+if [ -n "$DUMP_ARG" ]; then
+  if [ -f "$DUMP_ARG" ]; then
+    DUMP_FILE="$DUMP_ARG"
+  elif [ -f "$DUMP_DIR/$DUMP_ARG" ]; then
+    DUMP_FILE="$DUMP_DIR/$DUMP_ARG"
   else
-    echo "❌ File not found: $1" >&2
+    echo "File not found: $DUMP_ARG" >&2
     exit 1
   fi
 else
-  DUMP_FILE=$(ls -t "$DUMP_DIR"/*.sql.gz 2>/dev/null | head -1)
+  DUMP_FILE=$(ls -t "$DUMP_DIR"/*.sql.gz 2>/dev/null | head -1 || true)
   if [ -z "$DUMP_FILE" ]; then
-    echo "❌ No .sql.gz dumps found in $DUMP_DIR" >&2
+    echo "No .sql.gz dumps found in $DUMP_DIR" >&2
     exit 1
   fi
 fi
 
-DUMP_BASENAME=$(basename "$DUMP_FILE")
 SIZE_BYTES=$(stat -c%s "$DUMP_FILE" 2>/dev/null || stat -f%z "$DUMP_FILE")
 SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$SIZE_BYTES" 2>/dev/null || echo "${SIZE_BYTES} bytes")
 
 echo
-echo "🔄 Starting database restore..."
+echo "Database restore"
 echo "============================================================"
-echo "📁 Dump    : ${DUMP_BASENAME}"
-echo "📊 Size    : ${SIZE_HUMAN}"
-echo "🎯 Target  : ${DB_HOST}:${DB_PORT}/${DB_NAME}"
-echo "⏳ Restoring..."
+echo "Dump    : $(basename "$DUMP_FILE") (${SIZE_HUMAN})"
+echo "Target  : ${TARGET_HOST}/${TARGET_DB}"
+echo "Every table in the target is dropped and recreated."
+echo
 
-export PGPASSWORD="$DB_PASS"
-START_TS=$(date +%s)
-
-set +e
-gunzip -c "$DUMP_FILE" | psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -q 2>&1 | tail -5
-RESTORE_EXIT=${PIPESTATUS[1]}
-set -e
-
-if [ "$RESTORE_EXIT" -ne 0 ]; then
-  echo "❌ psql exited with code ${RESTORE_EXIT}" >&2
-  exit $RESTORE_EXIT
+if [ "$ASSUME_YES" != true ]; then
+  read -r -p "Type the target database name (${TARGET_DB}) to continue: " CONFIRM
+  if [ "$CONFIRM" != "$TARGET_DB" ]; then
+    echo "Aborted." >&2
+    exit 1
+  fi
 fi
 
+START_TS=$(date +%s)
+gunzip -c "$DUMP_FILE" | psql "$TARGET_URL" --quiet --single-transaction -v ON_ERROR_STOP=1 >/dev/null
 DURATION=$(( $(date +%s) - START_TS ))
 
 echo "============================================================"
-echo "✅ Database restored successfully!"
-echo "📁 Dump    : ${DUMP_BASENAME}"
-echo "🎯 Target  : ${DB_HOST}:${DB_PORT}/${DB_NAME}"
-echo "⏱️  Duration: ${DURATION}s"
+echo "Restored in ${DURATION}s."

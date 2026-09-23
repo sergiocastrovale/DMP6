@@ -127,7 +127,7 @@ Root shell wrappers over pre-built release binaries — **rebuild after code cha
 ./analysis /path/to/music     # standalone HTML quality report → reports/
 ./playlists [--dry-run|--report|--group rock|--no-genres|--no-regions]  # reads PlaylistGenerator rows (DB), no config file
 ./dissect                     # errors.log → reports/errors.xlsx
-./backup / ./restore [file.sql.gz]
+./backup / ./restore [file.sql.gz]   # restore targets RESTORE_DATABASE_URL only, never DATABASE_URL
 ```
 
 Docs per script in `docs/scripts/`. `mosaic` has no wrapper — invoked by web app (`/api/labs/mosaic/generate`).

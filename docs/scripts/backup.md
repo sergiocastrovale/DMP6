@@ -41,5 +41,11 @@ Reads `web/.env`. All values have defaults; override only if your setup differs.
 
 ## Restore
 
-`./restore [file.sql.gz]` loads the newest (or named) dump from `web/dump/` into the local PostgreSQL
-named by `DATABASE_URL`. Database only — image archives are extracted by hand.
+`./restore [--yes] [--force-remote] [file.sql.gz]` loads the newest (or named) dump from `web/dump/`
+into the database named by `RESTORE_DATABASE_URL`. Database only — image archives are extracted by hand.
+
+- `DATABASE_URL` is never a restore target: it is the live library, and dumps are made with `--clean`,
+  so a restore drops every table first.
+- A non-local target needs `--force-remote`; the `DATABASE_URL` host is refused even then.
+- Asks for the target database name unless `--yes`. Runs in one transaction with `ON_ERROR_STOP`, so a
+  failed restore leaves the target unchanged.

@@ -35,5 +35,5 @@ on the NAS. An existing binary is never rebuilt automatically — after a code c
 | Script | Purpose | Docs |
 |--------|---------|------|
 | `backup` | Pull a `pg_dump` + image archive from the NAS into `web/dump/` | [backup.md](../docs/scripts/backup.md) |
-| `restore` | Load a dump from `web/dump/` into local PostgreSQL | [backup.md](../docs/scripts/backup.md) |
+| `restore` | Load a dump from `web/dump/` into `RESTORE_DATABASE_URL` (never the live `DATABASE_URL`) | [backup.md](../docs/scripts/backup.md) |
 | `refresh` (project root) | `index` then `sync`, piping artist IDs between them | [refresh.md](../docs/scripts/refresh.md) |
