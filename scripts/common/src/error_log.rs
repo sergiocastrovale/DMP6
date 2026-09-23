@@ -12,6 +12,13 @@ pub fn init(name: &str) {
     let _ = SCRIPT_NAME.set(name.to_string());
 }
 
+/// Where `errors.log` actually lives - exported so a reader (`dissect`) can default to the same
+/// place a writer (every other binary, via `append` below) resolves to, instead of carrying its own
+/// copy of this logic that can drift from it.
+pub fn default_log_path() -> PathBuf {
+    log_path()
+}
+
 // Under the mounted data dir when PROJECT_ROOT is set (container: /app -> /app/data/logs, the same
 // volume monitor.log uses on the web side) - falls back to CWD-relative for standalone/dev CLI runs
 // with no PROJECT_ROOT, same as before.

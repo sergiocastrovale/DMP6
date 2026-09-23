@@ -126,12 +126,29 @@ fn main() {
             .filter(|p| p.exists())
             .collect();
 
+        // A manifest names an explicit, curated set of files - falling back to scanning the whole
+        // directory when none of them resolve used to silently mosaic a completely different (and
+        // usually much larger) set of images than the caller asked for, with no visible error.
         if filtered.is_empty() {
-            scan_dir()
-        } else {
-            filtered
+            eprintln!(
+                "None of the {} manifest file(s) were found under '{}'",
+                allowed.len(),
+                args.image_dir
+            );
+            std::process::exit(1);
         }
+        filtered
     };
+
+    // Fail before spending minutes resizing/compositing thousands of images on an output path that
+    // was never writable in the first place.
+    fs::create_dir_all(&args.output_dir).unwrap_or_else(|e| {
+        eprintln!(
+            "Cannot create output directory '{}': {}",
+            args.output_dir, e
+        );
+        std::process::exit(1);
+    });
 
     if paths.is_empty() {
         eprintln!("No JPEG images found in '{}'", args.image_dir);
@@ -281,17 +298,11 @@ fn main() {
         }
     }
 
-    fs::create_dir_all(&args.output_dir).unwrap_or_else(|e| {
-        eprintln!(
-            "Cannot create output directory '{}': {}",
-            args.output_dir, e
-        );
-        std::process::exit(1);
-    });
-
+    // tiles.len(), not count: an image that failed to load is dropped by the filter_map above, and
+    // the filename should say how many actually ended up in the mosaic, not how many were attempted.
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-    let full_name = format!("mosaic_{}_{}.jpg", timestamp, count);
-    let preview_name = format!("mosaic_{}_{}_preview.jpg", timestamp, count);
+    let full_name = format!("mosaic_{}_{}.jpg", timestamp, tiles.len());
+    let preview_name = format!("mosaic_{}_{}_preview.jpg", timestamp, tiles.len());
     let full_path = PathBuf::from(&args.output_dir).join(&full_name);
     let preview_path = PathBuf::from(&args.output_dir).join(&preview_name);
 

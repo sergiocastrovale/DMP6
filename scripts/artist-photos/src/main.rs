@@ -66,10 +66,15 @@ async fn fetch_candidates(pool: &PgPool, limit: Option<u32>, id: Option<&str>) -
         return sqlx::query_as(
             r#"
             SELECT a.id, a.slug, a.name, a."musicbrainzId" AS mb_id,
+                -- Only a release this artist SOLELY owns names its own root - a release co-owned
+                -- under another artist's folder (a duet, a compilation) would otherwise point
+                -- artist_folder at that OTHER artist's directory, and the photo below gets written
+                -- there as folder.jpg instead of skipped.
                 (SELECT split_part(lr."folderPath", '/', 1)
                  FROM "LocalReleaseArtist" lra
                  JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
                  WHERE lra."artistId" = a.id
+                   AND (SELECT COUNT(*) FROM "LocalReleaseArtist" x WHERE x."localReleaseId" = lr.id) = 1
                  LIMIT 1) AS artist_folder
             FROM "Artist" a
             WHERE a.id = $1 AND a."musicbrainzId" IS NOT NULL
@@ -85,9 +90,16 @@ async fn fetch_candidates(pool: &PgPool, limit: Option<u32>, id: Option<&str>) -
     sqlx::query_as(
         r#"
         SELECT * FROM (
+            -- Same sole-ownership rule as the --id path above: a folder this artist merely
+            -- co-owns is excluded from candidacy for artist_folder, so a shared root only ever
+            -- contributes NULL here (the s3/local artists/{slug}.jpg write below is unaffected -
+            -- only the on-disk folder.jpg copy is gated on this).
             SELECT DISTINCT ON (a.id)
                 a.id, a.slug, a.name, a."musicbrainzId" AS mb_id,
-                split_part(lr."folderPath", '/', 1) AS artist_folder
+                CASE WHEN (SELECT COUNT(*) FROM "LocalReleaseArtist" x WHERE x."localReleaseId" = lr.id) = 1
+                     THEN split_part(lr."folderPath", '/', 1)
+                     ELSE NULL
+                END AS artist_folder
             FROM "Artist" a
             JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
             JOIN "LocalRelease" lr ON lr.id = lra."localReleaseId"
@@ -95,7 +107,9 @@ async fn fetch_candidates(pool: &PgPool, limit: Option<u32>, id: Option<&str>) -
               AND a.image IS NULL
               AND a."imageUrl" IS NULL
               AND a."musicbrainzId" IS NOT NULL
-            ORDER BY a.id, lr."folderPath" NULLS LAST
+            ORDER BY a.id,
+              (SELECT COUNT(*) FROM "LocalReleaseArtist" x WHERE x."localReleaseId" = lr.id) ASC,
+              lr."folderPath" NULLS LAST
         ) c
         ORDER BY c.name
         LIMIT $1

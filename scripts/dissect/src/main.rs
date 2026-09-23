@@ -12,8 +12,11 @@ use std::path::PathBuf;
     about = "Parse errors.log into a structured XLSX report"
 )]
 struct Args {
-    #[arg(long, short, default_value = "errors.log", help = "Path to errors.log")]
-    input: String,
+    /// Path to errors.log. Defaults to wherever every binary's own error_log actually writes it
+    /// (PROJECT_ROOT-aware) rather than a bare relative "errors.log", which almost never matches in
+    /// a deployed container.
+    #[arg(long, short)]
+    input: Option<String>,
 
     #[arg(
         long,
@@ -158,17 +161,22 @@ type GroupKey = (ErrorType, String, String, String);
 
 fn main() {
     let args = Args::parse();
+    let input = args.input.unwrap_or_else(|| {
+        common::error_log::default_log_path()
+            .to_string_lossy()
+            .into_owned()
+    });
 
     println!("{}", "DMP Dissect".bright_cyan().bold());
     println!("{}", "===========".bright_black());
-    println!("Input   : {}", args.input.bright_white());
+    println!("Input   : {}", input.bright_white());
     println!("Output  : {}", args.output.bright_white());
     println!();
 
-    let content = match fs::read_to_string(&args.input) {
+    let content = match fs::read_to_string(&input) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("{} Cannot read '{}': {}", "✗".red(), args.input, e);
+            eprintln!("{} Cannot read '{}': {}", "✗".red(), input, e);
             std::process::exit(1);
         }
     };

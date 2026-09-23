@@ -14,10 +14,13 @@ Read-only: it never touches the database or any audio file.
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
-| `--input` | `-i` | `errors.log` | Log file to parse |
+| `--input` | `-i` | wherever `common::error_log` itself writes (below) | Log file to parse |
 | `--output` | `-o` | `reports/errors.xlsx` | XLSX path to write |
 
-On the NAS the log lives inside the container: `sudo docker exec dmp cat /app/errors.log`.
+`--input`'s default calls `common::error_log::default_log_path()` - the same resolution every
+writer uses - rather than a bare relative `errors.log`, which almost never matches once `PROJECT_ROOT`
+is set. On the NAS the log lives inside the container at `/app/data/logs/errors.log`:
+`sudo docker exec dmp cat /app/data/logs/errors.log`.
 
 ## Output
 

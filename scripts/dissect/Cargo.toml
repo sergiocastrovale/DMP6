@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+common = { path = "../common" }
 clap = { workspace = true }
 rust_xlsxwriter = { workspace = true }
 regex = { workspace = true }

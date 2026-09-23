@@ -149,7 +149,7 @@ No UI caller passes `--skip-resolve` — every run does artist-resolution + cano
 1. `./audit` → DB  2. `/issues` UI → review/queue  3. `./fix --X`  4. `./refresh --only="..."` (file-writing fixes)  5. re-audit until clean
 
 ### Error logs
-NAS: `sudo docker exec dmp cat /app/errors.log`
+NAS: `sudo docker exec dmp cat /app/data/logs/errors.log`
 
 ## API Endpoints
 
