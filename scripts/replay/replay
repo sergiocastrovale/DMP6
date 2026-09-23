@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+#
+# Replay DB passes of the current working tree against a local copy of a library dump, and diff the
+# resulting state between two code versions. Nothing here reads DATABASE_URL or web/.env.
+#
+#   scripts/replay/replay setup [dump.sql.gz]     one-off: restore a dump into the local baseline DB
+#   scripts/replay/replay run <label> [--only "Artist Name"]
+#                                                 clone baseline, run the passes, snapshot the result
+#   scripts/replay/replay diff <label_a> <label_b> [--show N]
+#   scripts/replay/replay clean <label>           drop a clone
+#
+# Passes (on the clone): tidy (full, or --only), tidy --rescore-only, index --canonicalize-artists.
+# MusicBrainz traffic goes through mb_proxy.py, which caches every answer, so repeat runs are
+# deterministic and offline once the cache is warm.
+#
+# Env: REPLAY_HOME (default ~/.cache/dmp-replay), REPLAY_PORT (55433), REPLAY_PROXY_PORT (55480).
+#
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+REPLAY_HOME="${REPLAY_HOME:-$HOME/.cache/dmp-replay}"
+PORT="${REPLAY_PORT:-55433}"
+PROXY_PORT="${REPLAY_PROXY_PORT:-55480}"
+CONTAINER="dmp-replay-db"
+VOLUME="dmp-replay-data"
+ADMIN_URL="postgresql://dmp:dmp@127.0.0.1:${PORT}/postgres"
+BASELINE_URL="postgresql://dmp:dmp@127.0.0.1:${PORT}/baseline"
+
+mkdir -p "$REPLAY_HOME"
+
+ensure_container() {
+  if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+    if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+      docker start "$CONTAINER" >/dev/null
+    else
+      docker run -d --name "$CONTAINER" \
+        -e POSTGRES_USER=dmp -e POSTGRES_PASSWORD=dmp -e POSTGRES_DB=postgres -e LANG=en_US.utf8 \
+        -v "$VOLUME:/var/lib/postgresql" \
+        -p "127.0.0.1:${PORT}:5432" "${REPLAY_PG_IMAGE:-postgres:18.4}" \
+        -c shared_buffers=1GB -c max_wal_size=8GB -c fsync=off -c synchronous_commit=off >/dev/null
+    fi
+  fi
+  for _ in $(seq 1 60); do
+    if docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U dmp >/dev/null 2>&1; then
+      return
+    fi
+    sleep 1
+  done
+  echo "replay database did not start" >&2
+  exit 1
+}
+
+sql() {
+  psql "$1" -X -q -v ON_ERROR_STOP=1 -c "$2"
+}
+
+cmd_setup() {
+  local dump="${1:-}"
+  if [ -z "$dump" ]; then
+    dump=$(ls -t "$ROOT"/web/dump/*.sql.gz 2>/dev/null | head -1 || true)
+  fi
+  [ -f "$dump" ] || { echo "No dump found (pass a .sql.gz path)" >&2; exit 1; }
+  ensure_container
+  sql "$ADMIN_URL" 'DROP DATABASE IF EXISTS baseline'
+  sql "$ADMIN_URL" 'CREATE DATABASE baseline'
+  echo "Restoring $(basename "$dump") into the replay baseline (this takes a while)..."
+  gunzip -c "$dump" | psql "$BASELINE_URL" -X -q -v ON_ERROR_STOP=1 >/dev/null
+  (cd "$ROOT/web" && DATABASE_URL="$BASELINE_URL" pnpm exec prisma migrate deploy >/dev/null)
+  # The dump carries the live Settings row: storage credentials and paths must never reach a replay.
+  sql "$BASELINE_URL" 'UPDATE "Settings" SET "musicDir" = NULL, "imageStorage" = '"'"'local'"'"',
+    "storageImageBucket" = NULL, "awsRegion" = NULL, "awsAccessKeyId" = NULL,
+    "awsSecretAccessKey" = NULL, "storageEndpoint" = NULL, "storagePublicUrl" = NULL,
+    "fanartApiKey" = NULL'
+  sql "$BASELINE_URL" 'UPDATE "Statistics" SET "scanLockedBy" = NULL, "scanLockedAt" = NULL, "scanPid" = NULL'
+  sql "$BASELINE_URL" 'ANALYZE'
+  echo "Baseline ready."
+}
+
+start_proxy() {
+  python3 "$HERE/mb_proxy.py" "$PROXY_PORT" "$REPLAY_HOME/mb-cache" &
+  PROXY_PID=$!
+  trap 'kill $PROXY_PID 2>/dev/null || true' EXIT
+  sleep 0.5
+}
+
+cmd_run() {
+  local label="${1:?label required}"; shift
+  local only=""
+  if [ "${1:-}" = "--only" ]; then only="${2:?artist name required}"; fi
+  [[ "$label" =~ ^[a-z0-9_]+$ ]] || { echo "label must be [a-z0-9_]+" >&2; exit 1; }
+
+  ensure_container
+  local db="replay_${label}"
+  local url="postgresql://dmp:dmp@127.0.0.1:${PORT}/${db}"
+  sql "$ADMIN_URL" "DROP DATABASE IF EXISTS ${db}"
+  sql "$ADMIN_URL" "CREATE DATABASE ${db} TEMPLATE baseline"
+
+  (cd "$ROOT/scripts" && cargo build --release -q -p tidy -p index)
+  local bin="$ROOT/scripts/target/release"
+  local work="$REPLAY_HOME/work/$label"
+  rm -rf "$work"
+  mkdir -p "$work/img/releases" "$work/img/artists" "$work/music" "$work/data/logs"
+  start_proxy
+
+  run_bin() {
+    local exe="$bin/$1"; shift
+    (cd "$work" && env -i PATH="$PATH" HOME="$HOME" \
+      DATABASE_URL="$url" PROJECT_ROOT="$work" IMAGE_DIR="$work/img" IMAGE_STORAGE=local \
+      MUSIC_DIR="$work/music" MB_BASE_URL="http://127.0.0.1:${PROXY_PORT}/ws/2" \
+      COVER_ART_ARCHIVE_URL="http://127.0.0.1:${PROXY_PORT}/caa" MB_MIN_DELAY_MS=0 \
+      "$exe" "$@")
+  }
+
+  local started=$(date +%s)
+  if [ -n "$only" ]; then
+    run_bin tidy --all --only "$only" --exact > "$work/tidy.log" 2>&1
+    run_bin tidy --rescore-only --all --only "$only" --exact > "$work/rescore.log" 2>&1
+    run_bin index --canonicalize-artists --only "$only" --exact > "$work/canonicalize.log" 2>&1
+  else
+    run_bin tidy --all > "$work/tidy.log" 2>&1
+    run_bin tidy --rescore-only --all > "$work/rescore.log" 2>&1
+    run_bin index --canonicalize-artists > "$work/canonicalize.log" 2>&1
+  fi
+  python3 "$HERE/snapshot.py" take "$url" "$REPLAY_HOME/snapshots/$label"
+  echo "Replay '$label' done in $(( $(date +%s) - started ))s. Logs: $work"
+}
+
+cmd_diff() {
+  local a="${1:?label a}" b="${2:?label b}"; shift 2
+  python3 "$HERE/snapshot.py" diff "$REPLAY_HOME/snapshots/$a" "$REPLAY_HOME/snapshots/$b" "$@"
+}
+
+cmd_clean() {
+  local label="${1:?label required}"
+  [[ "$label" =~ ^[a-z0-9_]+$ ]] || { echo "label must be [a-z0-9_]+" >&2; exit 1; }
+  ensure_container
+  sql "$ADMIN_URL" "DROP DATABASE IF EXISTS replay_${label}"
+  rm -rf "$REPLAY_HOME/work/$label" "$REPLAY_HOME/snapshots/$label"
+}
+
+case "${1:-}" in
+  setup) shift; cmd_setup "$@" ;;
+  run) shift; cmd_run "$@" ;;
+  diff) shift; cmd_diff "$@" ;;
+  clean) shift; cmd_clean "$@" ;;
+  *) sed -n '3,17p' "$0"; exit 2 ;;
+esac

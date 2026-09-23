@@ -1,0 +1,24 @@
+Scan a music library for tag defects (--audit) or fix ones with a reliable source (--fix:<type>).
+
+Usage: problems [OPTIONS] <--audit|--fix:year|--fix:artist|--fix:albumartist>
+
+Options:
+      --audit                      Scan the library and write problems.xlsx. Never modifies audio files
+      --fix:year                   Fix every year defect this build knows how to: YEAR_ZERO / YEAR_NON_NUMERIC / YEAR_TWO_DIGIT / YEAR_IMPLAUSIBLE resolved against MusicBrainz on a perfect match, otherwise cleared. Requires a prior --audit (reads its spool)
+      --fix:artist                 Fix every artist-field defect this build knows how to: a missing artist tag filled from the file's own albumArtist or a folder-wide majority (never MusicBrainz - there's nothing to search by on files whose title is often also empty), then invisible characters stripped. Requires a prior --audit (reads its spool)
+      --fix:albumartist            Fix every albumArtist-field defect this build knows how to: missing/"Unknown Artist" filled from the file's own artist tag or a folder-wide majority, an unrecognised Various Artists marker (e.g. "v.a.") rewritten to the canonical spelling, then invisible characters stripped and whitespace trimmed. Never MusicBrainz. Requires a prior --audit (reads its spool)
+      --dry-run                    --fix:* only: print what would change without writing any tags or updating the ledger
+      --root <ROOT>                Music library root. Defaults to $MUSIC_DIR. --fix:* only needs this to open files
+  -o, --output <OUTPUT>            Output XLSX path. Defaults to <work-dir>/problems.xlsx
+      --work-dir <WORK_DIR>        Directory for the spool, checkpoint, fixed-row ledger and default report location
+      --from <FROM>                --audit only: only artist folders from this prefix [default: ""]
+      --to <TO>                    --audit only: only artist folders up to this prefix [default: ""]
+      --only <ONLY>                --audit only: only artist folders starting with this prefix [default: ""]
+      --exact                      --audit only: make --only an exact match
+      --threads <THREADS>          --audit only: worker threads (NAS I/O bound; try 8/16/24) [default: 16]
+      --limit-files <LIMIT_FILES>  --audit only: stop after roughly this many files (smoke testing)
+      --resume                     --audit only: continue a previous interrupted scan
+      --restart                    --audit only: discard any previous scan state and start over
+      --report-only                --audit only: skip scanning; rebuild the report from an existing spool
+      --no-progress                --audit only: disable the live progress line
+  -h, --help                       Print help

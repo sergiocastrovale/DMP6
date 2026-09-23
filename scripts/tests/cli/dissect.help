@@ -1,0 +1,8 @@
+Parse errors.log into a structured XLSX report
+
+Usage: dissect [OPTIONS]
+
+Options:
+  -i, --input <INPUT>    Path to errors.log [default: errors.log]
+  -o, --output <OUTPUT>  Output XLSX path [default: reports/errors.xlsx]
+  -h, --help             Print help

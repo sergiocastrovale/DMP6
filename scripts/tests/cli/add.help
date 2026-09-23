@@ -1,0 +1,10 @@
+Adds a MusicBrainz artist to the library before any files exist for them - an empty `MUSIC_DIR` folder, an `Artist` row (`manuallyAdded = true`), and a catalogue-gaps pass so the artist page shows its MISSING releases immediately. Web caller: `POST /add`'s Search.vue, via the terminal toast/sidebar (docs/scripts/add.md). `./refresh` can't do this - it needs local files to find an artist to sync, which a brand-new folder has none of, and plain `./sync` skips any artist with no local releases outright
+
+Usage: add [OPTIONS] --mbid <MBID>
+
+Options:
+      --mbid <MBID>  MusicBrainz artist id (UUID)
+      --monitored    Set the new artist as monitored (download worker will fetch its catalogue)
+      --dry-run      Print what would happen; no writes
+      --web          Emit PROGRESS:{json} lines and plain output for the web terminal
+  -h, --help         Print help

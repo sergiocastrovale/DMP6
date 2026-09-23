@@ -1,0 +1,13 @@
+Extract embedded cover art to folder.jpg for every release that has no cover file
+
+Usage: extract-meta-images [OPTIONS]
+
+Options:
+      --root <ROOT>  Library root (defaults to MUSIC_DIR from web/.env)
+  -o, --only <ONLY>  Only process these artists (semicolon-separated)
+  -f, --from <FROM>  Start of the artist range
+  -t, --to <TO>      End of the artist range
+      --exact        Exact match for --only (no prefix matching)
+      --dry-run      Preview what would be written without touching disk
+      --web          Machine-readable progress output
+  -h, --help         Print help

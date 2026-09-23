@@ -1,0 +1,49 @@
+Index local music files into the database
+
+Usage: index [OPTIONS]
+
+Options:
+  -f, --from <FROM>
+          Start letter filter (a-z)
+  -t, --to <TO>
+          End letter filter (a-z)
+  -o, --only <ONLY>
+          Only process these artist folders (semicolon-separated)
+      --folders <FOLDERS>
+          Only index these exact folder paths relative to MUSIC_DIR (semicolon-separated)
+      --release <RELEASE>
+          Re-index a single release by its LocalRelease ID
+      --overwrite
+          Re-index all tracks, ignoring change detection
+      --overwrite-with-images
+          Re-index all tracks AND re-extract all cover art
+      --prune
+          Delete DB rows for files missing on disk even when most of the folder changed (bypasses the mount-blip ratio guard)
+      --exact
+          Exact match for --only (no prefix matching)
+      --inspect
+          Re-check existing files for metadata changes (size/mtime/hash comparison)
+      --skip-covers
+          Skip cover art extraction
+      --resume
+          Resume from last saved checkpoint
+      --delete
+          Delete all local data for matched artists, then exit
+      --threads <THREADS>
+          Rayon thread count for parallel extraction [default: 8]
+      --music-dir <MUSIC_DIR>
+          Override MUSIC_DIR from env
+      --web
+          Emit PROGRESS:{json} lines for the web terminal (default: pretty console)
+      --emit-artist-ids <EMIT_ARTIST_IDS>
+          Write processed artist IDs to file (one per line, used by refresh)
+      --resolve-artists
+          Only resolve artist tags against MusicBrainz and rebuild links, then exit (no folder scan)
+      --dry-run
+          With --resolve-artists: print the decisions without writing anything
+      --skip-resolve
+          Skip the end-of-run artist resolution pass
+      --canonicalize-artists
+          Only reconcile Artist rows with MusicBrainz (clear contradicted ids, rename to the canonical name, connect duplicates, sweep orphans), then exit. No network, no folder scan
+  -h, --help
+          Print help

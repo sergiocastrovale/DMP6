@@ -1,0 +1,10 @@
+Delete all data from DMP database and images
+
+Usage: nuke [OPTIONS]
+
+Options:
+      --y                Skip confirmation prompt
+      --keep-artist-img  Keep artist images (local files and S3 objects under artists/)
+      --only <ONLY>      Delete only matching artist(s) - semicolon-separated, exact match
+      --dry-run          Show what would be deleted without making any changes
+  -h, --help             Print help

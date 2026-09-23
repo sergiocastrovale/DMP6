@@ -1,0 +1,11 @@
+Generate genre-based and region-based playlists
+
+Usage: playlists [OPTIONS]
+
+Options:
+      --dry-run        Dry run - show what would be created without writing to DB
+      --report         Show all genres and their group assignments
+      --group <GROUP>  Update only a specific generator (by slug)
+      --no-genres      Skip genre playlists
+      --no-regions     Skip region playlists
+  -h, --help           Print help

@@ -1,0 +1,13 @@
+Detect metadata issues and persist them in the DB
+
+Usage: audit [OPTIONS]
+
+Options:
+      --corrupted              Only run corrupted TPE2 detection
+      --orphans                Only run orphan artist detection
+      --duplicates             Only run duplicate artist detection
+      --missing                Only run missing metadata detection
+      --enrichment             Only run enrichment gap detection (BPM, mood, acousticId, MB link, Discogs, Bandcamp, Wikipedia)
+      --duplicate-release      Only run duplicate-release detection (same MB releaseId, same title/tracks/duration)
+      --mismatched-release-id  Only run mismatched-release-id detection (same MB releaseId, different titles)
+  -h, --help                   Print help

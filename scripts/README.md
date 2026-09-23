@@ -40,6 +40,25 @@ DMP_LIVE_MB=1 scripts/test-db          # + tests that call the live MusicBrainz 
 suite with `--include-ignored`. It never reads `DATABASE_URL`; `TEST_DATABASE_URL` points it at an
 existing empty database instead.
 
+### Replay (regression check against a copy of a real library)
+
+```bash
+scripts/replay/replay setup [dump.sql.gz]        # once: restore a ./backup dump into a local Postgres
+scripts/replay/replay run before [--only "Name"] # clone it, run tidy + rescore + canonicalize, snapshot
+# ...change code...
+scripts/replay/replay run after [--only "Name"]
+scripts/replay/replay diff before after           # id-free, per-table row diff
+```
+
+Runs entirely against a local container (port 55433) with storage/S3/music settings scrubbed from the
+copy, binaries started outside the repo so `web/.env` is never read, and MusicBrainz traffic through a
+caching proxy (`mb_proxy.py`) so repeat runs are deterministic. An unchanged tree must diff empty.
+
+### CLI contract
+
+`scripts/cli-contract check` compares every binary's `--help` with `scripts/tests/cli/*.help` — the web
+app and wrappers depend on these flags. `update` rewrites the snapshots after an intended change.
+
 `test-s3/` is a throwaway connectivity check for S3 credentials, not part of the workspace build.
 
 ## Bash Scripts

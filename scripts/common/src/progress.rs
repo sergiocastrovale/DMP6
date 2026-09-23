@@ -38,38 +38,20 @@ impl Reporter {
         skipped: u64,
         deleted: u64,
     ) {
-        self.emit_json(&serde_json::json!({
-            "phase": "index",
-            "folder": folder,
-            "current": current,
-            "total": total,
-            "new": new,
-            "updated": updated,
-            "skipped": skipped,
-            "deleted": deleted,
-        }));
+        self.emit_json(&index_progress_json(
+            folder, current, total, new, updated, skipped, deleted,
+        ));
     }
 
     pub fn sync_progress(&self, artist: &str, current: usize, total: usize, status: &str) {
-        self.emit_json(&serde_json::json!({
-            "phase": "sync",
-            "artist": artist,
-            "current": current,
-            "total": total,
-            "status": status,
-        }));
+        self.emit_json(&sync_progress_json(artist, current, total, status));
     }
 
     /// `./tidy`'s own web-mode progress line - `step` names the current pipeline phase (e.g.
     /// "Re-scoring"), since tidy has no single "current item" the way index has a folder or sync an
     /// artist.
     pub fn tidy_progress(&self, step: &str, current: usize, total: usize) {
-        self.emit_json(&serde_json::json!({
-            "phase": "tidy",
-            "step": step,
-            "current": current,
-            "total": total,
-        }));
+        self.emit_json(&tidy_progress_json(step, current, total));
     }
 
     // ----- Structural output (both modes) -----
@@ -209,5 +191,78 @@ impl Reporter {
         } else {
             println!("{}", msg.green().bold());
         }
+    }
+}
+
+// The web UI parses these objects (`web/helpers/functions.ts`, `components/terminal/Progress.vue`):
+// field names and value types are a contract.
+
+#[allow(clippy::too_many_arguments)]
+fn index_progress_json(
+    folder: &str,
+    current: usize,
+    total: usize,
+    new: u64,
+    updated: u64,
+    skipped: u64,
+    deleted: u64,
+) -> JsonValue {
+    serde_json::json!({
+        "phase": "index",
+        "folder": folder,
+        "current": current,
+        "total": total,
+        "new": new,
+        "updated": updated,
+        "skipped": skipped,
+        "deleted": deleted,
+    })
+}
+
+fn sync_progress_json(artist: &str, current: usize, total: usize, status: &str) -> JsonValue {
+    serde_json::json!({
+        "phase": "sync",
+        "artist": artist,
+        "current": current,
+        "total": total,
+        "status": status,
+    })
+}
+
+fn tidy_progress_json(step: &str, current: usize, total: usize) -> JsonValue {
+    serde_json::json!({
+        "phase": "tidy",
+        "step": step,
+        "current": current,
+        "total": total,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn index_progress_contract() {
+        assert_eq!(
+            index_progress_json("A/B", 2, 9, 3, 4, 5, 6).to_string(),
+            r#"{"current":2,"deleted":6,"folder":"A/B","new":3,"phase":"index","skipped":5,"total":9,"updated":4}"#
+        );
+    }
+
+    #[test]
+    fn sync_progress_contract() {
+        assert_eq!(
+            sync_progress_json("Artist", 1, 7, "no_match").to_string(),
+            r#"{"artist":"Artist","current":1,"phase":"sync","status":"no_match","total":7}"#
+        );
+    }
+
+    #[test]
+    fn tidy_progress_contract() {
+        assert_eq!(
+            tidy_progress_json("Re-scoring", 3, 10).to_string(),
+            r#"{"current":3,"phase":"tidy","step":"Re-scoring","total":10}"#
+        );
     }
 }

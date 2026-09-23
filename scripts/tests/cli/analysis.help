@@ -1,0 +1,27 @@
+Scan audio files for metadata issues
+
+Usage: analysis [OPTIONS] <SCAN_PATH>
+
+Arguments:
+  <SCAN_PATH>  Root directory to scan
+
+Options:
+      --unc-prefix <UNC_PREFIX>  UNC prefix for Windows links (e.g. \\\\minibrain\\test) [default: ""]
+      --output-dir <OUTPUT_DIR>  Output directory for the HTML report (relative or absolute) [default: ../../reports]
+      --limit <LIMIT>            Limit scan to the first N audio files (0 = no limit) [default: 0]
+      --from <FROM>              Filter: only scan folders starting from this prefix (case insensitive) [default: ""]
+      --to <TO>                  Filter: only scan folders up to this prefix (case insensitive, inclusive of prefix) [default: ""]
+      --only <ONLY>              Filter: only scan folders starting with this prefix (case insensitive) [default: ""]
+      --quarantine               Move each file with issues into a __QUARANTINE subfolder of the scan root, preserving the relative path
+      --quarantine-dry           Dry run of --quarantine: print what would be moved without touching the filesystem
+      --end-quarantine           Move all files from __QUARANTINE back to their original locations (reverses --quarantine)
+      --no-report                Skip report generation entirely
+      --only-critical            Only generate critical.html + index.html
+      --only-mb                  Only generate mb.html + index.html
+      --only-discogs             Only generate discogs.html + index.html
+      --only-issues              Only generate issues.html + index.html
+      --only-ids                 Only generate ids.html + index.html
+      --only-other               Only generate other.html + index.html
+      --autofix                  Use beets to auto-fix missing metadata on files with issues (requires beet installed)
+      --autofix-dry              Dry run of --autofix: show what beets would tag without writing anything
+  -h, --help                     Print help

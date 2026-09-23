@@ -1,0 +1,10 @@
+Backfill missing artist photos
+
+Usage: artist-photos [OPTIONS]
+
+Options:
+      --dry-run        Look up candidates and report what would be fetched, without downloading or writing anything
+      --limit <LIMIT>  Cap the number of candidates processed (for a small validation pass before a full run)
+      --id <ID>        Fetch a photo for exactly this one artist id, bypassing the owns-a-release/no-existing-image filters (an explicit, on-demand request - see web's `POST /artists/[slug]/photo`). Still requires the artist to have a `musicbrainzId`
+      --web            Emit machine-readable PROGRESS: lines for the web terminal
+  -h, --help           Print help

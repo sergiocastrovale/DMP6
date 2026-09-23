@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#
+# The web app and the root wrappers invoke these binaries with specific flags. This keeps a snapshot of
+# every binary's --help so a removed or renamed flag shows up as a diff instead of a broken button.
+#
+#   scripts/cli-contract check    fail if any --help output differs from its snapshot
+#   scripts/cli-contract update   rewrite the snapshots (review the diff before committing)
+#
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SNAPSHOTS="$HERE/tests/cli"
+BINARIES=(index sync tidy add audit fix problems analysis nuke delete playlists extract-meta-images
+  dissect mosaic artist-photos)
+
+mode="${1:-check}"
+(cd "$HERE" && cargo build --workspace -q)
+mkdir -p "$SNAPSHOTS"
+
+status=0
+for bin in "${BINARIES[@]}"; do
+  actual="$("$HERE/target/debug/$bin" --help 2>&1)"
+  snapshot="$SNAPSHOTS/$bin.help"
+  if [ "$mode" = update ]; then
+    printf '%s\n' "$actual" > "$snapshot"
+  elif ! diff -u "$snapshot" <(printf '%s\n' "$actual") >/dev/null 2>&1; then
+    echo "CLI changed: $bin"
+    diff -u "$snapshot" <(printf '%s\n' "$actual") || true
+    status=1
+  fi
+done
+exit $status

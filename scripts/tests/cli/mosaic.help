@@ -1,0 +1,11 @@
+Generate album cover mosaic from release images
+
+Usage: mosaic [OPTIONS]
+
+Options:
+      --image-dir <IMAGE_DIR>    [default: web/public/img/releases]
+      --output-dir <OUTPUT_DIR>  [default: web/public/img/labs]
+      --mode <MODE>              [default: chronological]
+      --manifest <MANIFEST>      
+      --web                      
+  -h, --help                     Print help

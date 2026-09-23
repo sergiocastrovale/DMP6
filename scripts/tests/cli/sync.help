@@ -1,0 +1,21 @@
+Usage: sync [OPTIONS]
+
+Options:
+  -f, --from <FROM>                
+  -t, --to <TO>                    
+  -o, --only <ONLY>                Only sync these artists (semicolon-separated)
+      --release <RELEASE>          Re-sync a single release by its LocalRelease ID
+      --artist-hint <ARTIST_HINT>  With --release: prefer this Artist ID when the release has multiple main artists (e.g. the download's own artist, so a collab release syncs/validates under the artist it was actually downloaded for, not whichever main artist sorts first alphabetically)
+      --overwrite                  
+      --exact                      Exact match for --only (no prefix matching)
+      --skip-artist-img            
+      --skip-release-img           
+      --skip-mb-tags               Skip writing MusicBrainz IDs back to audio file tags
+      --only-write-mb-to-files     Write DB-known MB IDs to file tags (no API calls), then exit
+      --delete                     
+      --catalogue-gaps             Fast pass: populate MISSING catalogue entries only (few API calls/artist)
+      --artist-ids <ARTIST_IDS>    Read artist IDs from file (one per line, used by refresh)
+      --verbose                    
+      --concurrency <CONCURRENCY>  How many artists to sync at once. All workers share one MusicBrainz pacing schedule, so this changes how much of the rate allowance is used, never the rate itself [default: 6]
+      --web                        Emit PROGRESS:{json} lines and plain output for the web terminal. Default is pretty colored console output
+  -h, --help                       Print help
