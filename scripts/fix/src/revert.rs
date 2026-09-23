@@ -70,7 +70,7 @@ pub async fn revert(
             println!(
                 "  {} No fix history for issue {}",
                 "⚠".yellow(),
-                &issue_id[..8]
+                issue_id.get(..8).unwrap_or(issue_id)
             );
             sqlx::query(&format!(
                 r#"UPDATE "{}" SET status = $1::"IssueStatus", "updatedAt" = $2 WHERE id = $3"#,

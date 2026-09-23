@@ -591,7 +591,10 @@ async fn main() {
     } else {
         match get_run_hash(&pool, "indexRunHash").await {
             Some(h) => {
-                reporter.info(&format!("Resuming run (hash: {})", &h[..8]));
+                reporter.info(&format!(
+                    "Resuming run (hash: {})",
+                    h.get(..8).unwrap_or(&h)
+                ));
                 Some(h)
             }
             None => {

@@ -563,14 +563,20 @@ async fn main() {
 
         reporter.header("DMP Sync - Write MB IDs to Files");
 
-        let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
-            r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist"
-               WHERE "musicbrainzId" IS NOT NULL
-               ORDER BY name"#,
+        let rows: Vec<(String, String, String, Option<String>)> = common::lock::expect_or_release(
+            &pool,
+            "sync",
+            pid,
+            sqlx::query_as(
+                r#"SELECT id, name, slug, "musicbrainzId" FROM "Artist"
+                       WHERE "musicbrainzId" IS NOT NULL
+                       ORDER BY name"#,
+            )
+            .fetch_all(&pool)
+            .await,
+            "DB query failed",
         )
-        .fetch_all(&pool)
-        .await
-        .expect("DB query failed");
+        .await;
 
         let artists: Vec<(String, String, Option<String>)> = rows
             .into_iter()
@@ -670,7 +676,10 @@ async fn main() {
     } else {
         match get_run_hash(&pool, "syncRunHash").await {
             Some(h) => {
-                reporter.info(&format!("Resuming run (hash: {})", &h[..8]));
+                reporter.info(&format!(
+                    "Resuming run (hash: {})",
+                    h.get(..8).unwrap_or(&h)
+                ));
                 Some(h)
             }
             None => {
@@ -759,13 +768,19 @@ async fn main() {
             vec![]
         } else {
             let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
-                sqlx::query_as(
-                    r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" WHERE id = ANY($1::text[])"#,
+                common::lock::expect_or_release(
+                    &pool,
+                    "sync",
+                    pid,
+                    sqlx::query_as(
+                        r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" WHERE id = ANY($1::text[])"#,
+                    )
+                    .bind(&ids)
+                    .fetch_all(&pool)
+                    .await,
+                    "DB query failed",
                 )
-                .bind(&ids)
-                .fetch_all(&pool)
-                .await
-                .expect("DB query failed");
+                .await;
             rows.into_iter()
                 .map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
                     id,
@@ -778,12 +793,18 @@ async fn main() {
         }
     } else if args.overwrite {
         let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
-            sqlx::query_as(
-                r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" ORDER BY name"#,
+            common::lock::expect_or_release(
+                &pool,
+                "sync",
+                pid,
+                sqlx::query_as(
+                    r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" ORDER BY name"#,
+                )
+                .fetch_all(&pool)
+                .await,
+                "DB query failed",
             )
-            .fetch_all(&pool)
-            .await
-            .expect("DB query failed");
+            .await;
 
         rows.into_iter()
             .filter(|(_, name, _, _, _, _)| {
@@ -804,20 +825,25 @@ async fn main() {
             })
             .collect()
     } else {
-        get_artists_pending_sync(&pool)
-            .await
-            .expect("DB query failed")
-            .into_iter()
-            .filter(|a| {
-                matches_filter(
-                    &a.name,
-                    args.from.as_deref().unwrap_or(""),
-                    args.to.as_deref().unwrap_or(""),
-                    args.only.as_deref().unwrap_or(""),
-                    args.exact,
-                )
-            })
-            .collect()
+        common::lock::expect_or_release(
+            &pool,
+            "sync",
+            pid,
+            get_artists_pending_sync(&pool).await,
+            "DB query failed",
+        )
+        .await
+        .into_iter()
+        .filter(|a| {
+            matches_filter(
+                &a.name,
+                args.from.as_deref().unwrap_or(""),
+                args.to.as_deref().unwrap_or(""),
+                args.only.as_deref().unwrap_or(""),
+                args.exact,
+            )
+        })
+        .collect()
     };
 
     // Expand with connected (linked) artists when filtering
