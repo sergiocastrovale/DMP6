@@ -3,6 +3,6 @@ Parse errors.log into a structured XLSX report
 Usage: dissect [OPTIONS]
 
 Options:
-  -i, --input <INPUT>    Path to errors.log [default: errors.log]
+  -i, --input <INPUT>    Path to errors.log. Defaults to wherever every binary's own error_log actually writes it (PROJECT_ROOT-aware) rather than a bare relative "errors.log", which almost never matches in a deployed container
   -o, --output <OUTPUT>  Output XLSX path [default: reports/errors.xlsx]
   -h, --help             Print help
