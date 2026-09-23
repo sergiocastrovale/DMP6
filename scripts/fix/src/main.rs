@@ -8,7 +8,7 @@ mod tags;
 use std::collections::HashSet;
 use std::process::Command;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use common::{
     config::{apply_db_overrides, load_config},
@@ -16,6 +16,14 @@ use common::{
     error_log,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
 };
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RevertMode {
+    /// Back to DETECTED - the issue is queued again next time it's picked up.
+    Undo,
+    /// Stays RESOLVED - the file/DB change is undone, the issue is not re-queued.
+    UndoResolved,
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "fix", about = "Apply fixes for PENDING metadata issues")]
@@ -35,9 +43,12 @@ struct Args {
     /// Revert previously applied fixes instead of applying new ones
     #[arg(long)]
     revert: bool,
-    /// Revert mode: 'undo' (back to DETECTED) or 'undo-resolved' (stays RESOLVED)
-    #[arg(long, default_value = "undo")]
-    mode: String,
+    /// Revert mode
+    #[arg(long, value_enum, default_value_t = RevertMode::Undo)]
+    mode: RevertMode,
+    /// Print what would be fixed without writing files or the database
+    #[arg(long)]
+    dry_run: bool,
 }
 
 #[tokio::main]
@@ -53,6 +64,11 @@ async fn main() {
             "{}",
             "Specify at least one fix type: --corrupted, --orphans, --duplicates, --missing".red()
         );
+        std::process::exit(1);
+    }
+
+    if args.dry_run && args.revert {
+        eprintln!("{}", "--dry-run is not supported with --revert.".red());
         std::process::exit(1);
     }
 
@@ -76,7 +92,7 @@ async fn main() {
     if args.revert {
         if args.corrupted {
             println!("{}", "↩ Reverting corrupted TPE2 fixes...".cyan().bold());
-            match revert::revert(&pool, &music_dir, "corrupted", &args.mode).await {
+            match revert::revert(&pool, &music_dir, "corrupted", args.mode).await {
                 Ok((ok, fail, artists)) => {
                     println!(
                         "  {} reverted, {} failed",
@@ -96,7 +112,7 @@ async fn main() {
         }
         if args.missing {
             println!("{}", "↩ Reverting missing metadata fixes...".cyan().bold());
-            match revert::revert(&pool, &music_dir, "missing", &args.mode).await {
+            match revert::revert(&pool, &music_dir, "missing", args.mode).await {
                 Ok((ok, fail, artists)) => {
                     println!(
                         "  {} reverted, {} failed",
@@ -124,7 +140,7 @@ async fn main() {
     } else {
         if args.corrupted {
             println!("{}", "→ Fixing corrupted TPE2 issues...".cyan().bold());
-            match corrupted::fix(&pool, &music_dir).await {
+            match corrupted::fix(&pool, &music_dir, args.dry_run).await {
                 Ok((ok, fail, artists)) => {
                     println!(
                         "  {} resolved, {} failed",
@@ -145,7 +161,7 @@ async fn main() {
 
         if args.orphans {
             println!("{}", "→ Fixing orphan artist issues...".cyan().bold());
-            match orphans::fix(&pool, &config).await {
+            match orphans::fix(&pool, &config, args.dry_run).await {
                 Ok((ok, fail)) => println!(
                     "  {} resolved, {} failed",
                     ok.to_string().green(),
@@ -160,7 +176,7 @@ async fn main() {
 
         if args.duplicates {
             println!("{}", "→ Fixing duplicate artist issues...".cyan().bold());
-            match duplicates::fix(&pool, &config, &music_dir).await {
+            match duplicates::fix(&pool, &config, &music_dir, args.dry_run).await {
                 Ok((ok, fail, artists)) => {
                     println!(
                         "  {} resolved, {} failed",
@@ -181,7 +197,7 @@ async fn main() {
 
         if args.missing {
             println!("{}", "→ Fixing missing metadata issues...".cyan().bold());
-            match missing::fix(&pool, &music_dir).await {
+            match missing::fix(&pool, &music_dir, args.dry_run).await {
                 Ok((ok, fail, artists)) => {
                     println!(
                         "  {} resolved, {} failed",
@@ -240,9 +256,11 @@ async fn main() {
         }
     }
 
-    if let Err(e) = common::statistics::update_statistics(&pool).await {
-        error_log::log_warn(&format!("failed to update statistics: {}", e));
-        eprintln!("Warning: failed to update statistics: {}", e);
+    if !args.dry_run {
+        if let Err(e) = common::statistics::update_statistics(&pool).await {
+            error_log::log_warn(&format!("failed to update statistics: {}", e));
+            eprintln!("Warning: failed to update statistics: {}", e);
+        }
     }
 
     println!("{}", "Done.".green().bold());

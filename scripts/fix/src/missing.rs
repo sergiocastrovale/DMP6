@@ -8,6 +8,7 @@ use std::collections::HashSet;
 pub async fn fix(
     pool: &PgPool,
     music_dir: &str,
+    dry_run: bool,
 ) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
     let rows: Vec<(String, String, Option<serde_json::Value>)> = sqlx::query_as(
         r#"SELECT i.id, t."filePath", i."proposedValues"
@@ -46,6 +47,12 @@ pub async fn fix(
             .rsplit_once('/')
             .map(|(_, f)| f)
             .unwrap_or(file_path);
+
+        if dry_run {
+            println!("  {} {}: {}", "[dry-run]".cyan(), file_name, proposed);
+            ok += 1;
+            continue;
+        }
 
         let previous_state = tags::read_tags(&abs_path).unwrap_or_else(|_| json!({}));
 

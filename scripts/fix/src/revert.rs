@@ -1,4 +1,4 @@
-use crate::{folder_from_path, tags};
+use crate::{folder_from_path, tags, RevertMode};
 use colored::Colorize;
 use common::error_log;
 use sqlx::types::chrono::Utc;
@@ -9,7 +9,7 @@ pub async fn revert(
     pool: &PgPool,
     music_dir: &str,
     issue_type: &str,
-    mode: &str,
+    mode: RevertMode,
 ) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
     let issue_table = match issue_type {
         "corrupted" => "IssueCorruptedTpe2",
@@ -22,19 +22,8 @@ pub async fn revert(
     };
 
     let target_status = match mode {
-        "undo" => "DETECTED",
-        "undo-resolved" => "RESOLVED",
-        _ => {
-            error_log::log_error(&format!(
-                "Unknown revert mode: {} (expected 'undo' or 'undo-resolved')",
-                mode
-            ));
-            eprintln!(
-                "  Unknown revert mode: {} (expected 'undo' or 'undo-resolved')",
-                mode
-            );
-            return Ok((0, 0, HashSet::new()));
-        }
+        RevertMode::Undo => "DETECTED",
+        RevertMode::UndoResolved => "RESOLVED",
     };
 
     let issue_ids: Vec<(String,)> = sqlx::query_as(&format!(

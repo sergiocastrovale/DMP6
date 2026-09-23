@@ -7,7 +7,11 @@ use sqlx::PgPool;
 
 /// Deletes the artists of PENDING orphan issues - but only those still linked to nothing at the
 /// moment of deletion. An issue whose artist gained a link since the audit is stale and is dropped.
-pub async fn fix(pool: &PgPool, config: &Config) -> Result<(usize, usize), sqlx::Error> {
+pub async fn fix(
+    pool: &PgPool,
+    config: &Config,
+    dry_run: bool,
+) -> Result<(usize, usize), sqlx::Error> {
     let rows: Vec<(String, String, String)> = sqlx::query_as(
         r#"SELECT i.id, i."artistId", a.name
            FROM "IssueOrphanArtist" i
@@ -30,6 +34,11 @@ pub async fn fix(pool: &PgPool, config: &Config) -> Result<(usize, usize), sqlx:
         format!(r#"DELETE FROM "Artist" a WHERE a.id = $1 AND {ARTIST_UNLINKED}"#);
 
     for (issue_id, artist_id, name) in &rows {
+        if dry_run {
+            println!("  {} would delete orphan: {}", "[dry-run]".cyan(), name);
+            ok += 1;
+            continue;
+        }
         let images = artist_images(pool, std::slice::from_ref(artist_id)).await?;
         match sqlx::query(&delete_unlinked)
             .bind(artist_id)

@@ -3,10 +3,32 @@ Apply fixes for PENDING metadata issues
 Usage: fix [OPTIONS]
 
 Options:
-      --corrupted    Fix corrupted TPE2 issues
-      --orphans      Fix orphan artist issues (delete them)
-      --duplicates   Fix duplicate artist issues (merge B into A)
-      --missing      Fix missing metadata issues
-      --revert       Revert previously applied fixes instead of applying new ones
-      --mode <MODE>  Revert mode: 'undo' (back to DETECTED) or 'undo-resolved' (stays RESOLVED) [default: undo]
-  -h, --help         Print help
+      --corrupted
+          Fix corrupted TPE2 issues
+
+      --orphans
+          Fix orphan artist issues (delete them)
+
+      --duplicates
+          Fix duplicate artist issues (merge B into A)
+
+      --missing
+          Fix missing metadata issues
+
+      --revert
+          Revert previously applied fixes instead of applying new ones
+
+      --mode <MODE>
+          Revert mode
+
+          Possible values:
+          - undo:          Back to DETECTED - the issue is queued again next time it's picked up
+          - undo-resolved: Stays RESOLVED - the file/DB change is undone, the issue is not re-queued
+          
+          [default: undo]
+
+      --dry-run
+          Print what would be fixed without writing files or the database
+
+  -h, --help
+          Print help (see a summary with '-h')

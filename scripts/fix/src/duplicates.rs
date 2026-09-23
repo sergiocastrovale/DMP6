@@ -10,6 +10,7 @@ pub async fn fix(
     pool: &PgPool,
     config: &Config,
     music_dir: &str,
+    dry_run: bool,
 ) -> Result<(usize, usize, HashSet<String>), sqlx::Error> {
     let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
         r#"SELECT i.id, i."artistAId", a.name, i."artistBId", b.name
@@ -33,6 +34,16 @@ pub async fn fix(
     let now = Utc::now().naive_utc();
 
     for (issue_id, artist_a, name_a, artist_b, name_b) in &rows {
+        if dry_run {
+            println!(
+                "  {} would merge {} → {}",
+                "[dry-run]".cyan(),
+                name_b,
+                name_a
+            );
+            ok += 1;
+            continue;
+        }
         match merge(pool, config, music_dir, artist_a, name_a, artist_b, name_b).await {
             Ok(affected) => {
                 println!("  {} Merged {} → {}", "✓".green(), name_b, name_a);
