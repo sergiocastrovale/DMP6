@@ -226,7 +226,7 @@ Full spec: `docs/sync_decisions.md` (this is a summary). MB has no box-set entit
 `index` never folds multi-medium — `./tidy` decides everything (binding, medium assignment, fold/dissolve, equivalence), scoped by whatever artist ids that tidy run got (`boxset::run_repair`, called from `scripts/tidy/src/main.rs`). Moved out of sync's own tail (`docs/scripts/tidy.md`).
 
 - **Binding:** tags agreeing with MB bind folder→release+medium for free; when they don't, `boxset::plan_box_bind`'s tracklist matcher (title+duration ±5s, `find_owning_bundle`) decides, perfect matching only.
-- **Equivalence** (`sync::box_editions`, 3 tiers, each only on what's left unlinked): tier 1 exact recording-set equi-join (no track-count floor); tier 2 artist-scoped title+duration positional fallback (pre-`recordingId` releases); tier 3 containment match for a bonus-track edition MB never catalogued separately. Written to `equivalentReleaseId`/`equivalentReleaseGroupId`.
+- **Equivalence** (`sync::box_editions`, 3 tiers, each only on what's left unlinked, and only for media of a `mediumCount > 1` release - a single-medium release is itself the standalone edition, and comparing it against its own artist's catalogue found itself): tier 1 exact recording-set equi-join (no track-count floor); tier 2 artist-scoped title+duration positional fallback (pre-`recordingId` releases); tier 3 containment match for a bonus-track edition MB never catalogued separately. Written to `equivalentReleaseId`/`equivalentReleaseGroupId`.
 - **Fold vs dissolve:** `mediumCount>1` + ≥2 media with an equivalent → dissolve (each disc binds independently, or to the box as rarities/no-equivalent); 0-1 → fold (siblings merge, `LocalReleaseMember` per absorbed folder). Flat `≥2`, no majority clause at any box size.
 - **Web:** a dissolved disc is a real bound `LocalRelease`, flows through `buildReleaseCard` into its album's edition group via the normal `releaseGroupId` grouper — no box-specific logic. `UnifiedRelease.boxParent` carries provenance; a rarities disc gets its own row (`"{box title} — {medium title}"`) with a `Box Set` pill. Full web contract: `docs/sync_decisions.md` §7-8.
 
@@ -240,7 +240,7 @@ Moved to `./tidy` (`delete_empty_local_releases`/`delete_orphaned_mb_releases`, 
 
 ## Locking & Resumability
 
-Named DB lock (`"sync"`). Clears stale locks >10min. SIGTERM/Ctrl-C release the lock; second Ctrl-C force-exits.
+Named DB lock (`"sync"`). Clears stale locks >3min. SIGTERM/Ctrl-C release the lock; second Ctrl-C force-exits.
 
 Run hash in `Settings.syncRunHash`. Restart skips artists already processed (`Artist.syncHash` match). Hash cleared on completion. `--overwrite` generates a new hash. `--release` bypasses the hash.
 

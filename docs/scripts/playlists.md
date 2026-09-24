@@ -26,9 +26,9 @@ cd scripts/playlists && cargo build --release
 
 1. Reads every `PlaylistGenerator` row from the database
 2. For GENRE generators, matches DB genres against each generator's `terms` (keyword lines, `-`-prefixed exclude lines)
-3. Scores artists by their best matching genre weight; for REGION generators, every artist in a listed country scores 1.0
+3. Scores artists by their best matching genre weight; for REGION generators, every artist in a listed country scores 1.0. A connected (duplicate-merged) artist is excluded from scoring either way - its own links would otherwise count it as a second artist alongside the one it was connected to.
 4. Selects up to 500 tracks per group from the highest-scored artists, capped at 3 per release
-5. Creates/updates a `Playlist` row (`type=GENRE`/`REGION`, linked via `generatorId`) for each generator with ≥10 selected tracks
+5. Creates/updates a `Playlist` row (`type=GENRE`/`REGION`, linked via `generatorId`) for each generator with ≥10 selected tracks. A generator that no longer qualifies (no matches, or fewer than 10 tracks) has its existing playlist pruned instead of left stale.
 
 ## Term Syntax
 

@@ -65,7 +65,9 @@ Pages split into 20-artist chunks with pagination. `index.html` and `issues.html
 
 ## Phases
 
-1. **Walk** - collect audio files (mp3/flac/m4a/opus/aac/ogg), count per folder
+1. **Walk** - collect audio files (mp3/flac/m4a/opus/aac/ogg), count per folder. Never descends into
+   `__QUARANTINE`/`__AUTOFIXED`/`__NEEDS_REVIEW`/`__UNREADABLE` - a re-run treats a scan root that
+   already holds a previous run's staging folders as it would a clean one.
 2. **Scan** - parallel metadata extraction via rayon + lofty
 3. **Filter** - keep files with at least one issue
 4. **Auto-fix** (optional) - `beet import -C -w -q` per album directory, temp library
@@ -76,7 +78,7 @@ Pages split into 20-artist chunks with pagination. `index.html` and `issues.html
 
 | Page | Fields |
 |------|--------|
-| Critical | Artist, Title, Year (missing/blank/invalid) |
+| Critical | Artist, Title, Year (missing/blank/invalid - invalid means ≤0 or more than one year past the current date) |
 | MB | MB Artist ID, MB Track ID, MB Album ID |
 | Discogs | Discogs Artist URL, Discogs Release URL |
 | IDs | AcoustID, SongKong, Bandcamp, Wikipedia |
@@ -89,7 +91,8 @@ Pages split into 20-artist chunks with pagination. `index.html` and `issues.html
 - `__UNREADABLE` - files that couldn't be parsed
 - `__AUTOFIXED` - files fixed by beets (when `--autofix --quarantine`)
 
-`--end-quarantine` reverses all moves.
+`--end-quarantine` reverses all moves. A move never overwrites an existing file at the destination
+(POSIX `rename` would otherwise silently replace it) - it's skipped and reported instead.
 
 ## Beets Auto-fix
 

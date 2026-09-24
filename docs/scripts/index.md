@@ -82,7 +82,7 @@ Post-loop: detect entirely deleted folders (unfiltered runs only), resolve artis
 
 ## Locking & Resumability
 
-Named DB lock (`"index"`). Clears stale locks >10min. SIGTERM/Ctrl-C release the lock, 2nd Ctrl-C force-exits. Per-folder checkpoint for `--resume`.
+Named DB lock (`"index"`). Clears stale locks >3min. SIGTERM/Ctrl-C release the lock, 2nd Ctrl-C force-exits - an interrupted run keeps its checkpoint and run hash instead of clearing them, so `--resume` picks up where it stopped. Per-folder checkpoint for `--resume`; every folder on disk counts as scanned for the deleted-folder sweep, not just the ones this particular resumed run walked, or a checkpoint-skipped head reads as deleted.
 
 Run hash in `Settings.indexRunHash`. Restart skips already-processed folders (`FolderScan` hash match). Cleared on completion. `--overwrite` generates a new hash. `--release`/`--folders` bypass it.
 
@@ -221,6 +221,7 @@ Resolve pass runs an **ownership reconcile** replacing provisional owners, guard
 | Desired set = union across **all** distinct owner tags on the release | 11/435 measured releases carry >1; single-track overwrite would strip co-owners |
 | Skip release if any owner tag **deferred** | never rewrite ownership on an incomplete picture mid-outage |
 | Skip if desired set empty | keeps whatever the folder scan established |
+| A track whose credit-producing resolution deferred is excluded from the `TrackRelatedArtist` diff entirely | same reasoning on the credit side - an incomplete picture must never read as "nothing credited," which is what wiped every guest credit under a cold resolver cache |
 | `is_special_artist_name` parts never become owners | a tier-0 pairing can return the placeholder itself |
 | `cap_co_owners` both sides | 44-session-musician tag is a personnel list, first owns rest credited — loop caps too or a warm cache writes 44 provisional owners |
 | Insert new owners before deleting stale, one transaction | a release must never pass through zero owners |

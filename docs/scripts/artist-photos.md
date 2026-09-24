@@ -37,8 +37,10 @@ cd scripts && cargo build --release -p artist-photos
    no-existing-image/`primaryArtistId` guards below). Otherwise, `Artist` rows with
    `primaryArtistId IS NULL`, an owned `LocalReleaseArtist`, `image`/`imageUrl` both null, and a
    `musicbrainzId` set (no MB id → no relations to look up → out of scope; that's an artist-resolution
-   gap, not an image-fetch one). Each candidate also carries the first path segment of one of its
-   releases' `LocalRelease.folderPath` as its on-disk artist folder.
+   gap, not an image-fetch one). Each candidate also carries the first path segment of a release's
+   `LocalRelease.folderPath` as its on-disk artist folder - only from a release this artist **solely**
+   owns, never one only co-owned under another artist's folder (a duet, a compilation), or the photo
+   below would be written as `folder.jpg` into a folder that isn't actually this artist's.
 2. Per candidate, sequentially (MusicBrainz is rate-limited to ~1 req/s via `MB_MIN_DELAY_MS`):
    fetch MB artist detail (`url-rels`) to read its Wikidata/Wikipedia relation URLs.
 3. Bounded to 4 concurrent (`common::images::download_artist_image`, shared with `sync`): try

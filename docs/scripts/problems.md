@@ -120,7 +120,7 @@ Expensive scan and cheap report decoupled (XLSX can't be appended to).
 
 Rows flushed+fsynced *before* the checkpoint renames into place — a crash leaves the spool longer than the checkpoint claims. `--resume` truncates the spool back to `spool_bytes` → exact resume, no dupes, no loss.
 
-`filter_key` blocks resuming a `--only` run into a full-library run. If state exists and neither `--resume` nor `--restart` given, tool **refuses to start** (no silent clobber of a multi-hour scan).
+`filter_key` blocks resuming a `--only` run into a full-library run. If state exists and neither `--resume` nor `--restart` given, tool **refuses to start** (no silent clobber of a multi-hour scan). `--resume` and `--restart` are mutually exclusive - passing both is a clap-level error, not `--resume` silently winning.
 
 `--report-only` rebuilds the workbook from an existing spool (a bad-path/full-disk report failure costs seconds, not another scan) — also picks up any `--fix:*` runs since the last report.
 

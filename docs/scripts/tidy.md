@@ -81,7 +81,7 @@ First `./tidy` after this feature shipped processed the whole library (every `la
 
 ## Lock
 
-Shares `Statistics.scanLockedBy` with `index`/`sync`/`fix`/`nuke`/`delete`/`playlists` (`common::lock`). `LockGuard` heartbeats `scanLockedAt` every 60s, so `clear_stale_lock_minutes`'s 10-min threshold only fires on a genuinely dead process — a first whole-library tidy over ~1300 box groups can run for hours.
+Shares `Statistics.scanLockedBy` with `index`/`sync`/`fix`/`nuke`/`delete`/`playlists` (`common::lock`). `LockGuard` heartbeats `scanLockedAt` every 60s, so `STALE_LOCK_MINUTES` (3 min, one shared constant across all 9 binaries) only fires on a genuinely dead process — a first whole-library tidy over ~1300 box groups can run for hours.
 
 ## Callers
 

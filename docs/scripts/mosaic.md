@@ -25,7 +25,11 @@ scripts/target/release/mosaic --mode gradient
 - **random** — shuffled.
 
 Without a manifest the binary scans `--image-dir` itself, and `chronological` has no years to sort by.
-The API always writes a manifest first (`/tmp/mosaic-manifest-*.json`) from the DB.
+The API always writes a manifest first (`/tmp/mosaic-manifest-*.json`) from the DB. A manifest is a
+curated, explicit file list, so if none of its entries resolve under `--image-dir` the run fails
+outright rather than silently falling back to scanning the whole directory. `--output-dir` is
+validated (created if missing) before any image processing starts, and the output filename's tile
+count reflects images actually decoded, not the number attempted.
 
 ## Grid
 

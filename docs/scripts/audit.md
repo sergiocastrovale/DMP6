@@ -1,6 +1,6 @@
 # Scripts: audit
 
-Scans the database for metadata issues and persists them in typed issue tables. Each run wipes and repopulates all detected rows, linked to a new `AuditRun` record.
+Scans the database for metadata issues and persists them in typed issue tables. Each run wipes and repopulates all detected rows, linked to a new `AuditRun` record; `PENDING`/`PENDING_REVERT`/`RESOLVED`/`FAILED` rows (queue, history trail) are never touched, only stale `DETECTED` ones. Each detector's wipe-and-reinsert is one transaction. Exits non-zero if any detector errors.
 
 The results drive the `/issues` web UI - run audit first, then review and fix from the browser.
 
@@ -40,7 +40,7 @@ Artists that shouldn't exist:
 
 | Reason | Meaning |
 |--------|---------|
-| `phantom` | Name matches `^\d{1,3}$` or `@\d{2,3}$` - created by corrupted tags |
+| `phantom` | Name matches `^\d{1,3}$` or `@\d{2,3}$` (except `common::artists::KNOWN_NUMERIC_ARTIST_NAMES` - real artists like "311", shared with `./problems`' own check) - created by corrupted tags |
 | `no_releases` | No link in **any** of `LocalReleaseArtist`, `MusicBrainzReleaseArtist` or `TrackRelatedArtist`. All three matter: an MB-verified credit artist ("appears on" only) owns nothing, so its credit is the single thing keeping it alive. Excludes `manuallyAdded` artists (`./add`, docs/scripts/add.md) — mirrors `index`'s own orphan sweep (`scripts/index/src/deletion.rs`), the two rules must match |
 
 **Fix:** `./fix --orphans` deletes the artist and any local image file.
@@ -53,7 +53,7 @@ Skips pairs where both have distinct MusicBrainz IDs (confirmed different entiti
 
 `artistAId` = canonical (higher track count), `artistBId` = to be merged.
 
-**Fix:** `./fix --duplicates` re-points all junction rows (LocalReleaseArtist, TrackRelatedArtist, MusicBrainzReleaseArtist) from B to A, then deletes B and its image.
+**Fix:** `./fix --duplicates` rewrites B's name to A's in every affected file's tags, re-points all junction rows (LocalReleaseArtist, TrackRelatedArtist, MusicBrainzReleaseArtist, genres, URLs, downloads) from B to A, then deletes B and its image.
 
 ### Missing Metadata (`IssueMissingMetadata`)
 
