@@ -325,6 +325,54 @@ Verified live: deployed, then ran `index --overwrite` on a real multi-artist blu
 188 distinct `albumArtist` tags exercise every branch of the merged splitter (`;`, `\`, `&`, `feat.`,
 `with`, `,`, `/`) - 2985 links applied, 0 errors, `errors.log` unchanged.
 
+## Phase 5.1 — structural half: FromRow structs + context structs (complete)
+
+Following the mechanical clippy-fix batch above, converted every remaining `type_complexity` (27) and
+`too_many_arguments` (6) warning the same clippy run flagged - the workspace went from 69 warnings to
+0. Highlights:
+
+- Every tuple-typed `sqlx::query_as::<_, (...)>` across `common`, `index`, `audit`, `sync`, `playlists`,
+  and `delete` now uses a named `#[derive(sqlx::FromRow)]` struct, column-aliased in the `SELECT` list
+  wherever two joined tables' columns shared a name (both artists' `id`/`musicbrainzId` in
+  `audit::duplicates`, `d`/`p` in `sync::db::repair_all_empty_primaries`, `mbr`/`mbrt` in
+  `get_tracks_with_mb_ids_for_artist`, etc.) - `FromRow`'s derive matches by column name, so an
+  unaliased collision would have silently mapped the wrong value into a field.
+- `index::db::ReleaseFacts` bundles `ensure_local_release`'s 6 release-identity args (title/year/
+  folder_path/group_key/status/reason); `common::progress::FolderTally` bundles `index_progress`'s 4
+  file-outcome counters; `sync::catalogue_gaps::GapFillContext`/`ArtistFilter` split
+  `fill_catalogue_gaps`'s 12 args into the 5 run-wide pieces + the 4 name-filter fields, both call
+  sites (`sync`, `add`) updated.
+- `sync::db::ArtistImageRow` (made `pub`, an external crate boundary since `sync`'s bin and lib are
+  separate compilation units) + a `From<ArtistImageRow> for ArtistSyncRow` conversion replaced 4
+  near-identical inline row-to-struct mappings across `sync/db.rs` and `sync/main.rs`.
+- `analysis::main`'s three largest signatures collapsed via `ScanStats`/`ScanArtifacts`/`AutofixRefs`/
+  `NavEntry`/`AutofixResult` - each function's ~150-300 line body was left untouched by destructuring
+  the new struct back into the original local variable names right at the top, so the mechanical risk
+  stayed confined to the signature and its one call site.
+- `sync::boxset::CandidateSource::Fetched.release` boxed (`Box<MbRelease>`, clippy's own
+  `large_enum_variant` finding, folded in alongside since it touched the same struct family);
+  `StoredTrackRow`/`ImageTasks`/`DiscFixture` type aliases where a plain tuple stayed the natural shape
+  (test fixtures, an `Arc<Mutex<JoinSet<...>>>` handle) rather than forcing a struct nobody destructures.
+- `sync::main.rs::upsert_mb_release` got a documented `#[allow(clippy::too_many_arguments)]` instead of
+  a forced struct - its sibling `upsert_mb_release_with_media` already carried the same allow, and the
+  two already-grouped pieces (identity fields + the pre-existing `MbReleaseExtras`) don't have a further
+  natural split.
+- **Caught two near-misses purely by reading each row's downstream usage before converting**, both
+  described in commit messages: `delete/src/release.rs`'s `title`/`image`/`imageUrl` fields looked
+  droppable at the query site but fed the plan printout further down; `sync::db::repair_all_empty_primaries`'s
+  `empty_name` field looked like a candidate for `_`-discarding but is `IdentityRepair.other` in the
+  report. Neither ever reached a compile error - only inspection caught them, the same discipline this
+  whole refactor pass has relied on throughout.
+- `scripts/check`'s clippy invocation now runs with `-D warnings` (was quiet-mode with no fail-on-warn),
+  so a future regression fails the gate instead of accumulating silently.
+- **Verified live** on the deployed NAS: `index --overwrite` and `sync --release` (a real bound
+  release, exercising the batched track-update path), a full-library `audit` (identical detection
+  counts across all 7 detectors vs. before this phase), `tidy --only` (exercised box_editions.rs's
+  artist-lookup cache and the identity-repair FromRow conversion against real compound-artist data),
+  `playlists --dry-run` (all 43 generators via the `Generator` FromRow), and `delete --dry-run`
+  (printed plan uses the title/image fields the near-miss above would have dropped). All exit 0,
+  `errors.log` unchanged throughout.
+
 ## Verification
 
 Every commit passed `scripts/check --db` (fmt, clippy, full workspace test suite incl. `--ignored`
