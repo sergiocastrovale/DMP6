@@ -429,8 +429,15 @@ pub async fn run_link_box_editions(
     ));
 
     let mut releases_by_artist_key: HashMap<String, Vec<ReleaseFacts>> = HashMap::new();
+    // A multi-disc release's media all share one `release_id` - cache per release_id so a box set's
+    // discs don't each pay for the same artist-lookup query.
+    let mut artist_ids_by_release: HashMap<String, Vec<String>> = HashMap::new();
     for m in &media {
-        let artist_ids = artist_ids_for_release(pool, &m.release_id).await?;
+        if !artist_ids_by_release.contains_key(&m.release_id) {
+            let ids = artist_ids_for_release(pool, &m.release_id).await?;
+            artist_ids_by_release.insert(m.release_id.clone(), ids);
+        }
+        let artist_ids = &artist_ids_by_release[&m.release_id];
         if artist_ids.is_empty() {
             continue;
         }
@@ -496,11 +503,18 @@ pub async fn run_link_box_editions(
     ));
 
     let mut containment_by_artist_key: HashMap<String, Vec<ContainmentCandidate>> = HashMap::new();
+    // Same per-release_id cache as the fallback tier above - a fresh HashMap since this tier runs
+    // over a different (re-fetched) unlinked set.
+    let mut artist_ids_by_release: HashMap<String, Vec<String>> = HashMap::new();
     for m in &still_unlinked {
         let Some(medium_title) = m.medium_title.as_deref().filter(|t| !t.trim().is_empty()) else {
             continue;
         };
-        let artist_ids = artist_ids_for_release(pool, &m.release_id).await?;
+        if !artist_ids_by_release.contains_key(&m.release_id) {
+            let ids = artist_ids_for_release(pool, &m.release_id).await?;
+            artist_ids_by_release.insert(m.release_id.clone(), ids);
+        }
+        let artist_ids = &artist_ids_by_release[&m.release_id];
         if artist_ids.is_empty() {
             continue;
         }
