@@ -10,14 +10,25 @@ pub fn normalize_filter(s: &str) -> String {
 
 /// Does this folder name pass the from/to/only filters?
 ///
-/// `from`/`to` are inclusive lexicographic bounds on the lowercased name; `only` is a prefix match,
-/// or an exact match when `exact` is set.
+/// `from`/`to` are inclusive lexicographic bounds on the lowercased name; `only` is `;`-separated,
+/// each part a prefix match (or an exact match when `exact` is set) - matches every other binary's
+/// `--only`, so `--only "Radiohead;Bjork"` selects the same set here as for `./index`.
 pub fn matches_filter(name: &str, from: &str, to: &str, only: &str, exact: bool) -> bool {
     let n = normalize_filter(name);
 
     if !only.is_empty() {
-        let o = normalize_filter(only);
-        return if exact { n == o } else { n.starts_with(&o) };
+        return only.split(';').any(|part| {
+            let part = part.trim();
+            if part.is_empty() {
+                return false;
+            }
+            let o = normalize_filter(part);
+            if exact {
+                n == o
+            } else {
+                n.starts_with(&o)
+            }
+        });
     }
     if !from.is_empty() && n < normalize_filter(from) {
         return false;
@@ -57,6 +68,19 @@ mod tests {
         assert!(matches_filter("Radiohead", "", "", "radio", false));
         assert!(!matches_filter("Radiohead", "", "", "radio", true));
         assert!(matches_filter("Radiohead", "", "", "RADIOHEAD", true));
+    }
+
+    #[test]
+    fn only_accepts_multiple_semicolon_separated_names() {
+        assert!(matches_filter("Bjork", "", "", "Radiohead;Bjork", false));
+        assert!(matches_filter(
+            "Radiohead",
+            "",
+            "",
+            "Radiohead;Bjork",
+            false
+        ));
+        assert!(!matches_filter("Muse", "", "", "Radiohead;Bjork", false));
     }
 
     #[test]
