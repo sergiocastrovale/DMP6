@@ -985,7 +985,8 @@ mod tests {
     fn a_leading_or_trailing_multi_value_marker_yields_one_clean_name() {
         // "\Andrew Barr", "Andy Edwards\" - a multi-value frame whose other slot was empty. Splitting is
         // not enough on its own: the WHOLE string is asked of MB first, and normalize_name strips the
-        // marker, so the decorated spelling used to come back "verified" and become the artist's name.
+        // marker - without stripping it first, the decorated spelling could come back "verified" and
+        // become the artist's name.
         for tag in [
             "\\Andrew Barr",
             "Andrew Barr\\",
@@ -1107,8 +1108,8 @@ mod tests {
     #[test]
     fn a_multi_byte_separator_does_not_shift_the_offsets() {
         // The offsets are byte offsets into the original. A three-byte separator must be consumed
-        // whole, or every atom after it starts mid-character (or one byte late, which is how the
-        // doubled backslash used to leak a `\` onto the next name).
+        // whole, or every atom after it starts mid-character (or one byte late, which is how a
+        // doubled backslash could leak a `\` onto the next name).
         let seps = separator_positions("Antônio Carlos Jobim • Toquinho");
         assert_eq!(seps.len(), 1);
         let s = &seps[0];

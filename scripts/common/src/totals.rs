@@ -4,8 +4,9 @@ use sqlx::PgPool;
 // UNKNOWN/UNMATCHED releases are excluded entirely (as if they don't exist yet - no verdict to
 // count either way); every other status (COMPLETE, INCOMPLETE, EXTRA_TRACKS, MISSING_TRACKS,
 // MISSING) counts toward the denominator, but only COMPLETE counts toward the numerator - a
-// MISSING_TRACKS or INCOMPLETE release is matched but not actually complete, and must not inflate
-// the score the way "anything but MISSING" used to. NULL when there is no determinable catalogue.
+// MISSING_TRACKS or INCOMPLETE release is matched but not actually complete, and counting it toward
+// the numerator would inflate the score - "anything but MISSING" is not the same claim as "complete".
+// NULL when there is no determinable catalogue.
 // Pure SQL over the MB catalogue - no track/file scan, no API calls. Lives in `common` (not
 // `sync`, a bin-only crate) so `delete --release` can recompute an owner's completeness too, after
 // dropping a release changes nothing about their MB catalogue size but can flip a MISSING gap back

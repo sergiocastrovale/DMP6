@@ -31,10 +31,10 @@ async fn candidate_pairs(
     .await
 }
 
-/// One transaction for the whole pass - a crash between the DELETE and the last INSERT used to
-/// leave the DETECTED set empty/partial until the next run re-derives it (PENDING/RESOLVED/FAILED
-/// rows are untouched either way, so nothing is permanently lost, but a run that dies partway used to
-/// silently under-report instead of reporting none).
+/// One transaction for the whole pass: without it, a crash between the DELETE and the last INSERT
+/// would leave the DETECTED set empty/partial until the next run re-derives it (PENDING/RESOLVED/
+/// FAILED rows are untouched either way, so nothing is permanently lost) and a run that dies
+/// partway would silently under-report instead of reporting none.
 pub async fn detect_duplicate_release(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let mut tx = pool.begin().await?;
     sqlx::query(r#"DELETE FROM "IssueDuplicateRelease" WHERE status = 'DETECTED'"#)

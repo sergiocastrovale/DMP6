@@ -5,10 +5,10 @@ use std::sync::LazyLock;
 static DIGIT_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"^\d{1,3}$").unwrap());
 
-/// One transaction for the whole detect pass: a crash between the DELETE and the last INSERT used to
-/// leave the DETECTED set empty (or partial) until the next run re-derives it - never permanent data
-/// loss (PENDING/RESOLVED/FAILED rows are untouched), but a run that dies partway silently
-/// under-reported issues instead of reporting none.
+/// One transaction for the whole detect pass: without it, a crash between the DELETE and the last
+/// INSERT would leave the DETECTED set empty (or partial) until the next run re-derives it - never
+/// permanent data loss (PENDING/RESOLVED/FAILED rows are untouched), but a run that dies partway
+/// would silently under-report issues instead of reporting none.
 pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let mut tx = pool.begin().await?;
 

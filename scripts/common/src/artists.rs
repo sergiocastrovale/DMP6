@@ -60,8 +60,8 @@ pub fn is_special_mb_artist(id: &str, name: &str) -> bool {
 /// not need to be exhaustive, and entries here are never a reason to skip the MB lookup.
 ///
 /// Kept as a plain data file (one name per line) rather than a Rust array so a new entry needs no
-/// recompile-affecting code change, and normalized once here rather than per lookup -
-/// `is_known_single_artist` used to re-normalize all ~70 entries on every call.
+/// recompile-affecting code change, and normalized once here rather than per lookup - re-normalizing
+/// every entry on every `is_known_single_artist` call would waste work for no benefit.
 static KNOWN_SINGLE_ARTISTS_NORMALIZED: LazyLock<HashSet<String>> = LazyLock::new(|| {
     include_str!("data/known_single_artists.txt")
         .lines()

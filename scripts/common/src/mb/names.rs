@@ -19,14 +19,14 @@ use super::types::MbArtistMatch;
 
 /// Lowercase, fold accents away, drop a leading "the ", strip punctuation, collapse whitespace.
 ///
-/// Trims before the "the " check: previously a leading space made the strip silently no-op, so
-/// `" The Beatles"` and `"The Beatles"` normalized differently and compared unequal.
+/// Trims before the "the " check: without it, a leading space makes the strip silently no-op, so
+/// `" The Beatles"` and `"The Beatles"` normalize differently and compare unequal.
 ///
-/// Accent folding (NFD decompose, drop combining marks) matters more here than it used to:
-/// `names_are_similar`'s word-overlap scoring tolerated "Gabor Szabo" vs "Gábor Szabó" by accident
-/// (the words still shared enough characters to pass), but `mb_artist_exact` compares whole strings
-/// for equality, and `certain_match` (below) is now what decides whether an identity may be *claimed*
-/// - a real, accented artist must not silently fail that on spelling alone.
+/// Accent folding (NFD decompose, drop combining marks) matters more here than in
+/// `names_are_similar`'s word-overlap scoring, which tolerates an accent mismatch by accident (the
+/// words still share enough characters to pass); `mb_artist_exact` compares whole strings for
+/// equality, and `certain_match` (below) decides whether an identity may be *claimed* - a real,
+/// accented artist must not silently fail that on spelling alone.
 pub fn normalize_name(name: &str) -> String {
     let lower = name.trim().to_lowercase();
     let stripped = lower.strip_prefix("the ").unwrap_or(&lower);

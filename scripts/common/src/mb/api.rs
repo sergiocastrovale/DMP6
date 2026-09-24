@@ -441,12 +441,12 @@ pub async fn mb_get(
             .send()
             .await;
 
-        // A transport-level failure - read timeout, connection reset, DNS blip - used to bail out of
-        // `mb_get` immediately via `?`, with none of the retry ladder the HTTP-level 503s get. Callers
-        // then classified it Transient and abandoned the whole artist on a single blip.
+        // A transport-level failure - read timeout, connection reset, DNS blip - gets the same retry
+        // ladder HTTP-level 503s get, rather than bailing out of `mb_get` immediately via `?` and
+        // having callers classify it Transient and abandon the whole artist on a single blip.
         //
-        // Rare enough to ignore while requests went out one at a time and the wire sat idle between
-        // them. Not rare once requests overlap: a cold `inc=recordings` browse can take 29.8s against
+        // Rare while requests go out one at a time and the wire sits idle between them. Not rare once
+        // requests overlap: a cold `inc=recordings` browse can take 29.8s against
         // a 30s client timeout, so several in flight will occasionally cross it. Retried here on the
         // same ladder as an overload, which is what it is - MusicBrainz served us nothing.
         let resp = match sent {
@@ -495,9 +495,9 @@ pub async fn mb_get(
         if matches!(status, 502 | 503 | 504 | 429) {
             // 502/504 are the reverse proxy in front of MB, not MB itself - never carry a rate-limit
             // body or X-RateLimit-* headers, so classify_throttle always reads them as Overloaded
-            // (immediate retry, no pacing penalty). A sustained run previously hard-failed the whole
-            // artist on the first 502/504 with zero retry - during a long backfill these are common
-            // enough (bursts of them, not isolated blips) to abort a large fraction of artists outright.
+            // (immediate retry, no pacing penalty). Retrying matters because these arrive in bursts
+            // during a long backfill, not as isolated blips - hard-failing an artist on the first one
+            // with zero retry would abort a large fraction of artists outright.
             //
             // The body is what separates MB's rate-limit 503 from a plain overload 503. It is small,
             // and this branch is already the slow path, so reading it costs nothing that matters.
@@ -956,13 +956,12 @@ pub async fn mb_get_official_release_group_ids(
 /// same filter, same set. The second half is free: adding `+recordings` to a browse we already make
 /// once per artist returns full `media[].tracks[]` (id, title, position, length, recording).
 ///
-/// That matters because `owned::detect_containment` used to spend **one paginated browse per
-/// uncovered release group, per artist, on every run**, and never cached a negative result. Measured
-/// over the live library that is 14.8 such calls for an average artist, 184 at p99 and 813 at worst -
-/// each one a cold `inc=recordings` query averaging ~10s. Serving them all from here costs a handful
-/// of extra pages: Radiohead's browse grows from ~4 pages to 11 and returns 322 releases across 39
-/// groups, every one carrying tracklists (its 39 `OK Computer` editions match that group's own
-/// `release-count` exactly).
+/// That matters because the alternative is `owned::detect_containment` spending one paginated browse
+/// per uncovered release group, per artist, on every run, with no negative-result caching - each one a
+/// cold `inc=recordings` query averaging ~10s, the single biggest avoidable cost in a sync run. Serving
+/// them all from here instead costs only a handful of extra pages on the one browse already made per
+/// artist, since a release group with many editions returns all of them with full tracklists in that
+/// same response (its edition count matches that group's own `release-count` exactly).
 ///
 /// Editions are filtered exactly as `mb_get_release_tracks` filters them - a release whose media are
 /// all video carriers is dropped - so a value here is indistinguishable from a per-group fetch.
@@ -1367,8 +1366,8 @@ mod tests {
     }
 
     /// The header-derived branches must never undercut the floor. `remaining` is a *global* pool, so a
-    /// busy minute on MusicBrainz's side used to hand back 500ms - twice the published rate, exactly
-    /// when the server could least afford it.
+    /// busy minute on MusicBrainz's side can make the header math alone suggest a pace twice the
+    /// published rate - exactly when the server can least afford it.
     #[tokio::test]
     async fn header_derived_pacing_never_undercuts_the_floor() {
         let l = limiter_at(DEFAULT_MIN_DELAY_MS);
