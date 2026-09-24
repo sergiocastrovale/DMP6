@@ -71,8 +71,11 @@ pub async fn clear_dangling_equivalences(pool: &PgPool) -> Result<u64, sqlx::Err
 /// make every "singles box" (2-track-per-disc reissues) permanently undissolvable.
 ///
 /// A fingerprint claimed by more than one target medium (a genuine recording-set collision, common
-/// for a heavily-reissued artist) is resolved deterministically - lowest MusicBrainz id wins - rather
-/// than whatever order Postgres happens to return.
+/// for a heavily-reissued artist) is resolved deterministically - lowest MusicBrainz id wins, then
+/// lowest disc position - rather than whatever order Postgres happens to return. The position
+/// tie-break matters on its own: a deluxe package can carry the same album twice (say a CD and a
+/// second copy in another format), two discs of *one* release with an identical recording set, which
+/// the release id alone can't tell apart.
 pub async fn link_by_recording_fingerprint(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         r#"
@@ -102,7 +105,9 @@ pub async fn link_by_recording_fingerprint(pool: &PgPool) -> Result<u64, sqlx::E
         matched AS (
           SELECT sf.medium_id, sf.fp, tf.release_id, tf.release_group_id, tf.target_position,
                  tf.target_medium_count,
-                 row_number() OVER (PARTITION BY sf.medium_id ORDER BY tf.musicbrainz_id ASC) AS rn
+                 row_number() OVER (
+                   PARTITION BY sf.medium_id ORDER BY tf.musicbrainz_id ASC, tf.target_position ASC
+                 ) AS rn
           FROM source_fp sf
           JOIN target_fp tf ON tf.fp = sf.fp
           JOIN "MusicBrainzReleaseMedium" src ON src.id = sf.medium_id
@@ -410,9 +415,9 @@ fn resolve_containment_winner<'a>(
 /// The tie-break of last resort: when every remaining candidate belongs to the **same release group**,
 /// they are editions of one album and the choice between them does not change what the medium is
 /// equivalent *to*. Ownership (docs/sync_decisions.md §11) and the missing-albums list both work at
-/// release-group level, so refusing here bought nothing and cost real placements - ABBA's box disc 4
-/// had four `Arrival` candidates, all release group `e464e167-…`, and stayed unlinked because none of
-/// them could be preferred over the others.
+/// release-group level, so refusing here buys nothing and costs real placements - a box disc with
+/// several candidate editions of one album, all in the same release group, would otherwise stay
+/// unlinked because none of them can be preferred over the others.
 ///
 /// Deliberately requires a known group on every candidate: two `NULL`s are not evidence of sameness.
 /// Lowest `release_id` wins, so repeated runs give the same answer (docs/sync_decisions.md §14).

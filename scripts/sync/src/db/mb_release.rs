@@ -330,7 +330,8 @@ pub async fn sync_mb_tracks_for_release(
 
     let existing: Vec<ExistingTrackRow> = sqlx::query_as(
         r#"SELECT id, "musicbrainzId", "discNumber", position, title
-           FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
+           FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1
+           ORDER BY "createdAt", id"#,
     )
     .bind(release_id)
     .fetch_all(pool)
@@ -544,9 +545,13 @@ pub async fn load_mb_release_with_tracks(
         recording_id: Option<String>,
     }
 
+    // Ordered like MusicBrainz delivers a tracklist. The scorer pairs greedily in this order - when a
+    // title recurs across discs, the first occurrence claims the local file - so an unordered read
+    // made the pairing follow physical row order, which shifts whenever the rows are rewritten.
     let track_rows: Vec<MbTrackHeaderRow> = sqlx::query_as(
         r#"SELECT "musicbrainzId", position, "discNumber", "durationMs", title, "recordingId"
-               FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
+               FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1
+               ORDER BY "discNumber" NULLS FIRST, position NULLS LAST, id"#,
     )
     .bind(mb_release_db_id)
     .fetch_all(pool)
