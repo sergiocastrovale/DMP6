@@ -407,8 +407,46 @@ Following the mechanical clippy-fix batch above, converted every remaining `type
   work, one with an unfolded sibling group still on the watermark's "already tidied" side, one plain
   artist) - all exit 0, `errors.log` unchanged, `find_sibling_groups`' query executing correctly through
   the new module boundary each time.
-- Remaining Phase 5.2 targets: `sync/src/main.rs` (2300 lines), `index/src/main.rs` (2050 lines) - the
-  plan's own highest-risk items (hot loop + CLI parsing intertwined, most-executed code in the system).
+- **`sync/src/main.rs` (2296 lines) split into `main.rs` (690, CLI/setup/summary) + `pipeline.rs`**
+  (the ~1200-line async body of the concurrent per-artist `stream::iter(...).map(...).buffer_unordered(...)`
+  pipeline, plus every helper only it used - `ArtistReporter`, `ArtistOutcome`, `search_match_acceptable`,
+  `search_release_candidate`, `consensus_tags_from_rows`, `fetch_and_store_artist_image`, and their
+  shared test module). The closure's ~15 loose captures (a `.clone()` per worker of `limiter`, `pool`,
+  `reporter`, `image_tasks`, ... plus borrows of `args`, `warmed_artist_names`, `run_hash`, ...) became
+  one `ArtistWorkerCtx`, destructured back to their original names at the top of the new
+  `process_artist()` so the ~1200-line body itself needed zero further edits - the same technique
+  already proven on `analysis.rs` and `sync/catalogue_gaps.rs` earlier in this phase, just at 8x the
+  scale. `is_targeted` (previously an implicit `bool` capture, cheap enough that the original code never
+  bothered cloning it explicitly) is simply recomputed from `args` inside the function instead of being
+  threaded through. This was the plan's own explicitly-named highest-risk item - the most-executed code
+  path in the whole system - and was done last, deliberately, after every safer split had already landed.
+- **`index/src/main.rs` (2049 lines) split into `main.rs` (1156) + `scan.rs`** (the ~925-line body of
+  the *sequential* main folder loop). Unlike sync's concurrent closure, this loop mutates run-wide
+  accumulator variables (`total_files`, `new_total`, `mb_id_to_image_hash`, ...) directly in place
+  rather than returning a per-item outcome - the extraction had to change that shape: `process_folder`
+  now returns a `FolderOutcome` per call, and the slimmer loop left in `main()` adds each into the
+  run-wide totals itself. The 3 caches genuinely shared *across* folders (`artist_cache`,
+  `release_cache`, `mb_id_to_image_hash` - a folder can short-circuit cover-art work another folder
+  already resolved this run) are threaded through `FolderCtx` as `&mut` instead of cloned, since index
+  has no concurrency to isolate workers from each other. The loop's one `break` (cancelled run) became
+  `return None`; its two early `continue`s (already indexed, 0 files) became
+  `return Some(FolderOutcome::default())` - everything in between needed no other logic changes.
+- **Two real mistakes caught by the compiler during these two splits, both before ever reaching a test
+  run**: the extraction script duplicated `sync/pipeline.rs`'s `use` block on top of its synthesized
+  header (`E0252`, caught immediately); `index/src/scan.rs`'s `folder_name` parameter typed as `&str`
+  instead of the original `&String` broke `.as_str()` (it resolved to an unstable nightly-only inherent
+  method instead of the stable `String` one) - fixed by matching the original type exactly rather than
+  "simplifying" it.
+- **Verified live** on the deployed NAS for both splits: a real two-artist *concurrent* sync
+  (`--only 'Y&T;Dead Meadow' --overwrite`, exercising `pipeline::process_artist` under real
+  `buffer_unordered` concurrency - MB search, tag writes, catalogue-gaps, containment detection) and a
+  real two-folder *sequential* index run (`--only 'Dead Meadow;K-The-I' --overwrite`, 260 files, 0
+  errors, confirming `FolderOutcome` accumulation across multiple folders sums correctly) - both exit 0,
+  `errors.log` unchanged beyond the same pre-existing benign mtime warning seen throughout this session.
+
+**Phase 5.2 is now complete** - all four planned module splits (`sync/db.rs`, `sync/boxset.rs`,
+`sync/main.rs`, `index/main.rs`) landed, each compiled, linted (`-D warnings`), tested, deployed, and
+verified against the live NAS before moving to the next.
 
 ## Verification
 
