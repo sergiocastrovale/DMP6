@@ -266,9 +266,34 @@ lookalike-consolidation the prior session (see that plan's Context section).
   green, deployed, and smoke-tested on the NAS with a real (non-`--only`, folder-scoped via
   `--folders` since the test fixture's owning folder differs from the credited artist's name) run —
   exit 0, both real owners intact post-reconcile, `errors.log` unchanged.
-- Remaining Phase 4.2 candidates (sync/tidy batched writes, boxset/box_editions N+1, concurrent MB
-  calls via the shared `RateLimiter`, audit set-based inserts, delete/nuke plan batching, analysis
-  walk-once check, mosaic progress throttling) are still open — see the plan file's Phase 4.2 checklist.
+- **sync: MB track reconcile's UPDATE path batched.** `sync_mb_tracks_for_release` already batched
+  its INSERT path via `UNNEST`; the UPDATE path (existing tracks whose id must be kept) still issued
+  one round trip per track. Now one `UPDATE ... FROM UNNEST(...)` per release, same COALESCE
+  semantics preserved per column. Verified via a real re-sync of a bound release (`--overwrite`),
+  exercising the update path against its full existing tracklist.
+- **audit: every detector's "already tracked" check batched.** All 7 detectors (`corrupted`,
+  `duplicates`, `enrichment`, `missing`, `orphans`, `release_pairs` ×2) issued one `EXISTS` query per
+  candidate row to skip issues already queued/resolved. Each now reads the full tracked set once
+  before the loop and checks membership in memory - same pattern `duplicates.rs` already used for its
+  `linked_pairs` hoist, just applied to the other check too. Verified with a full-library `audit` run
+  (151k+ enrichment-gap candidates, 6.5k+ duplicate-release candidates) - exit 0, correct counts,
+  `errors.log` unchanged apart from an unrelated pre-existing mtime warning from the sync smoke test
+  run alongside it.
+- Investigated and found not applicable, given current code (each check's own reasoning): `index`'s
+  per-folder artist-totals/`propagate_mb_artist_id` calls (genuinely different per-artist data, not a
+  redundant re-fetch); `apply_folder_consensus` (already scoped to one folder's 1-2 releases per call,
+  not a whole-run loop; its early-continue branches make batching lose real behavior); unscoped
+  `ANY($1)` credit fetches in `index` (all already properly id-scoped); `index`'s cover-art
+  negative-cache candidate (no matching code found in `main.rs` as described); `sync`'s medium
+  (disc-level) UPDATE loop (bounded by disc count per release, typically 1, not a meaningful N+1);
+  `sync/status.rs`'s `normalize_title` recomputation (pure in-memory string work on ~10-20 tracks per
+  release, no measured cost to justify the churn).
+- Deferred as its own larger effort, not attempted this pass: concurrent MB calls in
+  `boxset::run_repair`/`catalogue_gaps::fill_catalogue_gaps` via the shared `RateLimiter` (the
+  `MAX_IMAGE_TASKS`/`JoinSet` pattern `sync/src/main.rs` already uses for image downloads is the
+  template, but wiring it through these two larger functions safely needs its own dedicated pass);
+  `boxset.rs`/`box_editions.rs` N+1 loads; delete/nuke plan-building batching; analysis walk-once
+  check; mosaic progress throttling. See the plan file's Phase 4.2 checklist for the remaining scope.
 
 ## Verification
 
