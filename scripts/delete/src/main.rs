@@ -293,7 +293,7 @@ async fn main() {
     if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         eprintln!("{}", "Cleared a stale lock.".yellow());
     }
-    let _lock_guard = match acquire_lock(&pool, "delete", std::process::id(), "").await {
+    let _lock_guard = match acquire_lock(&pool, "delete", std::process::id()).await {
         Ok(g) => g,
         Err(e) => {
             eprintln!("{}: {}", "Cannot start".red(), e);

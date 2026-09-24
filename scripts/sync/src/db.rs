@@ -1952,10 +1952,6 @@ pub struct LocalReleaseRow {
     /// without this the per-release matcher re-binds it from the tag on every run while the box pass
     /// re-points it back - the two fight, and the disc never settles on a score. See its use in main.rs.
     pub dissolved_bound_mb_id: Option<String>,
-    /// No-guessing release placement (docs/no_guessing.md): the reason index/a previous sync parked
-    /// this release at UNKNOWN, or None when it's clean/UNMATCHED/bound. Read straight into the row
-    /// so main.rs's consensus gate needs no extra query.
-    pub status_reason: Option<String>,
     /// Whether this folder is a fold survivor (`LocalReleaseMember` rows exist) - a folded release
     /// legitimately mixes per-disc album tags, so the consensus gate exempts it same as a dissolved
     /// box disc.
@@ -1967,7 +1963,7 @@ pub async fn get_local_releases_for_artist(
     artist_id: &str,
 ) -> Result<Vec<LocalReleaseRow>, sqlx::Error> {
     #[allow(clippy::type_complexity)]
-    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, Option<String>, bool)> = sqlx::query_as(
+    let rows: Vec<(String, String, Option<i32>, bool, Option<String>, Option<String>, Option<String>, Option<String>, Option<i32>, Option<String>, bool)> = sqlx::query_as(
         r#"SELECT lr.id, lr.title, lr.year, lr."forcedComplete", lr."releaseId", lr."matchStatus"::text,
                   lr.image, lr."imageUrl", lr."mediumPosition",
                   -- Any binding the box pass owns, not just a dissolved one. A disc it kept on the
@@ -1977,7 +1973,6 @@ pub async fn get_local_releases_for_artist(
                   CASE WHEN lr."boxReleaseId" IS NOT NULL OR lr."mediumPosition" IS NOT NULL
                        THEN (SELECT b."musicbrainzId" FROM "MusicBrainzRelease" b WHERE b.id = lr."releaseId")
                   END,
-                  lr."statusReason",
                   EXISTS (SELECT 1 FROM "LocalReleaseMember" m WHERE m."localReleaseId" = lr.id) AS is_folded
            FROM "LocalRelease" lr
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
@@ -2002,7 +1997,6 @@ pub async fn get_local_releases_for_artist(
                 image_url,
                 medium_position,
                 dissolved_bound_mb_id,
-                status_reason,
                 is_folded,
             )| {
                 LocalReleaseRow {
@@ -2015,7 +2009,6 @@ pub async fn get_local_releases_for_artist(
                     has_cover: image.is_some() || image_url.is_some(),
                     medium_position,
                     dissolved_bound_mb_id,
-                    status_reason,
                     is_folded,
                 }
             },

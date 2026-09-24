@@ -18,7 +18,6 @@ Standalone file scanner - reads audio files directly (no DB), detects metadata g
 ./analysis /mnt/music --autofix            # Auto-tag with beets
 ./analysis /mnt/music --autofix-dry        # Preview beets changes
 ./analysis /mnt/music --output-dir ./out   # Custom report output directory (default: ../../reports)
-./analysis /mnt/music --unc-prefix "\\\\nas" # Windows UNC prefix for file links in report
 ```
 
 ## CLI Flags
@@ -31,7 +30,6 @@ Standalone file scanner - reads audio files directly (no DB), detects metadata g
 | `--only` | String | - | Only folders starting with this prefix |
 | `--limit` | usize | 0 (all) | Stop after N audio files |
 | `--output-dir` | String | `../../reports` | Report output directory |
-| `--unc-prefix` | String | - | Windows UNC prefix for file links |
 | `--no-report` | bool | false | Scan only, skip HTML report |
 | `--only-critical` | bool | false | Only generate critical + index pages |
 | `--only-mb` | bool | false | Only generate MB + index pages |

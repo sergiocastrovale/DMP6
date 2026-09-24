@@ -935,7 +935,7 @@ mod tests {
     /// closest runtime. Scored both ways so the test cannot pass under the old behaviour.
     #[test]
     fn identical_titles_pair_by_closest_runtime_not_file_order() {
-        let locals = vec![
+        let locals = [
             timed("The Evening's Young", 190),
             timed("The Evening's Young", 301),
         ];
@@ -1121,7 +1121,7 @@ mod tests {
 
     #[test]
     fn single_edition_is_always_confident_and_complete_on_exact_title_match() {
-        let locals = vec![track("Intro"), track("Outro")];
+        let locals = [track("Intro"), track("Outro")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
         let releases = vec![(
@@ -1138,7 +1138,7 @@ mod tests {
 
     #[test]
     fn multiple_siblings_one_exact_track_count_is_confident() {
-        let locals = vec![track("Intro"), track("Outro")];
+        let locals = [track("Intro"), track("Outro")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
         let releases = vec![
@@ -1165,7 +1165,7 @@ mod tests {
 
     #[test]
     fn tiebreak_among_same_count_siblings_prefers_matching_year_then_cd_then_earliest_date() {
-        let locals = vec![track("Intro"), track("Outro")];
+        let locals = [track("Intro"), track("Outro")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
         // All three have the same 2-track count. Local year is 2010.
@@ -1197,7 +1197,7 @@ mod tests {
         // release is pre-filtered down to its 4 audio tracks (the MOON incident), it must win the
         // tiebreak against a Digital Media sibling with the same count and be reported COMPLETE - not
         // MISSING_TRACKS from counting the Blu-ray's video track as a 5th expected track.
-        let locals = vec![
+        let locals = [
             track("magnet"),
             track("GATE"),
             track("Kick it"),
@@ -1235,7 +1235,7 @@ mod tests {
 
     #[test]
     fn more_local_tracks_than_matched_edition_is_extra_tracks() {
-        let locals = vec![track("Intro"), track("Outro"), track("Bonus Track")];
+        let locals = [track("Intro"), track("Outro"), track("Bonus Track")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(3);
         let releases = vec![(
@@ -1250,7 +1250,7 @@ mod tests {
 
     #[test]
     fn fewer_local_tracks_than_matched_edition_is_missing_tracks() {
-        let locals = vec![track("Intro")];
+        let locals = [track("Intro")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(1);
         let releases = vec![(
@@ -1265,7 +1265,7 @@ mod tests {
 
     #[test]
     fn no_sibling_with_an_exact_track_count_is_not_confident() {
-        let locals = vec![track("Intro"), track("Outro")];
+        let locals = [track("Intro"), track("Outro")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
         // Neither sibling has exactly 2 tracks — can't disambiguate which edition this is.
@@ -1296,7 +1296,7 @@ mod tests {
 
     #[test]
     fn empty_mb_releases_is_never_confident() {
-        let locals = vec![track("Intro")];
+        let locals = [track("Intro")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(1);
 
@@ -1313,7 +1313,7 @@ mod tests {
     #[test]
     fn medium_position_none_scores_against_the_whole_release_unchanged() {
         // Baseline: no medium_position behaves exactly as before this change.
-        let locals = vec![track("Disc 1 Track"), track("Disc 2 Track")];
+        let locals = [track("Disc 1 Track"), track("Disc 2 Track")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
         let releases = vec![(
@@ -1332,7 +1332,7 @@ mod tests {
     fn a_complete_disc_reads_complete_when_scored_against_its_own_medium_only() {
         // Without medium scoping this single, fully-present disc would read MISSING_TRACKS against
         // the box's full 2-disc tracklist - the false positive this fix exists to close.
-        let locals = vec![track("Disc 2 Track A"), track("Disc 2 Track B")];
+        let locals = [track("Disc 2 Track A"), track("Disc 2 Track B")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(2);
         let releases = vec![(
@@ -1351,7 +1351,7 @@ mod tests {
 
     #[test]
     fn medium_scoped_missing_tracks_still_detected_within_that_medium() {
-        let locals = vec![track("Disc 2 Track A")];
+        let locals = [track("Disc 2 Track A")];
         let local_refs: Vec<&TrackMeta> = locals.iter().collect();
         let ids = track_ids(1);
         let releases = vec![(
@@ -1369,7 +1369,7 @@ mod tests {
 
     #[test]
     fn medium_scoped_extra_tracks_still_detected_within_that_medium() {
-        let locals = vec![
+        let locals = [
             track("Disc 2 Track A"),
             track("Disc 2 Track B"),
             track("Disc 2 Bonus"),

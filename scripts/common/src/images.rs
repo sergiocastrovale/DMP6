@@ -184,35 +184,6 @@ pub fn embed_cover_art(file_path: &Path, jpeg_bytes: &[u8]) -> Result<bool, Stri
     Ok(true)
 }
 
-// ---------------------------------------------------------------------------
-// Folder image fallbacks
-// ---------------------------------------------------------------------------
-
-pub fn use_folder_image(folder_path: &Path, output_path: &Path) -> Option<&'static str> {
-    for name in &[
-        "cover.jpg",
-        "folder.jpg",
-        "front.jpg",
-        "Cover.jpg",
-        "Folder.jpg",
-        "Front.jpg",
-    ] {
-        let candidate = folder_path.join(name);
-        if candidate.is_file() {
-            if let Ok(img) = image::open(&candidate) {
-                let resized = img.resize_to_fill(200, 200, FilterType::Triangle);
-                if let Some(parent) = output_path.parent() {
-                    fs::create_dir_all(parent).ok();
-                }
-                if resized.save(output_path).is_ok() {
-                    return Some(name);
-                }
-            }
-        }
-    }
-    None
-}
-
 pub fn use_artist_folder_image(artist_folder: &Path, output_path: &Path) -> bool {
     for name in &["folder.jpg", "cover.jpg", "Folder.jpg", "Cover.jpg"] {
         let candidate = artist_folder.join(name);
@@ -323,7 +294,7 @@ fn write_artist_folder_image(local_path: &Path, music_dir: &str, artist_folder: 
         return;
     }
     let dest = dir.join("folder.jpg");
-    if let Err(_) = fs::create_dir_all(&dir) {
+    if fs::create_dir_all(&dir).is_err() {
         return;
     }
     if let Ok(bytes) = fs::read(local_path) {
@@ -334,7 +305,7 @@ fn write_artist_folder_image(local_path: &Path, music_dir: &str, artist_folder: 
 async fn get_wikidata_image(client: &Client, wikidata_url: &str) -> Option<String> {
     let entity_id = wikidata_url
         .split('/')
-        .last()
+        .next_back()
         .filter(|s| s.starts_with('Q'))?;
     let api_url = format!(
         "https://www.wikidata.org/w/api.php?action=wbgetentities&ids={}&props=claims&format=json",
@@ -775,7 +746,7 @@ mod tests {
 
         bytes.push(if jpeg.is_none() { 0x80 } else { 0x00 }); // STREAMINFO (type 0)
         bytes.extend_from_slice(&34u32.to_be_bytes()[1..]); // 3-byte BE length
-        bytes.extend(std::iter::repeat(0u8).take(34));
+        bytes.extend(std::iter::repeat_n(0u8, 34));
 
         if let Some(jpeg) = jpeg {
             let mime = b"image/jpeg";

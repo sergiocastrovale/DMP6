@@ -34,13 +34,11 @@ const NEGATIVE_TTL_DAYS: i64 = 30;
 pub struct ResolveStats {
     pub names_seen: usize,
     pub from_embedded: usize,
-    pub from_cache: usize,
     pub from_mb_whole: usize,
     pub from_mb_span: usize,
     pub from_fallback: usize,
     pub deferred: usize,
     pub mb_lookups: usize,
-    pub credit_artists_created: usize,
 }
 
 /// One name's outcome, for the dry-run report.
@@ -246,7 +244,6 @@ impl<'a> ArtistResolver<'a> {
         self.stats.names_seen += 1;
         match src {
             ResolveSource::EmbeddedId => self.stats.from_embedded += 1,
-            ResolveSource::Cache => self.stats.from_cache += 1,
             ResolveSource::MbWhole => self.stats.from_mb_whole += 1,
             ResolveSource::MbSpan => self.stats.from_mb_span += 1,
             ResolveSource::FallbackAtoms => self.stats.from_fallback += 1,

@@ -1,6 +1,6 @@
 use clap::Parser;
 use common::config::{apply_db_overrides, load_config, Config};
-use common::db::create_pool;
+use common::db::create_pool_or_exit;
 use common::images::{download_artist_image, record_artist_image};
 use common::mb::api::{mb_get_artist_detail, RateLimiter};
 use common::mb::types::MbArtistDetail;
@@ -174,7 +174,7 @@ async fn main() {
     common::error_log::init("artist-photos");
     let reporter = Reporter::new(args.web);
     let mut config = load_config(None);
-    let pool = create_pool(&config.database_url).await;
+    let pool = create_pool_or_exit(&config.database_url, "artist-photos").await;
     apply_db_overrides(&mut config, &pool).await;
 
     reporter.header(if args.dry_run {
@@ -193,7 +193,6 @@ async fn main() {
         .expect("HTTP client");
 
     let mut limiter = RateLimiter::new();
-    limiter.set_web(args.web);
     let mut counts = Counts::default();
     let mut image_tasks: JoinSet<(String, Result<bool, String>)> = JoinSet::new();
 

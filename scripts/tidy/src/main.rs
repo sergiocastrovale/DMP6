@@ -1,7 +1,7 @@
 use chrono::Utc;
 use clap::Parser;
 use common::config::{apply_db_overrides, load_config};
-use common::db::create_pool;
+use common::db::create_pool_or_exit;
 use common::filters::matches_filter;
 use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
 use common::progress::Reporter;
@@ -101,7 +101,7 @@ async fn main() {
     common::error_log::init("tidy");
     let reporter = Reporter::new(args.web);
     let mut config = load_config(None);
-    let pool = create_pool(&config.database_url).await;
+    let pool = create_pool_or_exit(&config.database_url, "tidy").await;
     apply_db_overrides(&mut config, &pool).await;
 
     if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
@@ -109,13 +109,7 @@ async fn main() {
     }
 
     let pid = std::process::id();
-    let lock_args = serde_json::json!({
-        "all": args.all,
-        "only": args.only,
-        "from": args.from,
-        "to": args.to,
-    });
-    let _lock_guard = match acquire_lock(&pool, "tidy", pid, &lock_args.to_string()).await {
+    let _lock_guard = match acquire_lock(&pool, "tidy", pid).await {
         Ok(g) => g,
         Err(e) => {
             reporter.err(&format!("Cannot start: {}", e));
@@ -304,7 +298,6 @@ async fn main() {
                 .build()
                 .expect("HTTP client");
             let mut limiter = RateLimiter::new();
-            limiter.set_web(args.web);
 
             reporter.blank();
             reporter.header("Box sets");

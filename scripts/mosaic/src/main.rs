@@ -239,7 +239,7 @@ fn main() {
                     "PROGRESS:{}",
                     serde_json::json!({"current": done, "total": count})
                 );
-            } else if done % 100 == 0 || done == count {
+            } else if done.is_multiple_of(100) || done == count {
                 eprint!("\r  Processing: {}/{}", done, count);
             }
 

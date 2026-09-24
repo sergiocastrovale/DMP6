@@ -24,7 +24,9 @@ impl Ctx {
             "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
              against the production DATABASE_URL",
         );
-        let pool = common::db::create_pool(&db_url).await;
+        let pool = common::db::create_pool(&db_url, "test")
+            .await
+            .expect("connect");
         let album_type_id: String = sqlx::query_scalar(
             r#"INSERT INTO "ReleaseType" (id, name, slug, "createdAt", "updatedAt")
                VALUES ('release-type-album', 'Album', 'album', now(), now())

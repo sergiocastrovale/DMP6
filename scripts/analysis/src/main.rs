@@ -42,10 +42,6 @@ struct Args {
     #[arg()]
     scan_path: String,
 
-    /// UNC prefix for Windows links (e.g. \\\\minibrain\\test)
-    #[arg(long, default_value = "")]
-    unc_prefix: String,
-
     /// Output directory for the HTML report (relative or absolute)
     #[arg(long, default_value = "../../reports")]
     output_dir: String,
@@ -249,7 +245,7 @@ impl FileIssue {
 fn has_tag(tags: &HashMap<String, String>, keys: &[&str]) -> bool {
     keys.iter().any(|k| {
         tags.get(&k.to_uppercase())
-            .map_or(false, |v| !v.trim().is_empty())
+            .is_some_and(|v| !v.trim().is_empty())
     })
 }
 
@@ -890,7 +886,7 @@ fn build_groups(
                 FileFixStatus::Skipped
             } else if let (Some(d), Some(fname)) = (diffs, field_name) {
                 if d.get(&issue.path)
-                    .map_or(false, |fixes| fixes.iter().any(|fix| fix.field == fname))
+                    .is_some_and(|fixes| fixes.iter().any(|fix| fix.field == fname))
                 {
                     FileFixStatus::Matched
                 } else {
@@ -901,7 +897,7 @@ fn build_groups(
             }
         } else if let (Some(d), Some(fname)) = (diffs, field_name) {
             if d.get(&issue.path)
-                .map_or(false, |fixes| fixes.iter().any(|fix| fix.field == fname))
+                .is_some_and(|fixes| fixes.iter().any(|fix| fix.field == fname))
             {
                 FileFixStatus::Matched
             } else {
@@ -963,35 +959,35 @@ fn write_pagination<W: Write>(
     if total_pages <= 1 {
         return Ok(());
     }
-    write!(f, "<div class=\"pagination\">\n")?;
+    writeln!(f, "<div class=\"pagination\">")?;
     if current_page > 1 {
-        write!(
+        writeln!(
             f,
-            "<a href=\"{}_{}.html\">&lsaquo;</a>\n",
+            "<a href=\"{}_{}.html\">&lsaquo;</a>",
             base_name,
             current_page - 1
         )?;
     } else {
-        write!(f, "<span class=\"disabled\">&lsaquo;</span>\n")?;
+        writeln!(f, "<span class=\"disabled\">&lsaquo;</span>")?;
     }
     for p in 1..=total_pages {
         if p == current_page {
-            write!(f, "<span class=\"active\">{}</span>\n", p)?;
+            writeln!(f, "<span class=\"active\">{}</span>", p)?;
         } else {
-            write!(f, "<a href=\"{}_{}.html\">{}</a>\n", base_name, p, p)?;
+            writeln!(f, "<a href=\"{}_{}.html\">{}</a>", base_name, p, p)?;
         }
     }
     if current_page < total_pages {
-        write!(
+        writeln!(
             f,
-            "<a href=\"{}_{}.html\">&rsaquo;</a>\n",
+            "<a href=\"{}_{}.html\">&rsaquo;</a>",
             base_name,
             current_page + 1
         )?;
     } else {
-        write!(f, "<span class=\"disabled\">&rsaquo;</span>\n")?;
+        writeln!(f, "<span class=\"disabled\">&rsaquo;</span>")?;
     }
-    write!(f, "</div>\n")?;
+    writeln!(f, "</div>")?;
     Ok(())
 }
 
@@ -1001,7 +997,7 @@ fn write_subtab_bar<W: Write>(
     f: &mut W,
     tabs: &[(&str, &str, usize, usize)],
 ) -> std::io::Result<()> {
-    write!(f, "<div class=\"subtab-bar\">\n")?;
+    writeln!(f, "<div class=\"subtab-bar\">")?;
     for (i, &(id, label, count, matched)) in tabs.iter().enumerate() {
         let active = if i == 0 { " active" } else { "" };
         let delta = if matched > 0 {
@@ -1009,13 +1005,13 @@ fn write_subtab_bar<W: Write>(
         } else {
             String::new()
         };
-        write!(
+        writeln!(
             f,
-            "<button class=\"subtab{}\" onclick=\"switchSubtab(this)\" data-panel=\"panel-{}\">{}<span class=\"subtab-count\">{}{}</span></button>\n",
+            "<button class=\"subtab{}\" onclick=\"switchSubtab(this)\" data-panel=\"panel-{}\">{}<span class=\"subtab-count\">{}{}</span></button>",
             active, id, encode_text(label), count, delta
         )?;
     }
-    write!(f, "</div>\n")?;
+    writeln!(f, "</div>")?;
     Ok(())
 }
 
@@ -1033,15 +1029,15 @@ fn write_field_panel<W: Write>(
     scan_root: &str,
 ) -> std::io::Result<()> {
     let hidden = if active { "" } else { " hidden" };
-    write!(
+    writeln!(
         f,
-        "<div class=\"panel{}\" id=\"panel-{}\">\n",
+        "<div class=\"panel{}\" id=\"panel-{}\">",
         hidden, panel_id
     )?;
     if groups.is_empty() {
-        write!(f, "<div class=\"empty-panel\">No issues found</div>\n")?;
+        writeln!(f, "<div class=\"empty-panel\">No issues found</div>")?;
     } else {
-        write!(f, "<div class=\"artist-list\">\n")?;
+        writeln!(f, "<div class=\"artist-list\">")?;
         for (artist, files) in groups {
             write!(
                 f,
@@ -1093,24 +1089,24 @@ fn write_field_panel<W: Write>(
                         } else {
                             String::new()
                         };
-                        write!(
+                        writeln!(
                             f,
-                            "<li class=\"file-item matched\">{}{}<span class=\"match-check\" onmouseenter=\"showMatchInfo(this)\" onmouseleave=\"hideMatchInfo(this)\">&#10003;</span>{}</li>\n",
+                            "<li class=\"file-item matched\">{}{}<span class=\"match-check\" onmouseenter=\"showMatchInfo(this)\" onmouseleave=\"hideMatchInfo(this)\">&#10003;</span>{}</li>",
                             encode_text(path), ann_html, popover_html
                         )?;
                     }
                     FileFixStatus::Skipped => {
-                        write!(
+                        writeln!(
                             f,
-                            "<li class=\"file-item\">{}{}</li>\n",
+                            "<li class=\"file-item\">{}{}</li>",
                             encode_text(path),
                             ann_html
                         )?;
                     }
                     FileFixStatus::NoAutofix => {
-                        write!(
+                        writeln!(
                             f,
-                            "<li class=\"file-item\">{}{}</li>\n",
+                            "<li class=\"file-item\">{}{}</li>",
                             encode_text(path),
                             ann_html
                         )?;
@@ -1119,9 +1115,9 @@ fn write_field_panel<W: Write>(
             }
             write!(f, "</ul>\n</div>\n")?;
         }
-        write!(f, "</div>\n")?;
+        writeln!(f, "</div>")?;
     }
-    write!(f, "</div>\n")?;
+    writeln!(f, "</div>")?;
     Ok(())
 }
 
@@ -1189,7 +1185,7 @@ fn write_nav<W: Write>(
         ),
     ];
 
-    write!(f, "<nav class=\"nav-bar\">\n")?;
+    writeln!(f, "<nav class=\"nav-bar\">")?;
     for (id, label, filename, count, matched, show) in &entries {
         if !show {
             continue;
@@ -1217,13 +1213,13 @@ fn write_nav<W: Write>(
             }
             None => String::new(),
         };
-        write!(
+        writeln!(
             f,
-            "<a href=\"{}\" class=\"nav-tab{}\">{}{}</a>\n",
+            "<a href=\"{}\" class=\"nav-tab{}\">{}{}</a>",
             href, active_class, label, badge
         )?;
     }
-    write!(f, "</nav>\n")?;
+    writeln!(f, "</nav>")?;
     Ok(())
 }
 
@@ -1288,12 +1284,12 @@ fn write_index(
     write_page_start(&mut f, "Overview", true)?;
 
     // Subtitle
-    write!(
+    writeln!(
         f,
         "<p class=\"subtitle\">\
         <span>Scanned <code>{}</code></span>\
         <span class=\"meta\">{} &middot; {:.2}s</span>\
-        </p>\n",
+        </p>",
         encode_text(scan_root),
         human_size(total_size),
         elapsed.as_secs_f64(),
@@ -1314,14 +1310,14 @@ fn write_index(
     let mut sorted_types: Vec<_> = file_type_counts.iter().collect();
     sorted_types.sort_by(|a, b| b.1.cmp(a.1));
     for (ext, count) in &sorted_types {
-        write!(f, "<div class=\"stat-card\"><div class=\"label\">{}</div><div class=\"value info\">{}</div></div>\n",
+        writeln!(f, "<div class=\"stat-card\"><div class=\"label\">{}</div><div class=\"value info\">{}</div></div>",
             encode_text(ext), count)?;
     }
 
     write!(f, "</div>\n<div class=\"stats-group\">\n")?;
-    write!(f, "<div class=\"stat-card\"><div class=\"label\">Files OK</div><div class=\"value ok\">{}</div></div>\n", ok_count)?;
-    write!(f, "<div class=\"stat-card\"><div class=\"label\">Files with Issues</div><div class=\"value fail\">{}</div></div>\n", issues_len)?;
-    write!(f, "<div class=\"stat-card\"><div class=\"label\">Unreadable Files</div><div class=\"value warn\">{}</div></div>\n", error_count)?;
+    writeln!(f, "<div class=\"stat-card\"><div class=\"label\">Files OK</div><div class=\"value ok\">{}</div></div>", ok_count)?;
+    writeln!(f, "<div class=\"stat-card\"><div class=\"label\">Files with Issues</div><div class=\"value fail\">{}</div></div>", issues_len)?;
+    writeln!(f, "<div class=\"stat-card\"><div class=\"label\">Unreadable Files</div><div class=\"value warn\">{}</div></div>", error_count)?;
     write!(f, "</div>\n</div>\n")?;
 
     // Category breakdown
@@ -1354,9 +1350,9 @@ fn write_index(
         if !show {
             continue;
         }
-        write!(
+        writeln!(
             f,
-            "<tr><td>{}</td><td>{}</td><td><a href=\"{}\">View &rarr;</a></td></tr>\n",
+            "<tr><td>{}</td><td>{}</td><td><a href=\"{}\">View &rarr;</a></td></tr>",
             label, count, href
         )?;
     }
@@ -1385,7 +1381,7 @@ fn write_issues_page(
     write_page_start(&mut f, "Issues", false)?;
     write_nav(&mut f, "issues", counts, pages, false)?;
 
-    write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterTable(this)\"></div>\n")?;
+    writeln!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterTable(this)\"></div>")?;
     write!(f, "<div class=\"table-wrap\"><table>\n\
         <thead><tr><th data-sort=\"0\">Path</th><th data-sort=\"1\">Problem</th></tr></thead>\n<tbody>\n")?;
 
@@ -1404,9 +1400,9 @@ fn write_issues_page(
 
     for p in &lone_files {
         let rel = relative_path(p, scan_root);
-        write!(
+        writeln!(
             f,
-            "<tr><td title=\"{}\">{}</td><td>Only one file</td></tr>\n",
+            "<tr><td title=\"{}\">{}</td><td>Only one file</td></tr>",
             encode_text(&p.to_string_lossy()),
             encode_text(&rel)
         )?;
@@ -1418,9 +1414,9 @@ fn write_issues_page(
 
     for (p, err) in &sorted_unreadable {
         let rel = relative_path(p, scan_root);
-        write!(
+        writeln!(
             f,
-            "<tr><td title=\"{}\">{}</td><td>{}</td></tr>\n",
+            "<tr><td title=\"{}\">{}</td><td>{}</td></tr>",
             encode_text(&p.to_string_lossy()),
             encode_text(&rel),
             encode_text(err)
@@ -1428,9 +1424,9 @@ fn write_issues_page(
     }
 
     if lone_files.is_empty() && sorted_unreadable.is_empty() {
-        write!(
+        writeln!(
             f,
-            "<tr><td colspan=\"2\" class=\"empty-state\">No issues found</td></tr>\n"
+            "<tr><td colspan=\"2\" class=\"empty-state\">No issues found</td></tr>"
         )?;
     }
 
@@ -1490,10 +1486,8 @@ fn write_critical_page(
         |i| {
             if i.blank_year {
                 Some("(blank)".into())
-            } else if let Some(v) = &i.invalid_year {
-                Some(format!("({})", v))
             } else {
-                None
+                i.invalid_year.as_ref().map(|v| format!("({})", v))
             }
         },
         diffs,
@@ -1502,7 +1496,7 @@ fn write_critical_page(
     );
 
     let all_artists = collect_all_artists(&[&artist_groups, &title_groups, &year_groups]);
-    let total_pages = ((all_artists.len() + ARTISTS_PER_PAGE - 1) / ARTISTS_PER_PAGE).max(1);
+    let total_pages = all_artists.len().div_ceil(ARTISTS_PER_PAGE).max(1);
 
     for page_num in 1..=total_pages {
         let start = (page_num - 1) * ARTISTS_PER_PAGE;
@@ -1544,7 +1538,7 @@ fn write_critical_page(
             ),
         ];
 
-        write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+        writeln!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>")?;
         write_pagination(&mut f, "critical", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
         write_field_panel(
@@ -1605,7 +1599,7 @@ fn write_mb_page(
     );
 
     let all_artists = collect_all_artists(&[&artist_groups, &track_groups, &album_groups]);
-    let total_pages = ((all_artists.len() + ARTISTS_PER_PAGE - 1) / ARTISTS_PER_PAGE).max(1);
+    let total_pages = all_artists.len().div_ceil(ARTISTS_PER_PAGE).max(1);
 
     for page_num in 1..=total_pages {
         let start = (page_num - 1) * ARTISTS_PER_PAGE;
@@ -1647,7 +1641,7 @@ fn write_mb_page(
             ),
         ];
 
-        write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+        writeln!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>")?;
         write_pagination(&mut f, "mb", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
         write_field_panel(
@@ -1701,7 +1695,7 @@ fn write_discogs_page(
     );
 
     let all_artists = collect_all_artists(&[&artist_groups, &release_groups]);
-    let total_pages = ((all_artists.len() + ARTISTS_PER_PAGE - 1) / ARTISTS_PER_PAGE).max(1);
+    let total_pages = all_artists.len().div_ceil(ARTISTS_PER_PAGE).max(1);
 
     for page_num in 1..=total_pages {
         let start = (page_num - 1) * ARTISTS_PER_PAGE;
@@ -1736,7 +1730,7 @@ fn write_discogs_page(
             ),
         ];
 
-        write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+        writeln!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>")?;
         write_pagination(&mut f, "discogs", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
         write_field_panel(
@@ -1820,7 +1814,7 @@ fn write_ids_page(
         &bandcamp_groups,
         &wiki_groups,
     ]);
-    let total_pages = ((all_artists.len() + ARTISTS_PER_PAGE - 1) / ARTISTS_PER_PAGE).max(1);
+    let total_pages = all_artists.len().div_ceil(ARTISTS_PER_PAGE).max(1);
 
     for page_num in 1..=total_pages {
         let start = (page_num - 1) * ARTISTS_PER_PAGE;
@@ -1869,7 +1863,7 @@ fn write_ids_page(
             ),
         ];
 
-        write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+        writeln!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>")?;
         write_pagination(&mut f, "ids", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
         write_field_panel(
@@ -1972,7 +1966,7 @@ fn write_other_page(
     );
 
     let all_artists = collect_all_artists(&[&genre_groups, &bpm_groups, &mood_groups, &art_groups]);
-    let total_pages = ((all_artists.len() + ARTISTS_PER_PAGE - 1) / ARTISTS_PER_PAGE).max(1);
+    let total_pages = all_artists.len().div_ceil(ARTISTS_PER_PAGE).max(1);
 
     for page_num in 1..=total_pages {
         let start = (page_num - 1) * ARTISTS_PER_PAGE;
@@ -2021,7 +2015,7 @@ fn write_other_page(
             ),
         ];
 
-        write!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>\n")?;
+        writeln!(f, "<div class=\"search-box\"><input type=\"text\" placeholder=\"Filter files\u{2026}\" oninput=\"filterGroups(this)\"></div>")?;
         write_pagination(&mut f, "other", page_num, total_pages)?;
         write_subtab_bar(&mut f, tabs)?;
         write_field_panel(&mut f, "genre", &pg_genre, true, "other", diffs, scan_root)?;
@@ -2897,9 +2891,6 @@ fn main() {
     println!("Audio Metadata Scanner");
     println!("======================");
     println!("Scan root : {}", scan_root);
-    if !args.unc_prefix.is_empty() {
-        println!("UNC prefix: {}", args.unc_prefix);
-    }
     if args.limit > 0 {
         println!("Limit     : {} files", args.limit);
     }
@@ -3073,7 +3064,7 @@ fn main() {
                 let n = scanned.fetch_add(1, Ordering::Relaxed) + 1;
 
                 // Progress: print every 10 000 files
-                if n % 10_000 == 0 || n == total_files {
+                if n.is_multiple_of(10_000) || n == total_files {
                     eprintln!("  ... scanned {}/{}", n, total_files);
                 }
 

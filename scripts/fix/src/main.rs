@@ -12,7 +12,7 @@ use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use common::{
     config::{apply_db_overrides, load_config},
-    db::create_pool,
+    db::create_pool_or_exit,
     error_log,
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
 };
@@ -56,7 +56,7 @@ async fn main() {
     let args = Args::parse();
     common::error_log::init("fix");
     let mut config = load_config(None);
-    let pool = create_pool(&config.database_url).await;
+    let pool = create_pool_or_exit(&config.database_url, "fix").await;
     apply_db_overrides(&mut config, &pool).await;
 
     if !args.corrupted && !args.orphans && !args.duplicates && !args.missing {
@@ -77,7 +77,7 @@ async fn main() {
     if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         eprintln!("{}", "Cleared a stale lock.".yellow());
     }
-    let _lock_guard = match acquire_lock(&pool, "fix", std::process::id(), "").await {
+    let _lock_guard = match acquire_lock(&pool, "fix", std::process::id()).await {
         Ok(g) => g,
         Err(e) => {
             eprintln!("{}: {}", "Cannot start".red(), e);

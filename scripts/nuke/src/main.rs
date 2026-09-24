@@ -80,8 +80,7 @@ async fn delete_s3_prefix(
             .iter()
             .filter_map(|obj| {
                 obj.key()
-                    .map(|k| ObjectIdentifier::builder().key(k).build().ok())
-                    .flatten()
+                    .and_then(|k| ObjectIdentifier::builder().key(k).build().ok())
             })
             .collect();
 
@@ -270,7 +269,7 @@ async fn main() {
         if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
             log!("Cleared a stale lock.");
         }
-        let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id(), "").await {
+        let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id()).await {
             Ok(g) => g,
             Err(e) => {
                 eprintln!("{}: {}", "Cannot start".red(), e);
@@ -364,7 +363,7 @@ async fn main() {
     if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
         log!("Cleared a stale lock.");
     }
-    let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id(), "").await {
+    let _lock_guard = match acquire_lock(&pool, "nuke", std::process::id()).await {
         Ok(g) => g,
         Err(e) => {
             eprintln!("{}: {}", "Cannot start".red(), e);

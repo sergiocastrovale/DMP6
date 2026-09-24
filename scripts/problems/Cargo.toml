@@ -27,4 +27,4 @@ common = { path = "../common" }
 reqwest = { workspace = true }
 tokio = { workspace = true }
 # Not a workspace dependency (same as the analysis crate, which also declares it locally).
-walkdir = "2.5"
+walkdir = { workspace = true }

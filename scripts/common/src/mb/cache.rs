@@ -192,7 +192,9 @@ mod tests {
             "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
              against the production DATABASE_URL",
         );
-        let pool = crate::db::create_pool(&db_url).await;
+        let pool = crate::db::create_pool(&db_url, "test")
+            .await
+            .expect("connect");
         seed(&pool, HIT_NAME, Some(FIXTURE_MBID)).await;
         seed(&pool, MISS_NAME, None).await;
 
@@ -238,7 +240,9 @@ mod tests {
             "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
              against the production DATABASE_URL",
         );
-        let pool = crate::db::create_pool(&db_url).await;
+        let pool = crate::db::create_pool(&db_url, "test")
+            .await
+            .expect("connect");
         seed(&pool, HIT_NAME, Some(FIXTURE_MBID)).await;
         seed(&pool, MISS_NAME, None).await;
 

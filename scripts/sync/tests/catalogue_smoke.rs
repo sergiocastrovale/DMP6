@@ -41,7 +41,9 @@ async fn catalogue_smoke_real_binaries_index_and_sync() {
         "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres — this test never runs \
          against the production DATABASE_URL",
     );
-    let pool = common::db::create_pool(&db_url).await;
+    let pool = common::db::create_pool(&db_url, "test")
+        .await
+        .expect("connect");
 
     let http = reqwest::Client::new();
 

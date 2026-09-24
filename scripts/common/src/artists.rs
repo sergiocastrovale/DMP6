@@ -1,6 +1,6 @@
 use regex::Regex;
 use std::collections::HashSet;
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 
 pub const SPECIAL_MB_ARTIST_IDS: &[&str] = &[
     "89ad4ac3-39f7-470e-963a-56509c546377", // Various Artists
@@ -58,85 +58,18 @@ pub fn is_special_mb_artist(id: &str, name: &str) -> bool {
 /// not the authority - `common::mb::resolve` asks MusicBrainz first and only consults this list to keep
 /// a definitive "no such artist" answer from shredding a band the codebase already knows about. It does
 /// not need to be exhaustive, and entries here are never a reason to skip the MB lookup.
-pub const KNOWN_SINGLE_ARTISTS: &[&str] = &[
-    // & bands
-    "simon & garfunkel",
-    "kool & the gang",
-    "hall & oates",
-    "daryl hall & john oates",
-    "sly & the family stone",
-    "belle & sebastian",
-    "nick cave & the bad seeds",
-    "echo & the bunnymen",
-    "bob marley & the wailers",
-    "prince & the revolution",
-    "katrina & the waves",
-    "josie & the pussycats",
-    "derek & the dominos",
-    "iggy & the stooges",
-    "joan jett & the blackhearts",
-    "mike & the mechanics",
-    "huey lewis & the news",
-    "the mamas & the papas",
-    "mumford & sons",
-    "florence & the machine",
-    "ty segall & the muggers",
-    "ty segall & white fence",
-    "hootie & the blowfish",
-    "country joe & the fish",
-    "siouxsie & the banshees",
-    "tom petty & the heartbreakers",
-    "the captain & tennille",
-    "ike & tina turner",
-    "peaches & herb",
-    "sam & dave",
-    "ferrante & teicher",
-    "santo & johnny",
-    "loggins & messina",
-    "seals & crofts",
-    "england dan & john ford coley",
-    "brooks & dunn",
-    "big & rich",
-    "for king & country",
-    "above & beyond",
-    "angus & julia stone",
-    "tegan & sara",
-    "she & him",
-    "chas & dave",
-    "matt & kim",
-    "chase & status",
-    "wendy & lisa",
-    "ashford & simpson",
-    "timbaland & magoo",
-    "eric b. & rakim",
-    "dj jazzy jeff & the fresh prince",
-    "mel & kim",
-    "robert randolph & the family band",
-    "cedric gervais & cid",
-    "armed & dangerous",
-    "bob & earl",
-    "mel & tim",
-    "zager & evans",
-    // "with" bands
-    "sleeping with sirens",
-    "dancing with the dead",
-    "flirting with disaster",
-    "nurse with wound",
-    "man with a mission",
-    "dance with the dead",
-    "ends with a bullet",
-    "tom petty and the heartbreakers",
-    // comma bands
-    "earth, wind & fire",
-    "crosby, stills & nash",
-    "crosby, stills, nash & young",
-    "emerson, lake & palmer",
-    "blood, sweat & tears",
-    "peter, paul & mary",
-    "peter, bjorn & john",
-    // slash/semicolon bands
-    "ac/dc",
-];
+///
+/// Kept as a plain data file (one name per line) rather than a Rust array so a new entry needs no
+/// recompile-affecting code change, and normalized once here rather than per lookup -
+/// `is_known_single_artist` used to re-normalize all ~70 entries on every call.
+static KNOWN_SINGLE_ARTISTS_NORMALIZED: LazyLock<HashSet<String>> = LazyLock::new(|| {
+    include_str!("data/known_single_artists.txt")
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(crate::mb::names::normalize_name)
+        .collect()
+});
 
 /// Real artists whose name is entirely or mostly digits, which the digit-shaped "corrupted tag"
 /// heuristics in `audit` and `problems` would otherwise flag.
@@ -162,12 +95,7 @@ pub fn is_known_numeric_artist_name(s: &str) -> bool {
 /// Machine" and "florence and the machine" all normalize alike.
 pub fn is_known_single_artist(name: &str) -> bool {
     let n = crate::mb::names::normalize_name(name);
-    if n.is_empty() {
-        return false;
-    }
-    KNOWN_SINGLE_ARTISTS
-        .iter()
-        .any(|k| crate::mb::names::normalize_name(k) == n)
+    !n.is_empty() && KNOWN_SINGLE_ARTISTS_NORMALIZED.contains(&n)
 }
 
 fn split_ignoring_numeric_commas(s: &str) -> Vec<String> {

@@ -165,7 +165,9 @@ async fn bound_disagreeing_release_is_unbound_with_reason_and_leaf_title() {
         "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
          against the production DATABASE_URL",
     );
-    let pool = common::db::create_pool(&db_url).await;
+    let pool = common::db::create_pool(&db_url, "test")
+        .await
+        .expect("connect");
     reset_fixture(&pool).await;
 
     let (mb_release_id, mb_track_id) = insert_mb_release_track(&pool).await;
@@ -228,7 +230,9 @@ async fn box_placed_and_member_releases_are_untouched() {
         "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
          against the production DATABASE_URL",
     );
-    let pool = common::db::create_pool(&db_url).await;
+    let pool = common::db::create_pool(&db_url, "test")
+        .await
+        .expect("connect");
     reset_fixture(&pool).await;
 
     let (mb_release_id, _mb_track_id) = insert_mb_release_track(&pool).await;
@@ -288,7 +292,9 @@ async fn retagged_folder_returns_to_unmatched_with_reason_cleared_and_is_stable(
         "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
          against the production DATABASE_URL",
     );
-    let pool = common::db::create_pool(&db_url).await;
+    let pool = common::db::create_pool(&db_url, "test")
+        .await
+        .expect("connect");
     reset_fixture(&pool).await;
 
     let release = insert_release(

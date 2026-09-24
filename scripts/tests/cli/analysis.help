@@ -6,7 +6,6 @@ Arguments:
   <SCAN_PATH>  Root directory to scan
 
 Options:
-      --unc-prefix <UNC_PREFIX>  UNC prefix for Windows links (e.g. \\\\minibrain\\test) [default: ""]
       --output-dir <OUTPUT_DIR>  Output directory for the HTML report (relative or absolute) [default: ../../reports]
       --limit <LIMIT>            Limit scan to the first N audio files (0 = no limit) [default: 0]
       --from <FROM>              Filter: only scan folders starting from this prefix (case insensitive) [default: ""]

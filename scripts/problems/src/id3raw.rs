@@ -20,7 +20,7 @@
 //! general ID3 parser.
 
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 use std::path::Path;
 
 /// Refuse to buffer a tag larger than this. Real date frames live in the first few KB; a larger
@@ -220,13 +220,6 @@ pub fn read_id3v2_dates(path: &Path) -> std::io::Result<Option<RawId3Dates>> {
     }
 
     Ok((!out.is_empty()).then_some(out))
-}
-
-/// Seek back to the start; used by callers that reuse the handle. Kept separate so the reader above
-/// stays a pure "open, read, done" operation.
-#[allow(dead_code)]
-pub fn rewind(file: &mut File) -> std::io::Result<()> {
-    file.seek(SeekFrom::Start(0)).map(|_| ())
 }
 
 #[cfg(test)]

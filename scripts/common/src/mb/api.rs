@@ -199,8 +199,6 @@ impl RateLimiter {
         }
     }
 
-    pub fn set_web(&self, _web: bool) {}
-
     /// Requests issued so far, retries included.
     pub fn requests_issued(&self) -> u64 {
         self.inner

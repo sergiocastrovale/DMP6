@@ -21,12 +21,7 @@ impl Drop for LockGuard {
 
 /// Atomically acquire the scan lock in the Statistics singleton row.
 /// Returns Err with the current holder's info if the lock is already held.
-pub async fn acquire_lock(
-    pool: &PgPool,
-    binary: &str,
-    pid: u32,
-    args: &str,
-) -> Result<LockGuard, String> {
+pub async fn acquire_lock(pool: &PgPool, binary: &str, pid: u32) -> Result<LockGuard, String> {
     // First ensure the Statistics row exists
     sqlx::query(
         r#"INSERT INTO "Statistics" (id, "updatedAt") VALUES ('main', NOW()) ON CONFLICT DO NOTHING"#,
@@ -77,7 +72,6 @@ pub async fn acquire_lock(
                 Some((by, pid_val)) => format!("lock held by {} (pid {})", by, pid_val),
                 None => "lock held (unknown holder)".to_string(),
             };
-            let _ = args; // available for future structured logging
             Err(msg)
         }
         // A DB error here is not evidence the lock is held - conflating the two would make a

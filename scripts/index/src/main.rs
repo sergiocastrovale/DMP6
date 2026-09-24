@@ -1,4 +1,3 @@
-mod images;
 mod metadata;
 
 use chrono::{NaiveDateTime, Utc};
@@ -6,7 +5,7 @@ use clap::Parser;
 use common::{
     checkpoint::{clear_index_checkpoint, load_index_checkpoint, save_index_checkpoint},
     config::{apply_db_overrides, load_config},
-    db::{create_pool, ensure_artist_cached},
+    db::{create_pool_or_exit, ensure_artist_cached},
     filters::{escape_like, matches_filter},
     lock::{acquire_lock, clear_stale_lock_minutes, release_lock},
     progress::Reporter,
@@ -27,8 +26,8 @@ use std::{
     },
 };
 
+use common::images::{hash_image_file, resolve_release_cover, upload_release_image_to_s3};
 use common::mb::resolve::LookupResult;
-use images::{hash_image_file, resolve_release_cover, upload_release_image_to_s3};
 use index::db::*;
 use index::deletion::{
     delete_empty_releases, delete_orphan_artists, delete_orphaned_mb_releases,
@@ -311,8 +310,8 @@ async fn run_artist_resolution(
 
     let s = &resolver.stats;
     reporter.info(&format!(
-        "Resolved {} name(s): {} embedded, {} cached, {} whole-name MB, {} split MB, {} fallback, {} deferred ({} MB lookups).",
-        s.names_seen, s.from_embedded, s.from_cache, s.from_mb_whole, s.from_mb_span, s.from_fallback,
+        "Resolved {} name(s): {} embedded, {} whole-name MB, {} split MB, {} fallback, {} deferred ({} MB lookups).",
+        s.names_seen, s.from_embedded, s.from_mb_whole, s.from_mb_span, s.from_fallback,
         s.deferred, s.mb_lookups
     ));
     // Reported once, as a fact about MusicBrainz's health rather than a problem with this run: these
@@ -443,7 +442,7 @@ async fn main() {
     }
     let reporter = Reporter::new(args.web);
     let mut config = load_config(args.music_dir.as_deref());
-    let pool = create_pool(&config.database_url).await;
+    let pool = create_pool_or_exit(&config.database_url, "index").await;
     apply_db_overrides(&mut config, &pool).await;
     let music_dir = config.require_music_dir().to_string();
 
@@ -491,18 +490,7 @@ async fn main() {
         reporter.warn("Cleared a stale lock.");
     }
 
-    let args_str = format!(
-        "from={} to={} only={} overwrite={} inspect={} delete={} prune={} release={}",
-        args.from.as_deref().unwrap_or(""),
-        args.to.as_deref().unwrap_or(""),
-        args.only.as_deref().unwrap_or(""),
-        args.overwrite,
-        args.inspect,
-        args.delete,
-        args.prune,
-        args.release.as_deref().unwrap_or(""),
-    );
-    let _lock_guard = match acquire_lock(&pool, "index", std::process::id(), &args_str).await {
+    let _lock_guard = match acquire_lock(&pool, "index", std::process::id()).await {
         Ok(g) => g,
         Err(e) => {
             reporter.err(&format!("Cannot start: {}", e));
@@ -738,7 +726,7 @@ async fn main() {
         }
     }
 
-    artist_folders.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    artist_folders.sort_by_key(|a| a.to_lowercase());
 
     // A folder `--resume` skips was scanned in an earlier, interrupted run of this same pass - not
     // missing. `scanned_folders` (below) must count every folder on disk, not just the ones this
@@ -885,7 +873,7 @@ async fn main() {
                         if e.file_type().is_dir() {
                             return false;
                         }
-                        e.path().extension().map_or(false, |ext| {
+                        e.path().extension().is_some_and(|ext| {
                             let el = ext.to_string_lossy().to_lowercase();
                             AUDIO_EXTENSIONS.contains(&el.as_str())
                         })
@@ -1654,7 +1642,7 @@ async fn main() {
 
                     if let Some(ref artist_slug) = slug {
                         let out_path = artist_img_dir.join(format!("{}.jpg", artist_slug));
-                        if images::use_artist_folder_image(&folder_path, &out_path) {
+                        if common::images::use_artist_folder_image(&folder_path, &out_path) {
                             if use_s3 {
                                 if let (Some(ref client), Some(ref bucket), Some(ref public_url)) = (
                                     &s3_client,
@@ -1807,7 +1795,7 @@ async fn main() {
                 r#"SELECT DISTINCT lra."localReleaseId" FROM "LocalReleaseArtist" lra
                    WHERE lra."artistId" = ANY($1::text[])"#,
             )
-            .bind(&all_artist_ids.iter().cloned().collect::<Vec<String>>())
+            .bind(all_artist_ids.iter().cloned().collect::<Vec<String>>())
             .fetch_all(&pool)
             .await
             .unwrap_or_default();
@@ -1989,7 +1977,7 @@ async fn main() {
                         .ok();
                     }
                     if !use_local && use_s3 {
-                        std::fs::remove_file(&release_img_dir.join(&filename)).ok();
+                        std::fs::remove_file(release_img_dir.join(&filename)).ok();
                     }
                     fixed += 1;
                 } else {
@@ -2011,7 +1999,7 @@ async fn main() {
     let s = elapsed.as_secs() % 60;
 
     reporter.blank();
-    reporter.info(&format!("{}", "═".repeat(60)));
+    reporter.info(&"═".repeat(60).to_string());
     reporter.blank();
     reporter.done(&format!("Done. ({}h:{:02}m:{:02}s)", h, m, s));
     if new_total > 0 || updated_total > 0 {

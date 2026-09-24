@@ -58,7 +58,9 @@ async fn embedded_pairing_resolves_owner_and_credit_without_network() {
         "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
          against the production DATABASE_URL",
     );
-    let pool = common::db::create_pool(&db_url).await;
+    let pool = common::db::create_pool(&db_url, "test")
+        .await
+        .expect("connect");
     let f = Fixture::new("embedded");
     let (owner_name, guest_name) = (f.owner.as_str(), f.guest.as_str());
     reset(&pool, &f).await;
@@ -178,7 +180,9 @@ async fn embedded_pairing_resolves_owner_and_credit_without_network() {
 #[ignore]
 async fn dry_run_writes_no_library_data() {
     let db_url = std::env::var("SMOKE_TEST_DATABASE_URL").expect("set SMOKE_TEST_DATABASE_URL");
-    let pool = common::db::create_pool(&db_url).await;
+    let pool = common::db::create_pool(&db_url, "test")
+        .await
+        .expect("connect");
     let f = Fixture::new("dryrun");
     let (owner_name, guest_name) = (f.owner.as_str(), f.guest.as_str());
     reset(&pool, &f).await;
@@ -321,7 +325,9 @@ async fn single_embedded_pair_is_trusted_only_when_it_is_the_whole_tag() {
 #[ignore]
 async fn a_cached_name_is_pinned_and_costs_no_lookups() {
     let db_url = std::env::var("SMOKE_TEST_DATABASE_URL").expect("set SMOKE_TEST_DATABASE_URL");
-    let pool = common::db::create_pool(&db_url).await;
+    let pool = common::db::create_pool(&db_url, "test")
+        .await
+        .expect("connect");
     let name = "DMP Test Pinned Artist (resolve_artists)";
 
     sqlx::query(r#"DELETE FROM "MbArtistLookup" WHERE name = $1"#)

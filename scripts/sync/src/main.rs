@@ -1,7 +1,7 @@
 use clap::Parser;
 use common::config::{apply_db_overrides, load_config};
 use common::consensus;
-use common::db::create_pool;
+use common::db::create_pool_or_exit;
 use common::filters::{matches_filter, sanitize_mb_id};
 use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
 use common::progress::Reporter;
@@ -405,7 +405,7 @@ async fn main() {
     }
     let reporter = Reporter::new(args.web);
     let mut config = load_config(None);
-    let pool = create_pool(&config.database_url).await;
+    let pool = create_pool_or_exit(&config.database_url, "sync").await;
     apply_db_overrides(&mut config, &pool).await;
 
     if args.release.is_some() && (args.from.is_some() || args.to.is_some() || args.only.is_some()) {
@@ -435,15 +435,7 @@ async fn main() {
     }
 
     let pid = std::process::id();
-    let lock_args = serde_json::json!({
-        "from": args.from,
-        "to": args.to,
-        "only": args.only,
-        "release": args.release,
-        "overwrite": args.overwrite,
-    });
-
-    let _lock_guard = match acquire_lock(&pool, "sync", pid, &lock_args.to_string()).await {
+    let _lock_guard = match acquire_lock(&pool, "sync", pid).await {
         Ok(g) => g,
         Err(e) => {
             reporter.err(&format!("Cannot start: {}", e));
@@ -491,7 +483,6 @@ async fn main() {
         .expect("HTTP client");
 
     let mut limiter = RateLimiter::new();
-    limiter.set_web(args.web);
 
     if args.catalogue_gaps {
         reporter.header("DMP Sync - Catalogue Gaps");
@@ -1023,7 +1014,7 @@ async fn main() {
         }
 
         // 1. Find artist on MusicBrainz
-        let has_mb_id = artist.mb_id.as_ref().map_or(false, |id| !id.is_empty());
+        let has_mb_id = artist.mb_id.as_ref().is_some_and(|id| !id.is_empty());
         if has_mb_id && !args.overwrite {
             r.step("Looking up artist...");
         } else {
@@ -1046,7 +1037,7 @@ async fn main() {
                     &artist.name,
                     artist.mb_id.as_deref(),
                     &mut limiter,
-                    &warmed_artist_names,
+                    warmed_artist_names,
                 )
                 .await
                 {
@@ -1062,7 +1053,7 @@ async fn main() {
                 &artist.name,
                 None,
                 &mut limiter,
-                &warmed_artist_names,
+                warmed_artist_names,
             )
             .await
             {
@@ -2243,7 +2234,7 @@ async fn main() {
     let s = elapsed.as_secs() % 60;
 
     reporter.blank();
-    reporter.info(&format!("{}", "═".repeat(60)));
+    reporter.info(&"═".repeat(60).to_string());
     reporter.blank();
     reporter.done(&format!("Sync complete. ({}h:{:02}m:{:02}s)", h, m, s));
     reporter.info(&format!(

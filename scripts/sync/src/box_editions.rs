@@ -323,7 +323,7 @@ fn title_loosely_matches(medium_title: &str, candidate_title: &str) -> bool {
 enum ContainmentOutcome<'a> {
     Linked(&'a ContainmentCandidate),
     /// >1 candidate satisfied containment and the `is_original_work` tie-break didn't resolve to
-    /// exactly one - left unset rather than guessed.
+    /// > exactly one - left unset rather than guessed.
     Ambiguous,
     None,
 }
@@ -363,7 +363,7 @@ fn resolve_containment_winner<'a>(
             let originals: Vec<&&ContainmentCandidate> =
                 hits.iter().filter(|c| c.is_original_work).collect();
             match originals[..] {
-                [only] => ContainmentOutcome::Linked(*only),
+                [only] => ContainmentOutcome::Linked(only),
                 _ => match same_release_group_winner(&hits) {
                     Some(hit) => ContainmentOutcome::Linked(hit),
                     None => ContainmentOutcome::Ambiguous,

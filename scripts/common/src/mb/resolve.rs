@@ -100,7 +100,6 @@ pub enum LookupResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolveSource {
     EmbeddedId,
-    Cache,
     MbWhole,
     MbSpan,
     FallbackAtoms,
@@ -111,7 +110,6 @@ impl ResolveSource {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::EmbeddedId => "embedded-id",
-            Self::Cache => "cache",
             Self::MbWhole => "mb-whole",
             Self::MbSpan => "mb-span",
             Self::FallbackAtoms => "fallback-atoms",
@@ -333,7 +331,6 @@ struct SpanResolver<'a, F: FnMut(&str) -> LookupResult> {
     seps: &'a [Separator],
     name: &'a str,
     transient: bool,
-    pub lookups: usize,
 }
 
 impl<'a, F: FnMut(&str) -> LookupResult> SpanResolver<'a, F> {
@@ -351,7 +348,6 @@ impl<'a, F: FnMut(&str) -> LookupResult> SpanResolver<'a, F> {
         let whole = if stripped.is_empty() {
             LookupResult::NotFound
         } else {
-            self.lookups += 1;
             (self.lookup)(&stripped)
         };
         match whole {
@@ -391,11 +387,7 @@ impl<'a, F: FnMut(&str) -> LookupResult> SpanResolver<'a, F> {
 
             let kind = self.seps[mid].kind;
             let mut combined = left;
-            let right_role = match kind {
-                // Everything to the right of a guest phrase is a credit.
-                JoinKind::Guest => JoinKind::Guest,
-                JoinKind::CoBilling => JoinKind::CoBilling,
-            };
+            let right_role = kind;
             for mut artist in right {
                 if artist.role == JoinKind::CoBilling {
                     artist.role = right_role;
@@ -495,7 +487,6 @@ pub fn resolve_with<F: FnMut(&str) -> LookupResult>(
             seps: &seps,
             name: trimmed,
             transient: false,
-            lookups: 0,
         };
         let spanned = resolver.resolve_span(0, seps.len());
         if resolver.transient {

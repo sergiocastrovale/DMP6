@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 lofty = { workspace = true }
 rayon = { workspace = true }
-walkdir = "2.5"
+walkdir = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
 html-escape = { workspace = true }

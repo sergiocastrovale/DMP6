@@ -39,16 +39,16 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
 
     for (track_id, title, artist, album_artist, album, year, release_id) in &rows {
         let mut missing_fields: Vec<&str> = Vec::new();
-        if title.as_deref().map_or(true, |s| s.is_empty()) {
+        if title.as_deref().is_none_or(|s| s.is_empty()) {
             missing_fields.push("title");
         }
-        if artist.as_deref().map_or(true, |s| s.is_empty()) {
+        if artist.as_deref().is_none_or(|s| s.is_empty()) {
             missing_fields.push("artist");
         }
-        if album_artist.as_deref().map_or(true, |s| s.is_empty()) {
+        if album_artist.as_deref().is_none_or(|s| s.is_empty()) {
             missing_fields.push("albumArtist");
         }
-        if album.as_deref().map_or(true, |s| s.is_empty()) {
+        if album.as_deref().is_none_or(|s| s.is_empty()) {
             missing_fields.push("album");
         }
         if year.is_none() {

@@ -120,15 +120,11 @@ pub fn extract_metadata(path: &Path, music_dir: &str) -> Result<TrackMeta, Strin
 
                 // Collect EVERY value of the multi-value frames, in file order, so the Nth artist
                 // pairs with the Nth MB id.
-                if key_norm == "TRACKARTISTS" || key_norm == "ARTISTS" {
-                    if !val.trim().is_empty() {
-                        artists_multi.push(val.trim().to_string());
-                    }
+                if (key_norm == "TRACKARTISTS" || key_norm == "ARTISTS") && !val.trim().is_empty() {
+                    artists_multi.push(val.trim().to_string());
                 }
-                if key_norm == "ALBUMARTISTS" {
-                    if !val.trim().is_empty() {
-                        album_artists_multi.push(val.trim().to_string());
-                    }
+                if key_norm == "ALBUMARTISTS" && !val.trim().is_empty() {
+                    album_artists_multi.push(val.trim().to_string());
                 }
                 if key_norm == "MUSICBRAINZARTISTID" {
                     if let Some(id) = sanitize_mb_id(&val) {

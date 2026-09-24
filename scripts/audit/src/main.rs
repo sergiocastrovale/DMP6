@@ -9,7 +9,7 @@ use clap::Parser;
 use colored::Colorize;
 use common::{
     config::{apply_db_overrides, load_config},
-    db::create_pool,
+    db::create_pool_or_exit,
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -81,7 +81,7 @@ async fn main() {
     let args = Args::parse();
     common::error_log::init("audit");
     let mut config = load_config(None);
-    let pool = create_pool(&config.database_url).await;
+    let pool = create_pool_or_exit(&config.database_url, "audit").await;
     apply_db_overrides(&mut config, &pool).await;
 
     println!("{}", "audit starting...".bold());

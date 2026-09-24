@@ -16,10 +16,6 @@ impl Reporter {
         Self { web }
     }
 
-    pub fn is_web(&self) -> bool {
-        self.web
-    }
-
     // ----- JSON emission (web mode only) -----
 
     fn emit_json(&self, data: &JsonValue) {
@@ -91,15 +87,6 @@ impl Reporter {
                 label,
                 name.truecolor(130, 180, 255).bold(),
             );
-        }
-    }
-
-    /// Sub-heading under an item (e.g. "Goo Goo Dolls" inside a folder).
-    pub fn sub_item(&self, name: &str) {
-        if self.web {
-            println!("  {}", name);
-        } else {
-            println!("  {}", name.bright_cyan().bold());
         }
     }
 

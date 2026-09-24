@@ -158,8 +158,6 @@ fn region_countries(terms: &[String]) -> Vec<String> {
 #[derive(Debug, Clone)]
 struct GenreMatch {
     genre_id: String,
-    #[allow(dead_code)]
-    genre_name: String,
     weight: f64,
 }
 
@@ -169,11 +167,11 @@ struct GenreMatch {
 fn match_genre(genre_name: &str, rule: &GenreRule) -> Option<f64> {
     let name_lower = genre_name.to_lowercase();
 
-    if rule.excludes.iter().any(|exc| name_lower == *exc) {
+    if rule.excludes.contains(&name_lower) {
         return None;
     }
 
-    if rule.keywords.iter().any(|kw| name_lower == *kw) {
+    if rule.keywords.contains(&name_lower) {
         return Some(1.0);
     }
 
@@ -440,7 +438,7 @@ async fn upsert_playlist(
         .bind(&positions)
         .bind(&playlist_ids)
         .bind(&t_ids)
-        .bind(&vec![Utc::now().naive_utc(); track_ids.len()])
+        .bind(vec![Utc::now().naive_utc(); track_ids.len()])
         .execute(&mut *tx)
         .await?;
     }
@@ -722,7 +720,7 @@ async fn main() {
         if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
             println!("{}", "Cleared a stale lock.".yellow());
         }
-        match acquire_lock(&pool, "playlists", std::process::id(), "").await {
+        match acquire_lock(&pool, "playlists", std::process::id()).await {
             Ok(g) => Some(g),
             Err(e) => {
                 eprintln!("{}: {}", "Cannot start".red(), e);
@@ -753,7 +751,6 @@ async fn main() {
                 .filter_map(|(id, name)| {
                     match_genre(name, &rule).map(|weight| GenreMatch {
                         genre_id: id.clone(),
-                        genre_name: name.clone(),
                         weight,
                     })
                 })

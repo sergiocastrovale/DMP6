@@ -79,7 +79,7 @@ pub async fn build_plan(
         )
         .bind(&local_release_ids)
         .bind(
-            &target_ids
+            target_ids
                 .iter()
                 .map(|(id, _)| id.clone())
                 .collect::<Vec<_>>(),
@@ -97,7 +97,7 @@ pub async fn build_plan(
         )
         .bind(&mb_release_ids)
         .bind(
-            &target_ids
+            target_ids
                 .iter()
                 .map(|(id, _)| id.clone())
                 .collect::<Vec<_>>(),

@@ -109,7 +109,9 @@ async fn prune_bypasses_the_mount_blip_guard() {
         "set SMOKE_TEST_DATABASE_URL to a disposable, migrated Postgres - this test never runs \
          against the production DATABASE_URL",
     );
-    let pool = common::db::create_pool(&db_url).await;
+    let pool = common::db::create_pool(&db_url, "test")
+        .await
+        .expect("connect");
     let music_dir = std::env::temp_dir().join("dmp-prune-guard-music");
     std::fs::create_dir_all(&music_dir).expect("create fixture music dir");
     let music_dir_str = music_dir.to_string_lossy().to_string();

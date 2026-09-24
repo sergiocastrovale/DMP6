@@ -30,7 +30,9 @@ impl Ctx {
              against the production DATABASE_URL",
         );
         let ctx = Self {
-            pool: common::db::create_pool(&db_url).await,
+            pool: common::db::create_pool(&db_url, "test")
+                .await
+                .expect("connect"),
         };
         ctx.reset().await;
         ctx
