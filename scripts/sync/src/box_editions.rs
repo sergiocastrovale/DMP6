@@ -2,7 +2,7 @@
 //! `equivalentMediumPosition` - the "this box disc IS that standalone release" link MusicBrainz
 //! itself never sends us (docs/sync_decisions.md: `inc=release-rels` on a box returns `[]`). Pure SQL
 //! + two artist-scoped Rust passes, no MusicBrainz API calls - everything needed already lives in
-//! `MusicBrainzReleaseTrack` once media/recordingId are synced.
+//!   `MusicBrainzReleaseTrack` once media/recordingId are synced.
 //!
 //! Three tiers, run every time, each only attempted on what the previous left unlinked:
 //!
@@ -405,9 +405,11 @@ pub async fn run_link_box_editions(
     pool: &PgPool,
     reporter: &Reporter,
 ) -> Result<LinkSummary, sqlx::Error> {
-    let mut summary = LinkSummary::default();
+    let mut summary = LinkSummary {
+        dangling_cleared: clear_dangling_equivalences(pool).await?,
+        ..Default::default()
+    };
 
-    summary.dangling_cleared = clear_dangling_equivalences(pool).await?;
     if summary.dangling_cleared > 0 {
         reporter.info(&format!(
             "Cleared {} dangling equivalence(s) (target release no longer exists)",
@@ -445,7 +447,7 @@ pub async fn run_link_box_editions(
         sorted_ids.sort_unstable();
         let cache_key = sorted_ids.join(",");
         if !releases_by_artist_key.contains_key(&cache_key) {
-            let facts = single_medium_releases_for_artists(pool, &artist_ids).await?;
+            let facts = single_medium_releases_for_artists(pool, artist_ids).await?;
             releases_by_artist_key.insert(cache_key.clone(), facts);
         }
         let candidates = &releases_by_artist_key[&cache_key];
@@ -522,7 +524,7 @@ pub async fn run_link_box_editions(
         sorted_ids.sort_unstable();
         let cache_key = sorted_ids.join(",");
         if !containment_by_artist_key.contains_key(&cache_key) {
-            let facts = releases_for_artists(pool, &artist_ids).await?;
+            let facts = releases_for_artists(pool, artist_ids).await?;
             containment_by_artist_key.insert(cache_key.clone(), facts);
         }
         let candidates = &containment_by_artist_key[&cache_key];

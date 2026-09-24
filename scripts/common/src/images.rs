@@ -516,7 +516,7 @@ pub async fn upload_release_image_to_s3(
     pool: &PgPool,
     release_id: &str,
     image_key: &str,
-    file_path: &PathBuf,
+    file_path: &Path,
 ) -> bool {
     let s3_key = format!("releases/{}.jpg", image_key);
     match upload_to_s3(s3_client, bucket, &s3_key, file_path).await {

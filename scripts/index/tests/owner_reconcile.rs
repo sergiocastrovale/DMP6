@@ -199,7 +199,7 @@ async fn compound_provisional_owner_is_replaced_by_the_artists_it_names() {
     c.track(&release, 1, &compound, &[&a, &b], &[MBID_A, MBID_B])
         .await;
 
-    c.run(&[release.clone()]).await;
+    c.run(std::slice::from_ref(&release)).await;
 
     let owners = c.owners(&release).await;
     assert_eq!(
@@ -236,7 +236,7 @@ async fn a_partially_deferred_release_keeps_every_owner() {
     // ...track 2 has no pairing, so it needs MusicBrainz; offline mode turns that into Deferred.
     c.track(&release, 2, &deferring, &[], &[]).await;
 
-    c.run(&[release.clone()]).await;
+    c.run(std::slice::from_ref(&release)).await;
 
     let owners = c.owners(&release).await;
     assert!(
@@ -270,7 +270,7 @@ async fn a_multi_album_artist_compilation_keeps_every_owner() {
     c.track(&release, 1, &a, &[&a], &[MBID_A]).await;
     c.track(&release, 2, &b, &[&b], &[MBID_B]).await;
 
-    c.run(&[release.clone()]).await;
+    c.run(std::slice::from_ref(&release)).await;
 
     let owners = c.owners(&release).await;
     assert!(owners.contains(&a), "first album artist must own it");
@@ -295,7 +295,7 @@ async fn various_artists_release_with_nothing_resolvable_is_left_alone() {
     // no desired set to reconcile against and the folder scan's owner must survive.
     c.track(&release, 1, "Various Artists", &[], &[]).await;
 
-    c.run(&[release.clone()]).await;
+    c.run(std::slice::from_ref(&release)).await;
 
     assert_eq!(
         c.owners(&release).await,
@@ -324,7 +324,7 @@ async fn various_artists_compilation_reconciles_from_the_track_artist() {
     c.va_track(&release, 1, &compound, &[&a, &b], &[MBID_A, MBID_B])
         .await;
 
-    c.run(&[release.clone()]).await;
+    c.run(std::slice::from_ref(&release)).await;
 
     // `owners()` sorts by name, and "Kenny" sorts before "Whitney".
     let owners = c.owners(&release).await;
@@ -361,7 +361,7 @@ async fn the_placeholder_itself_never_becomes_an_owner() {
     )
     .await;
 
-    c.run(&[release.clone()]).await;
+    c.run(std::slice::from_ref(&release)).await;
 
     assert_eq!(
         c.owners(&release).await,

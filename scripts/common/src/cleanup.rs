@@ -46,7 +46,7 @@ pub async fn delete_orphaned_mb_releases(
         format!(r#"DELETE FROM "MusicBrainzRelease" m WHERE {filter} AND NOT {MB_RELEASE_IN_USE}"#);
     let query = sqlx::query(&sql);
     let result = match ids {
-        Some(ids) if ids.is_empty() => return Ok(0),
+        Some([]) => return Ok(0),
         Some(ids) => query.bind(ids).execute(pool).await?,
         None => query.execute(pool).await?,
     };

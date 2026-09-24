@@ -547,7 +547,7 @@ enum CandidateSource {
     /// Fetched from MusicBrainz. Its `MusicBrainzRelease` + media + track rows must be persisted
     /// (`persist_box_media`) before anything can point at it.
     Fetched {
-        release: MbRelease,
+        release: Box<MbRelease>,
         rg_id: String,
         primary_type: Option<String>,
     },
@@ -638,7 +638,7 @@ async fn candidates_from_embedded_ids(
                         candidate,
                         title: by_id.release.title.clone(),
                         source: CandidateSource::Fetched {
-                            release: by_id.release,
+                            release: Box::new(by_id.release),
                             rg_id: by_id.rg_id,
                             primary_type: by_id.primary_type,
                         },
@@ -749,7 +749,7 @@ async fn candidates_from_release_group(
                     candidate,
                     title: release.title.clone(),
                     source: CandidateSource::Fetched {
-                        release,
+                        release: Box::new(release),
                         rg_id: rg_id.to_string(),
                         primary_type: primary_type.map(str::to_string),
                     },

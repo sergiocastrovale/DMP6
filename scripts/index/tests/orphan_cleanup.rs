@@ -305,7 +305,7 @@ async fn a_scoped_cleanup_never_reaches_outside_its_scope() {
     let in_scope = insert_artist(&pool, IN_SCOPE_NAME).await;
     let out_of_scope = insert_artist(&pool, OUT_OF_SCOPE_NAME).await;
 
-    delete_orphan_artists(&pool, &config, Some(&[in_scope.clone()])).await;
+    delete_orphan_artists(&pool, &config, Some(std::slice::from_ref(&in_scope))).await;
 
     assert!(
         !artist_exists(&pool, &in_scope).await,

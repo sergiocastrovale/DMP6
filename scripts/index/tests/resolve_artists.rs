@@ -118,7 +118,7 @@ async fn embedded_pairing_resolves_owner_and_credit_without_network() {
     resolve_and_apply(
         &pool,
         &mut resolver,
-        Some(&[release_id.clone()]),
+        Some(std::slice::from_ref(&release_id)),
         &mut report,
         None,
     )
@@ -234,7 +234,7 @@ async fn dry_run_writes_no_library_data() {
     resolve_and_apply(
         &pool,
         &mut resolver,
-        Some(&[release_id.clone()]),
+        Some(std::slice::from_ref(&release_id)),
         &mut report,
         None,
     )

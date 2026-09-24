@@ -1966,9 +1966,9 @@ pub struct LocalReleaseRow {
     pub medium_position: Option<i32>,
     /// MusicBrainz id of the release this folder is already bound to, when the box pass put it there
     /// - either dissolved onto a standalone release (`boxReleaseId`) or kept on the box itself
-    /// (`mediumPosition`). The folder's own tags name a different release than the box pass chose, so
-    /// without this the per-release matcher re-binds it from the tag on every run while the box pass
-    /// re-points it back - the two fight, and the disc never settles on a score. See its use in main.rs.
+    ///   (`mediumPosition`). The folder's own tags name a different release than the box pass chose, so
+    ///   without this the per-release matcher re-binds it from the tag on every run while the box pass
+    ///   re-points it back - the two fight, and the disc never settles on a score. See its use in main.rs.
     pub dissolved_bound_mb_id: Option<String>,
     /// Whether this folder is a fold survivor (`LocalReleaseMember` rows exist) - a folded release
     /// legitimately mixes per-disc album tags, so the consensus gate exempts it same as a dissolved

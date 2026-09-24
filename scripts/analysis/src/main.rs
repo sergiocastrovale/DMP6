@@ -2604,10 +2604,10 @@ fn compute_autofix_diffs(
                 category: "critical",
             });
         }
-        if orig.invalid_year.is_some() && new_issue.invalid_year.is_none() {
+        if let (Some(year), true) = (&orig.invalid_year, new_issue.invalid_year.is_none()) {
             field_matches.push(FieldMatch {
                 field: "Year",
-                old_display: format!("({})", orig.invalid_year.as_ref().unwrap()),
+                old_display: format!("({})", year),
                 new_value: get_tag(&tag_map, &["YEAR"]).unwrap_or_default(),
                 category: "critical",
             });

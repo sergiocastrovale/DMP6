@@ -334,7 +334,8 @@ mod tests {
     #[test]
     fn each_mb_track_consumes_a_distinct_local_track() {
         let local = bundle("album", &["A", "A", "B", "C", "D"]);
-        let (_, matched) = find_owning_bundle(&titles(&["A", "A", "B"]), &[local.clone()]).unwrap();
+        let (_, matched) =
+            find_owning_bundle(&titles(&["A", "A", "B"]), std::slice::from_ref(&local)).unwrap();
         assert_eq!(matched, vec!["album-t0", "album-t1", "album-t2"]);
         assert!(find_owning_bundle(&titles(&["A", "A", "A"]), &[local]).is_none());
     }

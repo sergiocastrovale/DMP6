@@ -171,12 +171,11 @@ pub fn split_artists(tag: &str) -> (Vec<String>, Vec<String>) {
                     continue;
                 }
             }
-            if c == ';' || c == '|' {
-                parts.push(current.trim().to_string());
-                current = String::new();
-            } else if (c == '/' || c == '\\')
-                && current.ends_with(' ')
-                && (i + 1 < len && chars[i + 1] == ' ')
+            if c == ';'
+                || c == '|'
+                || ((c == '/' || c == '\\')
+                    && current.ends_with(' ')
+                    && (i + 1 < len && chars[i + 1] == ' '))
             {
                 parts.push(current.trim().to_string());
                 current = String::new();

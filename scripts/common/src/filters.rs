@@ -28,7 +28,7 @@ pub fn normalize_filter(s: &str) -> String {
 /// Escape `%`, `_`, and the escape character itself for a SQL LIKE pattern (Postgres defaults to `\`
 /// as the LIKE escape char). Without this, a folder name containing `%` or `_` corrupts the pattern
 /// - `_` matches any single char, `%` matches anything - e.g. "100% Silk" or "A_Tribute" would produce
-/// bogus matches against unrelated folders. Escape the input BEFORE appending any wildcard suffix.
+///   bogus matches against unrelated folders. Escape the input BEFORE appending any wildcard suffix.
 pub fn escape_like(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('%', "\\%")

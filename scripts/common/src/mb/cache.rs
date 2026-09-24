@@ -85,9 +85,9 @@ pub async fn warm_exact_artists(pool: &PgPool, names: &[String]) -> HashMap<Stri
 ///
 /// Deliberately separate from `cached_exact_artist`, which collapses Miss and Absent into one `None`
 /// - correct for its own callers (a fuzzy search must run regardless of which of the two it was), but
-/// exactly the distinction the identity-certainty gate needs: a recorded miss says something about
-/// *this string*, while "never asked" says nothing at all. See docs/sync_decisions.md §4 - the case
-/// this exists to catch is a table that already held the *right* answer, sitting unconsulted.
+///   exactly the distinction the identity-certainty gate needs: a recorded miss says something about
+///   *this string*, while "never asked" says nothing at all. See docs/sync_decisions.md §4 - the case
+///   this exists to catch is a table that already held the *right* answer, sitting unconsulted.
 pub async fn cache_answer(pool: &PgPool, name: &str) -> CacheAnswer {
     let row: Option<(Option<String>,)> =
         sqlx::query_as(r#"SELECT mbid FROM "MbArtistLookup" WHERE name = $1"#)

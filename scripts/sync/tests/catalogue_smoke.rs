@@ -21,7 +21,7 @@
 //!   2. point SMOKE_TEST_DATABASE_URL at a disposable Postgres with the Prisma schema migrated
 //!      (never the production DATABASE_URL — this test writes real rows and deletes them after)
 //!   3. SMOKE_TEST_DATABASE_URL=postgres://... cargo test -p sync --release --test catalogue_smoke \
-//!        -- --ignored --nocapture
+//!      -- --ignored --nocapture
 
 use std::path::PathBuf;
 use std::process::Command;

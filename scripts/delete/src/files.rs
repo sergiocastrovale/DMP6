@@ -154,9 +154,7 @@ pub fn delete_release_folders(
             result.skipped.push(raw.clone());
             continue;
         };
-        if dry_run {
-            result.files_removed += 1;
-        } else if fs::remove_file(&resolved).is_ok() {
+        if dry_run || fs::remove_file(&resolved).is_ok() {
             result.files_removed += 1;
         } else {
             result.skipped.push(raw.clone());
@@ -225,9 +223,7 @@ pub fn delete_files(paths: &[String], music_dir: &str, dry_run: bool) -> FileDel
             result.skipped.push(raw.clone());
             continue;
         };
-        if dry_run {
-            result.files_removed += 1;
-        } else if fs::remove_file(&resolved).is_ok() {
+        if dry_run || fs::remove_file(&resolved).is_ok() {
             result.files_removed += 1;
         } else {
             result.skipped.push(raw.clone());

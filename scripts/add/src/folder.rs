@@ -1,5 +1,5 @@
-/// Pure helpers for turning an artist name into a filesystem-safe folder name under MUSIC_DIR.
-/// Kept separate from `main.rs` so they're directly unit-testable without a DB/network context.
+//! Pure helpers for turning an artist name into a filesystem-safe folder name under MUSIC_DIR.
+//! Kept separate from `main.rs` so they're directly unit-testable without a DB/network context.
 
 /// Sanitizes a name into a single path component: replaces path separators and NUL with `-`, trims
 /// whitespace, and strips trailing dots (Windows/some filesystems reject a trailing dot; harmless to

@@ -200,7 +200,7 @@ async fn bound_disagreeing_release_is_unbound_with_reason_and_leaf_title() {
     )
     .await;
 
-    apply_folder_consensus(&pool, &[release.id.clone()])
+    apply_folder_consensus(&pool, std::slice::from_ref(&release.id))
         .await
         .expect("apply_folder_consensus");
 
@@ -310,7 +310,7 @@ async fn retagged_folder_returns_to_unmatched_with_reason_cleared_and_is_stable(
     insert_track(&pool, &release.id, "retagged", 1, Some("Fixed Album"), None).await;
     insert_track(&pool, &release.id, "retagged", 2, Some("Fixed Album"), None).await;
 
-    apply_folder_consensus(&pool, &[release.id.clone()])
+    apply_folder_consensus(&pool, std::slice::from_ref(&release.id))
         .await
         .expect("apply_folder_consensus");
 
@@ -320,7 +320,7 @@ async fn retagged_folder_returns_to_unmatched_with_reason_cleared_and_is_stable(
     assert_eq!(title, "Fixed Album");
 
     // Running again is a no-op: still UNMATCHED, still no reason, nothing to clear a second time.
-    let stats = apply_folder_consensus(&pool, &[release.id.clone()])
+    let stats = apply_folder_consensus(&pool, std::slice::from_ref(&release.id))
         .await
         .expect("apply_folder_consensus");
     assert_eq!(stats.cleared, 0, "second run has nothing left to clear");

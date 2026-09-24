@@ -932,7 +932,7 @@ mod tests {
     /// Yello's "Claro Que Si" disc: two files titled "The Evening's Young" (190s album take, 301s
     /// longer take). The exact pass used to hand the MusicBrainz 301s track whichever file sorted first
     /// - the 190s one - stranding the real 190s pairing. Among identical titles it now takes the
-    /// closest runtime. Scored both ways so the test cannot pass under the old behaviour.
+    ///   closest runtime. Scored both ways so the test cannot pass under the old behaviour.
     #[test]
     fn identical_titles_pair_by_closest_runtime_not_file_order() {
         let locals = [
@@ -1022,7 +1022,7 @@ mod tests {
     /// COMPLETE under this one.
     #[test]
     fn exact_titles_are_claimed_before_a_loose_match_can_steal_one() {
-        let locals = vec![
+        let locals = [
             track("I'll Be Home on Christmas Day (take 3)"), // trackNumber 12
             track("I'll Be Home on Christmas Day (take 4)"), // trackNumber 17
             track("I'll Be Home on Christmas Day"),          // trackNumber 20
@@ -1076,7 +1076,7 @@ mod tests {
     /// completeness.
     #[test]
     fn exact_pairing_holds_even_when_a_loose_match_would_have_produced_the_same_status() {
-        let locals = vec![
+        let locals = [
             track("Song A (Extended)"), // deliberately the *loose* candidate first
             track("Song A"),
         ];
