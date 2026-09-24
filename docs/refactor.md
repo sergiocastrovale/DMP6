@@ -288,12 +288,23 @@ lookalike-consolidation the prior session (see that plan's Context section).
   (disc-level) UPDATE loop (bounded by disc count per release, typically 1, not a meaningful N+1);
   `sync/status.rs`'s `normalize_title` recomputation (pure in-memory string work on ~10-20 tracks per
   release, no measured cost to justify the churn).
+- **mosaic: web-mode PROGRESS output throttled.** The `--web` path printed one `PROGRESS:{json}` line
+  per image with no throttle at all (the terminal path already throttled to every 100th image); a
+  full-library mosaic run floods the SSE stream with tens of thousands of lines for no UI benefit. The
+  stride now scales with image count (`(count / 100).max(1)`, always emitting the final `done == count`
+  line) instead of a fixed 100, so a small mosaic still reports partway through rather than jumping
+  straight from 0% to 100%. Verified directly against the deployed binary on a 250-image subset: exit
+  0, 125 throttled `PROGRESS` lines (stride 2) ending on `250/250`, correct final `DONE:{...}` line.
+- Investigated and found not applicable, given current code: `delete`'s co-artist-cascade candidate
+  loop (bounded by how many artists share a release with the deletion targets - small in practice, and
+  `./delete` is a rare, human-confirmed operation, not a hot path); `analysis`'s directory walk (already
+  a single top-level `WalkDir::new` at the start of the run, not per-artist).
 - Deferred as its own larger effort, not attempted this pass: concurrent MB calls in
   `boxset::run_repair`/`catalogue_gaps::fill_catalogue_gaps` via the shared `RateLimiter` (the
   `MAX_IMAGE_TASKS`/`JoinSet` pattern `sync/src/main.rs` already uses for image downloads is the
   template, but wiring it through these two larger functions safely needs its own dedicated pass);
-  `boxset.rs`/`box_editions.rs` N+1 loads; delete/nuke plan-building batching; analysis walk-once
-  check; mosaic progress throttling. See the plan file's Phase 4.2 checklist for the remaining scope.
+  `boxset.rs`/`box_editions.rs` N+1 loads. See the plan file's Phase 4.2 checklist for the remaining
+  scope.
 
 ## Verification
 
