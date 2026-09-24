@@ -393,9 +393,8 @@ async fn upsert_playlist(
         id
     };
 
-    // DELETE + INSERT in one transaction - a crash/error between the two previously left the
-    // playlist emptied (tracks deleted, replacement never inserted) until the next successful
-    // regen (audit #89).
+    // DELETE + INSERT in one transaction - without it, a crash/error between the two would leave the
+    // playlist emptied (tracks deleted, replacement never inserted) until the next successful regen.
     let mut tx = pool.begin().await?;
 
     sqlx::query(r#"DELETE FROM "PlaylistTrack" WHERE "playlistId" = $1"#)
@@ -495,7 +494,7 @@ fn select_tracks(
     // Shuffle BEFORE sorting so a stable sort's tie-break (equal score) picks a random order each
     // run instead of always the same insertion order - otherwise, with static artist scores, a big
     // equal-score band means the SAME top max_tracks subset gets selected every regeneration, and the
-    // post-cap shuffle below only randomizes playback order within that frozen subset (audit #88).
+    // post-cap shuffle below only randomizes playback order within that frozen subset.
     use rand::seq::SliceRandom;
     candidates.shuffle(&mut rand::thread_rng());
 
@@ -703,8 +702,7 @@ async fn main() {
 
     // Same DB scan lock index/sync/fix/delete/nuke use - regen mutates PlaylistTrack rows and reads
     // artist/genre/track tables that index/sync are actively writing, so a concurrent run of either
-    // could otherwise interleave with this pass (audit #89, pairs #51). Skipped for --dry-run, which
-    // never writes.
+    // could otherwise interleave with this pass. Skipped for --dry-run, which never writes.
     let _lock_guard = if !args.dry_run {
         if clear_stale_lock_minutes(&pool, common::lock::STALE_LOCK_MINUTES).await {
             println!("{}", "Cleared a stale lock.".yellow());
@@ -944,9 +942,8 @@ async fn main() {
 mod tests {
     use super::*;
 
-    // A rejected match immediately followed by a multi-byte character used to advance the search
-    // by one byte, landing mid-character - the next slice then panicked with "byte index is not a
-    // char boundary" instead of just continuing the search.
+    // A rejected match must advance the search by one full character, not one byte - advancing by a
+    // byte can land mid-character and panic the next slice with "byte index is not a char boundary".
     #[test]
     fn contains_as_word_does_not_panic_on_multi_byte_characters() {
         assert!(!contains_as_word("coéxist", "é"));
@@ -956,7 +953,7 @@ mod tests {
     // A big equal-score candidate pool (every artist scored identically) exceeding max_tracks -
     // with a STABLE sort and no pre-sort shuffle, the same top max_tracks subset (by insertion
     // order) would be selected on every single call. Run select_tracks many times and confirm the
-    // selected SET of track ids actually rotates (audit #88).
+    // selected SET of track ids actually rotates.
     #[test]
     fn select_tracks_rotates_the_selected_subset_across_runs_on_equal_scores() {
         let n = 40;

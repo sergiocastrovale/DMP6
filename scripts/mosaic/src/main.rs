@@ -127,7 +127,7 @@ fn main() {
             .collect();
 
         // A manifest names an explicit, curated set of files - falling back to scanning the whole
-        // directory when none of them resolve used to silently mosaic a completely different (and
+        // directory when none of them resolve would silently mosaic a completely different (and
         // usually much larger) set of images than the caller asked for, with no visible error.
         if filtered.is_empty() {
             eprintln!(

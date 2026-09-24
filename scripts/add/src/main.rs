@@ -254,7 +254,7 @@ async fn main() {
         // `processed` only ever gains this id once the whole per-artist body ran without hitting one
         // of the loop's own `continue`s (an MB fetch failure, an unreadable owned-group set) - a
         // single-artist call skipping the only artist in scope is indistinguishable from a real
-        // failure and used to report Ok((0, 0, [])) as success regardless.
+        // failure, so this must not be treated as success just because the call returned `Ok`.
         Ok((_, gaps, processed)) if processed.contains(&artist_id) => {
             catalogue_gaps::finish_run(&pool, Some(&processed), &reporter).await;
             sqlx::query(r#"UPDATE "Artist" SET "lastGapsCheckedAt" = $1 WHERE id = $2"#)

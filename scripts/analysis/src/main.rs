@@ -452,7 +452,8 @@ fn scan_file(path: &Path) -> Result<(FileIssue, Vec<String>), String> {
 // Path formatting helpers
 // ---------------------------------------------------------------------------
 
-/// Extract the first folder after the scan root (e.g., "Radiohead" from "/mnt/c/__DMP/Radiohead/...")
+/// Extract the first folder after the scan root (e.g., "SomeArtist" from
+/// "/music/SomeArtist/SomeAlbum/...")
 fn get_artist_folder(path: &Path, scan_root: &str) -> String {
     let path_str = path.to_string_lossy();
     let relative = path_str
