@@ -13,9 +13,21 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         .execute(&mut *tx)
         .await?;
 
+    #[derive(sqlx::FromRow)]
+    struct EnrichmentGapRow {
+        id: String,
+        missing_mb: bool,
+        missing_bpm: bool,
+        missing_mood: bool,
+        missing_acousticid: bool,
+        missing_discogs: bool,
+        missing_bandcamp: bool,
+        missing_wikipedia: bool,
+    }
+
     // One row per LocalRelease. Each boolean is true when NO track in the release has that field.
     // Only considers releases that have at least one track.
-    let rows: Vec<(String, bool, bool, bool, bool, bool, bool, bool)> = sqlx::query_as(
+    let rows: Vec<EnrichmentGapRow> = sqlx::query_as(
         r#"
         WITH release_enrichment AS (
           SELECT
@@ -83,7 +95,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let now = chrono::Utc::now().naive_utc();
 
     // One read for every already-tracked release instead of a round trip per candidate below.
-    let candidate_ids: Vec<&str> = rows.iter().map(|(id, ..)| id.as_str()).collect();
+    let candidate_ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
     let already_tracked_ids: std::collections::HashSet<String> = sqlx::query_scalar(
         r#"SELECT "localReleaseId" FROM "IssueEnrichmentGap"
            WHERE "localReleaseId" = ANY($1::text[]) AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED')"#,
@@ -94,37 +106,28 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     .into_iter()
     .collect();
 
-    for (
-        release_id,
-        missing_mb,
-        missing_bpm,
-        missing_mood,
-        missing_acousticid,
-        missing_discogs,
-        missing_bandcamp,
-        missing_wikipedia,
-    ) in &rows
-    {
+    for row in &rows {
+        let release_id = &row.id;
         let mut missing_fields: Vec<&str> = Vec::new();
-        if *missing_mb {
+        if row.missing_mb {
             missing_fields.push("mbRelease");
         }
-        if *missing_bpm {
+        if row.missing_bpm {
             missing_fields.push("bpm");
         }
-        if *missing_mood {
+        if row.missing_mood {
             missing_fields.push("mood");
         }
-        if *missing_acousticid {
+        if row.missing_acousticid {
             missing_fields.push("acousticId");
         }
-        if *missing_discogs {
+        if row.missing_discogs {
             missing_fields.push("discogs");
         }
-        if *missing_bandcamp {
+        if row.missing_bandcamp {
             missing_fields.push("bandcamp");
         }
-        if *missing_wikipedia {
+        if row.missing_wikipedia {
             missing_fields.push("wikipedia");
         }
 

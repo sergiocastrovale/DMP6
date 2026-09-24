@@ -24,19 +24,8 @@ impl Reporter {
         }
     }
 
-    pub fn index_progress(
-        &self,
-        folder: &str,
-        current: usize,
-        total: usize,
-        new: u64,
-        updated: u64,
-        skipped: u64,
-        deleted: u64,
-    ) {
-        self.emit_json(&index_progress_json(
-            folder, current, total, new, updated, skipped, deleted,
-        ));
+    pub fn index_progress(&self, folder: &str, current: usize, total: usize, tally: FolderTally) {
+        self.emit_json(&index_progress_json(folder, current, total, tally));
     }
 
     pub fn sync_progress(&self, artist: &str, current: usize, total: usize, status: &str) {
@@ -185,24 +174,31 @@ impl Reporter {
 // field names and value types are a contract.
 
 #[allow(clippy::too_many_arguments)]
+/// One folder's file-level outcome counts for the index progress line - travels as a unit since every
+/// caller has all four at the same time (the folder loop's own running totals).
+#[derive(Clone, Copy, Default)]
+pub struct FolderTally {
+    pub new: u64,
+    pub updated: u64,
+    pub skipped: u64,
+    pub deleted: u64,
+}
+
 fn index_progress_json(
     folder: &str,
     current: usize,
     total: usize,
-    new: u64,
-    updated: u64,
-    skipped: u64,
-    deleted: u64,
+    tally: FolderTally,
 ) -> JsonValue {
     serde_json::json!({
         "phase": "index",
         "folder": folder,
         "current": current,
         "total": total,
-        "new": new,
-        "updated": updated,
-        "skipped": skipped,
-        "deleted": deleted,
+        "new": tally.new,
+        "updated": tally.updated,
+        "skipped": tally.skipped,
+        "deleted": tally.deleted,
     })
 }
 
@@ -232,7 +228,18 @@ mod tests {
     #[test]
     fn index_progress_contract() {
         assert_eq!(
-            index_progress_json("A/B", 2, 9, 3, 4, 5, 6).to_string(),
+            index_progress_json(
+                "A/B",
+                2,
+                9,
+                FolderTally {
+                    new: 3,
+                    updated: 4,
+                    skipped: 5,
+                    deleted: 6,
+                }
+            )
+            .to_string(),
             r#"{"current":2,"deleted":6,"folder":"A/B","new":3,"phase":"index","skipped":5,"total":9,"updated":4}"#
         );
     }

@@ -77,14 +77,20 @@ pub fn image_key_from_group_key(group_key: &str) -> Option<String> {
     None
 }
 
+/// What `ensure_local_release`/`ensure_local_release_cached` need to upsert one `LocalRelease` row -
+/// bundled since every caller has all five at once (the folder loop's own consensus verdict).
+pub struct ReleaseFacts<'a> {
+    pub title: &'a str,
+    pub year: Option<i32>,
+    pub folder_path: &'a str,
+    pub group_key: &'a str,
+    pub status: &'a str,
+    pub reason: Option<&'a str>,
+}
+
 pub async fn ensure_local_release(
     pool: &PgPool,
-    title: &str,
-    year: Option<i32>,
-    folder_path: &str,
-    group_key: &str,
-    status: &str,
-    reason: Option<&str>,
+    facts: &ReleaseFacts<'_>,
 ) -> Result<String, sqlx::Error> {
     let id = cuid2::create_id();
     let now = Utc::now().naive_utc();
@@ -99,13 +105,13 @@ pub async fn ensure_local_release(
            RETURNING id"#,
     )
     .bind(&id)
-    .bind(title)
-    .bind(year)
+    .bind(facts.title)
+    .bind(facts.year)
     .bind(now)
-    .bind(folder_path)
-    .bind(group_key)
-    .bind(status)
-    .bind(reason)
+    .bind(facts.folder_path)
+    .bind(facts.group_key)
+    .bind(facts.status)
+    .bind(facts.reason)
     .fetch_one(pool)
     .await?;
 
@@ -114,20 +120,14 @@ pub async fn ensure_local_release(
 
 pub async fn ensure_local_release_cached(
     pool: &PgPool,
-    title: &str,
-    year: Option<i32>,
-    folder_path: &str,
-    group_key: &str,
-    status: &str,
-    reason: Option<&str>,
+    facts: &ReleaseFacts<'_>,
     cache: &mut HashMap<String, String>,
 ) -> Result<String, sqlx::Error> {
-    if let Some(id) = cache.get(group_key) {
+    if let Some(id) = cache.get(facts.group_key) {
         return Ok(id.clone());
     }
-    let id =
-        ensure_local_release(pool, title, year, folder_path, group_key, status, reason).await?;
-    cache.insert(group_key.to_string(), id.clone());
+    let id = ensure_local_release(pool, facts).await?;
+    cache.insert(facts.group_key.to_string(), id.clone());
     Ok(id)
 }
 
@@ -168,16 +168,24 @@ pub async fn apply_folder_consensus(
             continue;
         }
 
-        let rows: Vec<(
-            String,
-            Option<String>,
-            Option<i32>,
-            Option<String>,
-            Option<String>,
-            Option<i32>,
-            Option<i32>,
-            String,
-        )> = sqlx::query_as(
+        #[derive(sqlx::FromRow)]
+        struct ConsensusTrackRow {
+            id: String,
+            album: Option<String>,
+            year: Option<i32>,
+            #[sqlx(rename = "mbReleaseId")]
+            mb_release_id: Option<String>,
+            #[sqlx(rename = "mbReleaseGroupId")]
+            mb_release_group_id: Option<String>,
+            #[sqlx(rename = "discNumber")]
+            disc_number: Option<i32>,
+            #[sqlx(rename = "trackNumber")]
+            track_number: Option<i32>,
+            #[sqlx(rename = "filePath")]
+            file_path: String,
+        }
+
+        let rows: Vec<ConsensusTrackRow> = sqlx::query_as(
             r#"SELECT id, album, year, "mbReleaseId", "mbReleaseGroupId", "discNumber", "trackNumber", "filePath"
                FROM "LocalReleaseTrack" WHERE "localReleaseId" = $1"#,
         )
@@ -191,29 +199,16 @@ pub async fn apply_folder_consensus(
 
         let tracks: Vec<TrackTags> = rows
             .into_iter()
-            .map(
-                |(
-                    id,
-                    album,
-                    year,
-                    mb_release_id,
-                    mb_release_group_id,
-                    disc_number,
-                    track_number,
-                    file_path,
-                )| {
-                    TrackTags {
-                        id,
-                        album,
-                        year,
-                        mb_release_id,
-                        mb_release_group_id,
-                        disc_number,
-                        track_number,
-                        file_path: Some(file_path),
-                    }
-                },
-            )
+            .map(|r| TrackTags {
+                id: r.id,
+                album: r.album,
+                year: r.year,
+                mb_release_id: r.mb_release_id,
+                mb_release_group_id: r.mb_release_group_id,
+                disc_number: r.disc_number,
+                track_number: r.track_number,
+                file_path: Some(r.file_path),
+            })
             .collect();
 
         let verdict = evaluate(&tracks);

@@ -83,7 +83,7 @@ fn load_env() -> AppConfig {
 // Generators (DB-backed config, see PlaylistGenerator in prisma/schema.prisma)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 struct Generator {
     id: String,
     kind: String, // "GENRE" | "REGION"
@@ -94,23 +94,12 @@ struct Generator {
 }
 
 async fn fetch_generators(pool: &PgPool) -> Vec<Generator> {
-    let rows: Vec<(String, String, String, String, Option<String>, Vec<String>)> = sqlx::query_as(
-        r#"SELECT id, type::text, name, slug, description, terms FROM "PlaylistGenerator" ORDER BY type, name"#,
+    sqlx::query_as(
+        r#"SELECT id, type::text AS kind, name, slug, description, terms FROM "PlaylistGenerator" ORDER BY type, name"#,
     )
     .fetch_all(pool)
     .await
-    .expect("Failed to fetch playlist generators");
-
-    rows.into_iter()
-        .map(|(id, kind, name, slug, description, terms)| Generator {
-            id,
-            kind,
-            name,
-            slug,
-            description,
-            terms,
-        })
-        .collect()
+    .expect("Failed to fetch playlist generators")
 }
 
 /// A GENRE generator's terms, split into keyword lines and `-`-prefixed exclude lines.

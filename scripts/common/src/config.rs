@@ -115,18 +115,30 @@ pub fn load_config(music_dir_override: Option<&str>) -> Config {
 
 /// Override env-loaded config fields with values from the DB Settings row.
 /// Call this after creating the pool. Errors are soft - logs a warning and continues.
+#[derive(sqlx::FromRow)]
+struct SettingsOverrideRow {
+    #[sqlx(rename = "musicDir")]
+    music_dir: Option<String>,
+    #[sqlx(rename = "imageStorage")]
+    image_storage: Option<String>,
+    #[sqlx(rename = "storageImageBucket")]
+    storage_bucket: Option<String>,
+    #[sqlx(rename = "awsRegion")]
+    s3_region: Option<String>,
+    #[sqlx(rename = "awsAccessKeyId")]
+    s3_access_key: Option<String>,
+    #[sqlx(rename = "awsSecretAccessKey")]
+    s3_secret_key: Option<String>,
+    #[sqlx(rename = "storageEndpoint")]
+    storage_endpoint: Option<String>,
+    #[sqlx(rename = "storagePublicUrl")]
+    storage_public_url: Option<String>,
+    #[sqlx(rename = "fanartApiKey")]
+    fanart_api_key: Option<String>,
+}
+
 pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
-    let row: Option<(
-        Option<String>, // musicDir
-        Option<String>, // imageStorage
-        Option<String>, // storageImageBucket
-        Option<String>, // awsRegion
-        Option<String>, // awsAccessKeyId
-        Option<String>, // awsSecretAccessKey
-        Option<String>, // storageEndpoint
-        Option<String>, // storagePublicUrl
-        Option<String>, // fanartApiKey
-    )> = sqlx::query_as(
+    let row: Option<SettingsOverrideRow> = sqlx::query_as(
         r#"SELECT "musicDir", "imageStorage", "storageImageBucket", "awsRegion",
                   "awsAccessKeyId", "awsSecretAccessKey", "storageEndpoint", "storagePublicUrl",
                   "fanartApiKey"
@@ -140,45 +152,34 @@ pub async fn apply_db_overrides(config: &mut Config, pool: &PgPool) {
         None
     });
 
-    if let Some((
-        music_dir,
-        image_storage,
-        storage_bucket,
-        s3_region,
-        s3_access_key,
-        s3_secret_key,
-        storage_endpoint,
-        storage_public_url,
-        fanart_api_key,
-    )) = row
-    {
+    if let Some(row) = row {
         if !config.music_dir_locked {
-            if let Some(v) = music_dir {
+            if let Some(v) = row.music_dir {
                 config.music_dir = Some(v);
             }
         }
-        if let Some(v) = image_storage {
+        if let Some(v) = row.image_storage {
             config.image_storage = v;
         }
-        if let Some(v) = storage_bucket {
+        if let Some(v) = row.storage_bucket {
             config.storage_bucket = Some(v);
         }
-        if let Some(v) = s3_region {
+        if let Some(v) = row.s3_region {
             config.s3_region = Some(v);
         }
-        if let Some(v) = s3_access_key {
+        if let Some(v) = row.s3_access_key {
             config.s3_access_key = Some(v);
         }
-        if let Some(v) = s3_secret_key {
+        if let Some(v) = row.s3_secret_key {
             config.s3_secret_key = Some(v);
         }
-        if let Some(v) = storage_endpoint {
+        if let Some(v) = row.storage_endpoint {
             config.storage_endpoint = Some(v);
         }
-        if let Some(v) = storage_public_url {
+        if let Some(v) = row.storage_public_url {
             config.storage_public_url = Some(v);
         }
-        if let Some(v) = fanart_api_key {
+        if let Some(v) = row.fanart_api_key {
             config.fanart_api_key = Some(v);
         }
     }

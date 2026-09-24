@@ -48,15 +48,22 @@ pub async fn build_plan(
     pool: &PgPool,
     local_release_id: &str,
 ) -> Result<Option<ReleasePlan>, sqlx::Error> {
-    let row: Option<(
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
+    #[derive(sqlx::FromRow)]
+    struct LocalReleaseHeaderRow {
+        id: String,
+        title: String,
+        image: Option<String>,
+        #[sqlx(rename = "imageUrl")]
+        image_url: Option<String>,
+        #[sqlx(rename = "folderPath")]
+        folder_path: Option<String>,
+        #[sqlx(rename = "releaseId")]
+        release_id: Option<String>,
+        #[sqlx(rename = "boxReleaseId")]
+        box_release_id: Option<String>,
+    }
+
+    let row: Option<LocalReleaseHeaderRow> = sqlx::query_as(
         r#"SELECT id, title, image, "imageUrl", "folderPath", "releaseId", "boxReleaseId"
                FROM "LocalRelease" WHERE id = $1"#,
     )
@@ -64,9 +71,18 @@ pub async fn build_plan(
     .fetch_optional(pool)
     .await?;
 
-    let Some((id, title, image, image_url, folder_path, release_id, box_release_id)) = row else {
+    let Some(row) = row else {
         return Ok(None);
     };
+    let LocalReleaseHeaderRow {
+        id,
+        title,
+        image,
+        image_url,
+        folder_path,
+        release_id,
+        box_release_id,
+    } = row;
 
     let member_paths: Vec<String> = sqlx::query_as::<_, (String,)>(
         r#"SELECT "folderPath" FROM "LocalReleaseMember" WHERE "localReleaseId" = $1"#,

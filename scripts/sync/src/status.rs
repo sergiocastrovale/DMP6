@@ -639,19 +639,26 @@ mod tests {
         let unescape = |s: &str| s.replace("\\\\", "\\");
         let num = |s: &str| s.parse::<i32>().ok();
 
-        let mut releases: Vec<(String, String, Option<i32>, Option<i32>, String)> = Vec::new();
+        struct ReleaseDumpRow {
+            local_id: String,
+            mb_id: String,
+            medium: Option<i32>,
+            year: Option<i32>,
+            db_status: String,
+        }
+        let mut releases: Vec<ReleaseDumpRow> = Vec::new();
         let mut locals: HashMap<String, Vec<LocalTrackRow>> = HashMap::new();
         let mut mbs: HashMap<String, Vec<MbTrack>> = HashMap::new();
         for line in std::fs::read_to_string(&path).unwrap().lines() {
             let f: Vec<&str> = line.split('\t').collect();
             match f.first() {
-                Some(&"R") if f.len() >= 6 => releases.push((
-                    f[1].to_string(),
-                    f[2].to_string(),
-                    num(f[3]),
-                    num(f[4]),
-                    f[5].to_string(),
-                )),
+                Some(&"R") if f.len() >= 6 => releases.push(ReleaseDumpRow {
+                    local_id: f[1].to_string(),
+                    mb_id: f[2].to_string(),
+                    medium: num(f[3]),
+                    year: num(f[4]),
+                    db_status: f[5].to_string(),
+                }),
                 Some(&"L") if f.len() >= 5 => {
                     locals
                         .entry(f[1].to_string())
@@ -688,7 +695,14 @@ mod tests {
         let (mut scored, mut legacy_agrees_with_db) = (0usize, 0usize);
         let mut new_pairs = String::new();
         let mut new_pair_count = 0usize;
-        for (local_id, mb_id, medium, year, db_status) in &releases {
+        for row in &releases {
+            let (local_id, mb_id, medium, year, db_status) = (
+                &row.local_id,
+                &row.mb_id,
+                row.medium,
+                row.year,
+                &row.db_status,
+            );
             let (Some(rows), Some(tracks)) = (locals.get(local_id), mbs.get(mb_id)) else {
                 continue;
             };
@@ -710,16 +724,16 @@ mod tests {
                 &refs,
                 &ids,
                 &candidates,
-                *year,
-                *medium,
+                year,
+                medium,
                 TitleRules::Legacy,
             );
             let new = check_release_status_with(
                 &refs,
                 &ids,
                 &candidates,
-                *year,
-                *medium,
+                year,
+                medium,
                 TitleRules::Extended,
             );
             scored += 1;

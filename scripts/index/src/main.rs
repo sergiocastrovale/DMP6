@@ -1189,12 +1189,14 @@ async fn main() {
                         } else {
                             ensure_local_release_cached(
                                 &pool,
-                                &release_title,
-                                release_year,
-                                &folder_path_str,
-                                &group_key,
-                                release_status,
-                                release_reason,
+                                &index::db::ReleaseFacts {
+                                    title: &release_title,
+                                    year: release_year,
+                                    folder_path: &folder_path_str,
+                                    group_key: &group_key,
+                                    status: release_status,
+                                    reason: release_reason,
+                                },
                                 &mut release_cache,
                             )
                             .await
@@ -1727,10 +1729,12 @@ async fn main() {
             folder_name,
             folder_idx + 1,
             total_folders,
-            folder_new,
-            folder_updated,
-            folder_skipped,
-            deleted_tracks,
+            common::progress::FolderTally {
+                new: folder_new,
+                updated: folder_updated,
+                skipped: folder_skipped,
+                deleted: deleted_tracks,
+            },
         );
     }
 

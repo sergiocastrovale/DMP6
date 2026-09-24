@@ -14,11 +14,21 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         .execute(&mut *tx)
         .await?;
 
-    let rows: Vec<(String, String, Option<String>, Option<String>, i64, i64)> = sqlx::query_as(
-        r#"SELECT a1.id, a2.id,
-                      a1."musicbrainzId", a2."musicbrainzId",
-                      (SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = a1.id),
-                      (SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = a2.id)
+    #[derive(sqlx::FromRow)]
+    struct DuplicateCandidateRow {
+        id1: String,
+        id2: String,
+        mb1: Option<String>,
+        mb2: Option<String>,
+        tracks1: i64,
+        tracks2: i64,
+    }
+
+    let rows: Vec<DuplicateCandidateRow> = sqlx::query_as(
+        r#"SELECT a1.id AS id1, a2.id AS id2,
+                      a1."musicbrainzId" AS mb1, a2."musicbrainzId" AS mb2,
+                      (SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = a1.id) AS tracks1,
+                      (SELECT COUNT(*) FROM "TrackRelatedArtist" WHERE "artistId" = a2.id) AS tracks2
                FROM "Artist" a1
                JOIN "Artist" a2 ON a1.id < a2.id
                WHERE LOWER(REGEXP_REPLACE(a1.name, '[^[:alnum:]]', '', 'g')) =
@@ -62,8 +72,9 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
             .collect()
     };
 
-    for (id1, id2, mb1, mb2, tracks1, tracks2) in &rows {
-        if let (Some(m1), Some(m2)) = (mb1, mb2) {
+    for row in &rows {
+        let (id1, id2, tracks1, tracks2) = (&row.id1, &row.id2, row.tracks1, row.tracks2);
+        if let (Some(m1), Some(m2)) = (&row.mb1, &row.mb2) {
             if m1 != m2 {
                 continue;
             }

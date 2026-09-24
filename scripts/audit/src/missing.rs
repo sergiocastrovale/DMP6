@@ -14,15 +14,20 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         .execute(&mut *tx)
         .await?;
 
-    let rows: Vec<(
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<i32>,
-        Option<String>,
-    )> = sqlx::query_as(
+    #[derive(sqlx::FromRow)]
+    struct MissingMetadataRow {
+        id: String,
+        title: Option<String>,
+        artist: Option<String>,
+        #[sqlx(rename = "albumArtist")]
+        album_artist: Option<String>,
+        album: Option<String>,
+        year: Option<i32>,
+        #[sqlx(rename = "localReleaseId")]
+        release_id: Option<String>,
+    }
+
+    let rows: Vec<MissingMetadataRow> = sqlx::query_as(
         r#"SELECT id, title, artist, "albumArtist", album, year, "localReleaseId"
                FROM "LocalReleaseTrack"
                WHERE (title IS NULL OR title = '')
@@ -38,7 +43,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let now = chrono::Utc::now().naive_utc();
 
     // One read for every already-tracked track instead of a round trip per candidate below.
-    let candidate_ids: Vec<&str> = rows.iter().map(|(id, ..)| id.as_str()).collect();
+    let candidate_ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
     let already_tracked_ids: std::collections::HashSet<String> = sqlx::query_scalar(
         r#"SELECT "trackId" FROM "IssueMissingMetadata"
            WHERE "trackId" = ANY($1::text[]) AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED')"#,
@@ -49,35 +54,36 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     .into_iter()
     .collect();
 
-    for (track_id, title, artist, album_artist, album, year, release_id) in &rows {
+    for row in &rows {
+        let track_id = &row.id;
         if already_tracked_ids.contains(track_id) {
             continue;
         }
 
         let mut missing_fields: Vec<&str> = Vec::new();
-        if title.as_deref().is_none_or(|s| s.is_empty()) {
+        if row.title.as_deref().is_none_or(|s| s.is_empty()) {
             missing_fields.push("title");
         }
-        if artist.as_deref().is_none_or(|s| s.is_empty()) {
+        if row.artist.as_deref().is_none_or(|s| s.is_empty()) {
             missing_fields.push("artist");
         }
-        if album_artist.as_deref().is_none_or(|s| s.is_empty()) {
+        if row.album_artist.as_deref().is_none_or(|s| s.is_empty()) {
             missing_fields.push("albumArtist");
         }
-        if album.as_deref().is_none_or(|s| s.is_empty()) {
+        if row.album.as_deref().is_none_or(|s| s.is_empty()) {
             missing_fields.push("album");
         }
-        if year.is_none() {
+        if row.year.is_none() {
             missing_fields.push("year");
         }
 
         let proposed = build_proposed(
             &mut tx,
             &missing_fields,
-            artist,
-            album_artist,
-            year,
-            release_id.as_deref(),
+            &row.artist,
+            &row.album_artist,
+            &row.year,
+            row.release_id.as_deref(),
         )
         .await?;
 
