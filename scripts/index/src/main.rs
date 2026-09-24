@@ -801,6 +801,12 @@ async fn main() {
     let mut consensus_reason_totals: HashMap<&'static str, u64> = HashMap::new();
     let mut consensus_cleared_total: u64 = 0;
 
+    // Index never writes to `LocalReleaseMember` (see get_local_release_members's doc comment - only
+    // sync's box-set repair does), so one read up front covers the whole run.
+    let local_release_members = index::db::get_local_release_members(&pool)
+        .await
+        .unwrap_or_default();
+
     // -------------------------------------------------------------------------
     // Main folder loop
     // -------------------------------------------------------------------------
@@ -1019,13 +1025,6 @@ async fn main() {
                     }
                     map
                 };
-
-                // Folders sync's box-set repair (`sync::boxset::run_repair`) already folded into one
-                // release - see `get_local_release_members`'s doc comment for why this must be
-                // consulted before `build_group_key`, not merely alongside it.
-                let local_release_members = index::db::get_local_release_members(&pool)
-                    .await
-                    .unwrap_or_default();
 
                 // Per-folder consensus verdict (docs/no_guessing.md) over this run's extracted tracks -
                 // seeds a brand-new release's title/status/reason. The folder is the physical release
