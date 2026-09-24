@@ -473,20 +473,39 @@ pub async fn load_mb_release_with_tracks(
     pool: &PgPool,
     mb_release_db_id: &str,
 ) -> Result<Option<(MbRelease, Vec<MbTrack>, String)>, sqlx::Error> {
-    let release_row: Option<(String, Option<String>, String, Option<String>, Option<String>, Option<String>, String)> =
-        sqlx::query_as(
-            r#"SELECT title, "releaseDate", status::text, disambiguation, packaging, country, "musicbrainzId"
-               FROM "MusicBrainzRelease" WHERE id = $1"#,
-        )
-        .bind(mb_release_db_id)
-        .fetch_optional(pool)
-        .await?;
+    #[derive(sqlx::FromRow)]
+    struct MbReleaseHeaderRow {
+        title: String,
+        #[sqlx(rename = "releaseDate")]
+        release_date: Option<String>,
+        status: String,
+        disambiguation: Option<String>,
+        packaging: Option<String>,
+        country: Option<String>,
+        #[sqlx(rename = "musicbrainzId")]
+        musicbrainz_id: String,
+    }
 
-    let (title, release_date, status, disambiguation, packaging, country, musicbrainz_id) =
-        match release_row {
-            Some(r) => r,
-            None => return Ok(None),
-        };
+    let release_row: Option<MbReleaseHeaderRow> = sqlx::query_as(
+        r#"SELECT title, "releaseDate", status::text, disambiguation, packaging, country, "musicbrainzId"
+               FROM "MusicBrainzRelease" WHERE id = $1"#,
+    )
+    .bind(mb_release_db_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let MbReleaseHeaderRow {
+        title,
+        release_date,
+        status,
+        disambiguation,
+        packaging,
+        country,
+        musicbrainz_id,
+    } = match release_row {
+        Some(r) => r,
+        None => return Ok(None),
+    };
 
     let media_rows: Vec<(i32, Option<String>, Option<String>)> = sqlx::query_as(
         r#"SELECT position, title, format FROM "MusicBrainzReleaseMedium" WHERE "releaseId" = $1
@@ -512,14 +531,21 @@ pub async fn load_mb_release_with_tracks(
         )
     };
 
-    let track_rows: Vec<(
-        Option<String>,
-        Option<i32>,
-        Option<i32>,
-        Option<i32>,
-        String,
-        Option<String>,
-    )> = sqlx::query_as(
+    #[derive(sqlx::FromRow)]
+    struct MbTrackHeaderRow {
+        #[sqlx(rename = "musicbrainzId")]
+        track_mb_id: Option<String>,
+        position: Option<i32>,
+        #[sqlx(rename = "discNumber")]
+        disc_number: Option<i32>,
+        #[sqlx(rename = "durationMs")]
+        duration_ms: Option<i32>,
+        title: String,
+        #[sqlx(rename = "recordingId")]
+        recording_id: Option<String>,
+    }
+
+    let track_rows: Vec<MbTrackHeaderRow> = sqlx::query_as(
         r#"SELECT "musicbrainzId", position, "discNumber", "durationMs", title, "recordingId"
                FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
     )
@@ -533,18 +559,16 @@ pub async fn load_mb_release_with_tracks(
 
     let tracks = track_rows
         .into_iter()
-        .filter_map(
-            |(track_mb_id, position, disc_number, duration_ms, title, recording_id)| {
-                Some(MbTrack {
-                    id: track_mb_id?,
-                    title,
-                    position: position.map(|p| p as u32),
-                    length: duration_ms.map(|d| d as u64),
-                    disc_number: disc_number.map(|d| d as u32),
-                    recording: recording_id.map(|id| MbRecordingRef { id }),
-                })
-            },
-        )
+        .filter_map(|r| {
+            Some(MbTrack {
+                id: r.track_mb_id?,
+                title: r.title,
+                position: r.position.map(|p| p as u32),
+                length: r.duration_ms.map(|d| d as u64),
+                disc_number: r.disc_number.map(|d| d as u32),
+                recording: r.recording_id.map(|id| MbRecordingRef { id }),
+            })
+        })
         .collect();
 
     Ok(Some((
@@ -703,9 +727,20 @@ pub async fn get_rescore_targets(
         return Ok(Vec::new());
     }
 
+    #[derive(sqlx::FromRow)]
+    struct RescoreCandidateRow {
+        id: String,
+        #[sqlx(rename = "releaseId")]
+        release_id: Option<String>,
+        #[sqlx(rename = "mediumPosition")]
+        medium_position: Option<i32>,
+        year: Option<i32>,
+        status: String,
+    }
+
     let stale: std::collections::HashSet<String> = stale.into_iter().collect();
-    let rows: Vec<(String, Option<String>, Option<i32>, Option<i32>, String)> = sqlx::query_as(
-        r#"SELECT id, "releaseId", "mediumPosition", year, "matchStatus"::text
+    let rows: Vec<RescoreCandidateRow> = sqlx::query_as(
+        r#"SELECT id, "releaseId", "mediumPosition", year, "matchStatus"::text AS status
            FROM "LocalRelease" WHERE id = ANY($1) AND "releaseId" IS NOT NULL"#,
     )
     .bind(&ids)
@@ -714,15 +749,15 @@ pub async fn get_rescore_targets(
 
     Ok(rows
         .into_iter()
-        .filter_map(|(id, release_id, medium_position, year, status)| {
-            let stale_links_only = stale.contains(&id) && !unknown_or_touched.contains(&id);
+        .filter_map(|r| {
+            let stale_links_only = stale.contains(&r.id) && !unknown_or_touched.contains(&r.id);
             Some(RescoreTarget {
-                local_release_id: id,
-                mb_release_id: release_id?,
-                medium_position,
-                year,
+                local_release_id: r.id,
+                mb_release_id: r.release_id?,
+                medium_position: r.medium_position,
+                year: r.year,
                 stale_links_only,
-                was_missing_tracks: status == "MISSING_TRACKS",
+                was_missing_tracks: r.status == "MISSING_TRACKS",
             })
         })
         .collect())
@@ -1466,25 +1501,37 @@ pub async fn repair_all_empty_primaries(
     pool: &PgPool,
     dry_run: bool,
 ) -> Result<Vec<IdentityRepair>, sqlx::Error> {
-    let pairs: Vec<(String, String, i64, String, String, Option<String>, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            r#"SELECT d.id, d.name,
-                      (SELECT count(*) FROM "LocalReleaseArtist" x WHERE x."artistId" = d.id) AS n_local,
-                      p.id, p.name,
-                      (SELECT l.mbid FROM "MbArtistLookup" l WHERE l.name = d.name AND l.mbid IS NOT NULL LIMIT 1),
-                      (SELECT l.mbid FROM "MbArtistLookup" l WHERE l.name = p.name AND l.mbid IS NOT NULL LIMIT 1),
-                      p."musicbrainzId"
-               FROM "Artist" d
-               JOIN "Artist" p ON p.id = d."primaryArtistId"
-               WHERE EXISTS (SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = d.id)
-                 AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = p.id)
-               ORDER BY 3 DESC"#,
-        )
-        .fetch_all(pool)
-        .await?;
+    #[derive(sqlx::FromRow)]
+    struct EmptyPrimaryPairRow {
+        dup_id: String,
+        dup_name: String,
+        n_local: i64,
+        empty_id: String,
+        empty_name: String,
+        dup_mbid: Option<String>,
+        empty_mbid: Option<String>,
+        #[sqlx(rename = "musicbrainzId")]
+        empty_stored_mbid: Option<String>,
+    }
+
+    let pairs: Vec<EmptyPrimaryPairRow> = sqlx::query_as(
+        r#"SELECT d.id AS dup_id, d.name AS dup_name,
+                  (SELECT count(*) FROM "LocalReleaseArtist" x WHERE x."artistId" = d.id) AS n_local,
+                  p.id AS empty_id, p.name AS empty_name,
+                  (SELECT l.mbid FROM "MbArtistLookup" l WHERE l.name = d.name AND l.mbid IS NOT NULL LIMIT 1) AS dup_mbid,
+                  (SELECT l.mbid FROM "MbArtistLookup" l WHERE l.name = p.name AND l.mbid IS NOT NULL LIMIT 1) AS empty_mbid,
+                  p."musicbrainzId"
+           FROM "Artist" d
+           JOIN "Artist" p ON p.id = d."primaryArtistId"
+           WHERE EXISTS (SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = d.id)
+             AND NOT EXISTS (SELECT 1 FROM "LocalReleaseArtist" x WHERE x."artistId" = p.id)
+           ORDER BY 3 DESC"#,
+    )
+    .fetch_all(pool)
+    .await?;
 
     let mut done = Vec::new();
-    for (
+    for EmptyPrimaryPairRow {
         dup_id,
         dup_name,
         n_local,
@@ -1493,7 +1540,7 @@ pub async fn repair_all_empty_primaries(
         dup_mbid,
         empty_mbid,
         empty_stored_mbid,
-    ) in pairs
+    } in pairs
     {
         let same_artist = match (dup_mbid.as_deref(), empty_mbid.as_deref()) {
             (Some(a), Some(b)) => a == b,
@@ -1843,15 +1890,35 @@ pub struct ArtistSyncRow {
     pub has_image: bool,
 }
 
+/// Raw `Artist` columns `ArtistSyncRow` is always built from - `mb_id` still needs
+/// `sanitize_mb_id`, and `has_image` is derived from two columns, so this stays a row shape rather
+/// than `ArtistSyncRow` itself.
+#[derive(sqlx::FromRow)]
+struct ArtistImageRow {
+    id: String,
+    name: String,
+    slug: String,
+    #[sqlx(rename = "musicbrainzId")]
+    mb_id: Option<String>,
+    image: Option<String>,
+    #[sqlx(rename = "imageUrl")]
+    image_url: Option<String>,
+}
+
+impl From<ArtistImageRow> for ArtistSyncRow {
+    fn from(r: ArtistImageRow) -> Self {
+        ArtistSyncRow {
+            id: r.id,
+            name: r.name,
+            slug: r.slug,
+            mb_id: r.mb_id.as_deref().and_then(sanitize_mb_id),
+            has_image: r.image.is_some() || r.image_url.is_some(),
+        }
+    }
+}
+
 pub async fn get_artists_pending_sync(pool: &PgPool) -> Result<Vec<ArtistSyncRow>, sqlx::Error> {
-    let rows: Vec<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
+    let rows: Vec<ArtistImageRow> = sqlx::query_as(
         // An artist also counts as pending when any of its releases is sitting at UNKNOWN.
         //
         // UNKNOWN means "score this again": index sets it when it deletes tracks from a matched
@@ -1880,16 +1947,7 @@ pub async fn get_artists_pending_sync(pool: &PgPool) -> Result<Vec<ArtistSyncRow
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
-            id,
-            name,
-            slug,
-            mb_id: mb_id.as_deref().and_then(sanitize_mb_id),
-            has_image: image.is_some() || image_url.is_some(),
-        })
-        .collect())
+    Ok(rows.into_iter().map(ArtistSyncRow::from).collect())
 }
 
 // ---------------------------------------------------------------------------
@@ -2151,9 +2209,21 @@ pub async fn get_tracks_with_mb_ids_for_artist(
     pool: &PgPool,
     artist_id: &str,
 ) -> Result<Vec<TrackMbIds>, sqlx::Error> {
-    let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
-        r#"SELECT lrt."filePath", mbr."musicbrainzId", mbr."releaseGroupId",
-                  mbrt."musicbrainzId", mbrt."recordingId"
+    #[derive(sqlx::FromRow)]
+    struct TrackMbIdRow {
+        #[sqlx(rename = "filePath")]
+        file_path: String,
+        mb_release_id: String,
+        #[sqlx(rename = "releaseGroupId")]
+        mb_release_group_id: String,
+        mb_track_id: Option<String>,
+        #[sqlx(rename = "recordingId")]
+        mb_recording_id: Option<String>,
+    }
+
+    let rows: Vec<TrackMbIdRow> = sqlx::query_as(
+        r#"SELECT lrt."filePath", mbr."musicbrainzId" AS mb_release_id, mbr."releaseGroupId",
+                  mbrt."musicbrainzId" AS mb_track_id, mbrt."recordingId"
            FROM "LocalReleaseTrack" lrt
            JOIN "LocalRelease" lr ON lrt."localReleaseId" = lr.id
            JOIN "LocalReleaseArtist" lra ON lra."localReleaseId" = lr.id
@@ -2168,17 +2238,13 @@ pub async fn get_tracks_with_mb_ids_for_artist(
 
     Ok(rows
         .into_iter()
-        .map(
-            |(file_path, mb_release_id, mb_release_group_id, mb_track_id, mb_recording_id)| {
-                TrackMbIds {
-                    file_path,
-                    mb_release_id,
-                    mb_release_group_id,
-                    mb_track_id,
-                    mb_recording_id,
-                }
-            },
-        )
+        .map(|r| TrackMbIds {
+            file_path: r.file_path,
+            mb_release_id: r.mb_release_id,
+            mb_release_group_id: r.mb_release_group_id,
+            mb_track_id: r.mb_track_id,
+            mb_recording_id: r.mb_recording_id,
+        })
         .collect())
 }
 
@@ -2207,14 +2273,7 @@ pub async fn get_artist_for_release(
     release_id: &str,
     artist_hint: Option<&str>,
 ) -> Result<Option<ArtistSyncRow>, sqlx::Error> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
+    let row: Option<ArtistImageRow> = sqlx::query_as(
         r#"SELECT a.id, a.name, a.slug, a."musicbrainzId", a.image, a."imageUrl"
                FROM "Artist" a
                JOIN "LocalReleaseArtist" lra ON lra."artistId" = a.id
@@ -2227,15 +2286,7 @@ pub async fn get_artist_for_release(
     .fetch_optional(pool)
     .await?;
 
-    Ok(
-        row.map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
-            id,
-            name,
-            slug,
-            mb_id: mb_id.as_deref().and_then(sanitize_mb_id),
-            has_image: image.is_some() || image_url.is_some(),
-        }),
-    )
+    Ok(row.map(ArtistSyncRow::from))
 }
 
 // ---------------------------------------------------------------------------
