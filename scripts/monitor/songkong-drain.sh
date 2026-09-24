@@ -1,10 +1,13 @@
 #!/bin/sh
 # Cron consumer of the DMP SongKong spool. The dmp container (no docker socket) drops one file per
-# finished download into spool/<downloadId> containing the album path (/downloads/...); we run the
+# finished download into spool/<downloadId> containing the album path (downloads root); we run the
 # enrich scan on it and, on success, write done/<downloadId> for the dmp reconcile loop to pick up.
 # Failures leave the spool entry in place so the next tick retries.
 set -u
-STATE="/mnt/SSD/Downloads/.dmp-songkong"
+ENV_FILE="$(dirname "$0")/../../web/.env"
+[ -f "$ENV_FILE" ] && . "$ENV_FILE"
+
+STATE="${SONGKONG_STATE_DIR:?set SONGKONG_STATE_DIR in web/.env}"
 SPOOL="$STATE/spool"
 DONE="$STATE/done"
 SCAN="$(dirname "$0")/songkong-scan.sh"

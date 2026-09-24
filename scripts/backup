@@ -9,13 +9,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DUMP_DIR="$SCRIPT_DIR/web/dump"
 ENV_FILE="$SCRIPT_DIR/web/.env"
 
-SSH_HOST_DEFAULT="nas"
-POSTGRES_CONTAINER_DEFAULT="ix-postgres-postgres-1"
-DB_USER_DEFAULT="dmp"
-DB_NAME_DEFAULT="dmp"
-NAS_DUMP_DIR_DEFAULT="/mnt/SSD/web/dmp/dump"
-NAS_IMG_DIR_DEFAULT="/mnt/SSD/web/dmp/img"
-
 DO_DB=true
 DO_IMG=true
 for arg in "$@"; do
@@ -32,12 +25,21 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
-SSH_HOST="${NAS_SSH_HOST:-$SSH_HOST_DEFAULT}"
-POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-$POSTGRES_CONTAINER_DEFAULT}"
-DB_USER="${BACKUP_DB_USER:-$DB_USER_DEFAULT}"
-DB_NAME="${BACKUP_DB_NAME:-$DB_NAME_DEFAULT}"
-NAS_DUMP_DIR="${NAS_DUMP_DIR:-$NAS_DUMP_DIR_DEFAULT}"
-NAS_IMG_DIR="${NAS_IMG_DIR:-$NAS_IMG_DIR_DEFAULT}"
+# Same host/path/key variables `./deploy` already uses, rather than a second, differently-named
+# set of vars for the same server - only POSTGRES_CONTAINER (the app's own container name on the
+# deploy host) has no sensible generic default and must be set explicitly.
+SSH_HOST="${SERVER_HOST:?SERVER_HOST not set in web/.env}"
+SSH_USER="${SERVER_USER:?SERVER_USER not set in web/.env}"
+SSH_TARGET="${SSH_USER}@${SSH_HOST}"
+SSH_KEY="${SSH_KEY_PATH:-}"
+SSH_OPTS=()
+[ -n "$SSH_KEY" ] && SSH_OPTS=(-i "$SSH_KEY")
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:?POSTGRES_CONTAINER not set in web/.env - the Postgres container name on the deploy host}"
+DB_USER="${BACKUP_DB_USER:-dmp}"
+DB_NAME="${BACKUP_DB_NAME:-dmp}"
+DEPLOY_PATH="${DEPLOY_PATH:?DEPLOY_PATH not set in web/.env}"
+NAS_DUMP_DIR="${NAS_DUMP_DIR:-$DEPLOY_PATH/dump}"
+NAS_IMG_DIR="${NAS_IMG_DIR:-$DEPLOY_PATH/img}"
 
 mkdir -p "$DUMP_DIR"
 
@@ -66,7 +68,7 @@ if [ "$DO_DB" = true ]; then
   REMOTE_DUMP_CMD="set -o pipefail; sudo docker exec -i ${POSTGRES_CONTAINER} pg_dump --no-owner --no-acl --clean --if-exists -U ${DB_USER} ${DB_NAME} | gzip -9 > ${NAS_DUMP_DIR}/${DB_FILE}"
 
   set +e
-  ssh "$SSH_HOST" "$REMOTE_DUMP_CMD"
+  ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "$REMOTE_DUMP_CMD"
   SSH_EXIT=$?
   set -e
 
@@ -75,16 +77,16 @@ if [ "$DO_DB" = true ]; then
     exit $SSH_EXIT
   fi
 
-  ssh "$SSH_HOST" "gzip -t ${NAS_DUMP_DIR}/${DB_FILE}"
-  NAS_DB_SIZE=$(ssh "$SSH_HOST" "stat -c%s ${NAS_DUMP_DIR}/${DB_FILE}")
+  ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "gzip -t ${NAS_DUMP_DIR}/${DB_FILE}"
+  NAS_DB_SIZE=$(ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "stat -c%s ${NAS_DUMP_DIR}/${DB_FILE}")
   if [ "$NAS_DB_SIZE" -lt 1024 ]; then
-    ssh "$SSH_HOST" "rm -f ${NAS_DUMP_DIR}/${DB_FILE}"
+    ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "rm -f ${NAS_DUMP_DIR}/${DB_FILE}"
     echo "ERROR: Dump suspiciously small (${NAS_DB_SIZE} bytes)" >&2
     exit 1
   fi
 
   echo "Copying to local → web/dump/${DB_FILE}"
-  scp "${SSH_HOST}:${NAS_DUMP_DIR}/${DB_FILE}" "$DUMP_DIR/${DB_FILE}"
+  scp "${SSH_OPTS[@]}" "${SSH_TARGET}:${NAS_DUMP_DIR}/${DB_FILE}" "$DUMP_DIR/${DB_FILE}"
 
   DB_SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$(stat -c%s "$DUMP_DIR/${DB_FILE}" 2>/dev/null || stat -f%z "$DUMP_DIR/${DB_FILE}")" 2>/dev/null || echo "${NAS_DB_SIZE} bytes")
   echo "DB backup: ${DB_SIZE_HUMAN}"
@@ -101,7 +103,7 @@ if [ "$DO_IMG" = true ]; then
   REMOTE_IMG_CMD="tar -cf - -C '${NAS_IMG_DIR}' . | gzip -9 > '${NAS_DUMP_DIR}/${IMG_FILE}'"
 
   set +e
-  ssh "$SSH_HOST" "$REMOTE_IMG_CMD"
+  ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "$REMOTE_IMG_CMD"
   SSH_EXIT=$?
   set -e
 
@@ -110,10 +112,10 @@ if [ "$DO_IMG" = true ]; then
     exit $SSH_EXIT
   fi
 
-  ssh "$SSH_HOST" "gzip -t ${NAS_DUMP_DIR}/${IMG_FILE}"
+  ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "gzip -t ${NAS_DUMP_DIR}/${IMG_FILE}"
 
   echo "Copying to local → web/dump/${IMG_FILE}"
-  scp "${SSH_HOST}:${NAS_DUMP_DIR}/${IMG_FILE}" "$DUMP_DIR/${IMG_FILE}"
+  scp "${SSH_OPTS[@]}" "${SSH_TARGET}:${NAS_DUMP_DIR}/${IMG_FILE}" "$DUMP_DIR/${IMG_FILE}"
 
   IMG_SIZE_HUMAN=$(numfmt --to=iec --suffix=B "$(stat -c%s "$DUMP_DIR/${IMG_FILE}" 2>/dev/null || stat -f%z "$DUMP_DIR/${IMG_FILE}")" 2>/dev/null || echo "unknown")
   echo "Image backup: ${IMG_SIZE_HUMAN}"

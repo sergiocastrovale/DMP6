@@ -1,21 +1,24 @@
 #!/bin/sh
 # Enrich a finished DMP download with SongKong (tag-only), in a DEDICATED, ephemeral instance with
-# its OWN config/DB so it never collides with the live :4567 server (exclusive H2 lock) NOR with the
-# Lidarr automation instance (songkong-auto). Targets ONLY the DMP downloads root.
-#   songkong-scan.sh "/mnt/SSD/Downloads/dmp/Artist/Album/2007 - Album"
+# its OWN config/DB so it never collides with the live GUI server (exclusive H2 lock) nor with any
+# other automation instance. Targets ONLY the DMP downloads root.
+#   songkong-scan.sh "$DOWNLOADS_DIR/dmp/Artist/Album/2007 - Album"
 # Identity-mounts the downloads volume (host path == container path), matching how dmp/slskd mount it.
 # Run as normal user (uses sudo internally) or via root cron.
 set -u
-SK_IMAGE="songkong/songkong:latest"
-LIVE_CFG="/mnt/SSD/songkong"            # live GUI config: license (+ profiles, used only as fallback)
-AUTO_CFG="/mnt/SSD/songkong-auto-dmp"   # dedicated config/DB for DMP automation (separate from lidarr)
-DL_HOST="/mnt/SSD/Downloads"            # identity-mounted; matches dmp's real DOWNLOADS_PATH parent
+ENV_FILE="$(dirname "$0")/../../web/.env"
+[ -f "$ENV_FILE" ] && . "$ENV_FILE"
+
+SK_IMAGE="${SONGKONG_IMAGE:-songkong/songkong:latest}"
+LIVE_CFG="${SONGKONG_LIVE_CFG:?set SONGKONG_LIVE_CFG in web/.env}"        # live GUI config: license (+ profiles, used only as fallback)
+AUTO_CFG="${SONGKONG_AUTO_CFG:?set SONGKONG_AUTO_CFG in web/.env}"        # dedicated config/DB for this automation, separate from any other instance
+DL_HOST="${DOWNLOADS_DIR:?set DOWNLOADS_DIR in web/.env}"                 # identity-mounted; matches dmp's real downloads volume
 WANT_PROFILE="BPM, AcousticID, Genres, images"
-# Enrich-only profile bundled in the repo + deployed next to this script. Self-provisions a fresh NAS
-# (no GUI setup needed); only the license still comes from the live config.
+# Enrich-only profile bundled in the repo + deployed next to this script. Self-provisions a fresh
+# deployment (no GUI setup needed); only the license still comes from the live config.
 BUNDLED_PROFILE="$(dirname "$0")/songkong_fixsongs_dmp.properties"
 LOCK="$DL_HOST/.dmp-songkong/scan.lock"
-TARGET="${1:?usage: songkong-scan.sh /mnt/SSD/Downloads/dmp/Artist/Album}"
+TARGET="${1:?usage: songkong-scan.sh \$DOWNLOADS_DIR/dmp/Artist/Album}"
 
 # safety: only ever enrich inside the downloads root, never the spool/state dir
 case "$TARGET" in
@@ -32,8 +35,8 @@ if ! flock -n 9; then echo "another dmp-songkong-scan is running; exit"; exit 0;
 sudo mkdir -p "$AUTO_CFG/Prefs"
 sudo cp -f "$LIVE_CFG/Prefs/license.properties" "$AUTO_CFG/Prefs/" 2>/dev/null || true
 
-# resolve the enrich-only profile. Prefer the repo-bundled file (self-provisions a fresh NAS);
-# fall back to discovering it by profileName in the live GUI config; else SongKong default.
+# resolve the enrich-only profile. Prefer the repo-bundled file (self-provisions a fresh
+# deployment); fall back to discovering it by profileName in the live GUI config; else SongKong default.
 PROFILE_FILE=""
 if [ -f "$BUNDLED_PROFILE" ]; then
   PROFILE_FILE="songkong_fixsongs_dmp.properties"
@@ -57,8 +60,8 @@ else
   echo "$(date "+%F %T") profile not found -> SongKong default | target: $TARGET"
 fi
 
-# run dedicated ephemeral instance (own DB; safe alongside the live server + lidarr automation).
-# identity-mount so $TARGET (a real /mnt/SSD/Downloads/... path from the spool) resolves inside.
+# run dedicated ephemeral instance (own DB; safe alongside the live server + any other automation).
+# identity-mount so $TARGET (a real path under the downloads volume, from the spool) resolves inside.
 sudo docker run --rm \
   -v "$AUTO_CFG:/songkong" \
   -v "$DL_HOST:$DL_HOST" \
