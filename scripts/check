@@ -11,7 +11,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
 cargo fmt --all --check
-cargo clippy --workspace --all-targets --quiet
+cargo clippy --workspace --all-targets --quiet -- -D warnings
 cargo test --workspace --quiet
 ./cli-contract check
 
