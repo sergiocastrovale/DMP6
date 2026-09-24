@@ -225,6 +225,28 @@ own dedicated pass with the same per-item verification discipline used throughou
 rushed sweep. `docs/scripts/*.md` were kept in sync with every runtime fix as it landed instead
 (the safe, high-value slice of Phase 6 achievable alongside the rest).
 
+## Phase 3.1 — shared shutdown-handler extraction
+
+A new detailed plan (`/home/kp/.claude/plans/composed-giggling-snowglobe.md`, rewritten to cover only
+the remaining phases) scoped Phase 3's remainder down to one narrow, fully-specified item rather than
+the original broad `common::app`/`config`/`library` consolidation, after two near-misses on
+lookalike-consolidation the prior session (see that plan's Context section).
+
+- `add`/`sync`/`tidy`/`index` each spawned an identical Ctrl-C + SIGTERM handler pair (~15 lines each)
+  that only differed in the shutdown message's unit noun, the SIGTERM exit code, and — for `index`
+  only — the stop-flag's polarity (`shutdown`/`true=stop` vs the other three's `running`/`false=stop`).
+  Extracted to `common::app::spawn_shutdown_handlers(pool, binary, unit, sigterm_exit_code)`.
+  `index`'s 6 internal `shutdown.load(...)` check sites were inverted to the shared `running`
+  convention (line-by-line verified match before editing, not a blind find/replace).
+- **Verified**: full workspace compile after each of the 4 binaries individually (not batched), full
+  `scripts/check --db` gate, then a live signal test on the NAS after deploying — `index` (the
+  inverted-polarity one) sent a real `SIGTERM` mid-run via `node -e 'process.kill(pid, "SIGTERM")'`
+  (no `kill` binary in the container), confirmed it exited and the scan lock cleared
+  (`scanLockedBy`/`scanPid` both `NULL`); `sync` sent two `SIGINT`s (Ctrl-C) - stayed alive after the
+  first (as designed, waiting for the current artist or a second signal), exited after the second,
+  lock cleared. `errors.log` had no new entries from either test. `tidy` given an ordinary run
+  afterward to confirm the non-signaled path still works, exit 0.
+
 ## Verification
 
 Every commit passed `scripts/check --db` (fmt, clippy, full workspace test suite incl. `--ignored`
