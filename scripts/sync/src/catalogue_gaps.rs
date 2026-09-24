@@ -9,22 +9,47 @@ use crate::db::*;
 use crate::mb_api::{self, RateLimiter};
 use crate::mb_matching::is_special_artist_name;
 
+/// The 5 pieces every catalogue-gap-filling caller shares for the whole run - travel together since
+/// none is meaningful without the others.
+pub struct GapFillContext<'a> {
+    pub pool: &'a PgPool,
+    pub http_client: &'a Client,
+    pub limiter: &'a mut RateLimiter,
+    pub reporter: &'a Reporter,
+    pub running: &'a AtomicBool,
+}
+
+/// `--from`/`--to`/`--only`/`--exact` as one bundle, same fields `common::filters::matches_filter`
+/// itself takes.
+pub struct ArtistFilter<'a> {
+    pub from: Option<&'a str>,
+    pub to: Option<&'a str>,
+    pub only: Option<&'a str>,
+    pub exact: bool,
+}
+
 pub async fn fill_catalogue_gaps(
-    pool: &PgPool,
-    http_client: &Client,
-    limiter: &mut RateLimiter,
-    reporter: &Reporter,
-    running: &AtomicBool,
-    from: Option<&str>,
-    to: Option<&str>,
-    only: Option<&str>,
-    exact: bool,
+    ctx: GapFillContext<'_>,
+    filter: ArtistFilter<'_>,
     overwrite: bool,
     verbose: bool,
     // Scope by exact artist id instead of name filtering - used by `./add`, where a name match could
     // cross two same-named artists (e.g. NAPA PT/CL) or trip on a name containing `;`.
     artist_ids: Option<&[String]>,
 ) -> Result<(u32, u32, Vec<String>), String> {
+    let GapFillContext {
+        pool,
+        http_client,
+        limiter,
+        reporter,
+        running,
+    } = ctx;
+    let ArtistFilter {
+        from,
+        to,
+        only,
+        exact,
+    } = filter;
     let rows: Vec<(String, String, String, Option<String>)> = match artist_ids {
         Some(ids) => sqlx::query_as(
             r#"SELECT id, name, slug, "musicbrainzId"

@@ -482,15 +482,19 @@ async fn main() {
         reporter.blank();
 
         match catalogue_gaps::fill_catalogue_gaps(
-            &pool,
-            &http_client,
-            &mut limiter,
-            &reporter,
-            &running,
-            args.from.as_deref(),
-            args.to.as_deref(),
-            args.only.as_deref(),
-            args.exact,
+            catalogue_gaps::GapFillContext {
+                pool: &pool,
+                http_client: &http_client,
+                limiter: &mut limiter,
+                reporter: &reporter,
+                running: &running,
+            },
+            catalogue_gaps::ArtistFilter {
+                from: args.from.as_deref(),
+                to: args.to.as_deref(),
+                only: args.only.as_deref(),
+                exact: args.exact,
+            },
             args.overwrite,
             args.verbose,
             None,

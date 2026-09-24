@@ -803,15 +803,14 @@ async fn candidates_from_db(pool: &PgPool, mb_ids: &[String]) -> Vec<FetchedCand
             continue;
         }
 
-        let Ok(track_rows) =
-            sqlx::query_as::<_, (Option<i32>, Option<String>, String, Option<i32>)>(
-                r#"SELECT "discNumber", "musicbrainzId", title, "durationMs"
+        let Ok(track_rows) = sqlx::query_as::<_, StoredTrackRow>(
+            r#"SELECT "discNumber", "musicbrainzId", title, "durationMs"
                FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1
                ORDER BY "discNumber" NULLS FIRST, position"#,
-            )
-            .bind(&db_id)
-            .fetch_all(pool)
-            .await
+        )
+        .bind(&db_id)
+        .fetch_all(pool)
+        .await
         else {
             continue;
         };
@@ -835,10 +834,14 @@ async fn candidates_from_db(pool: &PgPool, mb_ids: &[String]) -> Vec<FetchedCand
 /// an optimisation rather than a second, weaker source of truth:
 /// fewer than two media, a medium with no tracks, a medium whose row count disagrees with its recorded
 /// `trackCount` (a half-synced release), or a track with no MusicBrainz id (nothing to link against).
+/// (discNumber, musicbrainzId, title, durationMs) - a stored `MusicBrainzReleaseTrack` row, as
+/// `candidates_from_db`'s tier (d) rebuilds a candidate straight from already-synced rows.
+type StoredTrackRow = (Option<i32>, Option<String>, String, Option<i32>);
+
 fn box_candidate_from_rows(
     release_mb_id: &str,
     medium_rows: &[(i32, i32)],
-    track_rows: &[(Option<i32>, Option<String>, String, Option<i32>)],
+    track_rows: &[StoredTrackRow],
 ) -> Option<BoxCandidate> {
     if medium_rows.len() < 2 {
         return None;
@@ -3008,7 +3011,8 @@ mod tests {
     #[test]
     fn hims_ten_disc_box_binds_every_medium() {
         // (disc position, [(title, local secs, mb secs)])
-        let discs: &[(i32, &[(&str, i32, i32)])] = &[
+        type DiscFixture<'a> = (i32, &'a [(&'a str, i32, i32)]);
+        let discs: &[DiscFixture] = &[
             (
                 1,
                 &[

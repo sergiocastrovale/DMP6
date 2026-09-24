@@ -143,8 +143,20 @@ struct ReleaseFacts {
 /// Unlinked media of multi-medium releases only: a single-medium release is itself the standalone
 /// edition, and comparing it against its own artist's catalogue finds itself.
 async fn unlinked_media(pool: &PgPool) -> Result<Vec<UnlinkedMedium>, sqlx::Error> {
-    let rows: Vec<(String, String, Option<String>, String, Option<i32>, i32)> = sqlx::query_as(
-        r#"SELECT m.id, m."releaseId", m.title, t.title, t."durationMs", t.position
+    #[derive(sqlx::FromRow)]
+    struct UnlinkedMediumTrackRow {
+        #[sqlx(rename = "id")]
+        medium_id: String,
+        #[sqlx(rename = "releaseId")]
+        release_id: String,
+        medium_title: Option<String>,
+        track_title: String,
+        #[sqlx(rename = "durationMs")]
+        duration_ms: Option<i32>,
+    }
+
+    let rows: Vec<UnlinkedMediumTrackRow> = sqlx::query_as(
+        r#"SELECT m.id, m."releaseId", m.title AS medium_title, t.title AS track_title, t."durationMs"
            FROM "MusicBrainzReleaseMedium" m
            JOIN "MusicBrainzRelease" parent ON parent.id = m."releaseId"
            JOIN "MusicBrainzReleaseTrack" t
@@ -156,15 +168,15 @@ async fn unlinked_media(pool: &PgPool) -> Result<Vec<UnlinkedMedium>, sqlx::Erro
     .await?;
 
     let mut media: Vec<UnlinkedMedium> = Vec::new();
-    for (medium_id, release_id, medium_title, title, duration_ms, _pos) in rows {
-        let secs = duration_ms.map(|ms| ms / 1000);
+    for row in rows {
+        let secs = row.duration_ms.map(|ms| ms / 1000);
         match media.last_mut() {
-            Some(m) if m.medium_id == medium_id => m.tracks.push((title, secs)),
+            Some(m) if m.medium_id == row.medium_id => m.tracks.push((row.track_title, secs)),
             _ => media.push(UnlinkedMedium {
-                medium_id,
-                release_id,
-                medium_title,
-                tracks: vec![(title, secs)],
+                medium_id: row.medium_id,
+                release_id: row.release_id,
+                medium_title: row.medium_title,
+                tracks: vec![(row.track_title, secs)],
             }),
         }
     }
@@ -194,7 +206,17 @@ async fn single_medium_releases_for_artists(
     if artist_ids.is_empty() {
         return Ok(Vec::new());
     }
-    let rows: Vec<(String, Option<String>, String, Option<i32>, i32)> = sqlx::query_as(
+    #[derive(sqlx::FromRow)]
+    struct SingleMediumTrackRow {
+        id: String,
+        #[sqlx(rename = "releaseGroupId")]
+        release_group_id: Option<String>,
+        title: String,
+        #[sqlx(rename = "durationMs")]
+        duration_ms: Option<i32>,
+    }
+
+    let rows: Vec<SingleMediumTrackRow> = sqlx::query_as(
         r#"SELECT DISTINCT r.id, r."releaseGroupId", t.title, t."durationMs", t.position
            FROM "MusicBrainzRelease" r
            JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = r.id
@@ -207,14 +229,14 @@ async fn single_medium_releases_for_artists(
     .await?;
 
     let mut releases: Vec<ReleaseFacts> = Vec::new();
-    for (release_id, rg_id, title, duration_ms, _pos) in rows {
-        let secs = duration_ms.map(|ms| ms / 1000);
+    for row in rows {
+        let secs = row.duration_ms.map(|ms| ms / 1000);
         match releases.last_mut() {
-            Some(r) if r.release_id == release_id => r.tracks.push((title, secs)),
+            Some(r) if r.release_id == row.id => r.tracks.push((row.title, secs)),
             _ => releases.push(ReleaseFacts {
-                release_id,
-                release_group_id: rg_id,
-                tracks: vec![(title, secs)],
+                release_id: row.id,
+                release_group_id: row.release_group_id,
+                tracks: vec![(row.title, secs)],
             }),
         }
     }
@@ -278,10 +300,22 @@ async fn releases_for_artists(
     if artist_ids.is_empty() {
         return Ok(Vec::new());
     }
-    let rows: Vec<(String, Option<String>, String, bool, String, Option<i32>)> = sqlx::query_as(
-        r#"SELECT r.id, r."releaseGroupId", r.title,
-                  cardinality(r."releaseGroupSecondaryTypes") = 0,
-                  t.title, t."durationMs"
+    #[derive(sqlx::FromRow)]
+    struct ContainmentTrackRow {
+        id: String,
+        #[sqlx(rename = "releaseGroupId")]
+        release_group_id: Option<String>,
+        release_title: String,
+        is_original_work: bool,
+        track_title: String,
+        #[sqlx(rename = "durationMs")]
+        duration_ms: Option<i32>,
+    }
+
+    let rows: Vec<ContainmentTrackRow> = sqlx::query_as(
+        r#"SELECT r.id, r."releaseGroupId", r.title AS release_title,
+                  cardinality(r."releaseGroupSecondaryTypes") = 0 AS is_original_work,
+                  t.title AS track_title, t."durationMs"
            FROM "MusicBrainzRelease" r
            JOIN "MusicBrainzReleaseArtist" mra ON mra."releaseId" = r.id
            JOIN "MusicBrainzReleaseTrack" t ON t."releaseId" = r.id
@@ -293,16 +327,16 @@ async fn releases_for_artists(
     .await?;
 
     let mut releases: Vec<ContainmentCandidate> = Vec::new();
-    for (release_id, rg_id, title, is_original_work, track_title, duration_ms) in rows {
-        let secs = duration_ms.map(|ms| ms / 1000);
+    for row in rows {
+        let secs = row.duration_ms.map(|ms| ms / 1000);
         match releases.last_mut() {
-            Some(r) if r.release_id == release_id => r.tracks.push((track_title, secs)),
+            Some(r) if r.release_id == row.id => r.tracks.push((row.track_title, secs)),
             _ => releases.push(ContainmentCandidate {
-                release_id,
-                release_group_id: rg_id,
-                title,
-                is_original_work,
-                tracks: vec![(track_title, secs)],
+                release_id: row.id,
+                release_group_id: row.release_group_id,
+                title: row.release_title,
+                is_original_work: row.is_original_work,
+                tracks: vec![(row.track_title, secs)],
             }),
         }
     }

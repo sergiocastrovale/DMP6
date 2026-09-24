@@ -91,6 +91,10 @@ pub struct MbReleaseExtras<'a> {
     pub release_group_secondary_types: &'a [String],
 }
 
+/// Same shape as `upsert_mb_release_with_media` below, minus `mediumCount` - the two already-grouped
+/// pieces here (the release's own identity fields, plus `MbReleaseExtras`) don't have a further natural
+/// grouping without going fully artificial.
+#[allow(clippy::too_many_arguments)]
 pub async fn upsert_mb_release(
     pool: &PgPool,
     mb_release_id: &str,
@@ -314,7 +318,18 @@ pub async fn sync_mb_tracks_for_release(
     release_id: &str,
     tracks: &[MbTrackRow],
 ) -> Result<Vec<(String, Option<String>)>, sqlx::Error> {
-    let existing: Vec<(String, Option<String>, Option<i32>, Option<i32>, String)> = sqlx::query_as(
+    #[derive(sqlx::FromRow)]
+    struct ExistingTrackRow {
+        id: String,
+        #[sqlx(rename = "musicbrainzId")]
+        mb_id: Option<String>,
+        #[sqlx(rename = "discNumber")]
+        disc_number: Option<i32>,
+        position: Option<i32>,
+        title: String,
+    }
+
+    let existing: Vec<ExistingTrackRow> = sqlx::query_as(
         r#"SELECT id, "musicbrainzId", "discNumber", position, title
            FROM "MusicBrainzReleaseTrack" WHERE "releaseId" = $1"#,
     )
@@ -323,10 +338,15 @@ pub async fn sync_mb_tracks_for_release(
     .await?;
 
     let mut by_key: HashMap<String, String> = HashMap::new();
-    for (id, mb_id, disc, position, title) in &existing {
+    for row in &existing {
         by_key
-            .entry(mb_track_key(mb_id.as_deref(), *disc, *position, title))
-            .or_insert_with(|| id.clone());
+            .entry(mb_track_key(
+                row.mb_id.as_deref(),
+                row.disc_number,
+                row.position,
+                &row.title,
+            ))
+            .or_insert_with(|| row.id.clone());
     }
 
     let now = Utc::now().naive_utc();
@@ -432,7 +452,7 @@ pub async fn sync_mb_tracks_for_release(
     // correct - the track genuinely left the release - and it is now the only case that does.
     let stale: Vec<String> = existing
         .iter()
-        .map(|(id, ..)| id.clone())
+        .map(|row| row.id.clone())
         .filter(|id| !keep.contains(id))
         .collect();
     if !stale.is_empty() {

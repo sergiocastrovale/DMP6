@@ -232,15 +232,19 @@ async fn main() {
     reporter.blank();
     let artist_ids = vec![artist_id.clone()];
     match catalogue_gaps::fill_catalogue_gaps(
-        &pool,
-        &http_client,
-        &mut limiter,
-        &reporter,
-        &running,
-        None,
-        None,
-        None,
-        false,
+        catalogue_gaps::GapFillContext {
+            pool: &pool,
+            http_client: &http_client,
+            limiter: &mut limiter,
+            reporter: &reporter,
+            running: &running,
+        },
+        catalogue_gaps::ArtistFilter {
+            from: None,
+            to: None,
+            only: None,
+            exact: false,
+        },
         false,
         args.verbose,
         Some(&artist_ids),
