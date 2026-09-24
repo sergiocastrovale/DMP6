@@ -353,22 +353,40 @@ pub async fn sync_mb_tracks_for_release(
         }
     }
 
-    for (id, t) in &to_update {
+    if !to_update.is_empty() {
+        let ids: Vec<&str> = to_update.iter().map(|(id, _)| id.as_str()).collect();
+        let titles: Vec<&str> = to_update.iter().map(|(_, t)| t.title.as_str()).collect();
+        let positions: Vec<Option<i32>> = to_update.iter().map(|(_, t)| t.position).collect();
+        let discs: Vec<Option<i32>> = to_update.iter().map(|(_, t)| t.disc_number).collect();
+        let durations: Vec<Option<i32>> = to_update.iter().map(|(_, t)| t.duration_ms).collect();
+        let mb_ids: Vec<Option<&str>> = to_update.iter().map(|(_, t)| t.mb_id.as_deref()).collect();
+        let recording_ids: Vec<Option<&str>> = to_update
+            .iter()
+            .map(|(_, t)| t.recording_id.as_deref())
+            .collect();
+        let timestamps: Vec<NaiveDateTime> = vec![now; to_update.len()];
         sqlx::query(
-            r#"UPDATE "MusicBrainzReleaseTrack"
-               SET title = $2, position = $3, "discNumber" = $4, "durationMs" = $5,
-                   "musicbrainzId" = COALESCE($6, "musicbrainzId"),
-                   "recordingId" = COALESCE($7, "recordingId"), "updatedAt" = $8
-               WHERE id = $1"#,
+            r#"UPDATE "MusicBrainzReleaseTrack" AS t
+               SET title = u.title, position = u.position, "discNumber" = u."discNumber",
+                   "durationMs" = u."durationMs",
+                   "musicbrainzId" = COALESCE(u."musicbrainzId", t."musicbrainzId"),
+                   "recordingId" = COALESCE(u."recordingId", t."recordingId"),
+                   "updatedAt" = u."updatedAt"
+               FROM UNNEST(
+                 $1::text[], $2::text[], $3::int[], $4::int[], $5::int[], $6::text[], $7::text[],
+                 $8::timestamp[]
+               ) AS u(id, title, position, "discNumber", "durationMs", "musicbrainzId",
+                      "recordingId", "updatedAt")
+               WHERE t.id = u.id"#,
         )
-        .bind(id)
-        .bind(&t.title)
-        .bind(t.position)
-        .bind(t.disc_number)
-        .bind(t.duration_ms)
-        .bind(t.mb_id.as_deref())
-        .bind(t.recording_id.as_deref())
-        .bind(now)
+        .bind(&ids)
+        .bind(&titles)
+        .bind(&positions)
+        .bind(&discs)
+        .bind(&durations)
+        .bind(&mb_ids)
+        .bind(&recording_ids)
+        .bind(&timestamps)
         .execute(pool)
         .await?;
     }
