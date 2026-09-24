@@ -218,6 +218,9 @@ fn main() {
     let mut preview_canvas = RgbImage::new(preview_w, preview_h);
 
     let processed = AtomicUsize::new(0);
+    // At most ~100 PROGRESS lines over the whole run regardless of image count - a fixed stride like
+    // "every 100" goes silent until the very end on a small mosaic (count < 100).
+    let progress_stride = (count / 100).max(1);
 
     let mut tiles: Vec<TileData> = paths
         .par_iter()
@@ -235,10 +238,12 @@ fn main() {
 
             let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
             if args.web {
-                println!(
-                    "PROGRESS:{}",
-                    serde_json::json!({"current": done, "total": count})
-                );
+                if done.is_multiple_of(progress_stride) || done == count {
+                    println!(
+                        "PROGRESS:{}",
+                        serde_json::json!({"current": done, "total": count})
+                    );
+                }
             } else if done.is_multiple_of(100) || done == count {
                 eprint!("\r  Processing: {}/{}", done, count);
             }
