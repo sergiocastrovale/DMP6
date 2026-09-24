@@ -20,10 +20,7 @@ use rayon::prelude::*;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::atomic::Ordering,
 };
 
 use common::images::{hash_image_file, resolve_release_cover, upload_release_image_to_s3};
@@ -498,34 +495,7 @@ async fn main() {
         }
     };
 
-    // SIGTERM / Ctrl-C handler - release lock before exiting
-    let shutdown = Arc::new(AtomicBool::new(false));
-    {
-        let shutdown = shutdown.clone();
-        let pool = pool.clone();
-        tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            shutdown.store(true, Ordering::SeqCst);
-            eprintln!("\nShutdown requested - finishing current folder...");
-            // Wait for second Ctrl-C → force exit after releasing lock
-            tokio::signal::ctrl_c().await.ok();
-            release_lock(&pool, "index", std::process::id()).await;
-            std::process::exit(1);
-        });
-    }
-    {
-        let shutdown = shutdown.clone();
-        let pool = pool.clone();
-        tokio::spawn(async move {
-            let mut term =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("SIGTERM handler");
-            term.recv().await;
-            shutdown.store(true, Ordering::SeqCst);
-            release_lock(&pool, "index", std::process::id()).await;
-            std::process::exit(0);
-        });
-    }
+    let running = common::app::spawn_shutdown_handlers(&pool, "index", "folder", 0);
 
     let use_local = config.use_local();
     let use_s3 = config.use_s3();
@@ -835,7 +805,7 @@ async fn main() {
     // Main folder loop
     // -------------------------------------------------------------------------
     for (folder_idx, folder_name) in artist_folders.iter().enumerate() {
-        if shutdown.load(Ordering::SeqCst) {
+        if !running.load(Ordering::SeqCst) {
             break;
         }
 
@@ -1768,7 +1738,7 @@ async fn main() {
     // -------------------------------------------------------------------------
     // Post-loop: detect entirely deleted folders
     // -------------------------------------------------------------------------
-    if !shutdown.load(Ordering::SeqCst) && !has_filter(&args) {
+    if running.load(Ordering::SeqCst) && !has_filter(&args) {
         match detect_deleted_folders(&pool, &scanned_folders, &config).await {
             Ok(del) => {
                 favorites_dropped_total += del.favorites_dropped;
@@ -1787,7 +1757,7 @@ async fn main() {
     // -------------------------------------------------------------------------
     // Post-loop: resolve artist identity + rebuild credit links
     // -------------------------------------------------------------------------
-    if !shutdown.load(Ordering::SeqCst) && !args.skip_resolve {
+    if running.load(Ordering::SeqCst) && !args.skip_resolve {
         // A filtered run only resolves what it touched; an unfiltered run sweeps everything. This is
         // what keeps `./index --only "X"` from re-scanning all ~1.8M tracks every time.
         let scoped: Option<Vec<String>> = if has_filter(&args) {
@@ -1809,7 +1779,7 @@ async fn main() {
     // -------------------------------------------------------------------------
     // Post-loop: re-extract missing release covers (safety net)
     // -------------------------------------------------------------------------
-    if !shutdown.load(Ordering::SeqCst) && !args.skip_covers && !is_targeted {
+    if running.load(Ordering::SeqCst) && !args.skip_covers && !is_targeted {
         let has_filter = args.only.is_some() || args.from.is_some() || args.to.is_some();
         let missing: Vec<(String, String, Option<String>, String)> = if has_filter {
             let filtered_names: Vec<String> =
@@ -1869,7 +1839,7 @@ async fn main() {
             ));
             let mut fixed = 0u32;
             for (release_id, file_path, folder_path, group_key) in &missing {
-                if shutdown.load(Ordering::SeqCst) {
+                if !running.load(Ordering::SeqCst) {
                     break;
                 }
 
@@ -2065,7 +2035,7 @@ async fn main() {
 
     // An interrupted run keeps its checkpoint (and run hash) so `--resume` picks up where it stopped
     // instead of restarting the whole scan.
-    if !shutdown.load(Ordering::SeqCst) {
+    if running.load(Ordering::SeqCst) {
         clear_index_checkpoint(&pool).await.ok();
         if run_hash.is_some() {
             clear_run_hash(&pool, "indexRunHash").await;

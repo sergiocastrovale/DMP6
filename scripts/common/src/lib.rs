@@ -1,3 +1,4 @@
+pub mod app;
 pub mod artists;
 pub mod checkpoint;
 pub mod cleanup;

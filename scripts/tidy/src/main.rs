@@ -14,8 +14,7 @@ use dmp_sync::db::{
 use dmp_sync::mb_api::RateLimiter;
 use reqwest::Client;
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 /// Library-wide repair split out of `./sync` (docs/scripts/tidy.md, docs/specs/spec_tidy_script.md).
 /// Every caller chains `./tidy` after `./sync` - sync itself never calls it.
@@ -117,32 +116,7 @@ async fn main() {
         }
     };
 
-    let running = Arc::new(AtomicBool::new(true));
-    {
-        let running = running.clone();
-        let pool2 = pool.clone();
-        tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            running.store(false, Ordering::SeqCst);
-            eprintln!("\nShutdown requested - finishing current phase...");
-            tokio::signal::ctrl_c().await.ok();
-            release_lock(&pool2, "tidy", std::process::id()).await;
-            std::process::exit(1);
-        });
-    }
-    {
-        let running = running.clone();
-        let pool2 = pool.clone();
-        tokio::spawn(async move {
-            let mut term =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("SIGTERM handler");
-            term.recv().await;
-            running.store(false, Ordering::SeqCst);
-            release_lock(&pool2, "tidy", std::process::id()).await;
-            std::process::exit(1);
-        });
-    }
+    let running = common::app::spawn_shutdown_handlers(&pool, "tidy", "phase", 1);
 
     reporter.header(if args.web {
         "DMP Tidy"

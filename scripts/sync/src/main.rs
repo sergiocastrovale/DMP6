@@ -12,7 +12,7 @@ use common::types::TrackMeta;
 use futures::stream::StreamExt;
 use reqwest::Client;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use common::images::download_artist_image;
@@ -443,33 +443,7 @@ async fn main() {
         }
     };
 
-    // SIGTERM / Ctrl-C handler - release lock before exiting
-    let running = Arc::new(AtomicBool::new(true));
-    {
-        let running = running.clone();
-        let pool2 = pool.clone();
-        tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            running.store(false, Ordering::SeqCst);
-            eprintln!("\nShutdown requested - finishing current artist...");
-            tokio::signal::ctrl_c().await.ok();
-            release_lock(&pool2, "sync", std::process::id()).await;
-            std::process::exit(1);
-        });
-    }
-    {
-        let running = running.clone();
-        let pool2 = pool.clone();
-        tokio::spawn(async move {
-            let mut term =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("SIGTERM handler");
-            term.recv().await;
-            running.store(false, Ordering::SeqCst);
-            release_lock(&pool2, "sync", std::process::id()).await;
-            std::process::exit(0);
-        });
-    }
+    let running = common::app::spawn_shutdown_handlers(&pool, "sync", "artist", 0);
 
     let s3_client = create_s3_client(&config).await;
 

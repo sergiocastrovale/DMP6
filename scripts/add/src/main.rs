@@ -12,8 +12,6 @@ use dmp_sync::catalogue_gaps;
 use dmp_sync::mb_api::{self, RateLimiter};
 use reqwest::Client;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 mod db;
 mod folder;
@@ -90,32 +88,7 @@ async fn main() {
         }
     };
 
-    let running = Arc::new(AtomicBool::new(true));
-    {
-        let running = running.clone();
-        let pool2 = pool.clone();
-        tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            running.store(false, Ordering::SeqCst);
-            eprintln!("\nShutdown requested - finishing current phase...");
-            tokio::signal::ctrl_c().await.ok();
-            release_lock(&pool2, "add", std::process::id()).await;
-            std::process::exit(1);
-        });
-    }
-    {
-        let running = running.clone();
-        let pool2 = pool.clone();
-        tokio::spawn(async move {
-            let mut term =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("SIGTERM handler");
-            term.recv().await;
-            running.store(false, Ordering::SeqCst);
-            release_lock(&pool2, "add", std::process::id()).await;
-            std::process::exit(1);
-        });
-    }
+    let running = common::app::spawn_shutdown_handlers(&pool, "add", "phase", 1);
 
     let http_client = Client::builder()
         .timeout(std::time::Duration::from_secs(60))
