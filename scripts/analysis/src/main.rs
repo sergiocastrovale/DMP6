@@ -1132,80 +1132,95 @@ fn write_nav<W: Write>(
     pages: &PageFlags,
     from_index: bool,
 ) -> std::io::Result<()> {
-    // (id, label, filename, count, fixed_count, show)
-    let entries: Vec<(&str, &str, &str, Option<usize>, usize, bool)> = vec![
-        ("overview", "Overview", "index.html", None, 0, true),
-        (
-            "issues",
-            "Issues",
-            "issues.html",
-            Some(counts.issues),
-            0,
-            true,
-        ),
-        (
-            "critical",
-            "Critical",
-            "critical_1.html",
-            Some(counts.critical),
-            counts.critical_matched,
-            pages.critical,
-        ),
-        (
-            "mb",
-            "MusicBrainz",
-            "mb_1.html",
-            Some(counts.mb),
-            counts.mb_matched,
-            pages.mb,
-        ),
-        (
-            "discogs",
-            "Discogs",
-            "discogs_1.html",
-            Some(counts.discogs),
-            counts.discogs_matched,
-            pages.discogs,
-        ),
-        (
-            "ids",
-            "IDs",
-            "ids_1.html",
-            Some(counts.ids),
-            counts.ids_matched,
-            pages.ids,
-        ),
-        (
-            "other",
-            "Other",
-            "other_1.html",
-            Some(counts.other),
-            counts.other_matched,
-            pages.other,
-        ),
+    struct NavEntry {
+        id: &'static str,
+        label: &'static str,
+        filename: &'static str,
+        count: Option<usize>,
+        matched: usize,
+        show: bool,
+    }
+
+    let entries: Vec<NavEntry> = vec![
+        NavEntry {
+            id: "overview",
+            label: "Overview",
+            filename: "index.html",
+            count: None,
+            matched: 0,
+            show: true,
+        },
+        NavEntry {
+            id: "issues",
+            label: "Issues",
+            filename: "issues.html",
+            count: Some(counts.issues),
+            matched: 0,
+            show: true,
+        },
+        NavEntry {
+            id: "critical",
+            label: "Critical",
+            filename: "critical_1.html",
+            count: Some(counts.critical),
+            matched: counts.critical_matched,
+            show: pages.critical,
+        },
+        NavEntry {
+            id: "mb",
+            label: "MusicBrainz",
+            filename: "mb_1.html",
+            count: Some(counts.mb),
+            matched: counts.mb_matched,
+            show: pages.mb,
+        },
+        NavEntry {
+            id: "discogs",
+            label: "Discogs",
+            filename: "discogs_1.html",
+            count: Some(counts.discogs),
+            matched: counts.discogs_matched,
+            show: pages.discogs,
+        },
+        NavEntry {
+            id: "ids",
+            label: "IDs",
+            filename: "ids_1.html",
+            count: Some(counts.ids),
+            matched: counts.ids_matched,
+            show: pages.ids,
+        },
+        NavEntry {
+            id: "other",
+            label: "Other",
+            filename: "other_1.html",
+            count: Some(counts.other),
+            matched: counts.other_matched,
+            show: pages.other,
+        },
     ];
 
     writeln!(f, "<nav class=\"nav-bar\">")?;
-    for (id, label, filename, count, matched, show) in &entries {
-        if !show {
+    for entry in &entries {
+        if !entry.show {
             continue;
         }
-        let href = if *filename == "index.html" {
+        let href = if entry.filename == "index.html" {
             if from_index {
                 "index.html".to_string()
             } else {
                 "../index.html".to_string()
             }
         } else if from_index {
-            format!("pages/{}", filename)
+            format!("pages/{}", entry.filename)
         } else {
-            filename.to_string()
+            entry.filename.to_string()
         };
-        let active_class = if *id == active { " active" } else { "" };
-        let badge = match count {
+        let active_class = if entry.id == active { " active" } else { "" };
+        let badge = match entry.count {
             Some(n) => {
-                let delta = if *matched > 0 {
-                    format!("<span class=\"match-delta\"> (-{})</span>", matched)
+                let delta = if entry.matched > 0 {
+                    format!("<span class=\"match-delta\"> (-{})</span>", entry.matched)
                 } else {
                     String::new()
                 };
@@ -1216,7 +1231,7 @@ fn write_nav<W: Write>(
         writeln!(
             f,
             "<a href=\"{}\" class=\"nav-tab{}\">{}{}</a>",
-            href, active_class, label, badge
+            href, active_class, entry.label, badge
         )?;
     }
     writeln!(f, "</nav>")?;
@@ -1266,15 +1281,21 @@ fn write_page_end<W: Write>(f: &mut W, from_index: bool) -> std::io::Result<()> 
 // Report: index.html
 // ---------------------------------------------------------------------------
 
-fn write_index(
-    report_dir: &Path,
-    scan_root: &str,
+/// The whole-run counters `write_index` reports - travel together as the scan's own tally.
+#[derive(Clone, Copy)]
+struct ScanStats {
     total_files: u64,
     total_size: u64,
     error_count: u64,
-    file_type_counts: &HashMap<String, u64>,
     elapsed: std::time::Duration,
     issues_len: usize,
+}
+
+fn write_index(
+    report_dir: &Path,
+    scan_root: &str,
+    stats: &ScanStats,
+    file_type_counts: &HashMap<String, u64>,
     counts: &NavCounts,
     pages: &PageFlags,
 ) -> std::io::Result<()> {
@@ -1291,15 +1312,15 @@ fn write_index(
         <span class=\"meta\">{} &middot; {:.2}s</span>\
         </p>",
         encode_text(scan_root),
-        human_size(total_size),
-        elapsed.as_secs_f64(),
+        human_size(stats.total_size),
+        stats.elapsed.as_secs_f64(),
     )?;
 
     write_nav(&mut f, "overview", counts, pages, true)?;
 
     // Stats cards
-    let readable = total_files.saturating_sub(error_count);
-    let ok_count = readable.saturating_sub(issues_len as u64);
+    let readable = stats.total_files.saturating_sub(stats.error_count);
+    let ok_count = readable.saturating_sub(stats.issues_len as u64);
 
     write!(
         f,
@@ -1316,8 +1337,8 @@ fn write_index(
 
     write!(f, "</div>\n<div class=\"stats-group\">\n")?;
     writeln!(f, "<div class=\"stat-card\"><div class=\"label\">Files OK</div><div class=\"value ok\">{}</div></div>", ok_count)?;
-    writeln!(f, "<div class=\"stat-card\"><div class=\"label\">Files with Issues</div><div class=\"value fail\">{}</div></div>", issues_len)?;
-    writeln!(f, "<div class=\"stat-card\"><div class=\"label\">Unreadable Files</div><div class=\"value warn\">{}</div></div>", error_count)?;
+    writeln!(f, "<div class=\"stat-card\"><div class=\"label\">Files with Issues</div><div class=\"value fail\">{}</div></div>", stats.issues_len)?;
+    writeln!(f, "<div class=\"stat-card\"><div class=\"label\">Unreadable Files</div><div class=\"value warn\">{}</div></div>", stats.error_count)?;
     write!(f, "</div>\n</div>\n")?;
 
     // Category breakdown
@@ -2041,22 +2062,48 @@ fn write_other_page(
 // Report: orchestrator
 // ---------------------------------------------------------------------------
 
+/// The raw scan artifacts `generate_report` needs but never mutates - the walk's own output.
+#[derive(Clone, Copy)]
+struct ScanArtifacts<'a> {
+    scan_root: &'a str,
+    all_paths: &'a [PathBuf],
+    parent_audio_count: &'a HashMap<PathBuf, usize>,
+    unreadable: &'a [(PathBuf, String)],
+}
+
+/// The two autofix-derived references every per-category page needs, or `None`/`None` when
+/// `--fix` wasn't requested this run.
+struct AutofixRefs<'a> {
+    diffs: Option<&'a MatchDiffs>,
+    skipped_files: Option<&'a SkippedFiles>,
+}
+
 fn generate_report(
     issues: &[FileIssue],
-    all_paths: &[PathBuf],
-    parent_audio_count: &HashMap<PathBuf, usize>,
-    unreadable: &[(PathBuf, String)],
-    scan_root: &str,
-    total_files: u64,
-    total_size: u64,
-    error_count: u64,
+    artifacts: &ScanArtifacts,
+    stats: &ScanStats,
     file_type_counts: &HashMap<String, u64>,
-    elapsed: std::time::Duration,
     report_dir: &Path,
     pages: &PageFlags,
-    diffs: Option<&MatchDiffs>,
-    skipped_files: Option<&SkippedFiles>,
+    autofix: AutofixRefs,
 ) -> std::io::Result<()> {
+    let ScanArtifacts {
+        scan_root,
+        all_paths,
+        parent_audio_count,
+        unreadable,
+    } = *artifacts;
+    let ScanStats {
+        total_files,
+        total_size,
+        error_count,
+        elapsed,
+        issues_len: _,
+    } = *stats;
+    let AutofixRefs {
+        diffs,
+        skipped_files,
+    } = autofix;
     // Create directory structure
     fs::create_dir_all(report_dir.join("css"))?;
     fs::create_dir_all(report_dir.join("js"))?;
@@ -2131,12 +2178,14 @@ fn generate_report(
     write_index(
         report_dir,
         scan_root,
-        total_files,
-        total_size,
-        error_count,
+        &ScanStats {
+            total_files,
+            total_size,
+            error_count,
+            elapsed,
+            issues_len: issues.len(),
+        },
         file_type_counts,
-        elapsed,
-        issues.len(),
         &counts,
         pages,
     )?;
@@ -2507,16 +2556,20 @@ fn run_autofix(
 /// Re-scan files that originally had issues, classify fix status, and build per-field diffs.
 /// `skip_dirs` maps directories that beets skipped → the skip reason.
 /// Returns (fixed_paths, still_broken, newly_unreadable, autofix_diffs, skipped_files).
+/// `compute_autofix_diffs`'s outcome: which originally-broken files beets fixed, which are still
+/// broken, which went newly unreadable, the per-field diffs, and the per-file skip reasons.
+struct AutofixResult {
+    matched: Vec<PathBuf>,
+    still_broken: Vec<FileIssue>,
+    unreadable: Vec<(PathBuf, String)>,
+    diffs: MatchDiffs,
+    skipped_files: SkippedFiles,
+}
+
 fn compute_autofix_diffs(
     original_issues: &[FileIssue],
     skip_dirs: &HashMap<PathBuf, String>,
-) -> (
-    Vec<PathBuf>,
-    Vec<FileIssue>,
-    Vec<(PathBuf, String)>,
-    MatchDiffs,
-    SkippedFiles,
-) {
+) -> AutofixResult {
     let mut matched: Vec<PathBuf> = Vec::new();
     let mut still_broken: Vec<FileIssue> = Vec::new();
     let mut unreadable: Vec<(PathBuf, String)> = Vec::new();
@@ -2783,7 +2836,13 @@ fn compute_autofix_diffs(
         }
     }
 
-    (matched, still_broken, unreadable, diffs, skipped_files)
+    AutofixResult {
+        matched,
+        still_broken,
+        unreadable,
+        diffs,
+        skipped_files,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3119,7 +3178,7 @@ fn main() {
         println!("\n[4/5] Re-scanning files after autofix...");
         let result = compute_autofix_diffs(&issues, &skip_dirs);
         println!("  Matched: {} | Still broken: {} | Newly unreadable: {} | Diffs: {} files | Skipped: {} files",
-            result.0.len(), result.1.len(), result.2.len(), result.3.len(), result.4.len());
+            result.matched.len(), result.still_broken.len(), result.unreadable.len(), result.diffs.len(), result.skipped_files.len());
         Some(result)
     } else {
         if args.autofix_dry {
@@ -3182,7 +3241,12 @@ fn main() {
 
         if let Some(ref data) = autofix_data {
             // --- Autofix + quarantine: use pre-computed diffs ---
-            let (ref matched_paths, ref still_broken, ref new_unreadable, _, _) = *data;
+            let AutofixResult {
+                matched: ref matched_paths,
+                ref still_broken,
+                unreadable: ref new_unreadable,
+                ..
+            } = *data;
 
             let autofixed_dir = scan_root_path.join("__AUTOFIXED");
             let quarantine_dir = scan_root_path.join("__QUARANTINE");
@@ -3291,24 +3355,31 @@ fn main() {
 
         let elapsed = start.elapsed();
 
-        let diffs_ref = autofix_data.as_ref().map(|(_, _, _, d, _)| d);
-        let skipped_ref = autofix_data.as_ref().map(|(_, _, _, _, s)| s);
+        let diffs_ref = autofix_data.as_ref().map(|r| &r.diffs);
+        let skipped_ref = autofix_data.as_ref().map(|r| &r.skipped_files);
 
         match generate_report(
             &issues,
-            &paths,
-            &parent_audio_count,
-            &unreadable_paths,
-            &scan_root,
-            total_files,
-            total_size,
-            error_count,
+            &ScanArtifacts {
+                scan_root: &scan_root,
+                all_paths: &paths,
+                parent_audio_count: &parent_audio_count,
+                unreadable: &unreadable_paths,
+            },
+            &ScanStats {
+                total_files,
+                total_size,
+                error_count,
+                elapsed,
+                issues_len: issues.len(),
+            },
             &file_type_counts,
-            elapsed,
             &report_dir,
             &pages,
-            diffs_ref,
-            skipped_ref,
+            AutofixRefs {
+                diffs: diffs_ref,
+                skipped_files: skipped_ref,
+            },
         ) {
             Ok(_) => {
                 println!();
