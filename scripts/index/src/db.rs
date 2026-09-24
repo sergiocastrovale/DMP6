@@ -229,7 +229,7 @@ pub async fn apply_folder_consensus(
             continue;
         }
 
-        let previously_had_reason: Option<(bool,)> = sqlx::query_as(
+        let already_had_reason: Option<(bool,)> = sqlx::query_as(
             r#"SELECT "statusReason" IS NOT NULL FROM "LocalRelease" WHERE id = $1"#,
         )
         .bind(release_id)
@@ -246,7 +246,7 @@ pub async fn apply_folder_consensus(
         .await
         .ok();
 
-        if previously_had_reason.map(|(v,)| v).unwrap_or(false) {
+        if already_had_reason.map(|(v,)| v).unwrap_or(false) {
             sqlx::query(
                 r#"UPDATE "LocalRelease" SET "matchStatus" = 'UNMATCHED'::"ReleaseStatus", "statusReason" = NULL, "updatedAt" = NOW() WHERE id = $1"#,
             )

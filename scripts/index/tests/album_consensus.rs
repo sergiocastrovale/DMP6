@@ -1,9 +1,9 @@
 //! Regression test for the no-guessing release-placement gate (docs/no_guessing.md).
 //!
 //! `apply_folder_consensus` re-evaluates a folder's tracks straight from the DB after every index
-//! run and either parks a disagreeing release at UNKNOWN with a reason, or clears a previously
-//! flagged one back to UNMATCHED once it has been retagged into agreement. Box-placed / member
-//! releases must be left alone - their placement comes from the box pass, not from tags.
+//! run and either parks a disagreeing release at UNKNOWN with a reason, or clears an already-flagged
+//! one back to UNMATCHED once it has been retagged into agreement. Box-placed / member releases must
+//! be left alone - their placement comes from the box pass, not from tags.
 //!
 //! Integration test against a REAL Postgres, so it is `#[ignore]`d and never runs on a plain
 //! `cargo test`. Point it at a disposable, migrated database - never the production `DATABASE_URL`,

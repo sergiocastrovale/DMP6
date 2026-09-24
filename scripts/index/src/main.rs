@@ -792,7 +792,7 @@ async fn main() {
     let mut mb_id_to_image_hash: HashMap<String, String> = HashMap::new();
     let mut all_artist_ids: HashSet<String> = HashSet::new();
     // No-guessing release placement (docs/no_guessing.md): counts per UNKNOWN reason this run set,
-    // plus how many previously-flagged releases got retagged back into agreement.
+    // plus how many already-flagged releases got retagged back into agreement.
     let mut consensus_reason_totals: HashMap<&'static str, u64> = HashMap::new();
     let mut consensus_cleared_total: u64 = 0;
 

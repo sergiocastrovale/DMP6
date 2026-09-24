@@ -73,7 +73,7 @@ fn title(path: &Path) -> Option<String> {
 }
 
 // Seeds through the production writer with `force`: lofty's generic `Tag` can't store these ids in
-// an MP3 at all (the bug `MbSlots` works around), so it can't be used to build the fixtures either.
+// an MP3 at all (the bug `MbSlots` works around), so it cannot build the fixtures either.
 // `release_track` stays unset so the self-heal never fires while seeding.
 fn seed(path: &Path, recording: &str, album: Option<&str>) {
     let ids = MbTagIds {

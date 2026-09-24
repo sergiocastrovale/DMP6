@@ -40,7 +40,7 @@ struct Args {
     /// Fix missing metadata issues
     #[arg(long)]
     missing: bool,
-    /// Revert previously applied fixes instead of applying new ones
+    /// Revert already-applied fixes instead of applying new ones
     #[arg(long)]
     revert: bool,
     /// Revert mode

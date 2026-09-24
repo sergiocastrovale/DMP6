@@ -44,7 +44,7 @@ pub fn normalize_name(name: &str) -> String {
 }
 
 /// Tolerant similarity: exact normalized match, or >= 50% word overlap ignoring noise words.
-/// See the module doc for why this must NOT be used to validate a whole compound tag.
+/// See the module doc for why this must NOT validate a whole compound tag.
 pub fn names_are_similar(a: &str, b: &str) -> bool {
     let na = normalize_name(a);
     let nb = normalize_name(b);

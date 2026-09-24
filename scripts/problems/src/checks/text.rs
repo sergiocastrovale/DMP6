@@ -54,7 +54,8 @@ pub fn invisible_chars(s: &str) -> Vec<char> {
     found
 }
 
-/// The subset of CP1252's 0x80..=0x9F range used to detect mojibake: symbols and punctuation only.
+/// The subset of CP1252's 0x80..=0x9F range this check treats as mojibake evidence: symbols and
+/// punctuation only.
 ///
 /// A UTF-8 continuation byte in that range surfaces as one of these when text is mis-decoded as
 /// CP1252, which is why `â€™` (U+00E2 U+20AC U+2122) is the single most common mojibake signature.

@@ -36,7 +36,7 @@ impl Severity {
     }
 }
 
-/// One kind of defect. Ordering is by declaration and only used to make the report deterministic.
+/// One kind of defect. Ordering is by declaration, only for a deterministic report.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
 pub enum ReasonCode {
     // ---- file-level: fatal ------------------------------------------------------------------

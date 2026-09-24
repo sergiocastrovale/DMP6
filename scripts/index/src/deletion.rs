@@ -293,9 +293,8 @@ pub async fn delete_orphan_artists(pool: &PgPool, config: &Config, scope: Artist
     deleted
 }
 
-/// After indexing all folders, find folders that were previously indexed but
-/// are no longer present in the current scan run. Delete their tracks and
-/// cascade-clean empty releases and orphan artists.
+/// After indexing all folders, find folders that are known to the DB but no longer present in the
+/// current scan run. Delete their tracks and cascade-clean empty releases and orphan artists.
 /// Errors propagate: a failed read here must never be read as "zero known folders," which would make
 /// every folder on disk look newly missing on the next successful run.
 pub async fn detect_deleted_folders(

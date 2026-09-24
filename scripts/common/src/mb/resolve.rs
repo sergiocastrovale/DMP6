@@ -169,7 +169,7 @@ const SEPARATOR_PATTERNS: &[(&str, JoinKind)] = &[
 ];
 
 /// Find every candidate split point. Purely syntactic - proposes, never decides. A comma between two
-/// digits ("10,000 Maniacs") is not a separator.
+/// digits (as in a number embedded in an artist name) is not a separator.
 ///
 /// Matching is **ASCII**-case-insensitive, against the original bytes, and that is deliberate. Scanning
 /// a `to_lowercase()` copy while recording offsets into the original is only correct while lowercasing
@@ -201,7 +201,7 @@ pub fn separator_positions(name: &str) -> Vec<Separator> {
         for (pat, kind) in SEPARATOR_PATTERNS {
             let p = pat.as_bytes();
             if bytes.len() - i >= p.len() && bytes[i..i + p.len()].eq_ignore_ascii_case(p) {
-                // "10,000 Maniacs" - a comma wrapped in digits is part of the number.
+                // A comma wrapped in digits (a number embedded in an artist name) is part of the number.
                 if *pat == ", " {
                     let prev_digit = i > 0 && bytes[i - 1].is_ascii_digit();
                     let next = i + pat.len();

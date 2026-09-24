@@ -610,7 +610,7 @@ async fn main() {
         reporter.kv(
             "  was missing",
             &format!(
-                "{} release(s) previously MISSING_TRACKS now COMPLETE",
+                "{} release(s) went from MISSING_TRACKS to COMPLETE",
                 summary.rescored_missing_now_complete
             ),
         );

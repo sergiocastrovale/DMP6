@@ -16,7 +16,7 @@ Options:
           Fix missing metadata issues
 
       --revert
-          Revert previously applied fixes instead of applying new ones
+          Revert already-applied fixes instead of applying new ones
 
       --mode <MODE>
           Revert mode

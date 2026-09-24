@@ -124,7 +124,8 @@ fn split_ignoring_numeric_commas(s: &str) -> Vec<String> {
 ///
 /// Splitting rules:
 /// - Splits on "feat."/"ft."/"featuring" (case-insensitive) to separate featured artists
-/// - Splits on ", " (comma+space), preserving numeric commas (10,000)
+/// - Splits on ", " (comma+space), preserving a comma embedded inside a number (e.g. a four-digit
+///   artist name)
 /// - Splits on " & " (ampersand with spaces)
 /// - Splits on "/" "//" "\" "\\" "|" "||" ";"
 /// - Splits on "vs." / "vs" (unambiguous collaboration marker)
