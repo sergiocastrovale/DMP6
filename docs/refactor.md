@@ -373,6 +373,28 @@ Following the mechanical clippy-fix batch above, converted every remaining `type
   (printed plan uses the title/image fields the near-miss above would have dropped). All exit 0,
   `errors.log` unchanged throughout.
 
+## Phase 5.2 — module splits
+
+- **`sync/src/db.rs` (2350 lines) split into `sync/src/db/{mod.rs, mb_release, rescore, artist, local,
+  cleanup, identity, watermark}.rs`**, by entity/table, following the section banners the file already
+  had. `mod.rs` re-exports everything (`pub use mb_release::*` etc.) so every existing `db::Whatever`
+  path - both within this crate and from the `sync` binary crate across the lib/bin boundary - kept
+  working with zero caller changes. Verbatim line-range move (checked arithmetically: every extracted
+  range's line count summed to the original file's exactly, confirming no line was dropped or
+  duplicated) - the only real fixes were consequences of the split itself: a doc comment that had been
+  silently mis-attached to the wrong item for the file's entire history (`get_contained_notes_for_artist`'s
+  real doc comment sat orphaned before `IdentityRepair`'s own comment, attached to neither) became a
+  hard parse error once it landed at true end-of-file with nothing after it - moved to the function it
+  actually documents; `clamp_title`'s test module physically sat in the file's tail region (with
+  `get_artists_pending_sync`/run-hash code) even though it tests a function that lives at the top
+  (MB-release upsert) - moved to sit with `clamp_title` itself.
+- **Verified live** on the deployed NAS: `sync --release` (exercises `mb_release`/`local` modules) and
+  `tidy --only` (exercises `rescore`/`identity`/`watermark`/`artist` modules) - both exit 0, output
+  identical in shape to pre-split runs, `errors.log` growth matches the expected pre-existing mtime
+  warning from the sync run alone.
+- Remaining Phase 5.2 targets: `sync/src/boxset.rs` (3200 lines), `sync/src/main.rs` (2300 lines),
+  `index/src/main.rs` (2050 lines).
+
 ## Verification
 
 Every commit passed `scripts/check --db` (fmt, clippy, full workspace test suite incl. `--ignored`
