@@ -448,6 +448,44 @@ Following the mechanical clippy-fix batch above, converted every remaining `type
 `sync/main.rs`, `index/main.rs`) landed, each compiled, linted (`-D warnings`), tested, deployed, and
 verified against the live NAS before moving to the next.
 
+## Phase 5.3 — comment neutrality sweep (complete)
+
+Went file by file through every comment matching `used to|previously|audit #[0-9]|/mnt/` (44 files at
+the start, grown from the plan's original 38 by the module splits duplicating some comments across new
+files) plus a separate pass for bare `20\d\d-\d\d` dates and thousands-separated measured counts in
+comments. For each: rewrote a genuine "fixed incident" narration as a present-tense invariant (what the
+code does and why, not what it used to do before a fix), replaced real artist/album names used as
+incident examples with generic placeholders (ABBA, HIM, IQ, Marillion, Bass Mekanik, Yello, Soulwax,
+Radiohead, Jimmy Regal And The Royals, Lena Horne & Gábor Szabó, The B.B. King Blues Band, 10,000
+Maniacs), and renamed one test (`hims_ten_disc_box_binds_every_medium` -> a name describing the rule it
+pins) and one variable (`previously_had_reason` -> `already_had_reason`) that were the only remaining
+un-rewordable matches. Left untouched: comments using "used to"/"previously" in a genuinely functional
+sense ("used to validate", a folder-freshness check) rather than narrating a fixed incident - these
+don't carry the incident-history baggage the sweep exists to remove.
+
+Found and fixed, incidentally, a second instance of the same orphaned-doc-comment bug the Phase 5.2
+`sync/db.rs` split first surfaced: `sync/src/boxset/tests.rs` had a `--only`-scoping regression
+paragraph concatenated directly onto an unrelated disc-sequencing test's doc comment (no blank line
+between them), documenting neither correctly. Separated into its own standalone comment.
+
+**The final automated gate**: `scripts/check` now scans every tracked `.rs` file's comment-prefixed
+lines (`//`, `///`, `//!` only - so a legitimate date or count inside test data/string literals, like
+`sync::status`'s test MB release dates, never trips it) for the same patterns, and fails the whole gate
+on any match. Getting to a clean run surfaced ~14 more matches that were real but hadn't been narrative
+history - a CLI flag's `--help` text, a user-facing status-line string, a couple of "used for" phrasings,
+and the three "10,000 Maniacs"-style parsing-rule illustrations (a thousands-comma number in an
+example trips the same pattern a measured incident count would, with no way for the automated gate to
+tell them apart) - all reworded rather than exempted, so the gate itself needs zero special cases.
+Comment/test-name/variable-name-only changes throughout; the one behavior-adjacent side effect was
+`fix --help`'s text changing, which updated `scripts/tests/cli/fix.help`'s CLI-contract snapshot via
+`./cli-contract update`.
+
+**Not attempted**: an exhaustive hunt for every real artist/album name mentioned anywhere in a comment
+beyond what the grep patterns above surfaced. The original plan explicitly decided against an
+artist-name denylist (too fragile, not worth checking into the repo), which means this category of
+cleanup is inherently manual-judgment-driven rather than gate-enforced - what's covered here is every
+instance the sweep's own patterns caught, not a claim that zero real names remain anywhere in the tree.
+
 ## Verification
 
 Every commit passed `scripts/check --db` (fmt, clippy, full workspace test suite incl. `--ignored`
