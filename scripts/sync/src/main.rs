@@ -2,7 +2,7 @@ use clap::Parser;
 use common::config::{apply_db_overrides, load_config};
 use common::consensus;
 use common::db::create_pool_or_exit;
-use common::filters::{matches_filter, sanitize_mb_id};
+use common::filters::matches_filter;
 use common::lock::{acquire_lock, clear_stale_lock_minutes, release_lock};
 use common::progress::Reporter;
 use common::run_hash::{clear_run_hash, get_run_hash, new_run_hash, set_run_hash};
@@ -736,62 +736,46 @@ async fn main() {
         if ids.is_empty() {
             vec![]
         } else {
-            let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
-                common::lock::expect_or_release(
-                    &pool,
-                    "sync",
-                    pid,
-                    sqlx::query_as(
-                        r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" WHERE id = ANY($1::text[])"#,
-                    )
-                    .bind(&ids)
-                    .fetch_all(&pool)
-                    .await,
-                    "DB query failed",
-                )
-                .await;
-            rows.into_iter()
-                .map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
-                    id,
-                    name,
-                    slug,
-                    mb_id: mb_id.as_deref().and_then(sanitize_mb_id),
-                    has_image: image.is_some() || image_url.is_some(),
-                })
-                .collect()
-        }
-    } else if args.overwrite {
-        let rows: Vec<(String, String, String, Option<String>, Option<String>, Option<String>)> =
-            common::lock::expect_or_release(
+            let rows: Vec<ArtistImageRow> = common::lock::expect_or_release(
                 &pool,
                 "sync",
                 pid,
                 sqlx::query_as(
-                    r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" ORDER BY name"#,
+                    r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" WHERE id = ANY($1::text[])"#,
                 )
+                .bind(&ids)
                 .fetch_all(&pool)
                 .await,
                 "DB query failed",
             )
             .await;
+            rows.into_iter().map(ArtistSyncRow::from).collect()
+        }
+    } else if args.overwrite {
+        let rows: Vec<ArtistImageRow> = common::lock::expect_or_release(
+            &pool,
+            "sync",
+            pid,
+            sqlx::query_as(
+                r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl" FROM "Artist" ORDER BY name"#,
+            )
+            .fetch_all(&pool)
+            .await,
+            "DB query failed",
+        )
+        .await;
 
         rows.into_iter()
-            .filter(|(_, name, _, _, _, _)| {
+            .filter(|row| {
                 matches_filter(
-                    name,
+                    &row.name,
                     args.from.as_deref().unwrap_or(""),
                     args.to.as_deref().unwrap_or(""),
                     args.only.as_deref().unwrap_or(""),
                     args.exact,
                 )
             })
-            .map(|(id, name, slug, mb_id, image, image_url)| ArtistSyncRow {
-                id,
-                name,
-                slug,
-                mb_id: mb_id.as_deref().and_then(sanitize_mb_id),
-                has_image: image.is_some() || image_url.is_some(),
-            })
+            .map(ArtistSyncRow::from)
             .collect()
     } else {
         common::lock::expect_or_release(
@@ -822,14 +806,7 @@ async fn main() {
         || args.artist_ids.is_some();
     if has_filter && !artists.is_empty() {
         let primary_ids: Vec<String> = artists.iter().map(|a| a.id.clone()).collect();
-        let connected: Vec<(
-            String,
-            String,
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-        )> = sqlx::query_as(
+        let connected: Vec<ArtistImageRow> = sqlx::query_as(
             r#"SELECT id, name, slug, "musicbrainzId", image, "imageUrl"
                    FROM "Artist"
                    WHERE "primaryArtistId" = ANY($1::text[])
@@ -842,15 +819,9 @@ async fn main() {
 
         let existing_ids: HashSet<String> = artists.iter().map(|a| a.id.clone()).collect();
         let mut added = 0usize;
-        for (id, name, slug, mb_id, image, image_url) in connected {
-            if !existing_ids.contains(&id) {
-                artists.push(ArtistSyncRow {
-                    id,
-                    name,
-                    slug,
-                    mb_id: mb_id.as_deref().and_then(sanitize_mb_id),
-                    has_image: image.is_some() || image_url.is_some(),
-                });
+        for row in connected {
+            if !existing_ids.contains(&row.id) {
+                artists.push(ArtistSyncRow::from(row));
                 added += 1;
             }
         }
@@ -888,8 +859,9 @@ async fn main() {
 
     // Artist image downloads run off the critical path - they never touch MB's rate budget, so there
     // is no reason for the MusicBrainz loop to wait on them.
-    let image_tasks: Arc<tokio::sync::Mutex<tokio::task::JoinSet<(String, Result<bool, String>)>>> =
-        Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new()));
+    type ImageTaskResult = (String, Result<bool, String>);
+    type ImageTasks = Arc<tokio::sync::Mutex<tokio::task::JoinSet<ImageTaskResult>>>;
+    let image_tasks: ImageTasks = Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new()));
     // The `MAX_IMAGE_TASKS` cap now lives on a semaphore rather than on "block until the JoinSet
     // drains". Blocking was fine when one artist ran at a time; with workers sharing the JoinSet it
     // would mean holding its lock across a 30s download and stalling every other worker behind it.

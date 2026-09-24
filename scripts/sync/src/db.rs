@@ -1894,15 +1894,15 @@ pub struct ArtistSyncRow {
 /// `sanitize_mb_id`, and `has_image` is derived from two columns, so this stays a row shape rather
 /// than `ArtistSyncRow` itself.
 #[derive(sqlx::FromRow)]
-struct ArtistImageRow {
-    id: String,
-    name: String,
-    slug: String,
+pub struct ArtistImageRow {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
     #[sqlx(rename = "musicbrainzId")]
-    mb_id: Option<String>,
-    image: Option<String>,
+    pub mb_id: Option<String>,
+    pub image: Option<String>,
     #[sqlx(rename = "imageUrl")]
-    image_url: Option<String>,
+    pub image_url: Option<String>,
 }
 
 impl From<ArtistImageRow> for ArtistSyncRow {
