@@ -261,10 +261,10 @@ impl<'a> ArtistResolver<'a> {
 /// "Kool & the Gang" or "Tom Petty and the Heartbreakers" safe offline - they carry a separator, so
 /// without it they would depend entirely on the MB lookup succeeding.
 ///
-/// The equality guard is not theoretical: of 3,308 single-pair tracks measured on the library, 3,307
-/// match their tag exactly and one does not - tag `"The B.B. King Blues Band"` with the embedded value
-/// `"B.B. King"` (Picard credited the person, not the band). Trusting that pair would silently replace
-/// the band with the person, so a mismatch falls through to the normal lookup path instead.
+/// The equality guard is not theoretical: a tag naming a group ("The X Band") can carry an embedded
+/// pairing for just one member of that group (Picard crediting the person, not the band as a whole).
+/// Trusting that pair would silently replace the group with the individual, so a mismatch falls
+/// through to the normal lookup path instead.
 pub fn embedded_pairing(
     tag: &str,
     artists: &[String],
@@ -807,10 +807,9 @@ pub async fn resolve_and_apply(
         // An artist that just gained a release has something new for sync to match - and sync only
         // ever looks at artists with a `lastIndexedAt` (`get_artists_pending_sync`). The folder scan
         // stamps the owners *it* settled, but the owners this pass substitutes for a provisional
-        // compound ("Jimmy Regal And The Royals" -> "Jimmy Regal", "The Royals") are often artists it
-        // has just created, and were never stamped: sync never selected them, ever. Measured on
-        // 2026-09-18: 5,445 owning artists with no `lastIndexedAt`, and 437 releases owned only by
-        // them - 406 of those Unmatched because nothing had ever tried to match them.
+        // compound (e.g. splitting "Band And The Others" into its component artists) are often
+        // artists it has just created, and would otherwise never be stamped - sync would never select
+        // them, and their releases would stay permanently unmatched with nothing having ever tried.
         //
         // Only artists whose link this insert actually wrote (`RETURNING`), so an owner that already
         // held the release is not re-queued for nothing.

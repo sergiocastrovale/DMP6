@@ -24,8 +24,9 @@ pub struct BoxSetSummary {
     pub groups_key_taken: usize,
     /// A DB error while binding, persisting, folding or dissolving *this one* group. Logged with the
     /// group's folder and the error (`common::error_log::log_warn`), then skipped - one bad box must
-    /// never stop every group after it (docs/sync_decisions.md §9 "One box never blocks the rest";
-    /// this is what the 2026-09-06/09-10 outages taught).
+    /// never stop every group after it, since a transient DB or MusicBrainz outage mid-run must not
+    /// abort every group still queued behind the one that hit it (docs/sync_decisions.md §9 "One box
+    /// never blocks the rest").
     pub groups_failed: usize,
     /// Every `LocalRelease` id a fold or dissolve actually changed this run: the survivor id from a
     /// fold, each member whose row a dissolve wrote to. Tidy re-scores exactly these, in addition to

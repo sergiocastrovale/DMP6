@@ -15,12 +15,12 @@
 //! matters: a full re-index costs days, so every repair here has to be derivable from what the database
 //! already knows.
 //!
-//! **`Artist.musicbrainzId` is not a safe merge key on its own.** 3,115 ids are shared by more than one
-//! row, but the overwhelming majority are leaks: `"Lena Horne & Gábor Szabó"` carries Lena Horne's id
-//! with zero links, and its `MbArtistLookup` row says `mbid IS NULL` - MusicBrainz was asked about that
-//! exact string and said no. Merging on the column alone would fold collaborations into their first
-//! member. Step 3 therefore requires **both** names to have a lookup row resolving to the same id,
-//! which is MusicBrainz corroborating the pair rather than us inferring it.
+//! **`Artist.musicbrainzId` is not a safe merge key on its own.** A compound credit string (e.g.
+//! `"Artist A & Artist B"`) can carry one member's raw id with zero links, while its own
+//! `MbArtistLookup` row says `mbid IS NULL` - MusicBrainz was asked about that exact string and said
+//! no. Merging on the column alone would fold collaborations into their first member. Step 3
+//! therefore requires **both** names to have a lookup row resolving to the same id, which is
+//! MusicBrainz corroborating the pair rather than us inferring it.
 
 use std::collections::HashMap;
 
@@ -309,7 +309,7 @@ async fn connect_corroborated_duplicates(
 ///
 /// `scope` is `None` for the whole library and `Some(artist_ids)` for a filtered run - the same
 /// `ArtistScope` discipline the deletion sweeps use, and for the same reason. `./index --only "X"` must
-/// not quietly rename 1,295 unrelated artists and connect 108 unrelated pairs; the artist page's rescan
+/// not quietly rename or connect artists having nothing to do with "X"; the artist page's rescan
 /// button issues exactly that command.
 pub async fn canonicalize_artists(
     pool: &PgPool,

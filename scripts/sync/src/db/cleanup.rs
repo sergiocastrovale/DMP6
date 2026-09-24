@@ -18,15 +18,14 @@ pub type ArtistScope<'a> = Option<&'a [String]>;
 /// disc numbers their own tracks already carry. Pure SQL, no MusicBrainz call, idempotent: once a release
 /// has medium rows it is never selected again.
 ///
-/// Discs were first modelled on 2026-09-06/07 (the `box_sets`/`multidisk` migrations). Those migrations
-/// defaulted `mediumCount` to 1 and never backfilled existing releases, so everything synced 2026-08-31 to
-/// 09-06 and not re-synced since kept `mediumCount = 1` and no medium rows - while its tracks carried disc
-/// numbers 1, 2, ... all along. Measured on 2026-09-18: 3,602 releases. Nothing writes this shape today;
-/// sync's binding path records media properly.
+/// A release synced before the `box_sets`/`multidisk` migrations added medium tracking can be stuck
+/// at `mediumCount = 1` with no medium rows at all, even though its tracks carry disc numbers 1, 2,
+/// ..., because those migrations defaulted `mediumCount` to 1 and never backfilled existing releases.
+/// Nothing writes this shape today; sync's binding path records media properly.
 ///
 /// It matters because every multi-disc decision keys off `mediumCount > 1`: such a release is invisible
-/// to the box pass, and each disc folder bound to it is scored against the *whole* multi-disc tracklist -
-/// 1,745 local releases `MISSING_TRACKS` purely for that reason (docs/specs/spec_tidy_observations.md §15).
+/// to the box pass, and each disc folder bound to it is scored against the *whole* multi-disc tracklist,
+/// which reads as `MISSING_TRACKS` purely for that reason (docs/specs/spec_tidy_observations.md §15).
 ///
 /// Only releases where **every** track has a disc number and there are at least two distinct ones. A
 /// release with a single disc number is a genuine single medium and is left exactly as it is. Medium

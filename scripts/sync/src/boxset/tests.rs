@@ -1056,11 +1056,10 @@ fn guess_box_title_strips_bracketed_catalogue_numbers_too() {
     assert_eq!(guess_box_title("X/2020 - Title [CAT001] (Deluxe)"), "Title");
 }
 
-/// HIM's real "The Single Collection" (10 CDs, 44 tracks, curly-vs-straight apostrophes, one
-/// medium with a 1-second duration drift) - the case that motivated the 2026-09-11 box-set fix.
-/// Every disc must resolve to its own, distinct medium.
+/// A large multi-disc box (curly-vs-straight apostrophe mismatches, one medium with a 1-second
+/// duration drift): every disc must resolve to its own, distinct medium regardless of disc count.
 #[test]
-fn hims_ten_disc_box_binds_every_medium() {
+fn a_large_multi_disc_box_binds_every_medium_to_its_own_disc() {
     // (disc position, [(title, local secs, mb secs)])
     type DiscFixture<'a> = (i32, &'a [(&'a str, i32, i32)]);
     let discs: &[DiscFixture] = &[

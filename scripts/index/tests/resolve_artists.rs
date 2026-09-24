@@ -261,10 +261,9 @@ async fn dry_run_writes_no_library_data() {
 }
 
 /// A single embedded `(name, mbid)` pair is the strongest possible proof that the whole tag names ONE
-/// artist - but only when that value *is* the tag. Measured on the real library: 3,307 of 3,308
-/// single-pair tracks match their tag, and exactly one does not (tag "The B.B. King Blues Band",
-/// embedded value "B.B. King" - Picard credited the person, not the band). Trusting that one would
-/// replace the band with the person, so it must fall through instead.
+/// artist - but only when that value *is* the tag. A tag naming a group can carry an embedded pairing
+/// for just one member (Picard crediting the person, not the band as a whole); trusting that pair
+/// would replace the group with the individual, so a mismatch must fall through instead.
 #[tokio::test]
 #[ignore]
 async fn single_embedded_pair_is_trusted_only_when_it_is_the_whole_tag() {

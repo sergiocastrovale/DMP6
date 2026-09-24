@@ -393,14 +393,13 @@ impl BindRefusal {
 /// Refuses when a sibling matches **more than one** medium (ambiguous), when two siblings claim the
 /// same medium, or when fewer than two siblings resolve at all - there is nothing to fold below two.
 ///
-/// A sibling that matches **zero** media no longer refuses the group (docs/sync_decisions.md §19 item
-/// 1b). Real boxes routinely carry a folder that is on no disc of any edition: a bonus DVD-audio rip, a
-/// hi-res or SACD layer sitting beside the CD rip, a disc whose tracklist the rip split differently.
-/// Refusing the whole box over one of those was the single largest cause of unplaced discs measured in
-/// the 2026-09-17 rollout - 126 groups where exactly one folder failed and every other folder paired
-/// perfectly. Unmatched siblings are simply left out of `members`/`absorbed`/`track_links`, so
-/// `apply_fold` never deletes them and `apply_dissolve` never writes to them: nothing about those rows
-/// changes.
+/// A sibling that matches **zero** media must not refuse the whole group (docs/sync_decisions.md §19
+/// item 1b). Real boxes routinely carry a folder that is on no disc of any edition: a bonus DVD-audio
+/// rip, a hi-res or SACD layer sitting beside the CD rip, a disc whose tracklist the rip split
+/// differently. Refusing the whole box over one such folder, when every other folder in the group
+/// paired perfectly, is the single largest avoidable cause of unplaced discs. Unmatched siblings are
+/// simply left out of `members`/`absorbed`/`track_links`, so `apply_fold` never deletes them and
+/// `apply_dissolve` never writes to them: nothing about those rows changes.
 ///
 /// An *ambiguous* sibling still refuses the whole group. That distinction is the safety property - "on
 /// no disc" is evidence about that folder alone, "could be either disc" is evidence that the candidate

@@ -346,7 +346,7 @@ async fn punctuation_and_ampersand_variants_still_connect() {
 }
 
 /// `./index --only "X"` must stay about X. The artist page's rescan button issues exactly that, and an
-/// unscoped pass would quietly rename ~1,300 unrelated artists behind a one-artist refresh.
+/// unscoped pass would quietly rename or connect unrelated artists behind a one-artist refresh.
 #[tokio::test]
 #[ignore]
 async fn a_scoped_run_leaves_everything_outside_the_scope_alone() {

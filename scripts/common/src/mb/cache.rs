@@ -1,9 +1,9 @@
 //! Read access to the `MbArtistLookup` table for consumers other than the index resolver that fills it.
 //!
 //! The resolver (`index/src/resolve.rs`) owns this table: it writes every answer it gets from
-//! MusicBrainz, hits and misses alike. Sync asks MusicBrainz many of the same questions - 9,507 artists
-//! carry no `musicbrainzId` and fall into `find_mb_match_with_fallback`'s search ladder - and paid for
-//! them again every run, because nothing outside `index` had ever read this table.
+//! MusicBrainz, hits and misses alike. Sync asks MusicBrainz many of the same questions - any artist
+//! with no `musicbrainzId` falls into `find_mb_match_with_fallback`'s search ladder - and without
+//! reading this table, it would pay for them again every single run.
 //!
 //! # Hits only, and never written back
 //!

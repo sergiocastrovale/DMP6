@@ -29,12 +29,12 @@ pub struct RescoreTarget {
 ///   3. any scoped release holding a `LocalReleaseTrack.mbTrackId` that belongs to a **different**
 ///      release than the one the folder is bound to.
 ///
-/// Source 3 exists because (1) and (2) between them cannot see a disc the *pre-tidy, sync-era* box pass
-/// dissolved: `apply_dissolve` only sets `UNKNOWN` when something changed, so a disc already moved and
-/// already scored back then is at neither `UNKNOWN` nor in `touched_ids`, and its tracks keep pointing
-/// at the box's track rows forever. Measured 1,336 such links across 122 releases after the 2026-09-17
-/// rollout (docs/specs/spec_tidy_observations.md). `rescore_bound_release` already repairs this correctly
-/// - it just never saw them. DB-only, no MusicBrainz call, and `mbTrackId` is indexed.
+/// Source 3 exists because (1) and (2) between them cannot see a disc a box pass dissolved before this
+/// source existed: `apply_dissolve` only sets `UNKNOWN` when something changed, so a disc already moved
+/// and already scored is at neither `UNKNOWN` nor in `touched_ids`, and its tracks keep pointing at the
+/// box's track rows forever (docs/specs/spec_tidy_observations.md). `rescore_bound_release` already
+/// repairs this correctly - it just never saw them without this source. DB-only, no MusicBrainz call,
+/// and `mbTrackId` is indexed.
 pub async fn get_rescore_targets(
     pool: &PgPool,
     scope: ArtistScope<'_>,
