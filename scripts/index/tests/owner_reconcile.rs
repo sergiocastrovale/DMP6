@@ -183,6 +183,8 @@ impl Ctx {
 
 const MBID_A: &str = "11111111-1111-4111-8111-111111111111";
 const MBID_B: &str = "22222222-2222-4222-8222-222222222222";
+const MBID_C: &str = "33333333-3333-4333-8333-333333333333";
+const MBID_D: &str = "44444444-4444-4444-8444-444444444444";
 
 #[tokio::test]
 #[ignore]
@@ -365,6 +367,55 @@ async fn the_placeholder_itself_never_becomes_an_owner() {
         c.owners(&release).await,
         vec![a.clone()],
         "only the real artist owns it - not the placeholder, not the compound"
+    );
+
+    c.reset().await;
+}
+
+/// One reconcile pass over multiple releases at once must scope its deletes per release: release 1's
+/// keep-set must never affect release 2's rows, and vice versa.
+#[tokio::test]
+#[ignore]
+async fn a_multi_release_pass_isolates_each_releases_owners() {
+    let c = Ctx::new("multirelease").await;
+    let (a, b) = (c.artist("MultiOne"), c.artist("MultiTwo"));
+    let (x, y) = (c.artist("MultiThree"), c.artist("MultiFour"));
+    let compound_1 = format!("{} & {}", a, b);
+    let compound_2 = format!("{} & {}", x, y);
+
+    let release_1 = c.release("r1").await;
+    c.own(&release_1, &compound_1).await;
+    c.track(&release_1, 1, &compound_1, &[&a, &b], &[MBID_A, MBID_B])
+        .await;
+
+    let release_2 = c.release("r2").await;
+    c.own(&release_2, &compound_2).await;
+    c.track(&release_2, 1, &compound_2, &[&x, &y], &[MBID_C, MBID_D])
+        .await;
+
+    c.run(&[release_1.clone(), release_2.clone()]).await;
+
+    let owners_1 = c.owners(&release_1).await;
+    assert_eq!(
+        owners_1,
+        vec![a.clone(), b.clone()],
+        "release 1 should be owned by its own two artists only"
+    );
+    assert!(
+        !owners_1.contains(&x) && !owners_1.contains(&y),
+        "release 2's owners must not leak into release 1 - got {owners_1:?}"
+    );
+
+    // `owners()` sorts by name, and "Four" sorts before "Three".
+    let owners_2 = c.owners(&release_2).await;
+    assert_eq!(
+        owners_2,
+        vec![y.clone(), x.clone()],
+        "release 2 should be owned by its own two artists only"
+    );
+    assert!(
+        !owners_2.contains(&a) && !owners_2.contains(&b),
+        "release 1's owners must not leak into release 2 - got {owners_2:?}"
     );
 
     c.reset().await;

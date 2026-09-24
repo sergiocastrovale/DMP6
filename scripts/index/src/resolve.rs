@@ -824,24 +824,36 @@ pub async fn resolve_and_apply(
         }
     }
 
+    // One batched DELETE for every release in scope instead of one round trip each - a full-library
+    // run can reconcile ownership for thousands of releases here. A release is in scope only if it
+    // has a non-empty, non-deferred desired set (same skip rules as before); everything else keeps
+    // its existing owners untouched by staying out of `scope_release_ids` entirely, since the WHERE
+    // clause below never even looks at a `localReleaseId` outside that list.
+    let mut scope_release_ids: Vec<&str> = Vec::new();
+    let mut keep_release_ids: Vec<&str> = Vec::new();
+    let mut keep_artist_ids: Vec<&str> = Vec::new();
     for (release_id, desired) in &desired_owners {
-        // MusicBrainz could not decide one of this release's album artists - leave ownership alone and
-        // let a later run converge.
-        if releases_with_deferred.contains(release_id) {
+        if releases_with_deferred.contains(release_id) || desired.is_empty() {
             continue;
         }
-        // Nothing resolved (e.g. "Various Artists", or every part unverified): never strip the owner
-        // the folder scan established.
-        if desired.is_empty() {
-            continue;
+        scope_release_ids.push(release_id);
+        for artist_id in desired {
+            keep_release_ids.push(release_id);
+            keep_artist_ids.push(artist_id);
         }
-        let keep: Vec<String> = desired.iter().cloned().collect();
+    }
+    if !scope_release_ids.is_empty() {
         sqlx::query(
-            r#"DELETE FROM "LocalReleaseArtist"
-               WHERE "localReleaseId" = $1 AND "artistId" <> ALL($2::text[])"#,
+            r#"DELETE FROM "LocalReleaseArtist" lra
+               WHERE lra."localReleaseId" = ANY($3::text[])
+                 AND NOT EXISTS (
+                   SELECT 1 FROM UNNEST($1::text[], $2::text[]) AS keep(release_id, artist_id)
+                   WHERE keep.release_id = lra."localReleaseId" AND keep.artist_id = lra."artistId"
+                 )"#,
         )
-        .bind(release_id)
-        .bind(&keep)
+        .bind(&keep_release_ids)
+        .bind(&keep_artist_ids)
+        .bind(&scope_release_ids)
         .execute(&mut *tx)
         .await?;
     }
