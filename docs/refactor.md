@@ -306,6 +306,25 @@ lookalike-consolidation the prior session (see that plan's Context section).
   `boxset.rs`/`box_editions.rs` N+1 loads. See the plan file's Phase 4.2 checklist for the remaining
   scope.
 
+## Phase 5.1 — clippy verbatim fixes (mechanical, behaviour-preserving)
+
+Re-ran `cargo clippy --workspace --all-targets` (69 warnings) and applied every fix clippy itself
+proposed verbatim, one category at a time with a full workspace `cargo check` after each: 13
+`clone()` → `std::slice::from_ref` sites, a redundant match guard, `&PathBuf` → `&Path`, an
+`unnecessary_unwrap` rewritten as an `if let`, two `useless_vec!` test fixtures, a
+`field_reassign_with_default` folded into `box_editions`' `LinkSummary` initializer, two
+`needless_borrow`s (introduced by this session's own earlier `box_editions.rs` caching change, caught
+by the same clippy run), the oversized `CandidateSource::Fetched` enum variant boxed
+(`release: Box<MbRelease>`, all 3 construction sites + the one destructuring site that reads it
+updated), and doc-comment indentation/empty-line nits across 6 files. Two `if_same_then_else` hits
+(`common::artists`' separator splitter, `delete/src/files.rs`'s dry-run-vs-real-delete branches, ×2)
+were read in full before merging - both were genuinely identical actions behind different guards, not
+a coincidental match hiding a real difference. 69 warnings down to the 33 structural ones left (27
+complex-type, 6 too-many-args) - Phase 5.1's remaining, larger-effort half.
+Verified live: deployed, then ran `index --overwrite` on a real multi-artist blues-comp folder whose
+188 distinct `albumArtist` tags exercise every branch of the merged splitter (`;`, `\`, `&`, `feat.`,
+`with`, `,`, `/`) - 2985 links applied, 0 errors, `errors.log` unchanged.
+
 ## Verification
 
 Every commit passed `scripts/check --db` (fmt, clippy, full workspace test suite incl. `--ignored`
