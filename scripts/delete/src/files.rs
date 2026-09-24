@@ -296,11 +296,10 @@ mod tests {
         fs::remove_file(&outside).ok();
     }
 
-    // Regression: LocalReleaseTrack.filePath is stored RELATIVE to MUSIC_DIR in real data (e.g.
-    // "Artist/Album/01.flac"), not absolute - the doc comment above claiming "absolute" was wrong.
-    // A relative raw path used to resolve `parent()` against the PROCESS CWD instead of MUSIC_DIR,
-    // fail to canonicalize, and get silently skipped - `--files` deleted nothing and re-indexing
-    // brought every "deleted" release straight back.
+    // LocalReleaseTrack.filePath is stored RELATIVE to MUSIC_DIR in real data (e.g.
+    // "Artist/Album/01.flac"), not absolute. A relative raw path must resolve against MUSIC_DIR, not
+    // the process's own CWD - resolving against CWD fails to canonicalize and gets silently skipped,
+    // so `--files` deletes nothing and re-indexing brings the "deleted" release straight back.
     #[test]
     fn delete_files_resolves_a_relative_filepath_against_music_dir() {
         let root = std::env::temp_dir().join(format!("dmp-delete-relative-{}", std::process::id()));

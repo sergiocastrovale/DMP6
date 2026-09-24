@@ -3,7 +3,7 @@
 //! The folder scan may write the verbatim tag as a *provisional* owner when it cannot resolve the name
 //! offline (cold cache). This pass must replace that with the artists the tag actually names - while
 //! never leaving a release ownerless, because an ownerless release is invisible in `/browse`,
-//! unsyncable, and was previously deletable by `./delete`'s sweep.
+//! unsyncable, and an easy target for `./delete`'s orphan sweep.
 //!
 //! `#[ignore]`d integration test - point it at a disposable, migrated Postgres, never production:
 //!

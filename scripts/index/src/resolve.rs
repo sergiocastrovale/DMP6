@@ -352,11 +352,12 @@ impl<'a> OwnerTag<'a> {
 /// The tag that names a release's owner(s): `albumArtist` when present and not a Various-Artists
 /// placeholder, otherwise the track's own `artist` tag - whole, never naively split here.
 ///
-/// One definition, called from both places that need it. They used to have their own: the folder loop
-/// (`main.rs`) had the VA fallback, the resolve pass's owner reconcile read `albumArtist` alone. On a VA
-/// compilation the loop wrote provisional owners from the raw `artist` tag and the reconcile then had
-/// nothing to replace them with, so `"Aaron Neville, Kenny G, Walter Afanasieff, ..."` stayed a
-/// browsable artist owning The Bodyguard OST. 497 of those had accumulated.
+/// One definition, called from both places that need it, so the folder loop's provisional-owner logic
+/// and the resolve pass's owner-reconcile logic can never drift apart. A VA compilation exercises the
+/// fallback branch specifically: if the reconcile side read `albumArtist` alone while the folder loop
+/// used the VA fallback, the loop would write a provisional owner from the raw `artist` tag that the
+/// reconcile then had no matching desired value to replace - leaving the raw tag's compound artist
+/// name permanently owning the release.
 pub fn owner_tag<'a>(
     album_artist: Option<&'a str>,
     artist: Option<&'a str>,
@@ -774,8 +775,8 @@ pub async fn resolve_and_apply(
     // Ownership is not append-only: the folder scan may have written the raw albumArtist tag as a
     // provisional owner (cold cache), and that compound must be replaced by the artists it actually
     // names. Insert first, delete second, inside one transaction, so a release is never momentarily
-    // ownerless - an ownerless release is invisible in /browse, unsyncable, and used to be deletable by
-    // ./delete's sweep.
+    // ownerless - an ownerless release is invisible in /browse, unsyncable, and an easy target for
+    // ./delete's orphan sweep.
     //
     // The desired set for a release is the UNION of resolved owners across all of its tracks' album
     // artists: 11 of 435 releases measured carry more than one distinct albumArtist (per-source

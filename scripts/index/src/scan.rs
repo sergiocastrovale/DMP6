@@ -972,8 +972,8 @@ pub(crate) async fn process_folder(
         res.count
     };
 
-    // Cleanup used to run right here, once per folder - three full-table anti-joins × ~25k folders,
-    // for a result nothing in this loop reads. It happens once after the loop instead.
+    // Cleanup runs once after the whole loop, not per folder here - three full-table anti-joins per
+    // folder would multiply across the entire run for a result nothing in this loop reads.
 
     // -----------------------------------------------------------------
     // Update totals + lastIndexedAt

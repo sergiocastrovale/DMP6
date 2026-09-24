@@ -1,8 +1,8 @@
 //! The orphaned-release sweep must only touch releases the delete actually orphaned.
 //!
-//! This guards a real blast-radius bug: the local sweep used to be unscoped, deleting *every*
-//! ownerless `LocalRelease` in the library. That is destructive during an index run, where releases
-//! are legitimately ownerless between the folder scan and the artist-resolution pass.
+//! This guards a real blast-radius risk: an unscoped local sweep would delete *every* ownerless
+//! `LocalRelease` in the library, which is destructive during an index run, where releases are
+//! legitimately ownerless between the folder scan and the artist-resolution pass.
 //!
 //! `#[ignore]`d integration test - point it at a disposable, migrated Postgres, never production:
 //!
