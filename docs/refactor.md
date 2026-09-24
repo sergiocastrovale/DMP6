@@ -247,6 +247,29 @@ lookalike-consolidation the prior session (see that plan's Context section).
   lock cleared. `errors.log` had no new entries from either test. `tidy` given an ordinary run
   afterward to confirm the non-signaled path still works, exit 0.
 
+## Phase 4 — performance (measured, deployed, smoke-tested)
+
+- **`index`: `get_local_release_members` hoisted out of the per-folder loop.** It fetched the whole
+  table with no per-folder filter, so a full-library run paid the query once per artist folder instead
+  of once per run (~10k folders on a real library; the underlying table is `sync`-owned and never
+  mutated by `index` mid-run, so one read up front is safe). `EXPLAIN ANALYZE` put the query at
+  roughly 5ms; removing ~10k redundant calls saves on the order of a minute of otherwise-wasted
+  round-trip time on an unfiltered run.
+- **`index`: owner-reconcile DELETE batched.** The per-release loop issuing one
+  `DELETE FROM "LocalReleaseArtist" WHERE "localReleaseId" = $1 AND "artistId" <> ALL($2)` per release
+  in scope is now a single `UNNEST(...)`/`NOT EXISTS`/`= ANY(...)` statement covering every release in
+  the run, preserving the same three skip rules (deferred release, empty desired set, per-release keep
+  set) the loop expressed with `continue` and a per-call bind. A new test
+  (`a_multi_release_pass_isolates_each_releases_owners`) proves the batched form still scopes each
+  release's keep-set independently — no cross-release leakage.
+- **Verified:** full workspace compile, `scripts/check --db` (all suites including the new test)
+  green, deployed, and smoke-tested on the NAS with a real (non-`--only`, folder-scoped via
+  `--folders` since the test fixture's owning folder differs from the credited artist's name) run —
+  exit 0, both real owners intact post-reconcile, `errors.log` unchanged.
+- Remaining Phase 4.2 candidates (sync/tidy batched writes, boxset/box_editions N+1, concurrent MB
+  calls via the shared `RateLimiter`, audit set-based inserts, delete/nuke plan batching, analysis
+  walk-once check, mosaic progress throttling) are still open — see the plan file's Phase 4.2 checklist.
+
 ## Verification
 
 Every commit passed `scripts/check --db` (fmt, clippy, full workspace test suite incl. `--ignored`
