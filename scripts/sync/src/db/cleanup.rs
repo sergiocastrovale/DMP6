@@ -130,10 +130,9 @@ pub async fn delete_empty_local_releases(
 // lets the trickle worker re-fetch the same release as if it were brand new.
 //
 // "Live" is the states that can still consume the target (DOWNLOADING/ENRICHING/READY/PROMOTED). The
-// dead ends (REJECTED, FAILED, ABANDONED, UNAVAILABLE, INVALID) used to pin it too, which meant a gap
-// the catalogue filter now rejects could never be swept: the bootleg live recordings the pre-filter
-// gap pass invented were all rejected by the downloader, and their rejection rows kept the bogus
-// MISSING entries alive through every re-sync. Orphaning those is safe - `acquire.post.ts` dedups on
+// dead ends (REJECTED, FAILED, ABANDONED, UNAVAILABLE, INVALID) must not pin it too, or a gap the
+// catalogue filter now rejects could never be swept - a rejected download's row would keep a bogus
+// MISSING entry alive through every re-sync. Orphaning those is safe - `acquire.post.ts` dedups on
 // the stable `releaseGroupId` whenever there is one, and every gap row carries it.
 pub async fn delete_missing_releases_for_artist(
     pool: &PgPool,

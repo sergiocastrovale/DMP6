@@ -298,13 +298,11 @@ pub(crate) fn check_release_status_with(
         let hit = match rules {
             TitleRules::Legacy => local_tracks.iter().enumerate().find(same_title),
             // Among several local files with the identical title, take the one whose runtime is
-            // closest - not whichever the file order happened to put first. A disc carrying two "The
-            // Evening's Young" (190s and 301s, an album take and a 1985 version) used to pair the
-            // 301s MusicBrainz track with the 190s file purely because it sorted first, which then
-            // stranded the real 190s pairing. It also meant re-scoring a box disc could undo the
-            // duration-aware pairing `boxset` had already linked: measured on the library, 26 links
-            // across 21 box discs. `min_by_key` keeps the first on a tie, so with no durations known
-            // this is exactly the old behaviour.
+            // closest - not whichever the file order happened to put first. Picking by file order
+            // alone can pair the wrong duplicate-titled track (e.g. an alternate take vs. the album
+            // version) purely because of sort order, stranding the real pairing; it can also undo a
+            // duration-aware pairing `boxset` already linked when re-scoring a box disc. `min_by_key`
+            // keeps the first on a tie, so with no durations known this still falls back to file order.
             TitleRules::Extended => {
                 let mb_secs = mb_track.length.map(|ms| (ms / 1000) as i32);
                 local_tracks
@@ -943,10 +941,10 @@ mod tests {
         );
     }
 
-    /// Yello's "Claro Que Si" disc: two files titled "The Evening's Young" (190s album take, 301s
-    /// longer take). The exact pass used to hand the MusicBrainz 301s track whichever file sorted first
-    /// - the 190s one - stranding the real 190s pairing. Among identical titles it now takes the
-    ///   closest runtime. Scored both ways so the test cannot pass under the old behaviour.
+    /// A disc with two files sharing one title (a short album take and a longer alternate take): among
+    /// identical titles, pairing must take the closest runtime rather than whichever file sorted
+    /// first, or the longer file's MusicBrainz track gets paired to the wrong file and strands the
+    /// real pairing. Scored both ways so the test cannot pass on file order alone.
     #[test]
     fn identical_titles_pair_by_closest_runtime_not_file_order() {
         let locals = [

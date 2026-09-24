@@ -32,8 +32,9 @@ pub struct BoxSetSummary {
     /// whatever was already sitting at `matchStatus='UNKNOWN'` from a previous, interrupted run.
     pub touched_local_release_ids: Vec<String>,
 
-    // -- Why the rest were not bound. `groups_seen` minus `groups_bound` used to be a number with no
-    // -- explanation anywhere, which is how a MusicBrainz outage hid inside it for a whole rollout.
+    // -- Why the rest were not bound. Every unbound group must be accounted for in one of the fields
+    // -- below, so `groups_seen` minus `groups_bound` is never a number with no explanation - an
+    // -- unaccounted gap is exactly where a MusicBrainz outage could hide for a whole rollout.
     /// Fewer than two sibling folders survived to be considered - can never bind, so excluded from
     /// `groups_seen` rather than silently inflating it.
     pub groups_under_two_siblings: usize,

@@ -287,10 +287,10 @@ pub async fn fill_catalogue_gaps(
 }
 
 /// Shared tail for every `fill_catalogue_gaps` caller (plain `--catalogue-gaps` and `./add`): orphan
-/// sweep, then retire owned MISSING placeholders, then recompute statistics. Order is load-bearing -
-/// see the comment this used to carry inline in `sync/src/main.rs`: `delete_orphaned_mb_releases` must
-/// run BEFORE `retire_owned_missing_placeholders`, or a merge-discard orphan left standing makes retire
-/// delete the wrong survivor (the placeholder, not the orphan).
+/// sweep, then retire owned MISSING placeholders, then recompute statistics. Order is load-bearing:
+/// `delete_orphaned_mb_releases` must run BEFORE `retire_owned_missing_placeholders`, or a
+/// merge-discard orphan left standing makes retire delete the wrong survivor (the placeholder, not
+/// the orphan).
 pub async fn finish_run(pool: &PgPool, scope: Option<&[String]>, reporter: &Reporter) {
     if let Ok(n) = delete_orphaned_mb_releases(pool, scope).await {
         if n > 0 {

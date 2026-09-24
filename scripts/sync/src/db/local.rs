@@ -55,10 +55,10 @@ pub async fn bind_local_release(
     tx.commit().await
 }
 
-/// Unbind a release, and its tracks with it. Clearing only `releaseId` used to leave every track still
-/// linked to the old release's track rows: an Unmatched release whose tracks claimed to be specific
-/// MusicBrainz recordings, and - because `delete_orphaned_mb_releases` keeps any release a track still
-/// points at - an old binding that could never be swept away.
+/// Unbind a release, and its tracks with it. Clearing only `releaseId` and leaving the tracks linked
+/// would produce an Unmatched release whose tracks still claim specific MusicBrainz recordings, and -
+/// because `delete_orphaned_mb_releases` keeps any release a track still points at - an old binding
+/// that could never be swept away.
 pub async fn mark_local_release_unmatched(
     pool: &PgPool,
     local_release_id: &str,

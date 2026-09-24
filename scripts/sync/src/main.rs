@@ -535,9 +535,9 @@ async fn main() {
     let total = artists.len();
     reporter.info(&format!("Syncing {} artist(s)...", total));
 
-    // Every artist without a musicbrainzId falls into the search ladder, which used to re-ask
-    // MusicBrainz for names the index resolver had already answered. One query up front replaces a
-    // point lookup per artist; tags discovered mid-ladder still fall back to those. Read-only - see
+    // Every artist without a musicbrainzId falls into the search ladder, which would otherwise re-ask
+    // MusicBrainz for names the index resolver already answered. One query up front replaces a point
+    // lookup per artist; tags discovered mid-ladder still fall back to those. Read-only - see
     // `common::mb::cache` for why sync must never write here.
     let warmed_artist_names: HashMap<String, mb_types::MbArtistMatch> = {
         let names: Vec<String> = artists

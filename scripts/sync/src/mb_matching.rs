@@ -328,9 +328,9 @@ async fn try_release_group_credits(
     }
 
     // Find the credit that certainly IS our artist name - never the tag, and never merely-similar.
-    // The removed fallback below used to hand back `real_credits[0]` whenever it was merely related to
-    // the *tag*, which is exactly how a compound credit array ("<name> Quintet" and "<someone else>")
-    // could leak another artist's id onto this row. See docs/sync_decisions.md §4-6.
+    // A fallback that hands back `real_credits[0]` whenever it is merely related to the *tag* is not
+    // safe here: a compound credit array ("<name> Quintet" and "<someone else>") would leak another
+    // artist's id onto this row. See docs/sync_decisions.md §4-6.
     if let Some(matched) = real_credits
         .iter()
         .find(|c| mb_artist_exact(artist_name, c))

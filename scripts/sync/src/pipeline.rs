@@ -217,11 +217,11 @@ fn artist_lookup_failed(
 }
 
 /// An artist is only stamped "done" for this run when it isn't a total failure - otherwise a resume
-/// would skip it despite it having accomplished nothing. `release_failures > 0` alone used to be the
-/// only signal, which missed a real case (docs/sync_decisions.md): a failed release-groups fetch
-/// leaves an artist whose local releases have no embedded MB id with `processed_count == 0` AND
-/// `release_failures == 0` (nothing ever called a per-release API function to fail), silently
-/// stamping it complete. `release_groups_fetch_failed` closes that gap.
+/// would skip it despite it having accomplished nothing. `release_failures > 0` alone is not a
+/// sufficient signal (docs/sync_decisions.md): a failed release-groups fetch leaves an artist whose
+/// local releases have no embedded MB id with `processed_count == 0` AND `release_failures == 0`
+/// (nothing ever called a per-release API function to fail), which would silently stamp it complete
+/// without `release_groups_fetch_failed` closing that gap.
 fn is_artist_total_failure(
     processed_count: u32,
     release_failures: u32,
@@ -494,9 +494,9 @@ pub(crate) async fn process_artist(
 
     // Duplicate detection: another artist already resolved to this MB ID.
     //
-    // The whole probe-and-claim runs under one lock, **including the `musicbrainzId` persist that
-    // used to sit further down** in the non-duplicate branch. Both probes ask "has anyone claimed
-    // this MB id?", and the DB probe can only answer yes once someone has written the id - so with
+    // The whole probe-and-claim runs under one lock, **including the `musicbrainzId` persist**, not
+    // just the non-duplicate branch's own logic. Both probes ask "has anyone claimed this MB id?",
+    // and the DB probe can only answer yes once someone has written the id - so with
     // workers running concurrently, two artists resolving to the same MB id could each probe
     // before either wrote, and both would claim to be primary. Holding the lock across the write
     // makes the claim atomic. It also closes the same read-then-write gap in the serial path.
@@ -1292,8 +1292,8 @@ pub(crate) async fn process_artist(
         // which of this artist's groups actually have an Official release. On failure, leave the
         // existing MISSING rows alone rather than rewriting the catalogue from unfiltered data.
         // One browse, two answers: the official-group set this gate needs, and the tracklist of
-        // every one of those releases - which is what the containment note below is derived from.
-        // Containment used to spend a paginated browse per gap here, every run.
+        // every one of those releases - which is what the containment note below is derived from,
+        // instead of spending a separate paginated browse per gap here on every run.
         let catalogue = match covered_rg_ids {
             Err(_) => None,
             Ok(_) => match mb_api::mb_get_official_artist_catalogue(

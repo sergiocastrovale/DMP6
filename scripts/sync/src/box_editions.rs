@@ -67,8 +67,8 @@ pub async fn clear_dangling_equivalences(pool: &PgPool) -> Result<u64, sqlx::Err
 ///
 /// No minimum track count on either side. Unlike the title+duration fallback below (where a short
 /// coincidental match is a real risk), this is exact recording-MBID equality - a match at any track
-/// count, including 1-2, is a certain identity, never a coincidence. A floor here previously made
-/// every "singles box" (2-track-per-disc reissues) permanently undissolvable.
+/// count, including 1-2, is a certain identity, never a coincidence. A minimum-count floor here would
+/// make every "singles box" (2-track-per-disc reissues) permanently undissolvable.
 ///
 /// A fingerprint claimed by more than one target medium (a genuine recording-set collision, common
 /// for a heavily-reissued artist) is resolved deterministically - lowest MusicBrainz id wins - rather

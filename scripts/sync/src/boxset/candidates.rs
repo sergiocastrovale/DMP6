@@ -344,10 +344,10 @@ pub(crate) fn box_candidate_from_rows(
 
 /// Best-effort box title from a parent folder name: strip a leading "YYYY - " and any trailing
 /// "(...)" or "[...]" annotation ("(9CD)", "(Deluxe Edition, 2014, 3 CD)", "[#74321 96173 2]" - a
-/// catalogue number in brackets, which MusicBrainz's own title never carries, used to return zero
-/// search hits). Whichever bracket opens first is where the title ends - a folder can carry either
-/// or both, in either order. MB search tolerates the rest, and the real gate is the track-level
-/// perfect match in `plan_box_bind`, not this string.
+/// catalogue number in brackets, which MusicBrainz's own title never carries and which would
+/// otherwise return zero search hits if left in). Whichever bracket opens first is where the title
+/// ends - a folder can carry either or both, in either order. MB search tolerates the rest, and the
+/// real gate is the track-level perfect match in `plan_box_bind`, not this string.
 pub(crate) fn guess_box_title(parent_folder: &str) -> String {
     let last = parent_folder.rsplit('/').next().unwrap_or(parent_folder);
     let without_year = if last.len() > 4 && last.as_bytes()[..4].iter().all(u8::is_ascii_digit) {

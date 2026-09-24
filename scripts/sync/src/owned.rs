@@ -125,11 +125,11 @@ pub fn find_owning_bundle<'a>(
 /// `statusReason`. The release is still a gap — see the module docs for why containment is not
 /// ownership.
 ///
-/// `editions` arrives pre-fetched from the caller's `OfficialArtistCatalogue`. It used to fetch them
-/// itself, one paginated MusicBrainz browse per gap per artist per run, with negative results never
-/// cached — the single largest avoidable cost in a sync run (14.8 such calls for an average artist,
-/// 813 at worst, each averaging ~10s cold). The artist's whole official catalogue now arrives in the
-/// browse sync already made for `official_rg_ids`, so this costs nothing.
+/// `editions` arrives pre-fetched from the caller's `OfficialArtistCatalogue`, not fetched here:
+/// fetching them here would mean one paginated MusicBrainz browse per gap per artist per run with no
+/// negative-result caching - the single largest avoidable cost in a sync run. Reusing the artist's
+/// whole official catalogue from the browse sync already makes for `official_rg_ids` costs nothing
+/// extra instead.
 pub fn detect_containment(
     editions: &[(crate::mb_types::MbRelease, Vec<crate::mb_types::MbTrack>)],
     bundles: &[LocalBundle],

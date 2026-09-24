@@ -117,12 +117,11 @@ pub async fn repair_all_empty_primaries(
 
 /// Repair a `primaryArtistId` that points at an artist owning nothing.
 ///
-/// Duplicate detection used to accept *any* other row holding the same MusicBrainz id as the primary,
-/// with no `ORDER BY` and no check that it owned anything. Whichever row a sync happened to reach
-/// first won, so a stray credit-only row could - and did - end up canonical over the row holding the
-/// entire discography: 35 artists in this library, including "Dylan" (0 releases) standing in front of
-/// "Bob Dylan" (72), and "Wardell Gray Quintet" (0) in front of "Erroll Garner" (76). The artist page
-/// then renders under the wrong name and the real row is unreachable.
+/// Duplicate detection must never accept just *any* other row holding the same MusicBrainz id as the
+/// primary with no check that it owns anything: with no ordering and no ownership check, whichever
+/// row a sync happens to reach first wins, so a stray credit-only row can end up canonical over the
+/// row holding the entire discography. The artist page then renders under the wrong name and the
+/// real row is unreachable.
 ///
 /// Callers reach here only once the current artist is known to own local releases, so "primary owns
 /// nothing" is unambiguous: swap the two. The empty row becomes the duplicate, which also makes it

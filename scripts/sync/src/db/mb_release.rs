@@ -85,7 +85,7 @@ pub struct MbReleaseExtras<'a> {
     pub country: Option<&'a str>,
     pub format: Option<&'a str>,
     // The owning release-group's secondary types (Compilation, Live, Remix, Soundtrack, ...) -
-    // already fetched for allowlist::is_allowed, just not previously persisted. [] = "original
+    // already fetched for allowlist::is_allowed, but not otherwise stored anywhere. [] = "original
     // work", the signal the box-set equivalence tier-3 matcher uses (docs/sync_decisions.md).
     pub release_group_secondary_types: &'a [String],
 }
@@ -720,9 +720,9 @@ mod tests {
     use super::*;
 
     /// `MusicBrainzRelease.title` is `VarChar(500)` and Postgres refuses an over-long value outright,
-    /// so an enormous MusicBrainz title used to fail the whole insert with `value too long for type
-    /// character varying(500)`. Hit live on Soulwax's "Most of the remixes we've made for other people
-    /// over the years except for the one for Einstürzende Neubauten…", which runs past 600 characters.
+    /// so an enormous MusicBrainz title (some real releases have titles running well past 600
+    /// characters) would fail the whole insert with `value too long for type character
+    /// varying(500)` if left unclamped.
     #[test]
     fn an_over_long_title_is_clamped_to_the_column_width() {
         let short = "Kind of Blue";

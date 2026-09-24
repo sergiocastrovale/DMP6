@@ -148,11 +148,10 @@ const PAIR_DEPTH_MAX: usize = 3;
 /// pairing is by **content, not position**: each local track claims a distinct medium track with the
 /// same normalized title and a compatible duration, in any order.
 ///
-/// Order used to be load-bearing - the two lists were `zip`ped - and that silently rejected real
-/// boxes. ABBA's "The Complete Studio Recordings (9CD)" is a perfect 9-of-9 rip whose disc 1 carries
-/// exactly MusicBrainz's 19 tracks, but sequenced differently ("Åh, vilka tider" 3rd locally vs 14th
-/// in MB, "Rock 'n Roll Band" last vs 12th). One such disc made `plan_box_bind` reject the **whole**
-/// group, so a complete box stayed nine unbound `MISSING_TRACKS` folders.
+/// Position (a naive `zip` of the two lists) is not a safe substitute for content matching: a disc
+/// can be a perfect rip of every MusicBrainz track while carrying them in a different sequence than
+/// MusicBrainz lists them, and pairing by position alone would reject that disc - which in turn makes
+/// `plan_box_bind` reject the **whole** group over one correctly-ripped, differently-ordered disc.
 ///
 /// The rules, strictest first. **The order is the safety property**: anything placeable beyond doubt
 /// is claimed before a looser rule gets to compete for it, so a loose match can never steal a track a
@@ -316,10 +315,10 @@ pub(crate) fn pair_tracks_at(
 /// The duration windows a unique-claim rule tries, tightest first.
 ///
 /// Trying 5s before 15s is not cosmetic: widening a window can turn a rule's single candidate into
-/// two, and `claim_unique` then refuses. Claiming at the tight window first means a pairing the old
-/// 5s-only rule found is always found again, and the wider window only ever sees what the tight one
-/// could not place. Measured across the whole library, that ordering is the difference between 0 and 2
-/// groups that used to bind and would otherwise stop binding.
+/// two, and `claim_unique` then refuses. Claiming at the tight window first means a pairing a
+/// 5s-only rule would find is always found, and the wider window only ever sees what the tight one
+/// could not place - trying the wide window first can turn a group that would otherwise bind into
+/// one that doesn't, over a pairing the tight window alone would have resolved cleanly.
 const CLAIM_WINDOWS: [i32; 2] = [
     crate::owned::DURATION_TOLERANCE_SECS,
     SAME_TRACK_DIFFERENT_MASTER_SECS,

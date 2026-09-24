@@ -2,13 +2,15 @@ use super::*;
 use crate::title_rules::strip_qualifier;
 use std::collections::HashSet;
 
-/// The regression: scoping used to compare `--only` against the *parent path*, which
-/// `matches_filter` normalizes to `abbacompilation2005 the complete...`. Under `--exact` that can
-/// never equal `abba`, so every `--only X --exact` sync skipped box-set repair while reporting
-/// "0 sibling-folder group(s)" - indistinguishable from the artist genuinely having none.
-/// The regression that left ABBA's "The Complete Studio Recordings (9CD)" unbound: a perfect
-/// 9-of-9 rip whose disc 1 holds exactly MusicBrainz's 19 tracks in a different sequence. Matching
-/// by position rejected that disc, and one rejected sibling rejects the whole group.
+// Scope filtering must compare `--only`/`--exact` against the sibling group's own artist, never
+// against a folder's *parent path* string - `matches_filter` normalizes a whole parent-path segment
+// into one token, which an exact-match filter can never equal a plain artist name against, so every
+// `--only X --exact` sync would silently skip box-set repair while reporting "0 sibling-folder
+// group(s)" - indistinguishable from the artist genuinely having none.
+
+/// A disc can be a perfect rip of every MusicBrainz track in its medium while sequencing them
+/// differently than MusicBrainz lists them - pairing by position alone would reject that disc, and
+/// one rejected sibling rejects the whole group.
 #[test]
 fn a_disc_sequenced_differently_still_matches_the_same_medium() {
     let local = sibling(
@@ -105,8 +107,8 @@ fn an_exact_title_is_claimed_before_a_loose_one_competes_for_it() {
     );
 }
 
-/// ABBA's disc 5: eleven titles line up exactly, one runtime is six seconds out, and that used to
-/// reject the entire nine-disc box.
+/// A multi-disc box where one disc's titles all line up exactly but one runtime is a few seconds
+/// out - that drift alone must not reject the whole box.
 #[test]
 fn a_few_seconds_of_master_drift_does_not_reject_a_disc() {
     let local = sibling(
@@ -199,9 +201,9 @@ fn repeated_titles_each_claim_a_distinct_medium_track() {
 // Ladder passes 1c / 2 / 3 / 4 (docs/specs/spec_tidy_observations.md round 2)
 // -----------------------------------------------------------------------
 
-/// Pass 2's window used to be 5s while pass 1b already allowed 15s, so a containment pair with a
-/// few seconds of drift was refused although the identical-title pair beside it was accepted.
-/// Real case: Bass Mekanik's "Reload" disc 2, "20Hz Sine Wave" against MusicBrainz's "20Hz".
+/// Pass 2's window must allow the same drift pass 1b does (15s, not a tighter 5s) - otherwise a
+/// containment pair with a few seconds of drift is refused although the identical-title pair beside
+/// it is accepted.
 #[test]
 fn a_contained_title_tolerates_the_same_drift_an_exact_one_does() {
     let local = sibling(
@@ -592,7 +594,7 @@ fn strip_qualifier_drops_trailing_bracket_groups_only() {
 /// ```
 ///
 /// Exists because unit tests cannot answer the only question that matters when the matcher
-/// changes: *did anything that used to bind stop binding*. The dump format is one
+/// changes: *does everything that bound before this change still bind after it*. The dump format is one
 /// `L|parent|folder|trackId|title|seconds` line per local track and one
 /// `M|parent|discNumber|trackId|title|seconds` line per MusicBrainz track.
 #[test]
@@ -907,8 +909,9 @@ fn a_folder_keeps_the_disc_the_strict_rules_gave_it() {
 }
 
 /// docs/sync_decisions.md §19 item 1b. A box whose rip carries one folder that is on no disc of
-/// any edition - a bonus DVD-audio, an SACD layer beside the CD rip - used to reject the whole
-/// group. The extra folder is now simply left out; nothing about its row changes.
+/// any edition - a bonus DVD-audio, an SACD layer beside the CD rip - must not reject the whole
+/// group over that one folder; the extra folder is simply left out, with nothing about its row
+/// changed.
 #[test]
 fn a_sibling_on_no_disc_is_left_out_instead_of_refusing_the_box() {
     let siblings = vec![
@@ -1024,29 +1027,29 @@ fn a_single_sibling_is_never_a_bind() {
 #[test]
 fn guesses_a_search_title_from_the_parent_folder() {
     assert_eq!(
-        guess_box_title("ABBA/Compilation/2008 - The Albums (9CD)"),
+        guess_box_title("SomeArtist/Compilation/2008 - The Albums (9CD)"),
         "The Albums"
     );
     assert_eq!(
-        guess_box_title("ABBA/Compilation/2005 - The Complete Studio Recordings (9CD)"),
+        guess_box_title("SomeArtist/Compilation/2005 - The Complete Studio Recordings (9CD)"),
         "The Complete Studio Recordings"
     );
     assert_eq!(
-        guess_box_title("ABBA/Compilation/No Year Box (3CD)"),
+        guess_box_title("SomeArtist/Compilation/No Year Box (3CD)"),
         "No Year Box"
     );
 }
 
-/// A catalogue number in brackets used to search MusicBrainz for a title it never returned a hit
-/// for - HIM's "The Single Collection" sat undiscoverable via tier (b) because of this.
+/// A catalogue number in brackets must not end up as part of the search title - MusicBrainz's own
+/// title never carries one, so leaving it in would make tier (b)'s search find no hit at all.
 #[test]
 fn guess_box_title_strips_bracketed_catalogue_numbers_too() {
     assert_eq!(
-        guess_box_title("HIM/Album/2002 - The Single Collection [#74321 96173 2]"),
+        guess_box_title("SomeArtist/Album/2002 - The Single Collection [#74321 96173 2]"),
         "The Single Collection"
     );
     assert_eq!(
-        guess_box_title("IQ/Remastered/1985 - The Wake (3 CD) [GEPBOX2]"),
+        guess_box_title("OtherArtist/Remastered/1985 - The Wake (3 CD) [GEPBOX2]"),
         "The Wake"
     );
     // Whichever bracket opens first wins, regardless of order.
