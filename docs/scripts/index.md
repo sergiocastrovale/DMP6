@@ -115,7 +115,7 @@ Works with all storage modes (`local`/`s3`/`both`). S3 uploads once per unique h
 
 ## Artist Resolution (MusicBrainz-validated)
 
-**A separator is never, by itself, evidence of a split.** Real bands: "Nurse With Wound", "MAN WITH A MISSION", "Mumford & Sons", "Earth, Wind & Fire". Measured: old punctuation-guessing splitter split **721/722** distinct `" with "` values, including 4 real bands owning releases here. A hardcoded exception list can't fix an unbounded problem.
+**A separator is never, by itself, evidence of a split.** Real bands: "Nurse With Wound", "MAN WITH A MISSION", "Mumford & Sons", "Earth, Wind & Fire". Measured: an old punctuation-guessing splitter split nearly every distinct `" with "` value it saw, wrongly, several of them real bands. A hardcoded exception list can't fix an unbounded problem.
 
 So sync asks MB: *is this whole string an artist?* Only a definitive "no" justifies looking for a split, and every candidate grouping is validated the same way (`common::mb::resolve`).
 
@@ -125,7 +125,7 @@ So sync asks MB: *is this whole string an artist?* Only a definitive "no" justif
 
 The A/B split means: progress is alphabetical + honest (old track-driven loop's counter stalled/repeated on deferrals); a crash is cheap (`MbArtistLookup` *is* the resume state, `--overwrite` skips the cache warm to force a re-ask); run cost visible upfront (`Resolving N of M (M-N already resolved)`).
 
-**The cache warm loads the whole table, not just the tag values being resolved.** Tier 3 takes a compound apart and asks about the *atoms* inside — an atom usually isn't itself a distinct tag value, so warming by name only left every atom a memo miss. Measured: a 3-minute run made 57 lookups, inserted **zero** new rows (all re-asked known names). Warming the whole ~44k-row table (a few MB, folder scan already loads it) cut the pending set from 44,544 to 34,874 names in one step.
+**The cache warm loads the whole table, not just the tag values being resolved.** Tier 3 takes a compound apart and asks about the *atoms* inside — an atom usually isn't itself a distinct tag value, so warming by name only left every atom a memo miss, causing an entire run's worth of lookups to re-ask already-known names and insert zero new rows. Warming the whole table (a few MB, folder scan already loads it) removes a large fraction of the pending set in one step.
 
 ### Search order
 
@@ -139,7 +139,7 @@ The A/B split means: progress is alphabetical + honest (old track-driven loop's 
 
 Tier 0 carries most of the library — Picard writes one `Artists` value + one `MusicBrainzArtistId` per credited artist, split already done and authoritative when they line up (multi-value frames, `metadata.rs` collects every value).
 
-A **single** pair counts too, only when that one value *is* the whole tag (makes "Kool & the Gang" safe with no network call). Not theoretical: of 3,308 single-pair tracks measured, 3,307 matched, 1 didn't (tag "The B.B. King Blues Band", embedded value "B.B. King" — would've replaced the band with the person). Mismatch falls through to lookup.
+A **single** pair counts too, only when that one value *is* the whole tag (makes an ampersand-joined duo like "Kool & the Gang" safe with no network call). Not theoretical: of the single-pair tracks measured, the overwhelming majority matched, but a rare mismatch exists — a band-name tag paired with an embedded id for just one member of that band would silently replace the band with the individual. Mismatch falls through to lookup rather than trusting the pair blindly.
 
 Tier 3 is a **span** search: `resolve_span(i,j)` asks about a contiguous run of atoms, recurses on misses, memoized per span — O(n²) not O(2ⁿ), prefers the coarsest valid grouping ("Y & Z with A" → "Y & Z" + "A" when MB knows the duo). Above 8 separators (~0.1% of names) only the whole string + atoms are tried.
 
@@ -150,16 +150,16 @@ A transient failure (timeout/503) → **deferred**, name left alone, retried nex
 Word: ` featuring `, ` feat. `, ` ft. `, ` with ` (guest); ` vs `, ` and `, ` & `, ` x `, `; `, `, ` (co-billing). Typographic: ` / `, ` + `, ` · `, ` • `, ` ♦ `, ` \ `, `\\`, `\`, `|`.
 
 - **Spaces required** on `/` and `+` — bare "AC/DC" and "Akio Suzuki/Takehisa Kosugi/Riri Shimada" are the same shape; only the first is protected by a tier-2 hit, so both stay whole.
-- **`\\` listed before `\`** — ID3v2.3 has no multi-value frame, taggers join with doubled backslash. Matched byte-at-a-time, the first `\` used to be the separator and the second rode along ("Mal Waldron\\Jim Pepper" → artist `\Jim Pepper`, which then *passed* MB verification because `normalize_name` strips punctuation).
+- **`\\` listed before `\`** — ID3v2.3 has no multi-value frame, taggers join with doubled backslash. Matched byte-at-a-time, checking the single backslash first would treat only the first byte of the doubled pair as the separator, leaving the second attached to the second artist's name — and that decorated name can then *pass* MB verification, since `normalize_name` strips punctuation and hides the stray backslash.
 - **Dangling markers trimmed, not split** — `trim_separator_noise` strips leading/trailing separator punctuation before lookup (tier 2 runs before any split, would otherwise cache the decorated spelling). Guarded on the result still holding a letter/digit, so "+/-"/"!!!" survive.
 
 ### Pacing
 
 `RateLimiter` floor 1100ms (`MB_MIN_DELAY_MS`, clamped 1100-10000), adaptive: rate-limit doubles delay to 10s cap, success sheds 100ms back toward floor.
 
-503 classified **rate-limit** vs **server overload** by body + `X-RateLimit-Remaining` — only the former slows steady-state. Penalty applies once per request, not per retry (used to walk 1100→10000 over 5 retries of one unlucky name, pinning every later name at the cap). `Retry-After` wins over local backoff when sent.
+503 classified **rate-limit** vs **server overload** by body + `X-RateLimit-Remaining` — only the former slows steady-state. Penalty applies once per request, not per retry — applying it per retry instead would let one unlucky name's retry ladder walk the delay all the way to its cap and pin every later name there too. `Retry-After` wins over local backoff when sent.
 
-**Most 503s here are not us.** Measured live: body `"The MusicBrainz web server is currently busy..."`, `x-ratelimit-remaining:14/15`, `retry-after:0` — using 1/15 of the allowance, server just load-shedding. Raising the floor to 1300ms was tried, cost throughput, fixed nothing, reverted. Overload 503 handled as what it is: served no data, retry doesn't re-pay the inter-request delay (250ms floor stops a hot loop), not logged (~1/3 of requests on a long run take this path, recover on first retry — logging each made a healthy run look broken). Total reported once: `Absorbed N transient MusicBrainz 503(s)`. Only `deferred` counts real failures.
+**Most 503s here are not us.** MB's own load-shedding accounts for most of them — a busy-server response body, plenty of rate-limit budget still remaining, no `Retry-After` requested. Raising the floor was tried as a fix, cost throughput, fixed nothing, reverted. Overload 503 handled as what it is: served no data, retry doesn't re-pay the inter-request delay (a floor stops a hot loop), not logged (a meaningful fraction of requests on a long run take this path and recover on first retry — logging each made a healthy run look broken). Total reported once: `Absorbed N transient MusicBrainz 503(s)`. Only `deferred` counts real failures.
 
 **Offline backstop:** `KNOWN_SINGLE_ARTISTS` (`common/src/artists.rs`) consulted before any split — a known-single band stays whole even on MB "no such artist" (rename/alias/bad response). MB still asked for the id, only the split is suppressed. Matches on normalized name (one entry covers every punctuation spelling). A floor, not authority.
 
@@ -176,7 +176,7 @@ Word: ` featuring `, ` feat. `, ` ft. `, ` with ` (guest); ` vs `, ` and `, ` & 
 
 ### Candidate separators
 
-`,` `;` `/` `\` `|` ` & ` ` and ` ` vs ` ` x ` `feat.` `ft.` `featuring` ` with `. Only *propose* split points — MB decides. A comma between digits ("10,000 Maniacs") is never a separator.
+`,` `;` `/` `\` `|` ` & ` ` and ` ` vs ` ` x ` `feat.` `ft.` `featuring` ` with `. Only *propose* split points — MB decides. A comma between digits (an artist name that spells out a large number) is never a separator.
 
 ### Owner vs credit
 
@@ -200,11 +200,11 @@ A `manuallyAdded` artist (`./add`) is excluded from orphan sweep too — added b
 
 ### Cleanup is scoped to the run
 
-`delete_empty_releases`/`delete_orphaned_mb_releases`/`delete_orphan_artists` take an `ArtistScope` — filtered runs (`--only`/`--folders`/`--from`/`--to`) scope to the touched artist set; only unfiltered sweeps the whole library (previously a filtered rescan was library-wide, garbage-collecting artists it never looked at).
+`delete_empty_releases`/`delete_orphaned_mb_releases`/`delete_orphan_artists` take an `ArtistScope` — filtered runs (`--only`/`--folders`/`--from`/`--to`) scope to the touched artist set; only unfiltered sweeps the whole library. A filtered rescan sweeping library-wide instead would garbage-collect artists it never even looked at this run.
 
-Run **once, after the folder loop**, not per-folder (was 3 full-table anti-joins × ~25k folders for nothing read inside the loop). `detect_deleted_folders` stays unscoped, gated on `!has_filter`.
+Run **once, after the folder loop**, not per-folder (a per-folder run pays a full-table anti-join, over the whole folder count, for nothing read inside the loop). `detect_deleted_folders` stays unscoped, gated on `!has_filter`.
 
-`--resolve-artists` (no folder loop) derives its own orphan scope: artists linked to in-scope releases, captured **before** the pass runs (unlinking is what the reconcile does — nothing left to join on afterward). Previously ran neither cleanup, 8,216 zero-link artists accumulated.
+`--resolve-artists` (no folder loop) derives its own orphan scope: artists linked to in-scope releases, captured **before** the pass runs (unlinking is what the reconcile does — nothing left to join on afterward). Skipping this cleanup here lets zero-link artists silently accumulate run after run.
 
 ### When ownership is written
 
@@ -212,9 +212,9 @@ The folder loop can't wait for the resolve pass — `lastIndexedAt`, artist fold
 
 So the loop resolves the **owner tag** offline first, free tiers only (embedded pairs, cache, backstop) — tier 4 rejected here (cold cache must never blind-split "Kool & The Gang"). Undecided → verbatim tag written as **provisional** owner, corrected later same run.
 
-**The owner tag isn't always `albumArtist`** — on Various-Artists compilations the placeholder names nobody, so the track's own `artist` tag decides instead (contributors co-own). One definition, `index::resolve::owner_tag`, used by both loop and reconcile (used to drift — the loop had the VA fallback, reconcile read `albumArtist` alone, so VA releases' raw compound owner stuck forever; 497 had accumulated, e.g. a long session-musician list owning *The Bodyguard OST*).
+**The owner tag isn't always `albumArtist`** — on Various-Artists compilations the placeholder names nobody, so the track's own `artist` tag decides instead (contributors co-own). One definition, `index::resolve::owner_tag`, shared by both loop and reconcile — the two must never diverge: if the loop applied the VA fallback but the reconcile read `albumArtist` alone, every VA release's raw compound owner would stick forever instead of resolving to real artists.
 
-Resolve pass runs an **ownership reconcile** replacing provisional owners, guarded to never make things worse. **Every artist the reconcile adds as owner is stamped `lastIndexedAt`** (via `RETURNING`, existing owners not re-queued) — used not to be: the loop stamps only owners *it* settled (the compound), so real substituted artists (often created on the spot) got no `lastIndexedAt`, and since sync only selects artists that have one, 5,445 owning artists were never synced, 437 albums never matched (fixed 2026-09-18, `docs/sync_decisions.md` §19 item 13).
+Resolve pass runs an **ownership reconcile** replacing provisional owners, guarded to never make things worse. **Every artist the reconcile adds as owner is stamped `lastIndexedAt`** (via `RETURNING`, existing owners not re-queued) — this matters because the loop itself only stamps the owners *it* settled (the compound placeholder), so a real substituted artist the reconcile creates on the spot would otherwise get no `lastIndexedAt` at all, and since sync only selects artists that have one, such an artist and everything it owns would never sync.
 
 | Guard | Why |
 |---|---|
@@ -227,13 +227,13 @@ Resolve pass runs an **ownership reconcile** replacing provisional owners, guard
 | Insert new owners before deleting stale, one transaction | a release must never pass through zero owners |
 | Delete only within the release scope | targeted runs stay targeted |
 
-`delete_orphan_artists` runs after the reconcile, including in `--resolve-artists` mode (used to be skipped there, 8,216 zero-link rows piled up).
+`delete_orphan_artists` runs after the reconcile, including in `--resolve-artists` mode — skipping it there would let zero-link rows pile up indefinitely.
 
 Warm cache → loop resolves correctly on the spot, no provisional owner written — 2nd `--only` run of an artist typically **0 MB lookups**. Cost paid once, cold cache.
 
 ### Artist folder image
 
-Follows ownership, not folder name. **Primary** owner (first album artist resolved) always gets it; other resolved owners get it only if they have none yet. (Used to fire only for single-artist folders — a compound `albumArtist` handed its image to junk, and after splitting, those folders contributed no image at all.)
+Follows ownership, not folder name. **Primary** owner (first album artist resolved) always gets it; other resolved owners get it only if they have none yet. Firing only for single-artist folders instead would hand a compound `albumArtist` folder's image to junk, and after splitting, that folder would contribute no image to any real owner at all.
 
 ### Canonicalizing artist rows
 
@@ -245,11 +245,11 @@ An `Artist` row is created from a *tag string*, once — `ensure_artist` upserts
 
 Two load-bearing guards:
 
-**`musicbrainzId` alone is not a safe merge key** — 3,115 ids shared by >1 row, almost all leaks ("Lena Horne & Gábor Szabó" carries Lena Horne's id with 0 links, lookup row says MB denied the string). Fix: both names need a lookup row resolving to the *same* id. 3,115 candidate groups → 172.
+**`musicbrainzId` alone is not a safe merge key** — a large share of ids shared by more than one row turn out to be leaks: a compound-name row carrying just one member's raw id with no actual links, where that member's own lookup row confirms MB denied the compound string entirely. Fix: both names need a lookup row resolving to the *same* id, which sharply narrows the candidate group count.
 
-**Sharing an MB id still isn't enough** — `mb_artist_exact` matches MB **aliases** too (lookup legitimately reports "Simone"→Nina Simone, "ANT"→Adam Ant — MB saying the string *can* refer to that artist, not that it *is* their name; a library tag "Simone" means the Brazilian singer). Steps 2/3 additionally require both spellings to **normalize to the same key** (case/punctuation/leading "the"/`&` vs `and` folded). Variant pairs still merge ("Iron And Wine"/"Iron & Wine"); alias hits dropped. 172→108 connections, 1,343→1,295 renames.
+**Sharing an MB id still isn't enough** — `mb_artist_exact` matches MB **aliases** too (a short nickname legitimately resolving to a well-known artist's full name is MB saying the string *can* refer to that artist, not that it *is* their name; the same short nickname could equally mean a completely different, unrelated artist in a given library). Steps 2/3 additionally require both spellings to **normalize to the same key** (case/punctuation/leading "the"/`&` vs `and` folded). Variant pairs still merge (an "and"-spelled name against its "&"-spelled twin); alias hits dropped — this trims the connection/rename counts meaningfully versus the naive MBID-sharing approach above.
 
-**Scoped like every cleanup** — `./index --only "X"` must stay about X (the artist page's Scan button issues exactly that). Steps 1-2 filter on artist id; step 3 filters on **MBID** (a twin is usually out of scope, filtering it out would make every group look like a singleton). Measured: unfiltered `6474/1295/108`, `--only "Frank Sinatra" --exact` `1/5/4`.
+**Scoped like every cleanup** — `./index --only "X"` must stay about X (the artist page's Scan button issues exactly that). Steps 1-2 filter on artist id; step 3 filters on **MBID** (a twin is usually out of scope, filtering it out would make every group look like a singleton).
 
 A scoped run makes **only slug-stable renames** — punctuation-only fixes land, but a rename that moves the URL (e.g. "Ink Spots"→"The Ink Spots") waits for the library-wide pass, deliberately.
 

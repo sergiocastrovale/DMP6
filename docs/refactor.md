@@ -496,3 +496,82 @@ panic, `bind_local_release` atomicity, totals `SUM(DISTINCT)`, `problems`' `--on
 deployed batch was smoke-tested against the live server (`index`/`sync`/`tidy` on a real artist,
 `fix --missing`/`--dry-run`, `tidy --rescore-only`, a full-library `audit` run, a real 43-generator
 `playlists` run, a real `--db-only` backup) with a clean `errors.log` throughout.
+
+## Phase 6 — docs (final phase)
+
+Docs-only, no deploy needed. Same neutrality goal as Phase 5.3, applied to Markdown instead of Rust:
+reference docs should read as present-tense invariants, not incident narratives, with real names/
+dates/measured counts either generalized in place or moved to `docs/history/`.
+
+**6.1 — reference vs. history split.**
+
+- `docs/sync_decisions.md`: extracted its two most cleanly-separable, heaviest sections (§17
+  "Measurements — identity investigation", §19 "To do next") verbatim into a new
+  `docs/history/sync_decisions_history.md`, replacing each with a short stub pointer and preserving
+  every section number so none of the ~10 other code comments citing `§4`/`§5`/`§9`/`§11`/`§14` needed
+  changes. The remaining sections (§3, §4, §7, §9, §10, §14, §15) had dated/real-name/measured-count
+  content woven directly into paragraphs that also explain still-current behavior, not cleanly
+  extractable the way §17/§19 were — these were reworded in place instead (present-tense invariant
+  framing, generic examples, no dates/real names/thousands-comma counts), the same treatment Phase
+  5.3 applied to the `.rs` files. One additional incident (`run_repair`'s error-boundary history, two
+  real outages) was extracted into the history file mid-pass once it became clear it was pure
+  narrative with no ongoing-reference value beyond the invariant already stated in §9's body.
+- `docs/no_guessing.md` (an implementation-brief-turned-rollout-log, structurally different from
+  `sync_decisions.md`): split its dated rollout narrative — status blocks, measured production-impact
+  counts, rollout steps, NAS-specific corrections, verification log — into a new
+  `docs/history/no_guessing_rollout.md`. No code references any specific section number inside this
+  file (confirmed by grep before touching it), so nothing needed updating at call sites. What remains
+  in `docs/no_guessing.md` is the reference spec: reason constants, precedence rules, the consensus
+  API, and the implementation walkthrough — with the real-name example ("Al Jolson" fake-edition
+  stacks) and dated status blocks generalized or removed.
+- `docs/scripts/{index,sync,tidy,fix,delete}.md`: lighter touch-up per the plan's own expectation
+  (kept current through phases 0-2a already) — reworded real-name examples (a well-known band's
+  4-track-EP-as-Single case, a live-album-vs-studio title-collision case, a bootleg-flooded artist's
+  gap list, an ID3v2.3 doubled-backslash mis-split, a VA-compilation ownership drift) and stripped
+  measured counts/dates, keeping the underlying mechanism explained. Found and fixed one real doc/code
+  drift incidentally: `docs/scripts/fix.md` still documented `--revert`'s old help text ("Revert
+  previously applied fixes") after Phase 5.3's comment-neutrality pass had already changed the actual
+  CLI string to "Revert already-applied fixes" — doc now matches the deployed binary.
+- `docs/images.md`, `docs/deploy.md`, `docs/dev_guide.md`: checked, already clean.
+- **Scope call, stated honestly**: `docs/specs/{spec_containment_rollout,spec_tidy_observations,
+  spec_tidy_script}.md` were **not** moved into `docs/history/`. The plan assumed these were low-risk
+  since they read as observation logs by their own naming — true, but `spec_tidy_observations.md`
+  turned out to be cited by exact path (with and without a `§N` suffix) from over a dozen `.rs` files
+  and several other docs, not the "lower risk than sync_decisions.md" the plan expected. Moving it
+  would be a purely cosmetic path change (it already reads as history by content) carrying real
+  mechanical risk (missing one of the ~15 call sites leaves a dangling reference) for no
+  reference-vs-history clarity gain, since the actual goal — dates/names not masquerading as evergreen
+  reference material — is already satisfied by these files' existing content and naming. Left in place.
+
+**6.2 — `docs/scripts/architecture.md` (new).** Crate map (16 workspace crates + the non-workspace
+`replay`/`test-db`/`monitor` tooling), `common`'s current module list (all 21 `pub mod`s, reflecting
+Phase 5.2's splits), the lock/heartbeat/stale-lock model (`common::lock`), the shutdown-handler
+contract Phase 3.1 built (`common::app::spawn_shutdown_handlers`), the error-propagation policy (with
+the box-repair per-group error boundary named as the one deliberate exception), and the full Guardrails
+list verified directly against source: exact `Cannot start: lock held by <binary> (pid <pid>)` message
+text, `/proc/<pid>/comm` cross-check, `PROGRESS:{json}` schema, `DMP_EXIT:<code>` sentinel and its
+`trap ... EXIT` shell wrapper, `add`'s `EXIT_ALREADY_EXISTS = 3`, and the `DESTRUCTIVE_FLAGS`/
+`COMMAND_PERM`/`FLAG_PERM` constants — every one grepped against current source before writing, not
+copied from the plan's draft. Links to (doesn't duplicate) `scripts/README.md`'s per-crate table and
+`scripts/replay`/`scripts/test-db`'s own header comments. `scripts/README.md` gained a one-line pointer
+to the new doc.
+
+**6.3 — drift found while writing 6.2.** Only the `fix.md` `--revert` wording drift above; everything
+else checked against source (module list, lock message text, exit codes, permission constant names)
+matched on the first read.
+
+**Not done, deliberately:** the exhaustive real-name sweep this phase's docs work stops at is the same
+boundary Phase 5.3 drew for `.rs` files — every instance the neutrality patterns and a manual read-
+through surfaced was fixed; a small number of well-known public band names remain as CLI usage
+examples or illustrative parsing-rule cases (e.g. `./delete "Radiohead"` in usage text, "AC/DC" as a
+bare-slash example) where the concern the plan raised — narrating what happened to a specific artist
+in *this* library as an incident — doesn't apply, since these name public entities generically rather
+than describing a library-specific bug encounter.
+
+## Plan status: complete
+
+All phases (0, 0.5, 1A-files, 1A-db, 1B, 2a, 3.1, 4, 5.1, 5.2, 5.3, 6) are done. Phase 3's broader
+original scope (bootstrap/config/library module reshuffling beyond the one shutdown-handler extraction)
+was deliberately narrowed at the plan-writing stage itself and is not reopened here. See the phase
+sections above for what shipped, what was investigated and found not applicable, and the two scope
+calls made explicitly rather than silently (Phase 3's narrowing, Phase 6.1's `docs/specs/` decision).

@@ -7,6 +7,9 @@ building it once if it is missing and `cargo` is available, and falling back to 
 on the NAS. An existing binary is never rebuilt automatically — after a code change run
 `cd scripts && cargo build --release` yourself.
 
+Crate map, `common`'s module shape, the lock/shutdown/progress contracts every binary shares, and the
+error-propagation policy: `docs/scripts/architecture.md`.
+
 ## Rust Scripts
 
 | Script | Binary | Purpose | Docs |

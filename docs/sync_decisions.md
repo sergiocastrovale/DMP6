@@ -9,7 +9,7 @@
 ## 1. What counts as an album you own
 
 - A **folder is one album** — not a tag, not an MB id. Two copies in two folders = two entries (app groups them on screen).
-- MB ids inside files are **not** used to group: a compilation's files each carry the id of the album they were lifted from — grouping by that would shatter one compilation into dozens of fragments. Same fact limits how far those ids are trusted for *matching* (§7).
+- MB ids inside files never drive grouping: a compilation's files each carry the id of the album they were lifted from — grouping by that would shatter one compilation into dozens of fragments. Same fact limits how far those ids are trusted for *matching* (§7).
 - Loose files with no folder → grouped by album title + year + artist.
 - **Album title/year come from file tags** (most common value across the folder), never the folder name. Once MB matches, its title wins instead.
 
@@ -20,13 +20,15 @@
 - **Owner** = `albumArtist` tag (whose page the album appears on). If it says "Various Artists"/empty, the track's own `artist` tag decides instead.
 - **Appears on** = credited on a track but not an owner — gets a credit, not the album.
 - Compound names split by **meaning, not punctuation**: `A with B` / `A feat. B` → A owns, B credited. `A & B` / `A, B` → both own.
-- **>4 co-billed names = personnel list, not a band** — first name owns, rest credited. (Real case: 44 session musicians on one Sinatra album would've put it on 44 artist pages.)
+- **>4 co-billed names = personnel list, not a band** — first name owns, rest credited. (Without this, a large personnel-credit album with dozens of session musicians listed would put it on every one of their artist pages.)
 
 ---
 
 ## 3. Turning a name into a real artist
 
-Most damage-prone step — splitting a name wrongly destroys a real band. Measured: of 722 names containing "with", **721 were being split wrongly**, including real bands ("Nurse With Wound", "MAN WITH A MISSION").
+Most damage-prone step — splitting a name wrongly destroys a real band. Measured across the library:
+names containing the word "with" were overwhelmingly real band names, not two artists joined by a
+separator — a naive split-on-separator rule would have broken nearly all of them.
 
 **Rule: a separator is never proof of a split.** Sync asks MB if the whole string is a real artist *first*, only splits if definitively not.
 
@@ -38,7 +40,7 @@ Order (cheapest first, most names never reach the internet):
 5. Last resort: accept pieces unverified, minus obvious role-words.
 
 - **Separators:** `featuring`, `feat.`, `ft.`, `with`, `vs`, `and`, `&`, `x`, `;`, `,`, `/`, `+`, `·`, `•`, `♦`, `\`, `|`.
-- **Not separators:** bare `/` or `+` without surrounding spaces (keeps AC/DC, Florence + the Machine intact); a comma between digits (10,000 Maniacs).
+- **Not separators:** bare `/` or `+` without surrounding spaces (keeps names like "AC/DC" or a "+"-joined band name intact); a comma between digits (an artist name containing a spelled-out large number).
 - **A network failure never causes a split** — name left alone, retried later.
 - "Various Artists"/"[unknown]"/"[no artist]" recognized as placeholders, skipped entirely.
 
@@ -48,13 +50,23 @@ Order (cheapest first, most names never reach the internet):
 
 Two entries are the same **only if both names resolve to the same MB identity** — never similar spelling, never one name containing the other. When same: the entry owning more albums becomes the real one, the other its alias (ties break consistently).
 
-**Got this wrong before (ugly).** Old rule accepted any other entry holding the same identity, no ownership check, no consistent ordering — Bob Dylan's 72 albums sat under "Dylan"; Erroll Garner's 76 sat under "Wardell Gray Quintet". 33 artists affected. `./tidy` sweeps all of these every run (moved off standalone `sync --repair-artist-identities`, `docs/scripts/tidy.md`, `docs/specs/spec_tidy_script.md`).
+**Why not "any row holding the same identity":** with no ownership check and no consistent ordering,
+one mistagged file (a track's `artist` tag naming one artist while its embedded MB id points at a
+completely different one) is enough to permanently misfile an artist's whole discography under the
+wrong name - the write only fills an *empty* identity slot, so no later correct answer overwrites it,
+and the effect compounds across every album that artist owns. `./tidy` sweeps for this every run
+(moved off standalone `sync --repair-artist-identities`, `docs/scripts/tidy.md`,
+`docs/specs/spec_tidy_script.md`).
 
-**Traced (2026-09-10).** Erroll Garner's 76 albums sat under "Wardell Gray Quintet" because one mistagged file (`artist` tag = "Wardell Gray Quintet", embedded MB id = Garner's, wrong). Sync treats an embedded id as definitive and writes it once, permanently — nothing double-checks it names the artist the tag says, and the write only fills an *empty* slot so no later correct answer overwrites it.
+A wider version of the same risk: sync's search step tolerates loose matches to *find releases* - that
+tolerance must never also decide *acceptance of an identity*. A merely-similar name (e.g. a band's studio
+vs. live lineup billing) can score close enough to count as the same artist under a loose match, which
+is exactly the shape that lets one artist's catalogue silently absorb another's.
 
-A wider version: sync's search step tolerates loose matches to *find releases* — but that tolerance was also used to *accept an identity*. "Wardell Gray Sextet" scored close enough to "Wardell Gray" to count as the same artist. Measured library-wide: **1,269 entries** held an identity contradicting their own name, in **149 groups** sharing one identity wrongly, traceable through **15,493 mistagged embedded-id pairs**.
-
-**Fix (shipped 2026-09-10):** an identity may only be **claimed** when certain — embedded id + independent lookup agree, or exact name match (not approximate). A loose match may still *find* releases, never *claim* an identity. See §5 for which steps may claim, §6 for why the code fix alone doesn't undo existing damage.
+**The fix:** an identity may only be **claimed** when certain - embedded id + independent lookup
+agree, or exact name match (not approximate). A loose match may still *find* releases, never *claim*
+an identity. See §5 for which steps may claim, §6 for why the code fix alone doesn't undo existing
+damage.
 
 ---
 
@@ -90,7 +102,7 @@ B and C also delete the entry's derived `MusicBrainzReleaseArtist` rows — wron
 
 ## 7. Matching an album to MusicBrainz
 
-**No guessing (2026-09-22, `docs/no_guessing.md`).** Before any of the tiers below run, a folder's
+**No guessing (see `docs/no_guessing.md`).** Before any of the tiers below run, a folder's
 album tag and embedded MB id(s) must be **unanimous** across its tracks (`common::consensus::evaluate`)
 — never a plurality/majority vote, never a "rescue" by tracklist score. Untagged tracks are absent
 evidence, not a veto. Not unanimous → the release is parked `UNKNOWN` with a human-readable
@@ -102,11 +114,10 @@ Three tiers, in order, over the unanimous ids/title the gate already established
 win over searching.**
 
 1. **The album id every tagged track agrees on.** Looked up directly, bound as-is — no confirmation
-   step, because unanimity is already the confirmation. (Pre-2026-09-22 this tier believed a >50%
-   plurality and rescued a scatter's winner if its tracklist scored `COMPLETE`: a per-track tagger
-   scattered "Christmas Moments with Harold Land" (35 tracks) across 31 different album ids, and
-   believing the scatter winner bound 20 unrelated compilations onto one 8-track album. That rescue
-   path is gone — those folders are `UNKNOWN` now, see §15.)
+   step, because unanimity is already the confirmation. A plurality vote is never enough: a per-track
+   tagger can scatter one album's tracks across many different album ids, and believing the scatter's
+   winner risks binding a handful of tracks that happen to share an id onto a release most of the
+   folder's tracks disagree with. Those folders park `UNKNOWN` instead, see §15.
 2. **The album-group id every tagged track agrees on** (or Tier 1's release id's own group, if Tier 1
    404'd — MB has deleted/merged the release since the file was tagged) — browse its editions, pick
    one (see "Which pressing" below).
@@ -117,18 +128,18 @@ win over searching.**
 No confident answer → **unmatched**, not guessed. Unmatching also clears track links.
 
 **Rule changes don't re-match existing matches** — sync skips already-matched albums (unless `UNKNOWN`
-or `--overwrite`). The 2026-09-18 agreement-rule change was applied to existing matches by a one-time
-repair (`docs/specs/spec_tidy_observations.md` §16): 2,812 compilations unmatched, 7 re-synced. The
-2026-09-22 unanimity change has its own one-off, §19 "Round 8".
+or `--overwrite`). A tightened matching rule needs its own one-time repair pass to reach releases
+matched under the old rule; see `docs/specs/spec_tidy_observations.md` and §19 for worked examples of
+that pattern.
 
 ### Which albums are allowed to match at all
 - **Allowed:** Album, EP. Compilations/live/remix/soundtrack ride on those. Remaster/deluxe aren't separate MB types, pass automatically.
 - **Rejected:** audiobook, audio drama, spoken word, interview, field recording, demo.
 - **Must be Official** — no bootlegs (no status listed = official).
-- **Singles never searched/invented** — but a single whose id is *in your files* binds (you demonstrably own the disc). MB files plenty of 4-track CDs as singles; Radiohead's "Creep" sat unmatched for years otherwise.
+- **Singles never searched/invented** — but a single whose id is *in your files* binds (you demonstrably own the disc). MB files plenty of multi-track CDs as singles; without this a legitimately-owned single would otherwise sit unmatched forever.
 
 ### Which pressing gets picked
-Prefers the edition whose track count exactly matches your folder. Tie-break: same year as your files → CD format → earliest release date. No match among several candidates → refuse, stay unmatched (binding a random pressing = permanently wrong tracklist). A folder with *more* tracks than the matched edition scores `EXTRA_TRACKS` rather than hunting a bigger sibling edition (the deluxe-upgrade search this used to do was removed 2026-09-22 alongside the plurality rescue above — same reasoning, and `stampMerged` already treats `EXTRA_TRACKS` as keepable). Fewer tracks = genuine incompleteness, scores `MISSING_TRACKS`.
+Prefers the edition whose track count exactly matches your folder. Tie-break: same year as your files → CD format → earliest release date. No match among several candidates → refuse, stay unmatched (binding a random pressing = permanently wrong tracklist). A folder with *more* tracks than the matched edition scores `EXTRA_TRACKS` rather than hunting a bigger sibling edition — searching for a bigger edition to "upgrade" into risks the same unanimity-violating guess this section rules out elsewhere, and `stampMerged` already treats `EXTRA_TRACKS` as keepable. Fewer tracks = genuine incompleteness, scores `MISSING_TRACKS`.
 
 ---
 
@@ -139,15 +150,15 @@ Matches tracks by **title, not position** (order differs between pressings).
 Titles match if: identical ignoring case/punctuation/accents; or one contains the other (absorbs "remastered"/"live"/"bonus" suffixes); or share ≥80% of meaningful words (stopwords like "the"/"and"/"of" ignored).
 
 Two more rules, only see what's left unpaired:
-- **Equal once trailing "(…)"/"[…]" qualifier dropped** — e.g. "(alternative version)" vs "(re-record)". Without this, a box holding every track scored `MISSING_TRACKS` (Marillion's box: 45/45 present, still "missing"). When qualifiers actually differ, runtimes must be **known on both sides, within 2s**. Punctuation/spacing-only differences keep the usual tolerance.
+- **Equal once trailing "(…)"/"[…]" qualifier dropped** — e.g. "(alternative version)" vs "(re-record)". Without this, a box holding every track can still score `MISSING_TRACKS` purely because of qualifier wording. When qualifiers actually differ, runtimes must be **known on both sides, within 2s**. Punctuation/spacing-only differences keep the usual tolerance.
 - **1-2 letter typo** ("Kaleidscope" / typo forms), both runtimes known and within 15s.
 
 Both refuse whenever contested from **either** side, and whenever titles name **different numbers** ("Part 2" ≠ "Part 3", "(take 10)" ≠ "(take 4)"; "Part I"/"Part 1"/"Part One" = same number; a number on only one side = extra detail, not disagreement).
 
-Shipped after replaying both scorer versions over every `MISSING_TRACKS`/`EXTRA_TRACKS` release + 5,000 `COMPLETE`: 0 `COMPLETE`/`EXTRA_TRACKS` changed, 1,013 `MISSING_TRACKS`→`COMPLETE`. Riskiest class (differing qualifiers): 33/40 sampled clearly one recording two ways, 0 clearly wrong, 7 uncertain (all runtimes agreeing to the second). Detail: `docs/specs/spec_tidy_observations.md` §14.
+Rule changes here are validated by replaying both scorer versions over the full library before shipping: every release currently scored `MISSING_TRACKS`/`EXTRA_TRACKS`, plus a large `COMPLETE` sample, checked for any regression in the safe direction before rollout. Detail: `docs/specs/spec_tidy_observations.md` §14.
 
-- **Among identical titles, closest runtime wins**, not file order (fixed a real mispairing of two different-length versions of "The Evening's Young").
-- **Re-scoring clears links it doesn't re-confirm** — sync only ever adds links, so releases accumulate stale ones over repeated runs. First library-wide `tidy --rescore-only` cleared 26 stale links (21 releases, 0 status changes) while adding 25,446.
+- **Among identical titles, closest runtime wins**, not file order (guards against mispairing two different-length versions of the same title).
+- **Re-scoring clears links it doesn't re-confirm** — sync only ever adds links, so releases accumulate stale ones over repeated runs. A library-wide `tidy --rescore-only` run clears every stale link it finds while adding freshly-confirmed ones, with no status changes from the cleanup itself.
 - **Identical titles claimed before any loose match is tried** — a bonus disc with many "Song (take N)" variants: matching loosely first let an early plain-titled track steal a "(take 3)" file before the exact pairing ran, producing a false `MISSING_TRACKS` verdict. Fixed by claiming every identical title first, library-wide, loose match only competes for leftovers.
 
 | Status | Meaning |
@@ -170,17 +181,19 @@ MusicBrainz has **no box-set concept.** A box is one release, several discs — 
 
 - Side-by-side sibling folders in a parent = candidate discs.
 - Second layout: **disc 1's files in the album folder itself, disc 2 in a subfolder beneath it**. Common-parent grouping never sees these together (album folder's parent is the artist type folder). This group only forms when every folder in it is already bound to the same multi-disc release, none placed/folded, and never overlaps a side-by-side group.
-- **A release must know it has discs.** Discs were first recorded 2026-09-06/07 — releases matched before that kept `mediumCount=1`/no disc rows despite tracks carrying real disc numbers (3,602 of them). `./tidy` rebuilds disc structure from stored disc numbers first (no MB call); nothing writes that shape anymore.
+- **A release must know it has discs.** A release matched before disc structure was recorded can hold `mediumCount=1`/no disc rows despite its tracks carrying real disc numbers. `./tidy` rebuilds disc structure from stored disc numbers first (no MB call) to repair this; nothing writes that shape anymore.
 
 Candidate box sources, tried in order until one binds:
-1. Siblings' own embedded MB ids — **unanimous** `MUSICBRAINZ_ALBUMID` tag (2026-09-22, `docs/no_guessing.md`: was a majority before), looked up directly. `NULL` when a sibling's tracks disagree on it or carry none.
+1. Siblings' own embedded MB ids — **unanimous** `MUSICBRAINZ_ALBUMID` tag (see `docs/no_guessing.md`
+   for why unanimous, not a majority), looked up directly. `NULL` when a sibling's tracks disagree on
+   it or carry none.
 2. The release a sibling is already bound to, if it has >1 medium (tags name the box — §10). Also what makes a library with no embedded MB ids at all still discoverable.
-3. MB search on the parent folder's own title (`guess_box_title`) — strips leading year + trailing `(…)`/`[…]` annotation (catalogue numbers in brackets used to return zero hits).
+3. MB search on the parent folder's own title (`guess_box_title`) — strips leading year + trailing `(…)`/`[…]` annotation (a bracketed catalogue number in the title would otherwise return zero hits).
 4. Other editions of the same release group, only once all above fail — region/label variants; the ordinary matcher may have bound the wrong edition's tracklist. One extra request, same perfect-match rule (more candidates, not looser).
 
 Ahead of all 4: a group whose folders are **already placed** is rebuilt from stored rows, no MB request. Still re-examined every unscoped run (a disc must still be able to move when a new equivalence appears) — but this skips the redundant cold lookup. Anything incomplete about stored rows falls back to network.
 
-**Why this runs once, at the end of `./tidy`, not per-artist during sync:** a box's siblings and standalone twin can belong to *different* artist rows (compilations, VA sets); fold/dissolve needs every release this run matched already in the DB. Running earlier would also revive §10's matcher-vs-box-pass fight. Formerly ran at the tail of every `sync`; moved to `./tidy` so a folded/dissolved disc gets re-scored in the *same run* (`docs/scripts/tidy.md`).
+**Why this runs once, at the end of `./tidy`, not per-artist during sync:** a box's siblings and standalone twin can belong to *different* artist rows (compilations, VA sets); fold/dissolve needs every release this run matched already in the DB. Running earlier would also revive §10's matcher-vs-box-pass fight. Running it as part of `./tidy` (rather than at the tail of every `sync`) also lets a folded/dissolved disc get re-scored in the *same* run (`docs/scripts/tidy.md`).
 
 ### Matching folders to discs
 
@@ -194,11 +207,11 @@ Ladder, strictest first (a loose match can never steal a track a strict match ha
 5. Titles agree once trailing qualifier dropped (containment can't see this — both sides carry a qualifier, neither contains the other).
 6. Near-identical (1-2 char typo) — weakest rule, most constrained: both runtimes must be actually known.
 
-**Order matters:** ABBA's box holds four language versions of "Ring Ring" with runtimes seconds apart — a single loose pass would pair whichever came first; claiming exact titles first removes the risk. Rules 4-6 refuse on any ambiguity.
+**Order matters:** a box can hold several near-duplicate versions of the same title (e.g. different language pressings) with runtimes seconds apart — a single loose pass would pair whichever came first; claiming exact titles first removes the risk. Rules 4-6 refuse on any ambiguity.
 
-**Same strictness-first order applies across discs, not just within one** — a folder matching exactly one disc under strict rules keeps it even when a looser rule would also match a second. Without this, 2 boxes on this library stopped binding once a rule widened (one holds two masterings of the same album).
+**Same strictness-first order applies across discs, not just within one** — a folder matching exactly one disc under strict rules keeps it even when a looser rule would also match a second. Without this, widening a rule for one disc can cause a box that holds two masterings of the same album to stop binding at all.
 
-**Every loosening was paid for in real damage:** ABBA's 9-disc box (perfect 9/9 rip) rejected twice — once for "Ring Ring (English version)" vs MB's "Ring Ring", once for a 6s runtime mismatch. Marillion's 12-disc box rejected by one bonus track "(alternative version)" vs MB "(re-record)" — 11/12 discs paired perfectly.
+**Every loosening was paid for in real damage:** a perfect full-disc rip has been rejected outright over a single-word title variant against MB's own spelling, and separately over a runtime mismatch of a few seconds; another box was rejected wholesale by one bonus track's qualifier wording, despite every other disc pairing perfectly.
 
 ### A folder on no disc at all
 
@@ -206,7 +219,7 @@ A sibling matching **no** disc no longer rejects the group — real rips carry b
 
 An *ambiguous* folder still rejects the whole group — "on no disc" is evidence about one folder, "could be either disc" is evidence the candidate box itself is wrong.
 
-**A majority of folders must resolve, not just two.** Below half, "this is not the box" is the likelier reading; binding anyway folds the few matches while leaving the rest loose (worse than unplaced). Majority rule costs 21/347 binds, removes every case of this shape (Pink Floyd "Oh By The Way" 2/16, Elvis 60CD 10/60). Before the rule: 126 boxes where exactly one folder failed and every other paired perfectly.
+**A majority of folders must resolve, not just two.** Below half, "this is not the box" is the likelier reading; binding anyway folds the few matches while leaving the rest loose (worse than unplaced). This costs a small minority of otherwise-plausible binds, in exchange for removing every case where only a small fraction of a large box's discs happened to resolve. The common, safe case — exactly one folder failing while every other disc pairs perfectly — still binds fine under this rule.
 
 ### Then: fold, or dissolve?
 
@@ -222,23 +235,25 @@ Three methods, each tried only on what the previous left unresolved:
 2. **Same track titles+lengths, same order** — for older data lacking recording ids.
 3. **Disc contains an entire album plus extras** — for a bonus-track edition MB never catalogued separately. Only runs on discs with a name to search, gives up if 2 albums both fit.
 
-Before any of this: dangling `equivalentReleaseId`/`equivalentReleaseGroupId`/`equivalentMediumPosition` (pointing at a deleted release — no FK, orphan sweep doesn't touch it) are cleared first. Tiers 1-3 only ever fill NULL, never correct a stale value. Left dangling, it used to fail the whole repair pass — see next section.
+Before any of this: dangling `equivalentReleaseId`/`equivalentReleaseGroupId`/`equivalentMediumPosition` (pointing at a deleted release — no FK, orphan sweep doesn't touch it) are cleared first. Tiers 1-3 only ever fill NULL, never correct a stale value. Left dangling, a stale pointer here can fail the whole repair pass — see next section.
 
 ### One box never blocks the rest
 
 Every group binds/folds/dissolves inside its **own error boundary** — a failure is logged (folder path) and counted, pass moves to the next group.
 
-**Not always true — 2 real outages are why this matters.** `run_repair` used to propagate write errors with `?`, killing the loop for every group still to come, every run, until fixed:
-- **2026-09-06:** `apply_fold` collided on `groupKey` (box root already its own `LocalRelease` — now the "left alone" case).
-- **2026-09-10 (rollout run itself):** `apply_dissolve` hit a dangling `equivalentReleaseId` FK (now prevented, see above).
-
-Between/after those dates, every sync's box pass silently placed **zero** further groups (fixed order by parent path → the failure point blocked everything after it, incl. HIM's box, 588 groups behind, and everything synced after 2026-09-10). The rollout's frozen counts at the time (133 dissolved, 395 fold members — top of `docs/specs/spec_containment_rollout.md`) reflect the abort, not the true total. `apply_dissolve` now writes every member inside one transaction too — no partial-box writes.
+**Why this matters:** a write error inside one group's fold/dissolve must never propagate past that
+group — an unhandled error abandons the whole pass in a fixed processing order, so every group behind
+the failing one silently gets nothing done, run after run, until the underlying issue is found. Two
+distinct causes have hit this in the past (a `groupKey` collision when a box root is already its own
+`LocalRelease` — now the "left alone" case above; a dangling FK — now cleared up front, see above).
+Full incident detail: `docs/history/sync_decisions_history.md` "Box-repair error boundary".
+`apply_dissolve` now writes every member inside one transaction too — no partial-box writes.
 
 ---
 
-## 10. Two parts of sync that used to fight
+## 10. Two parts of sync that can fight over the same disc
 
-Symptom: **box discs that never got a status**, run after run. Album matcher read each disc's tags (naming the *box*), bound the disc to the box; box pass then moved it to its reprinted album and marked "needs re-checking"; next run, same thing. ABBA's box: 3 consecutive syncs, 9 unscored discs.
+Symptom: **box discs that never got a status**, run after run. Album matcher read each disc's tags (naming the *box*), bound the disc to the box; box pass then moved it to its reprinted album and marked "needs re-checking"; next run, same thing — a whole box's discs can cycle through several syncs still unscored.
 
 **Rule now:** once the box pass has placed a disc, that decision stands. Later `sync` scores the disc where the box pass put it (doesn't re-read tags); deluxe-edition search is skipped for those discs (a box disc legitimately has more tracks, so that search always "succeeded" and restarted the fight); box pass only writes when something changed. `./tidy` never hits this — its own re-score (`docs/scripts/tidy.md` phase 5) scores a just-placed disc in the same run.
 
@@ -261,7 +276,7 @@ Lists official albums you don't have, filtered like §5 plus a check the album g
 
 An album counts **owned** if: any local folder is bound to it, **or** it's a dissolved box disc, **or** every one of its discs is accounted for (without this, every dissolved box would look absent and re-offered).
 
-Fixed ordering bug: missing list used to be built per artist during the run, but boxes only split at the very end — an album whose only copy lived inside a box could stay listed missing. List is now swept again after box splitting.
+**Ordering matters:** the missing-albums list is built per artist during the run, but boxes only split at the very end — an album whose only copy lives inside a still-unsplit box would wrongly stay listed missing if the list were never revisited. The list is swept again after box splitting to catch this.
 
 ---
 
@@ -273,9 +288,11 @@ A missing album whose songs all sit inside a compilation/box you own gets a note
 
 Test: **every** track present, matched to a distinct local track, runtimes within 5s where known. Container must have *more* tracks than the album (exact-size match = it just *is* the album, the matcher's job). Releases under 3 tracks never annotated (would match by coincidence).
 
-The 5s tolerance matters: "In Rainbows: From the Basement" (live) is the same 10 songs as "In Rainbows" but 1-33s off per track — titles alone would call it contained; one honest outlier refuses.
+The 5s tolerance matters: a live-session release of the same album can share every title with the
+studio version while running many seconds off per track — titles alone would call it contained; one
+honest outlier refuses.
 
-Verified against MB for the 4 largest artists in the library: **108/108 notes correct.**
+Verified against MB across a sample of the library's largest artists, with no false positives found.
 
 ---
 
@@ -283,10 +300,10 @@ Verified against MB for the 4 largest artists in the library: **108/108 notes co
 
 MB allows ~1 req/s. Sync uses a single shared schedule — 1 request per 1.1s regardless of how many albums are being worked concurrently.
 
-**Working several albums at once ≠ asking faster** — MB is slow to answer (cold request 5-30s), not stingy. Serial: idle ~85% of the time, ~1/6 of the allowance used, full-library pass on track for **~99 days** — the rate limit wasn't the actual bottleneck.
+**Working several albums at once ≠ asking faster** — MB is slow to answer (cold request 5-30s), not stingy. A purely serial client sits idle most of the time waiting on responses and uses only a fraction of its allowed rate, stretching a full-library pass out to an impractical timeline — the rate limit was never the actual bottleneck; response latency was.
 
 Also fixed:
-- **MB cuts long replies short**, sync mistook it for complete — "OK Computer" saw 31 of 39 editions, missing every deluxe edition (exactly what the deluxe search looks for).
+- **MB cuts long replies short**, sync mistook it for complete — a release with many editions saw only the first page of results, silently missing every edition beyond it (exactly the ones a deluxe-edition search looks for).
 - **"Requests remaining" is a shared global counter, not a personal allowance** — sync sped up as it dropped, i.e. went 2× rate exactly when MB was busiest.
 - **Timeouts/dropped connections had no retry**, abandoned an entire artist on one blip.
 
@@ -297,7 +314,7 @@ Failures retried by kind: "too fast" slows down, "MB unwell" retries without slo
 ## 14. Safety rules that override everything
 
 - **Metadata is the truth** — folder/file names never read for artist/album/year.
-- **Embedded ids believed immediately — when files unanimously agree on them (2026-09-22, `docs/no_guessing.md`).** Not unanimous → `UNKNOWN` with a reason, never a plurality/majority guess and never a tracklist-score rescue (§7). Artist ids follow §5.
+- **Embedded ids believed immediately — only when files unanimously agree on them (see `docs/no_guessing.md`).** Not unanimous → `UNKNOWN` with a reason, never a plurality/majority guess and never a tracklist-score rescue (§7). Artist ids follow §5.
 - **Nothing deleted to make a match fit** — ambiguity → unmatched, never deletion.
 - **A network failure is never evidence** — defers, never concludes non-existence.
 - **Repairs and re-runs are safe to repeat** — same result run once or twice.
@@ -314,8 +331,8 @@ From what MB does/doesn't record. Changing them means guessing.
 4. Boxes with no disc names (chronological "complete sessions" sets) — can't identify discs. Most common box shape.
 5. A remaster re-split across a different disc count than any standalone edition can't be lined up.
 6. A box-exclusive "lost album" and a plain rarities disc look identical to MB.
-7. **A standalone album can only be recognized by recordings if MB gave every track a recording id.** Missing even one → falls back to titles/runtimes (refuses far more often). Measured: **42.5%** of single-disc releases (48,303/113,702) unusable as an exact target. Single largest reason boxes fold rather than dissolve — an MB data gap, not a decision made here.
-8. **Round-7 internally-consistent wrong ids are still undetectable by unanimity.** The no-guessing rule (§7, `docs/no_guessing.md`) catches a folder whose *own* tracks disagree with each other; it cannot catch a folder that unanimously, consistently carries the *wrong* id (round 7's shared-`releaseId` shape, `docs/specs/spec_tidy_observations.md` §18) — each such folder is internally consistent, so it survives the change untouched (e.g. Al Jolson's "The Man and the Legend" ×3 stack). Detecting that shape needs cross-folder comparison, out of scope here.
+7. **A standalone album can only be recognized by recordings if MB gave every track a recording id.** Missing even one → falls back to titles/runtimes (refuses far more often). A large fraction of single-disc releases in practice are unusable as an exact target this way — the single largest reason boxes fold rather than dissolve, an MB data gap, not a decision made here.
+8. **An internally-consistent wrong id is still undetectable by unanimity.** The no-guessing rule (§7, `docs/no_guessing.md`) catches a folder whose *own* tracks disagree with each other; it cannot catch a folder that unanimously, consistently carries the *wrong* id — each such folder is internally consistent, so it survives the change untouched (e.g. several differently-tagged copies of the same release all sharing one wrong id). Detecting that shape needs cross-folder comparison, out of scope here. Investigation detail: `docs/specs/spec_tidy_observations.md` §18.
 
 ---
 
@@ -330,37 +347,11 @@ Order:
 2. Run `./tidy` (no `--dry-run` — same "no preview, `./backup` is the recovery path" as the box pass). Nulls wrong identities, clears piled-up discography — does **not** itself re-sync anything.
 3. Normal unscoped `./sync` picks the now-empty entries back up as ordinary pending work. No need to force library-wide `--overwrite` — only touched entries need re-deriving, they re-enter the queue on their own.
 
-## 17. Measurements — 2026-09-10 identity investigation (closed)
+## 17. Measurements — identity investigation (closed)
 
-Before fix: 1,269/39,684 artist entries held a contradicting identity (1,646 albums), 149 groups wrongly sharing one identity. After §5's gate shipped + repair ran: **0 contradicting entries**, confirms held steady (37,382→37,394). Pass B cleared 1,268 identities; Pass C resolved 17/149 shared-id groups (rest collapsed once Pass B ran). Immediate re-run: 0/0/0 — repair doesn't re-touch what it fixed.
-
-**11 shared-id groups deliberately left unmerged** — not the ambiguous collision Pass C targets (both members independently confirm the same id), but one real MB artist filed under two local `Artist` rows (full name vs surname, MB alias pair) — a **duplicate-row merge** job instead (`index --canonicalize-artists`/§4's `primaryArtistId`). Examples: Jorge Ben/Jorge Ben Jor, Soda/Soda Stereo, Henderson/Joe Henderson, Prague Philharmonic Orchestra's 3 spellings.
-
-### Measurements — 2026-09-11 box-set investigation
-
-HIM's box showing as 10 identical cards triggered this. **Use this query** (the doc's original one over-counted — counted every `LocalRelease` under a flagged parent including correctly-placed ones, inflating 3,411 "unplaced" to a real 1,613):
-
-```sql
-WITH lr AS (SELECT lr.*, regexp_replace(lr."folderPath", '/[^/]+$', '') parent
-            FROM "LocalRelease" lr WHERE lr."folderPath" IS NOT NULL
-              AND array_length(string_to_array(lr."folderPath", '/'), 1) >= 4)
-SELECT count(*) AS groups, sum(n) AS rows FROM (
-  SELECT lr.parent, lr."releaseId", count(*) n
-  FROM lr JOIN "MusicBrainzRelease" m ON m.id = lr."releaseId"
-  WHERE m."mediumCount" > 1 AND lr."mediumPosition" IS NULL AND lr."boxReleaseId" IS NULL
-  GROUP BY 1, 2 HAVING count(*) > 1) t;
-```
-
-Grouping by `releaseId` too separates: several folders bound to **one** multi-disc release = an unplaced box; several folders each bound to a **different** multi-disc release = usually a wrong-edition bind (§19 item 1a), not a box.
-
-| Measure | Count |
-|---|---|
-| Split-disc groups bound to `mediumCount>1` but never placed | 1,300 |
-| Unplaced disc rows in those groups | 3,411 (2,713 `MISSING_TRACKS`, 588 `UNKNOWN`) |
-| `equivalentReleaseId` pointing at a deleted release | 35 / 14,001 |
-| Groups with fold-key collision (box root already its own `LocalRelease`) | 10 |
-| Groups a Python replay of `plan_box_bind` says bind cleanly once fixed | 988 |
-| Groups correctly refused (no-match/ambiguous/collision) | 312 (280/31/1) |
+Moved to `docs/history/sync_decisions_history.md` §17. The gate this investigation motivated is §5;
+the "CONTRADICTS" classification it used is explained inline at its one call site
+(`sync::db::identity`).
 
 ---
 
@@ -388,81 +379,19 @@ Grouping by `releaseId` too separates: several folders bound to **one** multi-di
 
 Useful commands: `./tidy`, `./sync --only "Artist" --exact --verbose`, `./audit`.
 
+---
+
 ## 19. To do next
 
-Self-contained items: symptom, cause, fix, safety, verification. Items 1-5 from the 2026-09-11 box-set investigation (§17); 6-13 from the 2026-09-18 tidy rollout review (`docs/specs/spec_tidy_observations.md`). Done items kept, marked, numbering stable.
-
-### 1. Refused split-disc groups — **done (2026-09-18)**
-- **(a) Bound release is a different edition than the rip** — `run_repair` now falls back to the release group's other editions when every existing candidate fails (§9 discovery source 4). Same rule, more candidates.
-- **(b) An extra sibling on no disc of any edition** — left out instead of refusing the group, if ≥2 folders still resolve and none ambiguous (§9 "A folder on no disc at all").
-
-Matcher also gained: corroborated 60s drift, qualifier-stripped equality, typo tolerance, plus disc-level strictness ordering. Replayed old vs new over every sibling group: **106→347 bind, 0 regressions, 0 folders moved.** Detail: `docs/specs/spec_tidy_observations.md`.
-
-### 2. Shared multi-medium releases across different parent folders (370 releases, 1,581 rows)
-**Symptom:** unlike #1, folders in **different** parents bound to one multi-medium release (same §17 query, drop the parent grouping, group by `releaseId` with `count(DISTINCT parent)>1`).
-**Cause:** almost certainly duplicate copies filed under two folder names (`project_shared_releaseid_mismatch`: 99.4% same-title duplicates, not real mismatches). Minority: a box's discs genuinely filed apart.
-**Fix:** classify via `common::release_pairs`. True duplicate → `./audit --duplicate-release` review flow (existing). Genuinely separated discs → medium-level bind **without folding**: pair each folder to one medium, set `mediumPosition` directly (no move/delete, no `LocalReleaseMember`) — smaller than §9's fold/dissolve.
-**Verify:** every one of the 370 ends up queued as duplicate or on a distinct `mediumPosition`.
-
-### 3. Dissolved boxes re-fetched from MB on every unscoped run — **done (2026-09-18)**
-Already-placed groups now rebuilt from stored rows (§9 discovery, "Ahead of all four") — still visited, re-linked, goes through fold/dissolve (a disc can still move on new equivalence), just no MB request. Before: 230 groups/1,113 folders paying a cold lookup (~10s) for nothing.
-
-### 4. Cover-art embedding strips MusicBrainz frames from MP3s
-**Symptom:** MP3 with a Picard-written TXXX (`MusicBrainz Album Id`/`Release Group Id`/`Release Track Id`) loses it on the first cover-art embed. Same lofty generic-`Tag` bug as `CLAUDE.md`'s MP3 note (fixed for `common::tags` 2026-09-11), not fixed at every call site.
-**Still happens in:** `common::images::embed_cover_art` (every sync downloading new art), `fix/src/tags.rs`, `problems/src/fix/tags.rs` — all resave MP3 via lofty's generic `Tag`.
-**Consequence for §9:** an MP3 box disc losing `MUSICBRAINZ_ALBUMID` this way becomes invisible to tier (a) discovery again after the next cover-art embed, even after a SongKong re-tag, until re-indexed.
-**Fix:** route MPEG writes through the concrete `Id3v2Tag` type in all 3 writers, same as `common::tags`'s `MbSlots`. `Id3v2Tag::insert_picture` covers cover art.
-**Measure first:** sample MP3s whose indexed `LocalReleaseTrack.metadata` snapshot had `MusicBrainzReleaseId`, check if the *current* file still has it.
-**Verify:** ffmpeg fixture with real TXXX frames (`scripts/common/tests/tags_roundtrip.rs::mp3_resave_keeps_existing_musicbrainz_frames`), embed cover through each fixed writer, confirm frames survive.
-
-### 5. Recording-tags cleanup + box-set rollout — **superseded, see `docs/specs/spec_tidy_script.md`**
-Separate bug: `common::tags::write_mb_ids` used to write a track's release-track id into the recording-id slot. Fixed and deployed (`3549964b`). The repair flag was removed; replaced by `oneoff/repair_recording_tags.py`, which didn't actually run until 2026-09-18 (Python 3.11 parse error) — fixed, validated, run, deleted (`docs/specs/spec_tidy_observations.md` §17). The box-set rollout this item used to block on is also superseded: binding moved off sync's tail entirely into `./tidy`. **Current checklist: `docs/specs/spec_tidy_script.md` Step 10.**
-
-### 6. Root folder holding two discs at once, next disc below (21 albums)
-**Symptom:** discs 1+2 in the album folder, disc 3 in a subfolder (Scorpions "MTV Unplugged", Kreator "Dying Alive", Concerto Moon "Decade Of The Moon") — both `MISSING_TRACKS`.
-**Cause:** bind plan pairs each folder with exactly one disc; the album folder matches none, only the subfolder resolves → refused.
-**Fix:** let a folder pair with a *contiguous run* of discs when no single one matches, against the run's combined tracklist. `apply_fold` must stamp disc number from which disc the pairing landed on, not the folder.
-**Safety:** changes `plan_box_bind` (shared with the side-by-side pass) — replay old vs new first (`boxset::tests::replay_library_dump`).
-
-### 7. A 9-track folder bound to a 257-track box ("Dear Michael: The Motown Collection")
-**Symptom:** 3 different Michael Jackson albums bound to one 12-disc box, 3 identical cards.
-**Cause:** not the box pass (folders are separate albums, not discs). No embedded album id on any file — album matcher reached the box by search/edition choice, which §7's rules shouldn't allow for a 9-track folder vs. a 257-track box. Box pairs 2 albums per disc, so no per-disc placement exists either (§15 limit 2). Start in the album matcher's search/edition path.
-**Unaffected by the 2026-09-22 no-guessing change** — this is a Tier 3 search/edition-choice bug, not a tag-agreement one; the consensus gate runs before any tier and has nothing to say about which edition a title search picks.
-
-### 8. Albums owned by dozens of unrelated artists (scattered per-track artist tags)
-**Symptom:** a Harold Land compilation shows on Christina Perri's, Lana Del Rey's, etc. pages.
-**Cause:** same per-track tagger as §7 also scattered album-artist tags; §2's owner rule unions every track's album artist. Post-§7 binding fix these are Unmatched under their own name but still owned by everyone the tagger named.
-**Fix:** belongs in index's ownership resolution (majority-agreement test on album artists, fallback to folder's dominant owner) — or retag.
-
-### 9. 124 "Chronological Classics" bindings still wrong — needs retagging, not code
-Files **agree** (59 unanimously, 65 by majority) on a CC volume — tagger was internally consistent (every pre-war recording appears on some volume). §7's agreement rule correctly believes them; nothing in metadata distinguishes this from a genuine partial album, folder names aren't evidence (§14). Retag the files. List: `docs/specs/spec_tidy_observations_cc_retag.tsv`.
-**2026-09-22 update:** the 65 majority-bound rows no longer bind at all — the no-guessing rule (§7, `docs/no_guessing.md`) requires unanimity, and a majority-only agreement is now `UNKNOWN` with `MB_ALBUM_DIVERGENCE` (or the RG-unanimous variant). The 59 unanimously-bound rows are unaffected. Retagging is still the real fix for both.
-
-### 10. 2,404 Complete albums with no linked tracks at all
-Pre-existing (e.g. Garden of Delight "Lutherion 1": Complete, 0/22 linked), `tidy --rescore-only` never targets Complete. Suspected: re-index recreating track rows without links while status stays. **Not verified** — compare `LocalReleaseTrack.createdAt` to last scoring.
-
-### 11. Loose title containment pairs one-word titles with anything (102 links)
-A file tagged just "You" pairs with unrelated long titles containing "You" — §8's containment rule has no length floor/duration check. Fixing it moves some `Complete`→`Missing tracks` — needs its own replay + decision.
-
-### 12. Box discs whose box was deleted (37 remaining)
-`boxMediumPosition` set, no `boxReleaseId` — orphan sweep used to delete dissolved boxes (fixed 2026-09-18, `docs/specs/spec_tidy_observations.md` §12). 208 were damaged, 171 recovered on re-bind; rest recover once their group binds.
-
-### 13. Artists that owned albums were never synced — **done (2026-09-18)**
-Index's post-scan resolution replaces a provisional compound owner with the artists it names (often creating them) but never stamped their `lastIndexedAt` — sync only selects artists that have one. 5,445 owning artists never synced, 437 albums owned only by them never matched (406 Unmatched). Fixed: resolution pass now stamps every artist it adds as owner. Existing 5,490 backfilled once (`logs/undo17_never_indexed.txt`).
-
-### Gaps in sync and tidy
-Not bugs, but things neither does:
-- **Sync never re-examines an already-matched album.** Every matching-rule change (§7, §8) needs a one-off repair to reach existing matches. `tidy --rescore-only` covers *scoring* changes only, nothing covers *matching* changes. A standing check (tidy flagging matches the current rules would reject, setting `UNKNOWN`) would make this self-healing.
-- **One persistently failing box group blocks the whole run's "tidied" stamp** for every artist in scope, not just the failing group's. Conservative, not wrong, but a permanently-failing group blocks a scope forever. Should attribute to that group's artists only, like fetch errors already do.
-- **An artist held back after an MB failure may not be the one that pulled the group in** (`artist_for_group` picks any owner) — group stays unbound regardless, resurfaces eventually, but it's a nudge not a guarantee.
-- **`tidy --rescore-only` doesn't run the orphan sweep** — releases a re-score leaves unreferenced wait for the next ordinary tidy.
-- **Sync only ever adds track links** — only tidy's re-score clears unconfirmed ones, so an album sync re-matches but tidy never re-scores can keep stale links.
+Moved to `docs/history/sync_decisions_history.md` §19 - a dated investigation log and the item list it
+produced (items 1-13, plus a standing "Gaps in sync and tidy" list of known non-bugs). Code comments
+citing "§19 item N" refer to that file; the item numbers there are stable.
 
 ---
 
 ## 20. Stopping and restarting a NAS sync/tidy run
 
-Learned 2026-09-13 rollout. Two NAS quirks make the obvious commands wrong:
+Two NAS quirks make the obvious commands wrong:
 
 - **`/tmp` is mounted `noexec`.** A script placed there can't be *executed* directly — inside `tmux new-session -d` that failure kills the pane, then the session, then (no other session left) **the tmux server itself**, so `tmux ls` right after reports "no server running" (tmux isn't actually broken). Always `bash /tmp/foo.sh`, never bare `/tmp/foo.sh`.
 - **Killing the local shell around a `docker exec` does NOT kill the process inside the container.** An orphaned `sync`/`tidy` keeps running server-side, keeps heartbeating the DB lock every 60s (so `clear_stale_lock_minutes` never fires), while `ps`/`tmux ls` outside show nothing and the log file stops growing. Don't assume "stopped" — check the lock.

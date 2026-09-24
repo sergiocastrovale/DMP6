@@ -1,21 +1,15 @@
 # No guessing release placement — ambiguous folders become UNKNOWN with a reason
 
-> **Implementation brief.** Self-contained: a cold session should be able to read this file and
-> implement without re-deriving anything. Line anchors were verified on `master` @ `7474ac19`
+> **Reference doc for the no-guessing consensus gate** (`scripts/common/src/consensus.rs`). Shipped
+> and deployed; rollout log, measured counts and the dated verification record live in
+> `docs/history/no_guessing_rollout.md`.
 
-> **Status: shipped 2026-09-23.** Implemented, tested, committed (`0c7bcb3e`), deployed, and the
-> one-off ran against production - preview numbers matched the post-run count exactly (16,822
-> flagged, 5,039 previously `COMPLETE`). Confirmed final counts and the exact reason split:
-> `docs/specs/spec_tidy_observations.md` §19 "Round 8". Undo dumps were skipped in favor of a
-> `./backup` taken immediately before Tx 1/Tx 2 - see "Undo dumps" below, now corrected for what
-> actually worked on this NAS. Still open: the user's own visual check of the artist-page stacks
-> (Verification section below) - not self-verified, per standing rule.
 ---
 
 ## Context
 
-Artist pages show fake "N editions" stacks (Al Jolson "The World's Greatest Entertainer" ×5,
-"In Songs He Made Famous" ×6) built from unrelated budget compilations. Two guessing mechanisms:
+Artist pages could show fake "N editions" stacks built from unrelated budget compilations, sharing a
+release group only because of a mis-bind. Two guessing mechanisms:
 
 - **index** titles a folder-release with the *mode* of its tracks' `album`/`year` tags
   (`folder_majority_title_year`, `scripts/index/src/db.rs:63-93`), so a folder whose tracks name five
@@ -35,24 +29,26 @@ Artist pages show fake "N editions" stacks (Al Jolson "The World's Greatest Ente
 - An ambiguous release displays its **folder leaf name** — a narrow, display-only exception to
   "never read folder names", justified because there is no metadata left to display.
 
-**Measured prod impact** (read-only, excluding box-placed / folded / `forcedComplete`):
-16,822 releases → UNKNOWN. Album disagree 14,688 · missing album tag 19 · MB-id disagree with album
-unanimous 2,115. Of those, 11,017 are currently bound and **5,039 are currently COMPLETE**
-(per-track-tagged folders that sync had rescued). This is the intended consequence of the rule.
+**Measured prod impact** (read-only, excluding box-placed / folded / `forcedComplete`): see
+`docs/history/no_guessing_rollout.md` for the confirmed counts. In broad terms: most flagged releases
+disagreed on the `album` tag itself, a small number were missing the tag on some tracks, and a
+minority disagreed on the embedded MB id despite a unanimous album tag. Most were already bound, and a
+meaningful share had scored `COMPLETE` only because sync's old plurality rule had rescued a scattered
+folder — that reclassification back to `UNKNOWN` is the intended consequence of the rule.
 
-### Decisions settled 2026-09-22 (user-confirmed, previously open)
+### Decisions settled at rollout time (user-confirmed, previously open)
 
 1. **Release-id divergence is terminal even when the release group is unanimous.** Tier 2 is *not* a
    rescue path. That case gets its own reason string so the cause stays legible in the UI.
 2. **`status.rs`'s edition tie-break stays** (`status.rs:226-265`: same year → CD format → earliest
    date, among editions whose track count matches exactly). Explicitly out of scope.
 3. **No extra scope.** Left open, unchanged: index ownership majority (`sync_decisions.md` §19 item
-   8), `problems`/`audit` tag-fix majorities, and the round-7 shared-`releaseId` shape
-   (`spec_tidy_observations.md` §18). **Note round 7 is *not* fixed by unanimity** — each of those
-   folders is internally consistent; the Al Jolson "The Man and the Legend" ×3 stack survives this
-   change. Say so in the docs rather than letting the verification step imply otherwise.
-4. **Full rollout this time**: implement → test → commit → `./deploy` → undo dumps → one-off Tx 1 +
-   Tx 2 → `./tidy --rescore-only --all`.
+   8), `problems`/`audit` tag-fix majorities, and the internally-consistent-but-wrong shared-id shape
+   (`sync_decisions.md` §15 item 8, `spec_tidy_observations.md` §18). **That shape is *not* fixed by
+   unanimity** — each such folder is internally consistent by itself, so it survives this change
+   untouched. Say so in the docs rather than letting the verification step imply otherwise.
+4. **Full rollout**: implement → test → commit → deploy → undo-safety step → one-off migration →
+   library-wide re-score.
 
 ### Non-goals (state them in the docs so they aren't mistaken for oversights)
 
@@ -450,29 +446,20 @@ sets year on clean rows.
 --     FROM verdict v JOIN "LocalRelease" lr ON lr.id = v.lrid
 --    WHERE v.reason IS NOT NULL
 --    GROUP BY 1,2 ORDER BY 1,2;
---   -- expect ~16,822 total: album disagree 14,688 / missing 19 / MB-id 2,115
---   -- (the 2,115 now splits three ways across reasons 4/5/6 — record the actual split)
+--   -- compare against the preview count before running Tx 1 - see docs/history/no_guessing_rollout.md
+--   -- for what the counts looked like on the one existing rollout
 --   SELECT count(*) FROM verdict v JOIN "LocalRelease" lr ON lr.id = v.lrid
---    WHERE v.reason IS NOT NULL AND lr."matchStatus" = 'COMPLETE';   -- expect 5,039
+--    WHERE v.reason IS NOT NULL AND lr."matchStatus" = 'COMPLETE';
 ```
 
-> **Ran 2026-09-23**: matched exactly — 16,822 total (14,688 / 4 / 15 / 2,020 / 95 / 0 across the six
-> reasons in doc order), 5,039 `COMPLETE`. Final confirmed numbers + after-state:
-> `docs/specs/spec_tidy_observations.md` §19.
-
-> **Corrected 2026-09-23 — the `dmp` app container has no `psql` binary.** Every `docker exec dmp
-> psql ...` below is wrong on this NAS; use the Postgres container instead
-> (`sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp`, no `$DATABASE_URL` needed - the
-> container already knows its own db/user). `./tidy` also needs `sudo` on this NAS (Kp isn't in the
-> `docker` group, `docs/no_guessing.md`'s memory `reference_nas_docker_sudo.md` explains why) - the
-> wrapper script itself calls plain `docker exec`, so run `sudo ./tidy ...`, not `./tidy ...`.
+> Rollout record (what was actually run, the exact counts, and a correction about which container
+> has `psql` on this NAS): `docs/history/no_guessing_rollout.md`.
 
 ### Undo dumps (run on the NAS **before** Tx 1; no in-repo precedent, do it by hand)
 
-**Skipped in the actual 2026-09-23 rollout** — a full `./backup` was taken immediately before Tx 1/Tx 2
-instead and judged sufficient (no other writes expected in the window; a full-DB point-in-time restore
-was an acceptable tradeoff against a scoped/no-downtime undo for this one run). Kept here for a future
-rollout that wants the narrower, non-downtime undo path:
+A full `./backup` immediately before Tx 1/Tx 2 is an acceptable substitute for this narrower dump when
+no other writes are expected in the window — see `docs/history/no_guessing_rollout.md` for when that
+tradeoff was actually taken. Kept here for a rollout that wants the narrower, non-downtime undo path:
 
 ```bash
 sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp -c "\copy (SELECT ...) TO STDOUT" > logs/undo20_album_consensus_releases.tsv
@@ -521,24 +508,14 @@ Reading both TSVs back into temp tables and reversing Tx 1 (`statusReason = NULL
 
 ---
 
-## Rollout — done 2026-09-23
+## Rollout
 
-1. ✅ Implement. `cd scripts && cargo build --release && cargo test`;
-   `cd web && pnpm test:unit && pnpm lint && pnpm typecheck`. (Ran via `cargo build --workspace` /
-   `cargo test -p common -p index -p sync -p tidy -p add` and `npx vitest run` / `npx eslint .` /
-   `npx nuxt typecheck` — all green: 273 Rust tests, 1909 web tests, 0 lint errors.)
-2. ✅ Commit + push directly to `master`, no `Co-Authored-By` trailer — `0c7bcb3e`.
-3. ✅ `./deploy` — migration + binaries. Ran clean (migration applied, container restarted).
-4. ✅ `./backup` (chosen over undo dumps, see "Undo dumps" above) → one-off Tx 1 → Tx 2 →
-   `sudo ./tidy --rescore-only --all`. Run from a NAS `tmux` session named `sync` (`ssh nas`,
-   `tmux attach -t sync` to inspect). One-off executed via
-   `sudo docker exec ix-postgres-postgres-1 psql -U dmp -d dmp` — the `dmp` app container has no
-   `psql` binary, see the correction above. Preview vs. post-run counts matched exactly; tidy
-   re-scored 7,234 unrelated already-bound releases, 0 status changes, exit 0.
-5. ✅ Updated `spec_tidy_observations.md` §19 Round 8 with the real counts.
-
-Not done by this rollout (deliberately, not an oversight): the artist-page visual check
-(Verification section below) — the user's own, per standing rule ("no self-login").
+Steps to follow for this kind of change: implement + full test suite green → commit + push directly to
+`master`, no attribution trailer → deploy (migration + binaries) → `./backup` (or the narrower undo
+dumps above) → one-off migration (Tx 1 flag rows, Tx 2 sweep newly-orphaned MB releases) →
+`sudo ./tidy --rescore-only --all` → record the real counts in
+`docs/specs/spec_tidy_observations.md`. Full log of the one rollout actually run this way, including
+counts and a NAS-specific correction: `docs/history/no_guessing_rollout.md`.
 
 ## Tests
 
@@ -566,18 +543,16 @@ Not done by this rollout (deliberately, not an oversight): the artist-page visua
 
 ## Verification
 
-- **Al Jolson**: the former "The World's Greatest Entertainer" / "In Songs He Made Famous" folders
-  are UNKNOWN, reason set, folder-leaf titles, `releaseId` NULL. Artist page shows no bogus edition
-  stacks, badge hover shows the reason — **visual check by the user; I don't self-login. Still
-  pending as of 2026-09-23.**
-  Expect "The Man and the Legend" ×3 to *survive* (round 7, out of scope) — don't report it as a
-  regression.
-- ✅ **Confirmed 2026-09-23, exact**: post-one-off counts match the preview exactly — 16,822 UNKNOWN
-  with a reason, COMPLETE down 117,144→112,105 (-5,039). `docs/specs/spec_tidy_observations.md` §19.
+- A folder previously scattered across many mis-tagged compilations should end up UNKNOWN, reason
+  set, folder-leaf title, `releaseId` NULL — no bogus multi-edition stack, badge hover shows the
+  reason. **Visual check by the user; this isn't self-verified** (see standing "no self-login" rule).
+  A folder in the internally-consistent-but-wrong shape (§ above, out of scope) is expected to
+  *survive* unchanged — don't report that as a regression.
+- Post-one-off counts should match the preview exactly. Recorded result:
+  `docs/history/no_guessing_rollout.md`, `docs/specs/spec_tidy_observations.md` §19.
 - `./sync` twice: those artists are not pending; the second run is a no-op. Covered by
-  `get_artists_pending_sync`'s `AND lr."statusReason" IS NULL` guard (code-level, not yet re-exercised
-  against the live library post-rollout).
+  `get_artists_pending_sync`'s `AND lr."statusReason" IS NULL` guard.
 - Retag one folder into agreement → `./index --folders "Artist/Album"` → back to `UNMATCHED` →
   `./sync` binds it. Covered by `scripts/index/tests/album_consensus.rs`'s
   `retagged_folder_returns_to_unmatched_with_reason_cleared_and_is_stable` (`#[ignore]`d, needs
-  `SMOKE_TEST_DATABASE_URL`) — not yet run against the live library.
+  `SMOKE_TEST_DATABASE_URL`).

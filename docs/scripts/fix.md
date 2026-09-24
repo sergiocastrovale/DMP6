@@ -11,8 +11,8 @@ Issues are detected by `./audit` and queued via the `/issues` web UI (or directl
 ./fix --orphans      # Delete orphan/phantom artists from DB
 ./fix --duplicates   # Merge duplicate artists (B into A)
 ./fix --missing      # Write proposed values for tracks with missing metadata
-./fix --revert --corrupted   # Revert previously applied corrupted fixes
-./fix --revert --missing     # Revert previously applied missing fixes
+./fix --revert --corrupted   # Revert already-applied corrupted fixes
+./fix --revert --missing     # Revert already-applied missing fixes
 ./fix --revert --mode undo-resolved --corrupted  # Revert but keep RESOLVED status
 ./fix --missing --dry-run    # Print what would be written, touch nothing
 ```
@@ -27,7 +27,7 @@ All fix types can be combined in one invocation. Only rows with `status = 'PENDI
 | `--orphans` | bool | false | Fix orphan artists (delete) |
 | `--duplicates` | bool | false | Fix duplicate artists (merge B into A) |
 | `--missing` | bool | false | Fix missing metadata (tag writes) |
-| `--revert` | bool | false | Revert previously applied fixes instead of fixing |
+| `--revert` | bool | false | Revert already-applied fixes instead of fixing |
 | `--mode` | `undo` \| `undo-resolved` | `undo` | Revert mode: back to `DETECTED`, or stays `RESOLVED` |
 | `--dry-run` | bool | false | Print what each fixer would change; writes nothing (file, DB, or statistics) |
 

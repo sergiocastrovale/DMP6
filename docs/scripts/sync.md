@@ -92,7 +92,7 @@ Scope: name filtering (`--only`/`--from`/`--to`/`--exact`), or an explicit `arti
 
 **Skips entirely:** artist search, detail fetch, URL upsert, image, local release matching, cover art.
 
-**Performance:** 1 release-group browse + artist catalogue browse (1 page typical, ~11 for a Radiohead-sized artist — `inc=recordings` pages are size-capped). Both paths share one catalogue, so containment costs no extra calls here either.
+**Performance:** 1 release-group browse + artist catalogue browse (1 page typical, more for a very large catalogue artist — `inc=recordings` pages are size-capped). Both paths share one catalogue, so containment costs no extra calls here either.
 
 Cannot combine with `--release`. Compatible with `--from`/`--to`/`--only`/`--exact`/`--overwrite`/`--web`/`--verbose`.
 
@@ -108,7 +108,7 @@ Cannot combine with `--release`/`--catalogue-gaps`. Compatible with `--from`/`--
 
 ## Recording-tag mixup (historical, fixed)
 
-Until 2026-09, `write_mb_ids` wrote each track's **release-track** id into the **recording** slot. A normal sync filled it wherever empty; `--overwrite` replaced correct Picard values. MP3s spared only by accident (lofty's generic ID3v2 conversion dropped the frame — `CLAUDE.md` MP3 note). Repaired library-wide by `oneoff/repair_recording_tags.py` on 2026-09-18 (had failed to start on the NAS's Python 3.11 until then — `docs/specs/spec_tidy_observations.md` §17), then deleted with the rest of `oneoff/`. No standing flag anymore — `write_mb_ids` now treats a recording tag equal to the track's own release-track id as absent, so the mixup can't recur.
+`write_mb_ids` once wrote each track's **release-track** id into the **recording** slot. A normal sync filled it wherever empty; `--overwrite` replaced correct Picard values. MP3s spared only by accident (lofty's generic ID3v2 conversion dropped the frame — `CLAUDE.md` MP3 note). Repaired library-wide by a one-off script, then deleted along with the rest of that throwaway tooling (detail: `docs/specs/spec_tidy_observations.md` §17). No standing flag anymore — `write_mb_ids` now treats a recording tag equal to the track's own release-track id as absent, so the mixup can't recur.
 
 ## Artist Matching (5-step)
 
@@ -122,7 +122,7 @@ If artist already has an MB id and not overwriting: use it directly, no search.
 
 ### Shared lookup cache (read-only)
 
-Every search step consults `MbArtistLookup` before spending a request — filled by index's artist-resolution pass, which has usually already asked MB about these exact strings (9,507 artists here carry no `musicbrainzId` and hit this ladder; before this they re-paid for the same answers every run). Names known at startup bulk-loaded in one query (`warm_exact_artists`); mid-ladder tags use a point lookup.
+Every search step consults `MbArtistLookup` before spending a request — filled by index's artist-resolution pass, which has usually already asked MB about these exact strings (a large fraction of artists carry no `musicbrainzId` and hit this ladder; without the shared cache they'd re-pay for the same answers every run). Names known at startup bulk-loaded in one query (`warm_exact_artists`); mid-ladder tags use a point lookup.
 
 - **Hits only** — a cached *miss* is the strict resolver's answer (`mb_search_artist_exact`); sync's search is fuzzy (`mb_search_artist`) and may still match where strict didn't, so a miss falls through rather than short-circuits.
 - **Sync never writes to `MbArtistLookup`** — its fuzzy matcher scores "Frank Sinatra with Count Basie" vs "Frank Sinatra" at exactly 0.5 and passes; feeding results back would confirm nearly every compound tag as one artist.
@@ -132,33 +132,33 @@ Every search step consults `MbArtistLookup` before spending a request — filled
 Metadata-wins with a guarded search fallback. 3 tiers in order; embedded ids always win first.
 
 ### Consensus (`common::consensus::evaluate`, `docs/no_guessing.md`)
-Tiers 1/2 need **unanimity** of embedded ids — no plurality, no majority vote, no "wins if it occurs ≥2 times and beats any rival" tolerance (that scheme is gone as of 2026-09-22). Any disagreement among tagged tracks (or an untagged album field) fails the gate *before any tier runs at all* — the release is parked `UNKNOWN` with a human-readable `statusReason`, not passed to Tier 3. Untagged tracks are absent evidence, never a veto: a folder where only some tracks carry an id still gets a unanimous verdict from the ones that do.
+Tiers 1/2 need **unanimity** of embedded ids — no plurality, no majority vote, no "wins if it occurs ≥2 times and beats any rival" tolerance. Any disagreement among tagged tracks (or an untagged album field) fails the gate *before any tier runs at all* — the release is parked `UNKNOWN` with a human-readable `statusReason`, not passed to Tier 3. Untagged tracks are absent evidence, never a veto: a folder where only some tracks carry an id still gets a unanimous verdict from the ones that do.
 
 ### Allow-list (`scripts/common/src/mb/allowlist.rs`)
 Before binding, `is_allowed`: release-group primary type ∈ {Album, EP} (rejects Single/Broadcast/Other); release status = Official (missing status treated Official, matches Tier-2 browse filter); no rejected secondary type (audiobook/audio drama/spokenword/interview/field recording/demo — Compilation/Live/Remix/Soundtrack ride on Album/EP primary and pass; remasters aren't separate MB types, pass automatically). Same allow-list gates `--catalogue-gaps`. Net effect: **library never searches for, browses, or invents a Single.**
 
 ### The tagged exception (`is_allowed_tagged`)
-Wider gate for a candidate the **files themselves point at** (unanimous `MUSICBRAINZ_ALBUMID`/`RELEASEGROUPID`) — Single-typed groups pass there (status/secondary-type rules unchanged). MB files many owned 4-track CD EPs under a Single group (Radiohead's "Creep", release `130fe36f…`, sat `UNMATCHED` purely on group type). Those bind typed `Single` (artist page's Singles filter already understands it). Search hits (Tier 3) and catalogue gaps still use plain `is_allowed` — nothing ever *invents* a Single.
+Wider gate for a candidate the **files themselves point at** (unanimous `MUSICBRAINZ_ALBUMID`/`RELEASEGROUPID`) — Single-typed groups pass there (status/secondary-type rules unchanged). MB files plenty of owned multi-track CD EPs under a Single group, which would otherwise sit `UNMATCHED` purely on group type despite the files demonstrably owning the disc. Those bind typed `Single` (artist page's Singles filter already understands it). Search hits (Tier 3) and catalogue gaps still use plain `is_allowed` — nothing ever *invents* a Single.
 
 ### Containment (`scripts/sync/src/owned.rs`)
-A `LocalRelease` can only bind one MB release, so a release reissued inside something bigger has no bind of its own (e.g. a folder holding disc 1+2 of "In Rainbows" binds to the album group, leaving MB's separate "In Rainbows Disk 2" group looking uncovered; same shape for box sets).
+A `LocalRelease` can only bind one MB release, so a release reissued inside something bigger has no bind of its own (e.g. a folder holding two discs of a multi-disc album binds to the album group, leaving MB's separate standalone-disc group looking uncovered; same shape for box sets).
 
-**Containing recordings ≠ owning that release** — different edition/master, why MB models it separately. Stays `MISSING`/gap/acquirable; `detect_containment` only annotates. Pure function scoring tracklists from `mb_get_official_artist_catalogue` (the browse sync already makes; `+recordings` is free) — used to fetch its own browse per gap/artist/run uncached: avg 14.8 calls/artist, 813 worst-case, ~10s each, the single largest avoidable sync cost. Only Official editions considered now (every gap already passed `is_allowed_gap`, so one's always available; narrowing only touches `statusReason`).
+**Containing recordings ≠ owning that release** — different edition/master, why MB models it separately. Stays `MISSING`/gap/acquirable; `detect_containment` only annotates. Pure function scoring tracklists from `mb_get_official_artist_catalogue` (the browse sync already makes; `+recordings` is free) — fetching its own uncached browse per gap/artist/run instead would make this the single largest avoidable sync cost, a real extra API call per artist for data the browse sync already had for free. Only Official editions considered now (every gap already passed `is_allowed_gap`, so one's always available; narrowing only touches `statusReason`).
 
-Requires: every MB track matched to a distinct local track by normalized title; durations within ±5s where known (rejects e.g. a live version passing title-only — takes run 1-33s off studio); local release is a strict superset; ≥3 MB tracks. Writes `statusReason='Recordings inside "<container>"'` only — no release/track rows, no `mbTrackId` links, no file writes, no queue rejections. Web: `containmentContainerTitle()`. Note carried across syncs (`get_contained_notes_for_artist`); only `--overwrite` re-derives.
+Requires: every MB track matched to a distinct local track by normalized title; durations within ±5s where known (rejects e.g. a live version passing title-only, since a live take can run noticeably off the studio runtime); local release is a strict superset; ≥3 MB tracks. Writes `statusReason='Recordings inside "<container>"'` only — no release/track rows, no `mbTrackId` links, no file writes, no queue rejections. Web: `containmentContainerTitle()`. Note carried across syncs (`get_contained_notes_for_artist`); only `--overwrite` re-derives.
 
-> **History:** pre-2026-09 this was `claim_owned_bundle` — marked the contained release `COMPLETE`, rejected downloads, linked the *container's* tracks to the contained release's MB tracks (overwrote real MB identity, corrupted `--only-write-mb-to-files`). 1,583 falsely-owned releases, 11,162 mis-pointed tracks on the live library. Undo: `scripts/sql/undo_owned_bundle_claims.sql`.
+> **History:** this used to be a different mechanism entirely — one that marked the contained release `COMPLETE`, rejected downloads, and linked the *container's* tracks to the contained release's MB tracks, overwriting real MB identity and corrupting `--only-write-mb-to-files`. That approach falsely claimed a large number of releases and mis-pointed a large number of tracks library-wide before being replaced with today's read-only annotation. Undo: `scripts/sql/undo_owned_bundle_claims.sql`.
 
 ### Rejected candidates fall back to search
-A rejected tagged candidate now gets one Tier-3 search attempt before giving up (used to be a dead end — files tagged with a bootleg edition's id stayed unmatched forever even with the official album one search away; Radiohead's "A Moon Shaped Pool" tagged to a Bootleg-status id showed as missing next to the local copy). Tags still win when usable; fallback only after rejection.
+A rejected tagged candidate now gets one Tier-3 search attempt before giving up — without this, a file tagged with a bootleg edition's id stayed unmatched forever even when the official album was one search away, since tags always won over search and a rejected tag used to be a dead end.
 
 ### Official-only gaps (`is_allowed_gap`)
-A release group carries no status itself (status lives on releases inside it), so a bare catalogue gap check treats `status=None` as Official — bootleg soundboards (Album primary + Live secondary, structurally identical to an official live album) flooded gaps this way (Radiohead: 366 MISSING entries, nearly all bootlegs). Fix: both gap paths call `mb_get_official_release_group_ids` once per artist (browse `status=official&type=album|ep&inc=release-groups`, paginated) — `is_allowed_gap` = that set ∧ `is_allowed`. Radiohead: 366→13. ~4 extra calls even for a 500-release artist (server-side filtered). Lookup failure → existing MISSING rows left untouched.
+A release group carries no status itself (status lives on releases inside it), so a bare catalogue gap check treats `status=None` as Official — bootleg soundboards (Album primary + Live secondary, structurally identical to an official live album) can flood gaps this way for an artist with heavy bootleg circulation. Fix: both gap paths call `mb_get_official_release_group_ids` once per artist (browse `status=official&type=album|ep&inc=release-groups`, paginated) — `is_allowed_gap` = that set ∧ `is_allowed`. Cuts a heavily-bootlegged artist's gap list dramatically, at the cost of only a handful of extra calls even for a large-catalogue artist (server-side filtered). Lookup failure → existing MISSING rows left untouched.
 
 ### The three tiers
 - **Tier 1** — direct lookup by the folder's unanimous `MUSICBRAINZ_ALBUMID`.
-- **Tier 2** — release-group browse by the folder's unanimous `MUSICBRAINZ_RELEASEGROUPID` (also the Tier-1 404 fallback — same id, no special-casing needed). `mb_get_release_tracks` returns only Official editions; `check_release_status` picks the edition (exact track-count sibling preferred; single-edition group binds directly, records `MISSING_TRACKS`/`EXTRA_TRACKS`). No deluxe-sibling upgrade search (removed 2026-09-22 alongside the plurality rescue) — local overshoot scores `EXTRA_TRACKS` directly.
-- **Tier 3 (search)** — only when the folder carries no usable id at all, or retry after allow-list rejection. MB search by title+artist (limit 5), takes first shortlist hit satisfying: score ≥85, similar title (`names_are_similar`), passes allow-list, track-count-confident if browsed. Scans the shortlist (not just top hit) — MB scores "Amnesiac" the single 100 ahead of the album, top-hit-only left a 26-track album Unmatched. Never overrides an embedded id, never binds a Single.
+- **Tier 2** — release-group browse by the folder's unanimous `MUSICBRAINZ_RELEASEGROUPID` (also the Tier-1 404 fallback — same id, no special-casing needed). `mb_get_release_tracks` returns only Official editions; `check_release_status` picks the edition (exact track-count sibling preferred; single-edition group binds directly, records `MISSING_TRACKS`/`EXTRA_TRACKS`). No deluxe-sibling upgrade search (removed alongside the plurality rescue) — local overshoot scores `EXTRA_TRACKS` directly.
+- **Tier 3 (search)** — only when the folder carries no usable id at all, or retry after allow-list rejection. MB search by title+artist (limit 5), takes first shortlist hit satisfying: score ≥85, similar title (`names_are_similar`), passes allow-list, track-count-confident if browsed. Scans the shortlist (not just top hit) — a same-titled single can outscore the album it's drawn from, and trusting only the top hit would leave the full album Unmatched. Never overrides an embedded id, never binds a Single.
 
 Found MB ids written back to file tags after matching (mtime preserved).
 
@@ -184,7 +184,7 @@ Found MB ids written back to file tags after matching (mtime preserved).
 5. Nuke/delete unlinks → `UNMATCHED` (`releaseId` cleared).
 6. Re-sync (`--overwrite`) → re-evaluates, any of the above.
 
-`UNKNOWN` is the one status a plain `./sync` re-evaluates despite already holding a `releaseId` (skip condition is `releaseId.is_some() && status != UNKNOWN`) — used to be inert until someone passed `--overwrite`.
+`UNKNOWN` is the one status a plain `./sync` re-evaluates despite already holding a `releaseId` (skip condition is `releaseId.is_some() && status != UNKNOWN`) — without this exception it would stay inert until someone passed `--overwrite`.
 
 ## Rate Limiting
 
@@ -194,12 +194,12 @@ Shared with `index` via `common::mb::api::RateLimiter`. Floor 1100ms (`MB_MIN_DE
 
 **Why concurrency at all:** MB is latency-bound here, not rate-bound. Cold `inc=recordings` browse averages ~10s (max 29.8s), `artist?inc=url-rels+genres+tags` ~10s; warm 0.2s. Serial client reaches only ~0.15 of its ~0.91 req/s allowance. `--concurrency` overlaps the *waiting*. Schedule saturates ~9 in flight at 10s latency; more workers buy nothing beyond that.
 
-**Header caution:** `X-RateLimit-Remaining` is a **shared global pool** (measured `limit:1200`, drifted 886→619→511→472 over 3 requests from this client alone) — nothing derived from it may go below the floor; low-budget branch backs off toward the cap instead (used to return 500ms — 2× the published rate, exactly when the server was busiest).
+**Header caution:** `X-RateLimit-Remaining` is a **shared global pool**, visibly drifting down across consecutive requests from this client alone even without heavy use — nothing derived from it may go below the floor; low-budget branch backs off toward the cap instead of loosening, since loosening here would speed up exactly when the server is busiest.
 
-503 classified **rate-limit** vs **server overload** from body/headers — only the former slows the steady-state pace (server being unwell isn't fixed by going slower). Penalty applies once per request, not per retry; a load-shed 503 may reuse its already-paid slot, but only while nothing else is queued. Retries up to 6× on 429/503, 1s→16s ladder, or `Retry-After` if sent. **Transport failures (timeout/reset/DNS) go on the same ladder** — used to bail immediately with no retry, abandoning the whole artist on one blip (rare serial, not rare concurrent — a cold browse measured 29.8s against the old 30s client timeout, now 60s). Full detail: `docs/scripts/index.md` § Pacing.
+503 classified **rate-limit** vs **server overload** from body/headers — only the former slows the steady-state pace (server being unwell isn't fixed by going slower). Penalty applies once per request, not per retry; a load-shed 503 may reuse its already-paid slot, but only while nothing else is queued. Retries up to 6× on 429/503, 1s→16s ladder, or `Retry-After` if sent. **Transport failures (timeout/reset/DNS) go on the same ladder** — bailing immediately with no retry instead would abandon the whole artist on one blip, which is rare serially but not rare under concurrency; the client timeout is set generously above the slowest cold-browse latency actually observed. Full detail: `docs/scripts/index.md` § Pacing.
 
 ### Browse pagination
-MB caps `inc=recordings` browses by **response size, not `limit`** ("OK Computer": `release-count:39`, 31 returned for `limit=100`). Every browse loop advances by rows actually returned, stops on the reported count, never a short page — stopping short used to silently drop all 8 `OKNOTOK 1997 2017` editions (exactly what the deluxe-upgrade path looks for).
+MB caps `inc=recordings` browses by **response size, not `limit`** — a release group can report far more releases than one page returns. Every browse loop advances by rows actually returned, stops on the reported count, never a short page — stopping short instead would silently drop every edition beyond the first page, exactly the deluxe/rare editions the deluxe-upgrade path used to look for.
 
 ## Release Deduplication
 

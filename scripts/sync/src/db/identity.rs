@@ -188,9 +188,9 @@ pub struct ContradictedIdentity {
 /// (`repair_all_empty_primaries`) handles.
 ///
 /// "Confidently disagrees" means `MbArtistLookup` has a row for this artist's exact name with a
-/// **different, non-null** id - a `CONTRADICTS` row in the docs/sync_decisions.md §17 measurement.
-/// A row with no cached answer, or a cached miss (`mbid IS NULL`), is left alone: neither is evidence
-/// against the stored id, only the absence of evidence for it - see `common::mb::names::IdentityVerdict`.
+/// **different, non-null** id. A row with no cached answer, or a cached miss (`mbid IS NULL`), is
+/// left alone: neither is evidence against the stored id, only the absence of evidence for it - see
+/// `common::mb::names::IdentityVerdict`.
 /// Same "no wild guesses" rule as the ladder gate: withhold, never invent.
 ///
 /// Also deletes the artist's derived `MusicBrainzReleaseArtist` rows, so the wrong discography stops

@@ -58,14 +58,15 @@ left to name the files).
 folder escaping the library, a `..` segment, a stray already-absolute row pointing outside the library
 - is skipped and reported, never followed. Directories emptied by the deletion are pruned upward,
 stopping at `MUSIC_DIR` itself. `--dry-run` prints the counts and touches nothing. Guarded by
-`scripts/delete/src/files.rs` unit tests (including the relative-path case - this used to resolve
-against the process's CWD instead of `MUSIC_DIR`, silently skip every file, and leave `--files` a
-no-op on real data).
+`scripts/delete/src/files.rs` unit tests, including the relative-path case: resolving a relative path
+against anything other than `MUSIC_DIR` (e.g. the process's own working directory) would silently skip
+every file and leave `--files` a no-op on real data.
 
-**Steps 6/7 are scoped to the deletion set** (`delete::sweep::sweep_orphaned_releases`). The local sweep was
-previously unscoped - it deleted *every* ownerless `LocalRelease` in the library, so deleting one artist could
-garbage-collect unrelated releases that merely happened to be between owners. That is a real state during an
-index run, where releases are legitimately ownerless between the folder scan and the artist-resolution pass.
+**Steps 6/7 are scoped to the deletion set** (`delete::sweep::sweep_orphaned_releases`). An unscoped
+local sweep here would delete *every* ownerless `LocalRelease` in the library, so deleting one artist
+could garbage-collect unrelated releases that merely happened to be between owners. That is a real
+state during an index run, where releases are legitimately ownerless between the folder scan and the
+artist-resolution pass.
 Guarded by `scripts/delete/tests/delete_plan.rs`.
 
 ## After Deleting
