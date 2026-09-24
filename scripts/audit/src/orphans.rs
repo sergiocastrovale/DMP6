@@ -47,16 +47,25 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let groups: &[(&Vec<(String,)>, &str)] =
         &[(&phantom, "phantom"), (&no_releases, "no_releases")];
 
+    // One read for every already-tracked artist instead of a round trip per candidate below.
+    let candidate_ids: Vec<&str> = phantom
+        .iter()
+        .chain(no_releases.iter())
+        .map(|(id,)| id.as_str())
+        .collect();
+    let already_tracked_ids: std::collections::HashSet<String> = sqlx::query_scalar(
+        r#"SELECT "artistId" FROM "IssueOrphanArtist"
+           WHERE "artistId" = ANY($1::text[]) AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED')"#,
+    )
+    .bind(&candidate_ids)
+    .fetch_all(&mut *tx)
+    .await?
+    .into_iter()
+    .collect();
+
     for (artists, reason) in groups {
         for (artist_id,) in artists.iter() {
-            let already_tracked: bool = sqlx::query_scalar(
-                r#"SELECT EXISTS(SELECT 1 FROM "IssueOrphanArtist"
-                   WHERE "artistId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
-            )
-            .bind(artist_id)
-            .fetch_one(&mut *tx)
-            .await?;
-            if already_tracked {
+            if already_tracked_ids.contains(artist_id) {
                 continue;
             }
 

@@ -48,6 +48,20 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
             .collect()
     };
 
+    // One read for every already-tracked pair instead of a round trip per candidate below - same
+    // hoist as `linked_pairs` just above.
+    let already_tracked_pairs: HashSet<(String, String)> = {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT "artistAId", "artistBId" FROM "IssueDuplicateArtist"
+               WHERE status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED')"#,
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        rows.into_iter()
+            .map(|(a, b)| if a < b { (a, b) } else { (b, a) })
+            .collect()
+    };
+
     for (id1, id2, mb1, mb2, tracks1, tracks2) in &rows {
         if let (Some(m1), Some(m2)) = (mb1, mb2) {
             if m1 != m2 {
@@ -70,16 +84,12 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
             (id2.as_str(), id1.as_str())
         };
 
-        let already_tracked: bool = sqlx::query_scalar(
-            r#"SELECT EXISTS(SELECT 1 FROM "IssueDuplicateArtist"
-               WHERE (("artistAId" = $1 AND "artistBId" = $2) OR ("artistAId" = $2 AND "artistBId" = $1))
-                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
-        )
-        .bind(artist_a)
-        .bind(artist_b)
-        .fetch_one(&mut *tx)
-        .await?;
-        if already_tracked {
+        let tracked_key = if artist_a < artist_b {
+            (artist_a.to_string(), artist_b.to_string())
+        } else {
+            (artist_b.to_string(), artist_a.to_string())
+        };
+        if already_tracked_pairs.contains(&tracked_key) {
             continue;
         }
 

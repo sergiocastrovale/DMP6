@@ -82,6 +82,18 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let mut inserted = 0usize;
     let now = chrono::Utc::now().naive_utc();
 
+    // One read for every already-tracked release instead of a round trip per candidate below.
+    let candidate_ids: Vec<&str> = rows.iter().map(|(id, ..)| id.as_str()).collect();
+    let already_tracked_ids: std::collections::HashSet<String> = sqlx::query_scalar(
+        r#"SELECT "localReleaseId" FROM "IssueEnrichmentGap"
+           WHERE "localReleaseId" = ANY($1::text[]) AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED')"#,
+    )
+    .bind(&candidate_ids)
+    .fetch_all(&mut *tx)
+    .await?
+    .into_iter()
+    .collect();
+
     for (
         release_id,
         missing_mb,
@@ -116,14 +128,7 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
             missing_fields.push("wikipedia");
         }
 
-        let already_tracked: bool = sqlx::query_scalar(
-            r#"SELECT EXISTS(SELECT 1 FROM "IssueEnrichmentGap"
-               WHERE "localReleaseId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
-        )
-        .bind(release_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if already_tracked {
+        if already_tracked_ids.contains(release_id) {
             continue;
         }
 

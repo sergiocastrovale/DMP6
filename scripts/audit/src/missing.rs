@@ -37,7 +37,23 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
     let mut inserted = 0usize;
     let now = chrono::Utc::now().naive_utc();
 
+    // One read for every already-tracked track instead of a round trip per candidate below.
+    let candidate_ids: Vec<&str> = rows.iter().map(|(id, ..)| id.as_str()).collect();
+    let already_tracked_ids: std::collections::HashSet<String> = sqlx::query_scalar(
+        r#"SELECT "trackId" FROM "IssueMissingMetadata"
+           WHERE "trackId" = ANY($1::text[]) AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED')"#,
+    )
+    .bind(&candidate_ids)
+    .fetch_all(&mut *tx)
+    .await?
+    .into_iter()
+    .collect();
+
     for (track_id, title, artist, album_artist, album, year, release_id) in &rows {
+        if already_tracked_ids.contains(track_id) {
+            continue;
+        }
+
         let mut missing_fields: Vec<&str> = Vec::new();
         if title.as_deref().is_none_or(|s| s.is_empty()) {
             missing_fields.push("title");
@@ -53,17 +69,6 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
         }
         if year.is_none() {
             missing_fields.push("year");
-        }
-
-        let already_tracked: bool = sqlx::query_scalar(
-            r#"SELECT EXISTS(SELECT 1 FROM "IssueMissingMetadata"
-               WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
-        )
-        .bind(track_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if already_tracked {
-            continue;
         }
 
         let proposed = build_proposed(

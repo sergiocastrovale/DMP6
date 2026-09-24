@@ -41,22 +41,27 @@ pub async fn detect(pool: &PgPool, run_id: &str) -> Result<usize, sqlx::Error> {
 
     let mut inserted = 0usize;
 
+    // One read for every already-tracked track instead of a round trip per candidate below.
+    let candidate_ids: Vec<&str> = rows.iter().map(|(id, ..)| id.as_str()).collect();
+    let already_tracked_ids: std::collections::HashSet<String> = sqlx::query_scalar(
+        r#"SELECT "trackId" FROM "IssueCorruptedTpe2"
+           WHERE "trackId" = ANY($1::text[]) AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED')"#,
+    )
+    .bind(&candidate_ids)
+    .fetch_all(&mut *tx)
+    .await?
+    .into_iter()
+    .collect();
+
     for (track_id, current_value, release_id, year) in &rows {
+        if already_tracked_ids.contains(track_id) {
+            continue;
+        }
+
         let (proposed_value, confidence) =
             find_proposed(&mut tx, track_id, release_id.as_deref(), *year).await?;
 
         if proposed_value.is_empty() || proposed_value == *current_value {
-            continue;
-        }
-
-        let already_tracked: bool = sqlx::query_scalar(
-            r#"SELECT EXISTS(SELECT 1 FROM "IssueCorruptedTpe2"
-               WHERE "trackId" = $1 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
-        )
-        .bind(track_id)
-        .fetch_one(&mut *tx)
-        .await?;
-        if already_tracked {
             continue;
         }
 

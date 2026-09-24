@@ -45,6 +45,20 @@ pub async fn detect_duplicate_release(pool: &PgPool, run_id: &str) -> Result<usi
     let mut inserted = 0usize;
     let now = chrono::Utc::now().naive_utc();
 
+    // One read for every already-tracked pair instead of a round trip per candidate below.
+    let already_tracked_pairs: std::collections::HashSet<(String, String)> = {
+        let pairs: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT "releaseAId", "releaseBId" FROM "IssueDuplicateRelease"
+               WHERE status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED')"#,
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        pairs
+            .into_iter()
+            .map(|(a, b)| if a < b { (a, b) } else { (b, a) })
+            .collect()
+    };
+
     for (id1, id2, title1, title2, dur1, dur2, tracks1, tracks2) in &rows {
         let kind = classify_release_pair(
             title1,
@@ -58,16 +72,12 @@ pub async fn detect_duplicate_release(pool: &PgPool, run_id: &str) -> Result<usi
             continue;
         }
 
-        let already_tracked: bool = sqlx::query_scalar(
-            r#"SELECT EXISTS(SELECT 1 FROM "IssueDuplicateRelease"
-               WHERE (("releaseAId" = $1 AND "releaseBId" = $2) OR ("releaseAId" = $2 AND "releaseBId" = $1))
-                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
-        )
-        .bind(id1)
-        .bind(id2)
-        .fetch_one(&mut *tx)
-        .await?;
-        if already_tracked {
+        let tracked_key = if id1 < id2 {
+            (id1.clone(), id2.clone())
+        } else {
+            (id2.clone(), id1.clone())
+        };
+        if already_tracked_pairs.contains(&tracked_key) {
             continue;
         }
 
@@ -105,6 +115,20 @@ pub async fn detect_mismatched_release_id(
     let mut inserted = 0usize;
     let now = chrono::Utc::now().naive_utc();
 
+    // One read for every already-tracked pair instead of a round trip per candidate below.
+    let already_tracked_pairs: std::collections::HashSet<(String, String)> = {
+        let pairs: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT "releaseAId", "releaseBId" FROM "IssueMismatchedReleaseId"
+               WHERE status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED')"#,
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        pairs
+            .into_iter()
+            .map(|(a, b)| if a < b { (a, b) } else { (b, a) })
+            .collect()
+    };
+
     for (id1, id2, title1, title2, dur1, dur2, tracks1, tracks2) in &rows {
         let kind = classify_release_pair(
             title1,
@@ -118,16 +142,12 @@ pub async fn detect_mismatched_release_id(
             continue;
         }
 
-        let already_tracked: bool = sqlx::query_scalar(
-            r#"SELECT EXISTS(SELECT 1 FROM "IssueMismatchedReleaseId"
-               WHERE (("releaseAId" = $1 AND "releaseBId" = $2) OR ("releaseAId" = $2 AND "releaseBId" = $1))
-                 AND status IN ('PENDING', 'PENDING_REVERT', 'RESOLVED', 'FAILED'))"#,
-        )
-        .bind(id1)
-        .bind(id2)
-        .fetch_one(&mut *tx)
-        .await?;
-        if already_tracked {
+        let tracked_key = if id1 < id2 {
+            (id1.clone(), id2.clone())
+        } else {
+            (id2.clone(), id1.clone())
+        };
+        if already_tracked_pairs.contains(&tracked_key) {
             continue;
         }
 
