@@ -392,8 +392,23 @@ Following the mechanical clippy-fix batch above, converted every remaining `type
   `tidy --only` (exercises `rescore`/`identity`/`watermark`/`artist` modules) - both exit 0, output
   identical in shape to pre-split runs, `errors.log` growth matches the expected pre-existing mtime
   warning from the sync run alone.
-- Remaining Phase 5.2 targets: `sync/src/boxset.rs` (3200 lines), `sync/src/main.rs` (2300 lines),
-  `index/src/main.rs` (2050 lines).
+- **`sync/src/boxset.rs` (3200 lines, the workspace's largest file) split into
+  `sync/src/boxset/{mod.rs, pairing, candidates, discovery, apply, orchestration}.rs`**, following its
+  own section banners, plus a `tests.rs` holding the ~1250-line shared test module as one file (it
+  exercises all five sections together; the file itself *is* the `tests` module under the new layout,
+  so `boxset::tests::replay_library_dump`'s existing path is unchanged). Every helper that was only
+  ever called from elsewhere in the same file - `CandidateSource`, `BoxOutcome`, `find_sibling_groups`,
+  `persist_box_media`, `pair_tracks_at`, a dozen more - needed `pub(crate)` once its caller moved to a
+  sibling module; nothing was widened past the crate boundary. One real mistake, caught immediately by
+  the compiler: the extraction script duplicated `pairing.rs`'s own `use` block on top of the synthesized
+  header, which `E0252` flagged before it ever reached a test run.
+  **Verified**: the full `check --db` gate (which includes boxset's own extensive pairing/candidate/apply
+  unit test coverage) plus three live `tidy` runs against the real NAS database (an artist with no box
+  work, one with an unfolded sibling group still on the watermark's "already tidied" side, one plain
+  artist) - all exit 0, `errors.log` unchanged, `find_sibling_groups`' query executing correctly through
+  the new module boundary each time.
+- Remaining Phase 5.2 targets: `sync/src/main.rs` (2300 lines), `index/src/main.rs` (2050 lines) - the
+  plan's own highest-risk items (hot loop + CLI parsing intertwined, most-executed code in the system).
 
 ## Verification
 
